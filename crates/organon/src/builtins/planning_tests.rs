@@ -181,7 +181,11 @@ async fn register_planning_tools() {
     let mut reg = ToolRegistry::new();
     super::register(&mut reg).expect("register");
     let planning_tools = reg.definitions_for_category(ToolCategory::Planning);
-    assert_eq!(planning_tools.len(), 10);
+    assert_eq!(
+        planning_tools.len(),
+        10,
+        "expected 10 planning tools to be registered"
+    );
 }
 
 #[tokio::test]
@@ -203,8 +207,14 @@ async fn plan_create_missing_service_returns_error() {
         arguments: serde_json::json!({"name": "test", "description": "test project"}),
     };
     let result = reg.execute(&input, &test_ctx()).await.expect("execute");
-    assert!(result.is_error);
-    assert!(result.content.text_summary().contains("not configured"));
+    assert!(
+        result.is_error,
+        "plan_create without a planning service should return an error"
+    );
+    assert!(
+        result.content.text_summary().contains("not configured"),
+        "error message should indicate service is not configured"
+    );
 }
 
 #[tokio::test]
@@ -219,8 +229,14 @@ async fn plan_create_success() {
         arguments: serde_json::json!({"name": "my project", "description": "build a thing"}),
     };
     let result = reg.execute(&input, &ctx).await.expect("execute");
-    assert!(!result.is_error);
-    assert!(result.content.text_summary().contains("Created"));
+    assert!(
+        !result.is_error,
+        "plan_create should succeed when service is available"
+    );
+    assert!(
+        result.content.text_summary().contains("Created"),
+        "response should include the Created state"
+    );
 }
 
 #[tokio::test]
@@ -239,8 +255,14 @@ async fn plan_create_error_propagates() {
         arguments: serde_json::json!({"name": "test", "description": "test"}),
     };
     let result = reg.execute(&input, &ctx).await.expect("execute");
-    assert!(result.is_error);
-    assert!(result.content.text_summary().contains("already exists"));
+    assert!(
+        result.is_error,
+        "plan_create should return an error when the service returns a failure"
+    );
+    assert!(
+        result.content.text_summary().contains("already exists"),
+        "error message should propagate the underlying cause"
+    );
 }
 
 #[tokio::test]
@@ -256,11 +278,17 @@ async fn plan_research_skip_dispatches_correctly() {
         arguments: serde_json::json!({"project_id": "01J0000000000000000000000", "skip": true}),
     };
     let result = reg.execute(&input, &ctx).await.expect("execute");
-    assert!(!result.is_error);
+    assert!(
+        !result.is_error,
+        "plan_research with skip=true should succeed"
+    );
 
     let calls = mock_ref.transition_calls.lock().unwrap();
-    assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].1, "skip_research");
+    assert_eq!(calls.len(), 1, "expected exactly one transition call");
+    assert_eq!(
+        calls[0].1, "skip_research",
+        "skip=true should dispatch the skip_research transition"
+    );
 }
 
 #[tokio::test]
@@ -276,10 +304,16 @@ async fn plan_research_no_skip_dispatches_start() {
         arguments: serde_json::json!({"project_id": "01J0000000000000000000000"}),
     };
     let result = reg.execute(&input, &ctx).await.expect("execute");
-    assert!(!result.is_error);
+    assert!(
+        !result.is_error,
+        "plan_research without skip should succeed"
+    );
 
     let calls = mock_ref.transition_calls.lock().unwrap();
-    assert_eq!(calls[0].1, "start_research");
+    assert_eq!(
+        calls[0].1, "start_research",
+        "omitting skip should dispatch the start_research transition"
+    );
 }
 
 #[tokio::test]
@@ -300,16 +334,25 @@ async fn plan_roadmap_add_phase_calls_add_phase() {
         }),
     };
     let result = reg.execute(&input, &ctx).await.expect("execute");
-    assert!(!result.is_error);
+    assert!(!result.is_error, "plan_roadmap add_phase should succeed");
 
     let calls = mock_ref.add_phase_calls.lock().unwrap();
-    assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].1, "Foundation");
-    assert_eq!(calls[0].2, "Set up core infrastructure");
+    assert_eq!(calls.len(), 1, "expected exactly one add_phase call");
+    assert_eq!(
+        calls[0].1, "Foundation",
+        "phase name should be passed through to the service"
+    );
+    assert_eq!(
+        calls[0].2, "Set up core infrastructure",
+        "phase goal should be passed through to the service"
+    );
 
     // transition_project should NOT have been called
     let t_calls = mock_ref.transition_calls.lock().unwrap();
-    assert!(t_calls.is_empty());
+    assert!(
+        t_calls.is_empty(),
+        "add_phase should not trigger any state transition"
+    );
 }
 
 #[tokio::test]
@@ -324,8 +367,14 @@ async fn plan_status_returns_project_json() {
         arguments: serde_json::json!({"project_id": "01J0000000000000000000000"}),
     };
     let result = reg.execute(&input, &ctx).await.expect("execute");
-    assert!(!result.is_error);
-    assert!(result.content.text_summary().contains("Created"));
+    assert!(
+        !result.is_error,
+        "plan_status should succeed and return project data"
+    );
+    assert!(
+        result.content.text_summary().contains("Created"),
+        "response should include the project state"
+    );
 }
 
 #[tokio::test]
@@ -346,13 +395,14 @@ async fn plan_step_complete_dispatches() {
         }),
     };
     let result = reg.execute(&input, &ctx).await.expect("execute");
-    assert!(!result.is_error);
+    assert!(!result.is_error, "plan_step_complete should succeed");
 
     let calls = mock_ref.complete_plan_calls.lock().unwrap();
-    assert_eq!(calls.len(), 1);
+    assert_eq!(calls.len(), 1, "expected exactly one complete_plan call");
     assert_eq!(
         calls[0],
-        ("proj1".to_owned(), "phase1".to_owned(), "plan1".to_owned())
+        ("proj1".to_owned(), "phase1".to_owned(), "plan1".to_owned()),
+        "project_id, phase_id, and plan_id should be forwarded correctly to the service"
     );
 }
 
@@ -374,11 +424,14 @@ async fn plan_step_fail_dispatches() {
         }),
     };
     let result = reg.execute(&input, &ctx).await.expect("execute");
-    assert!(!result.is_error);
+    assert!(!result.is_error, "plan_step_fail should succeed");
 
     let calls = mock_ref.fail_plan_calls.lock().unwrap();
-    assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].3, "compilation error");
+    assert_eq!(calls.len(), 1, "expected exactly one fail_plan call");
+    assert_eq!(
+        calls[0].3, "compilation error",
+        "failure reason should be forwarded to the service"
+    );
 }
 
 #[tokio::test]
@@ -398,10 +451,13 @@ async fn plan_verify_revert_dispatches_correctly() {
         }),
     };
     let result = reg.execute(&input, &ctx).await.expect("execute");
-    assert!(!result.is_error);
+    assert!(!result.is_error, "plan_verify revert action should succeed");
 
     let calls = mock_ref.transition_calls.lock().unwrap();
-    assert_eq!(calls[0].1, "revert_to_planning");
+    assert_eq!(
+        calls[0].1, "revert_to_planning",
+        "revert action should dispatch the revert_to_planning transition"
+    );
 }
 
 #[tokio::test]
@@ -453,8 +509,14 @@ async fn unknown_action_returns_error() {
         arguments: serde_json::json!({"project_id": "p1", "action": "invalid_action"}),
     };
     let result = reg.execute(&input, &ctx).await.expect("execute");
-    assert!(result.is_error);
-    assert!(result.content.text_summary().contains("unknown action"));
+    assert!(
+        result.is_error,
+        "plan_requirements with an invalid action should return an error"
+    );
+    assert!(
+        result.content.text_summary().contains("unknown action"),
+        "error message should indicate the action was not recognized"
+    );
 }
 
 #[tokio::test]
@@ -470,11 +532,17 @@ async fn plan_requirements_start_scoping_dispatches() {
         arguments: serde_json::json!({"project_id": "proj1", "action": "start_scoping"}),
     };
     let result = reg.execute(&input, &ctx).await.expect("execute");
-    assert!(!result.is_error);
+    assert!(
+        !result.is_error,
+        "plan_requirements start_scoping should succeed"
+    );
 
     let calls = mock_ref.transition_calls.lock().unwrap();
-    assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].1, "start_scoping");
+    assert_eq!(calls.len(), 1, "expected exactly one transition call");
+    assert_eq!(
+        calls[0].1, "start_scoping",
+        "start_scoping action should dispatch the start_scoping transition"
+    );
 }
 
 #[tokio::test]
@@ -490,11 +558,17 @@ async fn plan_requirements_complete_dispatches_start_planning() {
         arguments: serde_json::json!({"project_id": "proj1", "action": "complete"}),
     };
     let result = reg.execute(&input, &ctx).await.expect("execute");
-    assert!(!result.is_error);
+    assert!(
+        !result.is_error,
+        "plan_requirements complete action should succeed"
+    );
 
     let calls = mock_ref.transition_calls.lock().unwrap();
-    assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].1, "start_planning");
+    assert_eq!(calls.len(), 1, "expected exactly one transition call");
+    assert_eq!(
+        calls[0].1, "start_planning",
+        "complete action should advance to the start_planning transition"
+    );
 }
 
 #[tokio::test]
@@ -510,11 +584,17 @@ async fn plan_discuss_complete_dispatches_start_execution() {
         arguments: serde_json::json!({"project_id": "proj1", "action": "complete"}),
     };
     let result = reg.execute(&input, &ctx).await.expect("execute");
-    assert!(!result.is_error);
+    assert!(
+        !result.is_error,
+        "plan_discuss complete action should succeed"
+    );
 
     let calls = mock_ref.transition_calls.lock().unwrap();
-    assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].1, "start_execution");
+    assert_eq!(calls.len(), 1, "expected exactly one transition call");
+    assert_eq!(
+        calls[0].1, "start_execution",
+        "complete action on plan_discuss should dispatch the start_execution transition"
+    );
 }
 
 #[tokio::test]
@@ -529,8 +609,14 @@ async fn plan_discuss_unknown_action_returns_error() {
         arguments: serde_json::json!({"project_id": "proj1", "action": "invalid"}),
     };
     let result = reg.execute(&input, &ctx).await.expect("execute");
-    assert!(result.is_error);
-    assert!(result.content.text_summary().contains("unknown action"));
+    assert!(
+        result.is_error,
+        "plan_discuss with an invalid action should return an error"
+    );
+    assert!(
+        result.content.text_summary().contains("unknown action"),
+        "error message should indicate the action was not recognized"
+    );
 }
 
 #[tokio::test]
@@ -546,11 +632,17 @@ async fn plan_roadmap_start_discussion_dispatches() {
         arguments: serde_json::json!({"project_id": "proj1", "action": "start_discussion"}),
     };
     let result = reg.execute(&input, &ctx).await.expect("execute");
-    assert!(!result.is_error);
+    assert!(
+        !result.is_error,
+        "plan_roadmap start_discussion action should succeed"
+    );
 
     let calls = mock_ref.transition_calls.lock().unwrap();
-    assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].1, "start_discussion");
+    assert_eq!(calls.len(), 1, "expected exactly one transition call");
+    assert_eq!(
+        calls[0].1, "start_discussion",
+        "start_discussion action should dispatch the start_discussion transition"
+    );
 }
 
 #[tokio::test]
@@ -566,11 +658,17 @@ async fn plan_roadmap_start_execution_dispatches() {
         arguments: serde_json::json!({"project_id": "proj1", "action": "start_execution"}),
     };
     let result = reg.execute(&input, &ctx).await.expect("execute");
-    assert!(!result.is_error);
+    assert!(
+        !result.is_error,
+        "plan_roadmap start_execution action should succeed"
+    );
 
     let calls = mock_ref.transition_calls.lock().unwrap();
-    assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].1, "start_execution");
+    assert_eq!(calls.len(), 1, "expected exactly one transition call");
+    assert_eq!(
+        calls[0].1, "start_execution",
+        "start_execution action should dispatch the start_execution transition"
+    );
 }
 
 #[tokio::test]
@@ -586,11 +684,17 @@ async fn plan_verify_complete_dispatches() {
         arguments: serde_json::json!({"project_id": "proj1", "action": "complete"}),
     };
     let result = reg.execute(&input, &ctx).await.expect("execute");
-    assert!(!result.is_error);
+    assert!(
+        !result.is_error,
+        "plan_verify complete action should succeed"
+    );
 
     let calls = mock_ref.transition_calls.lock().unwrap();
-    assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].1, "complete");
+    assert_eq!(calls.len(), 1, "expected exactly one transition call");
+    assert_eq!(
+        calls[0].1, "complete",
+        "complete action on plan_verify should dispatch the complete transition"
+    );
 }
 
 #[tokio::test]

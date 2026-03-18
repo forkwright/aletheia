@@ -114,10 +114,22 @@ fn build_prompt_includes_candidate_metadata() {
     let seqs = sample_sequences();
     let prompt = build_extraction_prompt(&candidate, &seqs);
 
-    assert!(prompt.contains("Recurrence count: 3"));
-    assert!(prompt.contains("Diagnostic"));
-    assert!(prompt.contains("0.72"));
-    assert!(prompt.contains("Grep → Read → Edit → Bash"));
+    assert!(
+        prompt.contains("Recurrence count: 3"),
+        "prompt should include recurrence count from candidate metadata"
+    );
+    assert!(
+        prompt.contains("Diagnostic"),
+        "prompt should include pattern type from candidate metadata"
+    );
+    assert!(
+        prompt.contains("0.72"),
+        "prompt should include heuristic score from candidate metadata"
+    );
+    assert!(
+        prompt.contains("Grep → Read → Edit → Bash"),
+        "prompt should include normalized tool sequence from candidate"
+    );
 }
 
 #[test]
@@ -126,9 +138,18 @@ fn build_prompt_includes_all_sessions() {
     let seqs = sample_sequences();
     let prompt = build_extraction_prompt(&candidate, &seqs);
 
-    assert!(prompt.contains("Session 1"));
-    assert!(prompt.contains("Session 2"));
-    assert!(prompt.contains("6 calls"));
+    assert!(
+        prompt.contains("Session 1"),
+        "prompt should include first session reference"
+    );
+    assert!(
+        prompt.contains("Session 2"),
+        "prompt should include second session reference"
+    );
+    assert!(
+        prompt.contains("6 calls"),
+        "prompt should include total call count for the session"
+    );
 }
 
 #[test]
@@ -140,8 +161,14 @@ fn build_prompt_includes_tool_call_details() {
     ]];
     let prompt = build_extraction_prompt(&candidate, &seqs);
 
-    assert!(prompt.contains("Read (50ms)"));
-    assert!(prompt.contains("Bash (300ms) [ERROR]"));
+    assert!(
+        prompt.contains("Read (50ms)"),
+        "prompt should include tool name with duration"
+    );
+    assert!(
+        prompt.contains("Bash (300ms) [ERROR]"),
+        "prompt should mark errored tool calls with [ERROR] suffix"
+    );
 }
 
 #[test]
@@ -149,8 +176,14 @@ fn build_prompt_handles_empty_sequences() {
     let candidate = sample_candidate();
     let prompt = build_extraction_prompt(&candidate, &[]);
 
-    assert!(prompt.contains("Candidate Pattern"));
-    assert!(prompt.contains("Observed Tool Call Sequences"));
+    assert!(
+        prompt.contains("Candidate Pattern"),
+        "prompt should include candidate pattern section even with no sequences"
+    );
+    assert!(
+        prompt.contains("Observed Tool Call Sequences"),
+        "prompt should include sequences section header even when empty"
+    );
 }
 
 #[test]
@@ -160,7 +193,10 @@ fn build_prompt_no_pattern_type() {
     let seqs = sample_sequences();
     let prompt = build_extraction_prompt(&candidate, &seqs);
 
-    assert!(!prompt.contains("pattern type"));
+    assert!(
+        !prompt.contains("pattern type"),
+        "prompt should omit pattern type section when candidate has no pattern type"
+    );
 }
 
 // -- Response parsing -----------------------------------------------------
@@ -170,25 +206,49 @@ fn parse_valid_json_response() {
     let response = valid_json_response();
     let skill = parse_skill_response(&response).expect("valid JSON response should parse");
 
-    assert_eq!(skill.name, "test-driven-bug-fix");
-    assert_eq!(skill.steps.len(), 4);
-    assert_eq!(skill.tools_used, vec!["Grep", "Read", "Edit", "Bash"]);
-    assert_eq!(skill.domain_tags, vec!["testing", "debugging"]);
-    assert!(!skill.when_to_use.is_empty());
+    assert_eq!(
+        skill.name, "test-driven-bug-fix",
+        "parsed skill should have the name from the JSON response"
+    );
+    assert_eq!(
+        skill.steps.len(),
+        4,
+        "parsed skill should have all 4 steps from the JSON response"
+    );
+    assert_eq!(
+        skill.tools_used,
+        vec!["Grep", "Read", "Edit", "Bash"],
+        "parsed skill should have tools in order from the JSON response"
+    );
+    assert_eq!(
+        skill.domain_tags,
+        vec!["testing", "debugging"],
+        "parsed skill should have domain tags from the JSON response"
+    );
+    assert!(
+        !skill.when_to_use.is_empty(),
+        "parsed skill should have a non-empty when_to_use field"
+    );
 }
 
 #[test]
 fn parse_json_in_markdown_fences() {
     let response = format!("```json\n{}\n```", valid_json_response());
     let skill = parse_skill_response(&response).expect("json in markdown fences should parse");
-    assert_eq!(skill.name, "test-driven-bug-fix");
+    assert_eq!(
+        skill.name, "test-driven-bug-fix",
+        "skill name should be extracted correctly from JSON in markdown fences"
+    );
 }
 
 #[test]
 fn parse_json_in_bare_fences() {
     let response = format!("```\n{}\n```", valid_json_response());
     let skill = parse_skill_response(&response).expect("json in bare fences should parse");
-    assert_eq!(skill.name, "test-driven-bug-fix");
+    assert_eq!(
+        skill.name, "test-driven-bug-fix",
+        "skill name should be extracted correctly from JSON in bare fences"
+    );
 }
 
 #[test]
@@ -198,16 +258,25 @@ fn parse_json_with_surrounding_text() {
         valid_json_response()
     );
     let skill = parse_skill_response(&response).expect("json with surrounding text should parse");
-    assert_eq!(skill.name, "test-driven-bug-fix");
+    assert_eq!(
+        skill.name, "test-driven-bug-fix",
+        "skill name should be extracted correctly when JSON has surrounding text"
+    );
 }
 
 #[test]
 fn parse_malformed_json_returns_error() {
     let response = "not json at all";
     let result = parse_skill_response(response);
-    assert!(result.is_err());
+    assert!(
+        result.is_err(),
+        "parsing non-JSON text should return an error"
+    );
     let err = result.unwrap_err();
-    assert!(err.to_string().contains("invalid JSON"));
+    assert!(
+        err.to_string().contains("invalid JSON"),
+        "error message should indicate the input was invalid JSON"
+    );
 }
 
 #[test]
@@ -215,13 +284,16 @@ fn parse_incomplete_json_returns_error() {
     let response = r#"{"name": "test", "description": "d"}"#;
     let result = parse_skill_response(response);
     // Missing required fields
-    assert!(result.is_err());
+    assert!(
+        result.is_err(),
+        "JSON missing required fields should return an error"
+    );
 }
 
 #[test]
 fn parse_empty_response_returns_error() {
     let result = parse_skill_response("");
-    assert!(result.is_err());
+    assert!(result.is_err(), "empty response should return an error");
 }
 
 #[test]
@@ -235,8 +307,14 @@ fn parse_empty_fields_succeeds() {
         "when_to_use": ""
     }"#;
     let skill = parse_skill_response(response).expect("minimal skill JSON should parse");
-    assert_eq!(skill.name, "minimal-skill");
-    assert!(skill.steps.is_empty());
+    assert_eq!(
+        skill.name, "minimal-skill",
+        "parsed skill should have the name from the minimal JSON"
+    );
+    assert!(
+        skill.steps.is_empty(),
+        "parsed skill should have empty steps when JSON steps array is empty"
+    );
 }
 
 // -- Extractor end-to-end -------------------------------------------------
@@ -252,7 +330,10 @@ async fn extractor_returns_skill_on_valid_response() {
         .extract_skill(&candidate, &seqs)
         .await
         .expect("mock provider returns valid response");
-    assert_eq!(skill.name, "test-driven-bug-fix");
+    assert_eq!(
+        skill.name, "test-driven-bug-fix",
+        "extractor should return skill with name parsed from provider response"
+    );
 }
 
 #[tokio::test]
@@ -263,7 +344,10 @@ async fn extractor_returns_error_on_provider_failure() {
     let seqs = sample_sequences();
 
     let result = extractor.extract_skill(&candidate, &seqs).await;
-    assert!(result.is_err());
+    assert!(
+        result.is_err(),
+        "extractor should return error when provider fails"
+    );
 }
 
 #[tokio::test]
@@ -274,7 +358,10 @@ async fn extractor_returns_error_on_malformed_response() {
     let seqs = sample_sequences();
 
     let result = extractor.extract_skill(&candidate, &seqs).await;
-    assert!(result.is_err());
+    assert!(
+        result.is_err(),
+        "extractor should return error when provider returns malformed JSON"
+    );
 }
 
 // -- ExtractedSkill → SkillContent ----------------------------------------
@@ -290,7 +377,10 @@ fn to_skill_content_sets_origin_extracted() {
         when_to_use: "When testing".to_owned(),
     };
     let content = extracted.to_skill_content();
-    assert_eq!(content.origin, "extracted");
+    assert_eq!(
+        content.origin, "extracted",
+        "skill content origin should be set to 'extracted' for LLM-extracted skills"
+    );
 }
 
 #[test]
@@ -304,8 +394,14 @@ fn to_skill_content_includes_when_to_use_in_description() {
         when_to_use: "When you need to test".to_owned(),
     };
     let content = extracted.to_skill_content();
-    assert!(content.description.contains("When to Use"));
-    assert!(content.description.contains("When you need to test"));
+    assert!(
+        content.description.contains("When to Use"),
+        "skill content description should include a 'When to Use' section header"
+    );
+    assert!(
+        content.description.contains("When you need to test"),
+        "skill content description should include the when_to_use text"
+    );
 }
 
 #[test]
@@ -319,7 +415,10 @@ fn to_skill_content_omits_when_to_use_if_empty() {
         when_to_use: String::new(),
     };
     let content = extracted.to_skill_content();
-    assert_eq!(content.description, "A test skill");
+    assert_eq!(
+        content.description, "A test skill",
+        "skill content description should be just the base description when when_to_use is empty"
+    );
 }
 
 // -- PendingSkill ---------------------------------------------------------
@@ -335,10 +434,22 @@ fn pending_skill_new_sets_status() {
         when_to_use: String::new(),
     };
     let pending = PendingSkill::new(&extracted, "cand-001");
-    assert!(pending.is_pending());
-    assert!(!pending.is_approved());
-    assert_eq!(pending.candidate_id, "cand-001");
-    assert_eq!(pending.status, "pending_review");
+    assert!(
+        pending.is_pending(),
+        "newly created pending skill should be in pending state"
+    );
+    assert!(
+        !pending.is_approved(),
+        "newly created pending skill should not be approved"
+    );
+    assert_eq!(
+        pending.candidate_id, "cand-001",
+        "pending skill should store the candidate id it was created with"
+    );
+    assert_eq!(
+        pending.status, "pending_review",
+        "newly created pending skill should have status 'pending_review'"
+    );
 }
 
 #[test]
@@ -354,9 +465,18 @@ fn pending_skill_serialization_roundtrip() {
     let pending = PendingSkill::new(&extracted, "cand-002");
     let json = pending.to_json().expect("pending skill serializes to JSON");
     let back = PendingSkill::from_json(&json).expect("pending skill deserializes from JSON");
-    assert_eq!(back.skill.name, "roundtrip-skill");
-    assert_eq!(back.candidate_id, "cand-002");
-    assert!(back.is_pending());
+    assert_eq!(
+        back.skill.name, "roundtrip-skill",
+        "deserialized skill should preserve the original skill name"
+    );
+    assert_eq!(
+        back.candidate_id, "cand-002",
+        "deserialized pending skill should preserve the candidate id"
+    );
+    assert!(
+        back.is_pending(),
+        "deserialized pending skill should still be in pending state"
+    );
 }
 
 #[test]
@@ -374,23 +494,50 @@ fn pending_skill_approved_status() {
         status: "approved".to_owned(),
         extracted_at: jiff::Timestamp::now(),
     };
-    assert!(pending.is_approved());
-    assert!(!pending.is_pending());
+    assert!(
+        pending.is_approved(),
+        "skill with status 'approved' should report as approved"
+    );
+    assert!(
+        !pending.is_pending(),
+        "skill with status 'approved' should not report as pending"
+    );
 
     pending.status = "rejected".to_owned();
-    assert!(!pending.is_approved());
-    assert!(!pending.is_pending());
+    assert!(
+        !pending.is_approved(),
+        "skill with status 'rejected' should not report as approved"
+    );
+    assert!(
+        !pending.is_pending(),
+        "skill with status 'rejected' should not report as pending"
+    );
 }
 
 // -- System prompt --------------------------------------------------------
 
 #[test]
 fn system_prompt_requests_json() {
-    assert!(EXTRACTION_SYSTEM_PROMPT.contains("JSON"));
-    assert!(EXTRACTION_SYSTEM_PROMPT.contains("name"));
-    assert!(EXTRACTION_SYSTEM_PROMPT.contains("steps"));
-    assert!(EXTRACTION_SYSTEM_PROMPT.contains("tools_used"));
-    assert!(EXTRACTION_SYSTEM_PROMPT.contains("domain_tags"));
+    assert!(
+        EXTRACTION_SYSTEM_PROMPT.contains("JSON"),
+        "system prompt should instruct the model to respond with JSON"
+    );
+    assert!(
+        EXTRACTION_SYSTEM_PROMPT.contains("name"),
+        "system prompt should reference the 'name' field in the expected schema"
+    );
+    assert!(
+        EXTRACTION_SYSTEM_PROMPT.contains("steps"),
+        "system prompt should reference the 'steps' field in the expected schema"
+    );
+    assert!(
+        EXTRACTION_SYSTEM_PROMPT.contains("tools_used"),
+        "system prompt should reference the 'tools_used' field in the expected schema"
+    );
+    assert!(
+        EXTRACTION_SYSTEM_PROMPT.contains("domain_tags"),
+        "system prompt should reference the 'domain_tags' field in the expected schema"
+    );
 }
 
 // -- Dedup ----------------------------------------------------------------
@@ -421,7 +568,11 @@ fn dedup_unique_skills() {
         candidate_embedding: None,
         existing_embedding: None,
     });
-    assert_eq!(result, DedupOutcome::Unique);
+    assert_eq!(
+        result,
+        DedupOutcome::Unique,
+        "skills with different names and non-overlapping tools should be considered unique"
+    );
 }
 
 #[test]
@@ -512,7 +663,11 @@ fn dedup_embedding_below_threshold_is_unique() {
         candidate_embedding: Some(&cand_emb),
         existing_embedding: Some(&exist_emb),
     });
-    assert_eq!(result, DedupOutcome::Unique);
+    assert_eq!(
+        result,
+        DedupOutcome::Unique,
+        "orthogonal embeddings should result in a unique outcome despite similar tool overlap"
+    );
 }
 
 #[test]
@@ -540,7 +695,10 @@ fn cosine_similarity_orthogonal_vectors() {
 #[test]
 fn cosine_similarity_empty_vectors() {
     let sim = cosine_similarity(&[], &[]);
-    assert!(sim.abs() < f64::EPSILON);
+    assert!(
+        sim.abs() < f64::EPSILON,
+        "cosine similarity of two empty vectors should be zero"
+    );
 }
 
 #[test]
@@ -548,7 +706,10 @@ fn tool_overlap_identical_sets() {
     let a = vec!["Read".to_owned(), "Edit".to_owned()];
     let b = vec!["Read".to_owned(), "Edit".to_owned()];
     let overlap = compute_tool_overlap(&a, &b);
-    assert!((overlap - 1.0).abs() < f64::EPSILON);
+    assert!(
+        (overlap - 1.0).abs() < f64::EPSILON,
+        "identical tool sets should have overlap of 1.0"
+    );
 }
 
 #[test]
@@ -556,13 +717,19 @@ fn tool_overlap_disjoint_sets() {
     let a = vec!["Read".to_owned()];
     let b = vec!["Write".to_owned()];
     let overlap = compute_tool_overlap(&a, &b);
-    assert!(overlap.abs() < f64::EPSILON);
+    assert!(
+        overlap.abs() < f64::EPSILON,
+        "disjoint tool sets should have overlap of 0.0"
+    );
 }
 
 #[test]
 fn name_similarity_identical() {
     let sim = compute_name_similarity("rust-errors", "rust-errors");
-    assert!((sim - 1.0).abs() < f64::EPSILON);
+    assert!(
+        (sim - 1.0).abs() < f64::EPSILON,
+        "identical names should have similarity of 1.0"
+    );
 }
 
 #[test]
