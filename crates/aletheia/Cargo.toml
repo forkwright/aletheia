@@ -47,7 +47,6 @@ aletheia-dokimion = { path = "../eval" }
 aletheia-thesauros = { path = "../thesauros" }
 theatron-tui = { path = "../theatron/tui", optional = true }
 
-secrecy = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 axum = { workspace = true }

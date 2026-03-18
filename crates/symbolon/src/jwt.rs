@@ -6,10 +6,10 @@
 
 use std::time::Duration;
 
+use aletheia_koina::secret::SecretString;
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use ring::hmac;
-use secrecy::{ExposeSecret, SecretString};
 use tracing::instrument;
 
 use crate::error::{self, Result};

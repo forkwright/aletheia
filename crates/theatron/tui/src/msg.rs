@@ -102,7 +102,9 @@ pub enum Msg {
     },
     SseTurnBefore {
         nous_id: NousId,
+        #[expect(dead_code, reason = "planned TUI feature")]
         session_id: SessionId,
+        #[expect(dead_code, reason = "planned TUI feature")]
         turn_id: TurnId,
     },
     SseTurnAfter {
@@ -115,7 +117,9 @@ pub enum Msg {
     },
     SseToolFailed {
         nous_id: NousId,
+        #[expect(dead_code, reason = "planned TUI feature")]
         tool_name: String,
+        #[expect(dead_code, reason = "planned TUI feature")]
         error: String,
     },
     SseStatusUpdate {
@@ -124,6 +128,7 @@ pub enum Msg {
     },
     SseSessionCreated {
         nous_id: NousId,
+        #[expect(dead_code, reason = "planned TUI feature")]
         session_id: SessionId,
     },
     SseSessionArchived {
@@ -142,6 +147,7 @@ pub enum Msg {
     },
 
     StreamTurnStart {
+        #[expect(dead_code, reason = "planned TUI feature")]
         session_id: SessionId,
         nous_id: NousId,
         turn_id: TurnId,
@@ -150,11 +156,13 @@ pub enum Msg {
     StreamThinkingDelta(String),
     StreamToolStart {
         tool_name: String,
+        #[expect(dead_code, reason = "planned TUI feature")]
         tool_id: ToolId,
         input: Option<serde_json::Value>,
     },
     StreamToolResult {
         tool_name: String,
+        #[expect(dead_code, reason = "planned TUI feature")]
         tool_id: ToolId,
         is_error: bool,
         duration_ms: u64,
@@ -169,22 +177,27 @@ pub enum Msg {
         reason: String,
     },
     StreamToolApprovalResolved {
+        #[expect(dead_code, reason = "planned TUI feature")]
         tool_id: ToolId,
+        #[expect(dead_code, reason = "planned TUI feature")]
         decision: String,
     },
     StreamPlanProposed {
         plan: Plan,
     },
     StreamPlanStepStart {
+        #[expect(dead_code, reason = "planned TUI feature")]
         plan_id: PlanId,
         step_id: u32,
     },
     StreamPlanStepComplete {
+        #[expect(dead_code, reason = "planned TUI feature")]
         plan_id: PlanId,
         step_id: u32,
         status: String,
     },
     StreamPlanComplete {
+        #[expect(dead_code, reason = "planned TUI feature")]
         plan_id: PlanId,
         status: String,
     },
@@ -196,23 +209,32 @@ pub enum Msg {
     },
     StreamError(String),
 
+    #[expect(dead_code, reason = "planned TUI feature")]
     AgentsLoaded(Vec<Agent>),
+    #[expect(dead_code, reason = "planned TUI feature")]
     SessionsLoaded {
         nous_id: NousId,
         sessions: Vec<Session>,
     },
+    #[expect(dead_code, reason = "planned TUI feature")]
     HistoryLoaded {
         session_id: SessionId,
         messages: Vec<HistoryMessage>,
     },
+    #[expect(dead_code, reason = "planned TUI feature")]
     CostLoaded {
         daily_total_cents: u32,
     },
+    #[expect(dead_code, reason = "planned TUI feature")]
     AuthResult(AuthOutcome),
+    #[expect(dead_code, reason = "planned TUI feature")]
     ApiError(String),
 
+    #[expect(dead_code, reason = "planned TUI feature")]
     SettingsLoaded(serde_json::Value),
+    #[expect(dead_code, reason = "planned TUI feature")]
     SettingsSaved,
+    #[expect(dead_code, reason = "planned TUI feature")]
     SettingsSaveError(String),
 
     MemoryOpen,
@@ -242,34 +264,47 @@ pub enum Msg {
     MemorySearchBackspace,
     MemorySearchSubmit,
     MemorySearchClose,
+    #[expect(dead_code, reason = "planned TUI feature")]
     MemoryFactsLoaded {
         facts: Vec<crate::state::memory::MemoryFact>,
         total: usize,
     },
+    #[expect(dead_code, reason = "planned TUI feature")]
     MemoryDetailLoaded(Box<crate::state::memory::FactDetail>),
+    #[expect(dead_code, reason = "planned TUI feature")]
     MemoryEntitiesLoaded(Vec<crate::state::memory::MemoryEntity>),
+    #[expect(dead_code, reason = "planned TUI feature")]
     MemoryRelationshipsLoaded(Vec<crate::state::memory::MemoryRelationship>),
+    #[expect(dead_code, reason = "planned TUI feature")]
     MemoryTimelineLoaded(Vec<crate::state::memory::MemoryTimelineEvent>),
+    #[expect(dead_code, reason = "planned TUI feature")]
     MemorySearchResults(Vec<crate::state::memory::MemorySearchResult>),
+    #[expect(dead_code, reason = "planned TUI feature")]
     MemoryActionResult(String),
     MemoryPageDown,
     MemoryPageUp,
 
+    #[allow(dead_code, reason = "planned TUI feature")]
     ShowError(String),
+    #[allow(dead_code, reason = "planned TUI feature")]
     ShowSuccess(String),
+    #[allow(dead_code, reason = "planned TUI feature")]
     DismissError,
 
+    #[expect(dead_code, reason = "planned TUI feature")]
     ExportConversation,
 
     SessionSearchOpen,
     SessionSearchClose,
     SessionSearchInput(char),
     SessionSearchBackspace,
+    #[expect(dead_code, reason = "planned TUI feature")]
     SessionSearchSubmit,
     SessionSearchUp,
     SessionSearchDown,
     SessionSearchSelect,
 
+    #[expect(dead_code, reason = "planned TUI feature")]
     DiffOpen,
     DiffClose,
     DiffCycleMode,
@@ -278,6 +313,7 @@ pub enum Msg {
     DiffPageUp,
     DiffPageDown,
     /// Auto-triggered diff from file modification tool result.
+    #[expect(dead_code, reason = "planned TUI feature")]
     DiffFromToolResult {
         path: String,
         old_content: String,
@@ -319,8 +355,10 @@ pub enum OverlayKind {
     Help,
     AgentPicker,
     SessionPicker,
+    #[expect(dead_code, reason = "planned TUI feature")]
     SessionPickerAll,
     SystemStatus,
+    #[expect(dead_code, reason = "planned TUI feature")]
     Settings,
 }
 
@@ -348,8 +386,11 @@ impl ErrorToast {
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum AuthOutcome {
+    #[expect(dead_code, reason = "planned TUI feature")]
     Success { token: SecretString },
+    #[expect(dead_code, reason = "planned TUI feature")]
     NoAuthRequired,
+    #[expect(dead_code, reason = "planned TUI feature")]
     Failed(String),
 }
 

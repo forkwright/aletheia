@@ -1,3 +1,4 @@
+#![expect(clippy::expect_used, reason = "test assertions")]
 use aletheia_hermeneus::test_utils::MockProvider;
 use aletheia_hermeneus::types::{
     CompletionResponse, ContentBlock, StopReason, ToolResultContent, Usage,
