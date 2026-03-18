@@ -21,8 +21,18 @@ pub(crate) async fn run(args: &HealthArgs) -> Result<()> {
                 "FAILED: cannot connect to {url}\n  \
                  Is the server running? Start it with: aletheia"
             )
+        } else if e.is_builder() {
+            anyhow::anyhow!(
+                "FAILED: invalid URL '{url}'\n  \
+                 Expected format: http://host:port (e.g. http://127.0.0.1:18789)"
+            )
+        } else if e.is_timeout() {
+            anyhow::anyhow!(
+                "FAILED: connection to {url} timed out\n  \
+                 The server may be overloaded or unreachable."
+            )
         } else {
-            anyhow::anyhow!("FAILED: {e}")
+            anyhow::anyhow!("FAILED: could not reach {url}: {e}")
         }
     })?;
     let status = resp.status();

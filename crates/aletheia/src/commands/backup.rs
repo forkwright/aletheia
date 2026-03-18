@@ -6,7 +6,6 @@ use anyhow::{Context, Result};
 use clap::Args;
 
 use aletheia_mneme::store::SessionStore;
-use aletheia_taxis::oikos::Oikos;
 
 #[expect(
     clippy::struct_excessive_bools,
@@ -43,10 +42,7 @@ pub(crate) fn run(instance_root: Option<&PathBuf>, args: &BackupArgs) -> Result<
         json,
         yes,
     } = args;
-    let oikos = match instance_root {
-        Some(root) => Oikos::from_root(root),
-        None => Oikos::discover(),
-    };
+    let oikos = super::resolve_oikos(instance_root)?;
 
     let db_path = oikos.sessions_db();
     let store = SessionStore::open(&db_path)
