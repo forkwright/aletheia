@@ -148,7 +148,6 @@ mod tests {
             )
             .unwrap()
             .rows;
-        println!("{:?}", res);
         assert_eq!(res[0][2].get_slice().unwrap().len(), 3);
         let res = db
             .run_default(
@@ -169,6 +168,5 @@ mod tests {
             .unwrap()
             .rows;
         assert_eq!(res[0][2], DataValue::Null);
-        println!("{:?}", res);
     }
 }

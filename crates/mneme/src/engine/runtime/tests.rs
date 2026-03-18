@@ -168,7 +168,6 @@ grandparent[gcld, gp] := parent[gcld, p], parent[p, gp]
         )
         .expect("grandparent query should succeed")
         .rows;
-    println!("{:?}", res);
     assert_eq!(
         res[0][0],
         DataValue::from("jakob"),
@@ -232,7 +231,6 @@ fn strict_checks_for_fixed_rules_args() {
             ?[] <~ PageRank(r[_, _])
         "#,
     );
-    println!("{:?}", res);
     assert!(res.is_ok(), "PageRank with wildcard binding should succeed");
 
     let db = DbInstance::default();

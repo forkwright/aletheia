@@ -19,9 +19,21 @@ impl EvalClient {
     /// Create a new eval client targeting the given base URL.
     // SAFETY: eval client connects to localhost only. Token sent over cleartext HTTP is intentional.
     pub fn new(base_url: impl Into<String>, token: Option<String>) -> Self {
+        let base_url: String = base_url.into().trim_end_matches('/').to_owned();
+        if token.is_some()
+            && !base_url.starts_with("https://")
+            && !base_url.contains("localhost")
+            && !base_url.contains("127.0.0.1")
+            && !base_url.contains("[::1]")
+        {
+            tracing::warn!(
+                base_url = %base_url,
+                "eval client sending credentials over non-HTTPS to non-localhost URL"
+            );
+        }
         Self {
             http: reqwest::Client::new(),
-            base_url: base_url.into().trim_end_matches('/').to_owned(),
+            base_url,
             token: token.map(SecretString::from),
         }
     }
