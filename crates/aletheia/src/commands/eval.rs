@@ -47,6 +47,13 @@ pub(crate) async fn run(args: EvalArgs) -> Result<()> {
         aletheia_dokimion::report::print_report(&report, &url);
     }
 
+    let total = report.passed + report.failed + report.skipped;
+    if total == 0 || (report.passed == 0 && report.failed == 0) {
+        anyhow::bail!(
+            "no scenarios passed — is the server running at {url}?\n  \
+             Check with: aletheia health --url {url}"
+        );
+    }
     if report.failed > 0 {
         anyhow::bail!("{} scenario(s) failed", report.failed);
     }

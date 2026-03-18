@@ -87,8 +87,12 @@ fn generate_certs(output_dir: &Path, days: u32, sans: &[String], force: bool) ->
             .with_context(|| format!("failed to set permissions on {}", key_path.display()))?;
     }
 
-    println!("Certificate: {}", cert_path.display());
-    println!("Private key: {}", key_path.display());
+    // WHY: print absolute paths so the user knows where files were written,
+    // especially when --output-dir is the default relative path.
+    let abs_cert = std::fs::canonicalize(&cert_path).unwrap_or_else(|_| cert_path.clone());
+    let abs_key = std::fs::canonicalize(&key_path).unwrap_or_else(|_| key_path.clone());
+    println!("Certificate: {}", abs_cert.display());
+    println!("Private key: {}", abs_key.display());
     println!("Valid for {days} days");
 
     Ok(())

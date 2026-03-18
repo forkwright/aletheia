@@ -12,3 +12,27 @@ pub(crate) mod maintenance;
 pub(crate) mod server;
 pub(crate) mod session_export;
 pub(crate) mod tls;
+
+use std::path::PathBuf;
+
+use aletheia_taxis::oikos::Oikos;
+
+/// Resolve the instance root and verify it exists.
+///
+/// Returns a clear error message directing the user to `aletheia init` or `-r`
+/// instead of letting downstream code fail with opaque SQLite/config errors.
+pub(crate) fn resolve_oikos(instance_root: Option<&PathBuf>) -> anyhow::Result<Oikos> {
+    let oikos = match instance_root {
+        Some(root) => Oikos::from_root(root),
+        None => Oikos::discover(),
+    };
+    if !oikos.root().exists() {
+        anyhow::bail!(
+            "instance not found at {}\n  \
+             Use -r /path/to/instance or set ALETHEIA_ROOT.\n  \
+             To create a new instance: aletheia init",
+            oikos.root().display()
+        );
+    }
+    Ok(oikos)
+}
