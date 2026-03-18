@@ -6,6 +6,29 @@
 
 use snafu::Snafu;
 
+/// Diagnostic context carried by [`Error::ApiError`].
+///
+/// Grouped into a separate struct so it can be boxed in the enum variant,
+/// keeping the variant size below clippy's `result_large_err` threshold.
+#[derive(Debug)]
+pub struct ApiErrorContext {
+    /// Model requested when the error occurred.
+    pub model: String,
+    /// Credential source used (e.g. `"oauth"`, `"environment"`, `"file"`).
+    pub credential_source: String,
+}
+
+impl ApiErrorContext {
+    /// Empty context for error sites without model/credential information.
+    #[must_use]
+    pub fn empty() -> Box<Self> {
+        Box::new(Self {
+            model: String::new(),
+            credential_source: String::new(),
+        })
+    }
+}
+
 /// Errors from LLM provider operations.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
@@ -32,6 +55,13 @@ pub enum Error {
     ApiError {
         status: u16,
         message: String,
+        /// Diagnostic context (model + credential source).
+        ///
+        /// Boxed so that the variant stays within clippy's `result_large_err`
+        /// limit. `hermeneus::Error` is embedded as a `source` field inside
+        /// `nous::Error`, and two unboxed `String` fields would push the
+        /// `nous::Error` variant size over 128 bytes.
+        context: Box<ApiErrorContext>,
         #[snafu(implicit)]
         location: snafu::Location,
     },
