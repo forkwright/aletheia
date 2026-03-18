@@ -6,6 +6,12 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
+use tokio::sync::Mutex as TokioMutex;
+use tokio::sync::watch;
+use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
+use tracing::{Instrument, debug, error, info, warn};
+
 use aletheia_hermeneus::provider::ProviderRegistry;
 use aletheia_mneme::embedding::EmbeddingProvider;
 #[cfg(feature = "knowledge-store")]
@@ -15,11 +21,6 @@ use aletheia_organon::registry::ToolRegistry;
 use aletheia_organon::types::ToolServices;
 use aletheia_taxis::oikos::Oikos;
 use aletheia_thesauros::loader::LoadedPack;
-use tokio::sync::Mutex as TokioMutex;
-use tokio::sync::watch;
-use tokio::task::JoinHandle;
-use tokio_util::sync::CancellationToken;
-use tracing::{Instrument, debug, error, info, warn};
 
 use crate::actor;
 use crate::bootstrap::pack_sections_to_bootstrap;

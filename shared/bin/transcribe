@@ -67,6 +67,6 @@ if $DO_SUMMARY; then
 EOF
   log "Summary stub created"
 fi
-chmod -R g+rw "$OUT_DIR" 2>/dev/null || true
+chmod -R g+rw "$OUT_DIR" 2>/dev/null || true  # NOTE: failure is non-fatal here
 log "Done."
 echo "$OUT_DIR"

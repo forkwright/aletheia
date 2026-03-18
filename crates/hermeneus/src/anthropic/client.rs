@@ -6,13 +6,14 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use aletheia_koina::credential::{CredentialProvider, CredentialSource};
-use aletheia_koina::secret::SecretString;
 use rand::Rng as _;
 use reqwest::Client;
 use reqwest::header::{HeaderMap, HeaderValue};
 use snafu::ResultExt;
 use tracing::{Instrument as _, info, info_span, warn};
+
+use aletheia_koina::credential::{CredentialProvider, CredentialSource};
+use aletheia_koina::secret::SecretString;
 
 use crate::error::{self, Result};
 use crate::health::{HealthConfig, ProviderHealthTracker};

@@ -99,12 +99,12 @@ pub(crate) fn format_skill_as_markdown(skill: &aletheia_mneme::skill::SkillConte
 use std::sync::Arc;
 
 #[cfg(feature = "knowledge-store")]
+use tracing::{Instrument, warn};
+
+#[cfg(feature = "knowledge-store")]
 use aletheia_mneme::knowledge::Fact;
 #[cfg(feature = "knowledge-store")]
 use aletheia_mneme::knowledge_store::KnowledgeStore;
-
-#[cfg(feature = "knowledge-store")]
-use tracing::{Instrument, warn};
 
 #[cfg(feature = "knowledge-store")]
 use crate::bootstrap::{BootstrapSection, SectionPriority};

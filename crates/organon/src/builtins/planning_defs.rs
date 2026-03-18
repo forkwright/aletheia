@@ -6,8 +6,9 @@
 
 use indexmap::IndexMap;
 
-use crate::types::{InputSchema, PropertyDef, PropertyType, ToolCategory, ToolDef};
 use aletheia_koina::id::ToolName;
+
+use crate::types::{InputSchema, PropertyDef, PropertyType, ToolCategory, ToolDef};
 
 pub(super) fn plan_create_def() -> ToolDef {
     ToolDef {

@@ -361,8 +361,9 @@ impl App {
             (KeyModifiers::CONTROL, KeyCode::Char('c'))
             | (KeyModifiers::CONTROL, KeyCode::Char('q')) => return Some(Msg::Quit),
             (KeyModifiers::CONTROL, KeyCode::Char('f')) => return Some(Msg::ToggleSidebar),
-            // NOTE: unhandled key combinations produce no action
-            _ => {}
+            _ => {
+                // NOTE: unhandled key combinations produce no action
+            }
         }
 
         if self.layout.memory.fact_list.editing_confidence {

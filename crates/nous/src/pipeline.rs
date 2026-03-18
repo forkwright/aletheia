@@ -3,19 +3,17 @@
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
-use tokio::sync::Mutex;
-
 use serde::{Deserialize, Serialize};
+use tokio::sync::Mutex;
+use tokio::sync::mpsc;
 use tracing::{debug, error, info_span, instrument, warn};
 
+use aletheia_hermeneus::provider::ProviderRegistry;
 use aletheia_mneme::embedding::EmbeddingProvider;
 use aletheia_mneme::store::SessionStore;
-
-use aletheia_hermeneus::provider::ProviderRegistry;
 use aletheia_organon::registry::ToolRegistry;
 use aletheia_organon::types::ToolContext;
 use aletheia_taxis::oikos::Oikos;
-use tokio::sync::mpsc;
 
 use crate::bootstrap::{BootstrapAssembler, BootstrapSection};
 use crate::budget::TokenBudget;

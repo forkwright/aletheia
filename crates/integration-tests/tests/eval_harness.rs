@@ -5,15 +5,16 @@
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::Mutex as TokioMutex;
-use tracing::Instrument;
 
-use aletheia_koina::secret::SecretString;
 use tokio::net::TcpListener;
+use tokio::sync::Mutex as TokioMutex;
+use tokio_util::sync::CancellationToken;
+use tracing::Instrument;
 
 use aletheia_dokimion::runner::{RunConfig, ScenarioRunner};
 use aletheia_hermeneus::provider::ProviderRegistry;
 use aletheia_hermeneus::test_utils::MockProvider;
+use aletheia_koina::secret::SecretString;
 use aletheia_mneme::store::SessionStore;
 use aletheia_nous::config::{NousConfig, PipelineConfig};
 use aletheia_nous::manager::NousManager;
@@ -23,7 +24,6 @@ use aletheia_pylon::state::AppState;
 use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
 use aletheia_symbolon::types::Role;
 use aletheia_taxis::oikos::Oikos;
-use tokio_util::sync::CancellationToken;
 
 fn install_crypto_provider() {
     let _ = rustls::crypto::ring::default_provider().install_default();

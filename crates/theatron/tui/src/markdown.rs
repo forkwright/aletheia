@@ -163,8 +163,9 @@ pub fn render(
                 Tag::TableCell => {
                     current_cell.clear();
                 }
-                // NOTE: unhandled start tags (footnotes, metadata) are ignored
-                _ => {}
+                _ => {
+                    // NOTE: unhandled start tags (footnotes, metadata) are ignored
+                }
             },
             Event::End(tag_end) => match tag_end {
                 TagEnd::Heading(_) => {
@@ -277,8 +278,9 @@ pub fn render(
                 TagEnd::TableCell => {
                     current_row.push(current_cell.trim().to_string());
                 }
-                // NOTE: unhandled end tags are ignored
-                _ => {}
+                _ => {
+                    // NOTE: unhandled end tags are ignored
+                }
             },
             Event::Text(text) => {
                 if in_image {
@@ -348,8 +350,9 @@ pub fn render(
                 flush_line(&mut lines, &mut current_spans, &mut current_col);
                 lines.push(Line::from(Span::styled("─".repeat(40), theme.style_dim())));
             }
-            // NOTE: unhandled markdown events (footnotes, etc.) are ignored
-            _ => {}
+            _ => {
+                // NOTE: unhandled markdown events (footnotes, etc.) are ignored
+            }
         }
     }
 

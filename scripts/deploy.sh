@@ -65,7 +65,7 @@ done
 
 backup_binary() {
     if [[ ! -f "$BINARY_DST" ]]; then
-        log "No existing binary at $BINARY_DST, skipping backup"
+        log "No existing binary at ${BINARY_DST}, skipping backup"
         return 0
     fi
 
@@ -74,8 +74,8 @@ backup_binary() {
     local backup_path="${BACKUP_DIR}/aletheia.backup.${timestamp}"
 
     if [[ "$DRY_RUN" == true ]]; then
-        log "[dry-run] Would back up $BINARY_DST to $backup_path"
-        log "[dry-run] Would prune backups beyond $MAX_BACKUPS"
+        log "[dry-run] Would back up ${BINARY_DST} to $backup_path"
+        log "[dry-run] Would prune backups beyond ${MAX_BACKUPS}"
         return 0
     fi
 
@@ -155,12 +155,12 @@ do_rollback() {
     backup="$(get_latest_backup)"
 
     if [[ -z "$backup" ]]; then
-        die "No backups found in $BACKUP_DIR"
+        die "No backups found in ${BACKUP_DIR}"
     fi
 
     if [[ "$DRY_RUN" == true ]]; then
-        log "[dry-run] Would restore $backup to $BINARY_DST"
-        log "[dry-run] Would restart $SERVICE"
+        log "[dry-run] Would restore $backup to ${BINARY_DST}"
+        log "[dry-run] Would restart ${SERVICE}"
         log "[dry-run] Would run health check"
         return 0
     fi
@@ -169,7 +169,7 @@ do_rollback() {
 
     # Stop service
     if systemctl --user is-active "$SERVICE" &>/dev/null; then
-        log "Stopping $SERVICE..."
+        log "Stopping ${SERVICE}..."
         systemctl --user stop "$SERVICE"
     fi
 
@@ -206,7 +206,7 @@ refresh_token() {
                 echo "ANTHROPIC_AUTH_TOKEN=$token" >> "$env_file"
             fi
             chmod 600 "$env_file"
-            log "Token written to $env_file"
+            log "Token written to ${env_file}"
         fi
     fi
 }
@@ -241,7 +241,7 @@ fi
 
 # Verify binary exists
 if [[ "$DRY_RUN" == false && ! -f "$BINARY_SRC" ]]; then
-    die "Binary not found at $BINARY_SRC. Run with --build or build manually first."
+    die "Binary not found at ${BINARY_SRC}. Run with --build or build manually first."
 fi
 
 # Backup existing binary before deploy
@@ -250,20 +250,20 @@ backup_binary
 # Stop service if running
 if systemctl --user is-active "$SERVICE" &>/dev/null; then
     if [[ "$DRY_RUN" == true ]]; then
-        log "[dry-run] Would stop $SERVICE"
+        log "[dry-run] Would stop ${SERVICE}"
     else
-        log "Stopping $SERVICE..."
+        log "Stopping ${SERVICE}..."
         systemctl --user stop "$SERVICE"
     fi
 fi
 
 # Copy binary
 if [[ "$DRY_RUN" == true ]]; then
-    log "[dry-run] Would copy $BINARY_SRC to $BINARY_DST"
+    log "[dry-run] Would copy ${BINARY_SRC} to ${BINARY_DST}"
 else
     mkdir -p "$(dirname "$BINARY_DST")"
     cp -- "$BINARY_SRC" "$BINARY_DST"
-    log "Deployed: $BINARY_DST"
+    log "Deployed: ${BINARY_DST}"
 fi
 
 # Smoke test: validate config with the newly deployed binary
@@ -283,7 +283,7 @@ fi
 # Restart and health check
 if [[ "$RESTART" == true ]]; then
     if [[ "$DRY_RUN" == true ]]; then
-        log "[dry-run] Would restart $SERVICE"
+        log "[dry-run] Would restart ${SERVICE}"
         log "[dry-run] Would run health check (${HEALTH_TIMEOUT}s timeout)"
         log "[dry-run] Would auto-rollback on health check failure"
     else

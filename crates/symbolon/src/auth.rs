@@ -7,8 +7,9 @@
 use std::path::Path;
 use std::time::Duration;
 
-use aletheia_koina::secret::SecretString;
 use tracing::instrument;
+
+use aletheia_koina::secret::SecretString;
 
 use crate::api_key;
 use crate::error::{self, Result};

@@ -5,11 +5,12 @@ use std::hash::{Hash, Hasher};
 
 use tracing::debug;
 
+use tokio::sync::mpsc;
+
 use aletheia_hermeneus::types::{ContentBlock, ToolResultBlock, ToolResultContent};
 use aletheia_koina::id::ToolName;
 use aletheia_organon::registry::ToolRegistry;
 use aletheia_organon::types::{ToolContext, ToolInput};
-use tokio::sync::mpsc;
 
 use crate::error;
 use crate::pipeline::{InteractionSignal, LoopDetector, ToolCall};

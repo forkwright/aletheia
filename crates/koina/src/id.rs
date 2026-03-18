@@ -1,10 +1,10 @@
 //! Newtype wrappers for domain identifiers.
 
+use std::borrow::Borrow;
 use std::fmt;
 
 use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
-use std::borrow::Borrow;
 
 /// Generate a newtype ID wrapper around a string-like inner type.
 ///

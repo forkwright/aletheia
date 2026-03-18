@@ -724,8 +724,9 @@ pub(crate) fn sort_facts(facts: &mut [aletheia_mneme::knowledge::Fact], sort: &s
                 .unwrap_or(std::cmp::Ordering::Equal);
             if desc { cmp.reverse() } else { cmp }
         }),
-        // NOTE: unrecognized sort field, facts retain original order
-        _ => {}
+        _ => {
+            // NOTE: unrecognized sort field, facts retain original order
+        }
     }
 }
 

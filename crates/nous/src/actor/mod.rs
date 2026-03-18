@@ -6,26 +6,23 @@ use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 
 use tokio::sync::Mutex;
-use tokio::task::JoinSet;
-
-#[cfg(feature = "knowledge-store")]
-use aletheia_mneme::knowledge_store::KnowledgeStore;
-use aletheia_mneme::store::SessionStore;
-
 use tokio::sync::mpsc;
+use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, instrument, warn};
 
-use crate::cross::CrossNousEnvelope;
-
 use aletheia_hermeneus::provider::ProviderRegistry;
 use aletheia_mneme::embedding::EmbeddingProvider;
+#[cfg(feature = "knowledge-store")]
+use aletheia_mneme::knowledge_store::KnowledgeStore;
+use aletheia_mneme::store::SessionStore;
 use aletheia_organon::registry::ToolRegistry;
 use aletheia_organon::types::ToolServices;
 use aletheia_taxis::oikos::Oikos;
 
 use crate::bootstrap::BootstrapSection;
 use crate::config::{NousConfig, PipelineConfig};
+use crate::cross::CrossNousEnvelope;
 use crate::message::{NousLifecycle, NousMessage, NousStatus};
 use crate::session::SessionState;
 

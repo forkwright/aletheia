@@ -1,6 +1,8 @@
 //! Recall pipeline stage: retrieves relevant knowledge and injects into context.
 
 use std::collections::{HashMap, HashSet};
+#[cfg(feature = "knowledge-store")]
+use std::sync::Arc;
 use std::sync::LazyLock;
 
 use serde::{Deserialize, Serialize};
@@ -8,15 +10,11 @@ use tracing::{debug, instrument};
 
 use aletheia_mneme::embedding::EmbeddingProvider;
 use aletheia_mneme::knowledge::RecallResult as KnowledgeRecallResult;
-use aletheia_mneme::recall::{FactorScores, RecallEngine, ScoredResult};
-
-#[cfg(feature = "knowledge-store")]
-use std::sync::Arc;
-
-use crate::error;
-
 #[cfg(feature = "knowledge-store")]
 use aletheia_mneme::knowledge_store::KnowledgeStore;
+use aletheia_mneme::recall::{FactorScores, RecallEngine, ScoredResult};
+
+use crate::error;
 
 /// Abstracts BM25 text search for recall when no embedding provider is available.
 ///

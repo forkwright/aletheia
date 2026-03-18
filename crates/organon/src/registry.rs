@@ -5,10 +5,11 @@ use std::future::Future;
 use std::pin::Pin;
 use std::time::Instant;
 
-use aletheia_koina::id::ToolName;
 use indexmap::IndexMap;
 use snafu::ensure;
 use tracing::info_span;
+
+use aletheia_koina::id::ToolName;
 
 use crate::error::{self, Result};
 use crate::types::{ToolCategory, ToolContext, ToolDef, ToolInput, ToolResult};
