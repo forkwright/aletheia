@@ -69,6 +69,9 @@ static SIGNAL_CAPABILITIES: ChannelCapabilities = ChannelCapabilities {
 pub struct SignalProvider {
     clients: HashMap<String, client::SignalClient>,
     default_account: Option<String>,
+    /// Per-account connection state and outbound buffer. Lock guards
+    /// connection status transitions and buffered-message drain; held
+    /// briefly during send and poll-loop state updates.
     account_states: HashMap<String, Arc<Mutex<AccountState>>>,
     buffer_capacity: usize,
 }

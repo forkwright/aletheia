@@ -185,9 +185,20 @@ impl AskGraph {
 
 /// Routes cross-nous messages between registered actors.
 pub struct CrossNousRouter {
+    /// Maps nous id to its inbox sender. Invariant: every spawned actor has
+    /// exactly one entry; removed on unregister. Held briefly during
+    /// send/register/unregister.
     routes: Arc<RwLock<HashMap<String, mpsc::Sender<CrossNousEnvelope>>>>,
+    /// Maps correlation id to the one-shot reply channel for an in-flight ask.
+    /// Invariant: each ask inserts one entry; consumed exactly once on reply
+    /// or removed on timeout.
     pending_replies: Arc<RwLock<HashMap<Ulid, oneshot::Sender<CrossNousReply>>>>,
+    /// Append-only audit log of delivered messages. Invariant: entries are
+    /// never modified after insertion; the log is read for diagnostics only.
     delivery_log: Arc<RwLock<DeliveryLog>>,
+    /// Directed graph of in-flight ask chains used for cycle detection.
+    /// Invariant: an edge exists iff a pending ask is outstanding between
+    /// the two nodes; removed when the reply arrives or the ask times out.
     ask_graph: Arc<RwLock<AskGraph>>,
 }
 

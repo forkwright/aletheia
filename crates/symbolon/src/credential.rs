@@ -422,6 +422,10 @@ struct RefreshState {
 
 /// Wraps a credential file with background OAuth token refresh.
 pub struct RefreshingCredentialProvider {
+    /// Current OAuth token and refresh metadata. `None` after a fatal
+    /// refresh failure. Writers: the background refresh task (exclusive).
+    /// Readers: `get_credential()` on any thread. The RwLock ensures
+    /// readers never see a partially-updated token/expiry pair.
     state: Arc<RwLock<Option<RefreshState>>>,
     file_provider: FileCredentialProvider,
     shutdown: Arc<AtomicBool>,
