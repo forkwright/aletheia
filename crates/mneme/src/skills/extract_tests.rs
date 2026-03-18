@@ -594,7 +594,8 @@ fn dedup_similar_tools_discard_candidate() {
         result,
         DedupOutcome::DiscardCandidate {
             existing_id: "sk-1".to_owned()
-        }
+        },
+        "lower-confidence candidate with identical tools should be discarded in favor of existing"
     );
 }
 
@@ -617,7 +618,8 @@ fn dedup_candidate_better_supersedes() {
         result,
         DedupOutcome::SupersedeExisting {
             existing_id: "sk-1".to_owned()
-        }
+        },
+        "higher-confidence candidate with more usage should supersede existing skill"
     );
 }
 
@@ -642,7 +644,8 @@ fn dedup_embedding_similarity_above_threshold() {
         result,
         DedupOutcome::DiscardCandidate {
             existing_id: "sk-1".to_owned()
-        }
+        },
+        "high embedding similarity should discard candidate even with different tool sets"
     );
 }
 
