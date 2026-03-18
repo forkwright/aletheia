@@ -69,7 +69,7 @@ pub(crate) struct ActorServices {
 
 /// Data stores for sessions, knowledge, and search.
 pub(crate) struct ActorStores {
-    /// Shared session persistence. Lock guards SQLite write access; held
+    /// Shared session persistence. Lock guards `SQLite` write access; held
     /// briefly for session/message CRUD, never across `.await` points.
     session_store: Option<Arc<Mutex<SessionStore>>>,
     #[cfg(feature = "knowledge-store")]

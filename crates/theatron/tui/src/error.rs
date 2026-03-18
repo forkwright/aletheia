@@ -1,10 +1,8 @@
 use snafu::prelude::*;
 
 /// Unified error type for the TUI crate.
-#[non_exhaustive]
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
-#[non_exhaustive]
 pub enum Error {
     /// API transport or authentication error from the HTTP client.
     #[snafu(context(false))]

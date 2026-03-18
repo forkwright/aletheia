@@ -129,9 +129,7 @@ pub struct Plan {
     pub status: String,
 }
 
-#[non_exhaustive]
 #[derive(Debug, Clone)]
-#[non_exhaustive]
 pub enum SseEvent {
     Connected,
     Disconnected,
