@@ -19,6 +19,7 @@ use crate::skills::{SkillCandidate, ToolCallRecord};
 /// Errors from the skill extraction pipeline.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
+#[non_exhaustive]
 pub enum SkillExtractionError {
     /// The LLM provider returned an error.
     #[snafu(display("LLM extraction failed: {message}"))]

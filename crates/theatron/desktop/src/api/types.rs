@@ -196,6 +196,7 @@ impl std::ops::Deref for ToolId {
 /// lifecycle events, and memory distillation progress.
 #[non_exhaustive]
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum SseEvent {
     Connected,
     Disconnected,
@@ -251,6 +252,7 @@ pub enum SseEvent {
 /// invocations, plan execution, and completion/abort signals.
 #[non_exhaustive]
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum StreamEvent {
     TurnStart {
         session_id: SessionId,
@@ -326,6 +328,7 @@ pub struct TurnOutcome {
 /// Dioxus components read this to render connection indicators.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ConnectionState {
     /// Initial state, not yet attempted.
     Disconnected,

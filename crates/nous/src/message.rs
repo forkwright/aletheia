@@ -50,6 +50,7 @@ pub enum NousMessage {
 /// Lifecycle state machine for a nous actor.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum NousLifecycle {
     /// Processing a turn or background task.
     Active,

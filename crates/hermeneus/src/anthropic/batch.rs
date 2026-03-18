@@ -49,6 +49,7 @@ pub struct BatchResult {
 /// Result type for a batch item.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type")]
+#[non_exhaustive]
 pub enum BatchResultType {
     #[serde(rename = "succeeded")]
     Succeeded { message: serde_json::Value },

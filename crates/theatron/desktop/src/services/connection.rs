@@ -44,6 +44,7 @@ use crate::state::connection::{
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Snafu)]
+#[non_exhaustive]
 pub enum ConnectionError {
     #[snafu(display("health check failed: {source}"))]
     HealthCheck { source: reqwest::Error },

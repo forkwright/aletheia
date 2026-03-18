@@ -34,6 +34,7 @@ pub struct Project {
 
 /// Operating modes for planning.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum ProjectMode {
     /// Full multi-phase project with research, scoping, planning, and verification.
     Full,

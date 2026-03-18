@@ -21,6 +21,7 @@ use serde::{Deserialize, Serialize};
 /// ```
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[non_exhaustive]
 pub enum ConnectionState {
     /// No connection attempted yet, or explicitly disconnected by the user.
     #[default]

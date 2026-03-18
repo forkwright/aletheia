@@ -8,6 +8,7 @@ use dioxus::prelude::*;
 /// User-selected theme preference.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ThemeMode {
     Dark,
     Light,

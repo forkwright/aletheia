@@ -5,6 +5,7 @@ use crate::id::{NousId, PlanId, SessionId, ToolId, TurnId};
 /// Mapped to `Msg` by `App::map_event`.
 #[non_exhaustive]
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum Event {
     /// Terminal keypress, mouse, resize
     Terminal(crossterm::event::Event),
@@ -19,6 +20,7 @@ pub enum Event {
 /// Parsed events from a POST /api/sessions/stream response
 #[non_exhaustive]
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum StreamEvent {
     TurnStart {
         session_id: SessionId,
