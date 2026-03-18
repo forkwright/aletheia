@@ -735,8 +735,11 @@ pub struct DriftDetectionSettings {
     pub enabled: bool,
     /// Emit warnings for files missing from the expected layout.
     pub alert_on_missing: bool,
-    /// Glob patterns for paths to ignore during drift checks.
+    /// Glob patterns for paths to ignore during drift checks entirely.
     pub ignore_patterns: Vec<String>,
+    /// Glob patterns for optional scaffolding files. Missing files matching these
+    /// patterns are reported at info level rather than warn level.
+    pub optional_patterns: Vec<String>,
 }
 
 impl Default for DriftDetectionSettings {
@@ -749,6 +752,19 @@ impl Default for DriftDetectionSettings {
                 "signal/".to_owned(),
                 "*.db".to_owned(),
                 ".gitkeep".to_owned(),
+            ],
+            optional_patterns: vec![
+                "nous/_template/".to_owned(),
+                "packs/".to_owned(),
+                "services/".to_owned(),
+                "shared/".to_owned(),
+                "theke/".to_owned(),
+                "logs/".to_owned(),
+                "README.md".to_owned(),
+                "*.example".to_owned(),
+                ".gitignore".to_owned(),
+                "config/credentials/".to_owned(),
+                "config/tls/".to_owned(),
             ],
         }
     }
