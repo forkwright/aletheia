@@ -1,18 +1,44 @@
 # Aletheia
 
-Self-hosted multi-agent AI system with persistent memory and Signal messaging.
+Self-hosted AI agents with persistent memory.
 
-Privacy-first. Runs on commodity hardware. No cloud dependencies beyond your LLM API key.
+Talk to an AI that remembers your previous conversations, learns your preferences, builds a knowledge graph over time, and gets better the more you use it. Give it a name, a personality, goals, and tools. Run it from a terminal dashboard, HTTP API, or Signal messenger.
 
-[Standards](standards/README.md) · [Quickstart](docs/QUICKSTART.md) · [Configuration](docs/CONFIGURATION.md) · [Architecture](docs/ARCHITECTURE.md) · [Architecture Guide](docs/ARCHITECTURE-GUIDE.md) · [Technology](docs/TECHNOLOGY.md) · [Data](docs/DATA.md) · [Network](docs/NETWORK.md) · [Packs](docs/PACKS.md) · [Releasing](docs/RELEASING.md)
+One binary. No containers. No external databases. No cloud dependencies beyond your LLM provider.
+
+[Quickstart](docs/QUICKSTART.md) · [Configuration](docs/CONFIGURATION.md) · [Deployment](docs/DEPLOYMENT.md) · [Architecture](docs/ARCHITECTURE.md)
 
 ---
 
-## What it is
+## Quick start
 
-Multiple AI agents working in concert with a human operator. Each agent has character, memory, and domain expertise. They persist understanding across sessions, coordinate through shared infrastructure, and evolve through use.
+```bash
+# Install (Linux x86_64)
+curl -L https://github.com/forkwright/aletheia/releases/latest/download/aletheia-linux-x86_64 -o aletheia
+chmod +x aletheia && sudo mv aletheia /usr/local/bin/
 
-Not a chatbot framework. A distributed cognition system.
+# Setup (interactive wizard handles config, credentials, first agent)
+aletheia init
+
+# Run
+aletheia                # start the server
+aletheia tui            # open the terminal dashboard
+```
+
+Build from source: `cargo build --release` (requires Rust 1.94+). See [QUICKSTART.md](docs/QUICKSTART.md) for the full guide.
+
+---
+
+## What you get
+
+- **Persistent memory.** Conversations carry forward. The agent builds a knowledge graph of facts, entities, and relationships that persists across sessions and grows over time.
+- **Multiple agents.** Each agent has its own character (SOUL.md), goals, memory, and workspace. They can coordinate, delegate, and specialize.
+- **Tools.** 33 built-in tools: file I/O, shell execution, web search, memory search, agent coordination. Extend with domain packs or custom tools.
+- **Terminal dashboard.** Rich TUI with markdown rendering, session management, and real-time streaming.
+- **Signal messaging.** Talk to your agents over Signal with 15 built-in commands.
+- **Privacy.** No telemetry, no analytics, no phone-home. Only outbound connections are to services you configure.
+
+---
 
 ## Architecture
 
