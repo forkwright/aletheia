@@ -31,6 +31,15 @@ impl QueryBuilder {
         }
     }
 
+    /// Start a `:rm` operation against a relation.
+    pub fn rm(self, relation: Relation) -> RmBuilder {
+        RmBuilder {
+            parent: self,
+            relation,
+            key_fields: Vec::new(),
+        }
+    }
+
     /// Start a `?[...] := *relation{...}` scan query.
     pub fn scan(self, relation: Relation) -> ScanBuilder {
         ScanBuilder {
@@ -229,6 +238,37 @@ impl ScanBuilder {
             let _ = write!(line, "\n:limit {lim}");
         }
 
+        self.parent.lines.push(line);
+        self.parent
+    }
+}
+
+/// Builds a `?[keys] <- [[params]]` `:rm relation {keys}` operation.
+#[must_use]
+pub struct RmBuilder {
+    parent: QueryBuilder,
+    relation: Relation,
+    key_fields: Vec<&'static str>,
+}
+
+impl RmBuilder {
+    /// Declare the key fields that identify the row to remove.
+    pub fn keys(mut self, fields: &[impl Field]) -> Self {
+        for f in fields {
+            self.key_fields.push(f.name());
+        }
+        self
+    }
+
+    /// Finish the `:rm`, returning the parent `QueryBuilder`.
+    pub fn done(mut self) -> QueryBuilder {
+        let field_list = self.key_fields.join(", ");
+        let params: Vec<String> = self.key_fields.iter().map(|f| format!("${f}")).collect();
+        let param_row = params.join(", ");
+        let line = format!(
+            "?[{field_list}] <- [[{param_row}]]\n:rm {} {{{field_list}}}",
+            self.relation.name()
+        );
         self.parent.lines.push(line);
         self.parent
     }

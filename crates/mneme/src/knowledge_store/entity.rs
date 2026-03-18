@@ -72,11 +72,7 @@ impl KnowledgeStore {
             DataValue::Str(entity_id.as_str().into()),
         );
         params.insert("created_at".to_owned(), DataValue::Str(now.into()));
-        self.run_mut(
-            r"?[fact_id, entity_id, created_at] <- [[$fact_id, $entity_id, $created_at]]
-            :put fact_entities {fact_id, entity_id => created_at}",
-            params,
-        )
+        self.run_mut(&queries::upsert_fact_entity(), params)
     }
 
     /// List all entities in the knowledge store.
@@ -184,13 +180,7 @@ impl KnowledgeStore {
             DataValue::from(i64::from(relationships_redirected)),
         );
         params.insert("merged_at".to_owned(), DataValue::Str(now_str.into()));
-        self.run_mut(
-            r"?[canonical_id, merged_id, merged_name, merge_score, facts_transferred, relationships_redirected, merged_at] <- [[
-                $canonical_id, $merged_id, $merged_name, $merge_score, $facts_transferred, $relationships_redirected, $merged_at
-            ]]
-            :put merge_audit {canonical_id, merged_id => merged_name, merge_score, facts_transferred, relationships_redirected, merged_at}",
-            params,
-        )?;
+        self.run_mut(&queries::put_merge_audit(), params)?;
 
         let mut rm_params = BTreeMap::new();
         rm_params.insert(
@@ -202,11 +192,7 @@ impl KnowledgeStore {
             DataValue::Str(merged_id.as_str().into()),
         );
         // WHY: Try both orderings; pending_merges may store (a,b) or (b,a).
-        if let Err(e) = self.run_mut(
-            r"?[entity_a, entity_b] <- [[$entity_a, $entity_b]]
-            :rm pending_merges {entity_a, entity_b}",
-            rm_params,
-        ) {
+        if let Err(e) = self.run_mut(&queries::rm_pending_merges(), rm_params) {
             tracing::warn!(
                 %canonical_id, %merged_id, error = %e,
                 "failed to remove pending_merges entry (a,b ordering)"
@@ -221,11 +207,7 @@ impl KnowledgeStore {
             "entity_b".to_owned(),
             DataValue::Str(canonical_id.as_str().into()),
         );
-        if let Err(e) = self.run_mut(
-            r"?[entity_a, entity_b] <- [[$entity_a, $entity_b]]
-            :rm pending_merges {entity_a, entity_b}",
-            rm_params2,
-        ) {
+        if let Err(e) = self.run_mut(&queries::rm_pending_merges(), rm_params2) {
             tracing::warn!(
                 %canonical_id, %merged_id, error = %e,
                 "failed to remove pending_merges entry (b,a ordering)"
@@ -530,10 +512,7 @@ impl KnowledgeStore {
                 let mut rm_params = BTreeMap::new();
                 rm_params.insert("src".to_owned(), DataValue::Str(from_id.as_str().into()));
                 rm_params.insert("dst".to_owned(), DataValue::Str(dst.into()));
-                let _ = self.run_mut(
-                    r"?[src, dst] <- [[$src, $dst]] :rm relationships {src, dst}",
-                    rm_params,
-                );
+                let _ = self.run_mut(&queries::rm_relationship(), rm_params);
                 continue;
             }
 
@@ -543,11 +522,7 @@ impl KnowledgeStore {
             put_params.insert("relation".to_owned(), DataValue::Str(relation.into()));
             put_params.insert("weight".to_owned(), DataValue::from(weight));
             put_params.insert("created_at".to_owned(), DataValue::Str(created_at.into()));
-            self.run_mut(
-                r"?[src, dst, relation, weight, created_at] <- [[$src, $dst, $relation, $weight, $created_at]]
-                :put relationships {src, dst => relation, weight, created_at}",
-                put_params,
-            )?;
+            self.run_mut(&queries::upsert_relationship(), put_params)?;
 
             let mut rm_params = BTreeMap::new();
             rm_params.insert("src".to_owned(), DataValue::Str(from_id.as_str().into()));
@@ -555,10 +530,7 @@ impl KnowledgeStore {
                 "dst".to_owned(),
                 DataValue::Str(extract_str(&row[1])?.into()),
             );
-            let _ = self.run_mut(
-                r"?[src, dst] <- [[$src, $dst]] :rm relationships {src, dst}",
-                rm_params,
-            );
+            let _ = self.run_mut(&queries::rm_relationship(), rm_params);
         }
 
         Ok(u32::try_from(count).unwrap_or(0))
@@ -597,10 +569,7 @@ impl KnowledgeStore {
                 let mut rm_params = BTreeMap::new();
                 rm_params.insert("src".to_owned(), DataValue::Str(src.into()));
                 rm_params.insert("dst".to_owned(), DataValue::Str(from_id.as_str().into()));
-                let _ = self.run_mut(
-                    r"?[src, dst] <- [[$src, $dst]] :rm relationships {src, dst}",
-                    rm_params,
-                );
+                let _ = self.run_mut(&queries::rm_relationship(), rm_params);
                 continue;
             }
 
@@ -610,11 +579,7 @@ impl KnowledgeStore {
             put_params.insert("relation".to_owned(), DataValue::Str(relation.into()));
             put_params.insert("weight".to_owned(), DataValue::from(weight));
             put_params.insert("created_at".to_owned(), DataValue::Str(created_at.into()));
-            self.run_mut(
-                r"?[src, dst, relation, weight, created_at] <- [[$src, $dst, $relation, $weight, $created_at]]
-                :put relationships {src, dst => relation, weight, created_at}",
-                put_params,
-            )?;
+            self.run_mut(&queries::upsert_relationship(), put_params)?;
 
             let mut rm_params = BTreeMap::new();
             rm_params.insert(
@@ -622,10 +587,7 @@ impl KnowledgeStore {
                 DataValue::Str(extract_str(&row[0])?.into()),
             );
             rm_params.insert("dst".to_owned(), DataValue::Str(from_id.as_str().into()));
-            let _ = self.run_mut(
-                r"?[src, dst] <- [[$src, $dst]] :rm relationships {src, dst}",
-                rm_params,
-            );
+            let _ = self.run_mut(&queries::rm_relationship(), rm_params);
         }
 
         Ok(u32::try_from(count).unwrap_or(0))
@@ -669,11 +631,7 @@ impl KnowledgeStore {
                 DataValue::Str(to_id.as_str().into()),
             );
             put_params.insert("created_at".to_owned(), DataValue::Str(created_at.into()));
-            self.run_mut(
-                r"?[fact_id, entity_id, created_at] <- [[$fact_id, $entity_id, $created_at]]
-                :put fact_entities {fact_id, entity_id => created_at}",
-                put_params,
-            )?;
+            self.run_mut(&queries::upsert_fact_entity(), put_params)?;
 
             // Remove old mapping
             let mut rm_params = BTreeMap::new();
@@ -682,11 +640,7 @@ impl KnowledgeStore {
                 "entity_id".to_owned(),
                 DataValue::Str(from_id.as_str().into()),
             );
-            let _ = self.run_mut(
-                r"?[fact_id, entity_id] <- [[$fact_id, $entity_id]]
-                :rm fact_entities {fact_id, entity_id}",
-                rm_params,
-            );
+            let _ = self.run_mut(&queries::rm_fact_entity(), rm_params);
         }
 
         Ok(u32::try_from(count).unwrap_or(0))
@@ -732,13 +686,7 @@ impl KnowledgeStore {
             "created_at".to_owned(),
             DataValue::Str(crate::knowledge::format_timestamp(&entity.created_at).into()),
         );
-        self.run_mut(
-            r"?[id, name, entity_type, aliases, created_at, updated_at] <- [[
-                $id, $name, $entity_type, $aliases, $created_at, $updated_at
-            ]]
-            :put entities {id => name, entity_type, aliases, created_at, updated_at}",
-            params,
-        )
+        self.run_mut(&queries::upsert_entity(), params)
     }
 
     /// Delete an entity from the entities relation.
@@ -748,7 +696,7 @@ impl KnowledgeStore {
 
         let mut params = BTreeMap::new();
         params.insert("id".to_owned(), DataValue::Str(entity_id.as_str().into()));
-        self.run_mut(r"?[id] <- [[$id]] :rm entities {id}", params)
+        self.run_mut(&queries::rm_entity(), params)
     }
 
     /// Store a pending merge candidate for review.
@@ -798,12 +746,6 @@ impl KnowledgeStore {
             DataValue::from(candidate.merge_score),
         );
         params.insert("created_at".to_owned(), DataValue::Str(now.into()));
-        self.run_mut(
-            r"?[entity_a, entity_b, name_a, name_b, name_similarity, embed_similarity, type_match, alias_overlap, merge_score, created_at] <- [[
-                $entity_a, $entity_b, $name_a, $name_b, $name_similarity, $embed_similarity, $type_match, $alias_overlap, $merge_score, $created_at
-            ]]
-            :put pending_merges {entity_a, entity_b => name_a, name_b, name_similarity, embed_similarity, type_match, alias_overlap, merge_score, created_at}",
-            params,
-        )
+        self.run_mut(&queries::put_pending_merge(), params)
     }
 }

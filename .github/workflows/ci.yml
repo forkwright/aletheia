@@ -58,3 +58,45 @@ jobs:
             fi
           done < <(git log --format='%s' origin/main..HEAD)
           exit $failed
+
+  standards-sync:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Fetch canonical standards from kanon
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p /tmp/kanon-standards
+          # List files in kanon standards/ and fetch each one
+          gh api repos/forkwright/kanon/contents/standards \
+            --jq '.[].name' | while IFS= read -r fname; do
+            gh api "repos/forkwright/kanon/contents/standards/${fname}" \
+              --jq '.content' \
+              | base64 -d > "/tmp/kanon-standards/${fname}"
+          done
+
+      - name: Diff standards against kanon canonical
+        run: |
+          failed=0
+          while IFS= read -r fname; do
+            local_file="standards/${fname}"
+            canonical="/tmp/kanon-standards/${fname}"
+            if [[ ! -f "$local_file" ]]; then
+              echo "::error file=${local_file}::Canonical file '${fname}' from kanon is missing locally"
+              failed=1
+            elif ! diff -q -- "$canonical" "$local_file" > /dev/null 2>&1; then
+              echo "::error file=${local_file}::Local '${fname}' diverges from kanon canonical"
+              diff -- "$canonical" "$local_file" || true
+              failed=1
+            fi
+          done < <(ls /tmp/kanon-standards/)
+          if [[ "$failed" -ne 0 ]]; then
+            echo ""
+            echo "Standards diverged from kanon. Update local standards/ to match, or sync kanon."
+            echo "Aletheia-specific additions (files only in standards/ but not in kanon) are allowed."
+            exit 1
+          fi
+          echo "standards/ is in sync with kanon"

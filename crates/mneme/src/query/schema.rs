@@ -15,6 +15,12 @@ pub enum Relation {
     Relationships,
     /// Vector embeddings for semantic search.
     Embeddings,
+    /// Fact-to-entity membership mapping.
+    FactEntities,
+    /// Audit log of completed entity merges.
+    MergeAudit,
+    /// Queue of candidate entity merges awaiting review.
+    PendingMerges,
 }
 
 impl Relation {
@@ -25,6 +31,9 @@ impl Relation {
             Self::Entities => "entities",
             Self::Relationships => "relationships",
             Self::Embeddings => "embeddings",
+            Self::FactEntities => "fact_entities",
+            Self::MergeAudit => "merge_audit",
+            Self::PendingMerges => "pending_merges",
         }
     }
 }
@@ -146,6 +155,85 @@ impl Field for EmbeddingsField {
             Self::SourceId => "source_id",
             Self::NousId => "nous_id",
             Self::Embedding => "embedding",
+            Self::CreatedAt => "created_at",
+        }
+    }
+}
+
+/// Fields in the `fact_entities` relation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum FactEntitiesField {
+    FactId,
+    EntityId,
+    CreatedAt,
+}
+
+impl Field for FactEntitiesField {
+    fn name(self) -> &'static str {
+        match self {
+            Self::FactId => "fact_id",
+            Self::EntityId => "entity_id",
+            Self::CreatedAt => "created_at",
+        }
+    }
+}
+
+/// Fields in the `merge_audit` relation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum MergeAuditField {
+    CanonicalId,
+    MergedId,
+    MergedName,
+    MergeScore,
+    FactsTransferred,
+    RelationshipsRedirected,
+    MergedAt,
+}
+
+impl Field for MergeAuditField {
+    fn name(self) -> &'static str {
+        match self {
+            Self::CanonicalId => "canonical_id",
+            Self::MergedId => "merged_id",
+            Self::MergedName => "merged_name",
+            Self::MergeScore => "merge_score",
+            Self::FactsTransferred => "facts_transferred",
+            Self::RelationshipsRedirected => "relationships_redirected",
+            Self::MergedAt => "merged_at",
+        }
+    }
+}
+
+/// Fields in the `pending_merges` relation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum PendingMergesField {
+    EntityA,
+    EntityB,
+    NameA,
+    NameB,
+    NameSimilarity,
+    EmbedSimilarity,
+    TypeMatch,
+    AliasOverlap,
+    MergeScore,
+    CreatedAt,
+}
+
+impl Field for PendingMergesField {
+    fn name(self) -> &'static str {
+        match self {
+            Self::EntityA => "entity_a",
+            Self::EntityB => "entity_b",
+            Self::NameA => "name_a",
+            Self::NameB => "name_b",
+            Self::NameSimilarity => "name_similarity",
+            Self::EmbedSimilarity => "embed_similarity",
+            Self::TypeMatch => "type_match",
+            Self::AliasOverlap => "alias_overlap",
+            Self::MergeScore => "merge_score",
             Self::CreatedAt => "created_at",
         }
     }

@@ -523,3 +523,100 @@ pub fn audit_all_facts() -> String {
         .done()
         .build_script()
 }
+
+/// Remove a fact-entity mapping.
+/// Params: `$fact_id`, `$entity_id`.
+pub fn rm_fact_entity() -> String {
+    use FactEntitiesField::{EntityId, FactId};
+    QueryBuilder::new()
+        .rm(Relation::FactEntities)
+        .keys(&[FactId, EntityId])
+        .done()
+        .build_script()
+}
+
+/// Insert or update a fact-entity mapping.
+/// Params: `$fact_id`, `$entity_id`, `$created_at`.
+pub fn upsert_fact_entity() -> String {
+    use FactEntitiesField::*;
+    QueryBuilder::new()
+        .put(Relation::FactEntities)
+        .keys(&[FactId, EntityId])
+        .values(&[CreatedAt])
+        .done()
+        .build_script()
+}
+
+/// Remove an entity.
+/// Params: `$id`.
+pub fn rm_entity() -> String {
+    use EntitiesField::Id;
+    QueryBuilder::new()
+        .rm(Relation::Entities)
+        .keys(&[Id])
+        .done()
+        .build_script()
+}
+
+/// Remove a relationship edge.
+/// Params: `$src`, `$dst`.
+pub fn rm_relationship() -> String {
+    use RelationshipsField::{Dst, Src};
+    QueryBuilder::new()
+        .rm(Relation::Relationships)
+        .keys(&[Src, Dst])
+        .done()
+        .build_script()
+}
+
+/// Remove a pending-merge entry.
+/// Params: `$entity_a`, `$entity_b`.
+pub fn rm_pending_merges() -> String {
+    use PendingMergesField::{EntityA, EntityB};
+    QueryBuilder::new()
+        .rm(Relation::PendingMerges)
+        .keys(&[EntityA, EntityB])
+        .done()
+        .build_script()
+}
+
+/// Insert or update a merge-audit record.
+/// Params: `$canonical_id`, `$merged_id`, `$merged_name`, `$merge_score`,
+/// `$facts_transferred`, `$relationships_redirected`, `$merged_at`.
+pub fn put_merge_audit() -> String {
+    use MergeAuditField::*;
+    QueryBuilder::new()
+        .put(Relation::MergeAudit)
+        .keys(&[CanonicalId, MergedId])
+        .values(&[
+            MergedName,
+            MergeScore,
+            FactsTransferred,
+            RelationshipsRedirected,
+            MergedAt,
+        ])
+        .done()
+        .build_script()
+}
+
+/// Insert or update a pending-merge candidate.
+/// Params: `$entity_a`, `$entity_b`, `$name_a`, `$name_b`, `$name_similarity`,
+/// `$embed_similarity`, `$type_match`, `$alias_overlap`, `$merge_score`, `$created_at`.
+pub fn put_pending_merge() -> String {
+    use PendingMergesField::*;
+    QueryBuilder::new()
+        .put(Relation::PendingMerges)
+        .keys(&[EntityA, EntityB])
+        .values(&[
+            NameA,
+            NameB,
+            NameSimilarity,
+            EmbedSimilarity,
+            TypeMatch,
+            AliasOverlap,
+            MergeScore,
+            CreatedAt,
+        ])
+        .done()
+        .build_script()
+}
