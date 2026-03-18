@@ -165,6 +165,7 @@ pub(crate) async fn execute_builtin(
 
             tracing::info!(
                 missing = report.missing_files.len(),
+                optional_missing = report.optional_missing_files.len(),
                 extra = report.extra_files.len(),
                 permission_issues = report.permission_issues.len(),
                 "maintenance: drift detection complete"
@@ -177,7 +178,16 @@ pub(crate) async fn execute_builtin(
                     expected = "present",
                     actual = "absent",
                     checked_at = %report.checked_at.map(|ts| ts.to_string()).as_deref().unwrap_or("unknown"),
-                    "drift alert: file missing from instance"
+                    "drift alert: required file missing from instance"
+                );
+            }
+            for path in &report.optional_missing_files {
+                tracing::info!(
+                    metric = "optional_missing_file",
+                    path = %path.display(),
+                    expected = "present",
+                    actual = "absent",
+                    "drift: optional scaffolding file absent from instance"
                 );
             }
             for path in &report.extra_files {
@@ -194,8 +204,9 @@ pub(crate) async fn execute_builtin(
             Ok(ExecutionResult {
                 success: true,
                 output: Some(format!(
-                    "{} missing, {} extra",
+                    "{} missing, {} optional missing, {} extra",
                     report.missing_files.len(),
+                    report.optional_missing_files.len(),
                     report.extra_files.len()
                 )),
             })

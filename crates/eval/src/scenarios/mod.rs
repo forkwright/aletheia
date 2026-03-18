@@ -10,7 +10,7 @@ use crate::scenario::Scenario;
 
 /// Return all built-in scenarios in execution order.
 #[tracing::instrument(skip_all)]
-pub(crate) fn all_scenarios() -> Vec<Box<dyn Scenario>> {
+pub fn all_scenarios() -> Vec<Box<dyn Scenario>> {
     let mut scenarios: Vec<Box<dyn Scenario>> = Vec::new();
     scenarios.extend(health::scenarios());
     scenarios.extend(auth::scenarios());

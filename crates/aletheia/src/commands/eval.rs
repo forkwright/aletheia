@@ -30,6 +30,22 @@ pub(crate) async fn run(args: EvalArgs) -> Result<()> {
         json: json_output,
         timeout,
     } = args;
+
+    if scenario.as_deref() == Some("list") {
+        let scenarios = aletheia_dokimion::scenarios::all_scenarios();
+        let mut current_category = "";
+        for s in &scenarios {
+            let meta = s.meta();
+            if meta.category != current_category {
+                current_category = meta.category;
+                println!("\n{}", meta.category);
+            }
+            println!("  {:40}  {}", meta.id, meta.description);
+        }
+        println!();
+        return Ok(());
+    }
+
     let config = aletheia_dokimion::runner::RunConfig {
         base_url: url.clone(),
         token: token.map(aletheia_koina::secret::SecretString::from),

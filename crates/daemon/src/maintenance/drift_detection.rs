@@ -18,8 +18,11 @@ pub struct DriftDetectionConfig {
     pub example_root: PathBuf,
     /// Whether to raise alerts for files present in the template but missing from the instance.
     pub alert_on_missing: bool,
-    /// Glob-like patterns to exclude from comparison (e.g., `"data/"`, `"*.db"`).
+    /// Glob-like patterns to exclude from comparison entirely (e.g., `"data/"`, `"*.db"`).
     pub ignore_patterns: Vec<String>,
+    /// Glob-like patterns for files that are optional scaffolding. Missing files matching
+    /// these patterns are reported at info level rather than warn level.
+    pub optional_patterns: Vec<String>,
 }
 
 impl Default for DriftDetectionConfig {
@@ -35,6 +38,19 @@ impl Default for DriftDetectionConfig {
                 "*.db".to_owned(),
                 ".gitkeep".to_owned(),
             ],
+            optional_patterns: vec![
+                "nous/_template/".to_owned(),
+                "packs/".to_owned(),
+                "services/".to_owned(),
+                "shared/".to_owned(),
+                "theke/".to_owned(),
+                "logs/".to_owned(),
+                "README.md".to_owned(),
+                "*.example".to_owned(),
+                ".gitignore".to_owned(),
+                "config/credentials/".to_owned(),
+                "config/tls/".to_owned(),
+            ],
         }
     }
 }
@@ -42,8 +58,10 @@ impl Default for DriftDetectionConfig {
 /// Outcome of a drift detection check.
 #[derive(Debug, Clone, Default)]
 pub struct DriftReport {
-    /// Files present in the template but absent from the instance.
+    /// Required files present in the template but absent from the instance.
     pub missing_files: Vec<PathBuf>,
+    /// Optional scaffolding files present in the template but absent from the instance.
+    pub optional_missing_files: Vec<PathBuf>,
     /// Files present in the instance but absent from the template.
     pub extra_files: Vec<PathBuf>,
     /// Files with permission discrepancies (path, description).
@@ -108,40 +126,56 @@ impl DriftDetector {
 
             if path.is_dir() {
                 if !instance_path.exists() {
-                    report.missing_files.push(relative.to_path_buf());
+                    if self.is_optional(relative) {
+                        report.optional_missing_files.push(relative.to_path_buf());
+                    } else {
+                        report.missing_files.push(relative.to_path_buf());
+                    }
                 }
                 self.walk_example(&path, report)?;
             } else if !instance_path.exists() {
-                report.missing_files.push(relative.to_path_buf());
+                if self.is_optional(relative) {
+                    report.optional_missing_files.push(relative.to_path_buf());
+                } else {
+                    report.missing_files.push(relative.to_path_buf());
+                }
             }
         }
 
         Ok(())
     }
 
-    fn is_ignored(&self, relative: &Path) -> bool {
-        let path_str = relative.to_string_lossy();
+    fn is_optional(&self, relative: &Path) -> bool {
+        matches_patterns(relative, &self.config.optional_patterns)
+    }
 
-        for pattern in &self.config.ignore_patterns {
-            if pattern.ends_with('/') {
-                let prefix = pattern.get(..pattern.len() - 1).unwrap_or("");
-                if path_str.starts_with(prefix) || path_str == *prefix {
-                    return true;
-                }
-            } else if pattern.starts_with("*.") {
-                let ext = pattern.get(1..).unwrap_or("");
-                if path_str.ends_with(ext) {
-                    return true;
-                }
-            } else if let Some(name) = relative.file_name().and_then(|n| n.to_str())
-                && name == pattern
-            {
+    fn is_ignored(&self, relative: &Path) -> bool {
+        matches_patterns(relative, &self.config.ignore_patterns)
+    }
+}
+
+fn matches_patterns(relative: &Path, patterns: &[String]) -> bool {
+    let path_str = relative.to_string_lossy();
+
+    for pattern in patterns {
+        if pattern.ends_with('/') {
+            let prefix = pattern.get(..pattern.len() - 1).unwrap_or("");
+            if path_str.starts_with(prefix) || path_str == *prefix {
                 return true;
             }
+        } else if pattern.starts_with("*.") {
+            let ext = pattern.get(1..).unwrap_or("");
+            if path_str.ends_with(ext) {
+                return true;
+            }
+        } else if let Some(name) = relative.file_name().and_then(|n| n.to_str())
+            && name == pattern
+        {
+            return true;
         }
-
-        false
     }
+
+    false
 }
 
 #[cfg(test)]
@@ -161,6 +195,12 @@ mod tests {
                 "signal/".to_owned(),
                 "*.db".to_owned(),
                 ".gitkeep".to_owned(),
+            ],
+            optional_patterns: vec![
+                "nous/_template/".to_owned(),
+                "packs/".to_owned(),
+                "services/".to_owned(),
+                "shared/".to_owned(),
             ],
         }
     }
@@ -288,6 +328,55 @@ mod tests {
         assert!(
             config.ignore_patterns.contains(&"*.db".to_owned()),
             "default should ignore *.db"
+        );
+        assert!(
+            config.optional_patterns.contains(&"packs/".to_owned()),
+            "default should treat packs/ as optional"
+        );
+        assert!(
+            config.optional_patterns.contains(&"services/".to_owned()),
+            "default should treat services/ as optional"
+        );
+    }
+
+    #[test]
+    fn optional_patterns_go_to_optional_missing_not_missing() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let config = make_config(tmp.path());
+
+        // Required file
+        fs::create_dir_all(config.example_root.join("config")).unwrap();
+        fs::write(config.example_root.join("config/aletheia.toml"), "").unwrap();
+        // Optional scaffolding
+        fs::create_dir_all(config.example_root.join("packs/starter")).unwrap();
+        fs::write(config.example_root.join("packs/starter/pack.toml"), "").unwrap();
+        fs::create_dir_all(config.example_root.join("services")).unwrap();
+        fs::write(config.example_root.join("services/aletheia.service"), "").unwrap();
+
+        fs::create_dir_all(&config.instance_root).unwrap();
+
+        let detector = DriftDetector::new(config);
+        let report = detector.check().expect("check succeeds");
+
+        assert!(
+            report
+                .missing_files
+                .contains(&PathBuf::from("config/aletheia.toml")),
+            "required file should be in missing_files"
+        );
+        assert!(
+            !report
+                .missing_files
+                .iter()
+                .any(|p| p.starts_with("packs") || p.starts_with("services")),
+            "optional scaffolding should not be in required missing_files"
+        );
+        assert!(
+            report
+                .optional_missing_files
+                .iter()
+                .any(|p| p.starts_with("packs") || p.starts_with("services")),
+            "optional scaffolding should appear in optional_missing_files"
         );
     }
 

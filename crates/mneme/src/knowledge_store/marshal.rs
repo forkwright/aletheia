@@ -305,7 +305,7 @@ pub(super) fn rows_to_facts(
             .build()
         })?)?;
 
-        let tier = parse_epistemic_tier(&tier_str)?;
+        let tier = parse_epistemic_tier(&tier_str);
 
         #[expect(
             clippy::cast_possible_truncation,
@@ -440,7 +440,7 @@ pub(super) fn rows_to_raw_facts(
             }
             .build()
         })?)?;
-        let tier = parse_epistemic_tier(&tier_str)?;
+        let tier = parse_epistemic_tier(&tier_str);
         #[expect(
             clippy::cast_possible_truncation,
             clippy::cast_sign_loss,
@@ -529,7 +529,7 @@ pub(super) fn rows_to_facts_partial(
             }
             .build()
         })?)?;
-        let tier = parse_epistemic_tier(&tier_str)?;
+        let tier = parse_epistemic_tier(&tier_str);
 
         out.push(Fact {
             id: crate::id::FactId::new_unchecked(id),
@@ -736,17 +736,15 @@ pub(super) fn extract_bool(val: &crate::engine::DataValue) -> crate::error::Resu
 }
 
 #[cfg(feature = "mneme-engine")]
-pub(super) fn parse_epistemic_tier(
-    s: &str,
-) -> crate::error::Result<crate::knowledge::EpistemicTier> {
+pub(super) fn parse_epistemic_tier(s: &str) -> crate::knowledge::EpistemicTier {
     use crate::knowledge::EpistemicTier;
     match s {
-        "verified" => Ok(EpistemicTier::Verified),
-        "inferred" => Ok(EpistemicTier::Inferred),
-        "assumed" => Ok(EpistemicTier::Assumed),
-        other => Err(crate::error::ConversionSnafu {
-            message: format!("unknown epistemic tier: {other}"),
+        "verified" => EpistemicTier::Verified,
+        "inferred" => EpistemicTier::Inferred,
+        "assumed" => EpistemicTier::Assumed,
+        other => {
+            tracing::warn!(tier = %other, "unknown epistemic tier in stored fact, defaulting to assumed");
+            EpistemicTier::Assumed
         }
-        .build()),
     }
 }
