@@ -64,7 +64,7 @@ trap 'rm -rf "$TEMP_DIR"' EXIT
 DB_FILE="$CONFIG_DIR/sessions.db"
 if [[ -f "$DB_FILE" ]]; then
   echo "→ Checkpointing SQLite WAL..."
-  sqlite3 "$DB_FILE" "PRAGMA wal_checkpoint(TRUNCATE);" 2>/dev/null || true
+  sqlite3 "$DB_FILE" "PRAGMA wal_checkpoint(TRUNCATE);" 2>/dev/null || true  # NOTE: failure is non-fatal here
   cp "$DB_FILE" "$TEMP_DIR/sessions.db"
   echo "  sessions.db: $(du -h "$TEMP_DIR/sessions.db" | cut -f1)"
 else

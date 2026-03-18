@@ -28,7 +28,7 @@ if [[ -f "$CLAUDE_JSON" ]]; then
   api_key=$(python3 -c "
 import json, sys
 print(json.load(open(sys.argv[1])).get('primaryApiKey', ''))
-" "$CLAUDE_JSON" 2>/dev/null || true)
+" "$CLAUDE_JSON" 2>/dev/null || true)  # NOTE: failure is non-fatal here
   if [[ -n "$api_key" && "${api_key:0:11}" == "sk-ant-api0" ]]; then
     mkdir -p "$(dirname "$ALETHEIA_CREDS")"
     python3 -c "

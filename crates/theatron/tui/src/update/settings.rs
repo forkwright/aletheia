@@ -100,8 +100,9 @@ fn confirm_edit(s: &mut SettingsOverlay) {
             FieldType::Text => {
                 field.value = serde_json::Value::String(edit.buffer);
             }
-            // NOTE: ReadOnly and Boolean fields don't need text confirmation
-            _ => {}
+            _ => {
+                // NOTE: ReadOnly and Boolean fields don't need text confirmation
+            }
         }
     }
 }

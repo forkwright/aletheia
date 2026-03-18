@@ -255,8 +255,9 @@ fn validate_bindings(value: &Value, errors: &mut Vec<String>) {
                 None | Some("") => {
                     errors.push(format!("bindings[{i}].{field} must not be empty"));
                 }
-                // NOTE: non-empty field value passes validation
-                _ => {}
+                _ => {
+                    // NOTE: non-empty field value passes validation
+                }
             }
         }
     }

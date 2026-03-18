@@ -212,10 +212,13 @@ fn turn_usage_serde_roundtrip() {
 
 #[tokio::test]
 async fn assemble_context_populates_pipeline() {
-    use crate::config::{NousConfig, PipelineConfig};
-    use aletheia_taxis::oikos::Oikos;
     use std::fs;
+
     use tempfile::TempDir;
+
+    use aletheia_taxis::oikos::Oikos;
+
+    use crate::config::{NousConfig, PipelineConfig};
 
     let dir = TempDir::new().unwrap();
     let root = dir.path();
@@ -253,12 +256,13 @@ async fn run_pipeline_simple() {
     use std::path::PathBuf;
     use std::sync::{Arc, RwLock};
 
+    use tempfile::TempDir;
+
     use aletheia_hermeneus::provider::ProviderRegistry;
     use aletheia_hermeneus::test_utils::MockProvider;
     use aletheia_koina::id::{NousId, SessionId};
     use aletheia_organon::registry::ToolRegistry;
     use aletheia_organon::types::ToolContext;
-    use tempfile::TempDir;
 
     let dir = TempDir::new().unwrap();
     let root = dir.path();
@@ -474,8 +478,9 @@ fn check_guard_always_allows() {
 
 #[tokio::test]
 async fn assemble_context_missing_soul_returns_error() {
-    use aletheia_taxis::oikos::Oikos;
     use tempfile::TempDir;
+
+    use aletheia_taxis::oikos::Oikos;
 
     let dir = TempDir::new().unwrap();
     let root = dir.path();

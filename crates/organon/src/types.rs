@@ -6,13 +6,13 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::{Arc, RwLock};
 
-use aletheia_koina::id::{NousId, SessionId, ToolName};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
 pub use aletheia_hermeneus::types::{
     DocumentSource, ImageSource, ToolResultBlock, ToolResultContent,
 };
+use aletheia_koina::id::{NousId, SessionId, ToolName};
 
 /// Tool definition: the rich metadata that organon tracks internally.
 ///

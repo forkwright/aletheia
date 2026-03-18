@@ -1,7 +1,8 @@
 //! Error types for the organon crate.
 
-use aletheia_koina::id::ToolName;
 use snafu::Snafu;
+
+use aletheia_koina::id::ToolName;
 
 /// Errors from tool registry operations.
 #[derive(Debug, Snafu)]

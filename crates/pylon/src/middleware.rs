@@ -241,8 +241,9 @@ impl RateLimiter {
 /// arbitrary IP and bypass per-IP rate limits. Only trusted reverse proxies
 /// should supply these headers, controlled by the `trust_proxy` flag.
 fn extract_client_key(request: &Request, trust_proxy: bool) -> String {
-    use axum::extract::ConnectInfo;
     use std::net::SocketAddr;
+
+    use axum::extract::ConnectInfo;
 
     // NOTE: Prefer the actual peer address: not spoofable.
     if let Some(info) = request.extensions().get::<ConnectInfo<SocketAddr>>() {

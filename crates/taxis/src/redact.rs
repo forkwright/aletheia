@@ -59,8 +59,9 @@ fn redact_sensitive_keys(value: &mut Value) {
                 redact_sensitive_keys(item);
             }
         }
-        // NOTE: leaf values (null, bool, number, string) have no keys to redact
-        _ => {}
+        _ => {
+            // NOTE: leaf values (null, bool, number, string) have no keys to redact
+        }
     }
 }
 

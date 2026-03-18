@@ -1,5 +1,6 @@
-use aletheia_koina::secret::SecretString;
 use serde::{Deserialize, Serialize};
+
+use aletheia_koina::secret::SecretString;
 
 use crate::id::{NousId, PlanId, SessionId, TurnId};
 

@@ -12,9 +12,10 @@ use std::future::Future;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::pin::Pin;
 
-use aletheia_koina::id::ToolName;
 use indexmap::IndexMap;
 use reqwest::redirect;
+
+use aletheia_koina::id::ToolName;
 
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};

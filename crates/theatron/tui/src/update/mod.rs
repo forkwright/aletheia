@@ -119,8 +119,9 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
                     match c {
                         's' | 'S' => settings::handle_save(app).await,
                         'r' | 'R' => settings::handle_reset(app),
-                        // NOTE: other keys ignored in settings non-edit mode
-                        _ => {}
+                        _ => {
+                            // NOTE: other keys ignored in settings non-edit mode
+                        }
                     }
                 }
             }

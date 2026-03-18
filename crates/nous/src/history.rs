@@ -104,8 +104,9 @@ pub fn load_history(
         match msg.role {
             Role::System => continue,
             Role::ToolResult if !config.include_tool_messages => continue,
-            // NOTE: User and Assistant roles pass through for inclusion
-            _ => {}
+            _ => {
+                // NOTE: User and Assistant roles pass through for inclusion
+            }
         }
 
         if tokens_consumed + msg.token_estimate > available {
@@ -158,8 +159,9 @@ pub fn load_history(
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 #[expect(clippy::expect_used, reason = "test assertions may panic on failure")]
 mod tests {
-    use super::*;
     use aletheia_mneme::types::Role;
+
+    use super::*;
 
     fn setup_store() -> SessionStore {
         let store = SessionStore::open_in_memory().expect("open in-memory store");

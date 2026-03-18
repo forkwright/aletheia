@@ -28,20 +28,20 @@ fi
 
 [[ -f "$BACKUP" ]] || die "No backup found at ${BACKUP:-$BACKUP_DIR/}"
 
-log "Rolling back from $BACKUP..."
+log "Rolling back from ${BACKUP}..."
 
 # Stop service
 if systemctl --user is-active "$SERVICE" &>/dev/null; then
-    log "Stopping $SERVICE..."
+    log "Stopping ${SERVICE}..."
     systemctl --user stop "$SERVICE"
 fi
 
 # Restore binary
 cp -- "$BACKUP" "$BINARY_DST"
-log "Binary restored to $BINARY_DST"
+log "Binary restored to ${BINARY_DST}"
 
 # Restart
-log "Starting $SERVICE..."
+log "Starting ${SERVICE}..."
 systemctl --user daemon-reload
 systemctl --user start "$SERVICE"
 

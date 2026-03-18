@@ -2,10 +2,11 @@
 
 use std::path::{Path, PathBuf};
 
-use aletheia_koina::disk_space::DiskSpaceMonitor;
 use rusqlite::Connection;
 use snafu::ResultExt;
 use tracing::{info, instrument, warn};
+
+use aletheia_koina::disk_space::DiskSpaceMonitor;
 
 use crate::error::{self, Result};
 

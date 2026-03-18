@@ -1,10 +1,11 @@
 //! Figment-based configuration loading with TOML cascade.
 
-use aletheia_koina::disk_space::{DiskSpaceMonitor, DiskStatus};
 use figment::Figment;
 use figment::providers::{Env, Format, Serialized, Toml};
 use snafu::ResultExt;
 use tracing::{error, warn};
+
+use aletheia_koina::disk_space::{DiskSpaceMonitor, DiskStatus};
 
 use crate::config::AletheiaConfig;
 use crate::encrypt;
@@ -134,7 +135,9 @@ pub fn write_config_checked(
                     "disk space critical, config write proceeding (essential)"
                 );
             }
-            _ => {}
+            _ => {
+                // NOTE: DiskStatus::Ok requires no warning; write proceeds silently
+            }
         }
     }
 
