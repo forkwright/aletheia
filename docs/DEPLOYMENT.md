@@ -89,7 +89,7 @@ A `healthy` response means the server is running with a registered LLM provider.
 ### Software
 
 - Links dynamically against glibc only (Linux). No other runtime dependencies.
-- **Build from source:** Rust 1.85+ (edition 2024), Cargo
+- **Build from source:** Rust 1.94+ (edition 2024), Cargo
 - **Optional:** signal-cli for Signal messaging channel
 
 ### Network
@@ -213,27 +213,27 @@ cp instance/config/aletheia.toml.example instance/config/aletheia.toml
 
 Then edit the file:
 
-```yaml
-gateway:
-  port: 18789
-  bind: localhost
-  auth:
-    mode: token
+```toml
+[gateway]
+port = 18789
+bind = "localhost"
 
-agents:
-  defaults:
-    model:
-      primary: claude-sonnet-4-6
-  list:
-    - id: main
-      name: Main
-      default: true
-      workspace: instance/nous/main
+[gateway.auth]
+mode = "token"
+
+[agents.defaults.model]
+primary = "claude-sonnet-4-6"
+
+[[agents.list]]
+id = "main"
+name = "Main"
+default = true
+workspace = "nous/main"
 ```
 
 The workspace path can be relative (relative to the instance root) or absolute. In this example, `instance/nous/main` is relative and will resolve to `./instance/instance/nous/main` when the instance root is `./instance`. For absolute paths, use the full filesystem path: `/srv/aletheia/instance/nous/main`.
 
-The config cascade loads in order (later wins): compiled defaults, YAML file, `ALETHEIA_` environment variables. See [CONFIGURATION.md](CONFIGURATION.md) for the complete reference.
+The config cascade loads in order (later wins): compiled defaults, TOML file, `ALETHEIA_` environment variables. See [CONFIGURATION.md](CONFIGURATION.md) for the complete reference.
 
 ---
 
@@ -303,7 +303,7 @@ With CSRF disabled, the `X-Requested-With` header is no longer required. Do not 
 
 When `gateway.auth.mode = "none"`, the gateway accepts all requests without authentication:
 
-```yaml
+```toml
 [gateway.auth]
 mode = "none"
 ```
@@ -334,12 +334,11 @@ aletheia tls generate --output-dir instance/config/tls --days 365 --san localhos
 
 Then enable in config:
 
-```yaml
-gateway:
-  tls:
-    enabled: true
-    cert_path: config/tls/cert.pem
-    key_path: config/tls/key.pem
+```toml
+[gateway.tls]
+enabled = true
+cert_path = "config/tls/cert.pem"
+key_path = "config/tls/key.pem"
 ```
 
 ---
@@ -368,11 +367,10 @@ cp -r instance/nous/_template instance/nous/main
 
 3. Register the agent in `aletheia.toml`:
 
-```yaml
-agents:
-  list:
-    - id: main
-      default: true
+```toml
+[[agents.list]]
+id = "main"
+default = true
 ```
 
 > **Manual alternative:** Steps 1–3 above apply to both first-time manual setups and adding agents to an existing instance. If you used the init wizard, only step 3 may be needed to add additional agents.
@@ -567,22 +565,21 @@ Aletheia can receive and send messages via [Signal](https://signal.org/) using t
 2. Start the JSON-RPC daemon: `signal-cli -a +1XXXXXXXXXX daemon --http 8080`
 3. Configure in `aletheia.toml`:
 
-```yaml
-channels:
-  signal:
-    enabled: true
-    accounts:
-      default:
-        account: "+1XXXXXXXXXX"
-        http_host: localhost
-        http_port: 8080
+```toml
+[channels.signal]
+enabled = true
+
+[channels.signal.accounts.default]
+account = "+1XXXXXXXXXX"
+http_host = "localhost"
+http_port = 8080
 ```
 
 4. Add a binding to route messages to an agent:
 
-```yaml
-bindings:
-  - channel: signal
-    source: "*"
-    nous_id: main
+```toml
+[[bindings]]
+channel = "signal"
+source = "*"
+nous_id = "main"
 ```

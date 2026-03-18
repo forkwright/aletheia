@@ -19,10 +19,11 @@ my-pack/
 
 Declare packs in `aletheia.toml`:
 
-```yaml
-packs:
-  - /path/to/my-pack
-  - /path/to/another-pack
+```toml
+packs = [
+    "/path/to/my-pack",
+    "/path/to/another-pack",
+]
 ```
 
 Packs load at startup. Invalid or missing packs log warnings and are skipped (graceful degradation).
@@ -166,11 +167,10 @@ At spawn time, the manager calls `sections_for_agent_or_domains(agent_id, domain
    priority = "important"
    ```
 
-5. **Register the pack** in `instance/config/aletheia.yaml`:
+5. **Register the pack** in `instance/config/aletheia.toml`:
 
-   ```yaml
-   packs:
-     - instance/packs/my-pack
+   ```toml
+   packs = ["instance/packs/my-pack"]
    ```
 
 6. **Restart Aletheia**. The startup log will show `domain pack loaded` for each valid pack.
@@ -239,5 +239,5 @@ There is no override or shadowing mechanism; packs compose, they do not replace 
 ## See also
 
 - `instance.example/packs/starter/`: minimal working example
-- `docs/CONFIGURATION.md`: full `aletheia.yaml` reference
+- `docs/CONFIGURATION.md`: full `aletheia.toml` reference
 - `crates/thesauros/`: pack loader source
