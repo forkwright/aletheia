@@ -20,14 +20,14 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for module boundaries, [PROJECT.md](PROJE
 | Memory | Direct (no abstraction) | KnowledgeStore (embedded engine) | ~50 LOC replaces the library |
 | Sessions | rusqlite + bundled | better-sqlite3 | WAL mode, no native addon |
 | Encryption | XChaCha20Poly1305 | None (plaintext) | Per-message encryption at rest, ~700ns overhead, zero plaintext on disk |
-| Config | figment + serde + validator | Zod | figment handles oikos cascade natively (YAML + env + CLI, hierarchical merge). By Rocket author. |
+| Config | figment + serde + validator | Zod | figment handles oikos cascade natively (TOML + env + CLI, hierarchical merge). By Rocket author. |
 | IDs | ulid + uuid | uuid | ulid for time-sorted data (sessions, messages, memories) - lexicographic sort = natural ordering. uuid v4 for non-temporal. |
 | Errors | snafu + anyhow | AletheiaError hierarchy | snafu for library/mid-level enums (context wrapping, Location-based virtual stack traces, multiple variants from same source type - GreptimeDB pattern). anyhow for application entry. |
 | Logging | tracing + Langfuse | tslog | Spans, layers, OpenTelemetry. Langfuse for LLM-specific traces. |
 | CLI | clap | Commander | Compile-time validation |
 | JSON | serde_json | n/a | Standard Rust JSON; sonic-rs was evaluated but not adopted |
 | Hashing | blake3 + foldhash | crypto.createHash / ahash | blake3 for content hashing (dedup, loop detection). foldhash for HashMap keys. |
-| Secrets | secrecy | None | `SecretString` / `SecretVec` - zeroizes on drop, redacts in Debug |
+| Secrets | koina::SecretString (owned) | None | Zeroizes on drop, redacts in Debug. Replaced external `secrecy` crate. |
 | Hot reload | arc-swap + notify | SIGUSR1 | arc-swap for zero-downtime config swap. notify for file watching. |
 | Strings | compact_str | String | 24-byte inline for short strings (agent names, tool names, domain tags) |
 | Enums | strum | None | Derive Display, EnumString, EnumIter for all typed enums |
@@ -82,7 +82,7 @@ Lean dependency count. See `Cargo.toml` workspace members and `[workspace.depend
 | **koina** | snafu, tracing, tracing-subscriber |
 | **taxis** | koina, figment, serde, serde_json, snafu, tracing |
 | **mneme** | koina, snafu, serde, tracing, ulid, rusqlite (sqlite), candle-core/nn/transformers (embed-candle), jiff, hnsw_rs, fjall |
-| **hermeneus** | koina, taxis, reqwest, reqwest-eventsource, serde_json, tokio, secrecy |
+| **hermeneus** | koina, taxis, reqwest, serde_json, tokio |
 | **organon** | koina, taxis, hermeneus, tokio, gix, extrasafe, chromiumoxide |
 | **nous** | koina, taxis, mneme, hermeneus, organon, melete, tokio, ulid, compact_str |
 | **dianoia** | koina, taxis, mneme, hermeneus, nous, rusqlite |

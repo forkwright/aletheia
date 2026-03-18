@@ -8,7 +8,7 @@ Loaded by the `taxis` crate using figment with a three-layer cascade:
 2. TOML file (if present)
 3. Environment variables, prefix `ALETHEIA_` (double underscore for nesting: `ALETHEIA_GATEWAY__PORT=9000`)
 
-Later layers override earlier ones. All field names use `snake_case` in YAML; `camelCase` also works via serde compat.
+Later layers override earlier ones. All field names use `snake_case` in TOML; `camelCase` also works via serde compat.
 
 ---
 
@@ -79,34 +79,35 @@ Each entry defines a nous (agent). Fields not specified inherit from `agents.def
 | `allowed_roots` | string[] | no | `[]` | Additional filesystem roots (merged with defaults) |
 | `domains` | string[] | no | `[]` | Knowledge domains (e.g. `"code"`, `"research"`) |
 
-```yaml
-agents:
-  defaults:
-    model:
-      primary: claude-sonnet-4-6
-    context_tokens: 200000
-    thinking_enabled: false
-    tool_timeouts:
-      default_ms: 120000
-      overrides:
-        exec: 300000
+```toml
+[agents.defaults.model]
+primary = "claude-sonnet-4-6"
 
-  list:
-    - id: main
-      default: true
-      workspace: /srv/aletheia/instance/nous/main
+[agents.defaults]
+context_tokens = 200000
+thinking_enabled = false
 
-    - id: research
-      name: Scholar
-      workspace: /srv/aletheia/instance/nous/research
-      model:
-        primary: claude-opus-4-6
-        fallbacks:
-          - claude-sonnet-4-6
-      thinking_enabled: true
-      domains:
-        - research
-        - analysis
+[agents.defaults.tool_timeouts]
+default_ms = 120000
+
+[agents.defaults.tool_timeouts.overrides]
+exec = 300000
+
+[[agents.list]]
+id = "main"
+default = true
+workspace = "/srv/aletheia/instance/nous/main"
+
+[[agents.list]]
+id = "research"
+name = "Scholar"
+workspace = "/srv/aletheia/instance/nous/research"
+thinking_enabled = true
+domains = ["research", "analysis"]
+
+[agents.list.model]
+primary = "claude-opus-4-6"
+fallbacks = ["claude-sonnet-4-6"]
 ```
 
 ---
@@ -163,23 +164,27 @@ and falls back to `127.0.0.1` for direct connections.
 | `enabled` | bool | `false` | Whether rate limiting is active |
 | `requestsPerMinute` | u32 | `60` | Maximum requests per minute per client IP |
 
-```yaml
-gateway:
-  port: 18789
-  bind: localhost
-  auth:
-    mode: token
-  tls:
-    enabled: true
-    cert_path: config/tls/cert.pem
-    key_path: config/tls/key.pem
-  cors:
-    allowed_origins:
-      - "https://my-dashboard.local"
-  body_limit:
-    max_bytes: 2097152
-  csrf:
-    enabled: true
+```toml
+[gateway]
+port = 18789
+bind = "localhost"
+
+[gateway.auth]
+mode = "token"
+
+[gateway.tls]
+enabled = true
+cert_path = "config/tls/cert.pem"
+key_path = "config/tls/key.pem"
+
+[gateway.cors]
+allowed_origins = ["https://my-dashboard.local"]
+
+[gateway.body_limit]
+max_bytes = 2097152
+
+[gateway.csrf]
+enabled = true
 ```
 
 ---
@@ -210,18 +215,17 @@ gateway:
 | `send_read_receipts` | bool | `true` | Send read receipts |
 | `text_chunk_limit` | u32 | `2000` | Max chars per outgoing message chunk |
 
-```yaml
-channels:
-  signal:
-    enabled: true
-    accounts:
-      default:
-        account: "+15551234567"
-        http_host: localhost
-        http_port: 8080
-        dm_policy: contacts
-        group_policy: allowlist
-        require_mention: true
+```toml
+[channels.signal]
+enabled = true
+
+[channels.signal.accounts.default]
+account = "+15551234567"
+http_host = "localhost"
+http_port = 8080
+dm_policy = "contacts"
+group_policy = "allowlist"
+require_mention = true
 ```
 
 ---
@@ -237,15 +241,16 @@ Array of routing rules mapping channel sources to agents. Evaluated in order; fi
 | `nous_id` | string | yes | -- | Agent to route to |
 | `session_key` | string | no | `"{source}"` | Session key pattern. Supports `{source}` and `{group}`. |
 
-```yaml
-bindings:
-  - channel: signal
-    source: "+15559876543"
-    nous_id: research
+```toml
+[[bindings]]
+channel = "signal"
+source = "+15559876543"
+nous_id = "research"
 
-  - channel: signal
-    source: "*"
-    nous_id: main
+[[bindings]]
+channel = "signal"
+source = "*"
+nous_id = "main"
 ```
 
 More specific bindings should appear first.
@@ -262,11 +267,11 @@ Embedding provider for the recall pipeline (vector search over knowledge).
 | `model` | string | -- | Provider-specific model name |
 | `dimension` | usize | `384` | Output vector dimension (must match HNSW index) |
 
-```yaml
-embedding:
-  provider: candle
-  model: BAAI/bge-small-en-v1.5
-  dimension: 384
+```toml
+[embedding]
+provider = "candle"
+model = "BAAI/bge-small-en-v1.5"
+dimension = 384
 ```
 
 The `mock` provider returns zero vectors, useful for development without loading ML models.
@@ -282,10 +287,10 @@ Controls how the server discovers LLM API credentials. The `source` field select
 | `source` | string | `"auto"` | Credential strategy: `"auto"` (instance file, then env vars, then Claude Code credentials), `"api-key"` (instance file and env vars only), `"claude-code"` (prefer Claude Code credentials) |
 | `claude_code_credentials` | string | `null` | Override path to the Claude Code credentials file. Resolves to `~/.claude/.credentials.json` when unset. |
 
-```yaml
-credential:
-  source: auto
-  claude_code_credentials: ~/.claude/.credentials.json
+```toml
+[credential]
+source = "auto"
+claude_code_credentials = "~/.claude/.credentials.json"
 ```
 
 ---
@@ -301,11 +306,10 @@ credential:
 | `max_sessions_per_nous` | u32 | `0` | Max sessions per agent (0 = unlimited) |
 | `archive_before_delete` | bool | `true` | Export sessions to JSON before deletion |
 
-```yaml
-data:
-  retention:
-    session_max_age_days: 90
-    archive_before_delete: true
+```toml
+[data.retention]
+session_max_age_days = 90
+archive_before_delete = true
 ```
 
 ---
@@ -352,19 +356,21 @@ Background maintenance tasks. All run automatically when the server is running, 
 |-------|------|---------|-------------|
 | `knowledge_maintenance_enabled` | bool | `false` | Whether background knowledge graph maintenance tasks run (entity deduplication, edge pruning, embedding refresh) |
 
-```yaml
-maintenance:
-  trace_rotation:
-    enabled: true
-    max_age_days: 7
-    compress: true
-  drift_detection:
-    enabled: true
-  db_monitoring:
-    warn_threshold_mb: 200
-    alert_threshold_mb: 1000
-  retention:
-    enabled: true
+```toml
+[maintenance.trace_rotation]
+enabled = true
+max_age_days = 7
+compress = true
+
+[maintenance.drift_detection]
+enabled = true
+
+[maintenance.db_monitoring]
+warn_threshold_mb = 200
+alert_threshold_mb = 1000
+
+[maintenance.retention]
+enabled = true
 ```
 
 ---
@@ -379,11 +385,11 @@ File-based log output. Console logging is controlled separately via the `RUST_LO
 | `retention_days` | u32 | `14` | Days to retain log files before deletion. Cleanup runs at startup and every 24 hours. |
 | `level` | string | `"warn"` | Minimum level written to log files. Accepts any `tracing` filter directive (e.g. `"warn"`, `"error"`, `"aletheia=debug,warn"`). |
 
-```yaml
-logging:
-  log_dir: /var/log/aletheia
-  retention_days: 30
-  level: "aletheia=debug,warn"
+```toml
+[logging]
+log_dir = "/var/log/aletheia"
+retention_days = 30
+level = "aletheia=debug,warn"
 ```
 
 ---
@@ -397,14 +403,14 @@ Per-model pricing for cost estimation in Prometheus metrics. Keyed by model name
 | `input_cost_per_mtok` | f64 | Cost per million input tokens (USD) |
 | `output_cost_per_mtok` | f64 | Cost per million output tokens (USD) |
 
-```yaml
-pricing:
-  claude-sonnet-4-6:
-    input_cost_per_mtok: 3.0
-    output_cost_per_mtok: 15.0
-  claude-opus-4-6:
-    input_cost_per_mtok: 15.0
-    output_cost_per_mtok: 75.0
+```toml
+[pricing.claude-sonnet-4-6]
+input_cost_per_mtok = 3.0
+output_cost_per_mtok = 15.0
+
+[pricing.claude-opus-4-6]
+input_cost_per_mtok = 15.0
+output_cost_per_mtok = 75.0
 ```
 
 ---
@@ -413,10 +419,11 @@ pricing:
 
 Array of filesystem paths to external domain packs. Each path should be a directory containing `pack.toml`. See [PACKS.md](PACKS.md).
 
-```yaml
-packs:
-  - /srv/aletheia/packs/engineering
-  - /srv/aletheia/packs/research
+```toml
+packs = [
+    "/srv/aletheia/packs/engineering",
+    "/srv/aletheia/packs/research",
+]
 ```
 
 ---
@@ -433,15 +440,13 @@ Filesystem sandbox applied to tool execution. When enabled, tools are restricted
 | `extra_write_paths` | string[] | `[]` | Additional filesystem paths granted read+write access to all tools |
 | `extra_exec_paths` | string[] | `[]` | Additional filesystem paths granted execute access. Values may begin with `~`, which expands to `$HOME` at policy-build time. |
 
-```yaml
-sandbox:
-  enabled: true
-  enforcement: enforcing
-  extra_read_paths:
-    - /usr/share/doc
-  extra_write_paths: []
-  extra_exec_paths:
-    - ~/.cargo/bin
+```toml
+[sandbox]
+enabled = true
+enforcement = "enforcing"
+extra_read_paths = ["/usr/share/doc"]
+extra_write_paths = []
+extra_exec_paths = ["~/.cargo/bin"]
 ```
 
 ---
@@ -463,12 +468,11 @@ The `ANTHROPIC_API_KEY` environment variable is read separately by the provider 
 
 ## Minimal config
 
-```yaml
-agents:
-  list:
-    - id: main
-      default: true
-      workspace: /path/to/instance/nous/main
+```toml
+[[agents.list]]
+id = "main"
+default = true
+workspace = "/path/to/instance/nous/main"
 ```
 
 Everything else has sensible defaults. Add sections as needed.

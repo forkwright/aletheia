@@ -70,7 +70,7 @@ warns gracefully without it (defaulting all settings). For production:
 4. Set `embedding.provider: candle` (or `mock` for testing)
 5. Add credentials in `instance/config/credentials/`
 
-The config cascade (`figment`: defaults → YAML → env vars) means the binary can start with
+The config cascade (`figment`: defaults → TOML → env vars) means the binary can start with
 zero config and then be layered.
 
 ### Session continuity (✅)

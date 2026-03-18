@@ -31,7 +31,7 @@
 
 | Crate | Greek | Over | L3 Essential Nature |
 |-------|-------|------|---------------------|
-| **Taxis** | τάξις | "config" | The arrangement that makes a collection coherent, Aristotle's word for ordered structure. Config loading (figment YAML cascade), path resolution, oikos hierarchy. |
+| **Taxis** | τάξις | "config" | The arrangement that makes a collection coherent, Aristotle's word for ordered structure. Config loading (figment TOML cascade), path resolution, oikos hierarchy. |
 | **Hermeneus** | ἑρμηνεύς | "provider" | Hermes' art of carrying meaning across worlds. Anthropic client, model routing, credential management. The translation layer between nous and LLM backends. |
 | **Mneme** | μνήμη | "memory" | Memory as active faculty, the Muse's gift, not passive storage. Facade re-exporting eidos, krites, graphe, episteme. |
 | **Eidos** | εἶδος | "types" | The visible form: what makes a Fact a Fact, a Session a Session. Shared memory types, IDs, error definitions. |

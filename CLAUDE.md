@@ -33,7 +33,7 @@ cargo clippy --workspace               # Lint (zero warnings)
 - **IDs:** Newtypes for all domain IDs (`AgentId`, `SessionId`, `NousId`)
 - **Time:** `jiff` for time, `ulid` for IDs, `compact_str` for small strings
 - **Async:** Tokio actor model (`NousActor` pattern)
-- **Config:** figment YAML cascade in `taxis`
+- **Config:** figment TOML cascade in `taxis`
 - **Lints:** `#[expect(lint, reason = "...")]` over `#[allow]`; every suppression justified
 - **Visibility:** `pub(crate)` by default; `pub` only for cross-crate API surface
 - **Naming:** Greek names per [docs/gnomon.md](docs/gnomon.md), registry at [docs/lexicon.md](docs/lexicon.md)

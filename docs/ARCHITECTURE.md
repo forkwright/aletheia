@@ -112,7 +112,7 @@ Application crates in `crates/`, plus the `integration-tests` support crate.
 | Crate | Domain | Depends On |
 |-------|--------|------------|
 | `koina` | Errors (snafu), tracing, fs utilities, safe wrappers | nothing (leaf) |
-| `taxis` | Config loading (figment YAML cascade), path resolution, oikos hierarchy | koina |
+| `taxis` | Config loading (figment TOML cascade), path resolution, oikos hierarchy | koina |
 | `mneme` | Unified memory store, embedding provider trait, knowledge retrieval. Includes embedded Datalog+HNSW engine behind `mneme-engine` feature gate. | koina |
 | `hermeneus` | Anthropic client, model routing, credential management, provider trait | koina |
 | `organon` | Tool registry, tool definitions, built-in tool set | koina, hermeneus |
