@@ -5,15 +5,14 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-# %h expands to the user's home directory at runtime.
-# ALETHEIA_ROOT tells the binary where to find the instance directory.
-Environment=ALETHEIA_ROOT=%h/aletheia/instance
 Environment=RUST_BACKTRACE=1
 # Optional: set API key here if not stored in instance/config/credentials/anthropic.json
 # Environment=ANTHROPIC_API_KEY=sk-ant-...
 # Load additional env vars from a file (silently ignored if the file does not exist).
+# OAuth tokens written by the deploy script land here automatically.
 EnvironmentFile=-%h/aletheia/instance/config/env
-ExecStart=%h/.local/bin/aletheia
+# %h expands to the user's home directory at runtime.
+ExecStart=%h/.local/bin/aletheia -r %h/aletheia/instance
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
@@ -29,10 +28,10 @@ WantedBy=default.target
 #    cp instance.example/services/aletheia.service ~/.config/systemd/user/aletheia.service
 #
 # 2. If your binary is not at ~/.local/bin/aletheia, edit ExecStart, e.g.:
-#    sed -i 's|%h/.local/bin/aletheia|/usr/local/bin/aletheia|' ~/.config/systemd/user/aletheia.service
+#    sed -i 's|%h/.local/bin/aletheia|/usr/local/bin/aletheia|g' ~/.config/systemd/user/aletheia.service
 #
-# 3. If your instance is not at ~/aletheia/instance, edit ALETHEIA_ROOT, e.g.:
-#    sed -i 's|%h/aletheia/instance|/srv/aletheia/instance|' ~/.config/systemd/user/aletheia.service
+# 3. If your instance is not at ~/aletheia/instance, edit the ExecStart path, e.g.:
+#    sed -i 's|%h/aletheia/instance|/srv/aletheia/instance|g' ~/.config/systemd/user/aletheia.service
 #
 # 4. Enable and start:
 #    systemctl --user daemon-reload
