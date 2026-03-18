@@ -21,6 +21,17 @@ pub(crate) fn run(instance_root: Option<&PathBuf>) -> Result<()> {
 
     let mut all_ok = true;
 
+    // WHY: If the instance root doesn't exist, subsequent checks would report
+    // misleading "pass" results based on compiled defaults, not actual config.
+    if !oikos.root().exists() {
+        println!(
+            "  [FAIL] instance layout: instance root not found: {}\n         \
+             help: set ALETHEIA_ROOT or run `aletheia init`",
+            oikos.root().display()
+        );
+        anyhow::bail!("Cannot validate: instance root does not exist");
+    }
+
     match oikos.validate() {
         Ok(()) => println!("  [pass] instance layout"),
         Err(e) => {
