@@ -289,22 +289,23 @@ pub struct AgentDefaults {
 
 impl Default for AgentDefaults {
     fn default() -> Self {
+        use aletheia_koina::defaults as d;
         Self {
             model: ModelSpec::default(),
-            context_tokens: 200_000,
-            max_output_tokens: 16_384,
-            bootstrap_max_tokens: 40_000,
+            context_tokens: d::CONTEXT_TOKENS,
+            max_output_tokens: d::MAX_OUTPUT_TOKENS,
+            bootstrap_max_tokens: d::BOOTSTRAP_MAX_TOKENS,
             thinking_enabled: false,
             thinking_budget: 10_000,
             agency: AgencyLevel::Standard,
-            max_tool_iterations: 200,
+            max_tool_iterations: d::MAX_TOOL_ITERATIONS,
             allowed_roots: Vec::new(),
             caching: CachingConfig::default(),
             recall: RecallSettings::default(),
-            chars_per_token: 4,
-            history_budget_ratio: 0.6,
+            chars_per_token: d::CHARS_PER_TOKEN,
+            history_budget_ratio: d::HISTORY_BUDGET_RATIO,
             prosoche_model: "claude-haiku-4-5-20251001".to_owned(),
-            max_tool_result_bytes: 32_768,
+            max_tool_result_bytes: d::MAX_TOOL_RESULT_BYTES,
         }
     }
 }
