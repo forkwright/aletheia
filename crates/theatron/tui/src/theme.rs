@@ -1,9 +1,7 @@
 use ratatui::style::{Color, Modifier, Style};
 
 /// Terminal color depth, detected at startup.
-#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
 pub enum ColorDepth {
     /// 24-bit RGB (COLORTERM=truecolor, iTerm2, Kitty, Alacritty, etc.)
     TrueColor,
@@ -14,9 +12,7 @@ pub enum ColorDepth {
 }
 
 /// Background brightness: drives palette selection.
-#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
 pub enum ThemeMode {
     Dark,
     Light,

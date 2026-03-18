@@ -1,8 +1,6 @@
 //! Live filter state: `/` mode for real-time content narrowing.
 
-#[non_exhaustive]
 #[derive(Debug, Default, Clone, PartialEq)]
-#[non_exhaustive]
 pub enum FilterScope {
     #[default]
     Chat,

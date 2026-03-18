@@ -87,9 +87,7 @@ pub struct PipelineMessage {
 }
 
 /// Guard stage result.
-#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[non_exhaustive]
 pub enum GuardResult {
     /// Request is allowed.
     Allow,
@@ -216,7 +214,6 @@ impl LoopDetector {
 /// Interaction signal: classifies what kind of work a turn involved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-#[non_exhaustive]
 pub enum InteractionSignal {
     /// Direct conversation (no tools).
     Conversation,

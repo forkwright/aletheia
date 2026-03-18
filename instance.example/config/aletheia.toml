@@ -1,0 +1,103 @@
+# Aletheia Instance Configuration
+# Copy to instance/config/aletheia.toml and configure.
+# Full reference: docs/CONFIGURATION.md
+#
+# Config cascade: compiled defaults -> this file -> ALETHEIA_* env vars
+# Most settings have sensible defaults. Only override what you need.
+#
+# Hot reload: send SIGHUP or POST /api/v1/config/reload to apply changes
+# without restart. The following require a full restart:
+#   gateway.port, gateway.bind, gateway.tls, gateway.auth.mode,
+#   gateway.csrf, gateway.bodyLimit, channels
+
+# --- Gateway ---
+[gateway]
+port = 18789
+bind = "lan"              # lan | localhost | auto
+
+[gateway.auth]
+mode = "token"            # token | none
+
+# [gateway.tls]
+# enabled = true
+# certPath = "config/tls/cert.pem"
+# keyPath = "config/tls/key.pem"
+
+# [gateway.cors]
+# allowedOrigins = ["https://my-dashboard.local"]
+
+[gateway.csrf]
+enabled = true            # Require X-Requested-With: aletheia on state-changing requests
+# header_name = "x-requested-with"
+# header_value = "aletheia"
+
+# --- Agents ---
+[agents.defaults]
+[agents.defaults.model]
+primary = "claude-sonnet-4-6"
+# fallbacks = ["claude-haiku-4-5"]   # tried in order on 429/503/timeout
+# retriesBeforeFallback = 2           # retry primary N times before fallback
+
+contextTokens = 200000
+# thinkingEnabled = false
+# thinkingBudget = 10000
+# maxToolIterations = 50
+# prosocheModel = "claude-haiku-4-5-20251001"  # model for prosoche heartbeat checks
+# maxToolResultBytes = 32768    # truncate tool results exceeding this size (0 = disabled)
+
+[[agents.list]]
+id = "main"
+default = true
+# Workspace path: either relative to instance root or absolute
+# Relative: workspace = "nous/main"
+# Absolute: workspace = "/srv/aletheia/instance/nous/main"
+workspace = "nous/main"
+
+# --- Channels ---
+# [channels.signal]
+# enabled = true
+#
+# [channels.signal.accounts.default]
+# httpHost = "localhost"
+# httpPort = 8080
+
+# --- Bindings (route messages to agents) ---
+# [[bindings]]
+# channel = "signal"
+# source = "*"
+# nousId = "main"
+
+# --- Embedding (for recall/knowledge search) ---
+# [embedding]
+# provider = "candle"       # mock | candle
+# dimension = 384
+
+# --- Maintenance ---
+# [maintenance.traceRotation]
+# maxAgeDays = 14
+
+# [maintenance.dbMonitoring]
+# warnThresholdMb = 100
+
+# --- Structured file logging ---
+# JSON log files are written to instance/logs/ with daily rotation.
+# WARN+ is captured even when stdout shows only INFO.
+# [logging]
+# logDir = "logs"            # relative to instance root, or absolute path
+# retentionDays = 14         # delete log files older than N days
+# level = "warn"             # tracing filter: warn | error | info | debug
+
+# --- Credential resolution ---
+# Controls how the server discovers LLM API credentials.
+# source: "auto" (default) | "api-key" | "claude-code"
+#   auto       -> instance credential file -> env vars -> Claude Code credentials
+#   api-key    -> instance credential file and env vars only
+#   claude-code -> Claude Code credentials first, then instance file and env vars
+# [credential]
+# source = "auto"
+# claudeCodeCredentials = "~/.claude/.credentials.json"  # override default path
+
+# --- Cost tracking ---
+# [pricing."claude-sonnet-4-6"]
+# inputCostPerMtok = 3.0
+# outputCostPerMtok = 15.0
