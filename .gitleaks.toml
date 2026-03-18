@@ -39,4 +39,5 @@ paths = [
   '''docs/SECURITY\.md''',
   '''SECURITY\.md''',
   'docs/DEPLOYMENT.md',
+  'docs/CONFIGURATION.md',
 ]
