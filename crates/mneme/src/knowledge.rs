@@ -17,40 +17,32 @@ pub const MAX_CONTENT_LENGTH: usize = 102_400;
 /// A memory fact extracted from conversation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Fact {
-    /// Unique identifier.
+    // Identity
     pub id: FactId,
-    /// Which nous extracted this fact.
     pub nous_id: String,
-    /// The fact content.
-    pub content: String,
-    /// Confidence score (0.0–1.0).
-    pub confidence: f64,
-    /// Epistemic tier: verified, inferred, or assumed.
-    pub tier: EpistemicTier,
-    /// When this fact became true.
-    pub valid_from: jiff::Timestamp,
-    /// When this fact stopped being true.
-    pub valid_to: jiff::Timestamp,
-    /// If superseded, the ID of the replacing fact.
-    pub superseded_by: Option<FactId>,
-    /// Session where this fact was extracted.
-    pub source_session_id: Option<String>,
-    /// When this fact was recorded in the system.
-    pub recorded_at: jiff::Timestamp,
-    /// Number of times this fact has been returned in recall/search results.
-    pub access_count: u32,
-    /// When this fact was last accessed.
-    pub last_accessed_at: Option<jiff::Timestamp>,
-    /// Initial stability for FSRS decay model (hours).
-    pub stability_hours: f64,
-    /// Fact classification for stability defaults.
     pub fact_type: String,
-    /// Whether this fact has been intentionally excluded from recall.
+
+    // Content
+    pub content: String,
+    pub confidence: f64,
+    pub tier: EpistemicTier,
+
+    // Temporal validity
+    pub valid_from: jiff::Timestamp,
+    pub valid_to: jiff::Timestamp,
+    pub recorded_at: jiff::Timestamp,
+    pub source_session_id: Option<String>,
+
+    // Lifecycle
+    pub superseded_by: Option<FactId>,
     pub is_forgotten: bool,
-    /// When the fact was forgotten.
     pub forgotten_at: Option<jiff::Timestamp>,
-    /// Why the fact was forgotten.
     pub forget_reason: Option<ForgetReason>,
+
+    // Recall scoring
+    pub access_count: u32,
+    pub last_accessed_at: Option<jiff::Timestamp>,
+    pub stability_hours: f64,
 }
 
 /// An entity in the knowledge graph.
