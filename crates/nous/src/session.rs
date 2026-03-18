@@ -8,37 +8,25 @@ use crate::config::NousConfig;
 /// Active session state held in memory.
 #[derive(Debug, Clone)]
 pub struct SessionState {
-    /// Session ID.
+    // Identity
     pub id: String,
-    /// Agent ID.
     pub nous_id: String,
-    /// Session key.
     pub session_key: String,
-    /// Current model.
+
+    // Config
     pub model: String,
-    /// Turn counter (sequential within session).
-    pub turn: u64,
-    /// Globally unique ID for the current turn.
-    ///
-    /// Generated fresh on every [`next_turn`](Self::next_turn) call.
-    /// Used by the finalize stage as a globally unique dedup key, replacing
-    /// the local `turn` counter which resets after actor restarts.
-    pub turn_id: Ulid,
-    /// Running token estimate.
-    pub token_estimate: i64,
-    /// Number of distillations performed.
-    pub distillation_count: u32,
-    /// Whether thinking is enabled.
     pub thinking_enabled: bool,
-    /// Thinking token budget.
     pub thinking_budget: u32,
-    /// Bootstrap context hash (for cache invalidation).
-    pub bootstrap_hash: Option<String>,
-    /// Cumulative API tokens consumed across all turns (input + output).
-    ///
-    /// Updated by the actor after each completed turn from `TurnUsage`.
-    /// Used by the guard stage to enforce `NousConfig::session_token_cap`.
+
+    // State
+    pub turn: u64,
+    /// Generated fresh on every [`next_turn`](Self::next_turn) call.
+    /// Used by the finalize stage as a globally unique dedup key.
+    pub turn_id: Ulid,
+    pub token_estimate: i64,
     pub cumulative_tokens: u64,
+    pub distillation_count: u32,
+    pub bootstrap_hash: Option<String>,
 }
 
 impl SessionState {

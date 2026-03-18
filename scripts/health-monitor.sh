@@ -26,7 +26,7 @@ log_err()  { echo "$(timestamp) ERROR: $1"; }
 
 notify() {
     if $NOTIFY && command -v signal-cli &>/dev/null; then
-        signal-cli send -m "aletheia: $1" "${ALETHEIA_NOTIFY_TO:-}" 2>/dev/null || true
+        signal-cli send -m "aletheia: $1" "${ALETHEIA_NOTIFY_TO:-}" 2>/dev/null || true  # NOTE: intentional - failure is non-fatal here
     fi
 }
 

@@ -197,7 +197,7 @@ fi
 
 section "Import (missing file — expect error)"
 check "import with missing file exits non-zero" 1 "" -- \
-    import /nonexistent/path/to/agent.json --dry-run 2>/dev/null || true
+    import /nonexistent/path/to/agent.json --dry-run 2>/dev/null || true  # NOTE: intentional - failure is non-fatal here
 if "$BINARY" import /nonexistent/file.agent.json 2>&1 | grep -qiE "no such|not found|error|cannot"; then
     pass "import missing file produces useful error"
 else

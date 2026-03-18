@@ -116,9 +116,9 @@ check_health() {
     while (( elapsed < HEALTH_TIMEOUT )); do
         if health_response=$(curl -sf --max-time 5 "$HEALTH_URL" 2>/dev/null); then
             local status
-            status=$(echo "$health_response" | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])" 2>/dev/null) || true
+            status=$(echo "$health_response" | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])" 2>/dev/null) || true  # NOTE: intentional - failure is non-fatal here
             local version
-            version=$(echo "$health_response" | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])" 2>/dev/null) || true
+            version=$(echo "$health_response" | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])" 2>/dev/null) || true  # NOTE: intentional - failure is non-fatal here
 
             if [[ "$status" == "healthy" || "$status" == "degraded" ]]; then
                 log "Health check passed: $status v${version:-unknown}"
