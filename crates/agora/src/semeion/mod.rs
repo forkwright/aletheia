@@ -17,6 +17,7 @@ use std::time::Duration;
 
 use tokio::sync::{Mutex, mpsc};
 use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, instrument};
 
 use crate::types::{
@@ -112,10 +113,16 @@ impl SignalProvider {
     ///
     /// Spawns a polling task per account with reconnect backoff.
     /// Messages from all accounts merge into the returned receiver.
-    #[instrument(skip(self))]
+    /// When the `cancel` token is cancelled, polling tasks exit promptly.
+    #[instrument(skip(self, cancel))]
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "CancellationToken is Arc-backed; pass-by-value is idiomatic"
+    )]
     pub fn listen(
         &self,
         poll_interval: Option<Duration>,
+        cancel: CancellationToken,
     ) -> (mpsc::Receiver<InboundMessage>, Vec<JoinHandle<()>>) {
         let interval = poll_interval.unwrap_or(DEFAULT_POLL_INTERVAL);
         let (tx, rx) = mpsc::channel(64);
@@ -125,6 +132,7 @@ impl SignalProvider {
             let tx = tx.clone();
             let account_id = account_id.clone();
             let signal_client = signal_client.clone();
+            let token = cancel.clone();
             #[expect(
                 clippy::expect_used,
                 reason = "account_states and clients share the same key set; state is always inserted alongside the client in add_account"
@@ -140,7 +148,7 @@ impl SignalProvider {
             );
 
             let handle =
-                tokio::spawn(poll_loop(signal_client, tx, interval, state).instrument(span));
+                tokio::spawn(poll_loop(signal_client, tx, interval, state, token).instrument(span));
             handles.push(handle);
         }
 
@@ -344,79 +352,89 @@ async fn poll_loop(
     tx: mpsc::Sender<InboundMessage>,
     interval: Duration,
     state: Arc<Mutex<AccountState>>,
+    cancel: CancellationToken,
 ) {
     tracing::info!("polling started");
     loop {
-        match signal_client.receive(None).await {
-            Ok(envelopes) => {
-                {
-                    let mut s = state.lock().await;
-                    if s.state != ConnectionState::Connected {
-                        tracing::info!("connection restored");
-                        s.state = ConnectionState::Connected;
-
-                        let buffered = s.drain_all();
-                        drop(s); // WHY: release lock before sending
-
-                        if !buffered.is_empty() {
-                            tracing::info!(count = buffered.len(), "draining buffered messages");
-                            let mut failed = Vec::new();
-                            for params in buffered {
-                                if let Err(e) = signal_client.send_message(&params).await {
-                                    tracing::warn!(error = %e, "failed to send buffered message");
-                                    failed.push(params);
-                                }
-                            }
-                            if !failed.is_empty() {
-                                tracing::warn!(
-                                    count = failed.len(),
-                                    "retaining undelivered messages in buffer for next connection"
-                                );
-                                let mut s = state.lock().await;
-                                for params in failed {
-                                    s.enqueue(params);
-                                }
-                            }
-                        }
-                    }
-                }
-
-                for env in &envelopes {
-                    if let Some(msg) = envelope::extract_message(env) {
-                        if tx.send(msg).await.is_err() {
-                            tracing::info!("receiver dropped, stopping poll");
-                            return;
-                        }
-                    } else {
-                        tracing::debug!("skipping non-message envelope");
-                    }
-                }
-                tokio::time::sleep(interval).await;
+        tokio::select! {
+            biased;
+            () = cancel.cancelled() => {
+                tracing::info!("cancellation received, stopping poll");
+                return;
             }
-            Err(e) => {
-                let attempt = {
-                    let mut s = state.lock().await;
-                    match s.state {
-                        ConnectionState::Connected => {
-                            s.state = ConnectionState::Reconnecting { attempt: 1 };
-                            1
-                        }
-                        ConnectionState::Reconnecting { attempt } => {
-                            let next = attempt.saturating_add(1);
-                            s.state = ConnectionState::Reconnecting { attempt: next };
-                            next
-                        }
-                    }
-                };
+            result = signal_client.receive(None) => {
+                match result {
+                    Ok(envelopes) => {
+                        {
+                            let mut s = state.lock().await;
+                            if s.state != ConnectionState::Connected {
+                                tracing::info!("connection restored");
+                                s.state = ConnectionState::Connected;
 
-                let delay = reconnect_delay(attempt);
-                tracing::warn!(
-                    error = %e,
-                    attempt,
-                    backoff_secs = delay.as_secs(),
-                    "receive poll failed, backing off"
-                );
-                tokio::time::sleep(delay).await;
+                                let buffered = s.drain_all();
+                                drop(s); // WHY: release lock before sending
+
+                                if !buffered.is_empty() {
+                                    tracing::info!(count = buffered.len(), "draining buffered messages");
+                                    let mut failed = Vec::new();
+                                    for params in buffered {
+                                        if let Err(e) = signal_client.send_message(&params).await {
+                                            tracing::warn!(error = %e, "failed to send buffered message");
+                                            failed.push(params);
+                                        }
+                                    }
+                                    if !failed.is_empty() {
+                                        tracing::warn!(
+                                            count = failed.len(),
+                                            "retaining undelivered messages in buffer for next connection"
+                                        );
+                                        let mut s = state.lock().await;
+                                        for params in failed {
+                                            s.enqueue(params);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        for env in &envelopes {
+                            if let Some(msg) = envelope::extract_message(env) {
+                                if tx.send(msg).await.is_err() {
+                                    tracing::info!("receiver dropped, stopping poll");
+                                    return;
+                                }
+                            } else {
+                                tracing::debug!("skipping non-message envelope");
+                            }
+                        }
+                        tokio::time::sleep(interval).await;
+                    }
+                    Err(e) => {
+                        let attempt = {
+                            let mut s = state.lock().await;
+                            match s.state {
+                                ConnectionState::Connected => {
+                                    s.state = ConnectionState::Reconnecting { attempt: 1 };
+                                    1
+                                }
+                                ConnectionState::Reconnecting { attempt } => {
+                                    let next = attempt.saturating_add(1);
+                                    s.state = ConnectionState::Reconnecting { attempt: next };
+                                    next
+                                }
+                            }
+                        };
+
+                        let delay = reconnect_delay(attempt);
+                        tracing::warn!(
+                            error = %e,
+                            attempt,
+                            backoff_secs = delay.as_secs(),
+                            "receive poll failed, backing off"
+                        );
+                        tokio::time::sleep(delay).await;
+                    }
+                }
             }
         }
     }
@@ -484,7 +502,7 @@ mod tests {
     #[test]
     fn listen_empty_provider_returns_empty() {
         let provider = SignalProvider::new();
-        let (rx, handles) = provider.listen(None);
+        let (rx, handles) = provider.listen(None, CancellationToken::new());
         assert!(handles.is_empty());
         drop(rx);
     }
@@ -510,9 +528,11 @@ mod tests {
         let signal_client = client::SignalClient::new(&server.uri()).expect("client");
         provider.add_account("+1111111111".to_owned(), signal_client);
 
-        let (rx, handles) = provider.listen(Some(Duration::from_secs(60)));
+        let token = CancellationToken::new();
+        let (rx, handles) = provider.listen(Some(Duration::from_secs(60)), token.clone());
         assert_eq!(handles.len(), 1);
 
+        token.cancel();
         drop(rx);
         for h in handles {
             let _ = tokio::time::timeout(Duration::from_secs(5), h).await;
@@ -550,10 +570,17 @@ mod tests {
         let signal_client = client::SignalClient::new(&server.uri()).expect("client");
         let (tx, mut rx) = mpsc::channel(16);
         let account_state = Arc::new(Mutex::new(AccountState::new(100)));
+        let token = CancellationToken::new();
 
         let handle = tokio::spawn(
-            super::poll_loop(signal_client, tx, Duration::from_millis(50), account_state)
-                .instrument(tracing::info_span!("test_poll_loop")),
+            super::poll_loop(
+                signal_client,
+                tx,
+                Duration::from_millis(50),
+                account_state,
+                token,
+            )
+            .instrument(tracing::info_span!("test_poll_loop")),
         );
 
         let msg = tokio::time::timeout(Duration::from_secs(5), rx.recv())

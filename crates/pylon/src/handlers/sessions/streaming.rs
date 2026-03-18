@@ -28,6 +28,47 @@ use crate::stream::{SseEvent, TurnOutcome, UsageData, WebchatEvent};
 use super::types::{SendMessageRequest, StreamTurnRequest};
 use super::{find_session, resolve_session};
 
+/// Guard that aborts a spawned task when dropped.
+///
+/// Stored alongside the SSE response stream so that when the client
+/// disconnects and Axum drops the response future, the in-flight LLM
+/// turn is cancelled rather than running to completion.
+struct AbortOnDrop(tokio::task::JoinHandle<()>);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+/// Stream wrapper that holds an `AbortOnDrop` guard alongside the inner stream.
+///
+/// When this stream is dropped (client disconnect), the guard aborts the
+/// associated spawned task. The `Stream` impl delegates entirely to the
+/// inner stream.
+///
+/// WHY: `Unpin` bound is sufficient because `ReceiverStream` and its
+/// `Map` combinator both implement `Unpin`.
+struct GuardedStream<S> {
+    inner: S,
+    _guard: AbortOnDrop,
+}
+
+impl<S: tokio_stream::Stream + Unpin> tokio_stream::Stream for GuardedStream<S> {
+    type Item = S::Item;
+
+    fn poll_next(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        std::pin::Pin::new(&mut self.inner).poll_next(cx)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
+    }
+}
+
 /// POST /api/v1/sessions/{id}/messages: send a message and stream the response via SSE.
 #[utoipa::path(
     post,
@@ -88,7 +129,10 @@ pub async fn send_message(
                     })
                     .await;
                 drop(tx);
-                let stream = ReceiverStream::new(rx).map(sse_event_to_axum);
+                let stream = GuardedStream {
+                    inner: ReceiverStream::new(rx).map(sse_event_to_axum),
+                    _guard: AbortOnDrop(tokio::spawn(async {})),
+                };
                 return Ok(Sse::new(stream).keep_alive(
                     KeepAlive::new()
                         .interval(Duration::from_secs(15))
@@ -162,7 +206,7 @@ pub async fn send_message(
         request_id = %request_id,
         idempotency_key = idempotency_key.as_deref().unwrap_or(""),
     );
-    tokio::spawn(
+    let turn_handle = tokio::spawn(
         async move {
             match handle
                 .send_turn_with_session_id(
@@ -221,7 +265,12 @@ pub async fn send_message(
         .instrument(turn_span),
     );
 
-    let stream = ReceiverStream::new(rx).map(sse_event_to_axum);
+    // WHY: Wrap the stream so the turn task is aborted when the client disconnects.
+    // Without this, a disconnected client leaves the LLM inference running.
+    let stream = GuardedStream {
+        inner: ReceiverStream::new(rx).map(sse_event_to_axum),
+        _guard: AbortOnDrop(turn_handle),
+    };
 
     Ok(Sse::new(stream).keep_alive(
         KeepAlive::new()
@@ -363,7 +412,7 @@ pub async fn stream_turn(
         .instrument(tracing::info_span!("sse_bridge")),
     );
 
-    tokio::spawn(
+    let stream_turn_handle = tokio::spawn(
         async move {
             match handle
                 .send_turn_streaming_with_session_id(
@@ -430,15 +479,19 @@ pub async fn stream_turn(
         .instrument(turn_span),
     );
 
-    let stream = ReceiverStream::new(webchat_rx).map(|event| match serde_json::to_string(&event) {
-        Ok(data) => Ok(Event::default().event(event.event_type()).data(data)),
-        Err(e) => {
-            warn!(error = %e, "failed to serialize SSE event");
-            Ok(Event::default()
-                .event("error")
-                .data(r#"{"message":"serialization failed"}"#))
-        }
-    });
+    // WHY: Abort streaming turn task when the client disconnects.
+    let stream = GuardedStream {
+        inner: ReceiverStream::new(webchat_rx).map(|event| match serde_json::to_string(&event) {
+            Ok(data) => Ok(Event::default().event(event.event_type()).data(data)),
+            Err(e) => {
+                warn!(error = %e, "failed to serialize SSE event");
+                Ok(Event::default()
+                    .event("error")
+                    .data(r#"{"message":"serialization failed"}"#))
+            }
+        }),
+        _guard: AbortOnDrop(stream_turn_handle),
+    };
 
     Ok(Sse::new(stream).keep_alive(
         KeepAlive::new()

@@ -137,7 +137,7 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
     });
 
     #[cfg(unix)]
-    spawn_sighup_handler(Arc::clone(&state));
+    let sighup_handle = spawn_sighup_handler(Arc::clone(&state));
 
     let app = build_router(state.clone(), &config.security);
 
@@ -145,6 +145,20 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         serve_tls(app, &config).await?;
     } else {
         serve_plain(app, &config.bind_addr).await?;
+    }
+
+    // NOTE: Cancel shutdown token so background tasks (SIGHUP handler) observe shutdown.
+    state.shutdown.cancel();
+
+    #[cfg(unix)]
+    {
+        let drain_timeout = std::time::Duration::from_secs(10);
+        if tokio::time::timeout(drain_timeout, sighup_handle)
+            .await
+            .is_err()
+        {
+            warn!("sighup handler did not exit within drain timeout");
+        }
     }
 
     state.nous_manager.shutdown_readonly().await;
@@ -211,7 +225,7 @@ async fn serve_tls(app: axum::Router, config: &ServerConfig) -> Result<(), Serve
 
     let handle = axum_server::Handle::new();
     let shutdown_handle = handle.clone();
-    tokio::spawn(
+    let _shutdown_task = tokio::spawn(
         async move {
             shutdown_signal().await;
             shutdown_handle.graceful_shutdown(Some(Duration::from_secs(30)));
@@ -257,10 +271,13 @@ pub(crate) async fn apply_reload(state: &AppState, outcome: aletheia_taxis::relo
 /// On each SIGHUP, re-reads config from disk, validates, diffs against the
 /// current config, and applies hot-reloadable values. Invalid configs are
 /// rejected with an error log; the running config is preserved.
+///
+/// Returns a `JoinHandle` so the caller can await graceful shutdown.
 #[cfg(unix)]
-fn spawn_sighup_handler(state: Arc<AppState>) {
+fn spawn_sighup_handler(state: Arc<AppState>) -> tokio::task::JoinHandle<()> {
     use tracing::Instrument;
 
+    let shutdown = state.shutdown.clone();
     let span = tracing::info_span!("sighup_reload");
     tokio::spawn(
         async move {
@@ -272,26 +289,34 @@ fn spawn_sighup_handler(state: Arc<AppState>) {
                 .expect("failed to install SIGHUP handler");
 
             loop {
-                sighup.recv().await;
-                info!("received SIGHUP, reloading config");
-
-                let current = state.config.read().await.clone();
-                match aletheia_taxis::reload::prepare_reload(&state.oikos, &current) {
-                    Ok(outcome) => {
-                        if outcome.diff.is_empty() {
-                            info!("config reload: no changes detected");
-                        } else {
-                            apply_reload(&state, outcome).await;
+                tokio::select! {
+                    biased;
+                    () = shutdown.cancelled() => break,
+                    signal = sighup.recv() => {
+                        if signal.is_none() {
+                            break;
                         }
-                    }
-                    Err(e) => {
-                        tracing::error!(error = %e, "config reload failed, keeping current config");
+                        info!("received SIGHUP, reloading config");
+
+                        let current = state.config.read().await.clone();
+                        match aletheia_taxis::reload::prepare_reload(&state.oikos, &current) {
+                            Ok(outcome) => {
+                                if outcome.diff.is_empty() {
+                                    info!("config reload: no changes detected");
+                                } else {
+                                    apply_reload(&state, outcome).await;
+                                }
+                            }
+                            Err(e) => {
+                                tracing::error!(error = %e, "config reload failed, keeping current config");
+                            }
+                        }
                     }
                 }
             }
         }
         .instrument(span),
-    );
+    )
 }
 
 #[expect(
