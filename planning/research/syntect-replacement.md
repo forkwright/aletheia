@@ -6,7 +6,7 @@ Syntect pulls in a large dependency tree including C FFI bindings (Oniguruma), u
 
 ## Findings
 
-### Current Usage Audit
+### Current usage audit
 
 Syntect is used in exactly one location: `crates/theatron/tui/src/highlight.rs` (78 lines of production code).
 
@@ -27,7 +27,7 @@ Syntect is used in exactly one location: `crates/theatron/tui/src/highlight.rs` 
 
 **Languages observed in tests:** Rust, Python, plaintext fallback. The TUI renders LLM responses containing fenced code blocks, so any language is possible, but Rust/Python/TOML/JSON/Bash cover the majority of real usage.
 
-### Current Dependency Cost
+### Current dependency cost
 
 Syntect 5.3.0 with default features pulls 13 direct dependencies and ~35 unique transitive crates. Key cost centers:
 
@@ -47,7 +47,7 @@ Syntect 5.3.0 with default features pulls 13 direct dependencies and ~35 unique 
 
 **Security advisories bypassed:** Two entries in `deny.toml` exist solely for syntect's transitive deps (yaml-rust, bincode).
 
-### Option 1: Syntect with `default-fancy` (Minimal Change)
+### Option 1: Syntect with `default-fancy` (Minimal change)
 
 Switch from the default Oniguruma engine to the pure-Rust `fancy-regex` engine.
 
@@ -68,7 +68,7 @@ Switch from the default Oniguruma engine to the pure-Rust `fancy-regex` engine.
 
 **Effort:** ~30 minutes. One-line Cargo.toml change + verify tests pass.
 
-### Option 2: Syntect with Minimal Features
+### Option 2: Syntect with Minimal features
 
 Disable all features we don't use, keeping only what `highlight.rs` needs.
 
@@ -155,7 +155,7 @@ inkjet bundles 70+ tree-sitter grammars into a single crate with a simpler API.
 
 **Recommendation:** Do not use. Unmaintained.
 
-### Option 5: Minimal Custom Highlighter
+### Option 5: Minimal custom highlighter
 
 Build a simple keyword-based highlighter for the languages we care about.
 
@@ -172,7 +172,7 @@ Build a simple keyword-based highlighter for the languages we care about.
 
 **Effort:** ~3-5 days for Rust + Python + a few others. Ongoing maintenance per language.
 
-### Option 6: No Highlighting
+### Option 6: no highlighting
 
 Remove syntax highlighting entirely. Render code blocks as monochrome text.
 
@@ -184,7 +184,7 @@ Remove syntax highlighting entirely. Render code blocks as monochrome text.
 
 **Effort:** ~1 hour. Delete highlight.rs, update markdown.rs to emit plain text.
 
-### Dependency Comparison
+### Dependency comparison
 
 | Option | Deps added | Deps removed | C FFI | Security advisories |
 |---|---|---|---|---|
@@ -196,7 +196,7 @@ Remove syntax highlighting entirely. Render code blocks as monochrome text.
 | 5: Custom | 0 | all syntect deps | None | None |
 | 6: No highlighting | 0 | all syntect deps | None | None |
 
-### Compile Time Estimate
+### Compile time estimate
 
 Precise measurement requires benchmarking, but directional estimates:
 
@@ -207,7 +207,7 @@ Precise measurement requires benchmarking, but directional estimates:
 
 ## Recommendations
 
-### Primary: Option 2 (Syntect with Minimal Features)
+### Primary: Option 2 (Syntect with Minimal features)
 
 **Justification:**
 1. Zero code changes to `highlight.rs`. The API surface we use is identical.

@@ -12,7 +12,7 @@ How should Aletheia support image inputs in conversations, given the current tex
 
 ## Findings
 
-### 1. Current Message Format Audit
+### 1. Current message format audit
 
 #### Hermeneus (LLM types, `crates/hermeneus/src/types.rs`)
 
@@ -69,9 +69,9 @@ The TUI already has image rendering infrastructure:
 
 This rendering system works from file paths on disk. It does not render base64-encoded image data from message content blocks.
 
-### 2. Anthropic Vision API Requirements
+### 2. Anthropic vision API requirements
 
-#### Message Format
+#### Message format
 
 User messages accept image content blocks alongside text:
 
@@ -107,7 +107,7 @@ URL-referenced images are also supported:
 }
 ```
 
-#### Supported Formats
+#### Supported formats
 
 | Format | MIME Type | Notes |
 |--------|-----------|-------|
@@ -116,13 +116,13 @@ URL-referenced images are also supported:
 | GIF | `image/gif` | Static frames only |
 | WebP | `image/webp` | Good compression |
 
-#### Size Limits
+#### Size limits
 
 - Maximum image size: 20 MB per image (before base64 encoding)
 - Maximum image dimensions: the API resizes images larger than 1568px on the longest edge
 - Images are scaled to fit within a 1568x1568 bounding box while preserving aspect ratio
 
-#### Token Cost
+#### Token cost
 
 Image tokens are calculated from the scaled dimensions:
 
@@ -141,7 +141,7 @@ Examples at common resolutions:
 
 Images are the most token-expensive input type. A single high-resolution image costs as much as 1,800 tokens of text (roughly 1,350 words).
 
-#### Base64 vs URL Trade-offs
+#### Base64 vs URL trade-offs
 
 | Approach | Pros | Cons |
 |----------|------|------|
@@ -150,9 +150,9 @@ Images are the most token-expensive input type. A single high-resolution image c
 
 **Recommendation: base64 for user-provided files, URL for web references.** Aletheia operates locally; most image inputs will be files on disk. Base64 is the right default. URL support can be added later for web search integration.
 
-### 3. Integration Points
+### 3. integration points
 
-#### 3.1 Message Model Changes
+#### 3.1 message model changes
 
 **Add `Image` variant to `ContentBlock`:**
 
@@ -184,7 +184,7 @@ pub enum ImageSource {
 
 This is not needed for phase 1 (the current struct already works for base64), but should be planned for the type to avoid a breaking change later.
 
-#### 3.2 Pipeline Changes
+#### 3.2 pipeline changes
 
 `PipelineMessage` and `PipelineInput` need multimodal content support. Two approaches:
 
@@ -216,7 +216,7 @@ pub struct PipelineMessage {
 
 **Recommendation: Option A.** Keeping raw bytes in the pipeline and encoding at the wire boundary follows the "format at the boundary" principle from STANDARDS.md. It also avoids coupling the pipeline to the hermeneus wire format.
 
-#### 3.3 Token Estimation
+#### 3.3 token estimation
 
 The token estimator needs to account for image tokens. Currently, `PipelineMessage.token_estimate` is computed from text length. Image tokens follow the formula:
 
@@ -231,7 +231,7 @@ The pipeline must:
 
 This prevents the context window from overflowing when multiple images are in the conversation history.
 
-#### 3.4 Image Preprocessing
+#### 3.4 image preprocessing
 
 Before sending to the API, images should be preprocessed to:
 1. **Validate format** (JPEG, PNG, GIF, WebP only)
@@ -241,7 +241,7 @@ Before sending to the API, images should be preprocessed to:
 
 The `image` crate (`image = "0.25"`) is already a dependency of the theatron TUI crate. It handles loading, resizing, and format conversion. It should be added as a workspace dependency for shared use.
 
-#### 3.5 Storage Strategy
+#### 3.5 storage Strategy
 
 Three options for persisting images in mneme:
 
@@ -279,7 +279,7 @@ Store images on disk in `$XDG_DATA_HOME/aletheia/attachments/<hash>.ext` and ref
 
 **Recommendation: Option B for phase 1.** SQLite handles BLOBs well up to moderate sizes. The message content column stores a placeholder (`[image:1]`) while the actual binary lives in the attachments table. This keeps existing text queries fast while supporting binary data. Option C is the right choice if images become large or frequent, but it adds operational complexity that is not justified until storage pressure is measured.
 
-#### 3.6 TUI Rendering
+#### 3.6 TUI rendering
 
 The theatron image system currently renders from file paths detected in text. To render images from message content blocks:
 
@@ -290,11 +290,11 @@ The theatron image system currently renders from file paths detected in text. To
 
 The existing `load_and_render_halfblocks` function works with `image::DynamicImage`. Add a parallel path that decodes base64 data to `DynamicImage` instead of loading from disk.
 
-#### 3.7 Tool Results with Images
+#### 3.7 tool results with images
 
 Already working. The `view_file` tool returns `ToolResultBlock::Image` with base64-encoded data, and the wire serialization handles it. No changes needed for tool-result images.
 
-#### 3.8 User Input Path
+#### 3.8 user input path
 
 Users need a way to attach images. Options:
 
@@ -304,7 +304,7 @@ Users need a way to attach images. Options:
 
 **Recommendation: File path command for TUI, multipart upload for API.** A `/attach` or `/image` command in the TUI is the simplest first step. The TUI already detects image paths; extending this to actually attach them to the outgoing message is straightforward.
 
-### 4. Rust Image Processing Libraries
+### 4. Rust image processing libraries
 
 | Crate | Purpose | Status |
 |-------|---------|--------|
@@ -315,7 +315,7 @@ Users need a way to attach images. Options:
 
 The `image` crate is sufficient for all preprocessing needs: format detection, resize, format conversion. It is pure Rust (no C dependencies) and already compiled as part of the workspace.
 
-### 5. Observations
+### 5. observations
 
 - **Debt**: `PipelineMessage.content` is `String` but should be a richer type even for text-only use. Tool results with images are already converted to text summaries (`[image]`) before storage, losing the image data. (`crates/hermeneus/src/types.rs:190`)
 - **Debt**: `Content::text()` method joins text and thinking blocks but ignores images, which will return empty for image-only messages. (`crates/hermeneus/src/types.rs:60-78`)
@@ -329,7 +329,7 @@ The `image` crate is sufficient for all preprocessing needs: format detection, r
 
 ### Phased Implementation
 
-#### Phase 1: Image Content Block Support (Small)
+#### Phase 1: image content block support (Small)
 
 Add the `Image` variant to `ContentBlock`. This enables images in user messages at the wire format level. Scope:
 
@@ -340,7 +340,7 @@ Add the `Image` variant to `ContentBlock`. This enables images in user messages 
 
 Blast radius: `crates/hermeneus/src/types.rs`, `crates/hermeneus/src/types_tests.rs`
 
-#### Phase 2: Pipeline and Storage (Medium)
+#### Phase 2: pipeline and storage (Medium)
 
 Thread image data through the pipeline and persist it. Scope:
 
@@ -352,7 +352,7 @@ Thread image data through the pipeline and persist it. Scope:
 
 Blast radius: `crates/nous/src/pipeline.rs`, `crates/mneme/src/schema.rs`, `crates/mneme/src/types.rs`, `crates/mneme/src/store/message.rs`, `crates/nous/src/history.rs`, `crates/nous/src/budget.rs`
 
-#### Phase 3: Image Preprocessing (Small)
+#### Phase 3: image preprocessing (Small)
 
 Add validation and preprocessing before API submission. Scope:
 
@@ -363,7 +363,7 @@ Add validation and preprocessing before API submission. Scope:
 
 Blast radius: new module in `crates/nous/src/image.rs` or shared crate
 
-#### Phase 4: TUI Integration (Medium)
+#### Phase 4: TUI integration (Medium)
 
 Enable attaching and viewing images in the TUI. Scope:
 
@@ -374,7 +374,7 @@ Enable attaching and viewing images in the TUI. Scope:
 
 Blast radius: `crates/theatron/tui/src/msg.rs`, `crates/theatron/tui/src/view/chat.rs`, `crates/theatron/tui/src/view/image.rs`, `crates/theatron/tui/src/mapping.rs`
 
-#### Phase 5: API Endpoint (Small)
+#### Phase 5: API endpoint (Small)
 
 Accept image uploads via the pylon HTTP API. Scope:
 
@@ -384,7 +384,7 @@ Accept image uploads via the pylon HTTP API. Scope:
 
 Blast radius: `crates/pylon/src/handler/turn.rs`
 
-### Effort Estimate
+### Effort estimate
 
 | Phase | Scope | Dependencies |
 |-------|-------|-------------|

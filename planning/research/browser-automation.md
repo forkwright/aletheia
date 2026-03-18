@@ -12,7 +12,7 @@ How should Aletheia expose browser automation to agents? What protocol, crate, a
 
 ## Findings
 
-### 1. Current Tool System Architecture
+### 1. Current tool system architecture
 
 Organon (`crates/organon/`) implements a trait-based tool registry with sandbox enforcement.
 
@@ -41,11 +41,11 @@ pub trait ToolExecutor: Send + Sync {
 
 **Result types**: `ToolResult` supports text, image blocks (base64), and document blocks. The `view_file` tool already returns base64-encoded screenshots and PDFs to the agent.
 
-**Key observation**: The exec tool runs subprocesses with Landlock+seccomp sandboxing. A browser automation tool has two design paths: (a) implement as a native Rust tool using a browser crate, or (b) delegate to an external process (Playwright) via the existing exec infrastructure. Both paths can leverage the sandbox layer, but with different trade-offs.
+**Key observation**: The exec tool runs subprocesses with Landlock+seccomp sandboxing. A browser automation tool has two design paths: (a) implement as a native Rust tool using a browser crate, or (b) delegate to an external process (Playwright) via the existing exec infrastructure. Both paths can use the sandbox layer, but with different trade-offs.
 
-### 2. Browser Automation Approaches
+### 2. browser automation approaches
 
-#### 2.1 Chrome DevTools Protocol via `chromiumoxide`
+#### 2.1 chrome devTools protocol via `chromiumoxide`
 
 | Attribute | Value |
 |---|---|
@@ -64,7 +64,7 @@ CDP gives direct access to Chrome internals: DOM, network, rendering, JavaScript
 
 **Dependency weight**: ~20 runtime deps including reqwest, async-tungstenite (WebSocket), full tokio. Medium-heavy.
 
-#### 2.2 Chrome DevTools Protocol via `headless_chrome`
+#### 2.2 chrome devTools protocol via `headless_chrome`
 
 | Attribute | Value |
 |---|---|
@@ -81,7 +81,7 @@ CDP gives direct access to Chrome internals: DOM, network, rendering, JavaScript
 
 **Disqualifying factor**: No async support. Aletheia runs on tokio. Wrapping every call in `spawn_blocking` adds complexity and negates the library's simplicity advantage.
 
-#### 2.3 WebDriver Protocol via `fantoccini`
+#### 2.3 webDriver protocol via `fantoccini`
 
 | Attribute | Value |
 |---|---|
@@ -100,7 +100,7 @@ W3C WebDriver is a standardized protocol with broad browser support. `fantoccini
 
 **Dependency weight**: ~13 runtime deps. Uses hyper directly. Lighter than chromiumoxide.
 
-#### 2.4 WebDriver Protocol via `thirtyfour`
+#### 2.4 webDriver protocol via `thirtyfour`
 
 | Attribute | Value |
 |---|---|
@@ -116,7 +116,7 @@ W3C WebDriver is a standardized protocol with broad browser support. `fantoccini
 
 **Concern**: Repository transfer and version yanks suggest maintenance uncertainty.
 
-#### 2.5 HTTP-Only Approach (reqwest + scraper)
+#### 2.5 HTTP-Only approach (reqwest + scraper)
 
 | Attribute | Value |
 |---|---|
@@ -132,7 +132,7 @@ Static HTML parsing with CSS selectors. No browser binary, no JavaScript executi
 
 **Use case**: Static content extraction only. Already partially covered by the existing `web_fetch` tool in organon's research builtins.
 
-#### 2.6 External Process Delegation (Playwright via shell)
+#### 2.6 external process delegation (Playwright via shell)
 
 Shell out to Playwright (Node.js or Python) for browser control.
 
@@ -142,7 +142,7 @@ Shell out to Playwright (Node.js or Python) for browser control.
 
 **Mitigation pattern**: Use a long-lived Playwright process with JSON-RPC or stdio protocol, not one shell invocation per action. Wrap in a Rust trait so the implementation can be swapped later.
 
-### 3. Approach Comparison
+### 3. approach comparison
 
 | Factor | chromiumoxide | headless_chrome | fantoccini | thirtyfour | scraper+reqwest | Playwright shell |
 |---|---|---|---|---|---|---|
@@ -157,7 +157,7 @@ Shell out to Playwright (Node.js or Python) for browser control.
 | Pure Rust | Yes | Yes | Yes | Yes | Yes | **No** |
 | Compile impact | Heavy (codegen) | Moderate | Light | Moderate | Light | None |
 
-### 4. Tool Interface Design
+### 4. tool interface design
 
 Browser automation should be exposed as a single tool with an `action` parameter, not as separate tools per operation. This matches the pattern used by Anthropic's computer use tool and keeps the tool surface area small.
 
@@ -165,7 +165,7 @@ Browser automation should be exposed as a single tool with an `action` parameter
 
 | Action | Parameters | Returns |
 |---|---|---|
-| `navigate` | `url: String` | Page title, final URL (after redirects) |
+| `move through` | `url: String` | Page title, final URL (after redirects) |
 | `screenshot` | `selector?: String` | Base64 PNG image block |
 | `read_text` | `selector?: String` | Extracted text content |
 | `read_html` | `selector?: String` | Raw HTML of element or page |
@@ -178,12 +178,12 @@ Browser automation should be exposed as a single tool with an `action` parameter
 | `cookies` | `action: "get" \| "set" \| "clear", ...` | Cookie data |
 | `back` / `forward` / `refresh` | (none) | New page state |
 
-#### Tool Definition
+#### Tool definition
 
 ```rust
 ToolDef {
     name: "browser",
-    description: "Interact with web pages: navigate, read content, fill forms, take screenshots",
+    description: "Interact with web pages: move through, read content, fill forms, take screenshots",
     category: ToolCategory::Research,
     auto_activate: false,  // Lazy: enabled per-session when needed
     input_schema: InputSchema {
@@ -200,14 +200,14 @@ ToolDef {
 }
 ```
 
-#### Result Format
+#### Result format
 
 - **Text content**: Returned as plain text in `ToolResult::text()`
 - **Screenshots**: Returned as `ToolResult::blocks()` with `ToolResultBlock::Image` (base64 PNG). The agent sees the screenshot inline, matching how `view_file` works today.
 - **Structured data**: JSON-serialized into `ToolResult::text()`. The agent parses as needed.
 - **Errors**: `ToolResult::error()` with descriptive message (element not found, timeout, navigation failure).
 
-#### Authentication and Cookies
+#### Authentication and cookies
 
 Browser sessions are ephemeral by default. Each `browser` tool activation starts a fresh browser profile with no cookies or stored credentials. Persistence options:
 
@@ -215,11 +215,11 @@ Browser sessions are ephemeral by default. Each `browser` tool activation starts
 2. **Explicit cookie injection**: Agent uses `cookies` action with `set` to inject authentication cookies received from other sources.
 3. **No credential storage**: Browser tool never stores credentials to disk. Session ends, cookies are gone.
 
-### 5. Security Model
+### 5. security model
 
-#### Domain Allowlist
+#### Domain allowlist
 
-The browser tool must restrict which domains the agent can navigate to. Configuration:
+The browser tool must restrict which domains the agent can move through to. Configuration:
 
 ```toml
 [tools.browser]
@@ -230,7 +230,7 @@ block_private_networks = true  # Block 10.x, 172.16-31.x, 192.168.x, 169.254.x, 
 
 Domain checking happens before navigation. Redirects to blocked domains are intercepted and rejected.
 
-#### Resource Limits
+#### Resource limits
 
 | Limit | Default | Purpose |
 |---|---|---|
@@ -240,7 +240,7 @@ Domain checking happens before navigation. Redirects to blocked domains are inte
 | Max screenshots per session | 50 | Bound image token cost |
 | Max response size | 1 MB | Prevent memory exhaustion from large pages |
 
-#### Process Isolation
+#### Process isolation
 
 The browser process runs under the same Landlock+seccomp sandbox as the exec tool. Additional constraints:
 
@@ -249,13 +249,13 @@ The browser process runs under the same Landlock+seccomp sandbox as the exec too
 - **GPU**: Disabled (`--disable-gpu`). Headless mode only.
 - **Extensions**: Disabled. No user data directory.
 
-#### Content Risks
+#### Content risks
 
 - **Prompt injection via page content**: Web pages can contain text that looks like instructions to the agent. The tool should strip or truncate excessively long page content and warn if the page contains patterns that resemble prompt injection (e.g., "ignore previous instructions").
 - **Drive-by downloads**: Browser profile is ephemeral and sandboxed. Downloads go to a temp directory that is deleted on session end.
 - **Exfiltration**: Domain allowlist prevents the agent from navigating to attacker-controlled domains. The `execute_js` action is the highest-risk operation and should be gated behind a separate permission flag.
 
-#### Sandbox Integration
+#### Sandbox integration
 
 ```
 [Agent Session]
@@ -272,7 +272,7 @@ The browser process runs under the same Landlock+seccomp sandbox as the exec too
 
 Chrome's internal sandbox (`--no-sandbox`) is disabled because Landlock provides equivalent filesystem isolation at the OS level. This avoids the nested-sandbox complexity and user namespace requirements.
 
-### 6. Relationship to Computer Use
+### 6. relationship to computer use
 
 Anthropic's computer use tool and browser automation serve different purposes:
 
@@ -288,7 +288,7 @@ Anthropic's computer use tool and browser automation serve different purposes:
 
 For web-specific tasks, browser automation is more reliable, cheaper, and faster. Computer use is needed when the task involves non-browser GUI applications. The two can coexist: use the browser tool for web tasks, computer use for desktop GUI tasks.
 
-### 7. Observations
+### 7. observations
 
 - **Debt**: The existing `web_fetch` tool (`builtins/research.rs`) does HTTP-only fetching. Adding browser automation creates overlap. Consider deprecating `web_fetch` in favor of `browser` with a `read_text` action, or keeping `web_fetch` as the lightweight path for static content.
 - **Idea**: A `browser_pool` service (similar to database connection pooling) could manage browser lifecycle across sessions, amortizing startup cost.
@@ -299,7 +299,7 @@ For web-specific tasks, browser automation is more reliable, cheaper, and faster
 
 ## Recommendations
 
-### Recommended Approach: `chromiumoxide` (CDP)
+### Recommended approach: `chromiumoxide` (CDP)
 
 **Primary**: Use `chromiumoxide` for browser automation behind a feature flag.
 
@@ -316,7 +316,7 @@ For web-specific tasks, browser automation is more reliable, cheaper, and faster
 
 **Trade-off accepted**: Compile time increase from generated CDP bindings. Mitigated by putting the browser tool behind a feature flag so it does not affect default builds.
 
-### Fallback: Playwright Delegation
+### Fallback: Playwright delegation
 
 If `chromiumoxide` proves insufficient (stability issues, missing CDP features), fall back to Playwright delegation via a long-lived subprocess with stdio JSON protocol. This path:
 - Adds a Python/Node.js runtime dependency
@@ -325,11 +325,11 @@ If `chromiumoxide` proves insufficient (stability issues, missing CDP features),
 
 Design the `ToolExecutor` implementation behind a trait so the backend (chromiumoxide vs Playwright) can be swapped without changing the tool interface.
 
-### Implementation Plan
+### Implementation plan
 
-#### Phase 1: Core Tool (Medium)
+#### Phase 1: core tool (Medium)
 
-Add `browser` tool with `navigate`, `screenshot`, `read_text`, `click`, `type_text`, `wait` actions using `chromiumoxide`.
+Add `browser` tool with `move through`, `screenshot`, `read_text`, `click`, `type_text`, `wait` actions using `chromiumoxide`.
 
 - New module: `crates/organon/src/builtins/browser.rs`
 - Feature flag: `browser` in `crates/organon/Cargo.toml`
@@ -339,7 +339,7 @@ Add `browser` tool with `navigate`, `screenshot`, `read_text`, `click`, `type_te
 
 Blast radius: `crates/organon/src/builtins/browser.rs` (new), `crates/organon/src/builtins/mod.rs`, `crates/organon/Cargo.toml`
 
-#### Phase 2: Security Hardening (Small)
+#### Phase 2: security hardening (Small)
 
 Add resource limits, domain validation, private network blocking, session timeout.
 
@@ -349,7 +349,7 @@ Add resource limits, domain validation, private network blocking, session timeou
 
 Blast radius: `crates/organon/src/builtins/browser.rs`, `crates/taxis/src/tools.rs`
 
-#### Phase 3: Advanced Actions (Small)
+#### Phase 3: advanced actions (Small)
 
 Add `execute_js`, `list_elements`, `cookies`, `read_html`, `select`, navigation actions.
 
@@ -358,11 +358,11 @@ Add `execute_js`, `list_elements`, `cookies`, `read_html`, `select`, navigation 
 
 Blast radius: `crates/organon/src/builtins/browser.rs`
 
-#### Phase 4: Browser Pool (Optional, Future)
+#### Phase 4: browser pool (Optional, future)
 
 Connection pooling for browser instances across sessions. Only justified if browser startup latency becomes a measurable bottleneck.
 
-### Effort Estimate
+### Effort estimate
 
 | Phase | Scope | New deps |
 |---|---|---|

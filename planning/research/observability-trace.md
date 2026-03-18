@@ -6,7 +6,7 @@ How is tracing implemented in aletheia? What spans, events, and outputs exist? H
 
 ## Findings
 
-### 1. Tracing Stack
+### 1. tracing stack
 
 Aletheia uses the `tracing` ecosystem exclusively:
 
@@ -19,7 +19,7 @@ Aletheia uses the `tracing` ecosystem exclusively:
 
 No OpenTelemetry, OTLP, or Langfuse integration exists today.
 
-### 2. Initialization
+### 2. initialization
 
 Two initialization paths exist:
 
@@ -38,7 +38,7 @@ Two initialization paths exist:
 - File-only output to `~/.local/share/aletheia/tui.log`
 - Daily rolling, no console output (TUI owns the terminal)
 
-### 3. Span Hierarchy
+### 3. span hierarchy
 
 The system implements a layered span tree. Every spawned async task uses `.instrument(span)` to propagate context.
 
@@ -78,7 +78,7 @@ Other top-level spans:
 | `log_retention` | `crates/aletheia/src/commands/server.rs:850` | (none) |
 | `health_poller` | `crates/nous/src/manager.rs:407` | (none) |
 
-### 4. Correlation IDs
+### 4. correlation IDs
 
 Three primary identifiers flow through the span tree:
 
@@ -90,7 +90,7 @@ Three primary identifiers flow through the span tree:
 
 Error responses (4xx/5xx) are enriched with `request_id` by the `enrich_error_response` middleware (`pylon/src/middleware.rs:77-122`). This allows operators to correlate a user-visible error to its trace output.
 
-### 5. Key Events
+### 5. key events
 
 **Lifecycle events:**
 - `"actor started"` (info) with nous.id
@@ -110,7 +110,7 @@ Error responses (4xx/5xx) are enriched with `request_id` by the `enrich_error_re
 - `"maintenance: drift detection complete"` (info)
 - `"maintenance: retention complete"` (info)
 
-### 6. Instrumentation Coverage
+### 6. instrumentation coverage
 
 ~60 functions carry `#[instrument]` attributes across the codebase. Key areas:
 
@@ -125,7 +125,7 @@ Error responses (4xx/5xx) are enriched with `request_id` by the `enrich_error_re
 
 All production `tokio::spawn` calls use `.instrument(span)` for context propagation. Uninstrumented spawns exist only in test code.
 
-### 7. Configuration
+### 7. configuration
 
 **TOML config** (`aletheia.toml`):
 
@@ -160,7 +160,7 @@ maxArchives = 30       # Default: 30
 - `--log-level <level>`: console level (default: info)
 - `--json-logs`: switch console output to JSON
 
-### 8. File Rotation
+### 8. file rotation
 
 The `TraceRotator` (`crates/daemon/src/maintenance/trace_rotation.rs`) runs as a background daemon task:
 
@@ -172,7 +172,7 @@ The `TraceRotator` (`crates/daemon/src/maintenance/trace_rotation.rs`) runs as a
 
 Log retention (separate from trace rotation) prunes daily log files in `logs/` after `retention_days`.
 
-### 9. Debugging Workflow
+### 9. debugging workflow
 
 To trace a user-visible error back to its cause:
 
@@ -189,13 +189,13 @@ To increase verbosity for a running server:
 
 To increase verbosity without restart: not currently supported (requires process restart).
 
-### 10. Metrics (Prometheus)
+### 10. metrics (Prometheus)
 
 Separate from tracing, Prometheus metrics are exposed at `/metrics` (`crates/pylon/src/handlers/metrics.rs`). HTTP request count and duration are recorded by the `record_http_metrics` middleware. Turn completion triggers `crate::metrics::record_turn()`.
 
 ## Recommendations
 
-### R1: Install a structured panic handler (high priority)
+### R1: install a structured panic handler (high priority)
 
 `RUST.md` mandates a custom panic hook that logs to the structured log file. No panic handler is installed today. A panic in any async task silently disappears unless the `JoinHandle` is awaited and the `JoinError` explicitly logged. The daemon runner does catch task panics, but a panic on the main thread or in non-runner tasks would only hit stderr.
 
@@ -207,7 +207,7 @@ std::panic::set_hook(Box::new(|info| {
 
 This belongs in `init_tracing()` or immediately after it in the server startup path.
 
-### R2: Add OpenTelemetry export layer (medium priority)
+### R2: add openTelemetry export layer (medium priority)
 
 The current file-based JSON output is adequate for single-instance debugging but does not support:
 - Distributed trace correlation across instances
@@ -225,7 +225,7 @@ endpoint = "http://localhost:4317"
 service_name = "aletheia"
 ```
 
-### R3: Add Langfuse integration for LLM observability (medium priority)
+### R3: add langfuse integration for LLM observability (medium priority)
 
 The `llm_call` spans already capture provider, model, token counts, duration, and retry counts. A Langfuse layer or post-processing step could export these as Langfuse generations, enabling:
 - Cost tracking per session/agent
@@ -238,15 +238,15 @@ Two approaches:
 
 Approach 1 is preferred for production use. The Langfuse Rust SDK does not exist; the HTTP API would need a thin client.
 
-### R4: Support runtime log level changes (low priority)
+### R4: support runtime log level changes (low priority)
 
 Currently, changing log levels requires a process restart. `tracing-subscriber` supports `reload::Layer` which allows swapping the `EnvFilter` at runtime via an API endpoint or signal handler. This would allow operators to increase verbosity for debugging without downtime.
 
-### R5: Add `tool_execute` span in organon (low priority)
+### R5: add `tool_execute` span in organon (low priority)
 
 The span hierarchy shows `pipeline_stage(stage="execute")` containing `llm_call` spans, but individual tool executions within the execute stage do not have their own spans. Adding a `tool_execute` span with `tool_name`, `tool_id`, and `duration_ms` fields would close the gap between "the LLM asked to call a tool" and "the tool returned a result."
 
-### R6: Add span fields to `sse_bridge` and `credential_refresh` (low priority)
+### R6: add span fields to `sse_bridge` and `credential_refresh` (low priority)
 
 These spans carry no identifying fields, making them hard to correlate in multi-session environments. `sse_bridge` should carry `session.id`; `credential_refresh` should carry the credential type and user context.
 

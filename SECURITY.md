@@ -1,6 +1,6 @@
 # Security
 
-## Reporting Vulnerabilities
+## Reporting vulnerabilities
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
@@ -37,7 +37,7 @@ Include: description, reproduction steps, potential impact, and any suggested fi
 
 After a fix ships, we publish a GitHub Security Advisory with CVE (if warranted), description, affected versions, fixed version, and credit to the reporter.
 
-### Supported Versions
+### Supported versions
 
 | Version | Supported |
 |---------|-----------|
@@ -49,7 +49,7 @@ After a fix ships, we publish a GitHub Security Advisory with CVE (if warranted)
 
 ## Developer security practices
 
-### Pre-commit Hooks
+### Pre-commit hooks
 
 Install pre-commit and gitleaks to catch secrets and PII before they reach git history:
 
@@ -68,7 +68,7 @@ Manual scan:
 gitleaks detect --config .gitleaks.toml --no-git --source . -v
 ```
 
-### Commit Signing
+### Commit signing
 
 All commits to `main` should be signed.
 
@@ -108,13 +108,13 @@ git config --global commit.gpgsign true
 - Test data uses synthetic identities (alice, bob, acme.corp, 192.168.1.100)
 - CI PII scanner (`.github/pii-patterns.txt`) rejects commits with personal data patterns
 
-### Dependency Auditing
+### Dependency auditing
 
 - `cargo audit` runs in CI on every PR and weekly
 - `cargo deny` enforces license compatibility and bans specific crates
 - Dependabot creates PRs for vulnerable dependencies automatically
 
-### Branch Protection
+### Branch protection
 
 Recommended `main` branch settings:
 

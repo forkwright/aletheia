@@ -4,7 +4,7 @@ A guided tour for new contributors. For the reference module map and dependency 
 
 ---
 
-## What Aletheia is
+## What aletheia is
 
 Aletheia is a self-hosted multi-agent AI system. Multiple AI agents run as persistent actors, each with character, memory, and domain expertise. They communicate via Signal, HTTP API, or TUI, and persist understanding across sessions.
 
@@ -37,7 +37,7 @@ Then it waits for SIGTERM or Ctrl+C and shuts down gracefully.
 
 ## What happens when a message arrives
 
-### Via Signal
+### Via signal
 
 ```
 Signal app → Signal servers (E2E encrypted) → signal-cli daemon (localhost JSON-RPC)
@@ -101,7 +101,7 @@ Crates are organized in layers. Lower layers know nothing about higher layers.
 
 ---
 
-## The Oikos
+## The oikos
 
 The instance directory is the boundary between platform code (git-tracked) and deployment state (gitignored).
 

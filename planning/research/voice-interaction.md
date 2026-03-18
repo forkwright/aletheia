@@ -15,7 +15,7 @@ Specific sub-questions:
 
 ## Findings
 
-### 1. Current Channel Architecture
+### 1. Current channel architecture
 
 Agora provides a provider-based channel abstraction with four components:
 
@@ -41,9 +41,9 @@ Currently only Signal (`semeion`) is implemented. The architecture is explicitly
 
 The core abstraction remains text-first. Audio fields are optional extensions for channels that produce or consume audio alongside text.
 
-### 2. STT Options
+### 2. STT options
 
-#### 2A. Candle Whisper (Pure Rust)
+#### 2A. candle whisper (Pure rust)
 
 Candle (`candle-transformers`) includes a full Whisper implementation covering `tiny` through `large-v3` models. Aletheia already depends on candle v0.9.2 for BERT embeddings in mneme.
 
@@ -68,7 +68,7 @@ Candle (`candle-transformers`) includes a full Whisper implementation covering `
 
 **Verdict:** Best fit for batch transcription and low-latency interactive use with `tiny`/`base` models. The accuracy trade-off at small model sizes is acceptable for conversational input where the agent can ask for clarification.
 
-#### 2B. whisper-rs (whisper.cpp Bindings)
+#### 2B. whisper-rs (whisper.cpp bindings)
 
 Rust FFI bindings to whisper.cpp. Latest version 0.15.1 (September 2025). Supports CUDA, ROCm, CoreML acceleration.
 
@@ -86,7 +86,7 @@ Rust FFI bindings to whisper.cpp. Latest version 0.15.1 (September 2025). Suppor
 
 **Verdict:** Technically superior for CPU performance. Conflicts with the pure Rust principle. Could serve as a feature-gated alternative for deployments where latency is critical.
 
-#### 2C. Cloud STT APIs
+#### 2C. cloud STT APIs
 
 | Provider | Latency | Streaming | Cost | Notes |
 |----------|---------|-----------|------|-------|
@@ -107,15 +107,15 @@ Rust FFI bindings to whisper.cpp. Latest version 0.15.1 (September 2025). Suppor
 - Dependency on external service availability
 - OpenAI Realtime API bypasses the LLM layer entirely (speech-to-speech), which conflicts with aletheia's nous/hermeneus architecture
 
-**Verdict:** Useful as a fallback or for deployments where accuracy is paramount. Not suitable as the primary path given the local-first principle.
+**Verdict:** Useful as a fallback or for deployments where accuracy is critical. Not suitable as the primary path given the local-first principle.
 
-#### 2D. Vosk (Local, C-Based)
+#### 2D. vosk (Local, c-Based)
 
 Open-source offline STT using Kaldi models. Rust bindings exist but are unmaintained.
 
 **Verdict:** Not recommended. Unmaintained Rust bindings, large model sizes, C/C++ dependency, accuracy behind Whisper.
 
-#### STT Recommendation
+#### STT recommendation
 
 **Primary:** Candle Whisper with `base` model (best balance of accuracy, latency, and purity). Feature-gated as `voice-stt-candle`.
 
@@ -123,9 +123,9 @@ Open-source offline STT using Kaldi models. Rust bindings exist but are unmainta
 
 **Fallback:** Cloud STT behind `voice-stt-cloud` for maximum accuracy when privacy constraints allow.
 
-### 3. TTS Options
+### 3. TTS options
 
-#### 3A. Piper (Local Neural TTS)
+#### 3A. piper (Local neural TTS)
 
 Fast, local neural TTS. Models are small (15-75 MB). Quality is good for a local engine. Rust bindings exist (`piper-rs`, `piper-tts-rust`) but depend on ONNX Runtime (C++ library).
 
@@ -140,7 +140,7 @@ Fast, local neural TTS. Models are small (15-75 MB). Quality is good for a local
 - Rust bindings are young (piper-rs released 2025)
 - No streaming output (generates full utterance, then plays)
 
-#### 3B. eSpeak-ng (Local, Formant-Based)
+#### 3B. eSpeak-ng (Local, formant-Based)
 
 Mature formant synthesizer. Rust bindings via `espeak-rs`. Compact (~2 MB). Robotic voice quality.
 
@@ -153,7 +153,7 @@ Mature formant synthesizer. Rust bindings via `espeak-rs`. Compact (~2 MB). Robo
 - Robotic voice quality, not suitable as primary TTS
 - C dependency
 
-#### 3C. Cloud TTS APIs
+#### 3C. cloud TTS APIs
 
 | Provider | Quality | Latency | Streaming | Cost |
 |----------|---------|---------|-----------|------|
@@ -173,13 +173,13 @@ Anthropic's own Claude voice mode uses ElevenLabs as a subcontractor.
 - Privacy (text leaves the machine)
 - Cost per character
 
-#### 3D. Candle-Based TTS (Future)
+#### 3D. candle-Based TTS (Future)
 
 No production-ready TTS model exists in candle today. SpeechT5 and VITS implementations are experimental. This gap may close in 2026-2027 as the Rust ML ecosystem matures.
 
 **Verdict:** Not viable today. Worth monitoring.
 
-#### TTS Recommendation
+#### TTS recommendation
 
 **Phase 1:** No TTS. Text responses only. Voice is input-only. This is the simplest path and delivers the core value (hands-free interaction).
 
@@ -187,9 +187,9 @@ No production-ready TTS model exists in candle today. SpeechT5 and VITS implemen
 
 **Phase 3:** Local Piper TTS behind `voice-tts-piper` feature gate when/if pure-Rust ONNX alternatives mature, or accept the C++ dependency behind a gate.
 
-### 4. Voice Channel Design
+### 4. voice channel design
 
-#### 4.1 Audio Capture
+#### 4.1 audio capture
 
 **Crate:** `cpal` (v0.16, 8.7M downloads, pure Rust, cross-platform). Provides real-time audio input/output with platform-native backends (ALSA, PulseAudio, WASAPI, CoreAudio).
 
@@ -197,7 +197,7 @@ No production-ready TTS model exists in candle today. SpeechT5 and VITS implemen
 
 **Buffer size:** 512 samples (32ms at 16kHz). Balances latency against callback overhead.
 
-#### 4.2 Voice Activity Detection (VAD)
+#### 4.2 voice activity detection (VAD)
 
 VAD determines when the user starts and stops speaking. Critical for turn-taking.
 
@@ -211,7 +211,7 @@ VAD determines when the user starts and stops speaking. Critical for turn-taking
 - Max silence within speech: 800ms (allows natural pauses)
 - Post-speech silence: 1.5s (triggers end-of-turn)
 
-#### 4.3 Streaming vs Batch Transcription
+#### 4.3 streaming vs batch transcription
 
 | Approach | Latency | Complexity | Accuracy |
 |----------|---------|------------|----------|
@@ -235,7 +235,7 @@ Microphone (cpal, 16kHz PCM)
     → [Optional TTS] → Speaker (cpal output)
 ```
 
-#### 4.4 Latency Budget (Batch Mode)
+#### 4.4 latency budget (Batch mode)
 
 | Stage | Target | Notes |
 |-------|--------|-------|
@@ -248,7 +248,7 @@ Microphone (cpal, 16kHz PCM)
 
 For comparison, a typical voice assistant (Alexa, Siri) targets 2-3s total. Aletheia's latency is higher due to the full LLM turn, but this is inherent to the agent model. The STT portion (1.5s + 2.0s = 3.5s) is the controllable overhead.
 
-#### 4.5 Audio Codec for Network Transport
+#### 4.5 audio codec for network transport
 
 If voice data needs to travel over the network (e.g., from a remote theatron client to the server):
 
@@ -258,7 +258,7 @@ If voice data needs to travel over the network (e.g., from a remote theatron cli
 
 **Alternative (pure Rust):** `mousiki` crate provides a `no_std` Opus decoder. Encode server-side with `opus-codec`, decode client-side with `mousiki` for embedded targets.
 
-### 5. Agora Integration Pattern
+### 5. agora integration pattern
 
 Voice integrates as a `VoiceProvider` implementing `ChannelProvider`:
 
@@ -303,7 +303,7 @@ sample_rate = 16000
 silence_threshold_ms = 1500
 ```
 
-### 6. Remote Voice (Theatron/Pylon)
+### 6. remote voice (Theatron/Pylon)
 
 For the TUI client (theatron) running on a different machine than the server:
 
@@ -322,7 +322,7 @@ This mirrors how the existing SSE streaming works for text but adds a bidirectio
 
 ## Recommendations
 
-### Phased Implementation Plan
+### Phased Implementation plan
 
 **Phase 1: Local Batch Voice Input (4-6 weeks)**
 - New crate: `phonesis` (from phon/voice + aisthesis/perception)
@@ -352,7 +352,7 @@ This mirrors how the existing SSE streaming works for text but adds a bidirectio
 - Partial transcript display during speech
 - Reduces perceived latency by showing interim results
 
-### Crate Structure
+### Crate structure
 
 ```
 crates/phonesis/
@@ -375,7 +375,7 @@ crates/phonesis/
 └── Cargo.toml
 ```
 
-### Dependency Budget
+### Dependency budget
 
 | Crate | Purpose | Phase | Pure Rust | Size Impact |
 |-------|---------|-------|-----------|-------------|

@@ -16,7 +16,7 @@ Not a chatbot framework. A distributed cognition system.
 
 ## Architecture
 
-Rust workspace with 17 crates. Single binary deployment.
+Rust workspace with 18 crates. Single binary deployment.
 
 ```text
      TUI / HTTP API              Signal Messenger
@@ -58,7 +58,7 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full dependency graph and tr
 
 ---
 
-## Quick Start
+## Quick start
 
 ```bash
 git clone https://github.com/forkwright/aletheia.git && cd aletheia
@@ -71,7 +71,7 @@ aletheia
 
 ---
 
-## Why Greek?
+## Naming
 
 Every name follows a deliberate naming philosophy. Greek provides precision where English flattens: *nous* over "agent" because these are minds, not tools. *Mneme* over "store" because memory is the function, not the container. See [gnomon.md](docs/gnomon.md) for the naming system and [lexicon.md](docs/lexicon.md) for the full registry.
 
