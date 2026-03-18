@@ -396,8 +396,14 @@ mod tests {
     fn gate_rejects_short_sequence() {
         let calls = seq(&["Read", "Edit", "Bash", "Read"]);
         let score = score_sequence(&calls);
-        assert!(!score.passed_gates);
-        assert!(score.total < f64::EPSILON);
+        assert!(
+            !score.passed_gates,
+            "sequence with fewer than 5 calls should fail the length gate"
+        );
+        assert!(
+            score.total < f64::EPSILON,
+            "rejected sequence should have a zero score"
+        );
     }
 
     #[test]
@@ -405,14 +411,20 @@ mod tests {
         // 6 calls but only 2 distinct tools
         let calls = seq(&["Read", "Read", "Read", "Edit", "Edit", "Edit"]);
         let score = score_sequence(&calls);
-        assert!(!score.passed_gates);
+        assert!(
+            !score.passed_gates,
+            "sequence with fewer than 3 distinct tools should fail the diversity gate"
+        );
     }
 
     #[test]
     fn gate_passes_for_valid_sequence() {
         let calls = seq(&["Grep", "Read", "Read", "Edit", "Bash", "Bash"]);
         let score = score_sequence(&calls);
-        assert!(score.passed_gates);
+        assert!(
+            score.passed_gates,
+            "valid sequence with sufficient length and tool diversity should pass all gates"
+        );
     }
 
     // ------------------------------------------------------------------
@@ -436,8 +448,14 @@ mod tests {
         // Total 9: 7 Bash (78%), 4 errors (44%)
         calls.push(tc("Bash")); // 10 total: 8 Bash (80%), 4 errors (40%)
         let score = score_sequence(&calls);
-        assert!(!score.passed_gates);
-        assert!(score.details.iter().any(|d| d.contains("debugging spiral")));
+        assert!(
+            !score.passed_gates,
+            "debugging spiral (high Bash ratio + high error rate) should fail gates"
+        );
+        assert!(
+            score.details.iter().any(|d| d.contains("debugging spiral")),
+            "rejection details should mention debugging spiral"
+        );
     }
 
     #[test]
@@ -447,7 +465,10 @@ mod tests {
         // 7 calls: 4 Bash (57%), 0 errors (0%): not rejected
         let score = score_sequence(&calls);
         // passes the spiral check (error_ratio = 0)
-        assert!(!score.details.iter().any(|d| d.contains("debugging spiral")));
+        assert!(
+            !score.details.iter().any(|d| d.contains("debugging spiral")),
+            "high Bash ratio without high error rate should not trigger spiral detection"
+        );
     }
 
     // ------------------------------------------------------------------
@@ -459,8 +480,14 @@ mod tests {
         // Exactly 1 write, no search, some reads
         let calls = seq(&["Read", "Read", "Edit", "Read", "Bash", "Read"]);
         let score = score_sequence(&calls);
-        assert!(!score.passed_gates);
-        assert!(score.details.iter().any(|d| d.contains("single-file edit")));
+        assert!(
+            !score.passed_gates,
+            "single-file edit pattern should fail gates"
+        );
+        assert!(
+            score.details.iter().any(|d| d.contains("single-file edit")),
+            "rejection details should mention single-file edit"
+        );
     }
 
     #[test]
@@ -469,7 +496,10 @@ mod tests {
         let calls = seq(&["Grep", "Read", "Edit", "Read", "Bash", "Bash"]);
         let score = score_sequence(&calls);
         // Should pass the single-file check
-        assert!(!score.details.iter().any(|d| d.contains("single-file edit")));
+        assert!(
+            !score.details.iter().any(|d| d.contains("single-file edit")),
+            "presence of search tools should prevent single-file edit detection"
+        );
     }
 
     #[test]
@@ -477,7 +507,10 @@ mod tests {
         // Multiple writes: not a single-file edit
         let calls = seq(&["Read", "Edit", "Edit", "Write", "Bash", "Bash"]);
         let score = score_sequence(&calls);
-        assert!(!score.details.iter().any(|d| d.contains("single-file edit")));
+        assert!(
+            !score.details.iter().any(|d| d.contains("single-file edit")),
+            "multiple writes should prevent single-file edit detection"
+        );
     }
 
     // ------------------------------------------------------------------
@@ -492,15 +525,24 @@ mod tests {
         // just reading/glob and running checks without writing anything.
         let calls = seq(&["Read", "Glob", "Bash", "Read", "Bash", "Glob"]);
         let score = score_sequence(&calls);
-        assert!(!score.passed_gates);
-        assert!(score.details.iter().any(|d| d.contains("config-specific")));
+        assert!(
+            !score.passed_gates,
+            "config-specific inspection pattern should fail gates"
+        );
+        assert!(
+            score.details.iter().any(|d| d.contains("config-specific")),
+            "rejection details should mention config-specific inspection"
+        );
     }
 
     #[test]
     fn antipattern_config_specific_not_triggered_with_writes() {
         let calls = seq(&["Read", "Read", "Bash", "Read", "Edit", "Bash"]);
         let score = score_sequence(&calls);
-        assert!(!score.details.iter().any(|d| d.contains("config-specific")));
+        assert!(
+            !score.details.iter().any(|d| d.contains("config-specific")),
+            "presence of write tools should prevent config-specific detection"
+        );
     }
 
     // ------------------------------------------------------------------
@@ -519,32 +561,60 @@ mod tests {
             "Read",
         ]);
         let score = score_sequence(&calls);
-        assert!(score.passed_gates);
-        assert_eq!(score.pattern_type, Some(PatternType::Research));
+        assert!(
+            score.passed_gates,
+            "research-pattern sequence should pass all gates"
+        );
+        assert_eq!(
+            score.pattern_type,
+            Some(PatternType::Research),
+            "search-heavy read-only sequence should be classified as Research"
+        );
     }
 
     #[test]
     fn pattern_build_detected() {
         let calls = seq(&["Read", "Write", "Bash", "Edit", "Bash", "Edit", "Bash"]);
         let score = score_sequence(&calls);
-        assert!(score.passed_gates);
-        assert_eq!(score.pattern_type, Some(PatternType::Build));
+        assert!(
+            score.passed_gates,
+            "build-pattern sequence should pass all gates"
+        );
+        assert_eq!(
+            score.pattern_type,
+            Some(PatternType::Build),
+            "write-exec cycle sequence should be classified as Build"
+        );
     }
 
     #[test]
     fn pattern_diagnostic_detected() {
         let calls = seq(&["Grep", "Read", "Read", "Read", "Edit", "Bash"]);
         let score = score_sequence(&calls);
-        assert!(score.passed_gates);
-        assert_eq!(score.pattern_type, Some(PatternType::Diagnostic));
+        assert!(
+            score.passed_gates,
+            "diagnostic-pattern sequence should pass all gates"
+        );
+        assert_eq!(
+            score.pattern_type,
+            Some(PatternType::Diagnostic),
+            "search-read-fix-verify sequence should be classified as Diagnostic"
+        );
     }
 
     #[test]
     fn pattern_refactor_detected() {
         let calls = seq(&["Read", "Read", "Read", "Edit", "Edit", "Write", "Bash"]);
         let score = score_sequence(&calls);
-        assert!(score.passed_gates);
-        assert_eq!(score.pattern_type, Some(PatternType::Refactor));
+        assert!(
+            score.passed_gates,
+            "refactor-pattern sequence should pass all gates"
+        );
+        assert_eq!(
+            score.pattern_type,
+            Some(PatternType::Refactor),
+            "read-transform-verify sequence should be classified as Refactor"
+        );
     }
 
     #[test]
@@ -554,8 +624,15 @@ mod tests {
         // write_count=1 means Research (write==0) is excluded.
         let calls = seq(&["Read", "Read", "Grep", "Read", "Read", "Write"]);
         let score = score_sequence(&calls);
-        assert!(score.passed_gates);
-        assert_eq!(score.pattern_type, Some(PatternType::Review));
+        assert!(
+            score.passed_gates,
+            "review-pattern sequence should pass all gates"
+        );
+        assert_eq!(
+            score.pattern_type,
+            Some(PatternType::Review),
+            "read-heavy write-light sequence should be classified as Review"
+        );
     }
 
     // ------------------------------------------------------------------
@@ -566,8 +643,14 @@ mod tests {
     fn score_total_positive_for_good_sequence() {
         let calls = seq(&["Grep", "Read", "Read", "Edit", "Edit", "Bash"]);
         let score = score_sequence(&calls);
-        assert!(score.passed_gates);
-        assert!(score.total > 0.0);
+        assert!(
+            score.passed_gates,
+            "well-formed sequence should pass all gates"
+        );
+        assert!(
+            score.total > 0.0,
+            "well-formed sequence should have a positive score"
+        );
     }
 
     #[test]
@@ -584,8 +667,15 @@ mod tests {
             "Bash",
         ]);
         let score = score_sequence(&calls);
-        assert!(score.passed_gates);
-        assert!(score.total <= 1.0);
+        assert!(
+            score.passed_gates,
+            "diverse high-quality sequence should pass all gates"
+        );
+        assert!(
+            score.total <= 1.0,
+            "total score should be clamped to 1.0, got {}",
+            score.total
+        );
     }
 
     #[test]
@@ -612,9 +702,21 @@ mod tests {
     fn details_contain_breakdown() {
         let calls = seq(&["Grep", "Read", "Read", "Edit", "Bash", "Bash"]);
         let score = score_sequence(&calls);
-        assert!(score.passed_gates);
-        assert!(score.details.iter().any(|d| d.contains("coherence:")));
-        assert!(score.details.iter().any(|d| d.contains("diversity:")));
-        assert!(score.details.iter().any(|d| d.contains("completion:")));
+        assert!(
+            score.passed_gates,
+            "valid sequence should pass gates before checking details"
+        );
+        assert!(
+            score.details.iter().any(|d| d.contains("coherence:")),
+            "scoring details should include coherence breakdown"
+        );
+        assert!(
+            score.details.iter().any(|d| d.contains("diversity:")),
+            "scoring details should include diversity breakdown"
+        );
+        assert!(
+            score.details.iter().any(|d| d.contains("completion:")),
+            "scoring details should include completion breakdown"
+        );
     }
 }
