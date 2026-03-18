@@ -2,7 +2,9 @@
 
 use std::sync::Arc;
 use std::time::Instant;
+
 use tokio::sync::Mutex;
+use tokio_util::sync::CancellationToken;
 
 use aletheia_hermeneus::provider::ProviderRegistry;
 #[cfg(feature = "knowledge-store")]
@@ -13,7 +15,6 @@ use aletheia_organon::registry::ToolRegistry;
 use aletheia_symbolon::jwt::JwtManager;
 use aletheia_taxis::config::AletheiaConfig;
 use aletheia_taxis::oikos::Oikos;
-use tokio_util::sync::CancellationToken;
 
 use crate::idempotency::IdempotencyCache;
 

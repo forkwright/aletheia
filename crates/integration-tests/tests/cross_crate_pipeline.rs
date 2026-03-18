@@ -12,15 +12,16 @@
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use aletheia_koina::secret::SecretString;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use tokio::sync::Mutex as TokioMutex;
+use tokio_util::sync::CancellationToken;
 use tower::ServiceExt;
 
 use aletheia_hermeneus::provider::{LlmProvider, ProviderRegistry};
 use aletheia_hermeneus::test_utils::MockProvider;
 use aletheia_hermeneus::types::*;
+use aletheia_koina::secret::SecretString;
 use aletheia_mneme::store::SessionStore;
 use aletheia_nous::config::{NousConfig, PipelineConfig};
 use aletheia_nous::manager::NousManager;
@@ -31,7 +32,6 @@ use aletheia_pylon::state::AppState;
 use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
 use aletheia_symbolon::types::Role;
 use aletheia_taxis::oikos::Oikos;
-use tokio_util::sync::CancellationToken;
 
 // ---------------------------------------------------------------------------
 // Mock providers

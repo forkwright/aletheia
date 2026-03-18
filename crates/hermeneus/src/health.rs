@@ -231,8 +231,9 @@ impl ProviderHealthTracker {
                     }
                 }
             }
-            // NOTE: non-availability errors (parse, unsupported model) do not affect health
-            _ => {}
+            _ => {
+                // NOTE: non-availability errors (parse, unsupported model) do not affect health
+            }
         }
     }
 }

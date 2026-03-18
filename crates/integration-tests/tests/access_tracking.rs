@@ -1,10 +1,11 @@
 //! Integration tests for access tracking and knowledge graph data audit.
 #![cfg(feature = "engine-tests")]
 
+use std::sync::Arc;
+
 use aletheia_mneme::embedding::{EmbeddingProvider, MockEmbeddingProvider};
 use aletheia_mneme::knowledge::{EmbeddedChunk, EpistemicTier, Fact, default_stability_hours};
 use aletheia_mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
-use std::sync::Arc;
 
 fn open_store(dim: usize) -> Arc<KnowledgeStore> {
     KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim }).expect("open_mem")

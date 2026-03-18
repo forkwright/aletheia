@@ -206,8 +206,9 @@ impl MagicInlineRule {
                         }
                     }
                 }
-                // NOTE: non-rule atoms don't contribute to rule containment
-                _ => {}
+                _ => {
+                    // NOTE: non-rule atoms don't contribute to rule containment
+                }
             }
         }
         coll

@@ -118,16 +118,18 @@ pub fn format_messages(messages: &[Message], include_tool_calls: bool) -> String
                         ContentBlock::Thinking { thinking, .. } => {
                             let _ = writeln!(block_text, "[Thinking: {thinking}]");
                         }
-                        // NOTE: other content block types not rendered in prompt summary
-                        _ => {}
+                        _ => {
+                            // NOTE: other content block types not rendered in prompt summary
+                        }
                     }
                 }
                 if !block_text.is_empty() {
                     let _ = writeln!(output, "[{role_label}]\n{block_text}");
                 }
             }
-            // NOTE: future content variants rendered as empty
-            _ => {}
+            _ => {
+                // NOTE: future content variants rendered as empty
+            }
         }
     }
 

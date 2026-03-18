@@ -363,7 +363,10 @@ pub fn decrypt_toml_values(value: &mut toml::Value, master_key: Option<&[u8; KEY
                 decrypt_toml_values(item, master_key);
             }
         }
-        _ => {}
+        _ => {
+            // NOTE: leaf TOML values (bool, integer, float, datetime) cannot contain
+            // encrypted strings and require no decryption pass
+        }
     }
 }
 
@@ -416,7 +419,10 @@ fn encrypt_recursive(
                 encrypt_recursive(item, master_key, count)?;
             }
         }
-        _ => {}
+        _ => {
+            // NOTE: leaf TOML values (bool, integer, float, datetime) cannot hold
+            // plaintext secrets and are skipped during encryption traversal
+        }
     }
     Ok(())
 }

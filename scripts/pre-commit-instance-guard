@@ -3,7 +3,7 @@ set -euo pipefail
 # Pre-commit hook: reject any staged files under instance/
 # Install: cp scripts/pre-commit-instance-guard .git/hooks/pre-commit
 
-INSTANCE_FILES=$(git diff --cached --name-only | grep "^instance/" || true)
+INSTANCE_FILES=$(git diff --cached --name-only | grep "^instance/" || true)  # NOTE: failure is non-fatal here
 
 if [[ -n "$INSTANCE_FILES" ]]; then
     echo "ERROR: Attempting to commit instance/ files:"

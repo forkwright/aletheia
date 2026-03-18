@@ -5,12 +5,13 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
+use tokio_util::sync::CancellationToken;
+use tracing::{Instrument, info, warn};
+
 use aletheia_hermeneus::provider::ProviderRegistry;
 use aletheia_organon::registry::ToolRegistry;
 use aletheia_organon::types::{SpawnRequest, SpawnResult, SpawnService};
 use aletheia_taxis::oikos::Oikos;
-use tokio_util::sync::CancellationToken;
-use tracing::{Instrument, info, warn};
 
 use crate::actor;
 use crate::config::{NousConfig, PipelineConfig, StageBudget};

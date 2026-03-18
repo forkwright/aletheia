@@ -2,8 +2,9 @@
 
 use std::time::{Duration, Instant};
 
-use aletheia_koina::secret::SecretString;
 use tracing::{info, warn};
+
+use aletheia_koina::secret::SecretString;
 
 use crate::client::EvalClient;
 use crate::scenario::{Scenario, ScenarioOutcome, ScenarioResult};

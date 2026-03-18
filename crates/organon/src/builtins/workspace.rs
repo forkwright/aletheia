@@ -11,12 +11,12 @@ use std::pin::Pin;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-use crate::process_guard::ProcessGuard;
-
-use aletheia_koina::id::ToolName;
 use indexmap::IndexMap;
 
+use aletheia_koina::id::ToolName;
+
 use crate::error::{self, Result};
+use crate::process_guard::ProcessGuard;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, ToolCategory, ToolContext, ToolDef, ToolInput,

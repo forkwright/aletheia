@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use aletheia_koina::secret::SecretString;
 use serde::{Deserialize, Serialize};
 use snafu::prelude::*;
+
+use aletheia_koina::secret::SecretString;
 
 use crate::error::{ConfigDirSnafu, IoSnafu, Result, TomlSnafu};
 use crate::theme::ThemeMode;

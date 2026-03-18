@@ -1,12 +1,14 @@
 //! Integration tests for knowledge lifecycle: correct, retract, and audit operations.
 #![cfg(feature = "engine-tests")]
 
+use std::collections::BTreeMap;
+use std::sync::Arc;
+
+use serde_json::Value as JsonValue;
+
 use aletheia_mneme::engine::DataValue;
 use aletheia_mneme::knowledge::{EpistemicTier, Fact};
 use aletheia_mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
-use serde_json::Value as JsonValue;
-use std::collections::BTreeMap;
-use std::sync::Arc;
 
 fn make_fact(id: &str, nous_id: &str, content: &str, confidence: f64, tier: EpistemicTier) -> Fact {
     Fact {

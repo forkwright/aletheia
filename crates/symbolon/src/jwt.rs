@@ -6,11 +6,12 @@
 
 use std::time::Duration;
 
-use aletheia_koina::secret::SecretString;
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use ring::hmac;
 use tracing::instrument;
+
+use aletheia_koina::secret::SecretString;
 
 use crate::error::{self, Result};
 use crate::types::{Claims, Role, TokenKind, TokenPair};

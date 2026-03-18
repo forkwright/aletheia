@@ -7,8 +7,9 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use aletheia_koina::id::ToolName;
 use indexmap::IndexMap;
+
+use aletheia_koina::id::ToolName;
 
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};

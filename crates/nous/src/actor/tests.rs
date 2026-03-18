@@ -1,9 +1,10 @@
 #![expect(clippy::unwrap_used, reason = "test assertions")]
 #![expect(clippy::expect_used, reason = "test assertions")]
+use tokio_util::sync::CancellationToken;
+
 use aletheia_hermeneus::provider::LlmProvider;
 use aletheia_hermeneus::test_utils::MockProvider;
 use aletheia_hermeneus::types::{CompletionRequest, CompletionResponse};
-use tokio_util::sync::CancellationToken;
 
 use super::*;
 

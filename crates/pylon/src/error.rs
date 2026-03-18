@@ -300,9 +300,10 @@ impl From<tokio::task::JoinError> for ApiError {
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
-    use super::*;
     use axum::response::IntoResponse;
     use tracing::Instrument;
+
+    use super::*;
 
     #[test]
     fn rate_limited_includes_retry_after_header() {

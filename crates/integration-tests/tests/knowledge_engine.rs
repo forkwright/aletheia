@@ -1,10 +1,11 @@
 //! Integration tests for `KnowledgeStore`: fact round-trip (TEST-02) and HNSW vector search (TEST-03).
 #![cfg(feature = "engine-tests")]
 
+use std::collections::BTreeMap;
+
 use aletheia_mneme::embedding::{EmbeddingProvider, MockEmbeddingProvider};
 use aletheia_mneme::knowledge::{EmbeddedChunk, Entity, EpistemicTier, Fact, Relationship};
 use aletheia_mneme::knowledge_store::{HybridQuery, KnowledgeConfig, KnowledgeStore};
-use std::collections::BTreeMap;
 
 fn make_fact(id: &str, nous_id: &str, content: &str, confidence: f64, tier: EpistemicTier) -> Fact {
     Fact {

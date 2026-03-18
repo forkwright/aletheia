@@ -1,9 +1,10 @@
 //! Context distillation engine.
 
-use aletheia_hermeneus::provider::LlmProvider;
-use aletheia_hermeneus::types::{CompletionRequest, Content, ContentBlock, Message, Role};
 use snafu::ResultExt;
 use tracing::instrument;
+
+use aletheia_hermeneus::provider::LlmProvider;
+use aletheia_hermeneus::types::{CompletionRequest, Content, ContentBlock, Message, Role};
 
 use crate::error::{EmptySummarySnafu, LlmCallSnafu, NoMessagesSnafu, Result};
 use crate::flush::{FlushItem, FlushSource, MemoryFlush};
@@ -555,8 +556,9 @@ fn collect_flush_section(
         "Task Context" => {
             *task_state = Some(content.join("\n"));
         }
-        // NOTE: unrecognized sections are not extracted
-        _ => {}
+        _ => {
+            // NOTE: unrecognized sections are not extracted
+        }
     }
 }
 

@@ -8,8 +8,9 @@
 use axum::http::header;
 use axum::response::IntoResponse;
 
-use aletheia_koina::http::CONTENT_TYPE_JSON;
 use utoipa::OpenApi;
+
+use aletheia_koina::http::CONTENT_TYPE_JSON;
 
 #[derive(OpenApi)]
 #[openapi(

@@ -2,8 +2,9 @@
 
 use std::path::{Path, PathBuf};
 
-use aletheia_koina::secret::SecretString;
 use snafu::{ResultExt, Snafu};
+
+use aletheia_koina::secret::SecretString;
 
 #[derive(Debug, Snafu)]
 pub(crate) enum InitError {

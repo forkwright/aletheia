@@ -8,14 +8,15 @@ use anyhow::{Context, Result};
 use sha2::{Digest, Sha256};
 use tracing::info;
 
-use aletheia_mneme::embedding::{EmbeddingConfig, EmbeddingProvider, create_provider};
-use aletheia_mneme::knowledge::{EmbeddedChunk, EpistemicTier, Fact, far_future, parse_timestamp};
-use aletheia_mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
-use aletheia_taxis::oikos::Oikos;
 use qdrant_client::Qdrant;
 use qdrant_client::qdrant::{
     ScrollPointsBuilder, value, with_payload_selector, with_vectors_selector,
 };
+
+use aletheia_mneme::embedding::{EmbeddingConfig, EmbeddingProvider, create_provider};
+use aletheia_mneme::knowledge::{EmbeddedChunk, EpistemicTier, Fact, far_future, parse_timestamp};
+use aletheia_mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
+use aletheia_taxis::oikos::Oikos;
 
 struct MemoryRecord {
     content: String,

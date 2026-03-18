@@ -6,9 +6,9 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, RwLock};
 
-use aletheia_koina::id::{NousId, SessionId, ToolName};
-
 use snafu::IntoError;
+
+use aletheia_koina::id::{NousId, SessionId, ToolName};
 
 use crate::error::{PlanningAdapterError, SaveProjectSnafu};
 use crate::registry::ToolRegistry;

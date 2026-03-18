@@ -1,9 +1,10 @@
 //! HTTP client for interacting with a running Aletheia instance.
 
-use aletheia_koina::secret::SecretString;
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
 use tracing::instrument;
+
+use aletheia_koina::secret::SecretString;
 
 use crate::error::{self, Result};
 use crate::sse::{self, ParsedSseEvent};

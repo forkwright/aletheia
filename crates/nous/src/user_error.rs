@@ -76,8 +76,9 @@ impl fmt::Display for UserFacingError {
 ///
 /// Returns `None` for internal errors that should not be shown to users.
 pub fn to_user_facing(error: &crate::error::Error) -> Option<UserFacingError> {
-    use crate::error::Error;
     use aletheia_hermeneus::error::Error as HError;
+
+    use crate::error::Error;
 
     match error {
         Error::Llm { source, .. } => match source {

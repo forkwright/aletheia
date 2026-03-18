@@ -311,11 +311,13 @@ fn parse_property_type(type_name: &str, tool_name: &str) -> Result<PropertyType,
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
-    use super::*;
-    use crate::manifest::{PackInputSchema, PackManifest, PackPropertyDef, PackToolDef};
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
+
     use tempfile::TempDir;
+
+    use super::*;
+    use crate::manifest::{PackInputSchema, PackManifest, PackPropertyDef, PackToolDef};
 
     fn setup_pack_dir(files: &[(&str, &str)]) -> TempDir {
         let dir = TempDir::new().unwrap();

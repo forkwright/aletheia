@@ -4,6 +4,8 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use snafu::ResultExt;
+
 use aletheia_mneme::embedding::EmbeddingProvider;
 use aletheia_mneme::knowledge::{EpistemicTier, Fact};
 use aletheia_mneme::knowledge_store::{HybridQuery, KnowledgeStore};
@@ -12,7 +14,6 @@ use aletheia_organon::error::{
     MutateStoreSnafu, SearchSnafu,
 };
 use aletheia_organon::types::{DatalogResult, FactSummary, KnowledgeSearchService, MemoryResult};
-use snafu::ResultExt;
 
 /// Boxes any error type for use with snafu context selectors that expect
 /// `Box<dyn Error + Send + Sync>` as source.

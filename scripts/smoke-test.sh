@@ -188,11 +188,11 @@ trap 'rm -rf "$TMPDIR_INIT"' EXIT
 INIT_EXIT=0
 INIT_OUT=$("$BINARY" init --instance-root "$TMPDIR_INIT/instance" --yes 2>&1) || INIT_EXIT=$?
 if [[ "$INIT_EXIT" -le 1 ]]; then
-    pass "init --yes exits cleanly (exit $INIT_EXIT)"
+    pass "init --yes exits cleanly (exit ${INIT_EXIT})"
 elif echo "$INIT_OUT" | grep -qiE "api.?key|anthropic|credential|error"; then
     pass "init --yes fails with useful error message"
 else
-    fail "init --yes panicked or produced no useful output (exit $INIT_EXIT)"
+    fail "init --yes panicked or produced no useful output (exit ${INIT_EXIT})"
 fi
 
 section "Import (missing file — expect error)"
@@ -217,7 +217,7 @@ section "Unknown subcommand"
 UNKNOWN_EXIT=0
 "$BINARY" totally-unknown-subcommand 2>/dev/null || UNKNOWN_EXIT=$?
 if [[ "$UNKNOWN_EXIT" -ne 0 ]]; then
-    pass "unknown subcommand exits non-zero (exit $UNKNOWN_EXIT)"
+    pass "unknown subcommand exits non-zero (exit ${UNKNOWN_EXIT})"
 else
     fail "unknown subcommand should exit non-zero"
 fi

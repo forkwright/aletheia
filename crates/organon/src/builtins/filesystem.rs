@@ -12,8 +12,9 @@ use std::pin::Pin;
 use std::process::{Command, Stdio};
 use std::time::SystemTime;
 
-use aletheia_koina::id::ToolName;
 use indexmap::IndexMap;
+
+use aletheia_koina::id::ToolName;
 
 use crate::error::Result;
 use crate::process_guard::ProcessGuard;

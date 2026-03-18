@@ -279,8 +279,9 @@ impl NormalFormProgram {
                                         downstream_rules.insert(r_app.name.clone());
                                     }
                                 }
-                                // NOTE: non-rule atoms don't contribute downstream rules
-                                _ => {}
+                                _ => {
+                                    // NOTE: non-rule atoms don't contribute downstream rules
+                                }
                             }
                         }
                     }

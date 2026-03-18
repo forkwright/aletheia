@@ -14,29 +14,29 @@
 #![expect(clippy::unwrap_used, reason = "test assertions")]
 #![expect(clippy::expect_used, reason = "test assertions")]
 
-use aletheia_organon::error::KnowledgeAdapterError;
 use std::collections::HashSet;
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use std::sync::{Arc, RwLock};
 
-fn install_crypto_provider() {
-    let _ = rustls::crypto::ring::default_provider().install_default();
-}
+use tokio::sync::Mutex;
 
 use aletheia_koina::id::ToolName;
 use aletheia_koina::id::{NousId, SessionId};
 use aletheia_mneme::store::SessionStore;
 use aletheia_nous::adapters::{SessionBlackboardAdapter, SessionNoteAdapter};
 use aletheia_organon::builtins;
+use aletheia_organon::error::KnowledgeAdapterError;
 use aletheia_organon::registry::ToolRegistry;
 use aletheia_organon::types::{
     FactSummary, KnowledgeSearchService, MemoryResult, ServerToolConfig, ToolContext, ToolInput,
     ToolServices,
 };
-use std::sync::RwLock;
+
+fn install_crypto_provider() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+}
 
 // ---------------------------------------------------------------------------
 // Helpers

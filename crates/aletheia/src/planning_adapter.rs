@@ -4,6 +4,8 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 
+use snafu::ResultExt;
+
 use aletheia_dianoia::phase::Phase;
 use aletheia_dianoia::plan::PlanState;
 use aletheia_dianoia::project::{Project, ProjectMode};
@@ -15,7 +17,6 @@ use aletheia_organon::error::{
     TransitionSnafu, WorkspaceSnafu,
 };
 use aletheia_organon::types::PlanningService;
-use snafu::ResultExt;
 
 /// Boxes any error type for use with snafu context selectors that expect
 /// `Box<dyn Error + Send + Sync>` as source.
