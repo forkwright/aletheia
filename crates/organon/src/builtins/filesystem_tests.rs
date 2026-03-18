@@ -37,8 +37,11 @@ async fn grep_finds_pattern() {
     let ctx = test_ctx(dir.path());
     let input = tool_input("grep", serde_json::json!({ "pattern": "println" }));
     let result = GrepExecutor.execute(&input, &ctx).await.expect("exec");
-    assert!(!result.is_error);
-    assert!(result.content.text_summary().contains("println"));
+    assert!(!result.is_error, "grep should succeed without error");
+    assert!(
+        result.content.text_summary().contains("println"),
+        "grep output should contain the matched pattern"
+    );
 }
 
 #[tokio::test]
@@ -53,10 +56,19 @@ async fn grep_with_glob_filter() {
         serde_json::json!({ "pattern": "func", "glob": "*.rs" }),
     );
     let result = GrepExecutor.execute(&input, &ctx).await.expect("exec");
-    assert!(!result.is_error);
+    assert!(
+        !result.is_error,
+        "grep with glob filter should succeed without error"
+    );
     let text = result.content.text_summary();
-    assert!(text.contains("rust_func"));
-    assert!(!text.contains("tsFunc"));
+    assert!(
+        text.contains("rust_func"),
+        "grep should find rust_func in .rs file"
+    );
+    assert!(
+        !text.contains("tsFunc"),
+        "grep should not find tsFunc when filtering to .rs files"
+    );
 }
 
 #[tokio::test]
@@ -70,10 +82,19 @@ async fn grep_case_insensitive() {
         serde_json::json!({ "pattern": "HELLO", "caseSensitive": false }),
     );
     let result = GrepExecutor.execute(&input, &ctx).await.expect("exec");
-    assert!(!result.is_error);
+    assert!(
+        !result.is_error,
+        "case-insensitive grep should succeed without error"
+    );
     let text = result.content.text_summary();
-    assert!(text.contains("Hello"));
-    assert!(text.contains("hello"));
+    assert!(
+        text.contains("Hello"),
+        "case-insensitive grep should match Hello"
+    );
+    assert!(
+        text.contains("hello"),
+        "case-insensitive grep should match hello"
+    );
 }
 
 #[tokio::test]
@@ -84,8 +105,15 @@ async fn grep_no_matches_not_error() {
     let ctx = test_ctx(dir.path());
     let input = tool_input("grep", serde_json::json!({ "pattern": "zzzznotfound" }));
     let result = GrepExecutor.execute(&input, &ctx).await.expect("exec");
-    assert!(!result.is_error);
-    assert_eq!(result.content.text_summary(), "No matches found.");
+    assert!(
+        !result.is_error,
+        "grep with no matches should not return an error"
+    );
+    assert_eq!(
+        result.content.text_summary(),
+        "No matches found.",
+        "grep with no matches should return the standard no-matches message"
+    );
 }
 
 #[tokio::test]
@@ -97,9 +125,12 @@ async fn find_locates_files() {
     let ctx = test_ctx(dir.path());
     let input = tool_input("find", serde_json::json!({ "pattern": "app" }));
     let result = FindExecutor.execute(&input, &ctx).await.expect("exec");
-    assert!(!result.is_error);
+    assert!(!result.is_error, "find should succeed without error");
     let text = result.content.text_summary();
-    assert!(text.contains("app"));
+    assert!(
+        text.contains("app"),
+        "find output should contain files matching the pattern"
+    );
 }
 
 #[tokio::test]
@@ -111,9 +142,15 @@ async fn find_type_filter() {
     let ctx = test_ctx(dir.path());
     let input = tool_input("find", serde_json::json!({ "pattern": ".", "type": "d" }));
     let result = FindExecutor.execute(&input, &ctx).await.expect("exec");
-    assert!(!result.is_error);
+    assert!(
+        !result.is_error,
+        "find with type filter should succeed without error"
+    );
     let text = result.content.text_summary();
-    assert!(text.contains("subdir"));
+    assert!(
+        text.contains("subdir"),
+        "find with directory type filter should include the subdirectory"
+    );
 }
 
 #[tokio::test]
@@ -130,10 +167,19 @@ async fn find_max_depth() {
         serde_json::json!({ "pattern": "txt", "maxDepth": 1 }),
     );
     let result = FindExecutor.execute(&input, &ctx).await.expect("exec");
-    assert!(!result.is_error);
+    assert!(
+        !result.is_error,
+        "find with max depth should succeed without error"
+    );
     let text = result.content.text_summary();
-    assert!(text.contains("shallow"));
-    assert!(!text.contains("deep"));
+    assert!(
+        text.contains("shallow"),
+        "find should include shallow file within max depth"
+    );
+    assert!(
+        !text.contains("deep"),
+        "find should not include deeply nested file beyond max depth"
+    );
 }
 
 #[tokio::test]
@@ -145,10 +191,16 @@ async fn ls_lists_directory() {
     let ctx = test_ctx(dir.path());
     let input = tool_input("ls", serde_json::json!({}));
     let result = LsExecutor.execute(&input, &ctx).await.expect("exec");
-    assert!(!result.is_error);
+    assert!(!result.is_error, "ls should succeed without error");
     let text = result.content.text_summary();
-    assert!(text.contains("subdir/"));
-    assert!(text.contains("file.txt"));
+    assert!(
+        text.contains("subdir/"),
+        "ls output should include the subdirectory"
+    );
+    assert!(
+        text.contains("file.txt"),
+        "ls output should include the file"
+    );
 }
 
 #[tokio::test]
@@ -160,10 +212,16 @@ async fn ls_hides_dotfiles() {
     let ctx = test_ctx(dir.path());
     let input = tool_input("ls", serde_json::json!({}));
     let result = LsExecutor.execute(&input, &ctx).await.expect("exec");
-    assert!(!result.is_error);
+    assert!(!result.is_error, "ls should succeed without error");
     let text = result.content.text_summary();
-    assert!(!text.contains(".hidden"));
-    assert!(text.contains("visible.txt"));
+    assert!(
+        !text.contains(".hidden"),
+        "ls should not show dotfiles by default"
+    );
+    assert!(
+        text.contains("visible.txt"),
+        "ls should show non-hidden files"
+    );
 }
 
 #[tokio::test]
@@ -175,10 +233,19 @@ async fn ls_shows_dotfiles_with_all() {
     let ctx = test_ctx(dir.path());
     let input = tool_input("ls", serde_json::json!({ "all": true }));
     let result = LsExecutor.execute(&input, &ctx).await.expect("exec");
-    assert!(!result.is_error);
+    assert!(
+        !result.is_error,
+        "ls with all flag should succeed without error"
+    );
     let text = result.content.text_summary();
-    assert!(text.contains(".hidden"));
-    assert!(text.contains("visible.txt"));
+    assert!(
+        text.contains(".hidden"),
+        "ls with all flag should show dotfiles"
+    );
+    assert!(
+        text.contains("visible.txt"),
+        "ls with all flag should still show non-hidden files"
+    );
 }
 
 #[tokio::test]
@@ -211,7 +278,10 @@ async fn path_validation_rejects_outside_roots() {
         .execute(&input, &ctx)
         .await
         .expect_err("should reject outside root");
-    assert!(err.to_string().contains("outside allowed roots"));
+    assert!(
+        err.to_string().contains("outside allowed roots"),
+        "error should indicate path is outside allowed roots"
+    );
 }
 
 #[tokio::test]
@@ -234,7 +304,10 @@ async fn test_grep_when_pattern_argument_missing_returns_error() {
         .execute(&input, &ctx)
         .await
         .expect_err("missing pattern should error");
-    assert!(err.to_string().contains("missing or invalid field"));
+    assert!(
+        err.to_string().contains("missing or invalid field"),
+        "error should indicate the pattern field is missing or invalid"
+    );
 }
 
 #[tokio::test]
@@ -246,7 +319,10 @@ async fn test_find_when_pattern_argument_missing_returns_error() {
         .execute(&input, &ctx)
         .await
         .expect_err("missing pattern should error");
-    assert!(err.to_string().contains("missing or invalid field"));
+    assert!(
+        err.to_string().contains("missing or invalid field"),
+        "error should indicate the pattern field is missing or invalid"
+    );
 }
 
 #[tokio::test]
@@ -264,7 +340,10 @@ async fn test_grep_max_results_limits_output_lines() {
         serde_json::json!({ "pattern": "match", "maxResults": 5 }),
     );
     let result = GrepExecutor.execute(&input, &ctx).await.expect("exec");
-    assert!(!result.is_error);
+    assert!(
+        !result.is_error,
+        "grep with maxResults should succeed without error"
+    );
     let text = result.content.text_summary();
     let match_count = text.lines().count();
     assert!(
@@ -284,7 +363,10 @@ async fn test_grep_case_sensitive_does_not_match_wrong_case() {
         serde_json::json!({ "pattern": "hello", "caseSensitive": true }),
     );
     let result = GrepExecutor.execute(&input, &ctx).await.expect("exec");
-    assert!(!result.is_error);
+    assert!(
+        !result.is_error,
+        "case-sensitive grep should succeed without error"
+    );
     assert_eq!(
         result.content.text_summary(),
         "No matches found.",
@@ -304,7 +386,10 @@ async fn test_grep_returns_error_result_for_invalid_path_outside_roots() {
         .execute(&input, &ctx)
         .await
         .expect_err("outside root should fail");
-    assert!(err.to_string().contains("outside allowed roots"));
+    assert!(
+        err.to_string().contains("outside allowed roots"),
+        "error should indicate path is outside allowed roots"
+    );
 }
 
 #[tokio::test]
@@ -313,8 +398,15 @@ async fn test_find_empty_results_returns_not_error_message() {
     let ctx = test_ctx(dir.path());
     let input = tool_input("find", serde_json::json!({ "pattern": "zzz_never_exists" }));
     let result = FindExecutor.execute(&input, &ctx).await.expect("exec");
-    assert!(!result.is_error);
-    assert_eq!(result.content.text_summary(), "No files found.");
+    assert!(
+        !result.is_error,
+        "find with no matches should not return an error"
+    );
+    assert_eq!(
+        result.content.text_summary(),
+        "No files found.",
+        "find with no matches should return the standard no-files message"
+    );
 }
 
 #[tokio::test]
@@ -327,7 +419,10 @@ async fn test_find_glob_extension_filter_matches_correctly() {
     let ctx = test_ctx(dir.path());
     let input = tool_input("find", serde_json::json!({ "pattern": "*.rs" }));
     let result = FindExecutor.execute(&input, &ctx).await.expect("exec");
-    assert!(!result.is_error);
+    assert!(
+        !result.is_error,
+        "find with glob extension filter should succeed without error"
+    );
     let text = result.content.text_summary();
     assert!(text.contains(".rs"), "should find .rs files");
 }
@@ -345,7 +440,10 @@ async fn test_find_max_results_limits_output() {
         serde_json::json!({ "pattern": "file", "maxResults": 3 }),
     );
     let result = FindExecutor.execute(&input, &ctx).await.expect("exec");
-    assert!(!result.is_error);
+    assert!(
+        !result.is_error,
+        "find with maxResults should succeed without error"
+    );
     let text = result.content.text_summary();
     let line_count = text.lines().count();
     assert!(
@@ -363,12 +461,16 @@ async fn test_ls_nonexistent_directory_returns_error_result() {
         serde_json::json!({ "path": dir.path().join("ghost").to_string_lossy().as_ref() }),
     );
     let result = LsExecutor.execute(&input, &ctx).await.expect("exec");
-    assert!(result.is_error);
+    assert!(
+        result.is_error,
+        "ls on nonexistent directory should return an error result"
+    );
     assert!(
         result
             .content
             .text_summary()
-            .contains("cannot read directory")
+            .contains("cannot read directory"),
+        "error message should indicate the directory cannot be read"
     );
 }
 
@@ -378,8 +480,15 @@ async fn test_ls_empty_directory_returns_descriptive_message() {
     let ctx = test_ctx(dir.path());
     let input = tool_input("ls", serde_json::json!({}));
     let result = LsExecutor.execute(&input, &ctx).await.expect("exec");
-    assert!(!result.is_error);
-    assert_eq!(result.content.text_summary(), "Directory is empty.");
+    assert!(
+        !result.is_error,
+        "ls on empty directory should succeed without error"
+    );
+    assert_eq!(
+        result.content.text_summary(),
+        "Directory is empty.",
+        "ls on empty directory should return the standard empty message"
+    );
 }
 
 #[tokio::test]
@@ -389,7 +498,7 @@ async fn test_ls_output_includes_file_size() {
     let ctx = test_ctx(dir.path());
     let input = tool_input("ls", serde_json::json!({}));
     let result = LsExecutor.execute(&input, &ctx).await.expect("exec");
-    assert!(!result.is_error);
+    assert!(!result.is_error, "ls should succeed without error");
     let text = result.content.text_summary();
     assert!(text.contains('5'), "should show file size 5");
 }
@@ -401,7 +510,7 @@ async fn test_ls_output_includes_date_column() {
     let ctx = test_ctx(dir.path());
     let input = tool_input("ls", serde_json::json!({}));
     let result = LsExecutor.execute(&input, &ctx).await.expect("exec");
-    assert!(!result.is_error);
+    assert!(!result.is_error, "ls should succeed without error");
     let text = result.content.text_summary();
     // Date format: YYYY-MM-DD HH:MM
     assert!(text.contains('-'), "should show date with hyphens");
@@ -415,61 +524,104 @@ async fn test_ls_uses_workspace_when_path_not_specified() {
     let ctx = test_ctx(dir.path());
     let input = tool_input("ls", serde_json::json!({}));
     let result = LsExecutor.execute(&input, &ctx).await.expect("exec");
-    assert!(!result.is_error);
-    assert!(result.content.text_summary().contains("sentinel.txt"));
+    assert!(
+        !result.is_error,
+        "ls without explicit path should succeed without error"
+    );
+    assert!(
+        result.content.text_summary().contains("sentinel.txt"),
+        "ls without explicit path should list workspace contents"
+    );
 }
 
 #[test]
 fn test_is_glob_pattern_detects_star() {
-    assert!(is_glob_pattern("*.rs"));
+    assert!(
+        is_glob_pattern("*.rs"),
+        "pattern with star should be detected as a glob"
+    );
 }
 
 #[test]
 fn test_is_glob_pattern_detects_question_mark() {
-    assert!(is_glob_pattern("file?.txt"));
+    assert!(
+        is_glob_pattern("file?.txt"),
+        "pattern with question mark should be detected as a glob"
+    );
 }
 
 #[test]
 fn test_is_glob_pattern_detects_brackets() {
-    assert!(is_glob_pattern("[abc]def"));
+    assert!(
+        is_glob_pattern("[abc]def"),
+        "pattern with brackets should be detected as a glob"
+    );
 }
 
 #[test]
 fn test_is_glob_pattern_detects_braces() {
-    assert!(is_glob_pattern("{foo,bar}"));
+    assert!(
+        is_glob_pattern("{foo,bar}"),
+        "pattern with braces should be detected as a glob"
+    );
 }
 
 #[test]
 fn test_is_glob_pattern_returns_false_for_plain_word() {
-    assert!(!is_glob_pattern("hello"));
-    assert!(!is_glob_pattern("file.txt"));
-    assert!(!is_glob_pattern("some_identifier"));
+    assert!(
+        !is_glob_pattern("hello"),
+        "plain word should not be detected as a glob"
+    );
+    assert!(
+        !is_glob_pattern("file.txt"),
+        "plain filename should not be detected as a glob"
+    );
+    assert!(
+        !is_glob_pattern("some_identifier"),
+        "plain identifier should not be detected as a glob"
+    );
 }
 
 #[test]
 fn test_days_to_ymd_known_epoch_gives_1970_01_01() {
     let (y, m, d) = days_to_ymd(0);
-    assert_eq!((y, m, d), (1970, 1, 1));
+    assert_eq!(
+        (y, m, d),
+        (1970, 1, 1),
+        "day 0 should correspond to the Unix epoch 1970-01-01"
+    );
 }
 
 #[test]
 fn test_days_to_ymd_365_days_gives_1971_01_01() {
     // 1970 was not a leap year, so day 365 = Jan 1, 1971
     let (y, m, d) = days_to_ymd(365);
-    assert_eq!((y, m, d), (1971, 1, 1));
+    assert_eq!(
+        (y, m, d),
+        (1971, 1, 1),
+        "day 365 after a non-leap year should be 1971-01-01"
+    );
 }
 
 #[test]
 fn test_days_to_ymd_known_date_2000_01_01() {
     // Days from 1970-01-01 to 2000-01-01 = 30 * 365 + 8 leap days = 10957
     let (y, m, d) = days_to_ymd(10957);
-    assert_eq!((y, m, d), (2000, 1, 1));
+    assert_eq!(
+        (y, m, d),
+        (2000, 1, 1),
+        "day 10957 from epoch should correspond to 2000-01-01"
+    );
 }
 
 #[test]
 fn test_truncate_output_short_string_returned_unchanged() {
     let short = "hello world".to_owned();
-    assert_eq!(truncate_output(short.clone()), short);
+    assert_eq!(
+        truncate_output(short.clone()),
+        short,
+        "short string should be returned unchanged by truncate_output"
+    );
 }
 
 #[test]
@@ -499,7 +651,10 @@ fn test_grep_def_has_pattern_as_required() {
     register(&mut reg).expect("register");
     let tn = ToolName::new("grep").expect("valid");
     let def = reg.get_def(&tn).expect("grep registered");
-    assert!(def.input_schema.required.contains(&"pattern".to_owned()));
+    assert!(
+        def.input_schema.required.contains(&"pattern".to_owned()),
+        "grep tool definition should require the pattern field"
+    );
 }
 
 #[test]
@@ -508,7 +663,10 @@ fn test_find_def_has_pattern_as_required() {
     register(&mut reg).expect("register");
     let tn = ToolName::new("find").expect("valid");
     let def = reg.get_def(&tn).expect("find registered");
-    assert!(def.input_schema.required.contains(&"pattern".to_owned()));
+    assert!(
+        def.input_schema.required.contains(&"pattern".to_owned()),
+        "find tool definition should require the pattern field"
+    );
 }
 
 #[test]
@@ -531,6 +689,12 @@ fn test_find_def_type_field_has_enum_values() {
     let def = reg.get_def(&tn).expect("find registered");
     let type_prop = def.input_schema.properties.get("type").expect("type prop");
     let enum_vals = type_prop.enum_values.as_ref().expect("enum values");
-    assert!(enum_vals.contains(&"f".to_owned()));
-    assert!(enum_vals.contains(&"d".to_owned()));
+    assert!(
+        enum_vals.contains(&"f".to_owned()),
+        "find type field should include 'f' for file"
+    );
+    assert!(
+        enum_vals.contains(&"d".to_owned()),
+        "find type field should include 'd' for directory"
+    );
 }

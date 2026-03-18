@@ -956,7 +956,7 @@ mod proptests {
                 !script.contains(&input),
                 "raw user input must not appear in script: {input}"
             );
-            prop_assert!(params.contains_key("user_input"));
+            prop_assert!(params.contains_key("user_input"), "param map should contain user_input binding");
         }
     }
 }
