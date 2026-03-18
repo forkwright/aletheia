@@ -93,22 +93,22 @@ fn default_prosoche_model() -> String {
 }
 
 fn default_max_tool_result_bytes() -> u32 {
-    // WHY: must match AgentDefaults::max_tool_result_bytes default in taxis.
-    32_768
+    aletheia_koina::defaults::MAX_TOOL_RESULT_BYTES
 }
 
 impl Default for NousConfig {
     fn default() -> Self {
+        use aletheia_koina::defaults as d;
         Self {
             id: "default".to_owned(),
             name: None,
             model: "claude-opus-4-20250514".to_owned(),
-            context_window: 200_000,
-            max_output_tokens: 16_384,
-            bootstrap_max_tokens: 40_000,
+            context_window: d::CONTEXT_TOKENS,
+            max_output_tokens: d::MAX_OUTPUT_TOKENS,
+            bootstrap_max_tokens: d::BOOTSTRAP_MAX_TOKENS,
             thinking_enabled: false,
             thinking_budget: 10_000,
-            max_tool_iterations: 200,
+            max_tool_iterations: d::MAX_TOOL_ITERATIONS,
             loop_detection_threshold: 3,
             domains: Vec::new(),
             server_tools: Vec::new(),
@@ -192,7 +192,11 @@ mod tests {
     fn nous_config_defaults() {
         let config = NousConfig::default();
         assert_eq!(config.context_window, 200_000);
-        assert_eq!(config.max_tool_iterations, 200);
+        assert_eq!(
+            config.max_tool_iterations,
+            aletheia_koina::defaults::MAX_TOOL_ITERATIONS,
+            "default should match koina::defaults"
+        );
         assert!(!config.thinking_enabled);
     }
 
