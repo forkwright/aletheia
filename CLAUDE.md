@@ -56,6 +56,21 @@ cargo clippy --workspace               # Lint (zero warnings)
 - `instance.example/` shows the expected structure for fresh clones
 - CI PII scanner rejects commits with personal data patterns (`.github/pii-patterns.txt`)
 
+## Where to add things
+
+| Task | Location | Registration |
+|------|----------|-------------|
+| CLI subcommand | `crates/aletheia/src/commands/` | Add to clap derive in `main.rs` |
+| API endpoint | `crates/pylon/src/handlers/` | Add route in `crates/pylon/src/routes.rs` |
+| Built-in tool | `crates/organon/src/builtins/` | Register in `register_all()` |
+| Config section | `crates/taxis/src/config.rs` | Add field to `AletheiaConfig` struct |
+| Error variant | `crates/{crate}/src/error.rs` | snafu derive on the crate's Error enum |
+| Maintenance task | `crates/daemon/src/` | Register in runner |
+| Bootstrap file | `crates/nous/src/bootstrap/` | Add to section list in assembler |
+| Middleware | `crates/pylon/src/middleware/` | Add layer in `crates/pylon/src/server.rs` |
+
+Per-crate details in each crate's `CLAUDE.md`.
+
 ## Adding tools
 
 Tools live in `crates/organon/`. Each tool implements the `ToolExecutor` trait:

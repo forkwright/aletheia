@@ -1,38 +1,44 @@
 # Nous agent template
 
-This directory is the reference template for new Aletheia agents. It shows the expected file and directory structure for a nous workspace.
+This directory is the reference template for new Aletheia agents. Copy it with `aletheia add-nous <name>` to create an additional agent.
 
-## Directory Structure
+## Directory structure
 
 ```text
 {agent-id}/
-├── workspace/
-│   ├── scripts/     # Agent-authored scripts and tools (git-tracked)
-│   ├── drafts/      # Work-in-progress output files (git-tracked)
-│   └── data/        # Datasets and ephemeral outputs (gitignored)
-├── AGENTS.md        # Operational defaults and tool grants
-├── CONTEXT.md       # Persistent context injected every session
-├── GOALS.md         # Active and completed goals
+├── SOUL.md          # Identity, voice, principles
 ├── IDENTITY.md      # Runtime-required: name and emoji
-├── MEMORY.md        # Agent knowledge base
-├── PROSOCHE.md      # Attention and focus directives
-├── SOUL.md          # Identity, voice, principles (written during onboarding)
-├── TOOLS.md         # Tool usage guidelines
+├── GOALS.md         # Active and completed goals
+├── MEMORY.md        # Curated operational memory
+├── AGENTS.md        # Operational rules, delegation, output quality
+├── CONTEXT.md       # Session-scoped state (runtime-written)
+├── PROSOCHE.md      # Attention and heartbeat directives
+├── TOOLS.md         # Tool inventory (auto-generated)
+├── USER.md          # Operator profile (learned from conversation)
+├── VOICE.md         # Operator writing style (learned from conversation)
 └── USER.md          # Operator profile and preferences
 ```
 
-## Gitignore Defaults
+## What goes where
 
-The parent `nous.dir/.gitignore` (written by `aletheia init`) contains:
+This directory holds **identity and session memory only**. All working files go in `theke/`:
 
-- `*/workspace/plans/` - planning artifacts (large, ephemeral)
-- `*/workspace/data/` - datasets and outputs (potentially large, private)
-- `memory/` - session memory logs
-- `.aletheia-index/` - workspace file index
-- `.env`, `*.key`, `*.pem`, `*.secret`, `secrets/`, `credentials/` - credentials
+| Content | Location |
+|---------|----------|
+| Identity files (SOUL, GOALS, etc.) | `nous/{id}/` |
+| Session logs | `nous/{id}/memory/YYYY-MM-DD.md` |
+| Project work, drafts, specs | `theke/projects/{name}/` |
+| Research | `theke/research/` |
+| Agent scratch space | `theke/nous/{id}/` |
 
-`workspace/scripts/` and `workspace/drafts/` are git-tracked by default.
+See `instance.example/README.md` for the full file organization guide.
+
+## Gitignore defaults
+
+- `memory/` session logs
+- `.aletheia-index/` workspace file index
+- `.env`, `*.key`, `*.pem`, `*.secret`, `secrets/`, `credentials/`
 
 ## Usage
 
-`aletheia init` creates a new agent directory with this structure. Files from `_example/` are NOT copied - the new agent starts with blank files generated from templates in the runtime. The `workspace/` subdirectories are created automatically.
+`aletheia add-nous <name>` copies this template to create a new agent. `aletheia init` uses `_default/` (Pronoea) for the first agent.
