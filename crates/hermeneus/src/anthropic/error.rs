@@ -2,23 +2,46 @@
 
 use reqwest::Response;
 use snafu::ResultExt;
+use tracing::warn;
 
 use super::wire::WireErrorResponse;
-use crate::error::{self, Result};
+use crate::error::{self, ApiErrorContext, Result};
 
 /// Map an HTTP response with a non-success status to a hermeneus error.
 ///
 /// Consumes the response body to extract the Anthropic error detail.
-pub(crate) async fn map_error_response(response: Response) -> error::Error {
+/// Logs the full raw body, model, token prefix, credential source, and
+/// `x-request-id` at WARN level before parsing so operators can diagnose
+/// opaque errors (e.g. OAuth token with unknown model alias returning "Error").
+pub(crate) async fn map_error_response(
+    response: Response,
+    model: &str,
+    token_prefix: &str,
+    credential_source: &str,
+) -> error::Error {
     let status = response.status().as_u16();
     let retry_after_ms = extract_retry_after(&response);
+    let request_id = response
+        .headers()
+        .get("x-request-id")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned);
 
-    let detail = match response.text().await.ok() {
-        Some(body) => serde_json::from_str::<WireErrorResponse>(&body)
-            .ok()
-            .map(|e| e.error.message),
-        None => None,
-    };
+    let body = response.text().await.unwrap_or_default();
+
+    warn!(
+        status,
+        model,
+        token_prefix,
+        credential_source,
+        request_id = request_id.as_deref().unwrap_or(""),
+        body = %body,
+        "Anthropic API error response"
+    );
+
+    let detail = serde_json::from_str::<WireErrorResponse>(&body)
+        .ok()
+        .map(|e| e.error.message);
 
     let message = detail.unwrap_or_else(|| format!("HTTP {status}"));
 
@@ -28,7 +51,15 @@ pub(crate) async fn map_error_response(response: Response) -> error::Error {
             retry_after_ms: retry_after_ms.unwrap_or(1000),
         }
         .build(),
-        _ => error::ApiSnafu { status, message }.build(),
+        _ => error::ApiSnafu {
+            status,
+            message,
+            context: Box::new(ApiErrorContext {
+                model: model.to_owned(),
+                credential_source: credential_source.to_owned(),
+            }),
+        }
+        .build(),
     }
 }
 
@@ -73,6 +104,7 @@ pub(crate) fn map_sse_error(detail: super::wire::WireErrorDetail) -> crate::erro
         _ => crate::error::ApiSnafu {
             status: 0_u16,
             message: detail.message,
+            context: ApiErrorContext::empty(),
         }
         .build(),
     }

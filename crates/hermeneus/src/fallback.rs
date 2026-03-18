@@ -109,7 +109,7 @@ mod tests {
     use std::sync::atomic::{AtomicU32, Ordering};
 
     use super::*;
-    use crate::error;
+    use crate::error::{self, ApiErrorContext};
     use crate::types::*;
 
     struct MockFallbackProvider {
@@ -205,6 +205,7 @@ mod tests {
         Err(error::ApiSnafu {
             status: 503_u16,
             message: "service unavailable".to_owned(),
+            context: ApiErrorContext::empty(),
         }
         .build())
     }

@@ -162,7 +162,7 @@ and falls back to `127.0.0.1` for direct connections.
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `enabled` | bool | `false` | Whether rate limiting is active |
-| `requestsPerMinute` | u32 | `60` | Maximum requests per minute per client IP |
+| `requests_per_minute` | u32 | `60` | Maximum requests per minute per client IP |
 
 ```toml
 [gateway]
