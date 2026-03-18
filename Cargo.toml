@@ -95,7 +95,6 @@ tower-http = { version = "0.6", features = ["cors", "compression-gzip", "trace",
 axum-server = { version = "0.8", features = ["tls-rustls"] }
 
 # Secrets
-secrecy = { version = "0.10", features = ["serde"] }
 zeroize = "1"
 
 # Tracing

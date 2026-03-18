@@ -19,7 +19,6 @@ rand = { workspace = true }
 ring = { workspace = true }
 reqwest = { workspace = true }
 rusqlite = { workspace = true }
-secrecy = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }

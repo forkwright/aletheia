@@ -11,6 +11,7 @@
 //!   bidirectional edges if undirected semantics are needed.
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod graph_algo_tests {
     use crate::engine::DbInstance;
     use crate::engine::data::value::DataValue;

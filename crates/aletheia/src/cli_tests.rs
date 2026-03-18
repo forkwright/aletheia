@@ -84,7 +84,7 @@ fn status_custom_url_parses() {
     let cli = Cli::parse_from(["aletheia", "status", "--url", "http://example:9999"]);
     match cli.command {
         Some(Command::Status { url }) => {
-            assert_eq!(url, "http://example:9999", "custom url should be set")
+            assert_eq!(url, "http://example:9999", "custom url should be set");
         }
         _ => panic!("expected Status command"),
     }

@@ -24,6 +24,7 @@ use aletheia_hermeneus::anthropic::AnthropicProvider;
 use aletheia_hermeneus::provider::{ProviderConfig, ProviderRegistry};
 use aletheia_koina::credential::{CredentialProvider, CredentialSource};
 use aletheia_koina::redacting_layer::RedactingLayer;
+use aletheia_koina::secret::SecretString;
 use aletheia_mneme::embedding::{EmbeddingConfig, EmbeddingProvider, create_provider};
 use aletheia_mneme::store::SessionStore;
 use aletheia_nous::config::{NousConfig, PipelineConfig};
@@ -44,7 +45,6 @@ use aletheia_taxis::config::resolve_nous;
 use aletheia_taxis::loader::load_config;
 use aletheia_taxis::oikos::Oikos;
 use aletheia_taxis::validate::validate_section;
-use secrecy::SecretString;
 
 use crate::commands::maintenance;
 use crate::daemon_bridge;
