@@ -12,7 +12,7 @@ use rand::Rng as _;
 use reqwest::Client;
 use reqwest::header::{HeaderMap, HeaderValue};
 use snafu::ResultExt;
-use tracing::{Instrument as _, info, info_span};
+use tracing::{Instrument as _, info, info_span, warn};
 
 use crate::error::{self, Result};
 use crate::health::{HealthConfig, ProviderHealthTracker};
@@ -106,7 +106,7 @@ impl AnthropicProvider {
                 .build()
             })?;
 
-        Ok(Self {
+        let provider = Self {
             client: build_http_client()?,
             credential_provider: Arc::new(StaticCredentialProvider {
                 key: api_key.clone(),
@@ -119,7 +119,12 @@ impl AnthropicProvider {
             max_retries: config.max_retries.unwrap_or(DEFAULT_MAX_RETRIES),
             pricing: Self::merge_pricing(config),
             health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
-        })
+        };
+        // WARNING: credentials sent in HTTP headers -- non-HTTPS base URLs expose them in transit
+        if !provider.base_url.starts_with("https://") {
+            warn!(base_url = %provider.base_url, "API base URL is not HTTPS -- credentials may be transmitted in cleartext");
+        }
+        Ok(provider)
     }
 
     /// Create a provider with a dynamic credential provider.
@@ -130,7 +135,7 @@ impl AnthropicProvider {
         provider: Arc<dyn CredentialProvider>,
         config: &ProviderConfig,
     ) -> Result<Self> {
-        Ok(Self {
+        let provider = Self {
             client: build_http_client()?,
             credential_provider: provider,
             base_url: config
@@ -141,7 +146,12 @@ impl AnthropicProvider {
             max_retries: config.max_retries.unwrap_or(DEFAULT_MAX_RETRIES),
             pricing: Self::merge_pricing(config),
             health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
-        })
+        };
+        // WARNING: credentials sent in HTTP headers -- non-HTTPS base URLs expose them in transit
+        if !provider.base_url.starts_with("https://") {
+            warn!(base_url = %provider.base_url, "API base URL is not HTTPS -- credentials may be transmitted in cleartext");
+        }
+        Ok(provider)
     }
 
     /// Streaming completion: accumulates into a final `CompletionResponse`

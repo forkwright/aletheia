@@ -5,6 +5,10 @@ on:
     - cron: "0 8 * * *" # 02:00 CST
   workflow_dispatch:
 
+# WHY: Principle of least privilege for CI workflows
+permissions:
+  contents: read
+
 jobs:
   rust-full:
     runs-on: ubuntu-latest
