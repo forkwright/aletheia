@@ -309,46 +309,91 @@ mod tests {
 
     #[test]
     fn validate_name_accepts_alphanumeric() {
-        assert!(validate_name("chiron").is_ok());
-        assert!(validate_name("my-agent").is_ok());
-        assert!(validate_name("agent42").is_ok());
+        assert!(
+            validate_name("chiron").is_ok(),
+            "simple lowercase name should be valid"
+        );
+        assert!(
+            validate_name("my-agent").is_ok(),
+            "name with hyphen should be valid"
+        );
+        assert!(
+            validate_name("agent42").is_ok(),
+            "alphanumeric name should be valid"
+        );
     }
 
     #[test]
     fn validate_name_rejects_empty() {
-        assert!(validate_name("").is_err());
+        assert!(validate_name("").is_err(), "empty name should be rejected");
     }
 
     #[test]
     fn validate_name_rejects_special_chars() {
-        assert!(validate_name("my_agent").is_err());
-        assert!(validate_name("my agent").is_err());
-        assert!(validate_name("my.agent").is_err());
+        assert!(
+            validate_name("my_agent").is_err(),
+            "underscore in name should be rejected"
+        );
+        assert!(
+            validate_name("my agent").is_err(),
+            "space in name should be rejected"
+        );
+        assert!(
+            validate_name("my.agent").is_err(),
+            "dot in name should be rejected"
+        );
     }
 
     #[test]
     fn validate_name_rejects_leading_trailing_hyphen() {
-        assert!(validate_name("-agent").is_err());
-        assert!(validate_name("agent-").is_err());
+        assert!(
+            validate_name("-agent").is_err(),
+            "leading hyphen in name should be rejected"
+        );
+        assert!(
+            validate_name("agent-").is_err(),
+            "trailing hyphen in name should be rejected"
+        );
     }
 
     #[test]
     fn validate_provider_accepts_known() {
-        assert!(validate_provider("anthropic").is_ok());
-        assert!(validate_provider("openai").is_ok());
+        assert!(
+            validate_provider("anthropic").is_ok(),
+            "anthropic should be a valid provider"
+        );
+        assert!(
+            validate_provider("openai").is_ok(),
+            "openai should be a valid provider"
+        );
     }
 
     #[test]
     fn validate_provider_rejects_unknown() {
-        assert!(validate_provider("google").is_err());
+        assert!(
+            validate_provider("google").is_err(),
+            "unknown provider should be rejected"
+        );
     }
 
     #[test]
     fn capitalize_first_letter() {
-        assert_eq!(capitalize("chiron"), "Chiron");
-        assert_eq!(capitalize("my-agent"), "My-agent");
-        assert_eq!(capitalize(""), "");
-        assert_eq!(capitalize("A"), "A");
+        assert_eq!(
+            capitalize("chiron"),
+            "Chiron",
+            "first letter should be uppercased"
+        );
+        assert_eq!(
+            capitalize("my-agent"),
+            "My-agent",
+            "only first letter should be uppercased"
+        );
+        assert_eq!(capitalize(""), "", "empty string should remain empty");
+        assert_eq!(
+            capitalize("A"),
+            "A",
+            "already capitalized single letter should be unchanged"
+        );
     }
 
     #[test]
@@ -365,23 +410,68 @@ mod tests {
         scaffold_directory(&oikos, &args).unwrap();
 
         let nous_dir = dir.path().join("nous/test-agent");
-        assert!(nous_dir.join("SOUL.md").exists());
-        assert!(nous_dir.join("IDENTITY.md").exists());
-        assert!(nous_dir.join("AGENTS.md").exists());
-        assert!(nous_dir.join("CONTEXT.md").exists());
-        assert!(nous_dir.join("GOALS.md").exists());
-        assert!(nous_dir.join("MEMORY.md").exists());
-        assert!(nous_dir.join("PROSOCHE.md").exists());
-        assert!(nous_dir.join("TOOLS.md").exists());
-        assert!(nous_dir.join("USER.md").exists());
-        assert!(nous_dir.join("WORKFLOWS.md").exists());
-        assert!(nous_dir.join(".gitignore").exists());
-        assert!(nous_dir.join("memory").is_dir());
-        assert!(nous_dir.join("workspace/drafts").is_dir());
-        assert!(nous_dir.join("workspace/scripts").is_dir());
+        assert!(
+            nous_dir.join("SOUL.md").exists(),
+            "SOUL.md should be created by scaffold"
+        );
+        assert!(
+            nous_dir.join("IDENTITY.md").exists(),
+            "IDENTITY.md should be created by scaffold"
+        );
+        assert!(
+            nous_dir.join("AGENTS.md").exists(),
+            "AGENTS.md should be created by scaffold"
+        );
+        assert!(
+            nous_dir.join("CONTEXT.md").exists(),
+            "CONTEXT.md should be created by scaffold"
+        );
+        assert!(
+            nous_dir.join("GOALS.md").exists(),
+            "GOALS.md should be created by scaffold"
+        );
+        assert!(
+            nous_dir.join("MEMORY.md").exists(),
+            "MEMORY.md should be created by scaffold"
+        );
+        assert!(
+            nous_dir.join("PROSOCHE.md").exists(),
+            "PROSOCHE.md should be created by scaffold"
+        );
+        assert!(
+            nous_dir.join("TOOLS.md").exists(),
+            "TOOLS.md should be created by scaffold"
+        );
+        assert!(
+            nous_dir.join("USER.md").exists(),
+            "USER.md should be created by scaffold"
+        );
+        assert!(
+            nous_dir.join("WORKFLOWS.md").exists(),
+            "WORKFLOWS.md should be created by scaffold"
+        );
+        assert!(
+            nous_dir.join(".gitignore").exists(),
+            ".gitignore should be created by scaffold"
+        );
+        assert!(
+            nous_dir.join("memory").is_dir(),
+            "memory subdirectory should be created by scaffold"
+        );
+        assert!(
+            nous_dir.join("workspace/drafts").is_dir(),
+            "workspace/drafts subdirectory should be created by scaffold"
+        );
+        assert!(
+            nous_dir.join("workspace/scripts").is_dir(),
+            "workspace/scripts subdirectory should be created by scaffold"
+        );
 
         let soul = std::fs::read_to_string(nous_dir.join("SOUL.md")).unwrap();
-        assert!(soul.contains("Test-agent"));
+        assert!(
+            soul.contains("Test-agent"),
+            "SOUL.md should contain the capitalized agent name"
+        );
     }
 
     #[test]
@@ -461,7 +551,10 @@ mod tests {
         };
         update_config(&oikos, &args).unwrap();
         let result = update_config(&oikos, &args);
-        assert!(result.is_err());
+        assert!(
+            result.is_err(),
+            "adding a duplicate agent should return an error"
+        );
         let msg = result.unwrap_err().to_string();
         assert!(msg.contains("already exists"), "got: {msg}");
     }
@@ -481,7 +574,10 @@ mod tests {
         // NOTE: use a blocking executor since run() is async
         let rt = tokio::runtime::Runtime::new().unwrap();
         let result = rt.block_on(run(Some(&dir.path().to_path_buf()), &args));
-        assert!(result.is_err());
+        assert!(
+            result.is_err(),
+            "run should fail when the nous directory already exists"
+        );
         let msg = result.unwrap_err().to_string();
         assert!(
             msg.contains("already exists"),

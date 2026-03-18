@@ -173,13 +173,34 @@ async fn simple_text_response() {
     .await
     .expect("execute");
 
-    assert_eq!(result.content, "Hello there!");
-    assert!(result.tool_calls.is_empty());
-    assert_eq!(result.usage.llm_calls, 1);
-    assert_eq!(result.usage.input_tokens, 100);
-    assert_eq!(result.usage.output_tokens, 50);
-    assert_eq!(result.stop_reason, "end_turn");
-    assert!(result.signals.contains(&InteractionSignal::Conversation));
+    assert_eq!(
+        result.content, "Hello there!",
+        "response content should match mock text"
+    );
+    assert!(
+        result.tool_calls.is_empty(),
+        "text-only response should produce no tool calls"
+    );
+    assert_eq!(
+        result.usage.llm_calls, 1,
+        "single text response should use exactly one LLM call"
+    );
+    assert_eq!(
+        result.usage.input_tokens, 100,
+        "input token count should match mock response"
+    );
+    assert_eq!(
+        result.usage.output_tokens, 50,
+        "output token count should match mock response"
+    );
+    assert_eq!(
+        result.stop_reason, "end_turn",
+        "response should stop with end_turn reason"
+    );
+    assert!(
+        result.signals.contains(&InteractionSignal::Conversation),
+        "text-only response should produce Conversation signal"
+    );
 }
 
 #[tokio::test]
@@ -206,16 +227,36 @@ async fn single_tool_iteration() {
     .await
     .expect("execute");
 
-    assert_eq!(result.content, "Done!");
-    assert_eq!(result.tool_calls.len(), 1);
-    assert_eq!(result.tool_calls[0].name, "exec");
+    assert_eq!(
+        result.content, "Done!",
+        "final response content should match mock text"
+    );
+    assert_eq!(
+        result.tool_calls.len(),
+        1,
+        "should have recorded exactly one tool call"
+    );
+    assert_eq!(
+        result.tool_calls[0].name, "exec",
+        "tool call name should match registered tool"
+    );
     assert_eq!(
         result.tool_calls[0].result.as_deref(),
-        Some("executed: exec")
+        Some("executed: exec"),
+        "tool result should contain the echo executor output"
     );
-    assert!(!result.tool_calls[0].is_error);
-    assert_eq!(result.usage.llm_calls, 2);
-    assert_eq!(result.stop_reason, "end_turn");
+    assert!(
+        !result.tool_calls[0].is_error,
+        "tool call should not be marked as an error"
+    );
+    assert_eq!(
+        result.usage.llm_calls, 2,
+        "one tool iteration requires two LLM calls"
+    );
+    assert_eq!(
+        result.stop_reason, "end_turn",
+        "final response should stop with end_turn reason"
+    );
 }
 
 #[tokio::test]
@@ -243,9 +284,19 @@ async fn multi_tool_iteration() {
     .await
     .expect("execute");
 
-    assert_eq!(result.content, "All done!");
-    assert_eq!(result.tool_calls.len(), 2);
-    assert_eq!(result.usage.llm_calls, 3);
+    assert_eq!(
+        result.content, "All done!",
+        "final response content should match mock text"
+    );
+    assert_eq!(
+        result.tool_calls.len(),
+        2,
+        "should have recorded two tool calls across iterations"
+    );
+    assert_eq!(
+        result.usage.llm_calls, 3,
+        "two tool iterations require three LLM calls"
+    );
 }
 
 #[tokio::test]
@@ -272,7 +323,10 @@ async fn loop_detection_triggers() {
     .await
     .expect_err("should detect loop");
 
-    assert!(err.to_string().contains("loop detected"));
+    assert!(
+        err.to_string().contains("loop detected"),
+        "error message should indicate loop was detected"
+    );
 }
 
 #[tokio::test]
@@ -301,7 +355,10 @@ async fn max_iterations_respected() {
     .await
     .expect("should not error");
 
-    assert_eq!(result.usage.llm_calls, 3);
+    assert_eq!(
+        result.usage.llm_calls, 3,
+        "should stop after max_tool_iterations=3 LLM calls"
+    );
 }
 
 #[tokio::test]
@@ -328,16 +385,34 @@ async fn tool_error_captured() {
     .await
     .expect("execute should succeed despite tool error");
 
-    assert_eq!(result.tool_calls.len(), 1);
-    assert!(result.tool_calls[0].is_error);
-    assert_eq!(result.tool_calls[0].result.as_deref(), Some("tool failed"));
-    assert_eq!(result.content, "Recovered");
+    assert_eq!(
+        result.tool_calls.len(),
+        1,
+        "should have recorded one tool call even when it errored"
+    );
+    assert!(
+        result.tool_calls[0].is_error,
+        "tool call should be marked as an error"
+    );
+    assert_eq!(
+        result.tool_calls[0].result.as_deref(),
+        Some("tool failed"),
+        "tool error message should be captured in result"
+    );
+    assert_eq!(
+        result.content, "Recovered",
+        "final response content should reflect recovery after tool error"
+    );
 }
 
 #[test]
 fn signal_classification_conversation() {
     let signals = classify_signals(&[], "Hello", false, false);
-    assert_eq!(signals, vec![InteractionSignal::Conversation]);
+    assert_eq!(
+        signals,
+        vec![InteractionSignal::Conversation],
+        "no tool calls and plain text should produce only Conversation signal"
+    );
 }
 
 #[test]
@@ -351,8 +426,14 @@ fn signal_classification_code() {
         duration_ms: 10,
     }];
     let signals = classify_signals(&calls, "", false, false);
-    assert!(signals.contains(&InteractionSignal::ToolExecution));
-    assert!(signals.contains(&InteractionSignal::CodeGeneration));
+    assert!(
+        signals.contains(&InteractionSignal::ToolExecution),
+        "write tool call should produce ToolExecution signal"
+    );
+    assert!(
+        signals.contains(&InteractionSignal::CodeGeneration),
+        "write tool call should produce CodeGeneration signal"
+    );
 }
 
 #[test]
@@ -366,8 +447,14 @@ fn signal_classification_research() {
         duration_ms: 10,
     }];
     let signals = classify_signals(&calls, "", false, false);
-    assert!(signals.contains(&InteractionSignal::ToolExecution));
-    assert!(signals.contains(&InteractionSignal::Research));
+    assert!(
+        signals.contains(&InteractionSignal::ToolExecution),
+        "web_search tool call should produce ToolExecution signal"
+    );
+    assert!(
+        signals.contains(&InteractionSignal::Research),
+        "web_search tool call should produce Research signal"
+    );
 }
 
 #[test]
@@ -381,8 +468,14 @@ fn signal_classification_error_recovery() {
         duration_ms: 10,
     }];
     let signals = classify_signals(&calls, "", false, false);
-    assert!(signals.contains(&InteractionSignal::ToolExecution));
-    assert!(signals.contains(&InteractionSignal::ErrorRecovery));
+    assert!(
+        signals.contains(&InteractionSignal::ToolExecution),
+        "error tool call should produce ToolExecution signal"
+    );
+    assert!(
+        signals.contains(&InteractionSignal::ErrorRecovery),
+        "failed tool call should produce ErrorRecovery signal"
+    );
 }
 
 #[tokio::test]
@@ -410,10 +503,23 @@ async fn usage_accumulates_across_iterations() {
     .expect("execute");
 
     // First call: 80 input + 30 output, second call: 100 input + 50 output
-    assert_eq!(result.usage.input_tokens, 180);
-    assert_eq!(result.usage.output_tokens, 80);
-    assert_eq!(result.usage.llm_calls, 2);
-    assert_eq!(result.usage.total_tokens(), 260);
+    assert_eq!(
+        result.usage.input_tokens, 180,
+        "input tokens should be summed across both LLM calls (80 + 100)"
+    );
+    assert_eq!(
+        result.usage.output_tokens, 80,
+        "output tokens should be summed across both LLM calls (30 + 50)"
+    );
+    assert_eq!(
+        result.usage.llm_calls, 2,
+        "one tool iteration should produce exactly two LLM calls"
+    );
+    assert_eq!(
+        result.usage.total_tokens(),
+        260,
+        "total tokens should equal sum of all input and output tokens (180 + 80)"
+    );
 }
 
 #[tokio::test]
@@ -499,13 +605,20 @@ async fn text_response_no_tools() {
     .expect("execute");
 
     assert!(result.tool_calls.is_empty(), "no tool calls expected");
-    assert_eq!(result.content, "just text");
+    assert_eq!(
+        result.content, "just text",
+        "response content should match mock text"
+    );
 }
 
 #[test]
 fn classify_signals_conversation_when_no_tools() {
     let signals = classify_signals(&[], "some text", false, false);
-    assert_eq!(signals, vec![InteractionSignal::Conversation]);
+    assert_eq!(
+        signals,
+        vec![InteractionSignal::Conversation],
+        "no tool calls and plain text should produce only Conversation signal"
+    );
 }
 
 #[test]
@@ -562,10 +675,22 @@ fn classify_signals_server_code_execution() {
 #[test]
 fn classify_signals_both_server_tools() {
     let signals = classify_signals(&[], "", true, true);
-    assert!(signals.contains(&InteractionSignal::ToolExecution));
-    assert!(signals.contains(&InteractionSignal::Research));
-    assert!(signals.contains(&InteractionSignal::CodeGeneration));
-    assert!(!signals.contains(&InteractionSignal::Conversation));
+    assert!(
+        signals.contains(&InteractionSignal::ToolExecution),
+        "both server tools should produce ToolExecution signal"
+    );
+    assert!(
+        signals.contains(&InteractionSignal::Research),
+        "server web search should produce Research signal"
+    );
+    assert!(
+        signals.contains(&InteractionSignal::CodeGeneration),
+        "server code execution should produce CodeGeneration signal"
+    );
+    assert!(
+        !signals.contains(&InteractionSignal::Conversation),
+        "should not produce Conversation signal when server tools were used"
+    );
 }
 
 // --- Streaming Tests ---
@@ -593,8 +718,14 @@ async fn streaming_falls_back_to_non_streaming_for_mock() {
     .await
     .expect("execute_streaming");
 
-    assert_eq!(result.content, "Hello streaming!");
-    assert_eq!(result.usage.llm_calls, 1);
+    assert_eq!(
+        result.content, "Hello streaming!",
+        "streaming response content should match mock text"
+    );
+    assert_eq!(
+        result.usage.llm_calls, 1,
+        "single text response should use exactly one LLM call"
+    );
 
     // MockProvider doesn't support streaming, so no LlmDelta events
     drop(tx);
@@ -630,8 +761,15 @@ async fn streaming_tool_events_emitted() {
     .await
     .expect("execute_streaming");
 
-    assert_eq!(result.content, "Done!");
-    assert_eq!(result.tool_calls.len(), 1);
+    assert_eq!(
+        result.content, "Done!",
+        "streaming final response content should match mock text"
+    );
+    assert_eq!(
+        result.tool_calls.len(),
+        1,
+        "streaming execute should record one tool call"
+    );
 
     // Even with mock (non-streaming) provider, tool events should be emitted
     drop(tx);
@@ -648,8 +786,14 @@ async fn streaming_tool_events_emitted() {
     // Falls back to non-streaming execute(), no tool events via channel
     // (tool events only come from dispatch_tools_streaming, which requires
     //  a streaming provider to be found)
-    assert_eq!(tool_start_count, 0);
-    assert_eq!(tool_result_count, 0);
+    assert_eq!(
+        tool_start_count, 0,
+        "mock provider falls back to non-streaming so no ToolStart events should be emitted"
+    );
+    assert_eq!(
+        tool_result_count, 0,
+        "mock provider falls back to non-streaming so no ToolResult events should be emitted"
+    );
 }
 
 // --- Edge case tests ---
@@ -673,9 +817,18 @@ async fn empty_text_response() {
     .await
     .expect("execute");
 
-    assert_eq!(result.content, "");
-    assert_eq!(result.usage.llm_calls, 1);
-    assert!(result.signals.contains(&InteractionSignal::Conversation));
+    assert_eq!(
+        result.content, "",
+        "empty text response should produce empty content string"
+    );
+    assert_eq!(
+        result.usage.llm_calls, 1,
+        "empty text response should still use exactly one LLM call"
+    );
+    assert!(
+        result.signals.contains(&InteractionSignal::Conversation),
+        "empty text response should still produce Conversation signal"
+    );
 }
 
 #[tokio::test]
@@ -721,8 +874,14 @@ async fn thinking_only_response() {
     .await
     .expect("execute");
 
-    assert_eq!(result.content, "Here's the answer.");
-    assert_eq!(result.usage.llm_calls, 1);
+    assert_eq!(
+        result.content, "Here's the answer.",
+        "response should contain only the text block, not the thinking block"
+    );
+    assert_eq!(
+        result.usage.llm_calls, 1,
+        "thinking response should use exactly one LLM call"
+    );
 }
 
 #[tokio::test]
@@ -740,7 +899,10 @@ async fn no_provider_for_model_returns_error() {
     )
     .await;
 
-    assert!(err.is_err());
+    assert!(
+        err.is_err(),
+        "execute with no matching provider should return an error"
+    );
     let msg = err.unwrap_err().to_string();
     assert!(msg.contains("no provider"), "got: {msg}");
 }
@@ -750,14 +912,18 @@ fn simple_hash_deterministic() {
     let v = serde_json::json!({"key": "value"});
     let h1 = simple_hash(&v);
     let h2 = simple_hash(&v);
-    assert_eq!(h1, h2);
+    assert_eq!(h1, h2, "same input should always produce the same hash");
 }
 
 #[test]
 fn simple_hash_different_for_different_inputs() {
     let v1 = serde_json::json!({"key": "value1"});
     let v2 = serde_json::json!({"key": "value2"});
-    assert_ne!(simple_hash(&v1), simple_hash(&v2));
+    assert_ne!(
+        simple_hash(&v1),
+        simple_hash(&v2),
+        "different inputs should produce different hashes"
+    );
 }
 
 #[test]
@@ -771,7 +937,10 @@ fn classify_signals_edit_is_code_generation() {
         duration_ms: 10,
     }];
     let signals = classify_signals(&calls, "", false, false);
-    assert!(signals.contains(&InteractionSignal::CodeGeneration));
+    assert!(
+        signals.contains(&InteractionSignal::CodeGeneration),
+        "edit tool call should produce CodeGeneration signal"
+    );
 }
 
 #[test]
@@ -785,7 +954,10 @@ fn classify_signals_web_fetch_is_research() {
         duration_ms: 10,
     }];
     let signals = classify_signals(&calls, "", false, false);
-    assert!(signals.contains(&InteractionSignal::Research));
+    assert!(
+        signals.contains(&InteractionSignal::Research),
+        "web_fetch tool call should produce Research signal"
+    );
 }
 
 #[test]
@@ -809,10 +981,22 @@ fn classify_signals_multiple_flags() {
         },
     ];
     let signals = classify_signals(&calls, "", false, false);
-    assert!(signals.contains(&InteractionSignal::ToolExecution));
-    assert!(signals.contains(&InteractionSignal::CodeGeneration));
-    assert!(signals.contains(&InteractionSignal::Research));
-    assert!(signals.contains(&InteractionSignal::ErrorRecovery));
+    assert!(
+        signals.contains(&InteractionSignal::ToolExecution),
+        "mixed tool calls should produce ToolExecution signal"
+    );
+    assert!(
+        signals.contains(&InteractionSignal::CodeGeneration),
+        "write tool call should produce CodeGeneration signal"
+    );
+    assert!(
+        signals.contains(&InteractionSignal::Research),
+        "web_search tool call should produce Research signal"
+    );
+    assert!(
+        signals.contains(&InteractionSignal::ErrorRecovery),
+        "failed tool call should produce ErrorRecovery signal"
+    );
 }
 
 #[tokio::test]
@@ -843,7 +1027,10 @@ async fn max_iterations_one_exits_immediately() {
     .await
     .expect("should succeed");
 
-    assert_eq!(result.usage.llm_calls, 1);
+    assert_eq!(
+        result.usage.llm_calls, 1,
+        "with max_tool_iterations=1, should exit after the first LLM call"
+    );
 }
 
 #[test]
@@ -866,7 +1053,19 @@ fn build_messages_maps_roles_correctly() {
         },
     ];
     let built = build_messages(&msgs);
-    assert_eq!(built[0].role, Role::User);
-    assert_eq!(built[1].role, Role::Assistant);
-    assert_eq!(built[2].role, Role::User); // unknown maps to User
+    assert_eq!(
+        built[0].role,
+        Role::User,
+        "user role should map to Role::User"
+    );
+    assert_eq!(
+        built[1].role,
+        Role::Assistant,
+        "assistant role should map to Role::Assistant"
+    );
+    assert_eq!(
+        built[2].role,
+        Role::User,
+        "unknown role should fall back to Role::User"
+    ); // unknown maps to User
 }
