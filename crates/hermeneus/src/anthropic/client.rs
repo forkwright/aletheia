@@ -219,6 +219,7 @@ impl AnthropicProvider {
                 tokio::time::sleep(backoff_delay(attempt, last_error.as_ref())).await;
             }
 
+            let (token_prefix, credential_source) = self.credential_log_info();
             let headers = self.build_headers()?;
 
             let mut response = match self
@@ -240,7 +241,13 @@ impl AnthropicProvider {
 
             if !response.status().is_success() {
                 let status = response.status().as_u16();
-                let err = super::error::map_error_response(response).await;
+                let err = super::error::map_error_response(
+                    response,
+                    &request.model,
+                    &token_prefix,
+                    &credential_source,
+                )
+                .await;
                 self.health.record_error(&err);
                 // Non-retryable HTTP status: 401, 400-level (except 429)
                 if status == 401 || ((400..500).contains(&status) && status != 429) {
@@ -400,6 +407,23 @@ impl AnthropicProvider {
         }))
     }
 
+    /// Return `(token_prefix, credential_source)` strings for diagnostic logging.
+    ///
+    /// The token prefix is the first 15 characters of the current secret value;
+    /// the credential source is the [`CredentialSource`] display string.
+    /// Returns empty strings when no credential is available.
+    fn credential_log_info(&self) -> (String, String) {
+        match self.credential_provider.get_credential() {
+            Some(cred) => {
+                let s = cred.secret.expose_secret();
+                let prefix = s.get(..15).unwrap_or(s).to_owned();
+                let source = cred.source.to_string();
+                (prefix, source)
+            }
+            None => (String::new(), String::new()),
+        }
+    }
+
     fn build_headers(&self) -> Result<HeaderMap> {
         let credential = self.credential_provider.get_credential().ok_or_else(|| {
             error::AuthFailedSnafu {
@@ -494,6 +518,7 @@ impl AnthropicProvider {
                 tokio::time::sleep(backoff_delay(attempt, last_error.as_ref())).await;
             }
 
+            let (token_prefix, credential_source) = self.credential_log_info();
             let headers = self.build_headers()?;
 
             let response = match self
@@ -574,7 +599,13 @@ impl AnthropicProvider {
                 return parsed;
             }
 
-            let err = super::error::map_error_response(response).await;
+            let err = super::error::map_error_response(
+                response,
+                &request.model,
+                &token_prefix,
+                &credential_source,
+            )
+            .await;
             self.health.record_error(&err);
 
             if status == 401 || ((400..500).contains(&status) && status != 429) {

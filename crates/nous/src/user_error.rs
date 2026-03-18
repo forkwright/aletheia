@@ -206,6 +206,7 @@ mod tests {
             source: aletheia_hermeneus::error::ApiSnafu {
                 status: 502_u16,
                 message: "bad gateway",
+                context: aletheia_hermeneus::error::ApiErrorContext::empty(),
             }
             .build(),
             location: snafu::Location::new("test", 1, 1),

@@ -241,6 +241,7 @@ impl ProviderHealthTracker {
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use super::*;
+    use crate::error::ApiErrorContext;
 
     fn tracker(threshold: u32, cooldown_ms: u64) -> ProviderHealthTracker {
         ProviderHealthTracker::new(HealthConfig {
@@ -261,6 +262,7 @@ mod tests {
         crate::error::ApiSnafu {
             status: 500_u16,
             message: "internal",
+            context: ApiErrorContext::empty(),
         }
         .build()
     }
