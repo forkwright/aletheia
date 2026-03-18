@@ -144,6 +144,7 @@ pub(crate) fn build_config(
             example_root: std::path::PathBuf::from("instance.example"),
             alert_on_missing: settings.drift_detection.alert_on_missing,
             ignore_patterns: settings.drift_detection.ignore_patterns.clone(),
+            optional_patterns: settings.drift_detection.optional_patterns.clone(),
         },
         db_monitoring: DbMonitoringConfig {
             enabled: settings.db_monitoring.enabled,

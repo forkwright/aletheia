@@ -276,10 +276,16 @@ Rules:
             } else {
                 vec![entity.description.clone()]
             };
+            let entity_type = if entity.entity_type.is_empty() {
+                tracing::debug!(name = %entity.name, "entity has empty type, defaulting to 'concept'");
+                "concept".to_owned()
+            } else {
+                entity.entity_type.clone()
+            };
             let e = Entity {
                 id,
                 name: entity.name.clone(),
-                entity_type: entity.entity_type.clone(),
+                entity_type,
                 aliases,
                 created_at: now,
                 updated_at: now,
