@@ -15,6 +15,7 @@ pub struct CommandPaletteState {
     dead_code,
     reason = "variants reserved for context-aware keybind hints"
 )]
+#[non_exhaustive]
 pub enum SelectionContext {
     #[default]
     None,

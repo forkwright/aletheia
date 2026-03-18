@@ -59,6 +59,7 @@ impl Default for EventState {
 /// (P604). This tracks specifically whether we are receiving SSE events.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum SseConnectionState {
     /// Not connected to the SSE stream.
     Disconnected,
@@ -90,6 +91,7 @@ impl SseConnectionState {
 /// Distillation (memory compaction) progress for a single agent.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum DistillationProgress {
     /// Distillation is in progress but no stage reported yet.
     Started,

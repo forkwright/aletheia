@@ -9,6 +9,7 @@ use snafu::prelude::*;
 #[non_exhaustive]
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
+#[non_exhaustive]
 pub enum ApiError {
     /// HTTP transport or connection error (no response received).
     #[snafu(display("{operation}: {source}"))]

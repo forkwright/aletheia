@@ -5,6 +5,7 @@ use super::settings::SettingsOverlay;
 
 #[non_exhaustive]
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum Overlay {
     Help,
     AgentPicker {
@@ -55,6 +56,7 @@ pub struct SearchResult {
 
 #[non_exhaustive]
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum SearchResultKind {
     SessionName,
     MessageContent { role: String },

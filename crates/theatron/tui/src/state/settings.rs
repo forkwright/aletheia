@@ -29,6 +29,7 @@ pub struct SettingsField {
 
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum FieldType {
     Bool,
     Integer,
@@ -48,6 +49,7 @@ pub struct EditState {
 
 #[non_exhaustive]
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum SaveStatus {
     Idle,
     Saving,

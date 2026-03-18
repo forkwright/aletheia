@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 /// Sort options for the fact browser.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum FactSort {
     Confidence,
     Recency,
@@ -48,6 +49,7 @@ impl FactSort {
 /// Which sub-view of the memory inspector is active.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum MemoryTab {
     Facts,
     Graph,

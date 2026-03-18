@@ -17,6 +17,7 @@ use crate::state::connection::ConnectionConfig;
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Snafu)]
+#[non_exhaustive]
 pub enum ConfigError {
     #[snafu(display("failed to determine config directory"))]
     NoConfigDir,

@@ -59,6 +59,7 @@ pub struct ChatMessage {
 
 /// Who produced a chat message.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum MessageRole {
     User,
     Assistant,

@@ -143,6 +143,7 @@ impl Default for TabBar {
 /// Modal overlays that block interaction with the main UI.
 #[non_exhaustive]
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum Overlay {
     Help,
     AgentPicker { cursor: usize },

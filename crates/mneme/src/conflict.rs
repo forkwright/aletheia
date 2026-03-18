@@ -20,6 +20,7 @@ use crate::knowledge::EpistemicTier;
 /// Errors from the conflict detection pipeline.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
+#[non_exhaustive]
 pub enum ConflictError {
     /// The LLM classification call failed.
     #[snafu(display("conflict classification failed: {message}"))]

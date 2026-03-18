@@ -3,6 +3,7 @@
 /// Which pane currently has keyboard focus.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
 pub enum FocusedPane {
     #[default]
     Chat,
@@ -12,6 +13,7 @@ pub enum FocusedPane {
 /// Status of a tool call in the operations pane.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum OpsToolStatus {
     Running,
     Complete,
@@ -53,6 +55,7 @@ pub struct OpsDiffEntry {
 /// Additional variants (`Always`, `Manual`) will be added when config wiring lands.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
 pub enum OpsAutoShow {
     /// Show automatically when streaming starts, collapse when idle
     #[default]

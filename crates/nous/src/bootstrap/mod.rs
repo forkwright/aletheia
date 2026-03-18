@@ -23,6 +23,7 @@ use crate::error::{self, Result};
 /// Derives `Ord` so sections sort Required-first.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[non_exhaustive]
 pub enum SectionPriority {
     /// Must be included. Missing = error.
     Required = 0,
