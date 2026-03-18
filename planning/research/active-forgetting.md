@@ -71,7 +71,7 @@ This is not a storage crisis. CozoDB handles millions of records. The problem is
 
 ### Forgetting strategies evaluated
 
-#### 1. Decay-threshold forgetting
+#### 1. decay-threshold forgetting
 
 Transition facts to `is_forgotten` when their FSRS decay score falls below a threshold for a sustained period.
 
@@ -86,7 +86,7 @@ Transition facts to `is_forgotten` when their FSRS decay score falls below a thr
 
 **Verdict: Primary mechanism.** FSRS already models relevance decay. The missing piece is an actuator that converts low scores to forgotten status.
 
-#### 2. Contradiction-based forgetting
+#### 2. contradiction-based forgetting
 
 When conflict detection identifies a CONTRADICTS classification, the old fact is superseded. This already works. The gap is detecting contradictions in facts that were never explicitly contradicted but are implausible given newer information.
 
@@ -99,7 +99,7 @@ When conflict detection identifies a CONTRADICTS classification, the old fact is
 
 **Verdict: Secondary mechanism, gated behind decay threshold.** Only evaluate facts that are already fading. This keeps LLM costs proportional to decay, not total fact count.
 
-#### 3. Relevance-based forgetting (access frequency)
+#### 3. relevance-based forgetting (access frequency)
 
 Facts never recalled are candidates for removal. `access_count` already tracks this.
 
@@ -112,7 +112,7 @@ Facts never recalled are candidates for removal. `access_count` already tracks t
 
 **Verdict: Contributing signal within decay scoring, not standalone trigger.** Access frequency already has 5% weight in recall. Bump to 10% or add a zero-access penalty to the decay formula.
 
-#### 4. Confidence-based forgetting
+#### 4. confidence-based forgetting
 
 Low-confidence extractions (`confidence < 0.5`, tier = `assumed`) are pruned first.
 
@@ -125,7 +125,7 @@ Low-confidence extractions (`confidence < 0.5`, tier = `assumed`) are pruned fir
 
 **Verdict: Pre-filter for decay-threshold candidates.** Low-confidence, low-access assumed facts should have the lowest effective stability, making them the first to cross the decay threshold naturally. Adjust the FSRS stability formula to penalize low-confidence facts more aggressively rather than adding a separate mechanism.
 
-#### 5. User-directed forgetting
+#### 5. user-directed forgetting
 
 Already implemented via `forget_fact(reason: ForgetReason::UserRequested)`. Working correctly. No changes needed except surface it better in the UI/API.
 
@@ -200,7 +200,7 @@ forget_audit {
 
 User-pinned facts are exempt from automated forgetting. Pinning is explicit: "never forget this." Default: false.
 
-### Forgetting thresholds by FactType
+### Forgetting thresholds by factType
 
 | FactType | Base stability (h) | Forget threshold (R) | Effective age at forget |
 |---|---|---|---|

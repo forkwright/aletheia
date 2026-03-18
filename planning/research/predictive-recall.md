@@ -13,7 +13,7 @@ Current recall is purely reactive: each turn embeds the user message, runs tiere
 
 ## Findings
 
-### 1. Current Recall Pipeline
+### 1. Current recall pipeline
 
 The recall pipeline executes synchronously within the turn lifecycle:
 
@@ -46,18 +46,18 @@ The fast path is already sub-100ms. Predictive recall targets the Tier 2/3 cases
 
 **Signals used today:**
 
-1. **Vector similarity** (0.35 weight) — cosine distance in MiniLM embedding space
-2. **FSRS temporal decay** (0.20) — power-law forgetting curve tuned by fact type and epistemic tier
-3. **Nous relevance** (0.15) — own vs shared vs other agent memories
-4. **Epistemic tier** (0.15) — verified > inferred > assumed
-5. **Graph proximity** (0.10) — BFS hop count from query entities, community-boosted
-6. **Access frequency** (0.05) — log-normalized recall count with supersession chain bonus
+1. **Vector similarity** (0.35 weight)  -  cosine distance in MiniLM embedding space
+2. **FSRS temporal decay** (0.20)  -  power-law forgetting curve tuned by fact type and epistemic tier
+3. **Nous relevance** (0.15)  -  own vs shared vs other agent memories
+4. **Epistemic tier** (0.15)  -  verified > inferred > assumed
+5. **Graph proximity** (0.10)  -  BFS hop count from query entities, community-boosted
+6. **Access frequency** (0.05)  -  log-normalized recall count with supersession chain bonus
 
-**Key observation:** Only vector similarity is computed from the actual query. The other five factors are either static per-fact properties or config defaults. This means the scoring function is mostly query-independent once candidates are retrieved — a property that makes pre-fetching viable.
+**Key observation:** Only vector similarity is computed from the actual query. The other five factors are either static per-fact properties or config defaults. This means the scoring function is mostly query-independent once candidates are retrieved  -  a property that makes pre-fetching viable.
 
-### 2. Predictive Recall Strategies
+### 2. predictive recall strategies
 
-#### Strategy A: Graph Neighborhood Pre-Loading
+#### Strategy a: graph neighborhood pre-Loading
 
 **Mechanism:** When the current turn mentions entities E1, E2, ... En, pre-fetch the 1-hop and 2-hop neighborhoods of those entities from the knowledge graph before the next turn arrives.
 
@@ -69,7 +69,7 @@ The fast path is already sub-100ms. Predictive recall targets the Tier 2/3 cases
 
 **Strengths:**
 - Exploits the existing graph structure (entities, relationships, community clusters).
-- Low marginal cost — Cozo Datalog queries are sub-millisecond for 1-hop.
+- Low marginal cost  -  Cozo Datalog queries are sub-millisecond for 1-hop.
 - High hit rate for conversations that stay within a topic cluster.
 
 **Weaknesses:**
@@ -79,7 +79,7 @@ The fast path is already sub-100ms. Predictive recall targets the Tier 2/3 cases
 
 **Estimated hit rate:** 40-60% for multi-turn conversations on a single topic, <10% for topic-switching turns.
 
-#### Strategy B: Conversation Trajectory Prediction
+#### Strategy b: conversation trajectory prediction
 
 **Mechanism:** Use the last N turns to predict likely next-turn topics via a lightweight model (n-gram, TF-IDF, or small LM).
 
@@ -95,13 +95,13 @@ The fast path is already sub-100ms. Predictive recall targets the Tier 2/3 cases
 - Works even when graph is sparse.
 
 **Weaknesses:**
-- Trajectory vector is a coarse signal — it averages over topics rather than predicting the next one.
+- Trajectory vector is a coarse signal  -  it averages over topics rather than predicting the next one.
 - Requires maintaining per-session embedding history (memory cost: ~1.5KB per turn at 384 dims).
 - Speculative search adds background CPU/IO load.
 
 **Estimated hit rate:** 30-50% depending on conversation coherence.
 
-#### Strategy C: Idle-Time Pre-Fetching
+#### Strategy c: idle-Time pre-Fetching
 
 **Mechanism:** While the user is composing their next message (detected via typing indicators or simply the gap between turns), run speculative recall using the current conversation context.
 
@@ -113,8 +113,8 @@ The fast path is already sub-100ms. Predictive recall targets the Tier 2/3 cases
 
 **Strengths:**
 - Uses dead time (user thinking/typing) productively.
-- No prediction model needed — the last assistant message is a reasonable proxy for what comes next.
-- Minimal architecture change — same search pipeline, just triggered earlier.
+- No prediction model needed  -  the last assistant message is a reasonable proxy for what comes next.
+- Minimal architecture change  -  same search pipeline, just triggered earlier.
 
 **Weaknesses:**
 - Only useful when there is a significant gap between turns (>500ms).
@@ -123,7 +123,7 @@ The fast path is already sub-100ms. Predictive recall targets the Tier 2/3 cases
 
 **Estimated hit rate:** 25-40%. Higher for follow-up questions, lower for topic switches.
 
-#### Strategy D: User Pattern Learning
+#### Strategy d: user pattern learning
 
 **Mechanism:** Track recurring topic sequences per user/session over time. If user frequently discusses A then B, pre-fetch B-related facts when A appears.
 
@@ -142,11 +142,11 @@ The fast path is already sub-100ms. Predictive recall targets the Tier 2/3 cases
 - Requires significant history before patterns emerge (cold start problem).
 - Topic classification itself is noisy (extraction must produce consistent entity/topic labels).
 - Transition table grows with vocabulary; needs pruning strategy.
-- Privacy consideration — stores behavioral patterns.
+- Privacy consideration  -  stores behavioral patterns.
 
 **Estimated hit rate:** 10-20% initially, potentially 40-60% after months of use.
 
-#### Strategy E: Simple Heuristic — Last N Related Conversations
+#### Strategy e: simple heuristic - last n related conversations
 
 **Mechanism:** When a session starts or after N turns, find the top-K most similar prior sessions and pre-load their extracted facts.
 
@@ -156,18 +156,18 @@ The fast path is already sub-100ms. Predictive recall targets the Tier 2/3 cases
 - Bulk-load facts from those sessions into a warm cache.
 
 **Strengths:**
-- Very simple to implement — session embeddings likely already exist or are cheap to add.
+- Very simple to implement  -  session embeddings likely already exist or are cheap to add.
 - Good for recurring tasks ("last time I worked on X, I needed Y").
-- Low false-positive rate — session-level similarity is a strong signal.
+- Low false-positive rate  -  session-level similarity is a strong signal.
 
 **Weaknesses:**
-- Coarse granularity — loads entire sessions, not specific facts.
+- Coarse granularity  -  loads entire sessions, not specific facts.
 - Session embeddings may not exist yet (requires new indexing).
 - Stale if the related session's facts have been superseded.
 
 **Estimated hit rate:** 20-35% for users with recurring workflows.
 
-### 3. Comparison Matrix
+### 3. comparison matrix
 
 | Strategy | Hit Rate | Latency Saved | Compute Cost | Complexity | Cold Start |
 |----------|----------|---------------|--------------|------------|------------|
@@ -177,9 +177,9 @@ The fast path is already sub-100ms. Predictive recall targets the Tier 2/3 cases
 | D: User patterns | 10-60% | 20-60ms | Low (after training) | High | Yes (months) |
 | E: Session similarity | 20-35% | 20-50ms | Medium | Low | Mild (needs sessions) |
 
-### 4. Risks and Mitigations
+### 4. risks and mitigations
 
-#### Risk 1: Wasted Compute on Wrong Predictions
+#### Risk 1: wasted compute on wrong predictions
 
 Speculative recall consumes embedding compute, HNSW search time, and memory for results that may never be used.
 
@@ -189,16 +189,16 @@ Speculative recall consumes embedding compute, HNSW search time, and memory for 
 - Track hit rate per strategy. If a strategy's 30-day rolling hit rate drops below 15%, disable it automatically.
 - Use the existing `access_count` mechanism: speculative results that are never injected get zero access bumps, naturally decaying their priority.
 
-#### Risk 2: Stale Predictions After Topic Shift
+#### Risk 2: stale predictions after topic shift
 
 If the user switches topics, speculative cache is useless and may even pollute results if merged naively.
 
 **Mitigation:**
 - Invalidate speculative cache when the cosine similarity between the new user message embedding and the speculative query embedding drops below 0.5.
-- Never let speculative results override fresh recall — use RRF merge with speculative results getting a rank penalty (offset by +10 positions).
+- Never let speculative results override fresh recall  -  use RRF merge with speculative results getting a rank penalty (offset by +10 positions).
 - TTL on speculative cache: expire after 2 turns unused.
 
-#### Risk 3: Memory Pressure from Pre-Fetched Results
+#### Risk 3: memory pressure from pre-Fetched results
 
 Large graph neighborhoods or aggressive pre-fetching could consume significant memory.
 
@@ -207,7 +207,7 @@ Large graph neighborhoods or aggressive pre-fetching could consume significant m
 - For graph neighborhoods: limit to 1-hop only for entities with PageRank < 0.05; allow 2-hop only for high-importance entities.
 - Evict speculative cache on session end.
 
-#### Risk 4: Increased Complexity and Debugging Difficulty
+#### Risk 4: increased complexity and debugging difficulty
 
 Speculative recall adds a parallel code path that interacts with the existing 6-factor scoring system.
 
@@ -216,16 +216,16 @@ Speculative recall adds a parallel code path that interacts with the existing 6-
 - Emit structured tracing spans for all speculative operations: `recall.speculative.trigger`, `recall.speculative.hit`, `recall.speculative.miss`, `recall.speculative.invalidated`.
 - Speculative results carry a `source: Speculative` tag in `ScoredResult` so they can be filtered in debugging.
 
-#### Risk 5: Accuracy Regression
+#### Risk 5: accuracy regression
 
 Pre-fetched results may lower average recall quality if low-relevance speculative results displace high-relevance fresh results.
 
 **Mitigation:**
-- Speculative results are candidates only — they still pass through the full 6-factor scoring pipeline.
+- Speculative results are candidates only  -  they still pass through the full 6-factor scoring pipeline.
 - Apply a conservative score penalty (multiply speculative scores by 0.8) to prefer fresh results when scores are close.
 - A/B test: run both reactive and predictive recall, compare quality metrics (mean reciprocal rank of facts the LLM actually references).
 
-### 5. Architecture Sketch for MVP
+### 5. architecture sketch for MVP
 
 ```
                     Turn N completes
@@ -266,25 +266,25 @@ Pre-fetched results may lower average recall quality if low-relevance speculativ
 
 **Components to add:**
 
-1. **SpeculativeCache** — bounded LRU in `NousActor`, keyed by session ID.
+1. **SpeculativeCache**  -  bounded LRU in `NousActor`, keyed by session ID.
    - `insert(session_id, query_embedding, Vec<ScoredResult>)`
    - `get_if_relevant(session_id, new_query_embedding, threshold=0.5) -> Option<Vec<ScoredResult>>`
    - `invalidate(session_id)`
 
-2. **Speculative trigger** in `actor/background.rs` — after extraction spawns, also spawn `maybe_prefetch_neighborhood()`.
+2. **Speculative trigger** in `actor/background.rs`  -  after extraction spawns, also spawn `maybe_prefetch_neighborhood()`.
    - Gated on `config.recall.predictive.enabled`.
    - Queries 1-hop graph neighbors of entities from extraction results.
    - Loads associated facts and stores in `SpeculativeCache`.
 
-3. **Merge logic** in `RecallStage::run()` — check cache before/after fresh recall, merge via RRF with rank penalty.
+3. **Merge logic** in `RecallStage::run()`  -  check cache before/after fresh recall, merge via RRF with rank penalty.
 
-4. **Observability** — new tracing spans and metrics:
+4. **Observability**  -  new tracing spans and metrics:
    - `recall.speculative.prefetch_count`
    - `recall.speculative.cache_hit` / `cache_miss`
    - `recall.speculative.invalidated`
    - `recall.speculative.injected_count`
 
-### 6. Effort Estimate
+### 6. effort estimate
 
 | Work Item | Effort | Dependencies |
 |-----------|--------|--------------|
@@ -306,24 +306,24 @@ Strategies D and E are recommended for a later phase after the MVP proves the ca
 
 ## Recommendations
 
-### Minimum Viable Approach
+### Minimum viable approach
 
 **Start with Strategy A (Graph Neighborhood Pre-Loading) alone.** Rationale:
 
 1. **Highest hit rate** (40-60%) among strategies that require no new models or training data.
-2. **Lowest complexity** — reuses existing graph queries and fact loading.
-3. **No cold start** — the knowledge graph is already populated by extraction.
-4. **Natural fit** — the existing Tier 3 search already does graph expansion reactively; this just moves it earlier.
-5. **Proves the architecture** — the SpeculativeCache and merge logic built for Strategy A are reusable for all other strategies.
+2. **Lowest complexity**  -  reuses existing graph queries and fact loading.
+3. **No cold start**  -  the knowledge graph is already populated by extraction.
+4. **Natural fit**  -  the existing Tier 3 search already does graph expansion reactively; this just moves it earlier.
+5. **Proves the architecture**  -  the SpeculativeCache and merge logic built for Strategy A are reusable for all other strategies.
 
-### Implementation Order
+### Implementation order
 
 1. **Phase 1 (MVP):** Strategy A with feature flag, conservative defaults (1-hop only, 20-fact cache, 0.8 score penalty). Ship behind flag, instrument heavily.
 2. **Phase 2 (Validate):** Run A/B comparison for 2-4 weeks. Measure hit rate, latency delta, and whether injected speculative facts appear in LLM outputs.
 3. **Phase 3 (Expand):** If Phase 2 shows >25% hit rate, add Strategy B (trajectory vector) for sessions where graph coverage is sparse.
 4. **Phase 4 (Learn):** If user patterns become trackable, add Strategy D as a long-term enhancement.
 
-### Configuration Defaults
+### Configuration defaults
 
 ```toml
 [recall.predictive]
@@ -341,41 +341,41 @@ max_prefetch_ms = 50               # Wall-clock budget for speculative work
 
 ## Gotchas
 
-1. **Extraction timing.** Graph neighborhood pre-loading depends on extraction having identified entities from the current turn. Extraction runs in the background and may not complete before the user's next message arrives (especially for short turn gaps). The speculative cache must handle the case where no entities are available yet — fall back to no-op rather than blocking.
+1. **Extraction timing.** Graph neighborhood pre-loading depends on extraction having identified entities from the current turn. Extraction runs in the background and may not complete before the user's next message arrives (especially for short turn gaps). The speculative cache must handle the case where no entities are available yet  -  fall back to no-op rather than blocking.
 
 2. **Hub entity explosion.** High-PageRank entities (e.g., the user's own name, a project name) can have hundreds of 1-hop neighbors. The `max_prefetch_ms` budget and a PageRank-based neighbor limit (skip neighbors with PageRank < 0.01) prevent this from becoming a latency spike.
 
 3. **Score penalty tuning.** The 0.8 multiplier is a guess. Too aggressive and speculative results never surface; too lenient and they displace better fresh results. This needs empirical tuning against real conversations. Log the penalty-adjusted vs raw scores to enable offline analysis.
 
-4. **Interaction with iterative recall.** The existing `run_iterative()` path does terminology discovery and a second search cycle. Speculative results should be merged after the iterative cycles complete, not before — otherwise the speculative cache could prevent terminology discovery from finding novel terms (the system would think it already has enough results).
+4. **Interaction with iterative recall.** The existing `run_iterative()` path does terminology discovery and a second search cycle. Speculative results should be merged after the iterative cycles complete, not before  -  otherwise the speculative cache could prevent terminology discovery from finding novel terms (the system would think it already has enough results).
 
 5. **Cache coherence with fact updates.** If a fact is superseded or forgotten between the speculative fetch and the next recall, the cached version is stale. Check `is_forgotten` and `superseded_by` at merge time, not at cache time.
 
 6. **Multi-nous contention.** In multi-agent scenarios, each `NousActor` has its own speculative cache. This is correct (agents have different knowledge scopes) but means total memory scales with active agent count. At 20KB per agent, this is negligible for typical deployments (<100 agents).
 
-7. **The 5 static factors.** Today, only `vector_similarity` is computed from the actual query — the other 5 factors (decay, relevance, epistemic tier, proximity, frequency) use config defaults or per-fact static values (see `nous/src/recall.rs:470-493`). This means speculative scoring is nearly identical to fresh scoring for those factors. If the scoring model evolves to make more factors query-dependent, speculative pre-scoring becomes less reliable and the cache-then-rescore architecture becomes more important.
+7. **The 5 static factors.** Today, only `vector_similarity` is computed from the actual query  -  the other 5 factors (decay, relevance, epistemic tier, proximity, frequency) use config defaults or per-fact static values (see `nous/src/recall.rs:470-493`). This means speculative scoring is nearly identical to fresh scoring for those factors. If the scoring model evolves to make more factors query-dependent, speculative pre-scoring becomes less reliable and the cache-then-rescore architecture becomes more important.
 
 ---
 
 ## Observations
 
-- **Debt:** `nous/src/recall.rs:470-493` — Only `vector_similarity` is query-computed; the other 5 factor scores are config defaults, not actual per-fact values from mneme. The `decay`, `epistemic_tier`, and `access_frequency` scores should come from the fact's actual metadata (age, tier, access_count) via `RecallEngine::score_decay()` etc. This was likely a simplification during initial integration.
-- **Idea:** The `SpeculativeCache` infrastructure could also be used for "recall pinning" — letting users explicitly pin facts that should always appear in recall, bypassing scoring entirely.
+- **Debt:** `nous/src/recall.rs:470-493`  -  Only `vector_similarity` is query-computed; the other 5 factor scores are config defaults, not actual per-fact values from mneme. The `decay`, `epistemic_tier`, and `access_frequency` scores should come from the fact's actual metadata (age, tier, access_count) via `RecallEngine::score_decay()` etc. This was likely a simplification during initial integration.
+- **Idea:** The `SpeculativeCache` infrastructure could also be used for "recall pinning"  -  letting users explicitly pin facts that should always appear in recall, bypassing scoring entirely.
 - **Doc gap:** No documentation exists for the 6-factor scoring model's weight rationale. The weights (0.35/0.20/0.15/0.15/0.10/0.05) appear to be hand-tuned. An ablation study comparing weight configurations would validate or improve them.
 
 ---
 
 ## References
 
-- `crates/nous/src/recall.rs` — RecallStage, iterative recall, scoring, formatting
-- `crates/nous/src/pipeline.rs` — 6-stage turn pipeline, recall invocation
-- `crates/nous/src/actor/background.rs` — extraction trigger, skill capture
-- `crates/mneme/src/recall.rs` — RecallEngine, 6-factor scoring, FSRS decay
-- `crates/mneme/src/knowledge_store/search.rs` — HNSW, BM25, hybrid, tiered search
-- `crates/mneme/src/knowledge_store/marshal.rs` — HybridQuery building, RRF merge
-- `crates/mneme/src/graph_intelligence.rs` — PageRank, Louvain, proximity boosting
-- `crates/mneme/src/query_rewrite.rs` — LLM query rewriting, tiered search config
-- `crates/mneme/src/hnsw_index.rs` — HNSW vector index wrapper
-- `crates/mneme/src/knowledge.rs` — Fact, Entity, EpistemicTier types
-- `crates/nous/src/config.rs` — NousConfig, RecallConfig, PipelineConfig
-- `crates/nous/src/distillation.rs` — distillation triggers (context/message thresholds)
+- `crates/nous/src/recall.rs`  -  RecallStage, iterative recall, scoring, formatting
+- `crates/nous/src/pipeline.rs`  -  6-stage turn pipeline, recall invocation
+- `crates/nous/src/actor/background.rs`  -  extraction trigger, skill capture
+- `crates/mneme/src/recall.rs`  -  RecallEngine, 6-factor scoring, FSRS decay
+- `crates/mneme/src/knowledge_store/search.rs`  -  HNSW, BM25, hybrid, tiered search
+- `crates/mneme/src/knowledge_store/marshal.rs`  -  HybridQuery building, RRF merge
+- `crates/mneme/src/graph_intelligence.rs`  -  PageRank, Louvain, proximity boosting
+- `crates/mneme/src/query_rewrite.rs`  -  LLM query rewriting, tiered search config
+- `crates/mneme/src/hnsw_index.rs`  -  HNSW vector index wrapper
+- `crates/mneme/src/knowledge.rs`  -  Fact, Entity, EpistemicTier types
+- `crates/nous/src/config.rs`  -  NousConfig, RecallConfig, PipelineConfig
+- `crates/nous/src/distillation.rs`  -  distillation triggers (context/message thresholds)

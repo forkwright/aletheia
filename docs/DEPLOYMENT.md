@@ -559,7 +559,7 @@ See [troubleshooting.md](troubleshooting.md) for common issues and fixes.
 
 ---
 
-## Optional: Signal messaging
+## Optional: signal messaging
 
 Aletheia can receive and send messages via [Signal](https://signal.org/) using the [signal-cli](https://github.com/AsamK/signal-cli) JSON-RPC daemon.
 

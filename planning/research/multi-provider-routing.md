@@ -12,9 +12,9 @@ How should Aletheia support multiple LLM providers (Anthropic, OpenAI, local mod
 
 ## Findings
 
-### 1. Current Provider Coupling Audit
+### 1. Current provider coupling audit
 
-#### Architecture: Anthropic-Native by Design
+#### Architecture: anthropic-Native by design
 
 Hermeneus is explicitly Anthropic-native. From the module documentation (`crates/hermeneus/src/lib.rs`):
 
@@ -22,7 +22,7 @@ Hermeneus is explicitly Anthropic-native. From the module documentation (`crates
 
 This is a deliberate design decision, not accidental coupling. The type system models Anthropic's Messages API, and other providers are expected to adapt to it.
 
-#### Existing Abstraction Layer
+#### Existing abstraction layer
 
 The `LlmProvider` trait (`crates/hermeneus/src/provider.rs:23-65`) defines the provider interface:
 
@@ -49,7 +49,7 @@ The trait accepts `CompletionRequest` and returns `CompletionResponse`, both Ant
 - Per-provider health state machine (Up/Degraded/Down)
 - Success/error recording for health transitions
 
-#### Where Anthropic is Hardcoded
+#### Where Anthropic is hardcoded
 
 | Location | What | Portability Impact |
 |----------|------|--------------------|
@@ -62,13 +62,13 @@ The trait accepts `CompletionRequest` and returns `CompletionResponse`, both Ant
 | `anthropic/wire/` | Wire format serialization/deserialization | Fully Anthropic-specific, correctly isolated |
 | `anthropic/stream.rs` | SSE streaming parser | Anthropic-specific stream format, correctly isolated |
 
-#### How Providers Flow Through the System
+#### How providers flow through the system
 
 1. **Init** (`crates/aletheia/src/server.rs`): `build_provider_registry()` creates a registry, initializes `AnthropicProvider`, and registers it. Only one provider is registered today.
 2. **Routing** (`crates/nous/src/execute/mod.rs:33-56`): `resolve_provider_checked()` calls `registry.find_provider(model)` (first match), checks health, and returns the provider or an error.
 3. **Execution**: `provider.complete()` or `provider.complete_streaming()` is called. The caller records success/error for health tracking.
 
-#### Recent Addition: Model Fallback Chain
+#### Recent addition: model fallback chain
 
 `crates/hermeneus/src/fallback.rs` (landed on main) implements intra-provider model fallback. `complete_with_fallback()` retries the primary model `retries_before_fallback` times, then tries each model in `FallbackConfig.fallback_models` in order. Non-retryable errors (auth, 4xx) propagate immediately; retryable errors (429, 5xx, timeout) trigger fallback via the `Error::is_retryable()` method (`crates/hermeneus/src/error.rs:72-87`).
 
@@ -80,9 +80,9 @@ The coupling is well-structured. Anthropic-specific code is isolated in the `ant
 
 This is a strength, not a weakness. Making the types provider-neutral would lose Anthropic-specific features (prompt caching, extended thinking, server-side tools) that Aletheia uses heavily. The adapter pattern (other providers translate to/from these types) preserves full Anthropic capability while enabling other providers.
 
-### 2. Provider Trait Design
+### 2. provider trait design
 
-#### Current Trait: What Works
+#### Current trait: what works
 
 The existing `LlmProvider` trait handles the core use case well:
 
@@ -91,7 +91,7 @@ The existing `LlmProvider` trait handles the core use case well:
 - `Send + Sync` allows shared ownership across async tasks
 - `name` provides diagnostics
 
-#### What is Missing
+#### What is missing
 
 **Model capability metadata.** The registry knows which provider supports which model name, but nothing about model capabilities. The caller must know that `claude-opus-4-6` supports thinking and `gpt-4o` does not. This information should be queryable.
 
@@ -101,7 +101,7 @@ The existing `LlmProvider` trait handles the core use case well:
 
 **Health-aware routing.** `ProviderRegistry::find_provider()` returns the first match regardless of health. `resolve_provider_checked()` in nous checks health after finding the provider but does not try alternatives.
 
-#### Proposed Trait Extension
+#### Proposed trait extension
 
 Do not replace the existing trait. Extend the system with a capability registry:
 
@@ -150,9 +150,9 @@ pub trait EmbeddingProvider: Send + Sync {
 
 Embeddings are a different operation with different providers (OpenAI `text-embedding-3-small`, local Candle models). Merging them into `LlmProvider` would violate interface segregation.
 
-### 3. Routing Strategies
+### 3. routing strategies
 
-#### 3.1 Static Assignment (Task Type -> Provider)
+#### 3.1 static assignment (Task type -> provider)
 
 Map task categories to specific models/providers in configuration:
 
@@ -176,7 +176,7 @@ qa_evaluation = "claude-sonnet-4-6"
 
 **Verdict: Implement first.** This is the natural extension of the current system. `NousConfig.model` already selects a model per agent. Extending this to support provider-qualified model names (e.g., `openai/gpt-4o`) is straightforward.
 
-#### 3.2 Fallback Chain (Try Providers in Order)
+#### 3.2 fallback chain (Try providers in order)
 
 **Existing work:** `crates/hermeneus/src/fallback.rs` implements model-level fallback within a single provider. This section covers cross-provider fallback: trying a different provider when the primary provider is entirely unavailable.
 
@@ -230,7 +230,7 @@ for provider in providers.find_providers(model) {
 
 **Verdict: Implement second.** High value for reliability. The existing health system provides the foundation. The main risk is response format differences between providers causing downstream breakage.
 
-#### 3.3 Cost-Based Routing (Cheapest Capable Provider)
+#### 3.3 cost-Based routing (Cheapest capable provider)
 
 Select the cheapest provider that meets the request's capability requirements:
 
@@ -258,7 +258,7 @@ fn select_cheapest(
 
 **Verdict: Implement third, after capability metadata is in place.** This depends on `ModelCapabilities` being populated for all registered models. Without accurate capability data, the router cannot make correct decisions.
 
-#### 3.4 Load Balancing (Distribute Across Providers)
+#### 3.4 load balancing (Distribute across providers)
 
 Distribute requests across equivalent providers for throughput:
 
@@ -282,9 +282,9 @@ enum LoadBalanceStrategy {
 
 **Verdict: Defer.** Aletheia is a single-user system. Rate limiting is handled by the existing retry/backoff logic. Load balancing adds complexity without solving a current problem. Revisit if multi-tenant or high-throughput parallel agent use cases emerge.
 
-### 4. API Differences Between Providers
+### 4. API differences between providers
 
-#### 4.1 Message Format
+#### 4.1 message format
 
 | Feature | Anthropic | OpenAI | Ollama (OpenAI-compatible) |
 |---------|-----------|--------|---------------------------|
@@ -296,7 +296,7 @@ enum LoadBalanceStrategy {
 
 **Adapter complexity: Medium.** The core text message flow is similar across providers. The system prompt handling is the most common difference (separate field vs. message role). Image format differs but is a straightforward translation. Thinking/reasoning is provider-specific and may need to be stripped for non-Anthropic providers.
 
-#### 4.2 Tool/Function Calling
+#### 4.2 tool/Function calling
 
 | Feature | Anthropic | OpenAI | Ollama |
 |---------|-----------|--------|--------|
@@ -317,7 +317,7 @@ The adapter must:
 4. Handle streaming deltas differently
 5. Drop server-side tools (no OpenAI equivalent) or warn
 
-#### 4.3 Streaming Protocol
+#### 4.3 streaming protocol
 
 | Feature | Anthropic | OpenAI |
 |---------|-----------|--------|
@@ -331,7 +331,7 @@ The adapter must:
 
 The existing `StreamAccumulator` (`crates/hermeneus/src/anthropic/stream.rs`) expects Anthropic-specific events. An OpenAI streaming adapter would need its own accumulator that emits the same `StreamEvent` variants.
 
-#### 4.4 Token Counting
+#### 4.4 token counting
 
 | Feature | Anthropic | OpenAI | Local (Ollama) |
 |---------|-----------|--------|----------------|
@@ -343,7 +343,7 @@ The existing `StreamAccumulator` (`crates/hermeneus/src/anthropic/stream.rs`) ex
 
 Pre-request token estimation is provider-specific. `tiktoken` covers OpenAI models. Anthropic has no public tokenizer. For cost estimation, character-based heuristics (4 chars per token) are sufficient. Precise counting is only needed for context window management, and the API returns actual usage after each call.
 
-#### 4.5 Authentication
+#### 4.5 authentication
 
 | Provider | Method | Header |
 |----------|--------|--------|
@@ -354,7 +354,7 @@ Pre-request token estimation is provider-specific. `tiktoken` covers OpenAI mode
 
 **Adapter complexity: Low.** Each provider sets its own headers. The existing `CredentialProvider` trait in koina (`crates/koina/src/credential.rs`) already abstracts credential resolution. Each provider implementation handles its own auth.
 
-#### 4.6 Error Codes and Rate Limiting
+#### 4.6 error codes and rate limiting
 
 | Feature | Anthropic | OpenAI |
 |---------|-----------|--------|
@@ -366,7 +366,7 @@ Pre-request token estimation is provider-specific. `tiktoken` covers OpenAI mode
 
 **Adapter complexity: Low.** Both use standard HTTP status codes. The existing `Error` enum covers the necessary variants. Each provider's error mapper translates provider-specific codes to the common `Error` type. The health state machine operates on the common `Error` type and requires no changes.
 
-### 5. Observations
+### 5. observations
 
 - **Debt**: `ProviderRegistry::find_provider()` returns the first matching provider with no fallback. If Anthropic is down, the system fails even if OpenAI is registered and healthy. (`crates/hermeneus/src/provider.rs:197-201`)
 - **Debt**: `ProviderConfig::default()` hardcodes Anthropic pricing only. No mechanism for registering pricing from other providers at startup. (`crates/hermeneus/src/provider.rs:95-153`)
@@ -380,7 +380,7 @@ Pre-request token estimation is provider-specific. `tiktoken` covers OpenAI mode
 
 ### Phased Implementation
 
-#### Phase 1: Provider Capabilities and Configuration (Small)
+#### Phase 1: provider capabilities and configuration (Small)
 
 Add model capability metadata and multi-provider configuration. No new providers yet.
 
@@ -393,7 +393,7 @@ Add model capability metadata and multi-provider configuration. No new providers
 
 **Blast radius:** `crates/hermeneus/src/provider.rs`, `crates/hermeneus/src/anthropic/client.rs`, `crates/taxis/src/config.rs`
 
-#### Phase 2: OpenAI Provider Adapter (Medium)
+#### Phase 2: OpenAI provider adapter (Medium)
 
 Implement an OpenAI-compatible provider adapter. This covers OpenAI, Azure OpenAI, and any OpenAI-compatible API (Groq, Together, etc.).
 
@@ -418,7 +418,7 @@ Implement an OpenAI-compatible provider adapter. This covers OpenAI, Azure OpenA
 
 **Blast radius:** new `crates/hermeneus/src/openai/` module, `crates/hermeneus/Cargo.toml`
 
-#### Phase 3: Cross-Provider Fallback Routing (Small)
+#### Phase 3: cross-Provider fallback routing (Small)
 
 Extend the existing model-level fallback (`crates/hermeneus/src/fallback.rs`) to cross provider boundaries.
 
@@ -431,7 +431,7 @@ Extend the existing model-level fallback (`crates/hermeneus/src/fallback.rs`) to
 
 **Blast radius:** `crates/hermeneus/src/provider.rs`, `crates/hermeneus/src/fallback.rs`, `crates/nous/src/execute/mod.rs`, `crates/taxis/src/config.rs`
 
-#### Phase 4: Ollama / Local Model Provider (Small)
+#### Phase 4: Ollama / local model provider (Small)
 
 Add support for local models via Ollama's OpenAI-compatible API.
 
@@ -443,7 +443,7 @@ Add support for local models via Ollama's OpenAI-compatible API.
 
 **Blast radius:** `crates/hermeneus/src/openai/` or new `crates/hermeneus/src/ollama/` module
 
-#### Phase 5: Cost-Based Routing (Medium)
+#### Phase 5: cost-Based routing (Medium)
 
 Route requests to the cheapest capable provider.
 
@@ -455,7 +455,7 @@ Route requests to the cheapest capable provider.
 
 **Blast radius:** `crates/hermeneus/src/provider.rs`, `crates/nous/src/execute/mod.rs`, `crates/taxis/src/config.rs`
 
-### Effort Estimates
+### Effort estimates
 
 | Phase | Files Changed | New Files | Complexity | Dependencies |
 |-------|--------------|-----------|------------|-------------|
@@ -467,7 +467,7 @@ Route requests to the cheapest capable provider.
 
 Phases 1, 2, and 3 are the critical path. Phase 1 is a prerequisite for phases 2-5. Phases 2 and 3 can proceed in parallel after phase 1. Phase 4 builds on phase 2. Phase 5 can start after phase 1.
 
-### What NOT to Build
+### What NOT to build
 
 - **Provider-neutral type system.** Do not replace `CompletionRequest`/`CompletionResponse` with provider-agnostic types. The Anthropic-native types give full access to Anthropic features. Other providers adapt to what they support. A lowest-common-denominator type system would lose prompt caching, extended thinking, server-side tools, and citations.
 - **Load balancer.** Not needed for single-user system. The fallback chain provides sufficient resilience.

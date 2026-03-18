@@ -6,7 +6,7 @@ Aletheia has MCP server support (diaporeia crate) but no MCP client capability. 
 
 ## Findings
 
-### 1. Existing MCP Server Audit (diaporeia)
+### 1. existing MCP server audit (diaporeia)
 
 **Crate**: `aletheia-diaporeia` at `crates/diaporeia/`
 
@@ -24,11 +24,11 @@ Aletheia has MCP server support (diaporeia crate) but no MCP client capability. 
 
 **Error handling**: 6 error variants mapped to JSON-RPC codes. Path sanitization strips server-side paths from error messages before they reach clients.
 
-### 2. MCP Protocol Requirements for Client Role
+### 2. MCP protocol requirements for client role
 
 The MCP spec (2025-11-25) defines three roles: host (aletheia), client (connector per server), and server (external tool provider). Each client maintains a 1:1 stateful session with one server.
 
-#### 2.1 Lifecycle
+#### 2.1 lifecycle
 
 Three-phase handshake:
 1. Client sends `initialize` with protocol version, capabilities, and client info.
@@ -39,7 +39,7 @@ Version negotiation: client proposes latest version it supports; server echoes i
 
 Shutdown: client sends `notifications/cancelled` for in-flight requests, then closes transport.
 
-#### 2.2 Client-to-Server Methods
+#### 2.2 client-to-Server methods
 
 | Method | Purpose | Paginated |
 |--------|---------|-----------|
@@ -55,7 +55,7 @@ Shutdown: client sends `notifications/cancelled` for in-flight requests, then cl
 | `logging/setLevel` | Set server log verbosity | No |
 | `ping` | Health check | No |
 
-#### 2.3 Server-to-Client Methods (optional client features)
+#### 2.3 server-to-Client methods (optional client features)
 
 | Method | Purpose | Phase |
 |--------|---------|-------|
@@ -63,19 +63,19 @@ Shutdown: client sends `notifications/cancelled` for in-flight requests, then cl
 | `roots/list` | Server asks for filesystem roots | 1 |
 | `elicitation/create` | Server requests user input | 4 |
 
-#### 2.4 Notifications
+#### 2.4 notifications
 
 Client receives: `notifications/tools/list_changed`, `notifications/resources/list_changed`, `notifications/resources/updated`, `notifications/prompts/list_changed`, `notifications/progress`, `notifications/message` (logging).
 
 Client sends: `notifications/initialized`, `notifications/cancelled`, `notifications/roots/list_changed`.
 
-### 3. Transport Options
+### 3. transport options
 
 #### 3.1 stdio
 
 Client launches server as a subprocess. JSON-RPC messages on stdin/stdout, newline-delimited. Server logs to stderr. Shutdown: close stdin, wait, SIGTERM, SIGKILL. Simplest transport, recommended by spec for local servers.
 
-#### 3.2 Streamable HTTP
+#### 3.2 streamable HTTP
 
 Single endpoint (e.g., `https://example.com/mcp`). POST for client requests (returns JSON or SSE stream). Optional GET for server-initiated SSE stream. Session management via `MCP-Session-Id` header. Resumable streams via `Last-Event-ID`. Protocol version header (`MCP-Protocol-Version`) required on all requests.
 
@@ -83,17 +83,17 @@ Single endpoint (e.g., `https://example.com/mcp`). POST for client requests (ret
 
 Separate GET endpoint (returns SSE with `endpoint` event) and POST endpoint. Backwards-compatibility fallback: try POST initialize first, fall back to GET if 400/404/405.
 
-#### 3.4 No WebSocket
+#### 3.4 no webSocket
 
 The spec does not define a WebSocket transport despite community discussion.
 
-### 4. Authentication
+### 4. authentication
 
 OAuth 2.1 for HTTP transports (optional). Discovery via Protected Resource Metadata (RFC 9728). PKCE required (S256). `resource` parameter (RFC 8707) required. Three client registration approaches: pre-registered, client ID metadata documents, dynamic registration (RFC 7591). Tokens via `Authorization: Bearer` on every request.
 
 stdio transport: credentials from environment, not OAuth.
 
-### 5. rmcp Client Support
+### 5. rmcp client support
 
 rmcp 1.2.0 has full client support via the `client` feature flag (not currently enabled in aletheia).
 
@@ -119,7 +119,7 @@ let tools = peer.list_all_tools().await?;
 
 The SDK abstracts JSON-RPC framing, lifecycle management, and transport details. No need to implement the protocol layer from scratch.
 
-### 6. Organon Tool System Integration Points
+### 6. organon tool system integration points
 
 **Tool trait**: `ToolExecutor` (object-safe async trait in `crates/organon/src/registry.rs`). Single method: `execute(&self, input: &ToolInput, ctx: &ToolContext) -> Result<ToolResult>`.
 
@@ -133,7 +133,7 @@ The SDK abstracts JSON-RPC framing, lifecycle management, and transport details.
 
 **Domain packs**: `thesauros` already registers external tools (from domain packs) using the same `ToolRegistry`. Precedent exists for non-builtin tool registration.
 
-### 7. Configuration System
+### 7. configuration system
 
 **Framework**: figment (defaults, TOML file, environment variables). All config types in `crates/taxis/src/config.rs`.
 
@@ -203,7 +203,7 @@ McpServerConfig {
 }
 ```
 
-### Tool Namespace
+### Tool namespace
 
 External MCP tools are namespaced as `mcp_{server}_{tool}` in the organon registry.
 
@@ -211,7 +211,7 @@ Example: server named "filesystem" exposing tool "read_file" becomes `mcp_filesy
 
 This prevents collisions with native organon tools and makes the tool's origin visible in LLM context and logs. The `enable_tool` meta-tool's catalog shows MCP tools grouped by server.
 
-### Tool Integration Architecture
+### Tool integration architecture
 
 ```
                     ToolRegistry (organon)
@@ -250,7 +250,7 @@ This prevents collisions with native organon tools and makes the tool's origin v
 5. Set `auto_activate = false` by default (lazy loading)
 6. Subscribe to `notifications/tools/list_changed` for dynamic updates
 
-### Resource Access
+### Resource access
 
 MCP resources from external servers are not directly exposed as organon tools. Instead:
 
@@ -260,7 +260,7 @@ MCP resources from external servers are not directly exposed as organon tools. I
 
 This avoids polluting the tool registry with resource URIs and keeps the interface consistent with how agents interact with tools.
 
-### Crate Placement
+### Crate placement
 
 Two options:
 
@@ -270,7 +270,7 @@ Two options:
 
 **Recommendation**: Option A. Diaporeia means "passage through" and already owns the MCP boundary. The client is the other direction of passage. Feature-gate the client (`mcp-client` feature) independently from the server (`mcp` feature). The rmcp dependency already exists; adding the `client` feature is a Cargo.toml change.
 
-### Error Handling
+### Error handling
 
 New error variants in `diaporeia::error`:
 
@@ -289,9 +289,9 @@ These map to organon's `ExecutionFailed` at the tool dispatch boundary. The agen
 
 ---
 
-## Security Model
+## Security model
 
-### Trust Levels
+### Trust levels
 
 Three trust levels per configured server:
 
@@ -303,7 +303,7 @@ Three trust levels per configured server:
 
 Default: `sandboxed`. Operator must explicitly set `trusted`.
 
-### Data Flow Control
+### Data flow control
 
 **Sandboxed servers**:
 - Receive only the tool call arguments (name + JSON params) that the LLM explicitly constructs.
@@ -318,27 +318,27 @@ Default: `sandboxed`. Operator must explicitly set `trusted`.
 - Path sanitization (already in diaporeia for server mode) applies to client-received error messages too.
 - Secret values from `symbolon` are never passed as tool arguments. The tool dispatch layer checks arguments against a redaction list.
 
-### Subprocess Isolation (stdio)
+### Subprocess isolation (stdio)
 
 - Subprocess inherits only explicitly configured `env` variables, not the full parent environment.
 - Working directory set to a temporary directory, not the aletheia instance root.
 - On Linux, consider landlock/seccomp for subprocess sandboxing (aletheia already has landlock support in organon for shell execution).
 
-### Network Isolation (HTTP)
+### Network isolation (HTTP)
 
 - TLS required for non-localhost URLs (`rustls`, consistent with aletheia's TLS policy).
 - Connection timeout + per-request timeout from config.
 - No automatic credential forwarding between servers (token audience binding per spec).
 
-### Tool Annotation Trust
+### Tool annotation trust
 
 Per the MCP spec, tool annotations (like `readOnlyHint`, `destructiveHint`) are untrusted unless the server is `trusted`. For `sandboxed` servers, ignore annotations and apply conservative defaults (assume potentially destructive).
 
 ---
 
-## Effort Estimate
+## Effort estimate
 
-### Phase 1: stdio + Tool Discovery/Invocation (3-4 weeks)
+### Phase 1: stdio + tool discovery/Invocation (3-4 weeks)
 
 - Extend `McpConfig` with `servers` array and `McpServerConfig` types
 - Add config validation in taxis
@@ -351,7 +351,7 @@ Per the MCP spec, tool annotations (like `readOnlyHint`, `destructiveHint`) are 
 - Trust level enforcement (sandboxed by default)
 - Tests: mock MCP server via stdio for integration tests
 
-### Phase 2: Resources, Prompts, and Dynamic Updates (2 weeks)
+### Phase 2: resources, prompts, and dynamic updates (2 weeks)
 
 - `mcp_resources` tool for resource listing and reading
 - Prompt listing and expansion
@@ -359,7 +359,7 @@ Per the MCP spec, tool annotations (like `readOnlyHint`, `destructiveHint`) are 
 - Resource subscriptions
 - Completion support
 
-### Phase 3: Streamable HTTP Transport (3-4 weeks)
+### Phase 3: streamable HTTP transport (3-4 weeks)
 
 - Enable rmcp `transport-streamable-http-client-reqwest` feature
 - Session management (`MCP-Session-Id`)
@@ -368,7 +368,7 @@ Per the MCP spec, tool annotations (like `readOnlyHint`, `destructiveHint`) are 
 - Legacy HTTP+SSE backwards compatibility
 - TLS enforcement for remote servers
 
-### Phase 4: Advanced Client Features (2-3 weeks)
+### Phase 4: advanced client features (2-3 weeks)
 
 - Sampling support (route server LLM requests through hermeneus)
 - Elicitation support (form + URL modes, requires TUI/UI integration)

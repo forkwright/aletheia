@@ -48,7 +48,7 @@ Run `aletheia --help` for the full command reference.
 
 Memory (embedded engine, candle) is embedded in the binary. No external databases, containers, or sidecars required.
 
-## Optional: Signal integration
+## Optional: signal integration
 
 Requires [signal-cli](https://github.com/AsamK/signal-cli) and a registered phone number. See [CONFIGURATION.md](CONFIGURATION.md#channelssignal) for setup.
 

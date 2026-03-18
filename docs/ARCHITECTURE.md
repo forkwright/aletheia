@@ -18,42 +18,42 @@ Module and crate names use Greek terms reflecting their essential nature (nous =
 
 ```text
 aletheia
-├── koina         — errors, tracing, safe wrappers, fs utils
-├── taxis         — config, path resolution, oikos hierarchy, secret refs
-├── mneme         — session store (SQLite) + knowledge engine (vendored Datalog) + candle
-│   ├── store     — SQLite session store: WAL, migrations, retention
-│   ├── knowledge — Datalog knowledge graph, HNSW vectors, entity relations
-│   ├── embedding — EmbeddingProvider trait: candle (local default)
-│   ├── extract   — LLM-driven fact extraction, entity resolution
-│   ├── recall    — hybrid retrieval (vector + graph + BM25), MMR diversity
-│   └── engine/   — embedded Datalog + HNSW engine (mneme-engine feature gate)
-├── hermeneus     — Anthropic client, model routing, credentials, provider trait
-├── organon       — tool registry + built-in tools
-├── nous          — agent pipeline, bootstrap, recall, finalize, actor model
-├── dianoia       — planning / project orchestration
-├── pylon         — Axum HTTP gateway, SSE streaming
-├── diaporeia     — MCP server interface for external AI agents
-├── symbolon      — JWT auth, sessions, RBAC
-├── agora         — channel registry + ChannelProvider trait
-│   └── semeion   — Signal (signal-cli subprocess)
-├── daemon        — oikonomos: per-nous background tasks, cron, evolution, prosoche
-├── melete        — distillation, reflection, memory flush, consolidation
-└── theatron      — presentation umbrella (crates/theatron/)
-    └── tui       — terminal dashboard                                  (crates/theatron/tui/)
+├── koina          -  errors, tracing, safe wrappers, fs utils
+├── taxis          -  config, path resolution, oikos hierarchy, secret refs
+├── mneme          -  session store (SQLite) + knowledge engine (vendored Datalog) + candle
+│   ├── store      -  SQLite session store: WAL, migrations, retention
+│   ├── knowledge  -  Datalog knowledge graph, HNSW vectors, entity relations
+│   ├── embedding  -  EmbeddingProvider trait: candle (local default)
+│   ├── extract    -  LLM-driven fact extraction, entity resolution
+│   ├── recall     -  hybrid retrieval (vector + graph + BM25), MMR diversity
+│   └── engine/    -  embedded Datalog + HNSW engine (mneme-engine feature gate)
+├── hermeneus      -  Anthropic client, model routing, credentials, provider trait
+├── organon        -  tool registry + built-in tools
+├── nous           -  agent pipeline, bootstrap, recall, finalize, actor model
+├── dianoia        -  planning / project orchestration
+├── pylon          -  Axum HTTP gateway, SSE streaming
+├── diaporeia      -  MCP server interface for external AI agents
+├── symbolon       -  JWT auth, sessions, RBAC
+├── agora          -  channel registry + ChannelProvider trait
+│   └── semeion    -  Signal (signal-cli subprocess)
+├── daemon         -  oikonomos: per-nous background tasks, cron, evolution, prosoche
+├── melete         -  distillation, reflection, memory flush, consolidation
+└── theatron       -  presentation umbrella (crates/theatron/)
+    └── tui        -  terminal dashboard                                  (crates/theatron/tui/)
 ```
 
 ---
 
-## The Oikos (instance structure)
+## The oikos (instance structure)
 
 Platform (tracked) vs. instance (gitignored). One directory, one boundary.
 
 ```text
-aletheia/                          # git root — the platform
+aletheia/                          # git root  -  the platform
 ├── crates/                        # Rust workspace
 ├── docs/                          # platform docs
 │
-├── instance/                      # GITIGNORED — all instance state
+├── instance/                      # GITIGNORED  -  all instance state
 │   ├── theke/                     # Tier 0: human + nous collaborative space
 │   │   ├── USER.md               #   Canonical user profile (one copy)
 │   │   ├── AGENTS.md             #   Team topology
@@ -94,7 +94,7 @@ aletheia/                          # git root — the platform
 │   │
 │   └── signal/                   # signal-cli data
 │
-└── instance.example/              # TRACKED — scaffold template
+└── instance.example/              # TRACKED  -  scaffold template
 ```
 
 Three-tier cascading resolution: nous/{id} -> shared -> theke. Most specific wins. Presence is declaration - drop a file in the right directory, it's discovered.
@@ -198,7 +198,7 @@ Imports flow downward only. Lower-layer crates must not depend on higher layers.
 opt-level = 1
 
 [profile.dev.package."*"]
-opt-level = 2      # optimize deps in dev — faster iteration
+opt-level = 2      # optimize deps in dev  -  faster iteration
 
 [profile.release]
 lto = "thin"

@@ -6,7 +6,7 @@ A sundial's gnomon doesn't contain time. It casts a shadow that makes time legib
 
 ---
 
-## Why Greek
+## Why greek
 
 Ancient Greek was engineered across centuries for a single purpose: distinguishing between closely related things that matter. Where English has "knowledge," Greek has episteme (systematic knowledge), gnosis (direct acquaintance), techne (craft knowledge), phronesis (practical wisdom), and nous (direct apprehension). These aren't synonyms. They're fundamentally different stances toward the world.
 

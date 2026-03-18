@@ -15,9 +15,9 @@ aletheia binary
 ├── pylon (HTTP gateway)
 ├── nous (agent actors)
 └── oikonomos (daemon)
-    ├── TaskRunner — cron/interval scheduler
-    ├── ProsocheCheck — heartbeat check definition
-    └── DaemonBridge — sends prompts to nous actors
+    ├── TaskRunner  -  cron/interval scheduler
+    ├── ProsocheCheck  -  heartbeat check definition
+    └── DaemonBridge  -  sends prompts to nous actors
 ```
 
 ### Data flow

@@ -23,7 +23,7 @@ aletheia status          # agent status, sessions, cron jobs
 
 ## Start procedure
 
-### 1. Check port is free
+### 1. check port is free
 
 ```bash
 ss -tlnp | grep 18789
@@ -31,7 +31,7 @@ ss -tlnp | grep 18789
 fuser -k 18789/tcp
 ```
 
-### 2. Start the binary
+### 2. start the binary
 
 ```bash
 aletheia
@@ -45,7 +45,7 @@ Or via systemd:
 systemctl --user start aletheia
 ```
 
-### 3. Verify
+### 3. verify
 
 ```bash
 sleep 3

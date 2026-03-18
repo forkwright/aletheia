@@ -216,7 +216,7 @@ Use the `agents` field on context entries and the `overlays` table to target con
 path = "context/CLINICAL_GUIDELINES.md"
 agents = ["chiron"]
 
-# Or target by domain tag — any agent with "healthcare" domain receives it
+# Or target by domain tag  -  any agent with "healthcare" domain receives it
 [[context]]
 path = "context/ICD_CODES.md"
 agents = ["healthcare"]

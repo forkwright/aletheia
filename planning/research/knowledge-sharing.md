@@ -50,7 +50,7 @@ Three mechanisms already enable some cross-agent knowledge flow:
 
 ### Designed sharing mechanisms
 
-#### 1. Knowledge publication
+#### 1. knowledge publication
 
 **Concept.** An agent explicitly publishes a fact to the shared knowledge base. Publication changes the fact's `nous_id` from the agent's ID to empty, or creates a new shared copy with provenance metadata.
 
@@ -86,7 +86,7 @@ published_facts { shared_fact_id: String =>
 }
 ```
 
-#### 2. Knowledge subscription
+#### 2. knowledge subscription
 
 **Concept.** An agent subscribes to topics, fact types, or entity categories. When another agent publishes knowledge matching a subscription, the subscriber receives a notification.
 
@@ -114,7 +114,7 @@ Subscriptions are evaluated at publication time. When `publish_fact` runs, it ch
 
 **Recommendation.** Push notification with pull content. The CrossNousRouter delivers a lightweight notification ("new shared fact about entity X, type Skill"). The subscriber's recall pipeline picks up the actual fact content on next recall query. This avoids message bloat while ensuring agents know new knowledge exists.
 
-#### 3. Federated queries
+#### 3. federated queries
 
 **Concept.** An agent queries across all agents' knowledge stores (or a subset) with access control. Returns results from multiple agents, ranked by the standard 6-factor recall engine.
 
@@ -149,7 +149,7 @@ recall_federated(query, options) -> Vec<RecallResult>
 
 For `restricted` visibility, a `fact_access` relation maps fact IDs to authorized `nous_id` values.
 
-#### 4. Shared knowledge base
+#### 4. shared knowledge base
 
 **Concept.** A curated collection of facts that are always available to all agents. Distinct from ad-hoc publication: these are ground-truth facts that define the system's shared understanding.
 
@@ -278,7 +278,7 @@ These are structured messages sent through the existing CrossNousRouter infrastr
 
 ### Effort estimate and phased approach
 
-#### Phase 1: Publication and visibility (5-8 days)
+#### Phase 1: publication and visibility (5-8 days)
 
 **Scope.**
 - Add `visibility` field to facts schema (default: `private`)
@@ -296,7 +296,7 @@ These are structured messages sent through the existing CrossNousRouter infrastr
 
 **Risk.** Schema migration on existing CozoDB data. Mitigated by defaulting all existing facts to `private` visibility.
 
-#### Phase 2: Subscription and notification (3-5 days)
+#### Phase 2: subscription and notification (3-5 days)
 
 **Scope.**
 - Implement subscription registry (in-memory, persisted to SQLite)
@@ -311,7 +311,7 @@ These are structured messages sent through the existing CrossNousRouter infrastr
 
 **Risk.** Notification volume with many agents and frequent publications. Mitigated by filter specificity and rate limiting.
 
-#### Phase 3: Verification and conflict resolution (4-6 days)
+#### Phase 3: verification and conflict resolution (4-6 days)
 
 **Scope.**
 - Multi-agent verification protocol (request -> vote -> promote)
@@ -327,7 +327,7 @@ These are structured messages sent through the existing CrossNousRouter infrastr
 
 **Risk.** Consensus deadlock with even number of agents. Mitigated by operator tiebreaker and timeout-based resolution.
 
-#### Phase 4: Federated recall and restricted access (3-4 days)
+#### Phase 4: federated recall and restricted access (3-4 days)
 
 **Scope.**
 - Extend recall engine with visibility-aware filtering

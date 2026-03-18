@@ -5,39 +5,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [0.12.0] - 2026-03-16
-
-### Added
-- Structured JSON file logging with daily rotation
-- MCP server rate limiting
-- OAuth auto-refresh from Claude Code credentials
-- Fuzz testing infrastructure (3 targets, 60+ seeds)
-- Default agent tool permissions expanded
-- Session display_name field
-- Prebuilt binary releases in CI
-- Theatron desktop scaffold (Dioxus 0.7)
-
-### Fixed
-- Landlock exec Permission Denied on kernel 6.18 (ABI v7)
-- Knowledge facts API returning empty despite extraction
-- embed-candle restored to default features
-- CSRF and rate limit responses now include request_id
-- JWT default signing key validated at startup
-- Session limit parameter enforced
-- Knowledge sort/order parameter validation
-- Haiku 4.5 pricing configuration
-- CrossNousRouter pending_replies leak
-- 8 TUI bugs (streaming, scrolling, contrast, :recall, stale indicator)
-
-### Changed
-- Adapter traits use typed error enums (no more Result<T, String>)
-- Hero functions decomposed in nous, pylon, organon
-- Distillation trigger thresholds extracted to named constants
-- Em dashes removed from inline comments
-- 40+ commented-out debug prints removed
-- Pylon isolated error response tests added
-- Zero-coverage crates now have tests (agora, dianoia, diaporeia, thesauros)
-
 ## [Unreleased]
 
 ### Added
@@ -168,6 +135,40 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+
+## [0.12.0] - 2026-03-16
+
+### Added
+- Structured JSON file logging with daily rotation
+- MCP server rate limiting
+- OAuth auto-refresh from Claude Code credentials
+- Fuzz testing infrastructure (3 targets, 60+ seeds)
+- Default agent tool permissions expanded
+- Session display_name field
+- Prebuilt binary releases in CI
+- Theatron desktop scaffold (Dioxus 0.7)
+
+### Fixed
+- Landlock exec Permission Denied on kernel 6.18 (ABI v7)
+- Knowledge facts API returning empty despite extraction
+- embed-candle restored to default features
+- CSRF and rate limit responses now include request_id
+- JWT default signing key validated at startup
+- Session limit parameter enforced
+- Knowledge sort/order parameter validation
+- Haiku 4.5 pricing configuration
+- CrossNousRouter pending_replies leak
+- 8 TUI bugs (streaming, scrolling, contrast, :recall, stale indicator)
+
+### Changed
+- Adapter traits use typed error enums (no more Result<T, String>)
+- Hero functions decomposed in nous, pylon, organon
+- Distillation trigger thresholds extracted to named constants
+- Em dashes removed from inline comments
+- 40+ commented-out debug prints removed
+- Pylon isolated error response tests added
+- Zero-coverage crates now have tests (agora, dianoia, diaporeia, thesauros)
+
 ## [1.3.0]: memory system audit & overhaul
 
 ### Added
@@ -222,7 +223,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [1.2.0]: onboarding & Mac support
+## [1.2.0]: onboarding & mac support
 
 ### Added
 
