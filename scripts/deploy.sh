@@ -8,9 +8,11 @@ set -euo pipefail
 #   --rollback   Restore the most recent backup and restart
 #   --dry-run    Show what would happen without executing
 #   No flags:    build + copy + restart (full deploy)
+#
+# Prerequisites: cargo, curl, jq, systemctl
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-INSTANCE_ROOT="${ALETHEIA_INSTANCE:-$HOME/ergon/instance}"
+INSTANCE_ROOT="${ALETHEIA_ROOT:-$HOME/ergon/instance}"
 BINARY_SRC="$REPO_ROOT/target/release/aletheia"
 BINARY_DST="${ALETHEIA_BINARY:-$HOME/ergon/bin/aletheia}"
 SERVICE="aletheia.service"
@@ -116,9 +118,9 @@ check_health() {
     while (( elapsed < HEALTH_TIMEOUT )); do
         if health_response=$(curl -sf --max-time 5 "$HEALTH_URL" 2>/dev/null); then
             local status
-            status=$(echo "$health_response" | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])" 2>/dev/null) || true  # NOTE: intentional - failure is non-fatal here
+            status=$(echo "$health_response" | jq -r '.status // empty' 2>/dev/null) || true  # NOTE: intentional - failure is non-fatal here
             local version
-            version=$(echo "$health_response" | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])" 2>/dev/null) || true  # NOTE: intentional - failure is non-fatal here
+            version=$(echo "$health_response" | jq -r '.version // empty' 2>/dev/null) || true  # NOTE: intentional - failure is non-fatal here
 
             if [[ "$status" == "healthy" || "$status" == "degraded" ]]; then
                 log "Health check passed: $status v${version:-unknown}"
@@ -133,6 +135,17 @@ check_health() {
 
     log "Health check failed after ${HEALTH_TIMEOUT}s"
     return 1
+}
+
+# --- Smoke test ---
+
+smoke_test() {
+    log "Running smoke test (check-config)..."
+    if "$BINARY_DST" -r "$INSTANCE_ROOT" check-config; then
+        log "Smoke test passed"
+    else
+        die "Smoke test failed — config is invalid, deploy aborted"
+    fi
 }
 
 # --- Rollback ---
@@ -183,13 +196,17 @@ refresh_token() {
     local cred_file="$HOME/.claude/.credentials.json"
     if [[ -f "$cred_file" ]]; then
         local token
-        token=$(python3 -c "import json; d=json.load(open('$cred_file')); print(d['claudeAiOauth']['accessToken'])" 2>/dev/null) || return 0
+        token=$(jq -r '.claudeAiOauth.accessToken // empty' "$cred_file" 2>/dev/null) || return 0
         if [[ -n "$token" ]]; then
-            local svc_file="$HOME/.config/systemd/user/$SERVICE"
-            if grep -q "ANTHROPIC_AUTH_TOKEN" "$svc_file" 2>/dev/null; then
-                sed -i "s|ANTHROPIC_AUTH_TOKEN=.*|ANTHROPIC_AUTH_TOKEN=$token|" "$svc_file"
-                log "Token updated in $SERVICE"
+            local env_file="${INSTANCE_ROOT}/config/env"
+            mkdir -p "${INSTANCE_ROOT}/config"
+            if [[ -f "$env_file" ]] && grep -q "^ANTHROPIC_AUTH_TOKEN=" "$env_file"; then
+                sed -i "s|^ANTHROPIC_AUTH_TOKEN=.*|ANTHROPIC_AUTH_TOKEN=$token|" "$env_file"
+            else
+                echo "ANTHROPIC_AUTH_TOKEN=$token" >> "$env_file"
             fi
+            chmod 600 "$env_file"
+            log "Token written to $env_file"
         fi
     fi
 }
@@ -201,6 +218,11 @@ if [[ "$ROLLBACK" == true ]]; then
     log "=== Rollback requested ==="
     do_rollback
     exit 0
+fi
+
+# Prereq: instance directory must exist before any deploy step.
+if [[ ! -d "$INSTANCE_ROOT" ]]; then
+    die "Instance directory not found: $INSTANCE_ROOT. Run 'aletheia init' first."
 fi
 
 log "=== Deploy started ==="
@@ -242,6 +264,13 @@ else
     mkdir -p "$(dirname "$BINARY_DST")"
     cp -- "$BINARY_SRC" "$BINARY_DST"
     log "Deployed: $BINARY_DST"
+fi
+
+# Smoke test: validate config with the newly deployed binary
+if [[ "$DRY_RUN" == true ]]; then
+    log "[dry-run] Would run smoke test (check-config)"
+else
+    smoke_test
 fi
 
 # Refresh token
