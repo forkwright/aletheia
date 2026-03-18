@@ -7,6 +7,7 @@ set -euo pipefail
 #   --restart    Restart systemd service after deploy (default: just copy)
 #   --rollback   Restore the most recent backup and restart
 #   --dry-run    Show what would happen without executing
+#   --download vX.Y.Z  Download prebuilt binary from GitHub releases (falls back to build)
 #   No flags:    build + copy + restart (full deploy)
 #
 # Prerequisites: cargo, curl, jq, systemctl
@@ -45,6 +46,7 @@ BUILD=false
 RESTART=false
 ROLLBACK=false
 DRY_RUN=false
+DOWNLOAD_VERSION=""
 
 if [[ $# -eq 0 ]]; then
     BUILD=true
@@ -57,6 +59,13 @@ while [[ $# -gt 0 ]]; do
         --restart) RESTART=true; shift ;;
         --rollback) ROLLBACK=true; shift ;;
         --dry-run) DRY_RUN=true; shift ;;
+        --download)
+            if [[ $# -lt 2 || "$2" == --* ]]; then
+                die "Missing version argument for --download (e.g. --download v0.12.0)"
+            fi
+            DOWNLOAD_VERSION="$2"
+            shift 2
+            ;;
         *) die "Unknown flag: $1" ;;
     esac
 done
@@ -211,6 +220,45 @@ refresh_token() {
     fi
 }
 
+# --- Download prebuilt binary ---
+
+download_binary() {
+    local version="$1"
+    local repo="${GITHUB_REPO:-forkwright/aletheia}"
+    local asset_name="aletheia-$(uname -m)-unknown-linux-gnu"
+    local tmp_bin
+    tmp_bin="$(mktemp)" || return 1
+    trap 'rm -f -- "$tmp_bin"' RETURN
+
+    log "Attempting to download ${version} from ${repo}..."
+
+    # Try gh CLI first, fall back to curl
+    if command -v gh &>/dev/null; then
+        if gh release download "$version" \
+            --repo "$repo" \
+            --pattern "$asset_name" \
+            --output "$tmp_bin" \
+            --clobber 2>/dev/null; then
+            chmod +x -- "$tmp_bin"
+            cp -- "$tmp_bin" "$BINARY_SRC"
+            log "Downloaded binary via gh: ${BINARY_SRC}"
+            return 0
+        fi
+        log "gh release download failed, trying curl..."
+    fi
+
+    local url="https://github.com/${repo}/releases/download/${version}/${asset_name}"
+    if curl -fsSL --max-time 120 --output "$tmp_bin" -- "$url" 2>/dev/null; then
+        chmod +x -- "$tmp_bin"
+        cp -- "$tmp_bin" "$BINARY_SRC"
+        log "Downloaded binary via curl: ${BINARY_SRC}"
+        return 0
+    fi
+
+    log "Download failed for ${version}, falling back to local build"
+    return 1
+}
+
 # --- Main ---
 
 # Handle rollback mode
@@ -218,6 +266,20 @@ if [[ "$ROLLBACK" == true ]]; then
     log "=== Rollback requested ==="
     do_rollback
     exit 0
+fi
+
+# Download binary if requested
+if [[ -n "$DOWNLOAD_VERSION" ]]; then
+    [[ "$DOWNLOAD_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9] ]] \
+        || die "Version must match vX.Y.Z format, got: $DOWNLOAD_VERSION"
+    if [[ "$DRY_RUN" == true ]]; then
+        log "[dry-run] Would download ${DOWNLOAD_VERSION} from GitHub releases"
+    elif download_binary "$DOWNLOAD_VERSION"; then
+        BUILD=false
+    else
+        log "Download failed; proceeding with local build"
+        BUILD=true
+    fi
 fi
 
 # Prereq: instance directory must exist before any deploy step.
