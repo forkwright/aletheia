@@ -40,6 +40,9 @@ pub(crate) struct RunningQueryHandle {
 
 pub(crate) struct RunningQueryCleanup {
     pub(crate) id: u64,
+    /// Guards the set of in-flight queries so concurrent cancellations and
+    /// completions do not corrupt the map. Held briefly on drop to remove
+    /// this query's entry and poison its handle.
     pub(crate) running_queries: Arc<Mutex<BTreeMap<u64, RunningQueryHandle>>>,
 }
 
@@ -69,6 +72,9 @@ pub struct Db<S> {
     pub(crate) temp_db: TempStorage,
     pub(crate) relation_store_id: Arc<AtomicU64>,
     pub(crate) queries_count: Arc<AtomicU64>,
+    /// Guards the set of in-flight queries. Invariant: each running query has
+    /// exactly one entry keyed by its monotonic id; the entry is removed on
+    /// completion or cancellation. Held briefly during query start, kill, and cleanup.
     pub(crate) running_queries: Arc<Mutex<BTreeMap<u64, RunningQueryHandle>>>,
     pub(crate) fixed_rules: Arc<ShardedLock<BTreeMap<String, Arc<Box<dyn FixedRule>>>>>,
     pub(crate) tokenizers: Arc<TokenizerCache>,

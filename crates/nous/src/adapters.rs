@@ -63,6 +63,9 @@ fn store_err(e: impl std::fmt::Display) -> StoreError {
 }
 
 /// Adapts `SessionStore` note methods to the `NoteStore` trait.
+///
+/// The inner lock guards SQLite write access; acquired via `block_in_place`
+/// to avoid holding it across async boundaries.
 pub struct SessionNoteAdapter(pub Arc<Mutex<SessionStore>>);
 
 impl NoteStore for SessionNoteAdapter {
@@ -103,6 +106,9 @@ impl NoteStore for SessionNoteAdapter {
 }
 
 /// Adapts `SessionStore` blackboard methods to the `BlackboardStore` trait.
+///
+/// The inner lock guards SQLite write access; acquired via `block_in_place`
+/// to avoid holding it across async boundaries.
 pub struct SessionBlackboardAdapter(pub Arc<Mutex<SessionStore>>);
 
 impl BlackboardStore for SessionBlackboardAdapter {
