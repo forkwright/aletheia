@@ -44,8 +44,8 @@ health=$(curl -sf --max-time 5 "$HEALTH_URL" 2>/dev/null) || {
     exit 1
 }
 
-status=$(echo "$health" | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])" 2>/dev/null)
-version=$(echo "$health" | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])" 2>/dev/null)
+status=$(echo "$health" | jq -r '.status // empty' 2>/dev/null)
+version=$(echo "$health" | jq -r '.version // empty' 2>/dev/null)
 
 if [[ "$status" != "healthy" ]]; then
     log_err "unhealthy: $status (v$version)"
@@ -57,14 +57,7 @@ log_ok "healthy v$version"
 
 # 3. Token expiry check
 if [[ -f "$CRED_FILE" ]]; then
-    remaining=$(python3 -c "
-import json, time
-d = json.load(open('$CRED_FILE'))
-oauth = d.get('claudeAiOauth', {})
-exp = oauth.get('expiresAt', 0) / 1000
-remaining = (exp - time.time()) / 60
-print(f'{remaining:.0f}')
-" 2>/dev/null || echo "unknown")
+    remaining=$(jq -r '(.claudeAiOauth.expiresAt // 0) / 1000 | (. - now) / 60 | floor' "$CRED_FILE" 2>/dev/null || echo "unknown")
 
     if [[ "$remaining" != "unknown" ]]; then
         if [[ "$remaining" -lt 30 ]]; then
