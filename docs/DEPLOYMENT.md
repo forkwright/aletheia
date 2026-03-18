@@ -11,59 +11,29 @@ Step-by-step guide from bare Linux or macOS to a running Aletheia instance. For 
 
 ## Getting started (first-time setup)
 
-Five steps from a fresh clone to a running instance:
-
-**Step 1: Install the binary**
+Three commands from zero to a running instance:
 
 ```bash
-cargo build --release
-cp target/release/aletheia ~/.local/bin/
+# 1. Install the binary (or build from source: cargo build --release)
+curl -L https://github.com/forkwright/aletheia/releases/latest/download/aletheia-linux-x86_64 -o aletheia
+chmod +x aletheia && sudo mv aletheia /usr/local/bin/
+
+# 2. Initialize (creates instance directory, config, credentials, first agent)
+aletheia init
+
+# 3. Start
+aletheia
 ```
 
-**Step 2: Copy the instance scaffold**
+The init wizard prompts for your API key, model, agent name, and bind address, then writes a complete instance. For non-interactive (CI/scripting) use:
 
 ```bash
-cp -r instance.example instance
+ANTHROPIC_API_KEY=sk-ant-... aletheia init --yes --instance-root /srv/aletheia/instance
 ```
 
-This creates the directory tree (`config/`, `data/`, `nous/`, etc.) with template files ready to edit.
+Verify with `aletheia health`. A `healthy` response means the server is running with a registered LLM provider. If the status is `degraded`, verify your API key is set and the config loaded it.
 
-**Step 3: Configure credentials**
-
-Set your Anthropic API key as an environment variable (or use the init wizard, see [Instance setup](#instance-setup)):
-
-```bash
-export ANTHROPIC_API_KEY="sk-ant-..."
-```
-
-Then edit `instance/config/aletheia.toml` (copy from `instance/config/aletheia.toml.example` if it does not exist) and set the bind address, port, and auth mode.
-
-**Step 4: Set up your first agent**
-
-```bash
-cp -r instance/nous/_template instance/nous/main
-```
-
-Edit `instance/nous/main/SOUL.md` with your agent's identity, then add the agent to `aletheia.toml`:
-
-```toml
-[agents]
-[[agents.list]]
-id = "main"
-default = true
-```
-
-**Step 5: Start and verify**
-
-```bash
-aletheia --instance-root ./instance
-# In another terminal:
-aletheia health
-```
-
-A `healthy` response means the server is running with a registered LLM provider. If the status is `degraded`, verify your `ANTHROPIC_API_KEY` is set and the config loaded it.
-
-> **Faster alternative:** Run `aletheia init` to let the interactive wizard perform steps 2–4 automatically.
+> **Manual setup:** If you prefer to configure everything by hand instead of using the wizard, see [Manual: copy the example scaffold](#manual-copy-the-example-scaffold) below.
 
 ---
 
