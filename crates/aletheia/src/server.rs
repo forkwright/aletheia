@@ -332,12 +332,14 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
 
     // NOTE: Channel registry + inbound dispatch (gated on ready signal)
     let ready_rx = nous_manager.ready_rx();
-    let (_channel_registry, _dispatch_handle) =
-        start_inbound_dispatch(&config, &nous_manager, ready_rx, signal_provider.as_ref());
+    let (_channel_registry, dispatch_handle) =
+        start_inbound_dispatch(&config, &nous_manager, ready_rx, signal_provider.as_ref(), &shutdown_token);
 
     let daemon_bridge = Arc::new(crate::daemon_bridge::NousDaemonBridge::new(Arc::clone(
         &nous_manager,
     )));
+    let mut agent_daemon_handles: Vec<tokio::task::JoinHandle<()>> =
+        Vec::with_capacity(config.agents.list.len());
     for agent_def in &config.agents.list {
         let agent_token = shutdown_token.child_token();
         let mut runner = aletheia_oikonomos::runner::TaskRunner::with_bridge(
@@ -361,12 +363,13 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
             ..aletheia_oikonomos::schedule::TaskDef::default()
         });
         let daemon_span = tracing::info_span!("daemon", nous.id = %agent_def.id);
-        tokio::spawn(
+        let handle = tokio::spawn(
             async move {
                 runner.run().await;
             }
             .instrument(daemon_span),
         );
+        agent_daemon_handles.push(handle);
     }
     if !config.agents.list.is_empty() {
         info!(count = config.agents.list.len(), "daemon runners spawned");
@@ -458,10 +461,18 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
 
     let shutdown_timeout = std::time::Duration::from_secs(10);
 
-    // NOTE: Step 2–3: daemon runners have already observed token cancel via child tokens.
-    // Await system daemon handle to confirm it has exited.
+    // NOTE: Step 2: drain agent daemon runners.
+    // They observe shutdown via child tokens; await handles to confirm exit.
+    for handle in agent_daemon_handles {
+        match tokio::time::timeout(shutdown_timeout, handle).await {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => warn!(error = %e, "agent daemon panicked during shutdown"),
+            Err(_) => warn!("agent daemon did not exit within shutdown timeout"),
+        }
+    }
+
+    // NOTE: Step 3: await system daemon handle.
     match tokio::time::timeout(shutdown_timeout, daemon_handle).await {
-        // NOTE: daemon exited cleanly, nothing to do
         Ok(Ok(())) => {}
         Ok(Err(e)) => warn!(error = %e, "system daemon panicked during shutdown"),
         Err(_) => warn!(
@@ -470,10 +481,19 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
         ),
     }
 
-    // NOTE: Step 4: drain nous actors: cancel tokens fire, messages drain, WAL flushed.
+    // NOTE: Step 4: await dispatch loop (drains in-flight message handlers).
+    if let Some(dh) = dispatch_handle {
+        match tokio::time::timeout(shutdown_timeout, dh).await {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => warn!(error = %e, "dispatch loop panicked during shutdown"),
+            Err(_) => warn!("dispatch loop did not exit within shutdown timeout"),
+        }
+    }
+
+    // NOTE: Step 5: drain nous actors: cancel tokens fire, messages drain, WAL flushed.
     state.nous_manager.drain(shutdown_timeout).await;
 
-    // NOTE: Step 5: AppState and session store drop here as `state` goes out of scope.
+    // NOTE: Step 6: AppState and session store drop here as `state` goes out of scope.
     drop(state);
 
     info!("shutdown complete");
@@ -619,6 +639,7 @@ fn start_inbound_dispatch(
     nous_manager: &Arc<NousManager>,
     ready_rx: tokio::sync::watch::Receiver<bool>,
     signal_provider: Option<&Arc<SignalProvider>>,
+    shutdown_token: &CancellationToken,
 ) -> (Arc<ChannelRegistry>, Option<tokio::task::JoinHandle<()>>) {
     let mut channel_registry = ChannelRegistry::new();
 
@@ -630,7 +651,7 @@ fn start_inbound_dispatch(
     let channel_registry = Arc::new(channel_registry);
 
     let handle = if let Some(provider) = signal_provider {
-        let listener = ChannelListener::start(provider, None);
+        let listener = ChannelListener::start(provider, None, shutdown_token.child_token());
         info!("signal channel listener started");
         let (rx, _poll_handles) = listener.into_receiver();
 

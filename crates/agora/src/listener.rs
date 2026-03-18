@@ -7,6 +7,8 @@ use tokio::sync::mpsc;
 use tokio::task::{JoinHandle, JoinSet};
 use tracing::{Instrument, info_span, instrument};
 
+use tokio_util::sync::CancellationToken;
+
 use crate::semeion::SignalProvider;
 use crate::types::InboundMessage;
 
@@ -31,12 +33,14 @@ impl ChannelListener {
     /// Start listening on a Signal provider.
     ///
     /// Spawns polling tasks for all accounts registered on the provider
-    /// and merges their messages into a single receiver.
+    /// and merges their messages into a single receiver. When the `cancel`
+    /// token is cancelled, polling tasks exit promptly.
     pub fn start(
         signal_provider: &SignalProvider,
         poll_interval: Option<std::time::Duration>,
+        cancel: CancellationToken,
     ) -> Self {
-        let (rx, handles) = signal_provider.listen(poll_interval);
+        let (rx, handles) = signal_provider.listen(poll_interval, cancel);
         Self {
             rx: Some(rx),
             handles,

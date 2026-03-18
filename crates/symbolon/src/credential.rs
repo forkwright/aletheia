@@ -2,11 +2,11 @@
 
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant, SystemTime};
 
 use serde::{Deserialize, Serialize};
+use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, debug, info, warn};
 
 use aletheia_koina::credential::{Credential, CredentialProvider, CredentialSource};
@@ -428,7 +428,7 @@ pub struct RefreshingCredentialProvider {
     /// readers never see a partially-updated token/expiry pair.
     state: Arc<RwLock<Option<RefreshState>>>,
     file_provider: FileCredentialProvider,
-    shutdown: Arc<AtomicBool>,
+    shutdown: CancellationToken,
     task: Option<tokio::task::JoinHandle<()>>,
 }
 
@@ -461,11 +461,11 @@ impl RefreshingCredentialProvider {
             subscription_type: cred.subscription_type,
         })));
 
-        let shutdown = Arc::new(AtomicBool::new(false));
+        let shutdown = CancellationToken::new();
         let circuit_breaker = Arc::new(CircuitBreaker::new(cb_config));
 
         let task_state = Arc::clone(&state);
-        let task_shutdown = Arc::clone(&shutdown);
+        let task_shutdown = shutdown.clone();
         let task_path = path.clone();
         let task_cb = Arc::clone(&circuit_breaker);
 
@@ -489,11 +489,11 @@ impl RefreshingCredentialProvider {
         not(test),
         expect(
             dead_code,
-            reason = "will be called from graceful shutdown path once wired"
+            reason = "called from tests; will be wired from server shutdown path"
         )
     )]
     pub(crate) fn shutdown(&self) {
-        self.shutdown.store(true, Ordering::Relaxed);
+        self.shutdown.cancel();
     }
 }
 
@@ -522,7 +522,7 @@ impl CredentialProvider for RefreshingCredentialProvider {
 
 impl Drop for RefreshingCredentialProvider {
     fn drop(&mut self) {
-        self.shutdown.store(true, Ordering::Relaxed);
+        self.shutdown.cancel();
         if let Some(task) = self.task.take() {
             task.abort();
         }
@@ -531,7 +531,7 @@ impl Drop for RefreshingCredentialProvider {
 
 async fn refresh_loop(
     state: Arc<RwLock<Option<RefreshState>>>,
-    shutdown: Arc<AtomicBool>,
+    shutdown: CancellationToken,
     path: PathBuf,
     circuit_breaker: Arc<CircuitBreaker>,
 ) {
@@ -539,14 +539,13 @@ async fn refresh_loop(
     let check_interval = Duration::from_secs(REFRESH_CHECK_INTERVAL_SECS);
 
     loop {
-        if shutdown.load(Ordering::Relaxed) {
-            break;
-        }
-
-        tokio::time::sleep(check_interval).await;
-
-        if shutdown.load(Ordering::Relaxed) {
-            break;
+        tokio::select! {
+            biased;
+            () = shutdown.cancelled() => {
+                info!("credential refresh loop shutting down");
+                break;
+            }
+            () = tokio::time::sleep(check_interval) => {}
         }
 
         let (refresh_token_value, subscription_type, expires_at_ms, needs_refresh) = {
@@ -619,7 +618,7 @@ async fn refresh_loop(
             info!(expires_in_secs = resp.expires_in, "OAuth token refreshed");
         } else {
             circuit_breaker.record_failure();
-            warn!("OAuth token refresh failed — will retry next cycle");
+            warn!("OAuth token refresh failed, will retry next cycle");
         }
     }
 }

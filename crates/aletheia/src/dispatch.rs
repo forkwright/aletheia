@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use tokio::sync::{mpsc, watch};
-use tokio::task::JoinHandle;
+use tokio::task::{JoinHandle, JoinSet};
 use tracing::{Instrument, info, warn};
 
 use aletheia_agora::registry::ChannelRegistry;
@@ -14,6 +14,7 @@ use aletheia_nous::manager::NousManager;
 /// Spawn a background task that dispatches inbound messages to nous actors.
 ///
 /// Runs until the receiver channel closes (all senders dropped).
+/// Per-message dispatch tasks are tracked in a `JoinSet` and drained on exit.
 pub(crate) fn spawn_dispatcher(
     mut rx: mpsc::Receiver<InboundMessage>,
     router: Arc<MessageRouter>,
@@ -31,6 +32,9 @@ pub(crate) fn spawn_dispatcher(
                 }
             }
             info!("dispatch loop started");
+
+            let mut in_flight = JoinSet::new();
+
             while let Some(msg) = rx.recv().await {
                 let router = Arc::clone(&router);
                 let nous_mgr = Arc::clone(&nous_manager);
@@ -40,9 +44,28 @@ pub(crate) fn spawn_dispatcher(
                     channel = %msg.channel,
                     sender = %msg.sender,
                 );
-                tokio::spawn(dispatch_one(msg, router, nous_mgr, channels).instrument(msg_span));
+                in_flight.spawn(dispatch_one(msg, router, nous_mgr, channels).instrument(msg_span));
+
+                // WHY: Reap completed tasks periodically to prevent unbounded growth.
+                while let Some(result) = in_flight.try_join_next() {
+                    if let Err(e) = result {
+                        warn!(error = %e, "dispatch task panicked");
+                    }
+                }
             }
-            info!("dispatch loop stopped — all senders dropped");
+
+            // WHY: Drain remaining in-flight dispatch tasks before exiting.
+            info!(
+                remaining = in_flight.len(),
+                "dispatch loop draining in-flight tasks"
+            );
+            while let Some(result) = in_flight.join_next().await {
+                if let Err(e) = result {
+                    warn!(error = %e, "dispatch task panicked during drain");
+                }
+            }
+
+            info!("dispatch loop stopped");
         }
         .instrument(span),
     )

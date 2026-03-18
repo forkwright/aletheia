@@ -409,8 +409,13 @@ pub(crate) async fn run(args: Args) -> Result<()> {
 
     // Channel registry + inbound dispatch (gated on ready signal)
     let ready_rx = nous_manager.ready_rx();
-    let (_channel_registry, _dispatch_handle) =
-        start_inbound_dispatch(&config, &nous_manager, ready_rx, signal_provider.as_ref());
+    let (_channel_registry, _dispatch_handle) = start_inbound_dispatch(
+        &config,
+        &nous_manager,
+        ready_rx,
+        signal_provider.as_ref(),
+        &shutdown_token,
+    );
 
     // Daemon runners: per-agent background task scheduling
     let daemon_bridge = Arc::new(daemon_bridge::NousDaemonBridge::new(Arc::clone(
@@ -739,6 +744,7 @@ fn start_inbound_dispatch(
     nous_manager: &Arc<NousManager>,
     ready_rx: tokio::sync::watch::Receiver<bool>,
     signal_provider: Option<&Arc<SignalProvider>>,
+    shutdown_token: &CancellationToken,
 ) -> (Arc<ChannelRegistry>, Option<tokio::task::JoinHandle<()>>) {
     let mut channel_registry = ChannelRegistry::new();
 
@@ -750,7 +756,7 @@ fn start_inbound_dispatch(
     let channel_registry = Arc::new(channel_registry);
 
     let handle = if let Some(provider) = signal_provider {
-        let listener = ChannelListener::start(provider, None);
+        let listener = ChannelListener::start(provider, None, shutdown_token.child_token());
         info!("signal channel listener started");
         let (rx, _poll_handles) = listener.into_receiver();
 
