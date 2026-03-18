@@ -90,8 +90,8 @@ impl Default for Answers {
             api_key: None,
             api_provider: "anthropic".to_owned(),
             model: "claude-sonnet-4-6".to_owned(),
-            agent_id: "main".to_owned(),
-            agent_name: "Main".to_owned(),
+            agent_id: "pronoea".to_owned(),
+            agent_name: "Pronoea".to_owned(),
             bind: "localhost".to_owned(),
             auth_mode: "none".to_owned(),
             timezone: detect_timezone(),
@@ -330,20 +330,128 @@ fn scaffold(answers: &Answers) -> Result<(), InitError> {
         set_permissions(&cred_path, 0o600)?;
     }
 
-    let soul = format!(
-        "# {name}\n\n\
-         You are {name}, an Aletheia cognitive agent.\n\n\
-         You are helpful, thoughtful, and direct. Use the tools available to you\n\
-         to assist with tasks. Report what you observe about your environment\n\
-         when asked.\n",
-        name = answers.agent_name
-    );
-    let soul_path = root.join(format!("nous/{}/SOUL.md", answers.agent_id));
-    std::fs::write(&soul_path, soul).context(WriteFileSnafu {
-        path: soul_path.clone(),
-    })?;
+    scaffold_agent(root, &answers.agent_id, &answers.agent_name)?;
 
     Ok(())
+}
+
+/// Populate the nous agent directory with template files.
+///
+/// Tries `_default/` on disk first (Pronoea/Noe defaults), falls back to
+/// `_template/` on disk, then to compiled-in `_default/` content.
+fn scaffold_agent(root: &Path, agent_id: &str, agent_name: &str) -> Result<(), InitError> {
+    let nous_dir = root.join(format!("nous/{agent_id}"));
+
+    // Try on-disk _default/ then _template/ (for development / custom deployments)
+    let default_dir = root.join("nous/_default");
+    let template_dir = root.join("nous/_template");
+
+    if default_dir.is_dir() {
+        copy_dir_recursive(&default_dir, &nous_dir)?;
+    } else if template_dir.is_dir() {
+        copy_dir_recursive(&template_dir, &nous_dir)?;
+    } else {
+        write_embedded_default(&nous_dir, agent_name)?;
+    }
+
+    Ok(())
+}
+
+/// Copy a template directory tree into the agent directory.
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), InitError> {
+    std::fs::create_dir_all(dst).context(CreateDirSnafu {
+        path: dst.to_path_buf(),
+    })?;
+
+    let entries = std::fs::read_dir(src).context(CreateDirSnafu {
+        path: src.to_path_buf(),
+    })?;
+
+    for entry in entries {
+        let entry = entry.context(CreateDirSnafu {
+            path: src.to_path_buf(),
+        })?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else {
+            std::fs::copy(&src_path, &dst_path).context(WriteFileSnafu {
+                path: dst_path.clone(),
+            })?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Write the compiled-in `_default/` (Pronoea) template files.
+fn write_embedded_default(nous_dir: &Path, agent_name: &str) -> Result<(), InitError> {
+    // Pronoea-specific files are written as-is; they reference "Pronoea/Noe" by name.
+    // If the user chose a different agent name, SOUL.md gets a generic fallback instead.
+    let soul = if agent_name == "Pronoea" {
+        pronoea_template::SOUL.to_owned()
+    } else {
+        format!(
+            "# {agent_name}\n\n\
+             You are {agent_name}, an Aletheia cognitive agent.\n\n\
+             You are helpful, thoughtful, and direct. Use the tools available to you\n\
+             to assist with tasks. Report what you observe about your environment\n\
+             when asked.\n"
+        )
+    };
+
+    let identity = if agent_name == "Pronoea" {
+        pronoea_template::IDENTITY.to_owned()
+    } else {
+        format!(
+            "# Identity\n\n\
+             - **Name:** {agent_name}\n\
+             - **Creature:** \n\
+             - **Vibe:** \n\
+             - **Emoji:** \n"
+        )
+    };
+
+    let files: &[(&str, &str)] = &[
+        ("SOUL.md", &soul),
+        ("IDENTITY.md", &identity),
+        ("AGENTS.md", pronoea_template::AGENTS),
+        ("CONTEXT.md", pronoea_template::CONTEXT),
+        ("GOALS.md", pronoea_template::GOALS),
+        ("MEMORY.md", pronoea_template::MEMORY),
+        ("PROSOCHE.md", pronoea_template::PROSOCHE),
+        ("README.md", pronoea_template::README),
+        ("TOOLS.md", pronoea_template::TOOLS),
+        ("USER.md", pronoea_template::USER),
+        ("VOICE.md", pronoea_template::VOICE),
+        ("WORKFLOWS.md", pronoea_template::WORKFLOWS),
+    ];
+
+    for (filename, content) in files {
+        let path = nous_dir.join(filename);
+        std::fs::write(&path, content).context(WriteFileSnafu { path: path.clone() })?;
+    }
+
+    Ok(())
+}
+
+/// Compiled-in Pronoea (Noe) template files from `instance.example/nous/_default/`.
+mod pronoea_template {
+    pub const SOUL: &str = include_str!("../../../instance.example/nous/_default/SOUL.md");
+    pub const IDENTITY: &str = include_str!("../../../instance.example/nous/_default/IDENTITY.md");
+    pub const AGENTS: &str = include_str!("../../../instance.example/nous/_default/AGENTS.md");
+    pub const CONTEXT: &str = include_str!("../../../instance.example/nous/_default/CONTEXT.md");
+    pub const GOALS: &str = include_str!("../../../instance.example/nous/_default/GOALS.md");
+    pub const MEMORY: &str = include_str!("../../../instance.example/nous/_default/MEMORY.md");
+    pub const PROSOCHE: &str = include_str!("../../../instance.example/nous/_default/PROSOCHE.md");
+    pub const README: &str = include_str!("../../../instance.example/nous/_default/README.md");
+    pub const TOOLS: &str = include_str!("../../../instance.example/nous/_default/TOOLS.md");
+    pub const USER: &str = include_str!("../../../instance.example/nous/_default/USER.md");
+    pub const VOICE: &str = include_str!("../../../instance.example/nous/_default/VOICE.md");
+    pub const WORKFLOWS: &str =
+        include_str!("../../../instance.example/nous/_default/WORKFLOWS.md");
 }
 
 fn render_config(a: &Answers) -> String {
@@ -537,11 +645,11 @@ mod tests {
         assert_eq!(list.len(), 1);
         assert_eq!(
             list[0].get("id").and_then(toml::Value::as_str),
-            Some("main")
+            Some("pronoea")
         );
         assert_eq!(
             list[0].get("name").and_then(toml::Value::as_str),
-            Some("Main")
+            Some("Pronoea")
         );
     }
 
@@ -561,7 +669,10 @@ mod tests {
                 .join("config/credentials/anthropic.json")
                 .exists()
         );
-        assert!(dir.path().join("nous/main/SOUL.md").exists());
+        assert!(dir.path().join("nous/pronoea/SOUL.md").exists());
+        assert!(dir.path().join("nous/pronoea/IDENTITY.md").exists());
+        assert!(dir.path().join("nous/pronoea/AGENTS.md").exists());
+        assert!(dir.path().join("nous/pronoea/GOALS.md").exists());
         assert!(dir.path().join("data").is_dir());
         assert!(dir.path().join("logs/traces").is_dir());
         assert!(dir.path().join("shared/coordination").is_dir());
@@ -572,8 +683,8 @@ mod tests {
         .unwrap();
         assert_eq!(cred["token"].as_str(), Some("sk-ant-test-key"));
 
-        let soul = std::fs::read_to_string(dir.path().join("nous/main/SOUL.md")).unwrap();
-        assert!(soul.contains("Main"));
+        let soul = std::fs::read_to_string(dir.path().join("nous/pronoea/SOUL.md")).unwrap();
+        assert!(soul.contains("Pronoea"));
     }
 
     #[test]
@@ -638,7 +749,7 @@ mod tests {
 
         assert!(dir.path().join("config/aletheia.toml").exists());
         assert!(dir.path().join("data").is_dir());
-        assert!(dir.path().join("nous/main").is_dir());
+        assert!(dir.path().join("nous/pronoea").is_dir());
 
         let config_str = std::fs::read_to_string(dir.path().join("config/aletheia.toml")).unwrap();
         let config: toml::Value = toml::from_str(&config_str).unwrap();
