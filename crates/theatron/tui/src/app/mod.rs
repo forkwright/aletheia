@@ -718,6 +718,10 @@ pub(crate) fn save_session_state(config: &Config, sessions: &HashMap<NousId, Ses
         .iter()
         .map(|(agent, session)| format!("{agent}:{session}\n"))
         .collect();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "synchronous write is intentional in TUI shutdown path"
+    )]
     let _ = std::fs::write(&path, content);
 }
 
