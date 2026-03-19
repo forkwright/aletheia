@@ -1,12 +1,9 @@
 //! Tests for basic rendering: text formatting, headings, regression tests.
-use super::super::*;
 use ratatui::style::{Color, Modifier};
 
+use super::super::*;
 use crate::highlight::Highlighter;
 use crate::theme::Theme;
-
-// ── Helpers ──────────────────────────────────────────────────────────────
-
 fn test_render(md: &str) -> Vec<Line<'static>> {
     let theme = Theme::detect();
     let hl = Highlighter::new(theme.mode);

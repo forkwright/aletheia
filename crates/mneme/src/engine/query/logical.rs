@@ -1,8 +1,6 @@
 //! Logical plan representation.
 use std::collections::BTreeSet;
 
-use crate::engine::error::InternalResult as Result;
-use crate::engine::query::error::*;
 use itertools::Itertools;
 
 use crate::engine::data::expr::Expr;
@@ -10,6 +8,8 @@ use crate::engine::data::program::{
     InputAtom, InputNamedFieldRelationApplyAtom, InputRelationApplyAtom, InputRuleApplyAtom,
     NormalFormAtom, NormalFormRelationApplyAtom, NormalFormRuleApplyAtom, TempSymbGen, Unification,
 };
+use crate::engine::error::InternalResult as Result;
+use crate::engine::query::error::*;
 use crate::engine::runtime::transact::SessionTx;
 
 #[derive(Debug)]

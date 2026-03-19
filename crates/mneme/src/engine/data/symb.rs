@@ -4,13 +4,11 @@ use std::fmt::{Debug, Display, Formatter};
 use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 
-use super::error::*;
 use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
 
+use super::error::*;
 use crate::engine::parse::SourceSpan;
-
-/// Names with associated source span
 #[derive(Clone, Deserialize, Serialize)]
 pub struct Symbol {
     pub(crate) name: CompactString,

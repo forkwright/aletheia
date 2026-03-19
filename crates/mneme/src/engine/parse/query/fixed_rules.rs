@@ -13,8 +13,6 @@ use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use crate::engine::error::InternalResult as Result;
-use crate::engine::parse::error::InvalidQuerySnafu;
 use compact_str::CompactString;
 
 use crate::engine::FixedRule;
@@ -25,8 +23,10 @@ use crate::engine::data::program::{
 };
 use crate::engine::data::symb::{PROG_ENTRY, Symbol};
 use crate::engine::data::value::{DataValue, ValidityTs};
+use crate::engine::error::InternalResult as Result;
 use crate::engine::fixed_rule::FixedRuleHandle;
 use crate::engine::fixed_rule::utilities::constant::Constant;
+use crate::engine::parse::error::InvalidQuerySnafu;
 use crate::engine::parse::expr::build_expr;
 use crate::engine::parse::{ExtractSpan, Pair, Rule};
 

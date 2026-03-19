@@ -8,18 +8,16 @@
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
 )]
 
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD;
-use ndarray::Array1;
 use std::cmp::{Ordering, Reverse};
 use std::collections::BTreeSet;
 use std::fmt::{Debug, Display, Formatter};
 use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 
-use crate::engine::data::json::JsonValue;
-use crate::engine::data::relation::VecElementType;
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use compact_str::CompactString;
+use ndarray::Array1;
 use ordered_float::OrderedFloat;
 use regex::Regex;
 use serde::de::{SeqAccess, Visitor};
@@ -29,7 +27,9 @@ use sha2::digest::FixedOutput;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-/// UUID value in the database
+use crate::engine::data::json::JsonValue;
+use crate::engine::data::relation::VecElementType;
+
 #[derive(Clone, Hash, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct UuidWrapper(pub Uuid);
 

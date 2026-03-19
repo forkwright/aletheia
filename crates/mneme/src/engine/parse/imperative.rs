@@ -2,11 +2,11 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use crate::engine::error::InternalResult as Result;
 use compact_str::CompactString;
 use either::{Left, Right};
 use itertools::Itertools;
 
+use crate::engine::error::InternalResult as Result;
 use crate::engine::parse::query::parse_query;
 use crate::engine::parse::sys::parse_sys;
 use crate::engine::parse::{

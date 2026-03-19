@@ -8,12 +8,12 @@
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
 )]
 
-use crate::engine::data::functions::TERMINAL_VALIDITY;
-use crate::engine::error::InternalResult as Result;
 use std::cmp::Reverse;
 
+use crate::engine::data::functions::TERMINAL_VALIDITY;
 use crate::engine::data::memcmp::MemCmpEncoder;
 use crate::engine::data::value::{DataValue, Validity, ValidityTs};
+use crate::engine::error::InternalResult as Result;
 use crate::engine::runtime::relation::RelationId;
 
 pub type Tuple = Vec<DataValue>;

@@ -6,8 +6,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::Ordering;
 
-use crate::engine::error::InternalResult as Result;
-use crate::engine::runtime::error::{InvalidOperationSnafu, ReadOnlyViolationSnafu};
 use compact_str::CompactString;
 use either::{Either, Left, Right};
 use itertools::Itertools;
@@ -15,6 +13,7 @@ use itertools::Itertools;
 use crate::engine::data::program::RelationOp;
 use crate::engine::data::relation::{ColType, ColumnDef, NullableColType, StoredRelationMetadata};
 use crate::engine::data::symb::Symbol;
+use crate::engine::error::InternalResult as Result;
 use crate::engine::parse::{
     ImperativeCondition, ImperativeProgram, ImperativeStmt, ImperativeStmtClause, SourceSpan,
 };
@@ -22,6 +21,7 @@ use crate::engine::runtime::callback::CallbackCollector;
 use crate::engine::runtime::db::{
     RunningQueryCleanup, RunningQueryHandle, seconds_since_the_epoch,
 };
+use crate::engine::runtime::error::{InvalidOperationSnafu, ReadOnlyViolationSnafu};
 use crate::engine::runtime::relation::InputRelationHandle;
 use crate::engine::runtime::transact::SessionTx;
 use tracing::debug;

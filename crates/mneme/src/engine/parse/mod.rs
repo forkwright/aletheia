@@ -9,7 +9,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 
-use crate::engine::error::InternalResult as Result;
 use compact_str::CompactString;
 use either::{Either, Left};
 use pest::Parser;
@@ -19,6 +18,7 @@ use snafu::Snafu;
 use crate::engine::FixedRule;
 use crate::engine::data::program::InputProgram;
 use crate::engine::data::value::{DataValue, ValidityTs};
+use crate::engine::error::InternalResult as Result;
 use crate::engine::parse::imperative::parse_imperative_block;
 use crate::engine::parse::query::parse_query;
 use crate::engine::parse::sys::{SysOp, parse_sys};

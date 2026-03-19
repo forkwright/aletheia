@@ -6,7 +6,6 @@
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 
-use crate::engine::error::InternalResult as Result;
 use compact_str::CompactString;
 use ordered_float::OrderedFloat;
 use priority_queue::PriorityQueue;
@@ -15,6 +14,7 @@ use crate::engine::data::expr::{Expr, eval_bytecode};
 use crate::engine::data::symb::Symbol;
 use crate::engine::data::tuple::Tuple;
 use crate::engine::data::value::DataValue;
+use crate::engine::error::InternalResult as Result;
 use crate::engine::fixed_rule::error::GraphAlgorithmSnafu;
 use crate::engine::fixed_rule::{
     BadExprValueError, FixedRule, FixedRuleInputRelation, FixedRulePayload, NodeNotFoundError,

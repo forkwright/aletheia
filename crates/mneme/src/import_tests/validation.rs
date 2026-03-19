@@ -6,12 +6,13 @@
     clippy::indexing_slicing,
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
 )]
+use std::collections::HashMap;
+
 use super::super::*;
 use crate::export::{ExportOptions, export_agent};
 use crate::portability::*;
 use crate::store::SessionStore;
 use crate::types::Role;
-use std::collections::HashMap;
 
 fn test_store() -> SessionStore {
     SessionStore::open_in_memory().expect("open in-memory store")

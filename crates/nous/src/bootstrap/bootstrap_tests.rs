@@ -3,13 +3,13 @@
     reason = "test: vec indices are valid after asserting len"
 )]
 #![expect(clippy::unwrap_used, reason = "test assertions")]
-use super::*;
-use crate::budget::TokenBudget;
 use std::fs;
+
 use tempfile::TempDir;
 
-/// Create an oikos directory structure with the given files.
-/// Files are placed in `nous/{nous_id}/` unless the filename starts with `theke:`.
+use super::*;
+use crate::budget::TokenBudget;
+
 fn setup_oikos(nous_id: &str, files: &[(&str, &str)]) -> (TempDir, Oikos) {
     let dir = TempDir::new().unwrap();
     let root = dir.path();

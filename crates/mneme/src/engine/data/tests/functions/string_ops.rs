@@ -1,10 +1,10 @@
 //! Tests for string operations and regex.
 #![expect(clippy::expect_used, reason = "test assertions")]
+use regex::Regex;
+
 use crate::engine::data::functions::*;
 use crate::engine::data::value::DataValue;
 use crate::engine::data::value::RegexWrapper;
-use regex::Regex;
-
 #[test]
 fn test_concat() {
     assert_eq!(

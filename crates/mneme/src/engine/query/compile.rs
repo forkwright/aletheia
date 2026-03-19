@@ -11,8 +11,6 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::engine::error::InternalResult as Result;
-use crate::engine::query::error::*;
 use itertools::Itertools;
 
 use crate::engine::data::aggr::Aggregation;
@@ -23,6 +21,8 @@ use crate::engine::data::program::{
 };
 use crate::engine::data::symb::Symbol;
 use crate::engine::data::value::DataValue;
+use crate::engine::error::InternalResult as Result;
+use crate::engine::query::error::*;
 use crate::engine::query::ra::RelAlgebra;
 use crate::engine::runtime::relation::AccessLevel;
 use crate::engine::runtime::transact::SessionTx;

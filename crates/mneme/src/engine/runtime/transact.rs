@@ -12,19 +12,18 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicU64};
 
-use crate::engine::data::program::ReturnMutation;
-use crate::engine::error::InternalResult as Result;
-use crate::engine::runtime::error::StorageVersionSnafu;
+use tracing::error;
 
+use crate::engine::data::program::ReturnMutation;
 use crate::engine::data::tuple::TupleT;
 use crate::engine::data::value::DataValue;
+use crate::engine::error::InternalResult as Result;
 use crate::engine::fts::TokenizerCache;
 use crate::engine::runtime::callback::CallbackCollector;
+use crate::engine::runtime::error::StorageVersionSnafu;
 use crate::engine::runtime::relation::RelationId;
 use crate::engine::storage::StoreTx;
 use crate::engine::storage::temp::TempTx;
-use tracing::error;
-
 use crate::engine::{CallbackOp, NamedRows};
 
 pub struct SessionTx<'a> {

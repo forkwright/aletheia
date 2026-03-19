@@ -30,14 +30,11 @@
     )
 )]
 
-use crate::id::EntityId;
-use crate::knowledge::{EpistemicTier, FactType};
 use serde::{Deserialize, Serialize};
 
-/// Per-entity volatility measurement.
-///
-/// Quantifies how frequently an entity's associated facts are superseded.
-/// High volatility indicates a rapidly-changing knowledge domain.
+use crate::id::EntityId;
+use crate::knowledge::{EpistemicTier, FactType};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DomainVolatility {
     /// The entity whose domain is measured.
