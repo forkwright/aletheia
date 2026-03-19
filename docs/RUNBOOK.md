@@ -96,6 +96,45 @@ systemctl --user enable --now aletheia-health.timer
 
 ---
 
+## Backup automation
+
+`scripts/backup-cron.sh` exports the session store to JSON and prunes old copies.
+
+```bash
+# One-off backup (keeps 7 copies, writes to $ALETHEIA_ROOT/backups/):
+scripts/backup-cron.sh
+
+# Keep 14 copies in a custom directory:
+scripts/backup-cron.sh --keep 14 --output-dir /mnt/backup/aletheia
+```
+
+### Cron setup (daily at 02:00)
+
+```cron
+0 2 * * * /path/to/scripts/backup-cron.sh >> /var/log/aletheia-backup.log 2>&1
+```
+
+### Environment overrides
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `ALETHEIA_ROOT` | `~/ergon/instance` | Instance root |
+| `ALETHEIA_BINARY` | `~/ergon/bin/aletheia` | Binary path |
+| `BACKUP_KEEP` | `7` | Number of backup files to retain |
+| `BACKUP_OUTPUT_DIR` | `$ALETHEIA_ROOT/backups` | Backup output directory |
+
+The script uses `flock` to prevent concurrent runs. Backup files are named `sessions-<timestamp>.json`.
+
+### Manual restore
+
+Backup files are plain JSON exported by `aletheia backup --export-json`. To inspect:
+
+```bash
+jq '.sessions | length' ~/ergon/instance/backups/sessions-*.json | tail -1
+```
+
+---
+
 ## Common issues
 
 ### EADDRINUSE on port 18789
