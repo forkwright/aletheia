@@ -350,7 +350,6 @@ fn candle_not_enabled_returns_error() {
 fn lock_poisoned_error_returns_err_not_panic() {
     use std::sync::RwLock;
 
-    // Poison an RwLock by panicking inside a thread while holding a write lock.
     let m: RwLock<u32> = RwLock::new(0);
     let _ = std::panic::catch_unwind(|| {
         let _guard = m.write().expect("pre-poison write lock must succeed");
@@ -361,7 +360,7 @@ fn lock_poisoned_error_returns_err_not_panic() {
         "RwLock must be poisoned after thread panic"
     );
 
-    // Simulate what embed() does: map_err to LockPoisoned on read().
+    // NOTE: Simulate what embed() does: map_err to LockPoisoned on read().
     let result: EmbeddingResult<()> = m
         .read()
         .map_err(|_poison| LockPoisonedSnafu.build())

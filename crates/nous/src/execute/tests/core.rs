@@ -5,8 +5,6 @@
 //! Core execute loop tests.
 use super::*;
 
-// --- Tests ---
-
 #[tokio::test]
 async fn simple_text_response() {
     let mut providers = ProviderRegistry::new();
@@ -356,7 +354,6 @@ async fn usage_accumulates_across_iterations() {
     .await
     .expect("execute");
 
-    // First call: 80 input + 30 output, second call: 100 input + 50 output
     assert_eq!(
         result.usage.input_tokens, 180,
         "input tokens should be summed across both LLM calls (80 + 100)"
@@ -408,7 +405,7 @@ async fn tool_error_captured_not_propagated() {
 #[tokio::test]
 async fn max_iterations_stops_loop() {
     let mut providers = ProviderRegistry::new();
-    // Provider always returns tool use: would loop forever without max_iterations.
+    // WHY: Provider always returns tool use: would loop forever without max_iterations.
     // Supply enough unique-id responses to feed several iterations.
     let responses: Vec<_> = (0..10)
         .map(|i| make_tool_response("echo", &format!("tu_{i}"), serde_json::json!({"i": i})))

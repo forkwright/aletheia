@@ -297,9 +297,6 @@ impl NullableColType {
                             if f32_count != *len {
                                 return Err(make_err());
                             }
-                            // Rust's global allocator guarantees allocations are aligned
-                            // to at least max_align_t (≥ 16 bytes on 64-bit platforms),
-                            // satisfying align_of::<f32>() == 4.
                             debug_assert_eq!(
                                 bytes.as_ptr() as usize % mem::align_of::<f32>(),
                                 0,
@@ -332,9 +329,6 @@ impl NullableColType {
                             if f64_count != *len {
                                 return Err(make_err());
                             }
-                            // Rust's global allocator guarantees allocations are aligned
-                            // to at least max_align_t (≥ 16 bytes on 64-bit platforms),
-                            // satisfying align_of::<f64>() == 8.
                             debug_assert_eq!(
                                 bytes.as_ptr() as usize % mem::align_of::<f64>(),
                                 0,

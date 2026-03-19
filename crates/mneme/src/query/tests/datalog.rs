@@ -105,7 +105,6 @@ fn test_params_are_bound_not_interpolated() {
 
 #[test]
 fn test_injection_attempt() {
-    // Param values with special chars go through $binding, not interpolation
     let (script, params) = QueryBuilder::new()
         .raw("?[x] := *facts{id: $id, content: x}")
         .param("id", DataValue::Str("evil}; :rm facts".into()))
@@ -152,7 +151,6 @@ fn test_order_and_limit() {
     reason = "comprehensive schema field validation"
 )]
 fn test_field_names_match_schema() {
-    // Facts DDL fields
     let facts_ddl_fields = [
         "id",
         "valid_from",
@@ -200,7 +198,6 @@ fn test_field_names_match_schema() {
         "FactsField enum names should match DDL field names in order"
     );
 
-    // Entities DDL fields
     let entities_ddl = [
         "id",
         "name",
@@ -226,7 +223,6 @@ fn test_field_names_match_schema() {
         "EntitiesField enum names should match DDL field names in order"
     );
 
-    // Relationships DDL fields
     let rels_ddl = ["src", "dst", "relation", "weight", "created_at"];
     let rels_enum: Vec<&str> = [
         RelationshipsField::Src,
@@ -244,7 +240,6 @@ fn test_field_names_match_schema() {
         "RelationshipsField enum names should match DDL field names in order"
     );
 
-    // Embeddings DDL fields
     let emb_ddl = [
         "id",
         "content",

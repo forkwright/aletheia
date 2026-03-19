@@ -130,7 +130,6 @@ async fn builtin_prosoche_executes() {
 
     runner.tick();
 
-    // Wait for the spawned task to complete.
     tokio::time::sleep(Duration::from_millis(100)).await;
     runner.check_in_flight().await;
 
@@ -415,7 +414,6 @@ fn backoff_applied_on_failure() {
     let mut runner = TaskRunner::new("test-nous", token);
     runner.register(make_echo_task("backoff-task"));
 
-    // First failure → 60s backoff.
     runner.record_task_failure("backoff-task", "test error");
     assert_eq!(runner.tasks[0].consecutive_failures, 1);
     assert!(runner.tasks[0].backoff_until.is_some());
@@ -427,7 +425,6 @@ fn backoff_applied_on_failure() {
         "1st failure should have ~60s backoff"
     );
 
-    // Second failure → 300s backoff.
     runner.record_task_failure("backoff-task", "test error 2");
     assert_eq!(runner.tasks[0].consecutive_failures, 2);
     let backoff = runner.tasks[0].backoff_until.unwrap();
@@ -469,7 +466,7 @@ async fn hung_task_cancelled_after_2x_timeout() {
     };
     runner.register(task);
 
-    // Simulate a hung task by spawning a long sleep.
+    // NOTE: Simulate a hung task by spawning a long sleep.
     let handle = tokio::spawn(
         async {
             tokio::time::sleep(Duration::from_secs(60)).await;
@@ -521,7 +518,6 @@ fn missed_cron_catchup_fires_on_startup() {
         .unwrap();
     runner.set_last_run("hourly-task", three_hours_ago);
 
-    // Set next_run far in the future.
     runner.tasks[0].next_run = Some(
         jiff::Timestamp::now()
             .checked_add(jiff::SignedDuration::from_hours(1))
@@ -626,7 +622,6 @@ async fn in_flight_reported_in_status() {
     let statuses = runner.status();
     assert!(statuses[0].in_flight);
 
-    // Clean up: abort so the test doesn't hang.
     if let Some(task) = runner.in_flight.remove("inflight-task") {
         task.handle.abort();
     }

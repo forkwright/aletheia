@@ -104,8 +104,6 @@ async fn nous_status_response_has_all_fields() {
     assert!(body["status"].is_string());
 }
 
-// ── Config endpoints ────────────────────────────────────────────────────────
-
 #[tokio::test]
 async fn config_get_returns_redacted_config() {
     let (app, _dir) = app().await;
@@ -155,7 +153,6 @@ async fn config_update_invalid_section_returns_404() {
 async fn gateway_config_signing_key_is_redacted() {
     let (state, _dir) = test_state().await;
 
-    // Inject a signing key so there is a secret value to redact.
     {
         let mut config = state.config.write().await;
         config.gateway.auth.signing_key = Some("super-secret-signing-key".to_owned());
@@ -170,13 +167,11 @@ async fn gateway_config_signing_key_is_redacted() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
 
-    // The raw secret must not appear anywhere in the response.
+    // WHY: The raw secret must not appear anywhere in the response.
     assert!(
         !body.to_string().contains("super-secret-signing-key"),
         "signing key must not appear in API response"
     );
-    // The field must be replaced with the redaction placeholder.
     assert_eq!(body["auth"]["signingKey"], "***");
-    // Non-secret fields must still be present and correct.
     assert_eq!(body["port"], 18789);
 }

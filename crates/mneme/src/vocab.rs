@@ -92,7 +92,6 @@ pub fn normalize_relation(raw: &str) -> RelationType {
         return RelationType::Known(mapped);
     }
 
-    // Also try the lowercase form against the alias map (handles "works on" → "works_on")
     let lower = normalized.to_lowercase();
     if let Some(mapped) = lookup_alias(&lower) {
         return RelationType::Known(mapped);
@@ -119,7 +118,6 @@ fn is_valid_upper_snake_case(s: &str) -> bool {
         clippy::indexing_slicing,
         reason = "index 0 and len-1 are valid: s.is_empty() check above guarantees non-empty"
     )]
-    // Must start with an uppercase letter
     if !bytes[0].is_ascii_uppercase() {
         return false;
     }
@@ -128,12 +126,10 @@ fn is_valid_upper_snake_case(s: &str) -> bool {
         clippy::indexing_slicing,
         reason = "index len-1 is valid: s.is_empty() check above guarantees non-empty"
     )]
-    // Must end with a letter or digit, not underscore
     if bytes[bytes.len() - 1] == b'_' {
         return false;
     }
 
-    // No consecutive underscores, only A-Z, 0-9, _
     let mut prev_underscore = false;
     for &b in bytes {
         if b == b'_' {

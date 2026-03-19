@@ -28,8 +28,6 @@ fn assert_error_envelope(body: &serde_json::Value, expected_code: &str) {
     );
 }
 
-// ── Session error envelopes ─────────────────────────────────────────────────
-
 #[tokio::test]
 async fn create_session_empty_nous_id_returns_400_with_envelope() {
     let (app, _dir) = app().await;
@@ -213,7 +211,6 @@ async fn get_archived_session_returns_404_with_envelope() {
         .as_str()
         .expect("created session should have a string id");
 
-    // Archive the session.
     let del = router
         .clone()
         .oneshot(authed_delete(&format!("/api/v1/sessions/{id}")))
@@ -352,8 +349,6 @@ async fn history_nonexistent_session_returns_404_with_envelope() {
     assert_error_envelope(&body, "session_not_found");
 }
 
-// ── Knowledge/facts error envelopes ─────────────────────────────────────────
-
 #[tokio::test]
 async fn list_facts_invalid_sort_field_returns_400_with_envelope() {
     let (app, _dir) = app().await;
@@ -488,8 +483,6 @@ async fn get_nonexistent_fact_returns_404_with_envelope() {
     assert_error_envelope(&body, "not_found");
 }
 
-// ── Message/stream error envelopes ──────────────────────────────────────────
-
 #[tokio::test]
 async fn send_message_missing_content_field_returns_422() {
     let (router, _dir) = app().await;
@@ -508,7 +501,7 @@ async fn send_message_missing_content_field_returns_422() {
         .oneshot(req)
         .await
         .expect("POST /sessions/{id}/messages request should succeed");
-    // Axum's Json extractor returns 422 for missing required fields.
+    // WHY: Axum's Json extractor returns 422 for missing required fields.
     assert_eq!(
         resp.status(),
         StatusCode::UNPROCESSABLE_ENTITY,
@@ -530,7 +523,7 @@ async fn stream_turn_missing_agent_id_returns_422() {
         .oneshot(req)
         .await
         .expect("POST /sessions/stream request should succeed");
-    // Axum's Json extractor returns 422 for missing required fields.
+    // WHY: Axum's Json extractor returns 422 for missing required fields.
     assert_eq!(
         resp.status(),
         StatusCode::UNPROCESSABLE_ENTITY,
@@ -588,7 +581,6 @@ async fn send_message_no_provider_returns_500_with_envelope() {
     );
     let body = body_json(resp).await;
     assert_error_envelope(&body, "internal_error");
-    // 500 responses must use a generic message, not leak internal details.
     assert_eq!(
         body["error"]["message"]
             .as_str()
@@ -597,8 +589,6 @@ async fn send_message_no_provider_returns_500_with_envelope() {
         "500 error message should be generic and not leak internal details"
     );
 }
-
-// ── Config error envelopes ──────────────────────────────────────────────────
 
 #[tokio::test]
 async fn config_get_unknown_section_returns_404_with_envelope() {
@@ -637,8 +627,6 @@ async fn config_update_unknown_section_returns_404_with_envelope() {
     assert_error_envelope(&body, "not_found");
 }
 
-// ── Nous error envelopes ────────────────────────────────────────────────────
-
 #[tokio::test]
 async fn nous_tools_unknown_agent_returns_404_with_envelope() {
     let (app, _dir) = app().await;
@@ -671,13 +659,10 @@ async fn nous_status_unknown_agent_returns_404_with_envelope() {
     assert_error_envelope(&body, "nous_not_found");
 }
 
-// ── Cross-cutting ───────────────────────────────────────────────────────────
-
 #[tokio::test]
 async fn all_error_codes_include_request_id_in_envelope() {
     let (router, _dir) = app().await;
 
-    // 400: empty nous_id
     let req = authed_request(
         "POST",
         "/api/v1/sessions",
@@ -699,7 +684,6 @@ async fn all_error_codes_include_request_id_in_envelope() {
         "400 error must include request_id"
     );
 
-    // 404: session not found
     let resp = router
         .clone()
         .oneshot(authed_get("/api/v1/sessions/no-such-session"))
@@ -716,7 +700,6 @@ async fn all_error_codes_include_request_id_in_envelope() {
         "404 error must include request_id"
     );
 
-    // 404: nous not found
     let resp = router
         .clone()
         .oneshot(authed_get("/api/v1/nous/no-such-nous"))

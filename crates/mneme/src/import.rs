@@ -120,12 +120,10 @@ fn validate_relative_path(rel_path: &str) -> bool {
         return false;
     }
 
-    // Reject absolute paths
     if rel_path.starts_with('/') || rel_path.starts_with('\\') {
         return false;
     }
 
-    // Reject Windows drive letters
     #[expect(
         clippy::indexing_slicing,
         reason = "index 1 is valid: guarded by len >= 2 check"
@@ -134,12 +132,11 @@ fn validate_relative_path(rel_path: &str) -> bool {
         return false;
     }
 
-    // Reject protocol prefixes
+    // NOTE: Reject protocol prefixes
     if rel_path.contains("://") {
         return false;
     }
 
-    // Reject path traversal via .. components
     for component in rel_path.split(['/', '\\']) {
         if component == ".." {
             return false;
@@ -233,7 +230,6 @@ fn import_sessions(
 
         result.sessions_imported += 1;
 
-        // Import messages in sequence order
         let mut sorted_messages = exported.messages.clone();
         sorted_messages.sort_by_key(|m| m.seq);
 
@@ -256,7 +252,6 @@ fn import_sessions(
             result.messages_imported += 1;
         }
 
-        // Import notes
         let valid_categories = crate::schema::VALID_CATEGORIES;
         for note in &exported.notes {
             let category = if valid_categories.contains(&note.category.as_str()) {

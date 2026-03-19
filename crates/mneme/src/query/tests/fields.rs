@@ -347,7 +347,7 @@ mod proptests {
     proptest! {
         #[test]
         fn query_builder_never_produces_raw_user_input(
-            // Use a suffix that is unique and cannot appear in any Datalog template.
+            // WHY: Use a suffix that is unique and cannot appear in any Datalog template.
             // Proptest shrinks strings by truncation, so we anchor the uniqueness
             // at the END of the string to survive shrinking.
             input in "[a-zA-Z0-9]{10,50}XEND"

@@ -5,8 +5,6 @@
 )]
 use super::*;
 
-// -- TurnType classification tests --
-
 #[test]
 fn classify_discussion_default() {
     let content = "Tell me about your project. What frameworks do you use?";
@@ -15,7 +13,6 @@ fn classify_discussion_default() {
 
 #[test]
 fn classify_tool_heavy() {
-    // Content where > 60% is in code blocks
     let content = "Here's the output:\n\
         ```\n\
         line 1 of tool output that is quite long to make up most of the content\n\
@@ -70,8 +67,6 @@ fn classify_correction_takes_priority_over_debugging() {
         The stack trace was misleading.";
     assert_eq!(classify_turn(content), TurnType::Correction);
 }
-
-// -- FactType classification tests --
 
 #[test]
 fn classify_fact_identity() {
@@ -135,8 +130,6 @@ fn classify_fact_observation_default() {
     );
 }
 
-// -- Correction detection tests --
-
 #[test]
 fn detect_correction_positive() {
     let signal = detect_correction("Actually, it's PostgreSQL not MySQL");
@@ -162,8 +155,6 @@ fn detect_correction_explicit() {
     let signal = detect_correction("Correction: the port is 8080, not 3000");
     assert!(signal.is_correction);
 }
-
-// -- Quality filter tests --
 
 #[test]
 fn filter_low_confidence_rejected() {
@@ -227,8 +218,6 @@ fn filter_batch_mixed_rejections() {
     assert_eq!(result.rejected.len(), 3);
 }
 
-// -- Confidence boost tests --
-
 #[test]
 fn boosted_confidence_normal() {
     assert!((boosted_confidence(0.7, 0.2) - 0.9).abs() < f64::EPSILON);
@@ -243,8 +232,6 @@ fn boosted_confidence_capped_at_one() {
 fn boosted_confidence_zero_boost() {
     assert!((boosted_confidence(0.5, 0.0) - 0.5).abs() < f64::EPSILON);
 }
-
-// -- Prompt appendix tests --
 
 #[test]
 fn each_turn_type_has_distinct_appendix() {
@@ -279,8 +266,6 @@ fn turn_type_confidence_boost_values() {
     assert!((TurnType::Correction.confidence_boost() - 0.2).abs() < f64::EPSILON);
     assert!((TurnType::Procedural.confidence_boost()).abs() < f64::EPSILON);
 }
-
-// -- Display / serde tests --
 
 #[test]
 fn turn_type_display() {
@@ -353,36 +338,28 @@ fn classify_fact_empty_is_observation() {
     assert_eq!(classify_fact(""), FactType::Observation);
 }
 
-// -- Integration-style test --
-
 #[test]
 fn full_pipeline_correction_turn() {
     let content = "Actually, it's not Python — I use Rust for backend work. \
         I was wrong about using Django. The framework I actually use is Axum.";
 
-    // 1. Classify turn
     let turn_type = classify_turn(content);
     assert_eq!(turn_type, TurnType::Correction);
 
-    // 2. Detect correction
     let correction = detect_correction(content);
     assert!(correction.is_correction);
 
-    // 3. Classify extracted facts
     let fact = "I use Rust for backend work";
     let fact_type = classify_fact(fact);
     assert_eq!(fact_type, FactType::Skill);
 
-    // 4. Apply confidence boost
     let base_confidence = 0.8;
     let boosted = boosted_confidence(
         base_confidence,
         turn_type.confidence_boost() + correction.confidence_boost,
     );
-    // 0.8 + 0.2 (turn) + 0.2 (correction) = 1.0 (capped)
     assert!((boosted - 1.0).abs() < f64::EPSILON);
 
-    // 5. Quality filter passes
     let filter = filter_fact(fact, boosted);
     assert!(filter.passed);
 }
@@ -404,7 +381,6 @@ fn full_pipeline_tool_heavy_turn() {
     assert_eq!(turn_type, TurnType::ToolHeavy);
     assert!((turn_type.confidence_boost()).abs() < f64::EPSILON);
 
-    // Appendix should mention skipping raw output
     let appendix = turn_type.prompt_appendix();
     assert!(appendix.contains("Skip"));
     assert!(appendix.contains("decision"));

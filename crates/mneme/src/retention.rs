@@ -69,7 +69,6 @@ impl RetentionPolicy {
 
         let mut result = RetentionResult::default();
 
-        // 1. Delete old closed sessions
         let cutoff = jiff::Timestamp::now()
             .checked_sub(jiff::SignedDuration::from_hours(
                 i64::from(self.session_max_age_days) * 24,
@@ -86,7 +85,6 @@ impl RetentionPolicy {
             result.sessions_deleted += deleted;
         }
 
-        // 2. Enforce per-nous session limit
         if self.max_sessions_per_nous > 0 {
             let excess = find_excess_sessions_per_nous(conn, self.max_sessions_per_nous)?;
             if !excess.is_empty() {
@@ -98,7 +96,6 @@ impl RetentionPolicy {
             }
         }
 
-        // 3. Delete orphan messages
         let orphan_cutoff = jiff::Timestamp::now()
             .checked_sub(jiff::SignedDuration::from_hours(
                 i64::from(self.orphan_message_max_age_days) * 24,
@@ -107,7 +104,6 @@ impl RetentionPolicy {
         let orphan_cutoff_str = orphan_cutoff.strftime("%Y-%m-%dT%H:%M:%SZ").to_string();
         result.messages_deleted = delete_orphan_messages(conn, &orphan_cutoff_str)?;
 
-        // Estimate freed bytes
         let free_after = get_free_pages(conn);
         let freed_pages = free_after.saturating_sub(free_before);
         result.bytes_freed = u64::from(freed_pages) * u64::from(page_size);
@@ -140,7 +136,6 @@ fn find_expired_sessions(conn: &Connection, cutoff: &str) -> Result<Vec<String>>
 }
 
 fn find_excess_sessions_per_nous(conn: &Connection, keep: u32) -> Result<Vec<String>> {
-    // For each nous_id, find sessions beyond the keep limit (oldest first)
     let mut stmt = conn
         .prepare_cached("SELECT DISTINCT nous_id FROM sessions")
         .context(error::DatabaseSnafu)?;
@@ -192,7 +187,6 @@ fn archive_sessions(conn: &Connection, session_ids: &[String], archive_dir: &Pat
 }
 
 fn build_session_archive(conn: &Connection, session_id: &str) -> Result<SessionArchive> {
-    // Session row as JSON value
     let session: serde_json::Value = conn
         .query_row(
             "SELECT id, nous_id, session_key, parent_session_id, status, model,
@@ -218,7 +212,6 @@ fn build_session_archive(conn: &Connection, session_id: &str) -> Result<SessionA
         )
         .context(error::DatabaseSnafu)?;
 
-    // Messages
     let mut msg_stmt = conn
         .prepare_cached(
             "SELECT seq, role, content, tool_call_id, tool_name, token_estimate,
@@ -244,7 +237,6 @@ fn build_session_archive(conn: &Connection, session_id: &str) -> Result<SessionA
         .collect::<std::result::Result<Vec<_>, _>>()
         .context(error::DatabaseSnafu)?;
 
-    // Notes
     let mut note_stmt = conn
         .prepare_cached(
             "SELECT nous_id, category, content, created_at
@@ -278,7 +270,6 @@ fn delete_sessions(conn: &Connection, session_ids: &[String]) -> Result<u32> {
 
     let mut count = 0u32;
     for session_id in session_ids {
-        // Delete related rows first (foreign key constraint)
         tx.execute(
             "DELETE FROM agent_notes WHERE session_id = ?1",
             [session_id],

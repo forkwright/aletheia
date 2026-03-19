@@ -218,16 +218,13 @@ mod tests {
         let value: serde_json::Value =
             serde_json::to_value(&agent).expect("AgentFile is serializable");
 
-        // Top-level keys
         assert!(value.get("exportedAt").is_some(), "missing exportedAt");
         assert!(value.get("exported_at").is_none(), "snake_case leaked");
 
-        // Workspace keys
         let ws = value.get("workspace").expect("workspace key must exist");
         assert!(ws.get("binaryFiles").is_some(), "missing binaryFiles");
         assert!(ws.get("binary_files").is_none(), "snake_case leaked");
 
-        // Session keys
         let session = &value["sessions"][0];
         assert!(session.get("sessionKey").is_some(), "missing sessionKey");
         assert!(session.get("sessionType").is_some(), "missing sessionType");
@@ -246,7 +243,6 @@ mod tests {
         assert!(session.get("createdAt").is_some(), "missing createdAt");
         assert!(session.get("updatedAt").is_some(), "missing updatedAt");
 
-        // Message keys
         let msg = &session["messages"][0];
         assert!(msg.get("tokenEstimate").is_some(), "missing tokenEstimate");
         assert!(msg.get("isDistilled").is_some(), "missing isDistilled");

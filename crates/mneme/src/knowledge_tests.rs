@@ -6,8 +6,6 @@ fn test_timestamp(s: &str) -> jiff::Timestamp {
     parse_timestamp(s).expect("valid test timestamp")
 }
 
-// ---- EntityId ----
-
 #[test]
 fn entity_id_from_str() {
     let id = EntityId::from("alice");
@@ -33,7 +31,6 @@ fn entity_id_from_string() {
 fn entity_id_serde_transparent() {
     let id = EntityId::from("e-123");
     let json = serde_json::to_string(&id).expect("EntityId serialization is infallible");
-    // Must serialize as a plain JSON string, not {"0":"e-123"}
     assert_eq!(
         json, r#""e-123""#,
         "EntityId must serialize as plain string"
@@ -45,8 +42,6 @@ fn entity_id_serde_transparent() {
 
 #[test]
 fn entity_id_prevents_mixing_with_plain_string() {
-    // Compile-time: EntityId and String are distinct types.
-    // Runtime: confirm they compare correctly via as_str.
     let eid = EntityId::from("nous-1");
     let plain: String = "nous-1".to_owned();
     assert_eq!(
@@ -352,7 +347,6 @@ fn default_stability_by_fact_type() {
         (default_stability_hours("observation") - 72.0).abs() < f64::EPSILON,
         "observation stability should be 72 hours"
     );
-    // Unknown types fall back to Observation (72h)
     assert!(
         (default_stability_hours("inference") - 72.0).abs() < f64::EPSILON,
         "inference should fall back to 72 hours"

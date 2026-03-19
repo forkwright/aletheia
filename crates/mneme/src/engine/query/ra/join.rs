@@ -31,7 +31,7 @@ impl Debug for BindingFormatter {
 }
 
 pub(crate) struct Joiner {
-    // invariant: these are of the same lengths
+    // INVARIANT: these are of the same lengths
     pub(crate) left_keys: Vec<Symbol>,
     pub(crate) right_keys: Vec<Symbol>,
 }
@@ -102,7 +102,6 @@ impl NegJoin {
         let mut left = used.clone();
         left.extend(self.joiner.left_keys.clone());
         self.left.eliminate_temp_vars(&left)?;
-        // right acts as a filter, introduces nothing, no need to eliminate
         Ok(())
     }
 

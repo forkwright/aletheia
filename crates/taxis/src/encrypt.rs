@@ -540,13 +540,11 @@ mod tests {
         let key = test_key();
         let encrypted = encrypt_value("secret", &key).unwrap();
 
-        // Corrupt one byte in the base64 payload
         let mut chars: Vec<char> = encrypted.chars().collect();
         let mid = chars.len() / 2;
         chars[mid] = if chars[mid] == 'A' { 'B' } else { 'A' };
         let corrupted: String = chars.into_iter().collect();
 
-        // May fail at base64 decode or at decryption
         let result = decrypt_value(&corrupted, &key);
         assert!(result.is_err(), "corrupted ciphertext must fail");
     }
@@ -628,7 +626,6 @@ mod tests {
         let signing_key = value["gateway"]["auth"]["signingKey"].as_str().unwrap();
         assert!(is_encrypted(signing_key), "signingKey must be encrypted");
 
-        // Decrypt and verify roundtrip
         let decrypted = decrypt_value(signing_key, &key).unwrap();
         assert_eq!(decrypted, "my-secret-key");
     }
@@ -713,7 +710,6 @@ mod tests {
         let enc2 = encrypt_value(plaintext, &key).unwrap();
         assert_ne!(enc1, enc2, "random nonce must produce different ciphertext");
 
-        // Both must decrypt to the same value
         assert_eq!(decrypt_value(&enc1, &key).unwrap(), plaintext);
         assert_eq!(decrypt_value(&enc2, &key).unwrap(), plaintext);
     }

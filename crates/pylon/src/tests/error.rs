@@ -4,8 +4,6 @@
 )]
 use axum::http::StatusCode;
 
-// ── ApiError status codes ───────────────────────────────────────────────────
-
 #[test]
 fn api_error_session_not_found_status_code() {
     use crate::error::ApiError;
@@ -166,8 +164,6 @@ fn api_error_validation_failed_includes_errors() {
     let errors = body["error"]["details"]["errors"].as_array().unwrap();
     assert_eq!(errors.len(), 2);
 }
-
-// ── deep_merge ──────────────────────────────────────────────────────────────
 
 #[test]
 fn deep_merge_overwrites_scalar() {

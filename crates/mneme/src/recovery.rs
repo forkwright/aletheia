@@ -448,7 +448,6 @@ mod tests {
         let src_path = tmp.path().join("source.db");
         let dst_path = tmp.path().join("recovered.db");
 
-        // Create a valid source database with some data.
         {
             let conn = Connection::open(&src_path).expect("open source");
             conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;")
@@ -465,7 +464,6 @@ mod tests {
         assert!(recovered, "recovery from valid database should succeed");
         assert!(dst_path.exists(), "recovered database file should exist");
 
-        // Verify the recovered database has the session.
         let conn = Connection::open(&dst_path).expect("open recovered");
         let count: i64 = conn
             .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
@@ -495,7 +493,6 @@ mod tests {
         let tmp = tempfile::tempdir().expect("create temp dir");
         let db_path = tmp.path().join("readonly.db");
 
-        // Create a database first.
         {
             let conn = Connection::open(&db_path).expect("create db");
             conn.execute_batch("CREATE TABLE t (id INTEGER PRIMARY KEY)")
@@ -515,7 +512,6 @@ mod tests {
         let tmp = tempfile::tempdir().expect("create temp dir");
         let db_path = tmp.path().join("sessions.db");
 
-        // Create a valid database.
         {
             let conn = Connection::open(&db_path).expect("open db");
             conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;")
@@ -538,13 +534,11 @@ mod tests {
         let (conn, mode) = recover_database(&db_path, &config).expect("recovery should succeed");
         assert_eq!(mode, StoreMode::Normal, "should recover to normal mode");
 
-        // Verify data survived.
         let count: i64 = conn
             .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
             .expect("count sessions");
         assert_eq!(count, 1, "session should survive recovery");
 
-        // Verify backup was created.
         let backups: Vec<_> = std::fs::read_dir(tmp.path())
             .expect("read dir")
             .filter_map(std::result::Result::ok)

@@ -80,7 +80,6 @@ impl<'a> SessionTx<'a> {
                     .build()
                 })?,
                 None => {
-                    // this occurs if the index is empty
                     return Ok(vec![]);
                 }
             };
@@ -152,7 +151,6 @@ impl<'a> SessionTx<'a> {
                         }
                     })?;
 
-                // make sure the order is the same as in all_bindings()!!!
                 if config.bind_field.is_some() {
                     let field = if cand_key.1 < config.base_handle.metadata.keys.len() {
                         config.base_handle.metadata.keys[cand_key.1].name.clone()
@@ -264,7 +262,6 @@ mod tests {
             let vec = Vector::F64(ndarray::Array1::zeros(4));
             cache.insert(key, vec);
         }
-        // Most recent insertions (5..10) should be in cache
         for i in 5..10u8 {
             let key = (vec![DataValue::from(i as i64)], 0, -1);
             assert!(
@@ -272,7 +269,6 @@ mod tests {
                 "recent key {i} should be in cache"
             );
         }
-        // Oldest insertions (0..5) should have been evicted
         for i in 0..5u8 {
             let key = (vec![DataValue::from(i as i64)], 0, -1);
             assert!(!cache.cache.contains(&key), "old key {i} should be evicted");
@@ -328,7 +324,6 @@ mod tests {
             }"#,
         )
         .unwrap();
-        // Insert 20 vectors
         for i in 0..20 {
             let val = i as f32;
             db.run_default(&format!(
@@ -336,14 +331,11 @@ mod tests {
             ))
             .unwrap();
         }
-        // Search for nearest to [5,5,5,5]
         let res = db.run_default(
             r#"?[id, dist] := ~vectors:idx{id | query: vec([5.0, 5.0, 5.0, 5.0]), k: 3, ef: 50, bind_distance: dist}"#,
         ).unwrap();
         assert!(!res.rows.is_empty(), "search should return results");
         assert!(res.rows.len() <= 3, "should return at most k=3 results");
-        // The closest vector should be id=5 (exact match)
-        // HNSW is approximate: the exact match (id=5) should be among top results
         let ids: Vec<i64> = res.rows.iter().filter_map(|r| r[0].get_int()).collect();
         assert!(
             ids.contains(&5),
@@ -370,7 +362,6 @@ mod tests {
             }"#,
         )
         .unwrap();
-        // Search in empty index should return empty, not panic
         let res = db.run_default(
             r#"?[id, dist] := ~vectors:idx{id | query: vec([1.0, 2.0, 3.0, 4.0]), k: 5, ef: 50, bind_distance: dist}"#,
         ).unwrap();
@@ -398,7 +389,6 @@ mod tests {
             }"#,
         )
         .unwrap();
-        // Insert vectors
         for i in 0..10 {
             let val = i as f32;
             db.run_default(&format!(
@@ -406,9 +396,7 @@ mod tests {
             ))
             .unwrap();
         }
-        // Delete vector id=5
         db.run_default("?[id] <- [[5]] :rm vectors {}").unwrap();
-        // Search for nearest to [5,5,5,5]: should NOT return id=5
         let res = db.run_default(
             r#"?[id, dist] := ~vectors:idx{id | query: vec([5.0, 5.0, 5.0, 5.0]), k: 3, ef: 50, bind_distance: dist}"#,
         ).unwrap();

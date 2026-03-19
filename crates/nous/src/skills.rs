@@ -328,8 +328,6 @@ pub(crate) fn rank_skills(candidates: Vec<Fact>) -> Vec<Fact> {
 mod tests {
     use super::*;
 
-    // ── sanitize_fts_query ─────────────────────────────────────────────────
-
     #[test]
     fn sanitize_fts_strips_punctuation() {
         assert_eq!(
@@ -356,8 +354,6 @@ mod tests {
         assert_eq!(sanitize_fts_query("?!@#$%"), "");
     }
 
-    // ── extract_task_context ─────────────────────────────────────────────────
-
     #[test]
     fn extract_task_context_returns_content() {
         let ctx = extract_task_context("Implement a retry loop in Rust");
@@ -378,7 +374,6 @@ mod tests {
 
     #[test]
     fn extract_task_context_sanitizes_punctuation() {
-        // This was bug #746: punctuated input caused FTS parse errors
         let ctx = extract_task_context("Hello, how are you?");
         assert_eq!(ctx, "Hello how are you");
         assert!(!ctx.contains(','));
@@ -397,7 +392,6 @@ mod tests {
 
     #[test]
     fn extract_task_context_truncates_at_word_boundary() {
-        // 195 chars of "word " + a long word that crosses the boundary
         let prefix = "word ".repeat(39); // 195 chars
         let suffix = "toolongword that keeps going";
         let input = format!("{prefix}{suffix}");
@@ -405,7 +399,6 @@ mod tests {
 
         let ctx = extract_task_context(&input);
         assert!(ctx.len() <= MAX_CONTEXT_CHARS);
-        // Should not cut mid-"toolongword"
         assert!(!ctx.ends_with("toolong"));
     }
 
@@ -415,8 +408,6 @@ mod tests {
         let ctx = extract_task_context(&exact);
         assert_eq!(ctx.len(), MAX_CONTEXT_CHARS);
     }
-
-    // ── format_skill_as_markdown ─────────────────────────────────────────────
 
     fn sample_skill() -> aletheia_mneme::skill::SkillContent {
         aletheia_mneme::skill::SkillContent {
@@ -475,8 +466,6 @@ mod tests {
         let md = format_skill_as_markdown(&skill);
         assert!(!md.contains("**Tools:**"));
     }
-
-    // ── fact_to_section and rank_skills (require knowledge-store feature) ────
 
     #[cfg(feature = "knowledge-store")]
     fn make_fact(id: &str, content: &str, confidence: f64, access_count: u32) -> Fact {
@@ -586,20 +575,15 @@ mod tests {
     #[cfg(feature = "knowledge-store")]
     #[test]
     fn rank_skills_high_confidence_can_overcome_lower_position() {
-        // First item: high position score but zero confidence
-        // Second item: lower position score but high confidence
         let low_conf = make_fact("low", "content", 0.0, 0);
         let high_conf = make_fact("high", "content", 1.0, 20); // also high access
-        // Feed low_conf first (better BM25 position) so ranking must consider confidence
         let ranked = rank_skills(vec![low_conf, high_conf]);
-        // High confidence + high access_count should win despite lower position
         assert_eq!(ranked[0].id.as_str(), "high");
     }
 
     #[cfg(feature = "knowledge-store")]
     #[test]
     fn rank_skills_returns_sorted_order() {
-        // Validation: ranking returns the right number and doesn't panic
         let facts: Vec<Fact> = vec![
             make_fact("a", "content", 0.9, 5),
             make_fact("b", "content", 0.1, 1),
@@ -607,7 +591,6 @@ mod tests {
         ];
         let ranked = rank_skills(facts);
         assert_eq!(ranked.len(), 3, "all facts preserved");
-        // Each fact id must appear exactly once
         let ids: Vec<&str> = ranked.iter().map(|f| f.id.as_str()).collect();
         assert!(ids.contains(&"a"));
         assert!(ids.contains(&"b"));

@@ -8,10 +8,6 @@
 use crate::engine::DbInstance;
 use crate::engine::data::value::DataValue;
 
-// ────────────────────────────────────────────────────────────────────────
-// 1. ShortestPathDijkstra
-// ────────────────────────────────────────────────────────────────────────
-
 /// Basic correctness: 0→1→2→3→4 with edge weights, cost must be 5.0.
 #[test]
 fn test_shortest_path_dijkstra_when_path_exists_returns_correct_cost() {
@@ -66,7 +62,6 @@ end[]   <- [[2]]
         .expect("Dijkstra disconnected query should execute successfully")
         .rows;
 
-    // Node 2 is unreachable; Dijkstra emits no row for it.
     assert!(
         res.is_empty()
             || res
@@ -124,10 +119,6 @@ start[] <- [[0], [2]]
         "Each start node should reach at least its neighbour"
     );
 }
-
-// ────────────────────────────────────────────────────────────────────────
-// 2. BetweennessCentrality
-// ────────────────────────────────────────────────────────────────────────
 
 /// On a path graph 0-1-2-3-4, intermediate nodes have higher betweenness.
 #[test]
@@ -221,10 +212,6 @@ edges[src, dst, cost] <- [[0, 1, 1.0]]
     }
 }
 
-// ────────────────────────────────────────────────────────────────────────
-// 3. ClosenessCentrality
-// ────────────────────────────────────────────────────────────────────────
-
 /// On a weighted path graph, all closeness scores must be non-negative.
 #[test]
 fn test_closeness_centrality_when_path_graph_all_scores_non_negative() {
@@ -275,10 +262,6 @@ edges[src, dst, cost] <- [[0, 1, 1.0]]
         );
     }
 }
-
-// ────────────────────────────────────────────────────────────────────────
-// 4. ShortestPathAStar
-// ────────────────────────────────────────────────────────────────────────
 
 /// A* with zero heuristic is equivalent to Dijkstra: cost 5.0 for 0→4.
 #[test]
@@ -378,10 +361,6 @@ goal[] <- [[1]]
     );
 }
 
-// ────────────────────────────────────────────────────────────────────────
-// 5. BFS (BreadthFirstSearch)
-// ────────────────────────────────────────────────────────────────────────
-
 /// BFS on a linear chain finds the end in exactly 4 hops.
 #[test]
 fn test_bfs_when_linear_chain_finds_target_at_depth_4() {
@@ -428,10 +407,6 @@ start[] <- [[0]]
 
     assert!(res.is_empty(), "Condition never true → no results");
 }
-
-// ────────────────────────────────────────────────────────────────────────
-// 6. DFS (DepthFirstSearch)
-// ────────────────────────────────────────────────────────────────────────
 
 /// DFS finds a target reachable via a chain.
 #[test]
@@ -480,5 +455,3 @@ start[] <- [[0]]
 
     assert!(res.is_empty(), "Node 2 is unreachable from 0");
 }
-
-// ────────────────────────────────────────────────────────────────────────

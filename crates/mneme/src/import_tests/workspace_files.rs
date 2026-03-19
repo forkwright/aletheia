@@ -459,12 +459,11 @@ fn export_import_roundtrip() {
     )
     .expect("export_agent should succeed");
 
-    // Serialize and deserialize to simulate file I/O
+    // NOTE: Serialize and deserialize to simulate file I/O
     let json = serde_json::to_string_pretty(&exported).expect("serialize exported agent to JSON");
     let imported: AgentFile =
         serde_json::from_str(&json).expect("deserialize agent file from JSON");
 
-    // Import into fresh store under different ID
     let import_store = test_store();
     let import_dir = tempfile::tempdir().expect("create import temp dir");
     let id_gen = counter_id_gen();

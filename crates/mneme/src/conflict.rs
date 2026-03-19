@@ -396,7 +396,6 @@ pub(crate) fn classify_against_candidates(
         return Ok(None);
     }
 
-    // Sort by cosine similarity (highest first), take up to MAX_LLM_CALLS_PER_FACT
     let mut sorted_candidates: Vec<(usize, &ConflictCandidate)> =
         candidates.iter().enumerate().collect();
     sorted_candidates.sort_by(|a, b| {

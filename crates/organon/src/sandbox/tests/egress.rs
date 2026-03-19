@@ -143,9 +143,6 @@ fn egress_deny_blocks_network() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    // The connection must fail. Possible error messages depend on mechanism:
-    // - Network namespace: "Network is unreachable"
-    // - Seccomp fallback: "Permission denied" or "Operation not permitted"
     assert!(
         combined.contains("exit=1")
             || combined.contains("Network is unreachable")
@@ -275,7 +272,7 @@ fn egress_graceful_fallback() {
     let mut cmd = Command::new("echo");
     cmd.arg("fallback test");
 
-    // Must not error regardless of kernel support
+    // WHY: Must not error regardless of kernel support
     let result = apply_sandbox(&mut cmd, policy);
     assert!(
         result.is_ok(),

@@ -663,11 +663,8 @@ fn test_expand_tilde_str_leaves_non_tilde_unchanged() {
 
 #[test]
 fn test_validate_path_tilde_expands_to_home_before_resolution() {
-    // Build a ctx whose workspace is the HOME directory so the tilde-expanded
-    // path is inside allowed_roots.
     if let Ok(home) = std::env::var("HOME") {
         let home_path = std::path::PathBuf::from(&home);
-        // workspace = HOME, allowed_roots = [HOME]
         let ctx = ToolContext {
             nous_id: aletheia_koina::id::NousId::new("test-agent").expect("valid"),
             session_id: aletheia_koina::id::SessionId::new(),
@@ -680,7 +677,6 @@ fn test_validate_path_tilde_expands_to_home_before_resolution() {
         };
         let name = aletheia_koina::id::ToolName::new("read").expect("valid");
 
-        // "~/file.txt" must resolve to HOME/file.txt, which is inside HOME.
         let resolved = validate_path("~/file.txt", &ctx, &name).expect("tilde path should resolve");
         assert!(
             resolved.starts_with(&home_path),

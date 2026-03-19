@@ -344,9 +344,6 @@ impl SearchInput {
             query,
             score_kind,
             bind_score,
-            // lax_mode,
-            // k1,
-            // b,
             filter,
             span: self.span,
         }));

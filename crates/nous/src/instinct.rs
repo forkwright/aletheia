@@ -120,7 +120,6 @@ mod tests {
         assert_eq!(obs.tool_name, "grep");
         assert_eq!(obs.nous_id, "nous-1");
         assert!(obs.outcome.is_success());
-        // Secret should be redacted in sanitized params
         assert_eq!(obs.parameters["api_key"], "[REDACTED]");
         assert_eq!(obs.parameters["path"], "/src/main.rs");
     }

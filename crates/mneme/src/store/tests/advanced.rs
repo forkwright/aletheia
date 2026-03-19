@@ -179,7 +179,6 @@ fn insert_distillation_summary_and_cleanup() {
         .create_session("ses-1", "syn", "main", None, None)
         .expect("create session");
 
-    // Add some messages
     store
         .append_message("ses-1", Role::User, "msg1", None, None, 100)
         .expect("append message");
@@ -190,18 +189,15 @@ fn insert_distillation_summary_and_cleanup() {
         .append_message("ses-1", Role::User, "msg3", None, None, 50)
         .expect("append message");
 
-    // Mark first two as distilled
     store
         .mark_messages_distilled("ses-1", &[1, 2])
         .expect("mark messages distilled");
 
-    // Insert summary (should also delete distilled messages)
     store
         .insert_distillation_summary("ses-1", "[Distillation #1]\n\nSummary text")
         .expect("insert distillation summary");
 
     let history = store.get_history("ses-1", None).expect("get history");
-    // Should have: summary (seq 0) + undistilled msg3 (seq shifted)
     assert_eq!(
         history.len(),
         2,
@@ -221,7 +217,6 @@ fn insert_distillation_summary_and_cleanup() {
         "undistilled message should be preserved after distillation"
     );
 
-    // Session counts should reflect new state
     let session = store
         .find_session_by_id("ses-1")
         .expect("query succeeds")
@@ -243,25 +238,22 @@ fn insert_distillation_summary_consecutive_undistilled_no_conflict() {
         .create_session("ses-cd", "syn", "main", None, None)
         .expect("create session");
 
-    // Five messages: first two will be distilled, last three are consecutive undistilled.
     for i in 1..=5_u8 {
         store
             .append_message("ses-cd", Role::User, &format!("msg{i}"), None, None, 10)
             .expect("append message");
     }
 
-    // Mark the first two messages as distilled.
     store
         .mark_messages_distilled("ses-cd", &[1, 2])
         .expect("mark messages distilled");
 
-    // This must not fail with a UNIQUE constraint violation for seqs [3,4,5].
+    // WHY: This must not fail with a UNIQUE constraint violation for seqs [3,4,5].
     store
         .insert_distillation_summary("ses-cd", "Summary #1")
         .expect("first distillation summary must not conflict on consecutive undistilled seqs");
 
     let history = store.get_history("ses-cd", None).expect("get history");
-    // Summary at seq 0 plus three undistilled messages.
     assert_eq!(
         history.len(),
         4,
@@ -276,7 +268,6 @@ fn insert_distillation_summary_consecutive_undistilled_no_conflict() {
         history[0].content.contains("Summary #1"),
         "first summary message should contain 'Summary #1'"
     );
-    // Remaining messages preserve their original seq ordering.
     assert_eq!(
         history[1].content, "msg3",
         "first undistilled message should be msg3"
@@ -306,7 +297,6 @@ fn insert_distillation_summary_twice_succeeds() {
             .expect("append message");
     }
 
-    // First distillation: condense messages 1 and 2.
     store
         .mark_messages_distilled("ses-2d", &[1, 2])
         .expect("mark messages distilled");
@@ -314,7 +304,6 @@ fn insert_distillation_summary_twice_succeeds() {
         .insert_distillation_summary("ses-2d", "Summary #1")
         .expect("first distillation must succeed");
 
-    // Verify state: summary at seq 0, msg3 and msg4 still undistilled.
     let history = store.get_history("ses-2d", None).expect("get history");
     assert_eq!(
         history.len(),
@@ -337,12 +326,11 @@ fn insert_distillation_summary_twice_succeeds() {
         "third history entry should be msg4"
     );
 
-    // Second distillation: condense the previous summary and msg3.
     store
         .mark_messages_distilled("ses-2d", &[summary_seq, msg3_seq])
         .expect("mark messages distilled");
 
-    // This must not conflict with the old summary that is still at seq 0 in the DB.
+    // WHY: This must not conflict with the old summary that is still at seq 0 in the DB.
     store
         .insert_distillation_summary("ses-2d", "Summary #2")
         .expect("second distillation must not conflict with old seq-0 summary");

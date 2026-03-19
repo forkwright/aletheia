@@ -134,7 +134,6 @@ mod tests {
     fn fact_id_and_entity_id_are_distinct_types() {
         let fact: FactId = "id-1".into();
         let entity: EntityId = "id-1".into();
-        // Same string content, but different types: this is the point.
         assert_eq!(fact.as_str(), entity.as_str());
     }
 

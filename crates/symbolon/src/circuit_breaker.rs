@@ -351,7 +351,6 @@ mod tests {
             "failed probe should reopen circuit"
         );
 
-        // After the increased cooldown elapses, half-open should be reachable
         thread::sleep(Duration::from_millis(10));
         assert!(cb.check_allowed(), "should allow after increased cooldown");
         assert_eq!(cb.state(), CircuitState::HalfOpen);
@@ -436,7 +435,6 @@ mod tests {
 
         cb.record_success();
 
-        // After success, two more failures should not trip (count was reset)
         cb.record_failure();
         cb.record_failure();
         assert_eq!(cb.state(), CircuitState::Closed);
@@ -448,7 +446,6 @@ mod tests {
         cb.record_failure();
         cb.record_failure();
 
-        // Wait for failures to leave the window
         thread::sleep(Duration::from_millis(15));
 
         cb.record_failure();
@@ -463,14 +460,12 @@ mod tests {
     fn successful_close_resets_backoff() {
         let cb = breaker(1, 60_000, 10, 300_000);
 
-        // Trip and recover
         cb.record_failure();
         thread::sleep(Duration::from_millis(15));
         assert!(cb.check_allowed());
         cb.record_success();
         assert_eq!(cb.state(), CircuitState::Closed);
 
-        // Trip again: cooldown should be base (10ms), not escalated
         cb.record_failure();
         assert_eq!(cb.state(), CircuitState::Open);
         thread::sleep(Duration::from_millis(15));

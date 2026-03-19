@@ -6,8 +6,6 @@
 )]
 use super::super::*;
 
-// --- Engine-dependent tests ---
-
 #[cfg(feature = "mneme-engine")]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod engine_tests {
@@ -15,7 +13,6 @@ mod engine_tests {
     use crate::knowledge_store::KnowledgeStore;
 
     fn test_store() -> std::sync::Arc<KnowledgeStore> {
-        // graph_scores is created by init_schema automatically
         KnowledgeStore::open_mem().expect("open_mem")
     }
 
@@ -43,7 +40,6 @@ mod engine_tests {
     #[test]
     fn graph_scores_relation_created_by_init_schema() {
         let store = test_store();
-        // graph_scores created during init_schema: query should succeed
         let ctx = store.load_graph_context().expect("load_graph_context");
         assert!(
             ctx.is_empty(),
@@ -55,7 +51,6 @@ mod engine_tests {
     fn recompute_with_entities_and_relationships() {
         let store = test_store();
 
-        // Insert entities
         store
             .insert_entity(&make_entity("alice", "Alice"))
             .expect("insert alice");
@@ -66,7 +61,6 @@ mod engine_tests {
             .insert_entity(&make_entity("charlie", "Charlie"))
             .expect("insert charlie");
 
-        // Insert relationships forming a hub at alice
         store
             .insert_relationship(&make_relationship("alice", "bob", "KNOWS", 0.8))
             .expect("insert rel 1");
@@ -77,19 +71,16 @@ mod engine_tests {
             .insert_relationship(&make_relationship("bob", "alice", "KNOWS", 0.8))
             .expect("insert rel 3");
 
-        // Recompute
         store
             .recompute_graph_scores()
             .expect("recompute_graph_scores");
 
-        // Load context
         let ctx = store.load_graph_context().expect("load_graph_context");
         assert!(
             !ctx.is_empty(),
             "graph context should be populated after recompute"
         );
 
-        // Alice should have highest pagerank (hub)
         let alice_pr = ctx.importance("alice");
         let bob_pr = ctx.importance("bob");
         let charlie_pr = ctx.importance("charlie");
@@ -101,7 +92,6 @@ mod engine_tests {
             alice_pr > charlie_pr,
             "alice ({alice_pr}) should have higher PR than charlie ({charlie_pr})"
         );
-        // All pageranks should be in [0, 1]
         assert!(alice_pr <= 1.0, "alice pagerank should be at most 1.0");
         assert!(bob_pr >= 0.0, "bob pagerank should be non-negative");
     }
@@ -110,7 +100,6 @@ mod engine_tests {
     fn bfs_proximity_hop_counts() {
         let store = test_store();
 
-        // Chain: a -> b -> c -> d -> e
         for (id, name) in [("a", "A"), ("b", "B"), ("c", "C"), ("d", "D"), ("e", "E")] {
             store
                 .insert_entity(&make_entity(id, name))
@@ -124,7 +113,6 @@ mod engine_tests {
 
         let proximity = store.compute_bfs_proximity(&["a".to_owned()]).expect("bfs");
 
-        // a=0, b=1, c=2, d=3, e=4
         assert_eq!(
             proximity.get("a").copied(),
             Some(0),
@@ -171,7 +159,6 @@ mod engine_tests {
         let proximity = store
             .compute_bfs_proximity(&["lonely".to_owned()])
             .expect("bfs");
-        // Only the seed itself at hop 0
         assert_eq!(
             proximity.get("lonely").copied(),
             Some(0),
@@ -188,44 +175,37 @@ mod engine_tests {
     fn build_graph_context_populates_clusters() {
         let store = test_store();
 
-        // Create a small graph with two clusters
         for (id, name) in [("a1", "A1"), ("a2", "A2"), ("b1", "B1"), ("b2", "B2")] {
             store
                 .insert_entity(&make_entity(id, name))
                 .expect("insert entity");
         }
-        // Cluster A: a1 <-> a2 (strongly connected)
         store
             .insert_relationship(&make_relationship("a1", "a2", "WORKS_WITH", 0.9))
             .expect("insert");
         store
             .insert_relationship(&make_relationship("a2", "a1", "WORKS_WITH", 0.9))
             .expect("insert");
-        // Cluster B: b1 <-> b2
         store
             .insert_relationship(&make_relationship("b1", "b2", "WORKS_WITH", 0.9))
             .expect("insert");
         store
             .insert_relationship(&make_relationship("b2", "b1", "WORKS_WITH", 0.9))
             .expect("insert");
-        // Weak link between clusters
         store
             .insert_relationship(&make_relationship("a2", "b1", "KNOWS", 0.1))
             .expect("insert");
 
         store.recompute_graph_scores().expect("recompute");
 
-        // Build context with a1 as seed
         let ctx = store
             .build_graph_context(&["a1".to_owned()], 0.10)
             .expect("build_graph_context");
 
-        // a1 should be a seed → its cluster is in context_clusters
         assert!(
             !ctx.context_clusters.is_empty(),
             "context clusters should be populated when seed entity has a cluster"
         );
-        // a2 should be in same cluster as a1
         assert!(
             ctx.same_cluster("a2"),
             "a2 should be in same cluster as seed a1"
@@ -246,7 +226,6 @@ mod engine_tests {
             .expect("insert relationship");
         store.recompute_graph_scores().expect("recompute");
 
-        // With weight=0.0, build_graph_context returns empty without traversal.
         let ctx = store
             .build_graph_context(&["x1".to_owned()], 0.0)
             .expect("build_graph_context with zero weight");
@@ -263,7 +242,6 @@ mod engine_tests {
             "no chain lengths should be computed when weight is zero"
         );
 
-        // With nonzero weight, graph data should be populated.
         let ctx_active = store
             .build_graph_context(&["x1".to_owned()], 0.10)
             .expect("build_graph_context with nonzero weight");
@@ -276,7 +254,6 @@ mod engine_tests {
     #[test]
     fn recompute_empty_graph() {
         let store = test_store();
-        // Should not panic on empty graph
         store
             .recompute_graph_scores()
             .expect("recompute empty graph");
@@ -291,7 +268,6 @@ mod engine_tests {
     fn pagerank_boost_integration() {
         let store = test_store();
 
-        // Hub entity with many connections
         store
             .insert_entity(&make_entity("hub", "Hub"))
             .expect("insert");
@@ -317,7 +293,6 @@ mod engine_tests {
         let hub_importance = ctx.importance("hub");
         let leaf_importance = ctx.importance("leaf1");
 
-        // Use the enhanced scoring
         let base_tier = 0.6; // inferred
         let hub_score = super::score_epistemic_tier_with_importance(base_tier, hub_importance);
         let leaf_score = super::score_epistemic_tier_with_importance(base_tier, leaf_importance);
@@ -332,7 +307,6 @@ mod engine_tests {
     fn bfs_proximity_cycle_no_infinite_loop() {
         let store = test_store();
 
-        // Cycle: alice → bob → charlie → alice
         for (id, name) in [("alice", "Alice"), ("bob", "Bob"), ("charlie", "Charlie")] {
             store
                 .insert_entity(&make_entity(id, name))
@@ -348,12 +322,10 @@ mod engine_tests {
             .insert_relationship(&make_relationship("charlie", "alice", "KNOWS", 0.5))
             .expect("insert");
 
-        // Must complete without hanging or panicking
         let proximity = store
             .compute_bfs_proximity(&["alice".to_owned()])
             .expect("bfs with cycle terminates");
 
-        // Seed at hop 0; back-edge to alice (cycle) does not re-enqueue it
         assert_eq!(
             proximity.get("alice").copied(),
             Some(0),
@@ -375,7 +347,6 @@ mod engine_tests {
     fn bfs_proximity_5hop_chain_excludes_5th_node() {
         let store = test_store();
 
-        // Chain: a → b → c → d → e → f (5 edges; f is at hop 5)
         for (id, name) in [
             ("a", "A"),
             ("b", "B"),
@@ -396,7 +367,6 @@ mod engine_tests {
 
         let proximity = store.compute_bfs_proximity(&["a".to_owned()]).expect("bfs");
 
-        // Nodes within the 4-hop radius are present
         assert_eq!(
             proximity.get("a").copied(),
             Some(0),
@@ -408,7 +378,6 @@ mod engine_tests {
             Some(4),
             "e should be at hop 4 (boundary)"
         );
-        // f is at hop 5: beyond the 4-hop boundary, must be absent
         assert_eq!(
             proximity.get("f").copied(),
             None,
@@ -416,10 +385,6 @@ mod engine_tests {
         );
     }
 }
-
-// ---------------------------------------------------------------------------
-// Louvain clustering correctness
-// ---------------------------------------------------------------------------
 
 /// Requirement: connected components are assigned to the same cluster.
 ///
@@ -505,10 +470,6 @@ fn louvain_empty_graph_produces_empty_cluster_map() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// PageRank score distribution
-// ---------------------------------------------------------------------------
-
 /// Requirement: `PageRank` scores sum to approximately 1.0.
 ///
 /// In a standard `PageRank` distribution the scores are normalized so that
@@ -517,7 +478,6 @@ fn louvain_empty_graph_produces_empty_cluster_map() {
 #[test]
 fn pagerank_scores_sum_to_approximately_one() {
     let mut ctx = GraphContext::default();
-    // Scores derived from a 4-node directed graph with one hub.
     ctx.pageranks.insert("alice".to_owned(), 0.368);
     ctx.pageranks.insert("bob".to_owned(), 0.214);
     ctx.pageranks.insert("charlie".to_owned(), 0.214);
@@ -553,10 +513,8 @@ fn pagerank_single_node_has_importance_one() {
 #[test]
 fn pagerank_disconnected_graph_all_nodes_have_nonzero_scores() {
     let mut ctx = GraphContext::default();
-    // Component 1: alice (hub) + bob
     ctx.pageranks.insert("alice".to_owned(), 0.35);
     ctx.pageranks.insert("bob".to_owned(), 0.15);
-    // Component 2: charlie (hub) + diana (disconnected from component 1)
     ctx.pageranks.insert("charlie".to_owned(), 0.35);
     ctx.pageranks.insert("diana".to_owned(), 0.15);
 
@@ -567,10 +525,6 @@ fn pagerank_disconnected_graph_all_nodes_have_nonzero_scores() {
         );
     }
 }
-
-// ---------------------------------------------------------------------------
-// BFS proximity: focused single-property tests
-// ---------------------------------------------------------------------------
 
 /// Requirement: BFS finds direct neighbor at hop count 1.
 #[test]
@@ -607,7 +561,6 @@ fn bfs_unreachable_entity_returns_none() {
     let mut ctx = GraphContext::default();
     ctx.proximity.insert("alice".to_owned(), Some(0));
     ctx.proximity.insert("bob".to_owned(), Some(1));
-    // charlie is not reachable: absent from the proximity map
 
     assert_eq!(
         ctx.hops("charlie"),
@@ -627,7 +580,6 @@ fn bfs_cycle_seed_stays_at_hop_zero() {
     ctx.proximity.insert("alice".to_owned(), Some(0)); // seed
     ctx.proximity.insert("bob".to_owned(), Some(1)); // alice → bob
     ctx.proximity.insert("charlie".to_owned(), Some(2)); // bob → charlie
-    // charlie → alice closes the cycle; alice stays at 0 (first visit)
 
     assert_eq!(ctx.hops("alice"), Some(0), "cycle: seed stays at hop 0");
     assert_eq!(ctx.hops("bob"), Some(1), "cycle: first hop stays at 1");
@@ -643,7 +595,6 @@ fn bfs_5hop_node_beyond_boundary_returns_none() {
     ctx.proximity.insert("c".to_owned(), Some(2));
     ctx.proximity.insert("d".to_owned(), Some(3));
     ctx.proximity.insert("e".to_owned(), Some(4));
-    // "f" at hop 5 is beyond the BFS boundary: not inserted into proximity
 
     assert_eq!(
         ctx.hops("f"),
@@ -662,10 +613,6 @@ fn bfs_empty_seed_context_all_return_none() {
     assert_eq!(ctx.hops("alice"), None, "empty context: alice has no hops");
     assert_eq!(ctx.hops("bob"), None, "empty context: bob has no hops");
 }
-
-// ---------------------------------------------------------------------------
-// GraphDirtyFlag: focused single-property tests
-// ---------------------------------------------------------------------------
 
 /// Requirement: flag starts clean after construction.
 #[test]
@@ -711,10 +658,6 @@ fn graph_dirty_flag_concurrent_marks_remain_dirty() {
         "flag must be dirty after concurrent marks from 8 threads"
     );
 }
-
-// ---------------------------------------------------------------------------
-// Property-based tests
-// ---------------------------------------------------------------------------
 
 mod proptests {
     use super::*;

@@ -36,10 +36,8 @@ impl<'a> SessionTx<'a> {
         reason = "pest parse success guarantees at least one pair"
     )]
     pub(crate) fn create_minhash_lsh_index(&mut self, config: &MinHashLshConfig) -> Result<()> {
-        // Get relation handle
         let mut rel_handle = self.get_relation(&config.base_relation, true)?;
 
-        // Check if index already exists
         if rel_handle.has_index(&config.index_name) {
             IndexAlreadyExistsSnafu {
                 index_name: config.index_name.to_string(),
@@ -89,7 +87,6 @@ impl<'a> SessionTx<'a> {
             inv_idx_vals,
         )?;
 
-        // add index to relation
         let params = LshParams::find_optimal_params(
             config.target_threshold.0,
             config.n_perm,
@@ -114,7 +111,6 @@ impl<'a> SessionTx<'a> {
             perms: perms.as_bytes().to_vec(),
         };
 
-        // populate index
         let tokenizer =
             self.tokenizers
                 .get(&idx_handle.name, &manifest.tokenizer, &manifest.filters)?;
@@ -160,7 +156,6 @@ impl<'a> SessionTx<'a> {
             (idx_handle, inv_idx_handle, manifest),
         );
 
-        // update relation metadata
         let new_encoded =
             vec![DataValue::from(&rel_handle.name as &str)].encode_as_key(RelationId::SYSTEM);
         let mut meta_val = vec![];
@@ -182,10 +177,8 @@ impl<'a> SessionTx<'a> {
         reason = "pest parse success guarantees at least one pair"
     )]
     pub(crate) fn create_fts_index(&mut self, config: &FtsIndexConfig) -> Result<()> {
-        // Get relation handle
         let mut rel_handle = self.get_relation(&config.base_relation, true)?;
 
-        // Check if index already exists
         if rel_handle.has_index(&config.index_name) {
             IndexAlreadyExistsSnafu {
                 index_name: config.index_name.to_string(),
@@ -194,7 +187,6 @@ impl<'a> SessionTx<'a> {
             .fail()?;
         }
 
-        // Build key columns definitions
         let mut idx_keys: Vec<ColumnDef> = vec![ColumnDef {
             name: CompactString::from("word"),
             typing: NullableColType {
@@ -256,7 +248,6 @@ impl<'a> SessionTx<'a> {
             non_idx_keys,
         )?;
 
-        // add index to relation
         let manifest = FtsIndexManifest {
             base_relation: config.base_relation.clone(),
             index_name: config.index_name.clone(),
@@ -265,7 +256,6 @@ impl<'a> SessionTx<'a> {
             filters: config.filters.clone(),
         };
 
-        // populate index
         let tokenizer =
             self.tokenizers
                 .get(&idx_handle.name, &manifest.tokenizer, &manifest.filters)?;
@@ -317,7 +307,6 @@ impl<'a> SessionTx<'a> {
             .fts_indices
             .insert(manifest.index_name.clone(), (idx_handle, manifest));
 
-        // update relation metadata
         let new_encoded =
             vec![DataValue::from(&rel_handle.name as &str)].encode_as_key(RelationId::SYSTEM);
         let mut meta_val = vec![];
@@ -339,10 +328,8 @@ impl<'a> SessionTx<'a> {
         reason = "pest parse success guarantees at least one pair"
     )]
     pub(crate) fn create_hnsw_index(&mut self, config: &HnswIndexConfig) -> Result<()> {
-        // Get relation handle
         let mut rel_handle = self.get_relation(&config.base_relation, true)?;
 
-        // Check if index already exists
         if rel_handle.has_index(&config.index_name) {
             IndexAlreadyExistsSnafu {
                 index_name: config.index_name.to_string(),
@@ -351,7 +338,6 @@ impl<'a> SessionTx<'a> {
             .fail()?;
         }
 
-        // Check that what we are indexing are really vectors
         if config.vec_fields.is_empty() {
             InvalidOperationSnafu {
                 op: "create HNSW index",
@@ -418,9 +404,7 @@ impl<'a> SessionTx<'a> {
             }
         }
 
-        // Build key columns definitions
         let mut idx_keys: Vec<ColumnDef> = vec![ColumnDef {
-            // layer -1 stores the self-loops
             name: CompactString::from("layer"),
             typing: NullableColType {
                 coltype: ColType::Int,
@@ -428,7 +412,6 @@ impl<'a> SessionTx<'a> {
             },
             default_gen: None,
         }];
-        // for self-loops, fr and to are identical
         for prefix in ["fr", "to"] {
             for col in rel_handle.metadata.keys.iter() {
                 let mut col = col.clone();
@@ -453,9 +436,7 @@ impl<'a> SessionTx<'a> {
             });
         }
 
-        // Build non-key columns definitions
         let non_idx_keys = vec![
-            // For self-loops, stores the number of neighbours
             ColumnDef {
                 name: CompactString::from("dist"),
                 typing: NullableColType {
@@ -464,7 +445,6 @@ impl<'a> SessionTx<'a> {
                 },
                 default_gen: None,
             },
-            // For self-loops, stores a hash of the neighbours, for conflict detection
             ColumnDef {
                 name: CompactString::from("hash"),
                 typing: NullableColType {
@@ -482,7 +462,6 @@ impl<'a> SessionTx<'a> {
                 default_gen: None,
             },
         ];
-        // create index relation
         let idx_handle = self.write_idx_relation(
             &config.base_relation,
             &config.index_name,
@@ -490,7 +469,6 @@ impl<'a> SessionTx<'a> {
             non_idx_keys,
         )?;
 
-        // add index to relation
         let manifest = HnswIndexManifest {
             base_relation: config.base_relation.clone(),
             index_name: config.index_name.clone(),
@@ -508,7 +486,6 @@ impl<'a> SessionTx<'a> {
             keep_pruned_connections: config.keep_pruned_connections,
         };
 
-        // populate index
         let mut all_tuples = TempCollector::default();
         for tuple in rel_handle.scan_all(self) {
             all_tuples.push(tuple?);
@@ -552,7 +529,6 @@ impl<'a> SessionTx<'a> {
             .hnsw_indices
             .insert(config.index_name.clone(), (idx_handle, manifest));
 
-        // update relation metadata
         let new_encoded =
             vec![DataValue::from(&config.base_relation as &str)].encode_as_key(RelationId::SYSTEM);
         let mut meta_val = vec![];

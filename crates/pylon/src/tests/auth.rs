@@ -125,8 +125,6 @@ async fn missing_auth_header_returns_401() {
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }
 
-// ── Auth mode ───────────────────────────────────────────────────────────────
-
 async fn app_auth_disabled() -> (axum::Router, tempfile::TempDir) {
     let (state, dir) = test_state().await;
     let default_config = aletheia_taxis::config::AletheiaConfig::default();
@@ -176,8 +174,6 @@ async fn auth_mode_none_injects_anonymous_identity() {
 
     assert_eq!(resp.status(), StatusCode::OK);
 }
-
-// ── Endpoint auth requirements ──────────────────────────────────────────────
 
 #[tokio::test]
 async fn nous_list_requires_auth() {

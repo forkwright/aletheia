@@ -282,10 +282,6 @@ fn code_execution_server_tool_definition_serde() {
     );
 }
 
-//
-// Per project standards (standards/TESTING.md): every type that implements
-// Serialize + Deserialize gets a roundtrip property test.
-
 mod proptests {
     use proptest::prelude::*;
 
@@ -368,7 +364,6 @@ mod proptests {
             let choice = if auto { ToolChoice::Auto } else { ToolChoice::Any };
             let json = serde_json::to_string(&choice).expect("ToolChoice should serialize to JSON");
             let back: ToolChoice = serde_json::from_str(&json).expect("ToolChoice JSON should deserialize back");
-            // Verify the tag was preserved by checking the JSON contains the right type string.
             if auto {
                 prop_assert!(json.contains("\"auto\""), "expected 'auto' in {json}");
                 prop_assert!(matches!(back, ToolChoice::Auto));

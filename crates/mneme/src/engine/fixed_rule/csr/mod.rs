@@ -203,7 +203,6 @@ mod tests {
     use super::*;
 
     fn triangle_graph() -> DirectedCsrGraph {
-        // 0 → 1 → 2 → 0
         CsrBuilder::new()
             .sorted()
             .edges([(0, 1), (1, 2), (2, 0)])
@@ -236,17 +235,14 @@ mod tests {
     #[test]
     fn in_neighbors_basic() {
         let g = triangle_graph();
-        // Node 0 is reached from node 2
         let in0: Vec<u32> = g.in_neighbors(0).collect();
         assert_eq!(in0, vec![2]);
-        // Node 1 is reached from node 0
         let in1: Vec<u32> = g.in_neighbors(1).collect();
         assert_eq!(in1, vec![0]);
     }
 
     #[test]
     fn multi_edge_graph() {
-        // 0 → 1, 0 → 2, 1 → 2
         let g = CsrBuilder::new()
             .sorted()
             .edges([(0, 1), (0, 2), (1, 2)])
@@ -269,7 +265,6 @@ mod tests {
 
     #[test]
     fn edge_weight_access() {
-        // Weighted graph: 0 -1.0-> 1, 1 -2.0-> 2
         let g: DirectedCsrGraph<f32> = CsrBuilder::new()
             .sorted()
             .edges_with_values([(0, 1, 1.0_f32), (1, 2, 2.0_f32)])
@@ -288,12 +283,10 @@ mod tests {
 
     #[test]
     fn page_rank_triangle() {
-        // Symmetric triangle: equal PR for all nodes.
         let g = triangle_graph();
         let config = PageRankConfig::new(100, 1e-6, 0.85);
         let (scores, iters, error) = page_rank(&g, config);
         assert_eq!(scores.len(), 3);
-        // All nodes should have approximately equal rank
         assert!((scores[0] - scores[1]).abs() < 1e-4);
         assert!((scores[1] - scores[2]).abs() < 1e-4);
         assert!(error < 1e-6 || iters == 100);
@@ -301,11 +294,9 @@ mod tests {
 
     #[test]
     fn page_rank_star() {
-        // Hub-and-spoke: 0 → 1, 0 → 2, 0 → 3 (0 is the hub, no incoming edges)
         let g = CsrBuilder::new().edges([(0, 1), (0, 2), (0, 3)]).build();
         let config = PageRankConfig::new(100, 1e-6, 0.85);
         let (scores, _, _) = page_rank(&g, config);
-        // Nodes 1, 2, 3 receive rank from 0; they should rank higher than 0
         assert!(scores[1] > scores[0]);
         assert!(scores[2] > scores[0]);
         assert!(scores[3] > scores[0]);

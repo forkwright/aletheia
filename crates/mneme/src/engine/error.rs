@@ -94,8 +94,6 @@ pub(crate) enum InternalError {
 
 pub(crate) type InternalResult<T> = std::result::Result<T, InternalError>;
 
-// --- From impls for small error structs that aren't part of module error enums ---
-
 impl From<crate::engine::data::program::FixedRuleOptionNotFoundError> for InternalError {
     fn from(e: crate::engine::data::program::FixedRuleOptionNotFoundError) -> Self {
         InternalError::FixedRule {
