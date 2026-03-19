@@ -6,6 +6,10 @@ use snafu::Snafu;
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 #[non_exhaustive]
+#[expect(
+    missing_docs,
+    reason = "snafu error variant fields (source, location, message, file, session_id, etc.) are self-documenting via display format"
+)]
 pub enum Error {
     /// Session store error.
     #[snafu(display("session store error: {source}"))]

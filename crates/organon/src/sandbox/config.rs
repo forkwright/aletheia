@@ -14,7 +14,9 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum SandboxEnforcement {
+    /// Sandbox violations cause the operation to fail.
     Enforcing,
+    /// Sandbox violations are logged but allowed to proceed.
     Permissive,
 }
 
@@ -53,9 +55,13 @@ pub(crate) fn expand_tilde(path: &Path) -> PathBuf {
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct SandboxConfig {
+    /// Whether sandbox restrictions are applied to tool execution.
     pub enabled: bool,
+    /// Enforcement level: `enforcing` blocks violations, `permissive` logs them.
     pub enforcement: SandboxEnforcement,
+    /// Additional filesystem paths granted read access.
     pub extra_read_paths: Vec<PathBuf>,
+    /// Additional filesystem paths granted read+write access.
     pub extra_write_paths: Vec<PathBuf>,
     /// Additional filesystem paths granted execute access.
     ///
@@ -95,9 +101,13 @@ pub struct SandboxPolicy {
     /// When `false`, `apply_sandbox` returns immediately without registering
     /// any `pre_exec` hook. Callers need not check this field separately.
     pub enabled: bool,
+    /// Filesystem paths granted read access.
     pub read_paths: Vec<PathBuf>,
+    /// Filesystem paths granted read+write access.
     pub write_paths: Vec<PathBuf>,
+    /// Filesystem paths granted execute access.
     pub exec_paths: Vec<PathBuf>,
+    /// Enforcement level.
     pub enforcement: SandboxEnforcement,
     /// Network egress policy.
     pub egress: EgressPolicy,
@@ -106,6 +116,7 @@ pub struct SandboxPolicy {
 }
 
 impl SandboxConfig {
+    /// Create a disabled sandbox config (no restrictions applied).
     #[must_use]
     pub fn disabled() -> Self {
         Self {
@@ -114,6 +125,7 @@ impl SandboxConfig {
         }
     }
 
+    /// Build a resolved [`SandboxPolicy`] from this config for the given workspace.
     #[must_use]
     pub fn build_policy(&self, workspace: &Path, allowed_roots: &[PathBuf]) -> SandboxPolicy {
         if !self.enabled {

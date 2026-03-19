@@ -86,6 +86,10 @@ pub struct PipelineMessage {
 
 /// Guard stage result.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[expect(
+    missing_docs,
+    reason = "variant fields (retry_after_ms, pattern, reason) are self-documenting by name"
+)]
 pub enum GuardResult {
     /// Request is allowed.
     Allow,

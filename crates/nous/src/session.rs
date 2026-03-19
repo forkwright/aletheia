@@ -7,6 +7,10 @@ use crate::config::NousConfig;
 
 /// Active session state held in memory.
 #[derive(Debug, Clone)]
+#[expect(
+    missing_docs,
+    reason = "session state fields are self-documenting by name"
+)]
 pub struct SessionState {
     pub id: String,
     pub nous_id: String,

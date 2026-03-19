@@ -119,6 +119,10 @@ pub fn log_diff(diff: &ConfigDiff) {
 /// Errors from config reload attempts.
 #[derive(Debug, Snafu)]
 #[non_exhaustive]
+#[expect(
+    missing_docs,
+    reason = "snafu error variant fields (source, location) are self-documenting via display format"
+)]
 pub enum ReloadError {
     /// Failed to load config from disk.
     #[snafu(display("failed to load config: {source}"))]

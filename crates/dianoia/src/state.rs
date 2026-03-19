@@ -30,7 +30,10 @@ pub enum ProjectState {
     /// Project was abandoned (terminal).
     Abandoned,
     /// Project is paused, remembering which state to resume to.
-    Paused { previous: Box<ProjectState> },
+    Paused {
+        /// The state to resume to when the project is unpaused.
+        previous: Box<ProjectState>,
+    },
 }
 
 /// Valid transitions between project states.
@@ -64,7 +67,10 @@ pub enum Transition {
     /// Resume a paused project to its previous state.
     Resume,
     /// Revert from Verifying to an earlier phase (Scoping, Planning, or Executing).
-    Revert { to: ProjectState },
+    Revert {
+        /// The state to revert to.
+        to: ProjectState,
+    },
 }
 
 impl ProjectState {

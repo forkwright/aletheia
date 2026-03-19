@@ -7,6 +7,10 @@ use utoipa::ToSchema;
 #[derive(Debug, Clone, Serialize, ToSchema)]
 #[serde(tag = "type")]
 #[non_exhaustive]
+#[expect(
+    missing_docs,
+    reason = "SSE event variant fields are self-documenting by name"
+)]
 pub enum SseEvent {
     /// Incremental text output from the assistant.
     #[serde(rename = "text_delta")]
@@ -75,6 +79,10 @@ impl SseEvent {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 #[non_exhaustive]
+#[expect(
+    missing_docs,
+    reason = "webchat event variant fields are self-documenting by name"
+)]
 pub enum WebchatEvent {
     TurnStart {
         #[serde(rename = "sessionId")]
@@ -117,6 +125,7 @@ pub enum WebchatEvent {
 }
 
 impl WebchatEvent {
+    /// SSE event name for the `event:` field.
     #[must_use]
     pub fn event_type(&self) -> &'static str {
         match self {
@@ -134,6 +143,10 @@ impl WebchatEvent {
 /// Turn completion data emitted in `TurnComplete` events.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[expect(
+    missing_docs,
+    reason = "turn outcome fields are self-documenting by name"
+)]
 pub struct TurnOutcome {
     pub text: String,
     pub nous_id: String,

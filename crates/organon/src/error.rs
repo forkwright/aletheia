@@ -8,6 +8,10 @@ use aletheia_koina::id::ToolName;
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
 #[non_exhaustive]
+#[expect(
+    missing_docs,
+    reason = "snafu error variant fields (name, source, location, reason, message, path) are self-documenting via display format"
+)]
 pub enum Error {
     /// Requested tool does not exist in the registry.
     #[snafu(display("tool not found: {name}"))]
@@ -62,6 +66,10 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 #[non_exhaustive]
+#[expect(
+    missing_docs,
+    reason = "snafu error variant fields (message) are self-documenting via display format"
+)]
 pub enum StoreError {
     /// A store operation failed.
     #[snafu(display("{message}"))]
@@ -72,6 +80,10 @@ pub enum StoreError {
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 #[non_exhaustive]
+#[expect(
+    missing_docs,
+    reason = "snafu error variant fields (message, source, location, mode, name, kind, id) are self-documenting via display format"
+)]
 pub enum PlanningAdapterError {
     #[snafu(display("failed to access workspace: {message}"))]
     Workspace {
@@ -157,6 +169,10 @@ pub enum PlanningAdapterError {
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 #[non_exhaustive]
+#[expect(
+    missing_docs,
+    reason = "snafu error variant fields (message, location, reason) are self-documenting via display format"
+)]
 pub enum KnowledgeAdapterError {
     #[snafu(display("embedding failed: {message}"))]
     Embedding {

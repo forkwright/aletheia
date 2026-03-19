@@ -90,7 +90,9 @@ pub struct SkillContent {
 /// Errors from SKILL.md parsing.
 #[derive(Debug, Clone)]
 pub struct SkillParseError {
+    /// Path to the SKILL.md file that failed to parse.
     pub path: String,
+    /// Human-readable description of the parse failure.
     pub reason: String,
 }
 

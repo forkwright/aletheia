@@ -1,3 +1,4 @@
+#![deny(missing_docs)]
 //! aletheia-koina: core types, errors, and tracing for Aletheia
 //!
 //! Koina (κοινά): "shared things." The common foundation that every crate depends on.

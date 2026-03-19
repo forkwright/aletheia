@@ -5,6 +5,10 @@ use snafu::Snafu;
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 #[non_exhaustive]
+#[expect(
+    missing_docs,
+    reason = "snafu error variant fields (message, source, location) are self-documenting via display format"
+)]
 pub enum Error {
     /// A database engine operation failed.
     #[snafu(display("{message}"))]
@@ -38,6 +42,7 @@ pub enum Error {
     },
 }
 
+/// Result alias using the engine's public [`Error`] type.
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Internal error enum composing all module error types.

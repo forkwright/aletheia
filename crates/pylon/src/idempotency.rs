@@ -71,6 +71,7 @@ impl Default for IdempotencyCache {
 }
 
 impl IdempotencyCache {
+    /// Create a new idempotency cache with default capacity and TTL.
     #[must_use]
     pub fn new() -> Self {
         Self {

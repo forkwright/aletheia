@@ -10,14 +10,18 @@ use utoipa::ToSchema;
 /// Consistent error response envelope.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ErrorResponse {
+    /// The error body.
     pub error: ErrorBody,
 }
 
 /// Error body returned in all error responses.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ErrorBody {
+    /// Machine-readable error code (e.g. `"session_not_found"`).
     pub code: String,
+    /// Human-readable error message.
     pub message: String,
+    /// Optional structured details (e.g. retry timing, validation errors).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<serde_json::Value>,
 }
@@ -26,6 +30,10 @@ pub struct ErrorBody {
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 #[non_exhaustive]
+#[expect(
+    missing_docs,
+    reason = "snafu error variant fields (id, path, message, errors, source, location, retry_after_secs) are self-documenting via display format"
+)]
 pub enum ApiError {
     /// Requested session does not exist (404).
     #[snafu(display("session not found: {id}"))]

@@ -10,6 +10,10 @@ use crate::pipeline::TurnResult;
 use crate::stream::TurnStreamEvent;
 
 /// Messages sent to a [`NousActor`](crate::actor::NousActor) via its inbox.
+#[expect(
+    missing_docs,
+    reason = "variant fields (session_key, session_id, content, span, reply, stream_tx) are self-documenting by name"
+)]
 pub enum NousMessage {
     /// Process a user message in a session.
     Turn {

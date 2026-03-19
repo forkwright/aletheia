@@ -34,18 +34,27 @@ pub struct ScenarioMeta {
 /// Result of running a single scenario.
 #[derive(Debug)]
 #[non_exhaustive]
+#[expect(
+    missing_docs,
+    reason = "variant fields (duration, error, reason) are self-documenting by name"
+)]
 pub enum ScenarioOutcome {
+    /// Scenario completed within timeout without errors.
     Passed { duration: Duration },
+    /// Scenario returned an error or assertion failed.
     Failed { duration: Duration, error: Error },
+    /// Scenario was not run (e.g. missing auth token or nous).
     Skipped { reason: String },
 }
 
 impl ScenarioOutcome {
+    /// Returns `true` if the scenario passed.
     #[must_use]
     pub fn is_passed(&self) -> bool {
         matches!(self, Self::Passed { .. })
     }
 
+    /// Returns `true` if the scenario failed.
     #[must_use]
     pub fn is_failed(&self) -> bool {
         matches!(self, Self::Failed { .. })
@@ -55,7 +64,9 @@ impl ScenarioOutcome {
 /// A named entry in the run report.
 #[derive(Debug)]
 pub struct ScenarioResult {
+    /// Metadata describing the scenario.
     pub meta: ScenarioMeta,
+    /// Outcome of the run.
     pub outcome: ScenarioOutcome,
 }
 

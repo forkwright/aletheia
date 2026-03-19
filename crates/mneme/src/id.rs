@@ -101,6 +101,10 @@ define_id!(
 /// Validation errors for mneme-local identifiers.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
+#[expect(
+    missing_docs,
+    reason = "variant fields (kind, max, actual) are self-documenting by name"
+)]
 pub enum IdValidationError {
     /// The identifier was empty.
     Empty { kind: &'static str },

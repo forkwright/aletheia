@@ -136,6 +136,36 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ---
 
 
+## [0.13.0] - 2026-03-19
+
+### Added
+- Backup cron script and standards-sync workflow (#1750)
+
+### Changed
+- Code quality: constants, re-exports, error types, `#[must_use]`, and doc cleanup (#1759)
+- libc removed; all syscalls use rustix or inline asm (#1752)
+- 43 files exceeding the 800-line limit split into focused submodules (#1681)
+
+### Fixed
+- Graceful shutdown, OOM handling, disk pressure, embedding errors, and streaming (#1758)
+- Sandbox exec, SSRF protection, session IDs, paths, and config hardening (#1754)
+- Eight init and CLI issues (#1757)
+- Confidence update, hard session delete, and credential encryption (#1753)
+- Eight deploy and operations script issues (#1746)
+- Invalid OAuth beta header causing 400 errors from Anthropic API (#1744)
+- Unsafe indexing replaced with `.get()` and justified expects in theatron-tui (#1693)
+- `as_conversions`, `indexing_slicing`, and `string_slice` lint violations (#1682)
+- Three runtime behavior bugs (#1679)
+
+### Changed
+- Datalog builders, deploy download, and standards-sync CI refactored (#1680)
+- Remaining refactors: must_use, snafu location, test helpers (#1684)
+- Freeform inline comments tagged or deleted across top 10 crates (#1683)
+- Import ordering fixed; `println!` calls audited (#1685)
+
+---
+
+
 ## [0.12.0] - 2026-03-16
 
 ### Added
@@ -244,6 +274,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-[Unreleased]: https://github.com/aletheia-ai/aletheia/compare/v1.3...HEAD
-[1.3.0]: https://github.com/aletheia-ai/aletheia/compare/v1.2...v1.3
-[1.2.0]: https://github.com/aletheia-ai/aletheia/releases/tag/v1.2
+[Unreleased]: https://github.com/forkwright/aletheia/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/forkwright/aletheia/compare/v0.12.0...v0.13.0
+[0.12.0]: https://github.com/forkwright/aletheia/releases/tag/v0.12.0
