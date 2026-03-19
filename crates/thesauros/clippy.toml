@@ -4,6 +4,10 @@
 disallowed-methods = [
     { path = "std::process::exit", reason = "do not call process::exit from library code" },
     { path = "std::process::abort", reason = "do not call process::abort from library code" },
+
+    { path = "std::fs::read", reason = "use tokio::fs for async or abstract behind a trait for testability" },
+    { path = "std::fs::write", reason = "use tokio::fs for async or abstract behind a trait for testability" },
+    { path = "std::fs::File::open", reason = "use tokio::fs::File::open for async or abstract behind a trait for testability" },
 ]
 
 disallowed-types = [

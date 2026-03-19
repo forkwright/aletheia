@@ -204,8 +204,16 @@ impl TestHarness {
         std::fs::create_dir_all(root.join("nous/test-nous")).expect("mkdir nous/test-nous");
         std::fs::create_dir_all(root.join("shared")).expect("mkdir shared");
         std::fs::create_dir_all(root.join("theke")).expect("mkdir theke");
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "integration tests write fixture files to temp directories; synchronous I/O is required in test setup"
+        )]
         std::fs::write(root.join("nous/test-nous/SOUL.md"), "You are a test agent.")
             .expect("write SOUL.md");
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "integration tests write fixture files to temp directories; synchronous I/O is required in test setup"
+        )]
         std::fs::write(root.join("theke/USER.md"), "Test user.").expect("write USER.md");
 
         let oikos = Arc::new(Oikos::from_root(root));

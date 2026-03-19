@@ -78,7 +78,7 @@ Bug is fixed, migration applied, all tests passing.
 - CORRECTION: Initially looked at wrong file (session.rs), actually the bug was in login.rs";
 
 #[test]
-fn test_build_prompt_when_distillation_model_set_uses_it() {
+fn build_prompt_when_distillation_model_set_uses_it() {
     let config = DistillConfig {
         model: "claude-opus-4-20250514".to_owned(),
         distillation_model: Some("claude-haiku-4-5-20251001".to_owned()),
@@ -93,7 +93,7 @@ fn test_build_prompt_when_distillation_model_set_uses_it() {
 }
 
 #[test]
-fn test_build_prompt_when_no_distillation_model_uses_primary() {
+fn build_prompt_when_no_distillation_model_uses_primary() {
     let config = DistillConfig {
         model: "claude-opus-4-20250514".to_owned(),
         distillation_model: None,
@@ -108,7 +108,7 @@ fn test_build_prompt_when_no_distillation_model_uses_primary() {
 }
 
 #[test]
-fn test_build_prompt_downshift_does_not_affect_max_tokens() {
+fn build_prompt_downshift_does_not_affect_max_tokens() {
     let config = DistillConfig {
         max_output_tokens: 8192,
         distillation_model: Some("claude-haiku-4-5-20251001".to_owned()),
@@ -123,7 +123,7 @@ fn test_build_prompt_downshift_does_not_affect_max_tokens() {
 }
 
 #[test]
-fn test_build_prompt_downshift_sonnet_to_haiku() {
+fn build_prompt_downshift_sonnet_to_haiku() {
     let config = DistillConfig {
         model: "claude-sonnet-4-20250514".to_owned(),
         distillation_model: Some("claude-haiku-4-5-20251001".to_owned()),
@@ -138,7 +138,7 @@ fn test_build_prompt_downshift_sonnet_to_haiku() {
 }
 
 #[test]
-fn test_build_prompt_downshift_opus_to_sonnet() {
+fn build_prompt_downshift_opus_to_sonnet() {
     let config = DistillConfig {
         model: "claude-opus-4-20250514".to_owned(),
         distillation_model: Some("claude-sonnet-4-20250514".to_owned()),
@@ -153,7 +153,7 @@ fn test_build_prompt_downshift_opus_to_sonnet() {
 }
 
 #[tokio::test]
-async fn test_full_pipeline_preserves_tool_results() {
+async fn full_pipeline_preserves_tool_results() {
     let messages = vec![
         text_msg(Role::User, "Run the database migration tool"),
         text_msg(Role::Assistant, "Running migrate_db({\"version\": \"v2\"})"),
@@ -185,7 +185,7 @@ async fn test_full_pipeline_preserves_tool_results() {
 }
 
 #[tokio::test]
-async fn test_full_pipeline_preserves_decisions() {
+async fn full_pipeline_preserves_decisions() {
     let messages = vec![
         text_msg(Role::User, "Patch or restructure?"),
         text_msg(Role::Assistant, "Decision: Patch. Reason: Minimal fix."),
@@ -220,7 +220,7 @@ async fn test_full_pipeline_preserves_decisions() {
 }
 
 #[tokio::test]
-async fn test_full_pipeline_preserves_corrections() {
+async fn full_pipeline_preserves_corrections() {
     let messages = vec![
         text_msg(Role::User, "Check session.rs"),
         text_msg(
@@ -255,7 +255,7 @@ async fn test_full_pipeline_preserves_corrections() {
 }
 
 #[tokio::test]
-async fn test_full_pipeline_reduces_token_count() {
+async fn full_pipeline_reduces_token_count() {
     let messages = n_messages(20);
     let provider = summary_provider(FULL_SUMMARY);
     let engine = default_engine();
@@ -274,7 +274,7 @@ async fn test_full_pipeline_reduces_token_count() {
 }
 
 #[tokio::test]
-async fn test_full_pipeline_summary_contains_all_sections() {
+async fn full_pipeline_summary_contains_all_sections() {
     let messages = n_messages(10);
     let provider = summary_provider(FULL_SUMMARY);
     let engine = default_engine();
@@ -294,7 +294,7 @@ async fn test_full_pipeline_summary_contains_all_sections() {
 }
 
 #[tokio::test]
-async fn test_full_pipeline_verbatim_tail_integrity() {
+async fn full_pipeline_verbatim_tail_integrity() {
     let messages = vec![
         text_msg(Role::User, "Alpha"),
         text_msg(Role::Assistant, "Bravo"),
@@ -352,7 +352,7 @@ async fn test_full_pipeline_verbatim_tail_integrity() {
 }
 
 #[tokio::test]
-async fn test_distill_when_empty_messages_returns_error() {
+async fn distill_when_empty_messages_returns_error() {
     let provider = summary_provider(FULL_SUMMARY);
     let engine = default_engine();
 
@@ -371,7 +371,7 @@ async fn test_distill_when_empty_messages_returns_error() {
 }
 
 #[tokio::test]
-async fn test_distill_when_single_message_all_verbatim() {
+async fn distill_when_single_message_all_verbatim() {
     let config = DistillConfig {
         min_messages: 1,
         verbatim_tail: 3,
@@ -398,7 +398,7 @@ async fn test_distill_when_single_message_all_verbatim() {
 }
 
 #[tokio::test]
-async fn test_distill_when_oversized_input_handles_gracefully() {
+async fn distill_when_oversized_input_handles_gracefully() {
     let mut messages = Vec::new();
     for i in 0..100 {
         let long_content = format!("Message {i}: {}", "x".repeat(500));
@@ -436,7 +436,7 @@ async fn test_distill_when_oversized_input_handles_gracefully() {
 }
 
 #[tokio::test]
-async fn test_distill_when_all_tool_call_messages() {
+async fn distill_when_all_tool_call_messages() {
     let messages = vec![
         Message {
             role: Role::Assistant,
@@ -496,7 +496,7 @@ async fn test_distill_when_all_tool_call_messages() {
 }
 
 #[tokio::test]
-async fn test_distill_when_two_messages_with_tail_three() {
+async fn distill_when_two_messages_with_tail_three() {
     let messages = vec![
         text_msg(Role::User, "Hello"),
         text_msg(Role::Assistant, "Hi"),
@@ -526,7 +526,7 @@ async fn test_distill_when_two_messages_with_tail_three() {
 }
 
 #[test]
-fn test_section_heading_for_each_standard_variant() {
+fn section_heading_for_each_standard_variant() {
     let expected = [
         (DistillSection::Summary, "## Summary"),
         (DistillSection::TaskContext, "## Task Context"),
@@ -546,7 +546,7 @@ fn test_section_heading_for_each_standard_variant() {
 }
 
 #[test]
-fn test_section_heading_for_custom_uses_name() {
+fn section_heading_for_custom_uses_name() {
     let section = DistillSection::Custom {
         name: "My Section".to_owned(),
         description: "ignored here".to_owned(),
@@ -559,7 +559,7 @@ fn test_section_heading_for_custom_uses_name() {
 }
 
 #[test]
-fn test_section_description_non_empty_for_all_standard() {
+fn section_description_non_empty_for_all_standard() {
     for section in DistillSection::all_standard() {
         assert!(
             !section.description().is_empty(),
@@ -569,7 +569,7 @@ fn test_section_description_non_empty_for_all_standard() {
 }
 
 #[test]
-fn test_section_custom_description_returns_provided_text() {
+fn section_custom_description_returns_provided_text() {
     let section = DistillSection::Custom {
         name: "X".to_owned(),
         description: "My custom description".to_owned(),
@@ -582,7 +582,7 @@ fn test_section_custom_description_returns_provided_text() {
 }
 
 #[test]
-fn test_all_standard_returns_seven_sections() {
+fn all_standard_returns_seven_sections() {
     assert_eq!(
         DistillSection::all_standard().len(),
         7,
@@ -591,7 +591,7 @@ fn test_all_standard_returns_seven_sections() {
 }
 
 #[test]
-fn test_build_prompt_includes_message_count() {
+fn build_prompt_includes_message_count() {
     let engine = default_engine();
     let messages = n_messages(8);
     let request = engine.build_prompt(&messages, "test");
@@ -603,7 +603,7 @@ fn test_build_prompt_includes_message_count() {
 }
 
 #[test]
-fn test_build_prompt_temperature_is_zero() {
+fn build_prompt_temperature_is_zero() {
     let engine = default_engine();
     let request = engine.build_prompt(&n_messages(4), "test");
     assert_eq!(
@@ -614,7 +614,7 @@ fn test_build_prompt_temperature_is_zero() {
 }
 
 #[test]
-fn test_build_prompt_with_system_message() {
+fn build_prompt_with_system_message() {
     let engine = default_engine();
     let messages = vec![
         Message {

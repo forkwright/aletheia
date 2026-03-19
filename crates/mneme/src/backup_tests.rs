@@ -87,6 +87,10 @@ fn prune_keeps_correct_number() {
     std::fs::create_dir_all(&backup_dir).expect("create backup dir");
 
     for i in 0..5 {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+        )]
         std::fs::write(
             backup_dir.join(format!("sessions_2026010{i}T120000.db")),
             "fake",
@@ -113,8 +117,16 @@ fn list_backups_returns_correct_metadata() {
     let backup_dir = dir.path().join("backups");
     std::fs::create_dir_all(&backup_dir).expect("create backup dir");
 
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+    )]
     std::fs::write(backup_dir.join("sessions_20260101T120000.db"), "test data")
         .expect("write backup file");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+    )]
     std::fs::write(backup_dir.join("other.txt"), "ignored").expect("write non-matching file");
 
     let conn = Connection::open_in_memory().expect("open in-memory SQLite connection");
@@ -524,6 +536,10 @@ fn prune_keeps_zero() {
     std::fs::create_dir_all(&backup_dir).expect("create backup dir");
 
     for i in 0..4 {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+        )]
         std::fs::write(
             backup_dir.join(format!("sessions_2026020{i}T120000.db")),
             "data",
@@ -587,6 +603,10 @@ fn export_sessions_json_empty_store() {
 fn restore_from_corrupt_file_errors() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let corrupt_path = dir.path().join("corrupt.db");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+    )]
     std::fs::write(&corrupt_path, b"this is not a sqlite database").expect("write corrupt file");
 
     if let Ok(c) = Connection::open(&corrupt_path) {

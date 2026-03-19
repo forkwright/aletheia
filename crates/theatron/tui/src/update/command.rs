@@ -564,6 +564,10 @@ fn execute_export(app: &mut App) {
         }
     }
 
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "theatron TUI reads configuration and exports from disk in synchronous initialization paths"
+    )]
     match std::fs::write(&path, &md) {
         Ok(()) => {
             app.viewport.success_toast =

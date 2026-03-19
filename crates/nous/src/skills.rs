@@ -319,12 +319,15 @@ pub(crate) fn rank_skills(candidates: Vec<Fact>) -> Vec<Fact> {
     scored.into_iter().map(|(_, fact)| fact).collect()
 }
 
+#[cfg(test)]
+#[expect(
+    clippy::unwrap_used,
+    reason = "test assertions use unwrap for infallible serialization"
+)]
 #[expect(
     clippy::indexing_slicing,
     reason = "test: vec indices are valid after asserting len"
 )]
-#[cfg(test)]
-#[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 mod tests {
     use super::*;
 

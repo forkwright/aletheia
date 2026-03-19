@@ -73,7 +73,7 @@ mod tests {
     use crate::engine::fts::tokenizer::{TextAnalyzer, Token, WhitespaceTokenizer};
 
     #[test]
-    fn test_whitespace_tokenizer() {
+    fn whitespace_tokenizer_splits_on_whitespace_boundaries() {
         let tokens = token_stream_helper("Hello, happy tax payer!");
         assert_eq!(tokens.len(), 4);
         assert_token(&tokens[0], 0, "Hello,", 0, 6);

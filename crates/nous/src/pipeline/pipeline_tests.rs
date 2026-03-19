@@ -203,7 +203,15 @@ async fn assemble_context_populates_pipeline() {
     fs::create_dir_all(root.join("nous/test-agent")).unwrap();
     fs::create_dir_all(root.join("shared")).unwrap();
     fs::create_dir_all(root.join("theke")).unwrap();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
+    )]
     fs::write(root.join("nous/test-agent/SOUL.md"), "I am a test agent.").unwrap();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
+    )]
     fs::write(root.join("theke/USER.md"), "Test user.").unwrap();
 
     let oikos = Oikos::from_root(root);
@@ -245,6 +253,10 @@ async fn run_pipeline_simple() {
     fs::create_dir_all(root.join("nous/test-agent")).unwrap();
     fs::create_dir_all(root.join("shared")).unwrap();
     fs::create_dir_all(root.join("theke")).unwrap();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
+    )]
     fs::write(root.join("nous/test-agent/SOUL.md"), "I am a test agent.").unwrap();
 
     let oikos = Oikos::from_root(root);

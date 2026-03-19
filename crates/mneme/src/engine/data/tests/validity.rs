@@ -12,7 +12,7 @@ use crate::engine::DbInstance;
 use crate::engine::data::value::DataValue;
 
 #[test]
-fn test_validity() {
+fn temporal_validity_ranges_assert_retract_and_query_correctly() {
     let path = "_test_validity";
     let _ = std::fs::remove_file(path);
     let _ = std::fs::remove_dir_all(path);

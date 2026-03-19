@@ -80,7 +80,7 @@ Bug is fixed, migration applied, all tests passing.
 - CORRECTION: Initially looked at wrong file (session.rs), actually the bug was in login.rs";
 
 #[test]
-fn test_distill_section_summary_roundtrip() {
+fn distill_section_summary_roundtrip() {
     let section = DistillSection::Summary;
     let json =
         serde_json::to_string(&section).expect("DistillSection::Summary should serialize to JSON");
@@ -93,7 +93,7 @@ fn test_distill_section_summary_roundtrip() {
 }
 
 #[test]
-fn test_distill_section_task_context_roundtrip() {
+fn distill_section_task_context_roundtrip() {
     let section = DistillSection::TaskContext;
     let json = serde_json::to_string(&section)
         .expect("DistillSection::TaskContext should serialize to JSON");
@@ -106,7 +106,7 @@ fn test_distill_section_task_context_roundtrip() {
 }
 
 #[test]
-fn test_distill_section_completed_work_roundtrip() {
+fn distill_section_completed_work_roundtrip() {
     let section = DistillSection::CompletedWork;
     let json = serde_json::to_string(&section)
         .expect("DistillSection::CompletedWork should serialize to JSON");
@@ -119,7 +119,7 @@ fn test_distill_section_completed_work_roundtrip() {
 }
 
 #[test]
-fn test_distill_section_key_decisions_roundtrip() {
+fn distill_section_key_decisions_roundtrip() {
     let section = DistillSection::KeyDecisions;
     let json = serde_json::to_string(&section)
         .expect("DistillSection::KeyDecisions should serialize to JSON");
@@ -132,7 +132,7 @@ fn test_distill_section_key_decisions_roundtrip() {
 }
 
 #[test]
-fn test_distill_section_current_state_roundtrip() {
+fn distill_section_current_state_roundtrip() {
     let section = DistillSection::CurrentState;
     let json = serde_json::to_string(&section)
         .expect("DistillSection::CurrentState should serialize to JSON");
@@ -145,7 +145,7 @@ fn test_distill_section_current_state_roundtrip() {
 }
 
 #[test]
-fn test_distill_section_open_threads_roundtrip() {
+fn distill_section_open_threads_roundtrip() {
     let section = DistillSection::OpenThreads;
     let json = serde_json::to_string(&section)
         .expect("DistillSection::OpenThreads should serialize to JSON");
@@ -158,7 +158,7 @@ fn test_distill_section_open_threads_roundtrip() {
 }
 
 #[test]
-fn test_distill_section_corrections_roundtrip() {
+fn distill_section_corrections_roundtrip() {
     let section = DistillSection::Corrections;
     let json = serde_json::to_string(&section)
         .expect("DistillSection::Corrections should serialize to JSON");
@@ -171,7 +171,7 @@ fn test_distill_section_corrections_roundtrip() {
 }
 
 #[test]
-fn test_distill_section_custom_roundtrip() {
+fn distill_section_custom_roundtrip() {
     let section = DistillSection::Custom {
         name: "Architecture Notes".to_owned(),
         description: "Record architectural decisions.".to_owned(),
@@ -187,7 +187,7 @@ fn test_distill_section_custom_roundtrip() {
 }
 
 #[test]
-fn test_distill_section_custom_with_special_chars_roundtrip() {
+fn distill_section_custom_with_special_chars_roundtrip() {
     let section = DistillSection::Custom {
         name: "Notes: \"important\" & <critical>".to_owned(),
         description: "Contains special chars: \\ / \n newline".to_owned(),
@@ -203,7 +203,7 @@ fn test_distill_section_custom_with_special_chars_roundtrip() {
 }
 
 #[test]
-fn test_distill_config_default_roundtrip() {
+fn distill_config_default_roundtrip() {
     let config = DistillConfig::default();
     let json =
         serde_json::to_string(&config).expect("DistillConfig::default() should serialize to JSON");
@@ -237,7 +237,7 @@ fn test_distill_config_default_roundtrip() {
 }
 
 #[test]
-fn test_distill_config_with_downshift_roundtrip() {
+fn distill_config_with_downshift_roundtrip() {
     let config = DistillConfig {
         distillation_model: Some("claude-haiku-4-5-20251001".to_owned()),
         ..DistillConfig::default()
@@ -254,7 +254,7 @@ fn test_distill_config_with_downshift_roundtrip() {
 }
 
 #[test]
-fn test_distill_config_custom_sections_roundtrip() {
+fn distill_config_custom_sections_roundtrip() {
     let config = DistillConfig {
         sections: vec![
             DistillSection::Summary,
@@ -282,7 +282,7 @@ fn test_distill_config_custom_sections_roundtrip() {
 }
 
 #[test]
-fn test_flush_source_extracted_roundtrip() {
+fn flush_source_extracted_roundtrip() {
     let source = FlushSource::Extracted;
     let json =
         serde_json::to_string(&source).expect("FlushSource::Extracted should serialize to JSON");
@@ -295,7 +295,7 @@ fn test_flush_source_extracted_roundtrip() {
 }
 
 #[test]
-fn test_flush_source_agent_note_roundtrip() {
+fn flush_source_agent_note_roundtrip() {
     let source = FlushSource::AgentNote;
     let json =
         serde_json::to_string(&source).expect("FlushSource::AgentNote should serialize to JSON");
@@ -308,7 +308,7 @@ fn test_flush_source_agent_note_roundtrip() {
 }
 
 #[test]
-fn test_flush_source_tool_pattern_roundtrip() {
+fn flush_source_tool_pattern_roundtrip() {
     let source = FlushSource::ToolPattern;
     let json =
         serde_json::to_string(&source).expect("FlushSource::ToolPattern should serialize to JSON");
@@ -321,7 +321,7 @@ fn test_flush_source_tool_pattern_roundtrip() {
 }
 
 #[test]
-fn test_flush_item_roundtrip() {
+fn flush_item_roundtrip() {
     let item = sample_flush_item("Use snafu for errors", FlushSource::Extracted);
     let json = serde_json::to_string(&item).expect("FlushItem should serialize to JSON");
     let back: FlushItem =
@@ -337,7 +337,7 @@ fn test_flush_item_roundtrip() {
 }
 
 #[test]
-fn test_memory_flush_empty_roundtrip() {
+fn memory_flush_empty_roundtrip() {
     let flush = MemoryFlush::empty();
     let json = serde_json::to_string(&flush).expect("empty MemoryFlush should serialize to JSON");
     let back: MemoryFlush =
@@ -349,7 +349,7 @@ fn test_memory_flush_empty_roundtrip() {
 }
 
 #[test]
-fn test_memory_flush_full_roundtrip() {
+fn memory_flush_full_roundtrip() {
     let flush = MemoryFlush {
         decisions: vec![sample_flush_item("Use actor model", FlushSource::Extracted)],
         corrections: vec![sample_flush_item("Wrong path", FlushSource::AgentNote)],
@@ -390,7 +390,7 @@ fn test_memory_flush_full_roundtrip() {
 }
 
 #[test]
-fn test_all_standard_sections_roundtrip() {
+fn all_standard_sections_roundtrip() {
     let sections = DistillSection::all_standard();
     let json = serde_json::to_string(&sections)
         .expect("all standard DistillSections should serialize to JSON");
@@ -403,7 +403,7 @@ fn test_all_standard_sections_roundtrip() {
 }
 
 #[tokio::test]
-async fn test_split_when_verbatim_tail_zero_summarizes_all() {
+async fn split_when_verbatim_tail_zero_summarizes_all() {
     let config = DistillConfig {
         verbatim_tail: 0,
         min_messages: 1,
@@ -429,7 +429,7 @@ async fn test_split_when_verbatim_tail_zero_summarizes_all() {
 }
 
 #[tokio::test]
-async fn test_split_when_verbatim_tail_equals_messages_distills_none() {
+async fn split_when_verbatim_tail_equals_messages_distills_none() {
     let config = DistillConfig {
         verbatim_tail: 4,
         min_messages: 1,
@@ -456,7 +456,7 @@ async fn test_split_when_verbatim_tail_equals_messages_distills_none() {
 }
 
 #[tokio::test]
-async fn test_split_when_verbatim_tail_exceeds_messages_clamps() {
+async fn split_when_verbatim_tail_exceeds_messages_clamps() {
     let config = DistillConfig {
         verbatim_tail: 100,
         min_messages: 1,
@@ -483,7 +483,7 @@ async fn test_split_when_verbatim_tail_exceeds_messages_clamps() {
 }
 
 #[tokio::test]
-async fn test_split_preserves_exact_tail_content() {
+async fn split_preserves_exact_tail_content() {
     let config = DistillConfig {
         verbatim_tail: 2,
         min_messages: 1,

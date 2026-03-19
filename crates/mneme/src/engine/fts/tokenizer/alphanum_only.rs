@@ -55,7 +55,7 @@ mod tests {
     use crate::engine::fts::tokenizer::{AlphaNumOnlyFilter, SimpleTokenizer, TextAnalyzer, Token};
 
     #[test]
-    fn test_alphanum_only() {
+    fn alphanum_only_filter_removes_punctuation_and_non_ascii() {
         let tokens = token_stream_helper("I am a cat. 我輩は猫である。(1906)");
         assert_eq!(tokens.len(), 5);
         assert_token(&tokens[0], 0, "I", 0, 1);

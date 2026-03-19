@@ -57,7 +57,7 @@ mod tests {
     use crate::engine::fts::tokenizer::{RawTokenizer, TextAnalyzer, Token};
 
     #[test]
-    fn test_raw_tokenizer() {
+    fn raw_tokenizer_emits_entire_text_as_single_token() {
         let tokens = token_stream_helper("Hello, happy tax payer!");
         assert_eq!(tokens.len(), 1);
         assert_token(&tokens[0], 0, "Hello, happy tax payer!", 0, 23);

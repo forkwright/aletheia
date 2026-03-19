@@ -71,7 +71,7 @@ mod tests {
     use crate::engine::fts::tokenizer::{RemoveLongFilter, SimpleTokenizer, TextAnalyzer, Token};
 
     #[test]
-    fn test_remove_long() {
+    fn remove_long_filter_drops_tokens_exceeding_length_limit() {
         let tokens = token_stream_helper("hello tantivy, happy searching!");
         assert_eq!(tokens.len(), 2);
         assert_token(&tokens[0], 0, "hello", 0, 5);

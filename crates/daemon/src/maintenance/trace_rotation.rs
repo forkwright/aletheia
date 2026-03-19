@@ -211,6 +211,10 @@ impl TraceRotator {
             path.extension().and_then(|e| e.to_str()).unwrap_or("dat")
         ));
 
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
+        )]
         let input = fs::read(path).context(error::MaintenanceIoSnafu {
             context: format!("reading file for compression: {}", path.display()),
         })?;
@@ -225,6 +229,10 @@ impl TraceRotator {
             context: format!("finishing compression of {}", path.display()),
         })?;
 
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
+        )]
         fs::write(&gz_path, compressed).context(error::MaintenanceIoSnafu {
             context: format!("writing compressed file {}", gz_path.display()),
         })?;
@@ -316,6 +324,10 @@ mod tests {
         fs::create_dir_all(&config.trace_dir).unwrap();
 
         let file = config.trace_dir.join("old-trace.log");
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
+        )]
         fs::write(&file, "trace data").unwrap();
 
         let rotator = TraceRotator::new(config.clone());
@@ -345,7 +357,15 @@ mod tests {
         config.max_age_days = 9999; // NOTE: don't rotate by age
         fs::create_dir_all(&config.trace_dir).unwrap();
 
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
+        )]
         fs::write(config.trace_dir.join("a.log"), "data").unwrap();
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
+        )]
         fs::write(config.trace_dir.join("b.log"), "data").unwrap();
 
         let rotator = TraceRotator::new(config.clone());
@@ -364,6 +384,10 @@ mod tests {
         fs::create_dir_all(&config.archive_dir).unwrap();
 
         for i in 0..5 {
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
+            )]
             fs::write(config.archive_dir.join(format!("archive-{i}.log")), "data").unwrap();
         }
 
@@ -386,6 +410,10 @@ mod tests {
         config.max_total_size_mb = 0; // NOTE: force rotation of all files
         fs::create_dir_all(&config.trace_dir).unwrap();
 
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
+        )]
         fs::write(config.trace_dir.join("trace.log"), "compressible data").unwrap();
 
         let rotator = TraceRotator::new(config.clone());
@@ -395,6 +423,10 @@ mod tests {
         assert!(!config.archive_dir.join("trace.log").exists());
         assert!(config.archive_dir.join("trace.log.gz").exists());
 
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
+        )]
         let compressed = fs::read(config.archive_dir.join("trace.log.gz")).unwrap();
         let mut decoder = flate2::read::GzDecoder::new(&compressed[..]);
         let mut decompressed = String::new();
@@ -458,8 +490,20 @@ mod tests {
         config.max_total_size_mb = 9999;
         fs::create_dir_all(&config.trace_dir).unwrap();
 
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
+        )]
         fs::write(config.trace_dir.join("trace-1.log"), "data one").unwrap();
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
+        )]
         fs::write(config.trace_dir.join("trace-2.log"), "data two").unwrap();
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
+        )]
         fs::write(config.trace_dir.join("trace-3.log"), "data three").unwrap();
 
         let rotator = TraceRotator::new(config.clone());

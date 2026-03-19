@@ -73,8 +73,16 @@ fn generate_certs(output_dir: &Path, days: u32, sans: &[String], force: bool) ->
         .self_signed(&key_pair)
         .context("failed to generate self-signed certificate")?;
 
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "aletheia CLI commands use synchronous filesystem operations for config and certificate generation"
+    )]
     std::fs::write(&cert_path, cert.pem())
         .with_context(|| format!("failed to write {}", cert_path.display()))?;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "aletheia CLI commands use synchronous filesystem operations for config and certificate generation"
+    )]
     std::fs::write(&key_path, key_pair.serialize_pem())
         .with_context(|| format!("failed to write {}", key_path.display()))?;
 

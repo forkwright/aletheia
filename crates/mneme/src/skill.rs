@@ -471,6 +471,10 @@ pub fn export_skills_to_cc(
 
         let md = format_skill_md(skill);
         let path = skill_dir.join("SKILL.md");
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+        )]
         std::fs::write(&path, &md)?;
         #[cfg(unix)]
         {

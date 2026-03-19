@@ -467,6 +467,10 @@ mod tests {
             std::fs::create_dir_all(jail.directory().join("config")).map_err(|e| e.to_string())?;
             let default_toml =
                 toml::to_string(&AletheiaConfig::default()).map_err(|e| e.to_string())?;
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "taxis config operations are CLI-invoked and require synchronous filesystem access"
+            )]
             std::fs::write(jail.directory().join("config/aletheia.toml"), default_toml)
                 .map_err(|e| e.to_string())?;
 

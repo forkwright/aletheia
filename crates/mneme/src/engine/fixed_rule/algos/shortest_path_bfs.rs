@@ -132,7 +132,7 @@ mod tests {
     use crate::engine::DbInstance;
 
     #[test]
-    fn test_bfs_path() {
+    fn bfs_finds_shortest_path_between_connected_nodes() {
         let db = DbInstance::default();
         let res = db
             .run_default(

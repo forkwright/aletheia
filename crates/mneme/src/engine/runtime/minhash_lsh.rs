@@ -438,7 +438,7 @@ mod test {
     use super::*;
 
     #[test]
-    fn test_minhash() {
+    fn minhash_jaccard_is_one_for_permuted_identical_sets() {
         let perms = HashPermutations::new(20000);
         let mut m1 = HashValues::new([1, 2, 3, 4, 5, 6].iter(), &perms);
         let mut m2 = HashValues::new([4, 3, 2, 1, 5, 6].iter(), &perms);

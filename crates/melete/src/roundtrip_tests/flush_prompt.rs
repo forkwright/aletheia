@@ -79,7 +79,7 @@ Bug is fixed, migration applied, all tests passing.
 - CORRECTION: Initially looked at wrong file (session.rs), actually the bug was in login.rs";
 
 #[test]
-fn test_memory_flush_is_empty_when_only_empty_vecs() {
+fn memory_flush_is_empty_when_only_empty_vecs() {
     let flush = MemoryFlush {
         decisions: vec![],
         corrections: vec![],
@@ -93,7 +93,7 @@ fn test_memory_flush_is_empty_when_only_empty_vecs() {
 }
 
 #[test]
-fn test_memory_flush_not_empty_when_has_facts() {
+fn memory_flush_not_empty_when_has_facts() {
     let flush = MemoryFlush {
         decisions: vec![],
         corrections: vec![],
@@ -107,7 +107,7 @@ fn test_memory_flush_not_empty_when_has_facts() {
 }
 
 #[test]
-fn test_memory_flush_not_empty_when_has_corrections() {
+fn memory_flush_not_empty_when_has_corrections() {
     let flush = MemoryFlush {
         decisions: vec![],
         corrections: vec![sample_flush_item("A correction", FlushSource::AgentNote)],
@@ -121,7 +121,7 @@ fn test_memory_flush_not_empty_when_has_corrections() {
 }
 
 #[test]
-fn test_memory_flush_markdown_multiple_items_per_section() {
+fn memory_flush_markdown_multiple_items_per_section() {
     let flush = MemoryFlush {
         decisions: vec![
             sample_flush_item("Decision A", FlushSource::Extracted),
@@ -151,7 +151,7 @@ fn test_memory_flush_markdown_multiple_items_per_section() {
 }
 
 #[test]
-fn test_flush_source_labels_via_markdown() {
+fn flush_source_labels_via_markdown() {
     let flush = MemoryFlush {
         decisions: vec![sample_flush_item("d", FlushSource::Extracted)],
         corrections: vec![sample_flush_item("c", FlushSource::AgentNote)],
@@ -174,7 +174,7 @@ fn test_flush_source_labels_via_markdown() {
 }
 
 #[test]
-fn test_engine_config_returns_reference() {
+fn engine_config_returns_reference() {
     let config = DistillConfig {
         model: "custom-model".to_owned(),
         max_output_tokens: 2048,
@@ -194,7 +194,7 @@ fn test_engine_config_returns_reference() {
 }
 
 #[test]
-fn test_engine_config_sections_match_input() {
+fn engine_config_sections_match_input() {
     let config = DistillConfig {
         sections: vec![DistillSection::Summary, DistillSection::Corrections],
         ..DistillConfig::default()

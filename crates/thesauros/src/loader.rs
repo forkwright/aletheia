@@ -202,6 +202,10 @@ mod tests {
             if let Some(parent) = path.parent() {
                 fs::create_dir_all(parent).unwrap();
             }
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "thesauros pack loader reads binary assets from disk; synchronous I/O is inherent to asset loading"
+            )]
             fs::write(&path, content).unwrap();
         }
         dir

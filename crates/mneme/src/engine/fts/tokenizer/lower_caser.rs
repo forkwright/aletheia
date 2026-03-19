@@ -67,7 +67,7 @@ mod tests {
     use crate::engine::fts::tokenizer::{LowerCaser, SimpleTokenizer, TextAnalyzer, Token};
 
     #[test]
-    fn test_to_lower_case() {
+    fn lower_caser_lowercases_ascii_and_unicode_tokens() {
         let tokens = token_stream_helper("Tree");
         assert_eq!(tokens.len(), 1);
         assert_token(&tokens[0], 0, "tree", 0, 4);

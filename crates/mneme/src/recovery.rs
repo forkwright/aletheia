@@ -471,14 +471,22 @@ mod tests {
     fn backup_corrupt_file_creates_copy() {
         let tmp = tempfile::tempdir().expect("create temp dir");
         let db_path = tmp.path().join("test.db");
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+        )]
         std::fs::write(&db_path, b"corrupt data").expect("write test file");
 
         let backup_path = backup_corrupt_file(&db_path).expect("backup should succeed");
 
         assert!(backup_path.exists(), "backup file should exist");
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+        )]
+        let backup_contents = std::fs::read(&backup_path).expect("read backup");
         assert_eq!(
-            std::fs::read(&backup_path).expect("read backup"),
-            b"corrupt data",
+            backup_contents, b"corrupt data",
             "backup contents should match original"
         );
 
@@ -527,6 +535,10 @@ mod tests {
         let corrupt_path = tmp.path().join("garbage.db");
         let new_path = tmp.path().join("recovered.db");
 
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+        )]
         std::fs::write(&corrupt_path, b"this is not a database at all")
             .expect("write garbage file");
 

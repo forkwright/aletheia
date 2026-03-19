@@ -713,7 +713,7 @@ mod tests {
     use crate::engine::data::value::DataValue;
 
     #[test]
-    fn test_mat_join() {
+    fn materialized_join_filters_rows_by_bound_variable() {
         let db = DbInstance::default();
         let res = db
             .run_default(

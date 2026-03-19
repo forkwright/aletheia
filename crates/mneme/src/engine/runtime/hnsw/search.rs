@@ -234,7 +234,7 @@ mod tests {
     use crate::engine::parse::sys::HnswDistance;
 
     #[test]
-    fn test_random_level() {
+    fn random_level_distribution_is_non_empty_over_many_samples() {
         let m = 20;
         let mult = 1. / (m as f64).ln();
         let mut rng = rand::rng();

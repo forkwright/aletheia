@@ -176,6 +176,10 @@ pub(crate) fn handle_copy_last_response(app: &mut App) {
 pub(crate) fn handle_compose_in_editor(app: &mut App) {
     let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
     let tmpfile = std::env::temp_dir().join("aletheia-compose.md");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "theatron TUI reads configuration and exports from disk in synchronous initialization paths"
+    )]
     let _ = std::fs::write(&tmpfile, "");
     ratatui::restore();
     let status = std::process::Command::new(&editor).arg(&tmpfile).status();

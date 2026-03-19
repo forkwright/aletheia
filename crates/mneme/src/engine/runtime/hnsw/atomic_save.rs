@@ -103,6 +103,10 @@ fn write_temp(path: &Path, data: &[u8]) -> Result<()> {
 }
 
 fn fsync_file(path: &Path) -> Result<()> {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+    )]
     let file = File::open(path)
         .map_err(|e| save_err(format!("open for fsync {}: {e}", path.display())))?;
     file.sync_all()
@@ -113,6 +117,10 @@ fn fsync_file(path: &Path) -> Result<()> {
 fn fsync_dir(path: &Path) -> Result<()> {
     #[cfg(unix)]
     {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+        )]
         let dir = File::open(path)
             .map_err(|e| save_err(format!("open dir for fsync {}: {e}", path.display())))?;
         dir.sync_all()
@@ -144,6 +152,10 @@ pub(crate) fn atomic_save_state<T: serde::Serialize>(path: &Path, state: &T) -> 
 ///
 /// Returns an error if the file exists but cannot be read or deserialized.
 pub(crate) fn load_state<T: serde::de::DeserializeOwned>(path: &Path) -> Result<Option<T>> {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+    )]
     match std::fs::read(path) {
         Ok(data) => {
             let state: T =
@@ -167,6 +179,10 @@ mod tests {
 
         atomic_write(&target, b"hello world").unwrap();
 
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+        )]
         let contents = std::fs::read(&target).unwrap();
         assert_eq!(contents, b"hello world", "file contents match");
     }
@@ -179,6 +195,10 @@ mod tests {
         atomic_write(&target, b"first").unwrap();
         atomic_write(&target, b"second").unwrap();
 
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+        )]
         let contents = std::fs::read(&target).unwrap();
         assert_eq!(contents, b"second", "overwrite replaces content");
     }
@@ -225,9 +245,17 @@ mod tests {
 
         // Simulate a "crash" by writing a temp file but not renaming.
         let temp = temp_path_for(&target);
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+        )]
         std::fs::write(&temp, b"partial").unwrap();
 
         // The target should still have the original content.
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+        )]
         let contents = std::fs::read(&target).unwrap();
         assert_eq!(
             contents, b"initial",
@@ -236,6 +264,10 @@ mod tests {
 
         // A subsequent atomic write should clean up and succeed.
         atomic_write(&target, b"recovered").unwrap();
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+        )]
         let contents = std::fs::read(&target).unwrap();
         assert_eq!(contents, b"recovered", "recovery write succeeds");
 

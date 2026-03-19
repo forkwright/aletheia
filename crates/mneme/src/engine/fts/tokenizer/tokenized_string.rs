@@ -85,7 +85,7 @@ mod tests {
     use crate::engine::fts::tokenizer::Token;
 
     #[test]
-    fn test_tokenized_stream() {
+    fn pre_tokenized_stream_yields_tokens_in_order() {
         let tok_text = PreTokenizedString {
             text: String::from("A a"),
             tokens: vec![

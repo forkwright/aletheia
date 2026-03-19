@@ -355,6 +355,10 @@ fn is_binary_path(path: &Path) -> bool {
 fn is_binary_content(path: &Path) -> bool {
     use std::io::Read;
 
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+    )]
     let Ok(file) = std::fs::File::open(path) else {
         return true;
     };

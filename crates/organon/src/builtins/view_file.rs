@@ -105,6 +105,10 @@ fn execute_by_kind(
                     MAX_IMAGE_BYTES / (1024 * 1024)
                 ));
             }
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+            )]
             let bytes = match std::fs::read(path) {
                 Ok(b) => b,
                 Err(e) => return ToolResult::error(format!("read failed: {e}")),
@@ -131,6 +135,10 @@ fn execute_by_kind(
                     MAX_PDF_BYTES / (1024 * 1024)
                 ));
             }
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+            )]
             let bytes = match std::fs::read(path) {
                 Ok(b) => b,
                 Err(e) => return ToolResult::error(format!("read failed: {e}")),
@@ -258,6 +266,10 @@ mod tests {
     #[tokio::test]
     async fn view_text_file() {
         let dir = tempfile::tempdir().expect("tmpdir");
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+        )]
         std::fs::write(dir.path().join("hello.txt"), "hello world").expect("write");
         let ctx = test_ctx(dir.path());
         let input = tool_input(serde_json::json!({ "path": "hello.txt" }));
@@ -269,6 +281,10 @@ mod tests {
     #[tokio::test]
     async fn view_text_file_max_lines() {
         let dir = tempfile::tempdir().expect("tmpdir");
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+        )]
         std::fs::write(dir.path().join("lines.txt"), "a\nb\nc\nd\ne").expect("write");
         let ctx = test_ctx(dir.path());
         let input = tool_input(serde_json::json!({ "path": "lines.txt", "maxLines": 2 }));
@@ -290,6 +306,10 @@ mod tests {
             0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, // IEND chunk
             0xAE, 0x42, 0x60, 0x82, // IEND CRC
         ];
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+        )]
         std::fs::write(dir.path().join("test.png"), &png_bytes).expect("write");
         let ctx = test_ctx(dir.path());
         let input = tool_input(serde_json::json!({ "path": "test.png" }));
@@ -314,6 +334,10 @@ mod tests {
     #[tokio::test]
     async fn view_unknown_extension_errors() {
         let dir = tempfile::tempdir().expect("tmpdir");
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+        )]
         std::fs::write(dir.path().join("data.bin"), b"\x00\x01\x02").expect("write");
         let ctx = test_ctx(dir.path());
         let input = tool_input(serde_json::json!({ "path": "data.bin" }));

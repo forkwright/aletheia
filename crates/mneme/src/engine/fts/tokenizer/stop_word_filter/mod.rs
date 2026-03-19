@@ -152,7 +152,7 @@ mod tests {
     use crate::engine::fts::tokenizer::{SimpleTokenizer, StopWordFilter, TextAnalyzer, Token};
 
     #[test]
-    fn test_stop_word() {
+    fn stop_word_filter_removes_common_english_words() {
         let tokens = token_stream_helper("i am a cat. as yet i have no name.");
         assert_eq!(tokens.len(), 5);
         assert_token(&tokens[0], 3, "cat", 7, 10);

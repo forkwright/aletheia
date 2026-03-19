@@ -433,6 +433,10 @@ fn landlock_blocks_outside_workspace() {
 
     let dir = tempfile::tempdir().expect("create temp dir");
     let secret = dir.path().join("secret.txt");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(&secret, "top secret").expect("write");
 
     let workspace = tempfile::tempdir().expect("create workspace");
@@ -556,6 +560,10 @@ fn sandbox_with_exec_tool_flow() {
 
     let config = SandboxConfig::default();
     let dir = tempfile::tempdir().expect("create temp dir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(dir.path().join("test.txt"), "sandbox test data").expect("write");
 
     let policy = config.build_policy(dir.path(), &[]);

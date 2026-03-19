@@ -201,6 +201,10 @@ fn scan_skill_dir_with_tempdir() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let skill_dir = dir.path().join("my-skill");
     std::fs::create_dir(&skill_dir).expect("create skill subdir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+    )]
     std::fs::write(
         skill_dir.join("SKILL.md"),
         "# My Skill\nDoes things.\n\n## When to Use\nAlways.\n\n## Steps\n1. Go\n",
@@ -227,6 +231,10 @@ fn scan_skill_dir_ignores_non_skill_dirs() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let sub = dir.path().join("not-a-skill");
     std::fs::create_dir(&sub).expect("create non-skill subdir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+    )]
     std::fs::write(sub.join("README.md"), "not a skill").expect("write README.md");
 
     let skills = scan_skill_dir(dir.path()).expect("scan dir with non-skill subdirs");
@@ -613,6 +621,10 @@ fn export_overwrites_existing_file() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let skill_dir = dir.path().join("rust-error-handling");
     std::fs::create_dir_all(&skill_dir).expect("create pre-existing skill dir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+    )]
     std::fs::write(skill_dir.join("SKILL.md"), "old content").expect("write pre-existing SKILL.md");
 
     let skills = vec![export_skill()];

@@ -273,6 +273,10 @@ mod tests {
     fn mkfile(base: &Path, rel: &str) {
         let path = base.join(rel);
         fs::create_dir_all(path.parent().unwrap()).expect("create parent dirs");
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "taxis config operations are CLI-invoked and require synchronous filesystem access"
+        )]
         fs::write(&path, format!("content of {rel}")).expect("write file");
     }
 
