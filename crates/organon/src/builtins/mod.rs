@@ -4,6 +4,9 @@
 pub mod agent;
 /// Inter-agent communication tools (send_message, broadcast).
 pub mod communication;
+/// Computer use: screen capture, action dispatch, sandboxed execution.
+#[cfg(feature = "computer-use")]
+pub mod computer_use;
 /// Dynamic tool activation meta-tool.
 pub mod enable_tool;
 /// Filesystem navigation tools (grep, find, ls).
@@ -40,6 +43,9 @@ pub fn register_all_with_sandbox(
     registry: &mut ToolRegistry,
     sandbox: SandboxConfig,
 ) -> Result<()> {
+    #[cfg(feature = "computer-use")]
+    computer_use::register(registry, &sandbox)?;
+
     workspace::register(registry, sandbox)?;
     memory::register(registry)?;
     communication::register(registry)?;
