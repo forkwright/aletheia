@@ -82,6 +82,8 @@ pub(super) struct Answers {
     pub(super) bind: String,
     pub(super) auth_mode: String,
     pub(super) timezone: String,
+    /// Credential resolution source: `"auto"`, `"api-key"`, or `"claude-code"`.
+    pub(super) credential_source: String,
 }
 
 impl Default for Answers {
@@ -96,6 +98,7 @@ impl Default for Answers {
             bind: "localhost".to_owned(),
             auth_mode: "none".to_owned(),
             timezone: detect_timezone(),
+            credential_source: "auto".to_owned(),
         }
     }
 }
@@ -122,11 +125,17 @@ pub(crate) fn run(args: RunArgs) -> Result<(), InitError> {
             .build()
         })?;
 
-        if api_key.is_none() {
+        let credential_source = if api_key.is_some() {
+            // WHY: explicit API key was provided; pin source to "api-key" so the
+            // server loads the written credential file rather than falling through
+            // the "auto" chain which may pick up a different credential.
+            "api-key".to_owned()
+        } else {
             tracing::warn!(
                 "no API key provided — set --api-key or ANTHROPIC_API_KEY; server will start in degraded mode"
             );
-        }
+            "auto".to_owned()
+        };
 
         Answers {
             root,
@@ -134,17 +143,24 @@ pub(crate) fn run(args: RunArgs) -> Result<(), InitError> {
             api_provider: api_provider.unwrap_or_else(|| "anthropic".to_owned()),
             model: model.unwrap_or_else(|| "claude-sonnet-4-6".to_owned()),
             auth_mode: auth_mode.unwrap_or_else(|| "none".to_owned()),
+            credential_source,
             ..Answers::default()
         }
     } else if yes {
         // NOTE: lenient non-interactive: skip prompts, apply defaults for missing values
         let root = root.unwrap_or_else(|| PathBuf::from("./instance"));
 
-        if api_key.is_none() {
+        let credential_source = if api_key.is_some() {
+            // WHY: explicit API key was provided; pin source to "api-key" so the
+            // server loads the written credential file rather than falling through
+            // the "auto" chain which may pick up a different credential.
+            "api-key".to_owned()
+        } else {
             tracing::warn!(
                 "no API key provided — set --api-key or ANTHROPIC_API_KEY; server will start in degraded mode"
             );
-        }
+            "auto".to_owned()
+        };
 
         Answers {
             root,
@@ -152,6 +168,7 @@ pub(crate) fn run(args: RunArgs) -> Result<(), InitError> {
             api_provider: api_provider.unwrap_or_else(|| "anthropic".to_owned()),
             model: model.unwrap_or_else(|| "claude-sonnet-4-6".to_owned()),
             auth_mode: auth_mode.unwrap_or_else(|| "none".to_owned()),
+            credential_source,
             ..Answers::default()
         }
     } else {

@@ -46,7 +46,6 @@ fn default_session_key() -> String {
 
 /// Query parameters for `GET /api/v1/sessions`.
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ListSessionsParams {
     /// Filter sessions by agent ID.
     pub nous_id: Option<String>,
@@ -72,7 +71,6 @@ pub struct ListSessionsResponse {
 
 /// Session summary for list endpoints.
 #[derive(Debug, Serialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
 pub struct SessionListItem {
     /// Session identifier.
     pub id: String,

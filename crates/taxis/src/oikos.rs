@@ -18,9 +18,20 @@ pub struct Oikos {
 
 impl Oikos {
     /// Create an oikos from an explicit root path.
+    ///
+    /// If the path exists on disk, it is canonicalized to an absolute path so
+    /// that all derived paths (data, logs, etc.) are absolute and work
+    /// regardless of the caller's current working directory. If the path does
+    /// not yet exist (e.g. during `init`), the path is stored as-is.
     #[must_use]
     pub fn from_root(root: impl Into<PathBuf>) -> Self {
-        Self { root: root.into() }
+        let root = root.into();
+        // WHY: canonicalize converts relative paths (./instance, instance) to
+        // absolute paths so that existence checks in print_storage and
+        // validate_workspace_path are cwd-independent. Fall back to the raw
+        // path when the directory does not yet exist (e.g. during init).
+        let root = std::fs::canonicalize(&root).unwrap_or(root);
+        Self { root }
     }
 
     /// Discover the oikos root.

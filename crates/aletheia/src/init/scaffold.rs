@@ -168,7 +168,10 @@ mod pronoea_template {
 }
 
 pub(super) fn render_config(a: &Answers) -> String {
-    let workspace = format!("{}/nous/{}", a.root.display(), a.agent_id);
+    // WHY: workspace is stored relative to the instance root so the config
+    // works regardless of where the instance directory is placed on disk.
+    // Oikos::validate_workspace_path resolves relative paths against the root.
+    let workspace = format!("nous/{}", a.agent_id);
     let mut config = format!(
         r#"# Aletheia Instance Configuration
 # Config cascade: compiled defaults -> this file -> ALETHEIA_* env vars
@@ -185,12 +188,12 @@ mode = "{auth_mode}"
 # tls:
 # [gateway.tls]
 # enabled = true
-# certPath = "config/tls/cert.pem"
-# keyPath = "config/tls/key.pem"
+# cert_path = "config/tls/cert.pem"
+# key_path = "config/tls/key.pem"
 
 # cors:
 # [gateway.cors]
-# allowedOrigins = ["https://my-dashboard.local"]
+# allowed_origins = ["https://my-dashboard.local"]
 
 # csrf:
 # [gateway.csrf]
@@ -198,14 +201,13 @@ mode = "{auth_mode}"
 
 # --- Agents ---
 [agents.defaults]
-contextTokens = 200000
-maxOutputTokens = 16384
-userTimezone = "{timezone}"
-timeoutSeconds = 300
-# thinkingEnabled = false
-# thinkingBudget = 10000
-# maxToolIterations = 50
-# toolTimeouts.defaultMs = 120000
+context_tokens = 200000
+max_output_tokens = 16384
+user_timezone = "{timezone}"
+timeout_seconds = 300
+# thinking_enabled = false
+# thinking_budget = 10000
+# max_tool_iterations = 50
 
 [agents.defaults.model]
 primary = "{model}"
@@ -219,14 +221,14 @@ workspace = "{workspace}"
 # --- Channels ---
 # [[channels.signal.accounts]]
 # account = "+1XXXXXXXXXX"
-# httpHost = "localhost"
-# httpPort = 8080
+# http_host = "localhost"
+# http_port = 8080
 
 # --- Bindings (route messages to agents) ---
 # [[bindings]]
 # channel = "signal"
 # source = "*"
-# nousId = "{agent_id}"
+# nous_id = "{agent_id}"
 
 # --- Embedding (for recall/knowledge search) ---
 # [embedding]
@@ -235,19 +237,23 @@ workspace = "{workspace}"
 
 # --- Data retention ---
 # [data.retention]
-# sessionMaxAgeDays = 90
-# archiveBeforeDelete = true
+# session_max_age_days = 90
+# archive_before_delete = true
 
 # --- Maintenance ---
-# [maintenance.traceRotation]
-# maxAgeDays = 14
-# [maintenance.dbMonitoring]
-# warnThresholdMb = 100
+# [maintenance.trace_rotation]
+# max_age_days = 14
+# [maintenance.db_monitoring]
+# warn_threshold_mb = 100
 
 # --- Cost tracking ---
 [pricing.{model}]
-inputCostPerMtok = 3.0
-outputCostPerMtok = 15.0
+input_cost_per_mtok = 3.0
+output_cost_per_mtok = 15.0
+
+# --- Credentials ---
+[credential]
+source = "{credential_source}"
 "#,
         bind = a.bind,
         auth_mode = a.auth_mode,
@@ -256,6 +262,7 @@ outputCostPerMtok = 15.0
         agent_id = a.agent_id,
         agent_name = a.agent_name,
         workspace = workspace,
+        credential_source = a.credential_source,
     );
     // WHY: single-agent init always produces a single-agent config.
     // Append permissive sandbox defaults so the agent is functional on kernels

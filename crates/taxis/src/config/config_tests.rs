@@ -74,8 +74,8 @@ fn defaults_are_sensible() {
         "default body limit should be 1 MiB"
     );
     assert!(
-        config.gateway.csrf.enabled,
-        "csrf should be enabled by default"
+        !config.gateway.csrf.enabled,
+        "csrf should be disabled by default (#1690)"
     );
     assert_eq!(
         config.gateway.csrf.header_name, "x-requested-with",
