@@ -339,10 +339,6 @@ pub fn probe_landlock_abi() -> Option<i32> {
     // Passing a null pointer and size 0 with the VERSION flag is the documented
     // ABI probe pattern. The kernel does not dereference the pointer for this call.
     #[expect(unsafe_code, reason = "inline asm syscall to probe Landlock ABI")]
-    #[expect(
-        clippy::as_conversions,
-        reason = "u32 -> usize for asm register input; Landlock ABI version flag required by kernel syscall interface"
-    )]
     let ret: isize = unsafe {
         let r: isize;
         #[cfg(target_arch = "x86_64")]
