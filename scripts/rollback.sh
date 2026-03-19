@@ -9,8 +9,8 @@
 
 set -euo pipefail
 
-INSTANCE_ROOT="${ALETHEIA_INSTANCE:-$HOME/ergon/instance}"
-BINARY_DST="${ALETHEIA_BINARY:-$HOME/ergon/bin/aletheia}"
+INSTANCE_ROOT="${ALETHEIA_ROOT:-$HOME/aletheia/instance}"
+BINARY_DST="${ALETHEIA_BINARY:-$HOME/.local/bin/aletheia}"
 BACKUP_DIR="${INSTANCE_ROOT}/.deploy-backup"
 SERVICE="aletheia.service"
 HEALTH_URL="${ALETHEIA_HEALTH_URL:-http://localhost:18789/api/health}"

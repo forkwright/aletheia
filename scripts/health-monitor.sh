@@ -47,9 +47,13 @@ health=$(curl -sf --max-time 5 "$HEALTH_URL" 2>/dev/null) || {
 status=$(echo "$health" | jq -r '.status // empty' 2>/dev/null)
 version=$(echo "$health" | jq -r '.version // empty' 2>/dev/null)
 
+if [[ -z "$status" ]]; then
+    log_warn "health response missing status field; raw: ${health:0:200}"
+fi
+
 if [[ "$status" != "healthy" ]]; then
-    log_err "unhealthy: $status (v$version)"
-    notify "unhealthy: $status (v$version)"
+    log_err "unhealthy: ${status:-<no status>} (v${version:-unknown})"
+    notify "unhealthy: ${status:-<no status>} (v${version:-unknown})"
     exit 1
 fi
 
@@ -58,6 +62,10 @@ log_ok "healthy v$version"
 # 3. Token expiry check
 if [[ -f "$CRED_FILE" ]]; then
     remaining=$(jq -r '(.claudeAiOauth.expiresAt // 0) / 1000 | (. - now) / 60 | floor' "$CRED_FILE" 2>/dev/null || echo "unknown")
+    if [[ -z "$remaining" ]]; then
+        remaining="unknown"
+        log_warn "jq returned empty output parsing credential file"
+    fi
 
     if [[ "$remaining" != "unknown" ]]; then
         if [[ "$remaining" -lt 30 ]]; then

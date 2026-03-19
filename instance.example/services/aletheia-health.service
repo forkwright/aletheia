@@ -4,6 +4,6 @@ After=aletheia.service
 
 [Service]
 Type=oneshot
-ExecStart=%h/ergon/scripts/health-monitor.sh
-StandardOutput=append:%h/ergon/instance/logs/health.log
-StandardError=append:%h/ergon/instance/logs/health.log
+ExecStart=%h/aletheia/scripts/health-monitor.sh
+StandardOutput=append:%h/aletheia/instance/logs/health.log
+StandardError=append:%h/aletheia/instance/logs/health.log
