@@ -297,7 +297,10 @@ impl TestHarness {
         build_router(
             Arc::clone(&self.state),
             &aletheia_pylon::security::SecurityConfig {
-                csrf_enabled: false,
+                csrf: aletheia_pylon::security::CsrfConfig {
+                    enabled: false,
+                    ..aletheia_pylon::security::CsrfConfig::default()
+                },
                 ..aletheia_pylon::security::SecurityConfig::default()
             },
         )

@@ -40,7 +40,10 @@ async fn security_headers_present_on_response() {
 async fn hsts_header_present_when_tls_enabled() {
     let (state, _dir) = test_state().await;
     let security = SecurityConfig {
-        tls_enabled: true,
+        tls: crate::security::TlsConfig {
+            enabled: true,
+            ..crate::security::TlsConfig::default()
+        },
         ..SecurityConfig::default()
     };
     let router = build_router(state, &security);
@@ -61,7 +64,10 @@ async fn oversized_body_returns_413() {
     let (state, _dir) = test_state().await;
     let security = SecurityConfig {
         body_limit_bytes: 100,
-        csrf_enabled: false,
+        csrf: crate::security::CsrfConfig {
+            enabled: false,
+            ..crate::security::CsrfConfig::default()
+        },
         ..SecurityConfig::default()
     };
     let router = build_router(state, &security);
@@ -84,7 +90,10 @@ async fn oversized_body_returns_413() {
 async fn csrf_rejects_post_without_header() {
     let (state, _dir) = test_state().await;
     let security = SecurityConfig {
-        csrf_enabled: true,
+        csrf: crate::security::CsrfConfig {
+            enabled: true,
+            ..crate::security::CsrfConfig::default()
+        },
         ..SecurityConfig::default()
     };
     let router = build_router(state, &security);
@@ -106,12 +115,15 @@ async fn csrf_rejects_post_without_header() {
 async fn csrf_allows_post_with_correct_header() {
     let (state, _dir) = test_state().await;
     let security = SecurityConfig {
-        csrf_enabled: true,
+        csrf: crate::security::CsrfConfig {
+            enabled: true,
+            ..crate::security::CsrfConfig::default()
+        },
         ..SecurityConfig::default()
     };
     // WHY: The CSRF token is now a per-instance CSPRNG value. Read it from
     // the SecurityConfig so the test sends the correct token, not "aletheia".
-    let csrf_token = security.csrf_header_value.clone();
+    let csrf_token = security.csrf.header_value.clone();
     let router = build_router(state, &security);
 
     let token = default_token();
@@ -138,7 +150,10 @@ async fn csrf_allows_post_with_correct_header() {
 async fn csrf_allows_get_without_header() {
     let (state, _dir) = test_state().await;
     let security = SecurityConfig {
-        csrf_enabled: true,
+        csrf: crate::security::CsrfConfig {
+            enabled: true,
+            ..crate::security::CsrfConfig::default()
+        },
         ..SecurityConfig::default()
     };
     let router = build_router(state, &security);
@@ -152,7 +167,10 @@ async fn csrf_allows_get_without_header() {
 async fn csrf_rejects_wrong_header_value() {
     let (state, _dir) = test_state().await;
     let security = SecurityConfig {
-        csrf_enabled: true,
+        csrf: crate::security::CsrfConfig {
+            enabled: true,
+            ..crate::security::CsrfConfig::default()
+        },
         ..SecurityConfig::default()
     };
     let router = build_router(state, &security);
@@ -181,12 +199,15 @@ async fn csrf_rejects_wrong_header_value() {
 async fn csrf_allows_delete_with_correct_header() {
     let (state, _dir) = test_state().await;
     let security = SecurityConfig {
-        csrf_enabled: true,
+        csrf: crate::security::CsrfConfig {
+            enabled: true,
+            ..crate::security::CsrfConfig::default()
+        },
         ..SecurityConfig::default()
     };
     // WHY: The CSRF token is now a per-instance CSPRNG value. Read it from
     // the SecurityConfig so the test sends the correct token, not "aletheia".
-    let csrf_token = security.csrf_header_value.clone();
+    let csrf_token = security.csrf.header_value.clone();
     let router = build_router(Arc::clone(&state), &security);
 
     let token = default_token();
@@ -245,7 +266,10 @@ async fn cors_permissive_when_no_origins_configured() {
 async fn cors_rejects_unlisted_origin() {
     let (state, _dir) = test_state().await;
     let security = SecurityConfig {
-        allowed_origins: vec!["http://localhost:3000".to_owned()],
+        cors: crate::security::CorsConfig {
+            allowed_origins: vec!["http://localhost:3000".to_owned()],
+            ..crate::security::CorsConfig::default()
+        },
         ..SecurityConfig::default()
     };
     let router = build_router(state, &security);
@@ -266,24 +290,25 @@ async fn cors_rejects_unlisted_origin() {
 #[test]
 fn security_config_default_values() {
     let config = SecurityConfig::default();
-    assert!(config.allowed_origins.is_empty());
-    assert_eq!(config.cors_max_age_secs, 3600);
+    assert!(config.cors.allowed_origins.is_empty());
+    assert_eq!(config.cors.max_age_secs, 3600);
     assert_eq!(config.body_limit_bytes, 1_048_576);
-    assert!(config.csrf_enabled);
-    assert_eq!(config.csrf_header_name, "x-requested-with");
+    assert!(config.csrf.enabled);
+    assert_eq!(config.csrf.header_name, "x-requested-with");
     // WHY: The default CSRF token is now a CSPRNG-generated 32-char hex string
     // rather than the static "aletheia" value, which was guessable.
-    assert_eq!(config.csrf_header_value.len(), 32);
+    assert_eq!(config.csrf.header_value.len(), 32);
     assert!(
         config
-            .csrf_header_value
+            .csrf
+            .header_value
             .chars()
             .all(|c| c.is_ascii_hexdigit())
     );
-    assert_ne!(config.csrf_header_value, "aletheia");
-    assert!(!config.tls_enabled);
-    assert!(config.tls_cert_path.is_none());
-    assert!(config.tls_key_path.is_none());
+    assert_ne!(config.csrf.header_value, "aletheia");
+    assert!(!config.tls.enabled);
+    assert!(config.tls.cert_path.is_none());
+    assert!(config.tls.key_path.is_none());
 }
 
 #[test]
@@ -292,11 +317,11 @@ fn security_config_from_gateway() {
 
     let gw = GatewayConfig::default();
     let config = SecurityConfig::from_gateway(&gw);
-    assert!(!config.tls_enabled);
+    assert!(!config.tls.enabled);
     // WHY: CSRF defaults to disabled so the API works out-of-the-box;
     // operators enable it explicitly when exposing to browsers (#1690).
-    assert!(!config.csrf_enabled);
-    assert_eq!(config.cors_max_age_secs, 3600);
+    assert!(!config.csrf.enabled);
+    assert_eq!(config.cors.max_age_secs, 3600);
 }
 
 #[tokio::test]

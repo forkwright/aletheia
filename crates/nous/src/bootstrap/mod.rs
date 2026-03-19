@@ -22,6 +22,7 @@ use crate::error::{self, Result};
 /// Determines inclusion order and drop/truncation behavior under budget pressure.
 /// Derives `Ord` so sections sort Required-first.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[non_exhaustive]
 pub enum SectionPriority {
     /// Must be included. Missing = error.
     Required = 0,

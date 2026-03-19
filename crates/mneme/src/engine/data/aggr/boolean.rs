@@ -215,18 +215,14 @@ impl MeetAggrObj for MeetAggrUnion {
             }
             return Ok(match (left, right) {
                 (DataValue::Set(l), DataValue::Set(s)) => {
-                    let mut inserted = false;
-                    for v in s.iter() {
-                        inserted |= l.insert(v.clone());
-                    }
-                    inserted
+                    let before = l.len();
+                    l.extend(s.iter().cloned());
+                    l.len() > before
                 }
                 (DataValue::Set(l), DataValue::List(s)) => {
-                    let mut inserted = false;
-                    for v in s.iter() {
-                        inserted |= l.insert(v.clone());
-                    }
-                    inserted
+                    let before = l.len();
+                    l.extend(s.iter().cloned());
+                    l.len() > before
                 }
                 (_, v) => {
                     return TypeMismatchSnafu {

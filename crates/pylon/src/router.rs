@@ -92,28 +92,28 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
 
     router = router.fallback(fallback_handler);
 
-    if security.per_user_rate_limit.enabled {
-        let user_limiter = Arc::new(UserRateLimiter::new(security.per_user_rate_limit.clone()));
+    if security.rate_limit.per_user.enabled {
+        let user_limiter = Arc::new(UserRateLimiter::new(security.rate_limit.per_user.clone()));
         spawn_stale_cleanup(Arc::clone(&user_limiter), state.shutdown.clone());
         router = router
             .layer(axum::middleware::from_fn(per_user_rate_limit))
             .layer(axum::Extension(user_limiter));
     }
 
-    if security.rate_limit_enabled {
+    if security.rate_limit.enabled {
         let limiter = Arc::new(
-            RateLimiter::new(security.rate_limit_requests_per_minute)
-                .with_trust_proxy(security.trust_proxy),
+            RateLimiter::new(security.rate_limit.requests_per_minute)
+                .with_trust_proxy(security.rate_limit.trust_proxy),
         );
         router = router
             .layer(axum::middleware::from_fn(rate_limit))
             .layer(axum::Extension(limiter));
     }
 
-    if security.csrf_enabled {
+    if security.csrf.enabled {
         let csrf_state = CsrfState {
-            header_name: security.csrf_header_name.clone(),
-            header_value: security.csrf_header_value.clone(),
+            header_name: security.csrf.header_name.clone(),
+            header_value: security.csrf.header_value.clone(),
         };
         router = router
             .layer(axum::middleware::from_fn(require_csrf_header))
@@ -203,8 +203,8 @@ async fn fallback_handler(uri: axum::http::Uri) -> Response {
 
 /// Build a CORS layer from security configuration.
 fn build_cors_layer(security: &SecurityConfig) -> CorsLayer {
-    let is_permissive =
-        security.allowed_origins.is_empty() || security.allowed_origins.iter().any(|o| o == "*");
+    let is_permissive = security.cors.allowed_origins.is_empty()
+        || security.cors.allowed_origins.iter().any(|o| o == "*");
 
     if is_permissive {
         // WHY: `CorsLayer::permissive()` sets `Access-Control-Allow-Credentials: true`
@@ -228,6 +228,7 @@ fn build_cors_layer(security: &SecurityConfig) -> CorsLayer {
     }
 
     let origins: Vec<HeaderValue> = security
+        .cors
         .allowed_origins
         .iter()
         .filter_map(|o| o.parse().ok())
@@ -247,7 +248,7 @@ fn build_cors_layer(security: &SecurityConfig) -> CorsLayer {
             HeaderName::from_static("authorization"),
             HeaderName::from_static("x-requested-with"),
         ])
-        .max_age(Duration::from_secs(security.cors_max_age_secs))
+        .max_age(Duration::from_secs(security.cors.max_age_secs))
 }
 
 /// Apply standard security response headers.
@@ -277,7 +278,7 @@ fn apply_security_headers(
             HeaderValue::from_static("default-src 'self'"),
         ));
 
-    if security.tls_enabled {
+    if security.tls.enabled {
         r = r.layer(SetResponseHeaderLayer::overriding(
             HeaderName::from_static("strict-transport-security"),
             HeaderValue::from_static("max-age=31536000; includeSubDomains"),

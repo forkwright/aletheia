@@ -86,6 +86,7 @@ impl SkillCandidate {
 
 /// Outcome from [`CandidateTracker::track_sequence`].
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum TrackResult {
     /// Sequence failed the heuristic gates: not tracked.
     Rejected,

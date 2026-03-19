@@ -260,6 +260,7 @@ pub type Payload = (String, BTreeMap<String, DataValue>);
 
 /// Commands to be sent to a multi-transaction
 #[derive(Eq, PartialEq, Debug)]
+#[non_exhaustive]
 pub enum TransactionPayload {
     /// Commit the current transaction
     Commit,

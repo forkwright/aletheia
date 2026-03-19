@@ -117,10 +117,10 @@ impl TraceRotator {
         let total_size_bytes: u64 = entries.iter().map(|e| e.size).sum();
         let max_bytes = self.config.max_total_size_mb * 1024 * 1024;
 
-        let mut to_rotate = Vec::new();
+        let mut to_rotate: Vec<usize> = Vec::new();
         let mut cumulative_freed: u64 = 0;
 
-        for entry in &entries {
+        for (idx, entry) in entries.iter().enumerate() {
             let age = now.duration_since(entry.modified).unwrap_or_else(|_| {
                 tracing::warn!(path = %entry.path.display(), "file modified time is in the future, treating age as zero");
                 std::time::Duration::default()
@@ -128,12 +128,12 @@ impl TraceRotator {
             let over_size = total_size_bytes.saturating_sub(cumulative_freed) > max_bytes;
 
             if age > max_age || over_size {
-                to_rotate.push(entry.clone());
+                to_rotate.push(idx);
                 cumulative_freed += entry.size;
             }
         }
 
-        for entry in &to_rotate {
+        for entry in to_rotate.iter().filter_map(|&i| entries.get(i)) {
             let dest = self
                 .config
                 .archive_dir

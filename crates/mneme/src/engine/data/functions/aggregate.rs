@@ -292,14 +292,10 @@ pub(crate) fn op_union(args: &[DataValue]) -> Result<DataValue> {
     for arg in args {
         match arg {
             DataValue::List(l) => {
-                for el in l {
-                    ret.insert(el.clone());
-                }
+                ret.extend(l.iter().cloned());
             }
             DataValue::Set(s) => {
-                for el in s {
-                    ret.insert(el.clone());
-                }
+                ret.extend(s.iter().cloned());
             }
             _ => {
                 return TypeMismatchSnafu {

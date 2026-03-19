@@ -353,7 +353,7 @@ pub fn query_audit_history(
 }
 
 #[cfg(test)]
-#[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(clippy::expect_used, reason = "test assertions may panic on failure")]
 mod tests {
     use super::*;
 

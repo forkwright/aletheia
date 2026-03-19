@@ -18,6 +18,7 @@ use super::rate_limiter::{RateLimiter, extract_client_key};
 
 /// Endpoint category for applying differentiated rate limits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum EndpointCategory {
     /// LLM/chat endpoints (most expensive).
     Llm,
