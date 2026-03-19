@@ -26,7 +26,7 @@ fn model_for_role(role: &str) -> &'static str {
     }
 }
 
-/// Concrete [`SpawnService`] that bridges to [`actor::spawn`].
+/// Concrete SpawnService that bridges to `actor::spawn`.
 pub struct SpawnServiceImpl {
     providers: Arc<ProviderRegistry>,
     tools: Arc<ToolRegistry>,

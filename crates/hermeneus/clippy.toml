@@ -1,0 +1,12 @@
+# hermeneus: Anthropic LLM provider — must not access the database directly.
+# All persistence belongs in mneme; hermeneus only calls the Anthropic API.
+
+disallowed-methods = [
+    { path = "std::process::exit", reason = "do not call process::exit from library code" },
+    { path = "std::process::abort", reason = "do not call process::abort from library code" },
+]
+
+disallowed-types = [
+    # hermeneus must not open SQLite connections; persistence is mneme's responsibility
+    { path = "rusqlite::Connection", reason = "hermeneus must not access SQLite directly; database access belongs in mneme" },
+]

@@ -1,0 +1,12 @@
+# nous: agent session pipeline — must not bypass the actor model or call
+# database/HTTP APIs directly. All I/O goes through AppState and the actor inbox.
+
+disallowed-methods = [
+    { path = "std::process::exit", reason = "do not call process::exit from library code" },
+    { path = "std::process::abort", reason = "do not call process::abort from library code" },
+]
+
+disallowed-types = [
+    # Handlers must not open DB connections; all persistence flows through the actor model
+    { path = "rusqlite::Connection", reason = "nous pipeline must not open SQLite connections directly; use the SessionStore abstraction" },
+]

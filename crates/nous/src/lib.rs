@@ -2,7 +2,7 @@
 //! aletheia-nous: agent session pipeline
 
 /// Tokio actor driving a single nous instance's message loop.
-pub mod actor;
+pub(crate) mod actor;
 /// Trait adapters bridging organon tool traits to mneme SessionStore.
 pub mod adapters;
 /// System prompt assembly from workspace files and domain packs.
@@ -18,20 +18,20 @@ pub mod distillation;
 /// Nous-specific error types.
 pub mod error;
 /// LLM execution stage: sends the assembled prompt to the provider.
-pub mod execute;
+pub(crate) mod execute;
 pub(crate) mod extraction;
 /// Turn finalization: persists messages and emits post-turn events.
-pub mod finalize;
-/// Cloneable handle for sending commands to a [`actor::NousActor`].
+pub(crate) mod finalize;
+/// Cloneable handle for sending commands to a `NousActor`.
 pub mod handle;
 /// Conversation history retrieval and token-budgeted formatting.
-pub mod history;
+pub(crate) mod history;
 /// Instinct observation bridge: records tool usage for behavioral pattern learning.
 pub(crate) mod instinct;
 /// Lifecycle manager for spawning and addressing nous actors.
 pub mod manager;
 /// Actor inbox message types.
-pub mod message;
+pub(crate) mod message;
 /// Prometheus metrics for nous pipeline: turn counts, latency, and token usage.
 pub mod metrics;
 /// Turn pipeline orchestration: context through finalize.
@@ -41,7 +41,7 @@ pub mod recall;
 /// Session state tracking within a nous actor.
 pub mod session;
 /// Skill loading: queries mneme for task-relevant skills and injects them as bootstrap sections.
-pub mod skills;
+pub(crate) mod skills;
 /// Ephemeral sub-agent spawning service.
 pub mod spawn_svc;
 /// Real-time streaming events for the turn pipeline.

@@ -32,7 +32,7 @@ impl ProjectWorkspace {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error::WorkspaceIo`] if the workspace directories cannot be created.
+    /// Returns a workspace I/O error if the workspace directories cannot be created.
     pub fn create(root: impl Into<PathBuf>) -> Result<Self> {
         let root = root.into();
         let layout = Self::build_layout(&root);
@@ -61,8 +61,8 @@ impl ProjectWorkspace {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error::WorkspaceSerialize`] if the project cannot be serialized to JSON.
-    /// Returns [`crate::error::Error::WorkspaceIo`] if the project file cannot be written.
+    /// Returns a serialization error if the project cannot be serialized to JSON.
+    /// Returns a workspace I/O error if the project file cannot be written.
     pub fn save_project(&self, project: &Project) -> Result<()> {
         let layout = self.layout();
         let json = serde_json::to_string_pretty(project).context(error::WorkspaceSerializeSnafu)?;

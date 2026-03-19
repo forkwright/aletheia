@@ -71,7 +71,7 @@ impl JwtConfig {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error::InsecureKey`] if `auth_mode` is not `"none"` and the signing
+    /// Returns an error if `auth_mode` is not `"none"` and the signing
     /// key is still the built-in insecure placeholder.
     pub fn validate_for_auth_mode(&self, auth_mode: &str) -> Result<()> {
         if auth_mode != "none" && self.has_insecure_key() {
@@ -134,8 +134,8 @@ impl JwtManager {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error::ExpiredToken`] if the token's expiration time has passed.
-    /// Returns [`crate::error::Error::TokenDecode`] if the token is malformed, has an invalid
+    /// Returns an error if the token's expiration time has passed.
+    /// Returns an error if the token is malformed, has an invalid
     /// signature, or fails any other JWT validation check.
     pub fn validate(&self, token: &str) -> Result<Claims> {
         let (header_payload, signature) = token.rsplit_once('.').ok_or_else(|| {

@@ -1,0 +1,16 @@
+# koina: foundational utility crate — must not bring in heavy dependencies
+# or perform operations that belong in higher layers.
+
+disallowed-methods = [
+    # Direct process exit bypasses cleanup; the workspace lint already denies clippy::exit
+    { path = "std::process::exit", reason = "do not call process::exit from library code" },
+    { path = "std::process::abort", reason = "do not call process::abort from library code" },
+]
+
+# Disallow types that indicate koina is reaching into layers above it
+disallowed-types = [
+    # koina must not depend on HTTP client types; that belongs in hermeneus/pylon
+    { path = "reqwest::Client", reason = "HTTP client belongs in hermeneus or pylon, not koina" },
+    # koina must not open SQLite connections; persistence belongs in mneme
+    { path = "rusqlite::Connection", reason = "database access belongs in mneme, not koina" },
+]

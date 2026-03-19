@@ -300,7 +300,7 @@ impl TurnUsage {
 ///
 /// # Errors
 ///
-/// Returns [`crate::error::Error::ContextAssembly`] if required workspace files
+/// Returns an error if required workspace files
 /// (e.g. SOUL.md) are missing.
 #[instrument(skip_all, fields(nous_id = %nous_config.id))]
 pub async fn assemble_context(

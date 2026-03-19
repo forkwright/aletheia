@@ -1,4 +1,4 @@
-//! Cloneable actor handle for sending messages to a [`NousActor`](crate::actor::NousActor).
+//! Cloneable actor handle for sending messages to a `NousActor`.
 
 use std::time::Duration;
 
@@ -14,7 +14,7 @@ pub const DEFAULT_SEND_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Cloneable handle for communicating with a nous actor.
 ///
-/// All external interaction with a [`NousActor`](crate::actor::NousActor) goes through its handle.
+/// All external interaction with a `NousActor` goes through its handle.
 /// The handle is `Clone + Send + Sync`: safe to share across tasks.
 #[derive(Clone)]
 pub struct NousHandle {
