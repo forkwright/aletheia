@@ -49,6 +49,7 @@ pub struct MessageRouter {
 
 impl MessageRouter {
     /// Build a router from channel bindings and an optional global default nous.
+    #[must_use]
     pub fn new(bindings: Vec<ChannelBinding>, default_nous: Option<String>) -> Self {
         Self {
             bindings,
@@ -120,6 +121,7 @@ fn expand_session_key(template: &str, msg: &InboundMessage) -> String {
 /// Determine reply target for outbound response.
 ///
 /// Group messages reply to the group. DMs reply to the sender.
+#[must_use]
 pub fn reply_target(msg: &InboundMessage) -> String {
     match &msg.group_id {
         Some(group) => format!("group:{group}"),

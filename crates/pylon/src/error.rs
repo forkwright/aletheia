@@ -191,18 +191,14 @@ impl IntoResponse for ApiError {
 }
 
 impl From<aletheia_mneme::error::Error> for ApiError {
-    #[track_caller]
     fn from(err: aletheia_mneme::error::Error) -> Self {
         use aletheia_mneme::error::Error;
         match err {
-            Error::SessionNotFound { id, .. } => Self::SessionNotFound {
-                id,
-                location: snafu::Location::default(),
-            },
-            Error::FactNotFound { id, .. } => Self::NotFound {
+            Error::SessionNotFound { id, .. } => SessionNotFoundSnafu { id }.build(),
+            Error::FactNotFound { id, .. } => NotFoundSnafu {
                 path: format!("fact/{id}"),
-                location: snafu::Location::default(),
-            },
+            }
+            .build(),
             // WHY: validation errors are the caller's fault and are safe to expose.
             Error::EmptyContent { .. }
             | Error::ContentTooLong { .. }
@@ -211,88 +207,76 @@ impl From<aletheia_mneme::error::Error> for ApiError {
             | Error::EmptyEntityName { .. }
             | Error::InvalidWeight { .. }
             | Error::EmptyEmbedding { .. }
-            | Error::EmptyEmbeddingContent { .. } => Self::BadRequest {
+            | Error::EmptyEmbeddingContent { .. } => BadRequestSnafu {
                 message: err.to_string(),
-                location: snafu::Location::default(),
-            },
-            _ => Self::Internal {
+            }
+            .build(),
+            _ => InternalSnafu {
                 message: err.to_string(),
-                location: snafu::Location::default(),
-            },
+            }
+            .build(),
         }
     }
 }
 
 impl From<aletheia_hermeneus::error::Error> for ApiError {
-    #[track_caller]
     fn from(err: aletheia_hermeneus::error::Error) -> Self {
         use aletheia_hermeneus::error::Error;
         match err {
-            Error::RateLimited { retry_after_ms, .. } => Self::RateLimited {
+            Error::RateLimited { retry_after_ms, .. } => RateLimitedSnafu {
                 retry_after_secs: retry_after_ms.div_ceil(1000),
-                location: snafu::Location::default(),
-            },
-            Error::AuthFailed { message, .. } => Self::ServiceUnavailable {
+            }
+            .build(),
+            Error::AuthFailed { message, .. } => ServiceUnavailableSnafu {
                 message: format!("provider auth failed: {message}"),
-                location: snafu::Location::default(),
-            },
-            Error::ApiError { status: 429, .. } => Self::RateLimited {
-                retry_after_secs: 0,
-                location: snafu::Location::default(),
-            },
+            }
+            .build(),
+            Error::ApiError { status: 429, .. } => RateLimitedSnafu {
+                retry_after_secs: 0_u64,
+            }
+            .build(),
             Error::ApiError {
                 status: 503,
                 message,
                 ..
-            } => Self::ServiceUnavailable {
-                message,
-                location: snafu::Location::default(),
-            },
-            _ => Self::Internal {
+            } => ServiceUnavailableSnafu { message }.build(),
+            _ => InternalSnafu {
                 message: err.to_string(),
-                location: snafu::Location::default(),
-            },
+            }
+            .build(),
         }
     }
 }
 
 impl From<aletheia_nous::error::Error> for ApiError {
-    #[track_caller]
     fn from(err: aletheia_nous::error::Error) -> Self {
         use aletheia_nous::error::Error;
         match err {
-            Error::NousNotFound { nous_id, .. } => Self::NousNotFound {
-                id: nous_id,
-                location: snafu::Location::default(),
-            },
-            Error::GuardRejected { reason, .. } => Self::Forbidden {
-                message: reason,
-                location: snafu::Location::default(),
-            },
+            Error::NousNotFound { nous_id, .. } => NousNotFoundSnafu { id: nous_id }.build(),
+            Error::GuardRejected { reason, .. } => ForbiddenSnafu { message: reason }.build(),
             Error::PipelineTimeout {
                 stage,
                 timeout_secs,
                 ..
-            } => Self::ServiceUnavailable {
+            } => ServiceUnavailableSnafu {
                 message: format!("pipeline stage '{stage}' timed out after {timeout_secs}s"),
-                location: snafu::Location::default(),
-            },
+            }
+            .build(),
             Error::Llm { source, .. } => Self::from(source),
-            _ => Self::Internal {
+            _ => InternalSnafu {
                 message: err.to_string(),
-                location: snafu::Location::default(),
-            },
+            }
+            .build(),
         }
     }
 }
 
 impl From<tokio::task::JoinError> for ApiError {
-    #[track_caller]
     fn from(err: tokio::task::JoinError) -> Self {
-        Self::Internal {
+        InternalSnafu {
             message: format!("task join failed: {err}"),
-            location: snafu::Location::default(),
         }
+        .build()
     }
 }
 
@@ -313,7 +297,7 @@ mod tests {
     fn rate_limited_includes_retry_after_header() {
         let err = ApiError::RateLimited {
             retry_after_secs: 5,
-            location: snafu::Location::default(),
+            location: snafu::location!(),
         };
         let response = err.into_response();
         assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
@@ -328,7 +312,7 @@ mod tests {
     fn rate_limited_zero_secs_has_retry_after() {
         let err = ApiError::RateLimited {
             retry_after_secs: 0,
-            location: snafu::Location::default(),
+            location: snafu::location!(),
         };
         let response = err.into_response();
         assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
@@ -343,7 +327,7 @@ mod tests {
     fn non_rate_limited_no_retry_after() {
         let err = ApiError::Internal {
             message: "test".to_owned(),
-            location: snafu::Location::default(),
+            location: snafu::location!(),
         };
         let response = err.into_response();
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
@@ -360,7 +344,7 @@ mod tests {
     fn session_not_found_returns_404() {
         let err = ApiError::SessionNotFound {
             id: "ses-123".to_owned(),
-            location: snafu::Location::default(),
+            location: snafu::location!(),
         };
         let response = err.into_response();
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
@@ -371,7 +355,7 @@ mod tests {
         let err = aletheia_nous::error::Error::PipelineTimeout {
             stage: "execute".to_owned(),
             timeout_secs: 300,
-            location: snafu::Location::default(),
+            location: snafu::location!(),
         };
         let api_err = ApiError::from(err);
         let response = api_err.into_response();
@@ -382,7 +366,7 @@ mod tests {
     fn guard_rejected_maps_to_forbidden() {
         let err = aletheia_nous::error::Error::GuardRejected {
             reason: "safety check".to_owned(),
-            location: snafu::Location::default(),
+            location: snafu::location!(),
         };
         let api_err = ApiError::from(err);
         let response = api_err.into_response();
@@ -408,7 +392,7 @@ mod tests {
     fn internal_error_returns_generic_message() {
         let err = ApiError::Internal {
             message: "SELECT * FROM users; file: /etc/passwd".to_owned(),
-            location: snafu::Location::default(),
+            location: snafu::location!(),
         };
         let response = err.into_response();
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
@@ -422,7 +406,7 @@ mod tests {
     fn service_unavailable_returns_generic_message() {
         let err = ApiError::ServiceUnavailable {
             message: "provider auth failed: Anthropic API key is invalid".to_owned(),
-            location: snafu::Location::default(),
+            location: snafu::location!(),
         };
         let response = err.into_response();
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
@@ -456,7 +440,7 @@ mod tests {
     fn auth_failed_does_not_leak_provider_details() {
         let hermeneus_err = aletheia_hermeneus::error::Error::AuthFailed {
             message: "Anthropic returned 401: x-api-key header is invalid".to_owned(),
-            location: snafu::Location::default(),
+            location: snafu::location!(),
         };
         let api_err = ApiError::from(hermeneus_err);
         let response = api_err.into_response();
@@ -471,7 +455,7 @@ mod tests {
     fn bad_request_message_is_preserved() {
         let err = ApiError::BadRequest {
             message: "content must not be empty".to_owned(),
-            location: snafu::Location::default(),
+            location: snafu::location!(),
         };
         let response = err.into_response();
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
@@ -483,7 +467,7 @@ mod tests {
     fn mneme_session_not_found_maps_to_404() {
         let mneme_err = aletheia_mneme::error::Error::SessionNotFound {
             id: "ses-01abc".to_owned(),
-            location: snafu::Location::default(),
+            location: snafu::location!(),
         };
         let api_err = ApiError::from(mneme_err);
         let response = api_err.into_response();
@@ -494,7 +478,7 @@ mod tests {
     fn mneme_fact_not_found_maps_to_404() {
         let mneme_err = aletheia_mneme::error::Error::FactNotFound {
             id: "fact-01abc".to_owned(),
-            location: snafu::Location::default(),
+            location: snafu::location!(),
         };
         let api_err = ApiError::from(mneme_err);
         let response = api_err.into_response();
@@ -504,7 +488,7 @@ mod tests {
     #[test]
     fn mneme_empty_content_maps_to_400() {
         let mneme_err = aletheia_mneme::error::Error::EmptyContent {
-            location: snafu::Location::default(),
+            location: snafu::location!(),
         };
         let api_err = ApiError::from(mneme_err);
         let response = api_err.into_response();
@@ -515,7 +499,7 @@ mod tests {
     fn mneme_invalid_confidence_maps_to_400() {
         let mneme_err = aletheia_mneme::error::Error::InvalidConfidence {
             value: 1.5,
-            location: snafu::Location::default(),
+            location: snafu::location!(),
         };
         let api_err = ApiError::from(mneme_err);
         let response = api_err.into_response();

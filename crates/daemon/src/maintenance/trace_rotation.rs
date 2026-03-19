@@ -63,6 +63,7 @@ pub struct TraceRotator {
 
 impl TraceRotator {
     /// Create a rotator with the given configuration.
+    #[must_use]
     pub fn new(config: TraceRotationConfig) -> Self {
         Self {
             config,

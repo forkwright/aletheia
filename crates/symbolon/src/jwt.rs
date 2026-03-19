@@ -96,6 +96,7 @@ pub struct JwtManager {
 
 impl JwtManager {
     /// Create a new JWT manager from the given config.
+    #[must_use]
     pub fn new(config: JwtConfig) -> Self {
         let signing_key = hmac::Key::new(
             hmac::HMAC_SHA256,

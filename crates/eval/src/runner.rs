@@ -42,6 +42,7 @@ pub struct ScenarioRunner {
 }
 
 impl ScenarioRunner {
+    #[must_use]
     pub fn new(config: RunConfig) -> Self {
         let client = EvalClient::new(
             &config.base_url,

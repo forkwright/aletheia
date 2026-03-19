@@ -77,6 +77,7 @@ pub struct DriftDetector {
 
 impl DriftDetector {
     /// Create a detector with the given instance and template paths.
+    #[must_use]
     pub fn new(config: DriftDetectionConfig) -> Self {
         Self { config }
     }

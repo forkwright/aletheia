@@ -257,6 +257,7 @@ impl Db {
 
     /// Register a callback for relation changes.
     #[cfg(not(target_arch = "wasm32"))]
+    #[must_use]
     pub fn register_callback(
         &self,
         relation: &str,
@@ -273,6 +274,7 @@ impl Db {
     }
 
     /// Begin a multi-relation transaction.
+    #[must_use]
     pub fn multi_transaction(&self, write: bool) -> MultiTransaction {
         let (app2db_send, app2db_recv): (Sender<TransactionPayload>, Receiver<TransactionPayload>) =
             bounded(1);

@@ -41,6 +41,7 @@ impl LoadedPack {
     ///
     /// Returns sections where the agent filter is empty (all agents)
     /// or contains the given agent id.
+    #[must_use]
     pub fn sections_for_agent(&self, agent_id: &str) -> Vec<&PackSection> {
         self.sections
             .iter()
@@ -52,6 +53,7 @@ impl LoadedPack {
     ///
     /// A section matches if its `agents` list is empty (all agents),
     /// contains the agent ID, or contains any of the agent's domains.
+    #[must_use]
     pub fn sections_for_agent_or_domains(
         &self,
         agent_id: &str,
@@ -68,6 +70,7 @@ impl LoadedPack {
     }
 
     /// Domain overlays for a specific agent, if any.
+    #[must_use]
     pub fn domains_for_agent(&self, agent_id: &str) -> Vec<String> {
         self.manifest
             .overlays

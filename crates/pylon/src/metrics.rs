@@ -72,6 +72,7 @@ pub fn update_system_gauges(uptime_secs: f64, active_sessions: i64) {
 /// Normalize a URL path by replacing dynamic segments with `{id}`.
 ///
 /// Prevents label explosion from unique IDs in prometheus metrics.
+#[must_use]
 pub fn normalize_path(path: &str) -> String {
     let parts: Vec<&str> = path.split('/').collect();
     let normalized: Vec<&str> = parts

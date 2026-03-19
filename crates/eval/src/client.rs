@@ -40,11 +40,13 @@ impl EvalClient {
     }
 
     /// Whether an auth token is configured.
+    #[must_use]
     pub fn has_token(&self) -> bool {
         self.token.is_some()
     }
 
     /// Base URL this client targets.
+    #[must_use]
     pub fn base_url(&self) -> &str {
         &self.base_url
     }

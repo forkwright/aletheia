@@ -91,6 +91,7 @@ impl CredentialFile {
     /// WHY: Claude Code changed its `.credentials.json` layout to nest all OAuth fields
     /// under a `claudeAiOauth` top-level key. Without unwrapping it, fresh credentials
     /// are invisible and the chain falls back to a stale env-var token.
+    #[must_use]
     pub fn load(path: &Path) -> Option<Self> {
         let contents = std::fs::read_to_string(path).ok()?;
 
@@ -455,6 +456,7 @@ impl RefreshingCredentialProvider {
     ///
     /// Reads the credential file immediately and spawns a background refresh
     /// task with a default circuit breaker. Requires a tokio runtime to be active.
+    #[must_use]
     pub fn new(path: PathBuf) -> Option<Self> {
         Self::with_circuit_breaker(path, CircuitBreakerConfig::default())
     }
@@ -749,6 +751,7 @@ pub fn claude_code_default_path() -> Option<PathBuf> {
 /// [`FileCredentialProvider`] for static token reads.
 ///
 /// Returns `None` if the file does not exist or cannot be parsed.
+#[must_use]
 pub fn claude_code_provider(path: &Path) -> Option<Box<dyn CredentialProvider>> {
     claude_code_provider_with_config(path, CircuitBreakerConfig::default())
 }

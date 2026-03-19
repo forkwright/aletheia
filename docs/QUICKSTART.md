@@ -69,6 +69,6 @@ Talk to your agents over Signal. Requires [signal-cli](https://github.com/AsamK/
 
 - [CONFIGURATION.md](CONFIGURATION.md): full config reference
 - [DEPLOYMENT.md](DEPLOYMENT.md): production setup, systemd, TLS
-- [troubleshooting.md](troubleshooting.md): common issues and fixes
+- [TROUBLESHOOTING.md](TROUBLESHOOTING.md): common issues and fixes
 - [WORKSPACE_FILES.md](WORKSPACE_FILES.md): agent workspace files
 - [ARCHITECTURE.md](ARCHITECTURE.md): system architecture and extension points

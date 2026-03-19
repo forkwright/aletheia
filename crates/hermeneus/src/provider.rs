@@ -204,6 +204,7 @@ impl ProviderRegistry {
     }
 
     /// List all registered providers.
+    #[must_use]
     pub fn providers(&self) -> Vec<&dyn LlmProvider> {
         self.providers.iter().map(|e| e.provider.as_ref()).collect()
     }

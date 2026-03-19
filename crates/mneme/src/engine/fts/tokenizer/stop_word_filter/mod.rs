@@ -190,6 +190,7 @@ mod tests {
     }
 
     fn token_stream_helper(text: &str) -> Vec<Token> {
+        use crate::engine::fts::tokenizer::tests::collect_tokens;
         let stops = vec![
             "a".to_string(),
             "as".to_string(),
@@ -197,12 +198,6 @@ mod tests {
             "i".to_string(),
         ];
         let a = TextAnalyzer::from(SimpleTokenizer).filter(StopWordFilter::new(stops));
-        let mut token_stream = a.token_stream(text);
-        let mut tokens: Vec<Token> = vec![];
-        let mut add_token = |token: &Token| {
-            tokens.push(token.clone());
-        };
-        token_stream.process(&mut add_token);
-        tokens
+        collect_tokens(a.token_stream(text))
     }
 }

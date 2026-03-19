@@ -27,11 +27,13 @@ pub struct SequenceSignature {
 
 impl SequenceSignature {
     /// Number of steps in the normalized sequence.
+    #[must_use]
     pub fn len(&self) -> usize {
         self.normalized.len()
     }
 
     /// Returns `true` if the normalized sequence is empty.
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.normalized.is_empty()
     }
@@ -42,6 +44,7 @@ impl SequenceSignature {
 /// 1. Extracts tool names in order.
 /// 2. Collapses consecutive duplicates.
 /// 3. Hashes with [`DefaultHasher`] for fast equality checks.
+#[must_use]
 pub fn sequence_signature(tool_calls: &[ToolCallRecord]) -> SequenceSignature {
     let normalized = collapse_consecutive(tool_calls.iter().map(|tc| tc.tool_name.clone()));
     let hash = hash_tool_names(&normalized);
@@ -60,6 +63,7 @@ pub fn sequence_signature(tool_calls: &[ToolCallRecord]) -> SequenceSignature {
     clippy::cast_precision_loss,
     reason = "sequence lengths are small; precision loss is impossible in practice"
 )]
+#[must_use]
 pub fn signature_similarity(a: &SequenceSignature, b: &SequenceSignature) -> f64 {
     if a.hash == b.hash && a.normalized == b.normalized {
         return 1.0;

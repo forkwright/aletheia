@@ -303,11 +303,11 @@ pub async fn get_fact(
             .read_facts_by_id(&id)
             .map_err(|e| ApiError::Internal {
                 message: e.to_string(),
-                location: snafu::Location::default(),
+                location: snafu::location!(),
             })?;
         let fact = facts.into_iter().next().ok_or_else(|| ApiError::NotFound {
             path: format!("fact/{id}"),
-            location: snafu::Location::default(),
+            location: snafu::location!(),
         })?;
         let relationships = get_fact_relationships(&state, &fact);
         let similar = get_similar_facts(&state, &fact);
@@ -319,7 +319,7 @@ pub async fn get_fact(
     }
     Err(ApiError::NotFound {
         path: format!("fact/{id}"),
-        location: snafu::Location::default(),
+        location: snafu::location!(),
     })
 }
 

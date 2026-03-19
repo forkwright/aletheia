@@ -124,6 +124,7 @@ impl Default for CandidateTracker {
 
 impl CandidateTracker {
     /// Create a new, empty tracker.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             candidates: std::sync::Mutex::new(Vec::new()),

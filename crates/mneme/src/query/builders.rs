@@ -70,11 +70,13 @@ impl QueryBuilder {
     }
 
     /// Consume the builder, producing `(script, params)`.
+    #[must_use]
     pub fn build(self) -> (String, BTreeMap<String, DataValue>) {
         (self.lines.join("\n"), self.params)
     }
 
     /// Consume the builder, producing only the script string.
+    #[must_use]
     pub fn build_script(self) -> String {
         self.lines.join("\n")
     }

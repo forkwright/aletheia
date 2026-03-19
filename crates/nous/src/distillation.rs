@@ -268,6 +268,7 @@ pub fn apply_distillation(
 }
 
 /// Convert mneme messages to hermeneus messages for the distillation engine.
+#[must_use]
 pub fn convert_to_hermeneus_messages(
     history: &[aletheia_mneme::types::Message],
 ) -> Vec<HermeneusMessage> {
