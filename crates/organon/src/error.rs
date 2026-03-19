@@ -73,23 +73,23 @@ pub enum StoreError {
 #[snafu(visibility(pub))]
 #[non_exhaustive]
 pub enum PlanningAdapterError {
-    #[snafu(display("failed to access workspace: {source}"))]
+    #[snafu(display("failed to access workspace: {message}"))]
     Workspace {
-        source: Box<dyn std::error::Error + Send + Sync>,
+        message: String,
         #[snafu(implicit)]
         location: snafu::Location,
     },
 
-    #[snafu(display("failed to load project: {source}"))]
+    #[snafu(display("failed to load project: {message}"))]
     LoadProject {
-        source: Box<dyn std::error::Error + Send + Sync>,
+        message: String,
         #[snafu(implicit)]
         location: snafu::Location,
     },
 
-    #[snafu(display("failed to save project: {source}"))]
+    #[snafu(display("failed to save project: {message}"))]
     SaveProject {
-        source: Box<dyn std::error::Error + Send + Sync>,
+        message: String,
         #[snafu(implicit)]
         location: snafu::Location,
     },
@@ -101,9 +101,9 @@ pub enum PlanningAdapterError {
         location: snafu::Location,
     },
 
-    #[snafu(display("state transition failed: {source}"))]
+    #[snafu(display("state transition failed: {message}"))]
     Transition {
-        source: Box<dyn std::error::Error + Send + Sync>,
+        message: String,
         #[snafu(implicit)]
         location: snafu::Location,
     },
@@ -122,10 +122,10 @@ pub enum PlanningAdapterError {
         location: snafu::Location,
     },
 
-    #[snafu(display("invalid {kind}: {source}"))]
+    #[snafu(display("invalid {kind}: {message}"))]
     InvalidId {
         kind: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
+        message: String,
         #[snafu(implicit)]
         location: snafu::Location,
     },
@@ -158,37 +158,37 @@ pub enum PlanningAdapterError {
 #[snafu(visibility(pub))]
 #[non_exhaustive]
 pub enum KnowledgeAdapterError {
-    #[snafu(display("embedding failed: {source}"))]
+    #[snafu(display("embedding failed: {message}"))]
     Embedding {
-        source: Box<dyn std::error::Error + Send + Sync>,
+        message: String,
         #[snafu(implicit)]
         location: snafu::Location,
     },
 
-    #[snafu(display("search failed: {source}"))]
+    #[snafu(display("search failed: {message}"))]
     Search {
-        source: Box<dyn std::error::Error + Send + Sync>,
+        message: String,
         #[snafu(implicit)]
         location: snafu::Location,
     },
 
-    #[snafu(display("fact query failed: {source}"))]
+    #[snafu(display("fact query failed: {message}"))]
     FactQuery {
-        source: Box<dyn std::error::Error + Send + Sync>,
+        message: String,
         #[snafu(implicit)]
         location: snafu::Location,
     },
 
-    #[snafu(display("store mutation failed: {source}"))]
+    #[snafu(display("store mutation failed: {message}"))]
     MutateStore {
-        source: Box<dyn std::error::Error + Send + Sync>,
+        message: String,
         #[snafu(implicit)]
         location: snafu::Location,
     },
 
-    #[snafu(display("datalog query failed: {source}"))]
+    #[snafu(display("datalog query failed: {message}"))]
     DatalogQuery {
-        source: Box<dyn std::error::Error + Send + Sync>,
+        message: String,
         #[snafu(implicit)]
         location: snafu::Location,
     },

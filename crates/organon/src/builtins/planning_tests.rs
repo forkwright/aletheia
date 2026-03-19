@@ -4,17 +4,11 @@
 )]
 #![expect(clippy::unwrap_used, reason = "test assertions")]
 #![expect(clippy::expect_used, reason = "test assertions")]
-#![expect(
-    clippy::as_conversions,
-    reason = "test: coercion to Box<dyn Error> trait object"
-)]
 use std::collections::HashSet;
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, RwLock};
-
-use snafu::IntoError;
 
 use aletheia_koina::id::{NousId, SessionId, ToolName};
 
@@ -250,10 +244,10 @@ async fn plan_create_success() {
 #[tokio::test]
 async fn plan_create_error_propagates() {
     let mock = Arc::new(MockPlanning::default());
-    *mock.create_result.lock().unwrap() = Some(Err(SaveProjectSnafu.into_error(Box::new(
-        std::io::Error::new(std::io::ErrorKind::AlreadyExists, "project already exists"),
-    )
-        as Box<dyn std::error::Error + Send + Sync>)));
+    *mock.create_result.lock().unwrap() = Some(Err(SaveProjectSnafu {
+        message: "project already exists".to_owned(),
+    }
+    .build()));
     let ctx = test_ctx_with_planning(mock);
     let mut reg = ToolRegistry::new();
     super::register(&mut reg).expect("register");

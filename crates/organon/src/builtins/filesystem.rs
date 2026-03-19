@@ -14,6 +14,7 @@ use std::time::SystemTime;
 
 use indexmap::IndexMap;
 
+use aletheia_koina::defaults::MAX_OUTPUT_BYTES;
 use aletheia_koina::id::ToolName;
 
 use crate::error::Result;
@@ -25,8 +26,6 @@ use crate::types::{
 };
 
 use super::workspace::{extract_opt_bool, extract_opt_u64, extract_str, validate_path};
-
-const MAX_OUTPUT_BYTES: usize = 50 * 1024;
 
 fn extract_opt_str<'a>(args: &'a serde_json::Value, field: &str) -> Option<&'a str> {
     args.get(field).and_then(serde_json::Value::as_str)

@@ -10,10 +10,13 @@ mod provider;
 mod types;
 mod utils;
 
-pub use engine::*;
-pub use error::*;
-pub use provider::*;
-pub use types::*;
+pub use engine::ExtractionEngine;
+pub use error::{ExtractionError, LlmCallSnafu, ParseResponseSnafu, PersistSnafu};
+pub use provider::ExtractionProvider;
+pub use types::{
+    ConversationMessage, ExtractedEntity, ExtractedFact, ExtractedRelationship, Extraction,
+    ExtractionConfig, ExtractionPrompt, PersistResult, RefinedExtraction,
+};
 
 #[cfg(test)]
 mod tests;

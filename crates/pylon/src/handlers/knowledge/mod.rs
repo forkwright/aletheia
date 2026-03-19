@@ -291,6 +291,13 @@ pub async fn list_facts(
     security(("bearer_auth" = []))
 )]
 pub async fn get_fact(
+    #[cfg_attr(
+        not(feature = "knowledge-store"),
+        expect(
+            unused_variables,
+            reason = "state only used when knowledge-store feature is enabled"
+        )
+    )]
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<FactDetailResponse>, ApiError> {

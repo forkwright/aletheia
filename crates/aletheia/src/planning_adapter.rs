@@ -18,22 +18,6 @@ use aletheia_organon::error::{
 };
 use aletheia_organon::types::PlanningService;
 
-/// Boxes any error type for use with snafu context selectors that expect
-/// `Box<dyn Error + Send + Sync>` as source.
-trait BoxErr<T> {
-    fn box_err(self) -> Result<T, Box<dyn std::error::Error + Send + Sync>>;
-}
-
-impl<T, E: std::error::Error + Send + Sync + 'static> BoxErr<T> for Result<T, E> {
-    fn box_err(self) -> Result<T, Box<dyn std::error::Error + Send + Sync>> {
-        #[expect(
-            clippy::as_conversions,
-            reason = "coercion to Box<dyn Error + Send + Sync> trait object"
-        )]
-        self.map_err(|e| Box::new(e) as _)
-    }
-}
-
 pub(crate) struct FilesystemPlanningService {
     projects_root: PathBuf,
 }
@@ -68,12 +52,18 @@ impl PlanningService for FilesystemPlanningService {
                     project.scope = Some(s);
                 }
                 let ws_path = root.join(project.id.to_string());
-                let ws = ProjectWorkspace::create(&ws_path)
-                    .box_err()
-                    .context(WorkspaceSnafu)?;
-                ws.save_project(&project)
-                    .box_err()
-                    .context(SaveProjectSnafu)?;
+                let ws = ProjectWorkspace::create(&ws_path).map_err(|e| {
+                    WorkspaceSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
+                ws.save_project(&project).map_err(|e| {
+                    SaveProjectSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
                 serde_json::to_string_pretty(&project).context(SerializeSnafu)
             })
             .await
@@ -90,10 +80,18 @@ impl PlanningService for FilesystemPlanningService {
         Box::pin(async move {
             tokio::task::spawn_blocking(move || {
                 let ws_path = root.join(&project_id);
-                let ws = ProjectWorkspace::open(&ws_path)
-                    .box_err()
-                    .context(WorkspaceSnafu)?;
-                let project = ws.load_project().box_err().context(LoadProjectSnafu)?;
+                let ws = ProjectWorkspace::open(&ws_path).map_err(|e| {
+                    WorkspaceSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
+                let project = ws.load_project().map_err(|e| {
+                    LoadProjectSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
                 serde_json::to_string_pretty(&project).context(SerializeSnafu)
             })
             .await
@@ -112,23 +110,36 @@ impl PlanningService for FilesystemPlanningService {
         Box::pin(async move {
             tokio::task::spawn_blocking(move || {
                 let ws_path = root.join(&project_id);
-                let ws = ProjectWorkspace::open(&ws_path)
-                    .box_err()
-                    .context(WorkspaceSnafu)?;
-                let mut project = ws.load_project().box_err().context(LoadProjectSnafu)?;
+                let ws = ProjectWorkspace::open(&ws_path).map_err(|e| {
+                    WorkspaceSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
+                let mut project = ws.load_project().map_err(|e| {
+                    LoadProjectSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
                 let transition = parse_transition(&transition_str).ok_or_else(|| {
                     InvalidTransitionSnafu {
                         name: transition_str,
                     }
                     .build()
                 })?;
-                project
-                    .advance(transition)
-                    .box_err()
-                    .context(TransitionSnafu)?;
-                ws.save_project(&project)
-                    .box_err()
-                    .context(SaveProjectSnafu)?;
+                project.advance(transition).map_err(|e| {
+                    TransitionSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
+                ws.save_project(&project).map_err(|e| {
+                    SaveProjectSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
                 serde_json::to_string_pretty(&project).context(SerializeSnafu)
             })
             .await
@@ -149,10 +160,18 @@ impl PlanningService for FilesystemPlanningService {
         Box::pin(async move {
             tokio::task::spawn_blocking(move || {
                 let ws_path = root.join(&project_id);
-                let ws = ProjectWorkspace::open(&ws_path)
-                    .box_err()
-                    .context(WorkspaceSnafu)?;
-                let mut project = ws.load_project().box_err().context(LoadProjectSnafu)?;
+                let ws = ProjectWorkspace::open(&ws_path).map_err(|e| {
+                    WorkspaceSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
+                let mut project = ws.load_project().map_err(|e| {
+                    LoadProjectSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
                 #[expect(
                     clippy::cast_possible_truncation,
                     clippy::as_conversions,
@@ -161,9 +180,12 @@ impl PlanningService for FilesystemPlanningService {
                 let order = project.phases.len() as u32 + 1;
                 let phase = Phase::new(name, goal, order);
                 project.add_phase(phase);
-                ws.save_project(&project)
-                    .box_err()
-                    .context(SaveProjectSnafu)?;
+                ws.save_project(&project).map_err(|e| {
+                    SaveProjectSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
                 serde_json::to_string_pretty(&project).context(SerializeSnafu)
             })
             .await
@@ -186,18 +208,29 @@ impl PlanningService for FilesystemPlanningService {
         Box::pin(async move {
             tokio::task::spawn_blocking(move || {
                 let ws_path = root.join(&project_id);
-                let ws = ProjectWorkspace::open(&ws_path)
-                    .box_err()
-                    .context(WorkspaceSnafu)?;
-                let mut project = ws.load_project().box_err().context(LoadProjectSnafu)?;
+                let ws = ProjectWorkspace::open(&ws_path).map_err(|e| {
+                    WorkspaceSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
+                let mut project = ws.load_project().map_err(|e| {
+                    LoadProjectSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
                 let plan = find_plan_mut(&mut project, &phase_id, &plan_id)?;
                 plan.state = PlanState::Complete;
                 if let Some(a) = achievement {
                     plan.achievements.push(a);
                 }
-                ws.save_project(&project)
-                    .box_err()
-                    .context(SaveProjectSnafu)?;
+                ws.save_project(&project).map_err(|e| {
+                    SaveProjectSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
                 serde_json::to_string_pretty(&project).context(SerializeSnafu)
             })
             .await
@@ -220,10 +253,18 @@ impl PlanningService for FilesystemPlanningService {
         Box::pin(async move {
             tokio::task::spawn_blocking(move || {
                 let ws_path = root.join(&project_id);
-                let ws = ProjectWorkspace::open(&ws_path)
-                    .box_err()
-                    .context(WorkspaceSnafu)?;
-                let mut project = ws.load_project().box_err().context(LoadProjectSnafu)?;
+                let ws = ProjectWorkspace::open(&ws_path).map_err(|e| {
+                    WorkspaceSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
+                let mut project = ws.load_project().map_err(|e| {
+                    LoadProjectSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
                 let plan = find_plan_mut(&mut project, &phase_id, &plan_id)?;
                 plan.state = PlanState::Failed;
                 plan.blockers.push(aletheia_dianoia::plan::Blocker {
@@ -231,9 +272,12 @@ impl PlanningService for FilesystemPlanningService {
                     plan_id: plan.id,
                     detected_at: jiff::Timestamp::now(),
                 });
-                ws.save_project(&project)
-                    .box_err()
-                    .context(SaveProjectSnafu)?;
+                ws.save_project(&project).map_err(|e| {
+                    SaveProjectSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
                 serde_json::to_string_pretty(&project).context(SerializeSnafu)
             })
             .await
@@ -306,11 +350,19 @@ fn find_plan_mut<'a>(
     phase_id: &str,
     plan_id: &str,
 ) -> Result<&'a mut aletheia_dianoia::plan::Plan, PlanningAdapterError> {
-    let phase_ulid: ulid::Ulid = phase_id.parse().box_err().context(InvalidIdSnafu {
-        kind: "phase_id".to_owned(),
+    let phase_ulid: ulid::Ulid = phase_id.parse().map_err(|e: ulid::DecodeError| {
+        InvalidIdSnafu {
+            kind: "phase_id".to_owned(),
+            message: e.to_string(),
+        }
+        .build()
     })?;
-    let plan_ulid: ulid::Ulid = plan_id.parse().box_err().context(InvalidIdSnafu {
-        kind: "plan_id".to_owned(),
+    let plan_ulid: ulid::Ulid = plan_id.parse().map_err(|e: ulid::DecodeError| {
+        InvalidIdSnafu {
+            kind: "plan_id".to_owned(),
+            message: e.to_string(),
+        }
+        .build()
     })?;
 
     let phase = project

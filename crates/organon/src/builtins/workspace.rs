@@ -16,6 +16,7 @@ use std::os::unix::process::CommandExt as _;
 
 use indexmap::IndexMap;
 
+use aletheia_koina::defaults::MAX_OUTPUT_BYTES;
 use aletheia_koina::id::ToolName;
 
 use crate::error::{self, Result};
@@ -25,8 +26,6 @@ use crate::types::{
     InputSchema, PropertyDef, PropertyType, ToolCategory, ToolContext, ToolDef, ToolInput,
     ToolResult,
 };
-
-const MAX_OUTPUT_BYTES: usize = 50 * 1024;
 
 /// Strip absolute path prefixes from an error message, showing only the filename.
 ///
@@ -44,6 +43,7 @@ fn sanitize_path_in_msg(path: &std::path::Path) -> String {
 /// WHY: Prevents disk exhaustion or fork-bomb-like abuse via oversized writes.
 /// Closes #1714.
 const MAX_WRITE_BYTES: usize = 10 * 1024 * 1024;
+
 
 /// Expand a leading `~` in a path string to the HOME environment variable.
 ///
