@@ -248,8 +248,8 @@ workspace = "{workspace}"
 
 # --- Cost tracking ---
 [pricing.{model}]
-input_cost_per_mtok = 3.0
-output_cost_per_mtok = 15.0
+inputCostPerMtok = 3.0
+outputCostPerMtok = 15.0
 
 # --- Credentials ---
 [credential]

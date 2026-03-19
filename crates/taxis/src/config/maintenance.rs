@@ -217,6 +217,14 @@ pub struct SandboxSettings {
     pub enabled: bool,
     /// Enforcement level: `enforcing` blocks violations, `permissive` logs them.
     pub enforcement: SandboxEnforcementMode,
+    /// Default filesystem root granted read access.
+    ///
+    /// Defaults to `~` (HOME). Operators can set this to a stricter path.
+    /// The `~` prefix is expanded to the HOME environment variable at runtime.
+    ///
+    /// WHY: without a home-directory default, agents cannot read user files:
+    /// closes #1823.
+    pub allowed_root: PathBuf,
     /// Additional filesystem paths granted read access.
     pub extra_read_paths: Vec<PathBuf>,
     /// Additional filesystem paths granted read+write access.
@@ -237,6 +245,7 @@ impl Default for SandboxSettings {
         Self {
             enabled: true,
             enforcement: SandboxEnforcementMode::Permissive,
+            allowed_root: PathBuf::from("~"),
             extra_read_paths: Vec::new(),
             extra_write_paths: Vec::new(),
             extra_exec_paths: Vec::new(),

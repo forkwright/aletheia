@@ -59,6 +59,15 @@ pub struct SandboxConfig {
     pub enabled: bool,
     /// Enforcement level: `enforcing` blocks violations, `permissive` logs them.
     pub enforcement: SandboxEnforcement,
+    /// Default filesystem root granted read access.
+    ///
+    /// Defaults to `~` which expands to the HOME environment variable at
+    /// policy-build time. Operators can set this to a stricter path to
+    /// prevent agents from reading files outside a specific directory.
+    ///
+    /// WHY: without a home-directory default, agents cannot read user files
+    /// (dotfiles, project repos, etc.) even in permissive mode: closes #1823.
+    pub allowed_root: PathBuf,
     /// Additional filesystem paths granted read access.
     pub extra_read_paths: Vec<PathBuf>,
     /// Additional filesystem paths granted read+write access.
@@ -84,6 +93,7 @@ impl Default for SandboxConfig {
         Self {
             enabled: true,
             enforcement: SandboxEnforcement::Permissive,
+            allowed_root: PathBuf::from("~"),
             extra_read_paths: Vec::new(),
             extra_write_paths: Vec::new(),
             extra_exec_paths: Vec::new(),
@@ -190,6 +200,13 @@ impl SandboxConfig {
             if !exec_paths.contains(root) {
                 exec_paths.push(root.clone());
             }
+        }
+
+        // WHY: allowed_root is the operator-configured default read root (defaults
+        // to HOME). Expand tilde so config files can use `~` portably: closes #1823.
+        let expanded_allowed_root = expand_tilde(&self.allowed_root);
+        if !read_paths.contains(&expanded_allowed_root) {
+            read_paths.push(expanded_allowed_root);
         }
 
         read_paths.extend(self.extra_read_paths.iter().cloned());

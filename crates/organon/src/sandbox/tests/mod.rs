@@ -62,6 +62,7 @@ fn config_serde_roundtrip() {
     let config = SandboxConfig {
         enabled: true,
         enforcement: SandboxEnforcement::Permissive,
+        allowed_root: PathBuf::from("~"),
         extra_read_paths: vec![PathBuf::from("/opt/data")],
         extra_write_paths: vec![PathBuf::from("/var/cache")],
         extra_exec_paths: vec![PathBuf::from("/opt/scripts")],
