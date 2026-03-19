@@ -43,6 +43,8 @@
 // are validated by the mneme-bench crate.
 
 #[cfg(feature = "mneme-engine")]
+mod causal;
+#[cfg(feature = "mneme-engine")]
 mod entity;
 #[cfg(feature = "mneme-engine")]
 mod facts;
@@ -115,6 +117,12 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         type_match: Bool,
         alias_overlap: Bool,
         merge_score: Float,
+        created_at: String
+    }",
+    r":create causal_edges {
+        cause: String, effect: String =>
+        ordering: String,
+        confidence: Float,
         created_at: String
     }",
 ];
@@ -271,7 +279,7 @@ pub struct KnowledgeStore {
 
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
-    const SCHEMA_VERSION: i64 = 5;
+    const SCHEMA_VERSION: i64 = 6;
 
     /// Open an in-memory knowledge store with default configuration.
     #[instrument]
@@ -352,6 +360,9 @@ impl KnowledgeStore {
             }
             if current_version < 5 {
                 self.migrate_v4_to_v5()?;
+            }
+            if current_version < 6 {
+                self.migrate_v5_to_v6()?;
             }
             return Ok(());
         }

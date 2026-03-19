@@ -6,8 +6,8 @@ mod schema;
 
 pub use builders::{PutBuilder, QueryBuilder, RmBuilder, ScanBuilder};
 pub use schema::{
-    EmbeddingsField, EntitiesField, FactEntitiesField, FactsField, Field, MergeAuditField,
-    PendingMergesField, Relation, RelationshipsField,
+    CausalEdgesField, EmbeddingsField, EntitiesField, FactEntitiesField, FactsField, Field,
+    MergeAuditField, PendingMergesField, Relation, RelationshipsField,
 };
 
 #[cfg(test)]

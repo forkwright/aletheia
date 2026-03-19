@@ -390,6 +390,69 @@ pub fn format_timestamp(ts: &jiff::Timestamp) -> String {
     ts.strftime("%Y-%m-%dT%H:%M:%SZ").to_string()
 }
 
+/// Temporal ordering between cause and effect in a causal edge.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum TemporalOrdering {
+    /// Cause precedes effect in time.
+    Before,
+    /// Effect precedes cause in time (retroactive causation).
+    After,
+    /// Cause and effect are concurrent.
+    Concurrent,
+}
+
+impl TemporalOrdering {
+    /// Return the lowercase string representation of this ordering.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Before => "before",
+            Self::After => "after",
+            Self::Concurrent => "concurrent",
+        }
+    }
+}
+
+impl std::fmt::Display for TemporalOrdering {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl std::str::FromStr for TemporalOrdering {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "before" => Ok(Self::Before),
+            "after" => Ok(Self::After),
+            "concurrent" => Ok(Self::Concurrent),
+            other => Err(format!("unknown temporal ordering: {other}")),
+        }
+    }
+}
+
+/// A directed causal edge between two fact nodes in the knowledge graph.
+///
+/// Represents "cause leads to effect" with temporal ordering and confidence.
+/// Confidence propagates through causal chains: transitive confidence is the
+/// product of individual edge confidences.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CausalEdge {
+    /// Fact ID of the cause node.
+    pub cause: FactId,
+    /// Fact ID of the effect node.
+    pub effect: FactId,
+    /// Temporal ordering between cause and effect.
+    pub ordering: TemporalOrdering,
+    /// Confidence that this causal relationship holds (0.0–1.0).
+    pub confidence: f64,
+    /// When this edge was recorded.
+    pub created_at: jiff::Timestamp,
+}
+
 /// Diff between two temporal snapshots of the knowledge base.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FactDiff {
