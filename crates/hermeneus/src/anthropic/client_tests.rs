@@ -1,4 +1,8 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test: HashMap string-key indexing; key presence is the assertion under test"
+)]
 use std::time::Duration;
 
 use wiremock::matchers::{method, path};

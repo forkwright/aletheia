@@ -140,6 +140,10 @@ pub fn extract_usage(events: &[ParsedSseEvent]) -> Option<UsageData> {
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: vec indices are valid after asserting len"
+)]
 mod tests {
     use super::*;
 

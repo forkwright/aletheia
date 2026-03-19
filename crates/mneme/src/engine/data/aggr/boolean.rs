@@ -1,4 +1,8 @@
 //! Boolean and collection aggregation operators.
+#![expect(
+    clippy::as_conversions,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::super::error::*;

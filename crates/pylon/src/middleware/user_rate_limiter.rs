@@ -93,7 +93,8 @@ impl TokenBucket {
             #[expect(
                 clippy::cast_possible_truncation,
                 clippy::cast_sign_loss,
-                reason = "ceil of positive f64 ratio fits in u64; minimum is 1"
+                clippy::as_conversions,
+                reason = "f64→u64: ceil of positive f64 ratio fits in u64; minimum is 1"
             )]
             let retry_after = (wait_secs.ceil() as u64).max(1);
             Err(retry_after)
@@ -241,10 +242,17 @@ fn base64_decode_url_safe(input: &str) -> Vec<u8> {
             break;
         }
         let vals: Vec<Option<u8>> = chunk.iter().map(|&b| decode_char(b)).collect();
+        // vals has exactly 4 elements because chunk.len() >= 4 is checked above
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "vals has exactly 4 elements: chunk.len() >= 4 is checked"
+        )]
         if let (Some(a), Some(b)) = (vals[0], vals[1]) {
             output.push((a << 2) | (b >> 4));
+            #[expect(clippy::indexing_slicing, reason = "vals has exactly 4 elements")]
             if let Some(c) = vals[2] {
                 output.push((b << 4) | (c >> 2));
+                #[expect(clippy::indexing_slicing, reason = "vals has exactly 4 elements")]
                 if let Some(d) = vals[3] {
                     output.push((c << 6) | d);
                 }

@@ -1,4 +1,8 @@
 //! Additional wiring and provider inspection integration tests.
+#![expect(
+    clippy::indexing_slicing,
+    reason = "integration tests: index-based assertions on known-length slices"
+)]
 use super::*;
 
 // ===========================================================================

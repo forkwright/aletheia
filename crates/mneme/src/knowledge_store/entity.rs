@@ -1,3 +1,7 @@
+#![expect(
+    clippy::indexing_slicing,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
 use super::marshal::{
     entity_to_params, extract_bool, extract_float, extract_int, extract_str, relationship_to_params,
 };

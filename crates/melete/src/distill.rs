@@ -248,7 +248,8 @@ impl DistillEngine {
         }
         #[expect(
             clippy::cast_precision_loss,
-            reason = "token counts fit in f64 mantissa"
+            clippy::as_conversions,
+            reason = "u64→f64: token counts fit in f64 mantissa"
         )]
         let ratio = token_estimate as f64 / context_window as f64;
         ratio >= threshold
@@ -311,7 +312,16 @@ impl DistillEngine {
 
         let tail = self.config.verbatim_tail.min(messages.len());
         let split_at = messages.len() - tail;
+        // split_at == messages.len() - tail where tail <= messages.len(), so split_at <= messages.len()
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "split_at = messages.len() - tail where tail ≤ messages.len()"
+        )]
         let to_summarize = &messages[..split_at];
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "split_at ≤ messages.len() by construction"
+        )]
         let verbatim = &messages[split_at..];
 
         let tokens_before = estimate_tokens(messages);
@@ -372,6 +382,10 @@ fn sanitize_nous_id(id: &str) -> String {
 /// messages containing tool calls are not underestimated.
 fn estimate_tokens(messages: &[Message]) -> u64 {
     let total_chars: usize = messages.iter().map(estimate_single_message_chars).sum();
+    #[expect(
+        clippy::as_conversions,
+        reason = "usize→u64: widening cast, always valid"
+    )]
     (total_chars as u64).div_ceil(4)
 }
 

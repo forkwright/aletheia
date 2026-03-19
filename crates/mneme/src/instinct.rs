@@ -145,7 +145,8 @@ impl BehavioralPattern {
         #[expect(
             clippy::cast_possible_truncation,
             clippy::cast_sign_loss,
-            reason = "success_rate is [0.0, 1.0], multiplied by 100 fits in u32"
+            clippy::as_conversions,
+            reason = "f64→u32: success_rate is [0.0, 1.0], multiplied by 100 fits in u32"
         )]
         let pct = (self.success_rate * 100.0) as u32;
         format!(

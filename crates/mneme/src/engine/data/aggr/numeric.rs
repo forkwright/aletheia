@@ -1,5 +1,10 @@
 //! Numeric aggregation operators.
 #![expect(clippy::expect_used, reason = "engine invariant")]
+#![expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
 
 use super::super::error::*;
 

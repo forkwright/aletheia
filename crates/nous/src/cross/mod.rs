@@ -182,6 +182,10 @@ mod router;
 pub use delivery::{DeliveryEntry, DeliveryLog};
 pub use router::CrossNousRouter;
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: vec indices are valid after asserting len"
+)]
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 mod tests {

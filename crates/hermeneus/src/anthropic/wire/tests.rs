@@ -1,3 +1,7 @@
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test: vec/slice indices are valid after asserting sufficient length"
+)]
 use super::*;
 use crate::types::{
     CompletionRequest, Content, ContentBlock, Message, Role, StopReason, ThinkingConfig,

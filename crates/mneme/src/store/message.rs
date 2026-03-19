@@ -318,7 +318,11 @@ impl SessionStore {
 
         // INVARIANT: Remaining undistilled messages always have seq >= 1,
         // so inserting at seq 0 cannot violate UNIQUE(session_id, seq).
-        #[expect(clippy::cast_possible_wrap, reason = "summary length fits in i64")]
+        #[expect(
+            clippy::cast_possible_wrap,
+            clippy::as_conversions,
+            reason = "usize→i64: summary length fits in i64"
+        )]
         let token_estimate = (content.len() as i64 + 3) / 4;
         tx.execute(
             "INSERT INTO messages (session_id, seq, role, content, is_distilled, token_estimate, created_at)

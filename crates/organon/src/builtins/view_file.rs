@@ -223,6 +223,10 @@ fn view_file_def() -> crate::types::ToolDef {
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: index 0 is valid after asserting len >= 1"
+)]
 mod tests {
     use std::collections::HashSet;
     use std::sync::{Arc, RwLock};

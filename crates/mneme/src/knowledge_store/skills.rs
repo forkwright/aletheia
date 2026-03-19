@@ -1,3 +1,8 @@
+#![expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
 use super::KnowledgeStore;
 use super::marshal::{compute_name_similarity, compute_tool_overlap, rows_to_facts};
 use tracing::instrument;

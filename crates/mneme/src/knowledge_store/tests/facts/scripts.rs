@@ -2,6 +2,10 @@
 //! Tests for fact query filtering, confidence, concurrent ops, and cross-agent listing.
 #![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(clippy::unwrap_used, reason = "test assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
 
 use super::super::super::*;
 use crate::knowledge::{EpistemicTier, Fact, ForgetReason};

@@ -1,4 +1,9 @@
 //! Compressed sparse row graph representation.
+#![expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
 
 mod page_rank;
 

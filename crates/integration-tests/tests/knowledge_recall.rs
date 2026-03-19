@@ -1,6 +1,10 @@
 //! Integration: knowledge types flow into recall scoring.
 
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "integration tests: index-based assertions on known-length slices"
+)]
 
 use aletheia_mneme::knowledge::{
     EmbeddedChunk, Entity, EpistemicTier, Fact, RecallResult, Relationship,

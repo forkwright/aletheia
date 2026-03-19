@@ -125,6 +125,10 @@ pub struct HealthCheck {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: vec/JSON indices valid after len assertions"
+)]
 mod tests {
     use super::*;
 

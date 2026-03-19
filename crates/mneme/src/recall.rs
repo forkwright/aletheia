@@ -236,7 +236,11 @@ impl RecallEngine {
     #[must_use]
     #[instrument(skip(self))]
     pub fn score_access_frequency(&self, access_count: u64) -> f64 {
-        #[expect(clippy::cast_precision_loss, reason = "access count fits in f64")]
+        #[expect(
+            clippy::cast_precision_loss,
+            clippy::as_conversions,
+            reason = "u64→f64: access count fits in f64"
+        )]
         let count = access_count as f64;
         (1.0 + count).ln() / (1.0 + self.max_access_count).ln()
     }

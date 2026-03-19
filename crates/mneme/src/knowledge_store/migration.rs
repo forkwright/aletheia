@@ -1,3 +1,7 @@
+#![expect(
+    clippy::indexing_slicing,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
 use super::{KNOWLEDGE_DDL, KnowledgeStore, fts_ddl};
 
 #[cfg(feature = "mneme-engine")]

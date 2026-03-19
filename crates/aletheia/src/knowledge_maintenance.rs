@@ -58,7 +58,8 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
             let age_secs = now.duration_since(reference_time).as_secs();
             #[expect(
                 clippy::cast_precision_loss,
-                reason = "age in seconds is well within f64 precision for practical retention windows"
+                clippy::as_conversions,
+                reason = "u64→f64: age in seconds is well within f64 precision for practical retention windows"
             )]
             let age_hours = (age_secs as f64 / 3600.0).max(0.0);
 
@@ -109,6 +110,7 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
             .build()
         })?;
 
+        #[expect(clippy::as_conversions, reason = "usize→u64: record count fits in u64")]
         let merged = records.len() as u64;
         let detail = format!("Entity dedup: {merged} entities merged automatically");
         tracing::info!(%detail, "maintenance: entity dedup complete");
@@ -144,7 +146,7 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
     ) -> aletheia_oikonomos::error::Result<MaintenanceReport> {
         let now = jiff::Timestamp::now();
         let now_str = aletheia_mneme::knowledge::format_timestamp(&now);
-        let total_facts = self
+        let facts = self
             .store
             .query_facts(nous_id, &now_str, 10_000)
             .map_err(|e| {
@@ -153,8 +155,9 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
                     reason: e.to_string(),
                 }
                 .build()
-            })?
-            .len() as u64;
+            })?;
+        #[expect(clippy::as_conversions, reason = "usize→u64: fact count fits in u64")]
+        let total_facts = facts.len() as u64;
 
         let detail = format!(
             "NOT_IMPLEMENTED: embedding refresh requires EmbeddingProvider — {total_facts} facts found, none re-embedded"
@@ -215,6 +218,7 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
             format!("Skill decay: {active} active, {needs_review} needs_review, {retired} retired");
         tracing::info!(%detail, "maintenance: skill decay complete");
 
+        #[expect(clippy::as_conversions, reason = "usize→u64: skill counts fit in u64")]
         Ok(MaintenanceReport {
             items_processed: (active + retired) as u64,
             items_modified: retired as u64,

@@ -215,6 +215,10 @@ pub fn resolve_context_path(pack_root: &Path, entry: &ContextEntry) -> Result<Pa
     Ok(canonical)
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: vec indices are valid after asserting len"
+)]
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {

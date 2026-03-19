@@ -289,6 +289,10 @@ fn check_positive_u32(parent: &Value, key: &str, errors: &mut Vec<String>) {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: vec[0] is valid after asserting errors are non-empty"
+)]
 mod tests {
     use super::*;
     use serde_json::json;

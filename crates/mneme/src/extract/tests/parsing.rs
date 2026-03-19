@@ -1,6 +1,10 @@
 //! Acceptance tests for extraction: parsing and persistence.
 //! Acceptance criteria tests for extraction pipeline.
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
 use super::super::utils;
 use super::super::*;
 

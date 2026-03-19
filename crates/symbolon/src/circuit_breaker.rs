@@ -200,6 +200,7 @@ impl CircuitBreaker {
 
                 #[expect(
                     clippy::cast_possible_truncation,
+                    clippy::as_conversions,
                     reason = "failure_threshold is u32, VecDeque::len fits"
                 )]
                 let count = inner.failures.len() as u32;

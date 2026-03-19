@@ -26,6 +26,10 @@ trait BoxErr<T> {
 
 impl<T, E: std::error::Error + Send + Sync + 'static> BoxErr<T> for Result<T, E> {
     fn box_err(self) -> Result<T, Box<dyn std::error::Error + Send + Sync>> {
+        #[expect(
+            clippy::as_conversions,
+            reason = "coercion to Box<dyn Error + Send + Sync> trait object"
+        )]
         self.map_err(|e| Box::new(e) as _)
     }
 }
@@ -149,7 +153,11 @@ impl PlanningService for FilesystemPlanningService {
                     .box_err()
                     .context(WorkspaceSnafu)?;
                 let mut project = ws.load_project().box_err().context(LoadProjectSnafu)?;
-                #[expect(clippy::cast_possible_truncation, reason = "phase count fits in u32")]
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    clippy::as_conversions,
+                    reason = "usize→u32: phase count fits in u32"
+                )]
                 let order = project.phases.len() as u32 + 1;
                 let phase = Phase::new(name, goal, order);
                 project.add_phase(phase);
@@ -370,6 +378,10 @@ fn list_projects_sync(root: &Path) -> Result<String, PlanningAdapterError> {
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 #[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: serde_json indexing is safe (returns Null on missing key)"
+)]
 mod tests {
     use super::*;
 

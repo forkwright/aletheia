@@ -6,6 +6,11 @@
 //! Algorithm: iterative peeling.  For increasing k, remove every node whose
 //! current effective degree (within the surviving subgraph) falls below k.
 //! The k-value assigned to each node is the largest k at which it survived.
+#![expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
 use std::collections::BTreeMap;
 
 use crate::engine::error::InternalResult as Result;

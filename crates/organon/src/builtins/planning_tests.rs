@@ -1,5 +1,13 @@
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test: vec indices valid after asserting len"
+)]
 #![expect(clippy::unwrap_used, reason = "test assertions")]
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(
+    clippy::as_conversions,
+    reason = "test: coercion to Box<dyn Error> trait object"
+)]
 use std::collections::HashSet;
 use std::future::Future;
 use std::path::PathBuf;

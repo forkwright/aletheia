@@ -218,6 +218,10 @@ fn update_config(oikos: &Oikos, args: &AddNousArgs) -> Result<()> {
         doc.insert("agents", toml_edit::Item::Table(toml_edit::Table::new()));
     }
 
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "key 'agents' was just inserted if absent, so indexing is valid"
+    )]
     let agents = doc["agents"]
         .as_table_mut()
         .ok_or_else(|| anyhow::anyhow!("[agents] in config is not a table"))?;

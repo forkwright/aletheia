@@ -1,4 +1,11 @@
 //! Filter that removes tokens exceeding a byte-length limit.
+#![cfg_attr(
+    test,
+    expect(
+        clippy::indexing_slicing,
+        reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+    )
+)]
 use super::{Token, TokenFilter, TokenStream};
 use crate::engine::fts::tokenizer::BoxTokenStream;
 

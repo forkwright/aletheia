@@ -164,6 +164,10 @@ impl BlackboardStore for SessionBlackboardAdapter {
     }
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: vec indices are valid after asserting len"
+)]
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {

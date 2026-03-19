@@ -42,6 +42,10 @@ pub(super) fn set_permissions(_path: &Path, _mode: u32) -> Result<(), InitError>
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 #[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: indices are valid after asserting len"
+)]
 mod tests {
     use aletheia_koina::secret::SecretString;
 

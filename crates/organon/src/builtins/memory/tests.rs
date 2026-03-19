@@ -1,5 +1,9 @@
 #![expect(clippy::unwrap_used, reason = "test assertions")]
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(
+    clippy::as_conversions,
+    reason = "test: coercions to dyn trait objects in test setup"
+)]
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};

@@ -31,7 +31,11 @@ pub async fn expose(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         .list_sessions(None)
         .ok()
         .map_or(0, |sessions| {
-            #[expect(clippy::cast_possible_wrap, reason = "session count fits in i64")]
+            #[expect(
+                clippy::cast_possible_wrap,
+                clippy::as_conversions,
+                reason = "usize→i64: session count fits in i64"
+            )]
             let count = sessions.len() as i64;
             count
         });

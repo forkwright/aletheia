@@ -172,6 +172,10 @@ pub(crate) async fn parse_sse_response(
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 #[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: index 0 is valid after asserting content.len() >= 1"
+)]
 mod tests {
     use super::*;
     use crate::types::{CompletionResponse, ContentBlock, StopReason};

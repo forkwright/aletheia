@@ -1,5 +1,9 @@
 //! Tests for summary extraction and integration scenarios.
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test: vec indices are valid after asserting len"
+)]
 use aletheia_hermeneus::test_utils::MockProvider;
 use aletheia_hermeneus::types::{CompletionResponse, ContentBlock, StopReason, Usage};
 

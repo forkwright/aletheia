@@ -32,6 +32,10 @@ pub(crate) fn truncate_tool_result(
     if max_bytes == 0 {
         return content;
     }
+    #[expect(
+        clippy::as_conversions,
+        reason = "u32→usize: max_bytes always fits in usize"
+    )]
     let limit = max_bytes as usize;
 
     match content {
@@ -227,7 +231,8 @@ pub(super) async fn dispatch_tools(
 
         #[expect(
             clippy::cast_possible_truncation,
-            reason = "tool execution duration won't exceed u64::MAX milliseconds"
+            clippy::as_conversions,
+            reason = "u128→u64: tool execution duration won't exceed u64::MAX milliseconds"
         )]
         let duration_ms = start.elapsed().as_millis() as u64;
 
@@ -317,7 +322,8 @@ pub(super) async fn dispatch_tools_streaming(
 
         #[expect(
             clippy::cast_possible_truncation,
-            reason = "tool execution duration won't exceed u64::MAX milliseconds"
+            clippy::as_conversions,
+            reason = "u128→u64: tool execution duration won't exceed u64::MAX milliseconds"
         )]
         let duration_ms = start.elapsed().as_millis() as u64;
 

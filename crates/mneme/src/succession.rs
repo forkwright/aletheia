@@ -22,6 +22,13 @@
         reason = "module internals; only exercised by crate-level tests"
     )
 )]
+#![cfg_attr(
+    test,
+    expect(
+        clippy::indexing_slicing,
+        reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+    )
+)]
 
 use crate::id::EntityId;
 use crate::knowledge::{EpistemicTier, FactType};

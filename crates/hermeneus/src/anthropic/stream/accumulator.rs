@@ -144,14 +144,34 @@ impl StreamAccumulator {
                     }
                 };
                 // INVARIANT: blocks vec must be at least index+1 long before assignment.
+                // index is a u32 content block index from the API; usize is at least 32 bits
+                #[expect(
+                    clippy::as_conversions,
+                    reason = "u32→usize: content block indices are small"
+                )]
                 let idx = index as usize;
                 while self.blocks.len() <= idx {
                     self.blocks.push(BlockBuilder::Text(String::new()));
                 }
-                self.blocks[idx] = builder;
+                #[expect(
+                    clippy::indexing_slicing,
+                    reason = "while loop above ensures blocks.len() > idx"
+                )]
+                {
+                    self.blocks[idx] = builder;
+                }
             }
             WireStreamEvent::ContentBlockDelta { index, delta } => {
+                // index is a u32 content block index from the API; usize is at least 32 bits
+                #[expect(
+                    clippy::as_conversions,
+                    reason = "u32→usize: content block indices are small"
+                )]
                 let idx = index as usize;
+                #[expect(
+                    clippy::indexing_slicing,
+                    reason = "idx < self.blocks.len() is checked by the if-guard"
+                )]
                 if idx < self.blocks.len() {
                     match delta {
                         WireDelta::TextDelta { text } => {

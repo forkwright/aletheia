@@ -173,6 +173,10 @@ pub struct ToolSummary {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: vec indices valid after len assertions"
+)]
 mod tests {
     use super::*;
 

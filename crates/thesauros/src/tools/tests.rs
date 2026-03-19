@@ -1,5 +1,9 @@
 //! Tests for thesauros tools.
 #![expect(clippy::unwrap_used, reason = "test assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test: vec indices are valid after asserting len"
+)]
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;

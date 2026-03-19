@@ -134,6 +134,10 @@ impl TaskStateStore {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: vec indices valid after asserting len"
+)]
 mod tests {
     use super::*;
 

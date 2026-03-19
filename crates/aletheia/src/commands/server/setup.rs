@@ -182,6 +182,10 @@ pub(super) fn start_inbound_dispatch(
     let mut channel_registry = ChannelRegistry::new();
 
     if let Some(provider) = signal_provider {
+        #[expect(
+            clippy::as_conversions,
+            reason = "coercion to dyn ChannelProvider trait object: required by registry API"
+        )]
         channel_registry
             .register(Arc::clone(provider) as Arc<dyn ChannelProvider>)
             .expect("register signal provider");

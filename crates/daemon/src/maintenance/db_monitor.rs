@@ -249,6 +249,10 @@ fn dir_size(path: &std::path::Path) -> error::Result<u64> {
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 #[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: vec indices valid after asserting len"
+)]
 mod tests {
     use super::*;
 

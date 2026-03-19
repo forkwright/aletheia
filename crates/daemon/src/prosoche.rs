@@ -214,7 +214,8 @@ fn check_db_sizes(paths: &[PathBuf]) -> Vec<AttentionItem> {
                 if size > ONE_GB {
                     #[expect(
                         clippy::cast_precision_loss,
-                        reason = "file sizes don't need exact precision for display"
+                        clippy::as_conversions,
+                        reason = "u64→f64: file sizes don't need exact precision for display"
                     )]
                     let size_gb = size as f64 / ONE_GB as f64;
                     items.push(AttentionItem {

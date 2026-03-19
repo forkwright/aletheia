@@ -84,7 +84,8 @@ pub fn should_trigger_distillation(
 
     #[expect(
         clippy::cast_sign_loss,
-        reason = "token counts are non-negative in practice"
+        clippy::as_conversions,
+        reason = "i64→u64: token counts are non-negative in practice"
     )]
     let actual_context_u64 = actual_context as u64;
 
@@ -126,7 +127,8 @@ pub fn should_trigger_distillation(
         clippy::cast_precision_loss,
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
-        reason = "context_window * ratio is a rough threshold; precision/truncation acceptable"
+        clippy::as_conversions,
+        reason = "u64→f64→u64: context_window * ratio is a rough threshold; precision/truncation acceptable"
     )]
     let threshold = (context_window as f64 * config.max_history_share) as u64;
     if actual_context_u64 >= threshold
@@ -198,7 +200,8 @@ pub async fn maybe_distill(
     #[expect(
         clippy::cast_sign_loss,
         clippy::cast_possible_truncation,
-        reason = "distillation_count is small non-negative"
+        clippy::as_conversions,
+        reason = "i64→u32: distillation_count is small non-negative"
     )]
     let distill_count = session.metrics.distillation_count as u32;
     let result = engine
@@ -227,6 +230,10 @@ pub fn apply_distillation(
     history: &[aletheia_mneme::types::Message],
 ) -> error::Result<()> {
     let distill_count = result.messages_distilled.min(history.len());
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "distill_count is capped at history.len() so the slice is always valid"
+    )]
     let seqs: Vec<i64> = history[..distill_count].iter().map(|m| m.seq).collect();
 
     store
@@ -241,7 +248,11 @@ pub fn apply_distillation(
         .insert_distillation_summary(session_id, &summary_content)
         .context(error::StoreSnafu)?;
 
-    #[expect(clippy::cast_possible_wrap, reason = "token/message counts fit in i64")]
+    #[expect(
+        clippy::cast_possible_wrap,
+        clippy::as_conversions,
+        reason = "usize→i64: token/message counts fit in i64"
+    )]
     store
         .record_distillation(
             session_id,
@@ -277,6 +288,10 @@ pub fn convert_to_hermeneus_messages(
         .collect()
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: vec indices are valid after asserting len"
+)]
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 #[expect(clippy::expect_used, reason = "test assertions may panic on failure")]

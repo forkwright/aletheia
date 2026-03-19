@@ -126,6 +126,10 @@ fn validate_relative_path(rel_path: &str) -> bool {
     }
 
     // Reject Windows drive letters
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "index 1 is valid: guarded by len >= 2 check"
+    )]
     if rel_path.len() >= 2 && rel_path.as_bytes()[1] == b':' {
         return false;
     }

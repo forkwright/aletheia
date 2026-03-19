@@ -1,4 +1,8 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test: map/vec indexing with keys/indices asserted present by surrounding context"
+)]
 
 use super::*;
 

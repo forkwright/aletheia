@@ -72,7 +72,9 @@ trait_duplication_in_bounds = "warn"
 unused_self = "warn"
 
 # Safety: numeric cast auditing (incremental)
+as_conversions = "warn"
 cast_possible_truncation = "warn"
+indexing_slicing = "warn"
 
 [workspace.dependencies]
 base64 = "0.22"

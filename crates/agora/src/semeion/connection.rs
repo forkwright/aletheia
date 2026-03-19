@@ -101,6 +101,10 @@ pub fn reconnect_delay(attempt: u32) -> Duration {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: JSON key indexing on known-present keys"
+)]
 mod tests {
     use super::*;
 

@@ -66,6 +66,10 @@ fn redact_sensitive_keys(value: &mut Value) {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: JSON string-key indexing; key presence is the assertion under test"
+)]
 mod tests {
     use super::*;
 

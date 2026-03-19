@@ -242,6 +242,10 @@ impl ProviderRegistry {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: map key is asserted present by contains_key check above"
+)]
 mod tests {
     use super::*;
     use crate::test_utils::MockProvider;

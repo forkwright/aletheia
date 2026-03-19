@@ -134,12 +134,17 @@ impl SignalClient {
                     }
                     last_err = Some(e);
                     if attempt < backoffs.len() {
+                        #[expect(
+                            clippy::indexing_slicing,
+                            reason = "attempt < backoffs.len() is checked by the if-guard"
+                        )]
+                        let delay = backoffs[attempt];
                         tracing::warn!(
                             attempt = attempt + 1,
-                            backoff_ms = backoffs[attempt],
+                            backoff_ms = delay,
                             "signal send attempt failed, retrying"
                         );
-                        tokio::time::sleep(Duration::from_millis(backoffs[attempt])).await;
+                        tokio::time::sleep(Duration::from_millis(delay)).await;
                     }
                 }
             }
@@ -329,6 +334,10 @@ fn normalize_url(url: &str) -> String {
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: JSON key indexing on known-present keys"
+)]
 mod tests {
     use super::*;
 

@@ -184,7 +184,11 @@ impl ToolExecutor for WebFetchExecutor {
                 body
             };
 
-            #[expect(clippy::cast_possible_truncation, reason = "max_length fits in usize")]
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::as_conversions,
+                reason = "u64→usize: max_length fits in usize"
+            )]
             let max_len = max_length as usize;
             let truncated = if text.len() > max_len {
                 let mut end = max_len;
@@ -208,6 +212,11 @@ impl ToolExecutor for WebFetchExecutor {
 // character-by-character logic is inherently one operation; splitting would break the
 // state machine's flow.
 /// Strip HTML tags and collapse whitespace for readable text extraction.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::as_conversions,
+    reason = "byte-level state machine: all accesses are bounds-checked by while i < bytes.len() and explicit length guards"
+)]
 fn strip_html_tags(html: &str) -> String {
     let mut result = String::with_capacity(html.len() / 2);
     let mut in_tag = false;

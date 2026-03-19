@@ -1,5 +1,10 @@
 //! Tests for vector indexing, FTS indexing, LSH indexing, and insertions.
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
 use std::collections::BTreeMap;
 
 use crate::engine::DbInstance;

@@ -1,4 +1,9 @@
 #![expect(clippy::unwrap_used, clippy::expect_used, reason = "test assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    clippy::as_conversions,
+    reason = "test helper: fixed-size arrays with compile-time-bounded indices; 6-bit nibbles index 64-element table"
+)]
 use aletheia_koina::secret::SecretString;
 
 use super::*;

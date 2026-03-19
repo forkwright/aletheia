@@ -2,6 +2,10 @@
 
 #![expect(clippy::unwrap_used, reason = "test assertions")]
 #![cfg(feature = "sqlite-tests")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "integration tests: index-based assertions on known-length slices"
+)]
 
 use aletheia_mneme::store::SessionStore;
 use aletheia_mneme::types::Role;

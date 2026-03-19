@@ -121,12 +121,25 @@ pub(crate) fn list(store: &AuthStore) -> Result<Vec<ApiKeyRecord>> {
 /// Parse an API key into `(global_prefix, holder_prefix, secret)`.
 fn parse_key(raw: &str) -> Result<(&str, &str, &str)> {
     let parts: Vec<&str> = raw.splitn(3, '_').collect();
+    // parts.len() != 3 is checked before any index access
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "guarded by parts.len() != 3 check above"
+    )]
     if parts.len() != 3 || parts[0] != KEY_PREFIX {
         return Err(error::InvalidApiKeySnafu.build());
     }
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "len == 3 is asserted by the guard above"
+    )]
     if parts[1].is_empty() || parts[2].is_empty() {
         return Err(error::InvalidApiKeySnafu.build());
     }
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "len == 3 is asserted by the guard above"
+    )]
     Ok((parts[0], parts[1], parts[2]))
 }
 
@@ -159,7 +172,24 @@ mod hex {
     pub fn encode(bytes: &[u8]) -> String {
         let mut s = String::with_capacity(bytes.len() * 2);
         for &b in bytes {
+            // nibble is 0..=15, HEX_CHARS has exactly 16 elements
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "nibble 0..=15 always indexes 16-element HEX_CHARS"
+            )]
+            #[expect(
+                clippy::as_conversions,
+                reason = "nibble cast: b>>4 is 0..=15, safe usize cast; u8→char is ASCII"
+            )]
             s.push(HEX_CHARS[(b >> 4) as usize] as char);
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "nibble 0..=15 always indexes 16-element HEX_CHARS"
+            )]
+            #[expect(
+                clippy::as_conversions,
+                reason = "nibble cast: b&0x0f is 0..=15, safe usize cast; u8→char is ASCII"
+            )]
             s.push(HEX_CHARS[(b & 0x0f) as usize] as char);
         }
         s
@@ -168,6 +198,10 @@ mod hex {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: parts[2] is valid after splitn(3) produces 3 parts"
+)]
 mod tests {
     use super::*;
 

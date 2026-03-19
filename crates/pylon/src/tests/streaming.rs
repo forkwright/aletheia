@@ -1,3 +1,7 @@
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test: vec/JSON indices valid after asserting len or known structure"
+)]
 use std::sync::Arc;
 use std::time::Duration;
 

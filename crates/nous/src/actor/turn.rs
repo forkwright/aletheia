@@ -342,6 +342,10 @@ impl NousActor {
             .unwrap_or(self.runtime.started_at);
         self.runtime.panic_timestamps.retain(|t| *t > cutoff);
 
+        #[expect(
+            clippy::as_conversions,
+            reason = "u32→usize: DEGRADED_PANIC_THRESHOLD is a small constant, fits in usize"
+        )]
         if self.runtime.panic_timestamps.len() >= DEGRADED_PANIC_THRESHOLD as usize {
             warn!(
                 nous_id = %self.id,

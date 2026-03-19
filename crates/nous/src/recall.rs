@@ -720,12 +720,27 @@ fn detect_gaps(results: &[ScoredResult]) -> Vec<String> {
         let words: Vec<&str> = result.content.split_whitespace().collect();
         let mut i = 0;
         while i < words.len() {
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "i < words.len() is checked by the while guard above"
+            )]
             if starts_with_uppercase(words[i]) {
                 let start = i;
-                while i < words.len() && starts_with_uppercase(words[i]) {
+                while i < words.len() {
+                    #[expect(
+                        clippy::indexing_slicing,
+                        reason = "i < words.len() is checked by the while guard"
+                    )]
+                    if !starts_with_uppercase(words[i]) {
+                        break;
+                    }
                     i += 1;
                 }
                 if i - start >= 2 {
+                    #[expect(
+                        clippy::indexing_slicing,
+                        reason = "start and i are both bounded by words.len()"
+                    )]
                     let phrase = words[start..i].join(" ");
                     if !source_ids.contains(phrase.as_str()) && seen.insert(phrase.clone()) {
                         gaps.push(phrase);
@@ -784,6 +799,10 @@ pub fn format_section(results: &[&ScoredResult]) -> String {
 /// pass `4` directly in tests and contexts without a live config.
 #[must_use]
 pub fn estimate_tokens(text: &str, chars_per_token: u64) -> u64 {
+    #[expect(
+        clippy::as_conversions,
+        reason = "usize→u64: text length always fits in u64"
+    )]
     let len = text.len() as u64;
     len.div_ceil(chars_per_token.max(1))
 }

@@ -2,7 +2,8 @@
 //! Tests for `DistillEngine` behavior.
 #![expect(
     clippy::expect_used,
-    reason = "test assertions use .expect() for descriptive panic messages"
+    clippy::indexing_slicing,
+    reason = "test assertions use .expect() for descriptive panic messages; test vec indices are valid"
 )]
 use aletheia_hermeneus::test_utils::MockProvider;
 use aletheia_hermeneus::types::{Content, ContentBlock, Message, Role, ToolResultContent};

@@ -27,6 +27,10 @@ pub(super) fn compute_turn_cache_indices(messages: &[&crate::types::Message]) ->
     let mut breakpoints = Vec::new();
 
     for i in (0..last_idx).rev() {
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "i < last_idx < messages.len() by loop bounds"
+        )]
         if messages[i].role == Role::User {
             breakpoints.push(i);
             if breakpoints.len() >= MAX_TURN_CACHE_BREAKPOINTS {

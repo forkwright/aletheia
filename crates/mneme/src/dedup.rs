@@ -14,6 +14,14 @@
 //! 2. **Merge scoring**: weighted composite of name similarity, embedding similarity,
 //!    type match, and alias overlap
 //! 3. **Merge execution**: transfer edges, aliases, fact_entities, and record audit trail
+#![cfg_attr(
+    any(feature = "mneme-engine", test),
+    expect(
+        clippy::as_conversions,
+        clippy::indexing_slicing,
+        reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+    )
+)]
 
 use crate::id::EntityId;
 

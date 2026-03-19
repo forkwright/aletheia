@@ -1,4 +1,8 @@
 //! Core retention delete/skip/archive tests.
+#![expect(
+    clippy::indexing_slicing,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
 use super::*;
 
 #[test]

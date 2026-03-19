@@ -48,7 +48,8 @@ impl ToolExecutor for PlanCreateExecutor {
                 .unwrap_or("full");
             #[expect(
                 clippy::cast_possible_truncation,
-                reason = "appetite_minutes fits in u32"
+                clippy::as_conversions,
+                reason = "u64→u32: appetite_minutes fits in u32"
             )]
             let appetite_minutes =
                 extract_opt_u64(&input.arguments, "appetite_minutes").map(|v| v as u32);

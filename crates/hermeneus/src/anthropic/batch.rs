@@ -67,6 +67,10 @@ pub struct BatchError {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: serde_json indexing is safe (returns Null on missing key)"
+)]
 mod tests {
     use super::*;
 

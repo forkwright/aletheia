@@ -294,6 +294,10 @@ fn now_unix() -> i64 {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: vec indices are valid after asserting len == 3"
+)]
 mod tests {
     use super::*;
 

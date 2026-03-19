@@ -3,6 +3,11 @@
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
+
 use crate::engine::data::functions::TERMINAL_VALIDITY;
 use crate::engine::error::InternalResult as Result;
 use std::cmp::Reverse;

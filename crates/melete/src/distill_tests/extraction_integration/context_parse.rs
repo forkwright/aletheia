@@ -1,3 +1,7 @@
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test: vec indices are valid after asserting len"
+)]
 //! Tests for context limit enforcement, `nous_id` sanitization, token estimation, and summary parsing.
 use aletheia_hermeneus::types::{ContentBlock, ToolResultContent};
 

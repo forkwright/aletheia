@@ -49,7 +49,8 @@ impl ToolExecutor for BlackboardExecutor {
 
                     #[expect(
                         clippy::cast_possible_wrap,
-                        reason = "TTL from u64 will not exceed i64::MAX in practice"
+                        clippy::as_conversions,
+                        reason = "u64→i64: TTL from u64 will not exceed i64::MAX in practice"
                     )]
                     match bb_store.write(key, value, ctx.nous_id.as_str(), ttl as i64) {
                         Ok(()) => Ok(ToolResult::text(format!(

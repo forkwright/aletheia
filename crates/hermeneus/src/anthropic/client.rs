@@ -254,7 +254,8 @@ impl AnthropicProvider {
                 if status == 401 || ((400..500).contains(&status) && status != 429) {
                     #[expect(
                         clippy::cast_possible_truncation,
-                        reason = "LLM call duration fits in u64"
+                        clippy::as_conversions,
+                        reason = "u128→u64: LLM call duration fits in u64"
                     )]
                     {
                         tracing::Span::current()
@@ -297,7 +298,8 @@ impl AnthropicProvider {
                     self.health.record_success();
                     #[expect(
                         clippy::cast_possible_truncation,
-                        reason = "LLM call duration fits in u64"
+                        clippy::as_conversions,
+                        reason = "u128→u64: LLM call duration fits in u64"
                     )]
                     {
                         tracing::Span::current()
@@ -349,7 +351,8 @@ impl AnthropicProvider {
                         self.health.record_error(&e);
                         #[expect(
                             clippy::cast_possible_truncation,
-                            reason = "LLM call duration fits in u64"
+                            clippy::as_conversions,
+                            reason = "u128→u64: LLM call duration fits in u64"
                         )]
                         {
                             tracing::Span::current()
@@ -374,7 +377,8 @@ impl AnthropicProvider {
                     self.health.record_error(&e);
                     #[expect(
                         clippy::cast_possible_truncation,
-                        reason = "LLM call duration fits in u64"
+                        clippy::as_conversions,
+                        reason = "u128→u64: LLM call duration fits in u64"
                     )]
                     {
                         tracing::Span::current()
@@ -389,7 +393,8 @@ impl AnthropicProvider {
 
         #[expect(
             clippy::cast_possible_truncation,
-            reason = "LLM call duration fits in u64"
+            clippy::as_conversions,
+            reason = "u128→u64: LLM call duration fits in u64"
         )]
         {
             tracing::Span::current().record("llm.duration_ms", start.elapsed().as_millis() as u64);
@@ -557,7 +562,8 @@ impl AnthropicProvider {
                     self.health.record_success();
                     #[expect(
                         clippy::cast_possible_truncation,
-                        reason = "LLM call duration fits in u64"
+                        clippy::as_conversions,
+                        reason = "u128→u64: LLM call duration fits in u64"
                     )]
                     {
                         tracing::Span::current()
@@ -612,7 +618,8 @@ impl AnthropicProvider {
             if status == 401 || ((400..500).contains(&status) && status != 429) {
                 #[expect(
                     clippy::cast_possible_truncation,
-                    reason = "LLM call duration fits in u64"
+                    clippy::as_conversions,
+                    reason = "u128→u64: LLM call duration fits in u64"
                 )]
                 {
                     tracing::Span::current()
@@ -634,7 +641,8 @@ impl AnthropicProvider {
 
         #[expect(
             clippy::cast_possible_truncation,
-            reason = "LLM call duration fits in u64"
+            clippy::as_conversions,
+            reason = "u128→u64: LLM call duration fits in u64"
         )]
         {
             tracing::Span::current().record("llm.duration_ms", start.elapsed().as_millis() as u64);
@@ -713,10 +721,6 @@ fn model_family(model: &str) -> &str {
 ///    `claude-sonnet-4-20250514`).
 ///
 /// Returns `0.0` and logs a warning when neither lookup succeeds.
-#[expect(
-    clippy::cast_precision_loss,
-    reason = "token counts are small enough for f64 precision"
-)]
 fn estimate_cost(
     pricing: &HashMap<String, ModelPricing>,
     model: &str,
@@ -745,8 +749,16 @@ fn estimate_cost(
             return 0.0;
         }
     };
-    (input_tokens as f64 * p.input_cost_per_mtok + output_tokens as f64 * p.output_cost_per_mtok)
-        / 1_000_000.0
+    #[expect(
+        clippy::cast_precision_loss,
+        clippy::as_conversions,
+        reason = "u64→f64 for token counts: acceptable precision loss for cost estimates"
+    )]
+    {
+        (input_tokens as f64 * p.input_cost_per_mtok
+            + output_tokens as f64 * p.output_cost_per_mtok)
+            / 1_000_000.0
+    }
 }
 
 pub(crate) fn backoff_delay(attempt: u32, last_error: Option<&error::Error>) -> Duration {
