@@ -8,6 +8,10 @@ use std::sync::Arc;
 use crossbeam::channel::{Receiver, Sender, bounded};
 
 pub mod error;
+#[expect(
+    clippy::expect_used,
+    reason = "vendored CozoDB engine — Mutex poisoning is unrecoverable in cache internals"
+)]
 pub mod query_cache;
 pub use error::{Error, Result};
 pub use query_cache::{QueryCache, QueryCacheStats};
@@ -59,7 +63,6 @@ pub(crate) mod fixed_rule;
 )]
 pub(crate) mod fts;
 #[expect(
-    private_interfaces,
     clippy::pedantic,
     clippy::needless_return,
     clippy::result_large_err,
@@ -77,6 +80,7 @@ pub(crate) mod parse;
 )]
 pub(crate) mod query;
 #[expect(
+    dead_code,
     private_interfaces,
     clippy::pedantic,
     clippy::mutable_key_type,
@@ -88,6 +92,7 @@ pub(crate) mod query;
 )]
 pub(crate) mod runtime;
 #[expect(
+    dead_code,
     clippy::pedantic,
     clippy::result_large_err,
     clippy::type_complexity,
