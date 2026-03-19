@@ -200,3 +200,286 @@ Router auto-failover handles 429/5xx across providers. Expired OAuth tokens need
 ## Pre-restart checklist
 
 Always run `aletheia health` before restarting. Fix reported failures first - restarting with broken dependencies adds confusion.
+
+---
+
+## DB inspection queries
+
+The session store is a SQLite database at `instance/data/sessions.db`.
+
+```bash
+sqlite3 instance/data/sessions.db
+```
+
+### Active session count per agent
+
+```sql
+SELECT nous_id, COUNT(*) AS active_sessions
+FROM sessions
+WHERE status = 'active'
+GROUP BY nous_id;
+```
+
+### Recent sessions with message counts
+
+```sql
+SELECT id, nous_id, status, message_count, token_count_estimate, created_at
+FROM sessions
+ORDER BY created_at DESC
+LIMIT 20;
+```
+
+### Token usage by model over the last 7 days
+
+```sql
+SELECT model,
+       SUM(input_tokens)       AS total_input,
+       SUM(output_tokens)      AS total_output,
+       SUM(cache_read_tokens)  AS cache_hits,
+       SUM(cache_write_tokens) AS cache_writes,
+       COUNT(*)                AS turns
+FROM usage
+WHERE created_at >= datetime('now', '-7 days')
+GROUP BY model
+ORDER BY total_output DESC;
+```
+
+### Large sessions (over 50k tokens)
+
+```sql
+SELECT id, nous_id, token_count_estimate, message_count, status, created_at
+FROM sessions
+WHERE token_count_estimate > 50000
+ORDER BY token_count_estimate DESC;
+```
+
+### Recent agent notes
+
+```sql
+SELECT n.nous_id, n.category, n.content, n.created_at
+FROM agent_notes n
+ORDER BY n.created_at DESC
+LIMIT 20;
+```
+
+### Distillation history
+
+```sql
+SELECT session_id, messages_before, messages_after,
+       tokens_before, tokens_after, facts_extracted, model, created_at
+FROM distillations
+ORDER BY created_at DESC
+LIMIT 10;
+```
+
+### Orphaned messages (no parent session)
+
+```sql
+SELECT COUNT(*) AS orphan_count
+FROM messages m
+LEFT JOIN sessions s ON s.id = m.session_id
+WHERE s.id IS NULL;
+```
+
+---
+
+## Credential rotation
+
+### Check current credential status
+
+```bash
+aletheia credential status
+```
+
+### OAuth token (auto-refresh)
+
+Tokens are refreshed automatically before expiry. To force a refresh:
+
+```bash
+aletheia credential refresh
+```
+
+If refresh fails (e.g. revoked grant), re-authenticate:
+
+1. Remove the stale credential: `rm instance/config/credentials/anthropic.json`
+2. Obtain a new token from [claude.ai](https://claude.ai) or via the Anthropic console.
+3. Either set `ANTHROPIC_API_KEY` in the environment, or write the JSON credential file.
+4. Verify: `aletheia credential status`
+
+### Static API key rotation
+
+1. Generate a new key in the Anthropic console.
+2. Update `instance/config/aletheia.toml`:
+   ```toml
+   [provider]
+   api_key = "sk-ant-..."
+   ```
+   Or set the environment variable `ANTHROPIC_API_KEY`.
+3. Restart the service: `systemctl --user restart aletheia`
+4. Confirm: `aletheia health`
+
+### Verify the new key is live
+
+```bash
+journalctl --user -u aletheia --since "1 minute ago" | grep -E "401|403|credential|auth"
+# No auth errors = rotation successful
+```
+
+---
+
+## Performance debugging
+
+### Check current system status
+
+```bash
+aletheia status          # agent states, session counts, cron schedule
+aletheia health          # LLM connectivity and cost
+```
+
+### Identify slow sessions
+
+Sessions with high token counts can slow LLM round-trips. Find them:
+
+```sql
+-- In sqlite3 instance/data/sessions.db
+SELECT id, nous_id, token_count_estimate, message_count, status
+FROM sessions
+WHERE status = 'active' AND token_count_estimate > 30000
+ORDER BY token_count_estimate DESC;
+```
+
+Archive overloaded sessions:
+
+```bash
+curl -sf -X POST http://localhost:18789/api/v1/sessions/<id>/archive \
+  -H "Authorization: Bearer <token>"
+```
+
+### Prometheus metrics
+
+```bash
+curl -sf http://localhost:18789/metrics | grep aletheia
+```
+
+Key metrics:
+- `aletheia_llm_request_duration_seconds` — LLM latency distribution
+- `aletheia_llm_ttft_seconds` — time-to-first-token
+- `aletheia_llm_input_tokens_total` / `aletheia_llm_output_tokens_total` — throughput
+- `aletheia_llm_cache_tokens_total{type="read"}` — prompt cache hit rate
+
+### Maintenance task status
+
+```bash
+aletheia maintenance status
+```
+
+Run a specific task manually:
+
+```bash
+aletheia maintenance run trace-rotation --verbose
+aletheia maintenance run drift-detection --verbose
+aletheia maintenance run db-monitor --verbose
+```
+
+### Log latency spikes
+
+```bash
+journalctl --user -u aletheia --since "1 hour ago" | grep -E "latency|slow|timeout|ms\b"
+```
+
+---
+
+## Backup and restore
+
+### Create a backup
+
+```bash
+aletheia backup
+# Writes instance/data/backups/sessions_<timestamp>.db
+```
+
+### List available backups
+
+```bash
+aletheia backup --list
+aletheia backup --list --json    # machine-readable
+```
+
+### Restore from backup
+
+The backup is a complete SQLite copy. To restore:
+
+```bash
+systemctl --user stop aletheia
+cp instance/data/backups/sessions_<timestamp>.db instance/data/sessions.db
+systemctl --user start aletheia
+aletheia health
+```
+
+### Prune old backups
+
+```bash
+aletheia backup --prune --keep 5    # interactive
+aletheia backup --prune --keep 5 --yes    # skip confirmation
+```
+
+### Export sessions as JSON (before deletion)
+
+```bash
+aletheia backup --export-json
+# Writes to instance/data/archive/sessions/
+```
+
+### Verify backup integrity
+
+```bash
+sqlite3 instance/data/backups/sessions_<timestamp>.db "PRAGMA integrity_check;"
+sqlite3 instance/data/backups/sessions_<timestamp>.db "SELECT COUNT(*) FROM sessions;"
+```
+
+---
+
+## Log analysis
+
+### Live log tail
+
+```bash
+journalctl --user -u aletheia -f
+```
+
+### Last hour of errors
+
+```bash
+journalctl --user -u aletheia --since "1 hour ago" --priority err..warning
+```
+
+### Search for specific patterns
+
+```bash
+# Auth / credential failures
+journalctl --user -u aletheia --since "1 hour ago" | grep -E "401|403|auth|credential|expired"
+
+# Rate limiting
+journalctl --user -u aletheia --since "1 hour ago" | grep -E "429|rate.limit|retry.after"
+
+# LLM provider errors
+journalctl --user -u aletheia --since "1 hour ago" | grep -E "500|503|provider|hermeneus"
+
+# Session activity
+journalctl --user -u aletheia --since "1 hour ago" | grep -E "session|nous_id"
+```
+
+### Export logs to file
+
+```bash
+journalctl --user -u aletheia --since "24 hours ago" --output cat > /tmp/aletheia.log
+```
+
+### Log verbosity
+
+Increase log detail at runtime by setting `RUST_LOG` before starting:
+
+```bash
+RUST_LOG=aletheia=debug aletheia
+RUST_LOG=aletheia_hermeneus=trace,aletheia=info aletheia   # LLM-only trace
+```
