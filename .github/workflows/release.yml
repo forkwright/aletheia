@@ -77,17 +77,25 @@ jobs:
 
       - name: Build (native)
         if: ${{ !matrix.cross }}
-        run: cargo build --release --target ${{ matrix.target }} --features recall,embed-candle
+        run: cargo build --release --target "$BUILD_TARGET" --features recall,embed-candle
+        env:
+          BUILD_TARGET: ${{ matrix.target }}
 
       - name: Build (cross)
         if: ${{ matrix.cross }}
-        run: cross build --release --target ${{ matrix.target }} --features recall,embed-candle
+        run: cross build --release --target "$BUILD_TARGET" --features recall,embed-candle
+        env:
+          BUILD_TARGET: ${{ matrix.target }}
 
       - name: Rename binary
         run: |
-          bin="${{ matrix.artifact }}-${{ steps.version.outputs.version }}"
-          cp "target/${{ matrix.target }}/release/aletheia" "$bin"
+          bin="${ARTIFACT}-${VERSION}"
+          cp "target/${BUILD_TARGET}/release/aletheia" "$bin"
           echo "BIN=$bin" >> "$GITHUB_ENV"
+        env:
+          ARTIFACT: ${{ matrix.artifact }}
+          VERSION: ${{ steps.version.outputs.version }}
+          BUILD_TARGET: ${{ matrix.target }}
 
       - name: Generate checksum (Linux)
         if: runner.os == 'Linux'

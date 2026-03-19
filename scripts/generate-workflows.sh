@@ -142,13 +142,19 @@ jobs:
       - name: Install cargo-nextest
         uses: taiki-e/install-action@e24b8b7a939c6a537188f34a4163cb153dd85cf6 # v2
         with:
+<<<<<<< Updated upstream
           tool: cargo-nextest
+=======
+          tool: nextest
+>>>>>>> Stashed changes
 
       - name: "Test (shard \${{ matrix.shard }}/${SHARDS})"
+        env:
+          SHARD: \${{ matrix.shard }}
         run: |
           cargo nextest run \\
             --workspace \\
-            --partition hash:\${{ matrix.shard }}/${SHARDS}
+            --partition "hash:\${SHARD}/${SHARDS}"
 
   # WHY: Gate merges on all shards passing. A single required status check
   # per "fan-in" job is simpler than listing N individual shard jobs in
@@ -160,10 +166,11 @@ jobs:
     if: always()
     steps:
       - name: Check all shards succeeded
+        env:
+          SHARD_RESULT: \${{ needs.test-shard.result }}
         run: |
-          result="\${{ needs.test-shard.result }}"
-          if [[ "\$result" != "success" ]]; then
-            printf 'One or more test shards failed (result: %s)\\n' "\$result" >&2
+          if [[ "\$SHARD_RESULT" != "success" ]]; then
+            printf 'One or more test shards failed (result: %s)\\n' "\$SHARD_RESULT" >&2
             exit 1
           fi
 YAML
