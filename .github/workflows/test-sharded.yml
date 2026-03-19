@@ -57,7 +57,9 @@ jobs:
           key: shard-${{ matrix.shard }}
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@64b66df73c70298e1ad1a8d1ef49e06da2db64c8 # nextest
+        uses: taiki-e/install-action@e24b8b7a939c6a537188f34a4163cb153dd85cf6 # v2
+        with:
+          tool: cargo-nextest
 
       - name: "Test (shard ${{ matrix.shard }}/4)"
         run: |
