@@ -481,6 +481,7 @@ mod tests {
 
     #[tokio::test]
     async fn message_rejects_over_4000_chars() {
+        install_crypto_provider();
         let messenger = Arc::new(MockMessenger::default());
         let ctx = test_ctx_with_services(ToolServices {
             cross_nous: None,
@@ -508,6 +509,7 @@ mod tests {
 
     #[tokio::test]
     async fn message_sends_via_signal() {
+        install_crypto_provider();
         let messenger = Arc::new(MockMessenger::default());
         let messenger_ref = Arc::clone(&messenger);
         let ctx = test_ctx_with_services(ToolServices {

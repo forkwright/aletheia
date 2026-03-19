@@ -15,6 +15,7 @@ aletheia-hermeneus = { path = "../hermeneus" }
 aletheia-koina = { path = "../koina" }
 base64 = { workspace = true }
 indexmap = { workspace = true }
+jiff = { workspace = true }
 prometheus = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }

@@ -1,12 +1,16 @@
 //! Embedded Datalog engine with HNSW and graph support.
 
 use std::collections::BTreeMap;
+use std::num::NonZeroUsize;
 use std::path::Path;
+use std::sync::Arc;
 
 use crossbeam::channel::{Receiver, Sender, bounded};
 
 pub mod error;
+pub mod query_cache;
 pub use error::{Error, Result};
+pub use query_cache::{QueryCache, QueryCacheStats};
 
 pub use crate::engine::data::value::{DataValue, ValidityTs, Vector};
 pub use crate::engine::fixed_rule::{FixedRule, FixedRuleInputRelation, FixedRulePayload};
@@ -116,9 +120,8 @@ fn convert_internal(e: crate::engine::error::InternalError) -> Error {
     }
 }
 
-/// Public facade replacing `DbInstance`. Dispatches to concrete storage implementations.
-#[non_exhaustive]
-pub enum Db {
+/// Internal dispatch enum — one variant per storage backend.
+enum DbInner {
     /// In-memory storage backend.
     Mem(crate::engine::runtime::db::Db<MemStorage>),
     #[cfg(feature = "storage-fjall")]
@@ -126,15 +129,46 @@ pub enum Db {
     Fjall(crate::engine::runtime::db::Db<FjallStorage>),
 }
 
+impl DbInner {
+    fn run_multi_transaction_inner(
+        self,
+        write: bool,
+        payloads: Receiver<TransactionPayload>,
+        results: Sender<crate::engine::error::InternalResult<NamedRows>>,
+    ) {
+        match self {
+            DbInner::Mem(db) => db.run_multi_transaction(write, payloads, results),
+            #[cfg(feature = "storage-fjall")]
+            DbInner::Fjall(db) => db.run_multi_transaction(write, payloads, results),
+        }
+    }
+}
+
+/// Public facade for the Datalog engine. Dispatches to a concrete storage backend.
+///
+/// Obtain an instance via [`Db::open_mem`] or [`Db::open_fjall`]. Attach an
+/// optional LRU query cache with [`Db::with_cache`] to track hit/miss metrics
+/// for repeated Datalog queries.
+pub struct Db {
+    inner: DbInner,
+    /// Optional LRU cache that records whether each normalized query string has
+    /// been seen before, exposing hit/miss metrics for observability.
+    cache: Option<Arc<QueryCache>>,
+}
+
 #[expect(
     clippy::result_large_err,
     reason = "engine Error carries structured context — boxing deferred to avoid API churn"
 )]
 impl Db {
+    fn new(inner: DbInner) -> Self {
+        Self { inner, cache: None }
+    }
+
     /// Open an in-memory database.
     pub fn open_mem() -> crate::engine::Result<Self> {
         crate::engine::storage::mem::new_mem_db()
-            .map(Db::Mem)
+            .map(|db| Self::new(DbInner::Mem(db)))
             .map_err(convert_internal)
     }
 
@@ -145,21 +179,48 @@ impl Db {
     #[cfg(feature = "storage-fjall")]
     pub fn open_fjall(path: impl AsRef<Path>) -> crate::engine::Result<Self> {
         crate::engine::storage::fjall_backend::new_cozo_fjall(path)
-            .map(Db::Fjall)
+            .map(|db| Self::new(DbInner::Fjall(db)))
             .map_err(convert_internal)
     }
 
+    /// Attach an LRU query cache with the given capacity.
+    ///
+    /// Once attached, every [`Db::run`] call checks the normalized query
+    /// against the cache and records a hit or miss. Retrieve statistics with
+    /// [`Db::cache_stats`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if `capacity` is zero (use [`NonZeroUsize`]).
+    #[must_use]
+    pub fn with_cache(mut self, capacity: NonZeroUsize) -> Self {
+        self.cache = Some(Arc::new(QueryCache::new(capacity)));
+        self
+    }
+
+    /// Return a snapshot of query cache statistics, or `None` if no cache is attached.
+    #[must_use]
+    pub fn cache_stats(&self) -> Option<QueryCacheStats> {
+        self.cache.as_ref().map(|c| c.stats())
+    }
+
     /// Execute a Datalog script.
+    ///
+    /// If a query cache is attached, the normalized query string is checked
+    /// before execution and the hit/miss counter is updated.
     pub fn run(
         &self,
         script: &str,
         params: BTreeMap<String, DataValue>,
         mutability: ScriptMutability,
     ) -> crate::engine::Result<NamedRows> {
-        let result = match self {
-            Db::Mem(db) => db.run_script(script, params, mutability),
+        if let Some(cache) = &self.cache {
+            cache.check(script);
+        }
+        let result = match &self.inner {
+            DbInner::Mem(db) => db.run_script(script, params, mutability),
             #[cfg(feature = "storage-fjall")]
-            Db::Fjall(db) => db.run_script(script, params, mutability),
+            DbInner::Fjall(db) => db.run_script(script, params, mutability),
         };
         result.map_err(convert_internal)
     }
@@ -178,10 +239,10 @@ impl Db {
     /// Not currently supported: requires the removed `storage-sqlite` feature.
     pub fn backup_db(&self, out_file: impl AsRef<Path>) -> crate::engine::Result<()> {
         let path = out_file.as_ref();
-        let result = match self {
-            Db::Mem(db) => db.backup_db(path),
+        let result = match &self.inner {
+            DbInner::Mem(db) => db.backup_db(path),
             #[cfg(feature = "storage-fjall")]
-            Db::Fjall(db) => db.backup_db(path),
+            DbInner::Fjall(db) => db.backup_db(path),
         };
         result.map_err(convert_internal)
     }
@@ -191,10 +252,10 @@ impl Db {
     /// Not currently supported: requires the removed `storage-sqlite` feature.
     pub fn restore_backup(&self, in_file: impl AsRef<Path>) -> crate::engine::Result<()> {
         let path = in_file.as_ref();
-        let result = match self {
-            Db::Mem(db) => db.restore_backup(path),
+        let result = match &self.inner {
+            DbInner::Mem(db) => db.restore_backup(path),
             #[cfg(feature = "storage-fjall")]
-            Db::Fjall(db) => db.restore_backup(path),
+            DbInner::Fjall(db) => db.restore_backup(path),
         };
         result.map_err(convert_internal)
     }
@@ -208,10 +269,10 @@ impl Db {
         relations: &[String],
     ) -> crate::engine::Result<()> {
         let path = in_file.as_ref();
-        let result = match self {
-            Db::Mem(db) => db.import_from_backup(path, relations),
+        let result = match &self.inner {
+            DbInner::Mem(db) => db.import_from_backup(path, relations),
             #[cfg(feature = "storage-fjall")]
-            Db::Fjall(db) => db.import_from_backup(path, relations),
+            DbInner::Fjall(db) => db.import_from_backup(path, relations),
         };
         result.map_err(convert_internal)
     }
@@ -225,20 +286,20 @@ impl Db {
         I: Iterator<Item = T>,
         T: AsRef<str>,
     {
-        let result = match self {
-            Db::Mem(db) => db.export_relations(relations),
+        let result = match &self.inner {
+            DbInner::Mem(db) => db.export_relations(relations),
             #[cfg(feature = "storage-fjall")]
-            Db::Fjall(db) => db.export_relations(relations),
+            DbInner::Fjall(db) => db.export_relations(relations),
         };
         result.map_err(convert_internal)
     }
 
     /// Import relations from backup.
     pub fn import_relations(&self, data: BTreeMap<String, NamedRows>) -> crate::engine::Result<()> {
-        let result = match self {
-            Db::Mem(db) => db.import_relations(data),
+        let result = match &self.inner {
+            DbInner::Mem(db) => db.import_relations(data),
             #[cfg(feature = "storage-fjall")]
-            Db::Fjall(db) => db.import_relations(data),
+            DbInner::Fjall(db) => db.import_relations(data),
         };
         result.map_err(convert_internal)
     }
@@ -249,10 +310,10 @@ impl Db {
         name: String,
         rule: R,
     ) -> crate::engine::Result<()> {
-        let result = match self {
-            Db::Mem(db) => db.register_fixed_rule(name, rule),
+        let result = match &self.inner {
+            DbInner::Mem(db) => db.register_fixed_rule(name, rule),
             #[cfg(feature = "storage-fjall")]
-            Db::Fjall(db) => db.register_fixed_rule(name, rule),
+            DbInner::Fjall(db) => db.register_fixed_rule(name, rule),
         };
         result.map_err(convert_internal)
     }
@@ -268,10 +329,10 @@ impl Db {
         u32,
         crossbeam::channel::Receiver<(CallbackOp, NamedRows, NamedRows)>,
     ) {
-        match self {
-            Db::Mem(db) => db.register_callback(relation, capacity),
+        match &self.inner {
+            DbInner::Mem(db) => db.register_callback(relation, capacity),
             #[cfg(feature = "storage-fjall")]
-            Db::Fjall(db) => db.register_callback(relation, capacity),
+            DbInner::Fjall(db) => db.register_callback(relation, capacity),
         }
     }
 
@@ -293,32 +354,10 @@ impl Db {
     }
 
     fn clone_inner(&self) -> DbInner {
-        match self {
-            Db::Mem(db) => DbInner::Mem(db.clone()),
+        match &self.inner {
+            DbInner::Mem(db) => DbInner::Mem(db.clone()),
             #[cfg(feature = "storage-fjall")]
-            Db::Fjall(db) => DbInner::Fjall(db.clone()),
-        }
-    }
-}
-
-/// Internal enum for owned clones used in spawned tasks.
-enum DbInner {
-    Mem(crate::engine::runtime::db::Db<MemStorage>),
-    #[cfg(feature = "storage-fjall")]
-    Fjall(crate::engine::runtime::db::Db<FjallStorage>),
-}
-
-impl DbInner {
-    fn run_multi_transaction_inner(
-        self,
-        write: bool,
-        payloads: Receiver<TransactionPayload>,
-        results: Sender<crate::engine::error::InternalResult<NamedRows>>,
-    ) {
-        match self {
-            DbInner::Mem(db) => db.run_multi_transaction(write, payloads, results),
-            #[cfg(feature = "storage-fjall")]
-            DbInner::Fjall(db) => db.run_multi_transaction(write, payloads, results),
+            DbInner::Fjall(db) => DbInner::Fjall(db.clone()),
         }
     }
 }
@@ -410,4 +449,65 @@ mod safety_assertions {
     assert_impl_all!(crate::engine::runtime::db::Db<crate::engine::storage::mem::MemStorage>: Send, Sync);
     #[cfg(feature = "storage-fjall")]
     assert_impl_all!(crate::engine::runtime::db::Db<crate::engine::storage::fjall_backend::FjallStorage>: Send, Sync);
+}
+
+#[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+mod db_cache_tests {
+    use std::collections::BTreeMap;
+    use std::num::NonZeroUsize;
+
+    use super::Db;
+    use crate::engine::runtime::db::ScriptMutability;
+
+    #[test]
+    fn cache_stats_none_without_cache() {
+        let db = Db::open_mem().expect("open_mem should succeed");
+        assert!(
+            db.cache_stats().is_none(),
+            "cache_stats should be None when no cache is attached"
+        );
+    }
+
+    #[test]
+    fn cache_tracks_misses_and_hits() {
+        let db = Db::open_mem()
+            .expect("open_mem should succeed")
+            .with_cache(NonZeroUsize::new(16).expect("16 is non-zero"));
+
+        let script = "?[x] := x = 1";
+        let _ = db.run(script, BTreeMap::new(), ScriptMutability::Immutable);
+        let _ = db.run(script, BTreeMap::new(), ScriptMutability::Immutable);
+
+        let stats = db
+            .cache_stats()
+            .expect("cache_stats should be Some after with_cache");
+        assert_eq!(stats.misses, 1, "first run should be a cache miss");
+        assert_eq!(stats.hits, 1, "second identical run should be a cache hit");
+    }
+
+    #[test]
+    fn cache_normalizes_whitespace() {
+        let db = Db::open_mem()
+            .expect("open_mem should succeed")
+            .with_cache(NonZeroUsize::new(16).expect("16 is non-zero"));
+
+        let _ = db.run(
+            "?[x] := x = 1",
+            BTreeMap::new(),
+            ScriptMutability::Immutable,
+        );
+        // Same query with extra whitespace — should hit.
+        let _ = db.run(
+            "  ?[x]   :=  x  =  1  ",
+            BTreeMap::new(),
+            ScriptMutability::Immutable,
+        );
+
+        let stats = db.cache_stats().expect("cache_stats should be Some");
+        assert_eq!(
+            stats.hits, 1,
+            "whitespace-normalized query should be a cache hit"
+        );
+    }
 }
