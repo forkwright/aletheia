@@ -7,6 +7,10 @@ use std::borrow::Cow;
 /// Strips all terminal escape sequences (CSI, OSC, DCS, APC, SOS, PM)
 /// and replaces dangerous C0/C1 control characters with safe alternatives.
 /// Returns `Cow::Borrowed` when the input requires no modification.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "all byte accesses are guarded by `i < len` or `i + 1 < len` checks in the enclosing while/if conditions"
+)]
 pub fn sanitize_for_display(s: &str) -> Cow<'_, str> {
     if !needs_sanitization(s) {
         return Cow::Borrowed(s);
@@ -175,6 +179,10 @@ fn needs_sanitization(s: &str) -> bool {
 }
 
 /// Skip a CSI sequence: parameters (0x30-0x3F), intermediates (0x20-0x2F), final byte (0x40-0x7E).
+#[expect(
+    clippy::indexing_slicing,
+    reason = "all byte accesses are guarded by `i < len` in the enclosing while/if conditions"
+)]
 fn skip_csi(bytes: &[u8], start: usize) -> usize {
     let mut i = start;
     let len = bytes.len();
@@ -191,6 +199,10 @@ fn skip_csi(bytes: &[u8], start: usize) -> usize {
 }
 
 /// Skip an OSC sequence terminated by BEL (0x07) or ST (ESC \ or 0x9C).
+#[expect(
+    clippy::indexing_slicing,
+    reason = "all byte accesses are guarded by `i < len` in the enclosing while conditions"
+)]
 fn skip_osc(bytes: &[u8], start: usize) -> usize {
     let mut i = start;
     let len = bytes.len();
@@ -212,6 +224,10 @@ fn skip_osc(bytes: &[u8], start: usize) -> usize {
 }
 
 /// Skip until ST (ESC \ or 8-bit ST). Used for DCS, APC, SOS, PM.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "all byte accesses are guarded by `i < len` in the enclosing while conditions"
+)]
 fn skip_until_st(bytes: &[u8], start: usize) -> usize {
     let mut i = start;
     let len = bytes.len();
@@ -267,6 +283,10 @@ fn control_picture(byte: u8) -> char {
 }
 
 /// Decode a single UTF-8 character from a byte slice, returning the char and its byte length.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "start is always a valid index: callers only call this after the outer loop has verified i < len"
+)]
 fn decode_utf8_char(bytes: &[u8], start: usize) -> Option<(char, usize)> {
     let remaining = &bytes[start..];
     let s = std::str::from_utf8(remaining).ok()?;

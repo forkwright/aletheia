@@ -693,6 +693,10 @@ fn render_session_search(
 }
 
 /// Create a centered rect within the given area.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "Layout.split() returns exactly as many Rects as constraints; [1] is valid for both 3-element constraint arrays"
+)]
 fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
     let popup_layout = Layout::default()
         .direction(Direction::Vertical)

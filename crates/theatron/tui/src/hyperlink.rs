@@ -138,6 +138,10 @@ pub fn detect_urls(text: &str) -> Vec<(usize, usize, &str)> {
 }
 
 /// Returns the byte length of `url` with trailing punctuation stripped.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "end is decremented only after a guard `end == 0` break, so end - 1 is always in bounds"
+)]
 fn trim_trailing_punct(url: &str) -> usize {
     let bytes = url.as_bytes();
     let mut end = bytes.len();

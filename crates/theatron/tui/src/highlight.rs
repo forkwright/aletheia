@@ -30,6 +30,10 @@ impl Highlighter {
 
     /// Highlight a code block, returning ratatui Lines.
     /// Falls back to plain text if the language isn't recognized.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "theme_name is set in new() to a string constant guaranteed to exist in the default ThemeSet; key absence would be a programming error"
+    )]
     pub fn highlight(&self, code: &str, lang: &str) -> Vec<Line<'static>> {
         let theme = &self.theme_set.themes[self.theme_name];
 

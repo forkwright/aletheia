@@ -215,6 +215,10 @@ fn estimate_cursor_line(overlay: &SettingsOverlay) -> usize {
     line
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "Layout.split() returns exactly as many Rects as constraints; [1] is valid for both 3-element constraint arrays"
+)]
 fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
     let v = Layout::default()
         .direction(Direction::Vertical)

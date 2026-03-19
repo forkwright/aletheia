@@ -59,6 +59,10 @@ pub(super) fn linkify_text(
 }
 
 /// Render a table with box-drawing characters.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "i < num_cols guard ensures i is within col_widths (len == num_cols)"
+)]
 pub(super) fn render_table(rows: &[Vec<String>], lines: &mut Vec<Line<'static>>, theme: &Theme) {
     if rows.is_empty() {
         return;

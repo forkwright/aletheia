@@ -73,6 +73,10 @@ pub(crate) async fn handle_focus_agent(app: &mut App, id: NousId) {
     app.restore_scroll_state();
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "next = (idx+1) % agents.len(), always a valid index; non-empty guard at top ensures agents.len() > 0"
+)]
 pub(crate) async fn handle_next_agent(app: &mut App) {
     if app.dashboard.agents.is_empty() {
         return;
@@ -89,6 +93,10 @@ pub(crate) async fn handle_next_agent(app: &mut App) {
     }
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "prev is either agents.len()-1 or idx-1, both valid due to non-empty guard at function top"
+)]
 pub(crate) async fn handle_prev_agent(app: &mut App) {
     if app.dashboard.agents.is_empty() {
         return;
