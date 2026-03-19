@@ -5,6 +5,7 @@ use std::fmt;
 
 use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 /// Generate a newtype ID wrapper around a string-like inner type.
 ///
@@ -181,54 +182,32 @@ impl From<NousId> for String {
     }
 }
 
-/// A session identifier. ULID-based, globally unique.
+/// A session identifier. UUID v4-based, cryptographically random (128-bit).
+///
+/// WHY: ULID uses only 80 bits of randomness; UUID v4 provides 122 bits,
+/// eliminating any practical guessability risk for session tokens.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct SessionId(ulid::Ulid);
+pub struct SessionId(Uuid);
 
 impl SessionId {
-    /// Generate a new session ID.
+    /// Generate a new session ID using UUID v4 (128-bit random).
     #[must_use]
     pub fn new() -> Self {
-        Self(ulid::Ulid::new())
+        Self(Uuid::new_v4())
     }
 
-    /// Create from an existing ULID.
-    #[must_use]
-    pub fn from_ulid(ulid: ulid::Ulid) -> Self {
-        Self(ulid)
-    }
-
-    /// Parse from a ULID string.
+    /// Parse from a UUID string (hyphenated format).
     ///
     /// # Errors
-    /// Returns an error if the string is not a valid ULID.
+    /// Returns an error if the string is not a valid UUID.
     pub fn parse(s: &str) -> Result<Self, IdError> {
-        let ulid = s
-            .parse::<ulid::Ulid>()
+        Uuid::parse_str(s)
+            .map(Self)
             .map_err(|e| IdError::InvalidFormat {
                 kind: "SessionId",
                 value: s.to_owned(),
                 reason: e.to_string(),
-            })?;
-        Ok(Self(ulid))
-    }
-
-    /// The underlying ULID.
-    #[must_use]
-    pub fn as_ulid(&self) -> ulid::Ulid {
-        self.0
-    }
-}
-
-impl From<ulid::Ulid> for SessionId {
-    fn from(ulid: ulid::Ulid) -> Self {
-        Self(ulid)
-    }
-}
-
-impl From<SessionId> for ulid::Ulid {
-    fn from(id: SessionId) -> Self {
-        id.0
+            })
     }
 }
 
@@ -240,7 +219,7 @@ impl Default for SessionId {
 
 impl fmt::Display for SessionId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
+        write!(f, "{}", self.0.hyphenated())
     }
 }
 
@@ -572,16 +551,20 @@ mod tests {
     #[test]
     fn session_id_parse_invalid() {
         assert!(SessionId::parse("").is_err());
-        assert!(SessionId::parse("not-a-ulid").is_err());
+        assert!(SessionId::parse("not-a-uuid").is_err());
         assert!(SessionId::parse("too-short").is_err());
     }
 
     #[test]
-    fn session_id_display_is_ulid_format() {
+    fn session_id_display_is_uuid_format() {
         let id = SessionId::new();
         let s = id.to_string();
-        assert_eq!(s.len(), 26);
-        assert!(s.chars().all(|c| c.is_ascii_alphanumeric()));
+        // UUID hyphenated format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx (36 chars)
+        assert_eq!(s.len(), 36, "session ID must be 36-char hyphenated UUID");
+        assert!(
+            s.chars().all(|c| c.is_ascii_hexdigit() || c == '-'),
+            "session ID must be hex and hyphens"
+        );
     }
 
     #[test]
@@ -615,19 +598,11 @@ mod tests {
     }
 
     #[test]
-    fn session_id_from_ulid_roundtrip() {
-        let ulid = ulid::Ulid::new();
-        let id = SessionId::from(ulid);
-        let back: ulid::Ulid = id.into();
-        assert_eq!(ulid, back);
-    }
-
-    #[test]
-    fn session_id_from_ulid_matches_from_ulid_method() {
-        let ulid = ulid::Ulid::new();
-        let from_trait = SessionId::from(ulid);
-        let from_method = SessionId::from_ulid(ulid);
-        assert_eq!(from_trait, from_method);
+    fn session_id_parse_roundtrip_uuid() {
+        let id = SessionId::new();
+        let s = id.to_string();
+        let back = SessionId::parse(&s).unwrap();
+        assert_eq!(id, back, "parse-roundtrip must be identity");
     }
 
     #[test]

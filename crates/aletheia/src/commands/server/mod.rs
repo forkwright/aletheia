@@ -109,15 +109,14 @@ pub(crate) async fn run(args: Args) -> Result<()> {
     info!("config validated");
 
     // JWT key validation: fail if auth mode requires JWT and the key is still the placeholder.
-    let jwt_key = config
-        .gateway
-        .auth
-        .signing_key
-        .clone()
-        .or_else(|| std::env::var("ALETHEIA_JWT_SECRET").ok());
+    let jwt_key: Option<SecretString> = config.gateway.auth.signing_key.clone().or_else(|| {
+        std::env::var("ALETHEIA_JWT_SECRET")
+            .ok()
+            .map(SecretString::from)
+    });
     let jwt_config = match jwt_key {
         Some(k) => JwtConfig {
-            signing_key: SecretString::from(k),
+            signing_key: k,
             ..JwtConfig::default()
         },
         None => JwtConfig::default(),

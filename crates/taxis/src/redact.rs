@@ -76,7 +76,9 @@ mod tests {
     #[test]
     fn redacts_gateway_signing_key() {
         let mut config = AletheiaConfig::default();
-        config.gateway.auth.signing_key = Some("super-secret-jwt-signing-key".to_owned());
+        config.gateway.auth.signing_key = Some(aletheia_koina::secret::SecretString::from(
+            "super-secret-jwt-signing-key",
+        ));
 
         let redacted = redact(&config);
         assert_eq!(redacted["gateway"]["auth"]["signingKey"], REDACTED);
