@@ -58,6 +58,12 @@ impl NousHandle {
     /// When `session_id` is `Some`, the actor adopts this ID for its in-memory
     /// `SessionState` instead of generating a new one. This prevents divergence
     /// between the HTTP-layer session ID and the actor's internal ID.
+    ///
+    /// # Cancel safety
+    ///
+    /// Not cancel-safe. If cancelled after `mpsc::send` completes but before
+    /// `oneshot::recv` returns, the message is consumed by the actor but the
+    /// reply is lost. Do not use this in `select!` branches.
     pub async fn send_turn_with_session_id(
         &self,
         session_key: impl Into<String>,
@@ -83,6 +89,12 @@ impl NousHandle {
     }
 
     /// Send a turn message with a configurable inbox timeout.
+    ///
+    /// # Cancel safety
+    ///
+    /// Not cancel-safe. Delegates to [`send_turn_with_session_id`](Self::send_turn_with_session_id):
+    /// if cancelled after the inbox send but before the reply is received, the
+    /// turn runs but the result is discarded. Do not use in `select!` branches.
     pub async fn send_turn_with_timeout(
         &self,
         session_key: impl Into<String>,
@@ -122,6 +134,12 @@ impl NousHandle {
     }
 
     /// Send a streaming turn with an explicit database session ID.
+    ///
+    /// # Cancel safety
+    ///
+    /// Not cancel-safe. If cancelled after `mpsc::send` completes but before
+    /// `oneshot::recv` returns, the streaming turn runs but the result is lost.
+    /// Do not use in `select!` branches.
     pub async fn send_turn_streaming_with_session_id(
         &self,
         session_key: impl Into<String>,
@@ -149,6 +167,12 @@ impl NousHandle {
     }
 
     /// Send a streaming turn with a configurable inbox timeout.
+    ///
+    /// # Cancel safety
+    ///
+    /// Not cancel-safe. Delegates to [`send_turn_streaming_with_session_id`](Self::send_turn_streaming_with_session_id):
+    /// if cancelled after the inbox send but before the reply is received, the
+    /// streaming turn runs but the result is discarded. Do not use in `select!` branches.
     pub async fn send_turn_streaming_with_timeout(
         &self,
         session_key: impl Into<String>,
