@@ -33,6 +33,10 @@ impl ApiErrorContext {
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 #[non_exhaustive]
+#[expect(
+    missing_docs,
+    reason = "snafu error variant fields (source, location, message) are self-documenting via display format"
+)]
 pub enum Error {
     /// Provider initialization failed.
     #[snafu(display("provider init failed: {message}"))]

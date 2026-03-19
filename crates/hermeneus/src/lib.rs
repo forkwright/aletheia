@@ -1,3 +1,4 @@
+#![deny(missing_docs)]
 //! aletheia-hermeneus: Anthropic-native LLM provider
 //!
 //! Hermeneus (Ἑρμηνεύς): "interpreter." Anthropic-native types and client
@@ -14,6 +15,7 @@ pub mod error;
 pub mod fallback;
 /// Provider health state machine (Up / Degraded / Down) with automatic recovery.
 pub mod health;
+/// Prometheus metrics for LLM request counts, latency, and token usage.
 pub mod metrics;
 /// Model constants and API configuration defaults.
 pub mod models;

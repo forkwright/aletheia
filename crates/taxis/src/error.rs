@@ -11,6 +11,10 @@ use snafu::Snafu;
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
 #[non_exhaustive]
+#[expect(
+    missing_docs,
+    reason = "snafu error variant fields (source, location, path, reason) are self-documenting via display format"
+)]
 pub enum Error {
     /// The instance root directory does not exist.
     #[snafu(display("instance root not found: {}", path.display()))]

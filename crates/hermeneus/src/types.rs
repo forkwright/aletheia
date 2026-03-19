@@ -88,8 +88,10 @@ pub enum ContentBlock {
     /// Text content.
     #[serde(rename = "text")]
     Text {
+        /// The text content string.
         text: String,
         #[serde(skip_serializing_if = "Option::is_none")]
+        /// Source citations attached to this text block.
         citations: Option<Vec<Citation>>,
     },
 
@@ -119,23 +121,30 @@ pub enum ContentBlock {
     /// Extended thinking content.
     #[serde(rename = "thinking")]
     Thinking {
+        /// The model's internal reasoning text.
         thinking: String,
         #[serde(skip_serializing_if = "Option::is_none")]
+        /// Cryptographic signature from the provider for encrypted thinking.
         signature: Option<String>,
     },
 
     /// Server-side tool use (informational, not dispatched locally).
     #[serde(rename = "server_tool_use")]
     ServerToolUse {
+        /// Provider-assigned tool use identifier.
         id: String,
+        /// Server tool name.
         name: String,
+        /// Input arguments passed to the server tool.
         input: serde_json::Value,
     },
 
     /// Server-side web search tool result (opaque, round-tripped verbatim).
     #[serde(rename = "web_search_tool_result")]
     WebSearchToolResult {
+        /// The tool use ID this result responds to.
         tool_use_id: String,
+        /// Raw search result content returned by the server.
         content: serde_json::Value,
     },
 
@@ -213,6 +222,10 @@ impl From<String> for ToolResultContent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 #[non_exhaustive]
+#[expect(
+    missing_docs,
+    reason = "variant fields (text, source) are self-documenting by name"
+)]
 pub enum ToolResultBlock {
     /// Text content.
     #[serde(rename = "text")]
@@ -349,11 +362,18 @@ impl Default for CachingConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 #[non_exhaustive]
+#[expect(
+    missing_docs,
+    reason = "variant fields (name) are self-documenting by name"
+)]
 pub enum ToolChoice {
+    /// Let the model decide whether to use a tool.
     #[serde(rename = "auto")]
     Auto,
+    /// Force the model to use at least one tool.
     #[serde(rename = "any")]
     Any,
+    /// Force the model to use a specific tool by name.
     #[serde(rename = "tool")]
     Tool { name: String },
 }
@@ -362,12 +382,14 @@ pub enum ToolChoice {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RequestMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// An opaque user identifier for provider-side tracking.
     pub user_id: Option<String>,
 }
 
 /// Citation configuration for requests.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CitationConfig {
+    /// Whether citation generation is enabled.
     pub enabled: bool,
 }
 
@@ -375,7 +397,12 @@ pub struct CitationConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 #[non_exhaustive]
+#[expect(
+    missing_docs,
+    reason = "citation variant fields (document_index, start_char_index, etc.) are self-documenting by name"
+)]
 pub enum Citation {
+    /// Citation by character offset within a document.
     #[serde(rename = "char_location")]
     CharLocation {
         document_index: u32,
@@ -383,6 +410,7 @@ pub enum Citation {
         end_char_index: u32,
         cited_text: String,
     },
+    /// Citation by page range within a document.
     #[serde(rename = "page_location")]
     PageLocation {
         document_index: u32,
@@ -390,6 +418,7 @@ pub enum Citation {
         end_page: u32,
         cited_text: String,
     },
+    /// Citation from a web search result.
     #[serde(rename = "web_search_result_location")]
     WebSearchResultLocation {
         url: String,

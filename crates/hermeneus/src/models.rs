@@ -33,7 +33,10 @@ pub static SUPPORTED_MODELS: &[&str] = &[
 
 /// Short model name constants for use in config and code.
 pub mod names {
+    /// Default Opus model alias.
     pub const OPUS: &str = "claude-opus-4-6";
+    /// Default Sonnet model alias.
     pub const SONNET: &str = "claude-sonnet-4-6";
+    /// Default Haiku model alias.
     pub const HAIKU: &str = "claude-haiku-4-5-20251001";
 }

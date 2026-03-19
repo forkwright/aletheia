@@ -4,6 +4,10 @@ use snafu::Snafu;
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 #[non_exhaustive]
+#[expect(
+    missing_docs,
+    reason = "snafu error variant fields (source, message, location) are self-documenting via display format"
+)]
 pub enum ExtractionError {
     /// The LLM response could not be parsed as valid extraction JSON.
     #[snafu(display("failed to parse extraction response"))]

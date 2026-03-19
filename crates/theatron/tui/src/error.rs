@@ -3,6 +3,10 @@ use snafu::prelude::*;
 /// Unified error type for the TUI crate.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
+#[expect(
+    missing_docs,
+    reason = "snafu error variant fields (source, message, url, context, event_type, detail) are self-documenting via display format"
+)]
 pub enum Error {
     /// API transport or authentication error from the HTTP client.
     #[snafu(context(false))]

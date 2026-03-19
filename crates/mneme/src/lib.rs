@@ -1,3 +1,4 @@
+#![deny(missing_docs)]
 //! aletheia-mneme: session store and memory engine
 //!
 //! Mneme (Μνήμη): "memory." Manages sessions, messages, and usage tracking
@@ -5,6 +6,7 @@
 //!
 //! Depends on `aletheia-koina` for types and errors.
 
+/// Vendored Datalog/graph engine (enabled by `mneme-engine` feature).
 #[cfg(feature = "mneme-engine")]
 pub mod engine;
 

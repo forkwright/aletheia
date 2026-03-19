@@ -107,11 +107,17 @@ pub struct PropertyDef {
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum PropertyType {
+    /// JSON string type.
     String,
+    /// JSON number type (float or integer).
     Number,
+    /// JSON integer type.
     Integer,
+    /// JSON boolean type.
     Boolean,
+    /// JSON array type.
     Array,
+    /// JSON object type.
     Object,
 }
 
@@ -220,6 +226,10 @@ pub struct ToolInput {
 
 /// Cumulative tool execution statistics for a pipeline turn.
 #[derive(Debug, Clone, Default, Serialize)]
+#[expect(
+    missing_docs,
+    reason = "stats struct fields are self-documenting by name"
+)]
 pub struct ToolStats {
     pub total_calls: u32,
     pub total_duration_ms: u64,
@@ -352,6 +362,10 @@ pub trait PlanningService: Send + Sync {
 }
 
 /// A result from knowledge store search.
+#[expect(
+    missing_docs,
+    reason = "result struct fields are self-documenting by name"
+)]
 pub struct MemoryResult {
     pub id: String,
     pub content: String,
@@ -360,6 +374,10 @@ pub struct MemoryResult {
 }
 
 /// Summary of a stored fact for audit display.
+#[expect(
+    missing_docs,
+    reason = "summary struct fields are self-documenting by name"
+)]
 pub struct FactSummary {
     pub id: String,
     pub content: String,
@@ -375,6 +393,7 @@ pub struct FactSummary {
 ///
 /// Implemented by an adapter in the binary crate wrapping `KnowledgeStore` + `EmbeddingProvider`.
 pub trait KnowledgeSearchService: Send + Sync {
+    /// Semantic search over the knowledge store.
     fn search(
         &self,
         query: &str,
@@ -382,6 +401,7 @@ pub trait KnowledgeSearchService: Send + Sync {
         limit: usize,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<MemoryResult>, KnowledgeAdapterError>> + Send + '_>>;
 
+    /// Update the content of an existing fact.
     fn correct_fact(
         &self,
         fact_id: &str,
@@ -389,12 +409,14 @@ pub trait KnowledgeSearchService: Send + Sync {
         nous_id: &str,
     ) -> Pin<Box<dyn Future<Output = Result<String, KnowledgeAdapterError>> + Send + '_>>;
 
+    /// Mark a fact as retracted (soft-delete).
     fn retract_fact(
         &self,
         fact_id: &str,
         reason: Option<&str>,
     ) -> Pin<Box<dyn Future<Output = Result<(), KnowledgeAdapterError>> + Send + '_>>;
 
+    /// Return a list of recent facts for audit review.
     fn audit_facts(
         &self,
         nous_id: Option<&str>,
@@ -402,17 +424,20 @@ pub trait KnowledgeSearchService: Send + Sync {
         limit: usize,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<FactSummary>, KnowledgeAdapterError>> + Send + '_>>;
 
+    /// Mark a fact as forgotten with a given reason.
     fn forget_fact(
         &self,
         fact_id: &str,
         reason: &str,
     ) -> Pin<Box<dyn Future<Output = Result<FactSummary, KnowledgeAdapterError>> + Send + '_>>;
 
+    /// Restore a previously forgotten fact.
     fn unforget_fact(
         &self,
         fact_id: &str,
     ) -> Pin<Box<dyn Future<Output = Result<FactSummary, KnowledgeAdapterError>> + Send + '_>>;
 
+    /// Execute a read-only Datalog query against the knowledge graph.
     fn datalog_query(
         &self,
         query: &str,
@@ -423,6 +448,10 @@ pub trait KnowledgeSearchService: Send + Sync {
 }
 
 /// Result from a read-only Datalog query.
+#[expect(
+    missing_docs,
+    reason = "result struct fields are self-documenting by name"
+)]
 pub struct DatalogResult {
     pub columns: Vec<String>,
     pub rows: Vec<Vec<serde_json::Value>>,
@@ -508,6 +537,10 @@ impl ServerToolConfig {
 }
 
 /// Service locator for tool executors needing access to runtime services.
+#[expect(
+    missing_docs,
+    reason = "service locator fields are self-documenting by name"
+)]
 pub struct ToolServices {
     pub cross_nous: Option<Arc<dyn CrossNousService>>,
     pub messenger: Option<Arc<dyn MessageService>>,
@@ -558,6 +591,7 @@ pub struct ToolContext {
 
 /// Persistent session notes storage.
 pub trait NoteStore: Send + Sync {
+    /// Add a note to a session.
     fn add_note(
         &self,
         session_id: &str,
@@ -566,16 +600,19 @@ pub trait NoteStore: Send + Sync {
         content: &str,
     ) -> std::result::Result<i64, crate::error::StoreError>;
 
+    /// Retrieve all notes for a session.
     fn get_notes(
         &self,
         session_id: &str,
     ) -> std::result::Result<Vec<NoteEntry>, crate::error::StoreError>;
 
+    /// Delete a note by ID. Returns `true` if it existed.
     fn delete_note(&self, note_id: i64) -> std::result::Result<bool, crate::error::StoreError>;
 }
 
 /// Shared blackboard state with TTL.
 pub trait BlackboardStore: Send + Sync {
+    /// Write a key-value entry with an author and TTL.
     fn write(
         &self,
         key: &str,
@@ -584,13 +621,16 @@ pub trait BlackboardStore: Send + Sync {
         ttl_seconds: i64,
     ) -> std::result::Result<(), crate::error::StoreError>;
 
+    /// Read a single entry by key.
     fn read(
         &self,
         key: &str,
     ) -> std::result::Result<Option<BlackboardEntry>, crate::error::StoreError>;
 
+    /// List all current entries.
     fn list(&self) -> std::result::Result<Vec<BlackboardEntry>, crate::error::StoreError>;
 
+    /// Delete an entry by key and author.
     fn delete(
         &self,
         key: &str,
@@ -598,7 +638,12 @@ pub trait BlackboardStore: Send + Sync {
     ) -> std::result::Result<bool, crate::error::StoreError>;
 }
 
+/// A stored session note entry.
 #[derive(Debug, Clone)]
+#[expect(
+    missing_docs,
+    reason = "note entry fields are self-documenting by name"
+)]
 pub struct NoteEntry {
     pub id: i64,
     pub category: String,
@@ -606,7 +651,12 @@ pub struct NoteEntry {
     pub created_at: String,
 }
 
+/// A blackboard key-value entry with TTL.
 #[derive(Debug, Clone)]
+#[expect(
+    missing_docs,
+    reason = "blackboard entry fields are self-documenting by name"
+)]
 pub struct BlackboardEntry {
     pub key: String,
     pub value: String,

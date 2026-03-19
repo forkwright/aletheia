@@ -5,6 +5,10 @@ use aletheia_hermeneus::anthropic::StreamEvent as LlmStreamEvent;
 /// Events emitted during a streaming turn, bridging LLM deltas and tool lifecycle.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
+#[expect(
+    missing_docs,
+    reason = "variant fields (tool_id, tool_name, input, result, is_error, duration_ms) are self-documenting by name"
+)]
 pub enum TurnStreamEvent {
     /// LLM streaming delta forwarded from the provider.
     LlmDelta(LlmStreamEvent),

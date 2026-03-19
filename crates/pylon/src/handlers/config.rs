@@ -30,8 +30,11 @@ const VALID_SECTIONS: &[&str] = &[
 #[derive(serde::Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfigUpdateResponse {
+    /// Name of the config section that was updated.
     pub section: String,
+    /// The updated config section value.
     pub config: Value,
+    /// Field paths that require a restart to take effect.
     pub restart_required: Vec<String>,
 }
 

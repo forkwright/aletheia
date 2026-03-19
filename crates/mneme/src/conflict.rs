@@ -29,6 +29,10 @@ use crate::knowledge::EpistemicTier;
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
 #[non_exhaustive]
+#[expect(
+    missing_docs,
+    reason = "snafu error variant fields (message, location) are self-documenting via display format"
+)]
 pub enum ConflictError {
     /// The LLM classification call failed.
     #[snafu(display("conflict classification failed: {message}"))]

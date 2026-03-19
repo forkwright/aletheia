@@ -51,6 +51,10 @@ impl Default for ConsolidationConfig {
 /// Errors from the fact consolidation pipeline.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
+#[expect(
+    missing_docs,
+    reason = "snafu error variant fields (message, source, location, elapsed_hours, min_hours) are self-documenting via display format"
+)]
 pub enum ConsolidationError {
     /// The LLM consolidation call failed.
     #[snafu(display("consolidation LLM call failed: {message}"))]
@@ -91,6 +95,10 @@ pub enum ConsolidationError {
 /// Why a consolidation was triggered.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
+#[expect(
+    missing_docs,
+    reason = "variant fields (entity_id, fact_count, cluster_id) are self-documenting by name"
+)]
 pub enum ConsolidationTrigger {
     /// An entity accumulated more than the threshold of active facts.
     EntityOverflow {

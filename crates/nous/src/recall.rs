@@ -33,6 +33,7 @@ pub struct KnowledgeTextSearch {
 
 #[cfg(feature = "knowledge-store")]
 impl KnowledgeTextSearch {
+    /// Create a text search adapter wrapping the given knowledge store.
     #[must_use]
     pub fn new(store: Arc<KnowledgeStore>) -> Self {
         Self { store }
@@ -76,6 +77,7 @@ pub struct KnowledgeVectorSearch {
 
 #[cfg(feature = "knowledge-store")]
 impl KnowledgeVectorSearch {
+    /// Create a vector search adapter wrapping the given knowledge store.
     #[must_use]
     pub fn new(store: Arc<KnowledgeStore>) -> Self {
         Self { store }

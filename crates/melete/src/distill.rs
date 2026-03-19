@@ -58,7 +58,12 @@ pub enum DistillSection {
     /// Mistakes discovered and corrected to prevent repetition.
     Corrections,
     /// Custom section with a name and description.
-    Custom { name: String, description: String },
+    Custom {
+        /// Section heading text.
+        name: String,
+        /// Prompt instruction for what to include in this section.
+        description: String,
+    },
 }
 
 impl DistillSection {

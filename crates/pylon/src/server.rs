@@ -37,6 +37,10 @@ pub struct ServerConfig {
 
 /// Errors from the pylon HTTP server lifecycle.
 #[derive(Debug, Snafu)]
+#[expect(
+    missing_docs,
+    reason = "snafu error variant fields (addr, source) are self-documenting via display format"
+)]
 pub enum ServerError {
     /// Failed to open or initialize the session store.
     #[snafu(display("failed to open session store: {source}"))]

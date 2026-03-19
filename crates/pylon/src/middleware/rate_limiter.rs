@@ -11,6 +11,7 @@ use axum::response::{IntoResponse, Response};
 
 use crate::error::{ErrorBody, ErrorResponse};
 
+/// Per-IP sliding-window rate limiter for anonymous HTTP requests.
 pub struct RateLimiter {
     max_requests: u32,
     window: Duration,
@@ -22,6 +23,7 @@ pub struct RateLimiter {
 }
 
 impl RateLimiter {
+    /// Create a rate limiter that allows `requests_per_minute` per client IP.
     #[must_use]
     pub fn new(requests_per_minute: u32) -> Self {
         Self {
@@ -32,6 +34,7 @@ impl RateLimiter {
         }
     }
 
+    /// Set whether to trust `X-Forwarded-For` / `X-Real-IP` headers for IP resolution.
     #[must_use]
     pub fn with_trust_proxy(mut self, trust_proxy: bool) -> Self {
         self.trust_proxy = trust_proxy;

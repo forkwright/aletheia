@@ -366,6 +366,7 @@ fn web_fetch_def() -> ToolDef {
     }
 }
 
+/// Register the `web_fetch` research tool into the registry.
 pub fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(web_fetch_def(), Box::new(WebFetchExecutor))?;
     Ok(())

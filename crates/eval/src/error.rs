@@ -2,10 +2,16 @@
 
 use snafu::Snafu;
 
+/// Errors from eval framework operations.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 #[non_exhaustive]
+#[expect(
+    missing_docs,
+    reason = "snafu error variant fields (source, location, message) are self-documenting via display format"
+)]
 pub enum Error {
+    /// HTTP request failed.
     #[snafu(display("HTTP request failed: {source}"))]
     Http {
         source: reqwest::Error,
@@ -13,6 +19,7 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Unexpected HTTP status from the server.
     #[snafu(display("unexpected status {status} from {endpoint}: {body}"))]
     UnexpectedStatus {
         endpoint: String,
@@ -22,6 +29,7 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// SSE stream parse error.
     #[snafu(display("SSE parse error: {message}"))]
     SseParse {
         message: String,
@@ -29,6 +37,7 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Scenario assertion failed.
     #[snafu(display("assertion failed: {message}"))]
     Assertion {
         message: String,
@@ -36,6 +45,7 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// JSON serialization or deserialization failed.
     #[snafu(display("JSON error: {source}"))]
     Json {
         source: serde_json::Error,
@@ -43,6 +53,7 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Scenario exceeded the configured timeout.
     #[snafu(display("timeout after {elapsed_ms}ms"))]
     Timeout {
         elapsed_ms: u64,
@@ -50,6 +61,7 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// No agents are registered on the target instance.
     #[snafu(display("no agents available: agent list is empty"))]
     NoAgentsAvailable {
         #[snafu(implicit)]
@@ -57,4 +69,5 @@ pub enum Error {
     },
 }
 
+/// Convenience alias for `Result` with eval's [`Error`] type.
 pub type Result<T> = std::result::Result<T, Error>;

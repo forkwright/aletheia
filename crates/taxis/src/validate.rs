@@ -9,8 +9,10 @@ use crate::config::AletheiaConfig;
 #[derive(Debug, Snafu)]
 #[snafu(display("config validation failed:\n  - {}", errors.join("\n  - ")))]
 pub struct ValidationError {
+    /// Collected validation error messages.
     pub errors: Vec<String>,
     #[snafu(implicit)]
+    /// Source location captured by snafu.
     pub location: snafu::Location,
 }
 

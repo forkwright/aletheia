@@ -1,3 +1,4 @@
+#![deny(missing_docs)]
 //! Pylon (πυλών): "gateway." Routes HTTP and SSE requests to the agent pipeline.
 
 /// API error types with Axum HTTP status code mapping.

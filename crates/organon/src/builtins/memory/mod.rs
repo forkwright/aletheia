@@ -19,6 +19,7 @@ pub(super) fn require_services(
         .ok_or_else(|| ToolResult::error("memory services not configured"))
 }
 
+/// Register all memory tools (knowledge ops, notes, blackboard, datalog) into the registry.
 pub fn register(registry: &mut ToolRegistry) -> Result<()> {
     knowledge_ops::register(registry)?;
     note::register(registry)?;

@@ -12,7 +12,10 @@ pub enum ConnectionState {
     /// Signal-cli daemon is reachable.
     Connected,
     /// Attempting to reconnect after failure.
-    Reconnecting { attempt: u32 },
+    Reconnecting {
+        /// Number of reconnection attempts made so far.
+        attempt: u32,
+    },
 }
 
 /// Outbound message queued during disconnection.

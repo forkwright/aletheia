@@ -39,7 +39,10 @@ pub enum ProjectMode {
     /// Full multi-phase project with research, scoping, planning, and verification.
     Full,
     /// Time-boxed quick task with an appetite limit in minutes.
-    Quick { appetite_minutes: u32 },
+    Quick {
+        /// Maximum number of minutes to spend on this task.
+        appetite_minutes: u32,
+    },
     /// Autonomous background processing without user interaction.
     Background,
 }

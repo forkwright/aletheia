@@ -11,51 +11,66 @@ pub enum Error {
     /// Failed to read a file.
     #[snafu(display("failed to read {}", path.display()))]
     ReadFile {
+        /// The path that could not be read.
         path: PathBuf,
+        /// The underlying I/O error.
         source: std::io::Error,
         #[snafu(implicit)]
+        /// Source location captured by snafu.
         location: snafu::Location,
     },
 
     /// Failed to write a file.
     #[snafu(display("failed to write {}", path.display()))]
     WriteFile {
+        /// The path that could not be written.
         path: PathBuf,
+        /// The underlying I/O error.
         source: std::io::Error,
         #[snafu(implicit)]
+        /// Source location captured by snafu.
         location: snafu::Location,
     },
 
     /// Failed to create a directory.
     #[snafu(display("failed to create directory {}", path.display()))]
     CreateDir {
+        /// The directory path that could not be created.
         path: PathBuf,
+        /// The underlying I/O error.
         source: std::io::Error,
         #[snafu(implicit)]
+        /// Source location captured by snafu.
         location: snafu::Location,
     },
 
     /// Failed to serialize to JSON.
     #[snafu(display("JSON serialization failed"))]
     JsonSerialize {
+        /// The underlying serialization error.
         source: serde_json::Error,
         #[snafu(implicit)]
+        /// Source location captured by snafu.
         location: snafu::Location,
     },
 
     /// Failed to deserialize from JSON.
     #[snafu(display("JSON deserialization failed"))]
     JsonDeserialize {
+        /// The underlying deserialization error.
         source: serde_json::Error,
         #[snafu(implicit)]
+        /// Source location captured by snafu.
         location: snafu::Location,
     },
 
     /// An identifier was invalid.
     #[snafu(display("invalid identifier: {message}"))]
     InvalidId {
+        /// Description of why the identifier is invalid.
         message: String,
         #[snafu(implicit)]
+        /// Source location captured by snafu.
         location: snafu::Location,
     },
 }

@@ -1,3 +1,4 @@
+#![deny(missing_docs)]
 //! aletheia-taxis: configuration cascade and path resolution
 //!
 //! Taxis (τάξις): "arrangement, ordering." Resolves configuration and files

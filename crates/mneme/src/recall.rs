@@ -16,6 +16,8 @@ use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
 use crate::knowledge::{EpistemicTier, FactType};
+
+/// Tunable weights for the multi-factor recall scoring formula.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecallWeights {
     /// Weight for vector similarity (cosine distance). Default: 0.35

@@ -6,6 +6,10 @@ use snafu::Snafu;
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
 #[non_exhaustive]
+#[expect(
+    missing_docs,
+    reason = "snafu error variant fields (id, message, source, location) are self-documenting via display format"
+)]
 pub enum Error {
     /// Nous agent not found.
     #[snafu(display("nous agent not found: {id}"))]

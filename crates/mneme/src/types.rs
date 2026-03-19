@@ -219,6 +219,10 @@ pub struct UsageRecord {
 
 /// Blackboard entry: shared agent state with TTL.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[expect(
+    missing_docs,
+    reason = "blackboard row fields are self-documenting by name"
+)]
 pub struct BlackboardRow {
     pub key: String,
     pub value: String,

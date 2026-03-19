@@ -28,10 +28,15 @@ pub struct RunConfig {
 
 /// Aggregated results from a full eval run.
 pub struct RunReport {
+    /// Number of scenarios that passed.
     pub passed: usize,
+    /// Number of scenarios that failed.
     pub failed: usize,
+    /// Number of scenarios that were skipped.
     pub skipped: usize,
+    /// Total wall-clock duration of the run.
     pub total_duration: Duration,
+    /// Per-scenario results in run order.
     pub results: Vec<ScenarioResult>,
 }
 
@@ -42,6 +47,7 @@ pub struct ScenarioRunner {
 }
 
 impl ScenarioRunner {
+    /// Create a new runner from the given configuration.
     #[must_use]
     pub fn new(config: RunConfig) -> Self {
         let client = EvalClient::new(

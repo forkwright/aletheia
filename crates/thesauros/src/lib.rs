@@ -1,3 +1,4 @@
+#![deny(missing_docs)]
 //! aletheia-thesauros: domain pack loader
 //!
 //! Thesauros (θησαυρός): "treasure house." Loads external domain packs that

@@ -106,6 +106,7 @@ fn enable_tool_def() -> ToolDef {
     }
 }
 
+/// Register the `enable_tool` tool into the registry.
 pub fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(enable_tool_def(), Box::new(EnableToolExecutor))?;
     Ok(())

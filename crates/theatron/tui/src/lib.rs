@@ -1,3 +1,4 @@
+#![deny(missing_docs)]
 //! TUI entry point for the Aletheia client.
 #![deny(clippy::unwrap_used, clippy::expect_used)]
 
@@ -8,6 +9,7 @@ mod clipboard;
 mod command;
 mod config;
 pub(crate) mod diff;
+/// TUI-specific error types and result alias.
 pub mod error;
 mod events;
 mod highlight;

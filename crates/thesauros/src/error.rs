@@ -8,6 +8,10 @@ use snafu::Snafu;
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 #[non_exhaustive]
+#[expect(
+    missing_docs,
+    reason = "snafu error variant fields (path, source, location, reason, type_name, tool_name, pack_name, name, pack) are self-documenting via display format"
+)]
 pub enum Error {
     /// Pack directory does not exist.
     #[snafu(display("pack not found: {}", path.display()))]

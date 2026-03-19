@@ -18,6 +18,7 @@ use super::{
     DEFAULT_REPLY_TIMEOUT, DeliveryEntry, DeliveryLog, DeliveryState,
 };
 
+/// Routes messages between nous actors using their IDs as keys.
 pub struct CrossNousRouter {
     /// Maps nous id to its inbox sender. Invariant: every spawned actor has
     /// exactly one entry; removed on unregister. Held briefly during

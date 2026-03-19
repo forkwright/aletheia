@@ -73,6 +73,10 @@ fn default_limit() -> usize {
 
 /// Response wrapper for fact listing.
 #[derive(Debug, Serialize)]
+#[expect(
+    missing_docs,
+    reason = "response struct fields are self-documenting by name"
+)]
 pub struct FactsResponse {
     pub facts: Vec<aletheia_mneme::knowledge::Fact>,
     pub total: usize,
@@ -80,18 +84,30 @@ pub struct FactsResponse {
 
 /// Response wrapper for entity listing.
 #[derive(Debug, Serialize)]
+#[expect(
+    missing_docs,
+    reason = "response struct fields are self-documenting by name"
+)]
 pub struct EntitiesResponse {
     pub entities: Vec<aletheia_mneme::knowledge::Entity>,
 }
 
 /// Response wrapper for relationships.
 #[derive(Debug, Serialize)]
+#[expect(
+    missing_docs,
+    reason = "response struct fields are self-documenting by name"
+)]
 pub struct RelationshipsResponse {
     pub relationships: Vec<aletheia_mneme::knowledge::Relationship>,
 }
 
 /// Body for forget/restore actions.
 #[derive(Debug, Deserialize)]
+#[expect(
+    missing_docs,
+    reason = "response struct fields are self-documenting by name"
+)]
 pub struct ForgetRequest {
     #[serde(default = "default_forget_reason")]
     pub reason: String,
@@ -103,12 +119,20 @@ fn default_forget_reason() -> String {
 
 /// Body for confidence edit.
 #[derive(Debug, Deserialize)]
+#[expect(
+    missing_docs,
+    reason = "response struct fields are self-documenting by name"
+)]
 pub struct UpdateConfidenceRequest {
     pub confidence: f64,
 }
 
 /// Search query parameters.
 #[derive(Debug, Deserialize)]
+#[expect(
+    missing_docs,
+    reason = "response struct fields are self-documenting by name"
+)]
 pub struct SearchQuery {
     pub q: String,
     #[serde(default)]
@@ -127,6 +151,10 @@ const MAX_SEARCH_LIMIT: usize = 1000;
 /// Search result item.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[expect(
+    missing_docs,
+    reason = "response struct fields are self-documenting by name"
+)]
 pub struct SearchResult {
     pub id: String,
     pub content: String,
@@ -138,12 +166,20 @@ pub struct SearchResult {
 
 /// Search response wrapper.
 #[derive(Debug, Serialize)]
+#[expect(
+    missing_docs,
+    reason = "response struct fields are self-documenting by name"
+)]
 pub struct SearchResponse {
     pub results: Vec<SearchResult>,
 }
 
 /// Similar fact entry.
 #[derive(Debug, Serialize)]
+#[expect(
+    missing_docs,
+    reason = "response struct fields are self-documenting by name"
+)]
 pub struct SimilarFact {
     pub id: String,
     pub content: String,
@@ -153,6 +189,10 @@ pub struct SimilarFact {
 /// Fact detail response with related entities and similar facts.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[expect(
+    missing_docs,
+    reason = "response struct fields are self-documenting by name"
+)]
 pub struct FactDetailResponse {
     pub fact: aletheia_mneme::knowledge::Fact,
     pub relationships: Vec<aletheia_mneme::knowledge::Relationship>,
@@ -162,6 +202,10 @@ pub struct FactDetailResponse {
 /// Timeline event.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[expect(
+    missing_docs,
+    reason = "response struct fields are self-documenting by name"
+)]
 pub struct TimelineEvent {
     pub timestamp: String,
     pub event_type: String,
@@ -172,6 +216,10 @@ pub struct TimelineEvent {
 
 /// Timeline response.
 #[derive(Debug, Serialize)]
+#[expect(
+    missing_docs,
+    reason = "response struct fields are self-documenting by name"
+)]
 pub struct TimelineResponse {
     pub events: Vec<TimelineEvent>,
 }

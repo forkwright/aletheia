@@ -11,6 +11,10 @@ pub(super) const DEFAULT_MAX_LOG_ENTRIES: usize = 1000;
 /// Lifecycle state of a cross-nous message.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
+#[expect(
+    missing_docs,
+    reason = "variant fields (reason) are self-documenting by name"
+)]
 pub enum DeliveryState {
     /// Message created but not yet sent.
     Pending,

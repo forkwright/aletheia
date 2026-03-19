@@ -308,6 +308,7 @@ pub struct EnvCredentialProvider {
 }
 
 impl EnvCredentialProvider {
+    /// Create a provider that reads credentials from the given environment variable.
     #[must_use]
     pub fn new(var_name: impl Into<String>) -> Self {
         Self {
@@ -384,6 +385,7 @@ pub struct FileCredentialProvider {
 }
 
 impl FileCredentialProvider {
+    /// Create a provider that reads credentials from the given JSON file path.
     #[must_use]
     pub fn new(path: PathBuf) -> Self {
         Self {
@@ -820,6 +822,7 @@ pub struct CredentialChain {
 }
 
 impl CredentialChain {
+    /// Create a credential chain that tries each provider in order until one succeeds.
     #[must_use]
     pub fn new(providers: Vec<Box<dyn CredentialProvider>>) -> Self {
         Self {
