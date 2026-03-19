@@ -63,6 +63,7 @@ pub enum DistillSection {
 
 impl DistillSection {
     /// Markdown heading for this section.
+    #[must_use]
     pub fn heading(&self) -> String {
         match self {
             Self::Summary => "## Summary".to_owned(),
@@ -77,6 +78,7 @@ impl DistillSection {
     }
 
     /// Description text for this section (used in the system prompt).
+    #[must_use]
     pub fn description(&self) -> &str {
         match self {
             Self::Summary => "One sentence describing what this conversation is about.",
@@ -109,6 +111,7 @@ impl DistillSection {
     }
 
     /// All standard sections in default order.
+    #[must_use]
     pub fn all_standard() -> Vec<Self> {
         vec![
             Self::Summary,
@@ -187,6 +190,7 @@ pub struct DistillEngine {
 
 impl DistillEngine {
     /// Create a new distillation engine.
+    #[must_use]
     pub fn new(config: DistillConfig) -> Self {
         Self {
             config,

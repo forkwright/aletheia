@@ -75,6 +75,7 @@ impl fmt::Display for UserFacingError {
 /// Convert a pipeline error into a user-facing error, if applicable.
 ///
 /// Returns `None` for internal errors that should not be shown to users.
+#[must_use]
 pub fn to_user_facing(error: &crate::error::Error) -> Option<UserFacingError> {
     use aletheia_hermeneus::error::Error as HError;
 

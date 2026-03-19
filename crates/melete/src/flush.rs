@@ -50,6 +50,7 @@ impl FlushSource {
 
 impl MemoryFlush {
     /// Create an empty flush.
+    #[must_use]
     pub fn empty() -> Self {
         Self {
             decisions: vec![],
@@ -60,6 +61,7 @@ impl MemoryFlush {
     }
 
     /// Check if there's anything to flush.
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.decisions.is_empty()
             && self.corrections.is_empty()
@@ -68,6 +70,7 @@ impl MemoryFlush {
     }
 
     /// Render as markdown for writing to a memory file.
+    #[must_use]
     pub fn to_markdown(&self) -> String {
         let mut out = String::new();
 

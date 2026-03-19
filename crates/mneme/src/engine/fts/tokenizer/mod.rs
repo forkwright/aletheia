@@ -31,7 +31,20 @@ pub(crate) use self::whitespace_tokenizer::WhitespaceTokenizer;
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use crate::engine::fts::tokenizer::Token;
+    use crate::engine::fts::tokenizer::{BoxTokenStream, Token};
+
+    /// Collect all tokens from a stream into a `Vec`.
+    ///
+    /// Shared by every tokenizer test module so the collection boilerplate
+    /// lives in exactly one place.
+    pub(crate) fn collect_tokens(mut stream: BoxTokenStream<'_>) -> Vec<Token> {
+        let mut tokens = Vec::new();
+        let mut add_token = |token: &Token| {
+            tokens.push(token.clone());
+        };
+        stream.process(&mut add_token);
+        tokens
+    }
 
     pub(crate) fn assert_token(token: &Token, position: usize, text: &str, from: usize, to: usize) {
         assert_eq!(

@@ -50,20 +50,20 @@ impl FromRequestParts<Arc<AppState>> for Claims {
             .get("authorization")
             .and_then(|v| v.to_str().ok())
             .ok_or(ApiError::Unauthorized {
-                location: snafu::Location::default(),
+                location: snafu::location!(),
             })?;
 
         let token = header
             .strip_prefix(BEARER_PREFIX)
             .ok_or(ApiError::Unauthorized {
-                location: snafu::Location::default(),
+                location: snafu::location!(),
             })?;
 
         let claims = state
             .jwt_manager
             .validate(token)
             .map_err(|_err| ApiError::Unauthorized {
-                location: snafu::Location::default(),
+                location: snafu::location!(),
             })?;
 
         Ok(Self {

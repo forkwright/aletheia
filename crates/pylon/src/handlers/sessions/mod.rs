@@ -417,7 +417,7 @@ pub(crate) async fn resolve_session(
                     .map_err(ApiError::from)?
                     .ok_or_else(|| ApiError::Internal {
                         message: "session missing after constraint violation".to_owned(),
-                        location: snafu::Location::default(),
+                        location: snafu::location!(),
                     })
             }
             Err(e) => Err(ApiError::from(e)),

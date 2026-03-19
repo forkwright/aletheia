@@ -192,7 +192,7 @@ async fn fallback_handler(uri: axum::http::Uri) -> Response {
 
     ApiError::NotFound {
         path: path.to_owned(),
-        location: snafu::Location::default(),
+        location: snafu::location!(),
     }
     .into_response()
 }

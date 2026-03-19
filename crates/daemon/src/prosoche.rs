@@ -65,6 +65,7 @@ pub enum Urgency {
 
 impl AttentionItem {
     /// Short label for this item's category (used in prompt formatting).
+    #[must_use]
     pub fn category_label(&self) -> &str {
         match &self.category {
             AttentionCategory::Calendar => "calendar",

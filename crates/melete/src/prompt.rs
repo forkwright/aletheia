@@ -51,6 +51,7 @@ Rules:
 - Every fact in the summary must be traceable to the conversation";
 
 /// Generate the distillation system prompt from configured sections.
+#[must_use]
 pub fn build_system_prompt(sections: &[DistillSection]) -> String {
     let mut prompt = String::from(
         "You are a context distillation engine. Your task is to compress a conversation \
@@ -77,6 +78,7 @@ pub fn build_system_prompt(sections: &[DistillSection]) -> String {
 }
 
 /// Format conversation messages into readable text for the distillation LLM.
+#[must_use]
 pub fn format_messages(messages: &[Message], include_tool_calls: bool) -> String {
     let mut output = String::new();
 

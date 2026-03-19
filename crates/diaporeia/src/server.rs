@@ -32,6 +32,7 @@ impl DiaporeiaServer {
     ///
     /// Each instance gets its own rate limiter (per-session limiting).
     /// Configuration is read from the shared config at construction time.
+    #[must_use]
     pub fn with_state(state: Arc<DiaporeiaState>) -> Self {
         let rate_limiter = {
             // NOTE: blocking read is acceptable here because this runs once per
