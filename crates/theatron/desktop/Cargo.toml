@@ -66,3 +66,6 @@ rc_mutex = "warn"
 string_add = "warn"
 trait_duplication_in_bounds = "warn"
 unused_self = "warn"
+# Architectural boundary enforcement — must stay in sync with [workspace.lints.clippy]
+disallowed_methods = "deny"
+disallowed_types = "deny"

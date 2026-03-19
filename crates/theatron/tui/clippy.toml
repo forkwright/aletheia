@@ -1,0 +1,12 @@
+# theatron/tui: ratatui terminal dashboard — stateless HTTP client to the Aletheia API.
+# Must not open database connections; all persistence flows through the HTTP API.
+
+disallowed-methods = [
+    { path = "std::process::exit", reason = "use the TUI shutdown path, not process::exit" },
+    { path = "std::process::abort", reason = "do not call process::abort from TUI code" },
+]
+
+disallowed-types = [
+    # TUI is a stateless client; direct DB access would couple it to the backend
+    { path = "rusqlite::Connection", reason = "theatron-tui must not access SQLite; all data flows through the Aletheia HTTP API" },
+]

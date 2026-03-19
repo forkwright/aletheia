@@ -1,0 +1,12 @@
+# theatron/desktop: Dioxus desktop UI — stateless HTTP client to the Aletheia API.
+# Must not open database connections; all persistence flows through the HTTP API.
+
+disallowed-methods = [
+    { path = "std::process::exit", reason = "use Dioxus app lifecycle for shutdown, not process::exit" },
+    { path = "std::process::abort", reason = "do not call process::abort from UI code" },
+]
+
+disallowed-types = [
+    # Desktop UI is a stateless client; direct DB access would couple it to the backend
+    { path = "rusqlite::Connection", reason = "theatron-desktop must not access SQLite; all data flows through the Aletheia HTTP API" },
+]
