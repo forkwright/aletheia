@@ -413,4 +413,111 @@ mod tests {
         let paths = detect_file_paths("target/debug/aletheia.bin");
         assert!(paths.is_empty());
     }
+
+    // --- Additional URL edge cases ---
+
+    #[test]
+    fn detects_url_with_fragment() {
+        let urls = detect_urls("See https://docs.rs/snafu#error-handling for info");
+        assert_eq!(urls.len(), 1);
+        assert_eq!(urls[0].2, "https://docs.rs/snafu#error-handling");
+    }
+
+    #[test]
+    fn detects_url_with_port_number() {
+        let urls = detect_urls("API at http://localhost:8080/api/v1");
+        assert_eq!(urls.len(), 1);
+        assert_eq!(urls[0].2, "http://localhost:8080/api/v1");
+    }
+
+    #[test]
+    fn strips_trailing_exclamation() {
+        let urls = detect_urls("Check https://example.com!");
+        assert_eq!(urls.len(), 1);
+        assert_eq!(urls[0].2, "https://example.com");
+    }
+
+    #[test]
+    fn strips_trailing_question_mark() {
+        let urls = detect_urls("Is https://example.com? the right one");
+        assert_eq!(urls.len(), 1);
+        assert_eq!(urls[0].2, "https://example.com");
+    }
+
+    #[test]
+    fn empty_text_has_no_urls() {
+        assert!(
+            detect_urls("").is_empty(),
+            "empty string should yield no URLs"
+        );
+    }
+
+    #[test]
+    fn ftp_scheme_not_detected() {
+        // Only http/https are matched; ftp:// must not appear in results
+        assert!(detect_urls("ftp://example.com/file").is_empty());
+    }
+
+    // --- Additional terminal detection ---
+
+    #[test]
+    #[expect(
+        unsafe_code,
+        reason = "test-only env mutation in single-threaded test context"
+    )]
+    fn probe_detects_iterm_app() {
+        // SAFETY: test-only env mutation; env vars are not read concurrently here.
+        unsafe { std::env::set_var("TERM_PROGRAM", "iTerm.app") };
+        let result = probe_hyperlink_support();
+        unsafe { std::env::remove_var("TERM_PROGRAM") };
+        assert!(result, "should detect iTerm via TERM_PROGRAM=iTerm.app");
+    }
+
+    #[test]
+    #[expect(
+        unsafe_code,
+        reason = "test-only env mutation in single-threaded test context"
+    )]
+    fn probe_detects_foot_via_term_env() {
+        // SAFETY: test-only env mutation; env vars are not read concurrently here.
+        unsafe { std::env::set_var("TERM", "foot") };
+        let result = probe_hyperlink_support();
+        unsafe { std::env::remove_var("TERM") };
+        assert!(result, "should detect foot terminal via TERM=foot");
+    }
+
+    #[test]
+    #[expect(
+        unsafe_code,
+        reason = "test-only env mutation in single-threaded test context"
+    )]
+    fn probe_detects_alacritty_socket() {
+        // SAFETY: test-only env mutation; env vars are not read concurrently here.
+        unsafe { std::env::set_var("ALACRITTY_SOCKET", "/run/user/1000/alacritty.sock") };
+        let result = probe_hyperlink_support();
+        unsafe { std::env::remove_var("ALACRITTY_SOCKET") };
+        assert!(result, "should detect Alacritty via ALACRITTY_SOCKET");
+    }
+
+    // --- Additional file path detection ---
+
+    #[test]
+    fn detects_typescript_file_path() {
+        let paths = detect_file_paths("See src/components/App.tsx:42 for the component");
+        assert_eq!(paths.len(), 1, "expected one TypeScript path match");
+        assert!(
+            paths[0].3.contains("App.tsx"),
+            "URL should reference the tsx file"
+        );
+    }
+
+    #[test]
+    fn detects_dotslash_prefixed_path() {
+        let paths = detect_file_paths("edit ./src/main.rs for details");
+        assert_eq!(paths.len(), 1, "expected one path match for ./src/main.rs");
+        assert!(
+            paths[0].3.starts_with("file://"),
+            "URL must use file:// scheme"
+        );
+    }
 }
