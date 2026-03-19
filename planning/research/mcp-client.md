@@ -95,7 +95,7 @@ stdio transport: credentials from environment, not OAuth.
 
 ### 5. rmcp client support
 
-rmcp 1.2.0 has full client support via the `client` feature flag (not currently enabled in aletheia).
+rmcp 1.2.0 has full client support via the `client` feature flag (not enabled in aletheia).
 
 **Key client features available:**
 - `client`: Core client protocol, `Peer<RoleClient>` API
@@ -141,7 +141,7 @@ The SDK abstracts JSON-RPC framing, lifecycle management, and transport details.
 
 **Patterns to follow**: `ChannelsConfig` uses `HashMap<String, AccountConfig>` for named external services. `packs` uses array of paths. Either pattern works for MCP server registration.
 
-**Validation**: `crates/taxis/src/validate.rs` has per-section validators. MCP is not currently validated (falls to unknown-section handler). Any extension needs a validator.
+**Validation**: `crates/taxis/src/validate.rs` has per-section validators. MCP is not validated (falls to unknown-section handler). Any extension needs a validator.
 
 ---
 

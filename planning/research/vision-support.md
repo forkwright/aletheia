@@ -281,7 +281,7 @@ Store images on disk in `$XDG_DATA_HOME/aletheia/attachments/<hash>.ext` and ref
 
 #### 3.6 TUI rendering
 
-The theatron image system currently renders from file paths detected in text. To render images from message content blocks:
+The theatron image system renders from file paths detected in text. To render images from message content blocks:
 
 1. **History loading**: When loading history messages, parse content blocks and extract image attachments
 2. **Inline rendering**: Use the existing half-block renderer but from in-memory image data rather than file paths
@@ -302,7 +302,7 @@ Users need a way to attach images. Options:
 2. **Drag-and-drop**: Terminal paste (some terminals support bracketed paste with binary data, but this is unreliable)
 3. **API endpoint**: For pylon (HTTP API), accept multipart form data with image files
 
-**Recommendation: File path command for TUI, multipart upload for API.** A `/attach` or `/image` command in the TUI is the simplest first step. The TUI already detects image paths; extending this to actually attach them to the outgoing message is straightforward.
+**Recommendation: File path command for TUI, multipart upload for API.** A `/attach` or `/image` command in the TUI is the lowest-effort first step. The TUI already detects image paths; extending this to actually attach them to the outgoing message is straightforward.
 
 ### 4. Rust image processing libraries
 

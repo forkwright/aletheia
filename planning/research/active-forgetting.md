@@ -53,7 +53,7 @@ R(t) = (1 + 19/81 * t/S)^(-0.5)
 
 Where `S` = base stability (72h for observations, 17,520h for identity) multiplied by epistemic tier (2x for verified, 0.5x for assumed) and volatility adjustment (0.5x to 1.5x).
 
-Decay currently affects **ranking**, not **existence**. A fact with R(t) = 0.01 still appears in recall results if no better candidates exist. The system never transitions a low-decay-score fact to forgotten status. This is the core gap.
+Decay affects **ranking**, not **existence**. A fact with R(t) = 0.01 still appears in recall results if no better candidates exist. The system never transitions a low-decay-score fact to forgotten status. This is the core gap.
 
 ### Storage growth analysis
 
@@ -297,7 +297,7 @@ For LLM-reviewed facts classified as SUPERSEDE, both `valid_to` and `is_forgotte
 
 | Component | Effort | Notes |
 |---|---|---|
-| `forget_candidates` relation + schema | Small | New CozoDB relation, straightforward |
+| `forget_candidates` relation + schema | Small | New CozoDB relation, single DDL statement |
 | `forget_audit` relation + schema | Small | New CozoDB relation |
 | `is_pinned` field on `Fact` | Small | Schema change, migration, API surface |
 | `ForgetConfig` struct | Small | Configuration, defaults, validation |
