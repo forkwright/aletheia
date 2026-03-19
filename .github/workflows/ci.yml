@@ -1,10 +1,13 @@
+# !! GENERATED FILE — do not edit by hand.
+# Edit scripts/generate-workflows.sh and re-run to update.
+
 name: CI
 
 on:
   push:
     branches: [main]
     paths:
-      - "shared/bin/**"
+      - "scripts/**"
       - ".github/workflows/ci.yml"
   pull_request:
     branches: [main]
@@ -22,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     if: >-
       github.event_name == 'pull_request' ||
-      contains(join(github.event.commits.*.modified, ','), 'shared/bin/')
+      contains(join(github.event.commits.*.modified, ','), 'scripts/')
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: Lint shell scripts
@@ -34,7 +37,7 @@ jobs:
               shellcheck -S warning "$script" || failed=1
               echo "::endgroup::"
             fi
-          done < <(find shared/bin -type f -executable 2>/dev/null)
+          done < <(find scripts -type f -executable 2>/dev/null)
           exit $failed
 
   commitlint:
@@ -70,7 +73,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p /tmp/kanon-standards
-          # List files in kanon standards/ and fetch each one
           gh api repos/forkwright/kanon/contents/standards \
             --jq '.[].name' | while IFS= read -r fname; do
             gh api "repos/forkwright/kanon/contents/standards/${fname}" \
@@ -100,3 +102,22 @@ jobs:
             exit 1
           fi
           echo "standards/ is in sync with kanon"
+
+  # WHY: Ensures the checked-in workflow YAML always matches what the generator
+  # would produce. Hand-edits are caught before merge; re-running the script is
+  # the fix. Runs only on PRs so noise on main pushes is avoided.
+  verify-generated:
+    name: Verify generated workflows
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Re-generate workflows
+        run: scripts/generate-workflows.sh
+      - name: Check for drift
+        run: |
+          if ! git diff --exit-code .github/workflows/; then
+            echo "::error::Generated workflows are stale. Run scripts/generate-workflows.sh and commit the result."
+            exit 1
+          fi
+          echo "Generated workflows are up to date."
