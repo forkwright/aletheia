@@ -418,7 +418,10 @@ impl NousManager {
                     }
                 }
             }
-            .instrument(tracing::info_span!("health_poller")),
+            .instrument(tracing::info_span!(
+                "health_poller",
+                interval_secs = interval.as_secs()
+            )),
         )
     }
 

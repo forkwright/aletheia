@@ -26,6 +26,7 @@ use aletheia_taxis::oikos::Oikos;
 pub(super) fn spawn_log_retention(log_dir: PathBuf, retention_days: u32, token: CancellationToken) {
     use aletheia_oikonomos::maintenance::{TraceRotationConfig, TraceRotator};
 
+    let span = tracing::info_span!("log_retention", retention_days, dir = %log_dir.display());
     tokio::spawn(
         async move {
             loop {
@@ -71,7 +72,7 @@ pub(super) fn spawn_log_retention(log_dir: PathBuf, retention_days: u32, token: 
                 }
             }
         }
-        .instrument(tracing::info_span!("log_retention")),
+        .instrument(span),
     );
 }
 

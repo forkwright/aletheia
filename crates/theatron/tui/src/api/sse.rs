@@ -29,7 +29,7 @@ impl SseConnection {
         let (tx, rx) = mpsc::channel(256);
         let url = format!("{}/api/v1/events", base_url.trim_end_matches('/'));
 
-        let span = tracing::info_span!("sse_connection");
+        let span = tracing::info_span!("sse_connection", %url);
         let handle = tokio::spawn(
             async move {
                 let mut backoff_secs: u64 = 1;

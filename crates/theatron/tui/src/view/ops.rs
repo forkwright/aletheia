@@ -6,7 +6,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::app::App;
-use crate::state::ops::{FocusedPane, OpsToolStatus};
+use crate::state::ops::{FocusedPane, OpsToolStatus, ToolCategory};
 use crate::theme::{self, Theme};
 
 const THINKING_TRUNCATE_LINES: usize = 20;
@@ -50,6 +50,12 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let mut lines: Vec<Line> = Vec::new();
     let inner_width = inner.width.saturating_sub(1) as usize;
     let mut item_idx: usize = 0;
+
+    // Summary row: total calls, errors, elapsed time.
+    if ops.summary.total_calls > 0 || ops.turn_started_at.is_some() {
+        render_summary_row(ops, &mut lines, theme);
+        lines.push(Line::raw(""));
+    }
 
     if !ops.thinking.text.is_empty() {
         let is_selected = ops.selected_item == Some(item_idx);
@@ -389,6 +395,88 @@ fn render_diff(
                 Style::default().fg(theme.status.success),
             ),
         ]));
+    }
+}
+
+/// Category display order for consistent KPI rendering.
+const CATEGORY_ORDER: &[ToolCategory] = &[
+    ToolCategory::Read,
+    ToolCategory::Write,
+    ToolCategory::Search,
+    ToolCategory::Exec,
+    ToolCategory::Http,
+    ToolCategory::Other,
+];
+
+fn render_summary_row(
+    ops: &crate::state::ops::OpsState,
+    lines: &mut Vec<Line<'static>>,
+    theme: &Theme,
+) {
+    let elapsed = ops
+        .turn_started_at
+        .map(|t| {
+            let secs = t.elapsed().as_secs();
+            if secs < 60 {
+                format!("{secs}s")
+            } else {
+                format!("{}m{}s", secs / 60, secs % 60)
+            }
+        })
+        .unwrap_or_default();
+
+    let summary = &ops.summary;
+    let mut spans = vec![
+        Span::styled(" ", Style::default()),
+        Span::styled(
+            format!("{}", summary.total_calls),
+            theme.style_accent_bold(),
+        ),
+        Span::styled(" calls", theme.style_muted()),
+    ];
+
+    if summary.total_errors > 0 {
+        spans.push(Span::styled(" · ", theme.style_dim()));
+        spans.push(Span::styled(
+            format!("{}", summary.total_errors),
+            theme.style_error(),
+        ));
+        spans.push(Span::styled(" err", theme.style_error()));
+    }
+
+    if !elapsed.is_empty() {
+        spans.push(Span::styled(" · ", theme.style_dim()));
+        spans.push(Span::styled(elapsed, theme.style_dim()));
+    }
+
+    lines.push(Line::from(spans));
+
+    // Per-category rows with tallies and percentiles.
+    for cat in CATEGORY_ORDER {
+        if let Some(stats) = summary.categories.get(cat) {
+            let mut cat_spans = vec![
+                Span::styled("  ", Style::default()),
+                Span::styled(format!("{cat}"), theme.style_muted()),
+                Span::styled(" ", Style::default()),
+                Span::styled(format!("{}", stats.success), theme.style_success()),
+                Span::styled("/", theme.style_dim()),
+            ];
+
+            if stats.fail > 0 {
+                cat_spans.push(Span::styled(format!("{}", stats.fail), theme.style_error()));
+            } else {
+                cat_spans.push(Span::styled("0", theme.style_dim()));
+            }
+
+            if let Some(p50) = stats.percentile(50) {
+                cat_spans.push(Span::styled(format!("  p50={p50}ms"), theme.style_dim()));
+            }
+            if let Some(p95) = stats.percentile(95) {
+                cat_spans.push(Span::styled(format!(" p95={p95}ms"), theme.style_dim()));
+            }
+
+            lines.push(Line::from(cat_spans));
+        }
     }
 }
 

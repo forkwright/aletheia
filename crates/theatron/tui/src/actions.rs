@@ -23,7 +23,7 @@ impl App {
                 let client = self.client.clone();
                 let session_id = session_id.clone();
                 let text = text.to_string();
-                let span = tracing::info_span!("queue_message");
+                let span = tracing::info_span!("queue_message", %session_id);
                 tokio::spawn(
                     async move {
                         if let Err(e) = client.queue_message(&session_id, &text).await {

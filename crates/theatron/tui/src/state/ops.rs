@@ -16,6 +16,120 @@ pub enum OpsToolStatus {
     Failed,
 }
 
+/// Tool category for grouping calls by type in the ops pane KPI display.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ToolCategory {
+    /// File reads: read_file, glob, grep, etc.
+    Read,
+    /// File writes: write_file, edit_file, notebook_edit, etc.
+    Write,
+    /// Search operations: web_search, search, etc.
+    Search,
+    /// Shell execution: bash, exec, etc.
+    Exec,
+    /// HTTP operations: web_fetch, http, etc.
+    Http,
+    /// Uncategorized tools.
+    Other,
+}
+
+impl std::fmt::Display for ToolCategory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Read => write!(f, "read"),
+            Self::Write => write!(f, "write"),
+            Self::Search => write!(f, "search"),
+            Self::Exec => write!(f, "exec"),
+            Self::Http => write!(f, "http"),
+            Self::Other => write!(f, "other"),
+        }
+    }
+}
+
+/// Categorize a tool name into a [`ToolCategory`].
+pub fn categorize_tool(name: &str) -> ToolCategory {
+    let lower = name.to_lowercase();
+    if lower.contains("read") || lower.contains("glob") || lower.contains("grep") {
+        ToolCategory::Read
+    } else if lower.contains("write")
+        || lower.contains("edit")
+        || lower.contains("patch")
+        || lower.contains("notebook")
+    {
+        ToolCategory::Write
+    } else if lower.contains("search") {
+        ToolCategory::Search
+    } else if lower.contains("bash") || lower.contains("exec") || lower.contains("shell") {
+        ToolCategory::Exec
+    } else if lower.contains("fetch") || lower.contains("http") || lower.contains("web_fetch") {
+        ToolCategory::Http
+    } else {
+        ToolCategory::Other
+    }
+}
+
+/// Per-category success/fail tallies and duration samples for percentile computation.
+#[derive(Debug, Clone, Default)]
+pub struct CategoryStats {
+    pub success: u32,
+    pub fail: u32,
+    /// Sorted durations in milliseconds for percentile computation.
+    durations: Vec<u64>,
+}
+
+impl CategoryStats {
+    /// Record a completed tool call.
+    pub fn record(&mut self, is_error: bool, duration_ms: u64) {
+        if is_error {
+            self.fail += 1;
+        } else {
+            self.success += 1;
+        }
+        // Insert in sorted order for percentile lookups.
+        let pos = self.durations.partition_point(|&d| d < duration_ms);
+        self.durations.insert(pos, duration_ms);
+    }
+
+    /// Total calls (success + fail).
+    #[cfg(test)]
+    pub fn total(&self) -> u32 {
+        self.success + self.fail
+    }
+
+    /// Compute a percentile (0–100) from the sorted durations.
+    /// Returns `None` if no durations have been recorded.
+    pub fn percentile(&self, p: u8) -> Option<u64> {
+        if self.durations.is_empty() {
+            return None;
+        }
+        let idx = ((p as usize) * self.durations.len() / 100).min(self.durations.len() - 1);
+        self.durations.get(idx).copied()
+    }
+}
+
+/// Summary KPIs for the ops pane header row.
+#[derive(Debug, Clone, Default)]
+pub struct OpsSummary {
+    pub total_calls: u32,
+    pub total_errors: u32,
+    /// Per-category statistics.
+    pub categories: std::collections::HashMap<ToolCategory, CategoryStats>,
+}
+
+impl OpsSummary {
+    /// Record a completed tool call into the summary.
+    pub fn record(&mut self, category: ToolCategory, is_error: bool, duration_ms: u64) {
+        self.total_calls += 1;
+        if is_error {
+            self.total_errors += 1;
+        }
+        self.categories
+            .entry(category)
+            .or_default()
+            .record(is_error, duration_ms);
+    }
+}
+
 /// A single tool call entry in the operations pane.
 #[derive(Debug, Clone)]
 pub struct OpsToolCall {
@@ -29,6 +143,8 @@ pub struct OpsToolCall {
     pub primary_arg: Option<String>,
     /// Error summary for failed tool calls, extracted from result text.
     pub error_message: Option<String>,
+    /// Tool category for KPI grouping.
+    pub category: ToolCategory,
 }
 
 /// A single thinking block in the operations pane.
@@ -78,6 +194,10 @@ pub struct OpsState {
     pub tool_calls: Vec<OpsToolCall>,
     /// File diffs parsed from tool results
     pub diffs: Vec<OpsDiffEntry>,
+    /// Aggregated KPI summary for the current turn.
+    pub summary: OpsSummary,
+    /// Wall-clock start time for the current turn (elapsed display).
+    pub turn_started_at: Option<std::time::Instant>,
 }
 
 impl Default for OpsState {
@@ -95,6 +215,8 @@ impl Default for OpsState {
             },
             tool_calls: Vec::new(),
             diffs: Vec::new(),
+            summary: OpsSummary::default(),
+            turn_started_at: None,
         }
     }
 }
@@ -131,6 +253,8 @@ impl OpsState {
         self.diffs.clear();
         self.scroll_offset = 0;
         self.selected_item = None;
+        self.summary = OpsSummary::default();
+        self.turn_started_at = Some(std::time::Instant::now());
     }
 
     /// Switch keyboard focus between panes.
@@ -216,6 +340,7 @@ impl OpsState {
         let primary_arg = input_json
             .as_deref()
             .and_then(|j| extract_primary_arg(j, &name));
+        let category = categorize_tool(&name);
         self.tool_calls.push(OpsToolCall {
             name,
             input_json,
@@ -225,6 +350,7 @@ impl OpsState {
             expanded: false,
             primary_arg,
             error_message: None,
+            category,
         });
     }
 
@@ -236,7 +362,7 @@ impl OpsState {
         duration_ms: u64,
         output: Option<String>,
     ) {
-        if let Some(tc) = self.tool_calls.iter_mut().rev().find(|t| t.name == name) {
+        let category = if let Some(tc) = self.tool_calls.iter_mut().rev().find(|t| t.name == name) {
             tc.status = if is_error {
                 OpsToolStatus::Failed
             } else {
@@ -252,7 +378,11 @@ impl OpsState {
                 }
             }
             tc.output = output;
-        }
+            tc.category
+        } else {
+            return;
+        };
+        self.summary.record(category, is_error, duration_ms);
     }
 }
 
@@ -414,6 +544,7 @@ mod tests {
             expanded: false,
             primary_arg: None,
             error_message: None,
+            category: ToolCategory::Other,
         });
         state.scroll_offset = 10;
         state.selected_item = Some(0);
@@ -424,6 +555,8 @@ mod tests {
         assert!(state.tool_calls.is_empty());
         assert_eq!(state.scroll_offset, 0);
         assert!(state.selected_item.is_none());
+        assert_eq!(state.summary.total_calls, 0);
+        assert!(state.turn_started_at.is_some());
     }
 
     #[test]
@@ -737,5 +870,92 @@ mod tests {
         let result = truncate_error(&long);
         assert!(result.chars().count() <= ERROR_MAX_LEN);
         assert!(result.ends_with('\u{2026}'));
+    }
+
+    #[test]
+    fn categorize_tool_read() {
+        assert_eq!(categorize_tool("read_file"), ToolCategory::Read);
+        assert_eq!(categorize_tool("Glob"), ToolCategory::Read);
+        assert_eq!(categorize_tool("Grep"), ToolCategory::Read);
+    }
+
+    #[test]
+    fn categorize_tool_write() {
+        assert_eq!(categorize_tool("write_file"), ToolCategory::Write);
+        assert_eq!(categorize_tool("Edit"), ToolCategory::Write);
+        assert_eq!(categorize_tool("NotebookEdit"), ToolCategory::Write);
+    }
+
+    #[test]
+    fn categorize_tool_exec() {
+        assert_eq!(categorize_tool("Bash"), ToolCategory::Exec);
+        assert_eq!(categorize_tool("exec_command"), ToolCategory::Exec);
+    }
+
+    #[test]
+    fn categorize_tool_search() {
+        assert_eq!(categorize_tool("web_search"), ToolCategory::Search);
+    }
+
+    #[test]
+    fn categorize_tool_http() {
+        assert_eq!(categorize_tool("web_fetch"), ToolCategory::Http);
+    }
+
+    #[test]
+    fn categorize_tool_other() {
+        assert_eq!(categorize_tool("agent"), ToolCategory::Other);
+    }
+
+    #[test]
+    fn category_stats_percentile() {
+        let mut stats = CategoryStats::default();
+        stats.record(false, 10);
+        stats.record(false, 20);
+        stats.record(false, 30);
+        stats.record(false, 40);
+        stats.record(true, 50);
+        assert_eq!(stats.success, 4);
+        assert_eq!(stats.fail, 1);
+        assert_eq!(stats.total(), 5);
+        // p50 = index 2 (of 5 elements) = 30
+        assert_eq!(stats.percentile(50), Some(30));
+        // p95 = index 4 = 50
+        assert_eq!(stats.percentile(95), Some(50));
+    }
+
+    #[test]
+    fn category_stats_empty_percentile() {
+        let stats = CategoryStats::default();
+        assert_eq!(stats.percentile(50), None);
+    }
+
+    #[test]
+    fn summary_records_across_categories() {
+        let mut summary = OpsSummary::default();
+        summary.record(ToolCategory::Read, false, 100);
+        summary.record(ToolCategory::Read, false, 200);
+        summary.record(ToolCategory::Write, true, 50);
+        assert_eq!(summary.total_calls, 3);
+        assert_eq!(summary.total_errors, 1);
+        assert_eq!(summary.categories[&ToolCategory::Read].success, 2);
+        assert_eq!(summary.categories[&ToolCategory::Write].fail, 1);
+    }
+
+    #[test]
+    fn complete_tool_updates_summary() {
+        let mut state = OpsState::default();
+        state.push_tool_start("read_file".to_string(), None);
+        state.complete_tool("read_file", false, 150, None);
+        assert_eq!(state.summary.total_calls, 1);
+        assert_eq!(state.summary.total_errors, 0);
+        assert!(state.summary.categories.contains_key(&ToolCategory::Read));
+    }
+
+    #[test]
+    fn push_tool_start_assigns_category() {
+        let mut state = OpsState::default();
+        state.push_tool_start("Bash".to_string(), None);
+        assert_eq!(state.tool_calls[0].category, ToolCategory::Exec);
     }
 }
