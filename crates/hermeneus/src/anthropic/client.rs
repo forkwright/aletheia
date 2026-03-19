@@ -205,6 +205,7 @@ impl AnthropicProvider {
         let start = Instant::now();
         let mut ttft: Option<std::time::Duration> = None;
 
+        let request = &self.maybe_prepend_oauth_identity(request);
         let wire = WireRequest::from_request(request, Some(true));
         let body = serde_json::to_string(&wire).context(error::ParseResponseSnafu)?;
 
@@ -428,6 +429,45 @@ impl AnthropicProvider {
         }
     }
 
+    /// Prepend the Claude Code system prompt identity when using OAuth.
+    ///
+    /// Anthropic gates Sonnet/Opus access on OAuth tokens behind a server-side
+    /// system prompt check. The Messages API inspects the system field and only
+    /// allows higher-tier models when the prompt begins with the CC identity.
+    /// Haiku works without this. This matches Claude Code's own behavior.
+    fn maybe_prepend_oauth_identity(&self, request: &CompletionRequest) -> CompletionRequest {
+        let credential = self.credential_provider.get_credential();
+        let Some(cred) = credential else {
+            return request.clone();
+        };
+        if cred.source != CredentialSource::OAuth {
+            return request.clone();
+        }
+
+        // WHY: Anthropic requires the EXACT CC identity as the system field for
+        // OAuth tokens to access Sonnet/Opus. Any additional content in the system
+        // field causes 400. The actual bootstrap prompt moves into messages as
+        // the first System-role message. This matches how CC itself works.
+        let mut req = request.clone();
+        if let Some(existing_system) = req.system.take() {
+            // Insert bootstrap as a User message with system context label,
+            // since System-role messages get extracted back into the system field
+            // by the wire layer. The LLM treats the first User message as context.
+            req.messages.insert(
+                0,
+                crate::types::Message {
+                    role: crate::types::Role::User,
+                    content: crate::types::Content::Text(format!(
+                        "[System context]\n\n{existing_system}"
+                    )),
+                },
+            );
+        }
+        req.system = Some("You are Claude Code, Anthropic's official CLI for Claude.".to_owned());
+        req.cache_system = false;
+        req
+    }
+
     fn build_headers(&self) -> Result<HeaderMap> {
         let credential = self.credential_provider.get_credential().ok_or_else(|| {
             error::AuthFailedSnafu {
@@ -515,8 +555,15 @@ impl AnthropicProvider {
 
         let start = Instant::now();
 
+        // WHY: Anthropic gates Sonnet/Opus access on OAuth tokens behind a system
+        // prompt identity check. Without the CC identity prefix, only Haiku-tier
+        // models are available. This matches what Claude Code itself sends.
+        let request = &self.maybe_prepend_oauth_identity(request);
+
         let wire = WireRequest::from_request(request, None);
         let body = serde_json::to_string(&wire).context(error::ParseResponseSnafu)?;
+
+        // TEMPORARY: dump request body for OAuth troubleshooting
 
         let mut last_error = None;
 

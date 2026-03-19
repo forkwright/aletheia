@@ -4,9 +4,10 @@ use std::time::{Duration, Instant};
 
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
-use tracing::{debug, error, info_span, warn};
+use tracing::{debug, error, info_span};
 
 use aletheia_hermeneus::provider::ProviderRegistry;
+use aletheia_koina::event::EventEmitter;
 use aletheia_mneme::embedding::EmbeddingProvider;
 use aletheia_mneme::store::SessionStore;
 use aletheia_organon::registry::ToolRegistry;
@@ -20,6 +21,7 @@ use crate::history::{self, HistoryConfig};
 use crate::session::SessionState;
 use crate::stream::TurnStreamEvent;
 
+use super::events::{StageCompleted, StageError, StageSkipped, StageTimeout};
 use super::{
     GuardResult, PipelineContext, PipelineInput, PipelineMessage, TurnResult,
     assemble_context_with_extra, check_guard,
@@ -31,6 +33,7 @@ pub(super) async fn run_context_stage(
     pipeline_config: &PipelineConfig,
     ctx: &mut PipelineContext,
     extra_bootstrap: Vec<BootstrapSection>,
+    emitter: &EventEmitter,
 ) -> error::Result<()> {
     let span = info_span!(
         "pipeline_stage",
@@ -44,14 +47,29 @@ pub(super) async fn run_context_stage(
         .await
         .inspect_err(|_| {
             crate::metrics::record_error(&config.id, "context", "assembly_failed");
+            emitter.emit(&StageError {
+                nous_id: config.id.clone(),
+                stage: "context",
+                error_type: "assembly_failed".to_owned(),
+            });
         })?;
+    let duration_secs = start.elapsed().as_secs_f64();
     record_stage_duration(&span, &start);
     span.record("status", "ok");
-    crate::metrics::record_stage(&config.id, "context", start.elapsed().as_secs_f64());
+    crate::metrics::record_stage(&config.id, "context", duration_secs);
+    emitter.emit(&StageCompleted {
+        nous_id: config.id.clone(),
+        stage: "context",
+        duration_secs,
+    });
     Ok(())
 }
 
 /// Recall stage: retrieve relevant knowledge from vector/BM25 search.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "stage receives all search dependencies plus event emitter"
+)]
 pub(super) async fn run_recall_stage(
     config: &NousConfig,
     pipeline_config: &PipelineConfig,
@@ -60,6 +78,7 @@ pub(super) async fn run_recall_stage(
     embedding_provider: Option<&dyn EmbeddingProvider>,
     vector_search: Option<&dyn crate::recall::VectorSearch>,
     text_search: Option<&dyn crate::recall::TextSearch>,
+    emitter: &EventEmitter,
 ) {
     let span = info_span!(
         "pipeline_stage",
@@ -88,8 +107,12 @@ pub(super) async fn run_recall_stage(
             let result = recall_stage.run_bm25(content, &config.id, ts, budget);
             apply_recall_result(result, ctx, &span);
         } else {
-            debug!("recall skipped: mock embedding provider with no text search");
             span.record("status", "skipped");
+            emitter.emit(&StageSkipped {
+                nous_id: config.id.clone(),
+                stage: "recall",
+                reason: "mock embedding provider with no text search".to_owned(),
+            });
         }
     } else if let (Some(ep), Some(vs)) = (embedding_provider, vector_search) {
         let recall_stage = crate::recall::RecallStage::new(config.recall.clone());
@@ -102,11 +125,12 @@ pub(super) async fn run_recall_stage(
             {
                 Ok(result) => Some(result),
                 Err(_elapsed) => {
-                    warn!(
-                        timeout_secs = recall_timeout_secs,
-                        "recall stage timed out, continuing without recalled knowledge"
-                    );
                     span.record("status", "timeout");
+                    emitter.emit(&StageTimeout {
+                        nous_id: config.id.clone(),
+                        stage: "recall",
+                        timeout_secs: recall_timeout_secs,
+                    });
                     None
                 }
             }
@@ -118,11 +142,21 @@ pub(super) async fn run_recall_stage(
             apply_recall_result(result, ctx, &span);
         }
     } else {
-        debug!("recall skipped: embedding provider or vector search not configured");
         span.record("status", "skipped");
+        emitter.emit(&StageSkipped {
+            nous_id: config.id.clone(),
+            stage: "recall",
+            reason: "embedding provider or vector search not configured".to_owned(),
+        });
     }
+    let duration_secs = start.elapsed().as_secs_f64();
     record_stage_duration(&span, &start);
-    crate::metrics::record_stage(&config.id, "recall", start.elapsed().as_secs_f64());
+    crate::metrics::record_stage(&config.id, "recall", duration_secs);
+    emitter.emit(&StageCompleted {
+        nous_id: config.id.clone(),
+        stage: "recall",
+        duration_secs,
+    });
 }
 
 /// History stage: load conversation history within token budget.
@@ -131,6 +165,7 @@ pub(super) async fn run_history_stage(
     ctx: &mut PipelineContext,
     input: &PipelineInput,
     session_store: Option<&Mutex<SessionStore>>,
+    emitter: &EventEmitter,
 ) -> error::Result<()> {
     let span = info_span!(
         "pipeline_stage",
@@ -156,7 +191,14 @@ pub(super) async fn run_history_stage(
             &history_config,
             &input.content,
         )
-        .inspect_err(|_| crate::metrics::record_error(&config.id, "history", "load_failed"))?;
+        .inspect_err(|_| {
+            crate::metrics::record_error(&config.id, "history", "load_failed");
+            emitter.emit(&StageError {
+                nous_id: config.id.clone(),
+                stage: "history",
+                error_type: "load_failed".to_owned(),
+            });
+        })?;
         ctx.messages = messages;
         ctx.history_budget -= hist_result.tokens_consumed;
         ctx.history_result = Some(hist_result);
@@ -173,14 +215,24 @@ pub(super) async fn run_history_stage(
             token_estimate,
         });
     }
+    let duration_secs = start.elapsed().as_secs_f64();
     record_stage_duration(&span, &start);
     span.record("status", "ok");
-    crate::metrics::record_stage(&config.id, "history", start.elapsed().as_secs_f64());
+    crate::metrics::record_stage(&config.id, "history", duration_secs);
+    emitter.emit(&StageCompleted {
+        nous_id: config.id.clone(),
+        stage: "history",
+        duration_secs,
+    });
     Ok(())
 }
 
 /// Guard stage: check rate limits, loop detection, safety.
-pub(super) fn run_guard_stage(session: &SessionState, config: &NousConfig) -> error::Result<()> {
+pub(super) fn run_guard_stage(
+    session: &SessionState,
+    config: &NousConfig,
+    emitter: &EventEmitter,
+) -> error::Result<()> {
     let span = info_span!(
         "pipeline_stage",
         stage = "guard",
@@ -190,16 +242,27 @@ pub(super) fn run_guard_stage(session: &SessionState, config: &NousConfig) -> er
     let _guard = span.enter();
     let start = Instant::now();
     let guard = check_guard(session, config);
+    let duration_secs = start.elapsed().as_secs_f64();
     record_stage_duration(&span, &start);
-    crate::metrics::record_stage(&config.id, "guard", start.elapsed().as_secs_f64());
+    crate::metrics::record_stage(&config.id, "guard", duration_secs);
     match guard {
         GuardResult::Allow => {
             span.record("status", "ok");
+            emitter.emit(&StageCompleted {
+                nous_id: config.id.clone(),
+                stage: "guard",
+                duration_secs,
+            });
             Ok(())
         }
         GuardResult::RateLimited { retry_after_ms } => {
             span.record("status", "error");
             crate::metrics::record_error(&config.id, "guard", "rate_limited");
+            emitter.emit(&StageError {
+                nous_id: config.id.clone(),
+                stage: "guard",
+                error_type: "rate_limited".to_owned(),
+            });
             Err(error::GuardRejectedSnafu {
                 reason: format!("rate limited, retry after {retry_after_ms}ms"),
             }
@@ -208,6 +271,11 @@ pub(super) fn run_guard_stage(session: &SessionState, config: &NousConfig) -> er
         GuardResult::LoopDetected { pattern } => {
             span.record("status", "error");
             crate::metrics::record_error(&config.id, "guard", "loop_detected");
+            emitter.emit(&StageError {
+                nous_id: config.id.clone(),
+                stage: "guard",
+                error_type: "loop_detected".to_owned(),
+            });
             Err(error::LoopDetectedSnafu {
                 iterations: 0u32,
                 pattern,
@@ -217,6 +285,11 @@ pub(super) fn run_guard_stage(session: &SessionState, config: &NousConfig) -> er
         GuardResult::Rejected { reason } => {
             span.record("status", "error");
             crate::metrics::record_error(&config.id, "guard", "rejected");
+            emitter.emit(&StageError {
+                nous_id: config.id.clone(),
+                stage: "guard",
+                error_type: "rejected".to_owned(),
+            });
             Err(error::GuardRejectedSnafu { reason }.build())
         }
     }
@@ -238,6 +311,7 @@ pub(super) async fn run_execute_stage(
     stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
     pipeline_start: Instant,
     total_timeout: Option<Duration>,
+    emitter: &EventEmitter,
 ) -> error::Result<TurnResult> {
     let span = info_span!(
         "pipeline_stage",
@@ -284,11 +358,21 @@ pub(super) async fn run_execute_stage(
         match tokio::time::timeout(timeout_dur, execute_fut).await {
             Ok(res) => res.inspect_err(|_| {
                 crate::metrics::record_error(&config.id, "execute", "pipeline_error");
+                emitter.emit(&StageError {
+                    nous_id: config.id.clone(),
+                    stage: "execute",
+                    error_type: "pipeline_error".to_owned(),
+                });
             })?,
             Err(_elapsed) => {
                 let secs = execute_secs.max(pipeline_config.stage_budget.total_secs);
                 span.record("status", "timeout");
                 crate::metrics::record_error(&config.id, "execute", "timeout");
+                emitter.emit(&StageTimeout {
+                    nous_id: config.id.clone(),
+                    stage: "execute",
+                    timeout_secs: secs,
+                });
                 return Err(error::PipelineTimeoutSnafu {
                     stage: "execute",
                     timeout_secs: secs,
@@ -299,14 +383,25 @@ pub(super) async fn run_execute_stage(
     } else {
         execute_fut.await.inspect_err(|_| {
             crate::metrics::record_error(&config.id, "execute", "pipeline_error");
+            emitter.emit(&StageError {
+                nous_id: config.id.clone(),
+                stage: "execute",
+                error_type: "pipeline_error".to_owned(),
+            });
         })?
     };
 
+    let duration_secs = start.elapsed().as_secs_f64();
     record_stage_duration(&span, &start);
     span.record("tokens_in", result.usage.input_tokens);
     span.record("tokens_out", result.usage.output_tokens);
     span.record("status", "ok");
-    crate::metrics::record_stage(&config.id, "execute", start.elapsed().as_secs_f64());
+    crate::metrics::record_stage(&config.id, "execute", duration_secs);
+    emitter.emit(&StageCompleted {
+        nous_id: config.id.clone(),
+        stage: "execute",
+        duration_secs,
+    });
     Ok(result)
 }
 
@@ -316,6 +411,7 @@ pub(super) async fn run_finalize_stage(
     input: &PipelineInput,
     result: &TurnResult,
     session_store: Option<&Mutex<SessionStore>>,
+    emitter: &EventEmitter,
 ) {
     let span = info_span!(
         "pipeline_stage",
@@ -346,14 +442,29 @@ pub(super) async fn run_finalize_stage(
             Err(e) => {
                 error!(error = %e, "finalize failed, returning result without persistence");
                 span.record("status", "error");
+                emitter.emit(&StageError {
+                    nous_id: config.id.clone(),
+                    stage: "finalize",
+                    error_type: "persistence_failed".to_owned(),
+                });
             }
         }
     } else {
-        debug!("no session store, skipping finalize");
         span.record("status", "skipped");
+        emitter.emit(&StageSkipped {
+            nous_id: config.id.clone(),
+            stage: "finalize",
+            reason: "no session store".to_owned(),
+        });
     }
+    let duration_secs = start.elapsed().as_secs_f64();
     record_stage_duration(&span, &start);
-    crate::metrics::record_stage(&config.id, "finalize", start.elapsed().as_secs_f64());
+    crate::metrics::record_stage(&config.id, "finalize", duration_secs);
+    emitter.emit(&StageCompleted {
+        nous_id: config.id.clone(),
+        stage: "finalize",
+        duration_secs,
+    });
 }
 
 /// Record elapsed duration on a pipeline stage span.
@@ -401,7 +512,7 @@ fn apply_recall_result(
             span.record("status", "ok");
         }
         Err(e) => {
-            warn!(error = %e, "recall stage failed, continuing without recalled knowledge");
+            tracing::warn!(error = %e, "recall stage failed, continuing without recalled knowledge");
             span.record("status", "error");
         }
     }

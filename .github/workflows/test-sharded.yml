@@ -34,12 +34,67 @@ env:
   SHARD_COUNT: 4
 
 jobs:
+  # WHY: Determine whether to run the full sharded suite (pushes to main,
+  # workflow_dispatch) or a filtered subset (pull requests). On PRs, uses
+  # cargo metadata to walk the dependency graph and find all crates that
+  # transitively depend on the changed files, so only those are tested.
+  test-plan:
+    name: Compute test plan
+    runs-on: ubuntu-latest
+    outputs:
+      full_suite: ${{ steps.plan.outputs.full_suite }}
+      packages: ${{ steps.plan.outputs.packages }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          # WHY: Shared cache key so the plan job benefits from the same
+          # sccache/target warming as the test jobs.
+          key: test-plan
+
+      - name: Compute test plan
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [[ "$EVENT" != "pull_request" ]]; then
+            printf 'Event is %s; running full suite.\n' "$EVENT"
+            echo "full_suite=true" >> "$GITHUB_OUTPUT"
+            echo "packages=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # PR: compute changed files relative to the merge base
+          git fetch origin "$BASE_REF" --depth=1
+          changed=$(git diff --name-only "origin/${BASE_REF}...HEAD" || true)
+
+          if [[ -z "$changed" ]]; then
+            printf 'No changed files detected; skipping tests.\n'
+            echo "full_suite=false" >> "$GITHUB_OUTPUT"
+            echo "packages=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          pkgs=$(echo "$changed" | python3 scripts/affected-crates.py | sort -u | tr '\n' ' ' | sed 's/[[:space:]]*$//')
+          printf 'Affected packages: %s\n' "$pkgs"
+          echo "full_suite=false" >> "$GITHUB_OUTPUT"
+          echo "packages=${pkgs}" >> "$GITHUB_OUTPUT"
+
   # WHY: Split the workspace test suite across parallel runners using
   # nextest's hash-based partitioning. Each shard receives a stable,
   # non-overlapping subset of tests keyed by fully-qualified test name.
   # This cuts wall-clock time by ~1/N without duplication or gaps.
+  # Only runs on main-branch pushes and workflow_dispatch (full suite).
   test-shard:
     name: "Test shard ${{ matrix.shard }}/4"
+    needs: [test-plan]
+    if: needs.test-plan.outputs.full_suite == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -56,14 +111,10 @@ jobs:
           # slot and doesn't thrash on concurrent writes.
           key: shard-${{ matrix.shard }}
 
-      - name: Install cargo-nextest
+      - name: Install nextest
         uses: taiki-e/install-action@e24b8b7a939c6a537188f34a4163cb153dd85cf6 # v2
         with:
-<<<<<<< Updated upstream
-          tool: cargo-nextest
-=======
           tool: nextest
->>>>>>> Stashed changes
 
       - name: "Test (shard ${{ matrix.shard }}/4)"
         env:
@@ -73,20 +124,68 @@ jobs:
             --workspace \
             --partition "hash:${SHARD}/4"
 
-  # WHY: Gate merges on all shards passing. A single required status check
-  # per "fan-in" job is simpler than listing N individual shard jobs in
-  # branch protection rules and handles dynamic shard counts transparently.
+  # WHY: On pull requests, only test the crates that were changed plus their
+  # reverse dependencies. This avoids rebuilding and retesting unaffected
+  # crates, reducing PR feedback time proportionally to the unchanged fraction.
+  test-filtered:
+    name: Test (affected crates)
+    needs: [test-plan]
+    if: needs.test-plan.outputs.full_suite == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          key: filtered
+
+      - name: Install nextest
+        uses: taiki-e/install-action@e24b8b7a939c6a537188f34a4163cb153dd85cf6 # v2
+        with:
+          tool: nextest
+
+      - name: Test (affected crates)
+        env:
+          PACKAGES: ${{ needs.test-plan.outputs.packages }}
+        run: |
+          if [[ -z "$PACKAGES" ]]; then
+            printf 'No affected Rust crates detected; skipping tests.\n'
+            exit 0
+          fi
+          pkg_flags=$(echo "$PACKAGES" | tr ' ' '\n' | grep -v '^$' | xargs -I{} printf -- '--package %s ' {})
+          cargo nextest run $pkg_flags
+
+  # WHY: Gate merges on a single required status check regardless of whether
+  # the full sharded suite or the filtered subset ran. Simpler to configure in
+  # branch protection rules than listing individual shard jobs.
   test-sharded-pass:
     name: Test shards passed
-    needs: [test-shard]
+    needs: [test-plan, test-shard, test-filtered]
     runs-on: ubuntu-latest
     if: always()
     steps:
-      - name: Check all shards succeeded
+      - name: Check test results
         env:
+          PLAN_RESULT: ${{ needs.test-plan.result }}
+          FULL_SUITE: ${{ needs.test-plan.outputs.full_suite }}
           SHARD_RESULT: ${{ needs.test-shard.result }}
+          FILTERED_RESULT: ${{ needs.test-filtered.result }}
         run: |
-          if [[ "$SHARD_RESULT" != "success" ]]; then
-            printf 'One or more test shards failed (result: %s)\n' "$SHARD_RESULT" >&2
+          if [[ "$PLAN_RESULT" != "success" ]]; then
+            printf 'test-plan failed (result: %s)\n' "$PLAN_RESULT" >&2
             exit 1
           fi
+          if [[ "$FULL_SUITE" == "true" ]]; then
+            if [[ "$SHARD_RESULT" != "success" ]]; then
+              printf 'One or more test shards failed (result: %s)\n' "$SHARD_RESULT" >&2
+              exit 1
+            fi
+          else
+            if [[ "$FILTERED_RESULT" != "success" ]]; then
+              printf 'Filtered test job failed (result: %s)\n' "$FILTERED_RESULT" >&2
+              exit 1
+            fi
+          fi
+          printf 'All tests passed.\n'

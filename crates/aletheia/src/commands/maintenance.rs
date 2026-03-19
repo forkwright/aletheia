@@ -112,8 +112,27 @@ pub(crate) fn run(action: Action, instance_root: Option<&PathBuf>) -> Result<()>
                             );
                         }
                     }
+                    "chiron-audit" => {
+                        use aletheia_nous::chiron::{AuditTrigger, CheckContext, ChironAuditor};
+                        let mut auditor = ChironAuditor::new();
+                        auditor.register_defaults();
+                        let ctx = CheckContext {
+                            nous_id: String::from("system"),
+                            ..Default::default()
+                        };
+                        let report = auditor.run_audit(&ctx, AuditTrigger::Manual);
+                        for r in &report.results {
+                            println!(
+                                "  {}: {} (score: {:.2})",
+                                r.check_name, r.result.status, r.result.score,
+                            );
+                            if r.result.status != aletheia_nous::chiron::CheckStatus::Pass {
+                                println!("    evidence: {}", r.result.evidence);
+                            }
+                        }
+                    }
                     other => anyhow::bail!(
-                        "unknown task: {other}. Valid: trace-rotation, drift-detection, db-monitor, all"
+                        "unknown task: {other}. Valid: trace-rotation, drift-detection, db-monitor, chiron-audit, all"
                     ),
                 }
             }

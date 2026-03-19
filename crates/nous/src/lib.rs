@@ -9,6 +9,8 @@ pub mod adapters;
 pub mod bootstrap;
 /// Token and wall-clock time budget tracking for pipeline stages.
 pub mod budget;
+/// Chiron self-auditing loop: prosoche checks, audit triggers, and knowledge graph storage.
+pub mod chiron;
 /// Per-agent and per-pipeline configuration types.
 pub mod config;
 /// Inter-agent messaging: fire-and-forget, request-response, and delivery audit.

@@ -13,10 +13,14 @@ pub mod defaults;
 pub mod disk_space;
 /// Error types shared across all Aletheia crates (file I/O, JSON, identifiers).
 pub mod error;
+/// Internal event system coupling metrics and structured logs.
+pub mod event;
 /// Shared HTTP constants (content types, auth prefix, API paths).
 pub mod http;
 /// Newtype wrappers for domain identifiers ([`id::NousId`], [`id::SessionId`], [`id::TurnId`], [`id::ToolName`]).
 pub mod id;
+/// Multi-output pipeline stages via the OutputBuffer pattern.
+pub mod output_buffer;
 /// Sensitive value redaction for safe log output (API keys, tokens, passwords).
 pub mod redact;
 /// Tracing layer that redacts sensitive field values before output.

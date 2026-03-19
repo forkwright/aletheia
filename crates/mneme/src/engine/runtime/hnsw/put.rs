@@ -17,6 +17,7 @@ use rustc_hash::FxHashSet;
 use tracing::warn;
 
 use super::types::{CompoundKey, DEFAULT_VECTOR_CACHE_CAPACITY, HnswIndexManifest, VectorCache};
+use super::visited_pool::VisitedPool;
 use crate::engine::DataValue;
 use crate::engine::data::expr::{Bytecode, eval_bytecode_pred};
 use crate::engine::data::tuple::ENCODED_KEY_MIN_LEN;
@@ -450,6 +451,10 @@ impl<'a> SessionTx<'a> {
         }
         Ok(ret)
     }
+    /// Search a single HNSW level, expanding the `found_nn` set.
+    ///
+    /// Delegates to [`hnsw_search_level_pooled`](Self::hnsw_search_level_pooled)
+    /// without a visited-list pool (fresh allocation per call).
     pub(crate) fn hnsw_search_level(
         &self,
         q: &Vector,
@@ -460,7 +465,30 @@ impl<'a> SessionTx<'a> {
         found_nn: &mut PriorityQueue<CompoundKey, OrderedFloat<f64>>,
         vec_cache: &mut VectorCache,
     ) -> Result<()> {
-        let mut visited: FxHashSet<CompoundKey> = FxHashSet::default();
+        self.hnsw_search_level_pooled(
+            q, ef, cur_level, orig_table, idx_table, found_nn, vec_cache, None,
+        )
+    }
+
+    /// Search a single HNSW level with optional visited-list pool.
+    ///
+    /// When a [`VisitedPool`] is provided, the visited set is acquired from the
+    /// pool and returned after use, eliminating per-search allocation.
+    pub(crate) fn hnsw_search_level_pooled(
+        &self,
+        q: &Vector,
+        ef: usize,
+        cur_level: i64,
+        orig_table: &RelationHandle,
+        idx_table: &RelationHandle,
+        found_nn: &mut PriorityQueue<CompoundKey, OrderedFloat<f64>>,
+        vec_cache: &mut VectorCache,
+        visited_pool: Option<&VisitedPool>,
+    ) -> Result<()> {
+        let mut visited = match visited_pool {
+            Some(pool) => pool.acquire(),
+            None => FxHashSet::default(),
+        };
         let mut candidates: PriorityQueue<CompoundKey, Reverse<OrderedFloat<f64>>> =
             PriorityQueue::new();
 
@@ -497,6 +525,10 @@ impl<'a> SessionTx<'a> {
                 }
                 visited.insert(neighbour_key);
             }
+        }
+
+        if let Some(pool) = visited_pool {
+            pool.release(visited);
         }
 
         Ok(())
