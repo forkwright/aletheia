@@ -206,8 +206,8 @@ name = "aletheia-koina"
 version = "0.12.0"
 dependencies = [
  "compact_str",
- "libc",
  "regex",
+ "rustix 1.1.4",
  "serde",
  "serde_json",
  "snafu",
@@ -338,9 +338,9 @@ dependencies = [
  "base64 0.22.1",
  "indexmap 2.13.0",
  "landlock",
- "libc",
  "prometheus",
  "reqwest 0.13.2",
+ "rustix 1.1.4",
  "rustls",
  "seccompiler",
  "serde",

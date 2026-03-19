@@ -44,6 +44,15 @@ fn sanitize_path_in_msg(path: &std::path::Path) -> String {
 /// Closes #1714.
 const MAX_WRITE_BYTES: usize = 10 * 1024 * 1024;
 
+/// Strip absolute path prefixes from an error message, showing only the filename.
+///
+/// WHY: Full filesystem paths in error messages sent to the LLM leak instance
+/// directory structure. Show only the filename component instead. Closes #1716.
+
+/// Maximum content size for the write tool (10 MB).
+///
+/// WHY: Prevents disk exhaustion or fork-bomb-like abuse via oversized writes.
+/// Closes #1714.
 
 /// Expand a leading `~` in a path string to the HOME environment variable.
 ///
@@ -499,19 +508,21 @@ impl ToolExecutor for ExecExecutor {
                 )]
                 unsafe {
                     cmd.pre_exec(|| {
+                        use rustix::process::{Resource, Rlimit, setrlimit};
+
                         // Cap subprocess count to prevent fork bombs
-                        let nproc_limit = libc::rlimit {
-                            rlim_cur: 64,
-                            rlim_max: 64,
+                        let nproc_limit = Rlimit {
+                            current: Some(64),
+                            maximum: Some(64),
                         };
-                        libc::setrlimit(libc::RLIMIT_NPROC, &raw const nproc_limit);
+                        let _ = setrlimit(Resource::Nproc, nproc_limit);
 
                         // Cap CPU time to 60 seconds to prevent runaway processes
-                        let cpu_limit = libc::rlimit {
-                            rlim_cur: 60,
-                            rlim_max: 60,
+                        let cpu_limit = Rlimit {
+                            current: Some(60),
+                            maximum: Some(60),
                         };
-                        libc::setrlimit(libc::RLIMIT_CPU, &raw const cpu_limit);
+                        let _ = setrlimit(Resource::Cpu, cpu_limit);
 
                         Ok(())
                     });

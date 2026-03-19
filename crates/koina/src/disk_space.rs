@@ -69,10 +69,6 @@ impl fmt::Display for DiskStatus {
 ///
 /// Returns an I/O error if the `statvfs` syscall fails (e.g. path does not
 /// exist or is not accessible).
-#[expect(
-    unsafe_code,
-    reason = "single FFI call to libc::statvfs with zeroed struct"
-)]
 pub fn available_space(path: &Path) -> std::io::Result<u64> {
     use std::ffi::CString;
     use std::os::unix::ffi::OsStrExt;
@@ -84,14 +80,8 @@ pub fn available_space(path: &Path) -> std::io::Result<u64> {
         )
     })?;
 
-    // SAFETY: `stat` is zeroed before the call. `libc::statvfs` writes into
-    // the provided pointer and returns 0 on success, -1 on error. The CString
-    // is valid for the duration of the call.
-    let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
-    let ret = unsafe { libc::statvfs(c_path.as_ptr(), &raw mut stat) };
-    if ret != 0 {
-        return Err(std::io::Error::last_os_error());
-    }
+    let stat = rustix::fs::statvfs(c_path.as_c_str())
+        .map_err(|e| std::io::Error::from_raw_os_error(e.raw_os_error()))?;
 
     // WHY: f_bavail (blocks available to unprivileged users) * f_frsize
     // (fragment size) gives the bytes available for non-root writes.
@@ -99,10 +89,6 @@ pub fn available_space(path: &Path) -> std::io::Result<u64> {
 }
 
 /// Check disk space and classify against thresholds.
-///
-/// # Errors
-///
-/// Returns an I/O error if the underlying `statvfs` call fails.
 pub fn check_disk_space(
     path: &Path,
     warning_bytes: u64,

@@ -25,7 +25,7 @@ tracing = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 landlock = "0.4"
-libc = "0.2"
+rustix = { workspace = true, features = ["process", "thread"] }
 seccompiler = "0.5"
 
 [dev-dependencies]

@@ -12,7 +12,7 @@ workspace = true
 
 [dependencies]
 compact_str = { workspace = true }
-libc = { workspace = true }
+rustix = { workspace = true, features = ["fs"] }
 regex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
