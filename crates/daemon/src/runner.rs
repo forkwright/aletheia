@@ -587,6 +587,11 @@ impl TaskRunner {
         let now = jiff::Timestamp::now();
         let now_instant = Instant::now();
 
+        // i is always in 0..self.tasks.len() so all self.tasks[i] accesses are valid
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "i ∈ 0..self.tasks.len() by for-loop bounds"
+        )]
         for i in 0..self.tasks.len() {
             if !self.tasks[i].def.enabled {
                 continue;

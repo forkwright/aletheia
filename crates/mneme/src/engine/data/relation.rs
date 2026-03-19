@@ -1,4 +1,9 @@
 //! Relation metadata and schema definitions.
+#![expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
 use super::error::*;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;

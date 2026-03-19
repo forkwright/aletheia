@@ -1,5 +1,9 @@
 #![expect(clippy::unwrap_used, reason = "test assertions")]
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test: vec indices valid after asserting len"
+)]
 use super::*;
 use crate::execution::execute_builtin;
 use tracing::Instrument;

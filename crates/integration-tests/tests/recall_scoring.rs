@@ -1,4 +1,8 @@
 //! Cross-crate tests for mneme recall scoring engine.
+#![expect(
+    clippy::indexing_slicing,
+    reason = "integration tests: index-based assertions on known-length slices"
+)]
 
 use aletheia_mneme::knowledge::{EpistemicTier, FactType};
 use aletheia_mneme::recall::{FactorScores, RecallEngine, RecallWeights, ScoredResult};

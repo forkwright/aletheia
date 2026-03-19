@@ -1,4 +1,11 @@
 //! Agent export: build an `AgentFile` from session store and workspace.
+#![cfg_attr(
+    any(feature = "mneme-engine", test),
+    expect(
+        clippy::indexing_slicing,
+        reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+    )
+)]
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -356,10 +363,18 @@ fn is_binary_content(path: &Path) -> bool {
     };
 
     let mut buf = vec![0u8; BINARY_PROBE_SIZE];
+    #[expect(
+        clippy::as_conversions,
+        reason = "usize→u64: BINARY_PROBE_SIZE is a small constant, fits in u64"
+    )]
     let Ok(n) = file.take(BINARY_PROBE_SIZE as u64).read(&mut buf) else {
         return true;
     };
 
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "n comes from read() which guarantees n <= buf.len()"
+    )]
     buf[..n].contains(&0)
 }
 

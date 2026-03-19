@@ -4,6 +4,11 @@
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
+#![expect(
+    clippy::as_conversions,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
+
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::sync::Arc;

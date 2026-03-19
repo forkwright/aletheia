@@ -10,6 +10,14 @@
 //! 2. **Candidate retrieval**: HNSW cosine + BM25 subject match against existing facts
 //! 3. **LLM classification**: classify (new_fact, candidate) pairs
 //! 4. **Action resolution**: determine insert/supersede/drop based on classification
+#![cfg_attr(
+    any(feature = "mneme-engine", test),
+    expect(
+        clippy::as_conversions,
+        clippy::indexing_slicing,
+        reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+    )
+)]
 
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;

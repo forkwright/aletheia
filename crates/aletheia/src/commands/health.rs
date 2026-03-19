@@ -40,9 +40,19 @@ pub(crate) async fn run(args: &HealthArgs) -> Result<()> {
         .json()
         .await
         .context("failed to parse health response")?;
-    let health_status = body["status"].as_str().unwrap_or("unknown");
-    let version = body["version"].as_str().unwrap_or("unknown");
-    let uptime = body["uptime_seconds"].as_u64().unwrap_or(0);
+    // NOTE: serde_json::Value indexing returns Value::Null for absent keys, not a panic
+    let health_status = body
+        .get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let version = body
+        .get("version")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let uptime = body
+        .get("uptime_seconds")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
     if status.is_success() {
         println!("OK — {health_status} | version {version} | uptime {uptime}s");
     } else {

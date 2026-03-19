@@ -65,7 +65,8 @@ impl SessionState {
     pub fn needs_distillation(&self, threshold_ratio: f64, context_window: u32) -> bool {
         #[expect(
             clippy::cast_possible_truncation,
-            reason = "threshold product fits in i64"
+            clippy::as_conversions,
+            reason = "f64→i64: threshold product fits in i64"
         )]
         let threshold = (f64::from(context_window) * threshold_ratio) as i64;
         self.token_estimate >= threshold

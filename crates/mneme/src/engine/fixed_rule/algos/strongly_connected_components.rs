@@ -3,6 +3,11 @@
     unused_imports,
     reason = "algorithm may use additional imports depending on feature flags"
 )]
+#![expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
 
 use crate::engine::error::InternalResult as Result;
 use crate::engine::fixed_rule::csr::DirectedCsrGraph;

@@ -2,6 +2,10 @@
     clippy::expect_used,
     reason = "test assertions use .expect() for descriptive panic messages"
 )]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test: vec indices are valid after asserting sufficient length"
+)]
 use super::*;
 
 #[test]

@@ -91,6 +91,10 @@ impl Project {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: index 0 is valid after asserting len >= 1 above"
+)]
 mod tests {
     use super::*;
     use crate::phase::{Phase, PhaseState};

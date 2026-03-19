@@ -84,7 +84,11 @@ impl Phase {
                 )
             })
             .count();
-        #[expect(clippy::cast_precision_loss, reason = "plan counts are small")]
+        #[expect(
+            clippy::cast_precision_loss,
+            clippy::as_conversions,
+            reason = "usize→f64: plan counts are small, precision loss is acceptable"
+        )]
         let pct = done as f64 / self.plans.len() as f64 * 100.0;
         pct
     }

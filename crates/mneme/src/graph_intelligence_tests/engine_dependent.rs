@@ -1,5 +1,9 @@
 //! Engine-dependent integration tests for graph intelligence.
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test: vec indices are valid after asserting len"
+)]
 use super::super::*;
 
 // --- Engine-dependent tests ---

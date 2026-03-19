@@ -699,7 +699,11 @@ fn generate_simple_embedding(text: &str) -> Vec<f32> {
                 break;
             }
             // WHY: map byte to [-1.0, 1.0]: value fits without overflow, truncation is harmless
-            #[expect(clippy::cast_possible_truncation, reason = "result fits in f32 range")]
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::as_conversions,
+                reason = "f64→f32: result fits in f32 range"
+            )]
             embedding.push((f64::from(*byte) / 127.5 - 1.0) as f32);
         }
         let mut h = Sha256::new();

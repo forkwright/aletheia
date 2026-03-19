@@ -1,6 +1,10 @@
 //! Cross-format compatibility test: verifies Rust can parse TS-exported `AgentFile`.
 #![expect(clippy::unwrap_used, reason = "test assertions")]
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test: vec indices are valid after asserting len"
+)]
 
 use aletheia_mneme::portability::AgentFile;
 

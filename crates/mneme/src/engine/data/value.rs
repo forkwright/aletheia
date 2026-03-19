@@ -3,6 +3,11 @@
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
+#![expect(
+    clippy::as_conversions,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
+
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use ndarray::Array1;

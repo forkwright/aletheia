@@ -1,6 +1,10 @@
 //! Cross-crate tests for taxis oikos + cascade resolution.
 
 #![expect(clippy::unwrap_used, reason = "test assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "integration tests: index-based assertions on known-length slices"
+)]
 
 use std::fs;
 use std::path::Path;

@@ -1,4 +1,8 @@
 //! Data extraction helpers for stored relation operations.
+#![expect(
+    clippy::indexing_slicing,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 

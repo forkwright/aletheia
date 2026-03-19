@@ -38,7 +38,13 @@ impl Default for CharEstimator {
 
 impl TokenEstimator for CharEstimator {
     fn estimate(&self, text: &str) -> u64 {
-        (text.len() as u64).div_ceil(self.chars_per_token)
+        #[expect(
+            clippy::as_conversions,
+            reason = "usize→u64: text length always fits in u64"
+        )]
+        {
+            (text.len() as u64).div_ceil(self.chars_per_token)
+        }
     }
 }
 
@@ -77,7 +83,8 @@ impl TokenBudget {
             clippy::cast_possible_truncation,
             clippy::cast_sign_loss,
             clippy::cast_precision_loss,
-            reason = "context_window fits in f64 mantissa for practical model sizes"
+            clippy::as_conversions,
+            reason = "u64→f64→u64: context_window fits in f64 mantissa for practical model sizes"
         )]
         let reserved_for_history = (context_window as f64 * history_ratio) as u64;
         let computed = context_window
@@ -281,6 +288,10 @@ impl TimeBudget {
     }
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: vec indices are valid after asserting len"
+)]
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 mod tests {

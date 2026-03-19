@@ -19,6 +19,13 @@
     clippy::expect_used,
     reason = "Mutex::lock() panics only on poisoning (another thread panicked while holding the lock), which is a fatal programming error"
 )]
+#![cfg_attr(
+    test,
+    expect(
+        clippy::indexing_slicing,
+        reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+    )
+)]
 
 use serde::{Deserialize, Serialize};
 

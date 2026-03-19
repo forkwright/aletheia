@@ -199,6 +199,10 @@ pub fn resolve_all(
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 #[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: index 0 is valid after asserting results.len() >= 1"
+)]
 mod tests {
     use super::*;
     use std::fs;

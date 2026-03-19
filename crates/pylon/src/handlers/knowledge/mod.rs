@@ -268,6 +268,11 @@ pub async fn list_facts(
 
     let start = query.offset.min(facts.len());
     let end = (start + query.limit).min(facts.len());
+    // start and end are both bounded by facts.len() via .min()
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "start and end are bounded by facts.len() via .min()"
+    )]
     let facts = facts[start..end].to_vec();
 
     Ok(Json(FactsResponse { facts, total }))
@@ -370,6 +375,10 @@ use search::{get_fact_relationships, get_similar_facts};
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: vec indices valid after asserting len"
+)]
 mod tests {
     use super::*;
 

@@ -1,4 +1,9 @@
 //! SessionTx methods for FTS, HNSW, and MinHash-LSH index creation.
+#![expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
 use compact_str::CompactString;
 use pest::Parser;
 use rmp_serde::Serializer;

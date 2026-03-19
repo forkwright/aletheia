@@ -110,6 +110,10 @@ impl Plan {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: indices are asserted correct by len checks above"
+)]
 mod tests {
     use super::*;
 

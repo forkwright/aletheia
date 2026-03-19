@@ -173,6 +173,10 @@ impl ScenarioRunner {
 
         // WHY: when fail_fast triggers, mark remaining as skipped so passed + failed + skipped == total
         if let Some(remaining_start) = fail_fast_idx {
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "remaining_start is i+1 where i < scenarios.len(); slice is empty when i is last"
+            )]
             for scenario in &scenarios[remaining_start..] {
                 results.push(ScenarioResult {
                     meta: scenario.meta(),

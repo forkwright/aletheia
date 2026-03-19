@@ -1,3 +1,7 @@
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test: vec/JSON indices valid after asserting len or known structure"
+)]
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use tower::ServiceExt;

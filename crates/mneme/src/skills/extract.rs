@@ -247,14 +247,22 @@ fn compute_tool_overlap(a: &[String], b: &[String]) -> f64 {
     if union == 0 {
         0.0
     } else {
-        intersection as f64 / union as f64
+        #[expect(
+            clippy::as_conversions,
+            reason = "usize→f64: set sizes are small; precision loss is negligible"
+        )]
+        {
+            intersection as f64 / union as f64
+        }
     }
 }
 
 /// Simple name similarity: longest common subsequence ratio.
 #[expect(
     clippy::cast_precision_loss,
-    reason = "string char counts are small; precision loss is negligible"
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "DP table: indices are bounded by loop ranges; usize→f64 for small string lengths"
 )]
 fn compute_name_similarity(a: &str, b: &str) -> f64 {
     let a_lower = a.to_lowercase();

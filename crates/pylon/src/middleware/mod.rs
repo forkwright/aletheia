@@ -409,16 +409,42 @@ mod tests {
         const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
         let mut result = String::new();
         for chunk in input.chunks(3) {
+            // chunks(3) always yields at least 1 element; b1/b2 use .get() for safety
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "chunks(3) always has at least 1 element"
+            )]
             let b0 = chunk[0];
             let b1 = chunk.get(1).copied().unwrap_or(0);
             let b2 = chunk.get(2).copied().unwrap_or(0);
             let combined = u32::from(b0) << 16 | u32::from(b1) << 8 | u32::from(b2);
+            // 6-bit nibbles (0..=63) safely index 64-element CHARS; u8 ASCII is valid char
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "6-bit value 0..=63 indexes 64-element CHARS"
+            )]
+            #[expect(clippy::as_conversions, reason = "6-bit→usize; u8 ASCII→char")]
             result.push(CHARS[((combined >> 18) & 0x3F) as usize] as char);
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "6-bit value 0..=63 indexes 64-element CHARS"
+            )]
+            #[expect(clippy::as_conversions, reason = "6-bit→usize; u8 ASCII→char")]
             result.push(CHARS[((combined >> 12) & 0x3F) as usize] as char);
             if chunk.len() > 1 {
+                #[expect(
+                    clippy::indexing_slicing,
+                    reason = "6-bit value 0..=63 indexes 64-element CHARS"
+                )]
+                #[expect(clippy::as_conversions, reason = "6-bit→usize; u8 ASCII→char")]
                 result.push(CHARS[((combined >> 6) & 0x3F) as usize] as char);
             }
             if chunk.len() > 2 {
+                #[expect(
+                    clippy::indexing_slicing,
+                    reason = "6-bit value 0..=63 indexes 64-element CHARS"
+                )]
+                #[expect(clippy::as_conversions, reason = "6-bit→usize; u8 ASCII→char")]
                 result.push(CHARS[(combined & 0x3F) as usize] as char);
             }
         }

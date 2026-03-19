@@ -1,4 +1,11 @@
 //! Tokenizer that emits the entire input as one token.
+#![cfg_attr(
+    test,
+    expect(
+        clippy::indexing_slicing,
+        reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+    )
+)]
 use super::{Token, TokenStream, Tokenizer};
 use crate::engine::fts::tokenizer::BoxTokenStream;
 

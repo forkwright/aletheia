@@ -1,4 +1,8 @@
 //! parse_sys implementation.
+#![expect(
+    clippy::as_conversions,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
 use std::collections::BTreeMap;
 use std::sync::Arc;
 

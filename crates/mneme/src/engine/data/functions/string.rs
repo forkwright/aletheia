@@ -1,4 +1,8 @@
 //! String manipulation, regex, unicode, and encoding functions.
+#![expect(
+    clippy::as_conversions,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use compact_str::CompactString;

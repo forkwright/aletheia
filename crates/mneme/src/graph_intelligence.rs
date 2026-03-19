@@ -13,6 +13,13 @@
         reason = "module internals; only exercised by crate-level tests"
     )
 )]
+#![cfg_attr(
+    feature = "mneme-engine",
+    expect(
+        clippy::as_conversions,
+        reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+    )
+)]
 
 use std::collections::{HashMap, HashSet};
 

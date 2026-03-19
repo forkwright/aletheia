@@ -143,7 +143,11 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
             .on_response(
                 |response: &axum::http::Response<_>, latency: Duration, span: &tracing::Span| {
                     span.record("http.status_code", response.status().as_u16());
-                    #[expect(clippy::cast_possible_truncation, reason = "HTTP latency fits in u64")]
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        clippy::as_conversions,
+                        reason = "u128→u64: HTTP latency fits in u64"
+                    )]
                     let duration_ms = latency.as_millis() as u64;
                     tracing::debug!(
                         duration_ms,

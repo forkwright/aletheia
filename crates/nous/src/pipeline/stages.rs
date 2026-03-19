@@ -74,7 +74,8 @@ pub(super) async fn run_recall_stage(
         embedding_provider.is_some_and(|ep| ep.model_name() == "mock-embedding");
     #[expect(
         clippy::cast_sign_loss,
-        reason = "remaining_tokens is positive after context assembly"
+        clippy::as_conversions,
+        reason = "i64→u64: remaining_tokens is positive after context assembly"
     )]
     let budget = ctx.remaining_tokens.max(0) as u64;
 
@@ -160,7 +161,11 @@ pub(super) async fn run_history_stage(
         ctx.history_budget -= hist_result.tokens_consumed;
         ctx.history_result = Some(hist_result);
     } else {
-        #[expect(clippy::cast_possible_wrap, reason = "message length fits in i64")]
+        #[expect(
+            clippy::cast_possible_wrap,
+            clippy::as_conversions,
+            reason = "usize→i64: message length fits in i64"
+        )]
         let token_estimate = (input.content.len() as i64 + 3) / 4;
         ctx.messages.push(PipelineMessage {
             role: "user".to_owned(),
@@ -355,7 +360,8 @@ pub(super) async fn run_finalize_stage(
 fn record_stage_duration(span: &tracing::Span, start: &Instant) {
     #[expect(
         clippy::cast_possible_truncation,
-        reason = "stage duration fits in u64"
+        clippy::as_conversions,
+        reason = "u128→u64: stage duration fits in u64"
     )]
     {
         span.record("duration_ms", start.elapsed().as_millis() as u64);
@@ -379,7 +385,11 @@ fn apply_recall_result(
                 }
                 // WHY: saturating_sub followed by max(0) ensures remaining_tokens
                 // never goes negative regardless of recall token accounting.
-                #[expect(clippy::cast_possible_wrap, reason = "recall tokens fit in i64")]
+                #[expect(
+                    clippy::cast_possible_wrap,
+                    clippy::as_conversions,
+                    reason = "u64→i64: recall tokens fit in i64"
+                )]
                 {
                     ctx.remaining_tokens = ctx
                         .remaining_tokens

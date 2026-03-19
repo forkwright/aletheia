@@ -1,3 +1,8 @@
+#![expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
 #[cfg(feature = "mneme-engine")]
 pub(super) fn fact_to_params(
     fact: &crate::knowledge::Fact,

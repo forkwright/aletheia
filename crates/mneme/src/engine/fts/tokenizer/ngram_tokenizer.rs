@@ -1,4 +1,9 @@
 //! N-gram tokenizer.
+#![expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
 use super::{Token, TokenStream, Tokenizer};
 use crate::engine::fts::tokenizer::BoxTokenStream;
 

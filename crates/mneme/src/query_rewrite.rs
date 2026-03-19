@@ -275,7 +275,11 @@ pub fn rrf_merge<T: HasId + HasRrfScore + Clone>(results_per_query: &[Vec<T>], k
 
     for query_results in results_per_query {
         for (rank, result) in query_results.iter().enumerate() {
-            #[expect(clippy::cast_precision_loss, reason = "rank is small enough for f64")]
+            #[expect(
+                clippy::cast_precision_loss,
+                clippy::as_conversions,
+                reason = "usize→f64: rank is small enough for f64"
+            )]
             let rrf_contribution = 1.0 / (k + rank as f64 + 1.0);
             let entry = score_map
                 .entry(result.id().to_owned())
@@ -317,6 +321,10 @@ pub trait HasRrfScore {
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: vec indices are valid after asserting len"
+)]
 mod tests {
     use super::*;
 

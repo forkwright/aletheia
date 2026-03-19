@@ -1,5 +1,9 @@
 //! Tests for edge cases, `FactType` classification, graph recall, and integration scenarios.
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
 use super::super::*;
 
 fn engine() -> RecallEngine {

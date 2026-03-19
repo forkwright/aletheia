@@ -294,6 +294,10 @@ fn sessions_send_def() -> ToolDef {
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 #[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: tuple indices valid (call tuples)"
+)]
 mod tests {
     use std::future::Future;
     use std::path::PathBuf;

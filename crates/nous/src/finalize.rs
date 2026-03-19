@@ -26,7 +26,13 @@ use crate::session::SessionState;
 fn turn_seq_from_ulid(ulid: &Ulid) -> i64 {
     // NOTE: ULID is 128-bit: shift right 65 bits to keep upper 63 bits (47-bit timestamp + 16-bit randomness prefix); mask ensures sign bit is zero so cast to i64 never wraps
     let raw = u128::from(*ulid);
-    ((raw >> 65) & 0x7FFF_FFFF_FFFF_FFFF) as i64
+    #[expect(
+        clippy::as_conversions,
+        reason = "u128→i64: mask ensures sign bit is zero so cast never wraps"
+    )]
+    {
+        ((raw >> 65) & 0x7FFF_FFFF_FFFF_FFFF) as i64
+    }
 }
 
 /// Configuration for the finalize stage.
@@ -112,7 +118,11 @@ pub fn finalize(
                 None,
             )
             .context(error::StoreSnafu)?;
-        #[expect(clippy::cast_possible_wrap, reason = "message length fits in i64")]
+        #[expect(
+            clippy::cast_possible_wrap,
+            clippy::as_conversions,
+            reason = "usize→i64: message length fits in i64"
+        )]
         let input_token_estimate = (input_content.len() as i64 + 3) / 4;
         store
             .append_message(
@@ -173,7 +183,11 @@ pub fn finalize(
 
     let mut usage_recorded = false;
     if config.record_usage {
-        #[expect(clippy::cast_possible_wrap, reason = "token counts fit in i64")]
+        #[expect(
+            clippy::cast_possible_wrap,
+            clippy::as_conversions,
+            reason = "u64→i64: token counts fit in i64"
+        )]
         let record = UsageRecord {
             session_id: session.id.clone(),
             turn_seq,
@@ -194,6 +208,10 @@ pub fn finalize(
     })
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: vec indices are valid after asserting len"
+)]
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {

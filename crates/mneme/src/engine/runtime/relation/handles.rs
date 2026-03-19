@@ -1,4 +1,8 @@
 //! Relation type definitions: RelationId, RelationHandle, InputRelationHandle.
+#![expect(
+    clippy::indexing_slicing,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
 use std::collections::BTreeMap;
 use std::fmt::{Debug, Display, Formatter};
 

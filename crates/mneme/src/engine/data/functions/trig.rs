@@ -1,4 +1,8 @@
 //! Trigonometric, hyperbolic, and geographic functions.
+#![expect(
+    clippy::as_conversions,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
 use crate::engine::data::error::*;
 type Result<T> = DataResult<T>;
 use super::arg;

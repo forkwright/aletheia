@@ -61,6 +61,10 @@ pub fn load_history(
     config: &HistoryConfig,
     current_message: &str,
 ) -> error::Result<(Vec<PipelineMessage>, HistoryResult)> {
+    #[expect(
+        clippy::as_conversions,
+        reason = "usize→i64: message length fits in i64"
+    )]
     let current_tokens = (current_message.len() as i64 + 3) / 4;
     let available = budget - config.reserve_for_current - current_tokens;
 
@@ -155,6 +159,10 @@ pub fn load_history(
     Ok((collected, result))
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: vec indices are valid after asserting len"
+)]
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 #[expect(clippy::expect_used, reason = "test assertions may panic on failure")]

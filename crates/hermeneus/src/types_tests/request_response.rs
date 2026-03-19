@@ -1,4 +1,8 @@
 //! Request, response, and server tool serde tests.
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test: vec indices are valid after asserting sufficient length"
+)]
 use super::*;
 
 #[test]

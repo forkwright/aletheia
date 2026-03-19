@@ -299,6 +299,10 @@ impl From<tokio::task::JoinError> for ApiError {
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 #[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: JSON key indexing on known-present keys"
+)]
 mod tests {
     use axum::response::IntoResponse;
     use tracing::Instrument;

@@ -1,4 +1,11 @@
 //! Agent portability schema: AgentFile format for cross-runtime export/import.
+#![cfg_attr(
+    test,
+    expect(
+        clippy::indexing_slicing,
+        reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+    )
+)]
 
 use std::collections::HashMap;
 

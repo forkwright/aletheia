@@ -269,6 +269,10 @@ fn copy_table(
 
     for row in rows {
         let Ok(values) = row else { continue };
+        #[expect(
+            clippy::as_conversions,
+            reason = "coercion to dyn ToSql trait object: required by rusqlite API"
+        )]
         let params: Vec<&dyn rusqlite::types::ToSql> = values
             .iter()
             .map(|v| v as &dyn rusqlite::types::ToSql)

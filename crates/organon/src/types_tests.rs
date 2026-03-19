@@ -1,3 +1,7 @@
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test: vec indices valid after asserting len"
+)]
 #![expect(clippy::expect_used, reason = "test assertions")]
 use super::*;
 

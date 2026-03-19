@@ -1,4 +1,8 @@
 //! Basic arithmetic operators.
+#![expect(
+    clippy::as_conversions,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
 
 use super::{arg, mul_vecs};
 use crate::engine::data::error::*;

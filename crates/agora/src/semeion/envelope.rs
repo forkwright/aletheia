@@ -116,6 +116,10 @@ pub fn extract_message(envelope: &SignalEnvelope) -> Option<InboundMessage> {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: JSON key indexing on known-present keys"
+)]
 mod tests {
     use super::*;
 

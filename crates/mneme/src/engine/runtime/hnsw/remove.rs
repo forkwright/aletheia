@@ -3,6 +3,12 @@
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
+#![expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
+
 use crate::engine::DataValue;
 use crate::engine::data::tuple::ENCODED_KEY_MIN_LEN;
 use crate::engine::error::InternalResult as Result;

@@ -111,11 +111,24 @@ pub async fn send_message(
                 tracing::info!(idempotency_key = %key, "idempotency cache hit — returning cached completion");
                 // NOTE: Decode the cached turn summary stored by the original request.
                 let cached: serde_json::Value = serde_json::from_str(&body).unwrap_or_default();
+                // serde_json::Value::Index returns Value::Null for absent keys (no panic)
+                #[expect(
+                    clippy::indexing_slicing,
+                    reason = "serde_json::Value Index returns Null for absent keys, never panics"
+                )]
                 let stop_reason = cached["stop_reason"]
                     .as_str()
                     .unwrap_or("idempotency_replay")
                     .to_owned();
+                #[expect(
+                    clippy::indexing_slicing,
+                    reason = "serde_json::Value Index returns Null for absent keys, never panics"
+                )]
                 let input_tokens = cached["input_tokens"].as_u64().unwrap_or(0);
+                #[expect(
+                    clippy::indexing_slicing,
+                    reason = "serde_json::Value Index returns Null for absent keys, never panics"
+                )]
                 let output_tokens = cached["output_tokens"].as_u64().unwrap_or(0);
 
                 let (tx, rx) = mpsc::channel::<SseEvent>(1);

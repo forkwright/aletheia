@@ -1,4 +1,9 @@
 //! SessionTx methods: column index management and relation renaming.
+#![expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
 
 use itertools::Itertools;
 use rmp_serde::Serializer;
