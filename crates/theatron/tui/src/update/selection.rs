@@ -1,4 +1,10 @@
-/// Message selection handlers: navigation, actions, and SelectionContext sync.
+// WHY: all action_* functions receive an idx that was validated by the `i < messages.len()` guard
+// in `handle_message_action` before being dispatched; `urls[0]` is guarded by `urls.len() == 1` match arm.
+#![expect(
+    clippy::indexing_slicing,
+    reason = "message indices are validated by handle_message_action before dispatch; urls[0] is guarded by len check"
+)]
+//! Message selection handlers: navigation, actions, and SelectionContext sync.
 use crate::app::App;
 use crate::msg::{ErrorToast, MessageActionKind};
 use crate::state::SelectionContext;

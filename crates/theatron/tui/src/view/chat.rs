@@ -270,6 +270,10 @@ fn resolve_osc_links(
     clippy::too_many_arguments,
     reason = "render context requires all params; extracting a struct would add boilerplate without clarity gain"
 )]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "slice.range is computed by VirtualScroll::visible_slice which returns only valid item indices into messages"
+)]
 fn render_virtual_messages(
     app: &App,
     lines: &mut Vec<Line<'static>>,

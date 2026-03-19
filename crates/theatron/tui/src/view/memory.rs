@@ -30,6 +30,10 @@ use crate::state::memory::{MemoryInspectorState, MemoryTab};
 use crate::theme::Theme;
 
 /// Render the main memory inspector view (fact browser, graph, timeline tabs).
+#[expect(
+    clippy::indexing_slicing,
+    reason = "Layout.split() returns exactly as many Rects as there are constraints; indices 0/1/2 match the three constraints defined above"
+)]
 pub(crate) fn render_inspector(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let layout = Layout::default()
         .direction(Direction::Vertical)
@@ -282,6 +286,10 @@ fn render_tab_bar(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     frame.render_widget(paragraph, area);
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "end = min(start + height, len) ensures start..end is always a valid slice range"
+)]
 fn render_facts_table(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let mut lines: Vec<Line> = Vec::new();
 

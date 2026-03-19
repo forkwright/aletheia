@@ -116,6 +116,10 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     frame.render_widget(paragraph, inner);
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "THINKING_TRUNCATE_LINES / TOOL_OUTPUT_TRUNCATE_LINES are checked before slicing via the `truncated` boolean"
+)]
 fn render_thinking_block(
     thinking: &crate::state::ops::OpsThinkingBlock,
     lines: &mut Vec<Line<'static>>,
@@ -213,6 +217,10 @@ fn render_thinking_block(
     lines.push(Line::raw(""));
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "TOOL_OUTPUT_TRUNCATE_LINES < output_lines.len() is checked by the `truncated` boolean before slicing"
+)]
 fn render_tool_call(
     tc: &crate::state::ops::OpsToolCall,
     lines: &mut Vec<Line<'static>>,
