@@ -4,8 +4,11 @@ mod builders;
 pub mod queries;
 mod schema;
 
-pub use builders::*;
-pub use schema::*;
+pub use builders::{PutBuilder, QueryBuilder, RmBuilder, ScanBuilder};
+pub use schema::{
+    EmbeddingsField, EntitiesField, FactEntitiesField, FactsField, Field, MergeAuditField,
+    PendingMergesField, Relation, RelationshipsField,
+};
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]

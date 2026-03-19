@@ -6,6 +6,7 @@ use std::pin::Pin;
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
+use aletheia_koina::defaults::MAX_OUTPUT_BYTES;
 use aletheia_koina::id::ToolName;
 use aletheia_organon::registry::{ToolExecutor, ToolRegistry};
 use aletheia_organon::types::{
@@ -18,9 +19,6 @@ use tracing::info;
 use crate::error;
 use crate::loader::LoadedPack;
 use crate::manifest::{PackInputSchema, PackToolDef};
-
-/// Maximum output bytes before truncation (50 KB, matching `ExecExecutor`).
-const MAX_OUTPUT_BYTES: usize = 50 * 1024;
 
 /// Executes a pack-declared shell script with JSON input on stdin.
 struct ShellToolExecutor {

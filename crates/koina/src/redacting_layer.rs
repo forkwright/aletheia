@@ -41,6 +41,7 @@ pub struct RedactingLayer<W> {
 
 impl<W> RedactingLayer<W> {
     /// Create a redacting layer that writes JSON to the given writer.
+    #[must_use]
     pub fn new(
         writer: W,
         redact_fields: impl IntoIterator<Item = String>,

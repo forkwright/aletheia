@@ -8,9 +8,11 @@ use axum::extract::{Query, State};
 use crate::error::ApiError;
 use crate::state::AppState;
 
+#[cfg(feature = "knowledge-store")]
+use super::SimilarFact;
 use super::{
-    FactsQuery, MAX_SEARCH_LIMIT, SearchQuery, SearchResponse, SearchResult, SimilarFact,
-    TimelineEvent, TimelineResponse, default_order, default_sort,
+    FactsQuery, MAX_SEARCH_LIMIT, SearchQuery, SearchResponse, SearchResult, TimelineEvent,
+    TimelineResponse, default_order, default_sort,
 };
 
 /// GET /api/v1/knowledge/search

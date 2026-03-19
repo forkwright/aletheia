@@ -25,3 +25,6 @@ pub const HISTORY_BUDGET_RATIO: f64 = 0.6;
 
 /// Default characters-per-token estimate for budget calculations.
 pub const CHARS_PER_TOKEN: u32 = 4;
+
+/// Maximum output bytes returned by a single tool call.
+pub const MAX_OUTPUT_BYTES: usize = 50 * 1024;

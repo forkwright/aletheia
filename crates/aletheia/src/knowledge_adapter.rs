@@ -4,8 +4,6 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use snafu::ResultExt;
-
 use aletheia_mneme::embedding::EmbeddingProvider;
 use aletheia_mneme::knowledge::{EpistemicTier, Fact};
 use aletheia_mneme::knowledge_store::{HybridQuery, KnowledgeStore};
@@ -14,22 +12,6 @@ use aletheia_organon::error::{
     MutateStoreSnafu, SearchSnafu,
 };
 use aletheia_organon::types::{DatalogResult, FactSummary, KnowledgeSearchService, MemoryResult};
-
-/// Boxes any error type for use with snafu context selectors that expect
-/// `Box<dyn Error + Send + Sync>` as source.
-trait BoxErr<T> {
-    fn box_err(self) -> Result<T, Box<dyn std::error::Error + Send + Sync>>;
-}
-
-impl<T, E: std::error::Error + Send + Sync + 'static> BoxErr<T> for Result<T, E> {
-    fn box_err(self) -> Result<T, Box<dyn std::error::Error + Send + Sync>> {
-        #[expect(
-            clippy::as_conversions,
-            reason = "coercion to Box<dyn Error + Send + Sync> trait object"
-        )]
-        self.map_err(|e| Box::new(e) as _)
-    }
-}
 
 pub(crate) struct KnowledgeSearchAdapter {
     store: Arc<KnowledgeStore>,
@@ -53,11 +35,12 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
         let query = query.to_owned();
         let nous_id = nous_id.to_owned();
         Box::pin(async move {
-            let embedding = self
-                .embedder
-                .embed(&query)
-                .box_err()
-                .context(EmbeddingSnafu)?;
+            let embedding = self.embedder.embed(&query).map_err(|e| {
+                EmbeddingSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
 
             let hybrid_query = HybridQuery {
                 text: query,
@@ -71,8 +54,12 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
                 .store
                 .search_hybrid_async(hybrid_query)
                 .await
-                .box_err()
-                .context(SearchSnafu)?;
+                .map_err(|e| {
+                    SearchSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
 
             let now = jiff::Zoned::now()
                 .strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -148,8 +135,12 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
             );
             self.store
                 .run_mut_query(retract_script, params)
-                .box_err()
-                .context(MutateStoreSnafu)?;
+                .map_err(|e| {
+                    MutateStoreSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
 
             let ts_now = jiff::Timestamp::now();
             let new_fact = Fact {
@@ -171,10 +162,12 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
                 forgotten_at: None,
                 forget_reason: None,
             };
-            self.store
-                .insert_fact(&new_fact)
-                .box_err()
-                .context(MutateStoreSnafu)?;
+            self.store.insert_fact(&new_fact).map_err(|e| {
+                MutateStoreSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
 
             Ok(new_id)
         })
@@ -212,10 +205,12 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
                 "now".to_owned(),
                 aletheia_mneme::engine::DataValue::Str(now.as_str().into()),
             );
-            self.store
-                .run_mut_query(script, params)
-                .box_err()
-                .context(MutateStoreSnafu)?;
+            self.store.run_mut_query(script, params).map_err(|e| {
+                MutateStoreSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
             Ok(())
         })
     }
@@ -235,8 +230,12 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
                 .store
                 .audit_all_facts_async(agent.to_owned(), i64::try_from(limit).unwrap_or(i64::MAX))
                 .await
-                .box_err()
-                .context(FactQuerySnafu)?;
+                .map_err(|e| {
+                    FactQuerySnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
 
             let since_ts = since
                 .as_deref()
@@ -275,8 +274,12 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
                 .store
                 .forget_fact_async(fact_id, reason)
                 .await
-                .box_err()
-                .context(MutateStoreSnafu)?;
+                .map_err(|e| {
+                    MutateStoreSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
             Ok(fact_to_summary(fact))
         })
     }
@@ -287,12 +290,12 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
     ) -> Pin<Box<dyn Future<Output = Result<FactSummary, KnowledgeAdapterError>> + Send + '_>> {
         let fact_id = aletheia_mneme::id::FactId::from(fact_id);
         Box::pin(async move {
-            let fact = self
-                .store
-                .unforget_fact_async(fact_id)
-                .await
-                .box_err()
-                .context(MutateStoreSnafu)?;
+            let fact = self.store.unforget_fact_async(fact_id).await.map_err(|e| {
+                MutateStoreSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
             Ok(fact_to_summary(fact))
         })
     }
@@ -320,8 +323,12 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
             let rows = self
                 .store
                 .run_query_with_timeout(&query, cozo_params, timeout)
-                .box_err()
-                .context(DatalogQuerySnafu)?;
+                .map_err(|e| {
+                    DatalogQuerySnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
 
             let columns = rows.headers.iter().map(ToString::to_string).collect();
             let truncated = rows.rows.len() > row_limit;
