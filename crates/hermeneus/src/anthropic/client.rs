@@ -453,6 +453,13 @@ impl AnthropicProvider {
                 .build()
             })?;
             headers.insert(reqwest::header::AUTHORIZATION, value);
+            // WHY: Anthropic requires this beta header to accept OAuth tokens
+            // on the Messages API. Without it, the API returns 401
+            // "OAuth authentication is currently not supported."
+            headers.insert(
+                "anthropic-beta",
+                HeaderValue::from_static("oauth-2025-04-20"),
+            );
         } else {
             let value = HeaderValue::from_str(secret_value).map_err(|_e| {
                 error::AuthFailedSnafu {
