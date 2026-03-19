@@ -44,8 +44,6 @@ fn make_candidate(
     }
 }
 
-// --- Classification parsing ---
-
 #[test]
 fn parse_classification_contradicts() {
     assert_eq!(
@@ -88,8 +86,6 @@ fn parse_classification_invalid() {
     assert_eq!(ConflictClassification::parse(""), None);
 }
 
-// --- Cosine similarity ---
-
 #[test]
 fn cosine_similarity_identical() {
     let v = vec![1.0, 2.0, 3.0];
@@ -122,8 +118,6 @@ fn cosine_similarity_different_lengths() {
 
 #[test]
 fn cosine_similarity_antiparallel() {
-    // Anti-parallel vectors (exactly opposite direction) should give -1.0.
-    // This verifies the dot product sign is preserved and norms are not squared.
     let a = vec![1.0, 0.0, 0.0];
     let b = vec![-1.0, 0.0, 0.0];
     let sim = cosine_similarity(&a, &b);
@@ -135,7 +129,7 @@ fn cosine_similarity_antiparallel() {
 
 #[test]
 fn cosine_similarity_scale_invariant() {
-    // Scaling one vector must not change the cosine similarity.
+    // WHY: Scaling one vector must not change the cosine similarity.
     // This verifies the denominator uses norms (not squared norms).
     let a = vec![1.0, 2.0, 3.0];
     let b = vec![2.0, 4.0, 6.0]; // b = 2 * a → same direction
@@ -145,7 +139,6 @@ fn cosine_similarity_scale_invariant() {
         "parallel vectors (one scaled) should have sim ~1.0, got {sim}"
     );
 
-    // Scaling in both dimensions independently should not change the angle.
     let c = vec![3.0, 0.0];
     let d = vec![0.0, 7.0]; // orthogonal regardless of scale
     let sim2 = cosine_similarity(&c, &d);
@@ -154,8 +147,6 @@ fn cosine_similarity_scale_invariant() {
         "orthogonal vectors with unequal magnitudes should have sim ~0.0, got {sim2}"
     );
 }
-
-// --- Intra-batch dedup ---
 
 #[test]
 fn intra_batch_dedup_exact_string_match() {
@@ -174,7 +165,6 @@ fn intra_batch_dedup_exact_string_match() {
 
 #[test]
 fn intra_batch_dedup_cosine_similar() {
-    // Nearly identical embeddings (sim > 0.95)
     let facts = vec![
         make_fact("alice works at acme corp", 0.7, vec![1.0, 0.0, 0.01]),
         make_fact("alice is employed at acme", 0.85, vec![1.0, 0.0, 0.0]),
@@ -213,8 +203,6 @@ fn intra_batch_dedup_single() {
     assert_eq!(kept.len(), 1);
     assert_eq!(dropped, 0);
 }
-
-// --- Action resolution ---
 
 #[test]
 fn resolve_contradicts_new_higher_confidence() {
@@ -285,8 +273,6 @@ fn resolve_unrelated_inserts() {
     assert_eq!(action, ConflictAction::Insert);
 }
 
-// --- Tier protection ---
-
 #[test]
 fn verified_not_superseded_by_assumed_contradicts() {
     let candidate = make_candidate(
@@ -346,8 +332,6 @@ fn verified_can_be_superseded_by_inferred() {
     );
 }
 
-// --- Correction detection ---
-
 #[test]
 fn correction_heuristic_detects_patterns() {
     assert!(is_correction_heuristic("Actually, it's 42 not 43"));
@@ -378,8 +362,6 @@ fn correction_boost_caps_at_1() {
     assert!((apply_correction_boost(1.0) - 1.0).abs() < f64::EPSILON);
 }
 
-// --- Correction in conflict resolution ---
-
 #[test]
 fn correction_fact_wins_contradiction_regardless_of_confidence() {
     let candidate = make_candidate("f-old", "old claim", 0.95, EpistemicTier::Inferred, 0.9);
@@ -393,8 +375,6 @@ fn correction_fact_wins_contradiction_regardless_of_confidence() {
         }
     );
 }
-
-// --- Mock classifier for integration tests ---
 
 struct MockClassifier {
     response: String,
@@ -485,7 +465,7 @@ fn classify_each_type_produces_correct_action() {
 
 #[test]
 fn no_candidates_results_in_insert() {
-    // Simulates Phase 2 returning empty candidates → straight insert
+    // NOTE: Simulates Phase 2 returning empty candidates → straight insert
     let fact = make_fact("brand new fact with no matches", 0.8, vec![1.0, 0.0]);
     let candidates: Vec<ConflictCandidate> = vec![];
     let result = classify_against_candidates(
@@ -501,8 +481,6 @@ fn no_candidates_results_in_insert() {
         "no candidates should return None (insert)"
     );
 }
-
-// --- Build classification prompt ---
 
 #[test]
 fn classification_prompt_contains_facts() {
@@ -524,8 +502,6 @@ fn classification_prompt_contains_facts() {
     assert!(user.contains("0.90"));
 }
 
-// --- ConflictAction equality ---
-
 #[test]
 fn conflict_action_equality() {
     assert_eq!(ConflictAction::Insert, ConflictAction::Insert);
@@ -540,8 +516,6 @@ fn conflict_action_equality() {
     );
     assert_ne!(ConflictAction::Insert, ConflictAction::Drop);
 }
-
-// --- Serde roundtrip ---
 
 #[test]
 fn classification_serde_roundtrip() {

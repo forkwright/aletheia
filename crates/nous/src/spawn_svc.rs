@@ -273,7 +273,6 @@ mod tests {
     async fn spawn_timeout_returns_error() {
         let (_dir, oikos) = test_oikos();
 
-        // Use a provider that sleeps longer than the timeout
         let mut providers = ProviderRegistry::new();
         providers.register(Box::new(SlowProvider));
         let svc = SpawnServiceImpl::new(Arc::new(providers), Arc::new(ToolRegistry::new()), oikos);
@@ -394,7 +393,7 @@ mod tests {
             .expect("spawn");
 
         assert!(!result.is_error);
-        // The ephemeral workspace should have been cleaned up
+        // WHY: The ephemeral workspace should have been cleaned up
         // (we can't easily check the exact path but the spawn completed)
     }
 

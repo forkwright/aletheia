@@ -22,7 +22,6 @@ use aletheia_koina::http::CONTENT_TYPE_JSON;
     paths(
         crate::handlers::health::check,
         crate::handlers::metrics::expose,
-        // Sessions
         crate::handlers::sessions::list_sessions,
         crate::handlers::sessions::create,
         crate::handlers::sessions::get_session,
@@ -34,15 +33,12 @@ use aletheia_koina::http::CONTENT_TYPE_JSON;
         crate::handlers::sessions::streaming::stream_turn,
         crate::handlers::sessions::streaming::events,
         crate::handlers::sessions::history,
-        // Nous
         crate::handlers::nous::list,
         crate::handlers::nous::get_status,
         crate::handlers::nous::tools,
-        // Config
         crate::handlers::config::get_config,
         crate::handlers::config::get_section,
         crate::handlers::config::update_section,
-        // Knowledge
         crate::handlers::knowledge::list_facts,
         crate::handlers::knowledge::get_fact,
         crate::handlers::knowledge::forget_fact,

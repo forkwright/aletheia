@@ -108,7 +108,6 @@ async fn send_message_stores_in_history() {
     let resp = router.clone().oneshot(req).await.unwrap();
     let _ = body_string(resp).await;
 
-    // Allow the spawned send_turn task to complete and store assistant message
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
     let resp = router
@@ -191,8 +190,6 @@ async fn send_message_routes_through_actor() {
     );
     assert!(body.contains("end_turn"), "stop_reason should be end_turn");
 }
-
-// ── Stream turn ─────────────────────────────────────────────────────────────
 
 #[tokio::test]
 async fn stream_turn_returns_sse() {
@@ -277,11 +274,9 @@ async fn stream_turn_unknown_agent_returns_404() {
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
-// ── Events endpoint ─────────────────────────────────────────────────────────
-
 #[tokio::test]
 async fn events_endpoint_returns_200_sse() {
-    // /api/v1/events must return 200 with SSE content-type (#1248).
+    // NOTE: /api/v1/events must return 200 with SSE content-type (#1248).
     let (app, _dir) = app().await;
     let resp = app.oneshot(authed_get("/api/v1/events")).await.unwrap();
 

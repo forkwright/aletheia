@@ -5,8 +5,6 @@ fn engine() -> RecallEngine {
     RecallEngine::new()
 }
 
-// --- Vector similarity ---
-
 #[test]
 fn vector_similarity_identical() {
     let e = engine();
@@ -34,12 +32,9 @@ fn vector_similarity_midpoint() {
     );
 }
 
-// --- FSRS Decay ---
-
 #[test]
 fn decay_at_zero_is_one() {
     let e = engine();
-    // R(0) = 1.0 for any stability
     for ft in [
         FactType::Identity,
         FactType::Observation,
@@ -56,7 +51,6 @@ fn decay_at_zero_is_one() {
 
 #[test]
 fn decay_at_stability_approx_0_9() {
-    // By FSRS design: R(S) = (1 + 19/81)^(-0.5) ≈ 0.9
     let e = engine();
     let ft = FactType::Event;
     let tier = EpistemicTier::Inferred;
@@ -86,7 +80,6 @@ fn decay_observation_at_30_days_significantly_decayed() {
         score < 0.6,
         "Observation at 30 days should be significantly decayed, got {score}"
     );
-    // Much lower than a fresh fact
     assert!(
         score < 0.9,
         "Observation at 30 days should be well below fresh, got {score}"
@@ -174,7 +167,6 @@ fn decay_just_created_fact() {
 
 #[test]
 fn decay_default_params_reasonable() {
-    // With default Event/Inferred/0-access, should produce a reasonable curve
     let e = engine();
     let score_hour = e.score_decay(1.0, FactType::Event, EpistemicTier::Inferred, 0);
     let score_day = e.score_decay(24.0, FactType::Event, EpistemicTier::Inferred, 0);
@@ -205,7 +197,6 @@ fn decay_access_growth_logarithmic() {
     let s10 = compute_effective_stability(ft, tier, 10);
     let s100 = compute_effective_stability(ft, tier, 100);
     let s1000 = compute_effective_stability(ft, tier, 1000);
-    // Strictly increasing with access count
     assert!(
         s10 > s0,
         "stability with 10 accesses ({s10}) should exceed 0 accesses ({s0})"
@@ -218,20 +209,16 @@ fn decay_access_growth_logarithmic() {
         s1000 > s100,
         "stability with 1000 accesses ({s1000}) should exceed 100 accesses ({s100})"
     );
-    // Growth is bounded: even 1000 accesses doesn't double stability
     let growth_ratio = s1000 / s0;
     assert!(
         growth_ratio < 2.0,
         "1000-access growth ratio {growth_ratio} should be bounded below 2×"
     );
-    // But it does grow meaningfully
     assert!(
         growth_ratio > 1.05,
         "1000-access growth ratio {growth_ratio} should be meaningful"
     );
 }
-
-// --- Relevance ---
 
 #[test]
 fn relevance_same_nous() {
@@ -260,8 +247,6 @@ fn relevance_other_nous() {
     );
 }
 
-// --- Epistemic tier ---
-
 #[test]
 fn epistemic_verified_highest() {
     let e = engine();
@@ -277,8 +262,6 @@ fn epistemic_verified_highest() {
         "inferred ({i}) should score higher than assumed ({a})"
     );
 }
-
-// --- Relationship proximity ---
 
 #[test]
 fn proximity_direct_neighbor() {
@@ -307,8 +290,6 @@ fn proximity_no_connection() {
     );
 }
 
-// --- Access frequency ---
-
 #[test]
 fn access_frequency_zero() {
     let e = engine();
@@ -333,7 +314,6 @@ fn access_frequency_logarithmic() {
     let s10 = e.score_access_frequency(10);
     let s50 = e.score_access_frequency(50);
     let s100 = e.score_access_frequency(100);
-    // Logarithmic: each doubling adds less
     assert!(
         s50 > s10,
         "score at 50 accesses ({s50}) should exceed score at 10 ({s10})"
@@ -349,8 +329,6 @@ fn access_frequency_logarithmic() {
         s100 - s50
     );
 }
-
-// --- Composite scoring ---
 
 #[test]
 fn perfect_score() {

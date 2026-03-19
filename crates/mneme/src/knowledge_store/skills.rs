@@ -9,8 +9,6 @@ use tracing::instrument;
 
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
-    // --- Skill query helpers ---
-
     /// Find skills by domain tags, ordered by confidence then access count.
     ///
     /// Filters facts where `fact_type = "skill"` and whose JSON content
@@ -26,7 +24,6 @@ impl KnowledgeStore {
         let mut matched: Vec<crate::knowledge::Fact> = all
             .into_iter()
             .filter(|fact| {
-                // Parse content JSON and check domain_tags
                 if let Ok(skill) = serde_json::from_str::<crate::skill::SkillContent>(&fact.content)
                 {
                     domain_tags
@@ -90,7 +87,6 @@ impl KnowledgeStore {
         use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
-        // BM25 search scoped to skill facts
         let limit_i64 = i64::try_from(limit).unwrap_or(i64::MAX);
         let mut params = BTreeMap::new();
         params.insert("query_text".to_owned(), DataValue::Str(query.into()));
@@ -98,7 +94,6 @@ impl KnowledgeStore {
         params.insert("k".to_owned(), DataValue::from(limit_i64 * 3));
         params.insert("limit".to_owned(), DataValue::from(limit_i64));
 
-        // BM25 search on facts content, then filter to skills for this nous
         let script = r"candidates[id, score] :=
                 ~facts:content_fts{id | query: $query_text, k: $k, score_kind: 'bm25', bind_score: score}
 
@@ -184,7 +179,6 @@ impl KnowledgeStore {
         pending_fact_id: &crate::id::FactId,
         nous_id: &str,
     ) -> crate::error::Result<crate::id::FactId> {
-        // Read the pending fact
         let pending_facts = self.find_pending_skills(nous_id)?;
         let pending = pending_facts
             .iter()
@@ -196,7 +190,6 @@ impl KnowledgeStore {
                 .build()
             })?;
 
-        // Parse the PendingSkill to get the inner SkillContent
         let mut pending_skill =
             crate::skills::PendingSkill::from_json(&pending.content).map_err(|e| {
                 crate::error::EngineQuerySnafu {
@@ -206,7 +199,6 @@ impl KnowledgeStore {
             })?;
         "approved".clone_into(&mut pending_skill.status);
 
-        // Create the approved skill fact with a ULID-based ID
         let new_id = crate::id::FactId::from(ulid::Ulid::new().to_string());
         let skill_json = serde_json::to_string(&pending_skill.skill).map_err(|e| {
             crate::error::EngineQuerySnafu {
@@ -238,7 +230,6 @@ impl KnowledgeStore {
 
         self.insert_fact(&approved_fact)?;
 
-        // Supersede the pending fact by forgetting it
         self.forget_fact(pending_fact_id, crate::knowledge::ForgetReason::Outdated)?;
 
         Ok(new_id)
@@ -253,8 +244,6 @@ impl KnowledgeStore {
         self.forget_fact(pending_fact_id, crate::knowledge::ForgetReason::Incorrect)?;
         Ok(())
     }
-
-    // ── Skill quality lifecycle ────────────────────────────────────────────
 
     /// Compute decay scores for all active skills of a nous and apply retirement.
     ///
@@ -303,10 +292,8 @@ impl KnowledgeStore {
 
         let total_active = active_skills.len();
 
-        // Count retired skills (forgotten with reason "stale")
         let total_retired = self.count_retired_skills(nous_id)?;
 
-        // Compute usage stats and needs_review count
         let mut usage_counts: Vec<u32> = Vec::with_capacity(total_active);
         let mut days_since_use: Vec<f64> = Vec::with_capacity(total_active);
         let mut needs_review = 0usize;
@@ -354,7 +341,6 @@ impl KnowledgeStore {
             days_since_use[days_since_use.len() / 2]
         };
 
-        // Top 10 and bottom 10
         named_usage.sort_by(|a, b| b.1.cmp(&a.1));
         let top_skills: Vec<(String, u32)> = named_usage.iter().take(10).cloned().collect();
         let bottom_skills: Vec<(String, u32)> =
@@ -408,24 +394,20 @@ impl KnowledgeStore {
         nous_id: &str,
         skill_content: &crate::skill::SkillContent,
     ) -> crate::error::Result<Option<crate::id::FactId>> {
-        // First check exact name match
         if let Some(existing_id) = self.find_skill_by_name(nous_id, &skill_content.name)? {
             return Ok(Some(crate::id::FactId::from(existing_id.as_str())));
         }
 
-        // Then do a BM25 search using the skill description as query
         let query = format!("{} {}", skill_content.name, skill_content.description);
         let candidates = self.search_skills(nous_id, &query, 5)?;
 
         for fact in candidates {
             if let Ok(existing) = serde_json::from_str::<crate::skill::SkillContent>(&fact.content)
             {
-                // Check tool overlap as a proxy for content similarity
                 let tool_overlap =
                     compute_tool_overlap(&skill_content.tools_used, &existing.tools_used);
                 let name_sim = compute_name_similarity(&skill_content.name, &existing.name);
 
-                // High tool overlap + similar name = likely duplicate
                 if tool_overlap > 0.85 || (tool_overlap > 0.6 && name_sim > 0.5) {
                     return Ok(Some(fact.id));
                 }

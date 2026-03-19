@@ -315,7 +315,6 @@ fn integrate_simpson(f: impl Fn(f64) -> f64, a: f64, b: f64, n: usize) -> f64 {
     sum * h / 3.0
 }
 
-// code is mostly from https://github.com/schelterlabs/rust-minhash/blob/81ea3fec24fd888a330a71b6932623643346b591/src/minhash_lsh.rs
 impl LshParams {
     pub fn find_optimal_params(threshold: f64, num_perm: usize, weights: &Weights) -> LshParams {
         let Weights(false_positive_weight, false_negative_weight) = weights;
@@ -368,7 +367,6 @@ impl HashPermutations {
     pub(crate) fn as_bytes(&self) -> &[u8] {
         bytemuck::cast_slice(&self.0)
     }
-    // this is the inverse of `as_bytes`
     pub(crate) fn from_bytes(bytes: &[u8]) -> Result<Self> {
         let perms: &[u32] = bytemuck::try_cast_slice(bytes).map_err(|e| {
             crate::engine::error::InternalError::Runtime {

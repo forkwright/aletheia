@@ -31,7 +31,6 @@ impl Tokenizer for WhitespaceTokenizer {
 }
 
 impl<'a> WhitespaceTokenStream<'a> {
-    // search for the end of the current token.
     fn search_token_end(&mut self) -> usize {
         (&mut self.chars)
             .filter(|(_, c)| c.is_ascii_whitespace())

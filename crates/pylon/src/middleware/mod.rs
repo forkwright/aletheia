@@ -186,8 +186,6 @@ mod tests {
 
     use super::*;
 
-    // ── EndpointCategory ────────────────────────────────────────────────
-
     #[test]
     fn classifies_llm_endpoints() {
         assert_eq!(
@@ -235,8 +233,6 @@ mod tests {
         );
     }
 
-    // ── TokenBucket ─────────────────────────────────────────────────────
-
     #[test]
     fn token_bucket_allows_burst_requests() {
         let now = Instant::now();
@@ -269,7 +265,6 @@ mod tests {
             "third request rejected (burst exhausted)"
         );
 
-        // Advance 2 seconds: at 60 rpm = 1/sec, should refill 2 tokens
         let later = now + Duration::from_secs(2);
         assert!(
             bucket.try_acquire(later).is_ok(),
@@ -289,8 +284,6 @@ mod tests {
         assert!(retry_after >= 1, "retry_after should be at least 1 second");
     }
 
-    // ── UserRateLimiter ─────────────────────────────────────────────────
-
     #[test]
     fn per_user_isolation() {
         let config = PerUserRateLimitConfig {
@@ -300,12 +293,10 @@ mod tests {
         };
         let limiter = UserRateLimiter::new(config);
 
-        // Exhaust alice's budget
         assert!(limiter.check("alice", EndpointCategory::General).is_none());
         assert!(limiter.check("alice", EndpointCategory::General).is_none());
         assert!(limiter.check("alice", EndpointCategory::General).is_some());
 
-        // Bob should be unaffected
         assert!(
             limiter.check("bob", EndpointCategory::General).is_none(),
             "bob's requests must not be affected by alice's usage"
@@ -325,17 +316,14 @@ mod tests {
         };
         let limiter = UserRateLimiter::new(config);
 
-        // Exhaust general
         assert!(limiter.check("alice", EndpointCategory::General).is_none());
         assert!(limiter.check("alice", EndpointCategory::General).is_some());
 
-        // LLM should still work
         assert!(
             limiter.check("alice", EndpointCategory::Llm).is_none(),
             "LLM bucket must be independent from general"
         );
 
-        // Tool should still work
         assert!(
             limiter.check("alice", EndpointCategory::Tool).is_none(),
             "Tool bucket must be independent from general"
@@ -381,8 +369,6 @@ mod tests {
         assert_eq!(evicted, 0, "recent entries should not be evicted");
         assert_eq!(limiter.tracked_users(), 1, "active user should remain");
     }
-
-    // ── JWT sub extraction ──────────────────────────────────────────────
 
     #[test]
     fn extracts_sub_from_valid_jwt() {

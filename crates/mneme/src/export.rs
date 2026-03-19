@@ -130,16 +130,13 @@ pub fn export_knowledge(
     nous_id: &str,
     store: &crate::knowledge_store::KnowledgeStore,
 ) -> Option<crate::portability::KnowledgeExport> {
-    // Query all current facts (use a far-future timestamp to capture everything)
     let facts = store
         .query_facts(nous_id, "9999-01-01T00:00:00Z", 100_000)
         .ok()
         .unwrap_or_default();
 
-    // Query all entities via Datalog
     let entities = query_all_entities(store).unwrap_or_default();
 
-    // Query all relationships via Datalog
     let relationships = query_all_relationships(store).unwrap_or_default();
 
     if facts.is_empty() && entities.is_empty() && relationships.is_empty() {

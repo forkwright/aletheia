@@ -215,7 +215,6 @@ fn sse_serialization_fallback_data_is_valid_json_with_message_field() {
         !parsed["message"].as_str().unwrap().is_empty(),
         "fallback error message must not be empty"
     );
-    // The serialization fallback emits an error event, not an empty data line.
     assert!(
         !fallback_data.is_empty(),
         "fallback data must never be empty"
@@ -234,7 +233,7 @@ async fn sse_concurrent_connections_each_receive_complete_stream() {
         let router = build_router(Arc::clone(&state), &test_security_config());
         handles.push(tokio::spawn(
             async move {
-                // Each concurrent client creates its own session to avoid sharing state.
+                // WHY: Each concurrent client creates its own session to avoid sharing state.
                 let create_req = authed_request(
                     "POST",
                     "/api/v1/sessions",
@@ -291,7 +290,7 @@ async fn sse_dropping_response_body_does_not_panic() {
         Some(serde_json::json!({ "content": "Drop test" })),
     );
     let resp = router.oneshot(req).await.unwrap();
-    // Verify we got an SSE response, then drop the body without reading it.
+    // NOTE: Verify we got an SSE response, then drop the body without reading it.
     // The handler's spawned turn task must not panic when the channel closes.
     assert_eq!(resp.status(), StatusCode::OK);
     let ct = resp
@@ -301,10 +300,7 @@ async fn sse_dropping_response_body_does_not_panic() {
         .to_str()
         .unwrap();
     assert!(ct.contains("text/event-stream"));
-    // Body is dropped here: the spawned task detects the closed channel and exits.
     drop(resp);
 
-    // Brief yield to let the background task observe channel closure.
     tokio::time::sleep(Duration::from_millis(50)).await;
-    // If we reach here without panic, the connection-drop cleanup is correct.
 }

@@ -97,8 +97,6 @@ pub struct HnswIndex {
     config: HnswConfig,
 }
 
-// Compile-time assertion: `_loader` must precede `inner` in the struct layout.
-// If the field order is changed the safety argument above must be re-evaluated.
 const _: () = assert!(
     std::mem::offset_of!(HnswIndex, _loader) < std::mem::offset_of!(HnswIndex, inner),
     "_loader must be declared before inner; see safety comment on HnswIndex"
@@ -301,7 +299,6 @@ mod tests {
         index.insert(&v2, 1);
         index.insert(&v3, 2);
 
-        // Query close to v1: should return v1 (id=0) and v3 (id=2) as nearest
         let query = vec![0.95, 0.05, 0.0, 0.0];
         let results = index.search(&query, 2, 16);
 
@@ -343,7 +340,6 @@ mod tests {
             ..make_config(4)
         };
 
-        // Insert and dump
         {
             let index = HnswIndex::new(config.clone());
             index.insert(&[1.0, 0.0, 0.0, 0.0], 0);
@@ -353,7 +349,6 @@ mod tests {
             index.dump().expect("dump should succeed");
         }
 
-        // Reload and verify
         {
             let index = HnswIndex::open_or_create(config).expect("reload should succeed");
             assert_eq!(index.len(), 3);
@@ -380,7 +375,6 @@ mod tests {
     fn search_performance() {
         let index = HnswIndex::new(make_config(384));
 
-        // Insert 1000 random-ish vectors
         for i in 0..1000 {
             let mut v = vec![0.0f32; 384];
             v[i % 384] = 1.0;
@@ -393,7 +387,6 @@ mod tests {
         let _results = index.search(&query, 10, 32);
         let elapsed = start.elapsed();
 
-        // Should complete well under 10ms at this scale
         assert!(
             elapsed.as_millis() < 10,
             "search took {elapsed:?}, expected sub-millisecond"

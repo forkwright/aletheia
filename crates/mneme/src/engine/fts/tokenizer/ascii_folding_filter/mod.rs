@@ -29,7 +29,6 @@ impl<'a> TokenStream for AsciiFoldingFilterTokenStream<'a> {
             return false;
         }
         if !self.token_mut().text.is_ascii() {
-            // ignore its already ascii
             to_ascii(&self.tail.token().text, &mut self.buffer);
             mem::swap(&mut self.tail.token_mut().text, &mut self.buffer);
         }
@@ -51,7 +50,6 @@ use fold_table::fold_non_ascii_char;
 #[cfg(test)]
 mod tests;
 
-// https://github.com/apache/lucene-solr/blob/master/lucene/analysis/common/src/java/org/apache/lucene/analysis/miscellaneous/ASCIIFoldingFilter.java#L187
 pub(crate) fn to_ascii(text: &str, output: &mut String) {
     output.clear();
 

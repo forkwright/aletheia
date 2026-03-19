@@ -52,7 +52,6 @@ fn backup_creates_valid_sqlite_database() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let db_path = dir.path().join("sessions.db");
 
-    // Need a file-based DB for VACUUM INTO
     let conn = Connection::open(&db_path).expect("open file-based SQLite connection");
     conn.execute_batch("PRAGMA foreign_keys = ON;")
         .expect("enable foreign keys");
@@ -74,7 +73,6 @@ fn backup_creates_valid_sqlite_database() {
     assert!(result.size_bytes > 0);
     assert_eq!(result.sessions_count, 1);
 
-    // Verify the backup is a valid SQLite database
     let backup_conn = Connection::open(&result.path).expect("open backup SQLite database");
     let count: u32 = backup_conn
         .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
@@ -88,7 +86,6 @@ fn prune_keeps_correct_number() {
     let backup_dir = dir.path().join("backups");
     std::fs::create_dir_all(&backup_dir).expect("create backup dir");
 
-    // Create 5 fake backup files
     for i in 0..5 {
         std::fs::write(
             backup_dir.join(format!("sessions_2026010{i}T120000.db")),
@@ -118,7 +115,6 @@ fn list_backups_returns_correct_metadata() {
 
     std::fs::write(backup_dir.join("sessions_20260101T120000.db"), "test data")
         .expect("write backup file");
-    // Non-matching file should be ignored
     std::fs::write(backup_dir.join("other.txt"), "ignored").expect("write non-matching file");
 
     let conn = Connection::open_in_memory().expect("open in-memory SQLite connection");
@@ -512,7 +508,7 @@ fn backup_path_with_dots() {
 #[test]
 fn backup_path_empty_string() {
     let path = Path::new("");
-    // Empty string passes SQL-injection validation (all chars are vacuously safe).
+    // WHY: Empty string passes SQL-injection validation (all chars are vacuously safe).
     // This documents current behavior: empty paths would fail at the filesystem
     // level during VACUUM INTO, not at validation time.
     assert!(

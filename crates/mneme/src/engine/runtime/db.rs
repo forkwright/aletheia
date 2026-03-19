@@ -288,7 +288,6 @@ impl<'s, S: Storage<'s>> Db<S> {
             tokenizers: Arc::new(Default::default()),
             #[cfg(not(target_arch = "wasm32"))]
             callback_count: Default::default(),
-            // callback_receiver: Arc::new(receiver),
             #[cfg(not(target_arch = "wasm32"))]
             event_callbacks: Default::default(),
             relation_locks: Default::default(),

@@ -94,15 +94,6 @@ fn test_to_ascii() {
 
 #[test]
 fn test_all_foldings() {
-    // those folding is a copy of
-    // https://github.com/apache/lucene-solr/blob/28d187acd1e391723eb6e1b5445f22abf5580a80/lucene/analysis/common/src/test/org/apache/lucene/analysis/miscellaneous/TestASCIIFoldingFilter.java
-    // useful regex to adapt to a Rust structure:
-    // 1. Preg and replace folded:
-    //    - **REGEX** |,"(.){3,5}", // Folded result|
-    //    - **REPLACEMENT** ], "$1".to_string(), ), ( vec![
-    // 2. Preg and replace characters:
-    //    - **REGEX** |[\+]{0,1} "(.{1,3})"  // U\+|
-    //    - **REPLACEMENT** "$1",  // U+
     let foldings: Vec<(&[&str], &str)> = vec![
         (
             &[

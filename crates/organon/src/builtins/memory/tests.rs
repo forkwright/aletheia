@@ -385,7 +385,6 @@ async fn blackboard_delete_only_author() {
     };
     reg.execute(&write, &ctx).await.expect("execute");
 
-    // Try delete with different author
     let other_ctx = ToolContext {
         nous_id: NousId::new("other-agent").expect("valid"),
         session_id: SessionId::new(),
@@ -402,7 +401,6 @@ async fn blackboard_delete_only_author() {
     let r = reg.execute(&del, &other_ctx).await.expect("execute");
     assert!(r.content.text_summary().contains("not your entry"));
 
-    // Original author can delete
     let del2 = ToolInput {
         name: ToolName::new("blackboard").expect("valid"),
         tool_use_id: "tu_3".to_owned(),

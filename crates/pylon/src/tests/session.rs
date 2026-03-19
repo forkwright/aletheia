@@ -68,7 +68,6 @@ async fn close_session_returns_204() {
 
 #[tokio::test]
 async fn get_deleted_session_returns_404() {
-    // DELETE archives the session; subsequent GET must return 404 (#1251).
     let (router, _dir) = app().await;
     let created = create_test_session(&router).await;
     let id = created["id"].as_str().unwrap();
@@ -152,7 +151,6 @@ async fn double_close_session_is_idempotent() {
         .expect("second close");
     assert_eq!(second.status(), StatusCode::NO_CONTENT);
 
-    // After both closes the session is gone from GET (#1251).
     let resp = router
         .clone()
         .oneshot(authed_get(&format!("/api/v1/sessions/{id}")))
@@ -179,8 +177,6 @@ async fn get_session_after_create_reflects_state() {
     assert_eq!(body["status"], "active");
     assert_eq!(body["nous_id"], "syn");
 }
-
-// ── List sessions ───────────────────────────────────────────────────────────
 
 #[tokio::test]
 async fn list_sessions_returns_empty_initially() {
@@ -241,11 +237,10 @@ async fn list_sessions_filter_by_nous_id() {
 
 #[tokio::test]
 async fn list_sessions_limit_param_returns_n_sessions() {
-    // GET /api/v1/sessions?limit=N must return exactly N sessions (#1254).
+    // NOTE: GET /api/v1/sessions?limit=N must return exactly N sessions (#1254).
     let (state, _dir) = test_state().await;
     let router = build_router(Arc::clone(&state), &test_security_config());
 
-    // Create 5 sessions with distinct keys.
     for i in 0..5_u32 {
         let req = authed_request(
             "POST",
@@ -273,8 +268,6 @@ async fn list_sessions_limit_param_returns_n_sessions() {
     );
 }
 
-// ── Archive ─────────────────────────────────────────────────────────────────
-
 #[tokio::test]
 async fn archive_via_post_returns_204() {
     let (router, _dir) = app().await;
@@ -285,7 +278,6 @@ async fn archive_via_post_returns_204() {
     let resp = router.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::NO_CONTENT);
 
-    // Archived sessions are non-retrievable via GET: same semantics as DELETE (#1251).
     let resp = router
         .clone()
         .oneshot(authed_get(&format!("/api/v1/sessions/{id}")))
@@ -322,7 +314,7 @@ async fn create_session_unknown_nous_returns_404() {
 
 #[tokio::test]
 async fn create_duplicate_session_key_returns_409() {
-    // POST /api/v1/sessions with an existing session_key must return 409 (#1249).
+    // NOTE: POST /api/v1/sessions with an existing session_key must return 409 (#1249).
     let (router, _dir) = app().await;
 
     let req = authed_request(
@@ -336,7 +328,6 @@ async fn create_duplicate_session_key_returns_409() {
     let resp = router.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::CREATED);
 
-    // Second request with same key must conflict.
     let req2 = authed_request(
         "POST",
         "/api/v1/sessions",
@@ -353,12 +344,11 @@ async fn create_duplicate_session_key_returns_409() {
 
 #[tokio::test]
 async fn send_message_to_archived_session_returns_409() {
-    // POST /api/v1/sessions/{id}/messages on an archived session must return 409 (#1250).
+    // NOTE: POST /api/v1/sessions/{id}/messages on an archived session must return 409 (#1250).
     let (router, _dir) = app().await;
     let created = create_test_session(&router).await;
     let id = created["id"].as_str().unwrap();
 
-    // Archive the session first.
     let del = router
         .clone()
         .oneshot(authed_delete(&format!("/api/v1/sessions/{id}")))
@@ -366,7 +356,6 @@ async fn send_message_to_archived_session_returns_409() {
         .unwrap();
     assert_eq!(del.status(), StatusCode::NO_CONTENT);
 
-    // Sending a message to the archived session must be rejected.
     let req = authed_request(
         "POST",
         &format!("/api/v1/sessions/{id}/messages"),
@@ -377,8 +366,6 @@ async fn send_message_to_archived_session_returns_409() {
     let body = body_json(resp).await;
     assert_eq!(body["error"]["code"], "conflict");
 }
-
-// ── Response shape ──────────────────────────────────────────────────────────
 
 #[tokio::test]
 async fn session_response_has_all_expected_fields() {
@@ -394,8 +381,6 @@ async fn session_response_has_all_expected_fields() {
     assert!(session["created_at"].is_string());
     assert!(session["updated_at"].is_string());
 }
-
-// ── History ─────────────────────────────────────────────────────────────────
 
 #[tokio::test]
 async fn history_empty_for_new_session() {

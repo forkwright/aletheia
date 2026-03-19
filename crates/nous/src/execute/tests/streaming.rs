@@ -1,8 +1,6 @@
 //! Streaming execute tests.
 use super::*;
 
-// --- Streaming Tests ---
-
 #[tokio::test]
 async fn streaming_falls_back_to_non_streaming_for_mock() {
     let mut providers = ProviderRegistry::new();
@@ -35,7 +33,6 @@ async fn streaming_falls_back_to_non_streaming_for_mock() {
         "single text response should use exactly one LLM call"
     );
 
-    // MockProvider doesn't support streaming, so no LlmDelta events
     drop(tx);
     assert!(
         rx.try_recv().is_err(),
@@ -79,7 +76,7 @@ async fn streaming_tool_events_emitted() {
         "streaming execute should record one tool call"
     );
 
-    // Even with mock (non-streaming) provider, tool events should be emitted
+    // NOTE: Even with mock (non-streaming) provider, tool events should be emitted
     drop(tx);
     let mut tool_start_count = 0;
     let mut tool_result_count = 0;
@@ -91,7 +88,7 @@ async fn streaming_tool_events_emitted() {
             _ => {}
         }
     }
-    // Falls back to non-streaming execute(), no tool events via channel
+    // WHY: Falls back to non-streaming execute(), no tool events via channel
     // (tool events only come from dispatch_tools_streaming, which requires
     //  a streaming provider to be found)
     assert_eq!(

@@ -425,11 +425,9 @@ mod tests {
 
     #[test]
     fn multibyte_chars_truncated_at_char_boundary() {
-        // Each emoji is 4 bytes. 3 emojis = 12 bytes.
         let text = "\u{1F600}\u{1F601}\u{1F602}";
         assert_eq!(text.len(), 12, "test setup: 3 emojis = 12 bytes");
 
-        // Limit of 5 bytes: can fit 1 emoji (4 bytes), not 2 (8 bytes).
         let result = truncate_tool_result(ToolResultContent::text(text), 5);
         match result {
             ToolResultContent::Text(s) => {
@@ -487,8 +485,6 @@ mod tests {
         let result = truncate_tool_result(content, 50);
         match result {
             ToolResultContent::Blocks(bs) => {
-                // First text block truncated to 50 bytes, image preserved,
-                // second text block skipped, indicator appended.
                 let has_image = bs
                     .iter()
                     .any(|b| matches!(b, ToolResultBlock::Image { .. }));

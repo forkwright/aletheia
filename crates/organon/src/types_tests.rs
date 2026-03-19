@@ -143,8 +143,6 @@ fn tool_result_blocks_constructor() {
     assert!(!r.is_error);
 }
 
-// -- Additional types tests ---------------------------------------------
-
 #[test]
 fn test_input_schema_enum_values_serialized_in_json_schema() {
     let schema = InputSchema {

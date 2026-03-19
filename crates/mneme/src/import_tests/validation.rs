@@ -504,7 +504,6 @@ fn import_multiple_sessions_counts_correctly() {
     let store = test_store();
     let dir = tempfile::tempdir().expect("create temp dir");
     let mut agent = minimal_agent_file();
-    // Add a second session
     agent.sessions.push(ExportedSession {
         id: "ses-2".to_owned(),
         session_key: "secondary".to_owned(),
@@ -564,7 +563,6 @@ fn import_notes_counted_in_result() {
     )
     .expect("import_agent should succeed");
 
-    // minimal_agent_file has 1 note
     assert_eq!(
         result.notes_imported, 1,
         "one note should be imported from minimal agent file"

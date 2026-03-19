@@ -182,7 +182,6 @@ impl ContextCategory {
         let tool_lower = tool_name.to_lowercase();
         let ctx_lower = context_summary.to_lowercase();
 
-        // Tool-name-based classification
         if is_code_tool(&tool_lower) {
             return Self::Code;
         }
@@ -199,7 +198,6 @@ impl ContextCategory {
             return Self::Communication;
         }
 
-        // Context-summary-based fallback
         if is_code_context(&ctx_lower) {
             return Self::Code;
         }
@@ -259,8 +257,6 @@ impl std::fmt::Display for ContextCategory {
     }
 }
 
-// --- Tool-name classification helpers ---
-
 fn is_code_tool(tool: &str) -> bool {
     tool.contains("grep")
         || tool.contains("read_file")
@@ -316,8 +312,6 @@ fn is_communication_tool(tool: &str) -> bool {
         || tool.contains("chat")
 }
 
-// --- Context-summary classification helpers ---
-
 fn is_code_context(ctx: &str) -> bool {
     ctx.contains("code")
         || ctx.contains("file")
@@ -362,8 +356,6 @@ fn is_communication_context(ctx: &str) -> bool {
         || ctx.contains("send")
         || ctx.contains("session")
 }
-
-// --- Sanitization ---
 
 /// Sanitize tool parameters by stripping secrets and truncating values.
 ///

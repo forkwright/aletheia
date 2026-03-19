@@ -10,8 +10,6 @@ fn engine() -> RecallEngine {
     RecallEngine::new()
 }
 
-// --- Ranking ---
-
 #[test]
 fn rank_sorts_by_score_descending() {
     let e = engine();
@@ -82,8 +80,6 @@ fn rank_sorts_by_score_descending() {
     );
 }
 
-// --- Custom weights ---
-
 #[test]
 fn custom_weights_change_ranking() {
     let weights = RecallWeights {
@@ -114,8 +110,6 @@ fn custom_weights_change_ranking() {
         e.compute_score(&old_similar)
     );
 }
-
-// --- Boundary conditions ---
 
 #[test]
 fn all_weights_zero_returns_zero() {
@@ -274,8 +268,6 @@ fn single_weight_isolation() {
         "with only relevance weight active, score should equal relevance weight (0.15), got {score}"
     );
 }
-
-// --- Acceptance criteria tests ---
 
 #[test]
 fn scores_are_bounded_zero_to_one() {

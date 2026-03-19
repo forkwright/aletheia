@@ -11,27 +11,20 @@ use crate::knowledge::{EpistemicTier, FactType};
 use crate::recall::compute_effective_stability;
 use crate::succession::{adaptive_stability, compute_volatility, volatility_multiplier};
 
-// ---------------------------------------------------------------------------
-// Volatility computation (requirements 1–4)
-// ---------------------------------------------------------------------------
-
 #[test]
 fn compute_volatility_zero_total_returns_zero() {
-    // Requirement 1: no facts → no volatility score (guard against divide-by-zero)
     let v = compute_volatility(0, 0, 0.0);
     assert!(v.abs() < f64::EPSILON, "zero total → 0.0, got {v}");
 }
 
 #[test]
 fn compute_volatility_no_supersessions_returns_zero() {
-    // Requirement 1: facts exist but none are superseded → 0.0
     let v = compute_volatility(10, 0, 0.0);
     assert!(v.abs() < f64::EPSILON, "0 superseded of 10 → 0.0, got {v}");
 }
 
 #[test]
 fn compute_volatility_five_supersessions_matches_formula() {
-    // Requirement 2: formula = (5/10) × (1 + 0.1 × 1.0) = 0.5 × 1.1 = 0.55
     let v = compute_volatility(10, 5, 1.0);
     let expected = 0.55;
     assert!((v - expected).abs() < 1e-10, "expected {expected}, got {v}");
@@ -39,7 +32,6 @@ fn compute_volatility_five_supersessions_matches_formula() {
 
 #[test]
 fn compute_volatility_all_superseded_with_chain_matches_formula() {
-    // Requirement 2: formula = (10/10) × (1 + 0.1 × 2.0) = 1.0 × 1.2 = 1.2 → clamped to 1.0
     let v = compute_volatility(10, 10, 2.0);
     assert!(
         (v - 1.0).abs() < f64::EPSILON,
@@ -49,7 +41,6 @@ fn compute_volatility_all_superseded_with_chain_matches_formula() {
 
 #[test]
 fn compute_volatility_increases_with_supersession_count() {
-    // Requirement 3: more supersessions in same population → higher volatility
     let total = 20_u32;
     let chain = 0.5;
     let low = compute_volatility(total, 2, chain);
@@ -67,21 +58,18 @@ fn compute_volatility_increases_with_supersession_count() {
 
 #[test]
 fn compute_volatility_bounded_above_at_one() {
-    // Requirement 4: extreme inputs clamp to ≤ 1.0
     let v = compute_volatility(1, 1, 1_000.0);
     assert!(v <= 1.0, "volatility must never exceed 1.0, got {v}");
 }
 
 #[test]
 fn compute_volatility_never_negative() {
-    // Requirement 4: result is always ≥ 0.0
     let v = compute_volatility(5, 1, 0.0);
     assert!(v >= 0.0, "volatility must never be negative, got {v}");
 }
 
 #[test]
 fn compute_volatility_single_fact_superseded_correct_value() {
-    // Requirement 2: 1 of 1 superseded, chain 0 → (1/1) × (1 + 0) = 1.0
     let v = compute_volatility(1, 1, 0.0);
     assert!(
         (v - 1.0).abs() < f64::EPSILON,
@@ -91,15 +79,10 @@ fn compute_volatility_single_fact_superseded_correct_value() {
 
 #[test]
 fn compute_volatility_fractional_supersession_rate() {
-    // Requirement 2: 3 of 8 superseded, chain 0 → (3/8) × 1.0 = 0.375
     let v = compute_volatility(8, 3, 0.0);
     let expected = 3.0 / 8.0;
     assert!((v - expected).abs() < 1e-10, "expected {expected}, got {v}");
 }
-
-// ---------------------------------------------------------------------------
-// Volatility multiplier (requirements 5–8)
-// ---------------------------------------------------------------------------
 
 // NOTE: The actual formula is `1.5 - volatility`, not `1.0 / (1.0 + 0.1 * count)`.
 // The implementation intentionally gives a boost (1.5×) for stable domains
@@ -108,7 +91,6 @@ fn compute_volatility_fractional_supersession_rate() {
 
 #[test]
 fn volatility_multiplier_zero_volatility_returns_one_point_five() {
-    // Requirement 5: stable domain (volatility 0) → maximum multiplier (1.5)
     let m = volatility_multiplier(0.0);
     assert!(
         (m - 1.5).abs() < f64::EPSILON,
@@ -118,7 +100,6 @@ fn volatility_multiplier_zero_volatility_returns_one_point_five() {
 
 #[test]
 fn volatility_multiplier_neutral_volatility_returns_one() {
-    // Requirement 5: midpoint (0.5) → neutral multiplier (1.0)
     let m = volatility_multiplier(0.5);
     assert!(
         (m - 1.0).abs() < f64::EPSILON,
@@ -128,7 +109,6 @@ fn volatility_multiplier_neutral_volatility_returns_one() {
 
 #[test]
 fn volatility_multiplier_high_volatility_returns_less_than_one() {
-    // Requirement 6: volatile domain → multiplier < 1.0 (decay accelerated)
     let m = volatility_multiplier(0.9);
     assert!(
         m < 1.0,
@@ -138,7 +118,6 @@ fn volatility_multiplier_high_volatility_returns_less_than_one() {
 
 #[test]
 fn volatility_multiplier_full_volatility_returns_half() {
-    // Requirement 6: maximum volatility (1.0) → minimum multiplier (0.5)
     let m = volatility_multiplier(1.0);
     assert!(
         (m - 0.5).abs() < f64::EPSILON,
@@ -148,8 +127,6 @@ fn volatility_multiplier_full_volatility_returns_half() {
 
 #[test]
 fn volatility_multiplier_formula_is_linear() {
-    // Requirement 7: tests actual formula (1.5 - v). Each 0.1 increase in v reduces
-    // multiplier by exactly 0.1.
     for i in 0..=10_u32 {
         let v = f64::from(i) / 10.0;
         let m = volatility_multiplier(v);
@@ -163,7 +140,6 @@ fn volatility_multiplier_formula_is_linear() {
 
 #[test]
 fn volatility_multiplier_always_positive() {
-    // Requirement 8: multiplier is always > 0 (minimum 0.5 at volatility = 1.0)
     for i in 0..=20_u32 {
         let v = f64::from(i) / 20.0;
         let m = volatility_multiplier(v);
@@ -173,7 +149,6 @@ fn volatility_multiplier_always_positive() {
 
 #[test]
 fn volatility_multiplier_negative_input_clamped() {
-    // Requirement 8: out-of-range inputs are clamped: negative treated as 0
     let m = volatility_multiplier(-1.0);
     assert!(
         (m - 1.5).abs() < f64::EPSILON,
@@ -183,7 +158,6 @@ fn volatility_multiplier_negative_input_clamped() {
 
 #[test]
 fn volatility_multiplier_over_one_input_clamped() {
-    // Requirement 8: input > 1.0 clamped to 1.0 → multiplier = 0.5
     let m = volatility_multiplier(2.0);
     assert!(
         (m - 0.5).abs() < f64::EPSILON,
@@ -191,13 +165,8 @@ fn volatility_multiplier_over_one_input_clamped() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Adaptive stability (requirements 9–12)
-// ---------------------------------------------------------------------------
-
 #[test]
 fn adaptive_stability_zero_volatility_is_one_point_five_times_base() {
-    // Requirement 9: zero volatility → multiplier 1.5 → stable * 1.5
     let ft = FactType::Event;
     let tier = EpistemicTier::Inferred;
     let access = 0;
@@ -212,7 +181,6 @@ fn adaptive_stability_zero_volatility_is_one_point_five_times_base() {
 
 #[test]
 fn adaptive_stability_neutral_volatility_equals_base() {
-    // Requirement 9: volatility 0.5 → multiplier 1.0 → result equals base
     let ft = FactType::Observation;
     let tier = EpistemicTier::Inferred;
     let access = 3;
@@ -226,7 +194,6 @@ fn adaptive_stability_neutral_volatility_equals_base() {
 
 #[test]
 fn adaptive_stability_high_volatility_reduces_stability() {
-    // Requirement 10: high volatility → lower stability than base
     let ft = FactType::Event;
     let tier = EpistemicTier::Assumed;
     let access = 0;
@@ -240,7 +207,6 @@ fn adaptive_stability_high_volatility_reduces_stability() {
 
 #[test]
 fn adaptive_stability_full_volatility_is_half_base() {
-    // Requirement 10: volatility 1.0 → multiplier 0.5 → half the base stability
     let ft = FactType::Task;
     let tier = EpistemicTier::Inferred;
     let access = 0;
@@ -255,7 +221,6 @@ fn adaptive_stability_full_volatility_is_half_base() {
 
 #[test]
 fn adaptive_stability_integrates_fact_type() {
-    // Requirement 11: Identity (high base stability) yields higher adaptive result than Observation
     let tier = EpistemicTier::Inferred;
     let access = 0;
     let volatility = 0.3;
@@ -269,7 +234,6 @@ fn adaptive_stability_integrates_fact_type() {
 
 #[test]
 fn adaptive_stability_integrates_epistemic_tier() {
-    // Requirement 12: Verified tier multiplier is higher than Assumed
     let ft = FactType::Observation;
     let access = 2;
     let volatility = 0.4;
@@ -283,7 +247,6 @@ fn adaptive_stability_integrates_epistemic_tier() {
 
 #[test]
 fn adaptive_stability_verified_two_times_inferred_at_same_volatility() {
-    // Requirement 12: Verified stability multiplier is 2× Inferred (matches EpistemicTier contract)
     let ft = FactType::Event;
     let access = 0;
     let volatility = 0.5; // neutral: no distortion
@@ -295,16 +258,11 @@ fn adaptive_stability_verified_two_times_inferred_at_same_volatility() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Supersession chain tests (requirements 13–16)
-// ---------------------------------------------------------------------------
-
-// Pure GraphContext tests: no engine required. Chain lengths are injected
+// WHY: Pure GraphContext tests: no engine required. Chain lengths are injected
 // directly into the context, matching how the engine populates them at runtime.
 
 #[test]
 fn chain_length_single_hop_via_graph_context() {
-    // Requirement 13: A → B (A superseded by B) → chain_length(A) = 1
     let mut ctx = GraphContext::default();
     ctx.chain_lengths.insert("fact-a".to_owned(), 1);
     ctx.chain_lengths.insert("fact-b".to_owned(), 0); // leaf
@@ -322,7 +280,6 @@ fn chain_length_single_hop_via_graph_context() {
 
 #[test]
 fn chain_length_multi_hop_a_b_c_d_via_graph_context() {
-    // Requirement 14: A → B → C → D (3 hops from A to leaf D) → chain_length(A) = 3
     let mut ctx = GraphContext::default();
     ctx.chain_lengths.insert("fact-a".to_owned(), 3);
     ctx.chain_lengths.insert("fact-b".to_owned(), 2);
@@ -344,7 +301,6 @@ fn chain_length_multi_hop_a_b_c_d_via_graph_context() {
 
 #[test]
 fn chain_length_non_superseded_fact_is_zero() {
-    // Requirement 15: a fact with no supersession record has chain_length = 0
     let mut ctx = GraphContext::default();
     ctx.chain_lengths.insert("standalone".to_owned(), 0);
     assert_eq!(ctx.chain_length("standalone"), 0);
@@ -352,7 +308,7 @@ fn chain_length_non_superseded_fact_is_zero() {
 
 #[test]
 fn chain_length_missing_fact_returns_zero_gracefully() {
-    // Requirement 16: unknown fact IDs return 0 without panic (cycle safety in pure API)
+    // NOTE: Requirement 16: unknown fact IDs return 0 without panic (cycle safety in pure API)
     let ctx = GraphContext::default();
     assert_eq!(
         ctx.chain_length("nonexistent-fact"),
@@ -363,7 +319,6 @@ fn chain_length_missing_fact_returns_zero_gracefully() {
 
 #[test]
 fn chain_length_ordering_reflects_chain_depth() {
-    // Requirement 13/14: earlier-in-chain facts always have higher chain_length
     let mut ctx = GraphContext::default();
     ctx.chain_lengths.insert("oldest".to_owned(), 5);
     ctx.chain_lengths.insert("middle".to_owned(), 3);
@@ -378,13 +333,8 @@ fn chain_length_ordering_reflects_chain_depth() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Domain profiling (requirements 17–19)
-// ---------------------------------------------------------------------------
-
 #[test]
 fn domain_volatility_zero_total_facts_gives_zero_score() {
-    // Requirement 17: entity with no facts → compute_volatility returns 0.0
     let v = compute_volatility(0, 0, 0.0);
     assert!(
         v.abs() < f64::EPSILON,
@@ -394,7 +344,6 @@ fn domain_volatility_zero_total_facts_gives_zero_score() {
 
 #[test]
 fn domain_volatility_all_stable_facts_gives_zero_score() {
-    // Requirement 17: entity where no facts are superseded → volatility = 0
     let v = compute_volatility(15, 0, 0.0);
     assert!(
         v.abs() < f64::EPSILON,
@@ -404,7 +353,6 @@ fn domain_volatility_all_stable_facts_gives_zero_score() {
 
 #[test]
 fn domain_volatility_mixed_stable_volatile_averages_correctly() {
-    // Requirement 18: 4 of 10 superseded, chain 0 → (4/10) × 1.0 = 0.4
     let v = compute_volatility(10, 4, 0.0);
     let expected = 0.4;
     assert!(
@@ -415,7 +363,6 @@ fn domain_volatility_mixed_stable_volatile_averages_correctly() {
 
 #[test]
 fn domain_volatility_increases_when_more_supersessions_occur() {
-    // Requirement 19: adding supersessions raises volatility score
     let before = compute_volatility(10, 2, 0.0); // 2 superseded
     let after = compute_volatility(10, 6, 0.0); // 6 superseded (new supersessions)
     assert!(
@@ -426,7 +373,6 @@ fn domain_volatility_increases_when_more_supersessions_occur() {
 
 #[test]
 fn domain_volatility_chain_length_amplifies_volatility() {
-    // Requirement 19: longer chains amplify the volatility score for the same supersession rate
     let without_chain = compute_volatility(10, 5, 0.0);
     let with_chain = compute_volatility(10, 5, 3.0);
     assert!(
@@ -435,13 +381,8 @@ fn domain_volatility_chain_length_amplifies_volatility() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Integration with recall scoring (requirements 20–23)
-// ---------------------------------------------------------------------------
-
 #[test]
 fn score_access_with_evolution_chain_zero_equals_base() {
-    // Requirement 20: chain_length=0 → no evolution bonus → result equals base
     let base = 0.6;
     let result = score_access_with_evolution(base, 0);
     assert!(
@@ -452,7 +393,6 @@ fn score_access_with_evolution_chain_zero_equals_base() {
 
 #[test]
 fn score_access_with_evolution_chain_four_adds_full_cap() {
-    // Requirement 21: chain_length=4 → bonus = 4 × 0.05 = 0.20 (cap reached)
     let base = 0.5;
     let result = score_access_with_evolution(base, 4);
     let expected = base + 0.20;
@@ -464,7 +404,6 @@ fn score_access_with_evolution_chain_four_adds_full_cap() {
 
 #[test]
 fn score_access_with_evolution_chain_ten_still_capped_at_point_two() {
-    // Requirement 22: chain_length=10 → bonus capped at 0.20 (4×0.05 max)
     let base = 0.5;
     let result_4 = score_access_with_evolution(base, 4);
     let result_10 = score_access_with_evolution(base, 10);
@@ -476,7 +415,6 @@ fn score_access_with_evolution_chain_ten_still_capped_at_point_two() {
 
 #[test]
 fn score_access_with_evolution_result_bounded_at_one() {
-    // Requirement 23: result never exceeds 1.0 even with high base + chain bonus
     let high_base = 0.95;
     let result = score_access_with_evolution(high_base, 10);
     assert!(
@@ -491,7 +429,6 @@ fn score_access_with_evolution_result_bounded_at_one() {
 
 #[test]
 fn score_access_with_evolution_chain_increases_score() {
-    // Requirements 20/21: longer chains yield higher (or equal) scores
     let base = 0.3;
     let chain_0 = score_access_with_evolution(base, 0);
     let chain_2 = score_access_with_evolution(base, 2);
@@ -499,10 +436,6 @@ fn score_access_with_evolution_chain_increases_score() {
     assert!(chain_2 > chain_0, "chain_2 > chain_0");
     assert!(chain_4 > chain_2, "chain_4 > chain_2");
 }
-
-// ---------------------------------------------------------------------------
-// Property-based tests (requirements 24–26)
-// ---------------------------------------------------------------------------
 
 mod proptests {
     use super::*;
@@ -555,7 +488,6 @@ mod proptests {
             total in 1_u32..=1000,
             chain in 0.0_f64..=10.0,
         ) {
-            // Generate two supersession counts where low ≤ high ≤ total
             let low = total / 3;
             let high = (total * 2) / 3;
             let v_low = compute_volatility(total, low, chain);

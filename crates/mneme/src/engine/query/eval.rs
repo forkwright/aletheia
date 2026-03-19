@@ -76,7 +76,6 @@ impl<'a> SessionTx<'a> {
         let mut early_return = false;
         for (stratum, cur_prog) in strata.iter().enumerate() {
             if stratum > 0 {
-                // remove stores that have outlived their usefulness!
                 stores.retain(|name, _| match store_lifetimes.get(name) {
                     None => false,
                     Some(n) => *n >= stratum,
@@ -232,35 +231,27 @@ impl<'a> SessionTx<'a> {
         poison: Poison,
     ) -> Result<(&'b MagicSymbol, TempStore)> {
         let new_store = match compiled_ruleset {
-            CompiledRuleSet::Rules(ruleset) => {
-                match compiled_ruleset.aggr_kind() {
-                    AggrKind::None => {
-                        let res = self.incremental_rule_non_aggr_eval(
-                            k,
-                            &ruleset,
-                            epoch,
-                            stores,
-                            limiter,
-                            poison.clone(),
-                        )?;
-                        used_limiter.fetch_or(res.0, Ordering::Relaxed);
-                        res.1.wrap()
-                    }
-                    AggrKind::Meet => {
-                        let new =
-                            self.incremental_rule_meet_eval(k, &ruleset, stores, poison.clone())?;
-                        new.wrap()
-                    }
-                    AggrKind::Normal => {
-                        // not doing anything
-                        RegularTempStore::default().wrap()
-                    }
+            CompiledRuleSet::Rules(ruleset) => match compiled_ruleset.aggr_kind() {
+                AggrKind::None => {
+                    let res = self.incremental_rule_non_aggr_eval(
+                        k,
+                        &ruleset,
+                        epoch,
+                        stores,
+                        limiter,
+                        poison.clone(),
+                    )?;
+                    used_limiter.fetch_or(res.0, Ordering::Relaxed);
+                    res.1.wrap()
                 }
-            }
-            CompiledRuleSet::Fixed(_) => {
-                // no need to do anything, algos are only calculated once
-                RegularTempStore::default().wrap()
-            }
+                AggrKind::Meet => {
+                    let new =
+                        self.incremental_rule_meet_eval(k, &ruleset, stores, poison.clone())?;
+                    new.wrap()
+                }
+                AggrKind::Normal => RegularTempStore::default().wrap(),
+            },
+            CompiledRuleSet::Fixed(_) => RegularTempStore::default().wrap(),
         };
         Ok((k, new_store))
     }
@@ -290,7 +281,6 @@ impl<'a> SessionTx<'a> {
         #[cfg(not(target_arch = "wasm32"))]
         {
             let limiter_enabled = limiter.total.is_some();
-            // entry rules with limiter must execute sequentially in order to get deterministic ordering
             for res in prog
                 .iter()
                 .filter(|(symb, _)| limiter_enabled && symb.is_prog_entry())
@@ -587,7 +577,6 @@ impl<'a> SessionTx<'a> {
                         return Ok((true, out_store));
                     }
                 }
-                // else, do nothing
             } else {
                 out_store.put(tuple);
             }
@@ -634,7 +623,6 @@ impl<'a> SessionTx<'a> {
                 debug!("complete rule for rule {:?}.{}", rule_symb, rule_n);
                 for item_res in rule.relation.iter(self, None, stores)? {
                     let item = item_res?;
-                    // improvement: the clauses can actually be evaluated in parallel
                     if prev_store.exists(&item) {
                         trace!(
                             "item for {:?}.{}: {:?} at {}, rederived",
@@ -668,7 +656,6 @@ impl<'a> SessionTx<'a> {
                     );
                     for item_res in rule.relation.iter(self, Some(delta_key), stores)? {
                         let item = item_res?;
-                        // improvement: the clauses can actually be evaluated in parallel
                         if prev_store.exists(&item) {
                             trace!(
                                 "item for {:?}.{}: {:?} at {}, rederived",

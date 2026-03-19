@@ -392,8 +392,6 @@ mod tests {
         assert_eq!(received, 10);
     }
 
-    // --- Edge cases ---
-
     #[test]
     fn message_new_defaults() {
         let msg = CrossNousMessage::new("a", "b", "hello");
@@ -498,11 +496,8 @@ mod tests {
     #[test]
     fn router_default_creates_with_default_capacity() {
         let router = CrossNousRouter::default();
-        // Just verify it doesn't panic
         assert!(router.routes.try_read().is_ok());
     }
-
-    // --- Cycle detection tests ---
 
     #[test]
     fn ask_graph_direct_cycle_detected() {
@@ -525,7 +520,6 @@ mod tests {
     fn ask_graph_no_false_positive_on_shared_target() {
         let mut graph = AskGraph::new();
         graph.add_edge("a", "b").unwrap();
-        // c asking b is fine: no cycle.
         graph.add_edge("c", "b").unwrap();
         assert_eq!(graph.edge_count(), 2);
     }
@@ -537,7 +531,6 @@ mod tests {
         assert_eq!(graph.edge_count(), 1);
         graph.remove_edge("a", "b");
         assert_eq!(graph.edge_count(), 0);
-        // Now b -> a should succeed since a -> b was removed.
         graph.add_edge("b", "a").unwrap();
         assert_eq!(graph.edge_count(), 1);
     }
@@ -557,10 +550,9 @@ mod tests {
         router.register("a", tx_a).await;
         router.register("b", tx_b).await;
 
-        // Simulate a -> b already in flight by adding the edge directly.
+        // NOTE: Simulate a -> b already in flight by adding the edge directly.
         router.ask_graph.write().await.add_edge("a", "b").unwrap();
 
-        // Now b tries to ask a: should detect cycle.
         let msg = CrossNousMessage::new("b", "a", "question").with_reply(Duration::from_secs(1));
         let err = router.ask(msg).await.unwrap_err();
         let err_msg = err.to_string();
@@ -584,14 +576,12 @@ mod tests {
         router.register("b", tx_b).await;
         router.register("c", tx_c).await;
 
-        // a -> b and b -> c already in flight.
         {
             let mut graph = router.ask_graph.write().await;
             graph.add_edge("a", "b").unwrap();
             graph.add_edge("b", "c").unwrap();
         }
 
-        // c tries to ask a: should detect indirect cycle.
         let msg = CrossNousMessage::new("c", "a", "question").with_reply(Duration::from_secs(1));
         let err = router.ask(msg).await.unwrap_err();
         let err_msg = err.to_string();
@@ -612,7 +602,6 @@ mod tests {
         router.register("sender_c", tx_c).await;
         let router_reply = router.clone();
 
-        // Two independent actors ask the same target: no cycle.
         let msg =
             CrossNousMessage::new("sender_c", "target", "hello").with_reply(Duration::from_secs(5));
 
@@ -633,7 +622,6 @@ mod tests {
         let result = ask_handle.await.unwrap();
         assert!(result.is_ok(), "expected success, got: {result:?}");
 
-        // Graph should be clean after ask completes.
         assert_eq!(router.ask_graph.read().await.edge_count(), 0);
     }
 
@@ -652,7 +640,6 @@ mod tests {
             "expected timeout, got: {err_msg}"
         );
 
-        // Graph must be clean after timeout.
         assert_eq!(router_check.ask_graph.read().await.edge_count(), 0);
     }
 
@@ -668,7 +655,6 @@ mod tests {
         let err = router.ask(msg).await;
         assert!(err.is_err());
 
-        // Graph must be clean after delivery failure.
         assert_eq!(router.ask_graph.read().await.edge_count(), 0);
     }
 }

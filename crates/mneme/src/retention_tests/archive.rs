@@ -86,9 +86,6 @@ fn retention_boundary_age_keeps_within_threshold() {
     let conn = test_conn();
     let dir = tempfile::tempdir().expect("temp dir should be created");
 
-    // Policy: 30-day max age.
-    // 29-day session is within threshold: must be kept.
-    // 31-day session is past threshold: must be deleted.
     insert_session(&conn, "boundary-young", "alice", "archived", 29);
     insert_session(&conn, "boundary-old", "alice", "archived", 31);
 
@@ -122,7 +119,6 @@ fn archive_preserves_message_seq_order() {
     let archive_dir = dir.path().join("ordered-archive");
 
     insert_session(&conn, "ordered-ses", "alice", "archived", 100);
-    // Insert messages out of seq order to verify the archive sorts them.
     insert_message(&conn, "ordered-ses", 3);
     insert_message(&conn, "ordered-ses", 1);
     insert_message(&conn, "ordered-ses", 2);
@@ -240,7 +236,7 @@ fn recent_orphan_messages_not_deleted() {
     let conn = test_conn();
     let dir = tempfile::tempdir().expect("temp dir should be created");
 
-    // Insert an orphan with the current timestamp (SQLite DEFAULT = now).
+    // WHY: Insert an orphan with the current timestamp (SQLite DEFAULT = now).
     // With a 30-day threshold, this message must not be cleaned up.
     conn.execute_batch("PRAGMA foreign_keys = OFF")
         .expect("disabling foreign keys should succeed");

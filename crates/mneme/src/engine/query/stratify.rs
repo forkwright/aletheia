@@ -210,18 +210,14 @@ impl NormalFormProgram {
     pub(crate) fn into_stratified_program(
         self,
     ) -> Result<(StratifiedNormalFormProgram, BTreeMap<MagicSymbol, usize>)> {
-        // prerequisite: the program is already in disjunctive normal form
-        // 0. build a graph of the program
         let prog_entry: &Symbol = &Symbol::new(PROG_ENTRY, SourceSpan(0, 0));
         let stratified_graph = convert_normal_form_program_to_graph(&self);
         let graph = reduce_to_graph(&stratified_graph);
 
-        // 1. find reachable clauses starting from the query
         let reachable: BTreeSet<_> = reachable_components(&graph, &prog_entry)
             .into_iter()
             .map(|k| (*k).clone())
             .collect();
-        // 2. prune the graph of unreachable clauses
         let stratified_graph: StratifiedGraph<_> = stratified_graph
             .into_iter()
             .filter(|(k, _)| reachable.contains(k))
@@ -230,16 +226,12 @@ impl NormalFormProgram {
             .into_iter()
             .filter(|(k, _)| reachable.contains(k))
             .collect();
-        // 3. find SCC of the clauses
         let sccs: Vec<BTreeSet<&Symbol>> = strongly_connected_components(&graph)?
             .into_iter()
             .map(|scc| scc.into_iter().cloned().collect())
             .collect_vec();
-        // 4. for each SCC, verify that no neg/agg edges are present so that it is really stratifiable
         verify_no_cycle(&stratified_graph, &sccs)?;
-        // 5. build a reduced graph for the SCC's
         let (invert_indices, reduced_graph) = make_scc_reduced_graph(&sccs, &stratified_graph);
-        // 6. topological sort the reduced graph to get a stratification
         let sort_result = generalized_kahn(&reduced_graph, stratified_graph.len());
         let n_strata = sort_result.len();
         let invert_sort_result = sort_result
@@ -247,7 +239,6 @@ impl NormalFormProgram {
             .enumerate()
             .flat_map(|(stratum, indices)| indices.into_iter().map(move |idx| (idx, stratum)))
             .collect::<BTreeMap<_, _>>();
-        // 7. translate the stratification into datalog program
         let mut ret: Vec<NormalFormProgram> = (0..n_strata)
             .map(|_| NormalFormProgram {
                 prog: BTreeMap::new(),

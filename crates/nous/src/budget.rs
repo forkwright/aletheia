@@ -304,17 +304,13 @@ mod tests {
 
     #[test]
     fn char_estimator_exact_multiple() {
-        // 8 chars / 4 = 2 tokens
         assert_eq!(CharEstimator::default().estimate("abcdefgh"), 2);
     }
 
     #[test]
     fn char_estimator_rounds_up() {
-        // 5 chars -> ceil(5/4) = 2
         assert_eq!(CharEstimator::default().estimate("hello"), 2);
-        // 1 char -> ceil(1/4) = 1
         assert_eq!(CharEstimator::default().estimate("a"), 1);
-        // 3 chars -> ceil(3/4) = 1
         assert_eq!(CharEstimator::default().estimate("abc"), 1);
     }
 
@@ -325,9 +321,6 @@ mod tests {
 
     #[test]
     fn budget_computes_system_budget() {
-        // 200k window, 0.6 history ratio (120k), 16k turn reserve
-        // computed = 200k - 16k - 120k = 64k
-        // cap = 40k -> system_budget = 40k
         let budget = TokenBudget::new(200_000, 0.6, 16_384, 40_000);
         assert_eq!(budget.system_budget(), 40_000);
         assert_eq!(budget.remaining(), 40_000);
@@ -346,9 +339,7 @@ mod tests {
     fn budget_consume_returns_false_on_overflow() {
         let mut budget = TokenBudget::new(200_000, 0.6, 16_384, 40_000);
         assert!(budget.consume(35_000));
-        // Try to consume 10k more when only 5k remaining
         assert!(!budget.consume(10_000));
-        // Budget unchanged after failed consume
         assert_eq!(budget.consumed(), 35_000);
         assert_eq!(budget.remaining(), 5_000);
     }
@@ -357,14 +348,12 @@ mod tests {
     fn budget_can_fit_boundary() {
         let mut budget = TokenBudget::new(100_000, 0.0, 0, 50_000);
         assert!(budget.consume(49_999));
-        // Exactly 1 token remaining
         assert!(budget.can_fit(1));
         assert!(!budget.can_fit(2));
     }
 
     #[test]
     fn budget_saturating_sub_prevents_underflow() {
-        // turn_reserve larger than context_window
         let budget = TokenBudget::new(1000, 0.5, 2000, 500);
         assert_eq!(budget.system_budget(), 0);
         assert_eq!(budget.remaining(), 0);
@@ -372,7 +361,6 @@ mod tests {
 
     #[test]
     fn budget_cap_limits_system_budget() {
-        // computed = 100k - 0 - 0 = 100k, but cap = 5000
         let budget = TokenBudget::new(100_000, 0.0, 0, 5_000);
         assert_eq!(budget.system_budget(), 5_000);
     }
@@ -416,7 +404,6 @@ mod tests {
             total_secs: 0,
             ..StageBudget::default()
         });
-        // execute has 0 stage limit and total is 0
         assert!(tb.stage_limit("execute").is_none());
     }
 

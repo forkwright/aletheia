@@ -27,8 +27,6 @@ fn make_observation(
     }
 }
 
-// --- 1. Observation recording fields ---
-
 #[test]
 fn observation_stores_correct_fields() {
     let obs = ToolObservation {
@@ -50,8 +48,6 @@ fn observation_stores_correct_fields() {
         "context_summary should be stored correctly"
     );
 }
-
-// --- 2. Aggregation: 10 successful calls → pattern ---
 
 #[test]
 fn aggregation_creates_pattern_from_successful_calls() {
@@ -94,8 +90,6 @@ fn aggregation_creates_pattern_from_successful_calls() {
     );
 }
 
-// --- 3. Threshold: below minimum observations ---
-
 #[test]
 fn aggregation_no_pattern_below_minimum_observations() {
     let observations: Vec<_> = (0..3)
@@ -116,8 +110,6 @@ fn aggregation_no_pattern_below_minimum_observations() {
     );
 }
 
-// --- 4. Success rate threshold ---
-
 #[test]
 fn aggregation_no_pattern_below_success_rate() {
     let mut observations: Vec<_> = (0..4)
@@ -130,7 +122,6 @@ fn aggregation_no_pattern_below_success_rate() {
             )
         })
         .collect();
-    // Add 6 failures → 4/10 = 40% success rate
     for i in 4..10 {
         observations.push(make_observation(
             "web_search",
@@ -148,8 +139,6 @@ fn aggregation_no_pattern_below_success_rate() {
         "40% success rate should not produce a pattern (minimum is 80%)"
     );
 }
-
-// --- 5. Fact content generation ---
 
 #[test]
 fn pattern_generates_correct_fact_content() {
@@ -182,8 +171,6 @@ fn pattern_generates_correct_fact_content() {
     );
 }
 
-// --- 6. Sanitization: secrets stripped ---
-
 #[test]
 fn sanitize_strips_secret_parameters() {
     let params = serde_json::json!({
@@ -211,8 +198,6 @@ fn sanitize_strips_secret_parameters() {
         "non-secret field should pass through"
     );
 }
-
-// --- 7. Context classification ---
 
 #[test]
 fn classify_grep_as_code() {
@@ -277,8 +262,6 @@ fn classify_unknown_tool_unknown_context_as_other() {
     );
 }
 
-// --- 8. Sanitization: value truncation ---
-
 #[test]
 fn sanitize_truncates_long_values() {
     let long_value = "x".repeat(300);
@@ -294,8 +277,6 @@ fn sanitize_truncates_long_values() {
         "truncated value should end with ellipsis"
     );
 }
-
-// --- 9. Context summary truncation ---
 
 #[test]
 fn truncate_context_summary_short_passthrough() {
@@ -321,8 +302,6 @@ fn truncate_context_summary_long_truncated() {
     );
 }
 
-// --- 10. ToolOutcome serialization roundtrip ---
-
 #[test]
 fn tool_outcome_stored_string_roundtrip() {
     let outcomes = [
@@ -343,8 +322,6 @@ fn tool_outcome_stored_string_roundtrip() {
         );
     }
 }
-
-// --- 11. BehavioralPattern threshold check ---
 
 #[test]
 fn pattern_meets_thresholds_at_boundary() {
@@ -382,8 +359,6 @@ fn pattern_does_not_meet_thresholds_below() {
     );
 }
 
-// --- 12. Multiple tools aggregate independently ---
-
 #[test]
 fn aggregation_separates_tools() {
     let mut observations = Vec::new();
@@ -412,8 +387,6 @@ fn aggregation_separates_tools() {
     );
 }
 
-// --- 13. Nested secret sanitization ---
-
 #[test]
 fn sanitize_handles_nested_objects() {
     let params = serde_json::json!({
@@ -433,8 +406,6 @@ fn sanitize_handles_nested_objects() {
         "non-secret nested field should pass through"
     );
 }
-
-// --- 14. Observation serde roundtrip ---
 
 #[test]
 fn observation_serde_roundtrip() {
@@ -458,8 +429,6 @@ fn observation_serde_roundtrip() {
     );
 }
 
-// --- 15. ContextCategory display/parse ---
-
 #[test]
 fn context_category_roundtrip() {
     let categories = [
@@ -477,11 +446,8 @@ fn context_category_roundtrip() {
     }
 }
 
-// --- 16. Req 3: Different context categories aggregate separately ---
-
 #[test]
 fn observations_different_context_categories_aggregate_separately() {
-    // "custom_tool" has no tool-name classification; context summary governs.
     let mut observations = Vec::new();
     for i in 0..5 {
         observations.push(ToolObservation {

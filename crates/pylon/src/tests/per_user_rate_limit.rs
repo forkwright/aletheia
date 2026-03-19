@@ -38,13 +38,10 @@ async fn app_tight_limits() -> (axum::Router, tempfile::TempDir) {
     .await
 }
 
-// ── Basic enforcement ───────────────────────────────────────────────────────
-
 #[tokio::test]
 async fn requests_under_limit_succeed() {
     let (router, _dir) = app_tight_limits().await;
 
-    // First two requests should succeed (burst = 2 for general)
     let resp = router
         .clone()
         .oneshot(authed_get("/api/v1/nous"))
@@ -64,7 +61,6 @@ async fn requests_under_limit_succeed() {
 async fn requests_over_limit_return_429() {
     let (router, _dir) = app_tight_limits().await;
 
-    // Exhaust burst of 2
     router
         .clone()
         .oneshot(authed_get("/api/v1/nous"))
@@ -76,7 +72,6 @@ async fn requests_over_limit_return_429() {
         .await
         .unwrap();
 
-    // Third request should be rate limited
     let resp = router
         .clone()
         .oneshot(authed_get("/api/v1/nous"))
@@ -99,14 +94,12 @@ async fn rate_limited_response_includes_retry_after() {
     })
     .await;
 
-    // First request succeeds
     router
         .clone()
         .oneshot(authed_get("/api/v1/nous"))
         .await
         .unwrap();
 
-    // Second request is rate limited
     let resp = router
         .clone()
         .oneshot(authed_get("/api/v1/nous"))
@@ -155,8 +148,6 @@ async fn rate_limited_body_contains_error_details() {
     assert_eq!(body["error"]["details"]["category"], "general");
 }
 
-// ── Per-user isolation ──────────────────────────────────────────────────────
-
 #[tokio::test]
 async fn user_a_limit_does_not_affect_user_b() {
     use aletheia_symbolon::types::Role;
@@ -181,7 +172,6 @@ async fn user_a_limit_does_not_affect_user_b() {
         .issue_access("bob", Role::Operator, None)
         .expect("token for bob");
 
-    // Exhaust alice's budget
     let req = Request::get("/api/v1/nous")
         .header("authorization", format!("Bearer {token_a}"))
         .body(Body::empty())
@@ -199,7 +189,6 @@ async fn user_a_limit_does_not_affect_user_b() {
         "alice should be rate limited"
     );
 
-    // Bob's request should succeed
     let req = Request::get("/api/v1/nous")
         .header("authorization", format!("Bearer {token_b}"))
         .body(Body::empty())
@@ -212,8 +201,6 @@ async fn user_a_limit_does_not_affect_user_b() {
     );
 }
 
-// ── Disabled ────────────────────────────────────────────────────────────────
-
 #[tokio::test]
 async fn disabled_per_user_rate_limit_does_not_block() {
     let (router, _dir) = app_with_per_user_limits(PerUserRateLimitConfig {
@@ -223,7 +210,6 @@ async fn disabled_per_user_rate_limit_does_not_block() {
     })
     .await;
 
-    // Even with burst = 1, all requests pass when disabled
     for _ in 0..5 {
         let resp = router
             .clone()

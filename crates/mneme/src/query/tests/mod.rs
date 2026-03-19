@@ -19,8 +19,6 @@ fn normalize(s: &str) -> String {
         .replace(" }", "}")
 }
 
-// -- Builder unit tests --
-
 mod builders;
 mod datalog;
 mod fields;

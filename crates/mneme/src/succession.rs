@@ -241,7 +241,6 @@ mod tests {
 
     #[test]
     fn volatility_no_supersessions() {
-        // 10 facts, none superseded → 0.0
         let v = compute_volatility(10, 0, 0.0);
         assert!(v.abs() < f64::EPSILON, "expected 0.0, got {v}");
     }
@@ -254,23 +253,18 @@ mod tests {
 
     #[test]
     fn volatility_high_supersession_rate() {
-        // 10 facts, 8 superseded, avg chain length 2.0
-        // ratio = 0.8, chain_factor = 1.2, result = 0.96
         let v = compute_volatility(10, 8, 2.0);
         assert!((v - 0.96).abs() < f64::EPSILON, "expected 0.96, got {v}");
     }
 
     #[test]
     fn volatility_low_supersession_rate() {
-        // 10 facts, 1 superseded, avg chain length 0.5
-        // ratio = 0.1, chain_factor = 1.05, result = 0.105
         let v = compute_volatility(10, 1, 0.5);
         assert!((v - 0.105).abs() < 1e-10, "expected 0.105, got {v}");
     }
 
     #[test]
     fn volatility_clamped_to_one() {
-        // All superseded with long chains → saturates at 1.0
         let v = compute_volatility(10, 10, 20.0);
         assert!((v - 1.0).abs() < f64::EPSILON, "expected 1.0, got {v}");
     }
@@ -436,7 +430,6 @@ mod tests {
         fn chain_length_a_b_c() {
             let store = test_store();
 
-            // Create chain: A superseded by B, B superseded by C
             let mut fact_a = make_fact("fact-a", "syn");
             fact_a.superseded_by = Some(crate::id::FactId::from("fact-b"));
             fact_a.valid_to = jiff::Timestamp::now();
@@ -452,7 +445,6 @@ mod tests {
             store.insert_fact(&fact_c).expect("insert fact_c");
 
             let chains = store.compute_chain_lengths().expect("chain_lengths");
-            // C is leaf (chain_length 0), B points to C (1), A points to B→C (2)
             assert_eq!(
                 chains.get("fact-a").copied(),
                 Some(2),
@@ -477,17 +469,14 @@ mod tests {
             let entity = make_entity("ent-volatile", "Volatile Topic");
             store.insert_entity(&entity).expect("insert entity");
 
-            // 10 facts, 8 superseded
             for i in 0..10 {
                 let id = format!("f-v-{i}");
                 let mut fact = make_fact(&id, "syn");
                 if i < 8 {
-                    // Supersede: point to a "replacement" fact
                     let replacement_id = format!("f-v-rep-{i}");
                     fact.superseded_by = Some(crate::id::FactId::from(replacement_id.as_str()));
                     fact.valid_to = jiff::Timestamp::now();
 
-                    // Insert the replacement too
                     let rep = make_fact(&replacement_id, "syn");
                     store.insert_fact(&rep).expect("insert replacement");
                     link_fact_entity(&store, &replacement_id, "ent-volatile");
@@ -519,7 +508,6 @@ mod tests {
             let entity = make_entity("ent-stable", "Stable Topic");
             store.insert_entity(&entity).expect("insert entity");
 
-            // 10 facts, 1 superseded
             for i in 0..10 {
                 let id = format!("f-s-{i}");
                 let mut fact = make_fact(&id, "syn");
@@ -558,21 +546,16 @@ mod tests {
             let entity = make_entity("ent-1", "Test Entity");
             store.insert_entity(&entity).expect("insert entity");
 
-            // Insert a fact and link it
             let fact = make_fact("f-1", "syn");
             store.insert_fact(&fact).expect("insert fact");
             link_fact_entity(&store, "f-1", "ent-1");
 
-            // Compute and store volatility
             store
                 .compute_and_store_volatility()
                 .expect("compute_and_store_volatility");
 
-            // Load graph context and check volatility is present
             let ctx = store.load_graph_context().expect("load_graph_context");
 
-            // Volatility scores are stored in graph_scores, but load_graph_context
-            // doesn't extract them to a special field. Check via direct query.
             let volatilities = store
                 .load_volatility_scores()
                 .expect("load_volatility_scores");
@@ -581,14 +564,12 @@ mod tests {
                 volatilities.contains_key("ent-1"),
                 "volatility score should be stored for ent-1"
             );
-            // Only 1 fact, 0 superseded → volatility = 0.0
             let v = volatilities["ent-1"];
             assert!(
                 v.abs() < f64::EPSILON,
                 "single non-superseded fact should have 0.0 volatility, got {v}"
             );
 
-            // Verify the context still has pagerank etc working
             drop(ctx);
         }
 
@@ -596,7 +577,6 @@ mod tests {
         fn nous_knowledge_profile_query() {
             let store = test_store();
 
-            // Create entities
             store
                 .insert_entity(&make_entity("ent-rust", "Rust"))
                 .expect("insert");
@@ -604,7 +584,6 @@ mod tests {
                 .insert_entity(&make_entity("ent-py", "Python"))
                 .expect("insert");
 
-            // Create facts for "syn" nous
             for i in 0..5 {
                 let id = format!("f-rust-{i}");
                 let fact = make_fact(&id, "syn");
@@ -618,7 +597,6 @@ mod tests {
                 link_fact_entity(&store, &id, "ent-py");
             }
 
-            // Also store volatility so it can be included
             store
                 .compute_and_store_volatility()
                 .expect("compute_and_store_volatility");
@@ -631,7 +609,6 @@ mod tests {
             assert_eq!(profile.total_active_facts, 7);
             assert!(!profile.top_entities.is_empty());
 
-            // Rust should be first (5 facts > 2 facts)
             let rust_entry = &profile.top_entities[0];
             assert_eq!(rust_entry.entity_id.as_str(), "ent-rust");
             assert_eq!(rust_entry.fact_count, 5);
@@ -648,7 +625,6 @@ mod tests {
                 .compute_domain_volatility()
                 .expect("compute_domain_volatility");
 
-            // Entity with no linked facts should not appear
             let found = volatilities
                 .iter()
                 .any(|v| v.entity_id.as_str() == "ent-empty");

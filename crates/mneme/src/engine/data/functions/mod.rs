@@ -50,10 +50,8 @@ macro_rules! define_op {
     };
 }
 
-// Re-export items used externally.
 pub(crate) use temporal::{MAX_VALIDITY_TS, TERMINAL_VALIDITY, current_validity, str2vld};
 
-// ── aggregate / list / set / range ───────────────────────────────────────────
 define_op!(OP_LIST, op_list, 0, true);
 define_op!(OP_CONCAT, op_concat, 1, true);
 define_op!(OP_APPEND, op_append, 2, false);
@@ -75,7 +73,6 @@ define_op!(OP_SLICE, op_slice, 3, false);
 define_op!(OP_INT_RANGE, op_int_range, 1, true);
 define_op!(OP_ASSERT, op_assert, 1, true);
 
-// ── bits ─────────────────────────────────────────────────────────────────────
 define_op!(OP_AND, op_and, 0, true);
 define_op!(OP_OR, op_or, 0, true);
 define_op!(OP_NEGATE, op_negate, 1, false);
@@ -86,7 +83,6 @@ define_op!(OP_BIT_NOT, op_bit_not, 1, false);
 define_op!(OP_UNPACK_BITS, op_unpack_bits, 1, false);
 define_op!(OP_PACK_BITS, op_pack_bits, 1, false);
 
-// ── math ─────────────────────────────────────────────────────────────────────
 define_op!(OP_EQ, op_eq, 2, false);
 define_op!(OP_NEQ, op_neq, 2, false);
 define_op!(OP_GT, op_gt, 2, false);
@@ -116,7 +112,6 @@ define_op!(OP_LOG10, op_log10, 1, false);
 define_op!(OP_IS_IN, op_is_in, 2, false);
 define_op!(OP_COALESCE, op_coalesce, 0, true);
 
-// ── string ───────────────────────────────────────────────────────────────────
 define_op!(OP_STR_INCLUDES, op_str_includes, 2, false);
 define_op!(OP_LOWERCASE, op_lowercase, 1, false);
 define_op!(OP_UPPERCASE, op_uppercase, 1, false);
@@ -138,7 +133,6 @@ define_op!(OP_CHARS, op_chars, 1, false);
 define_op!(OP_SLICE_STRING, op_slice_string, 3, false);
 define_op!(OP_FROM_SUBSTRINGS, op_from_substrings, 1, false);
 
-// ── temporal / UUID / random ─────────────────────────────────────────────────
 define_op!(OP_NOW, op_now, 0, false);
 define_op!(OP_FORMAT_TIMESTAMP, op_format_timestamp, 1, true);
 define_op!(OP_PARSE_TIMESTAMP, op_parse_timestamp, 1, false);
@@ -151,7 +145,6 @@ define_op!(OP_RAND_INT, op_rand_int, 2, false);
 define_op!(OP_RAND_CHOOSE, op_rand_choose, 1, false);
 define_op!(OP_VALIDITY, op_validity, 1, true);
 
-// ── trig ─────────────────────────────────────────────────────────────────────
 define_op!(OP_SIN, op_sin, 1, false);
 define_op!(OP_COS, op_cos, 1, false);
 define_op!(OP_TAN, op_tan, 1, false);
@@ -170,7 +163,6 @@ define_op!(OP_HAVERSINE_DEG_INPUT, op_haversine_deg_input, 4, false);
 define_op!(OP_DEG_TO_RAD, op_deg_to_rad, 1, false);
 define_op!(OP_RAD_TO_DEG, op_rad_to_deg, 1, false);
 
-// ── utility / type-checking / conversion / JSON ──────────────────────────────
 define_op!(OP_IS_NULL, op_is_null, 1, false);
 define_op!(OP_IS_INT, op_is_int, 1, false);
 define_op!(OP_IS_FLOAT, op_is_float, 1, false);
@@ -198,7 +190,6 @@ define_op!(OP_DUMP_JSON, op_dump_json, 1, false);
 define_op!(OP_SET_JSON_PATH, op_set_json_path, 3, false);
 define_op!(OP_REMOVE_JSON_PATH, op_remove_json_path, 2, false);
 
-// ── vector ───────────────────────────────────────────────────────────────────
 define_op!(OP_VEC, op_vec, 1, true);
 define_op!(OP_RAND_VEC, op_rand_vec, 1, true);
 define_op!(OP_L2_NORMALIZE, op_l2_normalize, 1, false);
@@ -206,9 +197,7 @@ define_op!(OP_L2_DIST, op_l2_dist, 2, false);
 define_op!(OP_IP_DIST, op_ip_dist, 2, false);
 define_op!(OP_COS_DIST, op_cos_dist, 2, false);
 
-// ── misc (t2s stub) ───────────────────────────────────────────────────────────
 define_op!(OP_T2S, op_t2s, 1, false);
 fn op_t2s(args: &[DataValue]) -> Result<DataValue> {
-    // fast2s crate removed; pass through unchanged
     Ok(arg(args, 0)?.clone())
 }

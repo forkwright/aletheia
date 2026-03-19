@@ -149,10 +149,6 @@ impl<'a> SessionTx<'a> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Db transaction methods
-// ---------------------------------------------------------------------------
-
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::iter;

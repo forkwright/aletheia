@@ -287,8 +287,6 @@ impl RecallEngine {
         &self.weights
     }
 
-    // --- Graph-enhanced scoring (delegates to graph_intelligence) ---
-
     /// Epistemic tier score boosted by entity `PageRank` importance.
     ///
     /// Superset of [`score_epistemic_tier`](Self::score_epistemic_tier): calling with `importance=0.0`

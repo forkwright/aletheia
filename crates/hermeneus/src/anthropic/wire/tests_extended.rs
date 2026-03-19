@@ -137,14 +137,11 @@ fn cache_turns_marks_text_content_as_blocks() {
     let wire = WireRequest::from_request(&req, None);
     let json = serde_json::to_value(&wire).unwrap();
     let msgs = json["messages"].as_array().unwrap();
-    // First user message (index 0) should have cache_control
     let first_content = &msgs[0]["content"];
     assert!(first_content.is_array(), "text should be wrapped as blocks");
     assert_eq!(first_content[0]["cache_control"]["type"], "ephemeral");
-    // Last message (current turn) should NOT have cache_control
     let last_content = &msgs[2]["content"];
     if last_content.is_string() {
-        // plain text, no cache_control: correct
     } else {
         assert!(
             last_content[0].get("cache_control").is_none(),
@@ -178,7 +175,6 @@ fn cache_turns_disabled_leaves_content_unchanged() {
     let wire = WireRequest::from_request(&req, None);
     let json = serde_json::to_value(&wire).unwrap();
     let msgs = json["messages"].as_array().unwrap();
-    // All content should be plain text strings (no cache_control injection)
     for msg in msgs {
         assert!(
             msg["content"].is_string(),
@@ -250,7 +246,6 @@ fn cache_turns_multi_turn_marks_recent_user_messages() {
     let json = serde_json::to_value(&wire).unwrap();
     let msgs = json["messages"].as_array().unwrap();
 
-    // Should have exactly MAX_TURN_CACHE_BREAKPOINTS cached user messages
     let cached_count = msgs
         .iter()
         .filter(|m| {
@@ -262,7 +257,6 @@ fn cache_turns_multi_turn_marks_recent_user_messages() {
         .count();
     assert_eq!(cached_count, MAX_TURN_CACHE_BREAKPOINTS);
 
-    // Current turn (last message) should NOT be cached
     let last = msgs.last().unwrap();
     assert!(
         last["content"].is_string(),
@@ -305,7 +299,6 @@ fn cache_turns_with_block_content() {
     let json = serde_json::to_value(&wire).unwrap();
     let msgs = json["messages"].as_array().unwrap();
 
-    // First message (blocks) should have cache_control on last block
     let first_content = msgs[0]["content"].as_array().unwrap();
     assert_eq!(first_content.len(), 2);
     assert!(
@@ -336,10 +329,8 @@ fn cache_turns_never_marks_current_message() {
     let wire = WireRequest::from_request(&req, None);
     let json = serde_json::to_value(&wire).unwrap();
     let msgs = json["messages"].as_array().unwrap();
-    // First user message should be cached
     assert!(msgs[0]["content"].is_array());
     assert_eq!(msgs[0]["content"][0]["cache_control"]["type"], "ephemeral");
-    // Second (last/current) should NOT be cached
     assert!(msgs[1]["content"].is_string());
 }
 
@@ -417,7 +408,6 @@ fn compute_turn_cache_indices_respects_max_breakpoints() {
     let refs: Vec<&Message> = msgs.iter().collect();
     let indices = compute_turn_cache_indices(&refs);
     assert!(indices.len() <= MAX_TURN_CACHE_BREAKPOINTS);
-    // Should not include the last index (current message)
     assert!(!indices.contains(&6));
 }
 
@@ -443,7 +433,6 @@ fn compute_turn_cache_indices_only_picks_user_messages() {
     ];
     let refs: Vec<&Message> = msgs.iter().collect();
     let indices = compute_turn_cache_indices(&refs);
-    // Should pick user message at index 0 (the only user message before the last)
     assert_eq!(indices, vec![0]);
 }
 
@@ -514,7 +503,6 @@ fn content_with_cache_control_blocks() {
     let value = content_with_cache_control(&content);
     let arr = value.as_array().unwrap();
     assert_eq!(arr.len(), 2);
-    // Only the last block should have cache_control
     assert!(arr[0].get("cache_control").is_none());
     assert_eq!(arr[1]["cache_control"]["type"], "ephemeral");
 }
@@ -552,15 +540,11 @@ fn cache_turns_combined_with_system_and_tools() {
     };
     let wire = WireRequest::from_request(&req, None);
     let json = serde_json::to_value(&wire).unwrap();
-    // System is cached
     assert_eq!(json["system"][0]["cache_control"]["type"], "ephemeral");
-    // Last tool is cached
     assert_eq!(json["tools"][0]["cache_control"]["type"], "ephemeral");
-    // First user message is cached
     let msgs = json["messages"].as_array().unwrap();
     assert!(msgs[0]["content"].is_array());
     assert_eq!(msgs[0]["content"][0]["cache_control"]["type"], "ephemeral");
-    // Current turn is not cached
     assert!(msgs[2]["content"].is_string());
 }
 

@@ -315,10 +315,6 @@ pub trait HasRrfScore {
     fn set_rrf_score(&mut self, score: f64);
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 #[expect(
@@ -364,7 +360,6 @@ mod tests {
         let result = rewriter.rewrite("What's Cody's truck?", None, &provider);
 
         assert_eq!(result.original, "What's Cody's truck?");
-        // Original + 3 variants = 4
         assert_eq!(result.variants.len(), 4);
         assert_eq!(result.variants[0], "What's Cody's truck?");
         assert!(
@@ -383,7 +378,6 @@ mod tests {
 
         let result = rewriter.rewrite("What's Cody's truck?", None, &provider);
 
-        // Original appears in LLM output, so it's deduped: "What's Cody's truck?" + "Cody truck vehicle" = 2
         assert_eq!(result.variants.len(), 2);
     }
 
@@ -445,10 +439,6 @@ mod tests {
 
         let result = rewriter.rewrite("query", None, &provider);
 
-        // Original + 2 truncated variants, but original is inserted at 0
-        // After truncation to 2: ["variant 1", "variant 2"]
-        // Then original inserted: ["query", "variant 1", "variant 2"]
-        // But max_variants is 2, truncation happens before original insertion
         assert!(result.variants.len() <= 3);
     }
 
@@ -484,7 +474,6 @@ mod tests {
 
         let result = rewriter.rewrite("query", None, &provider);
 
-        // Should not contain empty strings
         assert!(result.variants.iter().all(|v| !v.is_empty()));
     }
 
@@ -495,7 +484,6 @@ mod tests {
 
         let result = rewriter.rewrite("query", None, &provider);
 
-        // Latency should be >= 0 (fast mock, so typically 0 or 1)
         assert!(result.latency_ms < 1000);
     }
 
@@ -578,7 +566,6 @@ mod tests {
 
         let merged = rrf_merge(&[q1, q2], 60.0);
 
-        // f2 appears in both queries, so 3 unique results
         assert_eq!(merged.len(), 3);
         let ids: Vec<&str> = merged.iter().map(super::HasId::id).collect();
         assert!(ids.contains(&"f1"));
@@ -611,7 +598,6 @@ mod tests {
 
         let merged = rrf_merge(&[q1, q2], 60.0);
 
-        // f1 appears in both queries at rank 0, so it should have highest score
         assert_eq!(merged[0].doc_id, "f1");
         assert!(merged[0].score > merged[1].score);
     }
@@ -638,7 +624,6 @@ mod tests {
         let merged = rrf_merge(&[q1], 60.0);
 
         assert_eq!(merged.len(), 2);
-        // Rank 0 should have higher score than rank 1
         assert!(merged[0].score > merged[1].score);
     }
 
@@ -671,7 +656,6 @@ mod tests {
 
         let merged = rrf_merge(&[q1, q2], 60.0);
 
-        // All scores should be in descending order
         for window in merged.windows(2) {
             assert!(window[0].score >= window[1].score);
         }

@@ -2,7 +2,6 @@
     clippy::indexing_slicing,
     reason = "test: vec/JSON indices valid after asserting len or known structure"
 )]
-// ── SseEvent type and serialization ──────────────────────────────────────────
 
 #[test]
 fn sse_event_type_text_delta() {
@@ -98,8 +97,6 @@ fn sse_event_error_serialization() {
     assert_eq!(json["code"], "turn_failed");
     assert_eq!(json["message"], "provider error");
 }
-
-// ── WebchatEvent type and serialization ─────────────────────────────────────
 
 #[test]
 fn tui_event_turn_start_type() {

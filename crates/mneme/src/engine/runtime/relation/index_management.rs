@@ -31,10 +31,8 @@ impl<'a> SessionTx<'a> {
         idx_name: &Symbol,
         cols: &[Symbol],
     ) -> Result<()> {
-        // Get relation handle
         let mut rel_handle = self.get_relation(rel_name, true)?;
 
-        // Check if index already exists
         if rel_handle.has_index(&idx_name.name) {
             IndexAlreadyExistsSnafu {
                 index_name: idx_name.name.to_string(),
@@ -43,7 +41,6 @@ impl<'a> SessionTx<'a> {
             .fail()?;
         }
 
-        // Build column definitions
         let mut col_defs = vec![];
         'outer: for col in cols.iter() {
             for orig_col in rel_handle
@@ -86,7 +83,6 @@ impl<'a> SessionTx<'a> {
             non_keys: vec![],
         };
 
-        // create index relation
         let idx_handle = InputRelationHandle {
             name: Symbol::new(
                 format!("{}:{}", rel_name.name, idx_name.name),
@@ -100,7 +96,6 @@ impl<'a> SessionTx<'a> {
 
         let idx_handle = self.create_relation(idx_handle)?;
 
-        // populate index
         let extraction_indices = idx_handle
             .metadata
             .keys
@@ -145,12 +140,10 @@ impl<'a> SessionTx<'a> {
             }
         }
 
-        // add index to relation
         rel_handle
             .indices
             .insert(idx_name.name.clone(), (idx_handle, extraction_indices));
 
-        // update relation metadata
         let new_encoded =
             vec![DataValue::from(&rel_name.name as &str)].encode_as_key(RelationId::SYSTEM);
         let mut meta_val = vec![];

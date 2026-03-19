@@ -14,7 +14,6 @@ fn setup_oikos(nous_id: &str, files: &[(&str, &str)]) -> (TempDir, Oikos) {
     let dir = TempDir::new().unwrap();
     let root = dir.path();
 
-    // Create tier directories
     fs::create_dir_all(root.join(format!("nous/{nous_id}"))).unwrap();
     fs::create_dir_all(root.join("shared")).unwrap();
     fs::create_dir_all(root.join("theke")).unwrap();
@@ -34,8 +33,6 @@ fn setup_oikos(nous_id: &str, files: &[(&str, &str)]) -> (TempDir, Oikos) {
 fn default_budget() -> TokenBudget {
     TokenBudget::new(200_000, 0.6, 16_384, 40_000)
 }
-
-// --- Assembly tests ---
 
 #[tokio::test]
 async fn assemble_with_required_only() {
@@ -80,7 +77,6 @@ async fn assemble_missing_optional_skips() {
     let mut budget = default_budget();
 
     let result = assembler.assemble("test", &mut budget).await.unwrap();
-    // Only SOUL.md included, others silently skipped
     assert_eq!(
         result.sections_included,
         vec!["SOUL.md"],
@@ -106,7 +102,7 @@ async fn assemble_priority_ordering() {
     let mut budget = default_budget();
 
     let result = assembler.assemble("test", &mut budget).await.unwrap();
-    // Required (SOUL) before Important (GOALS) before Flexible (MEMORY)
+    // WHY: Required (SOUL) before Important (GOALS) before Flexible (MEMORY)
     let soul_pos = result
         .sections_included
         .iter()
@@ -186,14 +182,12 @@ async fn assemble_empty_file_skipped() {
 
 #[tokio::test]
 async fn assemble_memory_truncated() {
-    // Create a large MEMORY.md that exceeds a small budget
     let large_memory = "## Recent\nNew stuff here.\n## Old\nOld stuff here that is much longer and should be truncated when the budget is tight. ".repeat(50);
     let (_dir, oikos) = setup_oikos(
         "test",
         &[("SOUL.md", "identity"), ("MEMORY.md", &large_memory)],
     );
     let assembler = BootstrapAssembler::new(&oikos);
-    // Small budget: enough for SOUL.md but not full MNEME.md
     let mut budget = TokenBudget::new(100_000, 0.0, 0, 500);
 
     let result = assembler.assemble("test", &mut budget).await.unwrap();
@@ -215,7 +209,6 @@ async fn assemble_memory_truncated() {
 
 #[tokio::test]
 async fn assemble_optional_dropped() {
-    // SOUL.md fills the entire budget, MEMORY.md gets dropped
     let large_soul = "x".repeat(2000); // ~500 tokens at 4 chars/token
     let (_dir, oikos) = setup_oikos(
         "test",
@@ -255,7 +248,6 @@ async fn assemble_budget_consumed_correctly() {
 
 #[tokio::test]
 async fn assemble_cascade_nous_tier() {
-    // File only in nous tier
     let (_dir, oikos) = setup_oikos("syn", &[("SOUL.md", "I am Syn.")]);
     let assembler = BootstrapAssembler::new(&oikos);
     let mut budget = default_budget();
@@ -269,7 +261,6 @@ async fn assemble_cascade_nous_tier() {
 
 #[tokio::test]
 async fn assemble_cascade_theke_fallback() {
-    // USER.md only in theke (common pattern)
     let (_dir, oikos) = setup_oikos(
         "syn",
         &[("SOUL.md", "identity"), ("theke:USER.md", "Alice T.")],
@@ -290,7 +281,6 @@ async fn assemble_cascade_theke_fallback() {
 
 #[tokio::test]
 async fn assemble_nous_overrides_theke() {
-    // SOUL.md in both tiers: nous wins
     let dir = TempDir::new().unwrap();
     let root = dir.path();
     fs::create_dir_all(root.join("nous/syn")).unwrap();
@@ -314,8 +304,6 @@ async fn assemble_nous_overrides_theke() {
     );
 }
 
-// --- Truncation tests ---
-
 #[test]
 fn truncate_section_aware() {
     let oikos = Oikos::from_root("/tmp/unused");
@@ -330,7 +318,6 @@ fn truncate_section_aware() {
         truncatable: true,
     };
 
-    // Budget enough for one section: newest (Section C) is kept, oldest dropped.
     let truncated = assembler.truncate_section(&section, 10);
     assert!(
         truncated.content.contains("Section C"),
@@ -359,7 +346,6 @@ fn truncate_falls_back_to_lines() {
         truncatable: true,
     };
 
-    // Budget enough for ~1 line: newest ("Line five") is kept, oldest dropped.
     let truncated = assembler.truncate_by_lines(&section, 5);
     assert!(
         truncated.content.contains("Line five"),
@@ -374,8 +360,6 @@ fn truncate_falls_back_to_lines() {
         "line-truncated content should include a truncation marker"
     );
 }
-
-// --- Pack conversion tests ---
 
 #[test]
 fn pack_sections_to_bootstrap_converts_priorities() {
@@ -511,7 +495,7 @@ async fn assemble_with_extra_respects_priority_ordering() {
         .await
         .unwrap();
 
-    // SOUL.md (Required) < important-pack (Important) < optional-pack (Optional)
+    // WHY: SOUL.md (Required) < important-pack (Important) < optional-pack (Optional)
     let soul_pos = result
         .sections_included
         .iter()

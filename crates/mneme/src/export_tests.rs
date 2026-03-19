@@ -186,7 +186,6 @@ fn export_includes_distilled_messages() {
     )
     .expect("export agent with distilled messages");
 
-    // Both messages exported, including the distilled one
     assert_eq!(agent.sessions[0].messages.len(), 2);
     assert!(agent.sessions[0].messages[0].is_distilled);
     assert!(!agent.sessions[0].messages[1].is_distilled);

@@ -218,7 +218,6 @@ impl StoredRA {
         }
 
         let mut skip_range_check = false;
-        // In some cases, maybe we can stop as soon as we get one result?
         let it = left_iter
             .map_ok(move |tuple| {
                 let prefix = left_to_prefix_indices

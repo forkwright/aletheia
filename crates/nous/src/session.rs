@@ -8,17 +8,14 @@ use crate::config::NousConfig;
 /// Active session state held in memory.
 #[derive(Debug, Clone)]
 pub struct SessionState {
-    // Identity
     pub id: String,
     pub nous_id: String,
     pub session_key: String,
 
-    // Config
     pub model: String,
     pub thinking_enabled: bool,
     pub thinking_budget: u32,
 
-    // State
     pub turn: u64,
     /// Generated fresh on every [`next_turn`](Self::next_turn) call.
     /// Used by the finalize stage as a globally unique dedup key.
@@ -185,8 +182,6 @@ mod tests {
         assert!(!SessionManager::is_background("ask:syn"));
     }
 
-    // --- Edge cases ---
-
     #[test]
     fn distillation_exact_threshold() {
         let mut state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &test_config());
@@ -280,7 +275,6 @@ mod tests {
 
     #[test]
     fn ephemeral_case_sensitivity() {
-        // Prefixes are lowercase; uppercase should not match
         assert!(!SessionManager::is_ephemeral("Ask:something"));
         assert!(!SessionManager::is_ephemeral("Spawn:worker"));
     }
@@ -292,7 +286,6 @@ mod tests {
 
     #[test]
     fn background_substring_matches() {
-        // "prosoche" can appear anywhere in the key
         assert!(SessionManager::is_background("custom-prosoche-wake"));
         assert!(SessionManager::is_background("prefix:prosoche:suffix"));
     }

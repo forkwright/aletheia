@@ -65,14 +65,11 @@ async fn idempotency_key_replay_returns_cached_completion() {
     let created = create_test_session(&router).await;
     let id = created["id"].as_str().unwrap();
 
-    // First request: completes and caches the real stop_reason and usage.
     let req1 = send_message_req(id, Some("replay-key-001"));
     let resp1 = router.clone().oneshot(req1).await.unwrap();
     assert_eq!(resp1.status(), StatusCode::OK);
-    // Consume the body to let the spawned turn task finish.
     let body1 = body_string(resp1).await;
 
-    // Extract the original stop_reason from the first response.
     let original_stop_reason = body1
         .lines()
         .find(|l| l.starts_with("data:"))
@@ -80,10 +77,8 @@ async fn idempotency_key_replay_returns_cached_completion() {
         .and_then(|v| v["stop_reason"].as_str().map(str::to_owned))
         .unwrap_or_default();
 
-    // Brief yield to let the turn task mark the entry as completed.
     tokio::time::sleep(Duration::from_millis(50)).await;
 
-    // Second request with the same key: cache hit returns the cached body.
     let req2 = send_message_req(id, Some("replay-key-001"));
     let resp2 = router.clone().oneshot(req2).await.unwrap();
     assert_eq!(resp2.status(), StatusCode::OK);
@@ -92,7 +87,6 @@ async fn idempotency_key_replay_returns_cached_completion() {
         body2.contains("message_complete"),
         "replayed response should contain message_complete event, got: {body2}"
     );
-    // The replayed stop_reason must match what was cached from the original turn.
     if !original_stop_reason.is_empty() {
         assert!(
             body2.contains(&original_stop_reason),
@@ -108,11 +102,9 @@ async fn idempotency_key_in_flight_returns_409() {
     let created = create_test_session(&router).await;
     let id = created["id"].as_str().unwrap();
 
-    // Manually insert an in-flight entry
     let key = "inflight-key-001";
     state.idempotency_cache.check_or_insert(key);
 
-    // Request with the same key while in-flight
     let req = send_message_req(id, Some(key));
     let resp = router.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::CONFLICT);

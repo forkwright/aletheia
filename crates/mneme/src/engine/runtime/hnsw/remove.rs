@@ -67,7 +67,6 @@ impl<'a> SessionTx<'a> {
         idx_table: &RelationHandle,
     ) -> Result<()> {
         let compound_key = (tuple_key.to_vec(), idx, subidx);
-        // Go down the layers and remove all the links
         let mut encountered_singletons = false;
         for neg_layer in 0i64.. {
             let layer = -neg_layer;
@@ -89,8 +88,6 @@ impl<'a> SessionTx<'a> {
                 .collect_vec();
             encountered_singletons |= neigbours.is_empty();
             for (neighbour_key, _) in neigbours {
-                // REMARK: this still has some probability of disconnecting the graph.
-                // Should we accept that as a consequence of the probabilistic nature of the algorithm?
                 let mut out_key = vec![DataValue::from(layer)];
                 out_key.extend_from_slice(tuple_key);
                 out_key.push(DataValue::from(idx as i64));
@@ -151,7 +148,6 @@ impl<'a> SessionTx<'a> {
         }
 
         if encountered_singletons {
-            // the entry point is removed, we need to do something
             let ep_res = idx_table
                 .scan_bounded_prefix(
                     self,
@@ -176,7 +172,7 @@ impl<'a> SessionTx<'a> {
                 let bottom_level = ep[0]
                     .get_int()
                     .expect("HNSW index stores integers at this position");
-                // canary value is for conflict detection: prevent the scenario of disconnected graphs at all levels
+                // WHY: canary value is for conflict detection: prevent the scenario of disconnected graphs at all levels
                 let canary_value = [
                     DataValue::from(bottom_level),
                     DataValue::Bytes(target_key_bytes),
@@ -186,7 +182,6 @@ impl<'a> SessionTx<'a> {
                     idx_table.encode_val_only_for_store(&canary_value, Default::default())?;
                 self.store_tx.put(&canary_key_bytes, &canary_value_bytes)?;
             } else {
-                // HA! we have removed the last item in the index
                 self.store_tx.del(&canary_key_bytes)?;
             }
         }

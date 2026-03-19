@@ -2,13 +2,6 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
 use super::super::*;
 
-// --- Graph algorithm correctness tests ---
-//
-// These tests verify that the graph data structures and scoring functions
-// produce analytically correct results for hand-crafted graph topologies.
-// Each test defines a small graph, states the expected outcome from graph
-// theory, and asserts that the system matches.
-
 /// `PageRank` correctness: in a directed star graph where all leaves point to
 /// the hub, the hub receives all inlinks and must have the highest `PageRank`.
 ///
@@ -18,7 +11,6 @@ use super::super::*;
 #[test]
 fn pagerank_hub_with_most_inlinks_ranks_highest() {
     let mut ctx = GraphContext::default();
-    // Hand-crafted PageRank scores for a 4-node star (B→A, C→A, D→A).
     ctx.pageranks.insert("a".to_owned(), 0.72);
     ctx.pageranks.insert("b".to_owned(), 0.09);
     ctx.pageranks.insert("c".to_owned(), 0.09);
@@ -41,7 +33,6 @@ fn pagerank_hub_with_most_inlinks_ranks_highest() {
         hub > leaf_d,
         "hub ({hub:.3}) must rank above leaf d ({leaf_d:.3})"
     );
-    // Symmetric leaves must share equal rank.
     assert!(
         (leaf_b - leaf_c).abs() < f64::EPSILON,
         "symmetric leaves b ({leaf_b:.3}) and c ({leaf_c:.3}) must have equal rank"
@@ -51,7 +42,6 @@ fn pagerank_hub_with_most_inlinks_ranks_highest() {
         "symmetric leaves c ({leaf_c:.3}) and d ({leaf_d:.3}) must have equal rank"
     );
 
-    // PageRank importance translates to higher scoring for hub-entity facts.
     let base_tier = 0.6;
     let hub_score = score_epistemic_tier_with_importance(base_tier, hub);
     let leaf_score = score_epistemic_tier_with_importance(base_tier, leaf_b);
@@ -71,23 +61,19 @@ fn pagerank_hub_with_most_inlinks_ranks_highest() {
 #[test]
 fn community_detection_two_clusters_correctly_separated() {
     let mut ctx = GraphContext::default();
-    // Cluster 1: a1, a2 (dense internal connections, weak cross-cluster link)
     ctx.clusters.insert("a1".to_owned(), 1);
     ctx.clusters.insert("a2".to_owned(), 1);
-    // Cluster 2: b1, b2
     ctx.clusters.insert("b1".to_owned(), 2);
     ctx.clusters.insert("b2".to_owned(), 2);
-    // Query context: seed entity is a1 → cluster 1 is the context cluster.
     ctx.context_clusters.insert(1);
 
-    // Cluster 1 membership: both a1 and a2 must be recognised as same-cluster.
     assert!(
         ctx.same_cluster("a1"),
         "a1 is the seed — must be in context cluster"
     );
     assert!(ctx.same_cluster("a2"), "a2 shares cluster 1 with the seed");
 
-    // Cluster 2 members must not be same-cluster as the query context.
+    // WHY: Cluster 2 members must not be same-cluster as the query context.
     assert!(
         !ctx.same_cluster("b1"),
         "b1 is in cluster 2, not the context cluster"
@@ -97,13 +83,12 @@ fn community_detection_two_clusters_correctly_separated() {
         "b2 is in cluster 2, not the context cluster"
     );
 
-    // Nodes absent from the cluster map are also not same-cluster.
     assert!(
         !ctx.same_cluster("unknown"),
         "unlisted node is not in any cluster"
     );
 
-    // Scoring impact: same-cluster nodes receive the proximity floor even with
+    // NOTE: Scoring impact: same-cluster nodes receive the proximity floor even with
     // no direct BFS path, while cross-cluster nodes do not.
     let same_score = score_relationship_proximity_with_cluster(0.0, ctx.same_cluster("a2"));
     let diff_score = score_relationship_proximity_with_cluster(0.0, ctx.same_cluster("b1"));
@@ -133,11 +118,9 @@ fn shortest_path_linear_chain_distances_are_exact() {
     assert_eq!(ctx.hops("d"), Some(3), "third hop is 3");
     assert_eq!(ctx.hops("e"), Some(4), "fourth hop is 4 (BFS boundary)");
 
-    // A node beyond the search radius or unreachable has no hop count.
     assert_eq!(ctx.hops("f"), None, "node beyond BFS radius is unreachable");
     assert_eq!(ctx.hops("z"), None, "completely absent node is unreachable");
 
-    // Closer nodes have strictly fewer hops than farther nodes.
     let close = ctx.hops("b").expect("entity b must be in the hop map");
     let far = ctx.hops("d").expect("entity d must be in the hop map");
     assert!(
@@ -154,10 +137,8 @@ fn shortest_path_linear_chain_distances_are_exact() {
 #[test]
 fn connected_components_disconnected_nodes_have_no_proximity_path() {
     let mut ctx = GraphContext::default();
-    // Component 1: A and B are reachable from the seed (A).
     ctx.proximity.insert("a".to_owned(), Some(0));
     ctx.proximity.insert("b".to_owned(), Some(1));
-    // Component 2: C and D are not reachable: absent from the proximity map.
 
     assert_eq!(
         ctx.hops("a"),
@@ -180,8 +161,6 @@ fn connected_components_disconnected_nodes_have_no_proximity_path() {
         "d is in a disconnected component — unreachable"
     );
 
-    // Nodes in the disconnected component are also in a different cluster.
-    // No same-cluster proximity boost applies across components.
     ctx.clusters.insert("a".to_owned(), 1);
     ctx.clusters.insert("b".to_owned(), 1);
     ctx.clusters.insert("c".to_owned(), 2);
@@ -197,7 +176,6 @@ fn connected_components_disconnected_nodes_have_no_proximity_path() {
         "d is in a different component/cluster"
     );
 
-    // Cross-component nodes get no proximity boost (no floor applied).
     let disconnected_score = score_relationship_proximity_with_cluster(0.0, ctx.same_cluster("c"));
     assert!(
         disconnected_score.abs() < f64::EPSILON,
@@ -214,7 +192,6 @@ fn connected_components_disconnected_nodes_have_no_proximity_path() {
 #[test]
 fn degree_centrality_hub_importance_exceeds_all_leaves() {
     let mut ctx = GraphContext::default();
-    // Hub with 4 inlinks → high in-degree centrality → high PageRank.
     ctx.pageranks.insert("hub".to_owned(), 0.85);
     ctx.pageranks.insert("leaf_b".to_owned(), 0.05);
     ctx.pageranks.insert("leaf_c".to_owned(), 0.05);
@@ -229,7 +206,6 @@ fn degree_centrality_hub_importance_exceeds_all_leaves() {
         "hub ({hub_imp:.3}) must have higher importance than any leaf ({leaf_imp:.3})"
     );
 
-    // All leaves have equal in-degree (0), so they share equal centrality.
     for leaf in ["leaf_b", "leaf_c", "leaf_d", "leaf_e"] {
         assert!(
             (ctx.importance(leaf) - leaf_imp).abs() < f64::EPSILON,
@@ -237,7 +213,6 @@ fn degree_centrality_hub_importance_exceeds_all_leaves() {
         );
     }
 
-    // Degree centrality translates to scoring advantage for hub-entity facts.
     let base_tier = 0.5;
     let hub_score = score_epistemic_tier_with_importance(base_tier, hub_imp);
     let leaf_score = score_epistemic_tier_with_importance(base_tier, leaf_imp);
@@ -246,8 +221,6 @@ fn degree_centrality_hub_importance_exceeds_all_leaves() {
         "facts about hub ({hub_score:.3}) must score above facts about leaves ({leaf_score:.3})"
     );
 
-    // The scoring gap is proportional: hub boost = 1 + 0.85*0.5 = 1.425,
-    // leaf boost = 1 + 0.05*0.5 = 1.025.
     let expected_hub = (base_tier * (1.0 + 0.85 * 0.5)).min(1.0);
     let expected_leaf = (base_tier * (1.0 + 0.05 * 0.5)).min(1.0);
     assert!(

@@ -63,7 +63,6 @@ impl<'a> SessionTx<'a> {
             .next();
         if let Some(ep) = ep_res {
             let ep = ep?;
-            // bottom level since we are going up
             let bottom_level = ep[0]
                 .get_int()
                 .expect("HNSW index stores integers at this position");
@@ -95,12 +94,10 @@ impl<'a> SessionTx<'a> {
             let ep_key = (ep_t_key, ep_idx, ep_subidx);
             vec_cache.ensure_key(&ep_key, orig_table, self)?;
             let ep_distance = vec_cache.v_dist(q, &ep_key)?;
-            // max queue
             let mut found_nn = PriorityQueue::new();
             found_nn.push(ep_key, OrderedFloat(ep_distance));
             let target_level = manifest.get_random_level();
             if target_level < bottom_level {
-                // this becomes the entry point
                 self.hnsw_put_fresh_at_levels(
                     hash.as_ref(),
                     tuple_key,
@@ -150,7 +147,6 @@ impl<'a> SessionTx<'a> {
                     &mut found_nn,
                     vec_cache,
                 )?;
-                // add bidirectional links to the nearest neighbors
                 let neighbours = self.hnsw_select_neighbours_heuristic(
                     q,
                     &found_nn,
@@ -161,7 +157,6 @@ impl<'a> SessionTx<'a> {
                     orig_table,
                     vec_cache,
                 )?;
-                // add self-link
                 self_tuple_key[0] = DataValue::from(current_level);
                 self_tuple_val[0] = DataValue::from(neighbours.len() as f64);
 
@@ -172,7 +167,6 @@ impl<'a> SessionTx<'a> {
                 self.store_tx
                     .put(&self_tuple_key_bytes, &self_tuple_val_bytes)?;
 
-                // add bidirectional links
                 for (neighbour, Reverse(OrderedFloat(dist))) in neighbours.iter() {
                     let mut out_key = Vec::with_capacity(orig_table.metadata.keys.len() * 2 + 5);
                     let out_val = vec![
@@ -213,7 +207,6 @@ impl<'a> SessionTx<'a> {
                         idx_table.encode_val_only_for_store(&in_val, Default::default())?;
                     self.store_tx.put(&in_key_bytes, &in_val_bytes)?;
 
-                    // shrink links if necessary
                     let mut target_self_key =
                         Vec::with_capacity(orig_table.metadata.keys.len() * 2 + 5);
                     target_self_key.push(DataValue::from(current_level));
@@ -254,7 +247,6 @@ impl<'a> SessionTx<'a> {
                         as usize
                         + 1;
                     if target_degree > m_max {
-                        // shrink links
                         target_degree = self.hnsw_shrink_neighbour(
                             neighbour,
                             m_max,
@@ -265,7 +257,6 @@ impl<'a> SessionTx<'a> {
                             vec_cache,
                         )?;
                     }
-                    // update degree
                     target_self_val[0] = DataValue::from(target_degree as f64);
                     self.store_tx.put(
                         &target_self_key_bytes,
@@ -275,7 +266,6 @@ impl<'a> SessionTx<'a> {
                 }
             }
         } else {
-            // This is the first vector in the index.
             let level = manifest.get_random_level();
             self.hnsw_put_fresh_at_levels(
                 hash.as_ref(),
@@ -413,12 +403,10 @@ impl<'a> SessionTx<'a> {
         let mut ret: PriorityQueue<CompoundKey, Reverse<OrderedFloat<_>>> = PriorityQueue::new();
         let mut discarded: PriorityQueue<_, Reverse<OrderedFloat<_>>> = PriorityQueue::new();
         for (item, dist) in found.iter() {
-            // Add to candidates
             candidates.push(item.clone(), Reverse(*dist));
         }
         if manifest.extend_candidates {
             for (item, _) in found.iter() {
-                // Extend by neighbours
                 for (neighbour_key, _) in self.hnsw_get_neighbours(item, level, idx_table, false)? {
                     vec_cache.ensure_key(&neighbour_key, orig_table, self)?;
                     let dist = vec_cache.v_dist(q, &neighbour_key)?;
@@ -470,7 +458,6 @@ impl<'a> SessionTx<'a> {
         vec_cache: &mut VectorCache,
     ) -> Result<()> {
         let mut visited: FxHashSet<CompoundKey> = FxHashSet::default();
-        // min queue
         let mut candidates: PriorityQueue<CompoundKey, Reverse<OrderedFloat<f64>>> =
             PriorityQueue::new();
 
@@ -487,7 +474,6 @@ impl<'a> SessionTx<'a> {
             if candidate_dist > furtherest_dist {
                 break;
             }
-            // loop over each of the candidate's neighbors
             for (neighbour_key, _) in
                 self.hnsw_get_neighbours(&candidate, cur_level, idx_table, false)?
             {
@@ -601,7 +587,7 @@ impl<'a> SessionTx<'a> {
         ];
         let target_key_bytes = idx_table.encode_key_for_store(&target_key, Default::default())?;
 
-        // canary value is for conflict detection: prevent the scenario of disconnected graphs at all levels
+        // WHY: canary value is for conflict detection: prevent the scenario of disconnected graphs at all levels
         let canary_value = [
             DataValue::from(bottom_level),
             DataValue::Bytes(target_key_bytes),

@@ -47,7 +47,7 @@ fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
 fn query_timeout_returns_typed_error() {
     let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4 }).expect("open_mem");
 
-    // Recursive transitive closure on a linear chain of N nodes requires N-1 semi-naive
+    // WHY: Recursive transitive closure on a linear chain of N nodes requires N-1 semi-naive
     // fixpoint epochs. Each epoch checks the Poison flag. With N=2000 and timeout=50ms
     // the engine will hit the Poison kill well before all epochs complete.
     let result = store.run_query_with_timeout(

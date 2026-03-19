@@ -180,7 +180,7 @@ impl JwtManager {
             .build()
         })?;
 
-        // Validate required claims
+        // WHY: Validate required claims
         if claims.iss != self.config.issuer {
             return Err(error::TokenDecodeSnafu {
                 message: format!(
@@ -429,7 +429,6 @@ mod tests {
         let mgr = test_manager();
         let token = mgr.issue_access("user-1", Role::Operator, None).unwrap();
 
-        // Tamper with the payload segment
         let parts: Vec<&str> = token.splitn(3, '.').collect();
         assert_eq!(parts.len(), 3, "JWT must have 3 segments");
 

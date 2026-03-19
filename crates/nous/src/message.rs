@@ -166,7 +166,7 @@ mod tests {
         ];
         let displays: Vec<String> = variants.iter().map(ToString::to_string).collect();
         assert_eq!(displays.len(), 4);
-        // Ensure no duplicates
+        // WHY: Ensure no duplicates
         let mut deduped = displays.clone();
         deduped.sort();
         deduped.dedup();

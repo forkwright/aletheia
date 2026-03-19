@@ -106,15 +106,12 @@ mod coexistence_tests {
 
     #[test]
     fn engine_and_sqlite_session_store_coexist() {
-        // Open a KnowledgeStore using the mneme-engine (CozoDB, in-memory)
         let ks = KnowledgeStore::open_mem()
             .expect("KnowledgeStore::open_mem should succeed with mneme-engine feature");
 
-        // Open a SessionStore using rusqlite (in-memory)
         let ss = SessionStore::open_in_memory()
             .expect("SessionStore::open_in_memory should succeed with sqlite feature");
 
-        // Both instances are live in the same process: no link conflict.
         drop(ks);
         drop(ss);
     }

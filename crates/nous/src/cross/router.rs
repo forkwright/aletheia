@@ -151,7 +151,6 @@ impl CrossNousRouter {
         let timeout_dur = message.reply_timeout.unwrap_or(DEFAULT_REPLY_TIMEOUT);
         message.expects_reply = true;
 
-        // Cycle detection: check before we block.
         {
             let mut graph = self.ask_graph.write().await;
             if let Err(chain) = graph.add_edge(&from, &to) {

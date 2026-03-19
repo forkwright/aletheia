@@ -29,7 +29,6 @@ mod tests {
 
     #[test]
     fn known_date_2023_11_14() {
-        // 2023-11-14 = 19_675 days since epoch
         assert_eq!(days_to_date(19_675), (2023, 11, 14));
     }
 }

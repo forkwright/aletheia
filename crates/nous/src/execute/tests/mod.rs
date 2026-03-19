@@ -21,8 +21,6 @@ use crate::execute::dispatch::simple_hash;
 use crate::pipeline::{InteractionSignal, PipelineContext, PipelineMessage};
 use crate::session::SessionState;
 
-// --- Test Infrastructure ---
-
 struct EchoExecutor;
 
 impl ToolExecutor for EchoExecutor {

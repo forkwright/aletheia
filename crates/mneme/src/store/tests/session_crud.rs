@@ -266,12 +266,10 @@ fn distillation_marks_and_recalculates() {
         .append_message("ses-1", Role::User, "keep this", None, None, 50)
         .expect("append message");
 
-    // Distill the first two messages
     store
         .mark_messages_distilled("ses-1", &[1, 2])
         .expect("mark messages distilled");
 
-    // History should only return undistilled
     let history = store.get_history("ses-1", None).expect("get history");
     assert_eq!(
         history.len(),
@@ -283,7 +281,6 @@ fn distillation_marks_and_recalculates() {
         "the undistilled message should be 'keep this'"
     );
 
-    // Session counts should be recalculated
     let session = store
         .find_session_by_id("ses-1")
         .expect("query succeeds")
@@ -317,7 +314,6 @@ fn usage_recording() {
         })
         .expect("record usage");
 
-    // Verify it was stored
     let count: i64 = store
         .conn
         .query_row(

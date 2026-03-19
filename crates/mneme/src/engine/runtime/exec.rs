@@ -403,10 +403,8 @@ impl<'s, S: Storage<'s>> Db<S> {
         callback_collector: &mut CallbackCollector,
         top_level: bool,
     ) -> Result<(NamedRows, Vec<(Vec<u8>, Vec<u8>)>)> {
-        // cleanups contain stored relations that should be deleted at the end of query
         let mut clean_ups = vec![];
 
-        // Some checks in case the query specifies mutation
         if let Some((meta, op, _)) = &input_program.out_opts.store_relation {
             if *op == RelationOp::Create {
                 if tx.relation_exists(&meta.name)? {
@@ -432,22 +430,18 @@ impl<'s, S: Storage<'s>> Db<S> {
             }
         };
 
-        // query compilation
         let entry_head_or_default = input_program.get_entry_out_head_or_default()?;
         let (normalized_program, out_opts) = input_program.into_normalized_program(tx)?;
         let (stratified_program, store_lifetimes) = normalized_program.into_stratified_program()?;
         let program = stratified_program.magic_sets_rewrite(tx)?;
         let compiled = tx.stratified_magic_compile(program)?;
 
-        // poison is used to terminate queries early
         let poison = Poison::default();
         if let Some(secs) = out_opts.timeout {
             poison.set_timeout(secs)?;
         }
-        // give the query an ID and store it so that it can be queried and cancelled
         let id = self.queries_count.fetch_add(1, Ordering::AcqRel);
 
-        // time the query
         let since_the_epoch = seconds_since_the_epoch()?;
 
         let handle = RunningQueryHandle {
@@ -459,7 +453,6 @@ impl<'s, S: Storage<'s>> Db<S> {
             .expect("lock poisoned")
             .insert(id, handle);
 
-        // RAII cleanups of running query handle
         let _guard = RunningQueryCleanup {
             id,
             running_queries: self.running_queries.clone(),
@@ -477,7 +470,6 @@ impl<'s, S: Storage<'s>> Db<S> {
             None
         };
 
-        // the real evaluation
         let (result_store, early_return) = tx.stratified_magic_evaluate(
             &compiled,
             store_lifetimes,
@@ -486,7 +478,6 @@ impl<'s, S: Storage<'s>> Db<S> {
             poison,
         )?;
 
-        // deal with assertions
         if let Some(assertion) = &out_opts.assertion {
             match assertion {
                 QueryAssertion::AssertNone(_span) => {
@@ -509,7 +500,6 @@ impl<'s, S: Storage<'s>> Db<S> {
         }
 
         if !out_opts.sorters.is_empty() {
-            // sort outputs if required
             let sorted_result =
                 tx.sort_and_collect(result_store, &out_opts.sorters, &entry_head_or_default)?;
             let sorted_iter = if let Some(offset) = out_opts.offset {
@@ -552,7 +542,6 @@ impl<'s, S: Storage<'s>> Db<S> {
                     tx.get_returning_rows(callback_collector, &meta.name, returning)?;
                 Ok((returned_rows, clean_ups))
             } else {
-                // not sorting outputs
                 let rows: Vec<_> = sorted_iter.collect_vec();
                 Ok((
                     NamedRows::new(

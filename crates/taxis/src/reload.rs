@@ -420,8 +420,6 @@ mod tests {
 
             let _ = prepare_reload(&oikos, &current);
 
-            // Current config is untouched (prepare_reload is pure: it returns
-            // a new config without mutating the current one).
             assert_eq!(
                 current.agents.defaults.thinking_budget, original_budget,
                 "current config must not be modified on rejection"
@@ -463,7 +461,6 @@ mod tests {
     fn prepare_reload_no_changes_when_config_identical() {
         figment::Jail::expect_with(|jail| {
             std::fs::create_dir_all(jail.directory().join("config")).map_err(|e| e.to_string())?;
-            // Write default config to disk so load produces identical config.
             let default_toml =
                 toml::to_string(&AletheiaConfig::default()).map_err(|e| e.to_string())?;
             std::fs::write(jail.directory().join("config/aletheia.toml"), default_toml)

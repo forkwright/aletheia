@@ -10,8 +10,6 @@ fn engine() -> RecallEngine {
     RecallEngine::new()
 }
 
-// --- Graph recall skip when weight is zero ---
-
 #[test]
 fn graph_recall_active_with_default_weights() {
     let w = RecallWeights::default();
@@ -92,8 +90,6 @@ fn graph_enhanced_scoring_active_when_weight_nonzero() {
         "with nonzero weight, evolution bonus should apply: base={base_access}, enhanced={enhanced_access}"
     );
 }
-
-// --- Default and builder tests ---
 
 #[test]
 fn default_weights_match_documented() {
@@ -209,8 +205,6 @@ fn builder_chain_preserves_all() {
     );
 }
 
-// --- Relevance edge cases ---
-
 #[test]
 fn relevance_empty_memory_nous() {
     let e = engine();
@@ -231,8 +225,6 @@ fn relevance_both_empty() {
     );
 }
 
-// --- Epistemic tier edge cases ---
-
 #[test]
 fn epistemic_tier_case_insensitive() {
     let e = engine();
@@ -247,7 +239,6 @@ fn epistemic_tier_case_insensitive() {
         (lower - title).abs() > f64::EPSILON || (lower - title).abs() < f64::EPSILON,
         "lower and title case scores may or may not match: lower={lower}, title={title}"
     );
-    // "Verified" and "VERIFIED" both fall through to default (0.3) since match is exact lowercase
     assert!(
         (title - 0.3).abs() < f64::EPSILON,
         "\"Verified\" (title case) should fall through to default score 0.3, got {title}"
@@ -267,8 +258,6 @@ fn epistemic_tier_unknown_string() {
         "unknown epistemic tier string should fall through to default score 0.3, got {score}"
     );
 }
-
-// --- Compute score edge cases ---
 
 #[test]
 fn compute_score_single_factor_nonzero() {
@@ -295,8 +284,6 @@ fn compute_score_single_factor_nonzero() {
         "with only vector_similarity weight active at 1.0, score should equal vector_similarity factor (0.8), got {score}"
     );
 }
-
-// --- Ranking edge cases ---
 
 #[test]
 fn rank_preserves_equal_scores() {
@@ -378,8 +365,6 @@ fn rank_large_input() {
     }
 }
 
-// --- Individual scorer edge cases ---
-
 #[test]
 fn score_access_frequency_one() {
     let e = engine();
@@ -408,8 +393,6 @@ fn score_vector_similarity_exact_zero() {
         "cosine distance 2.0 should yield similarity score 0.0"
     );
 }
-
-// --- FactType classification tests ---
 
 #[test]
 fn classify_identity() {
@@ -519,8 +502,6 @@ fn classify_observation_fallback() {
     );
 }
 
-// --- FactType enum tests ---
-
 #[test]
 fn fact_type_all_variants_have_stability() {
     let variants = [
@@ -540,7 +521,6 @@ fn fact_type_all_variants_have_stability() {
 
 #[test]
 fn fact_type_stability_ordering() {
-    // Identity is most stable, Observation is least
     assert!(
         FactType::Identity.base_stability_hours() > FactType::Preference.base_stability_hours(),
         "Identity should be more stable than Preference"
@@ -623,8 +603,6 @@ fn fact_type_from_str_lossy_unknown_falls_back() {
     );
 }
 
-// --- Epistemic tier stability multiplier tests ---
-
 #[test]
 fn tier_multiplier_ordering() {
     assert!(
@@ -649,8 +627,6 @@ fn tier_verified_is_2x_inferred() {
     );
 }
 
-// --- refresh_stability_hours tests ---
-
 #[test]
 fn refresh_stability_matches_compute() {
     let ft = FactType::Event;
@@ -664,12 +640,10 @@ fn refresh_stability_matches_compute() {
     );
 }
 
-// --- Integration: full recall scoring with decay ---
-
 #[test]
 fn integration_full_recall_with_decay() {
     let e = engine();
-    // Simulate two facts: one fresh identity, one old observation
+    // NOTE: Simulate two facts: one fresh identity, one old observation
     let fresh_identity = e.score_decay(1.0, FactType::Identity, EpistemicTier::Verified, 5);
     let old_observation = e.score_decay(500.0, FactType::Observation, EpistemicTier::Assumed, 0);
 

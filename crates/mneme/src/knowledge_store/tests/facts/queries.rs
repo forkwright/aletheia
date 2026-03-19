@@ -47,12 +47,10 @@ fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
 fn query_facts_excludes_expired() {
     let store = make_store();
 
-    // Active fact
     store
         .insert_fact(&make_fact("f-active", "agent-a", "Active fact"))
         .expect("insert active");
 
-    // Expired fact (valid_to in the past)
     let mut expired = make_fact("f-expired", "agent-a", "Expired fact");
     expired.valid_to =
         crate::knowledge::parse_timestamp("2025-01-01").expect("valid expiry timestamp");
@@ -99,7 +97,6 @@ fn query_facts_nonexistent_nous_id_returns_empty() {
 fn query_facts_at_returns_snapshot() {
     let store = make_store();
 
-    // Fact valid from 2026-01-01 to 2026-06-01
     let mut fact = make_fact("f1", "agent-a", "Temporal fact");
     fact.valid_from = crate::knowledge::parse_timestamp("2026-01-01")
         .expect("valid_from timestamp for temporal test");
@@ -107,7 +104,6 @@ fn query_facts_at_returns_snapshot() {
         .expect("valid_to timestamp for temporal test");
     store.insert_fact(&fact).expect("insert temporal fact");
 
-    // Query at a time within the validity window
     let results = store
         .query_facts_at("2026-03-15")
         .expect("query at mid-range");
@@ -122,7 +118,6 @@ fn query_facts_at_returns_snapshot() {
         "the visible fact should have id f1"
     );
 
-    // Query at a time after the validity window
     let results = store
         .query_facts_at("2026-07-01")
         .expect("query at post-range");

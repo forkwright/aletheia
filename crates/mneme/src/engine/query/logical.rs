@@ -19,8 +19,6 @@ pub(crate) struct Disjunction {
 
 impl Disjunction {
     fn conjunctive_to_disjunctive_de_morgen(self, other: Self) -> Self {
-        // invariants: self and other are both already in disjunctive normal form, which are to be conjuncted together
-        // the return value must be in disjunctive normal form
         let mut ret = vec![];
         let right_args = other.inner.into_iter().map(|a| a.0).collect_vec();
         for left in self.inner {
@@ -187,8 +185,6 @@ impl InputAtom {
         r#gen: &mut TempSymbGen,
         tx: &SessionTx<'_>,
     ) -> Result<Disjunction> {
-        // invariants: the input is already in negation normal form
-        // the return value is a disjunction of conjunctions, with no nesting
         Ok(match self {
             InputAtom::Disjunction { inner: args, .. } => {
                 let mut ret = vec![];

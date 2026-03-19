@@ -102,11 +102,9 @@ fn magic_rewrite_ruleset(
     ruleset: Vec<MagicInlineRule>,
     ret_prog: &mut MagicProgram,
 ) {
-    // at this point, rule_head must be Muggle or Magic, the remaining options are impossible
     let rule_name = rule_head.as_plain_symbol();
     let adornment = rule_head.magic_adornment();
 
-    // can only be true if rule is magic and args are not all free
     let rule_has_bound_args = rule_head.has_bound_adornment();
 
     for (rule_idx, rule) in ruleset.into_iter().enumerate() {
@@ -124,7 +122,6 @@ fn magic_rewrite_ruleset(
         let mut collected_atoms = vec![];
         let mut seen_bindings: BTreeSet<Symbol> = Default::default();
 
-        // SIP from input rule if rule has any bound args
         if rule_has_bound_args {
             let sup_kw = make_sup_kw();
 
@@ -196,7 +193,7 @@ fn magic_rewrite_ruleset(
                 }
                 MagicAtom::Rule(r_app) => {
                     if r_app.name.has_bound_adornment() {
-                        // we are guaranteed to have a magic rule application
+                        // INVARIANT: we are guaranteed to have a magic rule application
                         let sup_kw = make_sup_kw();
                         let args = seen_bindings.iter().cloned().collect_vec();
                         let sup_rule_entry = ret_prog
@@ -210,14 +207,12 @@ fn magic_rewrite_ruleset(
                         let mut sup_rule_atoms = vec![];
                         mem::swap(&mut sup_rule_atoms, &mut collected_atoms);
 
-                        // add the sup rule to the program, this clears all collected atoms
                         sup_rule_entry.push(MagicInlineRule {
                             head: args.clone(),
                             aggr: vec![None; args.len()],
                             body: sup_rule_atoms,
                         });
 
-                        // add the sup rule application to the collected atoms
                         let sup_rule_app = MagicAtom::Rule(MagicRuleApplyAtom {
                             name: sup_kw.clone(),
                             args,
@@ -225,7 +220,6 @@ fn magic_rewrite_ruleset(
                         });
                         collected_atoms.push(sup_rule_app.clone());
 
-                        // finally add to the input rule application
                         let inp_kw = MagicSymbol::Input {
                             inner: r_app.name.as_plain_symbol().clone(),
                             adornment: r_app.name.magic_adornment().into(),
@@ -324,7 +318,6 @@ impl NormalFormProgram {
 
         for (rule_name, rules) in &self.prog {
             if rules_to_rewrite.contains(rule_name) {
-                // processing starts with the sets of rules NOT subject to rewrite
                 continue;
             }
             match rules {
@@ -589,13 +582,11 @@ impl NormalFormAtom {
             }
 
             NormalFormAtom::Predicate(p) => {
-                // predicate cannot introduce new bindings
+                // WHY: predicate cannot introduce new bindings
                 MagicAtom::Predicate(p.clone())
             }
             NormalFormAtom::Rule(rule) => {
                 if rules_to_rewrite.contains(&rule.name) {
-                    // first mark adorned rules
-                    // then
                     let mut adornment = SmallVec::new();
                     for arg in rule.args.iter() {
                         adornment.push(!seen_bindings.insert(arg.clone()));

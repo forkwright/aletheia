@@ -359,7 +359,7 @@ mod tests {
     #[test]
     fn dry_run_reports_pending_without_applying() {
         let conn = fresh_conn();
-        // Bootstrap table but don't apply migrations
+        // NOTE: Bootstrap table but don't apply migrations
         bootstrap_version_table(&conn).expect("bootstrap_version_table should succeed");
 
         let pending = check_migrations(&conn)
@@ -367,7 +367,6 @@ mod tests {
         assert_eq!(pending.len(), 4);
         assert_eq!(pending[0].version, 1);
 
-        // Verify nothing was applied
         let version = get_schema_version(&conn);
         assert_eq!(version, 0);
     }
@@ -384,7 +383,6 @@ mod tests {
 
     #[test]
     fn migration_order_enforced() {
-        // Verify migrations are in ascending version order
         for window in MIGRATIONS.windows(2) {
             assert!(
                 window[0].version < window[1].version,
@@ -486,7 +484,7 @@ mod tests {
     fn backward_compat_existing_v1_database() {
         let conn = fresh_conn();
 
-        // Simulate an older database: schema_version without description column
+        // NOTE: Simulate an older database: schema_version without description column
         conn.execute_batch(
             "CREATE TABLE schema_version (
                 version INTEGER PRIMARY KEY,
@@ -499,14 +497,12 @@ mod tests {
         conn.execute("INSERT INTO schema_version (version) VALUES (1)", [])
             .expect("inserting v1 schema_version record should succeed");
 
-        // Running migrations should detect existing v1 and apply v2+v3+v4
         let result =
             run_migrations(&conn).expect("migrations should apply v2, v3, v4 to a v1 database");
         assert!(!result.was_fresh);
         assert_eq!(result.applied, vec![2, 3, 4]);
         assert_eq!(result.current_version, 4);
 
-        // description column should have been added
         assert!(has_description_column(&conn));
     }
 }

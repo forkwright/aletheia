@@ -41,8 +41,6 @@ fn credential_file_malformed_returns_none() {
     assert!(CredentialFile::load(&path).is_none());
 }
 
-// --- claudeAiOauth wrapper tests ---
-
 #[test]
 fn credential_file_load_claude_code_oauth_wrapper() {
     let dir = tempfile::tempdir().unwrap();
@@ -170,8 +168,6 @@ fn env_provider_with_source_forces_oauth() {
     unsafe { std::env::remove_var(var) };
 }
 
-// --- expired OAuth env var fallthrough tests ---
-
 /// Build a synthetic token with the OAuth prefix and a dot-segmented payload
 /// carrying the given exp (seconds since epoch). Prefix satisfies
 /// `starts_with(OAUTH_TOKEN_PREFIX)`; payload carries the exp claim; stub
@@ -229,7 +225,6 @@ fn env_provider_expired_oauth_falls_through() {
 #[expect(unsafe_code, reason = "test-only env var manipulation")]
 fn env_provider_within_skew_window_accepted() {
     let var = "ALETHEIA_TEST_SKEW_OAUTH_505";
-    // Set exp to 10 seconds in the past: within the 30-second leeway window
     let now_secs = unix_epoch_ms() / 1000;
     let within_skew_token = make_test_oauth_token(now_secs - 10);
     // SAFETY: test uses unique var name, no concurrent access
@@ -251,7 +246,6 @@ fn env_provider_within_skew_window_accepted() {
 #[expect(unsafe_code, reason = "test-only env var manipulation")]
 fn env_provider_beyond_skew_window_rejected() {
     let var = "ALETHEIA_TEST_BEYOND_SKEW_OAUTH_505";
-    // Set exp to 60 seconds in the past: beyond the 30-second leeway
     let now_secs = unix_epoch_ms() / 1000;
     let beyond_skew_token = make_test_oauth_token(now_secs - 60);
     // SAFETY: test uses unique var name, no concurrent access
@@ -282,7 +276,7 @@ fn env_provider_valid_oauth_returns_credential() {
 #[test]
 #[expect(unsafe_code, reason = "test-only env var manipulation")]
 fn env_provider_opaque_oauth_without_exp_is_returned() {
-    // Opaque token with OAuth prefix but no parseable exp must not be dropped.
+    // WHY: Opaque token with OAuth prefix but no parseable exp must not be dropped.
     let var = "ALETHEIA_TEST_OPAQUE_OAUTH_505";
     let opaque = "sk-ant-oat-opaque-no-dots";
     // SAFETY: test uses unique var name, no concurrent access
@@ -587,8 +581,6 @@ fn seconds_remaining_positive_for_future_expiry() {
     );
 }
 
-// --- Integration: credential file refresh cycle ---
-
 #[tokio::test]
 async fn refreshing_provider_reads_credential_file_and_provides_token() {
     let dir = tempfile::tempdir().unwrap();
@@ -608,7 +600,7 @@ async fn refreshing_provider_reads_credential_file_and_provides_token() {
     assert_eq!(resolved.secret.expose_secret(), "sk-ant-oat-initial-token");
     assert_eq!(resolved.source, CredentialSource::OAuth);
 
-    // Shut down background task to avoid leaking
+    // WHY: Shut down background task to avoid leaking
     provider.shutdown();
 }
 
@@ -625,7 +617,7 @@ async fn refresh_write_back_preserves_subscription_type() {
     };
     cred.save(&path).unwrap();
 
-    // Simulate what refresh_loop does after a successful OAuth response:
+    // NOTE: Simulate what refresh_loop does after a successful OAuth response:
     // read the original file, build a new CredentialFile with refreshed tokens,
     // and verify subscription_type is preserved in the write-back.
     let original = CredentialFile::load(&path).unwrap();
@@ -653,7 +645,6 @@ async fn refresh_write_back_from_claude_code_wrapper_preserves_subscription_type
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join(".credentials.json");
 
-    // Write in Claude Code claudeAiOauth wrapper format (with subscriptionType)
     std::fs::write(
         &path,
         r#"{"claudeAiOauth":{"accessToken":"sk-ant-oat-wrapped","refreshToken":"rt-wrapped","expiresAt":9999999999000,"subscriptionType":"pro_plus"}}"#,
@@ -663,7 +654,7 @@ async fn refresh_write_back_from_claude_code_wrapper_preserves_subscription_type
     let original = CredentialFile::load(&path).unwrap();
     assert_eq!(original.subscription_type.as_deref(), Some("pro_plus"));
 
-    // Simulate refresh write-back preserving subscription_type
+    // NOTE: Simulate refresh write-back preserving subscription_type
     let refreshed = CredentialFile {
         token: "sk-ant-oat-new".to_owned(),
         refresh_token: Some("rt-new".to_owned()),
@@ -696,7 +687,6 @@ async fn refreshing_provider_shuts_down_cleanly() {
 
     let provider = RefreshingCredentialProvider::new(path).expect("should create provider");
     provider.shutdown();
-    // Drop triggers abort of background task; should not panic
     drop(provider);
 }
 

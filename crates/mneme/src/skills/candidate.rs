@@ -262,14 +262,9 @@ mod tests {
         ]
     }
 
-    // ------------------------------------------------------------------
-    // Basic tracking
-    // ------------------------------------------------------------------
-
     #[test]
     fn track_rejected_sequence_returns_rejected() {
         let tracker = CandidateTracker::new();
-        // Too short to pass gates
         let short = vec![tc("Read"), tc("Edit"), tc("Bash")];
         assert_eq!(
             tracker.track_sequence(&short, "s1", "nous1"),
@@ -293,10 +288,6 @@ mod tests {
         let result = tracker.track_sequence(&good_seq(), "s2", "nous1");
         assert_eq!(result, TrackResult::Tracked(2));
     }
-
-    // ------------------------------------------------------------------
-    // Rule of Three
-    // ------------------------------------------------------------------
 
     #[test]
     fn third_occurrence_returns_promoted() {
@@ -331,17 +322,11 @@ mod tests {
         assert_eq!(candidates[0].recurrence_count, 4);
     }
 
-    // ------------------------------------------------------------------
-    // Similar sequence merging
-    // ------------------------------------------------------------------
-
     #[test]
     fn similar_sequences_merge_into_same_candidate() {
         let tracker = CandidateTracker::new();
         tracker.track_sequence(&good_seq(), "s1", "nous1");
-        // Similar but not identical
         let result = tracker.track_sequence(&similar_seq(), "s2", "nous1");
-        // Should find similarity >= 0.8 and merge
         assert_eq!(tracker.len(), 1, "similar sequences should merge");
         assert_eq!(result, TrackResult::Tracked(2));
     }
@@ -366,16 +351,11 @@ mod tests {
         );
     }
 
-    // ------------------------------------------------------------------
-    // nous isolation
-    // ------------------------------------------------------------------
-
     #[test]
     fn different_nous_ids_are_isolated() {
         let tracker = CandidateTracker::new();
         tracker.track_sequence(&good_seq(), "s1", "nous1");
         tracker.track_sequence(&good_seq(), "s1", "nous2");
-        // Each nous gets its own candidate
         assert_eq!(tracker.len(), 2);
         assert_eq!(tracker.candidates_for("nous1").len(), 1);
         assert_eq!(tracker.candidates_for("nous2").len(), 1);
@@ -386,14 +366,9 @@ mod tests {
         let tracker = CandidateTracker::new();
         tracker.track_sequence(&good_seq(), "s1", "nous1");
         tracker.track_sequence(&good_seq(), "s2", "nous1");
-        // nous2 starts fresh
         let result = tracker.track_sequence(&good_seq(), "s3", "nous2");
         assert_eq!(result, TrackResult::New, "nous2 should start at count 1");
     }
-
-    // ------------------------------------------------------------------
-    // Session refs
-    // ------------------------------------------------------------------
 
     #[test]
     fn session_refs_accumulated() {
@@ -419,10 +394,6 @@ mod tests {
             .count();
         assert_eq!(session_count, 1, "duplicate session should not be added");
     }
-
-    // ------------------------------------------------------------------
-    // Serialisation
-    // ------------------------------------------------------------------
 
     #[test]
     fn skill_candidate_serialises_to_json() {

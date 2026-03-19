@@ -243,7 +243,6 @@ async fn complete_malformed_body() {
 
 #[test]
 fn estimate_cost_no_pricing_returns_zero() {
-    // Without configured pricing, cost is always 0.0 regardless of model.
     let pricing = HashMap::new();
     assert!(estimate_cost(&pricing, "claude-opus-4-20250514", 1000, 100).abs() < f64::EPSILON);
     assert!(estimate_cost(&pricing, "claude-sonnet-4-20250514", 1000, 100).abs() < f64::EPSILON);
@@ -262,7 +261,6 @@ fn estimate_cost_uses_config_pricing() {
         },
     );
     let cost = estimate_cost(&pricing, "custom-model", 1000, 100);
-    // (1000 * 10.0 + 100 * 50.0) / 1_000_000 = 15000 / 1_000_000 = 0.015
     assert!((cost - 0.015).abs() < 0.0001);
 }
 
@@ -277,7 +275,6 @@ fn estimate_cost_config_overrides_default() {
         },
     );
     let cost = estimate_cost(&pricing, "claude-opus-4-20250514", 1000, 100);
-    // (1000 * 20.0 + 100 * 100.0) / 1_000_000 = 30000 / 1_000_000 = 0.03
     assert!((cost - 0.03).abs() < 0.0001);
 }
 
@@ -298,7 +295,6 @@ fn estimate_cost_family_resolution_uses_alias_pricing() {
             output_cost_per_mtok: 15.0,
         },
     );
-    // 1 000 000 input tokens at $3/M + 0 output = $3.00
     let cost = estimate_cost(&pricing, "claude-sonnet-4-20250514", 1_000_000, 0);
     assert!(
         (cost - 3.0).abs() < 0.0001,
@@ -308,7 +304,6 @@ fn estimate_cost_family_resolution_uses_alias_pricing() {
 
 #[test]
 fn estimate_cost_haiku_family_resolution() {
-    // Haiku family: "claude-haiku-4-5" covers "claude-haiku-4-5-20251001".
     let mut pricing = HashMap::new();
     pricing.insert(
         "claude-haiku-4-5".to_owned(),
@@ -317,7 +312,6 @@ fn estimate_cost_haiku_family_resolution() {
             output_cost_per_mtok: 4.0,
         },
     );
-    // 1 000 000 output tokens at $4/M = $4.00
     let cost = estimate_cost(&pricing, "claude-haiku-4-5-20251001", 0, 1_000_000);
     assert!(
         (cost - 4.0).abs() < 0.0001,
@@ -332,15 +326,12 @@ fn estimate_cost_haiku_family_resolution() {
 fn estimate_cost_default_pricing_resolves_haiku() {
     let pricing = ProviderConfig::default().pricing;
 
-    // Exact match: the default table contains "claude-haiku-4-5-20251001".
     let cost = estimate_cost(&pricing, "claude-haiku-4-5-20251001", 1_000_000, 1_000_000);
-    // (1M * 0.8 + 1M * 4.0) / 1M = $4.80
     assert!(
         (cost - 4.8).abs() < 0.0001,
         "expected ~$4.80 for haiku from default pricing, got {cost}"
     );
 
-    // All first-party models must resolve to non-zero cost.
     for model in SUPPORTED_MODELS {
         let c = estimate_cost(&pricing, model, 1000, 1000);
         assert!(
@@ -361,7 +352,6 @@ fn model_family_strips_last_segment() {
     assert_eq!(model_family("claude-haiku-4-5"), "claude-haiku-4");
     assert_eq!(model_family("claude-opus-4-20250514"), "claude-opus-4");
     assert_eq!(model_family("claude-opus-4-6"), "claude-opus-4");
-    // No dash at all: returns the model name unchanged.
     assert_eq!(model_family("somemodel"), "somemodel");
 }
 
@@ -383,14 +373,12 @@ fn merge_pricing_fills_defaults_for_unconfigured_models() {
     };
     let provider = AnthropicProvider::from_config(&config).expect("valid config");
 
-    // Operator override is preserved.
     let sonnet = &provider.pricing["claude-sonnet-4-6"];
     assert!(
         (sonnet.input_cost_per_mtok - 99.0).abs() < f64::EPSILON,
         "operator override should win"
     );
 
-    // Built-in haiku pricing is present even though operator didn't configure it.
     let haiku = provider
         .pricing
         .get("claude-haiku-4-5-20251001")
@@ -415,7 +403,6 @@ fn merge_pricing_empty_operator_uses_all_defaults() {
     };
     let provider = AnthropicProvider::from_config(&config).expect("valid config");
 
-    // All first-party models from ProviderConfig::default() must be present.
     let defaults = ProviderConfig::default();
     for model in defaults.pricing.keys() {
         assert!(

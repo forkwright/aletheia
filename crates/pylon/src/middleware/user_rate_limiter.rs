@@ -16,8 +16,6 @@ use crate::error::{ErrorBody, ErrorResponse};
 
 use super::rate_limiter::{RateLimiter, extract_client_key};
 
-// ── Per-user rate limiting ──────────────────────────────────────────────────
-
 /// Endpoint category for applying differentiated rate limits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EndpointCategory {

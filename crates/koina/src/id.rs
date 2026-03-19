@@ -777,7 +777,7 @@ mod tests {
             let a = TestStringId::new("x");
             let b = TestCompactId::new("x");
             assert_eq!(a.as_str(), b.as_str());
-            // a == b would not compile: different types
+            // WHY: a == b would not compile: different types
         }
     }
 }

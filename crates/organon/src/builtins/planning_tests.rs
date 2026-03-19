@@ -355,7 +355,6 @@ async fn plan_roadmap_add_phase_calls_add_phase() {
         "phase goal should be passed through to the service"
     );
 
-    // transition_project should NOT have been called
     let t_calls = mock_ref.transition_calls.lock().unwrap();
     assert!(
         t_calls.is_empty(),
@@ -483,7 +482,6 @@ async fn plan_execute_maps_actions() {
         ("abandon", "abandon"),
         ("start_verification", "start_verification"),
     ] {
-        // Reset transition result for each iteration
         *mock_ref.transition_result.lock().unwrap() = Some(Ok(r#"{"state":"ok"}"#.to_owned()));
 
         let input = ToolInput {

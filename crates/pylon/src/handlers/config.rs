@@ -296,7 +296,6 @@ mod tests {
     fn deep_merge_merges_nested_objects_without_replacing() {
         let mut base = json!({"outer": {"a": 1, "b": 2}});
         deep_merge(&mut base, json!({"outer": {"b": 99}}));
-        // 'b' is patched, 'a' is preserved
         assert_eq!(base["outer"]["a"], 1);
         assert_eq!(base["outer"]["b"], 99);
     }
@@ -320,7 +319,6 @@ mod tests {
     fn deep_merge_replaces_array_wholesale() {
         let mut base = json!({"items": [1, 2, 3]});
         deep_merge(&mut base, json!({"items": [4, 5]}));
-        // Arrays are not merged: patch replaces entirely
         let items = base["items"].as_array().unwrap();
         assert_eq!(items.len(), 2);
         assert_eq!(items[0], 4);
@@ -343,7 +341,6 @@ mod tests {
         };
         let json = serde_json::to_value(&resp).unwrap();
         assert_eq!(json["section"], "agents");
-        // camelCase: restart_required → restartRequired
         assert!(json.get("restartRequired").is_some());
         assert!(json["restartRequired"].as_array().unwrap().len() == 1);
     }

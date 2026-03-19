@@ -344,10 +344,8 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let config = make_config(tmp.path());
 
-        // Required file
         fs::create_dir_all(config.example_root.join("config")).unwrap();
         fs::write(config.example_root.join("config/aletheia.toml"), "").unwrap();
-        // Optional scaffolding
         fs::create_dir_all(config.example_root.join("packs/starter")).unwrap();
         fs::write(config.example_root.join("packs/starter/pack.toml"), "").unwrap();
         fs::create_dir_all(config.example_root.join("services")).unwrap();

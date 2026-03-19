@@ -197,10 +197,8 @@ async fn spawn_replaces_existing_actor() {
 
     assert_eq!(mgr.count(), 1);
 
-    // Old handle should be disconnected
     assert!(old_handle.status().await.is_err());
 
-    // New handle should work
     let status = new_handle.status().await.expect("status");
     assert_eq!(status.id, "syn");
 
@@ -230,10 +228,9 @@ async fn drain_stops_all_actors() {
         .spawn(demiurge_config(), PipelineConfig::default())
         .await;
 
-    // drain() takes &self: no mutable access needed.
+    // WHY: drain() takes &self: no mutable access needed.
     mgr.drain(Duration::from_secs(5)).await;
 
-    // After drain join handles are taken and tasks have stopped.
     assert!(
         handle1.status().await.is_err(),
         "syn actor should have exited"
@@ -252,10 +249,9 @@ async fn cancel_token_propagates_to_actors() {
 
     let handle = mgr.spawn(syn_config(), PipelineConfig::default()).await;
 
-    // Cancel via manager's root token directly (as drain() would do internally).
+    // WHY: Cancel via manager's root token directly (as drain() would do internally).
     mgr.cancel.cancel();
 
-    // Wait for actor to observe cancellation and exit.
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             if handle.status().await.is_err() {
@@ -278,11 +274,9 @@ async fn drain_timeout_does_not_panic() {
     mgr.spawn(demiurge_config(), PipelineConfig::default())
         .await;
 
-    // 1-nanosecond timeout: drain will warn but must not panic.
+    // NOTE: 1-nanosecond timeout: drain will warn but must not panic.
     mgr.drain(Duration::from_nanos(1)).await;
 }
-
-// --- Resilience tests ---
 
 #[tokio::test]
 async fn check_health_reports_alive_actors() {
@@ -307,9 +301,7 @@ async fn check_health_detects_dead_actor() {
 
     let handle = mgr.spawn(syn_config(), PipelineConfig::default()).await;
 
-    // Kill the actor by sending shutdown directly
     handle.shutdown().await.expect("shutdown");
-    // Wait for actor to stop
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     let health = mgr.check_health().await;
@@ -327,26 +319,23 @@ async fn check_health_busy_actor_reports_alive() {
 
     mgr.spawn(syn_config(), PipelineConfig::default()).await;
 
-    // Simulate: actor is mid-turn (flag set) but its inbox is closed (ping fails).
+    // NOTE: Simulate: actor is mid-turn (flag set) but its inbox is closed (ping fails).
     mgr.actors
         .get("syn")
         .expect("actor registered")
         .active_turn
         .store(true, std::sync::atomic::Ordering::Release);
 
-    // Kill the actor so the ping fails.
     let handle = mgr.actors.get("syn").expect("entry").handle.clone();
     handle.shutdown().await.expect("shutdown sent");
     tokio::time::sleep(Duration::from_millis(50)).await;
 
-    // Ping fails but active_turn is set: must report healthy-busy, not dead.
     let health = mgr.check_health().await;
     assert!(
         health.get("syn").expect("syn health").alive,
         "busy actor (active_turn=true) must report alive even when ping fails"
     );
 
-    // Clear the flag: actor is now both dead and idle: must report unhealthy.
     mgr.actors
         .get("syn")
         .expect("actor registered")
@@ -366,7 +355,6 @@ fn backoff_calculation() {
     assert_eq!(super::calculate_backoff(1), Duration::from_secs(15));
     assert_eq!(super::calculate_backoff(2), Duration::from_secs(45));
     assert_eq!(super::calculate_backoff(3), Duration::from_secs(135));
-    // After 4+ restarts, caps at 5 minutes
     assert_eq!(super::calculate_backoff(4), Duration::from_secs(300));
     assert_eq!(super::calculate_backoff(10), Duration::from_secs(300));
 }

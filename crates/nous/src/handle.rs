@@ -357,7 +357,6 @@ mod tests {
         let (tx, mut rx) = mpsc::channel(1);
         let handle = NousHandle::new("syn".to_owned(), tx);
 
-        // Spawn a task that receives the message but drops the reply channel
         tokio::spawn(
             async move {
                 if let Some(NousMessage::Turn { reply, .. }) = rx.recv().await {
@@ -381,7 +380,7 @@ mod tests {
         let (tx, mut rx) = mpsc::channel::<NousMessage>(4);
         let handle = NousHandle::new("syn".to_owned(), tx);
 
-        // Simulate actor loop: receive messages and reply
+        // NOTE: Simulate actor loop: receive messages and reply
         let actor = tokio::spawn(
             async move {
                 let mut received = 0u32;
@@ -389,7 +388,7 @@ mod tests {
                     match msg {
                         NousMessage::Turn { reply, .. }
                         | NousMessage::StreamingTurn { reply, .. } => {
-                            // Actor sends result: receiver may already be dropped.
+                            // WARNING: Actor sends result: receiver may already be dropped.
                             // This must not panic.
                             let _ = reply.send(Err(crate::error::PipelineStageSnafu {
                                 stage: "test",
@@ -407,7 +406,6 @@ mod tests {
             .instrument(tracing::info_span!("test_actor_loop")),
         );
 
-        // Send a turn, then drop the handle's receiver (simulating client disconnect)
         let send_result = {
             let (reply_tx, _reply_rx) = tokio::sync::oneshot::channel();
             handle
@@ -423,7 +421,6 @@ mod tests {
         };
         assert!(send_result.is_ok());
 
-        // Actor should still be alive: send shutdown and verify it processed the turn
         let _ = handle.shutdown().await;
         let received = actor.await.expect("actor should not panic");
         assert_eq!(received, 1, "actor should have processed the turn");

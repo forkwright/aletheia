@@ -102,7 +102,6 @@ impl<'s> Storage<'s> for FjallStorage {
     }
 
     fn range_compact(&'s self, _lower: &[u8], _upper: &[u8]) -> Result<()> {
-        // fjall LSM compaction is automatic
         Ok(())
     }
 
@@ -137,7 +136,6 @@ pub struct FjallReadTx<'s> {
 }
 
 pub struct FjallWriteTx<'s> {
-    // Option so we can take() on commit (commit consumes self)
     tx: Option<fjall::SingleWriterWriteTx<'s>>,
     keyspace: &'s fjall::SingleWriterTxKeyspace,
 }
@@ -223,7 +221,6 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
             FjallTx::Reader(_) => Err(WriteInReadTransactionSnafu.build()),
             FjallTx::Writer(w) => {
                 use fjall::Readable;
-                // Read-your-own-writes: the tx sees its own inserts/deletes
                 let keys: Vec<Vec<u8>> = w
                     .tx_ref()
                     .range(w.keyspace, lower..upper)
@@ -595,7 +592,6 @@ mod tests {
     fn persistence_across_restarts() -> InternalResult<()> {
         let dir = TempDir::new().expect("failed to create temp dir");
 
-        // Write data
         {
             let db = new_cozo_fjall(dir.path())?;
             db.run_script(
@@ -610,7 +606,6 @@ mod tests {
             )?;
         }
 
-        // Reopen and verify
         {
             let db = new_cozo_fjall(dir.path())?;
             let result = db.run_script(
@@ -666,7 +661,6 @@ mod tests {
     fn read_your_own_writes() -> InternalResult<()> {
         let (_dir, db) = setup_test_db()?;
 
-        // Insert and query within the same script execution
         db.run_script(
             r#"
             ?[k, v] <- [[1, "first"]] :put plain {k => v}

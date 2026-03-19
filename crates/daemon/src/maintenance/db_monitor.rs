@@ -286,7 +286,6 @@ mod tests {
         let config = make_config(tmp.path());
         fs::create_dir_all(&config.data_dir).unwrap();
 
-        // Create a file > 1MB but < 5MB.
         let data = vec![0u8; 2 * 1024 * 1024];
         fs::write(config.data_dir.join("sessions.db"), &data).unwrap();
 
@@ -303,7 +302,6 @@ mod tests {
         let config = make_config(tmp.path());
         fs::create_dir_all(&config.data_dir).unwrap();
 
-        // Create a file > 5MB.
         let data = vec![0u8; 6 * 1024 * 1024];
         fs::write(config.data_dir.join("sessions.db"), &data).unwrap();
 
@@ -421,7 +419,6 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let config = make_config(tmp.path());
         fs::create_dir_all(&config.data_dir).unwrap();
-        // No files in data dir.
 
         let monitor = DbMonitor::new(config);
         let report = monitor.check().expect("check succeeds");

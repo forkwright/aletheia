@@ -131,7 +131,6 @@ mod tests {
         let guard = ProcessGuard::new(child);
         let mut child = guard.detach(); // disarms kill-on-drop
 
-        // Process should still be alive right after detach.
         let alive = Command::new("kill")
             .args(["-0", &pid.to_string()])
             .output()
@@ -140,7 +139,6 @@ mod tests {
             .success();
         assert!(alive, "process {pid} should still be alive after detach");
 
-        // Clean up explicitly.
         let _ = child.kill();
         let _ = child.wait();
     }
@@ -151,7 +149,6 @@ mod tests {
         let child = Command::new("true").spawn().expect("spawn true");
         let mut guard = ProcessGuard::new(child);
 
-        // `true` exits immediately; wait until try_wait says so.
         let mut status = None;
         for _ in 0..50 {
             if let Ok(Some(s)) = guard.get_mut().try_wait() {
@@ -171,7 +168,6 @@ mod tests {
         let child = Command::new("true").spawn().expect("spawn true");
         let mut guard = ProcessGuard::new(child);
 
-        // Wait for exit.
         loop {
             if let Ok(Some(_)) = guard.get_mut().try_wait() {
                 break;
@@ -179,7 +175,7 @@ mod tests {
             std::thread::sleep(Duration::from_millis(10));
         }
 
-        // Drop must not panic even though the process has already exited.
+        // INVARIANT: Drop must not panic even though the process has already exited.
         drop(guard);
     }
 
@@ -206,7 +202,6 @@ mod tests {
             .spawn()
             .expect("spawn echo");
         let _guard = ProcessGuard::new(child);
-        // guard dropped here: process may already be dead
     }
 
     /// Panic while a guard is live causes Drop to run and kill the child.
@@ -225,7 +220,6 @@ mod tests {
             .expect("spawn sleep");
         let pid = child.id();
 
-        // Channel to send the child into the panicking thread.
         let (tx, rx) = mpsc::channel::<std::process::Child>();
         tx.send(child).unwrap();
 
@@ -235,7 +229,6 @@ mod tests {
             panic!("intentional panic to test guard cleanup");
         });
 
-        // Thread panics; guard's Drop runs and kills the child.
         let _ = handle.join(); // join is Ok(Err(panic)), we don't care
 
         std::thread::sleep(Duration::from_millis(100));

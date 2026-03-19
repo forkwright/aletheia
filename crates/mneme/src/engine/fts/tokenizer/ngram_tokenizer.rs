@@ -198,7 +198,6 @@ where
         assert!(min_gram > 0);
         let memory: Vec<usize> = (&mut underlying).take(max_gram + 1).collect();
         if memory.len() <= min_gram {
-            // returns an empty iterator
             StutteringIterator {
                 underlying,
                 min_gram: 1,
@@ -228,10 +227,6 @@ where
 
     fn next(&mut self) -> Option<(usize, usize)> {
         if self.gram_len > self.max_gram {
-            // we have exhausted all options
-            // starting at `self.memory[self.cursor]`.
-            //
-            // Time to advance.
             self.gram_len = self.min_gram;
             if let Some(next_val) = self.underlying.next() {
                 self.memory[self.cursor] = next_val;
@@ -289,7 +284,7 @@ impl<'a> Iterator for CodepointFrontiers<'a> {
 
 const CODEPOINT_UTF8_WIDTH: [u8; 16] = [1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 4];
 
-// Number of bytes to encode a codepoint in UTF-8 given
+// NOTE: Number of bytes to encode a codepoint in UTF-8 given
 // the first byte.
 //
 // To do that we count the number of higher significant bits set to `1`.
@@ -305,19 +300,15 @@ mod tests {
 
     #[test]
     fn test_utf8_codepoint_width() {
-        // 0xxx
         for i in 0..128 {
             assert_eq!(utf8_codepoint_width(i), 1);
         }
-        // 110xx
         for i in (128 | 64)..(128 | 64 | 32) {
             assert_eq!(utf8_codepoint_width(i), 2);
         }
-        // 1110xx
         for i in (128 | 64 | 32)..(128 | 64 | 32 | 16) {
             assert_eq!(utf8_codepoint_width(i), 3);
         }
-        // 1111xx
         for i in (128 | 64 | 32 | 16)..256 {
             assert_eq!(utf8_codepoint_width(i as u8), 4);
         }

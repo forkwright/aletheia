@@ -517,7 +517,6 @@ mod tests {
     fn filtered_tools_always_includes_enable_tool() {
         let mut reg = ToolRegistry::new();
         let (e1, _) = mock_executor("ok");
-        // enable_tool with auto_activate=false should still appear
         reg.register(
             test_def_with_activate("enable_tool", ToolCategory::System, false),
             e1,

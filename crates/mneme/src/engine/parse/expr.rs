@@ -75,15 +75,12 @@ pub(crate) fn expr2bytecode(expr: &Expr, collector: &mut Vec<Bytecode>) -> Resul
         Expr::Cond { clauses, span } => {
             let mut return_jump_pos = vec![];
             for (cond, val) in clauses {
-                // +1
                 expr2bytecode(cond, collector)?;
-                // -1
                 collector.push(Bytecode::JumpIfFalse {
                     jump_to: 0,
                     span: *span,
                 });
                 let false_jump_amend_pos = collector.len() - 1;
-                // +1 in this branch
                 expr2bytecode(val, collector)?;
                 collector.push(Bytecode::Goto {
                     jump_to: 0,
