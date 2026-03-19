@@ -484,6 +484,7 @@ impl<'a> SessionTx<'a> {
             index_filter: config.index_filter.clone(),
             extend_candidates: config.extend_candidates,
             keep_pruned_connections: config.keep_pruned_connections,
+            max_vectors: None,
         };
 
         let mut all_tuples = TempCollector::default();

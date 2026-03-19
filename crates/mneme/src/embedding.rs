@@ -463,6 +463,42 @@ impl Default for EmbeddingConfig {
     }
 }
 
+/// A no-op embedding provider used in degraded mode when the real provider fails to load.
+///
+/// Every `embed` call returns an error so callers that require embeddings (recall, search)
+/// degrade gracefully. Basic conversation continues unaffected (#1451).
+#[derive(Debug)]
+pub struct DegradedEmbeddingProvider {
+    dim: usize,
+}
+
+impl DegradedEmbeddingProvider {
+    /// Create a degraded provider with the given (expected) dimension.
+    #[must_use]
+    pub fn new(dim: usize) -> Self {
+        Self { dim }
+    }
+}
+
+impl EmbeddingProvider for DegradedEmbeddingProvider {
+    fn embed(&self, _text: &str) -> EmbeddingResult<Vec<f32>> {
+        EmbedFailedSnafu {
+            message: "embedding unavailable: server started in degraded mode \
+                      (embedding model failed to load at startup)"
+                .to_owned(),
+        }
+        .fail()
+    }
+
+    fn dimension(&self) -> usize {
+        self.dim
+    }
+
+    fn model_name(&self) -> &'static str {
+        "degraded-embedding"
+    }
+}
+
 /// Create an embedding provider from configuration.
 ///
 /// # Errors

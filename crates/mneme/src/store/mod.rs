@@ -187,6 +187,20 @@ impl SessionStore {
         self.mode == StoreMode::ReadOnly
     }
 
+    /// Force a WAL checkpoint, flushing all pending writes to the main database file.
+    ///
+    /// Called during graceful shutdown so the WAL is explicitly flushed rather than
+    /// relying on the implicit checkpoint that occurs when the connection is dropped (#1723).
+    ///
+    /// # Errors
+    /// Returns an error if the checkpoint query fails (e.g., in read-only mode).
+    pub fn checkpoint_wal(&self) -> Result<()> {
+        self.conn
+            .execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+            .context(error::DatabaseSnafu)?;
+        Ok(())
+    }
+
     /// Guard that rejects write operations when the store is degraded.
     ///
     /// # Errors

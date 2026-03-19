@@ -219,17 +219,25 @@ pub async fn send_message(
         request_id = %request_id,
         idempotency_key = idempotency_key.as_deref().unwrap_or(""),
     );
+    let shutdown_token = state.shutdown.child_token();
     let turn_handle = tokio::spawn(
         async move {
-            match handle
-                .send_turn_with_session_id(
-                    &session_key,
-                    Some(sid.clone()),
-                    &content,
-                    aletheia_nous::handle::DEFAULT_SEND_TIMEOUT,
-                )
-                .await
-            {
+            // WHY: cancel the in-flight turn when the server shuts down so Axum's graceful
+            // shutdown can drain open SSE connections rather than hanging indefinitely (#1723).
+            let turn_fut = handle.send_turn_with_session_id(
+                &session_key,
+                Some(sid.clone()),
+                &content,
+                aletheia_nous::handle::DEFAULT_SEND_TIMEOUT,
+            );
+            let result = tokio::select! {
+                r = turn_fut => r,
+                () = shutdown_token.cancelled() => {
+                    tracing::info!("shutdown: cancelling in-flight SSE turn");
+                    return;
+                }
+            };
+            match result {
                 Ok(result) => {
                     emit_turn_result_events(&tx, &result).await;
 
@@ -425,18 +433,26 @@ pub async fn stream_turn(
         .instrument(tracing::info_span!("sse_bridge")),
     );
 
+    let shutdown_token = state.shutdown.child_token();
     let stream_turn_handle = tokio::spawn(
         async move {
-            match handle
-                .send_turn_streaming_with_session_id(
-                    &session_key,
-                    Some(sid.clone()),
-                    &message,
-                    nous_tx,
-                    aletheia_nous::handle::DEFAULT_SEND_TIMEOUT,
-                )
-                .await
-            {
+            // WHY: cancel the in-flight turn when the server shuts down so Axum's graceful
+            // shutdown can drain open SSE connections rather than hanging indefinitely (#1723).
+            let turn_fut = handle.send_turn_streaming_with_session_id(
+                &session_key,
+                Some(sid.clone()),
+                &message,
+                nous_tx,
+                aletheia_nous::handle::DEFAULT_SEND_TIMEOUT,
+            );
+            let result = tokio::select! {
+                r = turn_fut => r,
+                () = shutdown_token.cancelled() => {
+                    tracing::info!("shutdown: cancelling in-flight streaming turn");
+                    return;
+                }
+            };
+            match result {
                 Ok(result) => {
                     // WHY: Wait for the bridge to finish forwarding all buffered deltas
                     // before sending turn_complete. This prevents the TUI from
