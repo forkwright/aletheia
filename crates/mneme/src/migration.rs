@@ -8,6 +8,8 @@
 )]
 
 use rusqlite::Connection;
+use rusqlite::OptionalExtension;
+use sha2::{Digest, Sha256};
 use snafu::ResultExt;
 use tracing::info;
 
@@ -169,17 +171,33 @@ pub struct PendingMigration {
     pub description: &'static str,
 }
 
-/// Apply all pending migrations to the database.
+/// Apply all pending migrations to the database and verify existing checksums.
 ///
 /// Migrations are applied in version order. Each migration runs inside a
-/// transaction: the up SQL executes, then the version is recorded. If any
-/// migration fails, the transaction rolls back and the error is returned.
+/// transaction: the up SQL executes, then the version and its SHA-256 checksum
+/// are recorded. If any migration fails, the transaction rolls back and the
+/// error is returned.
+///
+/// Before applying new migrations, checksums of already-applied migrations are
+/// verified. A mismatch means the migration SQL was altered after application
+/// and returns [`error::Error::ChecksumMismatch`].
+///
+/// # Errors
+///
+/// Returns [`error::Error::Database`] if `SQLite` operations fail.
+/// Returns [`error::Error::Migration`] if a migration's SQL fails.
+/// Returns [`error::Error::ChecksumMismatch`] if a recorded checksum does not
+/// match the current migration SQL.
 pub fn run_migrations(conn: &Connection) -> Result<MigrationResult> {
     let was_fresh = !schema_version_table_exists(conn);
 
     bootstrap_version_table(conn)?;
 
     let current = get_schema_version(conn);
+
+    // Verify checksums for all already-applied migrations before proceeding.
+    verify_migration_checksums(conn, current)?;
+
     let mut applied = Vec::new();
 
     for migration in MIGRATIONS {
@@ -201,8 +219,12 @@ pub fn run_migrations(conn: &Connection) -> Result<MigrationResult> {
             })?;
 
         tx.execute(
-            "INSERT INTO schema_version (version, description) VALUES (?1, ?2)",
-            rusqlite::params![migration.version, migration.description],
+            "INSERT INTO schema_version (version, description, checksum) VALUES (?1, ?2, ?3)",
+            rusqlite::params![
+                migration.version,
+                migration.description,
+                compute_checksum(migration.up),
+            ],
         )
         .context(error::MigrationSnafu {
             version: migration.version,
@@ -242,6 +264,10 @@ pub fn run_migrations(conn: &Connection) -> Result<MigrationResult> {
 }
 
 /// Report pending migrations without applying them.
+///
+/// # Errors
+///
+/// Returns [`error::Error::Database`] if `SQLite` operations fail.
 pub fn check_migrations(conn: &Connection) -> Result<Vec<PendingMigration>> {
     bootstrap_version_table(conn)?;
     let current = get_schema_version(conn);
@@ -256,13 +282,67 @@ pub fn check_migrations(conn: &Connection) -> Result<Vec<PendingMigration>> {
         .collect())
 }
 
-/// Ensure the `schema_version` table exists with the `description` column.
+/// Verify that all applied migrations match their recorded checksums.
+///
+/// Only migrations whose `checksum` column is non-empty are verified; rows
+/// without a checksum (legacy databases upgraded before checksum support was
+/// added) are skipped.
+///
+/// # Errors
+///
+/// Returns [`error::Error::Database`] if a `SQLite` query fails.
+/// Returns [`error::Error::ChecksumMismatch`] if a stored checksum does not
+/// match the checksum computed from the current migration SQL.
+pub fn verify_migration_checksums(conn: &Connection, current_version: u32) -> Result<()> {
+    for migration in MIGRATIONS {
+        if migration.version > current_version {
+            break;
+        }
+
+        let stored: Option<String> = conn
+            .query_row(
+                "SELECT checksum FROM schema_version WHERE version = ?1",
+                rusqlite::params![migration.version],
+                |row| row.get(0),
+            )
+            .optional()
+            .context(error::DatabaseSnafu)?;
+
+        if let Some(stored_checksum) = stored {
+            // Skip empty checksums: legacy rows recorded before checksum support.
+            if stored_checksum.is_empty() {
+                continue;
+            }
+
+            let expected = compute_checksum(migration.up);
+            if stored_checksum != expected {
+                return Err(error::ChecksumMismatchSnafu {
+                    version: migration.version,
+                    expected,
+                    found: stored_checksum,
+                }
+                .build());
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Ensure the `schema_version` table exists with all expected columns.
 fn bootstrap_version_table(conn: &Connection) -> Result<()> {
     if schema_version_table_exists(conn) {
         // NOTE: Older databases may lack the description column.
         if !has_description_column(conn) {
             conn.execute_batch(
                 "ALTER TABLE schema_version ADD COLUMN description TEXT NOT NULL DEFAULT ''",
+            )
+            .context(error::DatabaseSnafu)?;
+        }
+        // NOTE: Databases predating checksum support lack the checksum column.
+        if !has_checksum_column(conn) {
+            conn.execute_batch(
+                "ALTER TABLE schema_version ADD COLUMN checksum TEXT NOT NULL DEFAULT ''",
             )
             .context(error::DatabaseSnafu)?;
         }
@@ -273,7 +353,8 @@ fn bootstrap_version_table(conn: &Connection) -> Result<()> {
         "CREATE TABLE schema_version (
             version INTEGER PRIMARY KEY,
             applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-            description TEXT NOT NULL DEFAULT ''
+            description TEXT NOT NULL DEFAULT '',
+            checksum TEXT NOT NULL DEFAULT ''
         )",
     )
     .context(error::DatabaseSnafu)?;
@@ -299,6 +380,15 @@ fn has_description_column(conn: &Connection) -> bool {
     .unwrap_or(false)
 }
 
+fn has_checksum_column(conn: &Connection) -> bool {
+    conn.query_row(
+        "SELECT COUNT(*) > 0 FROM pragma_table_info('schema_version') WHERE name = 'checksum'",
+        [],
+        |row| row.get::<_, bool>(0),
+    )
+    .unwrap_or(false)
+}
+
 /// Get the current schema version, or 0 if no migrations have been applied.
 pub fn get_schema_version(conn: &Connection) -> u32 {
     conn.query_row(
@@ -307,6 +397,13 @@ pub fn get_schema_version(conn: &Connection) -> u32 {
         |row| row.get(0),
     )
     .unwrap_or(0)
+}
+
+/// Compute the SHA-256 checksum of the given SQL string, returned as a hex string.
+fn compute_checksum(sql: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(sql.as_bytes());
+    format!("{:x}", hasher.finalize())
 }
 
 #[cfg(test)]
@@ -324,9 +421,19 @@ mod tests {
         let result =
             run_migrations(&conn).expect("migrations should apply successfully to a fresh DB");
 
-        assert!(result.was_fresh);
-        assert_eq!(result.applied, vec![1, 2, 3, 4]);
-        assert_eq!(result.current_version, 4);
+        assert!(
+            result.was_fresh,
+            "fresh database should be reported as fresh"
+        );
+        assert_eq!(
+            result.applied,
+            vec![1, 2, 3, 4],
+            "all four migrations should be applied to a fresh database"
+        );
+        assert_eq!(
+            result.current_version, 4,
+            "current version should be 4 after all migrations"
+        );
     }
 
     #[test]
@@ -335,9 +442,18 @@ mod tests {
         run_migrations(&conn).expect("first migration run should succeed");
 
         let result = run_migrations(&conn).expect("second migration run on same DB should succeed");
-        assert!(!result.was_fresh);
-        assert!(result.applied.is_empty());
-        assert_eq!(result.current_version, 4);
+        assert!(
+            !result.was_fresh,
+            "second run should not report the database as fresh"
+        );
+        assert!(
+            result.applied.is_empty(),
+            "second run should apply no migrations"
+        );
+        assert_eq!(
+            result.current_version, 4,
+            "version should still be 4 after idempotent run"
+        );
     }
 
     #[test]
@@ -352,8 +468,8 @@ mod tests {
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .expect("schema_version row for version 1 should exist after migration");
-        assert_eq!(version, 1);
-        assert!(!description.is_empty());
+        assert_eq!(version, 1, "version 1 should be recorded");
+        assert!(!description.is_empty(), "description should be non-empty");
     }
 
     #[test]
@@ -364,11 +480,18 @@ mod tests {
 
         let pending = check_migrations(&conn)
             .expect("check_migrations should return pending list without applying");
-        assert_eq!(pending.len(), 4);
-        assert_eq!(pending[0].version, 1);
+        assert_eq!(
+            pending.len(),
+            4,
+            "all 4 migrations should be pending on a fresh database"
+        );
+        assert_eq!(
+            pending[0].version, 1,
+            "first pending migration should be version 1"
+        );
 
         let version = get_schema_version(&conn);
-        assert_eq!(version, 0);
+        assert_eq!(version, 0, "schema version should remain 0 after dry run");
     }
 
     #[test]
@@ -378,7 +501,10 @@ mod tests {
 
         let pending = check_migrations(&conn)
             .expect("check_migrations should succeed on a fully migrated DB");
-        assert!(pending.is_empty());
+        assert!(
+            pending.is_empty(),
+            "no migrations should be pending after full migration"
+        );
     }
 
     #[test]
@@ -421,9 +547,15 @@ mod tests {
     fn run_migrations_fresh_db_schema_version() {
         let conn = fresh_conn();
         let result = run_migrations(&conn).expect("migrations should apply to fresh DB");
-        assert_eq!(result.current_version, 4);
+        assert_eq!(
+            result.current_version, 4,
+            "current_version should be 4 after full migration"
+        );
         let version = get_schema_version(&conn);
-        assert_eq!(version, 4);
+        assert_eq!(
+            version, 4,
+            "get_schema_version should return 4 after full migration"
+        );
     }
 
     #[test]
@@ -432,8 +564,14 @@ mod tests {
         let first = run_migrations(&conn).expect("first migration run should succeed");
         let second =
             run_migrations(&conn).expect("second migration run should succeed idempotently");
-        assert_eq!(first.current_version, second.current_version);
-        assert!(second.applied.is_empty());
+        assert_eq!(
+            first.current_version, second.current_version,
+            "version should be the same across idempotent runs"
+        );
+        assert!(
+            second.applied.is_empty(),
+            "second run should apply no migrations"
+        );
     }
 
     #[test]
@@ -441,8 +579,15 @@ mod tests {
         let conn = fresh_conn();
         let pending = check_migrations(&conn)
             .expect("check_migrations should return all pending on fresh DB");
-        assert_eq!(pending.len(), MIGRATIONS.len());
-        assert_eq!(pending[0].version, 1);
+        assert_eq!(
+            pending.len(),
+            MIGRATIONS.len(),
+            "all migrations should be pending on a fresh database"
+        );
+        assert_eq!(
+            pending[0].version, 1,
+            "first pending migration should be version 1"
+        );
     }
 
     #[test]
@@ -450,7 +595,7 @@ mod tests {
         let conn = fresh_conn();
         bootstrap_version_table(&conn).expect("bootstrap_version_table should succeed on fresh DB");
         let version = get_schema_version(&conn);
-        assert_eq!(version, 0);
+        assert_eq!(version, 0, "schema version should be 0 on a fresh database");
     }
 
     #[test]
@@ -499,10 +644,104 @@ mod tests {
 
         let result =
             run_migrations(&conn).expect("migrations should apply v2, v3, v4 to a v1 database");
-        assert!(!result.was_fresh);
-        assert_eq!(result.applied, vec![2, 3, 4]);
-        assert_eq!(result.current_version, 4);
+        assert!(!result.was_fresh, "upgraded database should not be fresh");
+        assert_eq!(
+            result.applied,
+            vec![2, 3, 4],
+            "only migrations 2, 3, 4 should be applied to v1 database"
+        );
+        assert_eq!(
+            result.current_version, 4,
+            "current version should be 4 after upgrade"
+        );
 
-        assert!(has_description_column(&conn));
+        assert!(
+            has_description_column(&conn),
+            "description column should be present after upgrade"
+        );
+        assert!(
+            has_checksum_column(&conn),
+            "checksum column should be present after upgrade"
+        );
+    }
+
+    #[test]
+    fn checksum_stored_for_new_migrations() {
+        let conn = fresh_conn();
+        run_migrations(&conn).expect("migrations should apply successfully");
+
+        for migration in MIGRATIONS {
+            let stored: String = conn
+                .query_row(
+                    "SELECT checksum FROM schema_version WHERE version = ?1",
+                    rusqlite::params![migration.version],
+                    |row| row.get(0),
+                )
+                .expect("checksum should be stored for every applied migration");
+            assert!(
+                !stored.is_empty(),
+                "checksum for migration v{} should be non-empty",
+                migration.version
+            );
+            let expected = compute_checksum(migration.up);
+            assert_eq!(
+                stored, expected,
+                "stored checksum for v{} should match computed checksum",
+                migration.version
+            );
+        }
+    }
+
+    #[test]
+    fn verify_checksums_passes_on_intact_db() {
+        let conn = fresh_conn();
+        run_migrations(&conn).expect("migrations should apply successfully");
+
+        verify_migration_checksums(&conn, get_schema_version(&conn))
+            .expect("checksum verification should pass on an intact database");
+    }
+
+    #[test]
+    fn verify_checksums_detects_tampered_checksum() {
+        let conn = fresh_conn();
+        run_migrations(&conn).expect("migrations should apply successfully");
+
+        // Tamper with the stored checksum for v1.
+        conn.execute(
+            "UPDATE schema_version SET checksum = 'deadbeef' WHERE version = 1",
+            [],
+        )
+        .expect("tampering with checksum should succeed");
+
+        let err = verify_migration_checksums(&conn, get_schema_version(&conn))
+            .expect_err("verification should fail when checksum is tampered");
+
+        let err_str = err.to_string();
+        assert!(
+            err_str.contains("v1"),
+            "error message should identify the offending migration version"
+        );
+        assert!(
+            err_str.contains("deadbeef"),
+            "error message should include the recorded (tampered) checksum"
+        );
+    }
+
+    #[test]
+    fn verify_checksums_skips_empty_checksum_legacy_rows() {
+        let conn = fresh_conn();
+        // Simulate legacy rows: schema_version with empty checksum.
+        bootstrap_version_table(&conn).expect("bootstrap should succeed");
+        conn.execute_batch(DDL)
+            .expect("applying DDL should succeed");
+        conn.execute(
+            "INSERT INTO schema_version (version, description, checksum) VALUES (1, 'base', '')",
+            [],
+        )
+        .expect("inserting legacy row should succeed");
+
+        // Verification should skip the empty-checksum row without error.
+        verify_migration_checksums(&conn, 1)
+            .expect("verification should skip legacy rows with empty checksum");
     }
 }

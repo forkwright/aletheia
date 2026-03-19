@@ -75,6 +75,20 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Migration SQL checksum mismatch — applied SQL differs from recorded checksum.
+    #[cfg(feature = "sqlite")]
+    #[snafu(display(
+        "migration v{version} checksum mismatch: recorded {found}, computed {expected} \
+         (migration SQL may have been modified after application)"
+    ))]
+    ChecksumMismatch {
+        version: u32,
+        expected: String,
+        found: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Filesystem I/O error (archive, backup).
     #[cfg(feature = "sqlite")]
     #[snafu(display("I/O error at {}: {source}", path.display()))]

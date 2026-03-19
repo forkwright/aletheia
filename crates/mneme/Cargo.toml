@@ -13,7 +13,7 @@ workspace = true
 [features]
 default = ["sqlite", "graph-algo"]
 graph-algo = []
-sqlite = ["dep:rusqlite"]
+sqlite = ["dep:rusqlite", "dep:sha2"]
 embed-candle = ["dep:candle-core", "dep:candle-nn", "dep:candle-transformers", "dep:tokenizers", "dep:hf-hub"]
 # mneme-engine coexists with sqlite (no link conflict verified).
 # Build with: cargo build -p aletheia-mneme --no-default-features --features mneme-engine
