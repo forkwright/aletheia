@@ -702,6 +702,62 @@ impl KnowledgeStore {
             .context(crate::error::JoinSnafu)?
     }
 
+    /// Query facts by type for a specific nous, ordered by `recorded_at` descending.
+    ///
+    /// Useful for retrieving audit results or other typed fact categories.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the Datalog query fails.
+    #[instrument(skip(self))]
+    pub fn query_facts_by_type(
+        &self,
+        nous_id: &str,
+        fact_type: &str,
+        limit: i64,
+    ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
+        use crate::engine::DataValue;
+        use std::collections::BTreeMap;
+
+        let mut params = BTreeMap::new();
+        params.insert(String::from("nous_id"), DataValue::Str(nous_id.into()));
+        params.insert(String::from("fact_type"), DataValue::Str(fact_type.into()));
+        params.insert(String::from("limit"), DataValue::from(limit));
+
+        let script = r"
+            ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
+              superseded_by, source_session_id, recorded_at,
+              access_count, last_accessed_at, stability_hours, fact_type,
+              is_forgotten, forgotten_at, forget_reason] :=
+                *facts{id, valid_from, content, nous_id, confidence, tier,
+                       valid_to, superseded_by, source_session_id, recorded_at,
+                       access_count, last_accessed_at, stability_hours, fact_type,
+                       is_forgotten, forgotten_at, forget_reason},
+                nous_id == $nous_id,
+                fact_type == $fact_type,
+                is_forgotten == false
+            :order -recorded_at
+            :limit $limit
+        ";
+        let rows = self.run_read(script, params)?;
+        rows_to_facts(rows, nous_id)
+    }
+
+    /// Async `query_facts_by_type`: wraps sync call in `spawn_blocking`.
+    #[instrument(skip(self))]
+    pub async fn query_facts_by_type_async(
+        self: &std::sync::Arc<Self>,
+        nous_id: String,
+        fact_type: String,
+        limit: i64,
+    ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
+        use snafu::ResultExt;
+        let this = std::sync::Arc::clone(self);
+        tokio::task::spawn_blocking(move || this.query_facts_by_type(&nous_id, &fact_type, limit))
+            .await
+            .context(crate::error::JoinSnafu)?
+    }
+
     /// Async `query_facts`: wraps sync call in `spawn_blocking`.
     #[instrument(skip(self))]
     pub async fn query_facts_async(

@@ -103,6 +103,8 @@ pub enum BuiltinTask {
     GraphHealthCheck,
     /// Compute decay scores for skills and retire stale ones.
     SkillDecay,
+    /// Run Chiron self-audit checks and store results in the knowledge graph.
+    ChironAudit,
 }
 
 impl Schedule {
