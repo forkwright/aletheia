@@ -71,7 +71,10 @@ fn after_release_called_on_drop() {
 }
 
 #[test]
-#[expect(clippy::items_after_statements, reason = "test-local helper struct scoped near its usage")]
+#[expect(
+    clippy::items_after_statements,
+    reason = "test-local helper struct scoped near its usage"
+)]
 fn hooks_called_in_correct_order() {
     use std::sync::Mutex;
 

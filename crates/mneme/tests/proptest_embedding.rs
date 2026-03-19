@@ -67,7 +67,7 @@ proptest! {
         texts in proptest::collection::vec("[a-zA-Z]{1,32}", 1..=8),
     ) {
         let provider = MockEmbeddingProvider::new(dim);
-        let refs: Vec<&str> = texts.iter().map(|s| s.as_str()).collect();
+        let refs: Vec<&str> = texts.iter().map(std::string::String::as_str).collect();
         let batch = provider.embed_batch(&refs).unwrap();
         prop_assert_eq!(
             batch.len(),
