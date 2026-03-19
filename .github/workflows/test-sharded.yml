@@ -1,0 +1,92 @@
+# !! GENERATED FILE — do not edit by hand.
+# Edit scripts/generate-workflows.sh and re-run to update.
+# Generated with: scripts/generate-workflows.sh --shards 4
+
+name: Test (sharded)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/test-sharded.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/test-sharded.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: test-sharded-${{ github.ref }}
+  cancel-in-progress: true
+
+# WHY: Principle of least privilege for CI workflows
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  SHARD_COUNT: 4
+
+jobs:
+  # WHY: Split the workspace test suite across parallel runners using
+  # nextest's hash-based partitioning. Each shard receives a stable,
+  # non-overlapping subset of tests keyed by fully-qualified test name.
+  # This cuts wall-clock time by ~1/N without duplication or gaps.
+  test-shard:
+    name: "Test shard ${{ matrix.shard }}/4"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1,2,3,4]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          # WHY: Shard-specific cache key so each runner has its own cache
+          # slot and doesn't thrash on concurrent writes.
+          key: shard-${{ matrix.shard }}
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@e24b8b7a939c6a537188f34a4163cb153dd85cf6 # v2
+        with:
+<<<<<<< Updated upstream
+          tool: cargo-nextest
+=======
+          tool: nextest
+>>>>>>> Stashed changes
+
+      - name: "Test (shard ${{ matrix.shard }}/4)"
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          cargo nextest run \
+            --workspace \
+            --partition "hash:${SHARD}/4"
+
+  # WHY: Gate merges on all shards passing. A single required status check
+  # per "fan-in" job is simpler than listing N individual shard jobs in
+  # branch protection rules and handles dynamic shard counts transparently.
+  test-sharded-pass:
+    name: Test shards passed
+    needs: [test-shard]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check all shards succeeded
+        env:
+          SHARD_RESULT: ${{ needs.test-shard.result }}
+        run: |
+          if [[ "$SHARD_RESULT" != "success" ]]; then
+            printf 'One or more test shards failed (result: %s)\n' "$SHARD_RESULT" >&2
+            exit 1
+          fi
