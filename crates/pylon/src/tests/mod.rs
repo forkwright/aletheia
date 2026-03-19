@@ -10,6 +10,7 @@
 mod auth;
 mod error;
 mod error_envelope;
+mod handler_doc;
 mod health;
 mod helpers;
 mod idempotency;
