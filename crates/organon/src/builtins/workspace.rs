@@ -44,16 +44,6 @@ fn sanitize_path_in_msg(path: &std::path::Path) -> String {
 /// Closes #1714.
 const MAX_WRITE_BYTES: usize = 10 * 1024 * 1024;
 
-/// Strip absolute path prefixes from an error message, showing only the filename.
-///
-/// WHY: Full filesystem paths in error messages sent to the LLM leak instance
-/// directory structure. Show only the filename component instead. Closes #1716.
-
-/// Maximum content size for the write tool (10 MB).
-///
-/// WHY: Prevents disk exhaustion or fork-bomb-like abuse via oversized writes.
-/// Closes #1714.
-
 /// Expand a leading `~` in a path string to the HOME environment variable.
 ///
 /// If `HOME` is not set, returns the input unchanged so the subsequent

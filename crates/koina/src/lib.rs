@@ -22,6 +22,8 @@ pub mod redact;
 pub mod redacting_layer;
 /// Secret string newtype that prevents accidental leakage of sensitive values.
 pub mod secret;
+/// Trait abstractions for filesystem, clock, and environment operations.
+pub mod system;
 /// Tracing subscriber initialization for human-readable and JSON log output.
 pub mod tracing_init;
 
