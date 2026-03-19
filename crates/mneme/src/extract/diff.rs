@@ -1,7 +1,7 @@
 //! Unified diff parser for post-merge lesson extraction.
 //!
 //! Parses standard unified diff format (as produced by `git diff`) into
-//! structured [`DiffFile`] and [`DiffHunk`] records.
+//! structured `DiffFile` and `DiffHunk` records.
 
 use serde::{Deserialize, Serialize};
 

@@ -93,7 +93,7 @@ pub struct LessonConfig {
 /// Extract lessons from a unified diff string.
 ///
 /// Pipeline:
-/// 1. Parse unified diff into structured [`DiffFile`] records
+/// 1. Parse unified diff into structured `DiffFile` records
 /// 2. Classify each file change (added/modified/deleted)
 /// 3. Extract knowledge facts from the changes
 /// 4. Produce entities, relationships, and causal edges
