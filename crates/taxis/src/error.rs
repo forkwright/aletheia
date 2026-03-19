@@ -155,6 +155,28 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// A `${VAR:?message}` expression in the config resolved to an unset variable.
+    ///
+    /// Emitted when the TOML config contains `${VAR:?some message}` and `VAR`
+    /// is not present in the environment. Startup aborts with the user-supplied message.
+    #[snafu(display("required env var `{var}` is not set: {message}"))]
+    EnvVarRequired {
+        var: String,
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// An unterminated env-var expression was found in the configuration file.
+    ///
+    /// Emitted when a `${` opener has no matching `}`.
+    #[snafu(display("unterminated env-var expression in config file near: {}", excerpt))]
+    EnvVarUnterminated {
+        excerpt: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Convenience alias for `Result<T, Error>`.
