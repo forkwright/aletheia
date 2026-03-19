@@ -1,0 +1,527 @@
+//! SSE streaming parser for the Anthropic Messages API.
+//!
+//! Reads server-sent events from an HTTP response body, accumulates content
+//! blocks into a final [`CompletionResponse`], and emits [`StreamEvent`]s
+//! to a callback for real-time UI updates.
+
+use reqwest::Response;
+
+use super::wire::WireStreamEvent;
+use crate::error::{self, Result};
+use crate::types::{StopReason, Usage};
+
+/// Event emitted during streaming completion.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub enum StreamEvent {
+    /// Incremental text content.
+    TextDelta { text: String },
+    /// Incremental thinking content.
+    ThinkingDelta { thinking: String },
+    /// Incremental tool input JSON.
+    InputJsonDelta { partial_json: String },
+    /// A content block has started.
+    ContentBlockStart {
+        /// Zero-based position in the response content array.
+        index: u32,
+        /// Block type: `"text"`, `"tool_use"`, or `"thinking"`.
+        block_type: String,
+    },
+    /// A content block has finished.
+    ContentBlockStop {
+        /// Zero-based position of the completed block.
+        index: u32,
+    },
+    /// Message started with initial usage.
+    MessageStart {
+        /// Input token counts reported at message start.
+        usage: Usage,
+    },
+    /// Message finished with final stop reason and usage.
+    MessageStop {
+        /// Why the model stopped generating.
+        stop_reason: StopReason,
+        /// Final cumulative token usage for the entire message.
+        usage: Usage,
+    },
+}
+
+mod accumulator;
+
+pub(crate) use accumulator::StreamAccumulator;
+
+#[cfg(test)]
+pub(crate) fn parse_sse_stream(
+    mut reader: impl std::io::BufRead,
+    accumulator: &mut StreamAccumulator,
+    on_event: &mut impl FnMut(StreamEvent),
+) -> Result<()> {
+    let mut current_event_type = String::new();
+    let mut current_data = String::new();
+    let mut raw_line: Vec<u8> = Vec::new();
+
+    loop {
+        raw_line.clear();
+        let n = reader.read_until(b'\n', &mut raw_line).map_err(|e| {
+            error::ApiRequestSnafu {
+                message: format!("stream read error: {e}"),
+            }
+            .build()
+        })?;
+
+        if n == 0 {
+            break; // NOTE: EOF
+        }
+
+        // WHY: Lossy UTF-8 so non-UTF8 bytes (e.g. from a misconfigured proxy) are
+        // replaced with U+FFFD rather than aborting the stream.
+        let line_cow = String::from_utf8_lossy(&raw_line);
+        let line = line_cow.trim_end_matches(['\n', '\r']);
+
+        if line.is_empty() {
+            // NOTE: Empty line = end of SSE event per the spec.
+            if !current_data.is_empty() && current_event_type != "ping" {
+                let event: WireStreamEvent = serde_json::from_str(&current_data).map_err(|e| {
+                    error::ApiRequestSnafu {
+                        message: format!("stream parse error: {e}"),
+                    }
+                    .build()
+                })?;
+                accumulator.process_event(event, on_event)?;
+            }
+            current_event_type.clear();
+            current_data.clear();
+            continue;
+        }
+
+        if let Some(event_type) = line.strip_prefix("event: ") {
+            event_type.clone_into(&mut current_event_type);
+        } else if let Some(data) = line.strip_prefix("data: ") {
+            data.clone_into(&mut current_data);
+        }
+        // NOTE: Ignore other SSE lines (comments, etc.).
+    }
+
+    Ok(())
+}
+
+/// Parse SSE events incrementally from a live HTTP response stream.
+///
+/// Reads the response body byte-by-byte via [`Response::chunk`], accumulating
+/// bytes until a newline and dispatching complete SSE events as they arrive.
+/// Unlike `parse_sse_stream` (test-only sync variant), this does not buffer the entire response body
+/// before parsing: each event is processed as soon as the final byte of its
+/// `data:` line is received.
+///
+/// Uses lossy UTF-8 so proxy-injected non-UTF-8 bytes produce replacement
+/// characters (`\u{FFFD}`) rather than aborting the stream.
+pub(crate) async fn parse_sse_response(
+    response: &mut Response,
+    accumulator: &mut StreamAccumulator,
+    on_event: &mut impl FnMut(StreamEvent),
+) -> Result<()> {
+    // WHY: Pre-allocated buffer for the current line; SSE lines are short.
+    let mut line_buf: Vec<u8> = Vec::with_capacity(256);
+    let mut current_event_type = String::new();
+    let mut current_data = String::new();
+
+    loop {
+        let chunk = response.chunk().await.map_err(|e| {
+            error::ApiRequestSnafu {
+                message: format!("stream read error: {e}"),
+            }
+            .build()
+        })?;
+
+        let Some(bytes) = chunk else { break };
+
+        for &byte in &bytes {
+            if byte == b'\n' {
+                let line_cow = String::from_utf8_lossy(&line_buf);
+                let line = line_cow.trim_end_matches('\r');
+
+                if line.is_empty() {
+                    if !current_data.is_empty() && current_event_type != "ping" {
+                        let event: WireStreamEvent =
+                            serde_json::from_str(&current_data).map_err(|e| {
+                                error::ApiRequestSnafu {
+                                    message: format!("stream parse error: {e}"),
+                                }
+                                .build()
+                            })?;
+                        accumulator.process_event(event, on_event)?;
+                    }
+                    current_event_type.clear();
+                    current_data.clear();
+                } else if let Some(et) = line.strip_prefix("event: ") {
+                    et.clone_into(&mut current_event_type);
+                } else if let Some(data) = line.strip_prefix("data: ") {
+                    data.clone_into(&mut current_data);
+                }
+                // NOTE: Ignore other SSE lines (id:, retry:, comments).
+                line_buf.clear();
+            } else {
+                line_buf.push(byte);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::expect_used, reason = "test assertions")]
+mod tests {
+    use super::*;
+    use crate::types::{CompletionResponse, ContentBlock, StopReason};
+
+    fn collect_events(sse_text: &str) -> (Vec<StreamEvent>, CompletionResponse) {
+        let reader = std::io::Cursor::new(sse_text);
+        let mut acc = StreamAccumulator::new();
+        let mut events = Vec::new();
+        parse_sse_stream(reader, &mut acc, &mut |e| events.push(e)).unwrap();
+        let response = acc.finish();
+        (events, response)
+    }
+
+    #[test]
+    fn parses_simple_text_stream() {
+        let sse = "\
+event: message_start\n\
+data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"model\":\"claude-opus-4-20250514\",\"usage\":{\"input_tokens\":10,\"output_tokens\":0}}}\n\
+\n\
+event: content_block_start\n\
+data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\
+\n\
+event: content_block_delta\n\
+data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Hello\"}}\n\
+\n\
+event: content_block_delta\n\
+data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\" world\"}}\n\
+\n\
+event: content_block_stop\n\
+data: {\"type\":\"content_block_stop\",\"index\":0}\n\
+\n\
+event: message_delta\n\
+data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":5}}\n\
+\n\
+event: message_stop\n\
+data: {\"type\":\"message_stop\"}\n\
+\n";
+
+        let (events, response) = collect_events(sse);
+
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, StreamEvent::TextDelta { text } if text == "Hello"))
+        );
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, StreamEvent::TextDelta { text } if text == " world"))
+        );
+        assert_eq!(response.id, "msg_1");
+        assert_eq!(response.stop_reason, StopReason::EndTurn);
+        assert_eq!(response.content.len(), 1);
+        match &response.content[0] {
+            ContentBlock::Text { text, .. } => assert_eq!(text, "Hello world"),
+            _ => panic!("expected Text block"),
+        }
+    }
+
+    #[test]
+    fn parses_tool_use_stream() {
+        let sse = "\
+event: message_start\n\
+data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_2\",\"model\":\"claude-opus-4-20250514\",\"usage\":{\"input_tokens\":20,\"output_tokens\":0}}}\n\
+\n\
+event: content_block_start\n\
+data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"exec\"}}\n\
+\n\
+event: content_block_delta\n\
+data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"cmd\\\"\"}}\n\
+\n\
+event: content_block_delta\n\
+data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\": \\\"ls\\\"}\"}}\n\
+\n\
+event: content_block_stop\n\
+data: {\"type\":\"content_block_stop\",\"index\":0}\n\
+\n\
+event: message_delta\n\
+data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":15}}\n\
+\n\
+event: message_stop\n\
+data: {\"type\":\"message_stop\"}\n\
+\n";
+
+        let (_, response) = collect_events(sse);
+
+        assert_eq!(response.stop_reason, StopReason::ToolUse);
+        match &response.content[0] {
+            ContentBlock::ToolUse { id, name, input } => {
+                assert_eq!(id, "toolu_1");
+                assert_eq!(name, "exec");
+                assert_eq!(input["cmd"], "ls");
+            }
+            _ => panic!("expected ToolUse block"),
+        }
+    }
+
+    #[test]
+    fn parses_thinking_stream() {
+        let sse = "\
+event: message_start\n\
+data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_3\",\"model\":\"claude-opus-4-20250514\",\"usage\":{\"input_tokens\":30,\"output_tokens\":0}}}\n\
+\n\
+event: content_block_start\n\
+data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\"}}\n\
+\n\
+event: content_block_delta\n\
+data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"Let me think about this.\"}}\n\
+\n\
+event: content_block_stop\n\
+data: {\"type\":\"content_block_stop\",\"index\":0}\n\
+\n\
+event: content_block_start\n\
+data: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\
+\n\
+event: content_block_delta\n\
+data: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"The answer is 42.\"}}\n\
+\n\
+event: content_block_stop\n\
+data: {\"type\":\"content_block_stop\",\"index\":1}\n\
+\n\
+event: message_delta\n\
+data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":25}}\n\
+\n\
+event: message_stop\n\
+data: {\"type\":\"message_stop\"}\n\
+\n";
+
+        let (_, response) = collect_events(sse);
+
+        assert_eq!(response.content.len(), 2);
+        match &response.content[0] {
+            ContentBlock::Thinking { thinking, .. } => {
+                assert_eq!(thinking, "Let me think about this.");
+            }
+            _ => panic!("expected Thinking block"),
+        }
+        match &response.content[1] {
+            ContentBlock::Text { text, .. } => assert_eq!(text, "The answer is 42."),
+            _ => panic!("expected Text block"),
+        }
+    }
+
+    #[test]
+    fn handles_ping_events() {
+        let sse = "\
+event: ping\n\
+data: {\"type\":\"ping\"}\n\
+\n\
+event: message_start\n\
+data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_4\",\"model\":\"claude-opus-4-20250514\",\"usage\":{\"input_tokens\":5,\"output_tokens\":0}}}\n\
+\n\
+event: content_block_start\n\
+data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\
+\n\
+event: content_block_delta\n\
+data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Hi\"}}\n\
+\n\
+event: content_block_stop\n\
+data: {\"type\":\"content_block_stop\",\"index\":0}\n\
+\n\
+event: message_delta\n\
+data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":1}}\n\
+\n\
+event: message_stop\n\
+data: {\"type\":\"message_stop\"}\n\
+\n";
+
+        let (_, response) = collect_events(sse);
+        assert_eq!(response.id, "msg_4");
+    }
+
+    #[test]
+    fn stream_error_event_returns_err() {
+        let sse = "\
+event: error\n\
+data: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}\n\
+\n";
+
+        let reader = std::io::Cursor::new(sse);
+        let mut acc = StreamAccumulator::new();
+        let result = parse_sse_stream(reader, &mut acc, &mut |_| {});
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn overloaded_sse_error_is_rate_limited() {
+        use crate::error::Error;
+
+        let sse = "\
+event: error\n\
+data: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}\n\
+\n";
+
+        let reader = std::io::Cursor::new(sse);
+        let mut acc = StreamAccumulator::new();
+        let result = parse_sse_stream(reader, &mut acc, &mut |_| {});
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, Error::RateLimited { .. }),
+            "expected RateLimited, got: {err:?}"
+        );
+    }
+
+    #[test]
+    fn malformed_json_data_returns_error() {
+        let sse = "\
+event: message_start\n\
+data: this is not valid json\n\
+\n";
+
+        let reader = std::io::Cursor::new(sse);
+        let mut acc = StreamAccumulator::new();
+        let result = parse_sse_stream(reader, &mut acc, &mut |_| {});
+        assert!(
+            result.is_err(),
+            "malformed JSON data should produce an error"
+        );
+    }
+
+    #[test]
+    fn non_retryable_sse_error_is_api_error() {
+        use crate::error::Error;
+
+        let sse = "\
+event: error\n\
+data: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"bad input\"}}\n\
+\n";
+
+        let reader = std::io::Cursor::new(sse);
+        let mut acc = StreamAccumulator::new();
+        let err = parse_sse_stream(reader, &mut acc, &mut |_| {}).expect_err("should error");
+        assert!(
+            matches!(err, Error::ApiError { status: 0, .. }),
+            "expected ApiError, got: {err:?}"
+        );
+    }
+
+    #[test]
+    fn parses_server_tool_use_stream() {
+        let sse = "\
+event: message_start\n\
+data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_srv\",\"model\":\"claude-opus-4-20250514\",\"usage\":{\"input_tokens\":10,\"output_tokens\":0}}}\n\
+\n\
+event: content_block_start\n\
+data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"server_tool_use\",\"id\":\"srvtoolu_1\",\"name\":\"web_search\"}}\n\
+\n\
+event: content_block_delta\n\
+data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"query\\\": \\\"rust async\\\"}\"}}\n\
+\n\
+event: content_block_stop\n\
+data: {\"type\":\"content_block_stop\",\"index\":0}\n\
+\n\
+event: content_block_start\n\
+data: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"web_search_tool_result\",\"tool_use_id\":\"srvtoolu_1\"}}\n\
+\n\
+event: content_block_stop\n\
+data: {\"type\":\"content_block_stop\",\"index\":1}\n\
+\n\
+event: content_block_start\n\
+data: {\"type\":\"content_block_start\",\"index\":2,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\
+\n\
+event: content_block_delta\n\
+data: {\"type\":\"content_block_delta\",\"index\":2,\"delta\":{\"type\":\"text_delta\",\"text\":\"Based on my search...\"}}\n\
+\n\
+event: content_block_stop\n\
+data: {\"type\":\"content_block_stop\",\"index\":2}\n\
+\n\
+event: message_delta\n\
+data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":20}}\n\
+\n\
+event: message_stop\n\
+data: {\"type\":\"message_stop\"}\n\
+\n";
+
+        let (events, response) = collect_events(sse);
+
+        let block_starts: Vec<&str> = events
+            .iter()
+            .filter_map(|e| match e {
+                StreamEvent::ContentBlockStart { block_type, .. } => Some(block_type.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            block_starts,
+            vec!["server_tool_use", "web_search_tool_result", "text"]
+        );
+
+        assert_eq!(response.content.len(), 3);
+        match &response.content[0] {
+            ContentBlock::ServerToolUse { id, name, input } => {
+                assert_eq!(id, "srvtoolu_1");
+                assert_eq!(name, "web_search");
+                assert_eq!(input["query"], "rust async");
+            }
+            _ => panic!("expected ServerToolUse"),
+        }
+        assert!(matches!(
+            &response.content[1],
+            ContentBlock::WebSearchToolResult { .. }
+        ));
+        match &response.content[2] {
+            ContentBlock::Text { text, .. } => assert_eq!(text, "Based on my search..."),
+            _ => panic!("expected Text"),
+        }
+    }
+
+    #[test]
+    fn empty_stream_returns_ok_with_defaults() {
+        let (events, response) = collect_events("");
+        assert!(events.is_empty(), "no events from empty stream");
+        assert_eq!(response.stop_reason, StopReason::EndTurn);
+        assert!(response.content.is_empty());
+    }
+
+    /// Tools with no parameters send a `tool_use` block with zero `input_json_delta`
+    /// events: the accumulated input string stays empty.  The parser must not
+    /// emit a WARN and must return an empty object as the input value.
+    #[test]
+    fn tool_use_with_no_input_produces_empty_object_without_warning() {
+        let sse = "\
+event: message_start\n\
+data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_no_input\",\"model\":\"claude-haiku-4-5-20251001\",\"usage\":{\"input_tokens\":5,\"output_tokens\":0}}}\n\
+\n\
+event: content_block_start\n\
+data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_noop\",\"name\":\"get_time\"}}\n\
+\n\
+event: content_block_stop\n\
+data: {\"type\":\"content_block_stop\",\"index\":0}\n\
+\n\
+event: message_delta\n\
+data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":3}}\n\
+\n\
+event: message_stop\n\
+data: {\"type\":\"message_stop\"}\n\
+\n";
+
+        let (_, response) = collect_events(sse);
+        assert_eq!(response.stop_reason, StopReason::ToolUse);
+        match &response.content[0] {
+            ContentBlock::ToolUse { id, name, input } => {
+                assert_eq!(id, "toolu_noop");
+                assert_eq!(name, "get_time");
+                assert!(
+                    input.as_object().is_some_and(serde_json::Map::is_empty),
+                    "expected empty object, got: {input}"
+                );
+            }
+            other => panic!("expected ToolUse, got: {other:?}"),
+        }
+    }
+}

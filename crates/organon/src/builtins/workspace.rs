@@ -681,5 +681,5 @@ fn exec_def() -> ToolDef {
 }
 
 #[cfg(test)]
-#[path = "workspace_tests.rs"]
+#[path = "workspace_tests/mod.rs"]
 mod tests;

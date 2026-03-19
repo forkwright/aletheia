@@ -530,5 +530,5 @@ pub(crate) fn aggregate_observations(observations: &[ToolObservation]) -> Vec<Be
 pub(crate) const INSTINCT_STABILITY_HOURS: f64 = 168.0;
 
 #[cfg(test)]
-#[path = "instinct_tests.rs"]
+#[path = "instinct_tests/mod.rs"]
 mod tests;

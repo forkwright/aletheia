@@ -384,5 +384,5 @@ pub fn refresh_stability_hours(fact_type: &str, tier: &str, access_count: u32) -
 }
 
 #[cfg(test)]
-#[path = "recall_tests.rs"]
+#[path = "recall_tests/mod.rs"]
 mod test_suite;

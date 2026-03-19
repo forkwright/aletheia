@@ -1,0 +1,203 @@
+//! Landlock + seccomp + network namespace sandbox for tool execution.
+//!
+//! Restricts filesystem access via Landlock LSM, blocks dangerous
+//! syscalls via seccomp BPF filters, and isolates network access via
+//! Linux network namespaces. Applied in child processes after fork,
+//! before exec.
+
+use std::path::{Path, PathBuf};
+
+use serde::{Deserialize, Serialize};
+
+/// Sandbox enforcement level.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub enum SandboxEnforcement {
+    Enforcing,
+    Permissive,
+}
+
+/// Network egress policy for child processes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub enum EgressPolicy {
+    /// Block all outbound network from child processes.
+    Deny,
+    /// No egress filtering; child processes have full network access.
+    #[default]
+    Allow,
+    /// Permit only connections to listed destinations.
+    Allowlist,
+}
+
+/// Expand a leading `~` to the HOME environment variable.
+///
+/// If the path does not start with `~`, or if `HOME` is not set, returns the
+/// path unchanged. This allows config files to use `~` as a portable reference
+/// to the operator's home directory.
+pub(crate) fn expand_tilde(path: &Path) -> PathBuf {
+    let s = path.to_string_lossy();
+    if s.starts_with('~')
+        && let Ok(home) = std::env::var("HOME")
+    {
+        let without_tilde = s.strip_prefix('~').unwrap_or(&s);
+        return PathBuf::from(format!("{home}{without_tilde}"));
+    }
+    path.to_path_buf()
+}
+
+/// Configuration for the execution sandbox.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct SandboxConfig {
+    pub enabled: bool,
+    pub enforcement: SandboxEnforcement,
+    pub extra_read_paths: Vec<PathBuf>,
+    pub extra_write_paths: Vec<PathBuf>,
+    /// Additional filesystem paths granted execute access.
+    ///
+    /// Values may begin with `~` which is expanded to the HOME environment
+    /// variable at policy-build time.
+    pub extra_exec_paths: Vec<PathBuf>,
+    /// Network egress policy for child processes.
+    pub egress: EgressPolicy,
+    /// Addresses or CIDR ranges permitted when `egress = "allowlist"`.
+    ///
+    /// Entries are parsed as IP addresses or CIDR notation (e.g.
+    /// `"127.0.0.1"`, `"::1"`, `"10.0.0.0/8"`). Only loopback
+    /// destinations can be enforced without root privileges; non-loopback
+    /// entries log a warning.
+    pub egress_allowlist: Vec<String>,
+}
+
+impl Default for SandboxConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            enforcement: SandboxEnforcement::Permissive,
+            extra_read_paths: Vec::new(),
+            extra_write_paths: Vec::new(),
+            extra_exec_paths: Vec::new(),
+            egress: EgressPolicy::default(),
+            egress_allowlist: Vec::new(),
+        }
+    }
+}
+
+/// Runtime sandbox policy with resolved paths.
+#[derive(Debug, Clone)]
+pub struct SandboxPolicy {
+    /// Whether sandbox restrictions are applied at all.
+    ///
+    /// When `false`, `apply_sandbox` returns immediately without registering
+    /// any `pre_exec` hook. Callers need not check this field separately.
+    pub enabled: bool,
+    pub read_paths: Vec<PathBuf>,
+    pub write_paths: Vec<PathBuf>,
+    pub exec_paths: Vec<PathBuf>,
+    pub enforcement: SandboxEnforcement,
+    /// Network egress policy.
+    pub egress: EgressPolicy,
+    /// Allowed destinations when `egress == Allowlist`.
+    pub egress_allowlist: Vec<String>,
+}
+
+impl SandboxConfig {
+    #[must_use]
+    pub fn disabled() -> Self {
+        Self {
+            enabled: false,
+            ..Self::default()
+        }
+    }
+
+    #[must_use]
+    pub fn build_policy(&self, workspace: &Path, allowed_roots: &[PathBuf]) -> SandboxPolicy {
+        if !self.enabled {
+            return SandboxPolicy {
+                enabled: false,
+                read_paths: Vec::new(),
+                write_paths: Vec::new(),
+                exec_paths: Vec::new(),
+                enforcement: self.enforcement,
+                egress: EgressPolicy::Allow,
+                egress_allowlist: Vec::new(),
+            };
+        }
+
+        let mut read_paths = vec![
+            PathBuf::from("/usr"),
+            PathBuf::from("/lib"),
+            PathBuf::from("/lib64"),
+            PathBuf::from("/etc"),
+            PathBuf::from("/proc"),
+            PathBuf::from("/dev"),
+        ];
+
+        let mut write_paths = vec![PathBuf::from("/tmp")];
+
+        // WHY: System binary dirs are always executable. workspace and
+        // allowed_roots are also added so agents can execute scripts they own
+        // or that live in shared data directories: closes #1246.
+        // /lib and /lib64 are included because the kernel opens the ELF
+        // dynamic linker (ld-linux-*.so) with exec intent during execve().
+        // Without Execute on these paths, all dynamically-linked binaries
+        // fail with "Permission denied" even when the binary itself is in an
+        // allowed exec path.
+        let mut exec_paths = vec![
+            PathBuf::from("/usr/bin"),
+            PathBuf::from("/usr/local/bin"),
+            PathBuf::from("/bin"),
+            PathBuf::from("/usr/lib"),
+            PathBuf::from("/lib"),
+            PathBuf::from("/lib64"),
+        ];
+
+        write_paths.push(workspace.to_path_buf());
+
+        // WHY: workspace must be executable so agents can run scripts they
+        // create inside their own working directory.
+        if !exec_paths.contains(&workspace.to_path_buf()) {
+            exec_paths.push(workspace.to_path_buf());
+        }
+
+        // WHY: allowed_roots grant read-only access to shared data that agents
+        // may inspect but must not modify. Write access is limited to the
+        // workspace and extra_write_paths, which are operator-controlled.
+        // Exec access is also granted so agents can run scripts in shared dirs.
+        for root in allowed_roots {
+            if !read_paths.contains(root) {
+                read_paths.push(root.clone());
+            }
+            if !exec_paths.contains(root) {
+                exec_paths.push(root.clone());
+            }
+        }
+
+        read_paths.extend(self.extra_read_paths.iter().cloned());
+        write_paths.extend(self.extra_write_paths.iter().cloned());
+
+        // WHY: extra_exec_paths support `~` prefix so operators can grant home
+        // directory exec access in the config without hard-coding the path.
+        exec_paths.extend(self.extra_exec_paths.iter().map(|p| expand_tilde(p)));
+
+        for wp in &write_paths {
+            if !read_paths.contains(wp) {
+                read_paths.push(wp.clone());
+            }
+        }
+
+        SandboxPolicy {
+            enabled: true,
+            read_paths,
+            write_paths,
+            exec_paths,
+            enforcement: self.enforcement,
+            egress: self.egress,
+            egress_allowlist: self.egress_allowlist.clone(),
+        }
+    }
+}
