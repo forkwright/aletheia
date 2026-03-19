@@ -446,6 +446,8 @@ pub(crate) fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
         println!(
             "\nDone: {seeded} seeded, {skipped} skipped, {overwritten} overwritten, {parse_errors} parse errors"
         );
+
+        Ok(())
     }
 
     #[cfg(not(feature = "recall"))]
@@ -456,8 +458,6 @@ pub(crate) fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
              Build with: cargo build --features recall"
         );
     }
-
-    Ok(())
 }
 
 /// Export skills from the knowledge store to Claude Code's native format.
@@ -681,6 +681,7 @@ pub(crate) async fn migrate_memory(
     }
 }
 
+#[cfg(feature = "recall")]
 /// Generate a deterministic pseudo-embedding for seeding (384-dim).
 ///
 /// Uses a simple hash-based approach. Real embeddings come from the

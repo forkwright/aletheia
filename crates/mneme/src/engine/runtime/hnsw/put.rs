@@ -707,7 +707,10 @@ impl<'a> SessionTx<'a> {
     /// without a matching HNSW removal (#1719).
     ///
     /// Orphans are logged at `warn` level for each occurrence.
-    #[expect(dead_code, reason = "entry point for maintenance tasks — not yet wired into scheduler")]
+    #[expect(
+        dead_code,
+        reason = "entry point for maintenance tasks — not yet wired into scheduler"
+    )]
     pub(crate) fn hnsw_check_consistency(
         &self,
         manifest: &HnswIndexManifest,
