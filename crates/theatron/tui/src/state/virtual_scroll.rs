@@ -98,6 +98,10 @@ impl VirtualScroll {
     /// `scroll_offset` is lines-from-bottom (0 = at bottom).
     /// `auto_scroll` overrides to pin to the bottom.
     /// `viewport_height` is the visible area in terminal rows.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "item_at_line guarantees returned indices are within prefix_sums bounds (n+1 entries for n items)"
+    )]
     pub(crate) fn visible_slice(
         &self,
         scroll_offset: usize,

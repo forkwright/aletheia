@@ -87,6 +87,10 @@ impl App {
         self.connection.stream_rx = Some(rx);
     }
 
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "tc.candidates[tc.index] is safe because tc.index is computed as (old+1) % candidates.len(); candidates[0] is safe because the non-empty check precedes it"
+    )]
     pub(crate) fn handle_tab_completion(&mut self) {
         let text_before_cursor = self
             .interaction

@@ -79,6 +79,10 @@ pub fn handle_delete_word(app: &mut App) {
     app.interaction.command_palette.selected = 0;
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "idx < command_history.len() is guaranteed by the match arms; the reverse-index is always valid"
+)]
 pub fn handle_up(app: &mut App) {
     if app.interaction.command_history_index.is_some() {
         // WHY: Already in history-browsing mode: continue navigating history.
@@ -102,6 +106,10 @@ pub fn handle_up(app: &mut App) {
     }
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "idx = i - 1 where Some(i) was a previously stored history index, so reverse-index is valid"
+)]
 pub fn handle_down(app: &mut App) {
     if app.interaction.command_history_index.is_some() {
         match app.interaction.command_history_index {

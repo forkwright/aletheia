@@ -106,6 +106,10 @@ impl SettingsOverlay {
             .any(|s| s.fields.iter().any(|f| f.value != f.original_value))
     }
 
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "parts.len() == 2 guard ensures indices 0 and 1 are valid before accessing them"
+    )]
     pub fn changed_sections(&self) -> HashMap<String, serde_json::Value> {
         let mut result: HashMap<String, serde_json::Value> = HashMap::new();
         for section in &self.sections {

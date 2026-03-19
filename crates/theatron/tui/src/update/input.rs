@@ -105,6 +105,10 @@ pub(crate) fn handle_delete_to_end(app: &mut App) {
         .drain(app.interaction.input.cursor..);
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "idx < history.len() is guaranteed by the match arms; the subtraction produces a valid reverse-index"
+)]
 pub(crate) fn handle_history_up(app: &mut App) {
     if !app.interaction.input.history.is_empty() {
         let idx = match app.interaction.input.history_index {
@@ -119,6 +123,10 @@ pub(crate) fn handle_history_up(app: &mut App) {
     }
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "idx = i - 1 where Some(i) implies i was a previously stored idx < history.len(), so the reverse-index is valid"
+)]
 pub(crate) fn handle_history_down(app: &mut App) {
     match app.interaction.input.history_index {
         Some(0) => {

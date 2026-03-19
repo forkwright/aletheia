@@ -132,6 +132,10 @@ pub(crate) fn compute_diff(path: &str, old: &str, new: &str) -> FileDiff {
 }
 
 /// Collapse adjacent Delete+Insert pairs into Replace for word-diff mode.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "while loop maintains i < changes.len() invariant; look-ahead i+1 is guarded by the preceding i+1 < changes.len() check"
+)]
 pub(crate) fn collapse_to_replacements(hunks: &[DiffHunk]) -> Vec<DiffHunk> {
     hunks
         .iter()

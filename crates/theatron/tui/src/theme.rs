@@ -576,6 +576,10 @@ fn detect_color_depth() -> ColorDepth {
 pub const BRAILLE_SPINNER: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
 /// Get the current braille spinner frame based on tick count.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "index is computed as expr % BRAILLE_SPINNER.len(), which is always a valid index"
+)]
 pub fn spinner_frame(tick: u64) -> char {
     BRAILLE_SPINNER[(tick as usize / 3) % BRAILLE_SPINNER.len()]
 }

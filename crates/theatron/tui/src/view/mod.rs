@@ -27,6 +27,10 @@ const MAX_PALETTE_SUGGESTIONS: usize = 12;
 const STATUS_BAR_HEIGHT: u16 = 2;
 
 #[tracing::instrument(skip_all)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "Layout.split() returns exactly as many Rects as constraints; all accesses use matching fixed indices"
+)]
 pub fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
     let area = frame.area();
     let theme = &app.theme;
@@ -203,6 +207,10 @@ impl SidebarRect {
 
 pub static SIDEBAR_RECT: SidebarRect = SidebarRect::new();
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "Layout.split() returns exactly as many Rects as constraints; all accesses use matching fixed indices"
+)]
 fn render_chat_area(
     app: &App,
     frame: &mut Frame,
