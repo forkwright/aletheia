@@ -53,6 +53,12 @@ jobs:
           - target: aarch64-apple-darwin
             os: macos-latest
             artifact: aletheia-macos-aarch64
+          # wasm32-unknown-unknown evaluated and excluded (#1756):
+          # tokio requires OS threads (not available in bare wasm32),
+          # rusqlite/bundled links C code incompatible with wasm32-unknown-unknown,
+          # and axum is an HTTP server with no wasm hosting model. A library-only
+          # wasm build would require extracting a no-std core crate, which is
+          # out of scope for this ticket.
     runs-on: ${{ matrix.os }}
     env:
       CARGO_TERM_COLOR: always
