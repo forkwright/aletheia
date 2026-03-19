@@ -5,6 +5,8 @@
 //! Imports nothing from other Aletheia crates. Contains only types, error definitions,
 //! and tracing initialization.
 
+/// Setup-time cleanup registration via RAII guards ([`cleanup::CleanupGuard`], [`cleanup::CleanupRegistry`]).
+pub mod cleanup;
 /// Credential provider trait for dynamic API key resolution.
 pub mod credential;
 /// Shared configuration defaults (token budgets, timeouts, iteration limits).

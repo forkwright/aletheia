@@ -120,6 +120,21 @@ static LLM_CONCURRENCY_LIMIT: LazyLock<IntGaugeVec> = LazyLock::new(|| {
     .expect("metric registration")
 });
 
+static LLM_CONCURRENCY_LATENCY_EWMA: LazyLock<prometheus::GaugeVec> = LazyLock::new(|| {
+    #[expect(
+        clippy::expect_used,
+        reason = "metric registration fails only on name/label collision, a startup-time programming error that must not be silently ignored"
+    )]
+    prometheus::register_gauge_vec!(
+        Opts::new(
+            "aletheia_llm_concurrency_latency_ewma_seconds",
+            "EWMA of LLM response latency used by the adaptive concurrency limiter"
+        ),
+        &["provider"]
+    )
+    .expect("metric registration")
+});
+
 static LLM_CONCURRENCY_IN_FLIGHT: LazyLock<IntGaugeVec> = LazyLock::new(|| {
     #[expect(
         clippy::expect_used,
@@ -145,6 +160,7 @@ pub fn init() {
     LazyLock::force(&LLM_TTFT_SECONDS);
     LazyLock::force(&LLM_CIRCUIT_BREAKER_TRANSITIONS_TOTAL);
     LazyLock::force(&LLM_CONCURRENCY_LIMIT);
+    LazyLock::force(&LLM_CONCURRENCY_LATENCY_EWMA);
     LazyLock::force(&LLM_CONCURRENCY_IN_FLIGHT);
 }
 
@@ -215,6 +231,13 @@ pub(crate) fn set_concurrency_limit(provider: &str, limit: u32) {
     LLM_CONCURRENCY_LIMIT
         .with_label_values(&[provider])
         .set(i64::from(limit));
+}
+
+/// Set the current EWMA latency estimate for a provider.
+pub(crate) fn set_concurrency_latency_ewma(provider: &str, ewma_secs: f64) {
+    LLM_CONCURRENCY_LATENCY_EWMA
+        .with_label_values(&[provider])
+        .set(ewma_secs);
 }
 
 /// Set the current in-flight request count for a provider.

@@ -22,11 +22,15 @@ fn redact_phone(phone: &str) -> String {
 
 /// Listens on registered channels, merging inbound messages into a single stream.
 ///
-/// Dropping the listener aborts all background polling tasks unless
-/// [`into_receiver`](Self::into_receiver) was called first.
+/// Cleanup is registered at construction time via [`CleanupRegistry`]: dropping
+/// the listener aborts all background polling tasks unless
+/// [`into_receiver`](Self::into_receiver) was called first (which disarms the
+/// registry).
 pub struct ChannelListener {
     rx: Option<mpsc::Receiver<InboundMessage>>,
     handles: Vec<JoinHandle<()>>,
+    /// Abort callbacks registered at task-spawn time; disarmed by `into_receiver`.
+    cleanup: aletheia_koina::cleanup::CleanupRegistry,
 }
 
 impl ChannelListener {
@@ -42,21 +46,25 @@ impl ChannelListener {
         cancel: CancellationToken,
     ) -> Self {
         let (rx, handles) = signal_provider.listen(poll_interval, cancel);
-        Self {
-            rx: Some(rx),
-            handles,
-        }
+        Self::from_parts(rx, handles)
     }
 
     /// Create from pre-built parts.
     ///
     /// Use when the caller assembles provider-specific listeners
     /// independently (e.g., merging Signal + future Slack receivers).
+    /// Abort callbacks are registered at construction time for each handle.
     #[must_use]
     pub fn from_parts(rx: mpsc::Receiver<InboundMessage>, handles: Vec<JoinHandle<()>>) -> Self {
+        let mut cleanup = aletheia_koina::cleanup::CleanupRegistry::new();
+        for handle in &handles {
+            let abort = handle.abort_handle();
+            cleanup.register(move || abort.abort());
+        }
         Self {
             rx: Some(rx),
             handles,
+            cleanup,
         }
     }
 
@@ -113,7 +121,8 @@ impl ChannelListener {
             .rx
             .take()
             .expect("into_receiver called on consumed listener");
-        // WHY: take handles out before Drop to prevent abort of tasks we're joining
+        // Disarm cleanup so the caller takes responsibility for the handles.
+        self.cleanup.disarm();
         let handles = std::mem::take(&mut self.handles);
         (rx, handles)
     }
@@ -124,13 +133,9 @@ impl ChannelListener {
     }
 }
 
-impl Drop for ChannelListener {
-    fn drop(&mut self) {
-        for handle in &self.handles {
-            handle.abort();
-        }
-    }
-}
+// NOTE: No Drop impl — cleanup is registered at setup time via CleanupRegistry.
+// The registry fires abort callbacks (LIFO) on drop. `into_receiver` disarms
+// the registry so the caller can manage the handles directly.
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]

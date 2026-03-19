@@ -471,6 +471,11 @@ struct RefreshState {
 }
 
 /// Wraps a credential file with background OAuth token refresh.
+///
+/// Cleanup is registered at construction time via [`CleanupRegistry`]: the
+/// background task is cancelled and aborted when the provider is dropped,
+/// regardless of whether the drop occurs during normal execution, early
+/// error return, or panic unwind.
 pub struct RefreshingCredentialProvider {
     /// Current OAuth token and refresh metadata. `None` after a fatal
     /// refresh failure. Writers: the background refresh task (exclusive).
@@ -479,7 +484,8 @@ pub struct RefreshingCredentialProvider {
     state: Arc<RwLock<Option<RefreshState>>>,
     file_provider: FileCredentialProvider,
     shutdown: CancellationToken,
-    task: Option<tokio::task::JoinHandle<()>>,
+    /// Cleanup registered at task spawn time; fires on drop (LIFO order).
+    _cleanup: aletheia_koina::cleanup::CleanupRegistry,
 }
 
 impl RefreshingCredentialProvider {
@@ -527,11 +533,21 @@ impl RefreshingCredentialProvider {
             .instrument(tracing::info_span!("credential_refresh")),
         );
 
+        // Register cleanup at spawn time so the task is cancelled+aborted on
+        // drop even if construction is only partially completed in the caller.
+        let mut cleanup = aletheia_koina::cleanup::CleanupRegistry::new();
+        let shutdown_for_cleanup = shutdown.clone();
+        let abort_handle = task.abort_handle();
+        cleanup.register(move || {
+            shutdown_for_cleanup.cancel();
+            abort_handle.abort();
+        });
+
         Some(Self {
             state,
             file_provider: FileCredentialProvider::new(path),
             shutdown,
-            task: Some(task),
+            _cleanup: cleanup,
         })
     }
 
@@ -571,14 +587,8 @@ impl CredentialProvider for RefreshingCredentialProvider {
     }
 }
 
-impl Drop for RefreshingCredentialProvider {
-    fn drop(&mut self) {
-        self.shutdown.cancel();
-        if let Some(task) = self.task.take() {
-            task.abort();
-        }
-    }
-}
+// NOTE: No Drop impl — cleanup is registered at setup time via CleanupRegistry.
+// The registry fires its callbacks (cancel token + abort task) on drop.
 
 async fn refresh_loop(
     state: Arc<RwLock<Option<RefreshState>>>,
