@@ -472,7 +472,7 @@ struct RefreshState {
 
 /// Wraps a credential file with background OAuth token refresh.
 ///
-/// Cleanup is registered at construction time via [`CleanupRegistry`]: the
+/// Cleanup is registered at construction time via [`CleanupRegistry`](aletheia_koina::cleanup::CleanupRegistry): the
 /// background task is cancelled and aborted when the provider is dropped,
 /// regardless of whether the drop occurs during normal execution, early
 /// error return, or panic unwind.

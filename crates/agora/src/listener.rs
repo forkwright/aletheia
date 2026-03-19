@@ -22,7 +22,7 @@ fn redact_phone(phone: &str) -> String {
 
 /// Listens on registered channels, merging inbound messages into a single stream.
 ///
-/// Cleanup is registered at construction time via [`CleanupRegistry`]: dropping
+/// Cleanup is registered at construction time via [`CleanupRegistry`](aletheia_koina::cleanup::CleanupRegistry): dropping
 /// the listener aborts all background polling tasks unless
 /// [`into_receiver`](Self::into_receiver) was called first (which disarms the
 /// registry).

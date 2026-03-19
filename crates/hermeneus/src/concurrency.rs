@@ -11,7 +11,7 @@
 //!
 //! The current limit, in-flight count, and latency EWMA are exposed as Prometheus metrics.
 //!
-//! A tower [`Layer`]/[`Service`] wrapper ([`ConcurrencyLayer`]/[`ConcurrencyService`])
+//! A tower `Layer`/`Service` wrapper (`ConcurrencyLayer`/`ConcurrencyService`)
 //! is provided for middleware-style integration.
 
 use std::future::Future;
@@ -368,7 +368,7 @@ impl Drop for ConcurrencyPermit {
 // Tower Layer / Service
 // ---------------------------------------------------------------------------
 
-/// Tower [`Layer`] that wraps an inner service with adaptive concurrency limiting.
+/// Tower `Layer` that wraps an inner service with adaptive concurrency limiting.
 ///
 /// Acquires a [`ConcurrencyPermit`] before forwarding each request, measures
 /// response latency, and feeds it back to the limiter. The inner service's
@@ -403,7 +403,7 @@ impl<S> Layer<S> for ConcurrencyLayer {
     }
 }
 
-/// Tower [`Service`] that enforces adaptive concurrency limits.
+/// Tower `Service` that enforces adaptive concurrency limits.
 ///
 /// Created by [`ConcurrencyLayer::layer`]. Acquires a permit before each
 /// request, measures latency, and classifies the result to update the limiter.

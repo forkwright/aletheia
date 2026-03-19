@@ -70,77 +70,83 @@ pub(crate) fn run(action: Action, instance_root: Option<&PathBuf>) -> Result<()>
                 vec![task.as_str()]
             };
             for name in tasks {
-                match name {
-                    "trace-rotation" => {
-                        let report = TraceRotator::new(maint.trace_rotation.clone())
-                            .rotate()
-                            .context("trace rotation failed")?;
-                        println!(
-                            "trace-rotation: {} rotated, {} pruned, {} bytes freed",
-                            report.files_rotated, report.files_pruned, report.bytes_freed
-                        );
-                    }
-                    "drift-detection" => {
-                        let report = DriftDetector::new(maint.drift_detection.clone())
-                            .check()
-                            .context("drift detection failed")?;
-                        let missing = report.missing_files.len();
-                        let extra = report.extra_files.len();
-                        if missing == 0 && extra == 0 {
-                            println!("drift-detection: clean");
-                        } else if verbose {
-                            println!("drift-detection: {missing} missing, {extra} extra");
-                            for path in &report.missing_files {
-                                println!("  missing: {}", path.display());
-                            }
-                            for path in &report.extra_files {
-                                println!("  extra:   {}", path.display());
-                            }
-                        } else {
-                            println!(
-                                "drift-detection: {missing} missing, {extra} extra  \
-                                 (use --verbose to list files)"
-                            );
-                        }
-                    }
-                    "db-monitor" => {
-                        let report = DbMonitor::new(maint.db_monitoring.clone())
-                            .check()
-                            .context("db monitor failed")?;
-                        for db in &report.databases {
-                            println!(
-                                "db-monitor: {} {}MB ({})",
-                                db.name,
-                                db.size_bytes / (1024 * 1024),
-                                db.status
-                            );
-                        }
-                    }
-                    "chiron-audit" => {
-                        use aletheia_nous::chiron::{AuditTrigger, CheckContext, ChironAuditor};
-                        let mut auditor = ChironAuditor::new();
-                        auditor.register_defaults();
-                        let ctx = CheckContext {
-                            nous_id: String::from("system"),
-                            ..Default::default()
-                        };
-                        let report = auditor.run_audit(&ctx, AuditTrigger::Manual);
-                        for r in &report.results {
-                            println!(
-                                "  {}: {} (score: {:.2})",
-                                r.check_name, r.result.status, r.result.score,
-                            );
-                            if r.result.status != aletheia_nous::chiron::CheckStatus::Pass {
-                                println!("    evidence: {}", r.result.evidence);
-                            }
-                        }
-                    }
-                    other => anyhow::bail!(
-                        "unknown task: {other}. Valid: trace-rotation, drift-detection, db-monitor, chiron-audit, all"
-                    ),
+                run_task(name, &maint, verbose)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Execute a single maintenance task by name.
+fn run_task(name: &str, maint: &MaintenanceConfig, verbose: bool) -> Result<()> {
+    match name {
+        "trace-rotation" => {
+            let report = TraceRotator::new(maint.trace_rotation.clone())
+                .rotate()
+                .context("trace rotation failed")?;
+            println!(
+                "trace-rotation: {} rotated, {} pruned, {} bytes freed",
+                report.files_rotated, report.files_pruned, report.bytes_freed
+            );
+        }
+        "drift-detection" => {
+            let report = DriftDetector::new(maint.drift_detection.clone())
+                .check()
+                .context("drift detection failed")?;
+            let missing = report.missing_files.len();
+            let extra = report.extra_files.len();
+            if missing == 0 && extra == 0 {
+                println!("drift-detection: clean");
+            } else if verbose {
+                println!("drift-detection: {missing} missing, {extra} extra");
+                for path in &report.missing_files {
+                    println!("  missing: {}", path.display());
+                }
+                for path in &report.extra_files {
+                    println!("  extra:   {}", path.display());
+                }
+            } else {
+                println!(
+                    "drift-detection: {missing} missing, {extra} extra  \
+                     (use --verbose to list files)"
+                );
+            }
+        }
+        "db-monitor" => {
+            let report = DbMonitor::new(maint.db_monitoring.clone())
+                .check()
+                .context("db monitor failed")?;
+            for db in &report.databases {
+                println!(
+                    "db-monitor: {} {}MB ({})",
+                    db.name,
+                    db.size_bytes / (1024 * 1024),
+                    db.status
+                );
+            }
+        }
+        "chiron-audit" => {
+            use aletheia_nous::chiron::{AuditTrigger, CheckContext, ChironAuditor};
+            let mut auditor = ChironAuditor::new();
+            auditor.register_defaults();
+            let ctx = CheckContext {
+                nous_id: String::from("system"),
+                ..Default::default()
+            };
+            let report = auditor.run_audit(&ctx, AuditTrigger::Manual);
+            for r in &report.results {
+                println!(
+                    "  {}: {} (score: {:.2})",
+                    r.check_name, r.result.status, r.result.score,
+                );
+                if r.result.status != aletheia_nous::chiron::CheckStatus::Pass {
+                    println!("    evidence: {}", r.result.evidence);
                 }
             }
         }
+        other => anyhow::bail!(
+            "unknown task: {other}. Valid: trace-rotation, drift-detection, db-monitor, chiron-audit, all"
+        ),
     }
     Ok(())
 }
