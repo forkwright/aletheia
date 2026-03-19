@@ -267,6 +267,7 @@ dependencies = [
  "rusqlite",
  "rust-stemmers",
  "rustc-hash",
+ "rustix 1.1.4",
  "serde",
  "serde_bytes",
  "serde_json",
