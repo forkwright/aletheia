@@ -37,7 +37,7 @@ fuser -k 18789/tcp
 aletheia
 ```
 
-The binary serves the HTTP gateway, spawns nous actors, starts the daemon, and (if configured) launches signal-cli. No subcommand needed.
+The binary starts the HTTP gateway, spawns nous actors, and runs the daemon. Signal is launched automatically if configured. No subcommand needed.
 
 Or via systemd:
 

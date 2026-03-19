@@ -1,39 +1,8 @@
 # Deployment
 
-> This file covers the full production deployment reference. For focused sub-topics see:
-> - [QUICKSTART.md](QUICKSTART.md): minimal first-time setup
-> - [CONFIGURATION.md](CONFIGURATION.md): full configuration reference
-> - [TROUBLESHOOTING.md](TROUBLESHOOTING.md): common issues and solutions
+Production deployment reference. For configuration details, see [CONFIGURATION.md](CONFIGURATION.md). For upgrading an existing installation, see [UPGRADING.md](UPGRADING.md).
 
-Step-by-step guide from bare Linux or macOS to a running Aletheia instance. For configuration details, see [CONFIGURATION.md](CONFIGURATION.md). For upgrading an existing installation, see [UPGRADING.md](UPGRADING.md).
-
----
-
-## Getting started (first-time setup)
-
-Three commands from zero to a running instance:
-
-```bash
-# 1. Install the binary (or build from source: cargo build --release)
-curl -L https://github.com/forkwright/aletheia/releases/latest/download/aletheia-linux-x86_64 -o aletheia
-chmod +x aletheia && sudo mv aletheia /usr/local/bin/
-
-# 2. Initialize (creates instance directory, config, credentials, first agent)
-aletheia init
-
-# 3. Start
-aletheia
-```
-
-The init wizard prompts for your API key, model, agent name, and bind address, then writes a complete instance. For non-interactive (CI/scripting) use:
-
-```bash
-ANTHROPIC_API_KEY=sk-ant-... aletheia init --yes --instance-root /srv/aletheia/instance
-```
-
-Verify with `aletheia health`. A `healthy` response means the server is running with a registered LLM provider. If the status is `degraded`, verify your API key is set and the config loaded it.
-
-> **Manual setup:** If you prefer to configure everything by hand instead of using the wizard, see [Manual: copy the example scaffold](#manual-copy-the-example-scaffold) below.
+For first-time setup, see [QUICKSTART.md](QUICKSTART.md).
 
 ---
 
@@ -74,31 +43,7 @@ See [NETWORK.md](NETWORK.md) for the complete network call inventory.
 
 ## Installation
 
-### Prebuilt binary
-
-Download from [GitHub Releases](https://github.com/forkwright/aletheia/releases):
-
-```bash
-# Download binary and checksum (example for Linux x86_64)
-gh release download latest -p 'aletheia-linux-amd64*'
-
-# Verify
-sha256sum -c aletheia-linux-amd64.sha256
-
-# Install
-chmod +x aletheia-linux-amd64
-sudo mv aletheia-linux-amd64 /usr/local/bin/aletheia
-```
-
-### Build from source
-
-```bash
-git clone https://github.com/forkwright/aletheia.git
-cd aletheia
-cargo build --release
-```
-
-Binary: `target/release/aletheia`
+See [QUICKSTART.md](QUICKSTART.md) for standard install instructions (prebuilt binary and build from source).
 
 ### Headless build (no TUI)
 
@@ -141,7 +86,7 @@ Copy the example scaffold to create your instance directory:
 cp -r instance.example instance
 ```
 
-Then configure `instance/config/aletheia.toml` (see the Configuration section). The scaffold provides a template with all required directories and example configuration files.
+Then configure `instance/config/aletheia.toml` (see the Configuration section). The scaffold includes all required directories and example config files.
 
 This creates the full directory scaffold:
 
@@ -360,16 +305,7 @@ export ALETHEIA_ROOT=./instance
 aletheia
 ```
 
-The startup sequence:
-1. Discovers instance root (oikos)
-2. Loads config cascade (defaults + YAML + env vars)
-3. Opens session store (SQLite, auto-creates `data/sessions.db`)
-4. Registers LLM provider (Anthropic, if API key is set)
-5. Registers built-in tools
-6. Spawns nous actors (one per configured agent)
-7. Starts daemon (background maintenance tasks)
-8. Starts channel listeners (Signal, if configured)
-9. Starts HTTP gateway on configured bind:port
+For the full startup sequence (what the binary does at launch), see [ARCHITECTURE-GUIDE.md](ARCHITECTURE-GUIDE.md#the-binary).
 
 ### CLI flags
 
