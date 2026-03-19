@@ -133,3 +133,13 @@ workspace = "nous/main"
 # --- Request body limit ---
 # [gateway.bodyLimit]
 # maxBytes = 1048576           # 1 MB default
+
+# --- Local LLM provider ---
+# OpenAI-compatible endpoint for local model inference (vLLM, etc.).
+# Models are routed here when prefixed with "local/" (e.g. "local/qwen3.5-27b").
+# Requires the `local-llm` feature flag at compile time.
+# [localProvider]
+# enabled = false
+# baseUrl = "http://localhost:8000/v1"
+# model = "qwen3.5-27b"            # default model for "local/" requests
+# timeoutSecs = 120

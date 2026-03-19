@@ -25,6 +25,8 @@ tower = { workspace = true }
 tracing = { workspace = true }
 
 [features]
+# OpenAI-compatible local LLM provider (vLLM, etc.).
+local-llm = []
 # Shared mock LLM provider for tests across the workspace.
 # Use `test-support` (preferred); `test-utils` kept for compatibility.
 test-utils = []
