@@ -1,0 +1,8 @@
+# integration-tests: end-to-end test suite. Tests may use any internal crate.
+# Fewer architectural restrictions apply here than to library code, but process
+# control is still disallowed — tests should use tokio::test and assertion failures.
+
+disallowed-methods = [
+    { path = "std::process::exit", reason = "use assert! or return an error in tests, not process::exit" },
+    { path = "std::process::abort", reason = "do not call process::abort from test code" },
+]

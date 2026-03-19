@@ -1,0 +1,7 @@
+# aletheia: binary entry point — orchestrates all crates. No domain logic lives here;
+# only wiring, startup, and CLI. process::exit/abort are handled via shutdown signals.
+
+disallowed-methods = [
+    { path = "std::process::exit", reason = "use CancellationToken for shutdown, not process::exit" },
+    { path = "std::process::abort", reason = "do not call process::abort from binary startup code" },
+]

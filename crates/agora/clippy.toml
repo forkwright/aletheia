@@ -1,0 +1,12 @@
+# agora: channel registry and signal routing — must not access the database directly
+# or make LLM API calls. All persistence belongs in mneme; all inference in hermeneus.
+
+disallowed-methods = [
+    { path = "std::process::exit", reason = "do not call process::exit from library code" },
+    { path = "std::process::abort", reason = "do not call process::abort from library code" },
+]
+
+disallowed-types = [
+    # Persistence is mneme's responsibility; agora is a message-routing layer
+    { path = "rusqlite::Connection", reason = "agora must not access SQLite directly; persistence belongs in mneme" },
+]

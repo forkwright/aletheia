@@ -30,10 +30,6 @@ pub struct ErrorBody {
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 #[non_exhaustive]
-#[expect(
-    missing_docs,
-    reason = "snafu error variant fields (id, path, message, errors, source, location, retry_after_secs) are self-documenting via display format"
-)]
 pub enum ApiError {
     /// Requested session does not exist (404).
     #[snafu(display("session not found: {id}"))]
