@@ -195,8 +195,7 @@ impl App {
     pub(crate) fn rebuild_virtual_scroll(&mut self) {
         let tw = self.viewport.terminal_width;
         // Mirror the layout logic from view/mod.rs to derive the chat column width.
-        let show_sidebar =
-            self.layout.sidebar_visible && tw >= LAYOUT_MIN_SIDEBAR_TERMINAL_WIDTH;
+        let show_sidebar = self.layout.sidebar_visible && tw >= LAYOUT_MIN_SIDEBAR_TERMINAL_WIDTH;
         let rest = if show_sidebar {
             tw.saturating_sub(LAYOUT_SIDEBAR_WIDTH)
         } else {
