@@ -13,6 +13,7 @@ use super::*;
 /// Insert or update a fact. Params: `$id`, `$valid_from`, `$content`,
 /// `$nous_id`, `$confidence`, `$tier`, `$valid_to`, `$superseded_by`,
 /// `$source_session_id`, `$recorded_at`.
+#[must_use]
 pub fn upsert_fact() -> String {
     use FactsField::*;
     QueryBuilder::new()
@@ -41,6 +42,7 @@ pub fn upsert_fact() -> String {
 
 /// Query current facts for a nous (not superseded, currently valid).
 /// Params: `$nous_id`, `$now`, `$limit`.
+#[must_use]
 pub fn current_facts() -> String {
     use FactsField::*;
     QueryBuilder::new()
@@ -75,6 +77,7 @@ pub fn current_facts() -> String {
 
 /// Extended query returning all `Fact` fields.
 /// Params: `$nous_id`, `$now`, `$limit`.
+#[must_use]
 pub fn full_current_facts() -> String {
     use FactsField::*;
     QueryBuilder::new()
@@ -127,6 +130,7 @@ pub fn full_current_facts() -> String {
 }
 
 /// Point-in-time fact query. Params: `$time`.
+#[must_use]
 pub fn facts_at_time() -> String {
     use FactsField::*;
     QueryBuilder::new()
@@ -151,6 +155,7 @@ pub fn facts_at_time() -> String {
 /// `$old_confidence`, `$old_tier`, `$now`, `$new_id`, `$old_source`,
 /// `$old_recorded`, `$new_content`, `$new_confidence`, `$new_tier`,
 /// `$source_session_id`.
+#[must_use]
 pub fn supersede_fact() -> String {
     use FactsField::*;
     QueryBuilder::new()
@@ -217,6 +222,7 @@ pub fn supersede_fact() -> String {
 
 /// Insert or update an entity.
 /// Params: `$id`, `$name`, `$entity_type`, `$aliases`, `$created_at`, `$updated_at`.
+#[must_use]
 pub fn upsert_entity() -> String {
     use EntitiesField::*;
     QueryBuilder::new()
@@ -229,6 +235,7 @@ pub fn upsert_entity() -> String {
 
 /// Insert a relationship.
 /// Params: `$src`, `$dst`, `$relation`, `$weight`, `$created_at`.
+#[must_use]
 pub fn upsert_relationship() -> String {
     use RelationshipsField::{CreatedAt, Dst, Relation as Rel, Src, Weight};
     QueryBuilder::new()
@@ -242,6 +249,7 @@ pub fn upsert_relationship() -> String {
 /// Insert an embedding chunk.
 /// Params: `$id`, `$content`, `$source_type`, `$source_id`, `$nous_id`,
 /// `$embedding`, `$created_at`.
+#[must_use]
 pub fn upsert_embedding() -> String {
     use EmbeddingsField::*;
     QueryBuilder::new()
@@ -321,6 +329,7 @@ pub const HYBRID_SEARCH_BASE: &str = r"
 
 /// Bi-temporal point-in-time query with all fields. Params: `$nous_id`, `$at_time`.
 /// Returns facts where `valid_from <= at_time` AND `valid_to > at_time` AND not forgotten.
+#[must_use]
 pub fn temporal_facts() -> String {
     use FactsField::*;
     QueryBuilder::new()
@@ -427,6 +436,7 @@ pub const TEMPORAL_DIFF_REMOVED: &str = r"
 ";
 
 /// Query returning only forgotten facts. Params: `$nous_id`, `$limit`.
+#[must_use]
 pub fn forgotten_facts() -> String {
     use FactsField::*;
     QueryBuilder::new()
@@ -477,6 +487,7 @@ pub fn forgotten_facts() -> String {
 
 /// Audit query returning all facts regardless of forgotten/superseded/temporal state.
 /// Params: `$nous_id`, `$limit`.
+#[must_use]
 pub fn audit_all_facts() -> String {
     use FactsField::*;
     QueryBuilder::new()
@@ -526,6 +537,7 @@ pub fn audit_all_facts() -> String {
 
 /// Remove a fact-entity mapping.
 /// Params: `$fact_id`, `$entity_id`.
+#[must_use]
 pub fn rm_fact_entity() -> String {
     use FactEntitiesField::{EntityId, FactId};
     QueryBuilder::new()
@@ -537,6 +549,7 @@ pub fn rm_fact_entity() -> String {
 
 /// Insert or update a fact-entity mapping.
 /// Params: `$fact_id`, `$entity_id`, `$created_at`.
+#[must_use]
 pub fn upsert_fact_entity() -> String {
     use FactEntitiesField::*;
     QueryBuilder::new()
@@ -549,6 +562,7 @@ pub fn upsert_fact_entity() -> String {
 
 /// Remove an entity.
 /// Params: `$id`.
+#[must_use]
 pub fn rm_entity() -> String {
     use EntitiesField::Id;
     QueryBuilder::new()
@@ -560,6 +574,7 @@ pub fn rm_entity() -> String {
 
 /// Remove a relationship edge.
 /// Params: `$src`, `$dst`.
+#[must_use]
 pub fn rm_relationship() -> String {
     use RelationshipsField::{Dst, Src};
     QueryBuilder::new()
@@ -571,6 +586,7 @@ pub fn rm_relationship() -> String {
 
 /// Remove a pending-merge entry.
 /// Params: `$entity_a`, `$entity_b`.
+#[must_use]
 pub fn rm_pending_merges() -> String {
     use PendingMergesField::{EntityA, EntityB};
     QueryBuilder::new()
@@ -583,6 +599,7 @@ pub fn rm_pending_merges() -> String {
 /// Insert or update a merge-audit record.
 /// Params: `$canonical_id`, `$merged_id`, `$merged_name`, `$merge_score`,
 /// `$facts_transferred`, `$relationships_redirected`, `$merged_at`.
+#[must_use]
 pub fn put_merge_audit() -> String {
     use MergeAuditField::*;
     QueryBuilder::new()
@@ -602,6 +619,7 @@ pub fn put_merge_audit() -> String {
 /// Insert or update a pending-merge candidate.
 /// Params: `$entity_a`, `$entity_b`, `$name_a`, `$name_b`, `$name_similarity`,
 /// `$embed_similarity`, `$type_match`, `$alias_overlap`, `$merge_score`, `$created_at`.
+#[must_use]
 pub fn put_pending_merge() -> String {
     use PendingMergesField::*;
     QueryBuilder::new()

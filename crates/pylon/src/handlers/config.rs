@@ -87,7 +87,7 @@ pub async fn get_section(
     if !VALID_SECTIONS.contains(&section.as_str()) {
         return Err(ApiError::NotFound {
             path: format!("/api/v1/config/{section}"),
-            location: snafu::Location::default(),
+            location: snafu::location!(),
         });
     }
 
@@ -98,7 +98,7 @@ pub async fn get_section(
         Some(val) => Ok(Json(val.clone())),
         None => Err(ApiError::NotFound {
             path: format!("/api/v1/config/{section}"),
-            location: snafu::Location::default(),
+            location: snafu::location!(),
         }),
     }
 }
@@ -130,12 +130,12 @@ pub async fn reload_config(
             aletheia_taxis::reload::ReloadError::Validation { source, .. } => {
                 ApiError::ValidationFailed {
                     errors: source.errors,
-                    location: snafu::Location::default(),
+                    location: snafu::location!(),
                 }
             }
             other => ApiError::Internal {
                 message: other.to_string(),
-                location: snafu::Location::default(),
+                location: snafu::location!(),
             },
         }
     })?;
@@ -189,21 +189,21 @@ pub async fn update_section(
     if !VALID_SECTIONS.contains(&section.as_str()) {
         return Err(ApiError::NotFound {
             path: format!("/api/v1/config/{section}"),
-            location: snafu::Location::default(),
+            location: snafu::location!(),
         });
     }
 
     if let Err(err) = aletheia_taxis::validate::validate_section(&section, &body) {
         return Err(ApiError::ValidationFailed {
             errors: err.errors,
-            location: snafu::Location::default(),
+            location: snafu::location!(),
         });
     }
 
     let mut config = state.config.write().await;
     let mut config_value = serde_json::to_value(&*config).map_err(|e| ApiError::Internal {
         message: format!("failed to serialize config: {e}"),
-        location: snafu::Location::default(),
+        location: snafu::location!(),
     })?;
 
     if let Value::Object(root) = &mut config_value {
@@ -221,14 +221,14 @@ pub async fn update_section(
             tracing::error!(error = %e, section = %section, "config deserialization failed after merge");
             ApiError::ValidationFailed {
                 errors: vec!["Invalid configuration format".to_owned()],
-                location: snafu::Location::default(),
+                location: snafu::location!(),
             }
         })?;
 
     aletheia_taxis::loader::write_config(&state.oikos, &new_config).map_err(|e| {
         ApiError::Internal {
             message: format!("failed to write config: {e}"),
-            location: snafu::Location::default(),
+            location: snafu::location!(),
         }
     })?;
 

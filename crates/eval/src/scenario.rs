@@ -41,10 +41,12 @@ pub enum ScenarioOutcome {
 }
 
 impl ScenarioOutcome {
+    #[must_use]
     pub fn is_passed(&self) -> bool {
         matches!(self, Self::Passed { .. })
     }
 
+    #[must_use]
     pub fn is_failed(&self) -> bool {
         matches!(self, Self::Failed { .. })
     }

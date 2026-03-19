@@ -84,13 +84,8 @@ mod tests {
     }
 
     fn token_stream_helper(text: &str) -> Vec<Token> {
+        use crate::engine::fts::tokenizer::tests::collect_tokens;
         let a = TextAnalyzer::from(SimpleTokenizer);
-        let mut token_stream = a.token_stream(text);
-        let mut tokens: Vec<Token> = vec![];
-        let mut add_token = |token: &Token| {
-            tokens.push(token.clone());
-        };
-        token_stream.process(&mut add_token);
-        tokens
+        collect_tokens(a.token_stream(text))
     }
 }

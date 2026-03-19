@@ -35,7 +35,7 @@ pub async fn forget_fact(
     if let Some(ref store) = state.knowledge_store {
         let fact_id = aletheia_mneme::id::FactId::new(&id).map_err(|e| ApiError::BadRequest {
             message: format!("invalid fact id: {e}"),
-            location: snafu::Location::default(),
+            location: snafu::location!(),
         })?;
         let reason = body
             .reason
@@ -48,11 +48,11 @@ pub async fn forget_fact(
             }
             Err(aletheia_mneme::error::Error::FactNotFound { .. }) => Err(ApiError::NotFound {
                 path: format!("fact/{id}"),
-                location: snafu::Location::default(),
+                location: snafu::location!(),
             }),
             Err(e) => Err(ApiError::Internal {
                 message: e.to_string(),
-                location: snafu::Location::default(),
+                location: snafu::location!(),
             }),
         };
     }
@@ -61,7 +61,7 @@ pub async fn forget_fact(
     tracing::info!(fact_id = %id, "fact forget requested but knowledge store not available");
     Err(ApiError::ServiceUnavailable {
         message: "knowledge store not available".to_owned(),
-        location: snafu::Location::default(),
+        location: snafu::location!(),
     })
 }
 
@@ -84,7 +84,7 @@ pub async fn restore_fact(
     if let Some(ref store) = state.knowledge_store {
         let fact_id = aletheia_mneme::id::FactId::new(&id).map_err(|e| ApiError::BadRequest {
             message: format!("invalid fact id: {e}"),
-            location: snafu::Location::default(),
+            location: snafu::location!(),
         })?;
         return match store.unforget_fact_async(fact_id).await {
             Ok(_) => {
@@ -93,11 +93,11 @@ pub async fn restore_fact(
             }
             Err(aletheia_mneme::error::Error::FactNotFound { .. }) => Err(ApiError::NotFound {
                 path: format!("fact/{id}"),
-                location: snafu::Location::default(),
+                location: snafu::location!(),
             }),
             Err(e) => Err(ApiError::Internal {
                 message: e.to_string(),
-                location: snafu::Location::default(),
+                location: snafu::location!(),
             }),
         };
     }
@@ -106,7 +106,7 @@ pub async fn restore_fact(
     tracing::info!(fact_id = %id, "fact restore requested but knowledge store not available");
     Err(ApiError::ServiceUnavailable {
         message: "knowledge store not available".to_owned(),
-        location: snafu::Location::default(),
+        location: snafu::location!(),
     })
 }
 
@@ -135,7 +135,7 @@ pub async fn update_confidence(
     if !(0.0..=1.0).contains(&body.confidence) {
         return Err(ApiError::BadRequest {
             message: "confidence must be between 0.0 and 1.0".to_string(),
-            location: snafu::Location::default(),
+            location: snafu::location!(),
         });
     }
     tracing::info!(fact_id = %id, confidence = body.confidence, "confidence update requested");
@@ -143,6 +143,6 @@ pub async fn update_confidence(
     // read-modify-write cycle is needed but not yet implemented (#1025).
     Err(ApiError::NotImplemented {
         message: "confidence update is not yet implemented in the knowledge store".to_owned(),
-        location: snafu::Location::default(),
+        location: snafu::location!(),
     })
 }

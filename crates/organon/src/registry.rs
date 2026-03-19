@@ -136,6 +136,7 @@ impl ToolRegistry {
     /// Convert registered tools to the LLM wire format.
     ///
     /// Produces `ToolDefinition` structs suitable for `CompletionRequest::tools`.
+    #[must_use]
     pub fn to_hermeneus_tools(&self) -> Vec<aletheia_hermeneus::types::ToolDefinition> {
         self.tools
             .values()
@@ -154,6 +155,7 @@ impl ToolRegistry {
     /// - `auto_activate == true` (always-on essentials)
     /// - name is in the `active` set (dynamically activated via `enable_tool`)
     /// - name is `enable_tool` (always available so agents can activate more)
+    #[must_use]
     pub fn to_hermeneus_tools_filtered(
         &self,
         active: &HashSet<ToolName>,

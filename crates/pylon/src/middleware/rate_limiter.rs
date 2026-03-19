@@ -22,6 +22,7 @@ pub struct RateLimiter {
 }
 
 impl RateLimiter {
+    #[must_use]
     pub fn new(requests_per_minute: u32) -> Self {
         Self {
             max_requests: requests_per_minute,

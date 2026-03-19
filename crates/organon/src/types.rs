@@ -47,6 +47,7 @@ pub struct InputSchema {
 impl InputSchema {
     /// Serialize to a JSON Schema `{"type": "object", ...}` value
     /// suitable for `hermeneus::types::ToolDefinition::input_schema`.
+    #[must_use]
     pub fn to_json_schema(&self) -> serde_json::Value {
         let mut props = serde_json::Map::new();
         for (name, def) in &self.properties {

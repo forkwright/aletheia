@@ -241,6 +241,7 @@ impl SignalClient {
     }
 
     /// The base RPC URL this client targets.
+    #[must_use]
     pub fn rpc_url(&self) -> &str {
         &self.rpc_url
     }
@@ -280,6 +281,7 @@ impl SendParams {
     /// Key transformations:
     /// - `recipient` is wrapped in an array (signal-cli convention)
     /// - `group_id` becomes `groupId` (camelCase)
+    #[must_use]
     pub fn to_rpc_value(&self) -> serde_json::Value {
         let mut map = serde_json::Map::new();
 

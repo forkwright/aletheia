@@ -76,6 +76,7 @@ pub struct ExtractedSkill {
 
 impl ExtractedSkill {
     /// Convert to [`SkillContent`] for fact storage.
+    #[must_use]
     pub fn to_skill_content(&self) -> SkillContent {
         SkillContent {
             name: self.name.clone(),
@@ -168,6 +169,7 @@ pub struct DedupInput<'a> {
 /// Falls back to tool overlap + name similarity heuristics otherwise.
 ///
 /// Threshold: cosine similarity > 0.90 = duplicate.
+#[must_use]
 pub fn check_dedup(input: &DedupInput<'_>) -> DedupOutcome {
     let candidate = input.candidate;
     let existing = input.existing;
@@ -411,6 +413,7 @@ pub struct PendingSkill {
 
 impl PendingSkill {
     /// Create a new pending skill from an extracted skill and candidate.
+    #[must_use]
     pub fn new(extracted: &ExtractedSkill, candidate_id: &str) -> Self {
         Self {
             skill: extracted.to_skill_content(),
@@ -439,11 +442,13 @@ impl PendingSkill {
     }
 
     /// Returns `true` if the skill is pending review.
+    #[must_use]
     pub fn is_pending(&self) -> bool {
         self.status == "pending_review"
     }
 
     /// Returns `true` if the skill has been approved.
+    #[must_use]
     pub fn is_approved(&self) -> bool {
         self.status == "approved"
     }

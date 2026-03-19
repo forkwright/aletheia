@@ -71,6 +71,7 @@ impl Default for IdempotencyCache {
 }
 
 impl IdempotencyCache {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             inner: Mutex::new(CacheInner {

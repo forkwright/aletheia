@@ -65,6 +65,7 @@ fn tool_category(name: &str) -> ToolCategory {
 ///
 /// Returns a [`HeuristicScore`] with `passed_gates = false` if any must-pass
 /// gate fails.  When gates pass, `total` reflects the composite quality score.
+#[must_use]
 pub fn score_sequence(tool_calls: &[ToolCallRecord]) -> HeuristicScore {
     let mut score = HeuristicScore::default();
 

@@ -35,6 +35,7 @@ impl ChannelListener {
     /// Spawns polling tasks for all accounts registered on the provider
     /// and merges their messages into a single receiver. When the `cancel`
     /// token is cancelled, polling tasks exit promptly.
+    #[must_use]
     pub fn start(
         signal_provider: &SignalProvider,
         poll_interval: Option<std::time::Duration>,
@@ -51,6 +52,7 @@ impl ChannelListener {
     ///
     /// Use when the caller assembles provider-specific listeners
     /// independently (e.g., merging Signal + future Slack receivers).
+    #[must_use]
     pub fn from_parts(rx: mpsc::Receiver<InboundMessage>, handles: Vec<JoinHandle<()>>) -> Self {
         Self {
             rx: Some(rx),
@@ -101,6 +103,7 @@ impl ChannelListener {
     /// The returned handles represent the background polling tasks.  Callers can
     /// abort them for immediate shutdown or await them for graceful drain.  Tasks
     /// also stop naturally once the receiver is dropped (closed channel).
+    #[must_use]
     pub fn into_receiver(mut self) -> (mpsc::Receiver<InboundMessage>, Vec<JoinHandle<()>>) {
         #[expect(
             clippy::expect_used,

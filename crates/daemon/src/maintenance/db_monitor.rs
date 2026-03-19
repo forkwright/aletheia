@@ -85,6 +85,7 @@ pub struct DbMonitor {
 
 impl DbMonitor {
     /// Create a monitor with the given threshold configuration.
+    #[must_use]
     pub fn new(config: DbMonitoringConfig) -> Self {
         Self { config }
     }

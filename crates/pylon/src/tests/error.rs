@@ -13,7 +13,7 @@ fn api_error_session_not_found_status_code() {
 
     let err = ApiError::SessionNotFound {
         id: "test".to_owned(),
-        location: snafu::Location::default(),
+        location: snafu::location!(),
     };
     let response = err.into_response();
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
@@ -26,7 +26,7 @@ fn api_error_nous_not_found_status_code() {
 
     let err = ApiError::NousNotFound {
         id: "test".to_owned(),
-        location: snafu::Location::default(),
+        location: snafu::location!(),
     };
     let response = err.into_response();
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
@@ -39,7 +39,7 @@ fn api_error_bad_request_status_code() {
 
     let err = ApiError::BadRequest {
         message: "test".to_owned(),
-        location: snafu::Location::default(),
+        location: snafu::location!(),
     };
     let response = err.into_response();
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
@@ -52,7 +52,7 @@ fn api_error_internal_status_code() {
 
     let err = ApiError::Internal {
         message: "test".to_owned(),
-        location: snafu::Location::default(),
+        location: snafu::location!(),
     };
     let response = err.into_response();
     assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
@@ -64,7 +64,7 @@ fn api_error_unauthorized_status_code() {
     use axum::response::IntoResponse;
 
     let err = ApiError::Unauthorized {
-        location: snafu::Location::default(),
+        location: snafu::location!(),
     };
     let response = err.into_response();
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
@@ -77,7 +77,7 @@ fn api_error_rate_limited_status_code() {
 
     let err = ApiError::RateLimited {
         retry_after_secs: 1,
-        location: snafu::Location::default(),
+        location: snafu::location!(),
     };
     let response = err.into_response();
     assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
@@ -90,7 +90,7 @@ fn api_error_forbidden_status_code() {
 
     let err = ApiError::Forbidden {
         message: "test".to_owned(),
-        location: snafu::Location::default(),
+        location: snafu::location!(),
     };
     let response = err.into_response();
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
@@ -103,7 +103,7 @@ fn api_error_service_unavailable_status_code() {
 
     let err = ApiError::ServiceUnavailable {
         message: "test".to_owned(),
-        location: snafu::Location::default(),
+        location: snafu::location!(),
     };
     let response = err.into_response();
     assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
@@ -116,7 +116,7 @@ fn api_error_validation_failed_status_code() {
 
     let err = ApiError::ValidationFailed {
         errors: vec!["field required".to_owned()],
-        location: snafu::Location::default(),
+        location: snafu::location!(),
     };
     let response = err.into_response();
     assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
@@ -129,7 +129,7 @@ fn api_error_rate_limited_includes_details() {
 
     let err = ApiError::RateLimited {
         retry_after_secs: 5,
-        location: snafu::Location::default(),
+        location: snafu::location!(),
     };
     let response = err.into_response();
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -151,7 +151,7 @@ fn api_error_validation_failed_includes_errors() {
 
     let err = ApiError::ValidationFailed {
         errors: vec!["field1 required".to_owned(), "field2 invalid".to_owned()],
-        location: snafu::Location::default(),
+        location: snafu::location!(),
     };
     let response = err.into_response();
     let rt = tokio::runtime::Builder::new_current_thread()

@@ -313,6 +313,7 @@ pub fn scan_skill_dir(dir: &std::path::Path) -> Result<Vec<(String, String)>, st
 ///
 /// Lowercases, replaces whitespace/non-alphanumeric runs with `-`, and trims
 /// leading/trailing dashes.
+#[must_use]
 pub fn slugify(name: &str) -> String {
     let slug: String = name
         .chars()
@@ -363,6 +364,7 @@ pub fn slugify(name: &str) -> String {
 /// ## Tools Used
 /// - <tool>
 /// ```
+#[must_use]
 pub fn format_skill_md(skill: &SkillContent) -> String {
     use std::fmt::Write as _;
     let mut md = String::with_capacity(512);

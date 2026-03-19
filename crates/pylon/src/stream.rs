@@ -55,6 +55,7 @@ pub struct UsageData {
 
 impl SseEvent {
     /// SSE event name for the `event:` field.
+    #[must_use]
     pub fn event_type(&self) -> &'static str {
         match self {
             Self::TextDelta { .. } => "text_delta",
@@ -116,6 +117,7 @@ pub enum WebchatEvent {
 }
 
 impl WebchatEvent {
+    #[must_use]
     pub fn event_type(&self) -> &'static str {
         match self {
             Self::TurnStart { .. } => "turn_start",
