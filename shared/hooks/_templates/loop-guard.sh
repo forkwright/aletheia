@@ -9,7 +9,8 @@ tool_calls=$(printf '%s' "$payload" | grep -o '"toolCalls":[0-9]*' | head -1 | c
 nous_id=$(printf '%s' "$payload" | grep -o '"nousId":"[^"]*"' | head -1 | cut -d'"' -f4)
 
 if [[ -z "${tool_calls:-}" ]] || [[ -z "${nous_id:-}" ]]; then
-  exit 0
+  echo "error: missing required fields (toolCalls or nousId) in payload" >&2
+  exit 1
 fi
 
 if [[ ! "$nous_id" =~ ^[a-zA-Z0-9._-]+$ ]]; then
