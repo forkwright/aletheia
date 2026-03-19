@@ -453,10 +453,6 @@ impl AnthropicProvider {
                 .build()
             })?;
             headers.insert(reqwest::header::AUTHORIZATION, value);
-            headers.insert(
-                "anthropic-beta",
-                HeaderValue::from_static("oauth-2025-04-20"),
-            );
         } else {
             let value = HeaderValue::from_str(secret_value).map_err(|_e| {
                 error::AuthFailedSnafu {
