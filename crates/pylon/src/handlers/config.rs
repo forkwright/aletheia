@@ -1,7 +1,5 @@
 //! Configuration read/write endpoints.
 
-use std::sync::Arc;
-
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
@@ -12,7 +10,7 @@ use utoipa::ToSchema;
 
 use crate::error::ApiError;
 use crate::extract::Claims;
-use crate::state::AppState;
+use crate::state::ConfigState;
 
 const VALID_SECTIONS: &[&str] = &[
     "agents",
@@ -62,7 +60,7 @@ pub struct ConfigReloadResponse {
 )]
 #[instrument(skip(state, _claims))]
 pub async fn get_config(
-    State(state): State<Arc<AppState>>,
+    State(state): State<ConfigState>,
     _claims: Claims,
 ) -> Result<Json<Value>, ApiError> {
     let config = state.config.read().await;
@@ -83,7 +81,7 @@ pub async fn get_config(
 )]
 #[instrument(skip(state, _claims))]
 pub async fn get_section(
-    State(state): State<Arc<AppState>>,
+    State(state): State<ConfigState>,
     _claims: Claims,
     Path(section): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
@@ -123,7 +121,7 @@ pub async fn get_section(
 )]
 #[instrument(skip(state, _claims))]
 pub async fn reload_config(
-    State(state): State<Arc<AppState>>,
+    State(state): State<ConfigState>,
     _claims: Claims,
 ) -> Result<impl IntoResponse, ApiError> {
     let current = state.config.read().await.clone();
@@ -184,7 +182,7 @@ pub async fn reload_config(
 )]
 #[instrument(skip(state, _claims, body))]
 pub async fn update_section(
-    State(state): State<Arc<AppState>>,
+    State(state): State<ConfigState>,
     _claims: Claims,
     Path(section): Path<String>,
     Json(body): Json<Value>,

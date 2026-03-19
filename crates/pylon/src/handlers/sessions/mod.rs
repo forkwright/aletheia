@@ -11,8 +11,6 @@ use types::{
     ListSessionsResponse, RenameSessionRequest, SessionListItem, SessionResponse,
 };
 
-use std::sync::Arc;
-
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -26,7 +24,7 @@ use crate::error::{
     SessionNotFoundSnafu,
 };
 use crate::extract::Claims;
-use crate::state::AppState;
+use crate::state::SessionsState;
 
 /// POST /api/v1/sessions: create a new session.
 #[utoipa::path(
@@ -43,7 +41,7 @@ use crate::state::AppState;
 )]
 #[instrument(skip(state, _claims, body))]
 pub async fn create(
-    State(state): State<Arc<AppState>>,
+    State(state): State<SessionsState>,
     _claims: Claims,
     Json(body): Json<CreateSessionRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -73,7 +71,7 @@ pub async fn create(
     let id = ulid::Ulid::new().to_string();
     let model = config.model.clone();
 
-    let state_clone = Arc::clone(&state);
+    let state_clone = state.clone();
     let id_clone = id.clone();
     let nid = nous_id.clone();
     let skey = session_key.clone();
@@ -120,14 +118,14 @@ pub async fn create(
 )]
 #[instrument(skip(state, _claims))]
 pub async fn list_sessions(
-    State(state): State<Arc<AppState>>,
+    State(state): State<SessionsState>,
     _claims: Claims,
     Query(params): Query<ListSessionsParams>,
 ) -> Result<Json<ListSessionsResponse>, ApiError> {
     let nous_id = params.nous_id;
     let limit = params.limit;
 
-    let state_clone = Arc::clone(&state);
+    let state_clone = state.clone();
     let sessions = tokio::task::spawn_blocking(move || {
         let store = state_clone.session_store.blocking_lock();
         store
@@ -173,7 +171,7 @@ pub async fn list_sessions(
 )]
 #[instrument(skip(state, _claims))]
 pub async fn get_session(
-    State(state): State<Arc<AppState>>,
+    State(state): State<SessionsState>,
     _claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<SessionResponse>, ApiError> {
@@ -200,7 +198,7 @@ pub async fn get_session(
 )]
 #[instrument(skip(state, _claims))]
 pub async fn close(
-    State(state): State<Arc<AppState>>,
+    State(state): State<SessionsState>,
     _claims: Claims,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
@@ -221,13 +219,13 @@ pub async fn close(
 )]
 #[instrument(skip(state, _claims))]
 pub async fn purge(
-    State(state): State<Arc<AppState>>,
+    State(state): State<SessionsState>,
     _claims: Claims,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let _ = find_session(&state, &id).await?;
 
-    let state_clone = Arc::clone(&state);
+    let state_clone = state.clone();
     let id_clone = id.clone();
     tokio::task::spawn_blocking(move || {
         let store = state_clone.session_store.blocking_lock();
@@ -255,7 +253,7 @@ pub async fn purge(
 )]
 #[instrument(skip(state, _claims))]
 pub async fn archive(
-    State(state): State<Arc<AppState>>,
+    State(state): State<SessionsState>,
     _claims: Claims,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
@@ -263,10 +261,10 @@ pub async fn archive(
 }
 
 /// Shared archive logic for both DELETE and POST archive routes.
-async fn archive_session_by_id(state: &Arc<AppState>, id: &str) -> Result<StatusCode, ApiError> {
+async fn archive_session_by_id(state: &SessionsState, id: &str) -> Result<StatusCode, ApiError> {
     let _ = find_session(state, id).await?;
 
-    let state_clone = Arc::clone(state);
+    let state_clone = state.clone();
     let id_clone = id.to_owned();
     tokio::task::spawn_blocking(move || {
         let store = state_clone.session_store.blocking_lock();
@@ -294,13 +292,13 @@ async fn archive_session_by_id(state: &Arc<AppState>, id: &str) -> Result<Status
 )]
 #[instrument(skip(state, _claims))]
 pub async fn unarchive(
-    State(state): State<Arc<AppState>>,
+    State(state): State<SessionsState>,
     _claims: Claims,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let _ = find_session(&state, &id).await?;
 
-    let state_clone = Arc::clone(&state);
+    let state_clone = state.clone();
     let id_clone = id.clone();
     tokio::task::spawn_blocking(move || {
         let store = state_clone.session_store.blocking_lock();
@@ -330,7 +328,7 @@ pub async fn unarchive(
 )]
 #[instrument(skip(state, _claims, body))]
 pub async fn rename(
-    State(state): State<Arc<AppState>>,
+    State(state): State<SessionsState>,
     _claims: Claims,
     Path(id): Path<String>,
     Json(body): Json<RenameSessionRequest>,
@@ -344,7 +342,7 @@ pub async fn rename(
         .build());
     }
 
-    let state_clone = Arc::clone(&state);
+    let state_clone = state.clone();
     let id_clone = id.clone();
     let name = body.name;
     tokio::task::spawn_blocking(move || {
@@ -382,7 +380,7 @@ const DEFAULT_HISTORY_LIMIT: u32 = 50;
 )]
 #[instrument(skip(state, _claims))]
 pub async fn history(
-    State(state): State<Arc<AppState>>,
+    State(state): State<SessionsState>,
     _claims: Claims,
     Path(id): Path<String>,
     Query(params): Query<HistoryParams>,
@@ -397,7 +395,7 @@ pub async fn history(
         .min(MAX_HISTORY_LIMIT);
     let before_seq = params.before;
 
-    let state_clone = Arc::clone(&state);
+    let state_clone = state.clone();
     let id_clone = id.clone();
     let messages = tokio::task::spawn_blocking(move || {
         let store = state_clone.session_store.blocking_lock();
@@ -425,13 +423,13 @@ pub async fn history(
 
 /// Resolve or create a session for the given agent and session key.
 pub(crate) async fn resolve_session(
-    state: &Arc<AppState>,
+    state: &SessionsState,
     agent_id: &str,
     session_key: &str,
     model: Option<&str>,
 ) -> Result<String, ApiError> {
     let id = ulid::Ulid::new().to_string();
-    let state_clone = Arc::clone(state);
+    let state_clone = state.clone();
     let id_clone = id.clone();
     let aid = agent_id.to_owned();
     let skey = session_key.to_owned();
@@ -470,10 +468,10 @@ fn is_unique_constraint_violation(err: &aletheia_mneme::error::Error) -> bool {
 }
 
 pub(crate) async fn find_session(
-    state: &Arc<AppState>,
+    state: &SessionsState,
     id: &str,
 ) -> Result<aletheia_mneme::types::Session, ApiError> {
-    let state_clone = Arc::clone(state);
+    let state_clone = state.clone();
     let id_owned = id.to_owned();
     let id_for_error = id.to_owned();
     let session = tokio::task::spawn_blocking(move || {
