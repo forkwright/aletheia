@@ -22,7 +22,7 @@ use crate::error::{ApiError, BadRequestSnafu, ConflictSnafu, InternalSnafu, Nous
 use crate::extract::Claims;
 use crate::idempotency::{LookupResult, MAX_KEY_LENGTH};
 use crate::middleware::RequestId;
-use crate::state::AppState;
+use crate::state::SessionsState;
 use crate::stream::{SseEvent, TurnOutcome, UsageData, WebchatEvent};
 
 use super::types::{SendMessageRequest, StreamTurnRequest};
@@ -95,7 +95,7 @@ impl<S: tokio_stream::Stream + Unpin> tokio_stream::Stream for GuardedStream<S> 
     reason = "handler includes preflight checks, idempotency guard, and spawned turn task"
 )]
 pub async fn send_message(
-    State(state): State<Arc<AppState>>,
+    State(state): State<SessionsState>,
     _claims: Claims,
     headers: axum::http::HeaderMap,
     axum::extract::Extension(request_id): axum::extract::Extension<RequestId>,
@@ -330,7 +330,7 @@ pub async fn send_message(
 )]
 #[instrument(skip(state, _claims, body), fields(agent_id = %body.agent_id))]
 pub async fn stream_turn(
-    State(state): State<Arc<AppState>>,
+    State(state): State<SessionsState>,
     _claims: Claims,
     axum::extract::Extension(request_id): axum::extract::Extension<RequestId>,
     Json(body): Json<StreamTurnRequest>,

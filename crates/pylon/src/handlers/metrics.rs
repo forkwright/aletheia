@@ -1,13 +1,11 @@
 //! Prometheus metrics exposition endpoint.
 
-use std::sync::Arc;
-
 use axum::extract::State;
 use axum::http::header::CONTENT_TYPE;
 use axum::response::IntoResponse;
 use prometheus::{Encoder, TextEncoder};
 
-use crate::state::AppState;
+use crate::state::MetricsState;
 
 /// Prometheus content type for the metrics endpoint.
 pub(crate) const METRICS_CONTENT_TYPE: &str = "text/plain; version=0.0.4; charset=utf-8";
@@ -21,7 +19,7 @@ pub(crate) const METRICS_CONTENT_TYPE: &str = "text/plain; version=0.0.4; charse
     ),
 )]
 #[expect(clippy::expect_used, reason = "Prometheus text encoding is infallible")]
-pub async fn expose(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+pub async fn expose(State(state): State<MetricsState>) -> impl IntoResponse {
     let uptime = state.start_time.elapsed().as_secs_f64();
 
     let session_count = state

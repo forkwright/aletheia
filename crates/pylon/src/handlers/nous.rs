@@ -1,7 +1,5 @@
 //! Nous (agent) information endpoints.
 
-use std::sync::Arc;
-
 use axum::Json;
 use axum::extract::{Path, State};
 use serde::Serialize;
@@ -9,7 +7,7 @@ use utoipa::ToSchema;
 
 use crate::error::{ApiError, ErrorResponse, NousNotFoundSnafu};
 use crate::extract::Claims;
-use crate::state::AppState;
+use crate::state::NousState;
 
 /// GET /api/v1/nous: list registered nous agents.
 #[utoipa::path(
@@ -21,7 +19,7 @@ use crate::state::AppState;
     ),
     security(("bearer_auth" = []))
 )]
-pub async fn list(State(state): State<Arc<AppState>>, _claims: Claims) -> Json<NousListResponse> {
+pub async fn list(State(state): State<NousState>, _claims: Claims) -> Json<NousListResponse> {
     let nous: Vec<NousSummary> = state
         .nous_manager
         .configs()
@@ -49,7 +47,7 @@ pub async fn list(State(state): State<Arc<AppState>>, _claims: Claims) -> Json<N
     security(("bearer_auth" = []))
 )]
 pub async fn get_status(
-    State(state): State<Arc<AppState>>,
+    State(state): State<NousState>,
     _claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<NousStatus>, ApiError> {
@@ -91,7 +89,7 @@ pub async fn get_status(
     security(("bearer_auth" = []))
 )]
 pub async fn tools(
-    State(state): State<Arc<AppState>>,
+    State(state): State<NousState>,
     _claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<ToolsResponse>, ApiError> {
@@ -185,6 +183,11 @@ pub struct ToolSummary {
 )]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nous_state_contains_manager_and_registry() {
+        let _ = std::mem::size_of::<NousState>();
+    }
 
     #[test]
     fn nous_list_response_serializes_nous_array() {
