@@ -1,6 +1,5 @@
 //! Credential provider implementations for LLM API key resolution.
 
-use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant, SystemTime};
@@ -13,6 +12,7 @@ use aletheia_koina::credential::{Credential, CredentialProvider, CredentialSourc
 use aletheia_koina::secret::SecretString;
 
 use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
+use crate::encrypt::{ENCRYPTED_SENTINEL, decrypt, encrypt, load_or_create_key};
 
 /// Return current time as milliseconds since UNIX epoch, warning if the clock
 /// is before epoch rather than silently returning zero.
@@ -81,8 +81,10 @@ pub struct CredentialFile {
 impl CredentialFile {
     /// Read and parse a credential file.
     ///
-    /// Accepts two on-disk layouts:
+    /// Accepts three on-disk layouts:
     ///
+    /// * **Encrypted**: prefixed with `ALETHEIA_ENC_V1:` — decrypted using the
+    ///   sidecar key file (`<path>.key`) before parsing.
     /// * **Flat**: `{"token": "...", "refreshToken": "..."}` (native) or with the
     ///   `"accessToken"` alias produced by older Claude Code versions.
     /// * **Wrapped**: `{"claudeAiOauth": {"accessToken": "...", ...}}`: the nested
@@ -95,22 +97,49 @@ impl CredentialFile {
     pub fn load(path: &Path) -> Option<Self> {
         let contents = std::fs::read_to_string(path).ok()?;
 
-        if let Ok(cred) = serde_json::from_str::<Self>(&contents) {
+        let json = if let Some(encoded) = contents.strip_prefix(ENCRYPTED_SENTINEL) {
+            // WHY: encrypted files must be decrypted before JSON parsing.
+            let key = load_or_create_key(path)
+                .map_err(|e| tracing::warn!(error = %e, path = %path.display(), "failed to load encryption key"))
+                .ok()?;
+            let plaintext = decrypt(&key, encoded.trim_end())
+                .map_err(|e| tracing::warn!(error = %e, path = %path.display(), "failed to decrypt credential file"))
+                .ok()?;
+            String::from_utf8(plaintext)
+                .map_err(|e| tracing::warn!(error = %e, "decrypted credential is not valid UTF-8"))
+                .ok()?
+        } else {
+            contents
+        };
+
+        if let Ok(cred) = serde_json::from_str::<Self>(&json) {
             return Some(cred);
         }
 
-        let outer: serde_json::Value = serde_json::from_str(&contents).ok()?;
+        let outer: serde_json::Value = serde_json::from_str(&json).ok()?;
         serde_json::from_value(outer.get("claudeAiOauth")?.clone()).ok()
     }
 
     /// Write the credential file atomically (write to temp, rename).
+    ///
+    /// The file is always encrypted with AES-256-GCM using a per-file key
+    /// stored in a sidecar `.key` file (mode 0600).
     pub(crate) fn save(&self, path: &Path) -> std::io::Result<()> {
+        use std::io::Write as _;
+
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
+
+        let json = serde_json::to_string_pretty(self).map_err(std::io::Error::other)?;
+
+        let key = load_or_create_key(path)?;
+        let encoded = encrypt(&key, json.as_bytes())?;
+
         let tmp = path.with_extension("json.tmp");
         let mut file = std::fs::File::create(&tmp)?;
-        serde_json::to_writer_pretty(&mut file, self).map_err(std::io::Error::other)?;
+        file.write_all(ENCRYPTED_SENTINEL.as_bytes())?;
+        file.write_all(encoded.as_bytes())?;
         file.flush()?;
         file.sync_all()?;
         std::fs::rename(&tmp, path)?;

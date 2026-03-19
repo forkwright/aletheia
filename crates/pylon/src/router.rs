@@ -48,6 +48,10 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
         )
         .route("/sessions/{id}/archive", post(sessions::archive))
         .route("/sessions/{id}/unarchive", post(sessions::unarchive))
+        .route(
+            "/sessions/{id}/purge",
+            axum::routing::delete(sessions::purge),
+        )
         .route("/sessions/{id}/name", axum::routing::put(sessions::rename))
         .route("/sessions/{id}/messages", post(sessions::send_message))
         .route("/sessions/{id}/history", get(sessions::history))

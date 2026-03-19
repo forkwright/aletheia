@@ -11,6 +11,8 @@ pub(crate) mod auth;
 pub mod circuit_breaker;
 /// Credential provider implementations for LLM API key resolution.
 pub mod credential;
+/// AES-256-GCM encryption for credential files at rest.
+pub(crate) mod encrypt;
 /// Symbolon-specific error types and result alias.
 pub mod error;
 /// JWT token issuance, validation, and refresh.

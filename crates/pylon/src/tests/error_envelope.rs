@@ -447,7 +447,11 @@ async fn update_confidence_negative_returns_400_with_envelope() {
 }
 
 #[tokio::test]
-async fn update_confidence_valid_range_returns_501_with_envelope() {
+async fn update_confidence_valid_range_without_store_returns_503() {
+    // WHY: the knowledge store is not available in the default test app (no
+    // mneme-engine feature), so a valid confidence update returns 503
+    // service_unavailable instead of 200. The 501 path is gone now that the
+    // handler is implemented.
     let (app, _dir) = app().await;
     let req = authed_request(
         "PUT",
@@ -460,11 +464,11 @@ async fn update_confidence_valid_range_returns_501_with_envelope() {
         .expect("request to PUT /knowledge/facts/.../confidence should succeed");
     assert_eq!(
         resp.status(),
-        StatusCode::NOT_IMPLEMENTED,
-        "valid confidence on unimplemented endpoint should return 501"
+        StatusCode::SERVICE_UNAVAILABLE,
+        "valid confidence update without knowledge store should return 503"
     );
     let body = body_json(resp).await;
-    assert_error_envelope(&body, "not_implemented");
+    assert_error_envelope(&body, "service_unavailable");
 }
 
 #[tokio::test]

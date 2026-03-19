@@ -202,4 +202,22 @@ impl SessionStore {
             .context(error::DatabaseSnafu)?;
         Ok(())
     }
+
+    /// Hard-delete a session and all its messages by ID.
+    ///
+    /// Unlike archiving, this permanently removes the session row and all
+    /// associated message rows. The caller must have verified the session
+    /// exists before calling this method.
+    #[instrument(skip(self))]
+    pub fn delete_session(&self, id: &str) -> Result<bool> {
+        self.require_writable()?;
+        // WHY: messages.session_id has ON DELETE CASCADE, so deleting the
+        // session row removes its messages in the same transaction without
+        // a separate DELETE statement.
+        let rows = self
+            .conn
+            .execute("DELETE FROM sessions WHERE id = ?1", [id])
+            .context(error::DatabaseSnafu)?;
+        Ok(rows > 0)
+    }
 }
