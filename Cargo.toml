@@ -76,6 +76,11 @@ as_conversions = "warn"
 cast_possible_truncation = "warn"
 indexing_slicing = "warn"
 
+# Architectural boundary enforcement: each crate's clippy.toml lists what it
+# may not call. Without these lint levels the clippy.toml entries are inert.
+disallowed_methods = "deny"
+disallowed_types = "deny"
+
 [workspace.dependencies]
 base64 = "0.22"
 rayon = "1"
@@ -147,7 +152,7 @@ regex = "1"
 rusqlite = { version = "0.38", features = ["bundled"] }
 
 # FFI
-rustix = { version = "1", default-features = false, features = ["fs", "thread"] }
+rustix = { version = "1", default-features = false, features = ["fs", "mm", "thread"] }
 
 # Random number generation
 rand = "0.9"
