@@ -203,6 +203,12 @@ impl<'a> BackupManager<'a> {
             let json = build_session_json(self.conn, session_id)?;
             let path = output_dir.join(format!("{session_id}.json"));
             std::fs::write(&path, json).context(error::IoSnafu { path: path.clone() })?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+                    .context(error::IoSnafu { path: path.clone() })?;
+            }
             files_written += 1;
         }
 

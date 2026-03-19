@@ -472,6 +472,11 @@ pub fn export_skills_to_cc(
         let md = format_skill_md(skill);
         let path = skill_dir.join("SKILL.md");
         std::fs::write(&path, &md)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+        }
 
         exported.push(ExportedSkill {
             path,
