@@ -43,6 +43,12 @@ pub(crate) struct HnswIndexManifest {
     pub(crate) index_filter: Option<String>,
     pub(crate) extend_candidates: bool,
     pub(crate) keep_pruned_connections: bool,
+    /// Maximum number of vectors allowed in this index.
+    ///
+    /// When `Some(n)`, insertions that would exceed `n` are rejected and a
+    /// warning is logged at 80 % utilisation. `None` means no limit (#1722).
+    #[serde(default)]
+    pub(crate) max_vectors: Option<usize>,
 }
 
 impl HnswIndexManifest {

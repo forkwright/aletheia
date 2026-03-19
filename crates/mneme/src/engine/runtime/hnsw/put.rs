@@ -14,6 +14,7 @@ use std::cmp::{Reverse, max};
 use ordered_float::OrderedFloat;
 use priority_queue::PriorityQueue;
 use rustc_hash::FxHashSet;
+use tracing::warn;
 
 use super::types::{CompoundKey, DEFAULT_VECTOR_CACHE_CAPACITY, HnswIndexManifest, VectorCache};
 use crate::engine::DataValue;
@@ -608,6 +609,15 @@ impl<'a> SessionTx<'a> {
         }
         Ok(())
     }
+    /// Count vectors currently in the index by scanning the canary prefix.
+    ///
+    /// Canary entries (level = `DataValue::from(1)`) are written once per vector
+    /// in `hnsw_put_fresh_at_levels` and serve as a per-vector marker.
+    fn hnsw_count_vectors(&self, idx_table: &RelationHandle) -> usize {
+        let prefix = vec![DataValue::from(1_i64)];
+        idx_table.scan_prefix(self, &prefix).count()
+    }
+
     pub(crate) fn hnsw_put(
         &mut self,
         manifest: &HnswIndexManifest,
@@ -623,6 +633,33 @@ impl<'a> SessionTx<'a> {
             self.hnsw_remove(orig_table, idx_table, tuple)?;
             return Ok(false);
         }
+
+        // WHY: enforce max_vectors capacity limit to prevent unbounded memory/disk growth (#1722).
+        if let Some(max_cap) = manifest.max_vectors {
+            let current = self.hnsw_count_vectors(idx_table);
+            let warn_threshold = max_cap * 4 / 5; // 80 %
+            if current >= max_cap {
+                return Err(InvalidOperationSnafu {
+                    op: "hnsw_put",
+                    reason: format!(
+                        "HNSW index '{}' is at capacity ({current}/{max_cap}): \
+                         increase max_vectors or prune old vectors",
+                        manifest.index_name
+                    ),
+                }
+                .build()
+                .into());
+            }
+            if current >= warn_threshold {
+                warn!(
+                    index = %manifest.index_name,
+                    current,
+                    max_cap,
+                    "HNSW index approaching max_vectors capacity"
+                );
+            }
+        }
+
         let mut extracted_vectors = vec![];
         for idx in &manifest.vec_fields {
             let val = tuple
@@ -660,5 +697,56 @@ impl<'a> SessionTx<'a> {
             )?;
         }
         Ok(true)
+    }
+
+    /// Check that every HNSW canary entry has a corresponding row in the base relation.
+    ///
+    /// Scans the "self-entry" nodes at level 0 (entries where the source and destination
+    /// tuple key are identical) and verifies each exists in `orig_table`.  Returns the
+    /// number of orphaned HNSW entries detected — entries whose base row has been deleted
+    /// without a matching HNSW removal (#1719).
+    ///
+    /// Orphans are logged at `warn` level for each occurrence.
+    #[expect(dead_code, reason = "entry point for maintenance tasks — not yet wired into scheduler")]
+    pub(crate) fn hnsw_check_consistency(
+        &self,
+        manifest: &HnswIndexManifest,
+        orig_table: &RelationHandle,
+        idx_table: &RelationHandle,
+    ) -> Result<usize> {
+        let key_len = orig_table.metadata.keys.len();
+        let mut orphan_count = 0usize;
+
+        // WHY: canary entries written by `hnsw_put_fresh_at_levels` start with
+        // `DataValue::from(1_i64)`.  Each represents exactly one indexed vector.
+        let canary_prefix = vec![DataValue::from(1_i64)];
+        for res in idx_table.scan_prefix(self, &canary_prefix) {
+            let tuple = match res {
+                Ok(t) => t,
+                Err(_) => continue,
+            };
+            // Canary layout: [1, Null…, key_fields…, idx, subidx, Null…, Null, Null]
+            // The tuple_key fields start at offset 1.
+            let tuple_key: Vec<DataValue> = tuple.get(1..key_len + 1).unwrap_or_default().to_vec();
+            if tuple_key.is_empty() {
+                continue;
+            }
+            match orig_table.get(self, &tuple_key) {
+                Ok(Some(_)) => {} // base row exists — consistent
+                Ok(None) => {
+                    orphan_count = orphan_count.saturating_add(1);
+                    warn!(
+                        index = %manifest.index_name,
+                        base_relation = %manifest.base_relation,
+                        orphans = orphan_count,
+                        "HNSW index entry has no corresponding fact in base relation \
+                         (embedding failure or incomplete write) — run index rebuild to repair"
+                    );
+                }
+                Err(_) => {} // I/O error scanning base: skip this entry
+            }
+        }
+
+        Ok(orphan_count)
     }
 }

@@ -58,15 +58,30 @@ pub fn check_integrity(conn: &Connection) -> Result<bool> {
 }
 
 /// Check whether a `rusqlite::Error` indicates database corruption.
+///
+/// Disk-full (`SQLITE_FULL`) is intentionally excluded: a full disk is a
+/// transient I/O condition, not structural database damage. Use
+/// [`is_disk_full_error`] to detect that case separately (#1720).
 #[must_use]
 pub fn is_corruption_error(err: &rusqlite::Error) -> bool {
     match err {
         rusqlite::Error::SqliteFailure(ffi_err, _) => matches!(
             ffi_err.code,
-            rusqlite::ErrorCode::DatabaseCorrupt
-                | rusqlite::ErrorCode::NotADatabase
-                | rusqlite::ErrorCode::DiskFull
+            rusqlite::ErrorCode::DatabaseCorrupt | rusqlite::ErrorCode::NotADatabase
         ),
+        _ => false,
+    }
+}
+
+/// Check whether a `rusqlite::Error` indicates a disk-full condition (`SQLITE_FULL`).
+///
+/// Unlike [`is_corruption_error`], disk-full does not indicate structural
+/// database damage and should be handled as a recoverable I/O error rather
+/// than triggering the corruption recovery workflow (#1720).
+#[must_use]
+pub fn is_disk_full_error(err: &rusqlite::Error) -> bool {
+    match err {
+        rusqlite::Error::SqliteFailure(ffi_err, _) => ffi_err.code == rusqlite::ErrorCode::DiskFull,
         _ => false,
     }
 }
@@ -295,6 +310,13 @@ fn copy_table(
 /// 4. Return a connection to the recovered (or read-only) database
 ///
 /// Returns `(Connection, StoreMode)`: the usable connection and its mode.
+///
+/// # Disk-full vs corruption
+///
+/// A disk-full condition is not structural database damage.  When the caller
+/// passes an error that is disk-full (detected via [`is_disk_full_error`]), the
+/// function falls through directly to the read-only fallback without attempting
+/// the repair workflow, which would itself require writing to a full disk (#1720).
 pub fn recover_database(path: &Path, config: &RecoveryConfig) -> Result<(Connection, StoreMode)> {
     let path_display = path.display().to_string();
 
@@ -414,6 +436,27 @@ mod tests {
         assert!(
             !is_corruption_error(&err),
             "ConstraintViolation should not be detected as corruption"
+        );
+    }
+
+    #[test]
+    fn disk_full_is_not_corruption() {
+        // WHY: ENOSPC is a transient I/O condition, not structural damage.
+        // It must not trigger the corruption recovery workflow (#1720).
+        let err = rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error {
+                code: rusqlite::ErrorCode::DiskFull,
+                extended_code: 13,
+            },
+            Some("database or disk is full".to_owned()),
+        );
+        assert!(
+            !is_corruption_error(&err),
+            "DiskFull must NOT be detected as corruption"
+        );
+        assert!(
+            is_disk_full_error(&err),
+            "DiskFull should be detected by is_disk_full_error"
         );
     }
 

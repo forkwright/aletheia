@@ -323,6 +323,13 @@ pub async fn execute_streaming(
             break;
         }
 
+        // WHY: if the client has disconnected the stream_tx receiver is dropped and the
+        // channel is closed.  Continuing to call the LLM wastes compute and credits (#1721).
+        if stream_tx.is_closed() {
+            info!("client disconnected, stopping LLM turn");
+            break;
+        }
+
         // WHY: derive server tools on each iteration so enable_tool activations take effect
         let (_active, server_tools) = resolve_active_server_tools(tool_ctx, config);
 
