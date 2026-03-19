@@ -135,7 +135,7 @@ Replace syntect with tree-sitter's highlighting library.
 - (-) Significant API redesign: event-based instead of line-based
 - (-) Plaintext fallback requires explicit handling
 - (-) Theme mapping is manual (no built-in theme format)
-- (-) `tree-sitter-highlight` is pre-1.0 (currently 0.25.x)
+- (-) `tree-sitter-highlight` is pre-1.0 (0.25.x)
 - (-) MSRV unverified for tree-sitter 0.25 against our Rust 1.94
 
 **Effort:** ~2-3 days. New highlight module, vendored queries, theme mapping, testing per language.

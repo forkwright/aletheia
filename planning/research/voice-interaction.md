@@ -181,9 +181,9 @@ No production-ready TTS model exists in candle today. SpeechT5 and VITS implemen
 
 #### TTS recommendation
 
-**Phase 1:** No TTS. Text responses only. Voice is input-only. This is the simplest path and delivers the core value (hands-free interaction).
+**Phase 1:** No TTS. Text responses only. Voice is input-only. This is the fastest path and delivers the core value (hands-free interaction).
 
-**Phase 2:** Cloud TTS (ElevenLabs or Google) behind `voice-tts-cloud` feature gate. Best quality, simplest integration.
+**Phase 2:** Cloud TTS (ElevenLabs or Google) behind `voice-tts-cloud` feature gate. Best quality, least integration work.
 
 **Phase 3:** Local Piper TTS behind `voice-tts-piper` feature gate when/if pure-Rust ONNX alternatives mature, or accept the C++ dependency behind a gate.
 
@@ -219,7 +219,7 @@ VAD determines when the user starts and stops speaking. Critical for turn-taking
 | Chunked streaming (5s windows) | ~2s rolling | Medium | Good (limited context) |
 | True streaming (token-by-token) | ~500ms | High | Lower (no future context) |
 
-**Recommendation:** Start with batch. VAD detects end-of-turn, buffers the full utterance, sends to Whisper in one shot. This is simplest and most accurate. Move to chunked streaming only if latency is unacceptable in practice.
+**Recommendation:** Start with batch. VAD detects end-of-turn, buffers the full utterance, sends to Whisper in one shot. This requires the least code and is most accurate. Move to chunked streaming only if latency is unacceptable in practice.
 
 **Batch pipeline:**
 

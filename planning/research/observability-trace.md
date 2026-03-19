@@ -187,7 +187,7 @@ To increase verbosity for a running server:
 - Target specific crates: `RUST_LOG=aletheia_nous=trace,aletheia_hermeneus=debug,warn`
 - File output can be set independently: `logging.level = "aletheia=debug,warn"` in TOML
 
-To increase verbosity without restart: not currently supported (requires process restart).
+To increase verbosity without restart: not supported (requires process restart).
 
 ### 10. metrics (Prometheus)
 
