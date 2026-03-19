@@ -12,7 +12,9 @@ use tracing::{Instrument, info, warn};
 
 use aletheia_agora::types::ChannelProvider;
 use aletheia_koina::secret::SecretString;
-use aletheia_mneme::embedding::{EmbeddingConfig, EmbeddingProvider, create_provider};
+use aletheia_mneme::embedding::{
+    DegradedEmbeddingProvider, EmbeddingConfig, EmbeddingProvider, create_provider,
+};
 use aletheia_mneme::store::SessionStore;
 use aletheia_nous::config::{NousConfig, PipelineConfig};
 use aletheia_nous::cross::CrossNousRouter;
@@ -168,21 +170,35 @@ pub(crate) async fn run(args: Args) -> Result<()> {
     let tool_registry = Arc::new(tool_registry);
     let oikos_arc = Arc::new(oikos);
 
-    // Embedding provider: drives recall query embedding
+    // Embedding provider: drives recall query embedding.
+    // WHY: start in degraded mode rather than refusing to start when the embedding model
+    // fails to load (e.g., missing model files or disabled candle feature).  Recall and
+    // vector search will be unavailable but basic conversation continues (#1451).
     let embedding_config = EmbeddingConfig {
         provider: config.embedding.provider.clone(),
         model: config.embedding.model.clone(),
         dimension: Some(config.embedding.dimension),
         api_key: None,
     };
-    let embedding_provider: Arc<dyn EmbeddingProvider> = Arc::from(
-        create_provider(&embedding_config).context("failed to create embedding provider")?,
-    );
-    info!(
-        provider = %config.embedding.provider,
-        dim = config.embedding.dimension,
-        "embedding provider created"
-    );
+    let embedding_provider: Arc<dyn EmbeddingProvider> = match create_provider(&embedding_config) {
+        Ok(p) => {
+            info!(
+                provider = %config.embedding.provider,
+                dim = config.embedding.dimension,
+                "embedding provider created"
+            );
+            Arc::from(p)
+        }
+        Err(e) => {
+            warn!(
+                error = %e,
+                provider = %config.embedding.provider,
+                "embedding provider failed to load — starting in degraded mode \
+                 (recall and vector search unavailable)"
+            );
+            Arc::new(DegradedEmbeddingProvider::new(config.embedding.dimension))
+        }
+    };
 
     // Cross-nous router for inter-agent messaging
     let cross_router = Arc::new(CrossNousRouter::default());
@@ -577,6 +593,22 @@ pub(crate) async fn run(args: Args) -> Result<()> {
 
     // Step 4: drain nous actors: cancel tokens fire, messages drain, WAL flushed.
     state.nous_manager.drain(shutdown_timeout).await;
+
+    // Step 4b: flush the SQLite session-store WAL explicitly (#1723).
+    // SQLite auto-checkpoints on connection close, but an explicit TRUNCATE
+    // checkpoint here ensures all writes land in the main DB file before exit.
+    match state.session_store.try_lock() {
+        Ok(store) => {
+            if let Err(e) = store.checkpoint_wal() {
+                warn!(error = %e, "SQLite WAL checkpoint on shutdown failed");
+            } else {
+                info!("SQLite WAL checkpoint complete");
+            }
+        }
+        Err(_) => {
+            warn!("session store lock held at shutdown, WAL checkpoint skipped");
+        }
+    }
 
     // Step 5: AppState and session store drop here as `state` goes out of scope.
     drop(state);
