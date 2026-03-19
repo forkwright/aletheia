@@ -15,6 +15,7 @@ use ordered_float::OrderedFloat;
 use priority_queue::PriorityQueue;
 
 use super::types::{DEFAULT_VECTOR_CACHE_CAPACITY, VectorCache};
+use super::visited_pool::VisitedPool;
 use crate::engine::data::expr::{Bytecode, eval_bytecode_pred};
 use crate::engine::data::program::HnswSearch;
 use crate::engine::data::relation::VecElementType;
@@ -102,8 +103,9 @@ impl<'a> SessionTx<'a> {
             let ep_distance = vec_cache.v_dist(&q, &ep_key)?;
             let mut found_nn = PriorityQueue::new();
             found_nn.push(ep_key, OrderedFloat(ep_distance));
+            let pool = VisitedPool::with_defaults();
             for current_level in bottom_level..0 {
-                self.hnsw_search_level(
+                self.hnsw_search_level_pooled(
                     &q,
                     1,
                     current_level,
@@ -111,9 +113,10 @@ impl<'a> SessionTx<'a> {
                     &config.idx_handle,
                     &mut found_nn,
                     &mut vec_cache,
+                    Some(&pool),
                 )?;
             }
-            self.hnsw_search_level(
+            self.hnsw_search_level_pooled(
                 &q,
                 config.ef,
                 0,
@@ -121,6 +124,7 @@ impl<'a> SessionTx<'a> {
                 &config.idx_handle,
                 &mut found_nn,
                 &mut vec_cache,
+                Some(&pool),
             )?;
             if found_nn.is_empty() {
                 return Ok(vec![]);

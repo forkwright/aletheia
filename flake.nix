@@ -91,7 +91,7 @@
         default = aletheia-desktop;
       };
 
-      devShells.${system}.desktop = craneLib.devShell {
+      devShells.${system}.default = craneLib.devShell {
         # Inherit build inputs so native libraries are available.
         inputsFrom = [ aletheia-desktop ];
 
@@ -114,7 +114,3 @@
         LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath wgpuNativeDeps;
       };
 
-      # Expose default dev shell for `nix develop` without a fragment.
-      devShells.${system}.default = self.devShells.${system}.desktop;
-    };
-}

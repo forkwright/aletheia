@@ -242,6 +242,43 @@ pub(crate) async fn execute_builtin(
                 output: Some(summary.join(", ")),
             })
         }
+        BuiltinTask::ChironAudit => {
+            if let Some(bridge) = bridge {
+                let prompt = "Run chiron self-audit: execute all registered prosoche checks.";
+                match bridge
+                    .send_prompt(nous_id, "daemon:chiron-audit", prompt)
+                    .await
+                {
+                    Ok(result) => {
+                        tracing::info!(
+                            nous_id = %nous_id,
+                            success = result.success,
+                            "chiron audit dispatch succeeded"
+                        );
+                        Ok(ExecutionResult {
+                            success: true,
+                            output: Some("dispatched".to_owned()),
+                        })
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            nous_id = %nous_id,
+                            error = %e,
+                            "chiron audit dispatch failed"
+                        );
+                        Ok(ExecutionResult {
+                            success: false,
+                            output: Some(format!("dispatch failed: {e}")),
+                        })
+                    }
+                }
+            } else {
+                Ok(ExecutionResult {
+                    success: false,
+                    output: Some("no bridge configured".to_owned()),
+                })
+            }
+        }
         BuiltinTask::RetentionExecution => {
             let Some(executor) = retention_executor else {
                 tracing::info!("retention execution skipped — no executor configured");

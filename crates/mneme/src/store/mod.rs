@@ -28,12 +28,37 @@ use crate::types::{
     Message, Role, Session, SessionMetrics, SessionOrigin, SessionStatus, SessionType,
 };
 
+/// Hook called at connection lifecycle boundaries.
+///
+/// Implement this trait to observe or instrument connection acquire and release
+/// events. Both methods receive a shared reference, so implementations must
+/// use interior mutability (e.g. `Mutex`, `AtomicU64`) for any mutable state.
+///
+/// # Thread safety
+///
+/// Implementations must be `Send + Sync` because `SessionStore` is `Send` and
+/// the hook is held for the store's lifetime, which may span thread boundaries.
+pub trait ConnectionHook: Send + Sync {
+    /// Called immediately before the connection is made available for use.
+    ///
+    /// Invoked once per [`SessionStore`] instance, after the underlying
+    /// `SQLite` connection has been successfully opened and configured.
+    fn before_acquire(&self);
+
+    /// Called when the connection is released.
+    ///
+    /// Invoked once, during [`SessionStore`] drop. Any clean-up or final
+    /// metrics flushing should happen here.
+    fn after_release(&self);
+}
+
 /// The session store: wraps a `SQLite` connection with optional degraded mode.
 pub struct SessionStore {
     conn: Connection,
     disk_monitor: Option<DiskSpaceMonitor>,
     mode: StoreMode,
     path: Option<PathBuf>,
+    hook: Option<Box<dyn ConnectionHook>>,
 }
 
 impl SessionStore {
@@ -87,6 +112,7 @@ impl SessionStore {
                         disk_monitor: None,
                         mode,
                         path: Some(path.to_path_buf()),
+                        hook: None,
                     });
                 }
                 Err(e) => {
@@ -106,7 +132,24 @@ impl SessionStore {
             disk_monitor: None,
             mode: StoreMode::Normal,
             path: Some(path.to_path_buf()),
+            hook: None,
         })
+    }
+
+    /// Open a session store with an attached connection lifecycle hook.
+    ///
+    /// [`ConnectionHook::before_acquire`] is called before the connection is
+    /// opened. [`ConnectionHook::after_release`] is called when the store is
+    /// dropped.
+    ///
+    /// # Errors
+    /// Returns an error if the database cannot be opened or initialized.
+    #[instrument(skip(path, hook))]
+    pub fn open_with_hook(path: &Path, hook: Box<dyn ConnectionHook>) -> Result<Self> {
+        hook.before_acquire();
+        let mut store = Self::open_with_recovery(path, &RecoveryConfig::default())?;
+        store.hook = Some(hook);
+        Ok(store)
     }
 
     /// Open an in-memory session store (for testing).
@@ -124,7 +167,24 @@ impl SessionStore {
             disk_monitor: None,
             mode: StoreMode::Normal,
             path: None,
+            hook: None,
         })
+    }
+
+    /// Open an in-memory session store with an attached connection lifecycle hook.
+    ///
+    /// [`ConnectionHook::before_acquire`] is called before the connection is
+    /// opened. [`ConnectionHook::after_release`] is called when the store is
+    /// dropped.
+    ///
+    /// # Errors
+    /// Returns an error if initialization fails.
+    #[instrument(skip(hook))]
+    pub fn open_in_memory_with_hook(hook: Box<dyn ConnectionHook>) -> Result<Self> {
+        hook.before_acquire();
+        let mut store = Self::open_in_memory()?;
+        store.hook = Some(hook);
+        Ok(store)
     }
 
     /// Attach a disk space monitor for pre-write checks.
@@ -216,6 +276,14 @@ impl SessionStore {
             .build());
         }
         Ok(())
+    }
+}
+
+impl Drop for SessionStore {
+    fn drop(&mut self) {
+        if let Some(ref hook) = self.hook {
+            hook.after_release();
+        }
     }
 }
 
