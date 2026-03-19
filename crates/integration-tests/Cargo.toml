@@ -20,7 +20,7 @@ knowledge-store = ["aletheia-nous/knowledge-store", "aletheia-pylon/knowledge-st
 aletheia-dokimion = { path = "../eval" }
 aletheia-koina = { path = "../koina" }
 aletheia-taxis = { path = "../taxis" }
-aletheia-mneme = { path = "../mneme", default-features = false }
+aletheia-mneme = { path = "../mneme", default-features = false, features = ["test-support"] }
 aletheia-hermeneus = { path = "../hermeneus", features = ["test-utils"] }
 aletheia-nous = { path = "../nous" }
 aletheia-organon = { path = "../organon" }
