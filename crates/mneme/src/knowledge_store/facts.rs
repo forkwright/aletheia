@@ -631,6 +631,64 @@ impl KnowledgeStore {
             .context(crate::error::JoinSnafu)?
     }
 
+    /// Update the confidence of a fact in-place.
+    ///
+    /// Performs a read-modify-write cycle: reads all temporal records for the
+    /// fact, overwrites the `confidence` field on each, and re-perserts them.
+    ///
+    /// Returns the updated fact. Errors if no fact with the given ID exists or
+    /// if `confidence` is outside `[0.0, 1.0]`.
+    #[instrument(skip(self))]
+    pub fn update_confidence(
+        &self,
+        fact_id: &crate::id::FactId,
+        confidence: f64,
+    ) -> crate::error::Result<crate::knowledge::Fact> {
+        use snafu::ensure;
+
+        ensure!(
+            (0.0..=1.0).contains(&confidence),
+            crate::error::InvalidConfidenceSnafu { value: confidence }
+        );
+
+        let existing = self.read_facts_by_id(fact_id.as_str())?;
+        if existing.is_empty() {
+            return Err(crate::error::FactNotFoundSnafu {
+                id: fact_id.as_str(),
+            }
+            .build());
+        }
+
+        // WHY: CozoDB in-memory read-modify-write: read the record, change the
+        // field in Rust, then upsert it back. Same pattern as increment_access.
+        for mut fact in existing {
+            fact.confidence = confidence;
+            self.insert_fact(&fact)?;
+        }
+
+        let updated = self.read_facts_by_id(fact_id.as_str())?;
+        updated.into_iter().next().ok_or_else(|| {
+            crate::error::FactNotFoundSnafu {
+                id: fact_id.as_str(),
+            }
+            .build()
+        })
+    }
+
+    /// Async `update_confidence`: wraps sync call in `spawn_blocking`.
+    #[instrument(skip(self))]
+    pub async fn update_confidence_async(
+        self: &std::sync::Arc<Self>,
+        fact_id: crate::id::FactId,
+        confidence: f64,
+    ) -> crate::error::Result<crate::knowledge::Fact> {
+        use snafu::ResultExt;
+        let this = std::sync::Arc::clone(self);
+        tokio::task::spawn_blocking(move || this.update_confidence(&fact_id, confidence))
+            .await
+            .context(crate::error::JoinSnafu)?
+    }
+
     /// Async `insert_fact`: wraps sync call in `spawn_blocking`.
     #[instrument(skip(self, fact), fields(fact_id = %fact.id))]
     pub async fn insert_fact_async(
