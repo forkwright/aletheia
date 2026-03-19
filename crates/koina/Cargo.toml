@@ -21,6 +21,7 @@ snafu = { workspace = true }
 zeroize = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
 ulid = { workspace = true }
 uuid = { workspace = true }
 

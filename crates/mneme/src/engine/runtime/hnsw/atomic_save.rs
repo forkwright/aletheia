@@ -93,6 +93,12 @@ fn write_temp(path: &Path, data: &[u8]) -> Result<()> {
         File::create(path).map_err(|e| save_err(format!("create {}: {e}", path.display())))?;
     file.write_all(data)
         .map_err(|e| save_err(format!("write {}: {e}", path.display())))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+            .map_err(|e| save_err(format!("chmod {}: {e}", path.display())))?;
+    }
     Ok(())
 }
 

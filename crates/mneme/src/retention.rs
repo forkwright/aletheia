@@ -180,6 +180,12 @@ fn archive_sessions(conn: &Connection, session_ids: &[String], archive_dir: &Pat
         let path = archive_dir.join(format!("{session_id}.json"));
         let json = serde_json::to_string_pretty(&archive).context(error::StoredJsonSnafu)?;
         std::fs::write(&path, json).context(error::IoSnafu { path: path.clone() })?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+                .context(error::IoSnafu { path: path.clone() })?;
+        }
         debug!(session_id, path = %path.display(), "archived session");
     }
 

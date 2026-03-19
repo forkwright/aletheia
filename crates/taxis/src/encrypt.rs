@@ -334,6 +334,15 @@ pub fn encrypt_config_file(toml_path: &Path, master_key: &[u8; KEY_LEN]) -> Resu
         std::fs::write(&tmp_path, &encrypted_toml).context(error::WriteConfigSnafu {
             path: tmp_path.clone(),
         })?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o600)).context(
+                error::WriteConfigSnafu {
+                    path: tmp_path.clone(),
+                },
+            )?;
+        }
         std::fs::rename(&tmp_path, toml_path).context(error::WriteConfigSnafu {
             path: toml_path.to_path_buf(),
         })?;

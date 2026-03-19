@@ -141,6 +141,11 @@ fn check_data_writable(data_dir: &Path, failures: &mut Vec<String>) {
     let probe = data_dir.join(".aletheia-preflight-probe");
     match std::fs::write(&probe, b"ok") {
         Ok(()) => {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(&probe, std::fs::Permissions::from_mode(0o600));
+            }
             let _ = std::fs::remove_file(&probe);
         }
         Err(e) => {

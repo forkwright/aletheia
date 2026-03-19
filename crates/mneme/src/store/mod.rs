@@ -84,8 +84,10 @@ impl SessionStore {
         let conn = Connection::open(path).context(error::DatabaseSnafu)?;
 
         // PERF: WAL mode + NORMAL synchronous for write throughput without sacrificing crash safety.
+        // WHY: busy_timeout prevents SQLITE_BUSY errors under concurrent writes.
         conn.execute_batch(
-            "PRAGMA journal_mode = WAL;
+            "PRAGMA busy_timeout = 5000;
+             PRAGMA journal_mode = WAL;
              PRAGMA synchronous = NORMAL;
              PRAGMA foreign_keys = ON;",
         )
