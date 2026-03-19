@@ -444,8 +444,6 @@ impl AnthropicProvider {
             return request.clone();
         }
 
-        const CC_IDENTITY: &str = "You are Claude Code, Anthropic's official CLI for Claude.";
-
         // WHY: Anthropic requires the EXACT CC identity as the system field for
         // OAuth tokens to access Sonnet/Opus. Any additional content in the system
         // field causes 400. The actual bootstrap prompt moves into messages as
@@ -465,7 +463,7 @@ impl AnthropicProvider {
                 },
             );
         }
-        req.system = Some(CC_IDENTITY.to_owned());
+        req.system = Some("You are Claude Code, Anthropic's official CLI for Claude.".to_owned());
         req.cache_system = false;
         req
     }

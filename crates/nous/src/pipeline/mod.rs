@@ -9,6 +9,7 @@ use tokio::sync::mpsc;
 use tracing::{info_span, instrument};
 
 use aletheia_hermeneus::provider::ProviderRegistry;
+use aletheia_koina::event::EventEmitter;
 use aletheia_mneme::embedding::EmbeddingProvider;
 use aletheia_mneme::store::SessionStore;
 use aletheia_organon::registry::ToolRegistry;
@@ -367,10 +368,17 @@ pub fn check_guard(session: &SessionState, config: &NousConfig) -> GuardResult {
 /// Run the full pipeline for one turn.
 ///
 /// Stages: context → recall → history → guard → execute → finalize.
-/// Resolve (stage 4) is future work.
+///
+/// The [`EventEmitter`] couples metrics and logs: each stage emits a single
+/// typed event that simultaneously records a metric and produces a structured
+/// log line. Pass `None` to use a default log-only emitter.
 #[expect(
     clippy::too_many_arguments,
     reason = "pipeline threading requires all dependencies until config struct refactor"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "pipeline orchestration is sequential, splitting adds indirection"
 )]
 pub async fn run_pipeline(
     input: PipelineInput,
@@ -386,7 +394,11 @@ pub async fn run_pipeline(
     session_store: Option<&Mutex<SessionStore>>,
     extra_bootstrap: Vec<BootstrapSection>,
     stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
+    emitter: Option<&EventEmitter>,
 ) -> error::Result<TurnResult> {
+    let default_emitter = EventEmitter::new();
+    let emitter = emitter.unwrap_or(&default_emitter);
+
     let pipeline_start = Instant::now();
     let total_timeout = if pipeline_config.stage_budget.total_secs > 0 {
         Some(Duration::from_secs(u64::from(
@@ -408,7 +420,15 @@ pub async fn run_pipeline(
 
     let mut ctx = PipelineContext::default();
 
-    run_context_stage(oikos, config, pipeline_config, &mut ctx, extra_bootstrap).await?;
+    run_context_stage(
+        oikos,
+        config,
+        pipeline_config,
+        &mut ctx,
+        extra_bootstrap,
+        emitter,
+    )
+    .await?;
     stages_completed += 1;
 
     run_recall_stage(
@@ -419,14 +439,15 @@ pub async fn run_pipeline(
         embedding_provider,
         vector_search,
         text_search,
+        emitter,
     )
     .await;
     stages_completed += 1;
 
-    run_history_stage(config, &mut ctx, &input, session_store).await?;
+    run_history_stage(config, &mut ctx, &input, session_store, emitter).await?;
     stages_completed += 1;
 
-    run_guard_stage(&input.session, config)?;
+    run_guard_stage(&input.session, config, emitter)?;
     stages_completed += 1;
 
     let result = run_execute_stage(
@@ -440,11 +461,12 @@ pub async fn run_pipeline(
         stream_tx,
         pipeline_start,
         total_timeout,
+        emitter,
     )
     .await?;
     stages_completed += 1;
 
-    run_finalize_stage(config, &input, &result, session_store).await;
+    run_finalize_stage(config, &input, &result, session_store, emitter).await;
     stages_completed += 1;
 
     if !result.tool_calls.is_empty() {
@@ -469,25 +491,29 @@ pub async fn run_pipeline(
     )]
     pipeline_span.record("pipeline.tool_calls", result.tool_calls.len() as u64);
 
+    // Single event emission replaces separate metrics::record_turn + tracing::info.
     crate::metrics::record_turn(&config.id);
-
     let duration_ms = u64::try_from(pipeline_start.elapsed().as_millis()).unwrap_or(u64::MAX);
     #[expect(
         clippy::as_conversions,
         reason = "usize→u64: tool call count fits in u64"
     )]
     let tool_calls_count = result.tool_calls.len() as u64;
-    tracing::info!(
-        input_tokens = result.usage.input_tokens,
-        output_tokens = result.usage.output_tokens,
-        tool_calls_count,
+    emitter.emit(&events::TurnCompleted {
+        nous_id: config.id.clone(),
+        model: config.model.clone(),
         duration_ms,
-        model = %config.model,
-        "turn_completed"
-    );
+        input_tokens: result.usage.input_tokens,
+        output_tokens: result.usage.output_tokens,
+        tool_calls: tool_calls_count,
+        stages_completed,
+    });
 
     Ok(result)
 }
+
+/// Typed pipeline events for the internal event system.
+pub(crate) mod events;
 
 /// Context stage: assemble bootstrap and system prompt.
 mod stages;
