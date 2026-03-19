@@ -181,6 +181,10 @@ fn resolve_single_section(
     })
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: vec indices are valid after asserting len"
+)]
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {

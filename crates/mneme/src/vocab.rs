@@ -115,11 +115,19 @@ fn is_valid_upper_snake_case(s: &str) -> bool {
 
     let bytes = s.as_bytes();
 
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "index 0 and len-1 are valid: s.is_empty() check above guarantees non-empty"
+    )]
     // Must start with an uppercase letter
     if !bytes[0].is_ascii_uppercase() {
         return false;
     }
 
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "index len-1 is valid: s.is_empty() check above guarantees non-empty"
+    )]
     // Must end with a letter or digit, not underscore
     if bytes[bytes.len() - 1] == b'_' {
         return false;

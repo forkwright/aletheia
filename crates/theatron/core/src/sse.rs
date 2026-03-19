@@ -141,6 +141,10 @@ where
                     clippy::string_slice,
                     reason = "indices from find() on ASCII delimiters"
                 )]
+                #[expect(
+                    clippy::indexing_slicing,
+                    reason = "pos > 0 is checked in the condition, so pos - 1 is a valid byte index"
+                )]
                 let line = if pos > 0 && this.buf.as_bytes()[pos - 1] == b'\r' {
                     this.buf[..pos - 1].to_string()
                 } else {
@@ -190,6 +194,10 @@ where
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: indices are asserted valid by len checks above each access"
+)]
 mod tests {
     use super::*;
 
@@ -217,6 +225,10 @@ mod tests {
         fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
             let this = self.get_mut();
             if this.index < this.chunks.len() {
+                #[expect(
+                    clippy::indexing_slicing,
+                    reason = "bounds checked by the if-guard above"
+                )]
                 let chunk = this.chunks[this.index].clone();
                 this.index += 1;
                 Poll::Ready(Some(Ok(chunk)))

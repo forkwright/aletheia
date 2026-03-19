@@ -1,3 +1,7 @@
+#![expect(
+    clippy::indexing_slicing,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::engine::data::expr::{Bytecode, Expr, compute_bounds, eval_bytecode_pred};

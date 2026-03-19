@@ -37,6 +37,10 @@ impl ToolExecutor for MemorySearchExecutor {
             };
 
             let query = extract_str(&input.arguments, "query", &input.name)?;
+            #[expect(
+                clippy::as_conversions,
+                reason = "u64→usize: limit is capped at 100, fits in usize on all platforms"
+            )]
             let limit = extract_opt_u64(&input.arguments, "limit")
                 .unwrap_or(10)
                 .min(100) as usize;
@@ -184,7 +188,8 @@ impl ToolExecutor for MemoryAuditExecutor {
             let since = input.arguments.get("since").and_then(|v| v.as_str());
             #[expect(
                 clippy::cast_possible_truncation,
-                reason = "audit limit from user input is small"
+                clippy::as_conversions,
+                reason = "u64→usize: audit limit from user input is small"
             )]
             let limit = extract_opt_u64(&input.arguments, "limit").unwrap_or(20) as usize;
 

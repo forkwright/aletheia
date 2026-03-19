@@ -277,6 +277,10 @@ pub(crate) fn deep_merge(base: &mut Value, patch: Value) {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: vec/JSON indices valid after len assertions"
+)]
 mod tests {
     use super::*;
     use serde_json::json;

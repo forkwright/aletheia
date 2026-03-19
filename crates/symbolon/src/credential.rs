@@ -17,6 +17,10 @@ use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
 /// Return current time as milliseconds since UNIX epoch, warning if the clock
 /// is before epoch rather than silently returning zero.
 #[expect(clippy::cast_possible_truncation, reason = "ms timestamps fit in u64")]
+#[expect(
+    clippy::as_conversions,
+    reason = "u128→u64: ms timestamps fit in u64 for the next 500M years"
+)]
 fn unix_epoch_ms() -> u64 {
     SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
@@ -130,6 +134,10 @@ impl CredentialFile {
         clippy::cast_possible_wrap,
         reason = "ms timestamps fit in i64 until year 292M"
     )]
+    #[expect(
+        clippy::as_conversions,
+        reason = "u64→i64: ms timestamps fit in i64 until year 292M"
+    )]
     pub fn seconds_remaining(&self) -> Option<i64> {
         let expires_at_ms = self.expires_at?;
         let now_ms = unix_epoch_ms();
@@ -139,6 +147,10 @@ impl CredentialFile {
     /// Whether the token needs refresh (expired or within threshold).
     #[must_use]
     #[expect(clippy::cast_possible_wrap, reason = "threshold constant fits in i64")]
+    #[expect(
+        clippy::as_conversions,
+        reason = "usize→i64: constant is small, fits in i64"
+    )]
     #[expect(
         dead_code,
         reason = "refresh logic inlined in refresh_loop; kept as public API"
@@ -199,6 +211,11 @@ fn base64url_decode(s: &str) -> Option<Vec<u8>> {
 
     let bytes = s.as_bytes();
     let end = bytes.iter().rposition(|&b| b != b'=').map_or(0, |i| i + 1);
+    // end is rposition()+1 which is <= bytes.len(), so this slice is valid
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "end <= bytes.len() by construction from rposition"
+    )]
     let bytes = &bytes[..end];
 
     let mut out = Vec::with_capacity(bytes.len() * 6 / 8 + 1);
@@ -215,6 +232,7 @@ fn base64url_decode(s: &str) -> Option<Vec<u8>> {
             // whose lowest 8 bits are the decoded byte; upper bits are stripped.
             #[expect(
                 clippy::cast_possible_truncation,
+                clippy::as_conversions,
                 reason = "bits is 0-7 so buf >> bits fits in u8; upper bits are overflow from accumulation"
             )]
             out.push((buf >> bits) as u8);
@@ -557,8 +575,16 @@ async fn refresh_loop(
             };
             let now_ms = unix_epoch_ms();
             #[expect(clippy::cast_possible_wrap, reason = "ms timestamps fit in i64")]
+            #[expect(
+                clippy::as_conversions,
+                reason = "u64→i64: ms timestamps fit in i64 until year 292M"
+            )]
             let remaining_secs = (s.expires_at_ms as i64 - now_ms as i64) / 1000;
             #[expect(clippy::cast_possible_wrap, reason = "threshold constant fits in i64")]
+            #[expect(
+                clippy::as_conversions,
+                reason = "usize→i64: constant is small, fits in i64"
+            )]
             let needs = remaining_secs < REFRESH_THRESHOLD_SECS as i64;
             (
                 s.refresh_token.expose_secret().to_owned(),

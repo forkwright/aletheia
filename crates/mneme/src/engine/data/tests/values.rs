@@ -1,5 +1,9 @@
 //! Tests for core value type.
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
 use std::collections::{BTreeMap, HashMap};
 use std::mem::size_of;
 

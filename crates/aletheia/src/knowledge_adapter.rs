@@ -23,6 +23,10 @@ trait BoxErr<T> {
 
 impl<T, E: std::error::Error + Send + Sync + 'static> BoxErr<T> for Result<T, E> {
     fn box_err(self) -> Result<T, Box<dyn std::error::Error + Send + Sync>> {
+        #[expect(
+            clippy::as_conversions,
+            reason = "coercion to Box<dyn Error + Send + Sync> trait object"
+        )]
         self.map_err(|e| Box::new(e) as _)
     }
 }

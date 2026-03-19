@@ -1,6 +1,11 @@
 //! Tests for import validation, dry-run, knowledge import, and error handling.
 #![expect(clippy::unwrap_used, reason = "test assertions")]
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
 use super::super::*;
 use crate::export::{ExportOptions, export_agent};
 use crate::portability::*;

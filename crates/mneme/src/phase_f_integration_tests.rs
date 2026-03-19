@@ -13,6 +13,10 @@
     clippy::items_after_statements,
     reason = "scoped use imports in test functions"
 )]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
 
 use crate::knowledge::{EpistemicTier, FactType};
 

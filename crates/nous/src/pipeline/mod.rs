@@ -144,6 +144,10 @@ impl LoopDetector {
         }
 
         let n = self.history.len();
+        #[expect(
+            clippy::as_conversions,
+            reason = "u32→usize: threshold is a small constant, fits in usize"
+        )]
         let t = self.threshold as usize;
 
         let recent = self.history.iter().rev().take(t);
@@ -328,7 +332,8 @@ pub async fn assemble_context_with_extra(
     ctx.system_prompt = Some(result.system_prompt);
     #[expect(
         clippy::cast_possible_wrap,
-        reason = "budget fits in i64 for practical context windows"
+        clippy::as_conversions,
+        reason = "u64→i64: budget fits in i64 for practical context windows"
     )]
     {
         ctx.remaining_tokens = budget.remaining() as i64;
@@ -444,7 +449,8 @@ pub async fn run_pipeline(
 
     #[expect(
         clippy::cast_possible_truncation,
-        reason = "pipeline duration fits in u64"
+        clippy::as_conversions,
+        reason = "u128→u64: pipeline duration fits in u64; usize→u64 for tool call count"
     )]
     {
         pipeline_span.record(
@@ -453,15 +459,24 @@ pub async fn run_pipeline(
         );
     }
     pipeline_span.record("pipeline.stages_completed", stages_completed);
+    #[expect(
+        clippy::as_conversions,
+        reason = "usize→u64: tool call count fits in u64"
+    )]
     pipeline_span.record("pipeline.tool_calls", result.tool_calls.len() as u64);
 
     crate::metrics::record_turn(&config.id);
 
     let duration_ms = u64::try_from(pipeline_start.elapsed().as_millis()).unwrap_or(u64::MAX);
+    #[expect(
+        clippy::as_conversions,
+        reason = "usize→u64: tool call count fits in u64"
+    )]
+    let tool_calls_count = result.tool_calls.len() as u64;
     tracing::info!(
         input_tokens = result.usage.input_tokens,
         output_tokens = result.usage.output_tokens,
-        tool_calls_count = result.tool_calls.len() as u64,
+        tool_calls_count,
         duration_ms,
         model = %config.model,
         "turn_completed"

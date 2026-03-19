@@ -2,6 +2,11 @@
 //!
 //! Implements consolidation operations on `KnowledgeStore`: candidate
 //! identification, LLM-driven consolidation execution, and audit trail.
+#![expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
 
 use std::collections::BTreeMap;
 use tracing::instrument;

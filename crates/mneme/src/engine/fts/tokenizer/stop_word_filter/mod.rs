@@ -1,4 +1,11 @@
 //! Stop word removal filter with multi-language support.
+#![cfg_attr(
+    test,
+    expect(
+        clippy::indexing_slicing,
+        reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+    )
+)]
 #[rustfmt::skip]
 mod stopwords;
 

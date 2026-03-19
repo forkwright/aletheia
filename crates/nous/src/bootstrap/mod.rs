@@ -362,6 +362,10 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
         let mut tokens_used: u64 = 0;
         let mut kept: Vec<usize> = Vec::new();
 
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "i comes from 0..formatted.len(), so index is always in bounds"
+        )]
         for i in (0..formatted.len()).rev() {
             let part_tokens = self.estimator.estimate(&formatted[i]);
             if tokens_used + part_tokens > max_tokens {
@@ -381,6 +385,10 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
 
         // WHY: prepend marker so callers can see that oldest sections were dropped
         let mut result = String::from("... [truncated for token budget] ...");
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "kept only contains indices from 0..formatted.len(), so all are valid"
+        )]
         for i in kept {
             result.push_str(&formatted[i]);
         }

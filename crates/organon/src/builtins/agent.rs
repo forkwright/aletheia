@@ -285,6 +285,10 @@ fn sessions_dispatch_def() -> ToolDef {
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: vec/JSON indices valid after asserting len"
+)]
 mod tests {
     use std::collections::HashSet;
     use std::future::Future;

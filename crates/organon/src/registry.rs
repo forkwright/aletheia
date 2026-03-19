@@ -98,7 +98,11 @@ impl ToolRegistry {
         let _guard = span.enter();
         let start = Instant::now();
         let result = tool.executor.execute(input, ctx).await;
-        #[expect(clippy::cast_possible_truncation, reason = "tool duration fits in u64")]
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::as_conversions,
+            reason = "u128→u64: tool duration fits in u64"
+        )]
         let duration_ms = start.elapsed().as_millis() as u64;
         span.record("tool.duration_ms", duration_ms);
         match &result {
@@ -183,6 +187,10 @@ impl ToolRegistry {
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: vec indices valid after asserting len"
+)]
 mod tests {
     use std::sync::{Arc, Mutex, RwLock};
 

@@ -490,7 +490,8 @@ async fn run_background_distillation(
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
-        reason = "distillation count is small non-negative"
+        clippy::as_conversions,
+        reason = "i64→u32: distillation count is small non-negative"
     )]
     let distill_count = session.metrics.distillation_count as u32;
     let result = match engine

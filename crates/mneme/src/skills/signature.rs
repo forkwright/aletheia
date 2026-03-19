@@ -69,7 +69,13 @@ pub fn signature_similarity(a: &SequenceSignature, b: &SequenceSignature) -> f64
         return 1.0;
     }
     let lcs = lcs_length(&a.normalized, &b.normalized);
-    lcs as f64 / max_len as f64
+    #[expect(
+        clippy::as_conversions,
+        reason = "usize→f64: string lengths are small; precision loss is negligible"
+    )]
+    {
+        lcs as f64 / max_len as f64
+    }
 }
 
 /// Collapse consecutive duplicate elements.
@@ -91,6 +97,10 @@ fn hash_tool_names(names: &[String]) -> u64 {
 }
 
 /// Classic DP Longest Common Subsequence length.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "DP table: all indices are bounded by loop ranges 1..=m and 1..=n"
+)]
 fn lcs_length(a: &[String], b: &[String]) -> usize {
     let m = a.len();
     let n = b.len();

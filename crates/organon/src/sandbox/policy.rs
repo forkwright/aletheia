@@ -87,6 +87,10 @@ impl SandboxPolicy {
         // WHY: AF_INET=2, AF_INET6=10 on Linux. Blocking socket() for
         // these families prevents all IPv4/IPv6 socket creation. Programs
         // get EPERM immediately instead of hanging on connect().
+        #[expect(
+            clippy::as_conversions,
+            reason = "libc::AF_INET is i32; seccomp API requires u64"
+        )]
         let block_inet = SeccompCondition::new(
             0,
             SeccompCmpArgLen::Dword,
@@ -95,6 +99,10 @@ impl SandboxPolicy {
         )
         .map_err(|e| std::io::Error::other(format!("seccomp condition failed: {e}")))?;
 
+        #[expect(
+            clippy::as_conversions,
+            reason = "libc::AF_INET6 is i32; seccomp API requires u64"
+        )]
         let block_inet6 = SeccompCondition::new(
             0,
             SeccompCmpArgLen::Dword,
@@ -117,6 +125,10 @@ impl SandboxPolicy {
         let filter = SeccompFilter::new(
             rules,
             SeccompAction::Allow,
+            #[expect(
+                clippy::as_conversions,
+                reason = "libc::EPERM is i32; seccomp API requires u32"
+            )]
             SeccompAction::Errno(libc::EPERM as u32),
             arch,
         )
@@ -258,6 +270,10 @@ impl SandboxPolicy {
         let action = if self.enforcement == SandboxEnforcement::Permissive {
             SeccompAction::Log
         } else {
+            #[expect(
+                clippy::as_conversions,
+                reason = "libc::EPERM is i32; seccomp API requires u32"
+            )]
             SeccompAction::Errno(libc::EPERM as u32)
         };
 

@@ -194,6 +194,10 @@ pub(crate) async fn run(args: Args) -> Result<()> {
     let (cross_nous, messenger, note_store, blackboard_store, spawn, planning) = {
         let cross_nous: Arc<dyn aletheia_organon::types::CrossNousService> =
             Arc::new(tool_adapters::CrossNousAdapter(Arc::clone(&cross_router)));
+        #[expect(
+            clippy::as_conversions,
+            reason = "coercion to dyn trait objects: required by Arc<dyn Trait> type annotations"
+        )]
         let messenger: Option<Arc<dyn aletheia_organon::types::MessageService>> =
             signal_provider.as_ref().map(|p| {
                 Arc::new(tool_adapters::SignalAdapter(
@@ -244,6 +248,10 @@ pub(crate) async fn run(args: Args) -> Result<()> {
     };
     // Wire vector search from KnowledgeStore
     #[cfg(feature = "recall")]
+    #[expect(
+        clippy::as_conversions,
+        reason = "coercion to dyn trait object: required to satisfy Arc<dyn Trait> type annotation"
+    )]
     let vector_search: Option<Arc<dyn aletheia_nous::recall::VectorSearch>> =
         knowledge_store.as_ref().map(|ks| {
             Arc::new(aletheia_nous::recall::KnowledgeVectorSearch::new(
@@ -255,6 +263,10 @@ pub(crate) async fn run(args: Args) -> Result<()> {
 
     // Knowledge search adapter for tool layer
     #[cfg(feature = "recall")]
+    #[expect(
+        clippy::as_conversions,
+        reason = "coercion to dyn trait object: required to satisfy Arc<dyn Trait> type annotation"
+    )]
     let knowledge_search: Option<Arc<dyn aletheia_organon::types::KnowledgeSearchService>> =
         knowledge_store.as_ref().map(|ks| {
             Arc::new(crate::knowledge_adapter::KnowledgeSearchAdapter::new(

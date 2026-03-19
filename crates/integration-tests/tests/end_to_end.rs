@@ -2,6 +2,10 @@
 
 #![expect(clippy::expect_used, reason = "test assertions")]
 #![cfg(feature = "sqlite-tests")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "integration tests: index-based assertions on known-length slices"
+)]
 
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};

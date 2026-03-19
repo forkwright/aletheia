@@ -1,4 +1,8 @@
 //! Transcendental and utility math operators.
+#![expect(
+    clippy::as_conversions,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
 use std::ops::Rem;
 
 use super::arg;

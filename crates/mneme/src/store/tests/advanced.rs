@@ -1,5 +1,9 @@
 //! Advanced tests for distillation summaries, display names, and message ordering.
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
 use super::super::SessionStore;
 use crate::types::{Role, SessionStatus, UsageRecord};
 

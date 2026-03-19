@@ -1,5 +1,9 @@
 //! Tests for memory-comparable encoding.
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
 use uuid::Uuid;
 
 use crate::engine::data::memcmp::{MemCmpEncoder, decode_bytes};

@@ -1,4 +1,8 @@
 //! Sort operators for query output.
+#![expect(
+    clippy::indexing_slicing,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 

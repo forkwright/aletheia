@@ -1,4 +1,11 @@
 //! Whitespace-based tokenizer.
+#![cfg_attr(
+    test,
+    expect(
+        clippy::indexing_slicing,
+        reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+    )
+)]
 use std::str::CharIndices;
 
 use super::{BoxTokenStream, Token, TokenStream, Tokenizer};

@@ -1,3 +1,7 @@
+#![expect(
+    clippy::as_conversions,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
 use super::marshal::{
     build_hybrid_query, embedding_to_params, extract_str, rows_to_hybrid_results,
     rows_to_recall_results,

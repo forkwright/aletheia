@@ -1,3 +1,7 @@
+#![expect(
+    clippy::as_conversions,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
 use std::fmt::{Debug, Display, Formatter};
 
 use crate::engine::data::relation::StoredRelationMetadata;

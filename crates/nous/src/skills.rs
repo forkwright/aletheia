@@ -168,9 +168,11 @@ impl SkillLoader {
 
         #[expect(
             clippy::cast_possible_truncation,
-            reason = "elapsed_ms fits in u64 for any realistic latency"
+            clippy::as_conversions,
+            reason = "u128→u64: elapsed_ms fits in u64 for any realistic latency; usize→u64 for skill count"
         )]
         span.record("elapsed_ms", start.elapsed().as_millis() as u64);
+        #[expect(clippy::as_conversions, reason = "usize→u64: skill count fits in u64")]
         span.record("skills_found", sections.len() as u64);
 
         sections
@@ -286,7 +288,8 @@ pub(crate) fn rank_skills(candidates: Vec<Fact>) -> Vec<Fact> {
         .map(|(i, fact)| {
             #[expect(
                 clippy::cast_precision_loss,
-                reason = "array index and length for ranking; sub-LSB precision loss is acceptable"
+                clippy::as_conversions,
+                reason = "usize→f64: array index and length for ranking; sub-LSB precision loss is acceptable"
             )]
             let position_score = 1.0 - (i as f64 / total as f64);
             let confidence = fact.confidence.clamp(0.0, 1.0);
@@ -296,7 +299,8 @@ pub(crate) fn rank_skills(candidates: Vec<Fact>) -> Vec<Fact> {
             let reference_secs = fact.last_accessed_at.unwrap_or(fact.valid_from).as_second();
             #[expect(
                 clippy::cast_precision_loss,
-                reason = "age in seconds converted to days; sub-second precision is not needed"
+                clippy::as_conversions,
+                reason = "i64→f64: age in seconds converted to days; sub-second precision is not needed"
             )]
             let age_days = ((now_secs - reference_secs).max(0) as f64) / 86_400.0;
             // NOTE: half-life of 30 days: recency = 2^(-age/30)
@@ -315,6 +319,10 @@ pub(crate) fn rank_skills(candidates: Vec<Fact>) -> Vec<Fact> {
     scored.into_iter().map(|(_, fact)| fact).collect()
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: vec indices are valid after asserting len"
+)]
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 mod tests {

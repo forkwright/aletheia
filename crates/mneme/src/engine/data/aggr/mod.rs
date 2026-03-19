@@ -1,4 +1,9 @@
 //! Aggregation operators for Datalog queries.
+#![expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
 use std::fmt::{Debug, Formatter};
 
 use super::error::*;

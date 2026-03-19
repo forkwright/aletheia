@@ -83,6 +83,12 @@ fn parse_hex_key(hex: &str, path: &Path) -> Result<Option<[u8; KEY_LEN]>> {
 
     let mut key = [0u8; KEY_LEN];
     for (i, chunk) in hex.as_bytes().chunks(2).enumerate() {
+        // chunks(2) on a string of even length always yields 2-element slices;
+        // i is bounded by KEY_LEN because hex.len() == KEY_LEN * 2
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "chunks(2) yields 2-element slices; i < KEY_LEN"
+        )]
         let hi = hex_digit(chunk[0]).ok_or_else(|| {
             error::InvalidMasterKeySnafu {
                 path: path.to_path_buf(),
@@ -90,6 +96,7 @@ fn parse_hex_key(hex: &str, path: &Path) -> Result<Option<[u8; KEY_LEN]>> {
             }
             .build()
         })?;
+        #[expect(clippy::indexing_slicing, reason = "chunks(2) yields 2-element slices")]
         let lo = hex_digit(chunk[1]).ok_or_else(|| {
             error::InvalidMasterKeySnafu {
                 path: path.to_path_buf(),
@@ -97,7 +104,13 @@ fn parse_hex_key(hex: &str, path: &Path) -> Result<Option<[u8; KEY_LEN]>> {
             }
             .build()
         })?;
-        key[i] = (hi << 4) | lo;
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "i < KEY_LEN because hex.len() == KEY_LEN * 2"
+        )]
+        {
+            key[i] = (hi << 4) | lo;
+        }
     }
 
     Ok(Some(key))
@@ -115,7 +128,16 @@ fn hex_digit(b: u8) -> Option<u8> {
 fn to_hex(bytes: &[u8]) -> String {
     let mut s = String::with_capacity(bytes.len() * 2);
     for &b in bytes {
+        // b >> 4 is 0..=15 and b & 0x0f is 0..=15; the array has exactly 16 elements
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "nibble value 0..=15 always indexes into 16-element array"
+        )]
         s.push(char::from(b"0123456789abcdef"[usize::from(b >> 4)]));
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "nibble value 0..=15 always indexes into 16-element array"
+        )]
         s.push(char::from(b"0123456789abcdef"[usize::from(b & 0x0f)]));
     }
     s
@@ -436,6 +458,14 @@ fn is_sensitive_key(key: &str) -> bool {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: TOML string-key indexing panics only if key is absent"
+)]
+#[expect(
+    clippy::as_conversions,
+    reason = "test: wrapping cast by design in test_key()"
+)]
 mod tests {
     use super::*;
 

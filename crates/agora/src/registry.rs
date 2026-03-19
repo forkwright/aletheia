@@ -100,6 +100,10 @@ impl ChannelRegistry {
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: HashMap key indexing; key presence asserted by results.len() == 2"
+)]
 mod tests {
     use std::future::Future;
     use std::pin::Pin;

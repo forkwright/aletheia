@@ -140,7 +140,8 @@ fn count_distinct_tools(tool_calls: &[ToolCallRecord]) -> usize {
 /// Signs: >50% of calls are Bash AND error rate >20%.
 #[expect(
     clippy::cast_precision_loss,
-    reason = "tool call counts are small; precision loss is impossible in practice"
+    clippy::as_conversions,
+    reason = "usize→f64: tool call counts are small; precision loss is impossible in practice"
 )]
 fn is_debugging_spiral(tool_calls: &[ToolCallRecord]) -> bool {
     let bash_count = tool_calls
@@ -229,6 +230,10 @@ fn coherence_score(tool_calls: &[ToolCallRecord]) -> f64 {
         return 0.0;
     }
 
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "windows(2) guarantees each window has exactly 2 elements"
+    )]
     for window in categories.windows(2) {
         let (prev, next) = (&window[0], &window[1]);
         let is_good = matches!(
@@ -248,7 +253,8 @@ fn coherence_score(tool_calls: &[ToolCallRecord]) -> f64 {
 
     #[expect(
         clippy::cast_precision_loss,
-        reason = "tool call counts are small; precision loss is impossible in practice"
+        clippy::as_conversions,
+        reason = "usize→f64: tool call counts are small; precision loss is impossible in practice"
     )]
     let ratio = good_transitions as f64 / total_transitions as f64;
     (ratio * 0.30).min(0.30)
@@ -304,7 +310,8 @@ fn completion_score(tool_calls: &[ToolCallRecord]) -> f64 {
 
 #[expect(
     clippy::cast_precision_loss,
-    reason = "tool call counts are small; precision loss is impossible in practice"
+    clippy::as_conversions,
+    reason = "usize→f64: tool call counts are small; precision loss is impossible in practice"
 )]
 fn detect_pattern(tool_calls: &[ToolCallRecord]) -> Option<PatternType> {
     let categories: Vec<ToolCategory> = tool_calls
@@ -357,6 +364,10 @@ fn detect_pattern(tool_calls: &[ToolCallRecord]) -> Option<PatternType> {
 }
 
 fn has_write_exec_cycle(categories: &[ToolCategory]) -> bool {
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "windows(2) guarantees each window has exactly 2 elements"
+    )]
     categories
         .windows(2)
         .any(|w| w[0] == ToolCategory::Write && w[1] == ToolCategory::Execute)

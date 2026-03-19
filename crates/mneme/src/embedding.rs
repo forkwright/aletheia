@@ -88,11 +88,19 @@ impl EmbeddingProvider for MockEmbeddingProvider {
         for &b in bytes {
             hash = hash.wrapping_mul(33).wrapping_add(u64::from(b));
         }
+        #[expect(
+            clippy::as_conversions,
+            reason = "usize→u64: embedding dim is small; u64→f32: hash modulo fits in f32"
+        )]
         for (i, v) in vec.iter_mut().enumerate() {
             let h = hash
                 .wrapping_mul(i as u64 + 1)
                 .wrapping_add(i as u64 * 2_654_435_761);
-            #[expect(clippy::cast_precision_loss, reason = "hash modulo fits in f32")]
+            #[expect(
+                clippy::cast_precision_loss,
+                clippy::as_conversions,
+                reason = "hash modulo fits in f32"
+            )]
             {
                 *v = ((h % 10000) as f32 / 5000.0) - 1.0;
             }
@@ -395,6 +403,10 @@ mod candle_provider {
 
     #[cfg(test)]
     #[expect(clippy::expect_used, reason = "test assertions may panic on failure")]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "test: vec indices are valid after asserting len"
+    )]
     mod tests {
         use super::*;
         use candle_core::{DType, Device, Tensor};

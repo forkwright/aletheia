@@ -1,6 +1,10 @@
 //! Integration tests for thesauros domain packs: loading, bootstrap injection, tool registration.
 
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "integration tests: index-based assertions on known-length slices"
+)]
 
 use std::path::Path;
 use std::sync::{Arc, Mutex};

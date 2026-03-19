@@ -286,7 +286,8 @@ pub(crate) fn format_bytes(bytes: u64) -> String {
     let units = ["B", "KB", "MB", "GB", "TB"];
     #[expect(
         clippy::cast_precision_loss,
-        reason = "file sizes fit comfortably in f64 mantissa"
+        clippy::as_conversions,
+        reason = "u64→f64: file sizes fit comfortably in f64 mantissa"
     )]
     let mut size = bytes as f64;
     let mut unit_idx = 0;
@@ -297,7 +298,8 @@ pub(crate) fn format_bytes(bytes: u64) -> String {
     if unit_idx == 0 {
         format!("{bytes} B")
     } else {
-        format!("{size:.1} {}", units[unit_idx])
+        let unit = units.get(unit_idx).copied().unwrap_or("?");
+        format!("{size:.1} {unit}")
     }
 }
 
