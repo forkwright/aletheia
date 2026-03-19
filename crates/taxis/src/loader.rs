@@ -14,13 +14,15 @@ use aletheia_koina::system::{FileSystem, RealSystem};
 use crate::config::AletheiaConfig;
 use crate::encrypt;
 use crate::error::{FigmentSnafu, Result, SerializeTomlSnafu, WriteConfigSnafu};
+use crate::interpolate;
 use crate::oikos::Oikos;
 
 /// Load configuration with cascade: defaults → TOML → environment.
 ///
 /// Resolution order (later wins):
 /// 1. Compiled defaults ([`AletheiaConfig::default()`])
-/// 2. `{oikos.config()}/aletheia.toml` (if it exists), with `enc:` values decrypted
+/// 2. `{oikos.config()}/aletheia.toml` (if it exists), with env-var interpolation
+///    (`${VAR:-default}`, `${VAR:?error}`) applied first, then `enc:` values decrypted
 /// 3. Environment variables: `ALETHEIA_*` (e.g. `ALETHEIA_GATEWAY__PORT=9000`)
 ///
 /// Encrypted values (`enc:` prefix) are transparently decrypted using the
@@ -69,7 +71,8 @@ pub fn load_config_with(oikos: &Oikos, fs: &impl FileSystem) -> Result<AletheiaC
                 path: toml_path.clone(),
             })?;
         let toml_content = String::from_utf8_lossy(&bytes);
-        let decrypted_content = decrypt_toml_content(&toml_content);
+        let interpolated = interpolate::interpolate_env_vars(toml_content.as_ref())?;
+        let decrypted_content = decrypt_toml_content(&interpolated);
         figment = figment.merge(Toml::string(&decrypted_content));
     } else if fs.exists(&yaml_path) {
         warn!(
