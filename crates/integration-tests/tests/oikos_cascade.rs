@@ -21,6 +21,10 @@ fn setup() -> (tempfile::TempDir, Oikos) {
 fn mkfile(base: &Path, rel: &str) {
     let path = base.join(rel);
     fs::create_dir_all(path.parent().unwrap()).unwrap();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "integration tests write fixture files to temp directories; synchronous I/O is required in test setup"
+    )]
     fs::write(&path, format!("content of {rel}")).unwrap();
 }
 

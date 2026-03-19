@@ -291,7 +291,7 @@ mod tests {
     use crate::engine::DbInstance;
 
     #[test]
-    fn test_dependencies() {
+    fn stratified_query_with_recursive_rules_executes_successfully() {
         let db = DbInstance::default();
         let _res = db
             .run_default(

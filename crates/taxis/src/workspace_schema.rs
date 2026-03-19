@@ -219,6 +219,10 @@ mod tests {
     fn make_workspace(files: &[&str], dirs: &[&str]) -> tempfile::TempDir {
         let tmp = tempfile::tempdir().unwrap();
         for f in files {
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "taxis config operations are CLI-invoked and require synchronous filesystem access"
+            )]
             std::fs::write(tmp.path().join(f), b"").unwrap();
         }
         for d in dirs {
@@ -393,6 +397,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let workspace_dir = dir.path().join("nous").join("carol");
         std::fs::create_dir_all(&workspace_dir).unwrap();
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "taxis config operations are CLI-invoked and require synchronous filesystem access"
+        )]
         std::fs::write(workspace_dir.join("SOUL.md"), b"# Carol\n").unwrap();
 
         let oikos = Oikos::from_root(dir.path());

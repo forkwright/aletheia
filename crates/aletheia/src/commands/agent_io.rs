@@ -225,6 +225,10 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
     } else {
         serde_json::to_string_pretty(&agent_file)?
     };
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "aletheia CLI commands use synchronous filesystem operations for config and certificate generation"
+    )]
     std::fs::write(&output_path, &json)
         .with_context(|| format!("failed to write {}", output_path.display()))?;
 

@@ -237,6 +237,10 @@ mod tests {
             if let Some(parent) = path.parent() {
                 fs::create_dir_all(parent).unwrap();
             }
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "thesauros pack loader reads binary assets from disk; synchronous I/O is inherent to asset loading"
+            )]
             fs::write(&path, content).unwrap();
         }
         dir
@@ -354,6 +358,10 @@ domains = ["healthcare", "analytics", "sql"]
     #[test]
     fn resolve_context_path_blocks_parent_dir_traversal() {
         let outer = TempDir::new().unwrap();
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "thesauros pack loader reads binary assets from disk; synchronous I/O is inherent to asset loading"
+        )]
         fs::write(outer.path().join("secret.md"), "secret content").unwrap();
 
         let pack = TempDir::new().unwrap();

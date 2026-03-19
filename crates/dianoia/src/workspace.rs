@@ -66,6 +66,10 @@ impl ProjectWorkspace {
     pub fn save_project(&self, project: &Project) -> Result<()> {
         let layout = self.layout();
         let json = serde_json::to_string_pretty(project).context(error::WorkspaceSerializeSnafu)?;
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "dianoia workspace writes are CLI-invoked blocking operations; tokio::fs would require an async context not available here"
+        )]
         std::fs::write(&layout.project_file, json).context(error::WorkspaceIoSnafu {
             path: &layout.project_file,
         })?;
@@ -104,6 +108,10 @@ impl ProjectWorkspace {
             "# Blocker: {}\n\nPlan: {}\nDetected: {}\n\n{}\n",
             blocker.plan_id, blocker.plan_id, blocker.detected_at, blocker.description
         );
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "dianoia workspace writes are CLI-invoked blocking operations; tokio::fs would require an async context not available here"
+        )]
         std::fs::write(&path, content).context(error::WorkspaceIoSnafu { path })?;
         Ok(())
     }

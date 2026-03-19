@@ -29,6 +29,10 @@ fn tool_input(name: &str, args: serde_json::Value) -> ToolInput {
 #[tokio::test]
 async fn read_existing_file() {
     let dir = tempfile::tempdir().expect("create temp dir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(dir.path().join("hello.txt"), "hello world").expect("write");
 
     let ctx = test_ctx(dir.path());
@@ -48,6 +52,10 @@ async fn read_existing_file() {
 #[tokio::test]
 async fn read_with_max_lines() {
     let dir = tempfile::tempdir().expect("create temp dir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(dir.path().join("lines.txt"), "a\nb\nc\nd\ne\n").expect("write");
 
     let ctx = test_ctx(dir.path());
@@ -130,6 +138,10 @@ async fn write_creates_parent_dirs() {
 #[tokio::test]
 async fn write_append_mode() {
     let dir = tempfile::tempdir().expect("create temp dir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(dir.path().join("log.txt"), "first\n").expect("write");
 
     let ctx = test_ctx(dir.path());
@@ -149,6 +161,10 @@ async fn write_append_mode() {
 #[tokio::test]
 async fn edit_single_match() {
     let dir = tempfile::tempdir().expect("create temp dir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(dir.path().join("code.rs"), "fn old_name() {}").expect("write");
 
     let ctx = test_ctx(dir.path());
@@ -179,6 +195,10 @@ async fn edit_single_match() {
 #[tokio::test]
 async fn edit_not_found() {
     let dir = tempfile::tempdir().expect("create temp dir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(dir.path().join("code.rs"), "fn hello() {}").expect("write");
 
     let ctx = test_ctx(dir.path());
@@ -204,6 +224,10 @@ async fn edit_not_found() {
 #[tokio::test]
 async fn edit_multiple_matches() {
     let dir = tempfile::tempdir().expect("create temp dir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(dir.path().join("dup.txt"), "aaa bbb aaa").expect("write");
 
     let ctx = test_ctx(dir.path());
@@ -338,6 +362,10 @@ async fn test_write_when_content_argument_missing_returns_error() {
 #[tokio::test]
 async fn test_edit_when_old_text_argument_missing_returns_error() {
     let dir = tempfile::tempdir().expect("create temp dir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(dir.path().join("f.txt"), "hello world").expect("write");
     let ctx = test_ctx(dir.path());
     let input = tool_input(
@@ -374,6 +402,10 @@ async fn test_exec_when_command_argument_missing_returns_error() {
 #[tokio::test]
 async fn test_read_ignores_unknown_extra_fields() {
     let dir = tempfile::tempdir().expect("create temp dir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(dir.path().join("hi.txt"), "hello").expect("write");
     let ctx = test_ctx(dir.path());
     let input = tool_input(
@@ -414,6 +446,10 @@ async fn test_write_reports_byte_count_in_success_message() {
 #[tokio::test]
 async fn test_write_overwrite_replaces_existing_content() {
     let dir = tempfile::tempdir().expect("create temp dir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(dir.path().join("out.txt"), "old content").expect("write");
     let ctx = test_ctx(dir.path());
     let input = tool_input(
@@ -478,6 +514,10 @@ async fn test_edit_when_file_does_not_exist_returns_error_result() {
 #[tokio::test]
 async fn test_edit_success_message_contains_path() {
     let dir = tempfile::tempdir().expect("create temp dir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(dir.path().join("code.rs"), "fn old_name() {}").expect("write");
     let ctx = test_ctx(dir.path());
     let input = tool_input(
@@ -501,6 +541,10 @@ async fn test_edit_success_message_contains_path() {
 async fn test_edit_preserves_surrounding_content() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let original = "line1\nTARGET\nline3\n";
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(dir.path().join("f.txt"), original).expect("write");
     let ctx = test_ctx(dir.path());
     let input = tool_input(

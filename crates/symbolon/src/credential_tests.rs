@@ -37,6 +37,10 @@ fn credential_file_missing_returns_none() {
 fn credential_file_malformed_returns_none() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("bad.json");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "symbolon credential storage writes configuration files; synchronous I/O is required in CLI/init contexts"
+    )]
     std::fs::write(&path, "not json").unwrap();
     assert!(CredentialFile::load(&path).is_none());
 }
@@ -45,6 +49,10 @@ fn credential_file_malformed_returns_none() {
 fn credential_file_load_claude_code_oauth_wrapper() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join(".credentials.json");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "symbolon credential storage writes configuration files; synchronous I/O is required in CLI/init contexts",
+    )]
     std::fs::write(
         &path,
         r#"{"claudeAiOauth":{"accessToken":"sk-ant-oat-wrapped","refreshToken":"rt-wrapped","expiresAt":9999999999000}}"#,
@@ -62,6 +70,10 @@ fn credential_file_load_claude_code_oauth_wrapper() {
 fn credential_file_load_wrapped_no_refresh_token() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join(".credentials.json");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "symbolon credential storage writes configuration files; synchronous I/O is required in CLI/init contexts"
+    )]
     std::fs::write(
         &path,
         r#"{"claudeAiOauth":{"accessToken":"sk-ant-oat-no-rt"}}"#,
@@ -77,6 +89,10 @@ fn credential_file_load_wrapped_no_refresh_token() {
 fn credential_file_load_flat_takes_precedence_over_wrapper() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join(".credentials.json");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "symbolon credential storage writes configuration files; synchronous I/O is required in CLI/init contexts"
+    )]
     std::fs::write(
         &path,
         r#"{"token":"flat-token","claudeAiOauth":{"accessToken":"wrapped-token"}}"#,
@@ -90,6 +106,10 @@ fn credential_file_load_flat_takes_precedence_over_wrapper() {
 fn credential_file_load_wrapper_missing_key_returns_none() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join(".credentials.json");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "symbolon credential storage writes configuration files; synchronous I/O is required in CLI/init contexts"
+    )]
     std::fs::write(&path, r#"{"someOtherKey":{"value":1}}"#).unwrap();
     assert!(CredentialFile::load(&path).is_none());
 }
@@ -491,6 +511,10 @@ fn claude_code_provider_static_token() {
 async fn claude_code_provider_with_access_token_alias() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join(".credentials.json");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "symbolon credential storage writes configuration files; synchronous I/O is required in CLI/init contexts"
+    )]
     std::fs::write(
         &path,
         r#"{"accessToken": "sk-ant-oat-cc-token", "refreshToken": "rt-cc"}"#,
@@ -507,6 +531,10 @@ async fn claude_code_provider_with_access_token_alias() {
 async fn claude_code_provider_with_claude_code_oauth_wrapper() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join(".credentials.json");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "symbolon credential storage writes configuration files; synchronous I/O is required in CLI/init contexts"
+    )]
     std::fs::write(
         &path,
         r#"{"claudeAiOauth":{"accessToken":"sk-ant-oat-wrapped","refreshToken":"rt-wrapped"}}"#,
@@ -523,6 +551,10 @@ async fn claude_code_provider_with_claude_code_oauth_wrapper() {
 fn claude_code_provider_malformed_returns_none() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join(".credentials.json");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "symbolon credential storage writes configuration files; synchronous I/O is required in CLI/init contexts"
+    )]
     std::fs::write(&path, "not valid json").unwrap();
     assert!(claude_code_provider(&path).is_none());
 }
@@ -645,6 +677,10 @@ async fn refresh_write_back_from_claude_code_wrapper_preserves_subscription_type
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join(".credentials.json");
 
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "symbolon credential storage writes configuration files; synchronous I/O is required in CLI/init contexts",
+    )]
     std::fs::write(
         &path,
         r#"{"claudeAiOauth":{"accessToken":"sk-ant-oat-wrapped","refreshToken":"rt-wrapped","expiresAt":9999999999000,"subscriptionType":"pro_plus"}}"#,

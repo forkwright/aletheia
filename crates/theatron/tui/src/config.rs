@@ -137,6 +137,10 @@ impl Config {
 }
 
 fn write_config(path: &Path, content: &str) -> Result<()> {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "theatron TUI reads configuration and exports from disk in synchronous initialization paths"
+    )]
     std::fs::write(path, content).context(IoSnafu {
         context: "write config file",
     })?;

@@ -271,6 +271,10 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let config = make_config(tmp.path());
         fs::create_dir_all(&config.data_dir).unwrap();
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
+        )]
         fs::write(config.data_dir.join("sessions.db"), "small").unwrap();
 
         let monitor = DbMonitor::new(config);
@@ -288,6 +292,10 @@ mod tests {
         fs::create_dir_all(&config.data_dir).unwrap();
 
         let data = vec![0u8; 2 * 1024 * 1024];
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
+        )]
         fs::write(config.data_dir.join("sessions.db"), &data).unwrap();
 
         let monitor = DbMonitor::new(config);
@@ -304,6 +312,10 @@ mod tests {
         fs::create_dir_all(&config.data_dir).unwrap();
 
         let data = vec![0u8; 6 * 1024 * 1024];
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
+        )]
         fs::write(config.data_dir.join("sessions.db"), &data).unwrap();
 
         let monitor = DbMonitor::new(config);
@@ -321,7 +333,15 @@ mod tests {
 
         let data1 = vec![0u8; 100];
         let data2 = vec![0u8; 200];
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
+        )]
         fs::write(config.data_dir.join("sessions.db"), &data1).unwrap();
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
+        )]
         fs::write(config.data_dir.join("planning.db"), &data2).unwrap();
 
         let monitor = DbMonitor::new(config);
@@ -337,6 +357,10 @@ mod tests {
         let config = make_config(tmp.path());
         fs::create_dir_all(&config.data_dir).unwrap();
 
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
+        )]
         fs::write(config.data_dir.join("custom.db"), "data").unwrap();
 
         let monitor = DbMonitor::new(config);
@@ -381,7 +405,15 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let config = make_config(tmp.path());
         fs::create_dir_all(config.data_dir.join("cozo")).unwrap();
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
+        )]
         fs::write(config.data_dir.join("cozo/shard1.dat"), "aaaa").unwrap();
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
+        )]
         fs::write(config.data_dir.join("cozo/shard2.dat"), "bbbb").unwrap();
 
         let monitor = DbMonitor::new(config);
@@ -401,8 +433,20 @@ mod tests {
         let config = make_config(tmp.path());
         fs::create_dir_all(&config.data_dir).unwrap();
 
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
+        )]
         fs::write(config.data_dir.join("sessions.db"), "s").unwrap();
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
+        )]
         fs::write(config.data_dir.join("planning.db"), "p").unwrap();
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
+        )]
         fs::write(config.data_dir.join("custom.db"), "c").unwrap();
 
         let monitor = DbMonitor::new(config);

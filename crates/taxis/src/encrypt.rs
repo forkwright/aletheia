@@ -180,6 +180,10 @@ pub fn generate_master_key(path: &Path) -> Result<()> {
     })?;
 
     let hex = to_hex(&key);
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "taxis config operations are CLI-invoked and require synchronous filesystem access"
+    )]
     std::fs::write(path, hex.as_bytes()).context(error::WriteConfigSnafu {
         path: path.to_path_buf(),
     })?;
@@ -331,6 +335,10 @@ pub fn encrypt_config_file(toml_path: &Path, master_key: &[u8; KEY_LEN]) -> Resu
         })?;
 
         let tmp_path = toml_path.with_extension("toml.tmp");
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "taxis config operations are CLI-invoked and require synchronous filesystem access"
+        )]
         std::fs::write(&tmp_path, &encrypted_toml).context(error::WriteConfigSnafu {
             path: tmp_path.clone(),
         })?;

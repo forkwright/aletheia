@@ -247,6 +247,10 @@ fn update_config(oikos: &Oikos, args: &AddNousArgs) -> Result<()> {
     std::fs::create_dir_all(&config_dir)
         .with_context(|| format!("failed to create {}", config_dir.display()))?;
     let tmp = config_dir.join("aletheia.toml.tmp");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "aletheia CLI commands use synchronous filesystem operations for config and certificate generation"
+    )]
     std::fs::write(&tmp, doc.to_string())
         .with_context(|| format!("failed to write {}", tmp.display()))?;
     std::fs::rename(&tmp, &config_path)
@@ -291,6 +295,10 @@ fn print_summary(oikos: &Oikos, args: &AddNousArgs) {
 }
 
 fn write_file(path: &std::path::Path, content: &str) -> Result<()> {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "aletheia CLI commands use synchronous filesystem operations for config and certificate generation"
+    )]
     std::fs::write(path, content).with_context(|| format!("failed to write: {}", path.display()))
 }
 
@@ -489,6 +497,10 @@ mod tests {
             [gateway]\n\
             port = 9999\n\
             \n";
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "aletheia CLI commands use synchronous filesystem operations for config and certificate generation"
+        )]
         std::fs::write(dir.path().join("config/aletheia.toml"), original).unwrap();
 
         let args = AddNousArgs {

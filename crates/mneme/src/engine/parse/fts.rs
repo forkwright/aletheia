@@ -184,7 +184,7 @@ mod tests {
     use crate::engine::parse::fts::parse_fts_query;
 
     #[test]
-    fn test_parse() {
+    fn fts_parser_recognizes_or_and_not_and_near_operators() {
         let src = " hello world OR bye bye world";
         let res = parse_fts_query(src).unwrap().flatten();
         assert!(matches!(res, FtsExpr::Or(_)));

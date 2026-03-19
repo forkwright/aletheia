@@ -651,6 +651,10 @@ pub(crate) fn save_command_history(config: &Config, history: &[String]) {
         let _ = std::fs::create_dir_all(parent);
     }
     let content: String = history.iter().map(|s| format!("{s}\n")).collect();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "theatron TUI reads configuration and exports from disk in synchronous initialization paths"
+    )]
     let _ = std::fs::write(&path, content);
 }
 

@@ -11,7 +11,15 @@ fn test_oikos() -> (tempfile::TempDir, Arc<Oikos>) {
     std::fs::create_dir_all(root.join("nous/demiurge")).expect("mkdir");
     std::fs::create_dir_all(root.join("shared")).expect("mkdir");
     std::fs::create_dir_all(root.join("theke")).expect("mkdir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
+    )]
     std::fs::write(root.join("nous/syn/SOUL.md"), "I am Syn.").expect("write");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
+    )]
     std::fs::write(root.join("nous/demiurge/SOUL.md"), "I am Demiurge.").expect("write");
     let oikos = Arc::new(Oikos::from_root(root));
     (dir, oikos)

@@ -60,6 +60,10 @@ pub(super) async fn test_state_with_provider(
     std::fs::create_dir_all(root.join("nous/syn")).expect("mkdir nous/syn");
     std::fs::create_dir_all(root.join("shared")).expect("mkdir shared");
     std::fs::create_dir_all(root.join("theke")).expect("mkdir theke");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "pylon test helpers write TLS fixtures to temp directories; synchronous I/O is required in test setup"
+    )]
     std::fs::write(root.join("nous/syn/SOUL.md"), "I am Syn, a test agent.")
         .expect("write SOUL.md");
 

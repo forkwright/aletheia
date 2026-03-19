@@ -324,6 +324,10 @@ impl ToolExecutor for WriteExecutor {
                         f.write_all(content.as_bytes())
                     })
             } else {
+                #[expect(
+                    clippy::disallowed_methods,
+                    reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+                )]
                 std::fs::write(&path, content)
             };
 
@@ -381,6 +385,10 @@ impl ToolExecutor for EditExecutor {
             }
 
             let new_content = content.replacen(old_text, new_text, 1);
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+            )]
             if let Err(e) = std::fs::write(&path, &new_content) {
                 return Ok(err_result(format!("write failed: {e}")));
             }

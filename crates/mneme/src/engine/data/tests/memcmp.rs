@@ -47,7 +47,7 @@ fn encode_decode_num() {
 }
 
 #[test]
-fn test_encode_decode_uuid() {
+fn encode_decode_uuid_roundtrips_correctly() {
     let uuid = DataValue::Uuid(UuidWrapper(
         Uuid::parse_str("dd85b19a-5fde-11ed-a88e-1774a7698039").expect("test assertion"),
     ));

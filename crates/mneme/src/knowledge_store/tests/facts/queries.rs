@@ -145,6 +145,10 @@ fn restore_backup_returns_error_for_mem_backend() {
     let store = make_store();
     let dir = tempfile::tempdir().expect("create temp dir");
     let backup_path = dir.path().join("backup.db");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+    )]
     std::fs::write(&backup_path, "fake").expect("write fake backup file");
     let result = store.restore_backup(&backup_path);
     assert!(
@@ -158,6 +162,10 @@ fn import_from_backup_returns_error_for_mem_backend() {
     let store = make_store();
     let dir = tempfile::tempdir().expect("create temp dir");
     let backup_path = dir.path().join("backup.db");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+    )]
     std::fs::write(&backup_path, "fake").expect("write fake backup file");
     let result = store.import_from_backup(&backup_path, &["facts".to_owned()]);
     assert!(

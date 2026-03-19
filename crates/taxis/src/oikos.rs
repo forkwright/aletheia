@@ -330,6 +330,10 @@ impl Oikos {
         use crate::error::NotWritableSnafu;
 
         let test_file = path.join(".aletheia-write-test");
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "taxis config operations are CLI-invoked and require synchronous filesystem access"
+        )]
         std::fs::write(&test_file, b"ok").context(NotWritableSnafu {
             path: path.to_path_buf(),
         })?;
@@ -446,6 +450,10 @@ mod tests {
     fn config_file_prefers_toml() {
         let dir = tempfile::tempdir().expect("create temp dir");
         std::fs::create_dir_all(dir.path().join("config")).unwrap();
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "taxis config operations are CLI-invoked and require synchronous filesystem access"
+        )]
         std::fs::write(dir.path().join("config/aletheia.toml"), "").unwrap();
 
         let oikos = Oikos::from_root(dir.path());
@@ -545,6 +553,10 @@ mod tests {
 
         // NOTE: skip if running as root: root bypasses file permission checks
         let probe = data.join(".root-probe");
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "taxis config operations are CLI-invoked and require synchronous filesystem access"
+        )]
         let is_root = std::fs::write(&probe, b"x").is_ok();
         let _ = std::fs::remove_file(&probe);
         if is_root {
