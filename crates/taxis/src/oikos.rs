@@ -57,12 +57,17 @@ impl Oikos {
     ///
     /// This variant is the primary implementation; [`Oikos::discover`] is a
     /// convenience wrapper that passes [`RealSystem`].
+    ///
+    /// WHY: delegates to `from_root` so the discovered path is canonicalized
+    /// when it exists. This ensures existence checks (e.g. `print_storage` in
+    /// `aletheia status`) are cwd-independent and work with non-default paths
+    /// and symlinks: closes #1829.
     #[must_use]
     pub fn discover_with(env: &impl Environment) -> Self {
         let root = env
             .var("ALETHEIA_ROOT")
             .map_or_else(|| PathBuf::from("instance"), PathBuf::from);
-        Self { root }
+        Self::from_root(root)
     }
 
     /// The instance root directory.
