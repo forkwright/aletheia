@@ -10,6 +10,11 @@ rust-version.workspace = true
 [lints]
 workspace = true
 
+[features]
+# Computer use tool: screen capture, action dispatch, Landlock sandbox.
+# Not compiled by default — requires Linux kernel 5.13+ with Landlock support.
+computer-use = []
+
 [dependencies]
 aletheia-hermeneus = { path = "../hermeneus" }
 aletheia-koina = { path = "../koina" }
