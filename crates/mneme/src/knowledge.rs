@@ -211,11 +211,17 @@ pub enum FactType {
     Task,
     /// "Build was slow": very ephemeral (3 days).
     Observation,
+    /// Chiron self-audit result: short-lived (30 days).
+    Audit,
 }
 
 impl FactType {
     /// Base stability in hours for FSRS power-law decay.
     #[must_use]
+    #[expect(
+        clippy::match_same_arms,
+        reason = "Audit and Event share the same decay rate (30 days) but are semantically distinct fact types"
+    )]
     pub fn base_stability_hours(self) -> f64 {
         match self {
             Self::Identity => 17_520.0,
@@ -225,12 +231,14 @@ impl FactType {
             Self::Event => 720.0,
             Self::Task => 168.0,
             Self::Observation => 72.0,
+            Self::Audit => 720.0,
         }
     }
 
     /// Classify a fact by its text content using keyword heuristics.
     ///
     /// Falls back to [`FactType::Observation`] when no pattern matches.
+    /// Audit facts are identified by `fact_type` field, not content heuristics.
     #[must_use]
     pub fn classify(content: &str) -> Self {
         let lower = content.to_lowercase();
@@ -274,6 +282,7 @@ impl FactType {
             Self::Event => "event",
             Self::Task => "task",
             Self::Observation => "observation",
+            Self::Audit => "audit",
         }
     }
 
@@ -287,6 +296,7 @@ impl FactType {
             "relationship" => Self::Relationship,
             "event" => Self::Event,
             "task" => Self::Task,
+            "audit" => Self::Audit,
             // WHY: Unknown values fall back to Observation to keep the type system open.
             _ => Self::Observation,
         }
