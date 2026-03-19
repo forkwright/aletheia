@@ -119,7 +119,7 @@ Application crates in `crates/`, plus the `integration-tests` support crate.
 | `symbolon` | JWT tokens, password hashing, RBAC policies | koina |
 | `melete` | Context distillation, compression strategies, token budget management | koina, hermeneus |
 | `agora` | Channel registry, ChannelProvider trait, Signal JSON-RPC client | koina, taxis |
-| `daemon` | Background task scheduling, cron jobs, lifecycle events | koina |
+| `daemon` | Background task scheduling, cron jobs, lifecycle events (`oikonomos` internally) | koina |
 | `dianoia` | Multi-phase planning orchestrator, project context tracking | koina |
 | `thesauros` | Domain pack loader - external knowledge, tools, config overlays | koina, organon |
 | `nous` | Agent pipeline, NousActor (tokio), bootstrap, recall, execute, finalize | koina, taxis, mneme, hermeneus, organon, melete, thesauros |
@@ -127,6 +127,7 @@ Application crates in `crates/`, plus the `integration-tests` support crate.
 | `diaporeia` | MCP server interface for external AI agents (`crates/diaporeia`) | koina, taxis, nous, organon, mneme, symbolon |
 | `theatron-core` | Shared presentation types and traits for Aletheia UIs (`crates/theatron/core/`) | nothing (leaf) |
 | `theatron-tui` | Terminal dashboard (`crates/theatron/tui/`) | theatron-core, reqwest (standalone UI client) |
+| `theatron-desktop` | Dioxus desktop UI (`crates/theatron/desktop/`) - in progress | theatron-core |
 | `aletheia` | Binary entrypoint (Clap CLI) - wires all crates together | taxis, hermeneus, organon, mneme, nous, symbolon, pylon, agora, thesauros, daemon, dianoia, theatron-tui (optional) |
 
 **Support crates** (not part of the application dependency graph):
@@ -157,8 +158,8 @@ Application crates in `crates/`, plus the `integration-tests` support crate.
 - **Low** (koina only): `taxis`, `hermeneus`, `symbolon`, `mneme` (includes embedded Datalog+HNSW engine behind feature gate)
 - **Mid**: `melete` (koina + hermeneus), `organon` (koina + hermeneus), `agora` (koina + taxis), `daemon` (koina), `dianoia` (koina), `thesauros` (koina + organon)
 - **High**: `nous` (multiple mid+low deps), `pylon` (multiple deps including nous), `diaporeia` (MCP server, multiple deps including nous)
-- **Top**: `aletheia` binary, `tui` (terminal dashboard)
-- **Support**: `eval`, `integration-tests`
+- **Top**: `aletheia` binary, `theatron-tui` (terminal dashboard), `theatron-desktop` (Dioxus desktop, in progress)
+- **Support**: `eval` (behavioral scenario runner), `integration-tests`
 
 Imports flow downward only. Lower-layer crates must not depend on higher layers.
 

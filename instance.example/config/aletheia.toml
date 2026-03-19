@@ -101,3 +101,35 @@ workspace = "nous/main"
 # [pricing."claude-sonnet-4-6"]
 # inputCostPerMtok = 3.0
 # outputCostPerMtok = 15.0
+
+# --- Data retention ---
+# [data.retention]
+# sessionMaxAgeDays = 90
+# orphanMessageMaxAgeDays = 30
+# maxSessionsPerNous = 0          # 0 = unlimited
+# archiveBeforeDelete = true      # export sessions as JSON before deletion
+
+# --- Domain packs ---
+# Array of filesystem paths to external domain pack directories (containing pack.toml)
+# packs = [
+#     "/srv/aletheia/packs/engineering",
+# ]
+
+# --- Filesystem sandbox ---
+# Restricts tool execution to declared paths.
+# [sandbox]
+# enabled = true
+# enforcement = "enforcing"   # enforcing | permissive (log only)
+# extraReadPaths = []
+# extraWritePaths = []
+# extraExecPaths = ["~/.cargo/bin"]
+
+# --- Rate limiting ---
+# Per-IP request rate limiting for API endpoints.
+# [gateway.rateLimit]
+# enabled = false
+# requestsPerMinute = 60
+
+# --- Request body limit ---
+# [gateway.bodyLimit]
+# maxBytes = 1048576           # 1 MB default

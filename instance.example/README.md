@@ -24,21 +24,20 @@ instance/
 ├── logs/                       # Runtime log output
 │
 ├── nous/                       # Agent identity + session memory ONLY
-│   ├── _template/              # Template for new agents (copied by `aletheia add-nous`)
+│   ├── _default/               # Pre-configured default agent (Pronoea/Noe)
+│   │                           # Used when aletheia init creates the first agent
+│   │                           # Copy to nous/{your-id}/ and update aletheia.toml
+│   ├── _template/              # Blank template for new agents (copied by `aletheia add-nous`)
 │   │   ├── SOUL.md             # Agent identity and character
 │   │   ├── IDENTITY.md         # Name, emoji, avatar
 │   │   ├── GOALS.md            # Goals and purpose
 │   │   ├── MEMORY.md           # Memory configuration
 │   │   └── memory/             # Session logs (memory/YYYY-MM-DD.md)
 │   └── {agent-id}/             # Per-agent workspace
-│       ├── SOUL.md             # Identity
+│       │                       # See docs/WORKSPACE_FILES.md for the full reference
+│       ├── SOUL.md             # Identity (required)
 │       ├── IDENTITY.md         # Name, emoji
-│       ├── AGENTS.md           # Operational rules
 │       ├── MEMORY.md           # Curated operational memory
-│       ├── GOALS.md            # Active/completed goals
-│       ├── TOOLS.md            # Tool inventory (auto-generated)
-│       ├── PROSOCHE.md         # Attention directives (auto-generated)
-│       ├── CONTEXT.md          # Session context (runtime-written)
 │       └── memory/             # Session logs (YYYY-MM-DD.md)
 │
 ├── shared/                     # Runtime infrastructure (agents only)

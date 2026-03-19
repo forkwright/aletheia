@@ -2,7 +2,7 @@
 
 Self-hosted AI agents with persistent memory.
 
-Talk to an AI that remembers your previous conversations, learns your preferences, builds a knowledge graph over time, and gets better the more you use it. Give it a name, a personality, goals, and tools. Run it from a terminal dashboard, HTTP API, or Signal messenger.
+Talk to an AI that remembers your previous conversations, learns your preferences, and builds a knowledge graph over time. Give it a name, a personality, and goals. Run it from a terminal dashboard, HTTP API, or Signal messenger.
 
 One binary. No containers. No external databases. No cloud dependencies beyond your LLM provider.
 
@@ -10,22 +10,9 @@ One binary. No containers. No external databases. No cloud dependencies beyond y
 
 ---
 
-## Quick start
+## Install
 
-```bash
-# Install (Linux x86_64)
-curl -L https://github.com/forkwright/aletheia/releases/latest/download/aletheia-linux-x86_64 -o aletheia
-chmod +x aletheia && sudo mv aletheia /usr/local/bin/
-
-# Setup (interactive wizard handles config, credentials, first agent)
-aletheia init
-
-# Run
-aletheia                # start the server
-aletheia tui            # open the terminal dashboard
-```
-
-Build from source: `cargo build --release` (requires Rust 1.94+). See [QUICKSTART.md](docs/QUICKSTART.md) for the full guide.
+See [QUICKSTART.md](docs/QUICKSTART.md) for install instructions, setup, and first run.
 
 ---
 
@@ -42,58 +29,7 @@ Build from source: `cargo build --release` (requires Rust 1.94+). See [QUICKSTAR
 
 ## Architecture
 
-Rust workspace with 18 crates. Single binary deployment.
-
-```text
-     TUI / HTTP API              Signal Messenger
-              |                          |
-         HTTP/SSE                   signal-cli (JSON-RPC)
-              |                          |
-              +----------+---------------+
-                         |
-                  +--------------+
-                  |   Gateway    |     Session management, tool execution,
-                  |   (:18789)   |     message routing, context assembly
-                  +--------------+
-                   /    |    |   \
-              Bindings (per-agent routing)
-                /       |    |      \
-         +------+  +------+ +------+ +------+
-         | nous |  | nous | | nous | | nous |   N agents, each with:
-         +------+  +------+ +------+ +------+   - SOUL.md (character)
-            |         |         |        |       - workspace files
-            v         v         v        v       - persistent memory
-         Claude     Claude    Claude   Claude
-```
-
-### Rust crates (target)
-
-See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full dependency graph and trait boundaries.
-
-| Layer | Crates |
-|-------|--------|
-| Leaf | `koina` (errors, tracing), `symbolon` (auth) |
-| Low | `taxis` (config), `hermeneus` (LLM), `mneme` (memory + embedded DB engine), `organon` (tools), `agora` (channels), `melete` (distillation) |
-| Mid | `nous` (agent pipeline) |
-| High | `pylon` (HTTP gateway) |
-| Top | `aletheia` (binary entrypoint) |
-
-**Models:** Anthropic (OAuth or API key). Complexity-based routing.
-**Memory:** Embedded Datalog+HNSW engine for knowledge graph, long-term memory, and sessions.
-**Observability:** Structured tracing with tokio-tracing.
-
----
-
-## Quick start
-
-```bash
-git clone https://github.com/forkwright/aletheia.git && cd aletheia
-cargo build --release
-cp target/release/aletheia ~/.local/bin/
-aletheia
-```
-
-[Full setup guide](docs/QUICKSTART.md) · [Production deployment](docs/DEPLOYMENT.md)
+Rust workspace with 18 crates. Single binary deployment. See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full dependency graph and trait boundaries.
 
 ---
 

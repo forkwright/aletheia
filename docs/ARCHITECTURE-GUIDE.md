@@ -1,6 +1,6 @@
 # Architecture walkthrough
 
-A guided tour for new contributors. For the reference module map and dependency graph, see [ARCHITECTURE.md](ARCHITECTURE.md).
+For new contributors. For the reference module map and dependency graph, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ---
 
@@ -8,7 +8,7 @@ A guided tour for new contributors. For the reference module map and dependency 
 
 Aletheia is a self-hosted multi-agent AI system. Multiple AI agents run as persistent actors, each with character, memory, and domain expertise. They communicate via Signal, HTTP API, or TUI, and persist understanding across sessions.
 
-It is not a chatbot framework. It is a distributed cognition system: agents have identity (SOUL.md), evolve through use (MEMORY.md), and coordinate through shared infrastructure.
+It is not a chatbot framework. It is a distributed cognition system: each agent has persistent identity (SOUL.md) and memory (MEMORY.md), and coordinates with other agents through shared infrastructure.
 
 The entire system compiles to a single Rust binary. No Node.js, no Python sidecar, no external databases required.
 

@@ -44,7 +44,7 @@ See `Cargo.toml` workspace members for current crate inventory.
 | TUI | Active | Terminal dashboard, rich markdown, session management |
 | Signal | Active | 15 `!` commands, always-on ambient messaging |
 | HTTP API | Active | REST on port 18789, SSE streaming |
-| Desktop app | Planned | Dioxus 0.7 + Blitz native renderer |
+| Desktop app | In progress | Dioxus 0.7 desktop; scaffold with streaming architecture, not feature-complete |
 
 ## Related documents
 
