@@ -328,5 +328,5 @@ pub struct KnowledgeImportResult {
 }
 
 #[cfg(test)]
-#[path = "import_tests.rs"]
+#[path = "import_tests/mod.rs"]
 mod tests;

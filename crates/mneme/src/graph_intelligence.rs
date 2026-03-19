@@ -588,5 +588,5 @@ impl crate::knowledge_store::KnowledgeStore {
 }
 
 #[cfg(test)]
-#[path = "graph_intelligence_tests.rs"]
+#[path = "graph_intelligence_tests/mod.rs"]
 mod tests;

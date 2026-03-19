@@ -324,5 +324,5 @@ fn get_free_pages(conn: &Connection) -> u32 {
 }
 
 #[cfg(test)]
-#[path = "retention_tests.rs"]
+#[path = "retention_tests/mod.rs"]
 mod tests;

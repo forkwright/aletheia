@@ -563,5 +563,5 @@ fn collect_flush_section(
 }
 
 #[cfg(test)]
-#[path = "distill_tests.rs"]
+#[path = "distill_tests/mod.rs"]
 mod tests;
