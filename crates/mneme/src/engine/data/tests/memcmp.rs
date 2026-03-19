@@ -94,11 +94,8 @@ fn encode_decode_bytes() {
 fn specific_encode() {
     let mut encoder = vec![];
     encoder.encode_datavalue(&DataValue::from(2095));
-    // println!("e1 {:?}", encoder);
     encoder.encode_datavalue(&DataValue::from("MSS"));
-    // println!("e2 {:?}", encoder);
     let (a, remaining) = DataValue::decode_from_key(&encoder);
-    // println!("r  {:?}", remaining);
     let (b, remaining) = DataValue::decode_from_key(remaining);
     assert!(remaining.is_empty());
     assert_eq!(a, DataValue::from(2095));

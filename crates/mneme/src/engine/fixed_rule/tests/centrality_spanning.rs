@@ -8,9 +8,6 @@
 use crate::engine::DbInstance;
 use crate::engine::data::value::DataValue;
 
-// 7. DegreeCentrality
-// ────────────────────────────────────────────────────────────────────────
-
 /// Triangle+tail: node 2 is most connected, total degree = 6.
 #[test]
 fn test_degree_centrality_when_triangle_plus_tail_hub_has_highest_degree() {
@@ -120,10 +117,6 @@ isolated[n]    <- [[5]]
     );
 }
 
-// ────────────────────────────────────────────────────────────────────────
-// 8. MinimumSpanningForestKruskal
-// ────────────────────────────────────────────────────────────────────────
-
 /// Connected 5-node graph: MST has exactly 4 edges with total cost 7.
 #[test]
 fn test_kruskal_when_connected_graph_returns_n_minus_1_edges() {
@@ -165,7 +158,6 @@ edges[src, dst, cost] <- [[0, 1, 1.0], [1, 2, 2.0],
         .expect("Kruskal spanning forest query should execute successfully")
         .rows;
 
-    // 5 nodes in 2 components → forest has 3 edges (2 from comp 1, 1 from comp 2).
     assert_eq!(res.len(), 3, "Forest has n - components edges");
 }
 
@@ -193,10 +185,6 @@ edges[src, dst, cost] <- [[0, 1, 1.0], [1, 2, 2.0], [0, 2, 3.0]]
         "Triangle MST cost = 1+2 = 3.0, got {total}"
     );
 }
-
-// ────────────────────────────────────────────────────────────────────────
-// 9. MinimumSpanningTreePrim
-// ────────────────────────────────────────────────────────────────────────
 
 /// Prim on the same 5-node graph produces the same MST cost as Kruskal.
 #[test]
@@ -241,10 +229,6 @@ start[] <- [[2]]
 
     assert_eq!(res.len(), 3, "Linear 4-node graph MST = 3 edges");
 }
-
-// ────────────────────────────────────────────────────────────────────────
-// 10. LabelPropagation
-// ────────────────────────────────────────────────────────────────────────
 
 /// Two triangles joined by a bridge: all 6 nodes receive a label.
 #[test]
@@ -298,10 +282,6 @@ edges[src, dst] <- [[0, 1], [2, 3]]
 
     assert_eq!(res.len(), 4, "4 nodes → 4 label rows");
 }
-
-// ────────────────────────────────────────────────────────────────────────
-// 11. PageRank
-// ────────────────────────────────────────────────────────────────────────
 
 /// Star topology: sink node has highest rank.
 #[test]
@@ -371,10 +351,6 @@ edges[src, dst] <- []
     assert!(res.is_empty(), "Empty graph → no PageRank rows");
 }
 
-// ────────────────────────────────────────────────────────────────────────
-// 12. RandomWalk
-// ────────────────────────────────────────────────────────────────────────
-
 /// Cycle ensures walk never gets stuck; steps=5 → path length 6.
 #[test]
 fn test_random_walk_when_cycle_graph_path_has_expected_length() {
@@ -439,12 +415,9 @@ start[] <- [[1]]
         .rows;
 
     assert_eq!(res.len(), 1, "dead-end walk should return exactly one row");
-    // Node 1 has no outgoing edges, so path is just [1].
     let path_len = res[0][2]
         .get_slice()
         .expect("walk path field should be a slice")
         .len();
     assert!(path_len <= 2, "Dead-end walk path len = {path_len}");
 }
-
-// ────────────────────────────────────────────────────────────────────────

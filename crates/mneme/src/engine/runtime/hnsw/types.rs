@@ -50,7 +50,6 @@ impl HnswIndexManifest {
         let mut rng = rand::rng();
         let uniform_num: f64 = rng.random_range(0.0..1.0);
         let r = -uniform_num.ln() * self.level_multiplier;
-        // the level is the largest integer smaller than r
         #[expect(
             clippy::cast_possible_truncation,
             reason = "floor of bounded float fits in i64"
@@ -171,7 +170,7 @@ impl VectorCache {
         self.dist(v, v2)
     }
     pub(crate) fn k_dist(&mut self, k1: &CompoundKey, k2: &CompoundKey) -> Result<f64> {
-        // Clone to avoid overlapping borrows on the cache.
+        // WHY: Clone to avoid overlapping borrows on the cache.
         let v1 = self
             .cache
             .peek(k1)

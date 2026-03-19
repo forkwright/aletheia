@@ -14,8 +14,6 @@ use super::*;
 
 use crate::handle::NousHandle;
 
-// --- Test infrastructure ---
-
 fn test_config() -> NousConfig {
     NousConfig {
         id: "test-agent".to_owned(),
@@ -68,8 +66,6 @@ fn spawn_test_actor() -> (NousHandle, tokio::task::JoinHandle<()>, tempfile::Tem
     );
     (handle, join, dir)
 }
-
-// --- Tests ---
 
 #[tokio::test]
 async fn turn_processes_and_returns_result() {
@@ -269,7 +265,6 @@ fn default_inbox_capacity_is_32() {
 async fn validate_workspace_creates_missing_dir() {
     let dir = tempfile::TempDir::new().expect("tmpdir");
     let root = dir.path();
-    // Only create shared/ with SOUL.md for cascade fallback
     std::fs::create_dir_all(root.join("shared")).expect("mkdir shared");
     std::fs::create_dir_all(root.join("theke")).expect("mkdir theke");
     std::fs::write(root.join("shared/SOUL.md"), "# Test Soul").expect("write");
@@ -298,8 +293,6 @@ async fn validate_workspace_fails_without_soul() {
         "error should mention SOUL.md: {msg}"
     );
 }
-
-// --- Resilience tests ---
 
 /// Mock provider that panics on every call.
 struct PanickingProvider;
@@ -364,7 +357,6 @@ fn spawn_panicking_actor() -> (NousHandle, tokio::task::JoinHandle<()>, tempfile
 async fn actor_survives_pipeline_panic() {
     let (handle, join, _dir) = spawn_panicking_actor();
 
-    // First turn panics: should return an error, not kill the actor
     let result = handle.send_turn("main", "Hello").await;
     assert!(result.is_err(), "panicking turn should return error");
     let msg = result.unwrap_err().to_string();
@@ -373,12 +365,10 @@ async fn actor_survives_pipeline_panic() {
         "error should mention panic: {msg}"
     );
 
-    // Actor is still alive: can respond to status
     let status = handle.status().await.expect("actor should still be alive");
     assert_eq!(status.panic_count, 1);
     assert_eq!(status.lifecycle, NousLifecycle::Idle);
 
-    // Second panicking turn also returns error, actor still alive
     let result2 = handle.send_turn("main", "Hello again").await;
     assert!(result2.is_err());
 
@@ -407,23 +397,19 @@ async fn ping_pong_liveness() {
 async fn ping_fails_on_dead_actor() {
     let (handle, join, _dir) = spawn_test_actor();
 
-    // Shut down the actor first
     handle.shutdown().await.expect("shutdown");
     join.await.expect("join");
 
-    // Ping should fail
     let result = handle.ping(std::time::Duration::from_millis(100)).await;
     assert!(result.is_err());
 }
 
 #[tokio::test]
 async fn send_timeout_fires_when_inbox_full() {
-    // Create a channel with capacity 1
     let (tx, _rx) = mpsc::channel(1);
     let handle = NousHandle::new("test-agent".to_owned(), tx.clone());
 
-    // Fill the inbox: don't drop _rx so the channel stays open
-    // Send one message to fill the single slot
+    // WHY: don't drop _rx — dropping closes the channel and the send below would fail.
     let (reply_tx, _reply_rx) = tokio::sync::oneshot::channel();
     tx.send(NousMessage::Turn {
         session_key: "main".to_owned(),
@@ -435,7 +421,6 @@ async fn send_timeout_fires_when_inbox_full() {
     .await
     .expect("fill inbox");
 
-    // Now the inbox is full: send_turn_with_timeout should fail
     let result = handle
         .send_turn_with_timeout("main", "Hello", std::time::Duration::from_millis(50))
         .await;
@@ -451,7 +436,6 @@ async fn send_timeout_fires_when_inbox_full() {
 async fn degraded_state_after_repeated_panics() {
     let (handle, join, _dir) = spawn_panicking_actor();
 
-    // Trigger enough panics to enter degraded mode (5 in window)
     for i in 0..5 {
         let result = handle.send_turn("main", &format!("panic {i}")).await;
         assert!(result.is_err());
@@ -465,7 +449,6 @@ async fn degraded_state_after_repeated_panics() {
     );
     assert_eq!(status.panic_count, 5);
 
-    // Subsequent turn should get ServiceDegraded error
     let result = handle.send_turn("main", "more work").await;
     assert!(result.is_err());
     let msg = result.unwrap_err().to_string();
@@ -479,12 +462,9 @@ async fn degraded_state_after_repeated_panics() {
 async fn background_task_reaping() {
     let (handle, join, _dir) = spawn_test_actor();
 
-    // Run a turn: this may spawn background tasks (extraction etc.)
-    // Even if no tasks spawn, the reaping code runs each loop iteration.
     let result = handle.send_turn("main", "Hello").await.expect("turn");
     assert_eq!(result.content, "Hello from actor!");
 
-    // The actor is still responsive: reaping didn't break anything.
     let status = handle.status().await.expect("status");
     assert_eq!(status.lifecycle, NousLifecycle::Idle);
 
@@ -496,11 +476,9 @@ async fn background_task_reaping() {
 async fn status_includes_uptime() {
     let (handle, join, _dir) = spawn_test_actor();
 
-    // Give the actor a moment to start
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
     let status = handle.status().await.expect("status");
-    // Uptime should be non-zero: the actor has been alive for at least a few ms
     assert!(
         !status.uptime.is_zero(),
         "uptime should be non-zero, got {:?}",
@@ -510,8 +488,6 @@ async fn status_includes_uptime() {
     handle.shutdown().await.expect("shutdown");
     join.await.expect("join");
 }
-
-// --- Session ID adoption tests ---
 
 fn spawn_test_actor_with_store(
     store: Arc<tokio::sync::Mutex<aletheia_mneme::store::SessionStore>>,
@@ -551,7 +527,7 @@ async fn session_id_adoption_prevents_fk_divergence() {
     let store = aletheia_mneme::store::SessionStore::open_in_memory().expect("in-memory store");
     let db_session_id = "db-ses-from-pylon";
 
-    // Simulate pylon creating the session in the store
+    // NOTE: Simulate pylon creating the session in the store
     store
         .create_session(
             db_session_id,
@@ -565,7 +541,6 @@ async fn session_id_adoption_prevents_fk_divergence() {
     let store = Arc::new(tokio::sync::Mutex::new(store));
     let (handle, join, _dir) = spawn_test_actor_with_store(Arc::clone(&store));
 
-    // Send a turn with the DB session ID: actor must adopt it
     let result = handle
         .send_turn_with_session_id(
             "main",
@@ -577,20 +552,18 @@ async fn session_id_adoption_prevents_fk_divergence() {
         .expect("turn should succeed");
     assert_eq!(result.content, "Hello from actor!");
 
-    // Verify finalize persisted messages under the correct session ID
     let store_guard = store.lock().await;
     let history = store_guard
         .get_history(db_session_id, None)
         .expect("history");
 
-    // finalize writes: user + assistant = 2 messages
     assert!(
         history.len() >= 2,
         "expected at least 2 messages under DB session ID, got {}",
         history.len()
     );
 
-    // Verify no messages exist under a different session ID
+    // WHY: Verify no messages exist under a different session ID
     // (if divergence occurred, messages would be under a random ULID)
     let all_sessions = store_guard
         .list_sessions(Some("test-agent"))

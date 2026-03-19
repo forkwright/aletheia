@@ -399,10 +399,6 @@ mod tests {
         names.iter().map(|n| tc(n)).collect()
     }
 
-    // ------------------------------------------------------------------
-    // Must-pass gates
-    // ------------------------------------------------------------------
-
     #[test]
     fn gate_rejects_short_sequence() {
         let calls = seq(&["Read", "Edit", "Bash", "Read"]);
@@ -419,7 +415,6 @@ mod tests {
 
     #[test]
     fn gate_rejects_too_few_distinct_tools() {
-        // 6 calls but only 2 distinct tools
         let calls = seq(&["Read", "Read", "Read", "Edit", "Edit", "Edit"]);
         let score = score_sequence(&calls);
         assert!(
@@ -438,13 +433,8 @@ mod tests {
         );
     }
 
-    // ------------------------------------------------------------------
-    // Anti-pattern: debugging spiral
-    // ------------------------------------------------------------------
-
     #[test]
     fn antipattern_debugging_spiral_rejected() {
-        // >50% Bash, >20% errors
         let mut calls = vec![
             tc("Read"),
             tc_err("Bash"),
@@ -456,7 +446,6 @@ mod tests {
             tc_err("Bash"),
             tc("Grep"),
         ];
-        // Total 9: 7 Bash (78%), 4 errors (44%)
         calls.push(tc("Bash")); // 10 total: 8 Bash (80%), 4 errors (40%)
         let score = score_sequence(&calls);
         assert!(
@@ -471,24 +460,16 @@ mod tests {
 
     #[test]
     fn antipattern_debugging_spiral_requires_both_conditions() {
-        // High Bash but low errors: not a spiral
         let calls = seq(&["Read", "Grep", "Bash", "Bash", "Bash", "Bash", "Edit"]);
-        // 7 calls: 4 Bash (57%), 0 errors (0%): not rejected
         let score = score_sequence(&calls);
-        // passes the spiral check (error_ratio = 0)
         assert!(
             !score.details.iter().any(|d| d.contains("debugging spiral")),
             "high Bash ratio without high error rate should not trigger spiral detection"
         );
     }
 
-    // ------------------------------------------------------------------
-    // Anti-pattern: single-file edit
-    // ------------------------------------------------------------------
-
     #[test]
     fn antipattern_single_file_edit_rejected() {
-        // Exactly 1 write, no search, some reads
         let calls = seq(&["Read", "Read", "Edit", "Read", "Bash", "Read"]);
         let score = score_sequence(&calls);
         assert!(
@@ -503,10 +484,8 @@ mod tests {
 
     #[test]
     fn antipattern_single_file_edit_not_triggered_with_search() {
-        // Same but has Grep: not a single-file edit
         let calls = seq(&["Grep", "Read", "Edit", "Read", "Bash", "Bash"]);
         let score = score_sequence(&calls);
-        // Should pass the single-file check
         assert!(
             !score.details.iter().any(|d| d.contains("single-file edit")),
             "presence of search tools should prevent single-file edit detection"
@@ -515,7 +494,6 @@ mod tests {
 
     #[test]
     fn antipattern_single_file_edit_not_triggered_with_multiple_writes() {
-        // Multiple writes: not a single-file edit
         let calls = seq(&["Read", "Edit", "Edit", "Write", "Bash", "Bash"]);
         let score = score_sequence(&calls);
         assert!(
@@ -524,13 +502,9 @@ mod tests {
         );
     }
 
-    // ------------------------------------------------------------------
-    // Anti-pattern: config-specific
-    // ------------------------------------------------------------------
-
     #[test]
     fn antipattern_config_specific_rejected() {
-        // Read, Glob, and Bash only: no writes, no search.
+        // WHY: Read, Glob, and Bash only: no writes, no search.
         // Three distinct tool names passes the distinct-tool gate, but the
         // config-specific anti-pattern then fires because all activity is
         // just reading/glob and running checks without writing anything.
@@ -555,10 +529,6 @@ mod tests {
             "presence of write tools should prevent config-specific detection"
         );
     }
-
-    // ------------------------------------------------------------------
-    // Pattern detection
-    // ------------------------------------------------------------------
 
     #[test]
     fn pattern_research_detected() {
@@ -630,7 +600,7 @@ mod tests {
 
     #[test]
     fn pattern_review_detected() {
-        // Review: heavy read, small write (a note/comment), ends with Write
+        // NOTE: Review: heavy read, small write (a note/comment), ends with Write
         // not Execute, so Diagnostic/Refactor don't fire.
         // write_count=1 means Research (write==0) is excluded.
         let calls = seq(&["Read", "Read", "Grep", "Read", "Read", "Write"]);
@@ -645,10 +615,6 @@ mod tests {
             "read-heavy write-light sequence should be classified as Review"
         );
     }
-
-    // ------------------------------------------------------------------
-    // Score components
-    // ------------------------------------------------------------------
 
     #[test]
     fn score_total_positive_for_good_sequence() {
@@ -691,7 +657,6 @@ mod tests {
 
     #[test]
     fn any_passing_score_has_passed_gates() {
-        // Property: total > 0 implies passed_gates
         let sequences: &[&[&str]] = &[
             &["Grep", "Read", "Read", "Edit", "Bash", "Bash"],
             &["Read", "Read", "Grep", "Write", "Bash", "Bash"],

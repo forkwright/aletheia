@@ -5,8 +5,6 @@
 )]
 use super::*;
 
-// ---- Mock provider ----
-
 struct MockConsolidationProvider {
     response: String,
 }
@@ -43,8 +41,6 @@ impl ConsolidationProvider for FailingProvider {
         .build())
     }
 }
-
-// ---- Unit tests ----
 
 #[test]
 fn consolidation_config_defaults() {
@@ -249,10 +245,6 @@ fn audit_record_serde_roundtrip() {
     assert_eq!(record.original_count, back.original_count);
 }
 
-// ---------------------------------------------------------------------------
-// Trigger evaluation
-// ---------------------------------------------------------------------------
-
 /// Requirement 19: entity with 11 facts (> threshold 10) triggers entity overflow.
 #[test]
 fn entity_fact_count_11_triggers_entity_overflow() {
@@ -327,10 +319,6 @@ fn entity_overflow_query_excludes_verified_tier_facts() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Response parsing: edge cases
-// ---------------------------------------------------------------------------
-
 /// Requirement 28: empty array response is valid (no consolidation produced).
 #[test]
 fn parse_empty_array_response_is_valid() {
@@ -347,7 +335,7 @@ fn parse_empty_array_response_is_valid() {
 /// `content` is required (no `#[serde(default)]`). Omitting it must fail.
 #[test]
 fn parse_response_missing_required_content_field_errors() {
-    // Valid JSON structure but missing the required `content` field
+    // WHY: Valid JSON structure but missing the required `content` field
     let response = r#"[{"entities": ["alice@example.com"]}]"#;
     let result = parse_consolidation_response(response);
     assert!(
@@ -355,10 +343,6 @@ fn parse_response_missing_required_content_field_errors() {
         "JSON entry without required `content` field must return an error"
     );
 }
-
-// ---------------------------------------------------------------------------
-// Batch processing: boundary conditions
-// ---------------------------------------------------------------------------
 
 /// Requirement 30: single-fact batch is valid (no off-by-one).
 #[test]
@@ -410,10 +394,6 @@ fn batch_exactly_batch_size_produces_single_batch() {
         "the single batch must contain all {batch_size} facts"
     );
 }
-
-// ---------------------------------------------------------------------------
-// Property-based tests
-// ---------------------------------------------------------------------------
 
 mod proptests {
     use super::*;

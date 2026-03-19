@@ -137,7 +137,7 @@ fn wire_request_extracts_system_from_messages() {
         wire.system,
         Some(serde_json::Value::String("Be concise.".to_owned()))
     );
-    // System messages must not appear in the messages array
+    // WHY: System messages must not appear in the messages array
     assert_eq!(wire.messages.len(), 1);
 }
 
@@ -467,11 +467,9 @@ fn wire_request_mixed_user_and_server_tools() {
     let json = serde_json::to_value(&wire).unwrap();
     let tools = json["tools"].as_array().unwrap();
     assert_eq!(tools.len(), 2);
-    // First: user-defined tool (has input_schema)
     assert_eq!(tools[0]["name"], "read");
     assert!(tools[0].get("input_schema").is_some());
     assert!(tools[0].get("type").is_none());
-    // Second: server-side tool (has type, no input_schema)
     assert_eq!(tools[1]["type"], "web_search_20250305");
     assert_eq!(tools[1]["name"], "web_search");
     assert_eq!(tools[1]["max_uses"], 5);
@@ -568,9 +566,7 @@ fn wire_request_cache_tools_only_on_user_tools() {
     let wire = WireRequest::from_request(&req, None);
     let json = serde_json::to_value(&wire).unwrap();
     let tools = json["tools"].as_array().unwrap();
-    // cache_control on last user-defined tool
     assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
-    // server tool has no cache_control
     assert!(tools[1].get("cache_control").is_none());
 }
 

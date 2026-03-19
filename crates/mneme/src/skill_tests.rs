@@ -261,8 +261,6 @@ fn skill_parse_error_display() {
     );
 }
 
-// ── slugify ──────────────────────────────────────────────────────────────
-
 #[test]
 fn slugify_simple_name() {
     assert_eq!(
@@ -313,8 +311,6 @@ fn slugify_all_special() {
     );
 }
 
-// ── format_skill_md ──────────────────────────────────────────────────────
-
 fn export_skill() -> SkillContent {
     SkillContent {
         name: "rust-error-handling".to_owned(),
@@ -337,7 +333,6 @@ fn format_skill_md_has_yaml_frontmatter() {
         md.starts_with("---\n"),
         "should start with frontmatter delimiter"
     );
-    // Count frontmatter delimiters
     let delimiters: Vec<_> = md.match_indices("---").collect();
     assert!(delimiters.len() >= 2, "should have opening and closing ---");
 }
@@ -458,8 +453,6 @@ fn format_skill_md_description_with_colon_is_quoted() {
     );
 }
 
-// ── export_skills_to_cc ──────────────────────────────────────────────────
-
 #[test]
 fn export_creates_correct_directory_structure() {
     let dir = tempfile::tempdir().expect("create temp dir");
@@ -573,7 +566,6 @@ fn export_roundtrip_content_preserved() {
     export_skills_to_cc(std::slice::from_ref(&original), dir.path(), None)
         .expect("export skill for roundtrip");
 
-    // Read back and parse
     let exported_md =
         std::fs::read_to_string(dir.path().join("rust-error-handling").join("SKILL.md"))
             .expect("read back exported SKILL.md");
@@ -650,8 +642,6 @@ fn export_domain_filter_with_no_matches_returns_empty() {
     );
 }
 
-// ── skill_decay_score ───────────────────────────────────────────────────
-
 #[test]
 fn skill_decay_fresh_skill_scores_high() {
     let score = skill_decay_score(0.0, 5, 0.9);
@@ -663,7 +653,6 @@ fn skill_decay_fresh_skill_scores_high() {
 
 #[test]
 fn skill_decay_unused_skill_decays_below_review() {
-    // 40 days unused, zero usage, moderate confidence
     let score = skill_decay_score(40.0, 0, 0.7);
     assert!(
         score < decay::NEEDS_REVIEW_THRESHOLD,
@@ -673,7 +662,6 @@ fn skill_decay_unused_skill_decays_below_review() {
 
 #[test]
 fn skill_decay_very_stale_skill_below_retire() {
-    // 90 days unused, zero usage, low confidence
     let score = skill_decay_score(90.0, 0, 0.5);
     assert!(
         score < decay::RETIRE_THRESHOLD,
@@ -693,7 +681,6 @@ fn skill_decay_high_usage_decays_slower() {
 
 #[test]
 fn skill_decay_high_usage_above_review_at_40_days() {
-    // High-usage skills with 3× slower decay should survive 40 days
     let score = skill_decay_score(40.0, 15, 0.9);
     assert!(
         score >= decay::NEEDS_REVIEW_THRESHOLD,

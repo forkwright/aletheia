@@ -95,7 +95,6 @@ pub enum ImperativeStmt {
     TempSwap {
         left: CompactString,
         right: CompactString,
-        // span: SourceSpan,
     },
     TempDebug {
         temp: CompactString,

@@ -8,8 +8,6 @@
 use super::super::utils;
 use super::super::*;
 
-// --- Acceptance criteria tests (prompt 99) ---
-
 #[test]
 fn parse_empty_extraction() {
     let engine = ExtractionEngine::new(ExtractionConfig::default());
@@ -28,7 +26,7 @@ fn parse_empty_extraction() {
 #[test]
 fn parse_missing_fields_errors() {
     let engine = ExtractionEngine::new(ExtractionConfig::default());
-    // Missing required fields: serde_json requires all fields on Extraction.
+    // WHY: Missing required fields: serde_json requires all fields on Extraction.
     // "facts" key with only "content" is wrong shape (ExtractedFact needs subject/predicate/object).
     let json = r#"{"facts": [{"content": "test"}]}"#;
     let result = engine.parse_response(json);
@@ -38,7 +36,7 @@ fn parse_missing_fields_errors() {
 #[test]
 fn parse_missing_entities_and_relationships_errors() {
     let engine = ExtractionEngine::new(ExtractionConfig::default());
-    // Extraction requires all three fields: entities, relationships, facts.
+    // WHY: Extraction requires all three fields: entities, relationships, facts.
     let json = r#"{"facts": []}"#;
     let result = engine.parse_response(json);
     assert!(
@@ -98,7 +96,6 @@ fn parse_handles_all_entity_types() {
         6,
         "should parse all 6 entities including unknown type"
     );
-    // entity_type is a free-form string: no validation at parse time
     assert_eq!(
         extraction.entities[5].entity_type, "unknown_type",
         "unknown entity type should pass through unchanged"
@@ -160,10 +157,8 @@ fn strip_code_fences_with_leading_whitespace() {
 
 #[test]
 fn strip_code_fences_no_closing_fence() {
-    // LLM sometimes forgets the closing fence
     let input = "```json\n{\"a\":1}";
     let result = utils::strip_code_fences(input);
-    // Should still produce parseable JSON (strips prefix, returns rest)
     assert!(
         result.contains(r#"{"a":1}"#),
         "JSON body should be recoverable even without closing fence"
@@ -322,7 +317,6 @@ fn persist_round_trip() {
     );
     assert_eq!(result.facts_inserted, 1, "should insert 1 fact");
 
-    // Verify entities are queryable via entity_neighborhood.
     let neighborhood = store
         .entity_neighborhood(&crate::id::EntityId::new_unchecked("dr-chen"))
         .expect("entity neighborhood query for dr-chen should succeed");
@@ -331,9 +325,6 @@ fn persist_round_trip() {
         "dr-chen entity should be reachable in the graph"
     );
 
-    // query_facts filters: valid_from <= now AND valid_to > now
-    // Use a future time that's after valid_from but before valid_to.
-    // far_future() is 9999-01-01T00:00:00Z, so query before that.
     let facts = store
         .query_facts("syn", "2099-01-01T00:00:00Z", 100)
         .expect("query_facts should return results for syn nous up to year 2099");

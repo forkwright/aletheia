@@ -393,7 +393,7 @@ fn slugify_unicode_mixed() {
 
 #[test]
 fn slugify_nfc_normalization_composed_vs_decomposed() {
-    // "café" in NFC (composed é = U+00E9) vs NFD (decomposed e + combining accent)
+    // NOTE: "café" in NFC (composed é = U+00E9) vs NFD (decomposed e + combining accent)
     let composed = "caf\u{00E9}"; // NFC é
     let decomposed = "cafe\u{0301}"; // NFD: e + combining acute accent
     let slug_composed = utils::slugify(composed);
@@ -406,7 +406,7 @@ fn slugify_nfc_normalization_composed_vs_decomposed() {
 
 #[test]
 fn slugify_nfc_normalization_preserves_ascii() {
-    // NFC normalization must not alter plain ASCII
+    // WHY: NFC normalization must not alter plain ASCII
     assert_eq!(
         utils::slugify("hello-world"),
         "hello-world",
@@ -471,13 +471,13 @@ mod proptests {
         #[test]
         fn parse_never_panics_on_arbitrary_input(input in "\\PC{0,500}") {
             let engine = ExtractionEngine::new(ExtractionConfig::default());
-            // Must return Ok or Err, never panic
+            // INVARIANT: Must return Ok or Err, never panic
             let _ = engine.parse_response(&input);
         }
 
         #[test]
         fn strip_code_fences_never_panics(input in "\\PC{0,500}") {
-            // Must return a string, never panic
+            // INVARIANT: Must return a string, never panic
             let _ = utils::strip_code_fences(&input);
         }
 
@@ -506,7 +506,7 @@ mod proptests {
         #[test]
         fn slugify_never_panics(input in "\\PC{0,200}") {
             let result = utils::slugify(&input);
-            // BUG: slugify uses char::is_alphanumeric() which is Unicode-aware,
+            // NOTE: BUG: slugify uses char::is_alphanumeric() which is Unicode-aware,
             // so non-ASCII alphanumeric chars (Tamil, Cyrillic, etc.) pass through.
             // Slugs should ideally be ASCII-only. Documented for fix in a separate PR.
             assert!(

@@ -5,8 +5,6 @@
 //! Edge case and utility tests.
 use super::*;
 
-// --- Edge case tests ---
-
 #[tokio::test]
 async fn empty_text_response() {
     let mut providers = ProviderRegistry::new();

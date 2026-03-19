@@ -18,8 +18,6 @@ fn test_raw_escape_hatch() {
     );
 }
 
-// -- Regression: builder output matches original constants --
-
 #[test]
 fn test_builder_matches_upsert_fact() {
     let original = r"

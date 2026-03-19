@@ -388,7 +388,6 @@ impl<'a> crate::engine::runtime::transact::SessionTx<'a> {
             }
         }
 
-        // triggers and callbacks
         if need_to_collect && !new_tuples.is_empty() {
             let k_bindings = relation_store
                 .metadata

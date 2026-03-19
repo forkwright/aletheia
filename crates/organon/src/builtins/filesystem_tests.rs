@@ -512,7 +512,6 @@ async fn test_ls_output_includes_date_column() {
     let result = LsExecutor.execute(&input, &ctx).await.expect("exec");
     assert!(!result.is_error, "ls should succeed without error");
     let text = result.content.text_summary();
-    // Date format: YYYY-MM-DD HH:MM
     assert!(text.contains('-'), "should show date with hyphens");
     assert!(text.contains(':'), "should show time with colon");
 }
@@ -594,7 +593,6 @@ fn test_days_to_ymd_known_epoch_gives_1970_01_01() {
 
 #[test]
 fn test_days_to_ymd_365_days_gives_1971_01_01() {
-    // 1970 was not a leap year, so day 365 = Jan 1, 1971
     let (y, m, d) = days_to_ymd(365);
     assert_eq!(
         (y, m, d),
@@ -605,7 +603,6 @@ fn test_days_to_ymd_365_days_gives_1971_01_01() {
 
 #[test]
 fn test_days_to_ymd_known_date_2000_01_01() {
-    // Days from 1970-01-01 to 2000-01-01 = 30 * 365 + 8 leap days = 10957
     let (y, m, d) = days_to_ymd(10957);
     assert_eq!(
         (y, m, d),

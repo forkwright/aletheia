@@ -416,7 +416,6 @@ Threads:  8
 
     #[test]
     fn check_memory_runs_without_panic() {
-        // Process RSS in tests is typically < 1 GB.
         let items = check_memory();
         assert!(
             items.len() <= 1,

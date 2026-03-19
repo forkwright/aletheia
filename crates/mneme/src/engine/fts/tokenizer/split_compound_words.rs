@@ -99,8 +99,6 @@ struct SplitCompoundWordsTokenStream<'a> {
 }
 
 impl<'a> SplitCompoundWordsTokenStream<'a> {
-    // Will use `self.cuts` to fill `self.parts` if `self.tail.token()`
-    // can fully be split into consecutive matches against `self.dict`.
     fn split(&mut self) {
         let token = self.tail.token();
         let mut text = token.text.as_str();
@@ -118,9 +116,6 @@ impl<'a> SplitCompoundWordsTokenStream<'a> {
         }
 
         if pos == token.text.len() {
-            // Fill `self.parts` in reverse order,
-            // so that `self.parts.pop()` yields
-            // the tokens in their original order.
             for pos in self.cuts.iter().rev() {
                 let (head, tail) = text.split_at(*pos);
 
@@ -146,8 +141,6 @@ impl<'a> TokenStream for SplitCompoundWordsTokenStream<'a> {
             return false;
         }
 
-        // Will yield either `self.parts.last()` or
-        // `self.tail.token()` if it could not be split.
         self.split();
         true
     }

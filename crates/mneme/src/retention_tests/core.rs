@@ -46,7 +46,6 @@ fn retention_skips_active_sessions() {
         .apply(&conn, dir.path())
         .expect("retention apply should succeed");
     assert_eq!(result.sessions_deleted, 1);
-    // Active session preserved even though it's old
     assert_eq!(count_sessions(&conn), 1);
 }
 
@@ -94,7 +93,6 @@ fn orphan_messages_cleaned_up() {
     insert_session(&conn, "ses-1", "syn", "active", 0);
     insert_message(&conn, "ses-1", 1);
 
-    // Insert orphan message with old timestamp (session deleted after message insert)
     conn.execute_batch("PRAGMA foreign_keys = OFF")
         .expect("disabling foreign keys should succeed");
     let old_ts = jiff::Timestamp::now()
@@ -117,7 +115,6 @@ fn orphan_messages_cleaned_up() {
         .apply(&conn, dir.path())
         .expect("retention apply should succeed");
     assert_eq!(result.messages_deleted, 1);
-    // Non-orphan message still exists
     assert_eq!(count_messages(&conn), 1);
 }
 
@@ -139,7 +136,6 @@ fn max_sessions_per_nous_limit_works() {
     let policy = RetentionPolicy {
         max_sessions_per_nous: 2,
         archive_before_delete: false,
-        // Set high age so age-based retention doesn't fire
         session_max_age_days: 365,
         ..RetentionPolicy::default()
     };
@@ -165,7 +161,6 @@ fn default_policy_retains_everything() {
         .apply(&conn, dir.path())
         .expect("retention apply should succeed");
 
-    // Default is 90 days, all sessions are < 90 days old
     assert_eq!(result.sessions_deleted, 0);
     assert_eq!(count_sessions(&conn), 3);
 }
@@ -287,7 +282,6 @@ fn retention_concurrent_access() {
         .apply(&conn, dir.path())
         .expect("first retention apply should succeed");
 
-    // Second run on same conn after first completed
     let r2 = policy
         .apply(&conn, dir.path())
         .expect("second retention apply should succeed");

@@ -624,7 +624,6 @@ impl KnowledgeStore {
             let fact_id = extract_str(&row[0])?;
             let created_at = extract_str(&row[2])?;
 
-            // Insert mapping to canonical
             let mut put_params = BTreeMap::new();
             put_params.insert(
                 "fact_id".to_owned(),
@@ -637,7 +636,6 @@ impl KnowledgeStore {
             put_params.insert("created_at".to_owned(), DataValue::Str(created_at.into()));
             self.run_mut(&queries::upsert_fact_entity(), put_params)?;
 
-            // Remove old mapping
             let mut rm_params = BTreeMap::new();
             rm_params.insert("fact_id".to_owned(), DataValue::Str(fact_id.into()));
             rm_params.insert(
@@ -662,7 +660,6 @@ impl KnowledgeStore {
         let entity = self.load_entity(entity_id)?;
         let lower_new = new_alias.to_lowercase();
 
-        // Skip if already present (case-insensitive) or same as current name
         if entity.name.to_lowercase() == lower_new
             || entity.aliases.iter().any(|a| a.to_lowercase() == lower_new)
         {
@@ -680,7 +677,6 @@ impl KnowledgeStore {
             "updated_at".to_owned(),
             DataValue::Str(crate::knowledge::format_timestamp(&jiff::Timestamp::now()).into()),
         );
-        // Read current fields first to preserve them
         params.insert("name".to_owned(), DataValue::Str(entity.name.into()));
         params.insert(
             "entity_type".to_owned(),

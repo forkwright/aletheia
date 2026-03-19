@@ -191,7 +191,6 @@ mod tests {
     async fn note_adapter_lock_works_in_async_context() {
         let store = test_store();
 
-        // Seed a session
         {
             let s = store.lock().await;
             s.create_session("sess-1", "alice", "test-key", None, None)
@@ -200,18 +199,15 @@ mod tests {
 
         let adapter = SessionNoteAdapter(Arc::clone(&store));
 
-        // add_note uses block_in_place + Handle::block_on(store.lock().await)
         let id = adapter
             .add_note("sess-1", "alice", "task", "buy oat milk")
             .expect("add_note");
         assert!(id > 0, "note id should be positive");
 
-        // get_notes should return the note
         let notes = adapter.get_notes("sess-1").expect("get_notes");
         assert_eq!(notes.len(), 1);
         assert_eq!(notes[0].content, "buy oat milk");
 
-        // delete_note should remove it
         let deleted = adapter.delete_note(id).expect("delete_note");
         assert!(deleted);
         let notes_after = adapter.get_notes("sess-1").expect("get_notes after delete");

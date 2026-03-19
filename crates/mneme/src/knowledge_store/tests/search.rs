@@ -93,7 +93,6 @@ fn search_vectors_returns_nearest() {
     chunk_b.embedding = vec![0.0, 1.0, 0.0, 0.0];
     store.insert_embedding(&chunk_b).expect("insert emb-b");
 
-    // Query close to chunk_a
     let results = store
         .search_vectors(vec![0.9, 0.1, 0.0, 0.0], 1, 20)
         .expect("search nearest");
@@ -197,7 +196,7 @@ mod correctness {
         }
     }
 
-    // Bug #1114: search_vectors must not return forgotten facts.
+    // WHY: Bug #1114: search_vectors must not return forgotten facts.
     #[test]
     fn search_vectors_excludes_forgotten_facts() {
         let store = make_store();
@@ -242,7 +241,6 @@ mod correctness {
         );
     }
 
-    // Bug #1117: insert_embedding must reject vectors with wrong dimension.
     #[test]
     fn insert_embedding_rejects_wrong_dimension() {
         let store = make_store(); // DIM = 4
@@ -255,7 +253,7 @@ mod correctness {
             source_type: "fact".to_owned(),
             source_id: "dim-check".to_owned(),
             nous_id: "test-nous".to_owned(),
-            // Wrong: 6 values instead of DIM=4
+            // WHY: Wrong: 6 values instead of DIM=4
             embedding: vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
             created_at: ts("2026-03-01T00:00:00Z"),
         };
@@ -276,7 +274,6 @@ mod correctness {
         );
     }
 
-    // Bug #1117: insert_embedding must accept vectors with correct dimension.
     #[test]
     fn insert_embedding_accepts_correct_dimension() {
         let store = make_store(); // DIM = 4

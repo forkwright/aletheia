@@ -97,7 +97,6 @@ pub fn eval_bytecode(
             break;
         }
         let current_instruction = &bytecodes[pointer];
-        // println!("{current_instruction:?}");
         match current_instruction {
             Bytecode::Binding { var, tuple_pos, .. } => match tuple_pos {
                 None => {

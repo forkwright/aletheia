@@ -137,7 +137,6 @@ impl LlmProvider for MockProvider {
                 .expect("mock request lock poisoned")
                 .push(request.clone());
 
-            // Error path: single-use, returns error on first call
             {
                 let mut err_guard = self.error.lock().expect("mock error lock poisoned");
                 if let Some(err) = err_guard.take() {
@@ -145,7 +144,6 @@ impl LlmProvider for MockProvider {
                 }
             }
 
-            // Success path: pop from front if multiple, clone last if one
             let mut responses = self.responses.lock().expect("mock response lock poisoned");
             if responses.len() > 1 {
                 Ok(responses.remove(0))

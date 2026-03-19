@@ -186,7 +186,7 @@ fn has_planning_patterns(lower: &str) -> bool {
         "option b",
         "pros and cons",
     ];
-    // Require at least 2 planning keywords for confidence
+    // WHY: Require at least 2 planning keywords for confidence
     let matches = PATTERNS.iter().filter(|p| lower.contains(**p)).count();
     matches >= 2
 }
@@ -207,7 +207,7 @@ fn has_debugging_patterns(lower: &str) -> bool {
         "investigating",
         "root cause",
     ];
-    // Require at least 2 debugging keywords
+    // WHY: Require at least 2 debugging keywords
     let matches = PATTERNS.iter().filter(|p| lower.contains(**p)).count();
     matches >= 2
 }
@@ -356,7 +356,6 @@ fn has_task_patterns(lower: &str) -> bool {
         "todo", "need to", "should", "will", "plan to", "going to", "must", "have to", "deadline",
         "due date",
     ];
-    // Need at least one strong task indicator
     PATTERNS.iter().any(|p| lower.contains(p))
         && (lower.contains("todo")
             || lower.contains("need to")

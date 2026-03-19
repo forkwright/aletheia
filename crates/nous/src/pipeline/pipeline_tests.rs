@@ -2,8 +2,6 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
 use super::*;
 
-// --- Loop Detector ---
-
 #[test]
 fn loop_detector_no_loop() {
     let mut det = LoopDetector::new(3);
@@ -28,7 +26,6 @@ fn loop_detector_different_inputs_ok() {
     assert!(det.record("exec", "hash1").is_none());
     assert!(det.record("exec", "hash2").is_none());
     assert!(det.record("exec", "hash3").is_none());
-    // Different hashes, no loop
 }
 
 #[test]
@@ -47,12 +44,9 @@ fn loop_detector_threshold_4() {
     assert!(det.record("exec", "same").is_none());
     assert!(det.record("exec", "same").is_none());
     assert!(det.record("exec", "same").is_none());
-    // Not yet: threshold is 4
     let result = det.record("exec", "same");
     assert!(result.is_some());
 }
-
-// --- Guard Result ---
 
 #[test]
 fn guard_result_equality() {
@@ -64,8 +58,6 @@ fn guard_result_equality() {
         }
     );
 }
-
-// --- Turn Usage ---
 
 #[test]
 fn turn_usage_total() {
@@ -79,8 +71,6 @@ fn turn_usage_total() {
     assert_eq!(usage.total_tokens(), 1500);
 }
 
-// --- Interaction Signal ---
-
 #[test]
 fn interaction_signal_serde() {
     let signal = InteractionSignal::CodeGeneration;
@@ -90,8 +80,6 @@ fn interaction_signal_serde() {
     assert_eq!(back, signal);
 }
 
-// --- Pipeline Context ---
-
 #[test]
 fn pipeline_context_default() {
     let ctx = PipelineContext::default();
@@ -100,8 +88,6 @@ fn pipeline_context_default() {
     assert!(!ctx.needs_distillation);
     assert_eq!(ctx.guard_result, GuardResult::Allow);
 }
-
-// --- Guard Result variants ---
 
 #[test]
 fn guard_result_rate_limited() {
@@ -137,8 +123,6 @@ fn guard_result_rejected() {
     }
 }
 
-// --- Loop Detector edge cases ---
-
 #[test]
 fn loop_detector_threshold_1() {
     let mut det = LoopDetector::new(1);
@@ -166,8 +150,6 @@ fn loop_detector_many_unique_then_repeat() {
     assert!(det.record("exec", "same").is_some());
 }
 
-// --- Interaction Signal ---
-
 #[test]
 fn all_interaction_signals_serde_roundtrip() {
     let signals = [
@@ -184,8 +166,6 @@ fn all_interaction_signals_serde_roundtrip() {
         assert_eq!(signal, back);
     }
 }
-
-// --- Turn Usage ---
 
 #[test]
 fn turn_usage_default_is_zero() {
@@ -207,8 +187,6 @@ fn turn_usage_serde_roundtrip() {
     let back: TurnUsage = serde_json::from_str(&json).unwrap();
     assert_eq!(usage.total_tokens(), back.total_tokens());
 }
-
-// --- Context assembly ---
 
 #[tokio::test]
 async fn assemble_context_populates_pipeline() {
@@ -246,8 +224,6 @@ async fn assemble_context_populates_pipeline() {
     assert!(prompt.contains("Test user."));
     assert!(ctx.remaining_tokens > 0);
 }
-
-// --- run_pipeline ---
 
 #[tokio::test]
 async fn run_pipeline_simple() {
@@ -329,12 +305,9 @@ async fn run_pipeline_simple() {
     assert_eq!(result.stop_reason, "end_turn");
 }
 
-// --- Loop Detector window cap ---
-
 #[test]
 fn loop_detector_window_cap_evicts_old_calls() {
     let mut det = LoopDetector::new(100); // high threshold so no loop triggers
-    // Insert more entries than the window to trigger eviction
     for i in 0..55 {
         det.record("tool", &format!("hash{i}"));
     }
@@ -372,11 +345,9 @@ fn loop_detector_pattern_count_resets_on_different() {
 #[test]
 fn loop_detector_window_still_detects_loops() {
     let mut det = LoopDetector::new(3);
-    // Fill window with unique calls
     for i in 0..18 {
         det.record("tool", &format!("hash{i}"));
     }
-    // Now trigger a loop within the window
     assert!(det.record("exec", "same").is_none());
     assert!(det.record("exec", "same").is_none());
     assert!(
@@ -385,18 +356,14 @@ fn loop_detector_window_still_detects_loops() {
     );
 }
 
-// --- Additional edge cases ---
-
 #[test]
 fn loop_detector_detects_ab_cycle() {
-    // a, b, a, b, a, b: a 2-step cycle repeated 3 times should be detected
     let mut det = LoopDetector::new(3);
     assert!(det.record("exec", "a").is_none());
     assert!(det.record("exec", "b").is_none());
     assert!(det.record("exec", "a").is_none());
     assert!(det.record("exec", "b").is_none());
     assert!(det.record("exec", "a").is_none());
-    // Completing the 3rd repetition of the [exec:a, exec:b] cycle triggers detection
     let result = det.record("exec", "b");
     assert!(
         result.is_some(),
@@ -406,7 +373,6 @@ fn loop_detector_detects_ab_cycle() {
 
 #[test]
 fn loop_detector_non_repeating_interleaved_not_detected() {
-    // Different tool signatures each time: no repeating pattern
     let mut det = LoopDetector::new(3);
     for i in 0..6 {
         assert!(det.record("exec", &format!("hash{i}")).is_none());
@@ -487,7 +453,6 @@ async fn assemble_context_missing_soul_returns_error() {
     std::fs::create_dir_all(root.join("nous/test-agent")).unwrap();
     std::fs::create_dir_all(root.join("shared")).unwrap();
     std::fs::create_dir_all(root.join("theke")).unwrap();
-    // No SOUL.md anywhere
 
     let oikos = Oikos::from_root(root);
     let config = crate::config::NousConfig {

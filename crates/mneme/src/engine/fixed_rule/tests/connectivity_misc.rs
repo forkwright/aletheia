@@ -8,9 +8,6 @@
 use crate::engine::DbInstance;
 use crate::engine::data::value::DataValue;
 
-// 13. StronglyConnectedComponents
-// ────────────────────────────────────────────────────────────────────────
-
 /// Two disjoint cycles joined by a bridge: exactly 2 SCCs.
 #[test]
 fn test_scc_when_two_disjoint_cycles_returns_two_components() {
@@ -79,10 +76,6 @@ edges[src, dst] <- [[0, 0]]
 
     assert_eq!(res.len(), 1, "Self-loop is one SCC of one node");
 }
-
-// ────────────────────────────────────────────────────────────────────────
-// 14. ConnectedComponents (undirected SCCs)
-// ────────────────────────────────────────────────────────────────────────
 
 /// Two disjoint triangles: exactly 2 components.
 #[test]
@@ -172,10 +165,6 @@ edges[src, dst] <- [[0, 1], [0, 2], [0, 3]]
     assert_eq!(unique.len(), 1, "Undirected view merges all star nodes");
 }
 
-// ────────────────────────────────────────────────────────────────────────
-// 15. TopSort
-// ────────────────────────────────────────────────────────────────────────
-
 /// DAG 0→1→3, 0→2→3, 3→4: topological ordering must respect all edges.
 #[test]
 fn test_top_sort_when_dag_ordering_respects_all_edges() {
@@ -253,10 +242,6 @@ edges[src, dst] <- [[0, 1]]
         .collect();
     assert_eq!(nodes, vec![0, 1], "0 must precede 1");
 }
-
-// ────────────────────────────────────────────────────────────────────────
-// 16. ClusteringCoefficients (TriangleCounting)
-// ────────────────────────────────────────────────────────────────────────
 
 /// Triangle 0-1-2 + tail node 3: nodes 0,1,2 each in 1 triangle.
 #[test]
@@ -346,10 +331,6 @@ edges[src, dst] <- [[0, 1]]
     }
 }
 
-// ────────────────────────────────────────────────────────────────────────
-// 17. KShortestPathYen
-// ────────────────────────────────────────────────────────────────────────
-
 /// Two paths 0→3: k=2 returns both in cost order.
 #[test]
 fn test_yen_when_two_paths_returns_both_in_cost_order() {
@@ -398,10 +379,6 @@ goal[] <- [[2]]
     assert_eq!(res.len(), 1, "Only 1 path exists; k=3 still returns 1");
 }
 
-// ────────────────────────────────────────────────────────────────────────
-// 18. CommunityDetectionLouvain
-// ────────────────────────────────────────────────────────────────────────
-
 /// All 6 nodes in two triangles bridged together must receive community labels.
 #[test]
 fn test_louvain_when_two_triangles_all_nodes_labeled() {
@@ -437,10 +414,6 @@ edges[src, dst, w] <- [[0, 1, 1.0]]
 
     assert_eq!(res.len(), 2, "Single edge → 2 nodes receive labels");
 }
-
-// ────────────────────────────────────────────────────────────────────────
-// 19. ShortestPathBFS
-// ────────────────────────────────────────────────────────────────────────
 
 /// Known social-graph path: alice→eve→bob has 3 nodes.
 #[test]
@@ -513,10 +486,6 @@ end[]   <- [[1]]
     );
 }
 
-// ────────────────────────────────────────────────────────────────────────
-// 20. KCore (new algorithm: k-core decomposition)
-// ────────────────────────────────────────────────────────────────────────
-
 /// Clique K4 + pendant: K4 nodes are in 3-core; pendant is in 1-core.
 ///
 /// Graph: 0-1-2-3 fully connected (K4), plus node 4 connected only to 0.
@@ -568,8 +537,6 @@ edges[src, dst] <- [[0, 1], [1, 2], [2, 3], [3, 4]]
         .rows;
 
     assert_eq!(res.len(), 5, "5-node path");
-    // A path graph has no 2-core: each endpoint has degree 1 and peels,
-    // cascading until all nodes are removed from the 2-core.
     for row in &res {
         let k = row[1].get_int().expect("k-core value should be an int");
         assert_eq!(k, 1, "All path nodes are in exactly the 1-core, got k={k}");

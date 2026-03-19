@@ -8,8 +8,6 @@ use crate::error::{self, Result};
 use crate::types::{AgentNote, BlackboardRow};
 
 impl SessionStore {
-    // --- Agent Notes ---
-
     /// Add an agent note.
     #[instrument(skip(self, content))]
     pub fn add_note(
@@ -71,8 +69,6 @@ impl SessionStore {
             .context(error::DatabaseSnafu)?;
         Ok(rows > 0)
     }
-
-    // --- Blackboard ---
 
     /// Write or update a blackboard entry. Upserts on key.
     #[instrument(skip(self, value), level = "debug")]

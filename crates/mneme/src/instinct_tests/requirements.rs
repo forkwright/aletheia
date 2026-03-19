@@ -32,8 +32,6 @@ fn make_observation(
     }
 }
 
-// --- 17. Req 4: Empty parameters does not panic ---
-
 #[test]
 fn empty_parameters_does_not_panic() {
     let params = serde_json::json!({});
@@ -43,8 +41,6 @@ fn empty_parameters_does_not_panic() {
         "sanitizing empty params returns empty object"
     );
 }
-
-// --- 18. Req 4: Aggregation with empty parameters does not panic ---
 
 #[test]
 fn aggregation_with_empty_parameters_does_not_panic() {
@@ -66,8 +62,6 @@ fn aggregation_with_empty_parameters_does_not_panic() {
     );
 }
 
-// --- 19. Req 6: 4 calls does NOT trigger pattern (below threshold of 5) ---
-
 #[test]
 fn four_successful_calls_does_not_trigger_pattern() {
     let observations: Vec<_> = (0..4)
@@ -86,8 +80,6 @@ fn four_successful_calls_does_not_trigger_pattern() {
         "4 observations is below the minimum threshold of {MIN_OBSERVATIONS}"
     );
 }
-
-// --- 20. Req 5: 5 calls DOES trigger pattern (at threshold) ---
 
 #[test]
 fn five_successful_calls_at_threshold_triggers_pattern() {
@@ -113,11 +105,8 @@ fn five_successful_calls_at_threshold_triggers_pattern() {
     );
 }
 
-// --- 21. Req 7: 10 calls with 70% success rate does NOT trigger (below 80%) ---
-
 #[test]
 fn ten_calls_below_80_percent_success_rate_does_not_trigger() {
-    // 7 successes + 3 failures = 70%: below MIN_SUCCESS_RATE of 80%.
     let mut observations: Vec<_> = (0..7)
         .map(|i| {
             make_observation(
@@ -146,11 +135,8 @@ fn ten_calls_below_80_percent_success_rate_does_not_trigger() {
     );
 }
 
-// --- 22. Req 8: 10 calls with exactly 80% success rate DOES trigger ---
-
 #[test]
 fn ten_calls_at_80_percent_success_rate_boundary_triggers_pattern() {
-    // 8 successes + 2 failures = exactly 80%.
     let mut observations: Vec<_> = (0..8)
         .map(|i| {
             make_observation(
@@ -185,8 +171,6 @@ fn ten_calls_at_80_percent_success_rate_boundary_triggers_pattern() {
     );
 }
 
-// --- 23. Req 9: Token field names are redacted ---
-
 #[test]
 fn sanitize_strips_token_field_name() {
     let params = serde_json::json!({
@@ -207,8 +191,6 @@ fn sanitize_strips_token_field_name() {
     );
 }
 
-// --- 24. Req 10: Values at exactly MAX_PARAM_VALUE_LEN chars are NOT truncated ---
-
 #[test]
 fn sanitize_200_char_value_not_truncated() {
     let exactly_limit = "x".repeat(MAX_PARAM_VALUE_LEN);
@@ -224,8 +206,6 @@ fn sanitize_200_char_value_not_truncated() {
         "value at limit should not have '...' suffix"
     );
 }
-
-// --- 25. Req 10: Values at MAX_PARAM_VALUE_LEN + 1 chars ARE truncated ---
 
 #[test]
 fn sanitize_201_char_value_is_truncated() {
@@ -243,8 +223,6 @@ fn sanitize_201_char_value_is_truncated() {
         "truncated value should be {MAX_PARAM_VALUE_LEN} chars + '...'"
     );
 }
-
-// --- 26. Req 12: Array parameter values are sanitized element-by-element ---
 
 #[test]
 fn sanitize_array_parameter_values_element_by_element() {
@@ -276,11 +254,9 @@ fn sanitize_array_parameter_values_element_by_element() {
     );
 }
 
-// --- 27. Req 13: Mixed-nous observations aggregate together; per-nous filter gives independence ---
-
 #[test]
 fn different_nous_observations_aggregate_together_without_filter() {
-    // aggregate_observations groups by (tool_name, context_category) only: not nous_id.
+    // NOTE: aggregate_observations groups by (tool_name, context_category) only: not nous_id.
     // Callers must filter by nous_id before calling to get per-nous patterns.
     let mut observations: Vec<ToolObservation> = (0..3)
         .map(|i| ToolObservation {
@@ -300,7 +276,6 @@ fn different_nous_observations_aggregate_together_without_filter() {
         nous_id: "nous-bob".to_owned(),
         observed_at: ts(&format!("2026-03-{:02}T11:00:00Z", i + 1)),
     }));
-    // Combined 6 → meets threshold
     let all = aggregate_observations(&observations);
     assert_eq!(
         all.len(),
@@ -308,7 +283,6 @@ fn different_nous_observations_aggregate_together_without_filter() {
         "mixed-nous observations aggregate into one pattern"
     );
     assert_eq!(all[0].total_count, 6, "combined total count should be 6");
-    // Alice's 3 alone → below threshold
     let alice: Vec<_> = observations
         .iter()
         .filter(|o| o.nous_id == "nous-alice")
@@ -320,8 +294,6 @@ fn different_nous_observations_aggregate_together_without_filter() {
         "3 observations below threshold when filtered per-nous"
     );
 }
-
-// --- 28. Req 14: Different tools with identical parameters produce separate patterns ---
 
 #[test]
 fn two_tools_identical_parameters_produce_separate_patterns() {
@@ -362,12 +334,8 @@ fn two_tools_identical_parameters_produce_separate_patterns() {
     );
 }
 
-// --- 29. Req 15: Tool name matching is case-sensitive ---
-
 #[test]
 fn tool_name_matching_is_case_sensitive() {
-    // Both classify as Code context (classification lowercases the tool name),
-    // but the pattern key uses the original tool_name: so "Grep" ≠ "grep".
     let mut observations = Vec::new();
     for i in 0..5 {
         observations.push(make_observation(
@@ -393,8 +361,6 @@ fn tool_name_matching_is_case_sensitive() {
     );
 }
 
-// --- 30. Req 16: All context categories serialize/deserialize via JSON ---
-
 #[test]
 fn context_category_json_serde_roundtrip() {
     let categories = [
@@ -412,8 +378,6 @@ fn context_category_json_serde_roundtrip() {
     }
 }
 
-// --- 31. Req 17: Context summary at exactly the limit is NOT truncated ---
-
 #[test]
 fn context_summary_exactly_at_limit_not_truncated() {
     let exactly_limit = "a".repeat(MAX_CONTEXT_SUMMARY_LEN);
@@ -428,8 +392,6 @@ fn context_summary_exactly_at_limit_not_truncated() {
     );
 }
 
-// --- 32. Req 18: Unknown context category string falls back to Other ---
-
 #[test]
 fn context_category_unknown_string_parses_to_other() {
     assert_eq!(
@@ -442,15 +404,12 @@ fn context_category_unknown_string_parses_to_other() {
         ContextCategory::Other,
         "empty string should fall back to Other"
     );
-    // from_str_lossy is case-sensitive; "CODE" is not a recognized variant.
     assert_eq!(
         ContextCategory::from_str_lossy("CODE"),
         ContextCategory::Other,
         "uppercase variant should fall back to Other (case-sensitive)"
     );
 }
-
-// === Property-based tests ===
 
 mod proptests {
     use crate::instinct::{

@@ -44,8 +44,6 @@ impl FixedRule for KCore {
             return Ok(());
         }
 
-        // Build adjacency as plain degree counts; we need the full neighbour
-        // set to recompute effective degrees after removals.
         #[expect(
             clippy::cast_possible_truncation,
             reason = "graph node count bounded by u32"
@@ -54,14 +52,12 @@ impl FixedRule for KCore {
         let adj: Vec<Vec<u32>> = (0..n_u32)
             .map(|node| {
                 let mut nb: Vec<u32> = graph.out_neighbors(node).collect();
-                // Deduplicate: edges may have been mirrored by as_directed_graph.
                 nb.sort_unstable();
                 nb.dedup();
                 nb
             })
             .collect_vec();
 
-        // effective_degree[v] = number of neighbours that are still alive.
         let mut effective_degree: Vec<u32> = adj
             .iter()
             .map(|nb: &Vec<u32>| {
@@ -74,14 +70,11 @@ impl FixedRule for KCore {
             })
             .collect();
         let mut alive: Vec<bool> = vec![true; n];
-        // core[v] = k-core value; starts at 0 and is promoted as we peel.
         let mut core: Vec<u32> = vec![0; n];
 
-        // Peeling: iterate k from 1 upward.
         let max_degree = effective_degree.iter().copied().max().unwrap_or(0);
         let mut k: u32 = 1;
         while k <= max_degree {
-            // Collect seeds: alive nodes whose degree has dropped below k.
             let mut queue: Vec<u32> = (0..n_u32)
                 .filter(|&v| alive[v as usize] && effective_degree[v as usize] < k)
                 .collect();
@@ -103,11 +96,9 @@ impl FixedRule for KCore {
                 poison.check()?;
             }
 
-            // All surviving nodes now have degree ≥ k inside the subgraph.
             k += 1;
         }
 
-        // Survivors at the end belong to the highest k-core found.
         for v in 0..n {
             if alive[v] {
                 core[v] = k - 1;

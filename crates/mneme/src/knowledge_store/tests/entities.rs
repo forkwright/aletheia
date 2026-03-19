@@ -149,7 +149,6 @@ fn entity_neighborhood_2hop() {
         .insert_entity(&make_entity("e3", "Rust", "language"))
         .expect("e3");
 
-    // e1 -> e2 -> e3 (2-hop chain)
     store
         .insert_relationship(&make_relationship("e1", "e2", "works_on", 0.9))
         .expect("rel e1-e2");
@@ -251,18 +250,17 @@ fn write_then_read_roundtrip_facts_and_entities() {
         .insert_fact_entity(&fact.id, &entity.id)
         .expect("link fact to entity");
 
-    // Read via scoped query (simulates ?nous_id=chiron)
+    // NOTE: Read via scoped query (simulates ?nous_id=chiron)
     let scoped = store.audit_all_facts("chiron", 100).expect("audit scoped");
     assert_eq!(scoped.len(), 1);
     assert_eq!(scoped[0].content, "Alice prefers dark mode");
 
-    // Read via unscoped query (simulates no nous_id filter)
+    // NOTE: Read via unscoped query (simulates no nous_id filter)
     let unscoped = store.list_all_facts(100).expect("list_all_facts");
     assert_eq!(unscoped.len(), 1);
     assert_eq!(unscoped[0].content, "Alice prefers dark mode");
     assert_eq!(unscoped[0].nous_id, "chiron");
 
-    // Read entities
     let entities = store.list_entities().expect("list_entities");
     assert_eq!(entities.len(), 1);
     assert_eq!(entities[0].name, "Alice");

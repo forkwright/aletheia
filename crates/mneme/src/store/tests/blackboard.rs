@@ -7,8 +7,6 @@ fn test_store() -> SessionStore {
     SessionStore::open_in_memory().expect("open in-memory store")
 }
 
-// --- Blackboard ---
-
 #[test]
 fn blackboard_crud() {
     let store = test_store();
@@ -120,7 +118,6 @@ fn blackboard_expiry_filtered() {
         .blackboard_write("temp", "data", "syn", 3600)
         .expect("blackboard write");
 
-    // Manually set expires_at to the past
     store
         .conn
         .execute(

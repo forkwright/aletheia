@@ -17,29 +17,24 @@ pub const MAX_CONTENT_LENGTH: usize = 102_400;
 /// A memory fact extracted from conversation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Fact {
-    // Identity
     pub id: FactId,
     pub nous_id: String,
     pub fact_type: String,
 
-    // Content
     pub content: String,
     pub confidence: f64,
     pub tier: EpistemicTier,
 
-    // Temporal validity
     pub valid_from: jiff::Timestamp,
     pub valid_to: jiff::Timestamp,
     pub recorded_at: jiff::Timestamp,
     pub source_session_id: Option<String>,
 
-    // Lifecycle
     pub superseded_by: Option<FactId>,
     pub is_forgotten: bool,
     pub forgotten_at: Option<jiff::Timestamp>,
     pub forget_reason: Option<ForgetReason>,
 
-    // Recall scoring
     pub access_count: u32,
     pub last_accessed_at: Option<jiff::Timestamp>,
     pub stability_hours: f64,

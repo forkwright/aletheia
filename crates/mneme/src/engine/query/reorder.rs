@@ -12,7 +12,6 @@ impl NormalFormInlineRule {
         let mut round_1_collected = vec![];
         let mut pending = vec![];
 
-        // first round: collect all unifications that are completely bounded
         for atom in self.body {
             match atom {
                 NormalFormAtom::Unification(u) => {
@@ -78,7 +77,6 @@ impl NormalFormInlineRule {
         let mut collected = vec![];
         seen_variables.clear();
         let mut last_pending = vec![];
-        // second round: insert pending where possible
         for atom in round_1_collected {
             mem::swap(&mut last_pending, &mut pending);
             pending.clear();

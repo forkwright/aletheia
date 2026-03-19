@@ -132,10 +132,6 @@ mod tests {
         sequence_signature(&calls)
     }
 
-    // ------------------------------------------------------------------
-    // Normalization
-    // ------------------------------------------------------------------
-
     #[test]
     fn consecutive_duplicates_collapsed() {
         let calls = vec![tc("Read"), tc("Read"), tc("Read"), tc("Edit"), tc("Bash")];
@@ -157,10 +153,6 @@ mod tests {
         assert_eq!(s.len(), 0);
     }
 
-    // ------------------------------------------------------------------
-    // Hash stability
-    // ------------------------------------------------------------------
-
     #[test]
     fn same_sequence_same_hash() {
         let a = sig(&["Read", "Edit", "Bash"]);
@@ -177,15 +169,11 @@ mod tests {
 
     #[test]
     fn hash_stable_across_calls() {
-        // Hash must not change between calls (no random seed)
+        // INVARIANT: Hash must not change between calls (no random seed)
         let a1 = sig(&["Read", "Grep", "Edit"]);
         let a2 = sig(&["Read", "Grep", "Edit"]);
         assert_eq!(a1.hash, a2.hash);
     }
-
-    // ------------------------------------------------------------------
-    // Similarity
-    // ------------------------------------------------------------------
 
     #[test]
     fn identical_signatures_similarity_one() {
@@ -198,7 +186,6 @@ mod tests {
     fn completely_different_similarity_zero() {
         let a = sig(&["Read", "Edit", "Bash"]);
         let b = sig(&["WebSearch", "WebFetch", "Write"]);
-        // LCS of ["Read","Edit","Bash"] and ["WebSearch","WebFetch","Write"] = 0
         assert!(signature_similarity(&a, &b) < f64::EPSILON);
     }
 
@@ -206,7 +193,6 @@ mod tests {
     fn partially_similar_sequence() {
         let a = sig(&["Grep", "Read", "Edit", "Bash"]);
         let b = sig(&["Grep", "Read", "Write", "Bash"]);
-        // LCS = ["Grep","Read","Bash"] = 3, max = 4 → 0.75
         let sim = signature_similarity(&a, &b);
         assert!((sim - 0.75).abs() < 0.001);
     }
@@ -215,7 +201,6 @@ mod tests {
     fn subset_similarity_below_threshold() {
         let a = sig(&["Read", "Edit", "Bash", "Read", "Edit", "Bash"]);
         let b = sig(&["Read", "Edit"]);
-        // LCS = 2, max = 6 → ~0.33
         let sim = signature_similarity(&a, &b);
         assert!(sim < 0.8);
     }
@@ -224,8 +209,6 @@ mod tests {
     fn high_overlap_above_threshold() {
         let a = sig(&["Grep", "Read", "Read", "Edit", "Bash"]);
         let b = sig(&["Grep", "Read", "Edit", "Edit", "Bash"]);
-        // After collapse: a=["Grep","Read","Edit","Bash"], b=["Grep","Read","Edit","Bash"]
-        // LCS = 4, max = 4 → 1.0
         let sim = signature_similarity(&a, &b);
         assert!(sim >= 0.8, "expected sim >= 0.8, got {sim}");
     }

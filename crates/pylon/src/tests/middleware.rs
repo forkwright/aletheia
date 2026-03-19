@@ -10,8 +10,6 @@ use tower::ServiceExt;
 
 use super::helpers::*;
 
-// ── Security headers ────────────────────────────────────────────────────────
-
 #[tokio::test]
 async fn security_headers_present_on_response() {
     let (app, _dir) = app().await;
@@ -35,7 +33,6 @@ async fn security_headers_present_on_response() {
         resp.headers().get("content-security-policy").unwrap(),
         "default-src 'self'"
     );
-    // HSTS should NOT be present when TLS is disabled
     assert!(resp.headers().get("strict-transport-security").is_none());
 }
 
@@ -58,8 +55,6 @@ async fn hsts_header_present_when_tls_enabled() {
         "max-age=31536000; includeSubDomains"
     );
 }
-
-// ── Body limit ──────────────────────────────────────────────────────────────
 
 #[tokio::test]
 async fn oversized_body_returns_413() {
@@ -84,8 +79,6 @@ async fn oversized_body_returns_413() {
     let resp = router.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
 }
-
-// ── CSRF ────────────────────────────────────────────────────────────────────
 
 #[tokio::test]
 async fn csrf_rejects_post_without_header() {
@@ -230,8 +223,6 @@ async fn csrf_allows_delete_with_correct_header() {
     assert_eq!(resp.status(), StatusCode::NO_CONTENT);
 }
 
-// ── CORS ────────────────────────────────────────────────────────────────────
-
 #[tokio::test]
 async fn cors_permissive_when_no_origins_configured() {
     let (state, _dir) = test_state().await;
@@ -247,7 +238,6 @@ async fn cors_permissive_when_no_origins_configured() {
         .unwrap();
 
     let resp = router.oneshot(req).await.unwrap();
-    // Permissive CORS should allow any origin
     assert!(resp.status().is_success() || resp.status() == StatusCode::NO_CONTENT);
 }
 
@@ -269,12 +259,9 @@ async fn cors_rejects_unlisted_origin() {
         .unwrap();
 
     let resp = router.oneshot(req).await.unwrap();
-    // Should not have the evil origin in access-control-allow-origin
     let allow_origin = resp.headers().get("access-control-allow-origin");
     assert!(allow_origin.is_none() || allow_origin.unwrap() != "http://evil.example.com");
 }
-
-// ── Security config ─────────────────────────────────────────────────────────
 
 #[test]
 fn security_config_default_values() {
@@ -310,8 +297,6 @@ fn security_config_from_gateway() {
     assert_eq!(config.cors_max_age_secs, 3600);
 }
 
-// ── Request ID ──────────────────────────────────────────────────────────────
-
 #[tokio::test]
 async fn request_id_present_in_error_responses() {
     let (app, _dir) = app().await;
@@ -325,8 +310,6 @@ async fn request_id_present_in_error_responses() {
     assert!(!request_id.is_empty());
     assert!(request_id.len() >= 20, "request_id should be a ULID");
 }
-
-// ── Routing and error structure ─────────────────────────────────────────────
 
 #[tokio::test]
 async fn error_response_has_consistent_structure() {

@@ -204,7 +204,6 @@ mod tests {
     #[test]
     fn history_respects_budget() {
         let store = setup_store();
-        // Each message ~200 tokens, budget will only fit some
         append(&store, Role::User, "old message 1", 200);
         append(&store, Role::Assistant, "reply 1", 200);
         append(&store, Role::User, "old message 2", 200);
@@ -217,16 +216,12 @@ mod tests {
             ..HistoryConfig::default()
         };
 
-        // Budget 600 - 100 reserve - current tokens = ~499 available
-        // Should fit only ~2 messages (400 tokens)
         let (messages, result) =
             load_history(&store, "ses-1", 600, &config, "new message").expect("load");
 
-        // Budget-limited: fewer messages loaded than total in store
         assert!(result.messages_loaded < 6);
         assert!(result.tokens_consumed <= 500);
         assert!(result.truncated);
-        // Current message is always last
         assert_eq!(messages.last().unwrap().role, "user");
         assert_eq!(messages.last().unwrap().content, "new message");
     }
@@ -249,7 +244,6 @@ mod tests {
 
         let roles: Vec<&str> = messages.iter().map(|m| m.role.as_str()).collect();
         assert!(!roles.contains(&"tool_result"));
-        // 3 messages loaded (user, assistant, assistant): tool_result skipped
         assert_eq!(result.messages_loaded, 3);
     }
 
@@ -266,7 +260,6 @@ mod tests {
 
         let roles: Vec<&str> = messages.iter().map(|m| m.role.as_str()).collect();
         assert!(!roles.contains(&"system"));
-        // Only user + assistant loaded from history (system skipped)
         assert_eq!(result.messages_loaded, 2);
     }
 
@@ -300,13 +293,11 @@ mod tests {
             ..HistoryConfig::default()
         };
 
-        // Tight budget: only fits a few of 10 messages
         let (_, result) = load_history(&store, "ses-1", 500, &config, "current").expect("load");
 
         assert!(result.truncated);
         assert!(result.messages_loaded < 10);
 
-        // Large budget: fits all
         let (_, result_full) =
             load_history(&store, "ses-1", 100_000, &config, "current").expect("load");
 

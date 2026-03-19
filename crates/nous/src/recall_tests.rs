@@ -103,8 +103,6 @@ fn make_scored(content: &str, score: f64) -> ScoredResult {
     }
 }
 
-// --- Existing tests ---
-
 #[test]
 fn recall_disabled_returns_empty() {
     let config = RecallConfig {
@@ -247,15 +245,12 @@ fn estimate_tokens_heuristic() {
 
 #[test]
 fn estimate_tokens_custom_divisor() {
-    // 8 chars / 2 = 4 tokens
     assert_eq!(estimate_tokens("abcdefgh", 2), 4);
-    // 5 chars / 3 = ceil(5/3) = 2 tokens
     assert_eq!(estimate_tokens("hello", 3), 2);
 }
 
 #[test]
 fn estimate_tokens_divisor_clamp() {
-    // divisor 0 should be treated as 1 (no division by zero)
     assert_eq!(estimate_tokens("a", 0), 1);
 }
 
@@ -352,7 +347,6 @@ mod knowledge_bridge_tests {
         assert!(results.len() <= 2, "should return at most k=2 results");
     }
 }
-// --- Terminology discovery tests ---
 
 #[test]
 fn terminology_discovery_finds_novel_terms() {
@@ -416,11 +410,8 @@ fn terminology_discovery_skips_short_words() {
     }];
 
     let terms = discover_terminology(&results, "test");
-    // "big", "cat", "ran", "far", "low", "set" are all <= 3 chars, only "quantum" passes
     assert_eq!(terms, vec!["quantum"]);
 }
-
-// --- Gap detection tests ---
 
 #[test]
 fn gap_detection_finds_capitalized_phrases() {
@@ -459,8 +450,6 @@ fn gap_detection_finds_quoted_strings() {
     );
 }
 
-// --- Stopword tests ---
-
 #[test]
 fn stopword_is_stopword() {
     assert!(is_stopword("the"));
@@ -472,16 +461,12 @@ fn stopword_is_stopword() {
     assert!(!is_stopword("database"));
 }
 
-// --- Iterative recall tests ---
-
 #[test]
 fn iterative_recall_deduplicates() {
-    // Cycle 1: results with domain terms to trigger cycle 2
     let cycle1 = vec![
         make_knowledge_result_with_id("quantum entanglement enables communication", 0.1, "fact-a"),
         make_knowledge_result_with_id("quantum computing research paper", 0.2, "fact-b"),
     ];
-    // Cycle 2: overlapping fact-b, plus new fact-c
     let cycle2 = vec![
         make_knowledge_result_with_id("quantum computing research paper", 0.15, "fact-b"),
         make_knowledge_result_with_id("entanglement measurement protocols", 0.3, "fact-c"),
@@ -500,7 +485,6 @@ fn iterative_recall_deduplicates() {
         .run("physics", "syn", &mock_embed(), &search, 50000)
         .unwrap();
 
-    // fact-b should appear only once in the merged set
     assert_eq!(
         result.candidates_found, 3,
         "should have 3 unique candidates"

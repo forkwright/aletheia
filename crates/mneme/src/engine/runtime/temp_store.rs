@@ -65,7 +65,7 @@ impl RegularTempStore {
     pub(crate) fn put_with_skip(&mut self, tuple: Tuple) {
         self.inner.insert(tuple, true);
     }
-    // returns true if prev is guaranteed to be the same as self after this function call,
+    // INVARIANT: returns true if prev is guaranteed to be the same as self after this function call,
     // false if we are not sure.
     pub(crate) fn merge_in(&mut self, prev: &mut Self, mut new: Self) -> bool {
         prev.inner.clear();
@@ -122,8 +122,6 @@ impl MeetAggrStore {
             grouping_len,
         })
     }
-    // also need to check if value exists beforehand! use the idempotency!
-    // need to think this through more carefully.
     pub(crate) fn meet_put(&mut self, tuple: Tuple) -> Result<bool> {
         let (key_part, val_part) = tuple.split_at(self.grouping_len);
         match self.inner.get_mut(key_part) {

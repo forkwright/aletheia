@@ -205,8 +205,6 @@ mod tests {
 
     #[test]
     fn nous_summary_name_falls_back_to_id() {
-        // The handler constructs name as: name.unwrap_or_else(|| id.clone())
-        // Test that summary with name set serializes name correctly
         let summary = NousSummary {
             id: "bob".to_owned(),
             name: "bob".to_owned(), // fallback case: name == id

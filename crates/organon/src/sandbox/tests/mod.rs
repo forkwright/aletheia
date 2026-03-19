@@ -236,7 +236,6 @@ fn policy_includes_extra_exec_paths() {
 
 #[test]
 fn expand_tilde_replaces_home() {
-    // Only meaningful when HOME is set: guard with an env check.
     if let Ok(home) = std::env::var("HOME") {
         let p = expand_tilde(Path::new("~/scripts"));
         assert_eq!(
@@ -313,7 +312,6 @@ fn policy_no_duplicate_write_roots() {
 #[cfg(target_os = "linux")]
 #[test]
 fn probe_returns_consistent_result() {
-    // Two consecutive probes must agree: Landlock either is or isn't available.
     let first = probe_landlock_abi();
     let second = probe_landlock_abi();
     assert_eq!(
@@ -333,7 +331,7 @@ fn probe_returns_consistent_result() {
 fn permissive_skips_sandbox_when_landlock_unavailable() {
     use std::process::Command;
 
-    // Simulate the permissive fallback by building a policy with permissive
+    // WHY: Simulate the permissive fallback by building a policy with permissive
     // enforcement and verifying the tool still executes even when we cannot
     // rely on Landlock being present.
     let config = SandboxConfig {
@@ -346,7 +344,7 @@ fn permissive_skips_sandbox_when_landlock_unavailable() {
     let mut cmd = Command::new("echo");
     cmd.arg("permissive fallback");
 
-    // apply_sandbox must not return an error in permissive mode regardless
+    // WHY: apply_sandbox must not return an error in permissive mode regardless
     // of whether Landlock is available on this kernel.
     let result = apply_sandbox(&mut cmd, policy);
     assert!(
@@ -370,11 +368,6 @@ fn permissive_skips_sandbox_when_landlock_unavailable() {
 fn enforcing_surfaces_clear_error_when_landlock_unavailable() {
     use std::process::Command;
 
-    // This test covers the strict enforcement path when Landlock is absent.
-    // On kernels where Landlock IS available the enforcing path succeeds, so
-    // we test the error path explicitly by constructing a policy with a
-    // simulated unavailable state via the apply_sandbox signature.
-    //
     // WHY: We cannot force a kernel to lack Landlock in a unit test.
     // Instead we verify the error message content when probe returns None,
     // testing the code path directly via the internal helper.
@@ -389,7 +382,6 @@ fn enforcing_surfaces_clear_error_when_landlock_unavailable() {
     cmd.arg("should not run");
 
     if probe_landlock_abi().is_none() {
-        // Landlock is not available: enforcing mode must return a clear error.
         let err = apply_sandbox(&mut cmd, policy).expect_err("enforcing must fail");
         let msg = err.to_string();
         assert!(
@@ -405,7 +397,6 @@ fn enforcing_surfaces_clear_error_when_landlock_unavailable() {
             "error must suggest permissive mode: {msg}"
         );
     } else {
-        // Landlock is available: enforcing mode succeeds (no opaque error).
         let result = apply_sandbox(&mut cmd, policy);
         assert!(
             result.is_ok(),
@@ -667,7 +658,6 @@ fn exec_succeeds_under_sandbox_with_absolute_and_bare_paths() {
     let config = SandboxConfig::default();
     let dir = tempfile::tempdir().expect("create temp dir");
 
-    // Absolute path: bypasses PATH resolution, still needs dynamic linker.
     let policy = config.build_policy(dir.path(), &[]);
     let mut cmd = Command::new("/usr/bin/uname");
     apply_sandbox(&mut cmd, policy).expect("apply sandbox");
@@ -678,7 +668,6 @@ fn exec_succeeds_under_sandbox_with_absolute_and_bare_paths() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    // Bare command: needs PATH resolution + dynamic linker loading.
     let policy = config.build_policy(dir.path(), &[]);
     let mut cmd = Command::new("uname");
     apply_sandbox(&mut cmd, policy).expect("apply sandbox");

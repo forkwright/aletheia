@@ -182,7 +182,6 @@ fn hybrid_search_graph_aggregation() {
     let dim = 4;
     let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim }).expect("open_mem");
 
-    // f1: reachable from 3 seed entities
     let f1 = Fact {
         id: crate::id::FactId::new_unchecked("f1"),
         nous_id: "test".to_owned(),
@@ -217,7 +216,6 @@ fn hybrid_search_graph_aggregation() {
         })
         .expect("insert f1 embedding");
 
-    // f2: reachable from only 1 seed entity
     let f2 = Fact {
         id: crate::id::FactId::new_unchecked("f2"),
         nous_id: "test".to_owned(),
@@ -252,7 +250,6 @@ fn hybrid_search_graph_aggregation() {
         })
         .expect("insert f2 embedding");
 
-    // Three seed entities: all point to f1, only s1 points to f2
     for (id, name) in [("s1", "Seed1"), ("s2", "Seed2"), ("s3", "Seed3")] {
         store
             .insert_entity(&Entity {
@@ -302,7 +299,6 @@ fn hybrid_search_graph_aggregation() {
         })
         .expect("hybrid search with three seeds");
 
-    // f1 must appear exactly once (aggregated from 3 paths)
     let f1_hits: Vec<_> = results.iter().filter(|r| r.id.as_str() == "f1").collect();
     assert_eq!(
         f1_hits.len(),
@@ -314,7 +310,6 @@ fn hybrid_search_graph_aggregation() {
         "f1 must have a positive graph rank"
     );
 
-    // f2 must appear exactly once (from 1 path)
     let f2_hits: Vec<_> = results.iter().filter(|r| r.id.as_str() == "f2").collect();
     assert_eq!(f2_hits.len(), 1, "f2 must appear once");
     assert!(
@@ -322,7 +317,6 @@ fn hybrid_search_graph_aggregation() {
         "f2 must have a positive graph rank"
     );
 
-    // f1 (3 paths) should have a higher RRF score than f2 (1 path)
     assert!(
         f1_hits[0].rrf_score > f2_hits[0].rrf_score,
         "3-path entity must score higher than 1-path entity: f1={} vs f2={}",
@@ -374,8 +368,6 @@ fn hybrid_search_two_signal_no_graph() {
         })
         .expect("insert embedding");
 
-    // Insert an unrelated seed entity so the graph signal is structurally present but yields
-    // no matches for f-twosig
     store
         .insert_entity(&Entity {
             id: crate::id::EntityId::new_unchecked("e-unrelated"),
@@ -419,7 +411,6 @@ fn hybrid_search_absent_signal_rank_is_negative_one() {
     let dim = 4;
     let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim }).expect("open_mem");
 
-    // Insert a fact but no embedding and no graph edges
     let fact = Fact {
         id: crate::id::FactId::new_unchecked("f-bm25-only"),
         nous_id: "test".to_owned(),

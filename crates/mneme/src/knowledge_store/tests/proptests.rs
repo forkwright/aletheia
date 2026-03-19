@@ -81,7 +81,7 @@ proptest! {
     }
 }
 
-// Entity merge invariants:
+// INVARIANT: Entity merge invariants:
 // - entity count drops by exactly 1
 // - merged-from entity is gone
 // - canonical entity survives
@@ -122,7 +122,7 @@ proptest! {
         for (si, di) in &rel_pairs {
             let src_i = si % n;
             let dst_i = di % n;
-            // skip self-loops: {src, dst} is the compound key
+            // INVARIANT: skip self-loops: {src, dst} is the compound key
             if src_i == dst_i {
                 continue;
             }
@@ -156,7 +156,6 @@ proptest! {
             .execute_merge(&canonical_id, &merged_id)
             .expect("execute_merge must succeed");
 
-        // 1. Entity count is N-1
         let entity_count_after = store
             .run_query(r"?[count(id)] := *entities{id}", BTreeMap::new())
             .expect("count entities after")
@@ -171,7 +170,6 @@ proptest! {
             "entity count must be N-1 after merge"
         );
 
-        // 2. Merged-from entity is gone
         let mut check_params = BTreeMap::new();
         check_params.insert(
             "id".to_owned(),
@@ -182,7 +180,6 @@ proptest! {
             .expect("check merged gone");
         prop_assert!(merged_rows.rows.is_empty(), "merged entity must be gone");
 
-        // 3. Canonical entity survives
         let mut canon_params = BTreeMap::new();
         canon_params.insert(
             "id".to_owned(),
@@ -193,7 +190,6 @@ proptest! {
             .expect("check canonical exists");
         prop_assert_eq!(canon_rows.rows.len(), 1, "canonical entity must survive");
 
-        // 4. No relationship references the merged-from entity
         let mut ref_params = BTreeMap::new();
         ref_params.insert(
             "mid".to_owned(),
@@ -210,7 +206,7 @@ proptest! {
             "no relationship should reference the merged-from entity"
         );
 
-        // 5. Relationship count does not increase; may decrease due to
+        // INVARIANT: 5. Relationship count does not increase; may decrease due to
         // self-referential dedup (canonical<->merged edges removed on redirect)
         let rel_count_after = count_rels(&store);
         prop_assert!(
@@ -352,7 +348,7 @@ mod merge {
                 .execute_merge(&canonical_id, &merged_id)
                 .expect("execute_merge should succeed on valid entity pair");
 
-            // Invariant: entity count decreases by exactly 1
+            // INVARIANT: entity count decreases by exactly 1
             let entity_count_after = count_entities(&store);
             prop_assert_eq!(
                 entity_count_after,
@@ -360,19 +356,19 @@ mod merge {
                 "entity count after merge must be N-1"
             );
 
-            // Invariant: merged entity no longer exists
+            // INVARIANT: merged entity no longer exists
             prop_assert!(
                 !entity_exists(&store, &format!("e{merged_idx}")),
                 "merged entity must not exist after merge"
             );
 
-            // Invariant: canonical entity survives intact
+            // INVARIANT: canonical entity survives intact
             prop_assert!(
                 entity_exists(&store, &format!("e{canonical_idx}")),
                 "canonical entity must still exist after merge"
             );
 
-            // Invariant: no orphaned edges: merged entity must have zero relationships
+            // INVARIANT: no orphaned edges: merged entity must have zero relationships
             let rels_touching_merged = count_rels_touching(&store, &format!("e{merged_idx}"));
             prop_assert_eq!(
                 rels_touching_merged,
@@ -380,7 +376,7 @@ mod merge {
                 "no relationship may reference the merged entity after merge"
             );
 
-            // Invariant: relationship count does not increase (merge may deduplicate edges
+            // INVARIANT: relationship count does not increase (merge may deduplicate edges
             // when merged and canonical both had edges to the same third entity, or when
             // the merge would produce a self-loop)
             let rel_count_after = count_all_rels(&store);

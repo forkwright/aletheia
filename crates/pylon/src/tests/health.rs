@@ -78,8 +78,6 @@ async fn health_checks_have_expected_shape() {
     assert!(names.contains(&"providers"), "missing providers check");
 }
 
-// ── Metrics ─────────────────────────────────────────────────────────────────
-
 #[tokio::test]
 async fn metrics_returns_200_with_prometheus_content_type() {
     let (app, _dir) = app().await;
@@ -104,7 +102,6 @@ async fn metrics_returns_200_with_prometheus_content_type() {
 #[tokio::test]
 async fn metrics_no_auth_required() {
     let (app, _dir) = app().await;
-    // No authorization header: should still succeed
     let resp = app
         .oneshot(Request::get("/metrics").body(Body::empty()).unwrap())
         .await
@@ -145,14 +142,12 @@ async fn metrics_counters_increment_after_request() {
     let (state, _dir) = test_state().await;
     let router = build_router(Arc::clone(&state), &test_security_config());
 
-    // Make a health request first to increment the counter
     let _ = router
         .clone()
         .oneshot(Request::get("/api/health").body(Body::empty()).unwrap())
         .await
         .unwrap();
 
-    // Then check /metrics for the counter
     let resp = router
         .clone()
         .oneshot(Request::get("/metrics").body(Body::empty()).unwrap())
@@ -165,8 +160,6 @@ async fn metrics_counters_increment_after_request() {
         "should contain the health endpoint path in metrics"
     );
 }
-
-// ── OpenAPI ─────────────────────────────────────────────────────────────────
 
 #[tokio::test]
 async fn openapi_spec_returns_valid_json() {

@@ -4,8 +4,6 @@ use super::*;
 use crate::skills::heuristics::PatternType;
 use crate::skills::signature::SequenceSignature;
 
-// -- Mock provider --------------------------------------------------------
-
 struct MockProvider {
     response: Result<String, SkillExtractionError>,
 }
@@ -106,8 +104,6 @@ fn valid_json_response() -> String {
     .to_owned()
 }
 
-// -- Prompt construction --------------------------------------------------
-
 #[test]
 fn build_prompt_includes_candidate_metadata() {
     let candidate = sample_candidate();
@@ -199,8 +195,6 @@ fn build_prompt_no_pattern_type() {
     );
 }
 
-// -- Response parsing -----------------------------------------------------
-
 #[test]
 fn parse_valid_json_response() {
     let response = valid_json_response();
@@ -283,7 +277,7 @@ fn parse_malformed_json_returns_error() {
 fn parse_incomplete_json_returns_error() {
     let response = r#"{"name": "test", "description": "d"}"#;
     let result = parse_skill_response(response);
-    // Missing required fields
+    // WHY: Missing required fields
     assert!(
         result.is_err(),
         "JSON missing required fields should return an error"
@@ -316,8 +310,6 @@ fn parse_empty_fields_succeeds() {
         "parsed skill should have empty steps when JSON steps array is empty"
     );
 }
-
-// -- Extractor end-to-end -------------------------------------------------
 
 #[tokio::test]
 async fn extractor_returns_skill_on_valid_response() {
@@ -363,8 +355,6 @@ async fn extractor_returns_error_on_malformed_response() {
         "extractor should return error when provider returns malformed JSON"
     );
 }
-
-// -- ExtractedSkill → SkillContent ----------------------------------------
 
 #[test]
 fn to_skill_content_sets_origin_extracted() {
@@ -420,8 +410,6 @@ fn to_skill_content_omits_when_to_use_if_empty() {
         "skill content description should be just the base description when when_to_use is empty"
     );
 }
-
-// -- PendingSkill ---------------------------------------------------------
 
 #[test]
 fn pending_skill_new_sets_status() {
@@ -514,8 +502,6 @@ fn pending_skill_approved_status() {
     );
 }
 
-// -- System prompt --------------------------------------------------------
-
 #[test]
 fn system_prompt_requests_json() {
     assert!(
@@ -539,8 +525,6 @@ fn system_prompt_requests_json() {
         "system prompt should reference the 'domain_tags' field in the expected schema"
     );
 }
-
-// -- Dedup ----------------------------------------------------------------
 
 fn make_skill(name: &str, tools: &[&str]) -> SkillContent {
     SkillContent {

@@ -557,7 +557,6 @@ pub(crate) fn parse_sys(
                     let mut inner = inner.into_inner();
                     let rel = inner.next().expect("pest guarantees vec relation name");
                     let name = inner.next().expect("pest guarantees vec index name");
-                    // options
                     let mut vec_dim = 0;
                     let mut dtype = VecElementType::F32;
                     let mut vec_fields = vec![];

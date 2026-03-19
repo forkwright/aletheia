@@ -57,7 +57,6 @@ impl CompiledRuleSet {
                 for maybe_aggr in rules[0].aggr.iter() {
                     match maybe_aggr {
                         None => {
-                            // meet aggregations must all be at the last positions
                             if has_aggr {
                                 has_non_meet = true
                             }
@@ -222,17 +221,11 @@ impl<'a> SessionTx<'a> {
                             message: "arity mismatch for relation application",
                         }
                     );
-                    // already existing vars
                     let mut prev_joiner_vars = vec![];
-                    // vars introduced by right and joined
                     let mut right_joiner_vars = vec![];
-                    // used to split in case we need to join again
                     let mut right_joiner_vars_pos = vec![];
-                    // used to find the right joiner var with the tuple position
                     let mut right_joiner_vars_pos_rev = vec![None; rel_app.args.len()];
-                    // vars introduced by right, regardless of joining
                     let mut right_vars = vec![];
-                    // used for choosing indices
                     let mut join_indices = vec![];
 
                     for (i, var) in rel_app.args.iter().enumerate() {
@@ -260,7 +253,6 @@ impl<'a> SessionTx<'a> {
 
                     match chosen_index {
                         None => {
-                            // scan original relation
                             let right = RelAlgebra::relation(
                                 right_vars,
                                 store,
@@ -272,7 +264,6 @@ impl<'a> SessionTx<'a> {
                                 ret.join(right, prev_joiner_vars, right_joiner_vars, rel_app.span);
                         }
                         Some((chosen_index, mapper, false)) => {
-                            // index-only
                             let new_right_vars = mapper
                                 .into_iter()
                                 .map(|i| right_vars[i].clone())
@@ -288,23 +279,16 @@ impl<'a> SessionTx<'a> {
                                 ret.join(right, prev_joiner_vars, right_joiner_vars, rel_app.span);
                         }
                         Some((chosen_index, mapper, true)) => {
-                            // index-with-join
                             let mut not_bound = vec![true; prev_joiner_vars.len()];
                             let mut index_vars = vec![];
-                            // Get the index and its keys
                             {
                                 let mut left_keys = vec![];
                                 let mut right_keys = vec![];
                                 for &orig_idx in mapper.iter() {
-                                    // Create a new symbol for the column in the index relation
                                     let tv = gen_symb(right_vars[orig_idx].span);
-                                    // Check for the existance of this column among the joiner columns
                                     if let Some(join_idx) = right_joiner_vars_pos_rev[orig_idx] {
-                                        // Mark the field as bound, since it is used in the join
                                         not_bound[join_idx] = false;
-                                        // Push the joiner symbol to the left side
                                         left_keys.push(prev_joiner_vars[join_idx].clone());
-                                        // Push the index symbol to the right side
                                         right_keys.push(tv.clone());
                                     }
                                     index_vars.push(tv);
@@ -317,15 +301,12 @@ impl<'a> SessionTx<'a> {
                                 )?;
                                 ret = ret.join(index, left_keys, right_keys, rel_app.span);
                             }
-                            // Join the index with the original relation
                             {
                                 let mut left_keys = Vec::with_capacity(store.metadata.keys.len());
                                 let mut right_keys = Vec::with_capacity(store.metadata.keys.len());
                                 for (index_idx, &orig_idx) in mapper.iter().enumerate() {
                                     if orig_idx < store.metadata.keys.len() {
-                                        // Push the index symbol to the left side
                                         left_keys.push(index_vars[index_idx].clone());
-                                        // Push the relation symbol to the right side
                                         right_keys.push(right_vars[orig_idx].clone());
                                     }
                                 }
@@ -337,7 +318,6 @@ impl<'a> SessionTx<'a> {
                                 )?;
                                 ret = ret.join(relation, left_keys, right_keys, rel_app.span);
                             }
-                            // Use the binds that were not used in the join
                             for (i, nb) in not_bound.into_iter().enumerate() {
                                 if !nb {
                                     continue;
@@ -405,15 +385,10 @@ impl<'a> SessionTx<'a> {
                         }
                     );
 
-                    // already existing vars
                     let mut prev_joiner_vars = vec![];
-                    // vars introduced by right and joined
                     let mut right_joiner_vars = vec![];
-                    // used to split in case we need to join again
                     let mut right_joiner_vars_pos = vec![];
-                    // vars introduced by right, regardless of joining
                     let mut right_vars = vec![];
-                    // used for choosing indices
                     let mut join_indices = vec![];
 
                     for (i, var) in rel_app.args.iter().enumerate() {
@@ -455,7 +430,6 @@ impl<'a> SessionTx<'a> {
                             );
                         }
                         Some((chosen_index, mapper, false)) => {
-                            // index-only
                             let new_right_vars = mapper
                                 .into_iter()
                                 .map(|i| right_vars[i].clone())

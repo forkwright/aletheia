@@ -56,7 +56,7 @@ pub(super) async fn test_state_with_provider(
     let dir = tempfile::TempDir::new().expect("tmpdir");
     let root = dir.path();
 
-    // Create oikos directory structure required by the actor pipeline
+    // WHY: Create oikos directory structure required by the actor pipeline
     std::fs::create_dir_all(root.join("nous/syn")).expect("mkdir nous/syn");
     std::fs::create_dir_all(root.join("shared")).expect("mkdir shared");
     std::fs::create_dir_all(root.join("theke")).expect("mkdir theke");

@@ -279,7 +279,6 @@ mod tests {
     #[tokio::test]
     async fn view_png_returns_image_block() {
         let dir = tempfile::tempdir().expect("tmpdir");
-        // Minimal valid 1x1 white PNG
         let png_bytes: Vec<u8> = vec![
             0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // PNG signature
             0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, // IHDR chunk

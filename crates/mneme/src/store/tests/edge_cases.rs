@@ -11,8 +11,6 @@ fn test_store() -> SessionStore {
     SessionStore::open_in_memory().expect("open in-memory store")
 }
 
-// --- Edge cases ---
-
 #[test]
 fn history_empty_session() {
     let store = test_store();
@@ -165,7 +163,6 @@ fn budget_loads_only_fitting_messages() {
         .create_session("ses-1", "syn", "main", None, None)
         .expect("create session");
 
-    // Insert 50 messages, each with 100 token estimate (total = 5000 tokens).
     for i in 1..=50 {
         store
             .append_message(
@@ -179,7 +176,6 @@ fn budget_loads_only_fitting_messages() {
             .expect("append message");
     }
 
-    // Budget of 500 fits exactly 5 messages.
     let history = store
         .get_history_with_budget("ses-1", 500)
         .expect("get history with budget");
@@ -197,7 +193,6 @@ fn budget_loads_only_fitting_messages() {
         "last message in budget window should be message 50"
     );
 
-    // Budget that fits all messages returns everything.
     let all = store
         .get_history_with_budget("ses-1", 10_000)
         .expect("get history with budget");

@@ -284,8 +284,6 @@ mod tests {
         crate::error::ParseResponseSnafu.into_error(json_err)
     }
 
-    // --- State transitions ---
-
     #[test]
     fn starts_up() {
         let t = tracker(5, 60_000);
@@ -345,8 +343,6 @@ mod tests {
         assert_eq!(t.health(), ProviderHealth::Up);
     }
 
-    // --- Auth failure never auto-recovers ---
-
     #[test]
     fn auth_failure_immediate_down() {
         let t = tracker(5, 60_000);
@@ -366,8 +362,6 @@ mod tests {
         std::thread::sleep(Duration::from_millis(5));
         assert!(t.check_available().is_err());
     }
-
-    // --- Rate limiting ---
 
     #[test]
     fn rate_limit_immediate_down() {
@@ -394,8 +388,6 @@ mod tests {
         assert!(t.check_available().is_ok());
     }
 
-    // --- Error classification ---
-
     #[test]
     fn parse_error_no_state_change() {
         let t = tracker(5, 60_000);
@@ -414,8 +406,6 @@ mod tests {
             other => panic!("expected Degraded, got {other:?}"),
         }
     }
-
-    // --- check_available ---
 
     #[test]
     fn check_available_up() {
@@ -437,8 +427,6 @@ mod tests {
         t.record_error(&api_request_error());
         assert!(t.check_available().is_err());
     }
-
-    // --- Send + Sync ---
 
     #[test]
     fn tracker_is_send_sync() {

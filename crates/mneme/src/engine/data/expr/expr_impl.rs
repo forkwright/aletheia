@@ -274,7 +274,6 @@ impl Expr {
                 let result = self.eval(vec![])?;
                 *self = Expr::Const { val: result, span };
             }
-            // nested not's can accumulate during conversion to normal form
             if let Expr::Apply {
                 op: op1,
                 args: arg1,

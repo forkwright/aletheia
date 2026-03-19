@@ -442,7 +442,6 @@ mod tests {
 
     #[test]
     fn merge_score_formula_weights() {
-        // 0.4*0.9 + 0.3*0.8 + 0.2*1.0 + 0.1*0.0 = 0.36 + 0.24 + 0.20 + 0.0 = 0.80
         let score = compute_merge_score(0.9, 0.8, true, false);
         assert!((score - 0.80).abs() < 1e-10);
     }
@@ -591,9 +590,6 @@ mod tests {
 
     #[test]
     fn classify_auto_merge_and_review() {
-        // e1 vs e2: exact name match (1.0) + same type (1.0) + alias overlap (1.0)
-        // score = 0.4*1.0 + 0.3*0.0 + 0.2*1.0 + 0.1*1.0 = 0.70 → Review
-        // With embed=0.95: 0.4*1.0 + 0.3*0.95 + 0.2*1.0 + 0.1*1.0 = 0.985 → AutoMerge
         let entities = vec![
             entity("e1", "John Smith", "person", vec!["JS"], 2, "2026-01-01"),
             entity("e2", "john smith", "person", vec!["JS"], 1, "2026-01-02"),
@@ -610,12 +606,10 @@ mod tests {
         };
         let candidates = generate_candidates(&entities, &high_embed);
         let (auto_merge, review) = classify_candidates(candidates);
-        // e1 vs e2 should be auto-merge with high embed similarity
         assert!(
             !auto_merge.is_empty(),
             "expected at least one auto-merge candidate"
         );
-        // e1 vs e3 or e2 vs e3 might be review or skip
         let total = auto_merge.len() + review.len();
         assert!(total >= 1);
     }
@@ -773,7 +767,6 @@ mod tests {
             fn classify_preserves_count(
                 names in prop::collection::vec("[a-zA-Z]{3,15}", 2..=8),
             ) {
-                // Build unique same-type entities from the generated names.
                 let entities: Vec<EntityInfo> = names
                     .iter()
                     .enumerate()
@@ -784,8 +777,6 @@ mod tests {
                 let total_candidates = candidates.len();
                 let (auto_merge, review) = classify_candidates(candidates);
 
-                // Every candidate was either auto-merged, queued for review, or skipped.
-                // The ones that remain (not skipped) must equal auto_merge + review.
                 prop_assert!(
                     auto_merge.len() + review.len() <= total_candidates,
                     "auto_merge + review ({}) > total candidates ({total_candidates})",

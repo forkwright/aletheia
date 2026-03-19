@@ -620,7 +620,6 @@ fn resolve_agency_per_agent_overrides_global() {
         "per-agent unrestricted override should set iterations to 10k"
     );
 
-    // Agent without override should use global
     let other = resolve_nous(&config, "other");
     assert_eq!(
         other.capabilities.agency,
