@@ -5,7 +5,7 @@ mod tests {
     use crate::state::{ChatMessage, OpsState};
 
     #[test]
-    fn test_app_constructs_with_defaults() {
+    fn app_constructs_with_defaults() {
         let app = test_app();
         assert!(!app.should_quit);
         assert!(app.viewport.render.auto_scroll);
@@ -22,7 +22,7 @@ mod tests {
     }
 
     #[test]
-    fn test_app_with_messages_populates() {
+    fn app_with_messages_populates_dashboard_correctly() {
         let app = test_app_with_messages(vec![("user", "hello"), ("assistant", "hi there")]);
         assert_eq!(app.dashboard.messages.len(), 2);
         assert_eq!(app.dashboard.messages[0].role, "user");

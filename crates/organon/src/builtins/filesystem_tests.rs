@@ -28,6 +28,10 @@ fn tool_input(name: &str, args: serde_json::Value) -> ToolInput {
 #[tokio::test]
 async fn grep_finds_pattern() {
     let dir = tempfile::tempdir().expect("tmpdir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(
         dir.path().join("hello.rs"),
         "fn main() {\n    println!(\"hello\");\n}",
@@ -47,7 +51,15 @@ async fn grep_finds_pattern() {
 #[tokio::test]
 async fn grep_with_glob_filter() {
     let dir = tempfile::tempdir().expect("tmpdir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(dir.path().join("code.rs"), "fn rust_func() {}").expect("write");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(dir.path().join("code.ts"), "function tsFunc() {}").expect("write");
 
     let ctx = test_ctx(dir.path());
@@ -74,6 +86,10 @@ async fn grep_with_glob_filter() {
 #[tokio::test]
 async fn grep_case_insensitive() {
     let dir = tempfile::tempdir().expect("tmpdir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(dir.path().join("test.txt"), "Hello World\nhello world").expect("write");
 
     let ctx = test_ctx(dir.path());
@@ -100,6 +116,10 @@ async fn grep_case_insensitive() {
 #[tokio::test]
 async fn grep_no_matches_not_error() {
     let dir = tempfile::tempdir().expect("tmpdir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(dir.path().join("test.txt"), "nothing here").expect("write");
 
     let ctx = test_ctx(dir.path());
@@ -119,7 +139,15 @@ async fn grep_no_matches_not_error() {
 #[tokio::test]
 async fn find_locates_files() {
     let dir = tempfile::tempdir().expect("tmpdir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(dir.path().join("app.rs"), "").expect("write");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(dir.path().join("app.ts"), "").expect("write");
 
     let ctx = test_ctx(dir.path());
@@ -137,6 +165,10 @@ async fn find_locates_files() {
 async fn find_type_filter() {
     let dir = tempfile::tempdir().expect("tmpdir");
     std::fs::create_dir(dir.path().join("subdir")).expect("mkdir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(dir.path().join("file.txt"), "").expect("write");
 
     let ctx = test_ctx(dir.path());
@@ -158,7 +190,15 @@ async fn find_max_depth() {
     let dir = tempfile::tempdir().expect("tmpdir");
     let deep = dir.path().join("a").join("b").join("c");
     std::fs::create_dir_all(&deep).expect("mkdirs");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(deep.join("deep.txt"), "").expect("write");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(dir.path().join("shallow.txt"), "").expect("write");
 
     let ctx = test_ctx(dir.path());
@@ -185,6 +225,10 @@ async fn find_max_depth() {
 #[tokio::test]
 async fn ls_lists_directory() {
     let dir = tempfile::tempdir().expect("tmpdir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(dir.path().join("file.txt"), "content").expect("write");
     std::fs::create_dir(dir.path().join("subdir")).expect("mkdir");
 
@@ -206,7 +250,15 @@ async fn ls_lists_directory() {
 #[tokio::test]
 async fn ls_hides_dotfiles() {
     let dir = tempfile::tempdir().expect("tmpdir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(dir.path().join(".hidden"), "secret").expect("write");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(dir.path().join("visible.txt"), "public").expect("write");
 
     let ctx = test_ctx(dir.path());
@@ -227,7 +279,15 @@ async fn ls_hides_dotfiles() {
 #[tokio::test]
 async fn ls_shows_dotfiles_with_all() {
     let dir = tempfile::tempdir().expect("tmpdir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(dir.path().join(".hidden"), "secret").expect("write");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(dir.path().join("visible.txt"), "public").expect("write");
 
     let ctx = test_ctx(dir.path());
@@ -251,6 +311,10 @@ async fn ls_shows_dotfiles_with_all() {
 #[tokio::test]
 async fn ls_dirs_sorted_before_files() {
     let dir = tempfile::tempdir().expect("tmpdir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(dir.path().join("zebra.txt"), "").expect("write");
     std::fs::create_dir(dir.path().join("alpha")).expect("mkdir");
 
@@ -332,6 +396,10 @@ async fn test_grep_max_results_limits_output_lines() {
                    match9\nmatch10\nmatch11\nmatch12\nmatch13\nmatch14\nmatch15\nmatch16\n\
                    match17\nmatch18\nmatch19\nmatch20\n"
         .to_owned();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(dir.path().join("big.txt"), &content).expect("write");
 
     let ctx = test_ctx(dir.path());
@@ -355,6 +423,10 @@ async fn test_grep_max_results_limits_output_lines() {
 #[tokio::test]
 async fn test_grep_case_sensitive_does_not_match_wrong_case() {
     let dir = tempfile::tempdir().expect("tmpdir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(dir.path().join("f.txt"), "HELLO world").expect("write");
 
     let ctx = test_ctx(dir.path());
@@ -412,8 +484,20 @@ async fn test_find_empty_results_returns_not_error_message() {
 #[tokio::test]
 async fn test_find_glob_extension_filter_matches_correctly() {
     let dir = tempfile::tempdir().expect("tmpdir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(dir.path().join("main.rs"), "").expect("write");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(dir.path().join("main.py"), "").expect("write");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(dir.path().join("lib.rs"), "").expect("write");
 
     let ctx = test_ctx(dir.path());
@@ -431,6 +515,10 @@ async fn test_find_glob_extension_filter_matches_correctly() {
 async fn test_find_max_results_limits_output() {
     let dir = tempfile::tempdir().expect("tmpdir");
     for i in 0..10 {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+        )]
         std::fs::write(dir.path().join(format!("file{i}.txt")), "").expect("write");
     }
 
@@ -494,6 +582,10 @@ async fn test_ls_empty_directory_returns_descriptive_message() {
 #[tokio::test]
 async fn test_ls_output_includes_file_size() {
     let dir = tempfile::tempdir().expect("tmpdir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(dir.path().join("sized.txt"), "12345").expect("write");
     let ctx = test_ctx(dir.path());
     let input = tool_input("ls", serde_json::json!({}));
@@ -506,6 +598,10 @@ async fn test_ls_output_includes_file_size() {
 #[tokio::test]
 async fn test_ls_output_includes_date_column() {
     let dir = tempfile::tempdir().expect("tmpdir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(dir.path().join("dated.txt"), "content").expect("write");
     let ctx = test_ctx(dir.path());
     let input = tool_input("ls", serde_json::json!({}));
@@ -519,6 +615,10 @@ async fn test_ls_output_includes_date_column() {
 #[tokio::test]
 async fn test_ls_uses_workspace_when_path_not_specified() {
     let dir = tempfile::tempdir().expect("tmpdir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(dir.path().join("sentinel.txt"), "").expect("write");
     let ctx = test_ctx(dir.path());
     let input = tool_input("ls", serde_json::json!({}));

@@ -1,9 +1,4 @@
-#![expect(
-    clippy::indexing_slicing,
-    reason = "test: vec indices are valid after asserting len"
-)]
 #![expect(clippy::unwrap_used, reason = "test assertions")]
-#![expect(clippy::expect_used, reason = "test assertions")]
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use aletheia_mneme::embedding::MockEmbeddingProvider;
@@ -260,6 +255,11 @@ fn vector_search_trait_is_object_safe() {
 }
 
 #[cfg(feature = "knowledge-store")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: vec indices are valid after asserting len"
+)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod knowledge_bridge_tests {
     use aletheia_mneme::knowledge::EmbeddedChunk;
     use aletheia_mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};

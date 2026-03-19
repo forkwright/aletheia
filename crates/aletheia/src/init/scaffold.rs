@@ -23,6 +23,10 @@ pub(super) fn scaffold(answers: &Answers) -> Result<(), InitError> {
 
     let config_toml = render_config(answers);
     let config_path = root.join("config/aletheia.toml");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "aletheia CLI commands use synchronous filesystem operations for config and certificate generation"
+    )]
     std::fs::write(&config_path, config_toml).context(WriteFileSnafu {
         path: config_path.clone(),
     })?;
@@ -31,6 +35,10 @@ pub(super) fn scaffold(answers: &Answers) -> Result<(), InitError> {
         let cred_path = root.join(format!("config/credentials/{}.json", answers.api_provider));
         let cred_json = serde_json::json!({ "token": key.expose_secret() });
         let json_str = serde_json::to_string_pretty(&cred_json).context(SerializeJsonSnafu)?;
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "aletheia CLI commands use synchronous filesystem operations for config and certificate generation"
+        )]
         std::fs::write(&cred_path, json_str).context(WriteFileSnafu {
             path: cred_path.clone(),
         })?;
@@ -142,6 +150,10 @@ pub(super) fn write_embedded_default(nous_dir: &Path, agent_name: &str) -> Resul
 
     for (filename, content) in files {
         let path = nous_dir.join(filename);
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "aletheia CLI commands use synchronous filesystem operations for config and certificate generation"
+        )]
         std::fs::write(&path, content).context(WriteFileSnafu { path: path.clone() })?;
     }
 

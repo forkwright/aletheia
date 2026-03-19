@@ -58,6 +58,10 @@ provider = "mock"
 dimension = 384
 "#
     );
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "integration tests write fixture files to temp directories; synchronous I/O is required in test setup"
+    )]
     std::fs::write(instance.join("config/aletheia.toml"), config).unwrap();
     tmp
 }

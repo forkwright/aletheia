@@ -79,7 +79,7 @@ Bug is fixed, migration applied, all tests passing.
 - CORRECTION: Initially looked at wrong file (session.rs), actually the bug was in login.rs";
 
 #[test]
-fn test_should_distill_when_exactly_at_threshold_returns_true() {
+fn should_distill_when_exactly_at_threshold_returns_true() {
     let engine = default_engine();
     // NOTE: ratio = 80000/100000 = 0.8, threshold = 0.8 → true
     assert!(
@@ -89,7 +89,7 @@ fn test_should_distill_when_exactly_at_threshold_returns_true() {
 }
 
 #[test]
-fn test_should_distill_when_just_below_threshold_returns_false() {
+fn should_distill_when_just_below_threshold_returns_false() {
     let engine = default_engine();
     // NOTE: ratio = 79999/100000 = 0.79999, threshold = 0.8 → false
     assert!(
@@ -99,7 +99,7 @@ fn test_should_distill_when_just_below_threshold_returns_false() {
 }
 
 #[test]
-fn test_should_distill_when_threshold_zero_always_true_if_enough_messages() {
+fn should_distill_when_threshold_zero_always_true_if_enough_messages() {
     let engine = default_engine();
     assert!(
         engine.should_distill(10, 1, 100_000, 0.0),
@@ -108,7 +108,7 @@ fn test_should_distill_when_threshold_zero_always_true_if_enough_messages() {
 }
 
 #[test]
-fn test_should_distill_when_threshold_one_needs_full_context() {
+fn should_distill_when_threshold_one_needs_full_context() {
     let engine = default_engine();
     assert!(
         engine.should_distill(10, 100_000, 100_000, 1.0),
@@ -121,7 +121,7 @@ fn test_should_distill_when_threshold_one_needs_full_context() {
 }
 
 #[test]
-fn test_should_distill_when_large_token_count_returns_true() {
+fn should_distill_when_large_token_count_returns_true() {
     let engine = default_engine();
     assert!(
         engine.should_distill(100, 900_000, 1_000_000, 0.8),
@@ -130,7 +130,7 @@ fn test_should_distill_when_large_token_count_returns_true() {
 }
 
 #[test]
-fn test_should_distill_with_custom_min_messages() {
+fn should_distill_with_custom_min_messages() {
     let config = DistillConfig {
         min_messages: 20,
         verbatim_tail: 5,
@@ -149,7 +149,7 @@ fn test_should_distill_with_custom_min_messages() {
 }
 
 #[test]
-fn test_should_distill_with_zero_verbatim_tail() {
+fn should_distill_with_zero_verbatim_tail() {
     let config = DistillConfig {
         min_messages: 6,
         verbatim_tail: 0,
@@ -168,7 +168,7 @@ fn test_should_distill_with_zero_verbatim_tail() {
 }
 
 #[tokio::test]
-async fn test_verbatim_tail_preserves_roles() {
+async fn verbatim_tail_preserves_roles() {
     let config = DistillConfig {
         verbatim_tail: 3,
         min_messages: 1,
@@ -214,7 +214,7 @@ async fn test_verbatim_tail_preserves_roles() {
 }
 
 #[tokio::test]
-async fn test_verbatim_tail_when_single_message_preserves_it() {
+async fn verbatim_tail_when_single_message_preserves_it() {
     let config = DistillConfig {
         verbatim_tail: 5,
         min_messages: 1,
@@ -246,7 +246,7 @@ async fn test_verbatim_tail_when_single_message_preserves_it() {
 }
 
 #[tokio::test]
-async fn test_verbatim_tail_preserves_block_content() {
+async fn verbatim_tail_preserves_block_content() {
     let config = DistillConfig {
         verbatim_tail: 1,
         min_messages: 1,

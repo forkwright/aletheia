@@ -139,6 +139,10 @@ fn check_config_readable(config_dir: &Path, failures: &mut Vec<String>) {
 /// Check that the data directory is writable by attempting a test write.
 fn check_data_writable(data_dir: &Path, failures: &mut Vec<String>) {
     let probe = data_dir.join(".aletheia-preflight-probe");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "taxis config operations are CLI-invoked and require synchronous filesystem access"
+    )]
     match std::fs::write(&probe, b"ok") {
         Ok(()) => {
             #[cfg(unix)]
@@ -292,6 +296,10 @@ mod tests {
 
         // Skip when running as root: root bypasses permission checks.
         let probe = dir.path().join(".root-check");
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "taxis config operations are CLI-invoked and require synchronous filesystem access"
+        )]
         let is_root = std::fs::write(&probe, b"x").is_ok();
         let _ = std::fs::remove_file(&probe);
         if is_root {

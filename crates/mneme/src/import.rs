@@ -175,6 +175,10 @@ fn restore_workspace(
             })?;
         }
 
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+        )]
         std::fs::write(&full_path, content).context(error::IoSnafu {
             path: full_path.clone(),
         })?;

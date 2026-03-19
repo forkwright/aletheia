@@ -89,6 +89,10 @@ fn setup_oikos(dir: &Path, agent_id: &str) -> Arc<Oikos> {
     std::fs::create_dir_all(dir.join(format!("nous/{agent_id}"))).expect("mkdir nous");
     std::fs::create_dir_all(dir.join("shared")).expect("mkdir shared");
     std::fs::create_dir_all(dir.join("theke")).expect("mkdir theke");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "integration tests write fixture files to temp directories; synchronous I/O is required in test setup"
+    )]
     std::fs::write(
         dir.join(format!("nous/{agent_id}/SOUL.md")),
         "I am a test agent.",
@@ -98,12 +102,20 @@ fn setup_oikos(dir: &Path, agent_id: &str) -> Arc<Oikos> {
 }
 
 fn setup_pack(dir: &Path, toml_content: &str, files: &[(&str, &str)]) {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "integration tests write fixture files to temp directories; synchronous I/O is required in test setup"
+    )]
     std::fs::write(dir.join("pack.toml"), toml_content).expect("write pack.toml");
     for (name, content) in files {
         let path = dir.join(name);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).expect("mkdir");
         }
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "integration tests write fixture files to temp directories; synchronous I/O is required in test setup"
+        )]
         std::fs::write(&path, content).expect("write file");
     }
 }
@@ -245,7 +257,15 @@ async fn domain_tagged_sections_reach_correct_agents() {
     std::fs::create_dir_all(root.join("nous/hermes")).expect("mkdir");
     std::fs::create_dir_all(root.join("shared")).expect("mkdir");
     std::fs::create_dir_all(root.join("theke")).expect("mkdir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "integration tests write fixture files to temp directories; synchronous I/O is required in test setup"
+    )]
     std::fs::write(root.join("nous/chiron/SOUL.md"), "I am Chiron.").expect("write");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "integration tests write fixture files to temp directories; synchronous I/O is required in test setup"
+    )]
     std::fs::write(root.join("nous/hermes/SOUL.md"), "I am Hermes.").expect("write");
     let oikos = Arc::new(Oikos::from_root(root));
 
@@ -408,6 +428,10 @@ fn missing_pack_warns_not_crashes() {
 #[test]
 fn invalid_manifest_skips_gracefully() {
     let bad_dir = tempfile::TempDir::new().expect("tmpdir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "integration tests write fixture files to temp directories; synchronous I/O is required in test setup"
+    )]
     std::fs::write(
         bad_dir.path().join("pack.toml"),
         "this = [is = not = valid = toml {{}}",

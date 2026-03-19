@@ -188,6 +188,10 @@ fn render_json(session: &SessionResponse, history: &HistoryResponse) -> Result<S
 
 fn write_output(content: &str, path: Option<&std::path::Path>) -> Result<()> {
     match path {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "aletheia CLI commands use synchronous filesystem operations for config and certificate generation"
+        )]
         Some(p) => std::fs::write(p, content)
             .with_context(|| format!("failed to write to {}", p.display())),
         None => std::io::stdout()

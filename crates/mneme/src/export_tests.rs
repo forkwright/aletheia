@@ -23,7 +23,15 @@ fn binary_content_detection() {
     let text_path = dir.path().join("text.txt");
     let bin_path = dir.path().join("data.bin");
 
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+    )]
     std::fs::write(&text_path, "hello world").expect("write text file");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+    )]
     std::fs::write(&bin_path, b"\x00\x01\x02\x03").expect("write binary file");
 
     assert!(!is_binary_content(&text_path));
@@ -49,9 +57,21 @@ fn scan_missing_workspace() {
 #[test]
 fn scan_classifies_files() {
     let dir = tempfile::tempdir().expect("create tempdir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+    )]
     std::fs::write(dir.path().join("notes.md"), "# Notes").expect("write notes.md");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+    )]
     std::fs::write(dir.path().join("data.bin"), b"\x00binary\x00").expect("write data.bin");
     std::fs::create_dir(dir.path().join(".git")).expect("create .git dir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+    )]
     std::fs::write(dir.path().join(".git/HEAD"), "ref: refs/heads/main").expect("write .git/HEAD");
 
     let ws = scan_workspace(dir.path()).expect("scan workspace");
@@ -65,7 +85,15 @@ fn scan_classifies_files() {
 fn scan_skips_ignored_dirs() {
     let dir = tempfile::tempdir().expect("create tempdir");
     std::fs::create_dir(dir.path().join("node_modules")).expect("create node_modules dir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+    )]
     std::fs::write(dir.path().join("node_modules/package.json"), "{}").expect("write package.json");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+    )]
     std::fs::write(dir.path().join("readme.md"), "hello").expect("write readme.md");
 
     let ws = scan_workspace(dir.path()).expect("scan workspace");
@@ -90,6 +118,10 @@ fn export_with_sessions() {
         .expect("add note");
 
     let dir = tempfile::tempdir().expect("create tempdir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+    )]
     std::fs::write(dir.path().join("notes.md"), "# Test").expect("write notes.md");
 
     let opts = ExportOptions::default();
@@ -313,6 +345,10 @@ fn export_preserves_unicode() {
 
     let dir = tempfile::tempdir().expect("create tempdir");
     let unicode_file = "日本語.txt";
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+    )]
     std::fs::write(dir.path().join(unicode_file), &mixed).expect("write unicode file");
 
     let agent = export_agent(
@@ -546,7 +582,15 @@ fn scan_workspace_nested_structure() {
     let dir = tempfile::tempdir().expect("create tempdir");
     let sub = dir.path().join("sub/deep");
     std::fs::create_dir_all(&sub).expect("create nested directories");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+    )]
     std::fs::write(dir.path().join("root.txt"), "root").expect("write root.txt");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+    )]
     std::fs::write(sub.join("nested.md"), "nested").expect("write nested.md");
 
     let ws = scan_workspace(dir.path()).expect("scan nested workspace");

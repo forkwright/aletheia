@@ -69,6 +69,10 @@ pub(crate) fn load_or_create_key(credential_path: &Path) -> std::io::Result<[u8;
     let key_path = key_file_path(credential_path);
 
     if key_path.exists() {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "symbolon credential storage writes configuration files; synchronous I/O is required in CLI/init contexts"
+        )]
         let bytes = std::fs::read(&key_path)?;
         let key: [u8; KEY_LEN] = bytes.try_into().map_err(|_ignored| {
             std::io::Error::new(

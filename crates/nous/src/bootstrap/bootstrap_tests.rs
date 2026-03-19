@@ -20,8 +20,16 @@ fn setup_oikos(nous_id: &str, files: &[(&str, &str)]) -> (TempDir, Oikos) {
 
     for (name, content) in files {
         if let Some(stripped) = name.strip_prefix("theke:") {
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
+            )]
             fs::write(root.join("theke").join(stripped), content).unwrap();
         } else {
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
+            )]
             fs::write(root.join(format!("nous/{nous_id}")).join(name), content).unwrap();
         }
     }
@@ -286,7 +294,15 @@ async fn assemble_nous_overrides_theke() {
     fs::create_dir_all(root.join("nous/syn")).unwrap();
     fs::create_dir_all(root.join("shared")).unwrap();
     fs::create_dir_all(root.join("theke")).unwrap();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
+    )]
     fs::write(root.join("nous/syn/SOUL.md"), "nous-specific soul").unwrap();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
+    )]
     fs::write(root.join("theke/SOUL.md"), "theke soul").unwrap();
 
     let oikos = Oikos::from_root(root);

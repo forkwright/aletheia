@@ -183,6 +183,10 @@ fn import_restores_workspace_files() {
 fn import_skips_existing_without_force() {
     let store = test_store();
     let dir = tempfile::tempdir().expect("create temp dir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+    )]
     std::fs::write(dir.path().join("notes.md"), "original").expect("write existing notes.md");
 
     let agent = minimal_agent_file();
@@ -215,6 +219,10 @@ fn import_skips_existing_without_force() {
 fn import_overwrites_with_force() {
     let store = test_store();
     let dir = tempfile::tempdir().expect("create temp dir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+    )]
     std::fs::write(dir.path().join("notes.md"), "original").expect("write existing notes.md");
 
     let agent = minimal_agent_file();
@@ -447,6 +455,10 @@ fn export_import_roundtrip() {
         .expect("add note");
 
     let dir = tempfile::tempdir().expect("create temp dir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+    )]
     std::fs::write(dir.path().join("readme.md"), "# Hello").expect("write readme.md");
 
     let exported = export_agent(

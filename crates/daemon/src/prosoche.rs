@@ -443,6 +443,10 @@ Threads:  8
     fn check_db_sizes_small_file() {
         let dir = tempfile::tempdir().expect("create tempdir");
         let db_path = dir.path().join("test.db");
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
+        )]
         std::fs::write(&db_path, b"small content").expect("write test file");
 
         let items = check_db_sizes(&[db_path]);
@@ -461,6 +465,10 @@ Threads:  8
     async fn prosoche_with_db_paths_runs_size_check() {
         let dir = tempfile::tempdir().expect("create tempdir");
         let db_path = dir.path().join("test.db");
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
+        )]
         std::fs::write(&db_path, b"data").expect("write");
         let check = ProsocheCheck::new("test-nous").with_db_paths(vec![db_path]);
         let result = check.run().await.expect("should succeed");

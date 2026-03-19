@@ -137,6 +137,10 @@ mod tests {
 
     #[test]
     fn read_file_chains_source() {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "thesauros pack loader reads binary assets from disk; synchronous I/O is inherent to asset loading"
+        )]
         let result: Result<Vec<u8>> = std::fs::read("/nonexistent/path").context(ReadFileSnafu {
             path: PathBuf::from("/nonexistent/path"),
         });

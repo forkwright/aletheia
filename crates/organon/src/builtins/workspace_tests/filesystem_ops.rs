@@ -29,6 +29,10 @@ fn tool_input(name: &str, args: serde_json::Value) -> ToolInput {
 #[tokio::test]
 async fn read_existing_file() {
     let dir = tempfile::tempdir().expect("create temp dir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(dir.path().join("hello.txt"), "hello world").expect("write");
 
     let ctx = test_ctx(dir.path());
@@ -48,6 +52,10 @@ async fn read_existing_file() {
 #[tokio::test]
 async fn read_with_max_lines() {
     let dir = tempfile::tempdir().expect("create temp dir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
     std::fs::write(dir.path().join("lines.txt"), "a\nb\nc\nd\ne\n").expect("write");
 
     let ctx = test_ctx(dir.path());

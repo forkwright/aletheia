@@ -28,6 +28,10 @@ fn test_oikos() -> (tempfile::TempDir, Arc<Oikos>) {
     std::fs::create_dir_all(root.join("nous/test-agent")).expect("mkdir");
     std::fs::create_dir_all(root.join("shared")).expect("mkdir");
     std::fs::create_dir_all(root.join("theke")).expect("mkdir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
+    )]
     std::fs::write(root.join("nous/test-agent/SOUL.md"), "Test agent.").expect("write");
     let oikos = Arc::new(Oikos::from_root(root));
     (dir, oikos)
@@ -267,6 +271,10 @@ async fn validate_workspace_creates_missing_dir() {
     let root = dir.path();
     std::fs::create_dir_all(root.join("shared")).expect("mkdir shared");
     std::fs::create_dir_all(root.join("theke")).expect("mkdir theke");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
+    )]
     std::fs::write(root.join("shared/SOUL.md"), "# Test Soul").expect("write");
 
     let oikos = Oikos::from_root(root);

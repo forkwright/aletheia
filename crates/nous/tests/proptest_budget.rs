@@ -5,15 +5,6 @@
 //!
 //! Run: `cargo test -p aletheia-nous --test proptest_budget`
 
-#![expect(
-    clippy::unwrap_used,
-    reason = "proptest test bodies may panic on failed assertions"
-)]
-#![expect(
-    clippy::expect_used,
-    reason = "proptest: strategy construction from static values is infallible"
-)]
-
 use aletheia_nous::budget::{CharEstimator, TokenBudget, TokenEstimator};
 use proptest::prelude::*;
 

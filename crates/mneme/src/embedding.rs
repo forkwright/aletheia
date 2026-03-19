@@ -226,6 +226,10 @@ mod candle_provider {
             })?;
             let dimension = config.hidden_size;
 
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
+            )]
             let weights_data = std::fs::read(&weights_path).map_err(|e| {
                 InitFailedSnafu {
                     message: format!("failed to read model weights: {e}"),

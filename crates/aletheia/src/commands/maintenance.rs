@@ -33,6 +33,10 @@ pub(crate) enum Action {
     },
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "maintenance command match is inherently long; splitting would reduce readability"
+)]
 pub(crate) fn run(action: Action, instance_root: Option<&PathBuf>) -> Result<()> {
     let oikos = match instance_root {
         Some(root) => Oikos::from_root(root),
