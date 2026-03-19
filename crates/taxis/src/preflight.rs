@@ -3,7 +3,7 @@
 //! Verifies that required resources are available before any service starts:
 //!
 //! 1. **Disk space** — the data directory filesystem must have at least
-//!    [`MIN_REQUIRED_MB`] megabytes free.
+//!    `MIN_REQUIRED_MB` megabytes free.
 //! 2. **Port bindability** — the configured gateway TCP port must be available.
 //! 3. **Directory permissions** — `config/` must be readable and `data/` must
 //!    be writable.
@@ -70,7 +70,7 @@ pub fn check_preconditions(
     }
 }
 
-/// Check that the data directory filesystem has at least [`MIN_REQUIRED_MB`] MB free.
+/// Check that the data directory filesystem has at least `MIN_REQUIRED_MB` MB free.
 fn check_disk_space(data_dir: &Path, failures: &mut Vec<String>) {
     let required_bytes = MIN_REQUIRED_MB * BYTES_PER_MB;
 

@@ -1,9 +1,9 @@
 //! Config-time validation of agent workspace directory structure.
 //!
-//! [`WorkspaceSchema`] describes the files and directories that must exist
+//! `WorkspaceSchema` describes the files and directories that must exist
 //! inside an agent's workspace root.  Validate a single workspace with
 //! [`WorkspaceSchema::validate`], or check all agents in a loaded config with
-//! [`validate_agent_workspaces`].
+//! `validate_agent_workspaces`.
 //!
 //! # Example
 //!
