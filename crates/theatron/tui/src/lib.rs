@@ -101,6 +101,8 @@ async fn run_tui_inner(
     let result = run_loop(terminal, &mut app).await;
     let _ = crossterm::execute!(std::io::stderr(), crossterm::event::DisableMouseCapture);
     ratatui::restore();
+    // Persist last-active sessions so the TUI resumes at the same place on relaunch.
+    crate::app::save_session_state(&app.config, &app.dashboard.saved_sessions);
 
     if let Err(ref e) = result {
         tracing::error!(error = %e, "tui exited with error");

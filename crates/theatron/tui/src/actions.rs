@@ -5,6 +5,16 @@ use tracing::Instrument;
 /// Entries beyond this cap are pruned to agents currently in the active roster.
 const MAX_SCROLL_STATES: usize = 100;
 
+// WHY: These constants mirror view/mod.rs and view/ops.rs so that rebuild_virtual_scroll
+// can compute the same chat area width that the renderer uses.  Keeping them here avoids
+// a view → model dependency inversion while still producing a correct wrap_width for the
+// VirtualScroll cache.  If the view constants ever change, update these in lockstep.
+const LAYOUT_SIDEBAR_WIDTH: u16 = 22;
+const LAYOUT_MIN_SIDEBAR_TERMINAL_WIDTH: u16 = 60;
+const LAYOUT_MIN_OPS_TERMINAL_WIDTH: u16 = 80;
+const LAYOUT_MIN_CHAT_PANE_WIDTH: u16 = 40;
+const LAYOUT_MIN_OPS_PANE_WIDTH: u16 = 20;
+
 use crate::api::streaming;
 use crate::app::App;
 use crate::state::virtual_scroll::estimate_message_height;
@@ -52,7 +62,7 @@ impl App {
             .virtual_scroll
             .cached_width()
             .max(self.viewport.terminal_width.saturating_sub(2).max(1));
-        let h = estimate_message_height(msg.text.len(), !msg.tool_calls.is_empty(), width);
+        let h = estimate_message_height(msg.text.len(), width);
         self.dashboard.messages.push(msg);
         self.viewport.render.virtual_scroll.push_item(h);
         self.scroll_to_bottom();
@@ -179,15 +189,37 @@ impl App {
         }
     }
 
-    /// Rebuild the virtual scroll height cache from current messages and terminal width.
-    /// Called on session load, terminal resize, or when the cache becomes stale.
+    /// Rebuild the virtual scroll height cache from current messages and the actual chat
+    /// area width.  The width must match what the chat renderer uses (area.width - 2) so
+    /// that the cache is valid and `needs_fallback` stays false during normal rendering.
     pub(crate) fn rebuild_virtual_scroll(&mut self) {
-        let width = self.viewport.terminal_width.saturating_sub(2).max(1);
+        let tw = self.viewport.terminal_width;
+        // Mirror the layout logic from view/mod.rs to derive the chat column width.
+        let show_sidebar =
+            self.layout.sidebar_visible && tw >= LAYOUT_MIN_SIDEBAR_TERMINAL_WIDTH;
+        let rest = if show_sidebar {
+            tw.saturating_sub(LAYOUT_SIDEBAR_WIDTH)
+        } else {
+            tw
+        };
+        let show_ops = self.layout.ops.visible && tw >= LAYOUT_MIN_OPS_TERMINAL_WIDTH;
+        let chat_w = if show_ops {
+            let available = rest.saturating_sub(LAYOUT_MIN_CHAT_PANE_WIDTH);
+            let desired = (u32::from(rest) * u32::from(self.layout.ops.width_pct) / 100) as u16;
+            let ops_w = desired.clamp(
+                LAYOUT_MIN_OPS_PANE_WIDTH,
+                available.max(LAYOUT_MIN_OPS_PANE_WIDTH),
+            );
+            rest.saturating_sub(ops_w)
+        } else {
+            rest
+        };
+        let width = chat_w.saturating_sub(2).max(1);
         let heights: Vec<u16> = self
             .dashboard
             .messages
             .iter()
-            .map(|msg| estimate_message_height(msg.text.len(), !msg.tool_calls.is_empty(), width))
+            .map(|msg| estimate_message_height(msg.text.len(), width))
             .collect();
         self.viewport.render.virtual_scroll.rebuild(&heights, width);
     }
