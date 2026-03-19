@@ -10,13 +10,11 @@
 )]
 
 use std::collections::BTreeMap;
+use std::sync::LazyLock;
 
-use crate::engine::error::InternalResult as Result;
-use crate::engine::parse::error::InvalidQuerySnafu;
 use compact_str::CompactString;
 use itertools::Itertools;
 use pest::pratt_parser::{Op, PrattParser};
-use std::sync::LazyLock;
 
 use crate::engine::data::expr::{Bytecode, Expr, get_op, no_implementation_err};
 use crate::engine::data::functions::{
@@ -26,6 +24,8 @@ use crate::engine::data::functions::{
 };
 use crate::engine::data::symb::Symbol;
 use crate::engine::data::value::DataValue;
+use crate::engine::error::InternalResult as Result;
+use crate::engine::parse::error::InvalidQuerySnafu;
 use crate::engine::parse::{ExtractSpan, Pair, Rule, SourceSpan};
 
 static PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {

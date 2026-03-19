@@ -6,8 +6,6 @@
 )]
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::engine::error::InternalResult as Result;
-use crate::engine::fixed_rule::csr::DirectedCsrGraph;
 use compact_str::CompactString;
 use itertools::Itertools;
 use rayon::prelude::*;
@@ -15,7 +13,9 @@ use rayon::prelude::*;
 use crate::engine::data::expr::Expr;
 use crate::engine::data::symb::Symbol;
 use crate::engine::data::value::DataValue;
+use crate::engine::error::InternalResult as Result;
 use crate::engine::fixed_rule::algos::shortest_path_dijkstra::dijkstra;
+use crate::engine::fixed_rule::csr::DirectedCsrGraph;
 use crate::engine::fixed_rule::{FixedRule, FixedRulePayload};
 use crate::engine::parse::SourceSpan;
 use crate::engine::runtime::db::Poison;

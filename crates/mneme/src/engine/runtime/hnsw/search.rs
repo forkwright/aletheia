@@ -11,6 +11,9 @@
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
 )]
 
+use ordered_float::OrderedFloat;
+use priority_queue::PriorityQueue;
+
 use super::types::{DEFAULT_VECTOR_CACHE_CAPACITY, VectorCache};
 use crate::engine::data::expr::{Bytecode, eval_bytecode_pred};
 use crate::engine::data::program::HnswSearch;
@@ -21,8 +24,6 @@ use crate::engine::error::InternalResult as Result;
 use crate::engine::runtime::error::InvalidOperationSnafu;
 use crate::engine::runtime::transact::SessionTx;
 use crate::engine::{DataValue, SourceSpan};
-use ordered_float::OrderedFloat;
-use priority_queue::PriorityQueue;
 
 impl<'a> SessionTx<'a> {
     pub(crate) fn hnsw_knn(

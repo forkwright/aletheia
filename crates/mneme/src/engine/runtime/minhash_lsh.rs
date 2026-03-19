@@ -5,6 +5,15 @@
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
 )]
 
+use std::cmp::min;
+use std::hash::{Hash, Hasher};
+
+use compact_str::CompactString;
+use itertools::Itertools;
+use rand::RngCore;
+use rustc_hash::FxHashSet;
+use twox_hash::XxHash32;
+
 use crate::engine::data::expr::{Bytecode, eval_bytecode, eval_bytecode_pred};
 use crate::engine::data::tuple::Tuple;
 use crate::engine::error::InternalResult as Result;
@@ -14,13 +23,6 @@ use crate::engine::runtime::error::InvalidOperationSnafu;
 use crate::engine::runtime::relation::RelationHandle;
 use crate::engine::runtime::transact::SessionTx;
 use crate::engine::{DataValue, Expr, SourceSpan, Symbol};
-use compact_str::CompactString;
-use itertools::Itertools;
-use rand::RngCore;
-use rustc_hash::FxHashSet;
-use std::cmp::min;
-use std::hash::{Hash, Hasher};
-use twox_hash::XxHash32;
 
 impl<'a> SessionTx<'a> {
     pub(crate) fn del_lsh_index_item(

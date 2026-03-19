@@ -13,8 +13,6 @@ use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::sync::Arc;
 
-use crate::engine::error::InternalResult as Result;
-use crate::engine::parse::error::InvalidQuerySnafu;
 use compact_str::CompactString;
 use either::{Left, Right};
 use pest::Parser;
@@ -27,8 +25,10 @@ use crate::engine::data::program::{
 use crate::engine::data::relation::{ColType, ColumnDef, NullableColType, StoredRelationMetadata};
 use crate::engine::data::symb::Symbol;
 use crate::engine::data::value::{DataValue, ValidityTs};
+use crate::engine::error::InternalResult as Result;
 use crate::engine::fixed_rule::FixedRuleHandle;
 use crate::engine::fixed_rule::utilities::constant::Constant;
+use crate::engine::parse::error::InvalidQuerySnafu;
 use crate::engine::parse::expr::build_expr;
 use crate::engine::parse::schema::parse_schema;
 use crate::engine::parse::{DatalogParser, ExtractSpan, Pair, Pairs, Rule, SourceSpan};

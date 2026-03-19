@@ -9,14 +9,15 @@
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
 )]
 
+use itertools::Itertools;
+use rustc_hash::FxHashSet;
+
 use crate::engine::DataValue;
 use crate::engine::data::tuple::ENCODED_KEY_MIN_LEN;
 use crate::engine::error::InternalResult as Result;
 use crate::engine::runtime::error::InvalidOperationSnafu;
 use crate::engine::runtime::relation::RelationHandle;
 use crate::engine::runtime::transact::SessionTx;
-use itertools::Itertools;
-use rustc_hash::FxHashSet;
 
 impl<'a> SessionTx<'a> {
     pub(crate) fn hnsw_remove(

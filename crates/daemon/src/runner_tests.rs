@@ -4,9 +4,10 @@
     clippy::indexing_slicing,
     reason = "test: vec indices valid after asserting len"
 )]
+use tracing::Instrument;
+
 use super::*;
 use crate::execution::execute_builtin;
-use tracing::Instrument;
 
 fn make_echo_task(id: &str) -> TaskDef {
     TaskDef {

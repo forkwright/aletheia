@@ -6,8 +6,6 @@
 use std::collections::BTreeMap;
 use std::fmt::{Debug, Display, Formatter};
 
-use crate::engine::error::InternalResult as Result;
-use crate::engine::runtime::error::{InvalidOperationSnafu, SerializationSnafu};
 use compact_str::CompactString;
 use itertools::Itertools;
 use rmp_serde::Serializer;
@@ -20,9 +18,11 @@ use crate::engine::data::relation::StoredRelationMetadata;
 use crate::engine::data::symb::Symbol;
 use crate::engine::data::tuple::{ENCODED_KEY_MIN_LEN, Tuple, TupleT, decode_tuple_from_key};
 use crate::engine::data::value::{DataValue, ValidityTs};
+use crate::engine::error::InternalResult as Result;
 use crate::engine::fts::FtsIndexManifest;
 use crate::engine::parse::SourceSpan;
 use crate::engine::query::compile::IndexPositionUse;
+use crate::engine::runtime::error::{InvalidOperationSnafu, SerializationSnafu};
 use crate::engine::runtime::hnsw::HnswIndexManifest;
 use crate::engine::runtime::minhash_lsh::MinHashLshIndexManifest;
 use crate::engine::runtime::transact::SessionTx;

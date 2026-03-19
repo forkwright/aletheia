@@ -12,14 +12,10 @@
 //! Each factor produces a score in [0.0, 1.0]. The final score is a weighted
 //! combination, configurable per-nous via oikos cascade.
 
-use crate::knowledge::{EpistemicTier, FactType};
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
-/// Configuration for recall scoring weights.
-///
-/// All weights should sum to ~1.0 for interpretable scores,
-/// but this is not enforced: the engine normalizes output.
+use crate::knowledge::{EpistemicTier, FactType};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecallWeights {
     /// Weight for vector similarity (cosine distance). Default: 0.35

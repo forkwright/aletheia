@@ -4,11 +4,13 @@
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
 )]
 
-use super::super::*;
-use crate::knowledge::{Entity, EpistemicTier, Fact, Relationship};
-use proptest::prelude::*;
 use std::collections::BTreeMap;
 use std::sync::Arc;
+
+use proptest::prelude::*;
+
+use super::super::*;
+use crate::knowledge::{Entity, EpistemicTier, Fact, Relationship};
 
 const DIM: usize = 4;
 

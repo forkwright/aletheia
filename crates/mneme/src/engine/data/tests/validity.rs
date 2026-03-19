@@ -4,10 +4,12 @@
     clippy::indexing_slicing,
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
 )]
+use std::env;
+
+use serde_json::json;
+
 use crate::engine::DbInstance;
 use crate::engine::data::value::DataValue;
-use serde_json::json;
-use std::env;
 
 #[test]
 fn test_validity() {

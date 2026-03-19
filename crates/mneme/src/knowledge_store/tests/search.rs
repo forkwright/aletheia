@@ -5,9 +5,10 @@
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
 )]
 
+use std::sync::Arc;
+
 use super::super::*;
 use crate::knowledge::{EmbeddedChunk, EpistemicTier, Fact};
-use std::sync::Arc;
 
 const DIM: usize = 4;
 

@@ -4,15 +4,15 @@
 )]
 use std::collections::BTreeMap;
 
+use itertools::Itertools;
+
+use super::RelAlgebra;
 use crate::engine::data::program::MagicSymbol;
 use crate::engine::data::symb::Symbol;
 use crate::engine::data::tuple::TupleIter;
 use crate::engine::error::InternalResult as Result;
 use crate::engine::runtime::temp_store::EpochStore;
 use crate::engine::runtime::transact::SessionTx;
-use itertools::Itertools;
-
-use super::RelAlgebra;
 
 #[derive(Debug)]
 pub(crate) struct ReorderRA {

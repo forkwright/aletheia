@@ -13,8 +13,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use crate::engine::error::InternalResult as Result;
-use crate::engine::query::error::*;
 use compact_str::CompactString;
 use itertools::Itertools;
 use pest::Parser;
@@ -25,9 +23,11 @@ use crate::engine::data::relation::StoredRelationMetadata;
 use crate::engine::data::symb::Symbol;
 use crate::engine::data::tuple::{ENCODED_KEY_MIN_LEN, Tuple};
 use crate::engine::data::value::{DataValue, ValidityTs};
+use crate::engine::error::InternalResult as Result;
 use crate::engine::fts::tokenizer::TextAnalyzer;
 use crate::engine::parse::expr::build_expr;
 use crate::engine::parse::{DatalogParser, Rule, parse_script};
+use crate::engine::query::error::*;
 use crate::engine::runtime::callback::CallbackCollector;
 use crate::engine::runtime::minhash_lsh::HashPermutations;
 use crate::engine::runtime::relation::{

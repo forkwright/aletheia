@@ -3,9 +3,10 @@
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
-use crate::engine::fts::tokenizer::TextAnalyzer;
 use compact_str::CompactString;
 use ordered_float::OrderedFloat;
+
+use crate::engine::fts::tokenizer::TextAnalyzer;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct FtsLiteral {

@@ -9,6 +9,12 @@
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
 )]
 
+use std::cmp::{Reverse, max};
+
+use ordered_float::OrderedFloat;
+use priority_queue::PriorityQueue;
+use rustc_hash::FxHashSet;
+
 use super::types::{CompoundKey, DEFAULT_VECTOR_CACHE_CAPACITY, HnswIndexManifest, VectorCache};
 use crate::engine::DataValue;
 use crate::engine::data::expr::{Bytecode, eval_bytecode_pred};
@@ -18,10 +24,6 @@ use crate::engine::error::InternalResult as Result;
 use crate::engine::runtime::error::InvalidOperationSnafu;
 use crate::engine::runtime::relation::RelationHandle;
 use crate::engine::runtime::transact::SessionTx;
-use ordered_float::OrderedFloat;
-use priority_queue::PriorityQueue;
-use rustc_hash::FxHashSet;
-use std::cmp::{Reverse, max};
 
 impl<'a> SessionTx<'a> {
     fn hnsw_put_vector(

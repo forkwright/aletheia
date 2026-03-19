@@ -4,17 +4,18 @@
     clippy::indexing_slicing,
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
 )]
-use super::error::*;
+use std::cmp::Reverse;
+use std::fmt::{Display, Formatter};
+use std::mem;
+
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use compact_str::CompactString;
 use itertools::Itertools;
 use jiff::Timestamp;
 use serde_json::json;
-use std::cmp::Reverse;
-use std::fmt::{Display, Formatter};
-use std::mem;
 
+use super::error::*;
 use crate::engine::data::expr::Expr;
 use crate::engine::data::value::Num;
 use crate::engine::data::value::{DataValue, JsonData, UuidWrapper, Validity, ValidityTs, Vector};

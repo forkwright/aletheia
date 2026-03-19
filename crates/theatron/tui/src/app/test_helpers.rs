@@ -2,8 +2,9 @@
     clippy::unwrap_used,
     reason = "test helper; ApiClient construction failure indicates a bug in test setup"
 )]
-use super::*;
 use std::collections::{HashMap, HashSet};
+
+use super::*;
 
 pub fn test_app() -> App {
     let _ = rustls::crypto::ring::default_provider().install_default();

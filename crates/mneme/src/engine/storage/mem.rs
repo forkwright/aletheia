@@ -3,9 +3,6 @@
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
-use crate::engine::error::InternalResult;
-use crate::engine::storage::error::{StorageResult, WriteInReadTransactionSnafu};
-use crossbeam::sync::{ShardedLock, ShardedLockReadGuard, ShardedLockWriteGuard};
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::collections::btree_map::Range;
@@ -15,11 +12,14 @@ use std::mem;
 use std::ops::Bound;
 use std::sync::Arc;
 
+use crossbeam::sync::{ShardedLock, ShardedLockReadGuard, ShardedLockWriteGuard};
 use itertools::Itertools;
 
 use crate::engine::data::tuple::{Tuple, check_key_for_validity};
 use crate::engine::data::value::ValidityTs;
+use crate::engine::error::InternalResult;
 use crate::engine::runtime::relation::{decode_tuple_from_kv, extend_tuple_from_v};
+use crate::engine::storage::error::{StorageResult, WriteInReadTransactionSnafu};
 use crate::engine::storage::{Storage, StoreTx};
 use crate::engine::utils::swap_option_result;
 

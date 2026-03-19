@@ -4,6 +4,10 @@
 )]
 use std::collections::{BTreeMap, BTreeSet};
 
+use either::{Left, Right};
+use itertools::Itertools;
+
+use super::{eliminate_from_tuple, filter_iter, flatten_err, invert_option_err, join_is_prefix};
 use crate::engine::data::expr::{Bytecode, Expr, compute_bounds, eval_bytecode_pred};
 use crate::engine::data::program::MagicSymbol;
 use crate::engine::data::symb::Symbol;
@@ -15,10 +19,6 @@ use crate::engine::runtime::relation::RelationHandle;
 use crate::engine::runtime::temp_store::EpochStore;
 use crate::engine::runtime::transact::SessionTx;
 use crate::engine::utils::swap_option_result;
-use either::{Left, Right};
-use itertools::Itertools;
-
-use super::{eliminate_from_tuple, filter_iter, flatten_err, invert_option_err, join_is_prefix};
 
 #[derive(Debug)]
 pub(crate) struct InlineFixedRA {

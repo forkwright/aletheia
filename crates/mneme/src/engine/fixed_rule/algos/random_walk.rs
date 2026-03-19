@@ -5,7 +5,6 @@
 )]
 use std::collections::BTreeMap;
 
-use crate::engine::error::InternalResult as Result;
 use compact_str::CompactString;
 use itertools::Itertools;
 use rand::distr::weighted::WeightedIndex;
@@ -14,6 +13,7 @@ use rand::prelude::*;
 use crate::engine::data::expr::{Expr, eval_bytecode};
 use crate::engine::data::symb::Symbol;
 use crate::engine::data::value::DataValue;
+use crate::engine::error::InternalResult as Result;
 use crate::engine::fixed_rule::error::GraphAlgorithmSnafu;
 use crate::engine::fixed_rule::{
     BadExprValueError, FixedRule, FixedRulePayload, NodeNotFoundError,

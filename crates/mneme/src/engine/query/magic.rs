@@ -18,8 +18,6 @@
 use std::collections::BTreeSet;
 use std::mem;
 
-use crate::engine::error::InternalResult as Result;
-use crate::engine::query::error::*;
 use compact_str::CompactString;
 use itertools::Itertools;
 use smallvec::SmallVec;
@@ -32,7 +30,9 @@ use crate::engine::data::program::{
 };
 use crate::engine::data::relation::{ColType, NullableColType};
 use crate::engine::data::symb::{PROG_ENTRY, Symbol};
+use crate::engine::error::InternalResult as Result;
 use crate::engine::parse::SourceSpan;
+use crate::engine::query::error::*;
 
 use crate::engine::runtime::transact::SessionTx;
 

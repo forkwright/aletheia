@@ -6,8 +6,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Formatter};
 
-use crate::engine::error::InternalResult as Result;
-use crate::engine::query::error::*;
 use itertools::Itertools;
 
 use crate::engine::data::expr::{Bytecode, Expr, eval_bytecode_pred};
@@ -16,7 +14,9 @@ use crate::engine::data::relation::{ColType, NullableColType};
 use crate::engine::data::symb::Symbol;
 use crate::engine::data::tuple::TupleIter;
 use crate::engine::data::value::ValidityTs;
+use crate::engine::error::InternalResult as Result;
 use crate::engine::parse::SourceSpan;
+use crate::engine::query::error::*;
 use crate::engine::runtime::minhash_lsh::LshSearch;
 use crate::engine::runtime::relation::RelationHandle;
 use crate::engine::runtime::temp_store::EpochStore;

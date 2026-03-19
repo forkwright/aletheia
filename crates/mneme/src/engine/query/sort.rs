@@ -6,12 +6,12 @@
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
-use crate::engine::error::InternalResult as Result;
 use itertools::Itertools;
 
 use crate::engine::data::program::SortDir;
 use crate::engine::data::symb::Symbol;
 use crate::engine::data::tuple::Tuple;
+use crate::engine::error::InternalResult as Result;
 use crate::engine::runtime::temp_store::EpochStore;
 use crate::engine::runtime::transact::SessionTx;
 

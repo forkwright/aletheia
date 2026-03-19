@@ -1,7 +1,7 @@
-use super::marshal::{extract_str, fact_to_params, rows_to_facts};
-use super::{KnowledgeStore, queries};
 use tracing::instrument;
 
+use super::marshal::{extract_str, fact_to_params, rows_to_facts};
+use super::{KnowledgeStore, queries};
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
     /// Insert or update a fact.
