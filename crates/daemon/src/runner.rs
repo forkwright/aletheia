@@ -329,6 +329,15 @@ impl TaskRunner {
 
     /// Run the event loop. Checks for due tasks every second, executes them.
     /// Returns when the shutdown token is cancelled.
+    ///
+    /// # Cancel safety
+    ///
+    /// Cancel-safe at the loop boundary. Each `select!` branch is cancel-safe:
+    /// `interval.tick()` is cancel-safe (a dropped tick simply delays the next
+    /// poll), and `CancellationToken::cancelled()` is cancel-safe. If this
+    /// future is dropped between iterations, in-flight tasks continue running
+    /// on the Tokio executor; their `JoinHandle`s are held in `self.in_flight`
+    /// and will be abandoned (not awaited) on drop.
     pub async fn run(&mut self) {
         tracing::info!(nous_id = %self.nous_id, tasks = self.tasks.len(), "daemon started");
 
@@ -340,10 +349,16 @@ impl TaskRunner {
 
         loop {
             tokio::select! {
+                // SAFETY: cancel-safe. `interval.tick()` is cancel-safe; dropping it
+                // before it fires simply delays the next tick without losing state.
+                // `check_in_flight` polls already-spawned handles and does not
+                // mutate scheduler state if cancelled mid-loop.
                 _ = interval.tick() => {
                     self.check_in_flight().await;
                     self.tick();
                 }
+                // SAFETY: cancel-safe. `CancellationToken::cancelled()` is cancel-safe;
+                // dropping the future before it fires has no side effects.
                 () = self.shutdown.cancelled() => {
                     tracing::info!(nous_id = %self.nous_id, "daemon shutting down");
                     break;
