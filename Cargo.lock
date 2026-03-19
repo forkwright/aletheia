@@ -338,6 +338,7 @@ dependencies = [
  "aletheia-koina",
  "base64 0.22.1",
  "indexmap 2.13.0",
+ "jiff",
  "landlock",
  "prometheus",
  "reqwest 0.13.2",
