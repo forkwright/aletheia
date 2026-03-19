@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 
 use snafu::{ResultExt, ensure};
 
+use aletheia_koina::system::{Environment, RealSystem};
+
 /// The oikos: resolved instance paths.
 ///
 /// All paths are absolute. Construct via [`Oikos::discover`] or [`Oikos::from_root`].
@@ -34,15 +36,32 @@ impl Oikos {
         Self { root }
     }
 
-    /// Discover the oikos root.
+    /// Discover the oikos root using the real process environment.
     ///
     /// Resolution order:
     /// 1. `ALETHEIA_ROOT` environment variable
     /// 2. `./instance` relative to current directory
+    ///
+    /// Call [`Oikos::discover_with`] to supply a custom [`Environment`]
+    /// implementation (e.g. [`aletheia_koina::system::TestSystem`] in tests).
     #[must_use]
     pub fn discover() -> Self {
-        let root = std::env::var("ALETHEIA_ROOT")
-            .map_or_else(|_| PathBuf::from("instance"), PathBuf::from);
+        Self::discover_with(&RealSystem)
+    }
+
+    /// Discover the oikos root using the provided [`Environment`].
+    ///
+    /// Resolution order:
+    /// 1. `ALETHEIA_ROOT` environment variable (from `env`)
+    /// 2. `./instance` relative to current directory
+    ///
+    /// This variant is the primary implementation; [`Oikos::discover`] is a
+    /// convenience wrapper that passes [`RealSystem`].
+    #[must_use]
+    pub fn discover_with(env: &impl Environment) -> Self {
+        let root = env
+            .var("ALETHEIA_ROOT")
+            .map_or_else(|| PathBuf::from("instance"), PathBuf::from);
         Self { root }
     }
 
@@ -596,5 +615,25 @@ mod tests {
             oikos.validate().is_ok(),
             "a freshly-initialised instance layout must pass validation"
         );
+    }
+
+    // ── discover_with (Environment trait) ────────────────────────────────
+
+    #[test]
+    fn discover_with_uses_env_var_when_set() {
+        use aletheia_koina::system::TestSystem;
+
+        let env = TestSystem::new().with_env("ALETHEIA_ROOT", "/custom/root");
+        let oikos = Oikos::discover_with(&env);
+        assert_eq!(oikos.root(), Path::new("/custom/root"));
+    }
+
+    #[test]
+    fn discover_with_falls_back_to_instance_when_unset() {
+        use aletheia_koina::system::TestSystem;
+
+        let env = TestSystem::new(); // no ALETHEIA_ROOT set
+        let oikos = Oikos::discover_with(&env);
+        assert_eq!(oikos.root(), Path::new("instance"));
     }
 }
