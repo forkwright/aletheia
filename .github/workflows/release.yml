@@ -36,6 +36,17 @@ jobs:
             os: ubuntu-latest
             artifact: aletheia-linux-aarch64
             cross: true
+          # WHY: musl binaries are fully static and run on any Linux without
+          # glibc version constraints — useful for Alpine, containers, and
+          # minimal distros.
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            artifact: aletheia-linux-x86_64-musl
+            cross: true
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            artifact: aletheia-linux-aarch64-musl
+            cross: true
           - target: x86_64-apple-darwin
             os: macos-latest
             artifact: aletheia-macos-x86_64
