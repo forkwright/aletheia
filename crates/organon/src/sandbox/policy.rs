@@ -52,12 +52,21 @@ impl SandboxPolicy {
                 // SAFETY: unshare is a single syscall that modifies only the
                 // calling thread's namespace associations. It is
                 // async-signal-safe and does not allocate.
+                // SAFETY: we only pass NEWUSER | NEWNET which do not involve
+                // FILES table splitting, so the unsafety concern around
+                // UnshareFlags::FILES does not apply here.
                 #[expect(
                     unsafe_code,
                     reason = "unshare syscall required to create network namespace for egress filtering"
                 )]
-                let ret = unsafe { libc::unshare(libc::CLONE_NEWUSER | libc::CLONE_NEWNET) };
-                if ret == 0 {
+                if unsafe {
+                    rustix::thread::unshare_unsafe(
+                        rustix::thread::UnshareFlags::NEWUSER
+                            | rustix::thread::UnshareFlags::NEWNET,
+                    )
+                }
+                .is_ok()
+                {
                     return Ok(());
                 }
 
@@ -89,30 +98,30 @@ impl SandboxPolicy {
         // get EPERM immediately instead of hanging on connect().
         #[expect(
             clippy::as_conversions,
-            reason = "libc::AF_INET is i32; seccomp API requires u64"
+            reason = "AF_INET is i32; seccomp API requires u64"
         )]
         let block_inet = SeccompCondition::new(
             0,
             SeccompCmpArgLen::Dword,
             SeccompCmpOp::Eq,
-            libc::AF_INET as u64,
+            2u64, /* AF_INET */
         )
         .map_err(|e| std::io::Error::other(format!("seccomp condition failed: {e}")))?;
 
         #[expect(
             clippy::as_conversions,
-            reason = "libc::AF_INET6 is i32; seccomp API requires u64"
+            reason = "AF_INET6 is i32; seccomp API requires u64"
         )]
         let block_inet6 = SeccompCondition::new(
             0,
             SeccompCmpArgLen::Dword,
             SeccompCmpOp::Eq,
-            libc::AF_INET6 as u64,
+            10u64, /* AF_INET6 */
         )
         .map_err(|e| std::io::Error::other(format!("seccomp condition failed: {e}")))?;
 
         let rules = std::collections::BTreeMap::from([(
-            libc::SYS_socket,
+            41i64, /* SYS_socket */
             vec![
                 SeccompRule::new(vec![block_inet])
                     .map_err(|e| std::io::Error::other(format!("seccomp rule failed: {e}")))?,
@@ -127,9 +136,9 @@ impl SandboxPolicy {
             SeccompAction::Allow,
             #[expect(
                 clippy::as_conversions,
-                reason = "libc::EPERM is i32; seccomp API requires u32"
+                reason = "EPERM is i32; seccomp API requires u32"
             )]
-            SeccompAction::Errno(libc::EPERM as u32),
+            SeccompAction::Errno(1u32 /* EPERM */),
             arch,
         )
         .map_err(|e| {
@@ -252,16 +261,16 @@ impl SandboxPolicy {
         use seccompiler::{SeccompAction, SeccompFilter, SeccompRule};
 
         let blocked_syscalls: &[i64] = &[
-            libc::SYS_ptrace,
-            libc::SYS_mount,
-            libc::SYS_umount2,
-            libc::SYS_reboot,
-            libc::SYS_kexec_load,
-            libc::SYS_init_module,
-            libc::SYS_delete_module,
-            libc::SYS_finit_module,
-            libc::SYS_pivot_root,
-            libc::SYS_chroot,
+            101i64, /* SYS_ptrace */
+            165i64, /* SYS_mount */
+            166i64, /* SYS_umount2 */
+            169i64, /* SYS_reboot */
+            246i64, /* SYS_kexec_load */
+            175i64, /* SYS_init_module */
+            176i64, /* SYS_delete_module */
+            313i64, /* SYS_finit_module */
+            155i64, /* SYS_pivot_root */
+            161i64, /* SYS_chroot */
         ];
 
         let rules: BTreeMap<i64, Vec<SeccompRule>> =
@@ -272,9 +281,9 @@ impl SandboxPolicy {
         } else {
             #[expect(
                 clippy::as_conversions,
-                reason = "libc::EPERM is i32; seccomp API requires u32"
+                reason = "EPERM is i32; seccomp API requires u32"
             )]
-            SeccompAction::Errno(libc::EPERM as u32)
+            SeccompAction::Errno(1u32 /* EPERM */)
         };
 
         let arch = target_arch();
@@ -341,23 +350,30 @@ pub fn probe_landlock_abi() -> Option<i32> {
     // EOPNOTSUPP (supported but not enabled) or ENOSYS (not compiled in).
     // This mirrors the documented ABI probe pattern from the Landlock kernel docs
     // and the same approach used internally by the landlock crate.
-    const LANDLOCK_CREATE_RULESET_VERSION: libc::__u32 = 1;
+    const LANDLOCK_CREATE_RULESET_VERSION: u32 = 1;
     // SAFETY: landlock_create_ruleset is a stable Linux syscall (kernel 5.13+).
     // Passing a null pointer and size 0 with the VERSION flag is the documented
     // ABI probe pattern. The kernel does not dereference the pointer for this call.
-    #[expect(
-        unsafe_code,
-        reason = "direct syscall required to probe Landlock ABI before any ruleset is created"
-    )]
-    let v = unsafe {
-        libc::syscall(
-            libc::SYS_landlock_create_ruleset,
-            std::ptr::null::<libc::c_void>(),
-            0usize,
-            LANDLOCK_CREATE_RULESET_VERSION,
-        )
+    #[expect(unsafe_code, reason = "inline asm syscall to probe Landlock ABI")]
+    let ret: isize = unsafe {
+        let r: isize;
+        #[cfg(target_arch = "x86_64")]
+        core::arch::asm!(
+            "syscall",
+            inlateout("rax") 444isize => r, // SYS_landlock_create_ruleset
+            in("rdi") 0usize,               // null ruleset
+            in("rsi") 0usize,               // size 0
+            in("rdx") LANDLOCK_CREATE_RULESET_VERSION as usize,
+            lateout("rcx") _,
+            lateout("r11") _,
+        );
+        #[cfg(not(target_arch = "x86_64"))]
+        {
+            r = -1; // NOTE: landlock only probed on x86_64 for now
+        }
+        r
     };
-    i32::try_from(v).ok().filter(|&n| n >= 1)
+    if ret >= 1 { Some(ret as i32) } else { None }
 }
 
 #[cfg(not(target_os = "linux"))]
