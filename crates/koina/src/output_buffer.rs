@@ -1,7 +1,7 @@
 //! Multi-output pipeline stages via the `OutputBuffer` pattern.
 //!
 //! Inspired by Vector's topology: stages declare multiple named outputs and
-//! the [`OutputBuffer`] routes events to downstream consumers by output name.
+//! the `OutputBuffer` routes events to downstream consumers by output name.
 //! Supports fan-out (one event → N outputs), conditional routing (one event →
 //! one of N outputs), and a dead-letter output for events that fail processing.
 //!
