@@ -4,6 +4,7 @@
 //! ABI detection, permissive fallback, and strict enforcement error paths.
 
 #[cfg(target_os = "linux")]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod linux {
     use aletheia_organon::sandbox::{
         SandboxConfig, SandboxEnforcement, apply_sandbox, probe_landlock_abi,
@@ -29,9 +30,8 @@ mod linux {
     /// Landlock is available on the running kernel. This covers the graceful
     /// degradation path for kernels that lack Landlock support (#943).
     #[test]
-    fn permissive_fallback_succeeds_regardless_of_landlock_availability()
-    -> Result<(), Box<dyn std::error::Error>> {
-        let dir = tempfile::tempdir()?;
+    fn permissive_fallback_succeeds_regardless_of_landlock_availability() {
+        let dir = tempfile::tempdir().expect("tempdir creation must succeed");
         let config = SandboxConfig {
             enabled: true,
             enforcement: SandboxEnforcement::Permissive,
@@ -48,7 +48,7 @@ mod linux {
             "permissive mode must not error regardless of Landlock availability: {result:?}"
         );
 
-        let output = cmd.output()?;
+        let output = cmd.output().expect("echo command must execute");
         assert!(
             output.status.success(),
             "tool must execute in permissive mode"
@@ -57,16 +57,14 @@ mod linux {
             String::from_utf8_lossy(&output.stdout).contains("permissive-fallback-ok"),
             "tool output must be captured"
         );
-        Ok(())
     }
 
     /// Strict enforcement must return a clear, named error when Landlock is
     /// unavailable: never an opaque "Permission denied (os error 13)".
     /// When Landlock IS available the command executes normally.
     #[test]
-    fn strict_enforcement_returns_clear_error_when_landlock_unavailable()
-    -> Result<(), Box<dyn std::error::Error>> {
-        let dir = tempfile::tempdir()?;
+    fn strict_enforcement_returns_clear_error_when_landlock_unavailable() {
+        let dir = tempfile::tempdir().expect("tempdir creation must succeed");
         let config = SandboxConfig {
             enabled: true,
             enforcement: SandboxEnforcement::Enforcing,
@@ -79,8 +77,7 @@ mod linux {
 
         if probe_landlock_abi().is_none() {
             let err = apply_sandbox(&mut cmd, policy)
-                .err()
-                .ok_or("enforcing mode must fail when Landlock is unavailable")?;
+                .expect_err("enforcing mode must fail when Landlock is unavailable");
             let msg = err.to_string();
             assert!(
                 msg.contains("Landlock") || msg.contains("ABI"),
@@ -97,6 +94,5 @@ mod linux {
                 "enforcing mode must succeed when Landlock is available: {result:?}"
             );
         }
-        Ok(())
     }
 }
