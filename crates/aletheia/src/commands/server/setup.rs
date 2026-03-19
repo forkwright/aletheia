@@ -147,6 +147,7 @@ pub(super) fn build_tool_registry(
             }
             _ => aletheia_organon::sandbox::SandboxEnforcement::Permissive,
         },
+        allowed_root: sandbox_settings.allowed_root.clone(),
         extra_read_paths: sandbox_settings.extra_read_paths.clone(),
         extra_write_paths: sandbox_settings.extra_write_paths.clone(),
         extra_exec_paths: sandbox_settings.extra_exec_paths.clone(),
