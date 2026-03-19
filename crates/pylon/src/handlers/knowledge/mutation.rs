@@ -1,12 +1,10 @@
 //! Knowledge fact mutation handlers: forget, restore, update confidence.
 
-use std::sync::Arc;
-
 use axum::Json;
 use axum::extract::{Path, State};
 
 use crate::error::ApiError;
-use crate::state::AppState;
+use crate::state::KnowledgeState;
 
 use super::{ForgetRequest, UpdateConfidenceRequest};
 
@@ -27,7 +25,7 @@ use super::{ForgetRequest, UpdateConfidenceRequest};
     security(("bearer_auth" = []))
 )]
 pub async fn forget_fact(
-    State(state): State<Arc<AppState>>,
+    State(state): State<KnowledgeState>,
     Path(id): Path<String>,
     Json(body): Json<ForgetRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
@@ -77,7 +75,7 @@ pub async fn forget_fact(
     security(("bearer_auth" = []))
 )]
 pub async fn restore_fact(
-    State(state): State<Arc<AppState>>,
+    State(state): State<KnowledgeState>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     #[cfg(feature = "knowledge-store")]
@@ -128,7 +126,7 @@ pub async fn restore_fact(
     security(("bearer_auth" = []))
 )]
 pub async fn update_confidence(
-    State(state): State<Arc<AppState>>,
+    State(state): State<KnowledgeState>,
     Path(id): Path<String>,
     Json(body): Json<UpdateConfidenceRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {

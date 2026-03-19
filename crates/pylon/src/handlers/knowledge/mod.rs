@@ -3,14 +3,12 @@
 //! Exposes facts, entities, and relationships from the mneme knowledge store
 //! for the TUI memory inspector panel.
 
-use std::sync::Arc;
-
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{ApiError, BadRequestSnafu};
-use crate::state::AppState;
+use crate::state::KnowledgeState;
 
 /// Query parameters for listing facts.
 #[derive(Debug, Deserialize)]
@@ -272,7 +270,7 @@ fn validate_sort_order(sort: &str, order: &str) -> Result<(), ApiError> {
     security(("bearer_auth" = []))
 )]
 pub async fn list_facts(
-    State(state): State<Arc<AppState>>,
+    State(state): State<KnowledgeState>,
     Query(mut query): Query<FactsQuery>,
 ) -> Result<Json<FactsResponse>, ApiError> {
     use aletheia_mneme::knowledge::EpistemicTier;
@@ -346,7 +344,7 @@ pub async fn get_fact(
             reason = "state only used when knowledge-store feature is enabled"
         )
     )]
-    State(state): State<Arc<AppState>>,
+    State(state): State<KnowledgeState>,
     Path(id): Path<String>,
 ) -> Result<Json<FactDetailResponse>, ApiError> {
     // WHY: The previous implementation called get_all_facts which hardcoded
@@ -389,7 +387,7 @@ pub async fn get_fact(
     security(("bearer_auth" = []))
 )]
 pub async fn list_entities(
-    State(state): State<Arc<AppState>>,
+    State(state): State<KnowledgeState>,
 ) -> Result<Json<EntitiesResponse>, ApiError> {
     let entities = get_stored_entities(&state);
     Ok(Json(EntitiesResponse { entities }))
@@ -407,7 +405,7 @@ pub async fn list_entities(
     security(("bearer_auth" = []))
 )]
 pub async fn entity_relationships(
-    State(state): State<Arc<AppState>>,
+    State(state): State<KnowledgeState>,
     Path(id): Path<String>,
 ) -> Result<Json<RelationshipsResponse>, ApiError> {
     let relationships = get_entity_relationships(&state, &id);
