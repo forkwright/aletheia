@@ -412,6 +412,7 @@ mod tests {
 
     #[tokio::test]
     async fn message_def_requires_to_and_text() {
+        install_crypto_provider();
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
         let name = ToolName::new("message").expect("valid");
@@ -421,6 +422,7 @@ mod tests {
 
     #[tokio::test]
     async fn sessions_ask_def_requires_agent_and_message() {
+        install_crypto_provider();
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
         let name = ToolName::new("sessions_ask").expect("valid");
@@ -430,6 +432,7 @@ mod tests {
 
     #[tokio::test]
     async fn sessions_send_def_requires_agent_and_message() {
+        install_crypto_provider();
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
         let name = ToolName::new("sessions_send").expect("valid");
@@ -439,6 +442,7 @@ mod tests {
 
     #[tokio::test]
     async fn message_missing_service_returns_error() {
+        install_crypto_provider();
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
         let input = ToolInput {
@@ -453,6 +457,7 @@ mod tests {
 
     #[tokio::test]
     async fn sessions_send_missing_service_returns_error() {
+        install_crypto_provider();
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
         let input = ToolInput {
@@ -467,6 +472,7 @@ mod tests {
 
     #[tokio::test]
     async fn sessions_ask_missing_service_returns_error() {
+        install_crypto_provider();
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
         let input = ToolInput {
@@ -544,6 +550,7 @@ mod tests {
 
     #[tokio::test]
     async fn sessions_send_dispatches() {
+        install_crypto_provider();
         let cross = Arc::new(MockCrossNous::default());
         let cross_ref = Arc::clone(&cross);
         let ctx = test_ctx_with_services(ToolServices {
@@ -579,6 +586,7 @@ mod tests {
 
     #[tokio::test]
     async fn sessions_send_uses_custom_session_key() {
+        install_crypto_provider();
         let cross = Arc::new(MockCrossNous::default());
         let cross_ref = Arc::clone(&cross);
         let ctx = test_ctx_with_services(ToolServices {
@@ -609,6 +617,7 @@ mod tests {
 
     #[tokio::test]
     async fn sessions_ask_returns_reply() {
+        install_crypto_provider();
         let cross = Arc::new(MockCrossNous::default());
         *cross.ask_reply.lock().unwrap() = Some(Ok("the answer is 42".to_owned()));
         let ctx = test_ctx_with_services(ToolServices {
@@ -637,6 +646,7 @@ mod tests {
 
     #[tokio::test]
     async fn sessions_ask_timeout_returns_error() {
+        install_crypto_provider();
         let cross = Arc::new(MockCrossNous::default());
         *cross.ask_reply.lock().unwrap() = Some(Err("timed out after 120s".to_owned()));
         let ctx = test_ctx_with_services(ToolServices {
