@@ -22,7 +22,7 @@ use aletheia_taxis::oikos::Oikos;
 
 use crate::router::build_router;
 use crate::security::SecurityConfig;
-use crate::state::AppState;
+use crate::state::{AppState, ConfigState};
 
 /// Server configuration.
 #[derive(Debug, Clone)]
@@ -267,16 +267,19 @@ fn serve_tls(
 ///
 /// Acquires the config write lock, swaps the config, logs the diff,
 /// and notifies subscribers via the watch channel.
-pub(crate) async fn apply_reload(state: &AppState, outcome: aletheia_taxis::reload::ReloadOutcome) {
+pub(crate) async fn apply_reload(
+    config_state: &ConfigState,
+    outcome: aletheia_taxis::reload::ReloadOutcome,
+) {
     aletheia_taxis::reload::log_diff(&outcome.diff);
 
-    let mut config = state.config.write().await;
+    let mut config = config_state.config.write().await;
     *config = outcome.new_config.clone();
     drop(config);
 
     // WHY: send can only fail if all receivers are dropped, which means
     // no actors are listening. Safe to ignore.
-    let _ = state.config_tx.send(outcome.new_config);
+    let _ = config_state.config_tx.send(outcome.new_config);
 }
 
 /// Spawn a background task that listens for SIGHUP and triggers config reload.
@@ -288,6 +291,7 @@ pub(crate) async fn apply_reload(state: &AppState, outcome: aletheia_taxis::relo
 /// Returns a `JoinHandle` so the caller can await graceful shutdown.
 #[cfg(unix)]
 fn spawn_sighup_handler(state: Arc<AppState>) -> tokio::task::JoinHandle<()> {
+    use axum::extract::FromRef;
     use tracing::Instrument;
 
     let shutdown = state.shutdown.clone();
@@ -324,7 +328,7 @@ fn spawn_sighup_handler(state: Arc<AppState>) -> tokio::task::JoinHandle<()> {
                                 if outcome.diff.is_empty() {
                                     info!("config reload: no changes detected");
                                 } else {
-                                    apply_reload(&state, outcome).await;
+                                    apply_reload(&ConfigState::from_ref(&state), outcome).await;
                                 }
                             }
                             Err(e) => {
