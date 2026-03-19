@@ -47,7 +47,7 @@ pub struct AgentCapabilities {
 
 /// Resolved configuration for a specific nous agent.
 ///
-/// Produced by merging [`AgentDefaults`] with a matching [`NousDefinition`].
+/// Produced by merging [`super::AgentDefaults`] with a matching [`super::NousDefinition`].
 #[derive(Debug, Clone)]
 pub struct ResolvedNousConfig {
     /// Agent identifier.
