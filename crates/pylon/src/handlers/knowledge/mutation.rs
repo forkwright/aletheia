@@ -128,7 +128,7 @@ pub async fn restore_fact(
     security(("bearer_auth" = []))
 )]
 pub async fn update_confidence(
-    State(_state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(body): Json<UpdateConfidenceRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
@@ -138,11 +138,37 @@ pub async fn update_confidence(
             location: snafu::location!(),
         });
     }
-    tracing::info!(fact_id = %id, confidence = body.confidence, "confidence update requested");
-    // WHY: KnowledgeStore exposes no direct confidence-update method; a full
-    // read-modify-write cycle is needed but not yet implemented (#1025).
-    Err(ApiError::NotImplemented {
-        message: "confidence update is not yet implemented in the knowledge store".to_owned(),
+    #[cfg(feature = "knowledge-store")]
+    if let Some(ref store) = state.knowledge_store {
+        let fact_id = aletheia_mneme::id::FactId::new(&id).map_err(|e| ApiError::BadRequest {
+            message: format!("invalid fact id: {e}"),
+            location: snafu::location!(),
+        })?;
+        return match store
+            .update_confidence_async(fact_id, body.confidence)
+            .await
+        {
+            Ok(_) => {
+                tracing::info!(fact_id = %id, confidence = body.confidence, "fact confidence updated");
+                Ok(Json(
+                    serde_json::json!({ "status": "updated", "id": id, "confidence": body.confidence }),
+                ))
+            }
+            Err(aletheia_mneme::error::Error::FactNotFound { .. }) => Err(ApiError::NotFound {
+                path: format!("fact/{id}"),
+                location: snafu::location!(),
+            }),
+            Err(e) => Err(ApiError::Internal {
+                message: e.to_string(),
+                location: snafu::location!(),
+            }),
+        };
+    }
+    #[cfg(not(feature = "knowledge-store"))]
+    let _ = (state, body);
+    tracing::info!(fact_id = %id, "confidence update requested but knowledge store not available");
+    Err(ApiError::ServiceUnavailable {
+        message: "knowledge store not available".to_owned(),
         location: snafu::location!(),
     })
 }

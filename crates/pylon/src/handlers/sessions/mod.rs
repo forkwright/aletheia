@@ -207,6 +207,38 @@ pub async fn close(
     archive_session_by_id(&state, &id).await
 }
 
+/// DELETE /api/v1/sessions/{id}/purge: permanently delete a session and all its messages.
+#[utoipa::path(
+    delete,
+    path = "/api/v1/sessions/{id}/purge",
+    params(("id" = String, Path, description = "Session ID")),
+    responses(
+        (status = 204, description = "Session permanently deleted"),
+        (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 404, description = "Session not found", body = ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
+#[instrument(skip(state, _claims))]
+pub async fn purge(
+    State(state): State<Arc<AppState>>,
+    _claims: Claims,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    let _ = find_session(&state, &id).await?;
+
+    let state_clone = Arc::clone(&state);
+    let id_clone = id.clone();
+    tokio::task::spawn_blocking(move || {
+        let store = state_clone.session_store.blocking_lock();
+        store.delete_session(&id_clone).map_err(ApiError::from)
+    })
+    .await??;
+
+    info!(session_id = %id, "session permanently deleted");
+    Ok(StatusCode::NO_CONTENT)
+}
+
 /// POST /api/v1/sessions/{id}/archive: archive a session.
 ///
 /// Same behavior as DELETE but via POST, matching the TUI's API contract.
