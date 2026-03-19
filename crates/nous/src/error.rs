@@ -215,6 +215,14 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// Chiron audit error.
+    #[snafu(display("chiron audit failed: {message}"))]
+    ChironAudit {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Convenience alias for results with [`Error`].
