@@ -638,3 +638,28 @@ pub fn put_pending_merge() -> String {
         .done()
         .build_script()
 }
+
+/// Insert or update a causal edge.
+/// Params: `$cause`, `$effect`, `$ordering`, `$confidence`, `$created_at`.
+#[must_use]
+pub fn upsert_causal_edge() -> String {
+    use CausalEdgesField::*;
+    QueryBuilder::new()
+        .put(Relation::CausalEdges)
+        .keys(&[Cause, Effect])
+        .values(&[Ordering, Confidence, CreatedAt])
+        .done()
+        .build_script()
+}
+
+/// Remove a causal edge.
+/// Params: `$cause`, `$effect`.
+#[must_use]
+pub fn rm_causal_edge() -> String {
+    use CausalEdgesField::{Cause, Effect};
+    QueryBuilder::new()
+        .rm(Relation::CausalEdges)
+        .keys(&[Cause, Effect])
+        .done()
+        .build_script()
+}

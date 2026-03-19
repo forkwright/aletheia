@@ -1,5 +1,9 @@
 //! Knowledge extraction pipeline: LLM-driven entity/relationship/fact extraction.
 
+/// Unified diff parser for structured change analysis.
+pub mod diff;
+/// Post-merge lesson extraction from PR diffs.
+pub mod lesson;
 /// Context-dependent extraction refinement: turn classification, correction
 /// detection, quality filters, and fact type classification.
 pub mod refinement;

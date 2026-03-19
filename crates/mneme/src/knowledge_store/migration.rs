@@ -268,7 +268,8 @@ impl KnowledgeStore {
 
         tracing::info!("migrating knowledge schema v3 -> v4");
 
-        for ddl in &KNOWLEDGE_DDL[3..] {
+        // WHY: bounded range [3..6) to avoid creating relations from later migrations (causal_edges = index 6).
+        for ddl in &KNOWLEDGE_DDL[3..6] {
             self.db
                 .run(ddl, BTreeMap::new(), ScriptMutability::Mutable)
                 .map_err(|e| {
@@ -348,6 +349,43 @@ impl KnowledgeStore {
             })?;
 
         tracing::info!("knowledge schema migration v4 -> v5 complete");
+        Ok(())
+    }
+
+    /// Migrate v5 → v6: add `causal_edges` relation.
+    pub(super) fn migrate_v5_to_v6(&self) -> crate::error::Result<()> {
+        use crate::engine::{DataValue, ScriptMutability};
+        use std::collections::BTreeMap;
+
+        tracing::info!("migrating knowledge schema v5 -> v6");
+
+        // KNOWLEDGE_DDL[6] is the causal_edges relation (index 6, zero-based).
+        self.db
+            .run(KNOWLEDGE_DDL[6], BTreeMap::new(), ScriptMutability::Mutable)
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v5->v6 create causal_edges: {e}"),
+                }
+                .build()
+            })?;
+
+        let mut params = BTreeMap::new();
+        params.insert("key".to_owned(), DataValue::Str("schema".into()));
+        params.insert("version".to_owned(), DataValue::from(Self::SCHEMA_VERSION));
+        self.db
+            .run(
+                r"?[key, version] <- [[$key, $version]] :put schema_version { key => version }",
+                params,
+                ScriptMutability::Mutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v5->v6 update version: {e}"),
+                }
+                .build()
+            })?;
+
+        tracing::info!("knowledge schema migration v5 -> v6 complete");
         Ok(())
     }
 }
