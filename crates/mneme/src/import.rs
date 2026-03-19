@@ -178,6 +178,15 @@ fn restore_workspace(
         std::fs::write(&full_path, content).context(error::IoSnafu {
             path: full_path.clone(),
         })?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&full_path, std::fs::Permissions::from_mode(0o600)).context(
+                error::IoSnafu {
+                    path: full_path.clone(),
+                },
+            )?;
+        }
 
         count += 1;
     }

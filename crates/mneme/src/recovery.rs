@@ -93,6 +93,9 @@ pub fn is_disk_full_error(err: &rusqlite::Error) -> bool {
 pub fn open_read_only(path: &Path) -> Result<Connection> {
     let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
         .context(error::DatabaseSnafu)?;
+    // WHY: busy_timeout prevents SQLITE_BUSY errors when a write transaction is active.
+    conn.execute_batch("PRAGMA busy_timeout = 5000;")
+        .context(error::DatabaseSnafu)?;
     Ok(conn)
 }
 
@@ -165,9 +168,11 @@ pub fn attempt_recovery(corrupt_path: &Path, new_path: &Path) -> Result<bool> {
     }
 
     let new_conn = Connection::open(new_path).context(error::DatabaseSnafu)?;
+    // WHY: busy_timeout prevents SQLITE_BUSY errors under concurrent writes.
     new_conn
         .execute_batch(
-            "PRAGMA journal_mode = WAL;
+            "PRAGMA busy_timeout = 5000;
+             PRAGMA journal_mode = WAL;
              PRAGMA synchronous = NORMAL;
              PRAGMA foreign_keys = OFF;",
         )
@@ -350,8 +355,10 @@ pub fn recover_database(path: &Path, config: &RecoveryConfig) -> Result<(Connect
                     info!(path = %path_display, "recovered database swapped into place");
 
                     let conn = Connection::open(path).context(error::DatabaseSnafu)?;
+                    // WHY: busy_timeout prevents SQLITE_BUSY errors under concurrent writes.
                     conn.execute_batch(
-                        "PRAGMA journal_mode = WAL;
+                        "PRAGMA busy_timeout = 5000;
+                         PRAGMA journal_mode = WAL;
                          PRAGMA synchronous = NORMAL;
                          PRAGMA foreign_keys = ON;",
                     )

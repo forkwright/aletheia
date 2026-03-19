@@ -7,8 +7,8 @@
 use std::collections::HashSet;
 use std::fmt as stdfmt;
 use std::io::Write;
-use std::sync::Mutex;
 use std::time::SystemTime;
+use tokio::sync::Mutex;
 
 use serde_json::{Map, Value};
 use tracing::field::{Field, Visit};
@@ -220,8 +220,9 @@ where
 
         let json = Value::Object(output);
         // WHY: Logging must never crash the application. Write failures
-        // in the tracing pipeline are silently dropped.
-        let Ok(mut writer) = self.writer.lock() else {
+        // in the tracing pipeline are silently dropped. try_lock is used
+        // because on_event is a sync fn; lock().await cannot be called here.
+        let Ok(mut writer) = self.writer.try_lock() else {
             return;
         };
         let _ = serde_json::to_writer(&mut *writer, &json);
@@ -232,7 +233,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
     use tracing_subscriber::layer::SubscriberExt;
 
     #[derive(Clone)]
