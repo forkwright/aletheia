@@ -345,7 +345,7 @@ These are structured messages sent through the existing CrossNousRouter infrastr
 
 ## Recommendations
 
-1. **Start with Phase 1 (publication).** The copy-on-publish model is the simplest extension that delivers value. Agents can share findings without new infrastructure beyond a schema addition and a tool.
+1. **Start with Phase 1 (publication).** The copy-on-publish model is the lowest-effort extension that delivers value. Agents can share findings without new infrastructure beyond a schema addition and a tool.
 
 2. **Use CrossNousRouter for all knowledge events.** Do not extend agora or build a new transport. The router already has delivery tracking and audit logging.
 

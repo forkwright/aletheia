@@ -174,7 +174,7 @@ qa_evaluation = "claude-sonnet-4-6"
 - Requires manual configuration updates for new models
 - Does not optimize cost dynamically
 
-**Verdict: Implement first.** This is the natural extension of the current system. `NousConfig.model` already selects a model per agent. Extending this to support provider-qualified model names (e.g., `openai/gpt-4o`) is straightforward.
+**Verdict: Implement first.** This is the natural extension of the current system. `NousConfig.model` already selects a model per agent. Extending this to support provider-qualified model names (e.g., `openai/gpt-4o`) requires minimal adaptation.
 
 #### 3.2 fallback chain (Try providers in order)
 
