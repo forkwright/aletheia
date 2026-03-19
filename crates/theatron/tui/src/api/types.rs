@@ -27,19 +27,18 @@ impl Agent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
     pub id: SessionId,
-    #[serde(rename = "nousId")]
     pub nous_id: NousId,
-    #[serde(rename = "sessionKey")]
+    #[serde(rename = "session_key")]
     pub key: String,
     #[serde(default)]
     pub status: Option<String>,
-    #[serde(rename = "messageCount", default)]
+    #[serde(default)]
     pub message_count: u32,
-    #[serde(rename = "sessionType", default)]
+    #[serde(default)]
     pub session_type: Option<String>,
-    #[serde(rename = "updatedAt", default)]
+    #[serde(default)]
     pub updated_at: Option<String>,
-    #[serde(rename = "displayName", default)]
+    #[serde(default)]
     pub display_name: Option<String>,
 }
 
@@ -70,11 +69,11 @@ pub struct HistoryMessage {
     pub role: String,
     #[serde(default)]
     pub content: Option<serde_json::Value>,
-    #[serde(rename = "createdAt", default)]
+    #[serde(default)]
     pub created_at: Option<String>,
     #[serde(default)]
     pub model: Option<String>,
-    #[serde(rename = "toolName", default)]
+    #[serde(default)]
     pub tool_name: Option<String>,
 }
 
@@ -333,9 +332,9 @@ mod tests {
     fn session_deserialization() {
         let json = r#"{
             "id": "sess-1",
-            "nousId": "syn",
-            "sessionKey": "main",
-            "messageCount": 5,
+            "nous_id": "syn",
+            "session_key": "main",
+            "message_count": 5,
             "status": "active"
         }"#;
         let session: Session = serde_json::from_str(json).unwrap();
@@ -348,7 +347,7 @@ mod tests {
 
     #[test]
     fn session_deserialization_defaults() {
-        let json = r#"{"id": "s1", "nousId": "n1", "sessionKey": "k1"}"#;
+        let json = r#"{"id": "s1", "nous_id": "n1", "session_key": "k1"}"#;
         let session: Session = serde_json::from_str(json).unwrap();
         assert_eq!(session.message_count, 0);
         assert!(session.status.is_none());
@@ -361,7 +360,7 @@ mod tests {
         let json = r#"{
             "role": "user",
             "content": "hello",
-            "createdAt": "2025-01-01T00:00:00Z"
+            "created_at": "2025-01-01T00:00:00Z"
         }"#;
         let msg: HistoryMessage = serde_json::from_str(json).unwrap();
         assert_eq!(msg.role, "user");
@@ -533,9 +532,9 @@ mod tests {
     fn session_deserialization_with_display_name() {
         let json = r#"{
             "id": "s1",
-            "nousId": "syn",
-            "sessionKey": "main",
-            "displayName": "My Chat"
+            "nous_id": "syn",
+            "session_key": "main",
+            "display_name": "My Chat"
         }"#;
         let session: Session = serde_json::from_str(json).unwrap();
         assert_eq!(session.display_name.as_deref(), Some("My Chat"));

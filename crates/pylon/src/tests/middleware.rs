@@ -293,7 +293,9 @@ fn security_config_from_gateway() {
     let gw = GatewayConfig::default();
     let config = SecurityConfig::from_gateway(&gw);
     assert!(!config.tls_enabled);
-    assert!(config.csrf_enabled);
+    // WHY: CSRF defaults to disabled so the API works out-of-the-box;
+    // operators enable it explicitly when exposing to browsers (#1690).
+    assert!(!config.csrf_enabled);
     assert_eq!(config.cors_max_age_secs, 3600);
 }
 

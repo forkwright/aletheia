@@ -327,5 +327,5 @@ async fn session_lifecycle_create_list_archive_unarchive_rename() {
         .iter()
         .find(|s| s["id"] == id)
         .expect("session should be in list");
-    assert_eq!(our_session["displayName"], "My Renamed Session");
+    assert_eq!(our_session["display_name"], "My Renamed Session");
 }

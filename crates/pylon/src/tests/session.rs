@@ -204,7 +204,7 @@ async fn list_sessions_includes_created_session() {
     let body = body_json(resp).await;
     let sessions = body["sessions"].as_array().unwrap();
     assert!(!sessions.is_empty());
-    assert_eq!(sessions[0]["nousId"], "syn");
+    assert_eq!(sessions[0]["nous_id"], "syn");
 }
 
 #[tokio::test]
@@ -216,7 +216,7 @@ async fn list_sessions_filter_by_nous_id() {
 
     let resp = router
         .clone()
-        .oneshot(authed_get("/api/v1/sessions?nousId=syn"))
+        .oneshot(authed_get("/api/v1/sessions?nous_id=syn"))
         .await
         .unwrap();
 
@@ -226,7 +226,7 @@ async fn list_sessions_filter_by_nous_id() {
 
     let resp2 = router
         .clone()
-        .oneshot(authed_get("/api/v1/sessions?nousId=nonexistent"))
+        .oneshot(authed_get("/api/v1/sessions?nous_id=nonexistent"))
         .await
         .unwrap();
 

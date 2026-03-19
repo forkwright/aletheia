@@ -90,6 +90,10 @@ impl Default for DriftDetectionSettings {
                 ".gitkeep".to_owned(),
             ],
             optional_patterns: vec![
+                // WHY: _default/ and _template/ are scaffolding directories that
+                // live in the example but are not expected in a live instance
+                // (init writes agent files into nous/{id}/ instead).
+                "nous/_default/".to_owned(),
                 "nous/_template/".to_owned(),
                 "packs/".to_owned(),
                 "services/".to_owned(),

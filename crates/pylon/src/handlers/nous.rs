@@ -106,6 +106,7 @@ pub async fn tools(
             name: d.name.as_str().to_owned(),
             description: d.description.clone(),
             category: format!("{:?}", d.category),
+            auto_activate: d.auto_activate,
         })
         .collect();
 
@@ -169,6 +170,11 @@ pub struct ToolSummary {
     pub description: String,
     /// Tool category (e.g. `"Builtin"`, `"Pack"`).
     pub category: String,
+    /// Whether the tool activates automatically without explicit configuration.
+    ///
+    /// When `false` the tool is lazy and must be activated via `enable_tool`
+    /// before the agent can use it.
+    pub auto_activate: bool,
 }
 
 #[cfg(test)]
@@ -242,11 +248,13 @@ mod tests {
                 name: "read_file".to_owned(),
                 description: "Read a file from disk".to_owned(),
                 category: "Builtin".to_owned(),
+                auto_activate: true,
             }],
         };
         let json = serde_json::to_value(&resp).unwrap();
         assert_eq!(json["tools"][0]["name"], "read_file");
         assert_eq!(json["tools"][0]["category"], "Builtin");
+        assert_eq!(json["tools"][0]["auto_activate"], true);
     }
 
     #[test]

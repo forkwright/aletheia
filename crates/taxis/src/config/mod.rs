@@ -524,8 +524,11 @@ pub struct CsrfConfig {
 
 impl Default for CsrfConfig {
     fn default() -> Self {
+        // WHY: CSRF is disabled by default so the API works out-of-the-box
+        // without any client configuration. Operators who expose the gateway
+        // to a browser should explicitly enable it.
         Self {
-            enabled: true,
+            enabled: false,
             header_name: "x-requested-with".to_owned(),
             header_value: "aletheia".to_owned(),
         }

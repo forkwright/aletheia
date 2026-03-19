@@ -196,7 +196,7 @@ impl ApiClient {
         let resp = self
             .request(
                 reqwest::Method::GET,
-                &format!("/api/v1/sessions?nousId={encoded}"),
+                &format!("/api/v1/sessions?nous_id={encoded}"),
             )
             .send()
             .await
@@ -244,8 +244,8 @@ impl ApiClient {
         let resp = self
             .request(reqwest::Method::POST, "/api/v1/sessions")
             .json(&serde_json::json!({
-                "nousId": nous_id,
-                "sessionKey": session_key,
+                "nous_id": nous_id,
+                "session_key": session_key,
             }))
             .send()
             .await
