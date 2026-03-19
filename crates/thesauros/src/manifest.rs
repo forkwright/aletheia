@@ -53,9 +53,13 @@ pub struct ContextEntry {
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum Priority {
+    /// Section is always included and cannot be truncated.
     Required,
+    /// Section is included unless context is critically full.
     Important,
+    /// Section may be truncated to save context.
     Flexible,
+    /// Section is omitted first when trimming context.
     Optional,
 }
 

@@ -39,7 +39,10 @@ pub enum PhaseState {
     /// All plans completed successfully.
     Complete,
     /// Phase failed, with a flag indicating whether retry is possible.
-    Failed { can_retry: bool },
+    Failed {
+        /// Whether the phase can be retried after failure.
+        can_retry: bool,
+    },
 }
 
 impl Phase {

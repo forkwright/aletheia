@@ -1,3 +1,4 @@
+#![deny(missing_docs)]
 //! aletheia-symbolon: authentication and authorization
 //!
 //! Symbolon (σύμβολον: "token, credential") handles JWT sessions,

@@ -1,3 +1,4 @@
+#![deny(missing_docs)]
 //! aletheia-dianoia: planning and project orchestration
 //!
 //! Dianoia (διάνοια): "thinking through." The systematic, step-by-step

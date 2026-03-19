@@ -1,3 +1,4 @@
+#![deny(missing_docs)]
 //! aletheia-oikonomos: per-nous background task runner
 //!
 //! Oikonomos (οἰκονόμος): "the steward." The quiet persistent presence that

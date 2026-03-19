@@ -11,10 +11,12 @@
 use serde::{Deserialize, Serialize};
 
 use crate::id::{EmbeddingId, EntityId, FactId};
+/// Maximum byte length for fact content strings.
 pub const MAX_CONTENT_LENGTH: usize = 102_400;
 
 /// A memory fact extracted from conversation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[expect(missing_docs, reason = "fact fields are self-documenting by name")]
 pub struct Fact {
     pub id: FactId,
     pub nous_id: String,
@@ -104,6 +106,7 @@ pub enum EpistemicTier {
 }
 
 impl EpistemicTier {
+    /// Return the lowercase string representation of this tier.
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
@@ -150,6 +153,7 @@ pub enum ForgetReason {
 }
 
 impl ForgetReason {
+    /// Return the snake_case string representation of this reason.
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
@@ -259,6 +263,7 @@ impl FactType {
         }
     }
 
+    /// Return the lowercase string representation of this fact type.
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {

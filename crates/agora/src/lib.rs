@@ -1,3 +1,4 @@
+#![deny(missing_docs)]
 //! aletheia-agora: channel registry and provider implementations
 //!
 //! Agora (ἀγορά): "gathering place." The public square where messages flow

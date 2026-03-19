@@ -58,7 +58,9 @@ pub struct AletheiaConfig {
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum SandboxEnforcementMode {
+    /// Reject tool calls that violate sandbox policy.
     Enforcing,
+    /// Allow tool calls that violate sandbox policy but log a warning.
     Permissive,
 }
 
@@ -86,9 +88,12 @@ pub enum EgressPolicy {
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum AgencyLevel {
+    /// No practical limits on tool iterations (10 000 cap).
     Unrestricted,
+    /// Balanced defaults for typical agent use.
     #[default]
     Standard,
+    /// Conservative limits matching pre-expansion behavior.
     Restricted,
 }
 

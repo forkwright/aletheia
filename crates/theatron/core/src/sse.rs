@@ -41,6 +41,7 @@ where
     S: Stream<Item = Result<Bytes, E>> + Unpin,
     E: std::fmt::Display,
 {
+    /// Create a new SSE stream parser wrapping the given byte stream.
     pub fn new(stream: S) -> Self {
         Self {
             stream,

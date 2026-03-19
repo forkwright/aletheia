@@ -1,3 +1,4 @@
+#![deny(missing_docs)]
 //! aletheia-nous: agent session pipeline
 
 /// Tokio actor driving a single nous instance's message loop.
@@ -31,6 +32,7 @@ pub(crate) mod instinct;
 pub mod manager;
 /// Actor inbox message types.
 pub mod message;
+/// Prometheus metrics for nous pipeline: turn counts, latency, and token usage.
 pub mod metrics;
 /// Turn pipeline orchestration: context through finalize.
 pub mod pipeline;

@@ -8,6 +8,10 @@ use std::fmt;
 /// This type carries only what a user should see.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
+#[expect(
+    missing_docs,
+    reason = "variant fields (provider, suggestion, limit_tokens, tool_name, message, session_id, retry_after_secs) are self-documenting by name"
+)]
 pub enum UserFacingError {
     /// The LLM provider is currently unavailable.
     ProviderUnavailable {

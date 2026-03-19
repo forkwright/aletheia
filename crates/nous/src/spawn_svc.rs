@@ -34,6 +34,7 @@ pub struct SpawnServiceImpl {
 }
 
 impl SpawnServiceImpl {
+    /// Create a new spawn service from the given provider, tool, and oikos registries.
     #[must_use]
     pub fn new(
         providers: Arc<ProviderRegistry>,

@@ -461,6 +461,7 @@ impl KnowledgeStore {
         Ok(())
     }
 
+    /// Query the stored schema version from the database.
     pub fn schema_version(&self) -> crate::error::Result<i64> {
         use crate::engine::DataValue;
         use std::collections::BTreeMap;

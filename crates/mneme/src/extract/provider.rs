@@ -7,6 +7,7 @@ use super::ExtractionError;
 ///
 /// Uses a boxed future return type to remain dyn-compatible (object-safe).
 pub trait ExtractionProvider: Send + Sync {
+    /// Send a system + user message to the LLM and return the text response.
     fn complete<'a>(
         &'a self,
         system: &'a str,

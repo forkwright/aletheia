@@ -17,6 +17,10 @@ pub const AGENT_FILE_VERSION: u32 = 1;
 /// Portable agent file: wire-compatible with the TypeScript `AgentFile` format.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[expect(
+    missing_docs,
+    reason = "portability struct fields are self-documenting by name"
+)]
 pub struct AgentFile {
     pub version: u32,
     pub exported_at: String,
@@ -34,6 +38,10 @@ pub struct AgentFile {
 /// Agent identity and configuration snapshot.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[expect(
+    missing_docs,
+    reason = "portability struct fields are self-documenting by name"
+)]
 pub struct NousInfo {
     pub id: String,
     pub name: Option<String>,
@@ -44,6 +52,10 @@ pub struct NousInfo {
 /// Workspace file snapshot: text content included, binary paths listed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[expect(
+    missing_docs,
+    reason = "portability struct fields are self-documenting by name"
+)]
 pub struct WorkspaceData {
     pub files: HashMap<String, String>,
     pub binary_files: Vec<String>,
@@ -52,6 +64,10 @@ pub struct WorkspaceData {
 /// Session snapshot with full message history and metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[expect(
+    missing_docs,
+    reason = "portability struct fields are self-documenting by name"
+)]
 pub struct ExportedSession {
     pub id: String,
     pub session_key: String,
@@ -73,6 +89,10 @@ pub struct ExportedSession {
 /// Single message within an exported session.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[expect(
+    missing_docs,
+    reason = "portability struct fields are self-documenting by name"
+)]
 pub struct ExportedMessage {
     pub role: String,
     pub content: String,
@@ -85,6 +105,10 @@ pub struct ExportedMessage {
 /// Agent note that survives distillation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[expect(
+    missing_docs,
+    reason = "portability struct fields are self-documenting by name"
+)]
 pub struct ExportedNote {
     pub category: String,
     pub content: String,
@@ -94,6 +118,10 @@ pub struct ExportedNote {
 /// Optional memory data (vectors and/or knowledge graph).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[expect(
+    missing_docs,
+    reason = "portability struct fields are self-documenting by name"
+)]
 pub struct MemoryData {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vectors: Option<Vec<ExportedVector>>,
@@ -104,6 +132,10 @@ pub struct MemoryData {
 /// Memory vector entry (embeddings omitted: regenerated on import).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[expect(
+    missing_docs,
+    reason = "portability struct fields are self-documenting by name"
+)]
 pub struct ExportedVector {
     pub id: String,
     pub text: String,
@@ -113,6 +145,10 @@ pub struct ExportedVector {
 /// Knowledge graph snapshot.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[expect(
+    missing_docs,
+    reason = "portability struct fields are self-documenting by name"
+)]
 pub struct GraphData {
     pub nodes: Vec<serde_json::Value>,
     pub edges: Vec<serde_json::Value>,

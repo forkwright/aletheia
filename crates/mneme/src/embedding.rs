@@ -13,6 +13,10 @@ use tracing::instrument;
 /// Errors from embedding operations.
 #[derive(Debug, Snafu)]
 #[non_exhaustive]
+#[expect(
+    missing_docs,
+    reason = "snafu error variant fields (message, location) are self-documenting via display format"
+)]
 pub enum EmbeddingError {
     /// The embedding model failed to initialize.
     #[snafu(display("embedding model init failed: {message}"))]

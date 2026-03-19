@@ -364,6 +364,7 @@ fn days_to_ymd(days: u64) -> (u64, u64, u64) {
     (y, m, d)
 }
 
+/// Register filesystem tools (`grep`, `find`, `ls`) into the registry.
 pub fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(grep_def(), Box::new(GrepExecutor))?;
     registry.register(find_def(), Box::new(FindExecutor))?;

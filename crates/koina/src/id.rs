@@ -368,17 +368,26 @@ fn validate_id(id: &str, kind: &'static str) -> Result<(), IdError> {
 #[non_exhaustive]
 pub enum IdError {
     /// The identifier was empty.
-    Empty { kind: &'static str },
+    Empty {
+        /// The identifier type name (e.g. "NousId").
+        kind: &'static str,
+    },
     /// The identifier exceeded the maximum length.
     TooLong {
+        /// The identifier type name (e.g. "NousId").
         kind: &'static str,
+        /// Maximum allowed length.
         max: usize,
+        /// Actual length that was provided.
         actual: usize,
     },
     /// The identifier contained invalid characters or format.
     InvalidFormat {
+        /// The identifier type name (e.g. "NousId").
         kind: &'static str,
+        /// The value that failed validation.
         value: String,
+        /// Description of why the format is invalid.
         reason: String,
     },
 }

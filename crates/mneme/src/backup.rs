@@ -47,6 +47,10 @@ pub struct BackupManager<'a> {
 
 /// Outcome of creating a backup.
 #[derive(Debug)]
+#[expect(
+    missing_docs,
+    reason = "backup result fields are self-documenting by name"
+)]
 pub struct BackupResult {
     pub path: PathBuf,
     pub size_bytes: u64,
@@ -56,6 +60,10 @@ pub struct BackupResult {
 
 /// Outcome of a JSON export.
 #[derive(Debug)]
+#[expect(
+    missing_docs,
+    reason = "export result fields are self-documenting by name"
+)]
 pub struct ExportResult {
     pub output_dir: PathBuf,
     pub sessions_exported: u32,
@@ -64,6 +72,10 @@ pub struct ExportResult {
 
 /// Metadata about an existing backup file.
 #[derive(Debug)]
+#[expect(
+    missing_docs,
+    reason = "backup info fields are self-documenting by name"
+)]
 pub struct BackupInfo {
     pub path: PathBuf,
     pub size_bytes: u64,
