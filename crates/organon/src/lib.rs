@@ -19,6 +19,11 @@ pub(crate) mod process_guard;
 pub mod registry;
 /// Landlock + seccomp sandbox for tool execution.
 pub mod sandbox;
+/// Test support: mock executors and component spec validation harness.
+///
+/// Enabled by the `test-support` Cargo feature. Never compiled into release builds.
+#[cfg(any(test, feature = "test-support"))]
+pub mod testing;
 /// Tool definition, parameter schema, and executor trait.
 pub mod types;
 

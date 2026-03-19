@@ -14,6 +14,8 @@ workspace = true
 # Computer use tool: screen capture, action dispatch, Landlock sandbox.
 # Not compiled by default — requires Linux kernel 5.13+ with Landlock support.
 computer-use = []
+# Gates MockToolExecutor, ToolExecutorSpec, and other test helpers. No test code in release binaries.
+test-support = ["aletheia-hermeneus/test-support"]
 
 [dependencies]
 aletheia-hermeneus = { path = "../hermeneus" }
@@ -35,7 +37,20 @@ rustix = { workspace = true, features = ["process", "thread"] }
 seccompiler = "0.5"
 
 [dev-dependencies]
+indexmap = { workspace = true }
+proptest = { workspace = true }
 rustls = { workspace = true }
+snafu = { workspace = true }
 static_assertions = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true }
+
+[[test]]
+name = "proptest_registry"
+path = "tests/proptest_registry.rs"
+required-features = ["test-support"]
+
+[[test]]
+name = "spec_validation"
+path = "tests/spec_validation.rs"
+required-features = ["test-support"]

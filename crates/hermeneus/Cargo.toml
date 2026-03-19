@@ -24,7 +24,10 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 
 [features]
+# Shared mock LLM provider for tests across the workspace.
+# Use `test-support` (preferred); `test-utils` kept for compatibility.
 test-utils = []
+test-support = ["test-utils"]
 
 [dev-dependencies]
 proptest = { workspace = true }

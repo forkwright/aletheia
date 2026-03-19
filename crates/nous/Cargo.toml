@@ -12,6 +12,8 @@ workspace = true
 
 [features]
 knowledge-store = ["aletheia-mneme/mneme-engine"]
+# Gates mock search implementations and other test helpers. No test code in release binaries.
+test-support = ["aletheia-hermeneus/test-utils", "aletheia-organon/test-support"]
 
 [dependencies]
 aletheia-hermeneus = { path = "../hermeneus" }
@@ -32,7 +34,9 @@ tracing = { workspace = true }
 ulid = { workspace = true }
 
 [dev-dependencies]
-aletheia-hermeneus = { path = "../hermeneus", features = ["test-utils"] }
+aletheia-hermeneus = { path = "../hermeneus", features = ["test-support"] }
+aletheia-mneme = { path = "../mneme", features = ["test-support"] }
 indexmap = { workspace = true }
+proptest = { workspace = true }
 static_assertions = { workspace = true }
 tempfile = { workspace = true }

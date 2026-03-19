@@ -69,11 +69,16 @@ pub trait EmbeddingProvider: Send + Sync {
 ///
 /// Produces deterministic vectors based on text hash.
 /// Not suitable for real semantic similarity: use only in tests.
+///
+/// Enabled by the `test-support` Cargo feature so it is never compiled
+/// into release builds.
+#[cfg(any(test, feature = "test-support"))]
 #[derive(Debug)]
 pub struct MockEmbeddingProvider {
     dim: usize,
 }
 
+#[cfg(any(test, feature = "test-support"))]
 impl MockEmbeddingProvider {
     /// Create a mock provider with the given dimension.
     #[must_use]
@@ -83,6 +88,7 @@ impl MockEmbeddingProvider {
     }
 }
 
+#[cfg(any(test, feature = "test-support"))]
 impl EmbeddingProvider for MockEmbeddingProvider {
     #[instrument(skip(self, text))]
     fn embed(&self, text: &str) -> EmbeddingResult<Vec<f32>> {
@@ -510,6 +516,7 @@ impl EmbeddingProvider for DegradedEmbeddingProvider {
 #[instrument(skip(config), fields(provider = %config.provider))]
 pub fn create_provider(config: &EmbeddingConfig) -> EmbeddingResult<Box<dyn EmbeddingProvider>> {
     match config.provider.as_str() {
+        #[cfg(any(test, feature = "test-support"))]
         "mock" => {
             let dim = config.dimension.unwrap_or(384);
             Ok(Box::new(MockEmbeddingProvider::new(dim)))
