@@ -3,8 +3,8 @@
 use std::sync::LazyLock;
 
 use prometheus::{
-    CounterVec, HistogramOpts, HistogramVec, IntCounterVec, Opts, register_counter_vec,
-    register_histogram_vec, register_int_counter_vec,
+    CounterVec, HistogramOpts, HistogramVec, IntCounterVec, IntGaugeVec, Opts,
+    register_counter_vec, register_histogram_vec, register_int_counter_vec, register_int_gauge_vec,
 };
 
 static LLM_TOKENS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
@@ -90,6 +90,51 @@ static LLM_TTFT_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
     .expect("metric registration")
 });
 
+static LLM_CIRCUIT_BREAKER_TRANSITIONS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    #[expect(
+        clippy::expect_used,
+        reason = "metric registration fails only on name/label collision, a startup-time programming error that must not be silently ignored"
+    )]
+    register_int_counter_vec!(
+        Opts::new(
+            "aletheia_llm_circuit_breaker_transitions_total",
+            "Circuit breaker state transitions per provider"
+        ),
+        &["provider", "from", "to"]
+    )
+    .expect("metric registration")
+});
+
+static LLM_CONCURRENCY_LIMIT: LazyLock<IntGaugeVec> = LazyLock::new(|| {
+    #[expect(
+        clippy::expect_used,
+        reason = "metric registration fails only on name/label collision, a startup-time programming error that must not be silently ignored"
+    )]
+    register_int_gauge_vec!(
+        Opts::new(
+            "aletheia_llm_concurrency_limit",
+            "Current adaptive concurrency limit per provider"
+        ),
+        &["provider"]
+    )
+    .expect("metric registration")
+});
+
+static LLM_CONCURRENCY_IN_FLIGHT: LazyLock<IntGaugeVec> = LazyLock::new(|| {
+    #[expect(
+        clippy::expect_used,
+        reason = "metric registration fails only on name/label collision, a startup-time programming error that must not be silently ignored"
+    )]
+    register_int_gauge_vec!(
+        Opts::new(
+            "aletheia_llm_concurrency_in_flight",
+            "Number of in-flight LLM requests per provider"
+        ),
+        &["provider"]
+    )
+    .expect("metric registration")
+});
+
 /// Force-initialize all lazy metric statics.
 pub fn init() {
     LazyLock::force(&LLM_TOKENS_TOTAL);
@@ -98,6 +143,9 @@ pub fn init() {
     LazyLock::force(&LLM_CACHE_TOKENS_TOTAL);
     LazyLock::force(&LLM_REQUEST_DURATION_SECONDS);
     LazyLock::force(&LLM_TTFT_SECONDS);
+    LazyLock::force(&LLM_CIRCUIT_BREAKER_TRANSITIONS_TOTAL);
+    LazyLock::force(&LLM_CONCURRENCY_LIMIT);
+    LazyLock::force(&LLM_CONCURRENCY_IN_FLIGHT);
 }
 
 /// Record a completed LLM API call.
@@ -151,4 +199,27 @@ pub fn record_cache_tokens(provider: &str, cache_read_tokens: u64, cache_write_t
             .with_label_values(&[provider, "write"])
             .inc_by(cache_write_tokens);
     }
+}
+
+/// Record a circuit breaker state transition.
+///
+/// `from` and `to` are lowercase state names: `closed`, `open`, `half_open`.
+pub(crate) fn record_circuit_transition(provider: &str, from: &str, to: &str) {
+    LLM_CIRCUIT_BREAKER_TRANSITIONS_TOTAL
+        .with_label_values(&[provider, from, to])
+        .inc();
+}
+
+/// Set the current adaptive concurrency limit for a provider.
+pub(crate) fn set_concurrency_limit(provider: &str, limit: u32) {
+    LLM_CONCURRENCY_LIMIT
+        .with_label_values(&[provider])
+        .set(i64::from(limit));
+}
+
+/// Set the current in-flight request count for a provider.
+pub(crate) fn set_concurrency_in_flight(provider: &str, in_flight: u32) {
+    LLM_CONCURRENCY_IN_FLIGHT
+        .with_label_values(&[provider])
+        .set(i64::from(in_flight));
 }
