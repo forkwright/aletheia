@@ -222,6 +222,9 @@ impl NousActor {
             self.reap_background_tasks();
 
             tokio::select! {
+                // SAFETY: cancel-safe. `mpsc::Receiver::recv()` is cancel-safe:
+                // if this branch is dropped before it fires, the message remains
+                // in the inbox and will be delivered on the next poll.
                 msg = self.channel.inbox.recv() => {
                     let Some(msg) = msg else { break };
                     match msg {
@@ -277,6 +280,10 @@ impl NousActor {
                         }
                     }
                 }
+                // SAFETY: cancel-safe. `mpsc::Receiver::recv()` is cancel-safe;
+                // `std::future::pending()` never resolves and is trivially cancel-safe.
+                // Dropping this branch before it fires leaves the cross-nous message
+                // in the channel for the next poll.
                 envelope = async {
                     match self.channel.cross_rx.as_mut() {
                         Some(rx) => rx.recv().await,
@@ -290,6 +297,8 @@ impl NousActor {
                         }
                     }
                 }
+                // SAFETY: cancel-safe. `CancellationToken::cancelled()` is cancel-safe;
+                // dropping this branch before it resolves has no side effects.
                 () = self.channel.cancel.cancelled() => {
                     info!("cancellation token fired, draining and stopping");
                     break;

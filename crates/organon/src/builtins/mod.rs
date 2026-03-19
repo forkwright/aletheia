@@ -14,6 +14,8 @@ pub mod memory;
 pub mod planning;
 /// Web research tools (web_fetch). Web search uses Anthropic server-side tools.
 pub mod research;
+/// Issue triage tools (scan, score, stage, approve).
+pub mod triage;
 /// File viewing with multimodal support (images, PDFs, text).
 pub mod view_file;
 /// File and shell workspace tools (read, write, edit, exec).
@@ -47,5 +49,6 @@ pub fn register_all_with_sandbox(
     enable_tool::register(registry)?;
     planning::register(registry)?;
     research::register(registry)?;
+    triage::register(registry)?;
     Ok(())
 }
