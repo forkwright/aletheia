@@ -9,6 +9,15 @@
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
 )]
 
+use std::cmp::Reverse;
+use std::collections::HashMap;
+use std::collections::hash_map::Entry;
+
+use compact_str::CompactString;
+use itertools::Itertools;
+use ordered_float::OrderedFloat;
+use rustc_hash::{FxHashMap, FxHashSet};
+
 use crate::engine::data::expr::{Bytecode, eval_bytecode, eval_bytecode_pred};
 use crate::engine::data::program::{FtsScoreKind, FtsSearch};
 use crate::engine::data::tuple::{ENCODED_KEY_MIN_LEN, Tuple, decode_tuple_from_key};
@@ -22,13 +31,6 @@ use crate::engine::runtime::error::InvalidOperationSnafu;
 use crate::engine::runtime::relation::RelationHandle;
 use crate::engine::runtime::transact::SessionTx;
 use crate::engine::{DataValue, SourceSpan};
-use compact_str::CompactString;
-use itertools::Itertools;
-use ordered_float::OrderedFloat;
-use rustc_hash::{FxHashMap, FxHashSet};
-use std::cmp::Reverse;
-use std::collections::HashMap;
-use std::collections::hash_map::Entry;
 
 #[derive(Default)]
 pub(crate) struct FtsCache {

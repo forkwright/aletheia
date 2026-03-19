@@ -16,16 +16,14 @@ use std::collections::btree_map::Entry;
 use std::mem;
 use std::ops::Bound::Excluded;
 
-use crate::engine::error::InternalResult as Result;
 use either::{Left, Right};
 use itertools::Itertools;
 
 use crate::engine::data::aggr::Aggregation;
 use crate::engine::data::tuple::Tuple;
 use crate::engine::data::value::DataValue;
+use crate::engine::error::InternalResult as Result;
 
-/// A store holding temp data during evaluation of queries.
-/// The public interface is used in custom implementations of algorithms/utilities.
 #[derive(Default, Debug)]
 pub struct RegularTempStore {
     inner: BTreeMap<Tuple, bool>,

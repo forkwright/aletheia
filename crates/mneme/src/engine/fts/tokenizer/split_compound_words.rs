@@ -1,43 +1,8 @@
 //! Compound word splitting filter.
-use super::{BoxTokenStream, Token, TokenFilter, TokenStream};
-use crate::engine::error::InternalResult as Result;
 use aho_corasick::{AhoCorasick, AhoCorasickBuilder, MatchKind};
 
-/// A [`TokenFilter`] which splits compound words into their parts
-/// based on a given dictionary.
-///
-/// Words only will be split if they can be fully decomposed into
-/// consecutive matches into the given dictionary.
-///
-/// This is mostly useful to split [compound nouns][compound] common to many
-/// Germanic languages into their constituents.
-///
-/// # Example
-///
-/// The quality of the dictionary determines the quality of the splits,
-/// e.g. the missing stem "back" of "backen" implies that "brotbackautomat"
-/// is not split in the following example.
-///
-/// ```text
-/// use tantivy::tokenizer::{SimpleTokenizer, SplitCompoundWords, TextAnalyzer};
-///
-/// let tokenizer =
-///        TextAnalyzer::from(SimpleTokenizer).filter(SplitCompoundWords::from_dictionary([
-///            "dampf", "schiff", "fahrt", "brot", "backen", "automat",
-///        ]));
-///
-/// let mut stream = tokenizer.token_stream("dampfschifffahrt");
-/// assert_eq!(stream.next()?.text, "dampf");
-/// assert_eq!(stream.next()?.text, "schiff");
-/// assert_eq!(stream.next()?.text, "fahrt");
-/// assert_eq!(stream.next(), None);
-///
-/// let mut stream = tokenizer.token_stream("brotbackautomat");
-/// assert_eq!(stream.next()?.text, "brotbackautomat");
-/// assert_eq!(stream.next(), None);
-/// ```
-///
-/// [compound]: https://en.wikipedia.org/wiki/Compound_(linguistics)
+use super::{BoxTokenStream, Token, TokenFilter, TokenStream};
+use crate::engine::error::InternalResult as Result;
 #[derive(Clone)]
 pub(crate) struct SplitCompoundWords {
     dict: AhoCorasick,

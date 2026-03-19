@@ -5,12 +5,12 @@
 )]
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-use crate::engine::error::InternalResult as Result;
 use compact_str::CompactString;
 
 use crate::engine::data::expr::{Expr, eval_bytecode_pred};
 use crate::engine::data::symb::Symbol;
 use crate::engine::data::value::DataValue;
+use crate::engine::error::InternalResult as Result;
 use crate::engine::fixed_rule::error::GraphAlgorithmSnafu;
 use crate::engine::fixed_rule::{FixedRule, FixedRulePayload, NodeNotFoundError};
 use crate::engine::parse::SourceSpan;

@@ -12,9 +12,9 @@ use std::cmp::min;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Debug;
 
-use crate::engine::error::InternalResult as Result;
 use itertools::Itertools;
 
+use crate::engine::error::InternalResult as Result;
 use crate::engine::runtime::db::Poison;
 
 pub(crate) type Graph<T> = BTreeMap<T, Vec<T>>;

@@ -13,8 +13,10 @@ use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-use crate::engine::error::InternalResult as Result;
 use itertools::Itertools;
+
+use crate::engine::error::InternalResult as Result;
+
 #[cfg(not(target_arch = "wasm32"))]
 use rayon::prelude::*;
 use tracing::{debug, trace};

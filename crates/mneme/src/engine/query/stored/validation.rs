@@ -13,22 +13,21 @@
 
 use std::collections::BTreeSet;
 
-use crate::engine::error::InternalResult as Result;
-use crate::engine::query::error::*;
 use compact_str::CompactString;
 use itertools::Itertools;
 
+use super::extractors::{make_const_rule, make_extractors};
 use crate::engine::data::relation::StoredRelationMetadata;
 use crate::engine::data::symb::Symbol;
 use crate::engine::data::tuple::Tuple;
 use crate::engine::data::value::{DataValue, ValidityTs};
+use crate::engine::error::InternalResult as Result;
 use crate::engine::parse::parse_script;
+use crate::engine::query::error::*;
 use crate::engine::runtime::callback::{CallbackCollector, CallbackOp};
 use crate::engine::runtime::relation::{AccessLevel, RelationHandle, extend_tuple_from_v};
 use crate::engine::storage::Storage;
 use crate::engine::{DbCore as Db, NamedRows, SourceSpan, StoreTx};
-
-use super::extractors::{make_const_rule, make_extractors};
 
 impl<'a> crate::engine::runtime::transact::SessionTx<'a> {
     pub(crate) fn collect_mutations<'s, S: Storage<'s>>(

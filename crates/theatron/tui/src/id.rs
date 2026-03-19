@@ -1,11 +1,10 @@
 //! Newtype wrappers for domain identifiers in the TUI layer.
 
+use std::borrow::Borrow;
 use std::fmt;
 
 use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
-use std::borrow::Borrow;
-
 aletheia_koina::newtype_id!(
     pub struct NousId(String)
 );

@@ -6,10 +6,11 @@
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
 )]
 
-use super::super::super::*;
-use crate::knowledge::{EpistemicTier, Fact, ForgetReason};
 use std::collections::BTreeMap;
 use std::sync::Arc;
+
+use super::super::super::*;
+use crate::knowledge::{EpistemicTier, Fact, ForgetReason};
 
 const DIM: usize = 4;
 

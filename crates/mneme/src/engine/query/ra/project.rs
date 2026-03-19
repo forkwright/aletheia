@@ -1,5 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use itertools::Itertools;
+
+use super::{RelAlgebra, eliminate_from_tuple, flatten_err, get_eliminate_indices};
 use crate::engine::data::expr::{Bytecode, Expr, eval_bytecode};
 use crate::engine::data::program::MagicSymbol;
 use crate::engine::data::symb::Symbol;
@@ -9,10 +12,6 @@ use crate::engine::parse::SourceSpan;
 use crate::engine::query::error::*;
 use crate::engine::runtime::temp_store::EpochStore;
 use crate::engine::runtime::transact::SessionTx;
-use itertools::Itertools;
-
-use super::{RelAlgebra, eliminate_from_tuple, flatten_err, get_eliminate_indices};
-
 pub(crate) struct UnificationRA {
     pub(crate) parent: Box<RelAlgebra>,
     pub(crate) binding: Symbol,

@@ -3,9 +3,10 @@
     clippy::indexing_slicing,
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
 )]
+use tracing::instrument;
+
 use super::KnowledgeStore;
 use super::marshal::{compute_name_similarity, compute_tool_overlap, rows_to_facts};
-use tracing::instrument;
 
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {

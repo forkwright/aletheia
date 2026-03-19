@@ -9,8 +9,6 @@
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
 )]
 
-use crate::engine::error::InternalResult as Result;
-use crate::engine::fixed_rule::csr::DirectedCsrGraph;
 use std::cmp::min;
 use std::collections::BTreeMap;
 
@@ -22,6 +20,8 @@ use crate::engine::data::program::{MagicFixedRuleApply, MagicSymbol};
 use crate::engine::data::symb::Symbol;
 use crate::engine::data::tuple::Tuple;
 use crate::engine::data::value::DataValue;
+use crate::engine::error::InternalResult as Result;
+use crate::engine::fixed_rule::csr::DirectedCsrGraph;
 use crate::engine::fixed_rule::{FixedRule, FixedRulePayload};
 use crate::engine::parse::SourceSpan;
 use crate::engine::runtime::db::Poison;

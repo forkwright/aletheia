@@ -10,8 +10,6 @@
 
 use std::collections::BTreeSet;
 
-use crate::engine::error::InternalResult as Result;
-use crate::engine::parse::error::InvalidQuerySnafu;
 use compact_str::CompactString;
 use itertools::Itertools;
 
@@ -19,6 +17,8 @@ use crate::engine::data::relation::{
     ColType, ColumnDef, NullableColType, StoredRelationMetadata, VecElementType,
 };
 use crate::engine::data::symb::Symbol;
+use crate::engine::error::InternalResult as Result;
+use crate::engine::parse::error::InvalidQuerySnafu;
 use crate::engine::parse::expr::build_expr;
 use crate::engine::parse::{ExtractSpan, Pair, Rule};
 

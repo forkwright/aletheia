@@ -8,17 +8,19 @@
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
 )]
 
-use crate::engine::error::InternalResult as Result;
-use crate::engine::fts::ast::{FtsExpr, FtsLiteral, FtsNear};
-use crate::engine::parse::error::{InvalidQuerySnafu, SyntaxSnafu};
-use crate::engine::parse::expr::parse_string;
-use crate::engine::parse::{DatalogParser, Pair, Rule, SourceSpan};
+use std::sync::LazyLock;
+
 use compact_str::CompactString;
 use itertools::Itertools;
 use pest::Parser;
 use pest::error::InputLocation;
 use pest::pratt_parser::{Op, PrattParser};
-use std::sync::LazyLock;
+
+use crate::engine::error::InternalResult as Result;
+use crate::engine::fts::ast::{FtsExpr, FtsLiteral, FtsNear};
+use crate::engine::parse::error::{InvalidQuerySnafu, SyntaxSnafu};
+use crate::engine::parse::expr::parse_string;
+use crate::engine::parse::{DatalogParser, Pair, Rule, SourceSpan};
 
 pub(crate) fn parse_fts_query(q: &str) -> Result<FtsExpr> {
     let mut pairs = DatalogParser::parse(Rule::fts_doc, q).map_err(|err| {

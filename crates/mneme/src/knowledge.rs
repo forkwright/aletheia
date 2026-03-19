@@ -8,10 +8,9 @@
 //! Uses `CozoDB` Datalog for graph traversal and HNSW for vector search.
 //! Embedded, no sidecar. Replaced the former Qdrant + Neo4j sidecar stack.
 
-use crate::id::{EmbeddingId, EntityId, FactId};
 use serde::{Deserialize, Serialize};
 
-/// Maximum content length for facts and entities (100 KB).
+use crate::id::{EmbeddingId, EntityId, FactId};
 pub const MAX_CONTENT_LENGTH: usize = 102_400;
 
 /// A memory fact extracted from conversation.

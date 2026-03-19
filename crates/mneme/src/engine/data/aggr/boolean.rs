@@ -5,8 +5,9 @@
 )]
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::super::error::*;
 use rand::prelude::*;
+
+use super::super::error::*;
 
 type Result<T> = DataResult<T>;
 

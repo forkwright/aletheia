@@ -6,8 +6,6 @@
 )]
 use std::collections::BTreeMap;
 
-use crate::engine::error::InternalResult as Result;
-use crate::engine::fixed_rule::error::{ConfigSnafu, FixedRuleError};
 use compact_str::CompactString;
 use itertools::Itertools;
 
@@ -16,6 +14,8 @@ use crate::engine::data::functions::OP_LIST;
 use crate::engine::data::program::WrongFixedRuleOptionError;
 use crate::engine::data::symb::Symbol;
 use crate::engine::data::value::DataValue;
+use crate::engine::error::InternalResult as Result;
+use crate::engine::fixed_rule::error::{ConfigSnafu, FixedRuleError};
 use crate::engine::fixed_rule::{FixedRule, FixedRulePayload};
 use crate::engine::parse::SourceSpan;
 use crate::engine::runtime::db::Poison;

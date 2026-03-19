@@ -5,6 +5,10 @@
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
+use compact_str::CompactString;
+use itertools::Itertools;
+
+use super::{RelAlgebra, flatten_err};
 use crate::engine::data::expr::Bytecode;
 use crate::engine::data::program::{FtsSearch, HnswSearch, MagicSymbol};
 use crate::engine::data::symb::Symbol;
@@ -16,10 +20,6 @@ use crate::engine::query::error::*;
 use crate::engine::runtime::minhash_lsh::LshSearch;
 use crate::engine::runtime::temp_store::EpochStore;
 use crate::engine::runtime::transact::SessionTx;
-use compact_str::CompactString;
-use itertools::Itertools;
-
-use super::{RelAlgebra, flatten_err};
 
 #[derive(Debug)]
 pub(crate) struct HnswSearchRA {

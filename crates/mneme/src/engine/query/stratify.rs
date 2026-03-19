@@ -6,8 +6,6 @@
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::engine::error::InternalResult as Result;
-use crate::engine::query::error::*;
 use itertools::Itertools;
 
 use crate::engine::data::program::{
@@ -15,7 +13,9 @@ use crate::engine::data::program::{
     StratifiedNormalFormProgram,
 };
 use crate::engine::data::symb::{PROG_ENTRY, Symbol};
+use crate::engine::error::InternalResult as Result;
 use crate::engine::parse::SourceSpan;
+use crate::engine::query::error::*;
 use crate::engine::query::graph::{
     Graph, StratifiedGraph, generalized_kahn, reachable_components, strongly_connected_components,
 };

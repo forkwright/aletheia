@@ -9,6 +9,12 @@
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
 )]
 
+use std::num::NonZeroUsize;
+
+use compact_str::CompactString;
+use lru::LruCache;
+use rand::Rng;
+
 use crate::engine::DataValue;
 use crate::engine::data::relation::VecElementType;
 use crate::engine::data::tuple::Tuple;
@@ -18,13 +24,7 @@ use crate::engine::parse::sys::HnswDistance;
 use crate::engine::runtime::error::InvalidOperationSnafu;
 use crate::engine::runtime::relation::RelationHandle;
 use crate::engine::runtime::transact::SessionTx;
-use compact_str::CompactString;
-use lru::LruCache;
-use rand::Rng;
-use std::num::NonZeroUsize;
 
-/// Default maximum number of vectors held in the LRU cache.
-/// Prevents unbounded memory growth during large index operations.
 pub(crate) const DEFAULT_VECTOR_CACHE_CAPACITY: usize = 10_000;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

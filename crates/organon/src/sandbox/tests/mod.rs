@@ -1,9 +1,9 @@
 //! Tests for sandbox configuration and policy application.
 #![expect(clippy::expect_used, reason = "test assertions")]
-use super::config::expand_tilde;
-use super::*;
 use std::path::{Path, PathBuf};
 
+use super::config::expand_tilde;
+use super::*;
 mod egress;
 
 #[test]

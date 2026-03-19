@@ -7,6 +7,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Formatter};
 use std::iter;
 
+use itertools::Itertools;
+use tracing::debug;
+
+use super::{RelAlgebra, eliminate_from_tuple, get_eliminate_indices, join_is_prefix};
 use crate::engine::data::program::MagicSymbol;
 use crate::engine::data::symb::Symbol;
 use crate::engine::data::tuple::{Tuple, TupleIter};
@@ -16,10 +20,6 @@ use crate::engine::query::error::*;
 use crate::engine::runtime::temp_store::EpochStore;
 use crate::engine::runtime::transact::SessionTx;
 use crate::engine::utils::swap_option_result;
-use itertools::Itertools;
-use tracing::debug;
-
-use super::{RelAlgebra, eliminate_from_tuple, get_eliminate_indices, join_is_prefix};
 
 struct BindingFormatter(Vec<Symbol>);
 

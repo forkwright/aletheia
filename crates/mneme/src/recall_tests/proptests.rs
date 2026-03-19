@@ -1,7 +1,7 @@
 //! Property-based tests for recall scoring.
-use super::super::*;
 use proptest::prelude::*;
 
+use super::super::*;
 proptest! {
     #[test]
     fn recall_scores_always_bounded(
