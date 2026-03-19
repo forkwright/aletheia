@@ -1,0 +1,14 @@
+# theatron/core: shared type definitions for the theatron UI family.
+# Pure data types only — no network, database, or runtime dependencies.
+
+disallowed-methods = [
+    { path = "std::process::exit", reason = "do not call process::exit from library code" },
+    { path = "std::process::abort", reason = "do not call process::abort from library code" },
+]
+
+disallowed-types = [
+    # theatron/core is a type library; HTTP client belongs in the UI crate itself
+    { path = "reqwest::Client", reason = "theatron-core must not perform HTTP calls; use theatron-tui or theatron-desktop" },
+    # UI type library must not open DB connections
+    { path = "rusqlite::Connection", reason = "theatron-core must not access SQLite; persistence belongs in mneme" },
+]

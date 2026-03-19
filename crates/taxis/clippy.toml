@@ -1,0 +1,14 @@
+# taxis: configuration loading and cascade — pure file-based config, no network or DB.
+# Must not perform HTTP requests or open database connections.
+
+disallowed-methods = [
+    { path = "std::process::exit", reason = "do not call process::exit from library code" },
+    { path = "std::process::abort", reason = "do not call process::abort from library code" },
+]
+
+disallowed-types = [
+    # Config is file-based (figment TOML cascade); HTTP does not belong here
+    { path = "reqwest::Client", reason = "taxis must not perform HTTP calls; config is file-based" },
+    # Config is not database-backed
+    { path = "rusqlite::Connection", reason = "taxis must not access SQLite; config is file-based" },
+]

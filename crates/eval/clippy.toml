@@ -1,0 +1,12 @@
+# eval (aletheia-dokimion): behavioral evaluation scenarios — runs HTTP scenarios
+# against a live Aletheia instance. Must not bypass the public API with direct DB access.
+
+disallowed-methods = [
+    { path = "std::process::exit", reason = "do not call process::exit from library code" },
+    { path = "std::process::abort", reason = "do not call process::abort from library code" },
+]
+
+disallowed-types = [
+    # Eval is an external client; DB access would couple it to implementation details
+    { path = "rusqlite::Connection", reason = "eval must not access SQLite directly; test through the HTTP API" },
+]
