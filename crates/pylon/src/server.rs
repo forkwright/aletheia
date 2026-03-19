@@ -84,6 +84,14 @@ pub enum ServerError {
 /// Returns [`ServerError::Serve`] if the HTTP server encounters a fatal I/O error.
 /// Returns [`ServerError::TlsConfig`] if TLS is enabled but certs cannot be loaded.
 /// Returns [`ServerError::TlsNotCompiled`] if TLS is enabled but the feature is absent.
+///
+/// # Cancel safety
+///
+/// Not cancel-safe. Cancellation during startup (before `serve_plain`/`serve_tls`
+/// returns) leaves partially initialised state. Once serving, the future blocks
+/// until the OS delivers a shutdown signal; dropping it at that point skips the
+/// SIGHUP-handler drain and `shutdown_readonly` call, which may leave actor tasks
+/// running until the runtime exits.
 pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
     let oikos = Oikos::from_root(&config.instance_path);
     oikos.validate().context(ValidationSnafu)?;
@@ -300,7 +308,14 @@ fn spawn_sighup_handler(state: Arc<AppState>) -> tokio::task::JoinHandle<()> {
             loop {
                 tokio::select! {
                     biased;
+                    // SAFETY: cancel-safe. `CancellationToken::cancelled()` is cancel-safe;
+                    // dropping it before it fires has no side effects. Polled first (biased)
+                    // so shutdown is never starved by a flood of SIGHUP signals.
                     () = shutdown.cancelled() => break,
+                    // SAFETY: cancel-safe. `tokio::signal::unix::Signal::recv()` is
+                    // cancel-safe; if dropped before a signal arrives, no signal is lost
+                    // from the OS perspective (the kernel keeps delivering SIGHUP and the
+                    // next call to recv() will return it).
                     signal = sighup.recv() => {
                         if signal.is_none() {
                             break;
@@ -351,7 +366,15 @@ async fn shutdown_signal() {
     let terminate = std::future::pending::<()>();
 
     tokio::select! {
+        // SAFETY: cancel-safe. The `ctrl_c` future wraps `tokio::signal::ctrl_c()`,
+        // which is cancel-safe: dropping it before it resolves simply re-arms the
+        // handler; Ctrl+C will be caught by the next call.
         () = ctrl_c => info!("received ctrl+c"),
+        // SAFETY: cancel-safe. The `terminate` future wraps `Signal::recv()`,
+        // which is cancel-safe: if dropped before SIGTERM arrives, the signal
+        // remains pending in the OS and will be delivered on the next recv() call.
+        // On non-Unix platforms `terminate` is `pending::<()>()`, which is trivially
+        // cancel-safe and never resolves.
         () = terminate => info!("received SIGTERM"),
     }
 }

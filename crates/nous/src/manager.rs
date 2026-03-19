@@ -262,6 +262,11 @@ impl NousManager {
     /// reported as dead.
     ///
     /// Returns a map of `nous_id → ActorHealth`.
+    ///
+    /// # Cancel safety
+    ///
+    /// Cancel-safe. Each ping and status query is independent. If cancelled
+    /// mid-loop, partial results are discarded; no manager state is mutated.
     pub async fn check_health(&self) -> BTreeMap<String, ActorHealth> {
         let mut results = BTreeMap::new();
         for (id, entry) in &self.actors {
@@ -292,6 +297,13 @@ impl NousManager {
     /// Run one health-check cycle: ping all actors, track misses, restart dead ones.
     ///
     /// Call this periodically from a background task.
+    ///
+    /// # Cancel safety
+    ///
+    /// Not cancel-safe. If cancelled between `check_health` and `restart_actor`,
+    /// miss counters may have been incremented without the corresponding restart
+    /// being attempted. Only call from non-cancellable contexts (e.g. a dedicated
+    /// poller task that never races with a cancellation signal).
     pub async fn health_cycle(&mut self) {
         let health = self.check_health().await;
 
@@ -389,10 +401,16 @@ impl NousManager {
                 debug!(interval_secs = interval.as_secs(), "health poller started");
                 loop {
                     tokio::select! {
+                        // SAFETY: cancel-safe. `tokio::time::sleep` is cancel-safe:
+                        // if dropped before it fires, the sleep is simply abandoned
+                        // and a new one starts next iteration. The mutex lock and
+                        // `health_cycle` call only run once the sleep completes.
                         () = tokio::time::sleep(interval) => {
                             let mut mgr = manager.lock().await;
                             mgr.health_cycle().await;
                         }
+                        // SAFETY: cancel-safe. `CancellationToken::cancelled()` is
+                        // cancel-safe; dropping it before it fires has no side effects.
                         () = cancel.cancelled() => {
                             debug!("health poller cancelled");
                             break;

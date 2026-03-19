@@ -329,7 +329,13 @@ pub fn spawn_stale_cleanup(
             loop {
                 tokio::select! {
                     biased;
+                    // SAFETY: cancel-safe. `CancellationToken::cancelled()` is cancel-safe;
+                    // dropping it before it fires has no side effects. Polled first (biased)
+                    // so shutdown is never starved by a busy cleanup interval.
                     () = shutdown.cancelled() => break,
+                    // SAFETY: cancel-safe. `tokio::time::sleep` is cancel-safe: if dropped
+                    // before it fires, the sleep is abandoned and a new one starts on the
+                    // next iteration. `cleanup_stale` is synchronous and idempotent.
                     () = tokio::time::sleep(interval) => {
                         let evicted = limiter.cleanup_stale();
                         if evicted > 0 {
