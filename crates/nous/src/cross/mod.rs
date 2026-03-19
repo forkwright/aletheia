@@ -609,10 +609,13 @@ mod tests {
         let msg =
             CrossNousMessage::new("sender_c", "target", "hello").with_reply(Duration::from_secs(5));
 
-        let ask_handle = tokio::spawn({
-            let r = router.clone();
-            async move { r.ask(msg).await }
-        });
+        let ask_handle = tokio::spawn(
+            {
+                let r = router.clone();
+                async move { r.ask(msg).await }
+            }
+            .instrument(tracing::info_span!("test_ask_multi_receiver")),
+        );
 
         let envelope = rx.recv().await.unwrap();
         let reply = CrossNousReply {

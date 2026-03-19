@@ -40,7 +40,7 @@ pub(crate) fn handle_close_overlay(app: &mut App) {
         let turn_id = approval.turn_id.clone();
         let tool_id = approval.tool_id.clone();
         let client = app.client.clone();
-        let span = tracing::info_span!("deny_tool");
+        let span = tracing::info_span!("deny_tool", %turn_id, %tool_id);
         tokio::spawn(
             async move {
                 if let Err(e) = client.deny_tool(&turn_id, &tool_id).await {
@@ -53,7 +53,7 @@ pub(crate) fn handle_close_overlay(app: &mut App) {
     if let Some(Overlay::PlanApproval(ref plan)) = app.layout.overlay {
         let plan_id = plan.plan_id.clone();
         let client = app.client.clone();
-        let span = tracing::info_span!("cancel_plan");
+        let span = tracing::info_span!("cancel_plan", %plan_id);
         tokio::spawn(
             async move {
                 if let Err(e) = client.cancel_plan(&plan_id).await {
@@ -177,7 +177,7 @@ pub(crate) async fn handle_overlay_select(app: &mut App) {
             let turn_id = approval.turn_id.clone();
             let tool_id = approval.tool_id.clone();
             let client = app.client.clone();
-            let span = tracing::info_span!("approve_tool");
+            let span = tracing::info_span!("approve_tool", %turn_id, %tool_id);
             tokio::spawn(
                 async move {
                     if let Err(e) = client.approve_tool(&turn_id, &tool_id).await {
@@ -191,7 +191,7 @@ pub(crate) async fn handle_overlay_select(app: &mut App) {
         Some(Overlay::PlanApproval(plan)) => {
             let plan_id = plan.plan_id.clone();
             let client = app.client.clone();
-            let span = tracing::info_span!("approve_plan");
+            let span = tracing::info_span!("approve_plan", %plan_id);
             tokio::spawn(
                 async move {
                     if let Err(e) = client.approve_plan(&plan_id).await {

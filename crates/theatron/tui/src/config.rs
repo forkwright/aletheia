@@ -11,6 +11,39 @@ use crate::theme::ThemeMode;
 
 const DEFAULT_URL: &str = "http://localhost:18789";
 
+/// Prefix for OAuth access tokens issued by the Anthropic identity provider.
+const OAUTH_TOKEN_PREFIX: &str = "sk-ant-oat";
+
+/// Display label for the credential type shown in the TUI status bar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CredentialLabel {
+    /// OAuth token (auto-refreshable via Claude Code credential chain).
+    OAuthToken,
+    /// Static API key (no refresh capability).
+    StaticApiKey,
+    /// No credential configured.
+    None,
+}
+
+impl std::fmt::Display for CredentialLabel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::OAuthToken => write!(f, "OAuth token"),
+            Self::StaticApiKey => write!(f, "static API key"),
+            Self::None => write!(f, "no credential"),
+        }
+    }
+}
+
+/// Detect the credential type from a token string.
+pub fn detect_credential_label(token: Option<&str>) -> CredentialLabel {
+    match token {
+        Some(t) if t.starts_with(OAUTH_TOKEN_PREFIX) => CredentialLabel::OAuthToken,
+        Some(_) => CredentialLabel::StaticApiKey,
+        None => CredentialLabel::None,
+    }
+}
+
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub struct ConfigFile {
     pub url: Option<String>,
@@ -51,6 +84,8 @@ pub struct Config {
     pub keybindings: HashMap<String, String>,
     /// Explicit theme override. `None` means auto-detect from terminal.
     pub theme: Option<ThemeMode>,
+    /// Detected credential type for status bar display.
+    pub credential_label: CredentialLabel,
 }
 
 impl std::fmt::Debug for Config {
@@ -92,17 +127,21 @@ impl Config {
             _ => None,
         });
 
+        let resolved_token = cli_token.or(file_config.token);
+        let credential_label = detect_credential_label(resolved_token.as_deref());
+
         Ok(Config {
             url: cli_url
                 .or(file_config.url)
                 .unwrap_or_else(|| DEFAULT_URL.to_string()),
-            token: cli_token.or(file_config.token).map(SecretString::from),
+            token: resolved_token.map(SecretString::from),
             default_agent: cli_agent.or(file_config.default_agent),
             default_session: cli_session.or(file_config.default_session),
             workspace_root,
             bell: file_config.bell.unwrap_or(false),
             keybindings: file_config.keybindings.unwrap_or_default(),
             theme,
+            credential_label,
         })
     }
 
@@ -231,5 +270,44 @@ mod tests {
         // workspace_root may be None (no file) or Some (if tui.toml has workspace_root).
         // The load succeeds either way.
         let _ = config.workspace_root;
+    }
+
+    #[test]
+    fn detect_oauth_token() {
+        assert_eq!(
+            detect_credential_label(Some("sk-ant-oat-abc123")),
+            CredentialLabel::OAuthToken
+        );
+    }
+
+    #[test]
+    fn detect_static_api_key() {
+        assert_eq!(
+            detect_credential_label(Some("sk-ant-api01-abc123")),
+            CredentialLabel::StaticApiKey
+        );
+    }
+
+    #[test]
+    fn detect_no_credential() {
+        assert_eq!(detect_credential_label(None), CredentialLabel::None);
+    }
+
+    #[test]
+    fn config_load_detects_oauth_credential() {
+        let config = Config::load(None, Some("sk-ant-oat-test123".into()), None, None).unwrap();
+        assert_eq!(config.credential_label, CredentialLabel::OAuthToken);
+    }
+
+    #[test]
+    fn config_load_detects_static_credential() {
+        let config = Config::load(None, Some("sk-ant-api01-test".into()), None, None).unwrap();
+        assert_eq!(config.credential_label, CredentialLabel::StaticApiKey);
+    }
+
+    #[test]
+    fn config_load_no_credential() {
+        let config = Config::load(None, None, None, None).unwrap();
+        assert_eq!(config.credential_label, CredentialLabel::None);
     }
 }

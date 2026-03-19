@@ -104,6 +104,14 @@ fn render_info_bar(app: &App, width: u16, theme: &Theme) -> Line<'static> {
         }
     }
 
+    // Optional: credential type indicator.
+    let cred_spans = credential_indicator_spans(app, theme);
+    let cred_w: usize = cred_spans.iter().map(|s| s.content.width()).sum();
+    if cred_w > 0 && used + cred_w + 1 < total {
+        spans.extend(cred_spans);
+        used += cred_w;
+    }
+
     // Optional: tool indicator.
     let tool_spans = tool_indicator_spans(app, theme);
     let tool_w: usize = tool_spans.iter().map(|s| s.content.width()).sum();
@@ -328,6 +336,25 @@ fn scroll_position_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
             ]
         }
         None => Vec::new(),
+    }
+}
+
+fn credential_indicator_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
+    use crate::config::CredentialLabel;
+    match app.config.credential_label {
+        CredentialLabel::OAuthToken => {
+            vec![
+                Span::styled(" │ ", theme.style_dim()),
+                Span::styled("OAuth token", theme.style_muted()),
+            ]
+        }
+        CredentialLabel::StaticApiKey => {
+            vec![
+                Span::styled(" │ ", theme.style_dim()),
+                Span::styled("static API key", theme.style_muted()),
+            ]
+        }
+        CredentialLabel::None => Vec::new(),
     }
 }
 

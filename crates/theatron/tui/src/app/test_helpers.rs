@@ -17,6 +17,7 @@ pub fn test_app() -> App {
         bell: false,
         keybindings: HashMap::new(),
         theme: None,
+        credential_label: crate::config::CredentialLabel::None,
     };
     let client = ApiClient::new(
         &config.url,

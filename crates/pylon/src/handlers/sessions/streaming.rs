@@ -144,7 +144,9 @@ pub async fn send_message(
                 drop(tx);
                 let stream = GuardedStream {
                     inner: ReceiverStream::new(rx).map(sse_event_to_axum),
-                    _guard: AbortOnDrop(tokio::spawn(async {})),
+                    _guard: AbortOnDrop(tokio::spawn(
+                        async {}.instrument(tracing::info_span!("idempotent_noop")),
+                    )),
                 };
                 return Ok(Sse::new(stream).keep_alive(
                     KeepAlive::new()

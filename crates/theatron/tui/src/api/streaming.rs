@@ -37,7 +37,11 @@ pub fn stream_message(
         .json(&body)
         .header("Accept", CONTENT_TYPE_EVENT_STREAM);
 
-    let span = tracing::info_span!("stream_message");
+    let span = tracing::info_span!(
+        "stream_message",
+        nous.id = nous_id,
+        session.key = session_key
+    );
     tokio::spawn(
         async move {
             let resp = match builder.send().await {
