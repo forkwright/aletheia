@@ -172,4 +172,74 @@ mod tests {
         let s: &str = id.as_ref();
         assert_eq!(s, "exec");
     }
+
+    // --- TurnId coverage ---
+
+    #[test]
+    fn turn_id_deref_str() {
+        let id = TurnId::from("7");
+        assert_eq!(&*id, "7", "Deref<Target=str> must expose inner value");
+    }
+
+    #[test]
+    fn turn_id_as_ref_str() {
+        let id = TurnId::from("99");
+        let s: &str = id.as_ref();
+        assert_eq!(s, "99");
+    }
+
+    #[test]
+    fn turn_id_partial_eq_str() {
+        let id = TurnId::from("turn-42");
+        assert!(id == *"turn-42", "TurnId must PartialEq<str>");
+    }
+
+    #[test]
+    fn turn_id_clone_equals_original() {
+        let id = TurnId::from("abc");
+        let clone = id.clone();
+        assert_eq!(id, clone, "clone must equal original");
+    }
+
+    #[test]
+    fn turn_id_into_string() {
+        let id = TurnId::from("5");
+        let s: String = id.into();
+        assert_eq!(s, "5");
+    }
+
+    // --- PlanId coverage ---
+
+    #[test]
+    fn plan_id_deref_str() {
+        let id = PlanId::from("plan-alpha");
+        assert_eq!(
+            &*id, "plan-alpha",
+            "Deref<Target=str> must expose inner value"
+        );
+    }
+
+    #[test]
+    fn plan_id_display() {
+        let id = PlanId::from("plan-1");
+        assert_eq!(id.to_string(), "plan-1");
+    }
+
+    #[test]
+    fn plan_id_partial_eq_str() {
+        let id = PlanId::from("plan-beta");
+        assert!(id == *"plan-beta", "PlanId must PartialEq<str>");
+    }
+
+    #[test]
+    fn plan_id_borrow_hashmap_lookup() {
+        let id = PlanId::from("plan-x");
+        let mut map = std::collections::HashMap::new();
+        map.insert(id, 99u32);
+        assert_eq!(
+            map.get("plan-x"),
+            Some(&99u32),
+            "Borrow<str> must allow &str HashMap lookup"
+        );
+    }
 }

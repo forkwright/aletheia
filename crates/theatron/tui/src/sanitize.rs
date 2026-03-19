@@ -570,4 +570,68 @@ mod tests {
         let input = "\x1bP+q4B\x1b\\visible";
         assert_eq!(sanitize_for_display(input), "visible");
     }
+
+    // --- Additional edge cases ---
+
+    #[test]
+    fn safe_whitespace_only_string_is_borrowed() {
+        // \t, \n, \r do not trigger sanitization — result must be Cow::Borrowed
+        let input = "\thello\nworld\r";
+        let result = sanitize_for_display(input);
+        assert!(
+            matches!(result, Cow::Borrowed(_)),
+            "expected Borrowed for safe whitespace input"
+        );
+        assert_eq!(&*result, input);
+    }
+
+    #[test]
+    fn osc_terminated_by_8bit_st_utf8() {
+        // U+009C (ST) encoded as UTF-8 0xC2 0x9C terminates the OSC
+        let input = "\x1b]0;title\u{009C}visible".to_string();
+        assert_eq!(sanitize_for_display(&input), "visible");
+    }
+
+    #[test]
+    fn esc_charset_star_designation_stripped() {
+        // ESC * <designator>: 3-byte charset designation sequence
+        let input = "\x1b*Btext";
+        assert_eq!(sanitize_for_display(input), "text");
+    }
+
+    #[test]
+    fn esc_charset_plus_designation_stripped() {
+        // ESC + <designator>: 3-byte charset designation sequence
+        let input = "\x1b+0text";
+        assert_eq!(sanitize_for_display(input), "text");
+    }
+
+    #[test]
+    fn csi_with_private_parameter_stripped() {
+        // ESC [ ? 2 5 l: hide cursor (CSI with DEC-private '?' parameter byte)
+        assert_eq!(sanitize_for_display("\x1b[?25ltext"), "text");
+    }
+
+    #[test]
+    fn csi_hide_cursor_does_not_appear_in_output() {
+        // ESC [ ? 2 5 h: show cursor — only "text" should survive
+        let result = sanitize_for_display("before\x1b[?25hafter");
+        assert_eq!(result, "beforeafter", "cursor-show CSI must be stripped");
+    }
+
+    #[test]
+    fn esc_two_byte_equals_sign_stripped() {
+        // ESC = (application keypad mode): 2-byte sequence, '=' is in 0x20..=0x7E
+        assert_eq!(sanitize_for_display("\x1b=text"), "text");
+    }
+
+    #[test]
+    fn double_esc_then_csi_both_stripped() {
+        // First ESC is followed by second ESC (0x1B is not in 0x20..=0x7E and not a
+        // recognised introducer), so the first ESC is dropped and then the second
+        // ESC starts a normal CSI sequence.
+        let input = "\x1b\x1b[0mtext";
+        let result = sanitize_for_display(input);
+        assert_eq!(result, "text", "both ESC and ESC CSI must be stripped");
+    }
 }

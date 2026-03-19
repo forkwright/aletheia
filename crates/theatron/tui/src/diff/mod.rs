@@ -435,4 +435,89 @@ diff --git a/b.rs b/b.rs
             .collect();
         assert!(sbs_text.contains("important.rs"));
     }
+
+    // --- DiffChange variants ---
+
+    #[test]
+    fn diff_change_replace_has_old_and_new() {
+        let change = DiffChange::Replace {
+            old: "before\n".to_string(),
+            new: "after\n".to_string(),
+        };
+        if let DiffChange::Replace { old, new } = change {
+            assert_eq!(old, "before\n", "Replace.old must hold the old text");
+            assert_eq!(new, "after\n", "Replace.new must hold the new text");
+        } else {
+            panic!("expected DiffChange::Replace");
+        }
+    }
+
+    #[test]
+    fn diff_change_variants_are_distinct() {
+        let eq = DiffChange::Equal("x\n".to_string());
+        let ins = DiffChange::Insert("x\n".to_string());
+        let del = DiffChange::Delete("x\n".to_string());
+        assert_ne!(eq, ins, "Equal != Insert");
+        assert_ne!(ins, del, "Insert != Delete");
+        assert_ne!(eq, del, "Equal != Delete");
+    }
+
+    // --- FileDiff / DiffHunk fields ---
+
+    #[test]
+    fn file_diff_path_preserved() {
+        let diff = compute_diff("crates/foo/src/lib.rs", "a\n", "b\n");
+        assert_eq!(
+            diff.path, "crates/foo/src/lib.rs",
+            "FileDiff must record file path"
+        );
+    }
+
+    #[test]
+    fn diff_hunk_line_numbers_are_one_indexed() {
+        // unified diff spec: hunk line numbers are 1-indexed
+        let diff = compute_diff("test.rs", "line1\nline2\n", "line1\nchanged\n");
+        assert!(!diff.hunks.is_empty(), "expected at least one hunk");
+        let hunk = &diff.hunks[0];
+        assert!(hunk.old_start >= 1, "old_start must be >= 1");
+        assert!(hunk.new_start >= 1, "new_start must be >= 1");
+    }
+
+    // --- DiffViewState additional ---
+
+    #[test]
+    fn diff_view_state_initial_mode_is_unified() {
+        let state = DiffViewState::new(vec![]);
+        assert_eq!(
+            state.mode,
+            DiffMode::Unified,
+            "initial mode must be Unified"
+        );
+    }
+
+    #[test]
+    fn diff_view_state_is_empty_when_all_hunks_empty() {
+        let diff = FileDiff {
+            path: "empty.rs".to_string(),
+            hunks: vec![],
+        };
+        let state = DiffViewState::new(vec![diff]);
+        assert!(
+            state.is_empty(),
+            "state with file but no hunks must be empty"
+        );
+    }
+
+    #[test]
+    fn diff_view_state_cycle_mode_resets_scroll() {
+        let mut state = DiffViewState::new(vec![]);
+        state.total_lines = 100;
+        state.scroll_down(20);
+        assert_eq!(state.scroll_offset, 20);
+        state.cycle_mode();
+        assert_eq!(
+            state.scroll_offset, 0,
+            "cycle_mode must reset scroll to zero"
+        );
+    }
 }
