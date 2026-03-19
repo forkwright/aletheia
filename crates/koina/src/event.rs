@@ -1,7 +1,7 @@
 //! Internal event system coupling metrics and structured logs.
 //!
 //! Inspired by Vector's internal event topology: pipeline stages emit typed
-//! events via a single [`emit()`] call that simultaneously produces a metric
+//! events via a single `emit()` call that simultaneously produces a metric
 //! increment and a structured log line. No double-instrumentation at call sites.
 //!
 //! # Usage
