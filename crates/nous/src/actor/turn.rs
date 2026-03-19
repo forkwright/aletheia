@@ -260,6 +260,7 @@ impl NousActor {
                             session_store.as_deref(),
                             extra_bootstrap,
                             Some(stx),
+                            None,
                         )
                         .await
                     }
@@ -277,6 +278,7 @@ impl NousActor {
                             text_search_ref,
                             session_store.as_deref(),
                             extra_bootstrap,
+                            None,
                             None,
                         )
                         .await
@@ -431,6 +433,7 @@ impl NousActor {
             text_search_ref,
             self.stores.session_store.as_deref(),
             extra_bootstrap,
+            None,
             None,
         )
         .await
