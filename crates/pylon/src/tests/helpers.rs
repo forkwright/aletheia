@@ -26,7 +26,10 @@ pub(super) use crate::state::AppState;
 /// POST/PUT/DELETE requests don't require the CSRF header in tests.
 pub(super) fn test_security_config() -> SecurityConfig {
     SecurityConfig {
-        csrf_enabled: false,
+        csrf: crate::security::CsrfConfig {
+            enabled: false,
+            ..crate::security::CsrfConfig::default()
+        },
         ..SecurityConfig::default()
     }
 }

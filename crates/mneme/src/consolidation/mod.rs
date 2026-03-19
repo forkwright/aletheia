@@ -55,6 +55,7 @@ impl Default for ConsolidationConfig {
     missing_docs,
     reason = "snafu error variant fields (message, source, location, elapsed_hours, min_hours) are self-documenting via display format"
 )]
+#[non_exhaustive]
 pub enum ConsolidationError {
     /// The LLM consolidation call failed.
     #[snafu(display("consolidation LLM call failed: {message}"))]

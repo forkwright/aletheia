@@ -546,6 +546,9 @@ fn run_llm_consolidation(
                 content: entry.content,
                 confidence: 0.95,
                 tier: "inferred".to_owned(),
+                // WHY: each ConsolidatedFact owns its source IDs, and we also
+                // need the same IDs for all_superseded after the loop; Arc<[FactId]>
+                // would eliminate this but ConsolidatedFact is part of the public API.
                 source_fact_ids: batch_fact_ids.clone(),
             });
         }

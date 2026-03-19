@@ -8,6 +8,7 @@ use snafu::prelude::*;
 /// - `Auth`: a 401/403 from the gateway
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
+#[non_exhaustive]
 pub enum ApiError {
     /// HTTP transport or connection error (no response received).
     #[snafu(display("{operation}: {source}"))]

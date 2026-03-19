@@ -1,4 +1,4 @@
-#![expect(clippy::unwrap_used, reason = "test assertions")]
+#![expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use aletheia_mneme::embedding::MockEmbeddingProvider;

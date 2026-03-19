@@ -4,6 +4,7 @@ use crate::msg::MessageActionKind;
 use super::settings::SettingsOverlay;
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum Overlay {
     Help,
     AgentPicker {
@@ -53,6 +54,7 @@ pub struct SearchResult {
 }
 
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum SearchResultKind {
     SessionName,
     MessageContent { role: String },

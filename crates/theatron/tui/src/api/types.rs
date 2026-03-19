@@ -130,6 +130,7 @@ pub struct Plan {
 }
 
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum SseEvent {
     Connected,
     Disconnected,
