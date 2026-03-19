@@ -206,6 +206,7 @@ name = "aletheia-koina"
 version = "0.12.0"
 dependencies = [
  "compact_str",
+ "jiff",
  "regex",
  "rustix 1.1.4",
  "serde",

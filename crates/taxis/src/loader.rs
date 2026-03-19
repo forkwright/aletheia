@@ -9,6 +9,7 @@ use snafu::ResultExt;
 use tracing::{error, warn};
 
 use aletheia_koina::disk_space::{DiskSpaceMonitor, DiskStatus};
+use aletheia_koina::system::{FileSystem, RealSystem};
 
 use crate::config::AletheiaConfig;
 use crate::encrypt;
@@ -26,6 +27,9 @@ use crate::oikos::Oikos;
 /// master key from `~/.config/aletheia/master.key`. If the key is missing,
 /// encrypted values pass through unchanged with a warning.
 ///
+/// Call [`load_config_with`] to supply a custom [`FileSystem`] implementation
+/// (e.g. [`aletheia_koina::system::TestSystem`] in tests).
+///
 /// # Errors
 ///
 /// Returns [`crate::error::Error::Figment`] if the configuration cascade produces an invalid or
@@ -35,20 +39,39 @@ use crate::oikos::Oikos;
     reason = "figment::Error is inherently large"
 )]
 pub fn load_config(oikos: &Oikos) -> Result<AletheiaConfig> {
+    load_config_with(oikos, &RealSystem)
+}
+
+/// Load configuration using the provided [`FileSystem`] for file access.
+///
+/// This is the primary implementation; [`load_config`] is a convenience
+/// wrapper that passes [`RealSystem`]. Prefer this variant in tests so that
+/// TOML files can be supplied in-memory without touching the real disk.
+///
+/// # Errors
+///
+/// Returns [`crate::error::Error::ReadConfig`] if the TOML file cannot be read.
+/// Returns [`crate::error::Error::Figment`] if the configuration cascade fails.
+#[expect(
+    clippy::result_large_err,
+    reason = "figment::Error is inherently large"
+)]
+pub fn load_config_with(oikos: &Oikos, fs: &impl FileSystem) -> Result<AletheiaConfig> {
     let toml_path = oikos.config().join("aletheia.toml");
     let yaml_path = oikos.config().join("aletheia.yaml");
 
     let mut figment = Figment::new().merge(Serialized::defaults(AletheiaConfig::default()));
 
-    if toml_path.exists() {
-        let toml_content =
-            std::fs::read_to_string(&toml_path).context(crate::error::ReadConfigSnafu {
+    if fs.exists(&toml_path) {
+        let bytes = fs
+            .read_file(&toml_path)
+            .context(crate::error::ReadConfigSnafu {
                 path: toml_path.clone(),
             })?;
-
+        let toml_content = String::from_utf8_lossy(&bytes);
         let decrypted_content = decrypt_toml_content(&toml_content);
         figment = figment.merge(Toml::string(&decrypted_content));
-    } else if yaml_path.exists() {
+    } else if fs.exists(&yaml_path) {
         warn!(
             "Found aletheia.yaml but not aletheia.toml -- run migration or rename. \
              See docs/CONFIGURATION.md."
@@ -261,6 +284,59 @@ mod tests {
 
             assert_eq!(loaded.gateway.port, 9876);
             assert_eq!(loaded.agents.defaults.context_tokens, 200_000);
+            Ok(())
+        });
+    }
+
+    // ── load_config_with (FileSystem trait) ──────────────────────────────
+
+    #[test]
+    fn load_config_with_uses_in_memory_toml() {
+        figment::Jail::expect_with(|jail| {
+            use aletheia_koina::system::TestSystem;
+
+            let oikos = Oikos::from_root(jail.directory());
+            let toml_path = oikos.config().join("aletheia.toml");
+
+            let mut fs = TestSystem::new();
+            fs.add_file(toml_path, b"[gateway]\nport = 4242\n");
+
+            let config = load_config_with(&oikos, &fs).map_err(|e| e.to_string())?;
+            assert_eq!(config.gateway.port, 4242);
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn load_config_with_uses_defaults_when_no_toml() {
+        figment::Jail::expect_with(|_jail| {
+            use aletheia_koina::system::TestSystem;
+
+            let oikos = Oikos::from_root("/nonexistent");
+            let fs = TestSystem::new(); // empty — no files
+
+            let config = load_config_with(&oikos, &fs).map_err(|e| e.to_string())?;
+            assert_eq!(config.gateway.port, 18789);
+            assert_eq!(config.agents.defaults.context_tokens, 200_000);
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn load_config_with_merges_env_over_toml() {
+        figment::Jail::expect_with(|jail| {
+            use aletheia_koina::system::TestSystem;
+
+            jail.set_env("ALETHEIA_GATEWAY__PORT", "5555");
+
+            let oikos = Oikos::from_root(jail.directory());
+            let toml_path = oikos.config().join("aletheia.toml");
+
+            let mut fs = TestSystem::new();
+            fs.add_file(toml_path, b"[gateway]\nport = 1111\n");
+
+            let config = load_config_with(&oikos, &fs).map_err(|e| e.to_string())?;
+            assert_eq!(config.gateway.port, 5555);
             Ok(())
         });
     }

@@ -13,6 +13,8 @@ use std::path::PathBuf;
 
 use tracing::debug;
 
+use aletheia_koina::system::{FileSystem, RealSystem};
+
 use crate::oikos::Oikos;
 
 /// Which tier a resolved file came from.
@@ -53,6 +55,9 @@ pub struct CascadeEntry {
 /// When a filename exists in multiple tiers, only the most-specific version
 /// is returned (nous > shared > theke).
 ///
+/// Call [`discover_with`] to supply a custom [`FileSystem`] implementation
+/// (e.g. [`aletheia_koina::system::TestSystem`] in tests).
+///
 /// # Arguments
 /// * `oikos`: The oikos instance for path resolution
 /// * `nous_id`: Agent ID for tier-1 resolution
@@ -60,6 +65,29 @@ pub struct CascadeEntry {
 /// * `ext`: Optional extension filter (e.g. "md", "yaml"). Without the dot.
 #[must_use]
 pub fn discover(
+    oikos: &Oikos,
+    nous_id: &str,
+    subdir: &str,
+    ext: Option<&str>,
+) -> Vec<CascadeEntry> {
+    discover_with(&RealSystem, oikos, nous_id, subdir, ext)
+}
+
+/// Walk the three-tier cascade using the provided [`FileSystem`].
+///
+/// This is the primary implementation; [`discover`] is a convenience wrapper
+/// that passes [`RealSystem`]. Prefer this variant in tests so that virtual
+/// tier directories can be populated in-memory.
+///
+/// # Arguments
+/// * `fs`: Filesystem implementation to use for listing and querying files
+/// * `oikos`: The oikos instance for path resolution
+/// * `nous_id`: Agent ID for tier-1 resolution
+/// * `subdir`: Subdirectory name (e.g. "tools", "hooks", "templates")
+/// * `ext`: Optional extension filter (e.g. "md", "yaml"). Without the dot.
+#[must_use]
+pub fn discover_with(
+    fs: &impl FileSystem,
     oikos: &Oikos,
     nous_id: &str,
     subdir: &str,
@@ -74,14 +102,12 @@ pub fn discover(
     let mut seen: HashMap<String, CascadeEntry> = HashMap::new();
 
     for (tier, dir) in &tiers {
-        let Ok(entries) = std::fs::read_dir(dir) else {
+        let Ok(entries) = fs.list_dir(dir) else {
             continue;
         };
 
-        for entry in entries.flatten() {
-            let path = entry.path();
-
-            if !path.is_file() {
+        for path in entries {
+            if !fs.is_file(&path) {
                 continue;
             }
             let name = match path.file_name().and_then(OsStr::to_str) {
@@ -129,8 +155,23 @@ pub fn discover(
 /// Resolve a single named file through the cascade.
 ///
 /// Returns the most-specific path, or `None` if not found in any tier.
+/// Call [`resolve_with`] to supply a custom [`FileSystem`].
 #[must_use]
 pub fn resolve(
+    oikos: &Oikos,
+    nous_id: &str,
+    filename: &str,
+    subdir: Option<&str>,
+) -> Option<PathBuf> {
+    resolve_with(&RealSystem, oikos, nous_id, filename, subdir)
+}
+
+/// Resolve a single named file using the provided [`FileSystem`].
+///
+/// Returns the most-specific path (nous > shared > theke), or `None`.
+#[must_use]
+pub fn resolve_with(
+    fs: &impl FileSystem,
     oikos: &Oikos,
     nous_id: &str,
     filename: &str,
@@ -151,7 +192,7 @@ pub fn resolve(
     };
 
     for candidate in candidates {
-        if candidate.exists() {
+        if fs.exists(&candidate) {
             debug!(?candidate, filename, "cascade resolved");
             return Some(candidate);
         }
@@ -163,9 +204,24 @@ pub fn resolve(
 /// Resolve all instances of a named file across all tiers.
 ///
 /// Returns matches ordered most-specific first. Useful for config deep-merge
-/// where all tiers contribute.
+/// where all tiers contribute. Call [`resolve_all_with`] to supply a custom
+/// [`FileSystem`].
 #[must_use]
 pub fn resolve_all(
+    oikos: &Oikos,
+    nous_id: &str,
+    filename: &str,
+    subdir: Option<&str>,
+) -> Vec<CascadeEntry> {
+    resolve_all_with(&RealSystem, oikos, nous_id, filename, subdir)
+}
+
+/// Resolve all instances of a named file using the provided [`FileSystem`].
+///
+/// Returns matches ordered most-specific first (nous > shared > theke).
+#[must_use]
+pub fn resolve_all_with(
+    fs: &impl FileSystem,
     oikos: &Oikos,
     nous_id: &str,
     filename: &str,
@@ -187,7 +243,7 @@ pub fn resolve_all(
 
     tiers
         .into_iter()
-        .filter(|(_, path)| path.exists())
+        .filter(|(_, path)| fs.exists(path))
         .map(|(tier, path)| CascadeEntry {
             path,
             tier,
@@ -404,6 +460,140 @@ mod tests {
     fn resolve_all_empty_when_no_match() {
         let (_dir, oikos) = setup_oikos();
         let results = resolve_all(&oikos, "syn", "nonexistent.md", None);
+        assert!(results.is_empty());
+    }
+
+    // ── *_with variants (FileSystem trait) ───────────────────────────────
+
+    fn in_memory_oikos() -> Oikos {
+        Oikos::from_root("/instance")
+    }
+
+    #[test]
+    fn discover_with_finds_files_across_tiers() {
+        use aletheia_koina::system::TestSystem;
+
+        let mut fs = TestSystem::new();
+        fs.add_file("/instance/nous/syn/tools/agent.md", b"a");
+        fs.add_file("/instance/shared/tools/shared.md", b"b");
+        fs.add_file("/instance/theke/tools/theke.md", b"c");
+
+        let oikos = in_memory_oikos();
+        let results = discover_with(&fs, &oikos, "syn", "tools", Some("md"));
+        assert_eq!(results.len(), 3);
+
+        let names: Vec<&str> = results.iter().map(|r| r.name.as_str()).collect();
+        assert!(names.contains(&"agent.md"));
+        assert!(names.contains(&"shared.md"));
+        assert!(names.contains(&"theke.md"));
+    }
+
+    #[test]
+    fn discover_with_most_specific_wins() {
+        use aletheia_koina::system::TestSystem;
+
+        let mut fs = TestSystem::new();
+        fs.add_file("/instance/nous/syn/tools/common.md", b"nous");
+        fs.add_file("/instance/shared/tools/common.md", b"shared");
+
+        let oikos = in_memory_oikos();
+        let results = discover_with(&fs, &oikos, "syn", "tools", Some("md"));
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].tier, Tier::Nous);
+    }
+
+    #[test]
+    fn discover_with_skips_hidden_files() {
+        use aletheia_koina::system::TestSystem;
+
+        let mut fs = TestSystem::new();
+        fs.add_file("/instance/shared/tools/.hidden.md", b"hidden");
+        fs.add_file("/instance/shared/tools/visible.md", b"visible");
+
+        let oikos = in_memory_oikos();
+        let results = discover_with(&fs, &oikos, "syn", "tools", Some("md"));
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name, "visible.md");
+    }
+
+    #[test]
+    fn discover_with_filters_by_extension() {
+        use aletheia_koina::system::TestSystem;
+
+        let mut fs = TestSystem::new();
+        fs.add_file("/instance/shared/tools/tool.md", b"md");
+        fs.add_file("/instance/shared/tools/tool.yaml", b"yaml");
+
+        let oikos = in_memory_oikos();
+        let md = discover_with(&fs, &oikos, "syn", "tools", Some("md"));
+        let yaml = discover_with(&fs, &oikos, "syn", "tools", Some("yaml"));
+        assert_eq!(md.len(), 1);
+        assert_eq!(md[0].name, "tool.md");
+        assert_eq!(yaml.len(), 1);
+        assert_eq!(yaml[0].name, "tool.yaml");
+    }
+
+    #[test]
+    fn resolve_with_returns_most_specific() {
+        use aletheia_koina::system::TestSystem;
+
+        let mut fs = TestSystem::new();
+        fs.add_file("/instance/nous/syn/USER.md", b"nous");
+        fs.add_file("/instance/theke/USER.md", b"theke");
+
+        let oikos = in_memory_oikos();
+        let found = resolve_with(&fs, &oikos, "syn", "USER.md", None);
+        assert!(found.is_some());
+        let path = found.unwrap();
+        assert!(path.to_string_lossy().contains("nous/syn"));
+    }
+
+    #[test]
+    fn resolve_with_falls_back_to_theke() {
+        use aletheia_koina::system::TestSystem;
+
+        let mut fs = TestSystem::new();
+        fs.add_file("/instance/theke/SYSTEM.md", b"theke");
+
+        let oikos = in_memory_oikos();
+        let found = resolve_with(&fs, &oikos, "syn", "SYSTEM.md", None);
+        assert!(found.is_some());
+        assert!(found.unwrap().to_string_lossy().contains("theke"));
+    }
+
+    #[test]
+    fn resolve_with_returns_none_when_absent() {
+        use aletheia_koina::system::TestSystem;
+
+        let fs = TestSystem::new();
+        let oikos = in_memory_oikos();
+        assert!(resolve_with(&fs, &oikos, "syn", "MISSING.md", None).is_none());
+    }
+
+    #[test]
+    fn resolve_all_with_returns_all_tiers() {
+        use aletheia_koina::system::TestSystem;
+
+        let mut fs = TestSystem::new();
+        fs.add_file("/instance/nous/syn/config.toml", b"nous");
+        fs.add_file("/instance/shared/config.toml", b"shared");
+        fs.add_file("/instance/theke/config.toml", b"theke");
+
+        let oikos = in_memory_oikos();
+        let results = resolve_all_with(&fs, &oikos, "syn", "config.toml", None);
+        assert_eq!(results.len(), 3);
+        assert_eq!(results[0].tier, Tier::Nous);
+        assert_eq!(results[1].tier, Tier::Shared);
+        assert_eq!(results[2].tier, Tier::Theke);
+    }
+
+    #[test]
+    fn resolve_all_with_empty_when_no_match() {
+        use aletheia_koina::system::TestSystem;
+
+        let fs = TestSystem::new();
+        let oikos = in_memory_oikos();
+        let results = resolve_all_with(&fs, &oikos, "syn", "none.md", None);
         assert!(results.is_empty());
     }
 }
