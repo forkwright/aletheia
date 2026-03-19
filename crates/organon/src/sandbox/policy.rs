@@ -96,10 +96,6 @@ impl SandboxPolicy {
         // WHY: AF_INET=2, AF_INET6=10 on Linux. Blocking socket() for
         // these families prevents all IPv4/IPv6 socket creation. Programs
         // get EPERM immediately instead of hanging on connect().
-        #[expect(
-            clippy::as_conversions,
-            reason = "AF_INET is i32; seccomp API requires u64"
-        )]
         let block_inet = SeccompCondition::new(
             0,
             SeccompCmpArgLen::Dword,
@@ -108,10 +104,6 @@ impl SandboxPolicy {
         )
         .map_err(|e| std::io::Error::other(format!("seccomp condition failed: {e}")))?;
 
-        #[expect(
-            clippy::as_conversions,
-            reason = "AF_INET6 is i32; seccomp API requires u64"
-        )]
         let block_inet6 = SeccompCondition::new(
             0,
             SeccompCmpArgLen::Dword,
@@ -134,10 +126,6 @@ impl SandboxPolicy {
         let filter = SeccompFilter::new(
             rules,
             SeccompAction::Allow,
-            #[expect(
-                clippy::as_conversions,
-                reason = "EPERM is i32; seccomp API requires u32"
-            )]
             SeccompAction::Errno(1u32 /* EPERM */),
             arch,
         )
@@ -279,10 +267,6 @@ impl SandboxPolicy {
         let action = if self.enforcement == SandboxEnforcement::Permissive {
             SeccompAction::Log
         } else {
-            #[expect(
-                clippy::as_conversions,
-                reason = "EPERM is i32; seccomp API requires u32"
-            )]
             SeccompAction::Errno(1u32 /* EPERM */)
         };
 
@@ -350,7 +334,7 @@ pub fn probe_landlock_abi() -> Option<i32> {
     // EOPNOTSUPP (supported but not enabled) or ENOSYS (not compiled in).
     // This mirrors the documented ABI probe pattern from the Landlock kernel docs
     // and the same approach used internally by the landlock crate.
-    const LANDLOCK_CREATE_RULESET_VERSION: u32 = 1;
+    const LANDLOCK_CREATE_RULESET_VERSION: usize = 1;
     // SAFETY: landlock_create_ruleset is a stable Linux syscall (kernel 5.13+).
     // Passing a null pointer and size 0 with the VERSION flag is the documented
     // ABI probe pattern. The kernel does not dereference the pointer for this call.
@@ -363,7 +347,7 @@ pub fn probe_landlock_abi() -> Option<i32> {
             inlateout("rax") 444isize => r, // SYS_landlock_create_ruleset
             in("rdi") 0usize,               // null ruleset
             in("rsi") 0usize,               // size 0
-            in("rdx") LANDLOCK_CREATE_RULESET_VERSION as usize,
+            in("rdx") LANDLOCK_CREATE_RULESET_VERSION,
             lateout("rcx") _,
             lateout("r11") _,
         );
@@ -373,6 +357,11 @@ pub fn probe_landlock_abi() -> Option<i32> {
         }
         r
     };
+    #[expect(
+        clippy::as_conversions,
+        clippy::cast_possible_truncation,
+        reason = "Landlock ABI version is a small positive integer (≤5); truncation is impossible"
+    )]
     if ret >= 1 { Some(ret as i32) } else { None }
 }
 

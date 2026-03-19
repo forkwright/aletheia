@@ -7,12 +7,12 @@
 //!
 //! Three orthogonal traits cover the most common system interactions:
 //!
-//! - [`FileSystem`] — read, write, query, and enumerate files and directories.
-//! - [`Clock`] — obtain the current time and measure elapsed duration.
-//! - [`Environment`] — read process environment variables and the working directory.
+//! - [`FileSystem`](crate::system::FileSystem) — read, write, query, and enumerate files and directories.
+//! - [`Clock`](crate::system::Clock) — obtain the current time and measure elapsed duration.
+//! - [`Environment`](crate::system::Environment) — read process environment variables and the working directory.
 //!
-//! [`RealSystem`] implements all three using the standard library and OS syscalls.
-//! [`TestSystem`] implements all three in memory, giving tests full deterministic
+//! [`RealSystem`](crate::system::RealSystem) implements all three using the standard library and OS syscalls.
+//! [`TestSystem`](crate::system::TestSystem) implements all three in memory, giving tests full deterministic
 //! control over every interaction.
 //!
 //! ## Usage
@@ -63,7 +63,7 @@ pub trait FileSystem: Send + Sync {
     /// Write `contents` to `path`, creating or truncating the file.
     ///
     /// Parent directories are **not** created automatically. Call
-    /// [`create_dir`] first when the directory may be absent.
+    /// [`FileSystem::create_dir`] first when the directory may be absent.
     ///
     /// # Errors
     ///
@@ -290,10 +290,9 @@ impl TestSystem {
     /// Pre-populate a virtual file with `contents`.
     ///
     /// Parent directories are automatically registered so that [`exists`] and
-    /// [`list_dir`] work without calling [`create_dir`] first.
+    /// [`list_dir`](FileSystem::list_dir) work without calling [`create_dir`](FileSystem::create_dir) first.
     ///
     /// [`exists`]: FileSystem::exists
-    /// [`list_dir`]: FileSystem::list_dir
     pub fn add_file(&mut self, path: impl Into<PathBuf>, contents: impl Into<Vec<u8>>) {
         let path = path.into();
         self.register_ancestors(&path);
