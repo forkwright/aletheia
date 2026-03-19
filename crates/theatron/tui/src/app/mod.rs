@@ -55,6 +55,8 @@ pub struct DashboardState {
     pub daily_cost_cents: u32,
     pub session_cost_cents: u32,
     pub context_usage_pct: Option<u8>,
+    /// Last-active session per agent, loaded from disk on startup and saved on exit.
+    pub(crate) saved_sessions: HashMap<NousId, SessionId>,
 }
 
 /// SSE link, stream receiver, and reconnect bookkeeping.
@@ -155,6 +157,7 @@ impl App {
         tracing::info!(depth = ?theme.depth, mode = ?theme.mode, "theme initialized");
 
         let command_history = load_command_history(&config);
+        let saved_sessions = load_session_state(&config);
         let keymap = KeyMap::build(&config.keybindings);
         let bell_enabled = config.bell;
 
@@ -172,6 +175,7 @@ impl App {
                 daily_cost_cents: 0,
                 session_cost_cents: 0,
                 context_usage_pct: None,
+                saved_sessions,
             },
             connection: ConnectionState {
                 sse: None,
@@ -383,8 +387,15 @@ impl App {
             None => return,
         };
 
+        // WHY: Prefer the session the user last had open for this agent so that the TUI
+        // resumes exactly where they left off after a restart.  Fall back to the most
+        // recently updated session when no saved state exists, or when the saved session
+        // is no longer in the agent's session list (e.g. it was deleted server-side).
+        let saved_id = self.dashboard.saved_sessions.get(&agent_id).cloned();
         let session = if let Some(ref key) = self.config.default_session {
             agent.sessions.iter().find(|s| s.key == *key)
+        } else if let Some(ref sid) = saved_id {
+            agent.sessions.iter().find(|s| s.id == *sid)
         } else {
             agent
                 .sessions
@@ -410,6 +421,10 @@ impl App {
         if let Some(session) = session {
             let session_id = session.id.clone();
             self.dashboard.focused_session_id = Some(session_id.clone());
+            // Track the last-used session for this agent so we can restore it on relaunch.
+            self.dashboard
+                .saved_sessions
+                .insert(agent_id.clone(), session_id.clone());
 
             match self.client.history(&session_id).await {
                 Ok(history) => {
@@ -651,6 +666,54 @@ pub(crate) fn save_command_history(config: &Config, history: &[String]) {
         let _ = std::fs::create_dir_all(parent);
     }
     let content: String = history.iter().map(|s| format!("{s}\n")).collect();
+    let _ = std::fs::write(&path, content);
+}
+
+fn session_state_file_path(config: &Config) -> Option<std::path::PathBuf> {
+    config
+        .workspace_root
+        .as_ref()
+        .map(|root| root.join("state").join("tui_sessions"))
+}
+
+/// Load the per-agent last-active session map from disk.
+///
+/// Format: one entry per line, `<agent_id>:<session_id>`.
+/// Malformed or empty lines are silently skipped.
+fn load_session_state(config: &Config) -> HashMap<NousId, SessionId> {
+    let path = match session_state_file_path(config) {
+        Some(p) => p,
+        None => return HashMap::new(),
+    };
+    let contents = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return HashMap::new(),
+    };
+    contents
+        .lines()
+        .filter_map(|line| {
+            let (agent, session) = line.split_once(':')?;
+            if agent.is_empty() || session.is_empty() {
+                return None;
+            }
+            Some((NousId::from(agent), SessionId::from(session)))
+        })
+        .collect()
+}
+
+/// Persist the per-agent last-active session map to disk.
+pub(crate) fn save_session_state(config: &Config, sessions: &HashMap<NousId, SessionId>) {
+    let path = match session_state_file_path(config) {
+        Some(p) => p,
+        None => return,
+    };
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let content: String = sessions
+        .iter()
+        .map(|(agent, session)| format!("{agent}:{session}\n"))
+        .collect();
     let _ = std::fs::write(&path, content);
 }
 

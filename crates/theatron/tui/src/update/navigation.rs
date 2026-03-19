@@ -69,6 +69,13 @@ pub(crate) async fn handle_focus_agent(app: &mut App, id: NousId) {
         agent.unread_count = 0;
     }
     app.dashboard.focused_agent = Some(id);
+    // WHY: Clear streaming state from the previous agent so it does not bleed into the
+    // newly focused agent's chat view.  The markdown cache must also be cleared so a
+    // stale rendered frame from the old agent is not reused.
+    app.connection.streaming_text.clear();
+    app.connection.streaming_thinking.clear();
+    app.connection.streaming_tool_calls.clear();
+    app.viewport.render.markdown_cache.clear();
     app.load_focused_session().await;
     app.restore_scroll_state();
 }
@@ -412,6 +419,39 @@ mod tests {
         handle_resize(&mut app, 120, 40);
         assert!(!app.viewport.render.auto_scroll);
         assert_eq!(app.viewport.render.scroll_offset, 5);
+    }
+
+    #[tokio::test]
+    async fn focus_agent_clears_streaming_state() {
+        let mut app = test_app();
+        app.dashboard.agents.push(test_agent("alpha", "Alpha"));
+        app.dashboard.agents.push(test_agent("beta", "Beta"));
+        app.dashboard.focused_agent = Some("alpha".into());
+        // Simulate streaming state left over from the previous agent.
+        app.connection.streaming_text = "old response".to_string();
+        app.connection.streaming_thinking = "old thinking".to_string();
+        app.connection
+            .streaming_tool_calls
+            .push(crate::state::ToolCallInfo {
+                name: "read_file".to_string(),
+                duration_ms: None,
+                is_error: false,
+            });
+
+        handle_focus_agent(&mut app, "beta".into()).await;
+
+        assert!(
+            app.connection.streaming_text.is_empty(),
+            "streaming_text must be cleared on agent switch"
+        );
+        assert!(
+            app.connection.streaming_thinking.is_empty(),
+            "streaming_thinking must be cleared on agent switch"
+        );
+        assert!(
+            app.connection.streaming_tool_calls.is_empty(),
+            "streaming_tool_calls must be cleared on agent switch"
+        );
     }
 
     #[tokio::test]

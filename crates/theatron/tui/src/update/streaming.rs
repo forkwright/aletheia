@@ -174,18 +174,28 @@ pub(crate) fn handle_stream_plan_proposed(app: &mut App, plan: Plan) {
 // SAFETY: sanitized at ingestion: streaming_text already sanitized via handle_stream_text_delta,
 // model name from API is sanitized here.
 pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutcome) {
-    if !app.connection.streaming_text.is_empty() {
+    // WHY: Only commit the streamed message when the completing turn belongs to the
+    // currently focused agent.  If the user switched agents mid-stream the message
+    // belongs to the old agent's session; pushing it here would corrupt the new
+    // agent's in-memory message buffer.  The server has already persisted the
+    // message, so it will appear when the user navigates back via load_focused_session.
+    let belongs_to_focused = app
+        .dashboard
+        .focused_agent
+        .as_ref()
+        .is_some_and(|id| *id == outcome.nous_id);
+
+    if belongs_to_focused && !app.connection.streaming_text.is_empty() {
         let text = app.connection.streaming_text.clone();
         let text_lower = text.to_lowercase();
         let tool_calls = std::mem::take(&mut app.connection.streaming_tool_calls);
-        let has_tools = !tool_calls.is_empty();
         let width = app
             .viewport
             .render
             .virtual_scroll
             .cached_width()
             .max(app.viewport.terminal_width.saturating_sub(2).max(1));
-        let h = estimate_message_height(text.len(), has_tools, width);
+        let h = estimate_message_height(text.len(), width);
         app.dashboard.messages.push(ChatMessage {
             role: "assistant".to_string(),
             text,
@@ -574,6 +584,8 @@ mod tests {
     #[tokio::test]
     async fn turn_complete_auto_scroll_stays_at_bottom() {
         let mut app = test_app();
+        app.dashboard.agents.push(test_agent("syn", "Syn"));
+        app.dashboard.focused_agent = Some("syn".into());
         app.viewport.render.auto_scroll = true;
         app.viewport.render.scroll_offset = 0;
         app.connection.streaming_text = "hello world".to_string();
@@ -585,6 +597,8 @@ mod tests {
     #[tokio::test]
     async fn turn_complete_scroll_lock_preserves_offset() {
         let mut app = test_app();
+        app.dashboard.agents.push(test_agent("syn", "Syn"));
+        app.dashboard.focused_agent = Some("syn".into());
         app.viewport.render.auto_scroll = false;
         app.viewport.render.scroll_offset = 30;
         app.rebuild_virtual_scroll();
@@ -602,11 +616,39 @@ mod tests {
     #[tokio::test]
     async fn turn_complete_no_text_does_not_change_scroll() {
         let mut app = test_app();
+        app.dashboard.agents.push(test_agent("syn", "Syn"));
+        app.dashboard.focused_agent = Some("syn".into());
         app.viewport.render.auto_scroll = false;
         app.viewport.render.scroll_offset = 10;
         // streaming_text is empty: no message is committed, offset unchanged
         handle_stream_turn_complete(&mut app, make_outcome()).await;
         assert_eq!(app.viewport.render.scroll_offset, 10);
         assert!(!app.viewport.render.auto_scroll);
+    }
+
+    #[tokio::test]
+    async fn turn_complete_cross_agent_does_not_pollute_focused_agent() {
+        // WHY: If the user switches agents while a turn is streaming, the completing
+        // turn belongs to the old agent.  Its message must not be pushed to the new
+        // focused agent's message buffer.
+        let mut app = test_app();
+        app.dashboard.agents.push(test_agent("alpha", "Alpha"));
+        app.dashboard.agents.push(test_agent("beta", "Beta"));
+        // User has switched to "beta", but the completing outcome is for "alpha".
+        app.dashboard.focused_agent = Some("beta".into());
+        app.connection.streaming_text = "alpha's response".to_string();
+        let mut outcome = make_outcome();
+        outcome.nous_id = "alpha".into();
+
+        handle_stream_turn_complete(&mut app, outcome).await;
+
+        // Message must NOT appear in the (now-beta-focused) buffer.
+        assert!(
+            app.dashboard.messages.is_empty(),
+            "cross-agent turn completion must not push to focused agent's buffer"
+        );
+        // Streaming state must still be cleared.
+        assert!(app.connection.streaming_text.is_empty());
+        assert!(app.connection.active_turn_id.is_none());
     }
 }

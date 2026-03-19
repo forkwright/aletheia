@@ -4,14 +4,12 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
-use crate::app::{App, ToolCallInfo};
+use crate::app::App;
 use crate::hyperlink::{self, OscLink};
 use crate::markdown;
 use crate::state::FilterScope;
 use crate::theme::{self, Theme};
 use crate::view::image;
-
-const MS_PER_SECOND: u64 = 1000;
 
 struct MessageCtx<'a> {
     inner_width: usize,
@@ -150,11 +148,21 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) -> Vec<Os
         .sum();
     let vh = usize::from(visible_height);
 
+    // WHY: When the virtual scroll cache is stale (width mismatch or item count mismatch),
+    // render_virtual_messages falls back to rendering ALL messages.  In that case the
+    // virtual-scroll `line_offset` is meaningless — it was computed for a partial slice
+    // that was never rendered.  Detect the same stale condition here and use the same
+    // total-minus-offset formula that the filter path uses.
+    let needs_fallback = !filter_active
+        && (app.viewport.render.virtual_scroll.len() != app.dashboard.messages.len()
+            || (app.viewport.render.virtual_scroll.cached_width() != wrap_width
+                && !app.dashboard.messages.is_empty()));
+
     let scroll = if app.viewport.render.auto_scroll {
         // Pin to the very bottom of whatever was rendered (committed + streaming).
         total_visual.saturating_sub(vh)
-    } else if filter_active {
-        // Filtered path: all messages are in `lines`; use the pre-computed total.
+    } else if filter_active || needs_fallback {
+        // Filtered / fallback path: all messages are in `lines`; use the pre-computed total.
         total_visual
             .saturating_sub(vh)
             .saturating_sub(app.viewport.render.scroll_offset)
@@ -409,11 +417,6 @@ fn render_message(
 
     lines.push(Line::from(header_spans));
 
-    // Inline tool call summary (compact, between header and content)
-    if !msg.tool_calls.is_empty() {
-        render_tool_summary(&msg.tool_calls, lines, theme);
-    }
-
     // Message content: markdown parsed with syntax highlighting
     let (md_lines, md_links) = markdown::render(
         &msg.text,
@@ -523,44 +526,6 @@ fn highlight_span(
     }
 }
 
-/// Render a compact tool call summary line:
-///   ╰─ exec (0.3s) → read (0.1s) → grep (0.2s)
-fn render_tool_summary(tools: &[ToolCallInfo], lines: &mut Vec<Line<'static>>, theme: &Theme) {
-    let mut spans: Vec<Span> = vec![Span::raw("  "), Span::styled("╰─ ", theme.style_dim())];
-
-    for (i, tc) in tools.iter().enumerate() {
-        if i > 0 {
-            spans.push(Span::styled(" → ", theme.style_dim()));
-        }
-
-        let color = if tc.is_error {
-            theme.status.error
-        } else {
-            theme.text.fg_dim
-        };
-        let icon = if tc.is_error { "✗ " } else { "" };
-
-        let label = if let Some(ms) = tc.duration_ms {
-            if ms >= MS_PER_SECOND {
-                format!(
-                    "{}{} ({:.1}s)",
-                    icon,
-                    tc.name,
-                    ms as f64 / MS_PER_SECOND as f64
-                )
-            } else {
-                format!("{}{}  ({}ms)", icon, tc.name, ms)
-            }
-        } else {
-            format!("{}{}", icon, tc.name)
-        };
-
-        spans.push(Span::styled(label, Style::default().fg(color)));
-    }
-
-    lines.push(Line::from(spans));
-}
-
 fn render_streaming(
     app: &App,
     lines: &mut Vec<Line<'static>>,
@@ -591,52 +556,6 @@ fn render_streaming(
                 Style::default().fg(theme.thinking.border),
             ),
         ]));
-    }
-
-    // Active tool calls during streaming (show completed + current)
-    if !app.connection.streaming_tool_calls.is_empty() {
-        let mut tool_spans: Vec<Span> =
-            vec![Span::raw("  "), Span::styled("╰─ ", theme.style_dim())];
-
-        for (i, tc) in app.connection.streaming_tool_calls.iter().enumerate() {
-            if i > 0 {
-                tool_spans.push(Span::styled(" → ", theme.style_dim()));
-            }
-
-            if tc.duration_ms.is_some() {
-                // Completed tool
-                let color = if tc.is_error {
-                    theme.status.error
-                } else {
-                    theme.text.fg_dim
-                };
-                let icon = if tc.is_error { "✗ " } else { "" };
-                let label = if let Some(ms) = tc.duration_ms {
-                    if ms >= MS_PER_SECOND {
-                        format!(
-                            "{}{} ({:.1}s)",
-                            icon,
-                            tc.name,
-                            ms as f64 / MS_PER_SECOND as f64
-                        )
-                    } else {
-                        format!("{}{} ({}ms)", icon, tc.name, ms)
-                    }
-                } else {
-                    tc.name.clone()
-                };
-                tool_spans.push(Span::styled(label, Style::default().fg(color)));
-            } else {
-                // Currently running tool: animated
-                let ch = theme::spinner_frame(app.viewport.tick_count);
-                tool_spans.push(Span::styled(
-                    format!("{} {}", ch, tc.name),
-                    Style::default().fg(theme.status.spinner),
-                ));
-            }
-        }
-
-        lines.push(Line::from(tool_spans));
     }
 
     // Streaming text with cursor

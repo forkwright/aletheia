@@ -208,13 +208,14 @@ impl VirtualScroll {
 /// This is a cheap approximation used to avoid full markdown rendering
 /// for off-screen messages. It accounts for:
 /// - 1 header line
-/// - 1 tool summary line (if tools present)
 /// - text content wrapped at `width`
 /// - 1 trailing blank line
-pub(crate) fn estimate_message_height(text_len: usize, has_tools: bool, width: u16) -> u16 {
+///
+/// Tool calls are rendered exclusively in the ops pane and do not add
+/// lines to the chat view, so they are not counted here.
+pub(crate) fn estimate_message_height(text_len: usize, width: u16) -> u16 {
     let w = usize::from(width.max(1));
     let header = 1u16;
-    let tools = if has_tools { 1u16 } else { 0 };
     let content = if text_len == 0 {
         0u16
     } else {
@@ -222,7 +223,7 @@ pub(crate) fn estimate_message_height(text_len: usize, has_tools: bool, width: u
     };
     let blank = 1u16;
 
-    header + tools + content + blank
+    header + content + blank
 }
 
 #[cfg(test)]
@@ -411,24 +412,19 @@ mod tests {
 
     #[test]
     fn estimate_message_height_empty() {
-        assert_eq!(estimate_message_height(0, false, 80), 2); // header + blank
+        assert_eq!(estimate_message_height(0, 80), 2); // header + blank
     }
 
     #[test]
     fn estimate_message_height_short() {
         // "hello" (5 chars) at width 80 = 1 content line
-        assert_eq!(estimate_message_height(5, false, 80), 3); // header + 1 content + blank
-    }
-
-    #[test]
-    fn estimate_message_height_with_tools() {
-        assert_eq!(estimate_message_height(5, true, 80), 4); // header + tool + 1 content + blank
+        assert_eq!(estimate_message_height(5, 80), 3); // header + 1 content + blank
     }
 
     #[test]
     fn estimate_message_height_wrapping() {
         // 200 chars at width 80 = 3 content lines
-        assert_eq!(estimate_message_height(200, false, 80), 5); // header + 3 content + blank
+        assert_eq!(estimate_message_height(200, 80), 5); // header + 3 content + blank
     }
 
     #[test]

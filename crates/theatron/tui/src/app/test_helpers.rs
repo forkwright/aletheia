@@ -39,6 +39,7 @@ pub fn test_app() -> App {
             daily_cost_cents: 0,
             session_cost_cents: 0,
             context_usage_pct: None,
+            saved_sessions: HashMap::new(),
         },
         connection: ConnectionState {
             sse: None,
