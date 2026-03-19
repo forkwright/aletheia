@@ -1,6 +1,6 @@
 //! Setup-time cleanup registration via RAII guards.
 //!
-//! [`CleanupGuard`] executes a callback when dropped, ensuring resource cleanup
+//! [`CleanupGuard`](crate::cleanup::CleanupGuard) executes a callback when dropped, ensuring resource cleanup
 //! fires on normal return, early error exit, panic, and async cancellation.
 //! Register the guard at the point of resource acquisition — not in a separate
 //! `Drop` impl — so cleanup is tied to the acquisition scope.
