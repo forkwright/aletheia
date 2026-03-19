@@ -95,8 +95,8 @@ pub(crate) fn run(instance_root: Option<&PathBuf>) -> Result<()> {
         .gateway
         .auth
         .signing_key
-        .as_deref()
-        .map(str::to_owned)
+        .as_ref()
+        .map(|s| s.expose_secret().to_owned())
         .or_else(|| std::env::var("ALETHEIA_JWT_SECRET").ok());
     let auth_mode = config.gateway.auth.mode.as_str();
     let jwt_check_label = "gateway.auth JWT key";

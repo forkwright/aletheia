@@ -1,5 +1,8 @@
 //! Figment-based configuration loading with TOML cascade.
 
+use std::io::Write as _;
+use std::os::unix::fs::OpenOptionsExt as _;
+
 use figment::Figment;
 use figment::providers::{Env, Format, Serialized, Toml};
 use snafu::ResultExt;
@@ -156,7 +159,19 @@ pub fn write_config_checked(
     let target = config_dir.join("aletheia.toml");
     let tmp = config_dir.join("aletheia.toml.tmp");
 
-    std::fs::write(&tmp, toml).context(WriteConfigSnafu { path: tmp.clone() })?;
+    // WHY: mode 0600 ensures config file (which may contain secrets) is
+    // readable only by the owning user. Closes #1710.
+    {
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&tmp)
+            .context(WriteConfigSnafu { path: tmp.clone() })?;
+        f.write_all(toml.as_bytes())
+            .context(WriteConfigSnafu { path: tmp.clone() })?;
+    }
     std::fs::rename(&tmp, &target).context(WriteConfigSnafu { path: target })?;
 
     Ok(())

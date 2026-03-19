@@ -391,6 +391,9 @@ pub fn apply_sandbox(
     use std::os::unix::process::CommandExt;
 
     if !policy.enabled {
+        // WHY: Log when sandbox is completely disabled so operators see it clearly.
+        // Closes #1718.
+        tracing::warn!("sandbox disabled: tool execution runs without any restrictions");
         return Ok(());
     }
 
@@ -405,7 +408,8 @@ pub fn apply_sandbox(
             // logging is not safe.
             tracing::warn!(
                 enforcement = "permissive",
-                "Landlock unavailable, sandboxing disabled (enforcement=permissive)"
+                "Landlock unavailable, sandboxing disabled (enforcement=permissive); \
+                 set enforcement=enforcing and ensure kernel supports Landlock (5.13+)"
             );
             return Ok(());
         }
@@ -416,8 +420,17 @@ pub fn apply_sandbox(
                  Set enforcement=permissive to run without sandboxing.",
             ));
         }
-        // NOTE: Landlock ABI available, proceed with sandbox setup
-        (Some(_), _) => {}
+        // WHY: Log when Landlock is available but enforcement is permissive so operators
+        // know syscall violations are only logged, not blocked. Closes #1718.
+        (Some(_), SandboxEnforcement::Permissive) => {
+            tracing::warn!(
+                enforcement = "permissive",
+                "sandbox enforcement=permissive: policy violations are logged but not \
+                 blocked. Set enforcement=enforcing for production deployments."
+            );
+        }
+        // NOTE: Landlock ABI available and enforcement=enforcing, proceed with sandbox setup
+        (Some(_), SandboxEnforcement::Enforcing) => {}
     }
 
     // WHY: Log egress policy warnings in the parent where tracing works.

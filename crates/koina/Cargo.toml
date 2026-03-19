@@ -21,6 +21,7 @@ zeroize = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 ulid = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
 static_assertions = { workspace = true }

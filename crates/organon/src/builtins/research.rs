@@ -38,6 +38,9 @@ fn require_services(
 const BLOCKED_HOSTNAMES: &[&str] = &["localhost", "metadata.google.internal"];
 
 /// Check whether an IP address belongs to a private, loopback, or link-local range.
+///
+/// WHY: Blocks SSRF to internal infrastructure including IPv6 loopback, ULA ranges,
+/// IPv4-mapped loopback (`::ffff:127.x.x.x`), and cloud metadata endpoints. Closes #1715.
 fn is_private_ip(ip: &IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => {
@@ -51,7 +54,15 @@ fn is_private_ip(ip: &IpAddr) -> bool {
         IpAddr::V6(v6) => {
             *v6 == Ipv6Addr::LOCALHOST                                // ::1
                 || (v6.segments()[0] & 0xfe00) == 0xfc00              // fc00::/7 (ULA)
-                || (v6.segments()[0] & 0xffc0) == 0xfe80 // fe80::/10 (link-local)
+                || (v6.segments()[0] & 0xffc0) == 0xfe80              // fe80::/10 (link-local)
+                // WHY: IPv4-mapped addresses (::ffff:127.x.x.x) are loopback when
+                // the embedded IPv4 address is private. Unmap and re-check.
+                || v6.to_ipv4_mapped().is_some_and(|v4| {
+                    v4.is_loopback()
+                        || v4.is_private()
+                        || v4.is_link_local()
+                        || v4.octets()[0] == 0
+                })
         }
     }
 }
@@ -135,7 +146,8 @@ impl ToolExecutor for WebFetchExecutor {
                     {
                         return attempt.stop();
                     }
-                    if attempt.previous().len() >= 10 {
+                    // WHY: Limit redirect chain to prevent redirect loops. Closes #1715.
+                    if attempt.previous().len() >= 5 {
                         return attempt.stop();
                     }
                     attempt.follow()

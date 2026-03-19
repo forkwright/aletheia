@@ -18,6 +18,8 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use aletheia_koina::secret::SecretString;
+
 /// Root configuration for an Aletheia instance.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -447,7 +449,9 @@ pub struct GatewayAuthConfig {
     pub mode: String,
     /// JWT signing key. If `None`, falls back to `ALETHEIA_JWT_SECRET` env var.
     /// Startup fails when auth mode requires JWT and this is still the default placeholder.
-    pub signing_key: Option<String>,
+    ///
+    /// WHY: `SecretString` prevents accidental logging of the key value. Closes #1631.
+    pub signing_key: Option<SecretString>,
 }
 
 impl Default for GatewayAuthConfig {

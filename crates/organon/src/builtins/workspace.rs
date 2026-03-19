@@ -11,6 +11,9 @@ use std::pin::Pin;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
+#[cfg(unix)]
+use std::os::unix::process::CommandExt as _;
+
 use indexmap::IndexMap;
 
 use aletheia_koina::id::ToolName;
@@ -24,6 +27,23 @@ use crate::types::{
 };
 
 const MAX_OUTPUT_BYTES: usize = 50 * 1024;
+
+/// Strip absolute path prefixes from an error message, showing only the filename.
+///
+/// WHY: Full filesystem paths in error messages sent to the LLM leak instance
+/// directory structure. Show only the filename component instead. Closes #1716.
+fn sanitize_path_in_msg(path: &std::path::Path) -> String {
+    path.file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("<path>")
+        .to_owned()
+}
+
+/// Maximum content size for the write tool (10 MB).
+///
+/// WHY: Prevents disk exhaustion or fork-bomb-like abuse via oversized writes.
+/// Closes #1714.
+const MAX_WRITE_BYTES: usize = 10 * 1024 * 1024;
 
 /// Expand a leading `~` in a path string to the HOME environment variable.
 ///
@@ -213,7 +233,10 @@ impl ToolExecutor for ReadExecutor {
                     )));
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                    return Ok(err_result(format!("file not found: {}", path.display())));
+                    return Ok(err_result(format!(
+                        "file not found: {}",
+                        sanitize_path_in_msg(&path)
+                    )));
                 }
                 Err(e) => {
                     return Ok(err_result(format!("read failed: {e}")));
@@ -224,7 +247,10 @@ impl ToolExecutor for ReadExecutor {
             let content = match std::fs::read_to_string(&path) {
                 Ok(c) => c,
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                    return Ok(err_result(format!("file not found: {}", path.display())));
+                    return Ok(err_result(format!(
+                        "file not found: {}",
+                        sanitize_path_in_msg(&path)
+                    )));
                 }
                 Err(e) => {
                     return Ok(err_result(format!("read failed: {e}")));
@@ -267,6 +293,15 @@ impl ToolExecutor for WriteExecutor {
             let append = extract_opt_bool(&input.arguments, "append").unwrap_or(false);
             let path = validate_path(path_str, ctx, &input.name)?;
 
+            // WHY: Enforce content size limit to prevent disk exhaustion. Closes #1714.
+            if content.len() > MAX_WRITE_BYTES {
+                return Ok(err_result(format!(
+                    "content too large: {} bytes (max {} bytes)",
+                    content.len(),
+                    MAX_WRITE_BYTES
+                )));
+            }
+
             // WHY: Block writes to protected bootstrap files
             if let Some(protected) = is_protected_file(&path, &ctx.workspace) {
                 return Ok(err_result(format!(
@@ -297,7 +332,7 @@ impl ToolExecutor for WriteExecutor {
                 Ok(()) => Ok(ToolResult::text(format!(
                     "wrote {} bytes to {}",
                     content.len(),
-                    path.display()
+                    sanitize_path_in_msg(&path)
                 ))),
                 Err(e) => Ok(err_result(format!("write failed: {e}"))),
             }
@@ -322,7 +357,10 @@ impl ToolExecutor for EditExecutor {
             let content = match std::fs::read_to_string(&path) {
                 Ok(c) => c,
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                    return Ok(err_result(format!("file not found: {}", path.display())));
+                    return Ok(err_result(format!(
+                        "file not found: {}",
+                        sanitize_path_in_msg(&path)
+                    )));
                 }
                 Err(e) => {
                     return Ok(err_result(format!("read failed: {e}")));
@@ -333,13 +371,13 @@ impl ToolExecutor for EditExecutor {
             if count == 0 {
                 return Ok(err_result(format!(
                     "old_text not found in {}",
-                    path.display()
+                    sanitize_path_in_msg(&path)
                 )));
             }
             if count > 1 {
                 return Ok(err_result(format!(
                     "old_text found {count} times in {} \u{2014} must be unique",
-                    path.display()
+                    sanitize_path_in_msg(&path)
                 )));
             }
 
@@ -350,7 +388,7 @@ impl ToolExecutor for EditExecutor {
 
             Ok(ToolResult::text(format!(
                 "edited {}: replaced {} chars with {} chars",
-                path.display(),
+                sanitize_path_in_msg(&path),
                 old_text.len(),
                 new_text.len()
             )))
@@ -447,6 +485,38 @@ impl ToolExecutor for ExecExecutor {
                 .current_dir(&ctx.workspace)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped());
+
+            // WHY: Apply process resource limits before sandbox to constrain fork-bombs
+            // and runaway CPU usage. RLIMIT_NPROC caps child process count;
+            // RLIMIT_CPU caps CPU seconds. Closes #1717.
+            #[cfg(target_os = "linux")]
+            {
+                // SAFETY: setrlimit is async-signal-safe and only modifies the
+                // calling process's resource limits. Runs between fork and exec.
+                #[expect(
+                    unsafe_code,
+                    reason = "pre_exec requires unsafe; setrlimit is async-signal-safe"
+                )]
+                unsafe {
+                    cmd.pre_exec(|| {
+                        // Cap subprocess count to prevent fork bombs
+                        let nproc_limit = libc::rlimit {
+                            rlim_cur: 64,
+                            rlim_max: 64,
+                        };
+                        libc::setrlimit(libc::RLIMIT_NPROC, &raw const nproc_limit);
+
+                        // Cap CPU time to 60 seconds to prevent runaway processes
+                        let cpu_limit = libc::rlimit {
+                            rlim_cur: 60,
+                            rlim_max: 60,
+                        };
+                        libc::setrlimit(libc::RLIMIT_CPU, &raw const cpu_limit);
+
+                        Ok(())
+                    });
+                }
+            }
 
             if self.sandbox.enabled {
                 let policy = self

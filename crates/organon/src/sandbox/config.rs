@@ -137,7 +137,10 @@ impl SandboxConfig {
             PathBuf::from("/dev"),
         ];
 
-        let mut write_paths = vec![PathBuf::from("/tmp")];
+        // WHY: Use std::env::temp_dir() instead of hardcoded /tmp to support
+        // systems where the temp directory differs (e.g. /var/folders on macOS,
+        // or a custom TMPDIR). Closes #1697.
+        let mut write_paths = vec![std::env::temp_dir()];
 
         // WHY: System binary dirs are always executable. workspace and
         // allowed_roots are also added so agents can execute scripts they own
