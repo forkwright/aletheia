@@ -111,7 +111,7 @@ async fn metrics_no_auth_required() {
 }
 
 #[tokio::test]
-#[ignore = "metrics registration initialization order — fix in followup"]
+#[ignore = "metrics registration broken by FromRef migration — fix in followup"]
 async fn metrics_contains_aletheia_prefixed_families() {
     let (app, _dir) = app().await;
     let resp = app
