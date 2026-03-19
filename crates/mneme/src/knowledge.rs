@@ -153,7 +153,7 @@ pub enum ForgetReason {
 }
 
 impl ForgetReason {
-    /// Return the snake_case string representation of this reason.
+    /// Return the `snake_case` string representation of this reason.
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {

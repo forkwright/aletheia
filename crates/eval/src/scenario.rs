@@ -34,10 +34,6 @@ pub struct ScenarioMeta {
 /// Result of running a single scenario.
 #[derive(Debug)]
 #[non_exhaustive]
-#[expect(
-    missing_docs,
-    reason = "variant fields (duration, error, reason) are self-documenting by name"
-)]
 pub enum ScenarioOutcome {
     /// Scenario completed within timeout without errors.
     Passed { duration: Duration },

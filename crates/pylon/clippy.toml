@@ -1,0 +1,12 @@
+# pylon: HTTP gateway — must not access the database directly (all persistence
+# goes through the nous actor or mneme store) and must not bypass the actor model.
+
+disallowed-methods = [
+    { path = "std::process::exit", reason = "do not call process::exit from library code" },
+    { path = "std::process::abort", reason = "do not call process::abort from library code" },
+]
+
+disallowed-types = [
+    # Handlers must not open DB connections; all persistence flows through AppState -> NousActor
+    { path = "rusqlite::Connection", reason = "pylon handlers must not open SQLite connections directly; use AppState and the actor model" },
+]

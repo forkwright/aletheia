@@ -297,10 +297,6 @@ pub enum MessageRole {
 
 /// Response from the `/api/health` endpoint.
 #[derive(Debug, Clone, Deserialize)]
-#[expect(
-    missing_docs,
-    reason = "API response struct fields match JSON key names"
-)]
 pub struct HealthResponse {
     pub status: InstanceStatus,
     pub version: String,
@@ -310,10 +306,6 @@ pub struct HealthResponse {
 
 /// A single health check result within a health response.
 #[derive(Debug, Clone, Deserialize)]
-#[expect(
-    missing_docs,
-    reason = "API response struct fields match JSON key names"
-)]
 pub struct HealthCheck {
     pub name: String,
     pub status: String,
@@ -322,20 +314,12 @@ pub struct HealthCheck {
 
 /// Response from the `/api/v1/nous` list endpoint.
 #[derive(Debug, Clone, Deserialize)]
-#[expect(
-    missing_docs,
-    reason = "API response struct fields match JSON key names"
-)]
 pub struct NousListResponse {
     pub nous: Vec<NousSummary>,
 }
 
 /// Summary of a nous agent from the list endpoint.
 #[derive(Debug, Clone, Deserialize)]
-#[expect(
-    missing_docs,
-    reason = "API response struct fields match JSON key names"
-)]
 pub struct NousSummary {
     pub id: String,
     pub model: String,
@@ -344,10 +328,6 @@ pub struct NousSummary {
 
 /// Detailed nous status from the `/api/v1/nous/{id}` endpoint.
 #[derive(Debug, Clone, Deserialize)]
-#[expect(
-    missing_docs,
-    reason = "API response struct fields match JSON key names"
-)]
 pub struct NousStatus {
     pub id: String,
     pub model: String,
@@ -365,10 +345,6 @@ pub struct NousStatus {
 
 /// Session details from the `/api/v1/sessions/{id}` endpoint.
 #[derive(Debug, Clone, Deserialize)]
-#[expect(
-    missing_docs,
-    reason = "API response struct fields match JSON key names"
-)]
 pub struct SessionResponse {
     pub id: String,
     pub nous_id: String,
@@ -383,20 +359,12 @@ pub struct SessionResponse {
 
 /// Conversation history response from `/api/v1/sessions/{id}/history`.
 #[derive(Debug, Clone, Deserialize)]
-#[expect(
-    missing_docs,
-    reason = "API response struct fields match JSON key names"
-)]
 pub struct HistoryResponse {
     pub messages: Vec<HistoryMessage>,
 }
 
 /// A single message in conversation history.
 #[derive(Debug, Clone, Deserialize)]
-#[expect(
-    missing_docs,
-    reason = "API response struct fields match JSON key names"
-)]
 pub struct HistoryMessage {
     pub id: i64,
     pub seq: i64,

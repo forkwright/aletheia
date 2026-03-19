@@ -5,23 +5,23 @@
 //! API key validation, Argon2id password hashing, and RBAC permission checks.
 
 /// API key generation, validation, and revocation.
-pub mod api_key;
+pub(crate) mod api_key;
 /// Unified auth facade composing JWT, API keys, passwords, and RBAC.
 pub(crate) mod auth;
 /// Three-state circuit breaker for OAuth token refresh.
-pub mod circuit_breaker;
+pub(crate) mod circuit_breaker;
 /// Credential provider implementations for LLM API key resolution.
 pub mod credential;
 /// AES-256-GCM encryption for credential files at rest.
 pub(crate) mod encrypt;
 /// Symbolon-specific error types and result alias.
-pub mod error;
+pub(crate) mod error;
 /// JWT token issuance, validation, and refresh.
 pub mod jwt;
 /// Argon2id password hashing and verification.
-pub mod password;
+pub(crate) mod password;
 /// `SQLite`-backed credential and token storage.
-pub mod store;
+pub(crate) mod store;
 /// Shared auth types: claims, roles, actions, token kinds.
 pub mod types;
 /// Internal utilities shared across modules.

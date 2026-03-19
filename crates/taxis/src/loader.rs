@@ -32,7 +32,7 @@ use crate::oikos::Oikos;
 ///
 /// # Errors
 ///
-/// Returns [`crate::error::Error::Figment`] if the configuration cascade produces an invalid or
+/// Returns an error if the configuration cascade produces an invalid or
 /// unextractable result.
 #[expect(
     clippy::result_large_err,
@@ -50,8 +50,8 @@ pub fn load_config(oikos: &Oikos) -> Result<AletheiaConfig> {
 ///
 /// # Errors
 ///
-/// Returns [`crate::error::Error::ReadConfig`] if the TOML file cannot be read.
-/// Returns [`crate::error::Error::Figment`] if the configuration cascade fails.
+/// Returns an error if the TOML file cannot be read.
+/// Returns an error if the configuration cascade fails.
 #[expect(
     clippy::result_large_err,
     reason = "figment::Error is inherently large"
@@ -121,8 +121,8 @@ fn decrypt_toml_content(content: &str) -> String {
 ///
 /// # Errors
 ///
-/// Returns [`crate::error::Error::SerializeToml`] if the config cannot be serialized to TOML.
-/// Returns [`crate::error::Error::WriteConfig`] if the config directory cannot be created or the
+/// Returns an error if the config cannot be serialized to TOML.
+/// Returns an error if the config directory cannot be created or the
 /// file cannot be written.
 #[expect(
     clippy::result_large_err,

@@ -302,7 +302,7 @@ impl Oikos {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error::WorkspacePathInvalid`] if the path does not
+    /// Returns an error if the path does not
     /// exist or is not a directory.
     #[expect(
         clippy::result_large_err,

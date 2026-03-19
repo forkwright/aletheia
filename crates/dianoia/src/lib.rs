@@ -9,7 +9,7 @@
 //! Depends on: koina
 
 /// Errors from planning, state transitions, and workspace I/O.
-pub mod error;
+pub(crate) mod error;
 /// Phase types within a project: groupings of related plans with lifecycle state.
 pub mod phase;
 /// Executable plans within a phase: dependency tracking, iteration limits, and blocker management.

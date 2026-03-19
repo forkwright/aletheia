@@ -6,7 +6,7 @@
 //! and registry, with Signal (semeion) as the first provider.
 
 /// Error types for channel operations and provider failures.
-pub mod error;
+pub(crate) mod error;
 /// Unified channel listener that merges inbound messages from all providers into a single stream.
 pub mod listener;
 /// Channel registry: the single source of truth for available channel providers.
