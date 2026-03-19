@@ -9,6 +9,10 @@
 
 /// Anthropic Messages API client with streaming, retries, and cost estimation.
 pub mod anthropic;
+/// Circuit breaker (Closed / Open / HalfOpen) with exponential backoff for LLM provider health.
+pub mod circuit_breaker;
+/// Adaptive concurrency limiter (AIMD) for LLM calls based on response latency.
+pub mod concurrency;
 /// Hermeneus-specific error types for provider, API, and authentication failures.
 pub mod error;
 /// Model fallback chain: retries alternative models on transient failures.
