@@ -39,6 +39,7 @@ const DEFAULT_LATENCY_THRESHOLD_SECS: f64 = 30.0;
 
 /// Outcome of a request that held a [`ConcurrencyPermit`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum RequestOutcome {
     /// Request succeeded; increase the limit.
     Success,

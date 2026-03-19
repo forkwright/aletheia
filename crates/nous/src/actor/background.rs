@@ -130,6 +130,9 @@ impl NousActor {
                 info!(candidate_id = %candidate_id, "skill analysis: candidate promoted, spawning LLM extraction");
                 self.spawn_skill_extraction(&candidate_id, &records);
             }
+            _ => {
+                // WHY: TrackResult is #[non_exhaustive]; future variants are silently ignored here.
+            }
         }
     }
 

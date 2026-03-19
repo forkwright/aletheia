@@ -37,6 +37,7 @@ use tracing::{debug, error, info, trace, warn};
 
 /// Log level for an internal event.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum LogLevel {
     /// Trace-level detail.
     Trace,

@@ -210,26 +210,34 @@ pub async fn execute(
             }
         };
 
-        total_usage.input_tokens += response.usage.input_tokens;
-        total_usage.output_tokens += response.usage.output_tokens;
-        total_usage.cache_read_tokens += response.usage.cache_read_tokens;
-        total_usage.cache_write_tokens += response.usage.cache_write_tokens;
+        // Destructure to move content without cloning when pushing to messages.
+        let aletheia_hermeneus::types::CompletionResponse {
+            content: response_content,
+            stop_reason,
+            usage,
+            ..
+        } = response;
+
+        total_usage.input_tokens += usage.input_tokens;
+        total_usage.output_tokens += usage.output_tokens;
+        total_usage.cache_read_tokens += usage.cache_read_tokens;
+        total_usage.cache_write_tokens += usage.cache_write_tokens;
         total_usage.llm_calls += 1;
 
-        let extracted = process_response_blocks(&response.content);
+        let extracted = process_response_blocks(&response_content);
         used_server_web_search |= extracted.saw_server_web_search;
         used_server_code_execution |= extracted.saw_server_code_execution;
         final_content = extracted.text_parts.join("");
-        final_stop_reason = response.stop_reason.to_string();
+        final_stop_reason = stop_reason.to_string();
 
         // WHY: only break on no local tool uses: server tool results don't require client tool_result
-        if extracted.tool_uses.is_empty() || response.stop_reason != StopReason::ToolUse {
+        if extracted.tool_uses.is_empty() || stop_reason != StopReason::ToolUse {
             break;
         }
 
         messages.push(Message {
             role: Role::Assistant,
-            content: Content::Blocks(response.content.clone()),
+            content: Content::Blocks(response_content),
         });
 
         let tool_results = dispatch_tools(
@@ -366,25 +374,33 @@ pub async fn execute_streaming(
             }
         };
 
-        total_usage.input_tokens += response.usage.input_tokens;
-        total_usage.output_tokens += response.usage.output_tokens;
-        total_usage.cache_read_tokens += response.usage.cache_read_tokens;
-        total_usage.cache_write_tokens += response.usage.cache_write_tokens;
+        // Destructure to move content without cloning when pushing to messages.
+        let aletheia_hermeneus::types::CompletionResponse {
+            content: response_content,
+            stop_reason,
+            usage,
+            ..
+        } = response;
+
+        total_usage.input_tokens += usage.input_tokens;
+        total_usage.output_tokens += usage.output_tokens;
+        total_usage.cache_read_tokens += usage.cache_read_tokens;
+        total_usage.cache_write_tokens += usage.cache_write_tokens;
         total_usage.llm_calls += 1;
 
-        let extracted = process_response_blocks(&response.content);
+        let extracted = process_response_blocks(&response_content);
         used_server_web_search |= extracted.saw_server_web_search;
         used_server_code_execution |= extracted.saw_server_code_execution;
         final_content = extracted.text_parts.join("");
-        final_stop_reason = response.stop_reason.to_string();
+        final_stop_reason = stop_reason.to_string();
 
-        if extracted.tool_uses.is_empty() || response.stop_reason != StopReason::ToolUse {
+        if extracted.tool_uses.is_empty() || stop_reason != StopReason::ToolUse {
             break;
         }
 
         messages.push(Message {
             role: Role::Assistant,
-            content: Content::Blocks(response.content.clone()),
+            content: Content::Blocks(response_content),
         });
 
         let tool_results = dispatch_tools_streaming(

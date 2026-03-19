@@ -10,35 +10,63 @@ use aletheia_taxis::config::{GatewayConfig, PerUserRateLimitConfig};
 /// cryptographically random per-instance token.
 const INSECURE_CSRF_DEFAULT: &str = "aletheia";
 
-/// Middleware security settings derived from gateway configuration.
+/// CORS-specific security settings.
 #[derive(Debug, Clone)]
-#[expect(
-    clippy::struct_excessive_bools,
-    reason = "security flags are inherently boolean: csrf_enabled, tls_enabled, rate_limit_enabled, trust_proxy"
-)]
-pub struct SecurityConfig {
+pub struct CorsConfig {
     /// Origins allowed by the CORS layer.
     pub allowed_origins: Vec<String>,
     /// CORS preflight cache duration.
-    pub cors_max_age_secs: u64,
-    /// Maximum request body size.
-    pub body_limit_bytes: usize,
+    pub max_age_secs: u64,
+}
+
+impl Default for CorsConfig {
+    fn default() -> Self {
+        Self {
+            allowed_origins: Vec::new(),
+            max_age_secs: 3600,
+        }
+    }
+}
+
+/// CSRF protection settings.
+#[derive(Debug, Clone)]
+pub struct CsrfConfig {
     /// Whether the CSRF header check is active.
-    pub csrf_enabled: bool,
+    pub enabled: bool,
     /// HTTP header name for CSRF validation.
-    pub csrf_header_name: String,
+    pub header_name: String,
     /// Expected CSRF header value (per-instance CSPRNG token).
-    pub csrf_header_value: String,
+    pub header_value: String,
+}
+
+impl Default for CsrfConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            header_name: "x-requested-with".to_owned(),
+            header_value: generate_csrf_token(),
+        }
+    }
+}
+
+/// TLS termination settings.
+#[derive(Debug, Clone, Default)]
+pub struct TlsConfig {
     /// Whether TLS termination is handled by pylon.
-    pub tls_enabled: bool,
+    pub enabled: bool,
     /// Path to PEM certificate file.
-    pub tls_cert_path: Option<PathBuf>,
+    pub cert_path: Option<PathBuf>,
     /// Path to PEM private key file.
-    pub tls_key_path: Option<PathBuf>,
+    pub key_path: Option<PathBuf>,
+}
+
+/// IP-level and per-user rate limiting settings.
+#[derive(Debug, Clone)]
+pub struct RateLimitConfig {
     /// Whether per-IP rate limiting is active.
-    pub rate_limit_enabled: bool,
+    pub enabled: bool,
     /// Maximum requests per minute per client IP.
-    pub rate_limit_requests_per_minute: u32,
+    pub requests_per_minute: u32,
     /// Trust X-Forwarded-For and X-Real-IP headers for client IP resolution.
     ///
     /// Enable only when pylon is behind a trusted reverse proxy that strips
@@ -46,7 +74,39 @@ pub struct SecurityConfig {
     /// peer TCP address is used for rate limiting and logging.
     pub trust_proxy: bool,
     /// Per-user rate limiting configuration.
-    pub per_user_rate_limit: PerUserRateLimitConfig,
+    pub per_user: PerUserRateLimitConfig,
+}
+
+impl Default for RateLimitConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            requests_per_minute: 60,
+            trust_proxy: false,
+            per_user: PerUserRateLimitConfig::default(),
+        }
+    }
+}
+
+/// Middleware security settings derived from gateway configuration.
+///
+/// Fields are grouped into sub-structs by concern:
+/// - [`cors`](SecurityConfig::cors): CORS allowed origins and cache duration
+/// - [`csrf`](SecurityConfig::csrf): header-based CSRF protection
+/// - [`tls`](SecurityConfig::tls): TLS termination and certificate paths
+/// - [`rate_limit`](SecurityConfig::rate_limit): IP and per-user rate limiting
+#[derive(Debug, Clone)]
+pub struct SecurityConfig {
+    /// Maximum request body size.
+    pub body_limit_bytes: usize,
+    /// Cross-Origin Resource Sharing settings.
+    pub cors: CorsConfig,
+    /// Cross-Site Request Forgery protection settings.
+    pub csrf: CsrfConfig,
+    /// TLS termination settings.
+    pub tls: TlsConfig,
+    /// Rate limiting settings.
+    pub rate_limit: RateLimitConfig,
 }
 
 /// Generate a cryptographically random 32-character hex CSRF token.
@@ -80,19 +140,27 @@ impl SecurityConfig {
         };
 
         Self {
-            allowed_origins: gateway.cors.allowed_origins.clone(),
-            cors_max_age_secs: gateway.cors.max_age_secs,
             body_limit_bytes: gateway.body_limit.max_bytes,
-            csrf_enabled: gateway.csrf.enabled,
-            csrf_header_name: gateway.csrf.header_name.clone(),
-            csrf_header_value,
-            tls_enabled: gateway.tls.enabled,
-            tls_cert_path: gateway.tls.cert_path.as_ref().map(PathBuf::from),
-            tls_key_path: gateway.tls.key_path.as_ref().map(PathBuf::from),
-            rate_limit_enabled: gateway.rate_limit.enabled,
-            rate_limit_requests_per_minute: gateway.rate_limit.requests_per_minute,
-            trust_proxy: false,
-            per_user_rate_limit: gateway.rate_limit.per_user.clone(),
+            cors: CorsConfig {
+                allowed_origins: gateway.cors.allowed_origins.clone(),
+                max_age_secs: gateway.cors.max_age_secs,
+            },
+            csrf: CsrfConfig {
+                enabled: gateway.csrf.enabled,
+                header_name: gateway.csrf.header_name.clone(),
+                header_value: csrf_header_value,
+            },
+            tls: TlsConfig {
+                enabled: gateway.tls.enabled,
+                cert_path: gateway.tls.cert_path.as_ref().map(PathBuf::from),
+                key_path: gateway.tls.key_path.as_ref().map(PathBuf::from),
+            },
+            rate_limit: RateLimitConfig {
+                enabled: gateway.rate_limit.enabled,
+                requests_per_minute: gateway.rate_limit.requests_per_minute,
+                trust_proxy: false,
+                per_user: gateway.rate_limit.per_user.clone(),
+            },
         }
     }
 }
@@ -100,19 +168,11 @@ impl SecurityConfig {
 impl Default for SecurityConfig {
     fn default() -> Self {
         Self {
-            allowed_origins: Vec::new(),
-            cors_max_age_secs: 3600,
             body_limit_bytes: 1_048_576,
-            csrf_enabled: true,
-            csrf_header_name: "x-requested-with".to_owned(),
-            csrf_header_value: generate_csrf_token(),
-            tls_enabled: false,
-            tls_cert_path: None,
-            tls_key_path: None,
-            rate_limit_enabled: false,
-            rate_limit_requests_per_minute: 60,
-            trust_proxy: false,
-            per_user_rate_limit: PerUserRateLimitConfig::default(),
+            cors: CorsConfig::default(),
+            csrf: CsrfConfig::default(),
+            tls: TlsConfig::default(),
+            rate_limit: RateLimitConfig::default(),
         }
     }
 }
@@ -127,11 +187,11 @@ mod tests {
         assert_eq!(gateway.csrf.header_value, INSECURE_CSRF_DEFAULT);
         let sec = SecurityConfig::from_gateway(&gateway);
         assert_ne!(
-            sec.csrf_header_value, INSECURE_CSRF_DEFAULT,
+            sec.csrf.header_value, INSECURE_CSRF_DEFAULT,
             "insecure default must be replaced with a CSPRNG token"
         );
         assert_eq!(
-            sec.csrf_header_value.len(),
+            sec.csrf.header_value.len(),
             32,
             "token must be 32 hex chars"
         );
@@ -142,13 +202,16 @@ mod tests {
         let mut gateway = GatewayConfig::default();
         gateway.csrf.header_value = "my-custom-token-value".to_owned();
         let sec = SecurityConfig::from_gateway(&gateway);
-        assert_eq!(sec.csrf_header_value, "my-custom-token-value");
+        assert_eq!(sec.csrf.header_value, "my-custom-token-value");
     }
 
     #[test]
     fn default_trust_proxy_is_false() {
         let sec = SecurityConfig::default();
-        assert!(!sec.trust_proxy, "trust_proxy must default to false");
+        assert!(
+            !sec.rate_limit.trust_proxy,
+            "trust_proxy must default to false"
+        );
     }
 
     #[test]

@@ -91,6 +91,7 @@ pub struct PipelineMessage {
     missing_docs,
     reason = "variant fields (retry_after_ms, pattern, reason) are self-documenting by name"
 )]
+#[non_exhaustive]
 pub enum GuardResult {
     /// Request is allowed.
     Allow,
@@ -221,6 +222,7 @@ impl LoopDetector {
 /// Interaction signal: classifies what kind of work a turn involved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum InteractionSignal {
     /// Direct conversation (no tools).
     Conversation,

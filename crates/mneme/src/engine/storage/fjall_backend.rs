@@ -125,6 +125,7 @@ impl<'s> Storage<'s> for FjallStorage {
     }
 }
 
+#[non_exhaustive]
 pub enum FjallTx<'s> {
     Reader(FjallReadTx<'s>),
     Writer(Box<FjallWriteTx<'s>>),

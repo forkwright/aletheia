@@ -706,6 +706,10 @@ fn load_session_state(config: &Config) -> HashMap<NousId, SessionId> {
 }
 
 /// Persist the per-agent last-active session map to disk.
+///
+/// Uses sync I/O because this runs in a synchronous TUI shutdown path
+/// where spawning an async task would require a runtime handle that may
+/// already be shutting down.
 pub(crate) fn save_session_state(config: &Config, sessions: &HashMap<NousId, SessionId>) {
     let path = match session_state_file_path(config) {
         Some(p) => p,

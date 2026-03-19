@@ -41,6 +41,7 @@ pub struct ServerConfig {
     missing_docs,
     reason = "snafu error variant fields (addr, source) are self-documenting via display format"
 )]
+#[non_exhaustive]
 pub enum ServerError {
     /// Failed to open or initialize the session store.
     #[snafu(display("failed to open session store: {source}"))]
@@ -154,7 +155,7 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
 
     let app = build_router(state.clone(), &config.security);
 
-    if config.security.tls_enabled {
+    if config.security.tls.enabled {
         serve_tls(app, &config).await?;
     } else {
         serve_plain(app, &config.bind_addr).await?;
@@ -215,12 +216,14 @@ async fn serve_tls(app: axum::Router, config: &ServerConfig) -> Result<(), Serve
 
     let cert_path = config
         .security
-        .tls_cert_path
+        .tls
+        .cert_path
         .as_deref()
         .unwrap_or(Path::new("instance/config/tls/cert.pem"));
     let key_path = config
         .security
-        .tls_key_path
+        .tls
+        .key_path
         .as_deref()
         .unwrap_or(Path::new("instance/config/tls/key.pem"));
 

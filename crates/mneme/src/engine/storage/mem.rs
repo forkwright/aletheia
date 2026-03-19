@@ -74,6 +74,7 @@ impl<'s> Storage<'s> for MemStorage {
     }
 }
 
+#[non_exhaustive]
 pub enum MemTx<'s> {
     Reader(ShardedLockReadGuard<'s, BTreeMap<Vec<u8>, Vec<u8>>>),
     Writer(

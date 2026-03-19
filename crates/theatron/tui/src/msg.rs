@@ -6,6 +6,7 @@ use crate::id::{NousId, PlanId, SessionId, ToolId, TurnId};
 /// Every possible state transition in the application.
 /// No I/O happens here: only data describing what happened.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum Msg {
     CharInput(char),
     Backspace,
@@ -323,6 +324,7 @@ pub enum Msg {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum MessageActionKind {
     Copy,
     YankCodeBlock,
@@ -348,6 +350,7 @@ pub enum MessageActionKind {
 }
 
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum OverlayKind {
     Help,
     AgentPicker,
@@ -381,6 +384,7 @@ impl ErrorToast {
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum AuthOutcome {
     #[expect(dead_code, reason = "planned TUI feature")]
     Success { token: SecretString },

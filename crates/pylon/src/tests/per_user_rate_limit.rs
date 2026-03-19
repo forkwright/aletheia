@@ -16,8 +16,14 @@ async fn app_with_per_user_limits(
 ) -> (axum::Router, tempfile::TempDir) {
     let (state, dir) = test_state().await;
     let security = SecurityConfig {
-        csrf_enabled: false,
-        per_user_rate_limit: config,
+        csrf: crate::security::CsrfConfig {
+            enabled: false,
+            ..crate::security::CsrfConfig::default()
+        },
+        rate_limit: crate::security::RateLimitConfig {
+            per_user: config,
+            ..crate::security::RateLimitConfig::default()
+        },
         ..SecurityConfig::default()
     };
     (build_router(state, &security), dir)
