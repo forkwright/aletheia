@@ -111,7 +111,7 @@ prometheus = { version = "0.14", features = ["process"] }
 figment = { version = "0.10", features = ["toml", "env"] }
 
 # IDs
-uuid = { version = "1", features = ["v4"] }
+uuid = { version = "1", features = ["v4", "serde"] }
 
 # Types
 compact_str = { version = "0.9", features = ["serde"] }
