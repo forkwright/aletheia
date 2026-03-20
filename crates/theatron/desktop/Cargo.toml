@@ -24,9 +24,6 @@ rustls = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
-# Text utilities
-compact_str = { workspace = true }
-
 # Logging
 tracing = { workspace = true }
 
