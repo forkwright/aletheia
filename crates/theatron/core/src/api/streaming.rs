@@ -1,6 +1,11 @@
+//! Per-session streaming from `POST /api/v1/sessions/stream`.
+//!
+//! Each call to [`stream_message`] starts a new HTTP SSE request and returns
+//! a receiver that yields [`StreamEvent`]s. The stream is self-terminating:
+//! it closes after `TurnComplete`, `TurnAbort`, or `Error`.
+
 use futures_util::StreamExt;
 use reqwest::Client;
-use theatron_core::sse::SseStream;
 use tokio::sync::mpsc;
 use tracing::Instrument;
 
@@ -8,14 +13,19 @@ use aletheia_koina::http::CONTENT_TYPE_EVENT_STREAM;
 
 use crate::events::StreamEvent;
 use crate::id::{NousId, PlanId, SessionId, ToolId, TurnId};
+use crate::sse::SseStream;
 
 /// Streams a turn response from POST /api/v1/sessions/stream.
-/// Returns a channel that yields parsed StreamEvents.
+/// Returns a channel that yields parsed `StreamEvents`.
 ///
 /// `client` must be the shared instance from `ApiClient::raw_client()`: auth headers
 /// are already embedded. `Accept: text/event-stream` is set per-request to override
 /// the client-level `Accept: application/json` default.
 #[tracing::instrument(skip_all)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "Client is Arc-based; moved into the spawned task"
+)]
 pub fn stream_message(
     client: Client,
     base_url: &str,
@@ -62,8 +72,10 @@ pub fn stream_message(
                     json.get("message")
                         .or_else(|| json.get("error"))
                         .and_then(|v| v.as_str())
-                        .map(|s| s.to_string())
-                        .unwrap_or_else(|| format!("{} {}", status.as_u16(), reason))
+                        .map_or_else(
+                            || format!("{} {}", status.as_u16(), reason),
+                            std::string::ToString::to_string,
+                        )
                 } else {
                     format!("{} {}", status.as_u16(), reason)
                 };
@@ -103,6 +115,10 @@ fn str_field<'a>(json: &'a serde_json::Value, field: &str, event_type: &str) -> 
     })
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "flat match arms; splitting would obscure the 1:1 event-type mapping"
+)]
 fn parse_stream_event(event_type: &str, data: &str) -> Option<StreamEvent> {
     let json: serde_json::Value = match serde_json::from_str(data) {
         Ok(v) => v,
@@ -132,17 +148,20 @@ fn parse_stream_event(event_type: &str, data: &str) -> Option<StreamEvent> {
         "tool_result" => {
             let tool_name = str_field(&json, "toolName", event_type)?.to_string();
             let tool_id = ToolId::from(str_field(&json, "toolId", event_type)?.to_string());
-            let is_error = json.get("isError").and_then(|v| v.as_bool()).or_else(|| {
-                tracing::warn!(
-                    event_type,
-                    field = "isError",
-                    "missing required field in stream event"
-                );
-                None
-            })?;
+            let is_error = json
+                .get("isError")
+                .and_then(serde_json::Value::as_bool)
+                .or_else(|| {
+                    tracing::warn!(
+                        event_type,
+                        field = "isError",
+                        "missing required field in stream event"
+                    );
+                    None
+                })?;
             let duration_ms = json
                 .get("durationMs")
-                .and_then(|v| v.as_u64())
+                .and_then(serde_json::Value::as_u64)
                 .or_else(|| {
                     tracing::warn!(
                         event_type,
@@ -154,7 +173,7 @@ fn parse_stream_event(event_type: &str, data: &str) -> Option<StreamEvent> {
             let result = json
                 .get("result")
                 .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
+                .map(std::string::ToString::to_string);
             Some(StreamEvent::ToolResult {
                 tool_name,
                 tool_id,
@@ -189,28 +208,44 @@ fn parse_stream_event(event_type: &str, data: &str) -> Option<StreamEvent> {
             Some(StreamEvent::PlanProposed { plan })
         }
         "plan_step_start" => {
-            let step_id = json.get("stepId").and_then(|v| v.as_u64()).or_else(|| {
-                tracing::warn!(
-                    event_type,
-                    field = "stepId",
-                    "missing required field in stream event"
-                );
-                None
-            })? as u32;
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::as_conversions,
+                reason = "plan step IDs are small sequential integers"
+            )]
+            let step_id = json
+                .get("stepId")
+                .and_then(serde_json::Value::as_u64)
+                .or_else(|| {
+                    tracing::warn!(
+                        event_type,
+                        field = "stepId",
+                        "missing required field in stream event"
+                    );
+                    None
+                })? as u32;
             Some(StreamEvent::PlanStepStart {
                 plan_id: PlanId::from(str_field(&json, "planId", event_type)?.to_string()),
                 step_id,
             })
         }
         "plan_step_complete" => {
-            let step_id = json.get("stepId").and_then(|v| v.as_u64()).or_else(|| {
-                tracing::warn!(
-                    event_type,
-                    field = "stepId",
-                    "missing required field in stream event"
-                );
-                None
-            })? as u32;
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::as_conversions,
+                reason = "plan step IDs are small sequential integers"
+            )]
+            let step_id = json
+                .get("stepId")
+                .and_then(serde_json::Value::as_u64)
+                .or_else(|| {
+                    tracing::warn!(
+                        event_type,
+                        field = "stepId",
+                        "missing required field in stream event"
+                    );
+                    None
+                })? as u32;
             Some(StreamEvent::PlanStepComplete {
                 plan_id: PlanId::from(str_field(&json, "planId", event_type)?.to_string()),
                 step_id,

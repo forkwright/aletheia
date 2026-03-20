@@ -5835,10 +5835,19 @@ dependencies = [
 name = "theatron-core"
 version = "0.13.0"
 dependencies = [
+ "aletheia-koina",
  "bytes",
+ "compact_str",
  "futures-core",
+ "futures-util",
  "pulldown-cmark",
+ "reqwest 0.13.2",
+ "rustls",
  "serde",
+ "serde_json",
+ "snafu",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

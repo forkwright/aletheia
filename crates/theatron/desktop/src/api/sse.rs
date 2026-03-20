@@ -30,7 +30,8 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 
-use super::types::{NousId, SessionId, SseEvent, TurnId};
+use theatron_core::api::types::SseEvent;
+use theatron_core::id::{NousId, SessionId, TurnId};
 
 /// If no SSE event (including pings) arrives within this window, the
 /// connection is treated as stale. The server sends heartbeats every 30s,

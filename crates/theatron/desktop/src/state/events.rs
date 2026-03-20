@@ -7,7 +7,8 @@
 
 use std::collections::HashMap;
 
-use crate::api::types::{ActiveTurn, ConnectionState, NousId};
+use theatron_core::api::types::ActiveTurn;
+use theatron_core::id::{NousId, ToolId, TurnId};
 
 /// Aggregate state derived from global SSE events.
 ///
@@ -57,7 +58,6 @@ impl Default for EventState {
 
 /// SSE connection lifecycle state, separate from the server connection
 /// (P604). This tracks specifically whether we are receiving SSE events.
-#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum SseConnectionState {
@@ -88,8 +88,55 @@ impl SseConnectionState {
     }
 }
 
-/// Distillation (memory compaction) progress for a single agent.
+/// Connection state for the global SSE stream.
+///
+/// Dioxus components read this to render connection indicators.
+/// This is a simplified projection of [`SseConnectionState`] for use
+/// by presentation components that do not need reconnection attempt counts.
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
+pub enum ConnectionState {
+    /// Initial state, not yet attempted.
+    Disconnected,
+    /// Actively receiving events.
+    Connected,
+    /// Reconnecting after failure. `attempt` counts consecutive failures.
+    Reconnecting { attempt: u32 },
+}
+
+/// State of a single streaming turn, suitable for driving a Dioxus signal.
+#[derive(Debug, Clone, Default)]
+pub struct StreamingState {
+    /// Accumulated response text (not yet committed to history).
+    pub text: String,
+    /// Accumulated extended thinking output.
+    pub thinking: String,
+    /// Active tool calls in progress.
+    pub tool_calls: Vec<ToolCallInfo>,
+    /// Whether the stream is actively receiving deltas.
+    pub is_streaming: bool,
+    /// Turn ID if a turn is in progress.
+    pub turn_id: Option<TurnId>,
+    /// Error message if the stream errored.
+    pub error: Option<String>,
+}
+
+/// Information about a single tool invocation during streaming.
+#[derive(Debug, Clone)]
+pub struct ToolCallInfo {
+    /// Name of the tool being invoked.
+    pub tool_name: String,
+    /// Unique identifier for this tool call.
+    pub tool_id: ToolId,
+    /// Whether the tool returned an error.
+    pub is_error: bool,
+    /// Wall-clock duration of the tool call in milliseconds.
+    pub duration_ms: Option<u64>,
+    /// Whether the tool call has completed.
+    pub completed: bool,
+}
+
+/// Distillation (memory compaction) progress for a single agent.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum DistillationProgress {

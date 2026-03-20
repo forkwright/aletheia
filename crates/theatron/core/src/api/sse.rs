@@ -1,10 +1,16 @@
+//! Global SSE connection to `GET /api/v1/events`.
+//!
+//! Provides cross-session awareness: agent status changes, session lifecycle,
+//! and memory distillation progress. Auto-reconnects with exponential backoff
+//! (1s to 30s) and treats 30s of silence as a stale connection.
+
 use futures_util::StreamExt;
 use reqwest::Client;
-use theatron_core::sse::SseStream;
 use tokio::sync::mpsc;
 use tracing::Instrument;
 
 use crate::id::{NousId, SessionId, TurnId};
+use crate::sse::SseStream;
 
 use super::types::SseEvent;
 
@@ -60,8 +66,10 @@ impl SseConnection {
                                 json.get("message")
                                     .or_else(|| json.get("error"))
                                     .and_then(|v| v.as_str())
-                                    .map(|s| s.to_string())
-                                    .unwrap_or_else(|| format!("{} {}", status.as_u16(), reason))
+                                    .map_or_else(
+                                        || format!("{} {}", status.as_u16(), reason),
+                                        std::string::ToString::to_string,
+                                    )
                             } else {
                                 format!("{} {}", status.as_u16(), reason)
                             };
@@ -116,6 +124,7 @@ impl SseConnection {
         }
     }
 
+    /// Receive the next parsed SSE event.
     #[tracing::instrument(skip_all)]
     pub async fn next(&mut self) -> Option<SseEvent> {
         self.rx.recv().await
@@ -202,6 +211,10 @@ fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions may panic on failure"
+)]
 mod tests {
     use super::*;
 

@@ -1,10 +1,15 @@
+//! HTTP client for the Aletheia gateway REST API.
+
 use reqwest::{Client, Response, StatusCode, header};
 use snafu::prelude::*;
 
 use aletheia_koina::secret::SecretString;
 
 use super::error::{ApiError, AuthSnafu, HttpSnafu, Result, ServerSnafu};
-use super::types::*;
+use super::types::{
+    Agent, AgentsResponse, AuthMode, DailyResponse, HistoryMessage, HistoryResponse, LoginResponse,
+    NousTool, NousToolsResponse, Session, SessionsResponse,
+};
 
 /// Percent-encode a value for use in a URL path segment.
 fn encode_path(s: &str) -> String {
@@ -12,7 +17,7 @@ fn encode_path(s: &str) -> String {
     for byte in s.as_bytes() {
         match byte {
             b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
-                encoded.push(*byte as char);
+                encoded.push(char::from(*byte));
             }
             _ => {
                 use std::fmt::Write;
@@ -100,16 +105,17 @@ impl ApiClient {
         })
     }
 
-    #[expect(dead_code, reason = "reserved for future login flow")]
+    /// Replace the authentication token.
     pub fn set_token(&mut self, token: String) {
         self.token = Some(SecretString::from(token));
     }
 
-    #[expect(dead_code, reason = "reserved for future diagnostics / display")]
+    /// The base URL this client connects to.
     pub fn base_url(&self) -> &str {
         &self.base_url
     }
 
+    /// The current authentication token, if set.
     pub fn token(&self) -> Option<&str> {
         self.token.as_ref().map(SecretString::expose_secret)
     }
@@ -123,14 +129,16 @@ impl ApiClient {
         self.client.request(method, self.url(path))
     }
 
+    /// Check server reachability (not health status).
+    ///
+    /// A 503 (unhealthy) means the server IS running but has degraded checks.
     #[tracing::instrument(skip(self))]
     pub async fn health(&self) -> Result<bool> {
-        // WHY: check reachability, not health status. A 503 (unhealthy)
-        // means the server IS running but has degraded checks: still usable.
         let resp = self.client.get(self.url("/api/health")).send().await;
         Ok(resp.is_ok())
     }
 
+    /// Query the server's authentication mode.
     #[tracing::instrument(skip(self))]
     pub async fn auth_mode(&self) -> Result<AuthMode> {
         let resp = self
@@ -145,7 +153,7 @@ impl ApiClient {
         })
     }
 
-    #[expect(dead_code, reason = "reserved for future interactive login flow")]
+    /// Authenticate with username and password.
     #[tracing::instrument(skip(self, password))]
     pub async fn login(&self, username: &str, password: &str) -> Result<LoginResponse> {
         let resp = self
@@ -166,6 +174,7 @@ impl ApiClient {
         })
     }
 
+    /// Fetch all registered agents.
     #[tracing::instrument(skip(self))]
     pub async fn agents(&self) -> Result<Vec<Agent>> {
         let resp = self
@@ -239,6 +248,7 @@ impl ApiClient {
         Ok(wrapper.messages)
     }
 
+    /// Create a new session for an agent.
     #[tracing::instrument(skip(self))]
     pub async fn create_session(&self, nous_id: &str, session_key: &str) -> Result<Session> {
         let resp = self
@@ -259,6 +269,7 @@ impl ApiClient {
         })
     }
 
+    /// Archive a session.
     #[tracing::instrument(skip(self))]
     pub async fn archive_session(&self, session_id: &str) -> Result<()> {
         let encoded = encode_path(session_id);
@@ -276,6 +287,7 @@ impl ApiClient {
         Ok(())
     }
 
+    /// Unarchive a previously archived session.
     #[tracing::instrument(skip(self))]
     pub async fn unarchive_session(&self, session_id: &str) -> Result<()> {
         let encoded = encode_path(session_id);
@@ -293,6 +305,7 @@ impl ApiClient {
         Ok(())
     }
 
+    /// Rename a session.
     #[tracing::instrument(skip(self))]
     pub async fn rename_session(&self, session_id: &str, name: &str) -> Result<()> {
         let encoded = encode_path(session_id);
@@ -311,7 +324,7 @@ impl ApiClient {
         Ok(())
     }
 
-    #[expect(dead_code, reason = "reserved for turn abort keybinding")]
+    /// Abort a running turn.
     #[tracing::instrument(skip(self))]
     pub async fn abort_turn(&self, turn_id: &str) -> Result<()> {
         let encoded = encode_path(turn_id);
@@ -329,6 +342,7 @@ impl ApiClient {
         Ok(())
     }
 
+    /// Approve a tool invocation awaiting user consent.
     #[tracing::instrument(skip(self))]
     pub async fn approve_tool(&self, turn_id: &str, tool_id: &str) -> Result<()> {
         let t = encode_path(turn_id);
@@ -347,6 +361,7 @@ impl ApiClient {
         Ok(())
     }
 
+    /// Deny a tool invocation awaiting user consent.
     #[tracing::instrument(skip(self))]
     pub async fn deny_tool(&self, turn_id: &str, tool_id: &str) -> Result<()> {
         let t = encode_path(turn_id);
@@ -365,6 +380,7 @@ impl ApiClient {
         Ok(())
     }
 
+    /// Approve a proposed execution plan.
     #[tracing::instrument(skip(self))]
     pub async fn approve_plan(&self, plan_id: &str) -> Result<()> {
         let encoded = encode_path(plan_id);
@@ -382,6 +398,7 @@ impl ApiClient {
         Ok(())
     }
 
+    /// Cancel a proposed execution plan.
     #[tracing::instrument(skip(self))]
     pub async fn cancel_plan(&self, plan_id: &str) -> Result<()> {
         let encoded = encode_path(plan_id);
@@ -399,6 +416,7 @@ impl ApiClient {
         Ok(())
     }
 
+    /// Fetch today's LLM cost in cents.
     #[tracing::instrument(skip(self))]
     pub async fn today_cost_cents(&self) -> Result<u32> {
         let resp = self
@@ -412,10 +430,18 @@ impl ApiClient {
         let daily: DailyResponse = resp.json().await.context(HttpSnafu {
             operation: "costs response",
         })?;
-        let today_cost = daily.daily.last().map(|d| d.cost).unwrap_or(0.0);
-        Ok((today_cost * 100.0) as u32)
+        let today_cost = daily.daily.last().map_or(0.0, |d| d.cost);
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            clippy::as_conversions,
+            reason = "dollar cost * 100 fits in u32 for any realistic value"
+        )]
+        let cents = (today_cost * 100.0) as u32;
+        Ok(cents)
     }
 
+    /// Trigger distillation (memory compaction) for a session.
     #[tracing::instrument(skip(self))]
     pub async fn compact(&self, session_id: &str) -> Result<()> {
         let encoded = encode_path(session_id);
@@ -461,6 +487,7 @@ impl ApiClient {
         Ok(wrapper.tools)
     }
 
+    /// Search agent memory by query.
     #[tracing::instrument(skip(self))]
     pub async fn recall(&self, nous_id: &str, query: &str) -> Result<String> {
         let encoded = encode_path(nous_id);
@@ -504,6 +531,7 @@ impl ApiClient {
         })
     }
 
+    /// Update a single configuration section.
     #[tracing::instrument(skip(self, data))]
     pub async fn update_config_section(
         &self,
@@ -526,6 +554,7 @@ impl ApiClient {
         })
     }
 
+    /// Fetch knowledge facts with sorting and pagination.
     #[tracing::instrument(skip(self))]
     pub async fn knowledge_facts(
         &self,
@@ -549,6 +578,7 @@ impl ApiClient {
         })
     }
 
+    /// Fetch detail for a single knowledge fact.
     #[tracing::instrument(skip(self))]
     pub async fn knowledge_fact_detail(&self, fact_id: &str) -> Result<serde_json::Value> {
         let encoded = encode_path(fact_id);
@@ -568,6 +598,7 @@ impl ApiClient {
         })
     }
 
+    /// Mark a knowledge fact as forgotten.
     #[tracing::instrument(skip(self))]
     pub async fn knowledge_forget(&self, fact_id: &str) -> Result<()> {
         let encoded = encode_path(fact_id);
@@ -585,6 +616,7 @@ impl ApiClient {
         Ok(())
     }
 
+    /// Restore a previously forgotten fact.
     #[tracing::instrument(skip(self))]
     pub async fn knowledge_restore(&self, fact_id: &str) -> Result<()> {
         let encoded = encode_path(fact_id);
@@ -602,6 +634,7 @@ impl ApiClient {
         Ok(())
     }
 
+    /// Update the confidence score for a knowledge fact.
     #[tracing::instrument(skip(self))]
     pub async fn knowledge_update_confidence(&self, fact_id: &str, confidence: f64) -> Result<()> {
         let encoded = encode_path(fact_id);
@@ -620,6 +653,7 @@ impl ApiClient {
         Ok(())
     }
 
+    /// Queue a message for asynchronous processing.
     #[tracing::instrument(skip(self, text))]
     pub async fn queue_message(&self, session_id: &str, text: &str) -> Result<()> {
         let encoded = encode_path(session_id);
@@ -658,8 +692,10 @@ impl ApiClient {
             json.get("message")
                 .or_else(|| json.get("error"))
                 .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| format!("{} {}", status.as_u16(), reason))
+                .map_or_else(
+                    || format!("{} {}", status.as_u16(), reason),
+                    std::string::ToString::to_string,
+                )
         } else {
             format!("{} {}", status.as_u16(), reason)
         };
