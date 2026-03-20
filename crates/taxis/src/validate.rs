@@ -66,7 +66,7 @@ pub fn validate_section(section: &str, value: &Value) -> Result<(), ValidationEr
         "bindings" => validate_bindings(value, &mut errors),
         "credential" => validate_credential(value, &mut errors),
         // NOTE: these sections are pass-through with no validation rules
-        "packs" | "pricing" | "sandbox" | "logging" | "mcp" => {}
+        "packs" | "pricing" | "sandbox" | "logging" | "mcp" | "localProvider" => {}
         _ => errors.push(format!("unknown config section: {section}")),
     }
 

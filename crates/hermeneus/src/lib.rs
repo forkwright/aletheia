@@ -19,6 +19,11 @@ pub mod error;
 pub mod fallback;
 /// Provider health state machine (Up / Degraded / Down) with automatic recovery.
 pub mod health;
+/// OpenAI-compatible local LLM provider for vLLM and similar servers.
+///
+/// Gated behind the `local-llm` feature flag.
+#[cfg(feature = "local-llm")]
+pub mod local;
 /// Prometheus metrics for LLM request counts, latency, and token usage.
 pub mod metrics;
 /// Model constants and API configuration defaults.

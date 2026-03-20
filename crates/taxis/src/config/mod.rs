@@ -51,6 +51,34 @@ pub struct AletheiaConfig {
     pub logging: LoggingSettings,
     /// MCP server configuration.
     pub mcp: McpConfig,
+    /// Local LLM provider configuration (vLLM / OpenAI-compatible endpoint).
+    pub local_provider: LocalProviderConfig,
+}
+
+/// Configuration for a local OpenAI-compatible LLM provider (vLLM, etc.).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct LocalProviderConfig {
+    /// Whether the local provider is enabled.
+    pub enabled: bool,
+    /// Base URL of the OpenAI-compatible endpoint.
+    pub base_url: String,
+    /// Default model served by the local endpoint.
+    pub model: String,
+    /// HTTP request timeout in seconds.
+    pub timeout_secs: u64,
+}
+
+impl Default for LocalProviderConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            base_url: "http://localhost:8000/v1".to_owned(),
+            model: "qwen3.5-27b".to_owned(),
+            timeout_secs: 120,
+        }
+    }
 }
 
 /// Sandbox enforcement level for tool execution.
