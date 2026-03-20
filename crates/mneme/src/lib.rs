@@ -33,15 +33,15 @@ pub(crate) mod graph_intelligence;
 /// In-memory HNSW vector index backed by `hnsw_rs`.
 #[cfg(feature = "hnsw_rs")]
 pub mod hnsw_index;
-/// Newtype wrappers for mneme-local domain identifiers.
-pub mod id;
+/// Newtype wrappers for knowledge-domain identifiers (re-exported from `eidos`).
+pub use aletheia_eidos::id;
 /// Agent import: restore an agent from a portable `AgentFile`.
 #[cfg(feature = "sqlite")]
 pub mod import;
 /// Instinct system: behavioral memory from tool usage patterns.
 pub mod instinct;
-/// Knowledge graph domain types: facts, entities, relationships, embeddings.
-pub mod knowledge;
+/// Knowledge graph domain types: facts, entities, relationships, embeddings (re-exported from `eidos`).
+pub use aletheia_eidos::knowledge;
 /// `CozoDB`-backed knowledge store for graph traversal and vector search.
 pub mod knowledge_store;
 /// Versioned `SQLite` schema migration runner.
