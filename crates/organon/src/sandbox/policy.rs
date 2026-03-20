@@ -365,6 +365,7 @@ pub fn probe_landlock_abi() -> Option<i32> {
     if ret >= 1 { Some(ret as i32) } else { None }
 }
 
+/// Probe the Landlock ABI version. Returns None on non-Linux platforms.
 #[cfg(not(target_os = "linux"))]
 pub fn probe_landlock_abi() -> Option<i32> {
     None
@@ -494,6 +495,7 @@ pub fn apply_sandbox(
     Ok(())
 }
 
+/// Apply sandbox restrictions to a command. No-op on non-Linux platforms.
 #[cfg(not(target_os = "linux"))]
 pub fn apply_sandbox(
     _cmd: &mut std::process::Command,
