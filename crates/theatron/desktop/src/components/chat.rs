@@ -41,7 +41,10 @@
 
 use std::time::{Duration, Instant};
 
-use crate::api::types::{ConnectionState, NousId, StreamEvent, StreamingState, ToolCallInfo};
+use theatron_core::events::StreamEvent;
+use theatron_core::id::NousId;
+
+use crate::state::events::{ConnectionState, StreamingState, ToolCallInfo};
 
 /// How long to buffer text deltas before flushing to the signal.
 const TEXT_DEBOUNCE: Duration = Duration::from_millis(100);
@@ -169,7 +172,11 @@ impl ChatStateManager {
                 self.thinking_buffer.push_str(&delta);
                 self.maybe_flush_thinking(state, has_newline)
             }
-            StreamEvent::ToolStart { tool_name, tool_id } => {
+            StreamEvent::ToolStart {
+                tool_name,
+                tool_id,
+                input: _,
+            } => {
                 // Flush any pending text before recording tool start.
                 self.flush_text(state);
                 self.flush_thinking(state);
@@ -186,7 +193,8 @@ impl ChatStateManager {
                 tool_id,
                 is_error,
                 duration_ms,
-                ..
+                tool_name: _,
+                result: _,
             } => {
                 if let Some(tc) = state
                     .streaming
@@ -245,6 +253,8 @@ impl ChatStateManager {
                 // These would drive overlay/dialog signals in the full implementation.
                 true
             }
+            // Plan events and future non-exhaustive variants: no state change yet.
+            _ => false,
         }
     }
 
@@ -321,7 +331,8 @@ pub fn apply_connection_event(state: &mut ChatState, connected: bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::types::{ToolId, TurnOutcome};
+    use theatron_core::api::types::TurnOutcome;
+    use theatron_core::id::ToolId;
 
     fn make_state() -> ChatState {
         ChatState::default()
@@ -444,6 +455,7 @@ mod tests {
             StreamEvent::ToolStart {
                 tool_name: "read_file".to_string(),
                 tool_id: ToolId::from("t1"),
+                input: None,
             },
             &mut state,
         );
@@ -469,6 +481,7 @@ mod tests {
             StreamEvent::ToolStart {
                 tool_name: "exec".to_string(),
                 tool_id: ToolId::from("tool-1"),
+                input: None,
             },
             &mut state,
         );
@@ -478,6 +491,7 @@ mod tests {
                 tool_id: ToolId::from("tool-1"),
                 is_error: false,
                 duration_ms: 250,
+                result: None,
             },
             &mut state,
         );
@@ -702,6 +716,7 @@ mod tests {
             StreamEvent::ToolStart {
                 tool_name: "search".to_string(),
                 tool_id: ToolId::from("t-1"),
+                input: None,
             },
             &mut state,
         );
@@ -711,6 +726,7 @@ mod tests {
                 tool_id: ToolId::from("t-1"),
                 is_error: false,
                 duration_ms: 120,
+                result: None,
             },
             &mut state,
         );

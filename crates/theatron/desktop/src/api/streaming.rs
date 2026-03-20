@@ -39,7 +39,8 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 
-use super::types::{NousId, SessionId, StreamEvent, ToolId, TurnId};
+use theatron_core::events::StreamEvent;
+use theatron_core::id::{NousId, SessionId, ToolId, TurnId};
 
 /// Start streaming a turn response.
 ///
@@ -187,6 +188,7 @@ fn parse_stream_event(event_type: &str, data: &str) -> Option<StreamEvent> {
         "tool_start" => Some(StreamEvent::ToolStart {
             tool_name: str_field(&json, "toolName", event_type)?.to_string(),
             tool_id: ToolId::from(str_field(&json, "toolId", event_type)?.to_string()),
+            input: json.get("input").cloned(),
         }),
         "tool_result" => {
             let tool_name = str_field(&json, "toolName", event_type)?.to_string();
@@ -215,6 +217,10 @@ fn parse_stream_event(event_type: &str, data: &str) -> Option<StreamEvent> {
                 tool_id,
                 is_error,
                 duration_ms,
+                result: json
+                    .get("result")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
             })
         }
         "tool_approval_required" => Some(StreamEvent::ToolApprovalRequired {
@@ -248,6 +254,11 @@ fn parse_stream_event(event_type: &str, data: &str) -> Option<StreamEvent> {
         "error" => Some(StreamEvent::Error(
             str_field(&json, "message", event_type)?.to_string(),
         )),
+        // Plan events: logged but not yet surfaced in the desktop UI.
+        "plan_proposed" | "plan_step_start" | "plan_step_complete" | "plan_complete" => {
+            tracing::debug!(event_type, "plan event (not yet rendered in desktop)");
+            None
+        }
         "queue_drained" => {
             tracing::debug!("queue drained: {json}");
             None
@@ -315,12 +326,14 @@ mod tests {
             tool_name,
             is_error,
             duration_ms,
+            result: tool_result,
             ..
         }) = result
         {
             assert_eq!(tool_name, "exec");
             assert!(!is_error);
             assert_eq!(duration_ms, 150);
+            assert!(tool_result.is_none());
         } else {
             panic!("expected ToolResult");
         }

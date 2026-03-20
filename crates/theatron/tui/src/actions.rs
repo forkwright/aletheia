@@ -15,10 +15,10 @@ const LAYOUT_MIN_OPS_TERMINAL_WIDTH: u16 = 80;
 const LAYOUT_MIN_CHAT_PANE_WIDTH: u16 = 40;
 const LAYOUT_MIN_OPS_PANE_WIDTH: u16 = 20;
 
-use crate::api::streaming;
 use crate::app::App;
 use crate::state::virtual_scroll::estimate_message_height;
 use crate::state::{ChatMessage, SavedScrollState, TabCompletion};
+use theatron_core::api::streaming;
 
 impl App {
     #[tracing::instrument(skip(self, text), fields(agent = ?self.dashboard.focused_agent))]

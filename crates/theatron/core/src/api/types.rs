@@ -1,17 +1,23 @@
+//! Request and response types for the Aletheia REST API.
+
 use serde::{Deserialize, Serialize};
 
 use aletheia_koina::secret::SecretString;
 
 use crate::id::{NousId, PlanId, SessionId, TurnId};
 
+/// A registered agent (nous) in the system.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Agent {
+    /// Agent identifier.
     pub id: NousId,
     /// Display name: falls back to `id` if absent.
     #[serde(default)]
     pub name: Option<String>,
+    /// Model backing this agent.
     #[serde(default)]
     pub model: Option<String>,
+    /// Emoji icon for the agent.
     #[serde(default)]
     pub emoji: Option<String>,
 }
@@ -24,25 +30,35 @@ impl Agent {
     }
 }
 
+/// A session within an agent.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
+    /// Session identifier.
     pub id: SessionId,
+    /// Agent this session belongs to.
     pub nous_id: NousId,
+    /// Session key (human-readable slug).
     #[serde(rename = "session_key")]
     pub key: String,
+    /// Session status (e.g. "active", "archived").
     #[serde(default)]
     pub status: Option<String>,
+    /// Number of messages in the session.
     #[serde(default)]
     pub message_count: u32,
+    /// Session type (e.g. "background").
     #[serde(default)]
     pub session_type: Option<String>,
+    /// Last-updated timestamp.
     #[serde(default)]
     pub updated_at: Option<String>,
+    /// User-assigned display name.
     #[serde(default)]
     pub display_name: Option<String>,
 }
 
 impl Session {
+    /// Label for display: prefers `display_name`, falls back to `key`.
     pub fn label(&self) -> &str {
         self.display_name
             .as_deref()
@@ -50,10 +66,12 @@ impl Session {
             .unwrap_or(&self.key)
     }
 
+    /// Whether this session has been archived.
     pub fn is_archived(&self) -> bool {
         self.status.as_deref() == Some("archived") || self.key.contains(":archived:")
     }
 
+    /// Whether this session accepts interactive user input.
     pub fn is_interactive(&self) -> bool {
         !self.is_archived()
             && self.session_type.as_deref() != Some("background")
@@ -64,139 +82,216 @@ impl Session {
     }
 }
 
+/// A single message from session history.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HistoryMessage {
+    /// Role: "user", "assistant", or "tool".
     pub role: String,
+    /// Message content (text or structured).
     #[serde(default)]
     pub content: Option<serde_json::Value>,
+    /// When the message was created.
     #[serde(default)]
     pub created_at: Option<String>,
+    /// Model that generated this message (assistant messages only).
     #[serde(default)]
     pub model: Option<String>,
+    /// Tool name if this is a tool-result message.
     #[serde(default)]
     pub tool_name: Option<String>,
 }
 
+/// Wrapper for the history endpoint response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HistoryResponse {
+    /// Messages in chronological order.
     pub messages: Vec<HistoryMessage>,
 }
 
+/// Summary of a completed turn.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TurnOutcome {
+    /// Final text output.
     pub text: String,
+    /// Agent that processed this turn.
     #[serde(rename = "nousId")]
     pub nous_id: NousId,
+    /// Session this turn belongs to.
     #[serde(rename = "sessionId")]
     pub session_id: SessionId,
+    /// Model used for this turn.
     pub model: String,
+    /// Number of tool calls made.
     #[serde(rename = "toolCalls", default)]
     pub tool_calls: u32,
+    /// Input tokens consumed.
     #[serde(rename = "inputTokens", default)]
     pub input_tokens: u32,
+    /// Output tokens generated.
     #[serde(rename = "outputTokens", default)]
     pub output_tokens: u32,
+    /// Tokens read from cache.
     #[serde(rename = "cacheReadTokens", default)]
     pub cache_read_tokens: u32,
+    /// Tokens written to cache.
     #[serde(rename = "cacheWriteTokens", default)]
     pub cache_write_tokens: u32,
+    /// Error message, if the turn errored.
     #[serde(default)]
     pub error: Option<String>,
 }
 
+/// A single step within a plan.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlanStep {
+    /// Step index.
     pub id: u32,
+    /// Human-readable label.
     pub label: String,
+    /// Role responsible for this step.
     pub role: String,
+    /// Steps that can run in parallel with this one.
     #[serde(default)]
     pub parallel: Option<Vec<u32>>,
+    /// Current status of this step.
     pub status: String,
+    /// Result summary after completion.
     #[serde(default)]
     pub result: Option<String>,
 }
 
+/// A multi-step execution plan proposed by the server.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Plan {
+    /// Plan identifier.
     pub id: PlanId,
+    /// Session this plan was proposed in.
     #[serde(rename = "sessionId")]
     pub session_id: SessionId,
+    /// Agent that proposed the plan.
     #[serde(rename = "nousId")]
     pub nous_id: NousId,
+    /// Ordered list of plan steps.
     pub steps: Vec<PlanStep>,
+    /// Estimated total cost in cents.
     #[serde(rename = "totalEstimatedCostCents", default)]
     pub total_estimated_cost_cents: u32,
+    /// Plan status.
     pub status: String,
 }
 
+/// Application-level SSE events from `GET /api/v1/events`.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum SseEvent {
+    /// SSE connection established.
     Connected,
+    /// SSE connection lost (will auto-reconnect).
     Disconnected,
+    /// Initial state dump with currently active turns.
     Init {
+        /// Turns that are currently in progress.
         active_turns: Vec<ActiveTurn>,
     },
+    /// A turn is about to start.
     TurnBefore {
+        /// Agent processing the turn.
         nous_id: NousId,
+        /// Session the turn belongs to.
         session_id: SessionId,
+        /// Turn identifier.
         turn_id: TurnId,
     },
+    /// A turn has completed.
     TurnAfter {
+        /// Agent that processed the turn.
         nous_id: NousId,
+        /// Session the turn belongs to.
         session_id: SessionId,
     },
+    /// A tool was invoked during a turn.
     ToolCalled {
+        /// Agent invoking the tool.
         nous_id: NousId,
+        /// Name of the tool.
         tool_name: String,
     },
+    /// A tool invocation failed.
     ToolFailed {
+        /// Agent whose tool failed.
         nous_id: NousId,
+        /// Name of the failed tool.
         tool_name: String,
+        /// Error description.
         error: String,
     },
+    /// Agent status changed.
     StatusUpdate {
+        /// Agent whose status changed.
         nous_id: NousId,
+        /// New status value.
         status: String,
     },
+    /// A new session was created.
     SessionCreated {
+        /// Agent the session was created for.
         nous_id: NousId,
+        /// New session identifier.
         session_id: SessionId,
     },
+    /// A session was archived.
     SessionArchived {
+        /// Agent the session belongs to.
         nous_id: NousId,
+        /// Archived session identifier.
         session_id: SessionId,
     },
+    /// Memory distillation is about to start.
     DistillBefore {
+        /// Agent undergoing distillation.
         nous_id: NousId,
     },
+    /// Memory distillation progressed to a new stage.
     DistillStage {
+        /// Agent undergoing distillation.
         nous_id: NousId,
+        /// Current distillation stage.
         stage: String,
     },
+    /// Memory distillation completed.
     DistillAfter {
+        /// Agent that completed distillation.
         nous_id: NousId,
     },
+    /// Server heartbeat.
     Ping,
 }
 
+/// A turn currently in progress, reported in the `init` SSE event.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActiveTurn {
+    /// Agent processing this turn.
     #[serde(rename = "nousId")]
     pub nous_id: NousId,
+    /// Session this turn belongs to.
     #[serde(rename = "sessionId")]
     pub session_id: SessionId,
+    /// Turn identifier.
     #[serde(rename = "turnId")]
     pub turn_id: TurnId,
 }
 
+/// Server authentication mode.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthMode {
+    /// Authentication mode (e.g. "token", "none").
     pub mode: String,
 }
 
+/// Response from the login endpoint.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct LoginResponse {
+    /// Authentication token.
     pub token: SecretString,
 }
 
@@ -208,40 +303,54 @@ impl std::fmt::Debug for LoginResponse {
     }
 }
 
-#[expect(dead_code, reason = "deserialization target for /api/v1/costs")]
+/// Cost summary across agents.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CostSummary {
+    /// Total cost across all agents.
     #[serde(rename = "totalCost", default)]
     pub total_cost: f64,
+    /// Per-agent cost breakdown.
     #[serde(default)]
     pub agents: Vec<AgentCost>,
 }
 
+/// Cost for a single agent.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentCost {
+    /// Agent identifier.
     #[serde(rename = "agentId")]
     pub agent_id: NousId,
+    /// Total cost for this agent.
     #[serde(rename = "totalCost", default)]
     pub total_cost: f64,
+    /// Number of turns processed.
     #[serde(default)]
     pub turns: u32,
 }
 
+/// Response from the daily costs endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DailyResponse {
+    /// Daily cost entries.
     pub daily: Vec<DailyEntry>,
 }
 
+/// A single day's cost and usage.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DailyEntry {
+    /// Date string (YYYY-MM-DD).
     pub date: String,
+    /// Cost in dollars.
     pub cost: f64,
+    /// Total tokens consumed.
     #[serde(default)]
     pub tokens: u64,
+    /// Number of turns.
     #[serde(default)]
     pub turns: u32,
 }
 
+/// Wrapper for the agents list endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentsResponse {
     /// Server returns `{"nous": [...]}`: accept both keys for resilience.
@@ -249,15 +358,19 @@ pub struct AgentsResponse {
     pub nous: Vec<Agent>,
 }
 
+/// Wrapper for the sessions list endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionsResponse {
+    /// List of sessions.
     pub sessions: Vec<Session>,
 }
 
 /// A tool available to an agent, with its enablement state.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NousTool {
+    /// Tool name.
     pub name: String,
+    /// Whether the tool is enabled.
     #[serde(default = "default_true")]
     pub enabled: bool,
 }
@@ -266,13 +379,19 @@ fn default_true() -> bool {
     true
 }
 
+/// Wrapper for the tools list endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NousToolsResponse {
+    /// List of tools.
     pub tools: Vec<NousTool>,
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
+#[expect(
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test assertions may panic on failure"
+)]
 mod tests {
     use super::*;
 
@@ -425,7 +544,7 @@ mod tests {
         let lr = LoginResponse {
             token: SecretString::from("secret-token-value"),
         };
-        let debug = format!("{:?}", lr);
+        let debug = format!("{lr:?}");
         assert!(!debug.contains("secret-token-value"));
         assert!(debug.contains("REDACTED"));
     }

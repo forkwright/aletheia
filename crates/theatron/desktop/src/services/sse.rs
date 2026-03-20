@@ -21,7 +21,9 @@
 //! The router is framework-agnostic: it mutates an [`EventState`] and returns
 //! whether the state changed, leaving signal writes to the caller.
 
-use crate::api::types::{ActiveTurn, NousId, SseEvent};
+use theatron_core::api::types::{ActiveTurn, SseEvent};
+use theatron_core::id::NousId;
+
 use crate::state::events::{DistillationProgress, EventState, SseConnectionState};
 
 /// Routes parsed [`SseEvent`]s into [`EventState`].
@@ -83,6 +85,10 @@ impl SseEventRouter {
             SseEvent::DistillStage { nous_id, stage } => self.on_distill_stage(nous_id, stage),
             SseEvent::DistillAfter { nous_id } => self.on_distill_after(nous_id),
             SseEvent::Ping => false,
+            _ => {
+                tracing::debug!(?event, "unhandled SSE event variant");
+                false
+            }
         }
     }
 
@@ -114,8 +120,8 @@ impl SseEventRouter {
     fn on_turn_before(
         &mut self,
         nous_id: &NousId,
-        session_id: &crate::api::types::SessionId,
-        turn_id: &crate::api::types::TurnId,
+        session_id: &theatron_core::id::SessionId,
+        turn_id: &theatron_core::id::TurnId,
     ) -> bool {
         // NOTE: Only add if not already tracked (idempotent).
         let already = self
@@ -136,7 +142,7 @@ impl SseEventRouter {
     fn on_turn_after(
         &mut self,
         nous_id: &NousId,
-        session_id: &crate::api::types::SessionId,
+        session_id: &theatron_core::id::SessionId,
     ) -> bool {
         let before = self.state.active_turns.len();
         self.state.active_turns.retain(|t| {
@@ -218,7 +224,7 @@ impl Default for SseEventRouter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::types::{NousId, SessionId, TurnId};
+    use theatron_core::id::{NousId, SessionId, TurnId};
 
     fn nous(id: &str) -> NousId {
         NousId::from(id)

@@ -109,6 +109,7 @@ impl App {
             SseEvent::DistillStage { nous_id, stage } => Msg::SseDistillStage { nous_id, stage },
             SseEvent::DistillAfter { nous_id } => Msg::SseDistillAfter { nous_id },
             SseEvent::Ping => Msg::Tick,
+            _ => Msg::Tick,
         }
     }
 
@@ -188,6 +189,7 @@ impl App {
             StreamEvent::TurnComplete { outcome } => Msg::StreamTurnComplete { outcome },
             StreamEvent::TurnAbort { reason } => Msg::StreamTurnAbort { reason },
             StreamEvent::Error(msg) => Msg::StreamError(msg),
+            _ => Msg::Tick,
         }
     }
 }
