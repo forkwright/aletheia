@@ -1,11 +1,11 @@
 # nous
 
-Agent session pipeline: bootstrap, recall, execute, finalize. 15K lines. The agent runtime.
+Agent session pipeline: bootstrap, recall, execute, finalize. 17K lines. The agent runtime.
 
 ## Read first
 
 1. `src/actor/mod.rs`: NousActor run loop (tokio::select! inbox pattern)
-2. `src/pipeline.rs`: PipelineInput, PipelineContext, TurnResult, guard logic
+2. `src/pipeline/mod.rs`: PipelineInput, PipelineContext, TurnResult, guard logic
 3. `src/bootstrap/mod.rs`: System prompt assembly from workspace cascade
 4. `src/execute/mod.rs`: LLM call + tool dispatch loop
 5. `src/manager.rs`: NousManager lifecycle, health polling, restart
@@ -17,9 +17,9 @@ Agent session pipeline: bootstrap, recall, execute, finalize. 15K lines. The age
 | `NousActor` | `actor/mod.rs` | Tokio actor processing turns sequentially |
 | `NousHandle` | `handle.rs` | Cloneable sender for invoking turns |
 | `NousManager` | `manager.rs` | Spawns actors, monitors health, routes messages |
-| `PipelineContext` | `pipeline.rs` | Assembled context flowing through pipeline stages |
+| `PipelineContext` | `pipeline/mod.rs` | Assembled context flowing through pipeline stages |
 | `BootstrapAssembler` | `bootstrap/mod.rs` | Priority-based system prompt packer |
-| `CrossNousRouter` | `cross.rs` | Inter-agent message routing with delivery audit |
+| `CrossNousRouter` | `cross/router.rs` | Inter-agent message routing with delivery audit |
 | `SessionState` | `session.rs` | In-memory session tracking (turn count, token estimate) |
 
 ## Pipeline stages (in order)
@@ -48,7 +48,7 @@ Agent session pipeline: bootstrap, recall, execute, finalize. 15K lines. The age
 | Modify bootstrap | `src/bootstrap/mod.rs` (WorkspaceFileSpec list, priorities) |
 | Modify recall | `src/recall.rs` (weights, search strategy, reranking) |
 | Add session hook | `src/session.rs` (SessionManager or SessionState) |
-| Add cross-nous message type | `src/cross.rs` (CrossNousMessage enum) |
+| Add cross-nous message type | `src/cross/mod.rs` (CrossNousMessage enum) |
 
 ## Dependencies
 

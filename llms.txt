@@ -4,7 +4,7 @@
 
 Privacy-first distributed cognition. N agents + 1 human operator. Each agent has character, memory, and domain expertise. They persist understanding across sessions, coordinate through shared infrastructure, and evolve through use. Runs on commodity hardware with no cloud dependencies beyond your LLM API key.
 
-Rust workspace with 16 crates. TUI client.
+Rust workspace with 23 crates. TUI client.
 
 ## Getting Started
 
@@ -17,7 +17,7 @@ Rust workspace with 16 crates. TUI client.
 - [ARCHITECTURE](docs/ARCHITECTURE.md): Crate workspace, module map, dependency graph, trait boundaries
 - [PROJECT](docs/PROJECT.md): Project plan, milestones, dependency policy, crate-to-module mapping
 - [TECHNOLOGY](docs/TECHNOLOGY.md): Technology decisions, dependency rationale, pinning policy
-- [ALETHEIA](docs/ALETHEIA.md): System manifesto and naming philosophy
+- [gnomon](docs/gnomon.md): Naming philosophy and the gnomon system
 
 ## Standards
 
@@ -36,14 +36,10 @@ Rust workspace with 16 crates. TUI client.
 - [RELEASING](docs/RELEASING.md): Release process, versioning, changelog discipline
 - [SECURITY](SECURITY.md): Vulnerability reporting, developer security practices, pre-commit hooks
 
-## Reference
-
-- [VENDORING](docs/VENDORING.md): Vendored dependencies absorbed into mneme
-
 ## Key Directories
 
 - `crates/`: Rust workspace (koina, taxis, mneme, hermeneus, organon, nous, pylon, etc.)
-- `tui/`: Terminal UI client (workspace member)
+- `crates/theatron/tui/`: Terminal UI client (workspace member)
 - `instance.example/nous/_template/`: Template agent workspace (SOUL.md, USER.md, AGENTS.md)
 - `instance.example/config/`: Example gateway config
 - `standards/`: Coding standards for AI agents

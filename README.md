@@ -20,7 +20,7 @@ See [QUICKSTART.md](docs/QUICKSTART.md) for install instructions, setup, and fir
 
 - **Persistent memory.** Conversations carry forward. The agent builds a knowledge graph of facts, entities, and relationships that persists across sessions and grows over time.
 - **Multiple agents.** Each agent has its own character (SOUL.md), goals, memory, and workspace. They can coordinate, delegate, and specialize.
-- **Tools.** 33 built-in tools: file I/O, shell execution, web search, memory search, agent coordination. Extend with domain packs or custom tools.
+- **Tools.** 36 built-in tools: file I/O, shell execution, web search, memory search, planning, agent coordination. Extend with domain packs or custom tools.
 - **Terminal dashboard.** Rich TUI with markdown rendering, session management, and real-time streaming.
 - **Signal messaging.** Talk to your agents over Signal with 15 built-in commands.
 - **Privacy.** No telemetry, no analytics, no phone-home. Only outbound connections are to services you configure.
@@ -29,7 +29,7 @@ See [QUICKSTART.md](docs/QUICKSTART.md) for install instructions, setup, and fir
 
 ## Architecture
 
-Rust workspace with 18 crates. Single binary deployment. See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full dependency graph and trait boundaries.
+Rust workspace with 23 crates. Single binary deployment. See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full dependency graph and trait boundaries.
 
 ---
 
