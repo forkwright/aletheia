@@ -16,35 +16,54 @@ use crate::state::connection::ConnectionConfig;
 // Errors
 // ---------------------------------------------------------------------------
 
+/// Errors that can occur when loading or saving desktop config.
 #[derive(Debug, Snafu)]
 #[non_exhaustive]
 pub enum ConfigError {
+    /// No platform config directory could be determined.
     #[snafu(display("failed to determine config directory"))]
     NoConfigDir,
 
+    /// Failed to create the config directory.
     #[snafu(display("failed to create config directory {}: {source}", path.display()))]
     CreateDir {
+        /// Directory path that could not be created.
         path: PathBuf,
+        /// Underlying I/O error.
         source: std::io::Error,
     },
 
+    /// Failed to read the config file from disk.
     #[snafu(display("failed to read config file {}: {source}", path.display()))]
     ReadFile {
+        /// File path that could not be read.
         path: PathBuf,
+        /// Underlying I/O error.
         source: std::io::Error,
     },
 
+    /// Failed to write the config file to disk.
     #[snafu(display("failed to write config file {}: {source}", path.display()))]
     WriteFile {
+        /// File path that could not be written.
         path: PathBuf,
+        /// Underlying I/O error.
         source: std::io::Error,
     },
 
+    /// Failed to parse the TOML config content.
     #[snafu(display("failed to parse config: {source}"))]
-    Parse { source: toml::de::Error },
+    Parse {
+        /// Underlying TOML deserialization error.
+        source: toml::de::Error,
+    },
 
+    /// Failed to serialize config to TOML.
     #[snafu(display("failed to serialize config: {source}"))]
-    Serialize { source: toml::ser::Error },
+    Serialize {
+        /// Underlying TOML serialization error.
+        source: toml::ser::Error,
+    },
 }
 
 // ---------------------------------------------------------------------------

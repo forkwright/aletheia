@@ -160,7 +160,10 @@ pub fn ConnectView(
 
         // WHY: Spawn the connection service on the tokio runtime so it runs
         // concurrently without blocking the Dioxus UI thread.
-        tokio::spawn(svc.run().instrument(tracing::info_span!("connection_service")));
+        tokio::spawn(
+            svc.run()
+                .instrument(tracing::info_span!("connection_service")),
+        );
 
         // WHY: Spawn a Dioxus-side task to read state updates from the channel
         // and write them to the signal on the UI thread.

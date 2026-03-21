@@ -1,13 +1,311 @@
-//! Metrics view placeholder.
+//! Metrics dashboard: session counts, token usage, cost, and uptime.
 
 use dioxus::prelude::*;
 
+use crate::state::connection::ConnectionConfig;
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct HealthResponse {
+    #[serde(default)]
+    status: String,
+    #[serde(default)]
+    uptime_seconds: u64,
+    #[serde(default)]
+    version: String,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct MetricsResponse {
+    #[serde(default)]
+    total_sessions: u64,
+    #[serde(default)]
+    active_sessions: u64,
+    #[serde(default)]
+    total_turns: u64,
+    #[serde(default)]
+    total_input_tokens: u64,
+    #[serde(default)]
+    total_output_tokens: u64,
+    #[serde(default)]
+    total_cost_usd: f64,
+}
+
+#[derive(Debug, Clone)]
+struct DashboardData {
+    health: HealthResponse,
+    metrics: MetricsResponse,
+}
+
+#[derive(Debug, Clone)]
+enum FetchState {
+    Loading,
+    Loaded(DashboardData),
+    Error(String),
+}
+
+// ---------------------------------------------------------------------------
+// Styles
+// ---------------------------------------------------------------------------
+
+const CONTAINER_STYLE: &str = "\
+    display: flex; \
+    flex-direction: column; \
+    height: 100%; \
+    gap: 16px;\
+";
+
+const GRID_STYLE: &str = "\
+    display: flex; \
+    flex-wrap: wrap; \
+    gap: 12px;\
+";
+
+const CARD_STYLE: &str = "\
+    background: #1a1a2e; \
+    border: 1px solid #333; \
+    border-radius: 8px; \
+    padding: 20px; \
+    min-width: 160px; \
+    flex: 1;\
+";
+
+const CARD_VALUE: &str = "\
+    font-size: 32px; \
+    font-weight: bold; \
+    color: #e0e0e0; \
+    margin-bottom: 4px;\
+";
+
+const CARD_LABEL: &str = "\
+    font-size: 12px; \
+    color: #888; \
+    text-transform: uppercase; \
+    letter-spacing: 0.5px;\
+";
+
+const CARD_SUB: &str = "\
+    font-size: 11px; \
+    color: #555; \
+    margin-top: 8px;\
+";
+
+const STATUS_BADGE: &str = "\
+    display: inline-block; \
+    padding: 2px 8px; \
+    border-radius: 4px; \
+    font-size: 12px; \
+    font-weight: bold;\
+";
+
+const REFRESH_BTN: &str = "\
+    background: #2a2a4a; \
+    color: #e0e0e0; \
+    border: 1px solid #444; \
+    border-radius: 6px; \
+    padding: 4px 12px; \
+    font-size: 12px; \
+    cursor: pointer;\
+";
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
 #[component]
 pub(crate) fn Metrics() -> Element {
+    let config: Signal<ConnectionConfig> = use_context();
+    let mut fetch_state = use_signal(|| FetchState::Loading);
+
+    let mut do_refresh = move || {
+        let base_url = config.read().server_url.clone();
+        fetch_state.set(FetchState::Loading);
+
+        spawn(async move {
+            let client = reqwest::Client::new();
+            let base = base_url.trim_end_matches('/');
+
+            let health_url = format!("{base}/api/health");
+            let metrics_url = format!("{base}/metrics");
+
+            let (health_result, metrics_result) = tokio::join!(
+                client.get(&health_url).send(),
+                client.get(&metrics_url).send()
+            );
+
+            let health = match health_result {
+                Ok(resp) if resp.status().is_success() => {
+                    resp.json::<HealthResponse>().await.unwrap_or_default()
+                }
+                Ok(resp) => {
+                    fetch_state.set(FetchState::Error(format!(
+                        "health endpoint returned {}",
+                        resp.status()
+                    )));
+                    return;
+                }
+                Err(e) => {
+                    fetch_state.set(FetchState::Error(format!("connection error: {e}")));
+                    return;
+                }
+            };
+
+            // WHY: /metrics may not exist on all pylon versions; use defaults.
+            let metrics = match metrics_result {
+                Ok(resp) if resp.status().is_success() => {
+                    resp.json::<MetricsResponse>().await.unwrap_or_default()
+                }
+                _ => MetricsResponse::default(),
+            };
+
+            fetch_state.set(FetchState::Loaded(DashboardData { health, metrics }));
+        });
+    };
+
+    use_effect(move || {
+        do_refresh();
+    });
+
     rsx! {
         div {
-            h1 { style: "font-size: 24px; margin-bottom: 16px;", "Metrics" }
-            p { style: "color: #888;", "Metrics dashboard" }
+            style: "{CONTAINER_STYLE}",
+            div {
+                style: "display: flex; align-items: center; justify-content: space-between;",
+                h2 { style: "font-size: 20px; margin: 0;", "Metrics" }
+                button {
+                    style: "{REFRESH_BTN}",
+                    onclick: move |_| do_refresh(),
+                    "Refresh"
+                }
+            }
+
+            match &*fetch_state.read() {
+                FetchState::Loading => rsx! {
+                    div {
+                        style: "display: flex; align-items: center; justify-content: center; flex: 1; color: #888;",
+                        "Loading metrics..."
+                    }
+                },
+                FetchState::Error(err) => rsx! {
+                    div {
+                        style: "display: flex; align-items: center; justify-content: center; flex: 1; color: #ef4444;",
+                        "Error: {err}"
+                    }
+                },
+                FetchState::Loaded(data) => rsx! {
+                    {render_dashboard(data)}
+                },
+            }
         }
+    }
+}
+
+fn render_dashboard(data: &DashboardData) -> Element {
+    let uptime = format_uptime(data.health.uptime_seconds);
+    let status_color = if data.health.status == "ok" {
+        "background: #1a3a1a; color: #22c55e;"
+    } else {
+        "background: #3a1a1a; color: #ef4444;"
+    };
+
+    rsx! {
+        div {
+            style: "{GRID_STYLE}",
+
+            div {
+                style: "{CARD_STYLE}",
+                div {
+                    style: "{STATUS_BADGE} {status_color}",
+                    "{data.health.status}"
+                }
+                div { style: "{CARD_LABEL} margin-top: 8px;", "Server Status" }
+                if !data.health.version.is_empty() {
+                    div { style: "{CARD_SUB}", "v{data.health.version}" }
+                }
+            }
+
+            div {
+                style: "{CARD_STYLE}",
+                div { style: "{CARD_VALUE}", "{uptime}" }
+                div { style: "{CARD_LABEL}", "Uptime" }
+            }
+
+            div {
+                style: "{CARD_STYLE}",
+                div { style: "{CARD_VALUE}", "{data.metrics.total_sessions}" }
+                div { style: "{CARD_LABEL}", "Total Sessions" }
+                div { style: "{CARD_SUB}",
+                    "{data.metrics.active_sessions} active"
+                }
+            }
+
+            div {
+                style: "{CARD_STYLE}",
+                div { style: "{CARD_VALUE}", "{data.metrics.total_turns}" }
+                div { style: "{CARD_LABEL}", "Total Turns" }
+            }
+        }
+
+        div {
+            style: "{GRID_STYLE}",
+
+            div {
+                style: "{CARD_STYLE}",
+                div { style: "{CARD_VALUE}",
+                    "{format_tokens(data.metrics.total_input_tokens)}"
+                }
+                div { style: "{CARD_LABEL}", "Input Tokens" }
+            }
+
+            div {
+                style: "{CARD_STYLE}",
+                div { style: "{CARD_VALUE}",
+                    "{format_tokens(data.metrics.total_output_tokens)}"
+                }
+                div { style: "{CARD_LABEL}", "Output Tokens" }
+            }
+
+            div {
+                style: "{CARD_STYLE}",
+                div { style: "{CARD_VALUE} color: #eab308;",
+                    "{format_cost(data.metrics.total_cost_usd)}"
+                }
+                div { style: "{CARD_LABEL}", "Total Cost" }
+            }
+        }
+    }
+}
+
+fn format_uptime(seconds: u64) -> String {
+    let days = seconds / 86400;
+    let hours = (seconds % 86400) / 3600;
+    let mins = (seconds % 3600) / 60;
+
+    if days > 0 {
+        format!("{days}d {hours}h")
+    } else if hours > 0 {
+        format!("{hours}h {mins}m")
+    } else {
+        format!("{mins}m")
+    }
+}
+
+fn format_cost(value: f64) -> String {
+    format!("${value:.2}")
+}
+
+fn format_tokens(count: u64) -> String {
+    const K: u64 = 1_000;
+    const M: u64 = 1_000_000;
+
+    if count >= M {
+        format!("{:.1}M", count as f64 / M as f64)
+    } else if count >= K {
+        format!("{:.1}K", count as f64 / K as f64)
+    } else {
+        count.to_string()
     }
 }

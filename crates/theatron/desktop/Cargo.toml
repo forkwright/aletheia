@@ -11,7 +11,7 @@ publish = false
 theatron-core = { path = "../core" }
 
 # UI framework
-dioxus = { version = "0.7", features = ["desktop"] }
+dioxus = { version = "0.7", features = ["desktop", "router"] }
 
 # Async runtime
 tokio = { workspace = true }
@@ -35,6 +35,13 @@ futures-util = "0.3"
 
 # Cancel-safe shutdown
 tokio-util = { workspace = true }
+
+# Config persistence
+dirs = "6"
+toml = "1.0"
+
+[dev-dependencies]
+tempfile = "3"
 
 # theatron-desktop uses inline lints for the same reason as theatron-tui:
 # Cargo does not allow combining workspace lint inheritance with

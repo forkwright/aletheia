@@ -58,21 +58,28 @@ pub type TabId = u64;
 /// owned by the tab's component, not here.
 #[derive(Debug, Clone)]
 pub struct TabEntry {
+    /// Unique tab identifier.
     pub id: TabId,
+    /// Agent associated with this tab.
     pub agent_id: NousId,
+    /// Display title for the tab.
     pub title: String,
+    /// Whether this tab has unread messages.
     pub unread: bool,
 }
 
 /// Tab bar tracking open tabs and active index.
 #[derive(Debug, Clone)]
 pub struct TabBar {
+    /// Ordered list of open tabs.
     pub tabs: Vec<TabEntry>,
+    /// Index of the currently active tab.
     pub active: usize,
     next_id: TabId,
 }
 
 impl TabBar {
+    /// Create an empty tab bar.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -143,21 +150,37 @@ impl Default for TabBar {
 /// Modal overlays that block interaction with the main UI.
 #[non_exhaustive]
 #[derive(Debug, Clone)]
-#[non_exhaustive]
 pub enum Overlay {
+    /// Keyboard shortcut reference overlay.
     Help,
-    AgentPicker { cursor: usize },
-    SessionPicker { cursor: usize, show_archived: bool },
+    /// Agent selection picker.
+    AgentPicker {
+        /// Currently highlighted row in the picker list.
+        cursor: usize,
+    },
+    /// Session history picker.
+    SessionPicker {
+        /// Currently highlighted row in the picker list.
+        cursor: usize,
+        /// Whether archived sessions are visible.
+        show_archived: bool,
+    },
+    /// Tool execution approval dialog.
     ToolApproval(ToolApprovalOverlay),
+    /// Application settings panel.
     Settings,
 }
 
 /// Tool approval dialog data.
 #[derive(Debug, Clone)]
 pub struct ToolApprovalOverlay {
+    /// Name of the tool requesting approval.
     pub tool_name: String,
+    /// Serialized JSON input for the tool call.
     pub input_json: String,
+    /// Risk level label (e.g. "high", "medium").
     pub risk: String,
+    /// Human-readable explanation of why approval is needed.
     pub reason: String,
 }
 

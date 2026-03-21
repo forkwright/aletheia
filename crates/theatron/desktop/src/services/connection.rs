@@ -45,18 +45,32 @@ use crate::state::connection::{
 
 #[derive(Debug, Snafu)]
 #[non_exhaustive]
+/// Errors from connection attempts to a pylon server.
 pub enum ConnectionError {
+    /// Health check request failed.
     #[snafu(display("health check failed: {source}"))]
-    HealthCheck { source: reqwest::Error },
+    HealthCheck {
+        /// Underlying HTTP error.
+        source: reqwest::Error,
+    },
 
+    /// Server responded but reported unhealthy status.
     #[snafu(display("server returned unhealthy status: {status}"))]
-    Unhealthy { status: u16 },
+    Unhealthy {
+        /// HTTP status code returned.
+        status: u16,
+    },
 
+    /// Auth token contains non-ASCII characters.
     #[snafu(display("invalid auth token: contains non-ASCII characters"))]
     InvalidToken,
 
+    /// Failed to construct the reqwest client.
     #[snafu(display("failed to build HTTP client: {source}"))]
-    ClientBuild { source: reqwest::Error },
+    ClientBuild {
+        /// Underlying HTTP error.
+        source: reqwest::Error,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -176,6 +190,7 @@ pub struct ConnectionService {
 }
 
 impl ConnectionService {
+    /// Create a new connection service.
     #[must_use]
     pub fn new(
         config: ConnectionConfig,

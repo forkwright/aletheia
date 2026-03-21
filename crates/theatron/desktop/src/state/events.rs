@@ -39,6 +39,7 @@ pub struct EventState {
 }
 
 impl EventState {
+    /// Create empty event state with a disconnected SSE connection.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -66,7 +67,10 @@ pub enum SseConnectionState {
     /// Actively receiving events.
     Connected,
     /// Lost connection, attempting to reconnect.
-    Reconnecting { attempt: u32 },
+    Reconnecting {
+        /// Consecutive reconnection failures (1-indexed).
+        attempt: u32,
+    },
 }
 
 impl SseConnectionState {
@@ -101,7 +105,10 @@ pub enum ConnectionState {
     /// Actively receiving events.
     Connected,
     /// Reconnecting after failure. `attempt` counts consecutive failures.
-    Reconnecting { attempt: u32 },
+    Reconnecting {
+        /// Consecutive reconnection failures (1-indexed).
+        attempt: u32,
+    },
 }
 
 /// State of a single streaming turn, suitable for driving a Dioxus signal.
@@ -143,7 +150,10 @@ pub enum DistillationProgress {
     /// Distillation is in progress but no stage reported yet.
     Started,
     /// Currently executing a named stage.
-    Stage { stage: String },
+    Stage {
+        /// Name of the distillation stage in progress.
+        stage: String,
+    },
     /// Distillation completed.
     Complete,
 }

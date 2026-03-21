@@ -14,3 +14,13 @@ pub mod components;
 pub mod services;
 /// Application state managed via Dioxus signals.
 pub mod state;
+
+pub(crate) mod app;
+pub(crate) mod layout;
+pub(crate) mod theme;
+pub(crate) mod views;
+
+/// Launch the desktop application.
+pub fn run() {
+    dioxus::launch(app::App);
+}

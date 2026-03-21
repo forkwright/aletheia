@@ -36,6 +36,7 @@ pub struct SseEventRouter {
 }
 
 impl SseEventRouter {
+    /// Create a new router with default state.
     #[must_use]
     pub fn new() -> Self {
         Self {
