@@ -1,0 +1,19 @@
+[package]
+name = "aletheia-eidos"
+version.workspace = true
+description = "Shared knowledge types for the Aletheia memory layer"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+jiff = { workspace = true, features = ["serde"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

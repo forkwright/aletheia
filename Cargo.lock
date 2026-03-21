@@ -156,6 +156,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "aletheia-eidos"
+version = "0.13.0"
+dependencies = [
+ "jiff",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "aletheia-hermeneus"
 version = "0.13.0"
 dependencies = [
@@ -241,6 +250,7 @@ name = "aletheia-mneme"
 version = "0.13.0"
 dependencies = [
  "aho-corasick",
+ "aletheia-eidos",
  "aletheia-koina",
  "base64 0.22.1",
  "bytemuck",

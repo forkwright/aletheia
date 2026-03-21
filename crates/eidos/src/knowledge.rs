@@ -1,12 +1,9 @@
-//! Knowledge store: facts, entities, and vectors via `CozoDB`.
+//! Knowledge domain types: facts, entities, relationships, and embeddings.
 //!
-//! Complements the `SQLite` session store with structured knowledge:
+//! These are the core data structures for the knowledge graph:
 //! - **Facts**: extracted from conversations, bi-temporal (`valid_from`/`valid_to`)
 //! - **Entities**: people, projects, tools, concepts with typed relationships
 //! - **Vectors**: embedding-indexed for semantic recall
-//!
-//! Uses `CozoDB` Datalog for graph traversal and HNSW for vector search.
-//! Embedded, no sidecar. Replaced the former Qdrant + Neo4j sidecar stack.
 
 use serde::{Deserialize, Serialize};
 

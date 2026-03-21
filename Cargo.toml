@@ -4,6 +4,7 @@ members = [
     "crates/aletheia",
     "crates/diaporeia",
     "crates/dianoia",
+    "crates/eidos",
     "crates/agora",
     "crates/daemon",
     "crates/eval",
