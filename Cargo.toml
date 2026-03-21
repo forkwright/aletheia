@@ -23,11 +23,14 @@ members = [
     "crates/taxis",
     "crates/thesauros",
     "crates/theatron/core",
-    # WHY: theatron-desktop requires GTK3/webkit2gtk system libraries (via Dioxus
-    # desktop/webview). CI workflows must use `--exclude theatron-desktop` since
-    # those deps are not available in the CI environment.
-    "crates/theatron/desktop",
     "crates/theatron/tui",
+]
+# WHY: theatron-desktop requires GTK3/webkit2gtk system libraries (via Dioxus
+# desktop/webview) which are not available in CI. Excluded from workspace to
+# avoid cargo-deny advisory failures on GTK deps and build failures on CI.
+# Build standalone: `cargo build -p theatron-desktop --manifest-path crates/theatron/desktop/Cargo.toml`
+exclude = [
+    "crates/theatron/desktop",
 ]
 
 [workspace.package]
