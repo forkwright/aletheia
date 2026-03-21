@@ -26,7 +26,7 @@ use crate::oikos::Oikos;
 /// 3. Environment variables: `ALETHEIA_*` (e.g. `ALETHEIA_GATEWAY__PORT=9000`)
 ///
 /// Encrypted values (`enc:` prefix) are transparently decrypted using the
-/// master key from `~/.config/aletheia/master.key`. If the key is missing,
+/// primary key from `~/.config/aletheia/primary.key`. If the key is missing,
 /// encrypted values pass through unchanged with a warning.
 ///
 /// Call [`load_config_with`] to supply a custom [`FileSystem`] implementation
@@ -93,7 +93,7 @@ pub fn load_config_with(oikos: &Oikos, fs: &impl FileSystem) -> Result<AletheiaC
 
 /// Parse TOML content, decrypt any `enc:` values, and serialize back.
 ///
-/// If the master key is unavailable or the TOML is unparseable, returns the
+/// If the primary key is unavailable or the TOML is unparseable, returns the
 /// original content unchanged.
 fn decrypt_toml_content(content: &str) -> String {
     let mut value: toml::Value = match toml::from_str(content) {
@@ -101,18 +101,18 @@ fn decrypt_toml_content(content: &str) -> String {
         Err(_) => return content.to_owned(),
     };
 
-    let master_key = match encrypt::master_key_path() {
-        Some(path) => match encrypt::load_master_key(&path) {
+    let primary_key = match encrypt::primary_key_path() {
+        Some(path) => match encrypt::load_primary_key(&path) {
             Ok(key) => key,
             Err(e) => {
-                warn!(error = %e, "failed to load master key, encrypted values will not be decrypted");
+                warn!(error = %e, "failed to load primary key, encrypted values will not be decrypted");
                 None
             }
         },
         None => None,
     };
 
-    encrypt::decrypt_toml_values(&mut value, master_key.as_ref());
+    encrypt::decrypt_toml_values(&mut value, primary_key.as_ref());
 
     toml::to_string(&value).unwrap_or_else(|_| content.to_owned())
 }

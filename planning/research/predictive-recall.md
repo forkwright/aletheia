@@ -103,7 +103,7 @@ The fast path is already sub-100ms. Predictive recall targets the Tier 2/3 cases
 
 #### Strategy c: idle-Time pre-Fetching
 
-**Mechanism:** While the user is composing their next message (detected via typing indicators or simply the gap between turns), run speculative recall using the current conversation context.
+**Mechanism:** While the user is composing their next message (detected via typing indicators or the gap between turns), run speculative recall using the current conversation context.
 
 **Implementation sketch:**
 - After the assistant response is delivered, immediately compute a "context summary" embedding from the last assistant message.
@@ -146,7 +146,7 @@ The fast path is already sub-100ms. Predictive recall targets the Tier 2/3 cases
 
 **Estimated hit rate:** 10-20% initially, potentially 40-60% after months of use.
 
-#### Strategy e: simple heuristic - last n related conversations
+#### Strategy e: heuristic - last n related conversations
 
 **Mechanism:** When a session starts or after N turns, find the top-K most similar prior sessions and pre-load their extracted facts.
 
@@ -156,7 +156,7 @@ The fast path is already sub-100ms. Predictive recall targets the Tier 2/3 cases
 - Bulk-load facts from those sessions into a warm cache.
 
 **Strengths:**
-- Very simple to implement  -  session embeddings likely already exist or are cheap to add.
+- Low implementation cost  -  session embeddings likely already exist or are cheap to add.
 - Good for recurring tasks ("last time I worked on X, I needed Y").
 - Low false-positive rate  -  session-level similarity is a strong signal.
 

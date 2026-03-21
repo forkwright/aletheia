@@ -49,7 +49,7 @@ After a fix ships, we publish a GitHub Security Advisory with CVE (if warranted)
 
 ## Developer security practices
 
-### Pre-commit hooks
+## Pre-commit hooks
 
 Install pre-commit and gitleaks to catch secrets and PII before they reach git history:
 
@@ -68,7 +68,7 @@ Manual scan:
 gitleaks detect --config .gitleaks.toml --no-git --source . -v
 ```
 
-### Commit signing
+## Commit signing
 
 All commits to `main` should be signed.
 
@@ -92,7 +92,7 @@ git config --global commit.gpgsign true
 # Add public key to GitHub: Settings -> SSH and GPG keys -> New GPG key
 ```
 
-### Secrets
+## Secrets
 
 - Never commit API keys, passwords, or tokens to tracked files
 - Runtime secrets go in environment variables or `instance/config/credentials/` (gitignored)
@@ -100,7 +100,7 @@ git config --global commit.gpgsign true
 - JWT secret: generated at runtime, never persisted
 - Accidental commit? Rotate immediately, scrub with `git filter-repo` or BFG Repo-Cleaner
 
-### PII
+## PII
 
 - Phone numbers, names, and addresses never appear in tracked files
 - `instance/` is gitignored - all personal data stays there
@@ -108,13 +108,13 @@ git config --global commit.gpgsign true
 - Test data uses synthetic identities (alice, bob, acme.corp, 192.168.1.100)
 - CI PII scanner (`.github/pii-patterns.txt`) rejects commits with personal data patterns
 
-### Dependency auditing
+## Dependency auditing
 
 - `cargo audit` runs in CI on every PR and weekly
 - `cargo deny` enforces license compatibility and bans specific crates
 - Dependabot creates PRs for vulnerable dependencies automatically
 
-### Branch protection
+## Branch protection
 
 Recommended `main` branch settings:
 

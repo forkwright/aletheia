@@ -236,7 +236,7 @@ impl MmapVectorStorage {
     /// Remap the file after a size change (Unix only).
     #[cfg(unix)]
     fn remap(&mut self, new_len: usize) -> Result<()> {
-        // Replace inner with a dummy Heap to take ownership of the old Mmap.
+        // Replace inner with a placeholder Heap to take ownership of the old Mmap.
         // The old value's Drop will call munmap.
         let _old = std::mem::replace(&mut self.inner, StorageInner::Heap(Vec::new()));
         // _old is dropped here, which munmaps the old mapping if it was Mmap.

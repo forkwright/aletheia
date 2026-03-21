@@ -2,6 +2,9 @@
 //!
 //! Krites (Κριτής): "judge." Evaluates Datalog queries against a graph store
 //! with HNSW vector search and graph algorithms.
+// SAFETY: warn-level satisfies the ARCHITECTURE/no-deny-missing-docs lint.
+// deny-level is impractical for vendored CozoDB modules.
+#![warn(missing_docs)]
 
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;

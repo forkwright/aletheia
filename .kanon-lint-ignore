@@ -1,0 +1,14 @@
+# WHY: test assertions contain the literal string "snake_case" in error messages,
+# triggering a false positive from the mixed-casing content check.
+API/mixed-casing:crates/graphe/src/portability.rs
+
+# WHY: TOML comments (#) inside fenced code blocks are misdetected as markdown
+# headings, creating false heading-level-skip violations.
+WRITING/skipped-heading-level:planning/research/browser-automation.md
+WRITING/skipped-heading-level:planning/research/mcp-client.md
+WRITING/skipped-heading-level:planning/research/observability-trace.md
+
+# WHY: generate-workflows.sh contains heredoc blocks (cat <<'YAML') that emit
+# GitHub Actions YAML. Variable assignments inside run: | blocks are YAML
+# output, not shell variables in the outer function scope.
+SHELL/missing-local:scripts/generate-workflows.sh

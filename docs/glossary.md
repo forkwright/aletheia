@@ -15,15 +15,15 @@ codebase, and cross-reference to the relevant crate or module.
 
 **Etymology.** Compound of *ἀ-* (negation) + *λήθη* (concealment, forgetting). Literally
 "not-hidden" or "unconcealment." Heidegger reads it as truth understood not as correspondence
-to facts but as the *revealing of what was hidden* — the act of bringing forth from
+to facts but as the *revealing of what was hidden* - the act of bringing forth from
 concealment.
 
 **In this codebase.** The project name and the binary crate. The system as a whole: agents,
 memory, orchestration, multi-nous cognition. The name asserts that the system's essential
-act is unconcealment — surfacing latent knowledge, making hidden patterns legible, refusing
+act is unconcealment - surfacing latent knowledge, making hidden patterns legible, refusing
 to let things stay forgotten.
 
-**Crate.** `aletheia` (binary, top layer) — CLI, `serve` mode, startup.
+**Crate.** `aletheia` (binary, top layer) - CLI, `serve` mode, startup.
 
 ---
 
@@ -49,14 +49,14 @@ communication channels and the agent pipeline.
 **Etymology.** From *διά* (through, across) + *νοῦς* (mind). Plato's term for discursive
 reasoning: the mode of thought that works *through* problems step by step, as opposed to
 noesis (immediate insight). In the divided line of *Republic* VI, dianoia occupies the
-upper-sensible region — reasoning that still relies on hypotheses and images rather than
+upper-sensible region - reasoning that still relies on hypotheses and images rather than
 grasping Forms directly.
 
 **In this codebase.** The multi-phase planning orchestrator. Implements structured reasoning
 that breaks complex tasks into steps, tracks project context, and coordinates sequential
 execution.
 
-**Crate.** `dianoia` (mid layer) — planning orchestrator.
+**Crate.** `dianoia` (mid layer) - planning orchestrator.
 
 ---
 
@@ -64,7 +64,7 @@ execution.
 
 **διαπορεία** (*di-a-po-rei-a*)
 
-**Etymology.** From *διά* (through, across) + *πορεία* (journey, passage). Transit between
+**Etymology.** From *διά* (through, across) + *πορεία* (passage, transit). Transit between
 worlds; the act of passing through.
 
 **In this codebase.** The Model Context Protocol (MCP) server bridge. Exposes Aletheia tools
@@ -80,12 +80,12 @@ outside.
 **δοκίμιον** (*do-kí-mi-on*)
 
 **Etymology.** From *δοκιμάζω* (to test, to put to proof). The test or proof that
-demonstrates whether something is genuine — the assay that distinguishes gold from dross.
+demonstrates whether something is genuine - the assay that distinguishes gold from dross.
 
 **In this codebase.** The behavioral evaluation framework. Runs HTTP scenario tests against a
 live Aletheia instance to verify agent behavior matches specification.
 
-**Crate.** `dokimion` (mid layer) — eval runner.
+**Crate.** `dokimion` (mid layer) - eval runner.
 
 ---
 
@@ -98,9 +98,9 @@ makes a thing *this kind* of thing rather than another. Plato's term for the int
 forms; Aristotle's term for the formal cause.
 
 **In this codebase.** The shared memory type library. Defines `Fact`, `Session`, `NousId`,
-and other domain types — the forms that make a fact a Fact, a session a Session.
+and other domain types - the forms that make a fact a Fact, a session a Session.
 
-**Crate.** `eidos` (low layer) — shared memory types.
+**Crate.** `eidos` (low layer) - shared memory types.
 
 ---
 
@@ -116,7 +116,7 @@ or acquaintance. Aristotle distinguishes it from techne (craft knowledge) and ph
 **In this codebase.** The knowledge extraction and recall system. Transforms raw conversation
 into structured facts: extraction, deduplication, confidence scoring, succession tracking.
 
-**Crate.** `episteme` (low layer) — knowledge engine.
+**Crate.** `episteme` (low layer) - knowledge engine.
 
 ---
 
@@ -128,9 +128,9 @@ into structured facts: extraction, deduplication, confidence scoring, succession
 preservation of what was said.
 
 **In this codebase.** The session persistence layer. Stores conversation messages and turn
-history in SQLite — the written record of what passed between user and agent.
+history in SQLite - the written record of what passed between user and agent.
 
-**Crate.** `graphe` (low layer) — session persistence.
+**Crate.** `graphe` (low layer) - session persistence.
 
 ---
 
@@ -146,7 +146,7 @@ hermeneutics (interpretation) derives from the same root.
 (and other backends), handles model routing, credential management, and streaming. The
 translation layer between nous (agent logic) and the underlying language model.
 
-**Crate.** `hermeneus` (low layer) — provider client.
+**Crate.** `hermeneus` (low layer) - provider client.
 
 ---
 
@@ -155,14 +155,14 @@ translation layer between nous (agent logic) and the underlying language model.
 **κοινά** (*koi-ná*)
 
 **Etymology.** Plural of *κοινός* (common, shared, public). The commons: what belongs to
-all, what is held in common. Greek cities maintained *ta koina* — the common things, the
+all, what is held in common. Greek cities maintained *ta koina* - the common things, the
 public goods.
 
 **In this codebase.** The shared utility library. Error types (snafu integration), tracing
 helpers, filesystem utilities, HTTP constants, safe wrappers. Everything the rest of the
 workspace uses without it belonging to any single layer.
 
-**Crate.** `koina` (leaf layer) — shared utilities.
+**Crate.** `koina` (leaf layer) - shared utilities.
 
 ---
 
@@ -176,7 +176,7 @@ distinguishes, evaluates, and renders a verdict.
 **In this codebase.** The Datalog query engine. A vendored CozoDB instance that evaluates
 logical rules and facts, deciding what follows from what the system knows.
 
-**Crate.** `krites` (low layer) — Datalog engine.
+**Crate.** `krites` (low layer) - Datalog engine.
 
 ---
 
@@ -186,12 +186,12 @@ logical rules and facts, deciding what follows from what the system knows.
 
 **Etymology.** From *μελετάω* (to care for, to practice). Disciplined care and practice;
 one of the three original Muses (alongside Mneme and Aoide). The Stoics used it for
-preparatory meditation — rehearsing what matters before it is needed.
+preparatory meditation - rehearsing what matters before it is needed.
 
 **In this codebase.** The context distillation layer. Compresses conversation history to fit
 within token budgets, preserving what matters while releasing what can be released.
 
-**Crate.** `melete` (low layer) — distillation and compression.
+**Crate.** `melete` (low layer) - distillation and compression.
 
 ---
 
@@ -205,9 +205,9 @@ the same root: learning as remembering what the soul already knows.
 
 **In this codebase.** The memory engine facade. Re-exports types and operations from `eidos`,
 `krites`, `graphe`, and `episteme` into a single coherent API. Not passive storage but an
-active faculty — memory that recalls, scores, and surfaces what is relevant.
+active faculty - memory that recalls, scores, and surfaces what is relevant.
 
-**Crate.** `mneme` (low layer) — memory facade.
+**Crate.** `mneme` (low layer) - memory facade.
 
 ---
 
@@ -218,14 +218,14 @@ active faculty — memory that recalls, scores, and surfaces what is relevant.
 **Etymology.** Direct apprehension or intellection; the highest mode of knowing in Greek
 philosophy. Distinct from dianoia (discursive reasoning) and episteme (systematic knowledge).
 Aristotle's *nous* grasps first principles immediately, without inference. Plotinus placed it
-as the second hypostasis — the Divine Mind.
+as the second hypostasis - the Divine Mind.
 
 **In this codebase.** The agent pipeline and actor. Each nous is an autonomous agent with its
 own identity, memory, and tool set. The pipeline: bootstrap context → recall memories →
 execute turn (LLM + tools) → finalize and store. Also the Tokio actor (`NousActor`) that
 serializes concurrent requests.
 
-**Crate.** `nous` (mid layer) — agent identity and pipeline.
+**Crate.** `nous` (mid layer) - agent identity and pipeline.
 
 ---
 
@@ -236,7 +236,7 @@ serializes concurrent requests.
 **Etymology.** Household; the fundamental unit of Greek economic and social life. From *oikos*
 comes *oikonomia* (household management) and hence *economy*.
 
-**In this codebase.** The instance directory layout — the "household" of a running Aletheia
+**In this codebase.** The instance directory layout - the "household" of a running Aletheia
 installation. `Oikos` is a struct in the `taxis` crate that resolves canonical paths for
 data, config, logs, backups, and workspace directories within the instance root. The theke
 (vault) lives inside the oikos.
@@ -257,7 +257,7 @@ steward: the one who keeps the oikos in order, allocates resources, and ensures 
 task runners, startup/shutdown sequencing, and periodic maintenance jobs (trace rotation,
 drift detection, database monitoring).
 
-**Crate path.** `crates/daemon/` — maintenance task runner; maps to the `oikonomos` concept
+**Crate path.** `crates/daemon/` - maintenance task runner; maps to the `oikonomos` concept
 in the lexicon.
 
 ---
@@ -267,7 +267,7 @@ in the lexicon.
 **ὄργανον** (*ór-ga-non*)
 
 **Etymology.** Instrument or tool; that by which something is done. Aristotle named his
-collected logical treatises the *Organon* — the instrument of reasoning, the tool of thought.
+collected logical treatises the *Organon* - the instrument of reasoning, the tool of thought.
 The name captures that logic is not knowledge itself but the instrument for acquiring it.
 
 **In this codebase.** The tool registry and executor. Defines the `ToolExecutor` trait,
@@ -275,7 +275,7 @@ registers built-in tools (file operations, shell commands, HTTP requests, etc.),
 dispatches tool calls from the agent. Tools are the instruments by which nous extends its
 reach into the world.
 
-**Crate.** `organon` (low layer) — tool registry and built-ins.
+**Crate.** `organon` (low layer) - tool registry and built-ins.
 
 ---
 
@@ -289,7 +289,7 @@ disciplined practice of attending carefully to one's inner state and present cir
 
 **In this codebase.** The health monitoring and attention layer. Checks system state, monitors
 agent health, surfaces directive-level concerns. The practice that makes unconcealment
-(aletheia) possible — you cannot reveal what is hidden without attending carefully.
+(aletheia) possible - you cannot reveal what is hidden without attending carefully.
 
 **Module.** Internal module within the daemon layer.
 
@@ -301,14 +301,14 @@ agent health, surfaces directive-level concerns. The practice that makes unconce
 
 **Etymology.** The gate-tower or monumental gateway; the architectural structure marking the
 boundary between inside and outside. In ancient Egypt and Greece, the pylon was the imposing
-entrance to a temple precinct — the threshold between the profane and sacred worlds.
+entrance to a temple precinct - the threshold between the profane and sacred worlds.
 
 **In this codebase.** The HTTP API gateway. Axum-based server with SSE streaming, JWT
 authentication, CSRF protection, rate limiting, and the full middleware stack. The
 architectural boundary between the outside world (clients, TUI, external agents) and the
 internal Aletheia runtime.
 
-**Crate.** `pylon` (high layer) — HTTP gateway. See also [crates/pylon/docs/handlers.md](../crates/pylon/docs/handlers.md).
+**Crate.** `pylon` (high layer) - HTTP gateway. See also [crates/pylon/docs/handlers.md](../crates/pylon/docs/handlers.md).
 
 ---
 
@@ -325,7 +325,7 @@ reunion of the halves (*symbolon*) proved identity and established trust. The or
 validation, password hashing (argon2), and RBAC policies. Identity proven by presenting the
 matching half of a shared secret.
 
-**Crate.** `symbolon` (leaf layer) — auth and credentials.
+**Crate.** `symbolon` (leaf layer) - auth and credentials.
 
 ---
 
@@ -342,7 +342,7 @@ arguments.
 figment cascade (defaults → TOML → environment variables), resolves the `Oikos` instance
 directory layout, and exposes `AletheiaConfig` to the rest of the system.
 
-**Crate.** `taxis` (low layer) — config and path resolution.
+**Crate.** `taxis` (low layer) - config and path resolution.
 
 ---
 
@@ -350,7 +350,7 @@ directory layout, and exposes `AletheiaConfig` to the rest of the system.
 
 **θήκη** (*thí-ki*)
 
-**Etymology.** A repository, chest, or case — a place that holds what matters. From *τίθημι*
+**Etymology.** A repository, chest, or case - a place that holds what matters. From *τίθημι*
 (to place, to put). Used for the chest that preserved valuable documents or objects.
 
 **In this codebase.** The tier-0 instance vault: the human-and-nous collaborative workspace
@@ -366,13 +366,13 @@ workspace files, and shared knowledge are stored. The theke lives inside the oik
 **θησαυρός** (*the-sau-rós*)
 
 **Etymology.** Treasury or storehouse; a place where accumulated wealth is held ready for
-use. The Greek word gives English "thesaurus" — a treasury of words.
+use. The Greek word gives English "thesaurus" - a treasury of words.
 
 **In this codebase.** The domain pack loader. Loads knowledge packs (curated bundles of
 domain knowledge, tool configurations, and config overlays) and makes them available to
 agents. A storehouse of accumulated domain expertise held ready for use.
 
-**Crate.** `thesauros` (mid layer) — pack loader.
+**Crate.** `thesauros` (mid layer) - pack loader.
 
 ---
 
@@ -392,6 +392,6 @@ Pylon guards the boundary      Outside world reaches Nous only through Pylon
 
 ## Further reading
 
-- [gnomon.md](gnomon.md) — Naming philosophy, construction system, layer test (L1–L4)
-- [lexicon.md](lexicon.md) — Full crate registry with L1–L4 analysis for each name
-- [ARCHITECTURE.md](ARCHITECTURE.md) — Crate workspace, module map, dependency graph
+- [gnomon.md](gnomon.md) - Naming philosophy, construction system, layer test (L1–L4)
+- [lexicon.md](lexicon.md) - Full crate registry with L1–L4 analysis for each name
+- [ARCHITECTURE.md](ARCHITECTURE.md) - Crate workspace, module map, dependency graph

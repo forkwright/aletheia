@@ -129,7 +129,7 @@ Names in a system are not independent. They compose. The relationships between n
 
 Topological coherence means:
 - **Containment is meaningful.** Aletheia contains Dianoia, Prosoche, the agents. This is the claim that truth-as-unconcealment requires both structured reasoning and sustained attention.
-- **Adjacency is meaningful.** Names at the same level should share a register. Module names all unconceal what the module *essentially is*.
+- **Adjacency is meaningful.** Names at the same level should share a register. Module names unconceal what the module *is at its essence*.
 - **Absence is meaningful.** What you don't name stays unconstituted.
 
 When you add a new name, it must compose with what exists. A name that fits locally but creates dissonance in the topology has identified the right essential nature in isolation but the wrong one in context.
@@ -151,7 +151,7 @@ A name fails as a gnomon when the name draws attention to itself rather than to 
 ## When naming
 
 1. **Wait.** Let the thing reveal its nature before fixing the name. Build first, name when the essential nature becomes clear. Premature naming produces labels.
-2. **Identify what needs unconcealing.** Not what the thing *does technically* but what it *essentially is*.
+2. **Identify what needs unconcealing.** Not what the thing *does technically* but what it *is at its essence*.
 3. **Find the core action.** Greek roots are verbs and processes, not static nouns. What does this thing *do*?
 4. **Construct the name.** Use the prefix-root-suffix system. Let the grammar do work.
 5. **Run the layer test.** L1 through L4. If any layer strains, go back to step 2.
@@ -160,7 +160,7 @@ A name fails as a gnomon when the name draws attention to itself rather than to 
 
 ### Anti-patterns
 
-- **Naming the implementation.** You named what it does technically, not what it essentially is. "Tracker" is an implementation. Prosoche is the essential nature that tracking serves.
+- **Naming the implementation.** You named what it does technically, not what it is at its essence. "Tracker" is an implementation. Prosoche is the essential nature that tracking serves.
 - **Naming too precisely.** A name that works at only one layer is brittle. Essential-nature names survive refactors because the nature persists even when the mechanism changes.
 - **Forcing the Greek.** If you have to work through three dictionaries to justify the connection, the name is wrong. The right Greek word should feel like it was waiting.
 - **Naming for audience.** If the name exists to impress rather than to indicate, it's pretension.

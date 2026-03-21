@@ -218,7 +218,7 @@ pub struct PipelineMessage {
 
 #### 3.3 token estimation
 
-The token estimator needs to account for image tokens. Currently, `PipelineMessage.token_estimate` is computed from text length. Image tokens follow the formula:
+The token estimator needs to account for image tokens. `PipelineMessage.token_estimate` is computed from text length. Image tokens follow the formula:
 
 ```
 image_tokens = (scaled_width * scaled_height) / 750
@@ -302,7 +302,7 @@ Users need a way to attach images. Options:
 2. **Drag-and-drop**: Terminal paste (some terminals support bracketed paste with binary data, but this is unreliable)
 3. **API endpoint**: For pylon (HTTP API), accept multipart form data with image files
 
-**Recommendation: File path command for TUI, multipart upload for API.** A `/attach` or `/image` command in the TUI is the lowest-effort first step. The TUI already detects image paths; extending this to actually attach them to the outgoing message is straightforward.
+**Recommendation: File path command for TUI, multipart upload for API.** A `/attach` or `/image` command in the TUI is the lowest-effort first step. The TUI already detects image paths; extending this to attach them to the outgoing message requires mapping the detected path to a `ContentBlock::Image` before dispatch.
 
 ### 4. Rust image processing libraries
 

@@ -50,6 +50,7 @@ pub async fn require_csrf_header(request: Request, next: Next) -> Response {
                     error: ErrorBody {
                         code: "csrf_rejected".to_owned(),
                         message: "missing or invalid CSRF header".to_owned(),
+                        request_id: None,
                         details: None,
                     },
                 }),

@@ -15,7 +15,7 @@ All research produced in this system follows a strict evidence hierarchy. This i
 ### Claim protocol
 
 Every factual claim must:
-1. **Have an inline citation** - not just a bibliography at the end
+1. **Have an inline citation** - not a bibliography at the end
 2. **State the evidence tier** for contested or surprising claims
 3. **Distinguish established/emerging/speculative:**
    - ✅ **Established** - consensus across multiple S1/S2 sources

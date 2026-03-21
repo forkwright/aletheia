@@ -296,6 +296,7 @@ pub async fn per_user_rate_limit(request: Request, next: Next) -> Response {
                     message: format!(
                         "per-user rate limit exceeded, retry after {retry_after_secs}s"
                     ),
+                    request_id: None,
                     details: Some(serde_json::json!({
                         "retry_after_secs": retry_after_secs,
                         "category": format!("{category:?}").to_lowercase(),

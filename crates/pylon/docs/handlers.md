@@ -121,7 +121,7 @@ All 4xx / 5xx responses share this JSON shape:
 }
 ```
 
-5xx bodies return `"An internal error occurred."` — the real detail is logged server-side only.
+5xx bodies return `"An internal error occurred."` - the real detail is logged server-side only.
 
 ---
 
@@ -159,7 +159,7 @@ Prometheus text-format exposition. No auth required.
 
 **Middleware path:** full stack minus JWT Claims.
 
-**Response `200 OK`** — Content-Type: `text/plain; version=0.0.4; charset=utf-8`
+**Response `200 OK`** - Content-Type: `text/plain; version=0.0.4; charset=utf-8`
 
 Plain Prometheus text format. Metrics include HTTP request counts and latency histograms
 labelled by method and path.
@@ -170,14 +170,14 @@ labelled by method and path.
 
 OpenAPI 3 specification. No auth required.
 
-**Response `200 OK`** — JSON OpenAPI document.
+**Response `200 OK`** - JSON OpenAPI document.
 
 ---
 
 ## Sessions
 
 All session endpoints require a valid Bearer token (`Claims` extractor). State-changing
-endpoints additionally require CSRF header when CSRF is enabled.
+endpoints also require CSRF header when CSRF is enabled.
 
 ```
 POST /api/v1/sessions/{id}/messages  ─── Idempotency-Key header (optional, max 64 chars)
@@ -203,7 +203,7 @@ Create a new session.
 
 `session_key` is a client-chosen string for deduplication (e.g. a stable UI identifier).
 
-**Response `201 Created`** — `SessionResponse`:
+**Response `201 Created`** - `SessionResponse`:
 
 ```json
 {
@@ -233,7 +233,7 @@ List sessions.
 | `nous_id` | string | Filter by agent |
 | `limit` | u32 | Max results (default server-side) |
 
-**Response `200 OK`** — `ListSessionsResponse`:
+**Response `200 OK`** - `ListSessionsResponse`:
 
 ```json
 {
@@ -257,10 +257,10 @@ List sessions.
 
 Get session detail.
 
-**Path:** `id` — session ULID.
+**Path:** `id` - session ULID.
 
-**Response `200 OK`** — `SessionResponse` (same shape as create response).
-**Response `404 Not Found`** — session not found.
+**Response `200 OK`** - `SessionResponse` (same shape as create response).
+**Response `404 Not Found`** - session not found.
 
 ---
 
@@ -268,7 +268,7 @@ Get session detail.
 
 Archive a session (soft delete). Equivalent to `POST /api/v1/sessions/{id}/archive`.
 
-**Response `200 OK`** — `SessionResponse` with `status: "archived"`.
+**Response `200 OK`** - `SessionResponse` with `status: "archived"`.
 
 ---
 
@@ -276,7 +276,7 @@ Archive a session (soft delete). Equivalent to `POST /api/v1/sessions/{id}/archi
 
 Archive a session.
 
-**Response `200 OK`** — `SessionResponse` with `status: "archived"`.
+**Response `200 OK`** - `SessionResponse` with `status: "archived"`.
 
 ---
 
@@ -284,7 +284,7 @@ Archive a session.
 
 Reactivate an archived session.
 
-**Response `200 OK`** — `SessionResponse` with `status: "active"`.
+**Response `200 OK`** - `SessionResponse` with `status: "active"`.
 
 ---
 
@@ -292,8 +292,8 @@ Reactivate an archived session.
 
 Permanently delete a session and all its messages. Irreversible.
 
-**Response `200 OK`** — empty body.
-**Response `404 Not Found`** — session not found.
+**Response `200 OK`** - empty body.
+**Response `404 Not Found`** - session not found.
 
 ---
 
@@ -307,7 +307,7 @@ Rename a session.
 { "name": "Planning session" }
 ```
 
-**Response `200 OK`** — `SessionResponse` with updated `name`.
+**Response `200 OK`** - `SessionResponse` with updated `name`.
 
 ---
 
@@ -328,7 +328,7 @@ Send a user message and stream the agent's response as Server-Sent Events.
 { "content": "What is the capital of France?" }
 ```
 
-**Response `200 OK`** — `text/event-stream`
+**Response `200 OK`** - `text/event-stream`
 
 Each SSE event has `data: <json>`. Event types:
 
@@ -341,9 +341,9 @@ Each SSE event has `data: <json>`. Event types:
 | `message_complete` | `stop_reason, usage: {input_tokens, output_tokens}` | Turn end |
 | `error` | `code, message` | Error during turn |
 
-**Response `409 Conflict`** — Idempotency-Key already in-flight.
+**Response `409 Conflict`** - Idempotency-Key already in-flight.
 
-**Middleware path note:** POST — passes through CSRF check if enabled.
+**Middleware path note:** POST - passes through CSRF check if enabled.
 
 ---
 
@@ -356,9 +356,9 @@ Retrieve conversation history.
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `limit` | u32 | 50 | Max messages (1–1000) |
-| `before` | i64 | — | Return messages with `seq` < this value (pagination) |
+| `before` | i64 | - | Return messages with `seq` < this value (pagination) |
 
-**Response `200 OK`** — `HistoryResponse`:
+**Response `200 OK`** - `HistoryResponse`:
 
 ```json
 {
@@ -403,7 +403,7 @@ streams the turn using the webchat event format (distinct from the SSE format ab
 
 `sessionKey` defaults to `"main"` if omitted.
 
-**Response `200 OK`** — `text/event-stream` of `WebchatEvent`:
+**Response `200 OK`** - `text/event-stream` of `WebchatEvent`:
 
 | Type | Fields |
 |------|--------|
@@ -422,7 +422,7 @@ streams the turn using the webchat event format (distinct from the SSE format ab
 Global SSE channel used by the TUI dashboard. Streams server-side events across all sessions
 for the authenticated user. No request body.
 
-**Response `200 OK`** — `text/event-stream`
+**Response `200 OK`** - `text/event-stream`
 
 ---
 
@@ -432,7 +432,7 @@ for the authenticated user. No request body.
 
 List all registered nous agents.
 
-**Response `200 OK`** — `NousListResponse`:
+**Response `200 OK`** - `NousListResponse`:
 
 ```json
 {
@@ -448,7 +448,7 @@ List all registered nous agents.
 
 Get detailed status of a single agent.
 
-**Response `200 OK`** — `NousStatus`:
+**Response `200 OK`** - `NousStatus`:
 
 ```json
 {
@@ -463,7 +463,7 @@ Get detailed status of a single agent.
 }
 ```
 
-**Response `404 Not Found`** — nous not found.
+**Response `404 Not Found`** - nous not found.
 
 ---
 
@@ -471,7 +471,7 @@ Get detailed status of a single agent.
 
 List tools available to a nous agent.
 
-**Response `200 OK`** — `ToolsResponse`:
+**Response `200 OK`** - `ToolsResponse`:
 
 ```json
 {
@@ -488,7 +488,7 @@ List tools available to a nous agent.
 
 `auto_activate: false` means the tool is lazy and must be explicitly enabled before use.
 
-**Response `404 Not Found`** — nous not found.
+**Response `404 Not Found`** - nous not found.
 
 ---
 
@@ -500,7 +500,7 @@ Config endpoints require an `Operator` or `Admin` role.
 
 Full redacted runtime configuration.
 
-**Response `200 OK`** — JSON object with all config sections. Secrets are redacted.
+**Response `200 OK`** - JSON object with all config sections. Secrets are redacted.
 
 ---
 
@@ -508,11 +508,11 @@ Full redacted runtime configuration.
 
 Single config section.
 
-**Path:** `section` — one of: `agents`, `gateway`, `channels`, `bindings`, `embedding`,
+**Path:** `section` - one of: `agents`, `gateway`, `channels`, `bindings`, `embedding`,
 `data`, `packs`, `maintenance`, `pricing`.
 
-**Response `200 OK`** — JSON object for the section.
-**Response `404 Not Found`** — unknown section name.
+**Response `200 OK`** - JSON object for the section.
+**Response `404 Not Found`** - unknown section name.
 
 ---
 
@@ -581,7 +581,7 @@ List facts with filtering, sorting, and pagination.
 | `offset` | u32 | Pagination offset |
 | `include_forgotten` | bool | Include forgotten facts |
 
-**Response `200 OK`** — JSON array of fact summaries.
+**Response `200 OK`** - JSON array of fact summaries.
 
 ---
 
@@ -589,16 +589,16 @@ List facts with filtering, sorting, and pagination.
 
 Fact detail with relationships and similar facts.
 
-**Response `200 OK`** — Fact with `relationships` and `similar_facts` arrays.
-**Response `404 Not Found`** — fact not found.
+**Response `200 OK`** - Fact with `relationships` and `similar_facts` arrays.
+**Response `404 Not Found`** - fact not found.
 
 ---
 
 ### `POST /api/v1/knowledge/facts/{id}/forget`
 
-Mark a fact as forgotten. Does not delete — recoverable via restore.
+Mark a fact as forgotten. Does not delete - recoverable via restore.
 
-**Response `200 OK`** — Updated fact.
+**Response `200 OK`** - Updated fact.
 
 ---
 
@@ -606,7 +606,7 @@ Mark a fact as forgotten. Does not delete — recoverable via restore.
 
 Restore a forgotten fact.
 
-**Response `200 OK`** — Updated fact.
+**Response `200 OK`** - Updated fact.
 
 ---
 
@@ -620,7 +620,7 @@ Update confidence score for a fact.
 { "confidence": 0.85 }
 ```
 
-**Response `200 OK`** — Updated fact.
+**Response `200 OK`** - Updated fact.
 
 ---
 
@@ -628,7 +628,7 @@ Update confidence score for a fact.
 
 List entities in the knowledge graph.
 
-**Response `200 OK`** — JSON array of entity summaries.
+**Response `200 OK`** - JSON array of entity summaries.
 
 ---
 
@@ -636,7 +636,7 @@ List entities in the knowledge graph.
 
 Relationships for a single entity.
 
-**Response `200 OK`** — JSON array of relationships with `relation`, `target_id`, `target_label`.
+**Response `200 OK`** - JSON array of relationships with `relation`, `target_id`, `target_label`.
 
 ---
 
@@ -652,7 +652,7 @@ Full-text search over the knowledge graph.
 | `nous_id` | string | Scope to agent |
 | `limit` | u32 | Max results |
 
-**Response `200 OK`** — JSON array of matching facts with relevance scores.
+**Response `200 OK`** - JSON array of matching facts with relevance scores.
 
 ---
 
@@ -660,7 +660,7 @@ Full-text search over the knowledge graph.
 
 Fact activity timeline ordered by recency.
 
-**Response `200 OK`** — JSON array of timeline entries.
+**Response `200 OK`** - JSON array of timeline entries.
 
 ---
 

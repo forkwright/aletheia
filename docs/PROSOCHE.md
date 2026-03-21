@@ -95,7 +95,7 @@ pub enum Urgency {
 
 `ProsocheCheck` produces a `ProsocheResult` containing zero or more `AttentionItem` entries. Each item has a category, summary, and urgency level.
 
-Currently, prosoche dispatches a prompt to the agent and relies on the agent's tool access (calendar, task manager, system health) to perform the actual checks. If no bridge is configured, prosoche completes successfully with empty results and logs a warning.
+Prosoche dispatches a prompt to the agent and relies on the agent's tool access (calendar, task manager, system health) to perform the actual checks. If no bridge is configured, prosoche completes successfully with empty results and logs a warning.
 
 ### Failure handling
 

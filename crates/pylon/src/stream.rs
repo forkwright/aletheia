@@ -77,13 +77,14 @@ impl SseEvent {
 /// Used by `theatron-tui` and the Signal integration. Separate from `SseEvent`
 /// to avoid changing the per-session message API shape.
 #[derive(Debug, Clone, Serialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[serde(tag = "type", rename_all = "camelCase")]
 #[non_exhaustive]
 #[expect(
     missing_docs,
     reason = "webchat event variant fields are self-documenting by name"
 )]
 pub enum WebchatEvent {
+    #[serde(rename = "turn_start")]
     TurnStart {
         #[serde(rename = "sessionId")]
         session_id: String,
@@ -92,12 +93,15 @@ pub enum WebchatEvent {
         #[serde(rename = "turnId")]
         turn_id: String,
     },
+    #[serde(rename = "thinking_delta")]
     ThinkingDelta {
         text: String,
     },
+    #[serde(rename = "text_delta")]
     TextDelta {
         text: String,
     },
+    #[serde(rename = "tool_start")]
     ToolStart {
         #[serde(rename = "toolName")]
         tool_name: String,
@@ -105,6 +109,7 @@ pub enum WebchatEvent {
         tool_id: String,
         input: serde_json::Value,
     },
+    #[serde(rename = "tool_result")]
     ToolResult {
         #[serde(rename = "toolName")]
         tool_name: String,
@@ -116,9 +121,11 @@ pub enum WebchatEvent {
         #[serde(rename = "durationMs")]
         duration_ms: u64,
     },
+    #[serde(rename = "turn_complete")]
     TurnComplete {
         outcome: TurnOutcome,
     },
+    #[serde(rename = "error")]
     Error {
         message: String,
     },

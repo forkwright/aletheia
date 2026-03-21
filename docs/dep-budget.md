@@ -25,7 +25,7 @@ The budget is intentionally loose for the lockfile because the heavy
 Keeping the binary's direct dep count below 55 preserves clarity in
 `Cargo.toml` and makes security audit surface tractable.
 
-## Heavy Dependencies and Feature Gates
+## Heavy dependencies and feature gates
 
 The following crates contribute significantly to build time and binary size.
 All are feature-gated so that default `--no-default-features` builds or test
@@ -59,9 +59,9 @@ in defaults"). CI test runs that do not need embedding can pass
 `--no-default-features --features tui,recall,storage-fjall` to skip the
 candle compilation, which saves substantial build time.
 
-## CI Enforcement
+## CI enforcement
 
-There is no automated dep-count gate in CI at this time. To add one, the
+No automated dep-count gate exists in CI. To add one, the
 `rust.yml` or `nightly.yml` workflow can include a step such as:
 
 ```yaml
@@ -80,7 +80,7 @@ There is no automated dep-count gate in CI at this time. To add one, the
     fi
 ```
 
-## Adding a New Dependency
+## Adding a new dependency
 
 Before adding a crate:
 

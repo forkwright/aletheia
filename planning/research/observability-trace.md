@@ -29,7 +29,7 @@ Two initialization paths exist:
 - File: always JSON, daily rolling (`aletheia.log.YYYY-MM-DD`), level from `logging.level` config
 - Non-blocking file writer via background thread; `WorkerGuard` kept alive for process lifetime
 
-**Simple mode** (`crates/koina/src/tracing_init.rs`):
+**Minimal mode** (`crates/koina/src/tracing_init.rs`):
 - Single-layer stdout subscriber (text or JSON)
 - Used by CLI commands and tests
 - Default filter: `aletheia=info,warn`
@@ -240,7 +240,7 @@ Approach 1 is preferred for production use. The Langfuse Rust SDK does not exist
 
 ### R4: support runtime log level changes (low priority)
 
-Currently, changing log levels requires a process restart. `tracing-subscriber` supports `reload::Layer` which allows swapping the `EnvFilter` at runtime via an API endpoint or signal handler. This would allow operators to increase verbosity for debugging without downtime.
+Changing log levels requires a process restart. `tracing-subscriber` supports `reload::Layer` which allows swapping the `EnvFilter` at runtime via an API endpoint or signal handler. This would allow operators to increase verbosity for debugging without downtime.
 
 ### R5: add `tool_execute` span in organon (low priority)
 

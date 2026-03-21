@@ -157,7 +157,7 @@ inkjet bundles 70+ tree-sitter grammars into a single crate with a simpler API.
 
 ### Option 5: Minimal custom highlighter
 
-Build a simple keyword-based highlighter for the languages we care about.
+Build a keyword-based highlighter for the languages we care about.
 
 **Approach:** Regex-based token matching for keywords, strings, comments, and numbers. Map to a fixed set of styles.
 

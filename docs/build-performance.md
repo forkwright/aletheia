@@ -13,8 +13,8 @@ Baseline: 4m 33s (273.5s), 614 units, max concurrency 69.
 |------|-------|------|-------|
 | 1 | `aletheia` (bin) | 64.6s | Final link + codegen; serial with codegen-units=1 |
 | 2 | `aletheia-mneme` | 63.4s | Knowledge engine; largest crate by LOC (~110K) |
-| 3 | `candle-transformers` | 44.3s | Local ML inference — unavoidable; feature-gated |
-| 4 | `candle-core` | 33.6s | Tensor ops — unavoidable; feature-gated |
+| 3 | `candle-transformers` | 44.3s | Local ML inference - unavoidable; feature-gated |
+| 4 | `candle-core` | 33.6s | Tensor ops - unavoidable; feature-gated |
 | 5 | `onig_sys` (build script) | 32.4s | C regex library pulled in by tokenizers+syntect |
 | 6 | `ring` (build script) | 28.9s | C/asm cryptographic library |
 | 7 | `aletheia-pylon` | 18.5s | API server; heavy axum + utoipa codegen |
@@ -31,7 +31,7 @@ Baseline: 4m 33s (273.5s), 614 units, max concurrency 69.
 **Saves: ~32s** (eliminates `onig_sys` C build)
 
 `tokenizers` (HuggingFace) and `syntect` both default to the `onig` backend, which requires
-compiling `onig_sys` — a C foreign-function interface to the Oniguruma regex library. This C
+compiling `onig_sys` - a C foreign-function interface to the Oniguruma regex library. This C
 build takes 32.4s and cannot be parallelised with Rust compilation.
 
 Both crates support `fancy-regex` as a pure-Rust alternative. `fancy-regex` covers all

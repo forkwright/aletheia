@@ -2,7 +2,7 @@
 set -euo pipefail
 
 THRESHOLD="${LOOP_GUARD_THRESHOLD:-15}"
-SENTINEL_DIR="/tmp/aletheia-loop-guard"
+SENTINEL_DIR="${TMPDIR:-/tmp}/aletheia-loop-guard"
 
 payload=$(cat)
 tool_calls=$(printf '%s' "$payload" | grep -o '"toolCalls":[0-9]*' | head -1 | cut -d: -f2)
