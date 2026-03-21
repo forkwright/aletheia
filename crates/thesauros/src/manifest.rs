@@ -133,7 +133,7 @@ pub struct PackPropertyDef {
 /// - [`error::Error::ManifestNotFound`] if `pack.toml` is missing
 /// - [`error::Error::ReadFile`] if the file cannot be read
 /// - [`error::Error::ParseManifest`] if TOML parsing fails
-pub fn load_manifest(pack_root: &Path) -> Result<PackManifest> {
+pub(crate) fn load_manifest(pack_root: &Path) -> Result<PackManifest> {
     ensure!(
         pack_root.is_dir(),
         error::PackNotFoundSnafu { path: pack_root }
@@ -196,7 +196,7 @@ fn is_valid_pack_name(name: &str) -> bool {
 ///
 /// Returns the canonical absolute path, or an error if the file does not
 /// exist or if the resolved path escapes the pack root directory.
-pub fn resolve_context_path(pack_root: &Path, entry: &ContextEntry) -> Result<PathBuf> {
+pub(crate) fn resolve_context_path(pack_root: &Path, entry: &ContextEntry) -> Result<PathBuf> {
     let resolved = pack_root.join(&entry.path);
     ensure!(
         resolved.is_file(),
@@ -226,9 +226,11 @@ pub fn resolve_context_path(pack_root: &Path, entry: &ContextEntry) -> Result<Pa
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
-    use super::*;
     use std::fs;
+
     use tempfile::TempDir;
+
+    use super::*;
 
     fn setup_pack(files: &[(&str, &str)]) -> TempDir {
         let dir = TempDir::new().unwrap();

@@ -162,20 +162,29 @@ pub(super) fn write_embedded_default(nous_dir: &Path, agent_name: &str) -> Resul
 
 /// Compiled-in Pronoea (Noe) template files from `instance.example/nous/_default/`.
 mod pronoea_template {
-    pub const SOUL: &str = include_str!("../../../../instance.example/nous/_default/SOUL.md");
-    pub const IDENTITY: &str =
+    pub(super) const SOUL: &str =
+        include_str!("../../../../instance.example/nous/_default/SOUL.md");
+    pub(super) const IDENTITY: &str =
         include_str!("../../../../instance.example/nous/_default/IDENTITY.md");
-    pub const AGENTS: &str = include_str!("../../../../instance.example/nous/_default/AGENTS.md");
-    pub const CONTEXT: &str = include_str!("../../../../instance.example/nous/_default/CONTEXT.md");
-    pub const GOALS: &str = include_str!("../../../../instance.example/nous/_default/GOALS.md");
-    pub const MEMORY: &str = include_str!("../../../../instance.example/nous/_default/MEMORY.md");
-    pub const PROSOCHE: &str =
+    pub(super) const AGENTS: &str =
+        include_str!("../../../../instance.example/nous/_default/AGENTS.md");
+    pub(super) const CONTEXT: &str =
+        include_str!("../../../../instance.example/nous/_default/CONTEXT.md");
+    pub(super) const GOALS: &str =
+        include_str!("../../../../instance.example/nous/_default/GOALS.md");
+    pub(super) const MEMORY: &str =
+        include_str!("../../../../instance.example/nous/_default/MEMORY.md");
+    pub(super) const PROSOCHE: &str =
         include_str!("../../../../instance.example/nous/_default/PROSOCHE.md");
-    pub const README: &str = include_str!("../../../../instance.example/nous/_default/README.md");
-    pub const TOOLS: &str = include_str!("../../../../instance.example/nous/_default/TOOLS.md");
-    pub const USER: &str = include_str!("../../../../instance.example/nous/_default/USER.md");
-    pub const VOICE: &str = include_str!("../../../../instance.example/nous/_default/VOICE.md");
-    pub const WORKFLOWS: &str =
+    pub(super) const README: &str =
+        include_str!("../../../../instance.example/nous/_default/README.md");
+    pub(super) const TOOLS: &str =
+        include_str!("../../../../instance.example/nous/_default/TOOLS.md");
+    pub(super) const USER: &str =
+        include_str!("../../../../instance.example/nous/_default/USER.md");
+    pub(super) const VOICE: &str =
+        include_str!("../../../../instance.example/nous/_default/VOICE.md");
+    pub(super) const WORKFLOWS: &str =
         include_str!("../../../../instance.example/nous/_default/WORKFLOWS.md");
 }
 

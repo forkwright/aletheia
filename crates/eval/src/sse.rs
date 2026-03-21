@@ -235,7 +235,7 @@ mod tests {
         let events = parse_sse_text(input).expect("parse");
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].event_type, "text_delta");
-        assert!(format!("{}", events[0].data).contains("hello"));
+        assert!(events[0].data.to_string().contains("hello"));
     }
 
     #[test]
