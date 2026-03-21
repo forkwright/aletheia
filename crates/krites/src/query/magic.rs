@@ -659,8 +659,9 @@ impl NormalFormInlineRule {
 
 #[cfg(test)]
 mod tests {
-    use crate::DbInstance;
     use serde_json::json;
+
+    use crate::DbInstance;
 
     #[test]
     fn strange_case() {

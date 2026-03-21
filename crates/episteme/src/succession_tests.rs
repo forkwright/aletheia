@@ -303,7 +303,11 @@ fn chain_length_multi_hop_a_b_c_d_via_graph_context() {
 fn chain_length_non_superseded_fact_is_zero() {
     let mut ctx = GraphContext::default();
     ctx.chain_lengths.insert("standalone".to_owned(), 0);
-    assert_eq!(ctx.chain_length("standalone"), 0);
+    assert_eq!(
+        ctx.chain_length("standalone"),
+        0,
+        "chain length non superseded fact is zero: values should be equal"
+    );
 }
 
 #[test]
@@ -438,9 +442,9 @@ fn score_access_with_evolution_chain_increases_score() {
 }
 
 mod proptests {
-    use super::*;
     use proptest::prelude::*;
 
+    use super::*;
     proptest! {
         /// Requirement 24: for any volatility input, multiplier is in (0.0, 1.5].
         ///

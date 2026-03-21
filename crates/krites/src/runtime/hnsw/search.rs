@@ -225,8 +225,9 @@ impl<'a> SessionTx<'a> {
     reason = "test assertions and test-only numeric casts"
 )]
 mod tests {
-    use rand::Rng;
     use std::collections::BTreeMap;
+
+    use rand::Rng;
 
     use super::*;
     use crate::DbInstance;

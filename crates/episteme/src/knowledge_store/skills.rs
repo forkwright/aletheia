@@ -47,9 +47,9 @@ impl KnowledgeStore {
         nous_id: &str,
         limit: usize,
     ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
-        use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
+        use crate::engine::DataValue;
         let limit_i64 = i64::try_from(limit).unwrap_or(i64::MAX);
         let mut params = BTreeMap::new();
         params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
@@ -85,9 +85,9 @@ impl KnowledgeStore {
         query: &str,
         limit: usize,
     ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
-        use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
+        use crate::engine::DataValue;
         let limit_i64 = i64::try_from(limit).unwrap_or(i64::MAX);
         let mut params = BTreeMap::new();
         params.insert("query_text".to_owned(), DataValue::Str(query.into()));
@@ -146,9 +146,9 @@ impl KnowledgeStore {
         &self,
         nous_id: &str,
     ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
-        use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
+        use crate::engine::DataValue;
         let mut params = BTreeMap::new();
         params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
 
@@ -272,11 +272,7 @@ impl KnowledgeStore {
                 .last_accessed_at
                 .unwrap_or(fact.temporal.valid_from)
                 .as_second();
-            #[expect(
-                clippy::cast_precision_loss,
-                reason = "age in seconds → days; sub-second precision unnecessary"
-            )]
-            let days = ((now_secs - reference_secs).max(0) as f64) / 86_400.0;
+            let days = ((now_secs - reference_secs).max(0) as f64) / 86_400.0; // SAFETY: seconds fit f64
 
             let score = crate::skill::skill_decay_score(
                 days,
@@ -324,11 +320,7 @@ impl KnowledgeStore {
                 .last_accessed_at
                 .unwrap_or(fact.temporal.valid_from)
                 .as_second();
-            #[expect(
-                clippy::cast_precision_loss,
-                reason = "days since use for display; precision loss is acceptable"
-            )]
-            let days = ((now_secs - ref_secs).max(0) as f64) / 86_400.0;
+            let days = ((now_secs - ref_secs).max(0) as f64) / 86_400.0; // SAFETY: seconds fit f64
             days_since_use.push(days);
 
             let score = crate::skill::skill_decay_score(
@@ -348,13 +340,7 @@ impl KnowledgeStore {
         }
 
         let avg_usage_count = if total_active > 0 {
-            #[expect(
-                clippy::cast_precision_loss,
-                reason = "total_active is number of skills; far below f64 precision limit"
-            )]
-            {
-                usage_counts.iter().map(|&c| f64::from(c)).sum::<f64>() / total_active as f64
-            }
+            usage_counts.iter().map(|&c| f64::from(c)).sum::<f64>() / total_active as f64 // SAFETY: skill count fits f64
         } else {
             0.0
         };
@@ -363,7 +349,10 @@ impl KnowledgeStore {
             0.0
         } else {
             days_since_use.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-            days_since_use[days_since_use.len() / 2]
+            days_since_use
+                .get(days_since_use.len() / 2)
+                .copied()
+                .unwrap_or(0.0)
         };
 
         named_usage.sort_by(|a, b| b.1.cmp(&a.1));
@@ -386,9 +375,9 @@ impl KnowledgeStore {
 
     /// Count skills that were retired (forgotten with reason "stale").
     fn count_retired_skills(&self, nous_id: &str) -> crate::error::Result<usize> {
-        use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
+        use crate::engine::DataValue;
         let mut params = BTreeMap::new();
         params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
 

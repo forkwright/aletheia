@@ -63,7 +63,7 @@ pub enum MergeDecision {
 impl MergeDecision {
     /// Classify a merge score into a decision.
     #[must_use]
-    pub fn from_score(score: f64) -> Self {
+    pub(crate) fn from_score(score: f64) -> Self {
         if score >= 0.90 {
             Self::AutoMerge
         } else if score >= 0.70 {
@@ -114,7 +114,7 @@ const EMBED_THRESHOLD: f64 = 0.80;
 /// Compute the weighted merge score.
 #[cfg(any(feature = "mneme-engine", test))]
 #[must_use]
-pub fn compute_merge_score(
+pub(crate) fn compute_merge_score(
     name_similarity: f64,
     embed_similarity: f64,
     type_match: bool,
@@ -154,8 +154,7 @@ fn jaro_winkler(s1: &str, s2: &str) -> f64 {
         .take(4)
         .take_while(|(a, b)| a == b)
         .count();
-    #[expect(clippy::cast_precision_loss, reason = "prefix_len is at most 4")]
-    let prefix_f = prefix_len as f64;
+    let prefix_f = prefix_len as f64; // SAFETY: prefix_len is at most 4
     jaro + (prefix_f * 0.1 * (1.0 - jaro))
 }
 
@@ -205,16 +204,8 @@ fn jaro(s1: &str, s2: &str) -> f64 {
         }
         k += 1;
     }
-    #[expect(
-        clippy::cast_precision_loss,
-        reason = "string lengths won't exceed 2^52"
-    )]
-    let s1_f = s1_len as f64;
-    #[expect(
-        clippy::cast_precision_loss,
-        reason = "string lengths won't exceed 2^52"
-    )]
-    let s2_f = s2_len as f64;
+    let s1_f = s1_len as f64; // SAFETY: string lengths won't exceed 2^52
+    let s2_f = s2_len as f64; // SAFETY: string lengths won't exceed 2^52
     (matches / s1_f + matches / s2_f + (matches - transpositions / 2.0) / matches) / 3.0
 }
 

@@ -115,8 +115,9 @@ pub(crate) mod utils;
 /// Specific internal error types map to typed public variants where possible.
 /// Everything else falls back to `Error::Engine { message }`.
 fn convert_internal(e: crate::error::InternalError) -> Error {
-    use crate::error::InternalError;
     use snafu::IntoError;
+
+    use crate::error::InternalError;
     match e {
         InternalError::Runtime {
             source: crate::runtime::error::RuntimeError::QueryKilled { .. },

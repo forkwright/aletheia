@@ -11,7 +11,11 @@ fn mock_provider_produces_correct_dimension() {
     let vec = provider
         .embed("hello world")
         .expect("mock embed should not fail");
-    assert_eq!(vec.len(), 384);
+    assert_eq!(
+        vec.len(),
+        384,
+        "mock provider produces correct dimension: values should be equal"
+    );
 }
 
 #[test]
@@ -23,7 +27,10 @@ fn mock_provider_is_deterministic() {
     let v2 = provider
         .embed("test input")
         .expect("mock embed deterministic v2");
-    assert_eq!(v1, v2);
+    assert_eq!(
+        v1, v2,
+        "mock provider is deterministic: values should be equal"
+    );
 }
 
 #[test]
@@ -31,7 +38,10 @@ fn mock_provider_different_texts_differ() {
     let provider = MockEmbeddingProvider::new(64);
     let v1 = provider.embed("hello").expect("mock embed for 'hello'");
     let v2 = provider.embed("world").expect("mock embed for 'world'");
-    assert_ne!(v1, v2);
+    assert_ne!(
+        v1, v2,
+        "mock provider different texts differ: values should differ"
+    );
 }
 
 #[test]
@@ -55,7 +65,10 @@ fn batch_embed_matches_individual() {
         let individual = provider
             .embed(text)
             .expect("individual embed should not fail");
-        assert_eq!(batch[i], individual);
+        assert_eq!(
+            batch[i], individual,
+            "batch embed matches individual: values should be equal"
+        );
     }
 }
 
@@ -63,8 +76,16 @@ fn batch_embed_matches_individual() {
 fn create_mock_provider() {
     let config = EmbeddingConfig::default();
     let provider = create_provider(&config).expect("create mock provider from default config");
-    assert_eq!(provider.dimension(), 384);
-    assert_eq!(provider.model_name(), "mock-embedding");
+    assert_eq!(
+        provider.dimension(),
+        384,
+        "create mock provider: values should be equal"
+    );
+    assert_eq!(
+        provider.model_name(),
+        "mock-embedding",
+        "create mock provider: values should be equal"
+    );
 }
 
 #[test]
@@ -73,7 +94,10 @@ fn create_unknown_provider_fails() {
         provider: "nonexistent".to_owned(),
         ..EmbeddingConfig::default()
     };
-    assert!(create_provider(&config).is_err());
+    assert!(
+        create_provider(&config).is_err(),
+        "create unknown provider fails: expected Err"
+    );
 }
 
 #[test]
@@ -91,7 +115,11 @@ fn embedding_empty_input() {
         "empty string should produce a valid embedding"
     );
     let vec = result.expect("embedding empty string must succeed");
-    assert_eq!(vec.len(), 64);
+    assert_eq!(
+        vec.len(),
+        64,
+        "embedding empty input: values should be equal"
+    );
 }
 
 #[test]
@@ -101,7 +129,11 @@ fn embedding_long_input() {
     let result = provider.embed(&long_text);
     assert!(result.is_ok(), "long input should succeed");
     let vec = result.expect("embedding long input must succeed");
-    assert_eq!(vec.len(), 128);
+    assert_eq!(
+        vec.len(),
+        128,
+        "embedding long input: values should be equal"
+    );
     let norm: f32 = vec.iter().map(|x| x * x).sum::<f32>().sqrt();
     assert!(
         (norm - 1.0).abs() < 0.01,
@@ -125,14 +157,34 @@ fn embedding_provider_switching() {
     })
     .expect("create large mock provider");
 
-    assert_eq!(small.dimension(), 64);
-    assert_eq!(large.dimension(), 256);
+    assert_eq!(
+        small.dimension(),
+        64,
+        "embedding provider switching: values should be equal"
+    );
+    assert_eq!(
+        large.dimension(),
+        256,
+        "embedding provider switching: values should be equal"
+    );
 
     let v_small = small.embed("test").expect("small provider embed");
     let v_large = large.embed("test").expect("large provider embed");
-    assert_eq!(v_small.len(), 64);
-    assert_eq!(v_large.len(), 256);
-    assert_ne!(v_small.len(), v_large.len());
+    assert_eq!(
+        v_small.len(),
+        64,
+        "embedding provider switching: values should be equal"
+    );
+    assert_eq!(
+        v_large.len(),
+        256,
+        "embedding provider switching: values should be equal"
+    );
+    assert_ne!(
+        v_small.len(),
+        v_large.len(),
+        "embedding provider switching: values should differ"
+    );
 }
 
 #[test]
@@ -143,30 +195,43 @@ fn create_provider_custom_dimension() {
         ..EmbeddingConfig::default()
     };
     let provider = create_provider(&config).expect("create custom dimension mock provider");
-    assert_eq!(provider.dimension(), 512);
+    assert_eq!(
+        provider.dimension(),
+        512,
+        "create provider custom dimension: values should be equal"
+    );
 
     let vec = provider
         .embed("custom dim")
         .expect("embed with custom dimension provider");
-    assert_eq!(vec.len(), 512);
+    assert_eq!(
+        vec.len(),
+        512,
+        "create provider custom dimension: values should be equal"
+    );
 }
 
 #[test]
 fn embedding_batch_empty_list() {
     let provider = MockEmbeddingProvider::new(64);
     let result = provider.embed_batch(&[]);
-    assert!(result.is_ok());
+    assert!(result.is_ok(), "embedding batch empty list: expected Ok");
     assert!(
         result
             .expect("batch embed of empty slice should not fail")
-            .is_empty()
+            .is_empty(),
+        "embedding batch empty list: expected empty"
     );
 }
 
 #[test]
 fn mock_provider_consistent_dimension() {
     let provider = MockEmbeddingProvider::new(256);
-    assert_eq!(provider.dimension(), 256);
+    assert_eq!(
+        provider.dimension(),
+        256,
+        "mock provider consistent dimension: values should be equal"
+    );
     let vec = provider
         .embed("consistency check")
         .expect("mock embed for consistency check");
@@ -211,12 +276,24 @@ fn create_provider_mock_config() {
         api_key: None,
     };
     let provider = create_provider(&config).expect("create mock provider with full config");
-    assert_eq!(provider.dimension(), 768);
-    assert_eq!(provider.model_name(), "mock-embedding");
+    assert_eq!(
+        provider.dimension(),
+        768,
+        "create provider mock config: values should be equal"
+    );
+    assert_eq!(
+        provider.model_name(),
+        "mock-embedding",
+        "create provider mock config: values should be equal"
+    );
     let vec = provider
         .embed("test")
         .expect("embed with full config mock provider");
-    assert_eq!(vec.len(), 768);
+    assert_eq!(
+        vec.len(),
+        768,
+        "create provider mock config: values should be equal"
+    );
 }
 
 #[test]
@@ -225,7 +302,7 @@ fn embed_empty_string() {
     let result = provider.embed("");
     assert!(result.is_ok(), "embedding empty string must not panic");
     let vec = result.expect("embedding empty string must succeed");
-    assert_eq!(vec.len(), 64);
+    assert_eq!(vec.len(), 64, "embed empty string: values should be equal");
     let norm: f32 = vec.iter().map(|x| x * x).sum::<f32>().sqrt();
     assert!(
         norm < 1.1,
@@ -240,7 +317,11 @@ fn embed_batch_single_item() {
     let batch = provider
         .embed_batch(&["solo"])
         .expect("batch of single item for 'solo'");
-    assert_eq!(batch.len(), 1);
+    assert_eq!(
+        batch.len(),
+        1,
+        "embed batch single item: values should be equal"
+    );
     assert_eq!(
         batch[0], single,
         "batch of one must match single embed result"
@@ -270,7 +351,11 @@ fn mock_embed_batch_matches_single() {
     let batch = provider
         .embed_batch(&texts)
         .expect("batch embed must succeed");
-    assert_eq!(batch.len(), texts.len());
+    assert_eq!(
+        batch.len(),
+        texts.len(),
+        "mock embed batch matches single: values should be equal"
+    );
     for (i, text) in texts.iter().enumerate() {
         let single = provider
             .embed(text)
@@ -285,7 +370,11 @@ fn mock_embed_batch_matches_single() {
 #[test]
 fn mock_model_name() {
     let provider = MockEmbeddingProvider::new(64);
-    assert_eq!(provider.model_name(), "mock-embedding");
+    assert_eq!(
+        provider.model_name(),
+        "mock-embedding",
+        "mock model name: values should be equal"
+    );
 }
 
 #[tokio::test]
@@ -314,9 +403,9 @@ async fn concurrent_embed_no_deadlock() {
 }
 
 mod proptests {
-    use super::*;
     use proptest::prelude::*;
 
+    use super::*;
     proptest! {
         #[test]
         fn embedding_dimensions_constant(input in "[a-zA-Z ]{1,100}") {
@@ -383,15 +472,19 @@ fn lock_poisoned_error_formats() {
 
 #[cfg(feature = "embed-candle")]
 mod candle_tests {
-    use super::*;
     use std::sync::LazyLock;
 
+    use super::*;
     static PROVIDER: LazyLock<CandelProvider> =
         LazyLock::new(|| CandelProvider::new(None).expect("candle provider init"));
 
     #[test]
     fn candle_provider_initializes() {
-        assert_eq!(PROVIDER.dimension(), 384);
+        assert_eq!(
+            PROVIDER.dimension(),
+            384,
+            "candle provider initializes: values should be equal"
+        );
     }
 
     #[test]
@@ -399,7 +492,11 @@ mod candle_tests {
         let vec = PROVIDER
             .embed("hello world")
             .expect("candle embed for dimension check");
-        assert_eq!(vec.len(), 384);
+        assert_eq!(
+            vec.len(),
+            384,
+            "candle embed produces correct dimension: values should be equal"
+        );
     }
 
     #[test]
@@ -419,14 +516,17 @@ mod candle_tests {
         let v2 = PROVIDER
             .embed("test input")
             .expect("candle embed deterministic v2");
-        assert_eq!(v1, v2);
+        assert_eq!(v1, v2, "candle embed deterministic: values should be equal");
     }
 
     #[test]
     fn candle_different_texts_differ() {
         let v1 = PROVIDER.embed("hello").expect("candle embed for 'hello'");
         let v2 = PROVIDER.embed("world").expect("candle embed for 'world'");
-        assert_ne!(v1, v2);
+        assert_ne!(
+            v1, v2,
+            "candle different texts differ: values should differ"
+        );
     }
 
     #[test]
@@ -437,7 +537,10 @@ mod candle_tests {
             let individual = PROVIDER
                 .embed(text)
                 .expect("candle individual embed in batch comparison");
-            assert_eq!(batch[i], individual);
+            assert_eq!(
+                batch[i], individual,
+                "candle batch matches individual: values should be equal"
+            );
         }
     }
 

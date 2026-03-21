@@ -5,15 +5,12 @@
 )]
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use std::sync::LazyLock;
 
-use crate::error::InternalResult as Result;
-#[cfg(feature = "graph-algo")]
-use crate::fixed_rule::csr::{CsrBuilder, DirectedCsrGraph};
 use compact_str::CompactString;
 #[cfg(feature = "graph-algo")]
 use either::{Left, Right};
 use snafu::Snafu;
-use std::sync::LazyLock;
 
 use crate::data::expr::Expr;
 use crate::data::program::{
@@ -23,8 +20,11 @@ use crate::data::program::{
 use crate::data::symb::Symbol;
 use crate::data::tuple::TupleIter;
 use crate::data::value::DataValue;
+use crate::error::InternalResult as Result;
 #[cfg(feature = "graph-algo")]
 use crate::fixed_rule::algos::*;
+#[cfg(feature = "graph-algo")]
+use crate::fixed_rule::csr::{CsrBuilder, DirectedCsrGraph};
 use crate::fixed_rule::error::InvalidInputSnafu;
 use crate::fixed_rule::utilities::*;
 use crate::parse::SourceSpan;

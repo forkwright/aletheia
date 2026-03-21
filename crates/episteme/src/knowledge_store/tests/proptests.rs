@@ -230,17 +230,15 @@ proptest! {
 }
 
 mod merge {
-    use crate::engine::DataValue;
-    use crate::id::EntityId;
-    use crate::knowledge::{Entity, Relationship};
-    use proptest::prelude::*;
     use std::collections::BTreeMap;
     use std::sync::Arc;
 
-    use super::super::super::{KnowledgeConfig, KnowledgeStore};
+    use proptest::prelude::*;
 
-    // WHY: small fixed set keeps entity IDs short and relationship types
-    // valid without invoking vocab normalisation (storage layer accepts any string).
+    use super::super::super::{KnowledgeConfig, KnowledgeStore};
+    use crate::engine::DataValue;
+    use crate::id::EntityId;
+    use crate::knowledge::{Entity, Relationship};
     const RELATION_TYPES: &[&str] = &["KNOWS", "WORKS_AT", "DEPENDS_ON", "USES", "PART_OF"];
 
     fn make_store() -> Arc<KnowledgeStore> {

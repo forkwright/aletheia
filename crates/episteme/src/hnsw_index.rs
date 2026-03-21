@@ -167,7 +167,7 @@ impl HnswIndex {
         reason = "RwLock poisoning is unrecoverable; propagating would just defer the panic"
     )]
     pub fn insert(&self, vector: &[f32], data_id: usize) {
-        let guard = self.inner.read().expect("hnsw lock poisoned");
+        let guard = self.inner.read().expect("hnsw lock poisoned"); // INVARIANT: lock poison is unrecoverable
         if let Some(ref hnsw) = *guard {
             hnsw.insert((vector, data_id));
         }
@@ -180,7 +180,7 @@ impl HnswIndex {
         reason = "RwLock poisoning is unrecoverable; propagating would just defer the panic"
     )]
     pub fn insert_batch(&self, vectors: &[(&Vec<f32>, usize)]) {
-        let guard = self.inner.read().expect("hnsw lock poisoned");
+        let guard = self.inner.read().expect("hnsw lock poisoned"); // INVARIANT: lock poison is unrecoverable
         if let Some(ref hnsw) = *guard {
             for (vec, id) in vectors {
                 hnsw.insert((vec.as_slice(), *id));
@@ -197,7 +197,7 @@ impl HnswIndex {
         reason = "RwLock poisoning is unrecoverable; propagating would just defer the panic"
     )]
     pub fn search(&self, query: &[f32], k: usize, ef: usize) -> Vec<SearchResult> {
-        let guard = self.inner.read().expect("hnsw lock poisoned");
+        let guard = self.inner.read().expect("hnsw lock poisoned"); // INVARIANT: lock poison is unrecoverable
         match *guard {
             Some(ref hnsw) => {
                 let neighbours: Vec<Neighbour> = hnsw.search(query, k, ef);
@@ -233,7 +233,7 @@ impl HnswIndex {
             clippy::expect_used,
             reason = "RwLock poisoning is unrecoverable; propagating would just defer the panic"
         )]
-        let guard = self.inner.read().expect("hnsw lock poisoned");
+        let guard = self.inner.read().expect("hnsw lock poisoned"); // INVARIANT: lock poison is unrecoverable
         if let Some(ref hnsw) = *guard {
             use hnsw_rs::api::AnnT;
             hnsw.file_dump(dir, &self.config.persist_basename)
@@ -253,7 +253,7 @@ impl HnswIndex {
         reason = "RwLock poisoning is unrecoverable; propagating would just defer the panic"
     )]
     pub fn len(&self) -> usize {
-        let guard = self.inner.read().expect("hnsw lock poisoned");
+        let guard = self.inner.read().expect("hnsw lock poisoned"); // INVARIANT: lock poison is unrecoverable
         match *guard {
             Some(ref hnsw) => hnsw.get_nb_point(),
             None => 0,

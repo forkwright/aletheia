@@ -660,9 +660,9 @@ fn graph_dirty_flag_concurrent_marks_remain_dirty() {
 }
 
 mod proptests {
-    use super::*;
     use proptest::prelude::*;
 
+    use super::*;
     proptest! {
         /// Requirement 32: for any importance in [0.0, 1.0], boosted score is in [0.0, 1.0].
         #[test]

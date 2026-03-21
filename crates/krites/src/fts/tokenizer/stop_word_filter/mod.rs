@@ -11,11 +11,11 @@ mod stopwords;
 
 use std::sync::Arc;
 
-use crate::error::InternalResult as Result;
-use crate::fts::error::TokenizationFailedSnafu;
 use rustc_hash::FxHashSet;
 
 use super::{BoxTokenStream, Token, TokenFilter, TokenStream};
+use crate::error::InternalResult as Result;
+use crate::fts::error::TokenizationFailedSnafu;
 
 /// `TokenFilter` that removes stop words from a token stream
 #[derive(Clone)]

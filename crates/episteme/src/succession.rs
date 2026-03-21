@@ -1,7 +1,7 @@
 //! Ecological succession: tracking how knowledge evolves over time.
 //!
 //! Detects supersession patterns, identifies volatile vs stable domains,
-//! and adapts FSRS decay rates accordingly. Facts in frequently-changing
+//! and adapts FSRS decay rates based on domain volatility. Facts in frequently-changing
 //! domains decay faster; facts in stable domains persist longer.
 //!
 //! ## Volatility scoring
@@ -29,7 +29,7 @@ use crate::id::EntityId;
 use crate::knowledge::{EpistemicTier, FactType};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DomainVolatility {
+pub(crate) struct DomainVolatility {
     /// The entity whose domain is measured.
     pub entity_id: EntityId,
     /// Total facts associated with this entity.
@@ -47,7 +47,7 @@ pub struct DomainVolatility {
 
 /// Per-nous knowledge profile: diagnostic view of what a nous "knows about."
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct KnowledgeProfile {
+pub(crate) struct KnowledgeProfile {
     /// The nous whose profile this is.
     pub nous_id: String,
     /// Top entities by fact count, with their volatility scores.
@@ -60,7 +60,7 @@ pub struct KnowledgeProfile {
 
 /// A single entity entry within a [`KnowledgeProfile`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EntityProfile {
+pub(crate) struct EntityProfile {
     /// Entity identifier.
     pub entity_id: EntityId,
     /// Entity display name.
@@ -80,7 +80,11 @@ pub struct EntityProfile {
 ///
 /// Returns 0.0 for entities with zero total facts.
 #[must_use]
-pub fn compute_volatility(total_facts: u32, superseded_facts: u32, avg_chain_length: f64) -> f64 {
+pub(crate) fn compute_volatility(
+    total_facts: u32,
+    superseded_facts: u32,
+    avg_chain_length: f64,
+) -> f64 {
     if total_facts == 0 {
         return 0.0;
     }
@@ -96,7 +100,7 @@ pub fn compute_volatility(total_facts: u32, superseded_facts: u32, avg_chain_len
 /// - `volatility = 0.5` → 1.0× (neutral, no change)
 /// - `volatility = 1.0` → 0.5× (volatile domains decay faster)
 #[must_use]
-pub fn volatility_multiplier(volatility: f64) -> f64 {
+pub(crate) fn volatility_multiplier(volatility: f64) -> f64 {
     1.5 - volatility.clamp(0.0, 1.0)
 }
 
@@ -105,7 +109,7 @@ pub fn volatility_multiplier(volatility: f64) -> f64 {
 /// Extends [`crate::recall::compute_effective_stability`] with a volatility factor.
 /// The base stability is scaled by `volatility_multiplier(volatility)`.
 #[must_use]
-pub fn adaptive_stability(
+pub(crate) fn adaptive_stability(
     fact_type: FactType,
     tier: EpistemicTier,
     access_count: u32,
@@ -121,7 +125,7 @@ pub fn adaptive_stability(
 /// `[entity_id, total_facts, superseded_facts, avg_chain_length]`
 ///
 /// Run after `SUPERSESSION_CHAIN_LENGTHS`: uses the same `chain[]` recursion inline.
-pub const ENTITY_VOLATILITY_METRICS: &str = r"
+pub(crate) const ENTITY_VOLATILITY_METRICS: &str = r"
 chain[id, d] := *facts{id, superseded_by}, is_null(superseded_by), d = 0
 chain[id, n] := *facts{id, superseded_by}, superseded_by = next_id, not is_null(next_id),
     chain[next_id, prev_n], n = prev_n + 1
@@ -168,7 +172,7 @@ avg_cl[eid, mean(cl)] := entity_facts[eid, _, cl]
 /// Datalog script to store volatility scores in `graph_scores`.
 ///
 /// Parameters: `$entity_id`, `$volatility`, `$now` (ISO 8601 string).
-pub const STORE_VOLATILITY_SCORE: &str = r"
+pub(crate) const STORE_VOLATILITY_SCORE: &str = r"
 ?[entity_id, score_type, score, cluster_id, updated_at] :=
     entity_id = $entity_id,
     score_type = 'volatility',
@@ -185,7 +189,7 @@ pub const STORE_VOLATILITY_SCORE: &str = r"
 /// entities associated with a given nous.
 ///
 /// Parameters: `$nous_id`.
-pub const NOUS_KNOWLEDGE_PROFILE: &str = r"
+pub(crate) const NOUS_KNOWLEDGE_PROFILE: &str = r"
 active_facts[fid, eid] :=
     *fact_entities{fact_id: fid, entity_id: eid},
     *facts{id: fid, nous_id, is_forgotten},
@@ -209,7 +213,7 @@ entity_stats[eid, count(fid), mean(stab)] :=
 /// Datalog script for counting total active facts per nous.
 ///
 /// Parameters: `$nous_id`.
-pub const NOUS_ACTIVE_FACT_STATS: &str = r"
+pub(crate) const NOUS_ACTIVE_FACT_STATS: &str = r"
 active[fid, stab] :=
     *facts{id: fid, nous_id, is_forgotten, superseded_by, stability_hours: stab},
     nous_id == $nous_id,
@@ -372,7 +376,7 @@ mod tests {
         };
         use crate::knowledge_store::KnowledgeStore;
 
-        fn test_store() -> std::sync::Arc<KnowledgeStore> {
+        fn mem_store() -> std::sync::Arc<KnowledgeStore> {
             KnowledgeStore::open_mem().expect("open_mem")
         }
 
@@ -428,7 +432,7 @@ mod tests {
 
         #[test]
         fn chain_length_a_b_c() {
-            let store = test_store();
+            let store = mem_store();
 
             let mut fact_a = make_fact("fact-a", "syn");
             fact_a.lifecycle.superseded_by = Some(crate::id::FactId::from("fact-b"));
@@ -464,7 +468,7 @@ mod tests {
 
         #[test]
         fn volatility_high_entity() {
-            let store = test_store();
+            let store = mem_store();
 
             let entity = make_entity("ent-volatile", "Volatile Topic");
             store.insert_entity(&entity).expect("insert entity");
@@ -504,7 +508,7 @@ mod tests {
 
         #[test]
         fn volatility_low_entity() {
-            let store = test_store();
+            let store = mem_store();
 
             let entity = make_entity("ent-stable", "Stable Topic");
             store.insert_entity(&entity).expect("insert entity");
@@ -542,7 +546,7 @@ mod tests {
 
         #[test]
         fn store_and_load_volatility_scores() {
-            let store = test_store();
+            let store = mem_store();
 
             let entity = make_entity("ent-1", "Test Entity");
             store.insert_entity(&entity).expect("insert entity");
@@ -576,7 +580,7 @@ mod tests {
 
         #[test]
         fn nous_knowledge_profile_query() {
-            let store = test_store();
+            let store = mem_store();
 
             store
                 .insert_entity(&make_entity("ent-rust", "Rust"))
@@ -617,7 +621,7 @@ mod tests {
 
         #[test]
         fn entity_with_zero_facts_no_volatility() {
-            let store = test_store();
+            let store = mem_store();
 
             let entity = make_entity("ent-empty", "Empty Entity");
             store.insert_entity(&entity).expect("insert entity");

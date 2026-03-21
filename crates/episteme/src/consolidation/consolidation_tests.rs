@@ -45,11 +45,26 @@ impl ConsolidationProvider for FailingProvider {
 #[test]
 fn consolidation_config_defaults() {
     let config = ConsolidationConfig::default();
-    assert_eq!(config.entity_fact_threshold, 10);
-    assert_eq!(config.community_fact_threshold, 20);
-    assert_eq!(config.min_age_days, 7);
-    assert_eq!(config.batch_limit, 50);
-    assert!((config.rate_limit_hours - 1.0).abs() < f64::EPSILON);
+    assert_eq!(
+        config.entity_fact_threshold, 10,
+        "consolidation config defaults: values should be equal"
+    );
+    assert_eq!(
+        config.community_fact_threshold, 20,
+        "consolidation config defaults: values should be equal"
+    );
+    assert_eq!(
+        config.min_age_days, 7,
+        "consolidation config defaults: values should be equal"
+    );
+    assert_eq!(
+        config.batch_limit, 50,
+        "consolidation config defaults: values should be equal"
+    );
+    assert!(
+        (config.rate_limit_hours - 1.0).abs() < f64::EPSILON,
+        "consolidation config defaults: assertion failed"
+    );
 }
 
 #[test]
@@ -58,15 +73,31 @@ fn trigger_type_labels() {
         entity_id: EntityId::from("e-1"),
         fact_count: 15,
     };
-    assert_eq!(entity.trigger_type(), "entity_overflow");
-    assert_eq!(entity.trigger_id(), "e-1");
+    assert_eq!(
+        entity.trigger_type(),
+        "entity_overflow",
+        "trigger type labels: values should be equal"
+    );
+    assert_eq!(
+        entity.trigger_id(),
+        "e-1",
+        "trigger type labels: values should be equal"
+    );
 
     let community = ConsolidationTrigger::CommunityOverflow {
         cluster_id: 42,
         fact_count: 25,
     };
-    assert_eq!(community.trigger_type(), "community_overflow");
-    assert_eq!(community.trigger_id(), "42");
+    assert_eq!(
+        community.trigger_type(),
+        "community_overflow",
+        "trigger type labels: values should be equal"
+    );
+    assert_eq!(
+        community.trigger_id(),
+        "42",
+        "trigger type labels: values should be equal"
+    );
 }
 
 #[test]
@@ -76,11 +107,29 @@ fn parse_valid_consolidation_response() {
         {"content": "Alice prefers Rust for backend development", "entities": ["Alice", "Rust"], "relationships": []}
     ]"#;
     let entries = parse_consolidation_response(response).expect("parse succeeds");
-    assert_eq!(entries.len(), 2);
-    assert!(entries[0].content.contains("Alice works at Acme Corp"));
-    assert_eq!(entries[0].entities.len(), 2);
-    assert_eq!(entries[0].relationships.len(), 1);
-    assert_eq!(entries[0].relationships[0].rel_type, "WORKS_AT");
+    assert_eq!(
+        entries.len(),
+        2,
+        "parse valid consolidation response: values should be equal"
+    );
+    assert!(
+        entries[0].content.contains("Alice works at Acme Corp"),
+        "parse valid consolidation response: expected to contain value"
+    );
+    assert_eq!(
+        entries[0].entities.len(),
+        2,
+        "parse valid consolidation response: values should be equal"
+    );
+    assert_eq!(
+        entries[0].relationships.len(),
+        1,
+        "parse valid consolidation response: values should be equal"
+    );
+    assert_eq!(
+        entries[0].relationships[0].rel_type, "WORKS_AT",
+        "parse valid consolidation response: values should be equal"
+    );
 }
 
 #[test]
@@ -89,31 +138,53 @@ fn parse_response_with_preamble() {
 [{"content": "Bob is a data scientist", "entities": ["Bob"]}]
 Some trailing text."#;
     let entries = parse_consolidation_response(response).expect("parse succeeds");
-    assert_eq!(entries.len(), 1);
-    assert_eq!(entries[0].content, "Bob is a data scientist");
+    assert_eq!(
+        entries.len(),
+        1,
+        "parse response with preamble: values should be equal"
+    );
+    assert_eq!(
+        entries[0].content, "Bob is a data scientist",
+        "parse response with preamble: values should be equal"
+    );
 }
 
 #[test]
 fn parse_invalid_response_fails() {
     let response = "This is not JSON at all";
-    assert!(parse_consolidation_response(response).is_err());
+    assert!(
+        parse_consolidation_response(response).is_err(),
+        "parse invalid response fails: expected Err"
+    );
 }
 
 #[test]
 fn extract_json_array_finds_array() {
     let text = "prefix [1, 2, 3] suffix";
-    assert_eq!(extract_json_array(text), Some("[1, 2, 3]"));
+    assert_eq!(
+        extract_json_array(text),
+        Some("[1, 2, 3]"),
+        "extract json array finds array: values should be equal"
+    );
 }
 
 #[test]
 fn extract_json_array_nested() {
     let text = r#"[{"a": [1, 2]}, {"b": 3}]"#;
-    assert_eq!(extract_json_array(text), Some(text));
+    assert_eq!(
+        extract_json_array(text),
+        Some(text),
+        "extract json array nested: values should be equal"
+    );
 }
 
 #[test]
 fn extract_json_array_none() {
-    assert_eq!(extract_json_array("no array here"), None);
+    assert_eq!(
+        extract_json_array("no array here"),
+        None,
+        "extract json array none: values should be equal"
+    );
 }
 
 #[test]
@@ -133,18 +204,39 @@ fn user_message_formatting() {
         ),
     ];
     let msg = consolidation_user_message(&facts);
-    assert!(msg.contains("2 total"));
-    assert!(msg.contains("1. [id=f-1"));
-    assert!(msg.contains("2. [id=f-2"));
-    assert!(msg.contains("confidence=0.90"));
+    assert!(
+        msg.contains("2 total"),
+        "user message formatting: expected to contain value"
+    );
+    assert!(
+        msg.contains("1. [id=f-1"),
+        "user message formatting: expected to contain value"
+    );
+    assert!(
+        msg.contains("2. [id=f-2"),
+        "user message formatting: expected to contain value"
+    );
+    assert!(
+        msg.contains("confidence=0.90"),
+        "user message formatting: expected to contain value"
+    );
 }
 
 #[test]
 fn system_prompt_is_stable() {
     let prompt = consolidation_system_prompt();
-    assert!(prompt.contains("knowledge consolidation engine"));
-    assert!(prompt.contains("JSON array"));
-    assert!(prompt.contains("30-50% compression"));
+    assert!(
+        prompt.contains("knowledge consolidation engine"),
+        "system prompt is stable: expected to contain value"
+    );
+    assert!(
+        prompt.contains("JSON array"),
+        "system prompt is stable: expected to contain value"
+    );
+    assert!(
+        prompt.contains("30-50% compression"),
+        "system prompt is stable: expected to contain value"
+    );
 }
 
 #[test]
@@ -161,10 +253,26 @@ fn batch_facts_splits_correctly() {
         .collect();
 
     let batches = batch_facts(&facts, 3);
-    assert_eq!(batches.len(), 3);
-    assert_eq!(batches[0].len(), 3);
-    assert_eq!(batches[1].len(), 3);
-    assert_eq!(batches[2].len(), 1);
+    assert_eq!(
+        batches.len(),
+        3,
+        "batch facts splits correctly: values should be equal"
+    );
+    assert_eq!(
+        batches[0].len(),
+        3,
+        "batch facts splits correctly: values should be equal"
+    );
+    assert_eq!(
+        batches[1].len(),
+        3,
+        "batch facts splits correctly: values should be equal"
+    );
+    assert_eq!(
+        batches[2].len(),
+        1,
+        "batch facts splits correctly: values should be equal"
+    );
 }
 
 #[test]
@@ -181,8 +289,16 @@ fn batch_facts_single_batch() {
         .collect();
 
     let batches = batch_facts(&facts, 50);
-    assert_eq!(batches.len(), 1);
-    assert_eq!(batches[0].len(), 5);
+    assert_eq!(
+        batches.len(),
+        1,
+        "batch facts single batch: values should be equal"
+    );
+    assert_eq!(
+        batches[0].len(),
+        5,
+        "batch facts single batch: values should be equal"
+    );
 }
 
 #[test]
@@ -195,9 +311,19 @@ fn consolidated_fact_serde_roundtrip() {
     };
     let json = serde_json::to_string(&fact).expect("serialize");
     let back: ConsolidatedFact = serde_json::from_str(&json).expect("deserialize");
-    assert_eq!(fact.content, back.content);
-    assert!((fact.confidence - back.confidence).abs() < f64::EPSILON);
-    assert_eq!(fact.source_fact_ids.len(), back.source_fact_ids.len());
+    assert_eq!(
+        fact.content, back.content,
+        "consolidated fact serde roundtrip: values should be equal"
+    );
+    assert!(
+        (fact.confidence - back.confidence).abs() < f64::EPSILON,
+        "consolidated fact serde roundtrip: assertion failed"
+    );
+    assert_eq!(
+        fact.source_fact_ids.len(),
+        back.source_fact_ids.len(),
+        "consolidated fact serde roundtrip: values should be equal"
+    );
 }
 
 #[test]
@@ -208,7 +334,10 @@ fn consolidation_trigger_serde_roundtrip() {
     };
     let json = serde_json::to_string(&trigger).expect("serialize");
     let back: ConsolidationTrigger = serde_json::from_str(&json).expect("deserialize");
-    assert_eq!(trigger, back);
+    assert_eq!(
+        trigger, back,
+        "consolidation trigger serde roundtrip: values should be equal"
+    );
 }
 
 #[test]
@@ -217,14 +346,20 @@ fn mock_provider_returns_response() {
     let result = provider
         .consolidate("system", "user")
         .expect("should succeed");
-    assert!(result.contains("test"));
+    assert!(
+        result.contains("test"),
+        "mock provider returns response: expected to contain value"
+    );
 }
 
 #[test]
 fn failing_provider_returns_error() {
     let provider = FailingProvider;
     let result = provider.consolidate("system", "user");
-    assert!(result.is_err());
+    assert!(
+        result.is_err(),
+        "failing provider returns error: expected Err"
+    );
 }
 
 #[test]
@@ -241,8 +376,14 @@ fn audit_record_serde_roundtrip() {
     };
     let json = serde_json::to_string(&record).expect("serialize");
     let back: ConsolidationAuditRecord = serde_json::from_str(&json).expect("deserialize");
-    assert_eq!(record.id, back.id);
-    assert_eq!(record.original_count, back.original_count);
+    assert_eq!(
+        record.id, back.id,
+        "audit record serde roundtrip: values should be equal"
+    );
+    assert_eq!(
+        record.original_count, back.original_count,
+        "audit record serde roundtrip: values should be equal"
+    );
 }
 
 /// Requirement 19: entity with 11 facts (> threshold 10) triggers entity overflow.
@@ -260,7 +401,11 @@ fn entity_fact_count_11_triggers_entity_overflow() {
         entity_id: EntityId::from("e-alice"),
         fact_count,
     };
-    assert_eq!(trigger.trigger_type(), "entity_overflow");
+    assert_eq!(
+        trigger.trigger_type(),
+        "entity_overflow",
+        "entity fact count 11 triggers entity overflow: values should be equal"
+    );
 }
 
 /// Requirement 20: entity with 9 facts (< threshold 10) does not trigger.
@@ -290,7 +435,11 @@ fn community_fact_count_21_triggers_community_overflow() {
         cluster_id: 7,
         fact_count,
     };
-    assert_eq!(trigger.trigger_type(), "community_overflow");
+    assert_eq!(
+        trigger.trigger_type(),
+        "community_overflow",
+        "community fact count 21 triggers community overflow: values should be equal"
+    );
 }
 
 /// Requirement 22: facts younger than 7 days are excluded from consolidation count.
@@ -396,9 +545,9 @@ fn batch_exactly_batch_size_produces_single_batch() {
 }
 
 mod proptests {
-    use super::*;
     use proptest::prelude::*;
 
+    use super::*;
     proptest! {
         /// Requirement 34: processed count is always <= input count.
         ///

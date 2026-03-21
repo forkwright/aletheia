@@ -98,22 +98,10 @@ impl EmbeddingProvider for MockEmbeddingProvider {
         for &b in bytes {
             hash = hash.wrapping_mul(33).wrapping_add(u64::from(b));
         }
-        #[expect(
-            clippy::as_conversions,
-            reason = "usize→u64: embedding dim is small; u64→f32: hash modulo fits in f32"
-        )]
         for (i, v) in vec.iter_mut().enumerate() {
-            let h = hash
-                .wrapping_mul(i as u64 + 1)
-                .wrapping_add(i as u64 * 2_654_435_761);
-            #[expect(
-                clippy::cast_precision_loss,
-                clippy::as_conversions,
-                reason = "hash modulo fits in f32"
-            )]
-            {
-                *v = ((h % 10000) as f32 / 5000.0) - 1.0;
-            }
+            let idx = i as u64; // SAFETY: embedding dim is small, fits u64
+            let h = hash.wrapping_mul(idx + 1).wrapping_add(idx * 2_654_435_761);
+            *v = ((h % 10000) as f32 / 5000.0) - 1.0; // SAFETY: h%10000 fits f32
         }
         let norm: f32 = vec.iter().map(|x| x * x).sum::<f32>().sqrt();
         if norm > 0.0 {
@@ -422,13 +410,9 @@ mod candle_provider {
         reason = "test: vec indices are valid after asserting len"
     )]
     mod tests {
-        use super::*;
         use candle_core::{DType, Device, Tensor};
 
-        /// Zero-norm input must not produce NaN after L2 normalisation.
-        ///
-        /// When mean-pooling over an all-zero hidden-state tensor the resulting
-        /// pooled vector has norm 0.  Without the clamp this becomes 0/0 = NaN.
+        use super::*;
         #[test]
         fn pool_and_normalize_zero_input_no_nan() {
             let device = Device::Cpu;

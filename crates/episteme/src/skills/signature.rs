@@ -75,7 +75,7 @@ pub fn signature_similarity(a: &SequenceSignature, b: &SequenceSignature) -> f64
     let lcs = lcs_length(&a.normalized, &b.normalized);
     #[expect(
         clippy::as_conversions,
-        reason = "usize→f64: string lengths are small; precision loss is negligible"
+        reason = "usize→f64: string lengths fit in f64"
     )]
     {
         lcs as f64 / max_len as f64

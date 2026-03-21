@@ -21,9 +21,11 @@ impl KnowledgeStore {
         &self,
         edge: &crate::knowledge::CausalEdge,
     ) -> crate::error::Result<()> {
-        use crate::engine::DataValue;
-        use snafu::ensure;
         use std::collections::BTreeMap;
+
+        use snafu::ensure;
+
+        use crate::engine::DataValue;
 
         ensure!(
             (0.0..=1.0).contains(&edge.confidence),
@@ -62,9 +64,9 @@ impl KnowledgeStore {
         cause: &crate::id::FactId,
         effect: &crate::id::FactId,
     ) -> crate::error::Result<()> {
-        use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
+        use crate::engine::DataValue;
         let mut params = BTreeMap::new();
         params.insert("cause".to_owned(), DataValue::Str(cause.as_str().into()));
         params.insert("effect".to_owned(), DataValue::Str(effect.as_str().into()));
@@ -81,9 +83,9 @@ impl KnowledgeStore {
         &self,
         cause_id: &crate::id::FactId,
     ) -> crate::error::Result<Vec<crate::knowledge::CausalEdge>> {
-        use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
+        use crate::engine::DataValue;
         let script = r"
             ?[cause, effect, ordering, confidence, created_at] :=
                 *causal_edges{cause, effect, ordering, confidence, created_at},
@@ -105,9 +107,9 @@ impl KnowledgeStore {
         &self,
         effect_id: &crate::id::FactId,
     ) -> crate::error::Result<Vec<crate::knowledge::CausalEdge>> {
-        use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
+        use crate::engine::DataValue;
         let script = r"
             ?[cause, effect, ordering, confidence, created_at] :=
                 *causal_edges{cause, effect, ordering, confidence, created_at},

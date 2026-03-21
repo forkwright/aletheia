@@ -456,12 +456,14 @@ impl Iterator for CollectedSkipIterator {
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
+    use std::collections::BTreeMap;
+
+    use tempfile::TempDir;
+
     use super::*;
     use crate::data::value::{DataValue, Validity};
     use crate::error::InternalResult;
     use crate::runtime::db::ScriptMutability;
-    use std::collections::BTreeMap;
-    use tempfile::TempDir;
 
     fn setup_test_db() -> InternalResult<(TempDir, DbCore<FjallStorage>)> {
         let temp_dir = TempDir::new().expect("failed to create temp dir");

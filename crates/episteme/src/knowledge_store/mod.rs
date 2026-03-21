@@ -335,9 +335,9 @@ impl KnowledgeStore {
         reason = "schema init is a single linear sequence"
     )]
     fn init_schema(&self) -> crate::error::Result<()> {
-        use crate::engine::ScriptMutability;
         use std::collections::BTreeMap;
 
+        use crate::engine::ScriptMutability;
         let already_initialized = self
             .db
             .run(
@@ -474,9 +474,9 @@ impl KnowledgeStore {
 
     /// Query the stored schema version from the database.
     pub fn schema_version(&self) -> crate::error::Result<i64> {
-        use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
+        use crate::engine::DataValue;
         let mut params = BTreeMap::new();
         params.insert("key".to_owned(), DataValue::Str("schema".into()));
         let rows = self.run_read(r"?[version] := *schema_version{key: $key, version}", params)?;
@@ -633,9 +633,9 @@ impl KnowledgeStore {
     /// Read a single fact by its ID (all temporal records matching).
     /// Returns all fields; does not apply time/validity filters.
     pub fn read_facts_by_id(&self, id: &str) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
-        use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
+        use crate::engine::DataValue;
         let script = r"
             ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
               superseded_by, source_session_id, recorded_at,

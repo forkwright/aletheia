@@ -1,7 +1,8 @@
 #[cfg(all(test, feature = "mneme-engine"))]
 mod engine_assertions {
-    use super::super::KnowledgeStore;
     use static_assertions::assert_impl_all;
+
+    use super::super::KnowledgeStore;
     assert_impl_all!(KnowledgeStore: Send, Sync);
 }
 

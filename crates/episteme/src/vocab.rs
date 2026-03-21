@@ -52,7 +52,7 @@ const CONTROLLED_VOCAB: &[&str] = &[
 
 /// Normalize a raw relationship string and classify it.
 ///
-/// 1. Trim, uppercase, replace spaces/hyphens with underscores, strip non-alphanumeric/underscore.
+/// 1. Trim, uppercase, replace spaces/hyphens with `_`, strip non-alphanumeric chars.
 /// 2. Reject empty/malformed → `Malformed`.
 /// 3. Check rejected list → `Rejected`.
 /// 4. Check controlled vocabulary → `Known`.
@@ -85,7 +85,7 @@ pub fn normalize_relation(raw: &str) -> RelationType {
             CONTROLLED_VOCAB
                 .iter()
                 .find(|&&v| v == normalized)
-                .expect("just checked contains"),
+                .expect("just checked contains"), // INVARIANT: contains() guarantees find() succeeds
         );
     }
 
@@ -204,7 +204,7 @@ fn vocab_entry(key: &str) -> &'static str {
     CONTROLLED_VOCAB
         .iter()
         .find(|&&v| v == key)
-        .expect("vocab_entry called with key not in CONTROLLED_VOCAB")
+        .expect("vocab_entry called with key not in CONTROLLED_VOCAB") // INVARIANT: callers only pass known keys
 }
 
 #[cfg(test)]
