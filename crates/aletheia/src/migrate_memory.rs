@@ -14,7 +14,10 @@ use qdrant_client::qdrant::{
 };
 
 use aletheia_mneme::embedding::{EmbeddingConfig, EmbeddingProvider, create_provider};
-use aletheia_mneme::knowledge::{EmbeddedChunk, EpistemicTier, Fact, far_future, parse_timestamp};
+use aletheia_mneme::knowledge::{
+    EmbeddedChunk, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
+    far_future, parse_timestamp,
+};
 use aletheia_mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
 use aletheia_taxis::oikos::Oikos;
 
@@ -255,20 +258,28 @@ fn import_fact(
         id: fact_id.clone().into(),
         nous_id: agent_id.to_owned(),
         content: record.content.clone(),
-        confidence: 0.7,
-        tier: EpistemicTier::Inferred,
-        valid_from,
-        valid_to: far_future(),
-        superseded_by: None,
-        source_session_id: None,
-        recorded_at: now,
-        access_count: 0,
-        last_accessed_at: None,
-        stability_hours: aletheia_mneme::knowledge::default_stability_hours(""),
         fact_type: String::new(),
-        is_forgotten: false,
-        forgotten_at: None,
-        forget_reason: None,
+        temporal: FactTemporal {
+            valid_from,
+            valid_to: far_future(),
+            recorded_at: now,
+        },
+        provenance: FactProvenance {
+            confidence: 0.7,
+            tier: EpistemicTier::Inferred,
+            source_session_id: None,
+            stability_hours: aletheia_mneme::knowledge::default_stability_hours(""),
+        },
+        lifecycle: FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
     };
     knowledgedb
         .insert_fact(&fact)
