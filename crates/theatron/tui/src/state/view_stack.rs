@@ -6,6 +6,7 @@ use crate::id::{NousId, SessionId};
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum View {
+    // kanon:ignore RUST/pub-visibility
     /// Top-level: agent sidebar + active conversation.
     Home,
     /// Session list for a specific agent.
@@ -25,7 +26,7 @@ pub enum View {
 
 impl View {
     /// Short human-readable label for breadcrumb display.
-    pub fn label(&self) -> &str {
+    pub(crate) fn label(&self) -> &str {
         match self {
             Self::Home => "Home",
             Self::Sessions { .. } => "Sessions",
@@ -42,23 +43,24 @@ impl View {
 /// Invariant: the stack always contains at least one element (`View::Home`).
 #[derive(Debug, Clone)]
 pub struct ViewStack {
+    // kanon:ignore RUST/pub-visibility
     stack: Vec<View>,
 }
 
 impl ViewStack {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             stack: vec![View::Home],
         }
     }
 
     /// Push a new view onto the stack.
-    pub fn push(&mut self, view: View) {
+    pub(crate) fn push(&mut self, view: View) {
         self.stack.push(view);
     }
 
     /// Pop the current view, returning it. Returns `None` if at Home (cannot pop).
-    pub fn pop(&mut self) -> Option<View> {
+    pub(crate) fn pop(&mut self) -> Option<View> {
         if self.stack.len() > 1 {
             self.stack.pop()
         } else {
@@ -71,22 +73,22 @@ impl ViewStack {
         clippy::expect_used,
         reason = "ViewStack invariant: stack is never empty — new() initialises with Home and pop() guards the minimum"
     )]
-    pub fn current(&self) -> &View {
+    pub(crate) fn current(&self) -> &View {
         self.stack.last().expect("ViewStack invariant: never empty")
     }
 
     /// Generate breadcrumb labels for the full navigation path.
-    pub fn breadcrumbs(&self) -> Vec<&str> {
+    pub(crate) fn breadcrumbs(&self) -> Vec<&str> {
         self.stack.iter().map(|v| v.label()).collect()
     }
 
     /// Current stack depth (1 = Home only).
-    pub fn depth(&self) -> usize {
+    pub(crate) fn depth(&self) -> usize {
         self.stack.len()
     }
 
     /// Whether we're at the root Home view.
-    pub fn is_home(&self) -> bool {
+    pub(crate) fn is_home(&self) -> bool {
         self.stack.len() == 1
     }
 }

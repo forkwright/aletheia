@@ -27,3 +27,11 @@ pub mod state;
 mod tools;
 /// Transport bindings for streamable HTTP and stdio MCP transports.
 pub mod transport;
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn error_type_is_send_sync() {
+        static_assertions::assert_impl_all!(super::error::Error: Send, Sync);
+    }
+}

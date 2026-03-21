@@ -12,8 +12,8 @@ use unicode_width::UnicodeWidthStr;
 use crate::app::App;
 use crate::theme::Theme;
 
-pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
-    let width = area.width as usize;
+pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
+    let width = usize::from(area.width);
 
     let cursor_char = if app.viewport.tick_count % BLINK_PERIOD_TICKS < BLINK_ON_TICKS {
         "█"

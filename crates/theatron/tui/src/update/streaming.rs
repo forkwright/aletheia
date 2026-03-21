@@ -208,8 +208,11 @@ pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutc
         // WHY: Keep the viewport anchored when scrolled up by compensating the
         // scroll offset for the new content added below the current position.
         if !app.viewport.render.auto_scroll {
-            app.viewport.render.scroll_offset =
-                app.viewport.render.scroll_offset.saturating_add(h as usize);
+            app.viewport.render.scroll_offset = app
+                .viewport
+                .render
+                .scroll_offset
+                .saturating_add(usize::from(h));
         }
     }
     app.connection.streaming_text.clear();
@@ -266,6 +269,10 @@ pub(crate) fn handle_stream_error(app: &mut App, msg: String) {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions use direct indexing for clarity"
+)]
 mod tests {
     use super::*;
     use crate::api::types::PlanStep;

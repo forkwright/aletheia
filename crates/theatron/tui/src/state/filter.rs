@@ -3,6 +3,7 @@
 #[derive(Debug, Default, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum FilterScope {
+    // kanon:ignore RUST/pub-visibility
     #[default]
     Chat,
     #[expect(
@@ -14,28 +15,29 @@ pub enum FilterScope {
 
 #[derive(Debug, Default, Clone)]
 pub struct FilterState {
+    // kanon:ignore RUST/pub-visibility
     /// Whether filter mode is active (editing or applied)
-    pub active: bool,
+    pub(crate) active: bool,
     /// Whether the user is currently typing in the filter bar
-    pub editing: bool,
+    pub(crate) editing: bool,
     /// Current filter text
-    pub text: String,
+    pub(crate) text: String,
     /// Pre-lowercased filter text (cached to avoid per-frame allocation)
     text_lower: String,
     /// Cursor position in filter text (byte offset)
-    pub cursor: usize,
+    pub(crate) cursor: usize,
     /// Which view the filter applies to
-    pub scope: FilterScope,
+    pub(crate) scope: FilterScope,
     /// Number of matches in current view
-    pub match_count: usize,
+    pub(crate) match_count: usize,
     /// Total items before filtering
-    pub total_count: usize,
+    pub(crate) total_count: usize,
     /// Index of the currently highlighted match (for n/N navigation)
-    pub current_match: usize,
+    pub(crate) current_match: usize,
 }
 
 impl FilterState {
-    pub fn open(&mut self) {
+    pub(crate) fn open(&mut self) {
         self.active = true;
         self.editing = true;
         self.text.clear();
@@ -47,7 +49,7 @@ impl FilterState {
         self.scope = FilterScope::Chat;
     }
 
-    pub fn close(&mut self) {
+    pub(crate) fn close(&mut self) {
         self.active = false;
         self.editing = false;
         self.text.clear();
@@ -58,18 +60,18 @@ impl FilterState {
         self.current_match = 0;
     }
 
-    pub fn confirm(&mut self) {
+    pub(crate) fn confirm(&mut self) {
         self.editing = false;
     }
 
-    pub fn insert_char(&mut self, c: char) {
+    pub(crate) fn insert_char(&mut self, c: char) {
         self.text.insert(self.cursor, c);
         self.cursor += c.len_utf8();
         self.current_match = 0;
         self.text_lower = self.text.to_lowercase();
     }
 
-    pub fn backspace(&mut self) {
+    pub(crate) fn backspace(&mut self) {
         if self.cursor > 0 {
             let prev = self
                 .text
@@ -86,7 +88,7 @@ impl FilterState {
         }
     }
 
-    pub fn clear_text(&mut self) {
+    pub(crate) fn clear_text(&mut self) {
         self.text.clear();
         self.text_lower.clear();
         self.cursor = 0;
@@ -94,13 +96,13 @@ impl FilterState {
         self.current_match = 0;
     }
 
-    pub fn next_match(&mut self) {
+    pub(crate) fn next_match(&mut self) {
         if self.match_count > 0 {
             self.current_match = (self.current_match + 1) % self.match_count;
         }
     }
 
-    pub fn prev_match(&mut self) {
+    pub(crate) fn prev_match(&mut self) {
         if self.match_count > 0 {
             self.current_match = self
                 .current_match
@@ -110,7 +112,7 @@ impl FilterState {
     }
 
     /// Returns the effective pattern (already lowercased, without `!` prefix) and whether it's inverted.
-    pub fn pattern(&self) -> (&str, bool) {
+    pub(crate) fn pattern(&self) -> (&str, bool) {
         if let Some(rest) = self.text_lower.strip_prefix('!') {
             (rest, true)
         } else {

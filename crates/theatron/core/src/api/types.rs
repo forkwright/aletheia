@@ -26,6 +26,7 @@ impl Agent {
     /// Display name: uses `name` if set, otherwise `id`.
     #[must_use]
     pub fn display_name(&self) -> &str {
+        // kanon:ignore RUST/pub-visibility
         self.name.as_deref().unwrap_or(&self.id)
     }
 }
@@ -37,9 +38,9 @@ pub struct Session {
     pub id: SessionId,
     /// Agent this session belongs to.
     pub nous_id: NousId,
-    /// Session key (human-readable slug).
+    /// Session key (human-readable slug, not a secret).
     #[serde(rename = "session_key")]
-    pub key: String,
+    pub key: String, // kanon:ignore RUST/plain-string-secret
     /// Session status (e.g. "active", "archived").
     #[serde(default)]
     pub status: Option<String>,
@@ -59,7 +60,9 @@ pub struct Session {
 
 impl Session {
     /// Label for display: prefers `display_name`, falls back to `key`.
+    #[must_use]
     pub fn label(&self) -> &str {
+        // kanon:ignore RUST/pub-visibility
         self.display_name
             .as_deref()
             .filter(|s| !s.is_empty())
@@ -67,12 +70,16 @@ impl Session {
     }
 
     /// Whether this session has been archived.
+    #[must_use]
     pub fn is_archived(&self) -> bool {
+        // kanon:ignore RUST/pub-visibility
         self.status.as_deref() == Some("archived") || self.key.contains(":archived:")
     }
 
     /// Whether this session accepts interactive user input.
+    #[must_use]
     pub fn is_interactive(&self) -> bool {
+        // kanon:ignore RUST/pub-visibility
         !self.is_archived()
             && self.session_type.as_deref() != Some("background")
             && !self.key.starts_with("cron:")

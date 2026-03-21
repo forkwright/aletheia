@@ -52,7 +52,7 @@ const MAX_BACKOFF: std::time::Duration = std::time::Duration::from_secs(30);
 ///
 /// Supports graceful shutdown via `CancellationToken`. When the token
 /// fires, the background task exits cleanly.
-pub struct SseConnection {
+pub(crate) struct SseConnection {
     rx: mpsc::Receiver<SseEvent>,
     cancel: CancellationToken,
     _handle: tokio::task::JoinHandle<()>,
@@ -66,7 +66,7 @@ impl SseConnection {
     /// The returned `SseConnection` emits `Connected`/`Disconnected`
     /// lifecycle events in addition to parsed server events.
     #[tracing::instrument(skip_all)]
-    pub fn connect(client: Client, base_url: &str, cancel: CancellationToken) -> Self {
+    pub(crate) fn connect(client: Client, base_url: &str, cancel: CancellationToken) -> Self {
         let (tx, rx) = mpsc::channel(256);
         let url = format!("{}/api/v1/events", base_url.trim_end_matches('/'));
         let child = cancel.child_token();
@@ -178,7 +178,7 @@ impl SseConnection {
     }
 
     /// Signal the background task to shut down.
-    pub fn shutdown(&self) {
+    pub(crate) fn shutdown(&self) {
         self.cancel.cancel();
     }
 }

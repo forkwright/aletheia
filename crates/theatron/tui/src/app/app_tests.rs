@@ -1,4 +1,8 @@
 #[cfg(test)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions use direct indexing for clarity"
+)]
 mod tests {
     use super::super::test_helpers::*;
     use super::super::{DEFAULT_TERMINAL_HEIGHT, DEFAULT_TERMINAL_WIDTH};

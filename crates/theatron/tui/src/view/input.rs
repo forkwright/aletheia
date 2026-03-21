@@ -8,7 +8,7 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 use crate::app::App;
 use crate::theme::Theme;
 
-pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
+pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let is_streaming = app.connection.active_turn_id.is_some();
 
     let prompt_str = if is_streaming { "queued › " } else { "› " };
@@ -209,6 +209,10 @@ pub(crate) fn cursor_visual_position(
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions use direct indexing for clarity"
+)]
 mod tests {
     use super::*;
 

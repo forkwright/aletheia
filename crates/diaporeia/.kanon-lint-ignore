@@ -1,0 +1,18 @@
+# WHY: Error, Result, DiaporeiaServer, DiaporeiaState, and streamable_http_router
+# are public API consumed by pylon and other workspace crates.
+RUST/pub-visibility:src/error.rs
+RUST/pub-visibility:src/server.rs
+RUST/pub-visibility:src/state.rs
+RUST/pub-visibility:src/transport.rs
+
+# WHY: std::sync::Mutex is intentional — lock guard is never held across await
+# points (O(1) arithmetic only).
+RUST/std-mutex-in-async:src/rate_limit.rs
+
+# WHY: .expect() on mutex lock is the correct choice — poisoned mutex is
+# unrecoverable. Already suppressed via #[expect(clippy::expect_used)].
+RUST/expect:src/rate_limit.rs
+
+# WHY: session_key is a session identifier (e.g. "main", "debug-session"),
+# not a cryptographic secret.
+RUST/plain-string-secret:src/tools/params.rs

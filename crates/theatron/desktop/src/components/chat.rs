@@ -119,7 +119,7 @@ impl Default for ChatState {
 /// Encapsulates the debounce buffer and flush logic. In a Dioxus component,
 /// this runs inside a `use_coroutine` that reads from the stream receiver
 /// and writes into signals.
-pub struct ChatStateManager {
+pub(crate) struct ChatStateManager {
     /// Pending text delta buffer: not yet flushed to state.
     text_buffer: String,
     /// Pending thinking delta buffer.
@@ -137,7 +137,7 @@ impl Default for ChatStateManager {
 impl ChatStateManager {
     /// Create a new manager with empty buffers.
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             text_buffer: String::new(),
             thinking_buffer: String::new(),
@@ -151,7 +151,7 @@ impl ChatStateManager {
     /// trigger a re-render (i.e., the signal should be written to).
     /// Returns `false` if the delta was buffered and no flush is needed yet.
     #[must_use]
-    pub fn apply(&mut self, event: StreamEvent, state: &mut ChatState) -> bool {
+    pub(crate) fn apply(&mut self, event: StreamEvent, state: &mut ChatState) -> bool {
         match event {
             StreamEvent::TurnStart {
                 turn_id,
@@ -309,7 +309,7 @@ impl ChatStateManager {
     /// from the Dioxus coroutine to ensure text is never stuck in the
     /// buffer longer than the debounce interval.
     #[must_use]
-    pub fn tick(&mut self, state: &mut ChatState) -> bool {
+    pub(crate) fn tick(&mut self, state: &mut ChatState) -> bool {
         let mut changed = false;
         if !self.text_buffer.is_empty() {
             self.flush_text(state);
@@ -324,7 +324,7 @@ impl ChatStateManager {
 }
 
 /// Apply a connection state change from the global SSE stream.
-pub fn apply_connection_event(state: &mut ChatState, connected: bool) {
+pub(crate) fn apply_connection_event(state: &mut ChatState, connected: bool) {
     state.connection = if connected {
         ConnectionState::Connected
     } else {
@@ -339,9 +339,10 @@ pub fn apply_connection_event(state: &mut ChatState, connected: bool) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use theatron_core::api::types::TurnOutcome;
     use theatron_core::id::ToolId;
+
+    use super::*;
 
     fn make_state() -> ChatState {
         ChatState::default()

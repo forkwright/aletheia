@@ -88,26 +88,30 @@ pub(crate) fn render_fact_detail(app: &App, frame: &mut Frame, area: Rect, theme
         lines.push(meta_line(
             theme,
             "Created",
-            &MemoryInspectorState::relative_time(&f.recorded_at),
+            &MemoryInspectorState::relative_time(&f.temporal.recorded_at),
         ));
         lines.push(meta_line(
             theme,
             "Last Seen",
-            &MemoryInspectorState::relative_time(&f.last_accessed_at),
+            &MemoryInspectorState::relative_time(&f.temporal.last_accessed_at),
         ));
-        lines.push(meta_line(theme, "Accesses", &f.access_count.to_string()));
+        lines.push(meta_line(
+            theme,
+            "Accesses",
+            &f.temporal.access_count.to_string(),
+        ));
         lines.push(meta_line(
             theme,
             "Stability",
-            &format!("{:.0}h", f.stability_hours),
+            &format!("{:.0}h", f.temporal.stability_hours),
         ));
-        if !f.valid_from.is_empty() {
-            lines.push(meta_line(theme, "Valid From", &f.valid_from));
+        if !f.temporal.valid_from.is_empty() {
+            lines.push(meta_line(theme, "Valid From", &f.temporal.valid_from));
         }
-        if !f.valid_to.is_empty() && f.valid_to != "9999-12-31" {
-            lines.push(meta_line(theme, "Valid To", &f.valid_to));
+        if !f.temporal.valid_to.is_empty() && f.temporal.valid_to != "9999-12-31" {
+            lines.push(meta_line(theme, "Valid To", &f.temporal.valid_to));
         }
-        if f.is_forgotten {
+        if f.lifecycle.is_forgotten {
             lines.push(Line::from(vec![
                 Span::raw("  "),
                 Span::styled("Status: ", theme.style_dim()),
@@ -210,7 +214,7 @@ pub(crate) fn render_fact_detail(app: &App, frame: &mut Frame, area: Rect, theme
         .fact_list
         .detail
         .as_ref()
-        .is_some_and(|d| d.fact.is_forgotten)
+        .is_some_and(|d| d.fact.lifecycle.is_forgotten)
     {
         help.push(Span::styled("r", theme.style_accent()));
         help.push(Span::styled(" restore", theme.style_dim()));
@@ -316,8 +320,8 @@ fn render_facts_table(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         }
     } else {
         let filter = app.layout.memory.filters.filter_text.to_lowercase();
-        let visible_height = area.height.saturating_sub(1) as usize;
-        let content_width = area.width.saturating_sub(RESERVED_COLUMN_WIDTH) as usize;
+        let visible_height = usize::from(area.height.saturating_sub(1));
+        let content_width = usize::from(area.width.saturating_sub(RESERVED_COLUMN_WIDTH));
 
         let type_filter = app.layout.memory.filters.type_filter.as_deref();
         let tier_filter = app.layout.memory.filters.tier_filter.as_deref();
@@ -374,7 +378,7 @@ fn render_facts_table(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
             );
 
             let content = truncate(&fact.content.replace('\n', " "), content_width);
-            let content_style = if fact.is_forgotten {
+            let content_style = if fact.lifecycle.is_forgotten {
                 theme.style_dim().add_modifier(Modifier::CROSSED_OUT)
             } else if is_selected {
                 theme.style_fg().add_modifier(Modifier::BOLD)

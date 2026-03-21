@@ -59,7 +59,7 @@ impl AppState {
     /// Returns a `watch::Receiver` that yields the latest config after each
     /// successful reload. Actors should call `changed().await` to be notified.
     #[must_use]
-    pub fn config_rx(&self) -> tokio::sync::watch::Receiver<AletheiaConfig> {
+    pub(crate) fn config_rx(&self) -> tokio::sync::watch::Receiver<AletheiaConfig> {
         self.config_tx.subscribe()
     }
 }
@@ -201,8 +201,9 @@ static_assertions::assert_impl_all!(AppState: Send, Sync);
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use static_assertions::assert_impl_all;
+
+    use super::*;
 
     assert_impl_all!(HealthState: Send, Sync, Clone);
     assert_impl_all!(MetricsState: Send, Sync, Clone);

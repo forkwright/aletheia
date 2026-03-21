@@ -31,7 +31,7 @@ const STATUS_BAR_HEIGHT: u16 = 2;
     clippy::indexing_slicing,
     reason = "Layout.split() returns exactly as many Rects as constraints; all accesses use matching fixed indices"
 )]
-pub fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
+pub(crate) fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
     let area = frame.area();
     let theme = &app.theme;
 
@@ -46,7 +46,8 @@ pub fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
             .command_palette
             .suggestions
             .len()
-            .min(MAX_PALETTE_SUGGESTIONS) as u16;
+            .min(MAX_PALETTE_SUGGESTIONS);
+        let suggestion_lines = u16::try_from(suggestion_lines).unwrap_or(u16::MAX);
         (STATUS_BAR_HEIGHT + suggestion_lines).max(3)
     } else {
         STATUS_BAR_HEIGHT
@@ -169,7 +170,7 @@ pub fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
 
 /// Thread-safe sidebar rect storage for mouse click detection.
 /// Updated each frame by render(), read by App::map_terminal().
-pub struct SidebarRect {
+pub(crate) struct SidebarRect {
     x: std::sync::atomic::AtomicU16,
     y: std::sync::atomic::AtomicU16,
     w: std::sync::atomic::AtomicU16,
@@ -194,7 +195,7 @@ impl SidebarRect {
         self.h.store(r.height, Relaxed);
     }
 
-    pub fn load_rect(&self) -> Rect {
+    pub(crate) fn load_rect(&self) -> Rect {
         use std::sync::atomic::Ordering::Relaxed;
         Rect::new(
             self.x.load(Relaxed),
@@ -205,7 +206,7 @@ impl SidebarRect {
     }
 }
 
-pub static SIDEBAR_RECT: SidebarRect = SidebarRect::new();
+pub(crate) static SIDEBAR_RECT: SidebarRect = SidebarRect::new();
 
 #[expect(
     clippy::indexing_slicing,
@@ -222,11 +223,11 @@ fn render_chat_area(
     } else {
         2
     };
-    let content_width = area.width.max(1) as usize;
+    let content_width = usize::from(area.width.max(1));
     let first_line_avail = content_width.saturating_sub(prompt_len).max(1);
     let wrapped_lines =
-        input::word_wrap_lines(&app.interaction.input.text, first_line_avail, content_width).len()
-            as u16;
+        input::word_wrap_lines(&app.interaction.input.text, first_line_avail, content_width).len();
+    let wrapped_lines = u16::try_from(wrapped_lines).unwrap_or(u16::MAX);
     let input_height = (wrapped_lines + 1).clamp(3, 8);
 
     let filter_height: u16 = if app.interaction.filter.editing { 1 } else { 0 };
@@ -247,8 +248,9 @@ fn render_chat_area(
 
     let (spacer_height, messages_height) = if cache_fresh && !filter_active {
         // WHY: +1 for the top padding line chat::render always emits before message content.
-        let content_rows =
-            (app.viewport.render.virtual_scroll.total_height() as u16).saturating_add(1);
+        let content_rows = u16::try_from(app.viewport.render.virtual_scroll.total_height())
+            .unwrap_or(u16::MAX)
+            .saturating_add(1);
         if content_rows < available_body {
             (available_body - content_rows, content_rows.max(3))
         } else {

@@ -19,7 +19,7 @@ struct MessageCtx<'a> {
     agent_name: &'a str,
 }
 
-pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) -> Vec<OscLink> {
+pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) -> Vec<OscLink> {
     let inner_width = usize::from(area.width.saturating_sub(2));
     let wrap_width = area.width.saturating_sub(2).max(1);
     // With Borders::NONE the paragraph has the full area height available.

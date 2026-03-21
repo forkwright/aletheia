@@ -9,14 +9,14 @@ use crate::theme::ThemeMode;
 
 /// Lazily-loaded syntax highlighting resources.
 /// syntect's SyntaxSet + ThemeSet are expensive to build: load once.
-pub struct Highlighter {
+pub(crate) struct Highlighter {
     syntax_set: SyntaxSet,
     theme_set: ThemeSet,
     theme_name: &'static str,
 }
 
 impl Highlighter {
-    pub fn new(mode: ThemeMode) -> Self {
+    pub(crate) fn new(mode: ThemeMode) -> Self {
         let theme_name = match mode {
             ThemeMode::Light => "base16-ocean.light",
             ThemeMode::Dark => "base16-ocean.dark",
@@ -34,7 +34,7 @@ impl Highlighter {
         clippy::indexing_slicing,
         reason = "theme_name is set in new() to a string constant guaranteed to exist in the default ThemeSet; key absence would be a programming error"
     )]
-    pub fn highlight(&self, code: &str, lang: &str) -> Vec<Line<'static>> {
+    pub(crate) fn highlight(&self, code: &str, lang: &str) -> Vec<Line<'static>> {
         let theme = &self.theme_set.themes[self.theme_name];
 
         let syntax = self
@@ -82,6 +82,10 @@ impl Highlighter {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions use direct indexing for clarity"
+)]
 mod tests {
     use super::*;
 

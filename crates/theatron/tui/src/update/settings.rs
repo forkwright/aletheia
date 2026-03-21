@@ -5,7 +5,7 @@ use crate::state::Overlay;
 use crate::state::settings::{EditState, FieldType, SaveStatus, SettingsOverlay};
 
 // SAFETY: sanitized at ingestion: config from API is sanitized via sanitize_config_json.
-pub async fn handle_open(app: &mut App) {
+pub(crate) async fn handle_open(app: &mut App) {
     match app.client.config().await {
         Ok(config) => {
             let clean_config = sanitize_config_json(config);
@@ -21,14 +21,14 @@ pub async fn handle_open(app: &mut App) {
 
 // SAFETY: sanitized at ingestion: config values from API are sanitized in SettingsOverlay.
 // Config values are mostly numbers/bools; string values are sanitized by sanitize_config_json.
-pub fn handle_loaded(app: &mut App, config: serde_json::Value) {
+pub(crate) fn handle_loaded(app: &mut App, config: serde_json::Value) {
     let clean_config = sanitize_config_json(config);
     app.layout.overlay = Some(Overlay::Settings(SettingsOverlay::from_config(
         &clean_config,
     )));
 }
 
-pub fn handle_up(app: &mut App) {
+pub(crate) fn handle_up(app: &mut App) {
     if let Some(Overlay::Settings(s)) = &mut app.layout.overlay
         && s.editing.is_none()
         && s.cursor > 0
@@ -37,7 +37,7 @@ pub fn handle_up(app: &mut App) {
     }
 }
 
-pub fn handle_down(app: &mut App) {
+pub(crate) fn handle_down(app: &mut App) {
     if let Some(Overlay::Settings(s)) = &mut app.layout.overlay
         && s.editing.is_none()
         && s.cursor + 1 < s.total_fields()
@@ -46,7 +46,7 @@ pub fn handle_down(app: &mut App) {
     }
 }
 
-pub fn handle_enter(app: &mut App) {
+pub(crate) fn handle_enter(app: &mut App) {
     if let Some(Overlay::Settings(ref mut s)) = app.layout.overlay {
         if s.editing.is_some() {
             confirm_edit(s);
@@ -107,7 +107,7 @@ fn confirm_edit(s: &mut SettingsOverlay) {
     }
 }
 
-pub fn handle_edit_char(app: &mut App, c: char) {
+pub(crate) fn handle_edit_char(app: &mut App, c: char) {
     if let Some(Overlay::Settings(s)) = &mut app.layout.overlay
         && let Some(edit) = &mut s.editing
     {
@@ -116,7 +116,7 @@ pub fn handle_edit_char(app: &mut App, c: char) {
     }
 }
 
-pub fn handle_edit_backspace(app: &mut App) {
+pub(crate) fn handle_edit_backspace(app: &mut App) {
     if let Some(Overlay::Settings(s)) = &mut app.layout.overlay
         && let Some(edit) = &mut s.editing
         && edit.cursor > 0
@@ -130,13 +130,13 @@ pub fn handle_edit_backspace(app: &mut App) {
     }
 }
 
-pub fn handle_edit_escape(app: &mut App) {
+pub(crate) fn handle_edit_escape(app: &mut App) {
     if let Some(Overlay::Settings(ref mut s)) = app.layout.overlay {
         s.editing = None;
     }
 }
 
-pub async fn handle_save(app: &mut App) {
+pub(crate) async fn handle_save(app: &mut App) {
     let changed = {
         let settings = match &mut app.layout.overlay {
             Some(Overlay::Settings(s)) => s,
@@ -167,7 +167,7 @@ pub async fn handle_save(app: &mut App) {
     }
 }
 
-pub fn handle_saved(app: &mut App) {
+pub(crate) fn handle_saved(app: &mut App) {
     app.viewport.error_toast = Some(ErrorToast::new("Config saved and reloaded".to_owned()));
     app.layout.overlay = None;
     // Config changes can affect display (e.g. syntax highlighting theme). Invalidate
@@ -178,7 +178,7 @@ pub fn handle_saved(app: &mut App) {
 }
 
 // SAFETY: sanitized at ingestion: error messages may contain external data.
-pub fn handle_save_error(app: &mut App, msg: String) {
+pub(crate) fn handle_save_error(app: &mut App, msg: String) {
     if let Some(Overlay::Settings(s)) = &mut app.layout.overlay {
         s.save_status = SaveStatus::Error(sanitize_for_display(&msg).into_owned());
     }
@@ -209,13 +209,13 @@ fn sanitize_config_json(value: serde_json::Value) -> serde_json::Value {
     }
 }
 
-pub fn handle_reset(app: &mut App) {
+pub(crate) fn handle_reset(app: &mut App) {
     if let Some(Overlay::Settings(s)) = &mut app.layout.overlay {
         s.reset();
     }
 }
 
-pub fn is_editing(app: &App) -> bool {
+pub(crate) fn is_editing(app: &App) -> bool {
     matches!(
         &app.layout.overlay,
         Some(Overlay::Settings(s)) if s.editing.is_some()

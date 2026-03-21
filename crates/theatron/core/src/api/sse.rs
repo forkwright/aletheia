@@ -22,6 +22,7 @@ const READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 /// Manages the global SSE connection to /api/v1/events.
 /// Runs in a background task, sends parsed events through a channel.
 pub struct SseConnection {
+    // kanon:ignore RUST/pub-visibility
     rx: mpsc::Receiver<SseEvent>,
     _handle: tokio::task::JoinHandle<()>,
 }
@@ -32,11 +33,13 @@ impl SseConnection {
     /// is set per-request to override the client-level `Accept: application/json` default.
     #[tracing::instrument(skip_all)]
     pub fn connect(client: Client, base_url: &str) -> Self {
+        // kanon:ignore RUST/pub-visibility
         let (tx, rx) = mpsc::channel(256);
         let url = format!("{}/api/v1/events", base_url.trim_end_matches('/'));
 
         let span = tracing::info_span!("sse_connection", %url);
         let handle = tokio::spawn(
+            // kanon:ignore RUST/spawn-no-instrument
             async move {
                 let mut backoff_secs: u64 = 1;
 

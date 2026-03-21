@@ -20,12 +20,17 @@ pub(crate) use render::{render_side_by_side, render_unified, render_word_diff};
 pub(crate) use types::{DiffChange, DiffHunk, DiffMode, FileDiff, collapse_to_replacements};
 
 #[cfg(test)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions use direct indexing for clarity"
+)]
 mod tests {
-    use super::*;
     use ratatui::layout::Rect;
     use ratatui::text::Span;
 
-    fn test_theme() -> Theme {
+    use super::*;
+
+    fn default_theme() -> Theme {
         Theme::detect()
     }
 
@@ -130,7 +135,7 @@ mod tests {
 
     #[test]
     fn unified_render_has_file_header() {
-        let theme = test_theme();
+        let theme = default_theme();
         let diff = compute_diff("src/lib.rs", "old\n", "new\n");
         let lines = render_unified(&diff, &theme);
         let header_text: String = lines[0]
@@ -143,7 +148,7 @@ mod tests {
 
     #[test]
     fn unified_render_has_hunk_header() {
-        let theme = test_theme();
+        let theme = default_theme();
         let diff = compute_diff("test.rs", "old\n", "new\n");
         let lines = render_unified(&diff, &theme);
         let all_text: String = lines
@@ -156,7 +161,7 @@ mod tests {
 
     #[test]
     fn unified_render_shows_plus_minus() {
-        let theme = test_theme();
+        let theme = default_theme();
         let diff = compute_diff("test.rs", "old_line\n", "new_line\n");
         let lines = render_unified(&diff, &theme);
         let all_text: String = lines
@@ -172,7 +177,7 @@ mod tests {
 
     #[test]
     fn side_by_side_render_has_header() {
-        let theme = test_theme();
+        let theme = default_theme();
         let diff = compute_diff("test.rs", "old\n", "new\n");
         let lines = render_side_by_side(&diff, 80, &theme);
         let header_text: String = lines[0]
@@ -185,7 +190,7 @@ mod tests {
 
     #[test]
     fn side_by_side_render_at_various_widths() {
-        let theme = test_theme();
+        let theme = default_theme();
         let diff = compute_diff("test.rs", "old content\n", "new content\n");
         for width in [40, 60, 80, 120, 200] {
             let lines = render_side_by_side(&diff, width, &theme);
@@ -197,7 +202,7 @@ mod tests {
 
     #[test]
     fn word_diff_render_has_header() {
-        let theme = test_theme();
+        let theme = default_theme();
         let diff = compute_diff("test.rs", "old word\n", "new word\n");
         let lines = render_word_diff(&diff, &theme);
         let header_text: String = lines[0]
@@ -210,7 +215,7 @@ mod tests {
 
     #[test]
     fn word_diff_highlights_changed_tokens() {
-        let theme = test_theme();
+        let theme = default_theme();
         let diff = compute_diff("test.rs", "let x = 42;\n", "let x = 99;\n");
         // Collapse to get Replace variants
         let collapsed_file = FileDiff {
@@ -341,7 +346,7 @@ diff --git a/b.rs b/b.rs
 
     #[test]
     fn render_diff_view_empty_shows_no_changes() {
-        let theme = test_theme();
+        let theme = default_theme();
         let mut state = DiffViewState::new(vec![]);
         let area = Rect::new(0, 0, 80, 24);
         let lines = render_diff_view(&mut state, area, &theme);
@@ -355,7 +360,7 @@ diff --git a/b.rs b/b.rs
 
     #[test]
     fn render_diff_view_updates_total_lines() {
-        let theme = test_theme();
+        let theme = default_theme();
         let diff = compute_diff("test.rs", "old line\n", "new line\n");
         let mut state = DiffViewState::new(vec![diff]);
         let area = Rect::new(0, 0, 80, 24);
@@ -367,7 +372,7 @@ diff --git a/b.rs b/b.rs
 
     #[test]
     fn large_diff_renders_without_panic() {
-        let theme = test_theme();
+        let theme = default_theme();
         let old: String = (0..500).map(|i| format!("line {i}\n")).collect();
         let new: String = (0..500)
             .map(|i| {
@@ -408,7 +413,7 @@ diff --git a/b.rs b/b.rs
 
     #[test]
     fn file_path_displayed_in_all_modes() {
-        let theme = test_theme();
+        let theme = default_theme();
         let diff = compute_diff("src/important.rs", "old\n", "new\n");
 
         for render_fn in [

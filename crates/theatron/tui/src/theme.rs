@@ -582,6 +582,10 @@ pub const BRAILLE_SPINNER: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴',
     clippy::indexing_slicing,
     reason = "index is computed as expr % BRAILLE_SPINNER.len(), which is always a valid index"
 )]
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "truncation on 32-bit is harmless — the modulus ensures a valid spinner index regardless"
+)]
 pub fn spinner_frame(tick: u64) -> char {
     BRAILLE_SPINNER[(tick as usize / 3) % BRAILLE_SPINNER.len()]
 }
@@ -695,7 +699,10 @@ mod tests {
         assert_ne!(f0, f3);
         // After a full cycle, it wraps
         let total = BRAILLE_SPINNER.len() * 3;
-        assert_eq!(spinner_frame(0), spinner_frame(total as u64));
+        assert_eq!(
+            spinner_frame(0),
+            spinner_frame(u64::try_from(total).unwrap_or(u64::MAX))
+        );
     }
 
     #[test]

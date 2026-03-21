@@ -30,7 +30,7 @@ use crate::state::events::{DistillationProgress, EventState, SseConnectionState}
 ///
 /// Tracks reconnection attempts internally so the caller only needs to
 /// forward events from [`SseConnection::next()`](crate::api::sse::SseConnection::next).
-pub struct SseEventRouter {
+pub(crate) struct SseEventRouter {
     state: EventState,
     reconnect_attempts: u32,
 }
@@ -38,7 +38,7 @@ pub struct SseEventRouter {
 impl SseEventRouter {
     /// Create a new router with default state.
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             state: EventState::new(),
             reconnect_attempts: 0,
@@ -47,7 +47,7 @@ impl SseEventRouter {
 
     /// Immutable access to the current event-derived state.
     #[must_use]
-    pub fn state(&self) -> &EventState {
+    pub(crate) fn state(&self) -> &EventState {
         &self.state
     }
 
@@ -55,7 +55,7 @@ impl SseEventRouter {
     ///
     /// Returns `true` if the state changed and signals should be notified.
     /// `Ping` events return `false` since they carry no state change.
-    pub fn apply(&mut self, event: &SseEvent) -> bool {
+    pub(crate) fn apply(&mut self, event: &SseEvent) -> bool {
         match event {
             SseEvent::Connected => self.on_connected(),
             SseEvent::Disconnected => self.on_disconnected(),
@@ -224,8 +224,9 @@ impl Default for SseEventRouter {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use theatron_core::id::{NousId, SessionId, TurnId};
+
+    use super::*;
 
     fn nous(id: &str) -> NousId {
         NousId::from(id)

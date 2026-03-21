@@ -284,11 +284,11 @@ pub enum Msg {
     MemoryPageDown,
     MemoryPageUp,
 
-    #[allow(dead_code, reason = "planned TUI feature")]
+    #[expect(dead_code, reason = "planned TUI feature")]
     ShowError(String),
-    #[allow(dead_code, reason = "planned TUI feature")]
+    #[expect(dead_code, reason = "planned TUI feature")]
     ShowSuccess(String),
-    #[allow(dead_code, reason = "planned TUI feature")]
+    #[expect(dead_code, reason = "planned TUI feature")]
     DismissError,
 
     #[expect(dead_code, reason = "planned TUI feature")]
@@ -332,17 +332,17 @@ pub enum MessageActionKind {
     Delete,
     OpenLinks,
     Inspect,
-    #[allow(
+    #[expect(
         dead_code,
         reason = "constructed in context action overlay; lint fires in lib but not test target"
     )]
     QuoteInReply,
-    #[allow(
+    #[expect(
         dead_code,
         reason = "constructed in context action overlay; lint fires in lib but not test target"
     )]
     RateResponse,
-    #[allow(
+    #[expect(
         dead_code,
         reason = "constructed in context action overlay; lint fires in lib but not test target"
     )]
@@ -370,7 +370,7 @@ pub struct ErrorToast {
 }
 
 impl ErrorToast {
-    pub fn new(message: String) -> Self {
+    pub(crate) fn new(message: String) -> Self {
         Self {
             message,
             created_at: std::time::Instant::now(),
@@ -378,7 +378,7 @@ impl ErrorToast {
     }
 
     /// Returns true if this toast has been visible long enough (5s).
-    pub fn is_expired(&self) -> bool {
+    pub(crate) fn is_expired(&self) -> bool {
         self.created_at.elapsed() > std::time::Duration::from_secs(5)
     }
 }

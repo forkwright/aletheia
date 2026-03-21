@@ -6,7 +6,7 @@ use crate::hyperlink::MdLink;
 use crate::theme::Theme;
 
 pub(super) fn push_span(spans: &mut Vec<Span<'static>>, col: &mut u16, span: Span<'static>) {
-    *col = col.saturating_add(span.content.len().min(u16::MAX as usize) as u16);
+    *col = col.saturating_add(u16::try_from(span.content.len()).unwrap_or(u16::MAX));
     spans.push(span);
 }
 

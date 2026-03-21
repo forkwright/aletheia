@@ -38,7 +38,7 @@ pub(crate) fn handle_scroll_line_down(app: &mut App) {
 /// The result is used as the page-scroll distance so PageUp/PageDown move by one
 /// viewport rather than a hard-coded constant.
 fn chat_viewport_height(app: &App) -> usize {
-    app.viewport.terminal_height.saturating_sub(6).max(1) as usize
+    usize::from(app.viewport.terminal_height.saturating_sub(6).max(1))
 }
 
 pub(crate) fn handle_scroll_page_up(app: &mut App) {
@@ -152,7 +152,15 @@ fn clamp_scroll_offset(app: &mut App) {
         return;
     }
     let total = app.viewport.render.virtual_scroll.total_height();
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "viewport height derived from u16, always fits in u64"
+    )]
     let vh = chat_viewport_height(app) as u64;
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "scroll offset bounded by content height which fits in usize on supported platforms"
+    )]
     let max_offset = total.saturating_sub(vh) as usize;
     if app.viewport.render.scroll_offset > max_offset {
         app.viewport.render.scroll_offset = max_offset;
@@ -371,13 +379,22 @@ mod tests {
         app.rebuild_virtual_scroll();
         app.viewport.render.auto_scroll = false;
         let total = app.viewport.render.virtual_scroll.total_height();
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "viewport height derived from u16, always fits in u64"
+        )]
         let vh = chat_viewport_height(&app) as u64;
         // Offset within valid range: no clamping expected.
         if total > vh {
             app.viewport.render.scroll_offset = 3;
             handle_scroll_up(&mut app);
             // Offset should be 6 (3 + 3) as long as content allows.
-            assert!(app.viewport.render.scroll_offset <= (total.saturating_sub(vh) as usize));
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "scroll offset bounded by content height which fits in usize on supported platforms"
+            )]
+            let max = total.saturating_sub(vh) as usize;
+            assert!(app.viewport.render.scroll_offset <= max);
             assert!(!app.viewport.render.auto_scroll);
         }
     }

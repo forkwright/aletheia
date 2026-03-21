@@ -12,6 +12,15 @@ use crate::state::view_stack::ViewStack;
 /// Unique identifier for a tab, distinct from session IDs.
 pub(crate) type TabId = u64;
 
+/// Streaming connection state saved per tab.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct TabStreamingState {
+    pub(crate) streaming_text: String,
+    pub(crate) streaming_thinking: String,
+    pub(crate) streaming_tool_calls: Vec<ToolCallInfo>,
+    pub(crate) active_turn_id: Option<TurnId>,
+}
+
 /// Per-tab snapshot of isolated session state.
 #[derive(Debug, Clone)]
 pub(crate) struct TabState {
@@ -24,10 +33,7 @@ pub(crate) struct TabState {
     pub(crate) tool_expanded: HashSet<ToolId>,
     pub(crate) filter: FilterState,
     pub(crate) view_stack: ViewStack,
-    pub(crate) streaming_text: String,
-    pub(crate) streaming_thinking: String,
-    pub(crate) streaming_tool_calls: Vec<ToolCallInfo>,
-    pub(crate) active_turn_id: Option<TurnId>,
+    pub(crate) streaming: TabStreamingState,
     pub(crate) markdown_cache: MarkdownCache,
     pub(crate) ops: OpsState,
 }
@@ -66,10 +72,7 @@ impl TabState {
             tool_expanded: HashSet::new(),
             filter: FilterState::default(),
             view_stack: ViewStack::new(),
-            streaming_text: String::new(),
-            streaming_thinking: String::new(),
-            streaming_tool_calls: Vec::new(),
-            active_turn_id: None,
+            streaming: TabStreamingState::default(),
             markdown_cache: MarkdownCache::default(),
             ops: OpsState::default(),
         }
@@ -227,14 +230,18 @@ impl TabBar {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions use direct indexing for clarity"
+)]
 mod tests {
     use super::*;
 
-    fn test_agent_id() -> NousId {
+    fn agent_id_syn() -> NousId {
         NousId::from("syn")
     }
 
-    fn test_agent_id2() -> NousId {
+    fn agent_id_demiurge() -> NousId {
         NousId::from("demiurge")
     }
 
@@ -249,7 +256,7 @@ mod tests {
     #[test]
     fn create_tab_adds_to_bar() {
         let mut bar = TabBar::new();
-        let idx = bar.create_tab(test_agent_id(), "main");
+        let idx = bar.create_tab(agent_id_syn(), "main");
         assert_eq!(idx, 0);
         assert_eq!(bar.len(), 1);
         assert!(!bar.is_empty());
@@ -259,9 +266,9 @@ mod tests {
     #[test]
     fn create_multiple_tabs() {
         let mut bar = TabBar::new();
-        bar.create_tab(test_agent_id(), "main");
-        bar.create_tab(test_agent_id(), "research");
-        bar.create_tab(test_agent_id2(), "leather");
+        bar.create_tab(agent_id_syn(), "main");
+        bar.create_tab(agent_id_syn(), "research");
+        bar.create_tab(agent_id_demiurge(), "leather");
         assert_eq!(bar.len(), 3);
         // Tab IDs are unique
         let ids: Vec<TabId> = bar.tabs.iter().map(|t| t.id).collect();
@@ -272,9 +279,9 @@ mod tests {
     #[test]
     fn next_tab_wraps() {
         let mut bar = TabBar::new();
-        bar.create_tab(test_agent_id(), "a");
-        bar.create_tab(test_agent_id(), "b");
-        bar.create_tab(test_agent_id(), "c");
+        bar.create_tab(agent_id_syn(), "a");
+        bar.create_tab(agent_id_syn(), "b");
+        bar.create_tab(agent_id_syn(), "c");
         assert_eq!(bar.active, 0);
         bar.next_tab();
         assert_eq!(bar.active, 1);
@@ -287,9 +294,9 @@ mod tests {
     #[test]
     fn prev_tab_wraps() {
         let mut bar = TabBar::new();
-        bar.create_tab(test_agent_id(), "a");
-        bar.create_tab(test_agent_id(), "b");
-        bar.create_tab(test_agent_id(), "c");
+        bar.create_tab(agent_id_syn(), "a");
+        bar.create_tab(agent_id_syn(), "b");
+        bar.create_tab(agent_id_syn(), "c");
         assert_eq!(bar.active, 0);
         bar.prev_tab();
         assert_eq!(bar.active, 2); // wraps
@@ -300,9 +307,9 @@ mod tests {
     #[test]
     fn jump_to_valid_index() {
         let mut bar = TabBar::new();
-        bar.create_tab(test_agent_id(), "a");
-        bar.create_tab(test_agent_id(), "b");
-        bar.create_tab(test_agent_id(), "c");
+        bar.create_tab(agent_id_syn(), "a");
+        bar.create_tab(agent_id_syn(), "b");
+        bar.create_tab(agent_id_syn(), "c");
         assert!(bar.jump_to(2));
         assert_eq!(bar.active, 2);
     }
@@ -310,7 +317,7 @@ mod tests {
     #[test]
     fn jump_to_invalid_index() {
         let mut bar = TabBar::new();
-        bar.create_tab(test_agent_id(), "a");
+        bar.create_tab(agent_id_syn(), "a");
         assert!(!bar.jump_to(5));
         assert_eq!(bar.active, 0);
     }
@@ -318,9 +325,9 @@ mod tests {
     #[test]
     fn close_active_tab_adjusts_index() {
         let mut bar = TabBar::new();
-        bar.create_tab(test_agent_id(), "a");
-        bar.create_tab(test_agent_id(), "b");
-        bar.create_tab(test_agent_id(), "c");
+        bar.create_tab(agent_id_syn(), "a");
+        bar.create_tab(agent_id_syn(), "b");
+        bar.create_tab(agent_id_syn(), "c");
         bar.active = 1; // focus on "b"
         let closed = bar.close_active();
         assert_eq!(closed.unwrap().title, "b");
@@ -333,8 +340,8 @@ mod tests {
     #[test]
     fn close_last_tab_adjusts_to_previous() {
         let mut bar = TabBar::new();
-        bar.create_tab(test_agent_id(), "a");
-        bar.create_tab(test_agent_id(), "b");
+        bar.create_tab(agent_id_syn(), "a");
+        bar.create_tab(agent_id_syn(), "b");
         bar.active = 1;
         bar.close_active();
         assert_eq!(bar.active, 0);
@@ -344,7 +351,7 @@ mod tests {
     #[test]
     fn close_only_tab_leaves_empty() {
         let mut bar = TabBar::new();
-        bar.create_tab(test_agent_id(), "a");
+        bar.create_tab(agent_id_syn(), "a");
         bar.close_active();
         assert!(bar.is_empty());
         assert_eq!(bar.active, 0);
@@ -353,9 +360,9 @@ mod tests {
     #[test]
     fn close_tab_before_active_adjusts_index() {
         let mut bar = TabBar::new();
-        bar.create_tab(test_agent_id(), "a");
-        bar.create_tab(test_agent_id(), "b");
-        bar.create_tab(test_agent_id(), "c");
+        bar.create_tab(agent_id_syn(), "a");
+        bar.create_tab(agent_id_syn(), "b");
+        bar.create_tab(agent_id_syn(), "c");
         bar.active = 2; // focus on "c"
         bar.close_tab(0); // close "a"
         assert_eq!(bar.active, 1); // adjusted from 2 to 1
@@ -365,49 +372,49 @@ mod tests {
     #[test]
     fn find_by_title_exact() {
         let mut bar = TabBar::new();
-        bar.create_tab(test_agent_id(), "main");
-        bar.create_tab(test_agent_id(), "research");
+        bar.create_tab(agent_id_syn(), "main");
+        bar.create_tab(agent_id_syn(), "research");
         assert_eq!(bar.find_by_title("research"), Some(1));
     }
 
     #[test]
     fn find_by_title_prefix() {
         let mut bar = TabBar::new();
-        bar.create_tab(test_agent_id(), "main");
-        bar.create_tab(test_agent_id(), "research-task");
+        bar.create_tab(agent_id_syn(), "main");
+        bar.create_tab(agent_id_syn(), "research-task");
         assert_eq!(bar.find_by_title("res"), Some(1));
     }
 
     #[test]
     fn find_by_title_case_insensitive() {
         let mut bar = TabBar::new();
-        bar.create_tab(test_agent_id(), "Main Session");
+        bar.create_tab(agent_id_syn(), "Main Session");
         assert_eq!(bar.find_by_title("main"), Some(0));
     }
 
     #[test]
     fn find_by_title_substring() {
         let mut bar = TabBar::new();
-        bar.create_tab(test_agent_id(), "Syn: main");
-        bar.create_tab(test_agent_id(), "Syn: research");
+        bar.create_tab(agent_id_syn(), "Syn: main");
+        bar.create_tab(agent_id_syn(), "Syn: research");
         assert_eq!(bar.find_by_title("research"), Some(1));
     }
 
     #[test]
     fn find_by_title_no_match() {
         let mut bar = TabBar::new();
-        bar.create_tab(test_agent_id(), "main");
+        bar.create_tab(agent_id_syn(), "main");
         assert_eq!(bar.find_by_title("xyz"), None);
     }
 
     #[test]
     fn mark_unread_background_tab() {
         let mut bar = TabBar::new();
-        bar.create_tab(test_agent_id(), "main");
-        bar.create_tab(test_agent_id(), "research");
+        bar.create_tab(agent_id_syn(), "main");
+        bar.create_tab(agent_id_syn(), "research");
         bar.tabs[1].session_id = Some(SessionId::from("sess2"));
         bar.active = 0;
-        bar.mark_unread(&test_agent_id(), &SessionId::from("sess2"));
+        bar.mark_unread(&agent_id_syn(), &SessionId::from("sess2"));
         assert_eq!(bar.tabs[0].unread_count, 0);
         assert_eq!(bar.tabs[1].unread_count, 1);
     }
@@ -415,17 +422,17 @@ mod tests {
     #[test]
     fn mark_unread_does_not_affect_active() {
         let mut bar = TabBar::new();
-        bar.create_tab(test_agent_id(), "main");
+        bar.create_tab(agent_id_syn(), "main");
         bar.tabs[0].session_id = Some(SessionId::from("sess1"));
         bar.active = 0;
-        bar.mark_unread(&test_agent_id(), &SessionId::from("sess1"));
+        bar.mark_unread(&agent_id_syn(), &SessionId::from("sess1"));
         assert_eq!(bar.tabs[0].unread_count, 0);
     }
 
     #[test]
     fn clear_active_unread() {
         let mut bar = TabBar::new();
-        bar.create_tab(test_agent_id(), "main");
+        bar.create_tab(agent_id_syn(), "main");
         bar.tabs[0].unread_count = 3;
         bar.clear_active_unread();
         assert_eq!(bar.tabs[0].unread_count, 0);
@@ -434,8 +441,8 @@ mod tests {
     #[test]
     fn tab_state_isolation() {
         let mut bar = TabBar::new();
-        bar.create_tab(test_agent_id(), "tab1");
-        bar.create_tab(test_agent_id(), "tab2");
+        bar.create_tab(agent_id_syn(), "tab1");
+        bar.create_tab(agent_id_syn(), "tab2");
 
         // Modify tab1 state
         bar.tabs[0].state.messages.push(ChatMessage {
@@ -472,7 +479,7 @@ mod tests {
     #[test]
     fn close_tab_out_of_range() {
         let mut bar = TabBar::new();
-        bar.create_tab(test_agent_id(), "a");
+        bar.create_tab(agent_id_syn(), "a");
         assert!(bar.close_tab(5).is_none());
         assert_eq!(bar.len(), 1);
     }
@@ -486,10 +493,10 @@ mod tests {
     #[test]
     fn tab_ids_monotonically_increase() {
         let mut bar = TabBar::new();
-        bar.create_tab(test_agent_id(), "a");
-        bar.create_tab(test_agent_id(), "b");
+        bar.create_tab(agent_id_syn(), "a");
+        bar.create_tab(agent_id_syn(), "b");
         bar.close_tab(0);
-        bar.create_tab(test_agent_id(), "c");
+        bar.create_tab(agent_id_syn(), "c");
         // IDs should be 2, 3 (1 was removed)
         assert!(bar.tabs[0].id < bar.tabs[1].id);
     }
@@ -497,7 +504,7 @@ mod tests {
     #[test]
     fn active_tab_mut_modifies() {
         let mut bar = TabBar::new();
-        bar.create_tab(test_agent_id(), "orig");
+        bar.create_tab(agent_id_syn(), "orig");
         bar.active_tab_mut().unwrap().title = "modified".to_string();
         assert_eq!(bar.active_tab().unwrap().title, "modified");
     }

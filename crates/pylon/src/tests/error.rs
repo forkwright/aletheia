@@ -6,8 +6,9 @@ use axum::http::StatusCode;
 
 #[test]
 fn api_error_session_not_found_status_code() {
-    use crate::error::ApiError;
     use axum::response::IntoResponse;
+
+    use crate::error::ApiError;
 
     let err = ApiError::SessionNotFound {
         id: "test".to_owned(),
@@ -19,8 +20,9 @@ fn api_error_session_not_found_status_code() {
 
 #[test]
 fn api_error_nous_not_found_status_code() {
-    use crate::error::ApiError;
     use axum::response::IntoResponse;
+
+    use crate::error::ApiError;
 
     let err = ApiError::NousNotFound {
         id: "test".to_owned(),
@@ -32,8 +34,9 @@ fn api_error_nous_not_found_status_code() {
 
 #[test]
 fn api_error_bad_request_status_code() {
-    use crate::error::ApiError;
     use axum::response::IntoResponse;
+
+    use crate::error::ApiError;
 
     let err = ApiError::BadRequest {
         message: "test".to_owned(),
@@ -45,8 +48,9 @@ fn api_error_bad_request_status_code() {
 
 #[test]
 fn api_error_internal_status_code() {
-    use crate::error::ApiError;
     use axum::response::IntoResponse;
+
+    use crate::error::ApiError;
 
     let err = ApiError::Internal {
         message: "test".to_owned(),
@@ -58,8 +62,9 @@ fn api_error_internal_status_code() {
 
 #[test]
 fn api_error_unauthorized_status_code() {
-    use crate::error::ApiError;
     use axum::response::IntoResponse;
+
+    use crate::error::ApiError;
 
     let err = ApiError::Unauthorized {
         location: snafu::location!(),
@@ -70,8 +75,9 @@ fn api_error_unauthorized_status_code() {
 
 #[test]
 fn api_error_rate_limited_status_code() {
-    use crate::error::ApiError;
     use axum::response::IntoResponse;
+
+    use crate::error::ApiError;
 
     let err = ApiError::RateLimited {
         retry_after_secs: 1,
@@ -83,8 +89,9 @@ fn api_error_rate_limited_status_code() {
 
 #[test]
 fn api_error_forbidden_status_code() {
-    use crate::error::ApiError;
     use axum::response::IntoResponse;
+
+    use crate::error::ApiError;
 
     let err = ApiError::Forbidden {
         message: "test".to_owned(),
@@ -96,8 +103,9 @@ fn api_error_forbidden_status_code() {
 
 #[test]
 fn api_error_service_unavailable_status_code() {
-    use crate::error::ApiError;
     use axum::response::IntoResponse;
+
+    use crate::error::ApiError;
 
     let err = ApiError::ServiceUnavailable {
         message: "test".to_owned(),
@@ -109,8 +117,9 @@ fn api_error_service_unavailable_status_code() {
 
 #[test]
 fn api_error_validation_failed_status_code() {
-    use crate::error::ApiError;
     use axum::response::IntoResponse;
+
+    use crate::error::ApiError;
 
     let err = ApiError::ValidationFailed {
         errors: vec!["field required".to_owned()],
@@ -122,8 +131,9 @@ fn api_error_validation_failed_status_code() {
 
 #[test]
 fn api_error_rate_limited_includes_details() {
-    use crate::error::ApiError;
     use axum::response::IntoResponse;
+
+    use crate::error::ApiError;
 
     let err = ApiError::RateLimited {
         retry_after_secs: 5,
@@ -144,8 +154,9 @@ fn api_error_rate_limited_includes_details() {
 
 #[test]
 fn api_error_validation_failed_includes_errors() {
-    use crate::error::ApiError;
     use axum::response::IntoResponse;
+
+    use crate::error::ApiError;
 
     let err = ApiError::ValidationFailed {
         errors: vec!["field1 required".to_owned(), "field2 invalid".to_owned()],

@@ -5,7 +5,7 @@ use crate::sanitize::sanitize_for_display;
 use crate::state::{Overlay, SessionPickerOverlay};
 
 #[tracing::instrument(skip_all)]
-pub fn handle_open(app: &mut App) {
+pub(crate) fn handle_open(app: &mut App) {
     app.interaction.command_palette.active = true;
     app.interaction.command_palette.input.clear();
     app.interaction.command_palette.cursor = 0;
@@ -14,12 +14,12 @@ pub fn handle_open(app: &mut App) {
 }
 
 #[tracing::instrument(skip_all)]
-pub fn handle_close(app: &mut App) {
+pub(crate) fn handle_close(app: &mut App) {
     app.interaction.command_palette.active = false;
     app.interaction.command_palette.input.clear();
 }
 
-pub fn handle_input(app: &mut App, c: char) {
+pub(crate) fn handle_input(app: &mut App, c: char) {
     app.interaction.command_history_index = None;
     app.interaction
         .command_palette
@@ -30,7 +30,7 @@ pub fn handle_input(app: &mut App, c: char) {
     app.interaction.command_palette.selected = 0;
 }
 
-pub fn handle_backspace(app: &mut App) {
+pub(crate) fn handle_backspace(app: &mut App) {
     if app.interaction.command_palette.cursor > 0 {
         let mut prev = app.interaction.command_palette.cursor - 1;
         while prev > 0 && !app.interaction.command_palette.input.is_char_boundary(prev) {
@@ -46,7 +46,7 @@ pub fn handle_backspace(app: &mut App) {
     }
 }
 
-pub fn handle_delete_word(app: &mut App) {
+pub(crate) fn handle_delete_word(app: &mut App) {
     let mut pos = app.interaction.command_palette.cursor;
     while pos > 0
         && app
@@ -83,7 +83,7 @@ pub fn handle_delete_word(app: &mut App) {
     clippy::indexing_slicing,
     reason = "idx < command_history.len() is guaranteed by the match arms; the reverse-index is always valid"
 )]
-pub fn handle_up(app: &mut App) {
+pub(crate) fn handle_up(app: &mut App) {
     if app.interaction.command_history_index.is_some() {
         // WHY: Already in history-browsing mode: continue navigating history.
         if !app.interaction.command_history.is_empty() {
@@ -110,7 +110,7 @@ pub fn handle_up(app: &mut App) {
     clippy::indexing_slicing,
     reason = "idx = i - 1 where Some(i) was a previously stored history index, so reverse-index is valid"
 )]
-pub fn handle_down(app: &mut App) {
+pub(crate) fn handle_down(app: &mut App) {
     if app.interaction.command_history_index.is_some() {
         match app.interaction.command_history_index {
             Some(0) => {
@@ -145,7 +145,7 @@ pub fn handle_down(app: &mut App) {
     }
 }
 
-pub fn handle_tab(app: &mut App) {
+pub(crate) fn handle_tab(app: &mut App) {
     if let Some(suggestion) = app
         .interaction
         .command_palette
@@ -167,7 +167,7 @@ pub fn handle_tab(app: &mut App) {
 }
 
 #[tracing::instrument(skip_all)]
-pub async fn handle_select(app: &mut App) {
+pub(crate) async fn handle_select(app: &mut App) {
     if let Some(suggestion) = app
         .interaction
         .command_palette

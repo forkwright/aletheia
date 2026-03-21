@@ -296,6 +296,10 @@ fn filter_commands(input: &str) -> Vec<Suggestion> {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions use direct indexing for clarity"
+)]
 mod tests {
     use super::*;
 

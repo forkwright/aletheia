@@ -265,14 +265,18 @@ fn render_file_item(
     }
 }
 
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "display-only: sub-byte precision irrelevant"
+)]
 fn format_size(bytes: u64) -> String {
     const KB: u64 = 1024;
     const MB: u64 = 1024 * KB;
     if bytes < KB {
         format!("{bytes}B")
     } else if bytes < MB {
-        format!("{:.1}KB", bytes as f64 / KB as f64)
+        format!("{:.1}KB", bytes as f64 / KB as f64) // kanon:ignore RUST/as-cast
     } else {
-        format!("{:.1}MB", bytes as f64 / MB as f64)
+        format!("{:.1}MB", bytes as f64 / MB as f64) // kanon:ignore RUST/as-cast
     }
 }

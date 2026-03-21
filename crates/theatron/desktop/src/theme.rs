@@ -34,7 +34,7 @@ impl ResolvedTheme {
 impl ThemeMode {
     /// Cycle to the next mode: Dark -> Light -> System -> Dark.
     #[must_use]
-    pub fn next(self) -> Self {
+    pub(crate) fn next(self) -> Self {
         match self {
             Self::Dark => Self::Light,
             Self::Light => Self::System,
@@ -54,7 +54,7 @@ impl ThemeMode {
 
     /// Human-readable label.
     #[must_use]
-    pub fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             Self::Dark => "Dark",
             Self::Light => "Light",
@@ -64,7 +64,7 @@ impl ThemeMode {
 
     /// Unicode icon for the current mode.
     #[must_use]
-    pub fn icon(self) -> &'static str {
+    pub(crate) fn icon(self) -> &'static str {
         match self {
             Self::Dark => "\u{263E}",
             Self::Light => "\u{2600}",
@@ -109,7 +109,7 @@ fn detect_system_preference() -> ResolvedTheme {
 /// in `themes.css` activate. Provides `Signal<ThemeMode>` as context for
 /// descendant components (including `ThemeToggle`).
 #[component]
-pub fn ThemeProvider(children: Element) -> Element {
+pub(crate) fn ThemeProvider(children: Element) -> Element {
     let mode = use_signal(|| ThemeMode::System);
     use_context_provider(|| mode);
     let resolved = use_memo(move || mode().resolve());

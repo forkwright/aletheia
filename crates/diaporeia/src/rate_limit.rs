@@ -100,7 +100,7 @@ impl TokenBucket {
 mod tests {
     use super::*;
 
-    fn test_config(enabled: bool, message_rpm: u32, read_rpm: u32) -> McpRateLimitConfig {
+    fn make_config(enabled: bool, message_rpm: u32, read_rpm: u32) -> McpRateLimitConfig {
         McpRateLimitConfig {
             enabled,
             message_requests_per_minute: message_rpm,
@@ -110,7 +110,7 @@ mod tests {
 
     #[test]
     fn disabled_limiter_always_allows() {
-        let limiter = RateLimiter::from_config(&test_config(false, 1, 1));
+        let limiter = RateLimiter::from_config(&make_config(false, 1, 1));
         for _ in 0..100 {
             assert!(limiter.check(Tier::Expensive).is_ok());
             assert!(limiter.check(Tier::Cheap).is_ok());
@@ -119,7 +119,7 @@ mod tests {
 
     #[test]
     fn expensive_bucket_exhausts_before_cheap() {
-        let limiter = RateLimiter::from_config(&test_config(true, 2, 100));
+        let limiter = RateLimiter::from_config(&make_config(true, 2, 100));
 
         assert!(limiter.check(Tier::Expensive).is_ok());
         assert!(limiter.check(Tier::Expensive).is_ok());
@@ -131,7 +131,7 @@ mod tests {
 
     #[test]
     fn rate_limit_error_has_correct_code() {
-        let limiter = RateLimiter::from_config(&test_config(true, 0, 0));
+        let limiter = RateLimiter::from_config(&make_config(true, 0, 0));
         let Err(err) = limiter.check(Tier::Expensive) else {
             panic!("expected rate limit error")
         };
@@ -141,7 +141,7 @@ mod tests {
 
     #[test]
     fn cheap_bucket_exhausts_independently() {
-        let limiter = RateLimiter::from_config(&test_config(true, 100, 3));
+        let limiter = RateLimiter::from_config(&make_config(true, 100, 3));
 
         assert!(limiter.check(Tier::Cheap).is_ok());
         assert!(limiter.check(Tier::Cheap).is_ok());

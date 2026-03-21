@@ -218,7 +218,7 @@ pub(crate) fn render_message_detail(
 
         let (rendered, _) = crate::markdown::render(
             &msg.text,
-            area.width.saturating_sub(4) as usize,
+            usize::from(area.width.saturating_sub(4)),
             theme,
             &app.highlighter,
         );
@@ -252,7 +252,7 @@ pub(crate) fn render_message_detail(
     let scroll = if app.viewport.render.auto_scroll {
         0
     } else {
-        app.viewport.render.scroll_offset as u16
+        u16::try_from(app.viewport.render.scroll_offset).unwrap_or(u16::MAX)
     };
     let paragraph = Paragraph::new(lines)
         .block(block)

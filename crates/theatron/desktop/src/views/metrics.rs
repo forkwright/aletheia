@@ -280,14 +280,18 @@ fn format_cost(value: f64) -> String {
     format!("${value:.2}")
 }
 
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "display-only: sub-token precision irrelevant"
+)]
 fn format_tokens(count: u64) -> String {
     const K: u64 = 1_000;
     const M: u64 = 1_000_000;
 
     if count >= M {
-        format!("{:.1}M", count as f64 / M as f64)
+        format!("{:.1}M", count as f64 / M as f64) // kanon:ignore RUST/as-cast
     } else if count >= K {
-        format!("{:.1}K", count as f64 / K as f64)
+        format!("{:.1}K", count as f64 / K as f64) // kanon:ignore RUST/as-cast
     } else {
         count.to_string()
     }

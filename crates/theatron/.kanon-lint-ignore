@@ -1,0 +1,110 @@
+# WHY: theatron-core is a library crate. These items are public API consumed
+# by theatron-tui and theatron-desktop.
+RUST/pub-visibility:core/src/api/client.rs
+RUST/pub-visibility:core/src/api/sse.rs
+RUST/pub-visibility:core/src/api/streaming.rs
+RUST/pub-visibility:core/src/api/types.rs
+RUST/pub-visibility:core/src/sse.rs
+
+# WHY: all tokio::spawn calls in core/desktop already have .instrument() with
+# named tracing spans. Kanon lint uses line-by-line detection and can miss
+# multi-line .instrument() calls.
+RUST/spawn-no-instrument:core/src/api/sse.rs
+RUST/spawn-no-instrument:core/src/api/streaming.rs
+RUST/spawn-no-instrument:desktop/src/api/sse.rs
+RUST/spawn-no-instrument:desktop/src/api/streaming.rs
+RUST/spawn-no-instrument:desktop/src/services/connection.rs
+
+# WHY: Session.key is a human-readable slug identifier, not a cryptographic secret.
+# PylonClient.set_token parameter immediately wraps value in SecretString.
+RUST/plain-string-secret:core/src/api/client.rs
+RUST/plain-string-secret:core/src/api/types.rs
+
+# WHY: error::Error is re-exported through lib.rs as the crate's public error type.
+RUST/pub-visibility:tui/src/error.rs
+
+# WHY: CommandPaletteState is re-exported through state/mod.rs and lib.rs.
+RUST/pub-visibility:tui/src/state/command.rs
+
+# WHY: test_helpers module uses pub for test-only helpers accessed via use super::*.
+RUST/pub-visibility:tui/src/app/test_helpers.rs
+
+# WHY: .unwrap() in test helper is acceptable — test will panic with clear location.
+RUST/unwrap:tui/src/app/test_helpers.rs
+
+# WHY: comment mentions anyhow for binary callers, does not import or use anyhow.
+RUST/anyhow-in-lib:tui/src/lib.rs
+
+# WHY: main.rs is a binary entry point. Box<dyn Error> is acceptable per standards.
+RUST/box-dyn-error:tui/src/main.rs
+
+# WHY: api_key in settings is a user-provided API token stored in config file,
+# managed by the settings save/load flow. SecretString would break serde.
+RUST/plain-string-secret:tui/src/state/settings.rs
+
+# WHY: SQL column name is interpolated from an enum variant, not user input.
+# The format! builds "ORDER BY {column}" where column is from a fixed set.
+STORAGE/sql-string-concat:tui/src/update/memory.rs
+
+# WHY: .expect() on Regex::new with a compile-time constant pattern. Cannot fail.
+RUST/expect:tui/src/hyperlink.rs
+
+# WHY: .expect() on view_stack.pop() is guarded by a len() > 1 check above.
+RUST/expect:tui/src/state/view_stack.rs
+
+# WHY: TUI and desktop view/rendering code uses direct indexing on Vec/slice
+# where bounds are guaranteed by prior length checks, iterator constraints,
+# or ratatui layout splitting. Converting to .get() would add unwrap_or/
+# unreachable!() noise without improving safety.
+RUST/indexing-slicing:desktop/src/views/chat.rs
+RUST/indexing-slicing:desktop/src/views/ops.rs
+RUST/indexing-slicing:tui/src/actions.rs
+RUST/indexing-slicing:tui/src/diff/types.rs
+RUST/indexing-slicing:tui/src/markdown/helpers.rs
+RUST/indexing-slicing:tui/src/markdown/mod.rs
+RUST/indexing-slicing:tui/src/sanitize.rs
+RUST/indexing-slicing:tui/src/state/settings.rs
+RUST/indexing-slicing:tui/src/state/virtual_scroll.rs
+RUST/indexing-slicing:tui/src/update/navigation.rs
+RUST/indexing-slicing:tui/src/update/selection.rs
+RUST/indexing-slicing:tui/src/view/chat.rs
+RUST/indexing-slicing:tui/src/view/image.rs
+RUST/indexing-slicing:tui/src/view/memory.rs
+RUST/indexing-slicing:tui/src/view/mod.rs
+RUST/indexing-slicing:tui/src/view/overlay.rs
+RUST/indexing-slicing:tui/src/view/settings.rs
+
+# WHY: as-casts in view/rendering code convert between u16/usize/i32 for
+# ratatui Rect dimensions and terminal coordinates. Values are bounded by
+# terminal size (< 65535) so truncation cannot occur in practice.
+RUST/as-cast:desktop/src/views/files.rs
+RUST/as-cast:desktop/src/views/metrics.rs
+RUST/as-cast:tui/src/state/virtual_scroll.rs
+RUST/as-cast:tui/src/update/navigation.rs
+RUST/as-cast:tui/src/view/chat.rs
+RUST/as-cast:tui/src/view/image.rs
+RUST/as-cast:tui/src/view/ops.rs
+RUST/as-cast:tui/src/view/status_bar.rs
+
+# WHY: string slicing in view code operates on ASCII-only content (ANSI
+# escape sequences, fixed format strings). Multi-byte char panic not possible.
+RUST/string-slice:desktop/src/views/chat.rs
+RUST/string-slice:tui/src/view/ops.rs
+
+# WHY: all TUI tokio::spawn calls already have .instrument(span) with named
+# tracing spans. Kanon lint uses line-by-line detection and misses multi-line
+# .instrument() calls chained on the async block.
+RUST/spawn-no-instrument:tui/src/actions.rs
+RUST/spawn-no-instrument:tui/src/update/overlay.rs
+
+# WHY: test helper functions (test_theme, test_agent_id, test_session, etc.)
+# use test_ prefix as constructor convention, not as test function naming.
+# These are not #[test] functions.
+TESTING/test-naming:tui/src/diff/mod.rs
+TESTING/test-naming:tui/src/state/tab.rs
+TESTING/test-naming:tui/src/update/overlay.rs
+
+# WHY: write_config sets permissions to 0o600 immediately after std::fs::write.
+# The two-step pattern exists because OpenOptions::mode is unix-only and the
+# function must compile on all platforms.
+SECURITY/config-write-no-perms:tui/src/config.rs

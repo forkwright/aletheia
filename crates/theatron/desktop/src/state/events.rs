@@ -40,7 +40,7 @@ pub struct EventState {
 impl EventState {
     /// Create empty event state with a disconnected SSE connection.
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             active_turns: Vec::new(),
             agent_statuses: HashMap::new(),
@@ -75,14 +75,14 @@ pub enum SseConnectionState {
 impl SseConnectionState {
     /// Whether the SSE stream is actively connected.
     #[must_use]
-    pub fn is_connected(&self) -> bool {
+    pub(crate) fn is_connected(&self) -> bool {
         matches!(self, Self::Connected)
     }
 
     /// Map to the API-layer [`ConnectionState`] for components that
     /// consume the generic type.
     #[must_use]
-    pub fn to_connection_state(&self) -> ConnectionState {
+    pub(crate) fn to_connection_state(&self) -> ConnectionState {
         match self {
             Self::Disconnected => ConnectionState::Disconnected,
             Self::Connected => ConnectionState::Connected,
@@ -160,7 +160,7 @@ pub enum DistillationProgress {
 impl DistillationProgress {
     /// Human-readable label for the current phase.
     #[must_use]
-    pub fn label(&self) -> &str {
+    pub(crate) fn label(&self) -> &str {
         match self {
             Self::Started => "distilling",
             Self::Stage { stage } => stage.as_str(),
@@ -170,7 +170,7 @@ impl DistillationProgress {
 
     /// Whether distillation is still in progress.
     #[must_use]
-    pub fn is_active(&self) -> bool {
+    pub(crate) fn is_active(&self) -> bool {
         !matches!(self, Self::Complete)
     }
 }

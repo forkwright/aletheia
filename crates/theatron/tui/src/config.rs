@@ -16,7 +16,8 @@ const OAUTH_TOKEN_PREFIX: &str = "sk-ant-oat";
 
 /// Display label for the credential type shown in the TUI status bar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CredentialLabel {
+#[non_exhaustive]
+pub(crate) enum CredentialLabel {
     /// OAuth token (auto-refreshable via Claude Code credential chain).
     OAuthToken,
     /// Static API key (no refresh capability).
@@ -36,7 +37,7 @@ impl std::fmt::Display for CredentialLabel {
 }
 
 /// Detect the credential type from a token string.
-pub fn detect_credential_label(token: Option<&str>) -> CredentialLabel {
+pub(crate) fn detect_credential_label(token: Option<&str>) -> CredentialLabel {
     match token {
         Some(t) if t.starts_with(OAUTH_TOKEN_PREFIX) => CredentialLabel::OAuthToken,
         Some(_) => CredentialLabel::StaticApiKey,
@@ -45,18 +46,18 @@ pub fn detect_credential_label(token: Option<&str>) -> CredentialLabel {
 }
 
 #[derive(Clone, Default, Serialize, Deserialize)]
-pub struct ConfigFile {
-    pub url: Option<String>,
-    pub token: Option<String>,
-    pub default_agent: Option<String>,
-    pub default_session: Option<String>,
-    pub workspace_root: Option<String>,
+pub(crate) struct ConfigFile {
+    pub(crate) url: Option<String>,
+    pub(crate) token: Option<String>,
+    pub(crate) default_agent: Option<String>,
+    pub(crate) default_session: Option<String>,
+    pub(crate) workspace_root: Option<String>,
     /// Enable terminal bell (`\x07`) for new messages on inactive agents.
-    pub bell: Option<bool>,
+    pub(crate) bell: Option<bool>,
     /// Keybinding overrides: action name → key string (e.g. `toggle_sidebar = "Ctrl+G"`).
-    pub keybindings: Option<HashMap<String, String>>,
+    pub(crate) keybindings: Option<HashMap<String, String>>,
     /// Theme mode: "dark", "light", or "auto" (default).
-    pub theme: Option<String>,
+    pub(crate) theme: Option<String>,
 }
 
 impl std::fmt::Debug for ConfigFile {
@@ -71,21 +72,21 @@ impl std::fmt::Debug for ConfigFile {
 }
 
 #[derive(Clone)]
-pub struct Config {
-    pub url: String,
-    pub token: Option<SecretString>,
-    pub default_agent: Option<String>,
-    pub default_session: Option<String>,
+pub(crate) struct Config {
+    pub(crate) url: String,
+    pub(crate) token: Option<SecretString>,
+    pub(crate) default_agent: Option<String>,
+    pub(crate) default_session: Option<String>,
     /// Workspace root for agent operations. Resolved from `ALETHEIA_ROOT` env var, then config file.
-    pub workspace_root: Option<std::path::PathBuf>,
+    pub(crate) workspace_root: Option<std::path::PathBuf>,
     /// Terminal bell for new messages on inactive agents (default: false).
-    pub bell: bool,
+    pub(crate) bell: bool,
     /// Keybinding overrides from TOML config.
-    pub keybindings: HashMap<String, String>,
+    pub(crate) keybindings: HashMap<String, String>,
     /// Explicit theme override. `None` means auto-detect from terminal.
-    pub theme: Option<ThemeMode>,
+    pub(crate) theme: Option<ThemeMode>,
     /// Detected credential type for status bar display.
-    pub credential_label: CredentialLabel,
+    pub(crate) credential_label: CredentialLabel,
 }
 
 impl std::fmt::Debug for Config {
@@ -103,7 +104,7 @@ impl std::fmt::Debug for Config {
 
 impl Config {
     #[tracing::instrument(skip(cli_token))]
-    pub fn load(
+    pub(crate) fn load(
         cli_url: Option<String>,
         cli_token: Option<String>,
         cli_agent: Option<String>,
@@ -150,7 +151,7 @@ impl Config {
         reason = "consistent instance-method API; &self kept for tracing::instrument skip"
     )]
     #[tracing::instrument(skip(self))]
-    pub fn clear_credentials(&self) -> Result<()> {
+    pub(crate) fn clear_credentials(&self) -> Result<()> {
         let path = Self::config_path()?;
         if path.exists() {
             let mut file_config = Self::load_file().unwrap_or_default();
@@ -176,21 +177,32 @@ impl Config {
 }
 
 fn write_config(path: &Path, content: &str) -> Result<()> {
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "theatron TUI reads configuration and exports from disk in synchronous initialization paths"
-    )]
-    std::fs::write(path, content).context(IoSnafu {
-        context: "write config file",
-    })?;
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).context(
-            IoSnafu {
-                context: "set config file permissions",
-            },
-        )?;
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(path)
+            .context(IoSnafu {
+                context: "open config file for writing",
+            })?;
+        file.write_all(content.as_bytes()).context(IoSnafu {
+            context: "write config file",
+        })?;
+    }
+    #[cfg(not(unix))]
+    {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "non-unix fallback: no mode bits available"
+        )]
+        std::fs::write(path, content).context(IoSnafu {
+            context: "write config file",
+        })?;
     }
     Ok(())
 }

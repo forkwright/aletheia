@@ -518,10 +518,10 @@ impl App {
             tab.state.tool_expanded = self.interaction.tool_expanded.clone();
             tab.state.filter = self.interaction.filter.clone();
             tab.state.view_stack = self.layout.view_stack.clone();
-            tab.state.streaming_text = self.connection.streaming_text.clone();
-            tab.state.streaming_thinking = self.connection.streaming_thinking.clone();
-            tab.state.streaming_tool_calls = self.connection.streaming_tool_calls.clone();
-            tab.state.active_turn_id = self.connection.active_turn_id.clone();
+            tab.state.streaming.streaming_text = self.connection.streaming_text.clone();
+            tab.state.streaming.streaming_thinking = self.connection.streaming_thinking.clone();
+            tab.state.streaming.streaming_tool_calls = self.connection.streaming_tool_calls.clone();
+            tab.state.streaming.active_turn_id = self.connection.active_turn_id.clone();
             tab.state.markdown_cache = self.viewport.render.markdown_cache.clone();
             tab.state.ops = self.layout.ops.clone();
         }
@@ -540,10 +540,10 @@ impl App {
             self.interaction.tool_expanded = tab.state.tool_expanded.clone();
             self.interaction.filter = tab.state.filter.clone();
             self.layout.view_stack = tab.state.view_stack.clone();
-            self.connection.streaming_text = tab.state.streaming_text.clone();
-            self.connection.streaming_thinking = tab.state.streaming_thinking.clone();
-            self.connection.streaming_tool_calls = tab.state.streaming_tool_calls.clone();
-            self.connection.active_turn_id = tab.state.active_turn_id.clone();
+            self.connection.streaming_text = tab.state.streaming.streaming_text.clone();
+            self.connection.streaming_thinking = tab.state.streaming.streaming_thinking.clone();
+            self.connection.streaming_tool_calls = tab.state.streaming.streaming_tool_calls.clone();
+            self.connection.active_turn_id = tab.state.streaming.active_turn_id.clone();
             self.viewport.render.markdown_cache = tab.state.markdown_cache.clone();
             self.layout.ops = tab.state.ops.clone();
         }
@@ -615,7 +615,7 @@ impl App {
         if self.connection.streaming_text.is_empty() {
             return;
         }
-        let width = self.viewport.terminal_width.saturating_sub(4).max(1) as usize;
+        let width = usize::from(self.viewport.terminal_width.saturating_sub(4).max(1));
         if self.viewport.render.markdown_cache.text == self.connection.streaming_text
             && self.viewport.render.markdown_cache.width == width
         {

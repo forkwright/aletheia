@@ -45,7 +45,7 @@ static UPTIME_SECONDS: LazyLock<Gauge> = LazyLock::new(|| {
 });
 
 /// Force-initialize all lazy metric statics so they register with the default prometheus registry.
-pub fn init() {
+pub(crate) fn init() {
     LazyLock::force(&HTTP_REQUESTS_TOTAL);
     LazyLock::force(&HTTP_REQUEST_DURATION_SECONDS);
     LazyLock::force(&ACTIVE_SESSIONS);
@@ -53,7 +53,7 @@ pub fn init() {
 }
 
 /// Record an HTTP request metric.
-pub fn record_request(method: &str, path: &str, status: u16, duration_secs: f64) {
+pub(crate) fn record_request(method: &str, path: &str, status: u16, duration_secs: f64) {
     let status_str = status.to_string();
     HTTP_REQUESTS_TOTAL
         .with_label_values(&[method, path, &status_str])
@@ -64,7 +64,7 @@ pub fn record_request(method: &str, path: &str, status: u16, duration_secs: f64)
 }
 
 /// Update system gauge metrics.
-pub fn update_system_gauges(uptime_secs: f64, active_sessions: i64) {
+pub(crate) fn update_system_gauges(uptime_secs: f64, active_sessions: i64) {
     UPTIME_SECONDS.set(uptime_secs);
     ACTIVE_SESSIONS.set(active_sessions);
 }
@@ -73,7 +73,7 @@ pub fn update_system_gauges(uptime_secs: f64, active_sessions: i64) {
 ///
 /// Prevents label explosion from unique IDs in prometheus metrics.
 #[must_use]
-pub fn normalize_path(path: &str) -> String {
+pub(crate) fn normalize_path(path: &str) -> String {
     let parts: Vec<&str> = path.split('/').collect();
     let normalized: Vec<&str> = parts
         .iter()

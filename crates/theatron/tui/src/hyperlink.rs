@@ -39,12 +39,12 @@ pub(crate) struct OscLink {
 /// Format an OSC 8 hyperlink **opening** sequence.
 ///
 /// Format: `ESC ] 8 ;; URL BEL`
-pub fn osc8_open(url: &str) -> String {
+pub(crate) fn osc8_open(url: &str) -> String {
     format!("\x1b]8;;{url}\x07")
 }
 
 /// OSC 8 hyperlink **closing** sequence: `ESC ] 8 ;; BEL`
-pub const fn osc8_close() -> &'static str {
+pub(crate) const fn osc8_close() -> &'static str {
     "\x1b]8;;\x07"
 }
 
@@ -56,7 +56,7 @@ pub const fn osc8_close() -> &'static str {
 ///
 /// Terminals that do **not** support it: raw Linux console, most older xterm
 /// derivatives. Callers should degrade gracefully (underline + colour only).
-pub fn supports_hyperlinks() -> bool {
+pub(crate) fn supports_hyperlinks() -> bool {
     static CACHE: LazyLock<bool> = LazyLock::new(probe_hyperlink_support);
     *CACHE
 }
@@ -116,7 +116,7 @@ fn probe_hyperlink_support() -> bool {
 ///
 /// The caller is responsible for skipping code blocks and inline code;
 /// those contexts should not be passed to this function.
-pub fn detect_urls(text: &str) -> Vec<(usize, usize, &str)> {
+pub(crate) fn detect_urls(text: &str) -> Vec<(usize, usize, &str)> {
     #[expect(
         clippy::expect_used,
         reason = "regex is a compile-time string literal and is always valid"
@@ -207,6 +207,10 @@ fn detect_file_paths(text: &str) -> Vec<(usize, usize, &str, String)> {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions use direct indexing for clarity"
+)]
 mod tests {
     use super::*;
 

@@ -262,8 +262,9 @@ mod tests {
 
     #[test]
     fn nous_not_found_error_is_404() {
-        use crate::error::{ApiError, NousNotFoundSnafu};
         use axum::response::IntoResponse;
+
+        use crate::error::{ApiError, NousNotFoundSnafu};
         let err: ApiError = NousNotFoundSnafu {
             id: "unknown-nous".to_owned(),
         }

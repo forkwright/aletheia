@@ -6,14 +6,14 @@ use crate::state::memory::{FactDetail, MemoryFact, MemorySearchResult, MemoryTab
 use crate::state::view_stack::View;
 
 /// Open the memory inspector, pushing it onto the view stack and loading data.
-pub async fn handle_open(app: &mut App) {
+pub(crate) async fn handle_open(app: &mut App) {
     app.layout.view_stack.push(View::MemoryInspector);
     app.layout.memory.loading = true;
     load_facts(app).await;
 }
 
 /// Close memory inspector (pop back).
-pub fn handle_close(app: &mut App) {
+pub(crate) fn handle_close(app: &mut App) {
     if matches!(
         app.layout.view_stack.current(),
         View::MemoryInspector | View::FactDetail { .. }
@@ -22,22 +22,22 @@ pub fn handle_close(app: &mut App) {
     }
 }
 
-pub fn handle_tab_next(app: &mut App) {
+pub(crate) fn handle_tab_next(app: &mut App) {
     app.layout.memory.tab = app.layout.memory.tab.next();
 }
 
-pub fn handle_tab_prev(app: &mut App) {
+pub(crate) fn handle_tab_prev(app: &mut App) {
     app.layout.memory.tab = app.layout.memory.tab.prev();
 }
 
-pub fn handle_select_up(app: &mut App) {
+pub(crate) fn handle_select_up(app: &mut App) {
     if app.layout.memory.fact_list.selected > 0 {
         app.layout.memory.fact_list.selected -= 1;
         adjust_scroll(app);
     }
 }
 
-pub fn handle_select_down(app: &mut App) {
+pub(crate) fn handle_select_down(app: &mut App) {
     let max = item_count(app).saturating_sub(1);
     if app.layout.memory.fact_list.selected < max {
         app.layout.memory.fact_list.selected += 1;
@@ -45,49 +45,49 @@ pub fn handle_select_down(app: &mut App) {
     }
 }
 
-pub fn handle_select_first(app: &mut App) {
+pub(crate) fn handle_select_first(app: &mut App) {
     app.layout.memory.fact_list.selected = 0;
     app.layout.memory.fact_list.scroll_offset = 0;
 }
 
-pub fn handle_select_last(app: &mut App) {
+pub(crate) fn handle_select_last(app: &mut App) {
     let max = item_count(app).saturating_sub(1);
     app.layout.memory.fact_list.selected = max;
     adjust_scroll(app);
 }
 
-pub fn handle_page_up(app: &mut App) {
+pub(crate) fn handle_page_up(app: &mut App) {
     let page = visible_rows(app);
     app.layout.memory.fact_list.selected =
         app.layout.memory.fact_list.selected.saturating_sub(page);
     adjust_scroll(app);
 }
 
-pub fn handle_page_down(app: &mut App) {
+pub(crate) fn handle_page_down(app: &mut App) {
     let max = item_count(app).saturating_sub(1);
     let page = visible_rows(app);
     app.layout.memory.fact_list.selected = (app.layout.memory.fact_list.selected + page).min(max);
     adjust_scroll(app);
 }
 
-pub fn handle_sort_cycle(app: &mut App) {
+pub(crate) fn handle_sort_cycle(app: &mut App) {
     app.layout.memory.fact_list.sort = app.layout.memory.fact_list.sort.next();
 }
 
-pub fn handle_filter_open(app: &mut App) {
+pub(crate) fn handle_filter_open(app: &mut App) {
     app.layout.memory.filters.filter_editing = true;
 }
 
-pub fn handle_filter_close(app: &mut App) {
+pub(crate) fn handle_filter_close(app: &mut App) {
     app.layout.memory.filters.filter_editing = false;
     app.layout.memory.filters.filter_text.clear();
 }
 
-pub fn handle_filter_input(app: &mut App, c: char) {
+pub(crate) fn handle_filter_input(app: &mut App, c: char) {
     app.layout.memory.filters.filter_text.push(c);
 }
 
-pub fn handle_filter_backspace(app: &mut App) {
+pub(crate) fn handle_filter_backspace(app: &mut App) {
     if app.layout.memory.filters.filter_text.is_empty() {
         app.layout.memory.filters.filter_editing = false;
     } else {
@@ -95,7 +95,7 @@ pub fn handle_filter_backspace(app: &mut App) {
     }
 }
 
-pub async fn handle_drill_in(app: &mut App) {
+pub(crate) async fn handle_drill_in(app: &mut App) {
     if app.layout.memory.tab == MemoryTab::Facts
         && let Some(fact) = app.layout.memory.selected_fact()
     {
@@ -107,7 +107,7 @@ pub async fn handle_drill_in(app: &mut App) {
     }
 }
 
-pub fn handle_pop_back(app: &mut App) {
+pub(crate) fn handle_pop_back(app: &mut App) {
     if matches!(app.layout.view_stack.current(), View::FactDetail { .. }) {
         app.layout.view_stack.pop();
         app.layout.memory.fact_list.detail = None;
@@ -116,7 +116,7 @@ pub fn handle_pop_back(app: &mut App) {
     }
 }
 
-pub async fn handle_forget(app: &mut App) {
+pub(crate) async fn handle_forget(app: &mut App) {
     if let Some(fact) = app.layout.memory.selected_fact() {
         let id = fact.id.clone();
         let client = app.client.clone();
@@ -130,7 +130,7 @@ pub async fn handle_forget(app: &mut App) {
                     .iter_mut()
                     .find(|f| f.id == id)
                 {
-                    f.is_forgotten = true;
+                    f.lifecycle.is_forgotten = true;
                 }
                 app.viewport.error_toast = Some(ErrorToast::new("Fact forgotten".into()));
             }
@@ -141,7 +141,7 @@ pub async fn handle_forget(app: &mut App) {
     }
 }
 
-pub async fn handle_restore(app: &mut App) {
+pub(crate) async fn handle_restore(app: &mut App) {
     if let Some(fact) = app.layout.memory.selected_fact() {
         let id = fact.id.clone();
         let client = app.client.clone();
@@ -155,7 +155,7 @@ pub async fn handle_restore(app: &mut App) {
                     .iter_mut()
                     .find(|f| f.id == id)
                 {
-                    f.is_forgotten = false;
+                    f.lifecycle.is_forgotten = false;
                 }
                 app.viewport.error_toast = Some(ErrorToast::new("Fact restored".into()));
             }
@@ -166,7 +166,7 @@ pub async fn handle_restore(app: &mut App) {
     }
 }
 
-pub fn handle_edit_confidence_start(app: &mut App) {
+pub(crate) fn handle_edit_confidence_start(app: &mut App) {
     let conf = app.layout.memory.selected_fact().map(|f| f.confidence);
     if let Some(c) = conf {
         app.layout.memory.fact_list.editing_confidence = true;
@@ -174,17 +174,17 @@ pub fn handle_edit_confidence_start(app: &mut App) {
     }
 }
 
-pub fn handle_confidence_input(app: &mut App, c: char) {
+pub(crate) fn handle_confidence_input(app: &mut App, c: char) {
     if c.is_ascii_digit() || c == '.' {
         app.layout.memory.fact_list.confidence_buffer.push(c);
     }
 }
 
-pub fn handle_confidence_backspace(app: &mut App) {
+pub(crate) fn handle_confidence_backspace(app: &mut App) {
     app.layout.memory.fact_list.confidence_buffer.pop();
 }
 
-pub async fn handle_confidence_submit(app: &mut App) {
+pub(crate) async fn handle_confidence_submit(app: &mut App) {
     let conf: f64 = match app.layout.memory.fact_list.confidence_buffer.parse() {
         Ok(v) if (0.0..=1.0).contains(&v) => v,
         _ => {
@@ -236,21 +236,21 @@ pub async fn handle_confidence_submit(app: &mut App) {
     }
 }
 
-pub fn handle_confidence_cancel(app: &mut App) {
+pub(crate) fn handle_confidence_cancel(app: &mut App) {
     app.layout.memory.fact_list.editing_confidence = false;
     app.layout.memory.fact_list.confidence_buffer.clear();
 }
 
-pub fn handle_search_open(app: &mut App) {
+pub(crate) fn handle_search_open(app: &mut App) {
     app.layout.memory.search.search_active = true;
     app.layout.memory.search.search_query.clear();
 }
 
-pub fn handle_search_input(app: &mut App, c: char) {
+pub(crate) fn handle_search_input(app: &mut App, c: char) {
     app.layout.memory.search.search_query.push(c);
 }
 
-pub fn handle_search_backspace(app: &mut App) {
+pub(crate) fn handle_search_backspace(app: &mut App) {
     if app.layout.memory.search.search_query.is_empty() {
         app.layout.memory.search.search_active = false;
     } else {
@@ -258,7 +258,7 @@ pub fn handle_search_backspace(app: &mut App) {
     }
 }
 
-pub async fn handle_search_submit(app: &mut App) {
+pub(crate) async fn handle_search_submit(app: &mut App) {
     if app.layout.memory.search.search_query.is_empty() {
         return;
     }
@@ -273,7 +273,7 @@ pub async fn handle_search_submit(app: &mut App) {
         .fact_list
         .facts
         .iter()
-        .filter(|f| !f.is_forgotten)
+        .filter(|f| !f.lifecycle.is_forgotten)
         .filter_map(|f| {
             let content_lower = f.content.to_lowercase();
             let mut score = 0.0_f64;
@@ -314,13 +314,13 @@ pub async fn handle_search_submit(app: &mut App) {
     }
 }
 
-pub fn handle_search_close(app: &mut App) {
+pub(crate) fn handle_search_close(app: &mut App) {
     app.layout.memory.search.search_active = false;
     app.layout.memory.search.search_query.clear();
     app.layout.memory.search.search_results.clear();
 }
 
-pub fn handle_facts_loaded(app: &mut App, facts: Vec<MemoryFact>, total: usize) {
+pub(crate) fn handle_facts_loaded(app: &mut App, facts: Vec<MemoryFact>, total: usize) {
     app.layout.memory.fact_list.facts = facts;
     app.layout.memory.fact_list.total_facts = total;
     app.layout.memory.loading = false;
@@ -328,11 +328,11 @@ pub fn handle_facts_loaded(app: &mut App, facts: Vec<MemoryFact>, total: usize) 
     app.layout.memory.fact_list.scroll_offset = 0;
 }
 
-pub fn handle_detail_loaded(app: &mut App, detail: FactDetail) {
+pub(crate) fn handle_detail_loaded(app: &mut App, detail: FactDetail) {
     app.layout.memory.fact_list.detail = Some(detail);
 }
 
-pub fn handle_action_result(app: &mut App, message: String) {
+pub(crate) fn handle_action_result(app: &mut App, message: String) {
     app.viewport.error_toast = Some(ErrorToast::new(message));
 }
 
@@ -400,7 +400,7 @@ fn item_count(app: &App) -> usize {
 }
 
 fn visible_rows(app: &App) -> usize {
-    app.viewport.terminal_height.saturating_sub(8) as usize
+    usize::from(app.viewport.terminal_height.saturating_sub(8))
 }
 
 fn adjust_scroll(app: &mut App) {
@@ -426,7 +426,7 @@ struct FactsListResponse {
 mod tests {
     use super::*;
     use crate::app::test_helpers::*;
-    use crate::state::memory::MemoryFact;
+    use crate::state::memory::{FactLifecycleMeta, FactTemporalMeta, MemoryFact};
 
     fn sample_fact(id: &str, content: &str, confidence: f64) -> MemoryFact {
         MemoryFact {
@@ -435,18 +435,22 @@ mod tests {
             content: content.into(),
             confidence,
             tier: "verified".into(),
-            valid_from: "2026-01-01".into(),
-            valid_to: "9999-12-31".into(),
-            superseded_by: None,
-            source_session_id: Some("ses-1".into()),
-            recorded_at: "2026-01-01T00:00:00Z".into(),
-            access_count: 5,
-            last_accessed_at: "2026-03-09T12:00:00Z".into(),
-            stability_hours: 720.0,
             fact_type: "knowledge".into(),
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
+            temporal: FactTemporalMeta {
+                valid_from: "2026-01-01".into(),
+                valid_to: "9999-12-31".into(),
+                recorded_at: "2026-01-01T00:00:00Z".into(),
+                access_count: 5,
+                last_accessed_at: "2026-03-09T12:00:00Z".into(),
+                stability_hours: 720.0,
+            },
+            lifecycle: FactLifecycleMeta {
+                superseded_by: None,
+                source_session_id: Some("ses-1".into()),
+                is_forgotten: false,
+                forgotten_at: None,
+                forget_reason: None,
+            },
         }
     }
 

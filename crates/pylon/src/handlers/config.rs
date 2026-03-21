@@ -283,8 +283,9 @@ pub(crate) fn deep_merge(base: &mut Value, patch: Value) {
     reason = "test: vec/JSON indices valid after len assertions"
 )]
 mod tests {
-    use super::*;
     use serde_json::json;
+
+    use super::*;
 
     #[test]
     fn deep_merge_replaces_leaf_value() {

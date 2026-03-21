@@ -42,6 +42,7 @@ pub(crate) fn handle_close_overlay(app: &mut App) {
         let client = app.client.clone();
         let span = tracing::info_span!("deny_tool", %turn_id, %tool_id);
         tokio::spawn(
+            // kanon:ignore RUST/spawn-no-instrument
             async move {
                 if let Err(e) = client.deny_tool(&turn_id, &tool_id).await {
                     tracing::error!("failed to deny tool: {e}");
@@ -55,6 +56,7 @@ pub(crate) fn handle_close_overlay(app: &mut App) {
         let client = app.client.clone();
         let span = tracing::info_span!("cancel_plan", %plan_id);
         tokio::spawn(
+            // kanon:ignore RUST/spawn-no-instrument
             async move {
                 if let Err(e) = client.cancel_plan(&plan_id).await {
                     tracing::error!("failed to cancel plan: {e}");
@@ -179,6 +181,7 @@ pub(crate) async fn handle_overlay_select(app: &mut App) {
             let client = app.client.clone();
             let span = tracing::info_span!("approve_tool", %turn_id, %tool_id);
             tokio::spawn(
+                // kanon:ignore RUST/spawn-no-instrument
                 async move {
                     if let Err(e) = client.approve_tool(&turn_id, &tool_id).await {
                         tracing::error!("failed to approve tool: {e}");
@@ -193,6 +196,7 @@ pub(crate) async fn handle_overlay_select(app: &mut App) {
             let client = app.client.clone();
             let span = tracing::info_span!("approve_plan", %plan_id);
             tokio::spawn(
+                // kanon:ignore RUST/spawn-no-instrument
                 async move {
                     if let Err(e) = client.approve_plan(&plan_id).await {
                         tracing::error!("failed to approve plan: {e}");
@@ -367,7 +371,7 @@ mod tests {
         }
     }
 
-    fn test_session(id: &str, key: &str) -> crate::api::types::Session {
+    fn make_session(id: &str, key: &str) -> crate::api::types::Session {
         crate::api::types::Session {
             id: id.into(),
             nous_id: "syn".into(),
@@ -380,10 +384,10 @@ mod tests {
         }
     }
 
-    fn test_session_archived(id: &str, key: &str) -> crate::api::types::Session {
+    fn make_archived_session(id: &str, key: &str) -> crate::api::types::Session {
         crate::api::types::Session {
             status: Some("archived".to_string()),
-            ..test_session(id, key)
+            ..make_session(id, key)
         }
     }
 
@@ -428,8 +432,8 @@ mod tests {
     fn session_picker_down_clamps_at_max() {
         let mut app = test_app();
         let mut agent = test_agent("syn", "Syn");
-        agent.sessions.push(test_session("s1", "main"));
-        agent.sessions.push(test_session("s2", "debug"));
+        agent.sessions.push(make_session("s1", "main"));
+        agent.sessions.push(make_session("s2", "debug"));
         app.dashboard.agents.push(agent);
         app.dashboard.focused_agent = Some("syn".into());
         app.layout.overlay = Some(Overlay::SessionPicker(SessionPickerOverlay {
@@ -446,9 +450,9 @@ mod tests {
     fn session_picker_down_increments() {
         let mut app = test_app();
         let mut agent = test_agent("syn", "Syn");
-        agent.sessions.push(test_session("s1", "main"));
-        agent.sessions.push(test_session("s2", "debug"));
-        agent.sessions.push(test_session("s3", "test"));
+        agent.sessions.push(make_session("s1", "main"));
+        agent.sessions.push(make_session("s2", "debug"));
+        agent.sessions.push(make_session("s3", "test"));
         app.dashboard.agents.push(agent);
         app.dashboard.focused_agent = Some("syn".into());
         app.layout.overlay = Some(Overlay::SessionPicker(SessionPickerOverlay {
@@ -465,12 +469,12 @@ mod tests {
     fn visible_session_count_filters_non_interactive() {
         let mut app = test_app();
         let mut agent = test_agent("syn", "Syn");
-        agent.sessions.push(test_session("s1", "main"));
-        agent.sessions.push(test_session("s2", "cron:daily"));
-        agent.sessions.push(test_session("s3", "prosoche-wake"));
-        agent.sessions.push(test_session("s4", "agent:sub"));
-        agent.sessions.push(test_session("s5", "debug"));
-        agent.sessions.push(test_session("s6", "daemon:prosoche"));
+        agent.sessions.push(make_session("s1", "main"));
+        agent.sessions.push(make_session("s2", "cron:daily"));
+        agent.sessions.push(make_session("s3", "prosoche-wake"));
+        agent.sessions.push(make_session("s4", "agent:sub"));
+        agent.sessions.push(make_session("s5", "debug"));
+        agent.sessions.push(make_session("s6", "daemon:prosoche"));
         app.dashboard.agents.push(agent);
         app.dashboard.focused_agent = Some("syn".into());
 
@@ -488,8 +492,8 @@ mod tests {
     fn pick_session_id_returns_correct_session() {
         let mut app = test_app();
         let mut agent = test_agent("syn", "Syn");
-        agent.sessions.push(test_session("s1", "main"));
-        agent.sessions.push(test_session("s2", "debug"));
+        agent.sessions.push(make_session("s1", "main"));
+        agent.sessions.push(make_session("s2", "debug"));
         app.dashboard.agents.push(agent);
         app.dashboard.focused_agent = Some("syn".into());
 
@@ -508,8 +512,8 @@ mod tests {
     fn pick_session_id_skips_non_interactive_when_not_showing_archived() {
         let mut app = test_app();
         let mut agent = test_agent("syn", "Syn");
-        agent.sessions.push(test_session("s1", "cron:daily"));
-        agent.sessions.push(test_session("s2", "main"));
+        agent.sessions.push(make_session("s1", "cron:daily"));
+        agent.sessions.push(make_session("s2", "main"));
         app.dashboard.agents.push(agent);
         app.dashboard.focused_agent = Some("syn".into());
 
@@ -523,8 +527,8 @@ mod tests {
     fn visible_session_count_includes_archived_when_show_all() {
         let mut app = test_app();
         let mut agent = test_agent("syn", "Syn");
-        agent.sessions.push(test_session("s1", "main"));
-        agent.sessions.push(test_session_archived("s2", "old"));
+        agent.sessions.push(make_session("s1", "main"));
+        agent.sessions.push(make_archived_session("s2", "old"));
         app.dashboard.agents.push(agent);
         app.dashboard.focused_agent = Some("syn".into());
 

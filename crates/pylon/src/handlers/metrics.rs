@@ -29,13 +29,8 @@ pub async fn expose(State(state): State<MetricsState>) -> impl IntoResponse {
         .list_sessions(None)
         .ok()
         .map_or(0, |sessions| {
-            #[expect(
-                clippy::cast_possible_wrap,
-                clippy::as_conversions,
-                reason = "usize→i64: session count fits in i64"
-            )]
-            let count = sessions.len() as i64;
-            count
+            // NOTE: session count fits in i64; saturate on theoretical overflow.
+            i64::try_from(sessions.len()).unwrap_or(i64::MAX)
         });
 
     crate::metrics::update_system_gauges(uptime, session_count);
@@ -53,8 +48,9 @@ pub async fn expose(State(state): State<MetricsState>) -> impl IntoResponse {
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
-    use super::*;
     use prometheus::{Encoder, TextEncoder};
+
+    use super::*;
 
     #[test]
     fn content_type_is_prometheus_text_format() {

@@ -2,16 +2,16 @@
 //!
 //! Context-aware keybinding registry: single source of truth for help overlay and status bar hints.
 
-pub struct Keybinding {
-    pub keys: &'static str,
-    pub description: &'static str,
-    pub contexts: &'static [KeyContext],
-    pub show_in_status_bar: bool,
+pub(crate) struct Keybinding {
+    pub(crate) keys: &'static str,
+    pub(crate) description: &'static str,
+    pub(crate) contexts: &'static [KeyContext],
+    pub(crate) show_in_status_bar: bool,
 }
 
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum KeyContext {
+pub(crate) enum KeyContext {
     Global,
     Chat,
     Selection,
@@ -29,7 +29,7 @@ pub enum KeyContext {
 }
 
 impl KeyContext {
-    pub fn section_label(self) -> &'static str {
+    pub(crate) fn section_label(self) -> &'static str {
         match self {
             Self::Global => "Global",
             Self::Chat => "Chat",
@@ -68,7 +68,7 @@ impl KeyContext {
     }
 }
 
-pub fn all_keybindings() -> &'static [Keybinding] {
+pub(crate) fn all_keybindings() -> &'static [Keybinding] {
     &[
         Keybinding {
             keys: "?",

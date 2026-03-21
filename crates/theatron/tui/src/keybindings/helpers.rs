@@ -56,7 +56,7 @@ pub(crate) fn parse_key_combo(s: &str) -> Option<(KeyModifiers, KeyCode)> {
 }
 
 /// Determine active contexts. Help overlay is transparent: it shows the underlying context.
-pub fn current_contexts(app: &App) -> Vec<KeyContext> {
+pub(crate) fn current_contexts(app: &App) -> Vec<KeyContext> {
     let mut contexts = vec![KeyContext::Global];
 
     // WHY: Memory inspector views return early to suppress all other context bindings.
@@ -112,7 +112,7 @@ pub fn current_contexts(app: &App) -> Vec<KeyContext> {
 }
 
 /// Label for the help overlay title: reflects the source context, not the overlay itself.
-pub fn context_label(app: &App) -> &'static str {
+pub(crate) fn context_label(app: &App) -> &'static str {
     match &app.layout.overlay {
         Some(Overlay::Help) | None => {
             if app.interaction.command_palette.active {
@@ -142,7 +142,7 @@ pub fn context_label(app: &App) -> &'static str {
 }
 
 /// Groups keybindings by their primary context, ordered for display.
-pub fn grouped_keybindings(
+pub(crate) fn grouped_keybindings(
     contexts: &[KeyContext],
 ) -> Vec<(&'static str, Vec<&'static Keybinding>)> {
     let mut context_order: Vec<KeyContext> = contexts.to_vec();
@@ -179,7 +179,7 @@ pub fn grouped_keybindings(
 }
 
 /// Status bar hints: mode-specific bindings first, truncated to fit.
-pub fn status_bar_hints(app: &App) -> Vec<(&'static str, &'static str)> {
+pub(crate) fn status_bar_hints(app: &App) -> Vec<(&'static str, &'static str)> {
     let contexts = current_contexts(app);
 
     let mut bindings: Vec<&Keybinding> = all_keybindings()

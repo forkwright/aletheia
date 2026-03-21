@@ -253,6 +253,10 @@ fn extract_texts_from_array(arr: &[serde_json::Value]) -> Option<String> {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions use direct indexing for clarity"
+)]
 mod tests {
     use super::*;
 

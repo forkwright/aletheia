@@ -1,6 +1,6 @@
 /// Copy text to the system clipboard.
 /// Tries arboard (native) first, falls back to OSC52 escape sequence.
-pub fn copy_to_clipboard(text: &str) -> Result<(), String> {
+pub(crate) fn copy_to_clipboard(text: &str) -> Result<(), String> {
     match arboard::Clipboard::new() {
         Ok(mut clipboard) => match clipboard.set_text(text) {
             Ok(()) => {
@@ -22,8 +22,9 @@ pub fn copy_to_clipboard(text: &str) -> Result<(), String> {
 /// OSC52 clipboard escape sequence: works over SSH, inside tmux/screen.
 /// Supported by: iTerm2, Kitty, WezTerm, Alacritty, GNOME Terminal (VTE 0.76+).
 fn copy_osc52(text: &str) -> Result<(), String> {
-    use base64::{Engine, engine::general_purpose::STANDARD};
     use std::io::Write;
+
+    use base64::{Engine, engine::general_purpose::STANDARD};
 
     let encoded = STANDARD.encode(text.as_bytes());
 

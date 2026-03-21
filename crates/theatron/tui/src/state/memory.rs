@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 /// Sort options for the fact browser.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum FactSort {
+pub(crate) enum FactSort {
     Confidence,
     Recency,
     Created,
@@ -14,7 +14,7 @@ pub enum FactSort {
 }
 
 impl FactSort {
-    pub fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::Confidence => "confidence",
             Self::Recency => "recency",
@@ -24,7 +24,7 @@ impl FactSort {
         }
     }
 
-    pub fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             Self::Confidence => "Confidence",
             Self::Recency => "Last Seen",
@@ -34,7 +34,7 @@ impl FactSort {
         }
     }
 
-    pub fn next(self) -> Self {
+    pub(crate) fn next(self) -> Self {
         match self {
             Self::Confidence => Self::Recency,
             Self::Recency => Self::Created,
@@ -48,14 +48,14 @@ impl FactSort {
 /// Which sub-view of the memory inspector is active.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum MemoryTab {
+pub(crate) enum MemoryTab {
     Facts,
     Graph,
     Timeline,
 }
 
 impl MemoryTab {
-    pub fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             Self::Facts => "Facts",
             Self::Graph => "Graph",
@@ -63,7 +63,7 @@ impl MemoryTab {
         }
     }
 
-    pub fn next(self) -> Self {
+    pub(crate) fn next(self) -> Self {
         match self {
             Self::Facts => Self::Graph,
             Self::Graph => Self::Timeline,
@@ -71,7 +71,7 @@ impl MemoryTab {
         }
     }
 
-    pub fn prev(self) -> Self {
+    pub(crate) fn prev(self) -> Self {
         match self {
             Self::Facts => Self::Timeline,
             Self::Graph => Self::Facts,
@@ -80,136 +80,152 @@ impl MemoryTab {
     }
 }
 
+/// Temporal metadata for a memory fact (timestamps, access tracking).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct FactTemporalMeta {
+    #[serde(default)]
+    pub(crate) valid_from: String,
+    #[serde(default)]
+    pub(crate) valid_to: String,
+    #[serde(default)]
+    pub(crate) recorded_at: String,
+    #[serde(default)]
+    pub(crate) access_count: u32,
+    #[serde(default)]
+    pub(crate) last_accessed_at: String,
+    #[serde(default)]
+    pub(crate) stability_hours: f64,
+}
+
+/// Lifecycle metadata for a memory fact (supersession, forgetting).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct FactLifecycleMeta {
+    #[serde(default)]
+    pub(crate) superseded_by: Option<String>,
+    #[serde(default)]
+    pub(crate) source_session_id: Option<String>,
+    #[serde(default)]
+    pub(crate) is_forgotten: bool,
+    #[serde(default)]
+    pub(crate) forgotten_at: Option<String>,
+    #[serde(default)]
+    pub(crate) forget_reason: Option<String>,
+}
+
 /// A fact as displayed in the TUI (deserialized from API).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct MemoryFact {
-    pub id: String,
+pub(crate) struct MemoryFact {
+    pub(crate) id: String,
     #[serde(default)]
-    pub nous_id: String,
-    pub content: String,
-    pub confidence: f64,
-    pub tier: String,
+    pub(crate) nous_id: String,
+    pub(crate) content: String,
+    pub(crate) confidence: f64,
+    pub(crate) tier: String,
     #[serde(default)]
-    pub valid_from: String,
-    #[serde(default)]
-    pub valid_to: String,
-    #[serde(default)]
-    pub superseded_by: Option<String>,
-    #[serde(default)]
-    pub source_session_id: Option<String>,
-    #[serde(default)]
-    pub recorded_at: String,
-    #[serde(default)]
-    pub access_count: u32,
-    #[serde(default)]
-    pub last_accessed_at: String,
-    #[serde(default)]
-    pub stability_hours: f64,
-    #[serde(default)]
-    pub fact_type: String,
-    #[serde(default)]
-    pub is_forgotten: bool,
-    #[serde(default)]
-    pub forgotten_at: Option<String>,
-    #[serde(default)]
-    pub forget_reason: Option<String>,
+    pub(crate) fact_type: String,
+    #[serde(flatten)]
+    pub(crate) temporal: FactTemporalMeta,
+    #[serde(flatten)]
+    pub(crate) lifecycle: FactLifecycleMeta,
 }
 
 /// An entity in the knowledge graph.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MemoryEntity {
-    pub id: String,
-    pub name: String,
-    pub entity_type: String,
+pub(crate) struct MemoryEntity {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) entity_type: String,
     #[serde(default)]
-    pub aliases: Vec<String>,
+    pub(crate) aliases: Vec<String>,
     #[serde(default)]
-    pub created_at: String,
+    pub(crate) created_at: String,
     #[serde(default)]
-    pub updated_at: String,
+    pub(crate) updated_at: String,
 }
 
 /// A relationship between entities.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MemoryRelationship {
-    pub src: String,
-    pub dst: String,
-    pub relation: String,
+pub(crate) struct MemoryRelationship {
+    pub(crate) src: String,
+    pub(crate) dst: String,
+    pub(crate) relation: String,
     #[serde(default)]
-    pub weight: f64,
+    pub(crate) weight: f64,
     #[serde(default)]
-    pub created_at: String,
+    pub(crate) created_at: String,
 }
 
 /// A timeline event.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct MemoryTimelineEvent {
-    pub timestamp: String,
-    pub event_type: String,
-    pub description: String,
-    pub fact_id: String,
+pub(crate) struct MemoryTimelineEvent {
+    pub(crate) timestamp: String,
+    pub(crate) event_type: String,
+    pub(crate) description: String,
+    pub(crate) fact_id: String,
     #[serde(default)]
-    pub confidence: Option<f64>,
+    pub(crate) confidence: Option<f64>,
 }
 
 /// A similar fact result.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SimilarFact {
-    pub id: String,
-    pub content: String,
-    pub similarity: f64,
+pub(crate) struct SimilarFact {
+    pub(crate) id: String,
+    pub(crate) content: String,
+    pub(crate) similarity: f64,
 }
 
 /// Search result from the knowledge API.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct MemorySearchResult {
-    pub id: String,
-    pub content: String,
-    pub confidence: f64,
-    pub tier: String,
-    pub fact_type: String,
-    pub score: f64,
+pub(crate) struct MemorySearchResult {
+    pub(crate) id: String,
+    pub(crate) content: String,
+    pub(crate) confidence: f64,
+    pub(crate) tier: String,
+    pub(crate) fact_type: String,
+    pub(crate) score: f64,
 }
 
 /// Fact detail with relationships and similar facts.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct FactDetail {
-    pub fact: MemoryFact,
+pub(crate) struct FactDetail {
+    pub(crate) fact: MemoryFact,
     #[serde(default)]
-    pub relationships: Vec<MemoryRelationship>,
+    pub(crate) relationships: Vec<MemoryRelationship>,
     #[serde(default)]
-    pub similar: Vec<SimilarFact>,
+    pub(crate) similar: Vec<SimilarFact>,
 }
 
 /// State for the fact list: loaded facts, selection, sorting, detail view.
 #[derive(Debug)]
-pub struct FactListState {
+pub(crate) struct FactListState {
     /// Facts loaded from the API.
-    pub facts: Vec<MemoryFact>,
+    pub(crate) facts: Vec<MemoryFact>,
     /// Total count (may exceed loaded slice for pagination).
-    pub total_facts: usize,
+    pub(crate) total_facts: usize,
     /// Currently selected fact index in the table.
-    pub selected: usize,
+    pub(crate) selected: usize,
     /// Scroll offset for the fact list.
-    pub scroll_offset: usize,
+    pub(crate) scroll_offset: usize,
     /// Current sort column.
-    pub sort: FactSort,
+    pub(crate) sort: FactSort,
     /// Sort ascending?
-    pub sort_asc: bool,
+    pub(crate) sort_asc: bool,
     /// Detail view for selected fact.
-    pub detail: Option<FactDetail>,
+    pub(crate) detail: Option<FactDetail>,
     /// Whether the confidence edit dialog is active.
-    pub editing_confidence: bool,
+    pub(crate) editing_confidence: bool,
     /// Buffer for confidence editing.
-    pub confidence_buffer: String,
+    pub(crate) confidence_buffer: String,
 }
 
 impl FactListState {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             facts: Vec::new(),
             total_facts: 0,
@@ -232,19 +248,19 @@ impl Default for FactListState {
 
 /// State for text and type/tier filters applied to the fact list.
 #[derive(Debug)]
-pub struct MemoryFilterState {
+pub(crate) struct MemoryFilterState {
     /// Active text filter.
-    pub filter_text: String,
+    pub(crate) filter_text: String,
     /// Whether we're in filter editing mode.
-    pub filter_editing: bool,
+    pub(crate) filter_editing: bool,
     /// Fact type filter (None = all).
-    pub type_filter: Option<String>,
+    pub(crate) type_filter: Option<String>,
     /// Tier filter (None = all).
-    pub tier_filter: Option<String>,
+    pub(crate) tier_filter: Option<String>,
 }
 
 impl MemoryFilterState {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             filter_text: String::new(),
             filter_editing: false,
@@ -262,17 +278,17 @@ impl Default for MemoryFilterState {
 
 /// State for the memory search overlay.
 #[derive(Debug)]
-pub struct MemorySearchState {
+pub(crate) struct MemorySearchState {
     /// Search results.
-    pub search_results: Vec<MemorySearchResult>,
+    pub(crate) search_results: Vec<MemorySearchResult>,
     /// Whether search mode is active.
-    pub search_active: bool,
+    pub(crate) search_active: bool,
     /// Search query text.
-    pub search_query: String,
+    pub(crate) search_query: String,
 }
 
 impl MemorySearchState {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             search_results: Vec::new(),
             search_active: false,
@@ -289,17 +305,17 @@ impl Default for MemorySearchState {
 
 /// State for the knowledge graph and timeline views.
 #[derive(Debug)]
-pub struct MemoryGraphState {
+pub(crate) struct MemoryGraphState {
     /// Entities loaded for graph view.
-    pub entities: Vec<MemoryEntity>,
+    pub(crate) entities: Vec<MemoryEntity>,
     /// Relationships loaded for graph view.
-    pub relationships: Vec<MemoryRelationship>,
+    pub(crate) relationships: Vec<MemoryRelationship>,
     /// Timeline events.
-    pub timeline_events: Vec<MemoryTimelineEvent>,
+    pub(crate) timeline_events: Vec<MemoryTimelineEvent>,
 }
 
 impl MemoryGraphState {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             entities: Vec::new(),
             relationships: Vec::new(),
@@ -317,22 +333,23 @@ impl Default for MemoryGraphState {
 /// Full state for the memory inspector panel.
 #[derive(Debug)]
 pub struct MemoryInspectorState {
+    // kanon:ignore RUST/pub-visibility
     /// Current active tab.
-    pub tab: MemoryTab,
+    pub(crate) tab: MemoryTab,
     /// Whether data is being loaded.
-    pub loading: bool,
+    pub(crate) loading: bool,
     /// Fact list state: facts, selection, sorting, detail.
-    pub fact_list: FactListState,
+    pub(crate) fact_list: FactListState,
     /// Filter state: text filter, type/tier filters.
-    pub filters: MemoryFilterState,
+    pub(crate) filters: MemoryFilterState,
     /// Search state: query, results, active flag.
-    pub search: MemorySearchState,
+    pub(crate) search: MemorySearchState,
     /// Graph state: entities, relationships, timeline events.
-    pub graph: MemoryGraphState,
+    pub(crate) graph: MemoryGraphState,
 }
 
 impl MemoryInspectorState {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             tab: MemoryTab::Facts,
             loading: false,
@@ -344,12 +361,12 @@ impl MemoryInspectorState {
     }
 
     /// Returns the currently selected fact, if any.
-    pub fn selected_fact(&self) -> Option<&MemoryFact> {
+    pub(crate) fn selected_fact(&self) -> Option<&MemoryFact> {
         self.fact_list.facts.get(self.fact_list.selected)
     }
 
     /// Tier label abbreviation for table display.
-    pub fn tier_abbrev(tier: &str) -> &'static str {
+    pub(crate) fn tier_abbrev(tier: &str) -> &'static str {
         match tier {
             "verified" => "Ver",
             "inferred" => "Inf",
@@ -359,7 +376,7 @@ impl MemoryInspectorState {
     }
 
     /// Format a timestamp as relative time for compact display.
-    pub fn relative_time(iso: &str) -> String {
+    pub(crate) fn relative_time(iso: &str) -> String {
         if iso.is_empty() {
             return "never".to_string();
         }
@@ -493,18 +510,12 @@ mod tests {
             content: "test fact".into(),
             confidence: 0.9,
             tier: "verified".into(),
-            valid_from: String::new(),
-            valid_to: String::new(),
-            superseded_by: None,
-            source_session_id: None,
-            recorded_at: String::new(),
-            access_count: 0,
-            last_accessed_at: String::new(),
-            stability_hours: 720.0,
             fact_type: "knowledge".into(),
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
+            temporal: FactTemporalMeta {
+                stability_hours: 720.0,
+                ..FactTemporalMeta::default()
+            },
+            lifecycle: FactLifecycleMeta::default(),
         });
         state.fact_list.selected = 0;
         assert!(state.selected_fact().is_some());
@@ -526,16 +537,16 @@ mod tests {
         assert_eq!(fact.id, "f1");
         assert_eq!(fact.confidence, 0.95);
         assert_eq!(fact.fact_type, "knowledge");
-        assert_eq!(fact.access_count, 10);
+        assert_eq!(fact.temporal.access_count, 10);
     }
 
     #[test]
     fn memory_fact_defaults() {
         let json = r#"{"id": "f1", "content": "test", "confidence": 0.5, "tier": "assumed"}"#;
         let fact: MemoryFact = serde_json::from_str(json).unwrap();
-        assert_eq!(fact.access_count, 0);
+        assert_eq!(fact.temporal.access_count, 0);
         assert!(fact.nous_id.is_empty());
-        assert!(!fact.is_forgotten);
+        assert!(!fact.lifecycle.is_forgotten);
         assert!(fact.fact_type.is_empty());
     }
 

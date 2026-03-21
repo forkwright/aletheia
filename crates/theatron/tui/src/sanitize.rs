@@ -11,7 +11,7 @@ use std::borrow::Cow;
     clippy::indexing_slicing,
     reason = "all byte accesses are guarded by `i < len` or `i + 1 < len` checks in the enclosing while/if conditions"
 )]
-pub fn sanitize_for_display(s: &str) -> Cow<'_, str> {
+pub(crate) fn sanitize_for_display(s: &str) -> Cow<'_, str> {
     if !needs_sanitization(s) {
         return Cow::Borrowed(s);
     }

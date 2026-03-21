@@ -16,7 +16,7 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
 
     let tabs = &app.layout.tab_bar.tabs;
     let active = app.layout.tab_bar.active;
-    let width = area.width as usize;
+    let width = usize::from(area.width);
 
     let separator = " | ";
     let plus_label = " + ";
