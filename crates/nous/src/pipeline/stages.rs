@@ -96,7 +96,7 @@ pub(super) async fn run_recall_stage(
         clippy::as_conversions,
         reason = "i64→u64: remaining_tokens is positive after context assembly"
     )]
-    let budget = ctx.remaining_tokens.max(0) as u64;
+    let budget = ctx.remaining_tokens.max(0) as u64; // kanon:ignore RUST/as-cast
 
     // NOTE: BM25-only fallback when mock embedding provider is in use.
     // Vector recall would produce meaningless results from hash-based embeddings.
@@ -208,7 +208,7 @@ pub(super) async fn run_history_stage(
             clippy::as_conversions,
             reason = "usize→i64: message length fits in i64"
         )]
-        let token_estimate = (input.content.len() as i64 + 3) / 4;
+        let token_estimate = (input.content.len() as i64 + 3) / 4; // kanon:ignore RUST/as-cast
         ctx.messages.push(PipelineMessage {
             role: "user".to_owned(),
             content: input.content.clone(),
@@ -475,7 +475,7 @@ fn record_stage_duration(span: &tracing::Span, start: &Instant) {
         reason = "u128→u64: stage duration fits in u64"
     )]
     {
-        span.record("duration_ms", start.elapsed().as_millis() as u64);
+        span.record("duration_ms", start.elapsed().as_millis() as u64); // kanon:ignore RUST/as-cast
     }
 }
 
@@ -504,7 +504,7 @@ fn apply_recall_result(
                 {
                     ctx.remaining_tokens = ctx
                         .remaining_tokens
-                        .saturating_sub(recall_result.tokens_consumed as i64)
+                        .saturating_sub(recall_result.tokens_consumed as i64) // kanon:ignore RUST/as-cast
                         .max(0);
                 }
             }

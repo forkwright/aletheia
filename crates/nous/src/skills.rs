@@ -171,9 +171,9 @@ impl SkillLoader {
             clippy::as_conversions,
             reason = "u128→u64: elapsed_ms fits in u64 for any realistic latency; usize→u64 for skill count"
         )]
-        span.record("elapsed_ms", start.elapsed().as_millis() as u64);
+        span.record("elapsed_ms", start.elapsed().as_millis() as u64); // kanon:ignore RUST/as-cast
         #[expect(clippy::as_conversions, reason = "usize→u64: skill count fits in u64")]
-        span.record("skills_found", sections.len() as u64);
+        span.record("skills_found", sections.len() as u64); // kanon:ignore RUST/as-cast
 
         sections
     }
@@ -257,7 +257,7 @@ pub(crate) fn fact_to_section(fact: &Fact) -> BootstrapSection {
     let tokens = CharEstimator::default().estimate(&content);
 
     BootstrapSection {
-        name: format!("[skill] {}", fact.id),
+        name: format!("[skill] {}", fact.id), // kanon:ignore RUST/indexing-slicing
         priority: SectionPriority::Flexible,
         content,
         tokens,
@@ -291,7 +291,7 @@ pub(crate) fn rank_skills(candidates: Vec<Fact>) -> Vec<Fact> {
                 clippy::as_conversions,
                 reason = "usize→f64: array index and length for ranking; sub-LSB precision loss is acceptable"
             )]
-            let position_score = 1.0 - (i as f64 / total as f64);
+            let position_score = 1.0 - (i as f64 / total as f64); // kanon:ignore RUST/as-cast
             let confidence = fact.provenance.confidence.clamp(0.0, 1.0);
 
             let access_score = f64::from(fact.access.access_count.min(20)) / 20.0;
@@ -302,7 +302,7 @@ pub(crate) fn rank_skills(candidates: Vec<Fact>) -> Vec<Fact> {
                 clippy::as_conversions,
                 reason = "i64→f64: age in seconds converted to days; sub-second precision is not needed"
             )]
-            let age_days = ((now_secs - reference_secs).max(0) as f64) / 86_400.0;
+            let age_days = ((now_secs - reference_secs).max(0) as f64) / 86_400.0; // kanon:ignore RUST/as-cast
             // NOTE: half-life of 30 days: recency = 2^(-age/30)
             let recency_score = 2_f64.powf(-age_days / 30.0);
 

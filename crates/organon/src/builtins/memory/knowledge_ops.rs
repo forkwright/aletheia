@@ -37,13 +37,12 @@ impl ToolExecutor for MemorySearchExecutor {
             };
 
             let query = extract_str(&input.arguments, "query", &input.name)?;
-            #[expect(
-                clippy::as_conversions,
-                reason = "u64→usize: limit is capped at 100, fits in usize on all platforms"
-            )]
-            let limit = extract_opt_u64(&input.arguments, "limit")
-                .unwrap_or(10)
-                .min(100) as usize;
+            let limit = usize::try_from(
+                extract_opt_u64(&input.arguments, "limit")
+                    .unwrap_or(10)
+                    .min(100),
+            )
+            .unwrap_or(100);
 
             let Some(knowledge) = services.knowledge.as_ref() else {
                 return Ok(ToolResult::error("knowledge store not configured"));
@@ -186,12 +185,8 @@ impl ToolExecutor for MemoryAuditExecutor {
                 .and_then(|v| v.as_str())
                 .unwrap_or(ctx.nous_id.as_str());
             let since = input.arguments.get("since").and_then(|v| v.as_str());
-            #[expect(
-                clippy::cast_possible_truncation,
-                clippy::as_conversions,
-                reason = "u64→usize: audit limit from user input is small"
-            )]
-            let limit = extract_opt_u64(&input.arguments, "limit").unwrap_or(20) as usize;
+            let limit = usize::try_from(extract_opt_u64(&input.arguments, "limit").unwrap_or(20))
+                .unwrap_or(20);
 
             match knowledge.audit_facts(Some(nous_id), since, limit).await {
                 Ok(facts) if facts.is_empty() => Ok(ToolResult::text("No facts found.")),
@@ -225,7 +220,7 @@ impl ToolExecutor for MemoryAuditExecutor {
 
 fn memory_search_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("memory_search").expect("valid tool name"),
+        name: ToolName::new("memory_search").expect("valid tool name"), // kanon:ignore RUST/expect
         description: "Search long-term memory for facts, preferences, and relationships".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -258,7 +253,7 @@ fn memory_search_def() -> ToolDef {
 
 fn memory_correct_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("memory_correct").expect("valid tool name"),
+        name: ToolName::new("memory_correct").expect("valid tool name"), // kanon:ignore RUST/expect
         description: "Correct a stored fact by superseding it with updated content".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -291,7 +286,7 @@ fn memory_correct_def() -> ToolDef {
 
 fn memory_retract_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("memory_retract").expect("valid tool name"),
+        name: ToolName::new("memory_retract").expect("valid tool name"), // kanon:ignore RUST/expect
         description: "Retract a stored fact (mark as no longer valid without deleting)".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -324,7 +319,7 @@ fn memory_retract_def() -> ToolDef {
 
 fn memory_forget_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("memory_forget").expect("valid tool name"),
+        name: ToolName::new("memory_forget").expect("valid tool name"), // kanon:ignore RUST/expect
         description: "Soft-delete a fact from memory (reversible, preserves audit trail)"
             .to_owned(),
         extended_description: None,
@@ -363,7 +358,7 @@ fn memory_forget_def() -> ToolDef {
 
 fn memory_audit_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("memory_audit").expect("valid tool name"),
+        name: ToolName::new("memory_audit").expect("valid tool name"), // kanon:ignore RUST/expect
         description: "List recent fact extractions with confidence scores for review".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -426,7 +421,7 @@ mod tests {
 
     use super::{MemoryAuditExecutor, MemorySearchExecutor};
 
-    fn test_ctx_no_services() -> ToolContext {
+    fn mock_ctx_no_services() -> ToolContext {
         ToolContext {
             nous_id: NousId::new("test-agent").expect("valid"),
             session_id: SessionId::new(),
@@ -447,7 +442,7 @@ mod tests {
 
     #[tokio::test]
     async fn memory_search_returns_error_result_when_services_absent() {
-        let ctx = test_ctx_no_services();
+        let ctx = mock_ctx_no_services();
         let input = tool_input(
             "memory_search",
             serde_json::json!({ "query": "alice preferences" }),
@@ -470,14 +465,17 @@ mod tests {
 
     #[tokio::test]
     async fn memory_audit_returns_error_result_when_services_absent() {
-        let ctx = test_ctx_no_services();
+        let ctx = mock_ctx_no_services();
         let input = tool_input("memory_audit", serde_json::json!({}));
         let result = MemoryAuditExecutor
             .execute(&input, &ctx)
             .await
             .expect("execute");
-        assert!(result.is_error);
-        assert!(result.content.text_summary().contains("not configured"));
+        assert!(result.is_error, "expected result.is_error to be true");
+        assert!(
+            result.content.text_summary().contains("not configured"),
+            "expected result.content.text_summary().contains(\"not configured\") to be true"
+        );
     }
 
     #[test]
@@ -486,7 +484,10 @@ mod tests {
         super::register(&mut reg).expect("register");
         let name = ToolName::new("memory_search").expect("valid");
         let def = reg.get_def(&name).expect("found");
-        assert!(def.input_schema.required.contains(&"query".to_owned()));
+        assert!(
+            def.input_schema.required.contains(&"query".to_owned()),
+            "expected def.input_schema.required.contains(&\"query\".to_owned()) to be true"
+        );
     }
 
     #[test]
@@ -502,6 +503,10 @@ mod tests {
     fn knowledge_ops_registers_five_tools() {
         let mut reg = crate::registry::ToolRegistry::new();
         super::register(&mut reg).expect("register");
-        assert_eq!(reg.definitions().len(), 5);
+        assert_eq!(
+            reg.definitions().len(),
+            5,
+            "expected reg.definitions().len() to equal 5"
+        );
     }
 }

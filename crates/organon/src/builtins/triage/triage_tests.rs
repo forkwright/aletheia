@@ -36,12 +36,24 @@ fn test_ctx() -> ToolContext {
 #[test]
 fn tool_definitions_are_valid() {
     let scan = issue_scan_def();
-    assert_eq!(scan.name.as_str(), "issue_scan");
-    assert_eq!(scan.category, ToolCategory::Planning);
+    assert_eq!(
+        scan.name.as_str(),
+        "issue_scan",
+        "expected scan.name.as_str() to equal \"issue_scan\""
+    );
+    assert_eq!(
+        scan.category,
+        ToolCategory::Planning,
+        "expected scan.category to equal ToolCategory::Planning"
+    );
     assert!(!scan.auto_activate, "triage tools should be lazy-loaded");
 
     let triage = issue_triage_def();
-    assert_eq!(triage.name.as_str(), "issue_triage");
+    assert_eq!(
+        triage.name.as_str(),
+        "issue_triage",
+        "expected triage.name.as_str() to equal \"issue_triage\""
+    );
     assert!(
         triage.input_schema.required.contains(&"repo".to_owned()),
         "repo must be required"
@@ -55,8 +67,16 @@ fn tool_definitions_are_valid() {
     );
 
     let approve = issue_approve_def();
-    assert_eq!(approve.name.as_str(), "issue_approve");
-    assert_eq!(approve.input_schema.required.len(), 3);
+    assert_eq!(
+        approve.name.as_str(),
+        "issue_approve",
+        "expected approve.name.as_str() to equal \"issue_approve\""
+    );
+    assert_eq!(
+        approve.input_schema.required.len(),
+        3,
+        "expected approve.input_schema.required.len() to equal 3"
+    );
 }
 
 #[test]
@@ -92,9 +112,21 @@ fn no_duplicate_registration() {
 
 #[test]
 fn slugify_basic() {
-    assert_eq!(slugify("Hello World"), "hello-world");
-    assert_eq!(slugify("fix: memory leak!"), "fix-memory-leak");
-    assert_eq!(slugify("---leading---"), "leading");
+    assert_eq!(
+        slugify("Hello World"),
+        "hello-world",
+        "expected slugify(\"Hello World\") to equal \"hello-world\""
+    );
+    assert_eq!(
+        slugify("fix: memory leak!"),
+        "fix-memory-leak",
+        "expected slugify(\"fix: memory leak!\") to equal \"fix-memory-leak\""
+    );
+    assert_eq!(
+        slugify("---leading---"),
+        "leading",
+        "expected slugify(\"---leading---\") to equal \"leading\""
+    );
 }
 
 #[test]
@@ -111,7 +143,10 @@ fn slugify_truncates_long_titles() {
 #[test]
 fn format_issue_summary_empty() {
     let summary = format_issue_summary(&[]);
-    assert!(summary.contains("No open issues"));
+    assert!(
+        summary.contains("No open issues"),
+        "expected summary.contains(\"No open issues\") to be true"
+    );
 }
 
 #[test]

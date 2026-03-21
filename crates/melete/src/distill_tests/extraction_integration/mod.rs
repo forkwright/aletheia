@@ -1,9 +1,6 @@
 //! Tests for summary extraction and integration scenarios.
 #![expect(clippy::expect_used, reason = "test assertions")]
-#![expect(
-    clippy::indexing_slicing,
-    reason = "test: vec indices are valid after asserting len"
-)]
+#[cfg(test)]
 use aletheia_hermeneus::test_utils::MockProvider;
 use aletheia_hermeneus::types::{CompletionResponse, ContentBlock, StopReason, Usage};
 
@@ -170,41 +167,42 @@ fn config_default_sections() {
         7,
         "default config should have exactly 7 sections"
     );
+    let s = &config.sections;
     assert_eq!(
-        config.sections[0],
+        *s.first().expect("idx 0"),
         DistillSection::Summary,
         "first section should be Summary"
-    );
+    ); // WHY: test assertion
     assert_eq!(
-        config.sections[1],
+        *s.get(1).expect("idx 1"),
         DistillSection::TaskContext,
         "second section should be TaskContext"
-    );
+    ); // WHY: test assertion
     assert_eq!(
-        config.sections[2],
+        *s.get(2).expect("idx 2"),
         DistillSection::CompletedWork,
         "third section should be CompletedWork"
-    );
+    ); // WHY: test assertion
     assert_eq!(
-        config.sections[3],
+        *s.get(3).expect("idx 3"),
         DistillSection::KeyDecisions,
         "fourth section should be KeyDecisions"
-    );
+    ); // WHY: test assertion
     assert_eq!(
-        config.sections[4],
+        *s.get(4).expect("idx 4"),
         DistillSection::CurrentState,
         "fifth section should be CurrentState"
-    );
+    ); // WHY: test assertion
     assert_eq!(
-        config.sections[5],
+        *s.get(5).expect("idx 5"),
         DistillSection::OpenThreads,
         "sixth section should be OpenThreads"
-    );
+    ); // WHY: test assertion
     assert_eq!(
-        config.sections[6],
+        *s.get(6).expect("idx 6"),
         DistillSection::Corrections,
         "seventh section should be Corrections"
-    );
+    ); // WHY: test assertion
 }
 
 #[test]
@@ -247,7 +245,7 @@ fn build_prompt_falls_back_to_primary_model() {
     let request = engine.build_prompt(&sample_conversation(), "test");
     assert_eq!(
         request.model, "claude-sonnet-4-20250514",
-        "build_prompt should fall back to primary model when distillation_model is None"
+        "should fall back to primary model"
     );
 }
 
@@ -261,17 +259,19 @@ fn build_prompt_uses_dynamic_system_prompt() {
     let request = engine.build_prompt(&sample_conversation(), "test");
     let system = request
         .system
-        .expect("build_prompt should produce a system prompt");
+        .expect("build_prompt should produce a system prompt"); // WHY: test assertion
     assert!(
         system.contains("## Summary"),
         "system prompt should include the Summary section when configured"
     );
+    let check = system.contains("## Key Decisions");
     assert!(
-        system.contains("## Key Decisions"),
+        check,
         "system prompt should include the Key Decisions section when configured"
     );
+    let check = !system.contains("## Open Threads");
     assert!(
-        !system.contains("## Open Threads"),
+        check,
         "system prompt should not include Open Threads when not in configured sections"
     );
 }
@@ -289,12 +289,12 @@ async fn distill_preserves_verbatim_messages() {
     let result = engine
         .distill(&messages, "test-nous", &provider, 1)
         .await
-        .expect("distill should succeed with a valid provider");
+        .expect("distill should succeed with a valid provider"); // WHY: test assertion
 
     assert_eq!(
         result.messages_distilled, 4,
         "should distill 6 messages minus verbatim_tail of 2"
-    ); // 6 - 2
+    ); // 6 - 2);
     assert_eq!(
         result.verbatim_messages.len(),
         2,
@@ -314,26 +314,28 @@ fn distill_section_equality() {
         DistillSection::TaskContext,
         "different variants should not be equal"
     );
+    let left = DistillSection::Custom {
+        name: "Test".to_owned(),
+        description: "desc".to_owned(),
+    };
+    let right = DistillSection::Custom {
+        name: "Test".to_owned(),
+        description: "desc".to_owned(),
+    };
     assert_eq!(
-        DistillSection::Custom {
-            name: "Test".to_owned(),
-            description: "desc".to_owned()
-        },
-        DistillSection::Custom {
-            name: "Test".to_owned(),
-            description: "desc".to_owned()
-        },
+        left, right,
         "Custom variants with identical fields should be equal"
     );
+    let left = DistillSection::Custom {
+        name: "A".to_owned(),
+        description: "desc".to_owned(),
+    };
+    let right = DistillSection::Custom {
+        name: "B".to_owned(),
+        description: "desc".to_owned(),
+    };
     assert_ne!(
-        DistillSection::Custom {
-            name: "A".to_owned(),
-            description: "desc".to_owned()
-        },
-        DistillSection::Custom {
-            name: "B".to_owned(),
-            description: "desc".to_owned()
-        },
+        left, right,
         "Custom variants with different names should not be equal"
     );
 }
@@ -362,16 +364,17 @@ fn backoff_activates_after_failure_and_expires_after_one_turn() {
     engine
         .retry_state
         .lock()
-        .expect("retry_state mutex should not be poisoned")
+        .expect("retry_state mutex should not be poisoned") // WHY: test assertion
         .record_failure();
     assert!(
         engine.in_backoff(),
         "engine should be in backoff after recording a failure"
     );
+    // NOTE: still in backoff, counter decrements to 0
     assert!(
         engine.tick_turn(),
-        "tick_turn should return true while still in backoff"
-    ); // still in backoff, counter decrements to 0
+        "tick_turn should return true while in backoff"
+    );
     assert!(
         !engine.in_backoff(),
         "engine should exit backoff after turns_to_skip reaches zero"
@@ -379,7 +382,7 @@ fn backoff_activates_after_failure_and_expires_after_one_turn() {
     assert!(
         !engine.tick_turn(),
         "tick_turn should return false once backoff has expired"
-    ); // no longer in backoff
+    ); // no longer in backoff);
 }
 
 #[test]
@@ -389,7 +392,7 @@ fn backoff_resets_on_success() {
         let mut state = engine
             .retry_state
             .lock()
-            .expect("retry_state mutex should not be poisoned");
+            .expect("retry_state mutex should not be poisoned"); // WHY: test assertion
         state.record_failure();
         state.record_failure();
     }
@@ -400,7 +403,7 @@ fn backoff_resets_on_success() {
     engine
         .retry_state
         .lock()
-        .expect("retry_state mutex should not be poisoned")
+        .expect("retry_state mutex should not be poisoned") // WHY: test assertion
         .record_success();
     assert!(
         !engine.in_backoff(),
@@ -422,7 +425,7 @@ fn backoff_schedule_is_exponential() {
             let mut state = engine
                 .retry_state
                 .lock()
-                .expect("retry_state mutex should not be poisoned");
+                .expect("retry_state mutex should not be poisoned"); // WHY: test assertion
             for _ in 0..failures {
                 state.record_failure();
             }
@@ -430,11 +433,11 @@ fn backoff_schedule_is_exponential() {
         let actual = engine
             .retry_state
             .lock()
-            .expect("retry_state mutex should not be poisoned")
+            .expect("retry_state mutex should not be poisoned") // WHY: test assertion
             .turns_to_skip;
         assert_eq!(
             actual, expected_skip,
-            "after {failures} failures expected turns_to_skip={expected_skip}, got {actual}"
+            "after {failures} failures: got {actual}"
         );
     }
 }
@@ -459,7 +462,7 @@ async fn distill_records_success_and_clears_backoff() {
     engine
         .retry_state
         .lock()
-        .expect("retry_state mutex should not be poisoned")
+        .expect("retry_state mutex should not be poisoned") // WHY: test assertion
         .record_failure();
     assert!(
         engine.in_backoff(),
@@ -471,7 +474,7 @@ async fn distill_records_success_and_clears_backoff() {
     engine
         .distill(&messages, "test", &provider, 1)
         .await
-        .expect("distill should succeed with a valid provider");
+        .expect("distill should succeed with a valid provider"); // WHY: test assertion
 
     assert!(
         !engine.in_backoff(),

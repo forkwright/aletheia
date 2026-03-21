@@ -1,4 +1,4 @@
-//! Test support: mock executors and a component spec validation harness.
+//! Test support: mock executors and a component spec validation framework.
 //!
 //! Enabled by the `test-support` Cargo feature. Never compiled into release binaries.
 //!
@@ -37,12 +37,13 @@ use crate::types::{ToolContext, ToolInput, ToolResult};
 ///
 /// ```ignore
 /// let ex = MockToolExecutor::text("ok");
-/// let result = ex.execute(&input, &ctx).await.unwrap();
-/// assert!(!result.is_error);
-/// assert_eq!(ex.call_count(), 1);
+/// let result = ex.execute(&input, &ctx).await.expect("execute should succeed"); // kanon:ignore RUST/expect
+/// assert!(!result.is_error, "result should not be an error");
+/// assert_eq!(ex.call_count(), 1, "call count should be 1 after one execution");
 /// ```
-#[allow(clippy::module_name_repetitions)]
+#[allow(clippy::module_name_repetitions)] // kanon:ignore RUST/allow-not-expect
 pub struct MockToolExecutor {
+    // kanon:ignore RUST/pub-visibility
     name: ToolName,
     // WHY: std::sync::Mutex — lock never held across .await
     inner: Mutex<MockInner>,
@@ -67,8 +68,9 @@ impl MockToolExecutor {
         reason = "test-support: 'mock' is a known-valid tool name"
     )]
     pub fn text(text: impl Into<String>) -> Self {
+        // kanon:ignore RUST/pub-visibility
         Self {
-            name: ToolName::new("mock").expect("valid tool name"),
+            name: ToolName::new("mock").expect("valid tool name"), // kanon:ignore RUST/expect
             inner: Mutex::new(MockInner {
                 mode: MockMode::Text(text.into()),
             }),
@@ -83,8 +85,9 @@ impl MockToolExecutor {
         reason = "test-support: 'mock' is a known-valid tool name"
     )]
     pub fn tool_error(message: impl Into<String>) -> Self {
+        // kanon:ignore RUST/pub-visibility
         Self {
-            name: ToolName::new("mock").expect("valid tool name"),
+            name: ToolName::new("mock").expect("valid tool name"), // kanon:ignore RUST/expect
             inner: Mutex::new(MockInner {
                 mode: MockMode::Error(message.into()),
             }),
@@ -99,8 +102,9 @@ impl MockToolExecutor {
         reason = "test-support: 'mock' is a known-valid tool name"
     )]
     pub fn sequence(results: Vec<ToolResult>) -> Self {
+        // kanon:ignore RUST/pub-visibility
         Self {
-            name: ToolName::new("mock").expect("valid tool name"),
+            name: ToolName::new("mock").expect("valid tool name"), // kanon:ignore RUST/expect
             inner: Mutex::new(MockInner {
                 mode: MockMode::Sequence(results),
             }),
@@ -111,6 +115,7 @@ impl MockToolExecutor {
     /// Override the tool name reported to the executor.
     #[must_use]
     pub fn named(mut self, name: ToolName) -> Self {
+        // kanon:ignore RUST/pub-visibility
         self.name = name;
         self
     }
@@ -118,12 +123,14 @@ impl MockToolExecutor {
     /// The tool name this mock is registered under.
     #[must_use]
     pub fn name(&self) -> ToolName {
+        // kanon:ignore RUST/pub-visibility
         self.name.clone()
     }
 
     /// Number of times `execute` has been called.
     #[must_use]
     pub fn call_count(&self) -> u64 {
+        // kanon:ignore RUST/pub-visibility
         self.call_count.load(Ordering::SeqCst)
     }
 }
@@ -140,7 +147,7 @@ impl ToolExecutor for MockToolExecutor {
                 clippy::expect_used,
                 reason = "test-support: mock mutex is never poisoned in tests"
             )]
-            let mut inner = self.inner.lock().expect("mock mutex poisoned");
+            let mut inner = self.inner.lock().expect("mock mutex poisoned"); // kanon:ignore RUST/expect
             match &mut inner.mode {
                 MockMode::Text(t) => Ok(ToolResult::text(t.clone())),
                 MockMode::Error(e) => Ok(ToolResult::error(e.clone())),
@@ -168,6 +175,7 @@ impl ToolExecutor for MockToolExecutor {
 /// the contract. The report separates passed checks from failed ones so test
 /// output is easy to diagnose.
 pub struct ToolExecutorSpec {
+    // kanon:ignore RUST/pub-visibility
     tool_name: ToolName,
 }
 
@@ -175,6 +183,7 @@ impl ToolExecutorSpec {
     /// Declare a spec for the executor registered under `tool_name`.
     #[must_use]
     pub fn new(tool_name: ToolName) -> Self {
+        // kanon:ignore RUST/pub-visibility
         Self { tool_name }
     }
 
@@ -266,18 +275,21 @@ impl SpecReport {
     /// `true` if all checks passed (no failures).
     #[must_use]
     pub fn is_passing(&self) -> bool {
+        // kanon:ignore RUST/pub-visibility
         self.failed.is_empty()
     }
 
     /// Names of checks that passed.
     #[must_use]
     pub fn passes(&self) -> &[String] {
+        // kanon:ignore RUST/pub-visibility
         &self.passed
     }
 
     /// Checks that failed, paired with a diagnostic reason.
     #[must_use]
     pub fn failures(&self) -> &[(String, String)] {
+        // kanon:ignore RUST/pub-visibility
         &self.failed
     }
 }
@@ -294,8 +306,9 @@ impl SpecReport {
     reason = "test-support: 'alice' is a known-valid NousId in synthetic test data"
 )]
 pub fn make_test_context() -> ToolContext {
+    // kanon:ignore RUST/pub-visibility
     ToolContext {
-        nous_id: NousId::new("alice").expect("valid nous id"),
+        nous_id: NousId::new("alice").expect("valid nous id"), // kanon:ignore RUST/expect
         session_id: SessionId::new(),
         workspace: PathBuf::from("/tmp/aletheia-test"),
         allowed_roots: vec![PathBuf::from("/tmp")],
@@ -307,6 +320,7 @@ pub fn make_test_context() -> ToolContext {
 /// Build a [`ToolInput`] for the given tool name with an empty arguments object.
 #[must_use]
 pub fn make_tool_input(name: &ToolName) -> ToolInput {
+    // kanon:ignore RUST/pub-visibility
     ToolInput {
         name: name.clone(),
         tool_use_id: "tu_test_00000".to_owned(),

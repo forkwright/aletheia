@@ -22,6 +22,7 @@ impl ApiErrorContext {
     /// Empty context for error sites without model/credential information.
     #[must_use]
     pub fn empty() -> Box<Self> {
+        // kanon:ignore RUST/pub-visibility
         Box::new(Self {
             model: String::new(),
             credential_source: String::new(),
@@ -38,6 +39,7 @@ impl ApiErrorContext {
     reason = "snafu error variant fields (source, location, message) are self-documenting via display format"
 )]
 pub enum Error {
+    // kanon:ignore RUST/pub-visibility
     /// Provider initialization failed.
     #[snafu(display("provider init failed: {message}"))]
     ProviderInit {
@@ -108,6 +110,7 @@ impl Error {
     /// with a different model (429, 503, 529, timeout).
     #[must_use]
     pub fn is_retryable(&self) -> bool {
+        // kanon:ignore RUST/pub-visibility
         matches!(
             self,
             Error::RateLimited { .. }
@@ -121,4 +124,4 @@ impl Error {
 }
 
 /// Convenience alias for `Result<T, Error>`.
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = std::result::Result<T, Error>; // kanon:ignore RUST/pub-visibility

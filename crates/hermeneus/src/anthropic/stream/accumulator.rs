@@ -149,7 +149,7 @@ impl StreamAccumulator {
                     clippy::as_conversions,
                     reason = "u32→usize: content block indices are small"
                 )]
-                let idx = index as usize;
+                let idx = index as usize; // kanon:ignore RUST/as-cast
                 while self.blocks.len() <= idx {
                     self.blocks.push(BlockBuilder::Text(String::new()));
                 }
@@ -158,7 +158,7 @@ impl StreamAccumulator {
                     reason = "while loop above ensures blocks.len() > idx"
                 )]
                 {
-                    self.blocks[idx] = builder;
+                    self.blocks[idx] = builder; // kanon:ignore RUST/indexing-slicing
                 }
             }
             WireStreamEvent::ContentBlockDelta { index, delta } => {
@@ -167,7 +167,7 @@ impl StreamAccumulator {
                     clippy::as_conversions,
                     reason = "u32→usize: content block indices are small"
                 )]
-                let idx = index as usize;
+                let idx = index as usize; // kanon:ignore RUST/as-cast
                 #[expect(
                     clippy::indexing_slicing,
                     reason = "idx < self.blocks.len() is checked by the if-guard"
@@ -176,12 +176,14 @@ impl StreamAccumulator {
                     match delta {
                         WireDelta::TextDelta { text } => {
                             if let BlockBuilder::Text(ref mut buf) = self.blocks[idx] {
+                                // kanon:ignore RUST/indexing-slicing
                                 buf.push_str(&text);
                             }
                             on_event(StreamEvent::TextDelta { text });
                         }
                         WireDelta::InputJsonDelta { partial_json } => {
                             match &mut self.blocks[idx] {
+                                // kanon:ignore RUST/indexing-slicing
                                 BlockBuilder::ToolUse { input_json, .. }
                                 | BlockBuilder::ServerToolUse { input_json, .. } => {
                                     input_json.push_str(&partial_json);
@@ -196,6 +198,7 @@ impl StreamAccumulator {
                             if let BlockBuilder::Thinking {
                                 text: ref mut buf, ..
                             } = self.blocks[idx]
+                            // kanon:ignore RUST/indexing-slicing
                             {
                                 buf.push_str(&thinking);
                             }
@@ -206,6 +209,7 @@ impl StreamAccumulator {
                                 signature: ref mut buf,
                                 ..
                             } = self.blocks[idx]
+                            // kanon:ignore RUST/indexing-slicing
                             {
                                 buf.push_str(&signature);
                             }

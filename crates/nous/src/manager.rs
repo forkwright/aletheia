@@ -2,7 +2,8 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
-use std::sync::Mutex;
+// WHY: lock held only during synchronous .take() on Option<JoinHandle>: no await while locked
+use std::sync::Mutex; // kanon:ignore RUST/std-mutex-in-async
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
@@ -49,10 +50,10 @@ struct ActorEntry {
 }
 
 /// Default interval between health polls (30 seconds).
-pub const DEFAULT_HEALTH_INTERVAL: Duration = Duration::from_secs(30);
+pub const DEFAULT_HEALTH_INTERVAL: Duration = Duration::from_secs(30); // kanon:ignore RUST/pub-visibility
 
 /// Default ping timeout for liveness checks (5 seconds).
-pub const DEFAULT_PING_TIMEOUT: Duration = Duration::from_secs(5);
+pub const DEFAULT_PING_TIMEOUT: Duration = Duration::from_secs(5); // kanon:ignore RUST/pub-visibility
 
 /// Consecutive misses before declaring an actor dead.
 const DEAD_THRESHOLD: u32 = 3;
@@ -61,6 +62,8 @@ const DEAD_THRESHOLD: u32 = 3;
 const MAX_RESTART_BACKOFF: Duration = Duration::from_secs(300);
 
 /// Manages the lifecycle of all nous actors.
+// NOTE: 14 fields: runtime dependency injection (providers, tools, stores) plus
+// actor state. Kept flat because splitting would scatter logically-paired fields.
 pub struct NousManager {
     actors: HashMap<String, ActorEntry>,
     providers: Arc<ProviderRegistry>,
@@ -162,7 +165,7 @@ impl NousManager {
             warn!(nous_id = %id, "replacing existing actor");
             let _ = old.handle.shutdown().await;
             // WHY: take join handle before awaiting: must not hold MutexGuard across .await
-            let join_opt = old.join.lock().expect("join mutex not poisoned").take();
+            let join_opt = old.join.lock().expect("join mutex not poisoned").take(); // kanon:ignore RUST/expect
             if let Some(join) = join_opt {
                 let _ = join.await;
             }
@@ -363,7 +366,7 @@ impl NousManager {
 
         if let Some(old) = self.actors.remove(id) {
             // WHY: take join handle before awaiting: must not hold MutexGuard across .await
-            let join_opt = old.join.lock().expect("join mutex not poisoned").take();
+            let join_opt = old.join.lock().expect("join mutex not poisoned").take(); // kanon:ignore RUST/expect
             if let Some(join) = join_opt {
                 let _ = tokio::time::timeout(Duration::from_secs(2), join).await;
             }

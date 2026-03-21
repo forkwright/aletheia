@@ -135,7 +135,7 @@ pub(super) fn format_as_markdown_table(result: &crate::types::DatalogResult) -> 
 
 fn datalog_query_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("datalog_query").expect("valid tool name"),
+        name: ToolName::new("datalog_query").expect("valid tool name"), // kanon:ignore RUST/expect
         description: "Execute a read-only Datalog query against the knowledge graph. \
             Returns tabular results. Use for advanced knowledge exploration, debugging \
             recall quality, or querying graph structure. Cannot modify data."

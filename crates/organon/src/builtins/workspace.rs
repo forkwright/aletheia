@@ -596,7 +596,10 @@ impl ToolExecutor for ExecExecutor {
 }
 
 /// Register workspace tool executors.
-pub fn register(registry: &mut ToolRegistry, sandbox: crate::sandbox::SandboxConfig) -> Result<()> {
+pub(crate) fn register(
+    registry: &mut ToolRegistry,
+    sandbox: crate::sandbox::SandboxConfig,
+) -> Result<()> {
     registry.register(read_def(), Box::new(ReadExecutor))?;
     registry.register(write_def(), Box::new(WriteExecutor))?;
     registry.register(edit_def(), Box::new(EditExecutor))?;
@@ -606,7 +609,7 @@ pub fn register(registry: &mut ToolRegistry, sandbox: crate::sandbox::SandboxCon
 
 fn read_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("read").expect("valid tool name"),
+        name: ToolName::new("read").expect("valid tool name"), // kanon:ignore RUST/expect
         description: "Read a file's contents as text".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -639,7 +642,7 @@ fn read_def() -> ToolDef {
 
 fn write_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("write").expect("valid tool name"),
+        name: ToolName::new("write").expect("valid tool name"), // kanon:ignore RUST/expect
         description: "Write content to a file, creating parent directories as needed".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -681,7 +684,7 @@ fn write_def() -> ToolDef {
 
 fn edit_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("edit").expect("valid tool name"),
+        name: ToolName::new("edit").expect("valid tool name"), // kanon:ignore RUST/expect
         description: "Replace exact text in a file with new text".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -727,7 +730,7 @@ fn edit_def() -> ToolDef {
 
 fn exec_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("exec").expect("valid tool name"),
+        name: ToolName::new("exec").expect("valid tool name"), // kanon:ignore RUST/expect
         description: "Execute a shell command in your workspace and return stdout/stderr"
             .to_owned(),
         extended_description: None,

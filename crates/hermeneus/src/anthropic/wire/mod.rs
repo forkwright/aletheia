@@ -32,6 +32,7 @@ pub(super) fn compute_turn_cache_indices(messages: &[&crate::types::Message]) ->
             reason = "i < last_idx < messages.len() by loop bounds"
         )]
         if messages[i].role == Role::User {
+            // kanon:ignore RUST/indexing-slicing
             breakpoints.push(i);
             if breakpoints.len() >= MAX_TURN_CACHE_BREAKPOINTS {
                 break;

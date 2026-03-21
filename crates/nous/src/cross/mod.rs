@@ -183,7 +183,7 @@ mod delivery;
 /// Routes cross-nous messages between registered actors.
 mod router;
 
-pub use delivery::{DeliveryEntry, DeliveryLog};
+pub(crate) use delivery::{DeliveryEntry, DeliveryLog};
 pub use router::CrossNousRouter;
 
 #[expect(
@@ -193,9 +193,10 @@ pub use router::CrossNousRouter;
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 mod tests {
-    use super::*;
     use tokio::sync::mpsc;
     use tracing::Instrument;
+
+    use super::*;
 
     async fn setup_router() -> (CrossNousRouter, mpsc::Receiver<CrossNousEnvelope>) {
         let router = CrossNousRouter::default();

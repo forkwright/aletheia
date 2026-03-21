@@ -54,7 +54,7 @@ pub struct HistoryResult {
 /// System-role messages are always skipped (they're in the system prompt).
 /// Tool-result messages are included or skipped based on `config.include_tool_messages`.
 #[expect(clippy::cast_possible_wrap, reason = "message length fits in i64")]
-pub fn load_history(
+pub(crate) fn load_history(
     store: &SessionStore,
     session_id: &str,
     budget: i64,
@@ -65,7 +65,7 @@ pub fn load_history(
         clippy::as_conversions,
         reason = "usize→i64: message length fits in i64"
     )]
-    let current_tokens = (current_message.len() as i64 + 3) / 4;
+    let current_tokens = (current_message.len() as i64 + 3) / 4; // kanon:ignore RUST/as-cast
     let available = budget - config.reserve_for_current - current_tokens;
 
     if available <= 0 {

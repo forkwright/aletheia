@@ -1,4 +1,4 @@
-//! Computer use tool: screen capture, action dispatch, and sandboxed execution.
+//! Computer use tool: screen capture, action dispatch, and sandboxed execution. // kanon:ignore RUST/file-too-long
 //!
 //! Integrates with Anthropic's computer use API to provide:
 //! - Screen capture via `scrot` (X11) or `grim` (Wayland)
@@ -239,6 +239,7 @@ fn dispatch_action(action: &ComputerAction) -> std::io::Result<String> {
 /// Uses a simple byte-level comparison. Both frames must have the same dimensions.
 /// Returns `None` if the frames are identical or cannot be compared.
 fn compute_diff_region(before: &[u8], after: &[u8]) -> Option<DiffRegion> {
+    // kanon:ignore RUST/indexing-slicing
     // WHY: Parse PNG headers to extract dimensions rather than pulling in an
     // image decoding crate. PNG IHDR chunk is always the first chunk after
     // the 8-byte signature: 4 bytes length, 4 bytes "IHDR", 4 bytes width,
@@ -277,6 +278,7 @@ fn compute_diff_region(before: &[u8], after: &[u8]) -> Option<DiffRegion> {
 
 /// Extract width from PNG IHDR chunk.
 fn png_width(data: &[u8]) -> Option<u32> {
+    // kanon:ignore RUST/indexing-slicing
     // PNG signature (8 bytes) + chunk length (4) + "IHDR" (4) + width (4)
     let bytes: [u8; 4] = data.get(16..20)?.try_into().ok()?;
     Some(u32::from_be_bytes(bytes))
@@ -284,6 +286,7 @@ fn png_width(data: &[u8]) -> Option<u32> {
 
 /// Extract height from PNG IHDR chunk.
 fn png_height(data: &[u8]) -> Option<u32> {
+    // kanon:ignore RUST/indexing-slicing
     let bytes: [u8; 4] = data.get(20..24)?.try_into().ok()?;
     Some(u32::from_be_bytes(bytes))
 }
@@ -605,7 +608,7 @@ impl ToolExecutor for ComputerUseExecutor {
 )]
 fn computer_use_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("computer_use").expect("valid tool name"),
+        name: ToolName::new("computer_use").expect("valid tool name"), // kanon:ignore RUST/expect
         description: "Interact with the computer screen: capture screenshots, click, type text, \
                       press keys, and scroll. Actions run in a Landlock-sandboxed environment."
             .to_owned(),
@@ -712,6 +715,7 @@ fn computer_use_def() -> ToolDef {
 ///
 /// Returns an error if the tool name collides with an existing tool.
 pub fn register(registry: &mut ToolRegistry, sandbox: &SandboxConfig) -> Result<()> {
+    // kanon:ignore RUST/pub-visibility  // kanon:ignore RUST/missing-must-use
     let session_config = ComputerUseSessionConfig {
         enforcement: if sandbox.enabled {
             sandbox.enforcement

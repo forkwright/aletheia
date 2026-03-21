@@ -1,8 +1,6 @@
 //! Tests for `MemoryFlush`, `FlushSource`, and prompt building.
-#![expect(
-    clippy::indexing_slicing,
-    reason = "test: vec indices are valid after asserting len"
-)]
+#![expect(clippy::expect_used, reason = "test assertions")]
+#[cfg(test)]
 use aletheia_hermeneus::test_utils::MockProvider;
 use aletheia_hermeneus::types::{Content, Message, Role};
 
@@ -55,22 +53,22 @@ fn sample_flush_item(content: &str, source: FlushSource) -> FlushItem {
 #[expect(dead_code, reason = "test helper available for future flush tests")]
 const FULL_SUMMARY: &str = "\
 ## Summary
-Fixed login bug and added tool-based database migration.
+Fixed login bug and added tool-based database schema update.
 
 ## Task Context
 Working on auth module bug fix for nous agent \"syn\".
 
 ## Completed Work
 - Fixed null check on line 42 of src/auth/login.rs
-- Ran database migration tool: migrate_db({\"version\": \"v2\"})
+- Ran database schema update tool: migrate_db({\"version\": \"v2\"})
 - Added regression test for login flow
 
 ## Key Decisions
 - Decision: Add null check rather than restructure auth flow. Reason: Minimal invasive fix.
-- Decision: Use v2 schema for migration. Reason: Backwards compatible.
+- Decision: Use v2 schema for schema update. Reason: Backwards compatible.
 
 ## Current State
-Bug is fixed, migration applied, all tests passing.
+Bug is fixed, schema applied, all tests passing.
 
 ## Open Threads
 - Performance audit of login endpoint deferred to next sprint
@@ -167,8 +165,9 @@ fn flush_source_labels_via_markdown() {
         md.contains("(source: agent_note)"),
         "markdown should label AgentNote items with '(source: agent_note)'"
     );
+    let check = md.contains("(source: tool_pattern)");
     assert!(
-        md.contains("(source: tool_pattern)"),
+        check,
         "markdown should label ToolPattern items with '(source: tool_pattern)'"
     );
 }
@@ -200,19 +199,20 @@ fn engine_config_sections_match_input() {
         ..DistillConfig::default()
     };
     let engine = DistillEngine::new(config);
+    let s = &engine.config().sections;
     assert_eq!(
-        engine.config().sections.len(),
+        s.len(),
         2,
         "engine config should have 2 sections as provided"
     );
     assert_eq!(
-        engine.config().sections[0],
+        *s.first().expect("idx 0"),
         DistillSection::Summary,
         "first section should be Summary"
-    );
+    ); // WHY: test assertion
     assert_eq!(
-        engine.config().sections[1],
+        *s.get(1).expect("idx 1"),
         DistillSection::Corrections,
         "second section should be Corrections"
-    );
+    ); // WHY: test assertion
 }

@@ -31,6 +31,7 @@ impl Role {
     /// The lowercase wire-format string for this role.
     #[must_use]
     pub fn as_str(self) -> &'static str {
+        // kanon:ignore RUST/pub-visibility
         match self {
             Self::System => "system",
             Self::User => "user",
@@ -60,6 +61,7 @@ impl Content {
     /// Extract plain text from content (joining blocks if structured).
     #[must_use]
     pub fn text(&self) -> String {
+        // kanon:ignore RUST/pub-visibility
         match self {
             Self::Text(s) => s.clone(),
             Self::Blocks(blocks) => blocks
@@ -180,18 +182,21 @@ impl ToolResultContent {
     /// Create a simple text result.
     #[must_use]
     pub fn text(s: impl Into<String>) -> Self {
+        // kanon:ignore RUST/pub-visibility
         Self::Text(s.into())
     }
 
     /// Create from rich content blocks.
     #[must_use]
     pub fn blocks(blocks: Vec<ToolResultBlock>) -> Self {
+        // kanon:ignore RUST/pub-visibility
         Self::Blocks(blocks)
     }
 
     /// Extract a text summary suitable for persistence and logging.
     #[must_use]
     pub fn text_summary(&self) -> String {
+        // kanon:ignore RUST/pub-visibility
         match self {
             Self::Text(s) => s.clone(),
             Self::Blocks(blocks) => blocks
@@ -227,6 +232,7 @@ impl From<String> for ToolResultContent {
     reason = "variant fields (text, source) are self-documenting by name"
 )]
 pub enum ToolResultBlock {
+    // kanon:ignore RUST/pub-visibility
     /// Text content.
     #[serde(rename = "text")]
     Text { text: String },
@@ -318,6 +324,7 @@ pub(crate) enum CacheControlType {
 impl CacheControl {
     #[must_use]
     pub fn ephemeral() -> Self {
+        // kanon:ignore RUST/pub-visibility
         Self {
             kind: CacheControlType::Ephemeral,
         }
@@ -367,6 +374,7 @@ impl Default for CachingConfig {
     reason = "variant fields (name) are self-documenting by name"
 )]
 pub enum ToolChoice {
+    // kanon:ignore RUST/pub-visibility
     /// Let the model decide whether to use a tool.
     #[serde(rename = "auto")]
     Auto,
@@ -402,6 +410,7 @@ pub struct CitationConfig {
     reason = "citation variant fields (document_index, start_char_index, etc.) are self-documenting by name"
 )]
 pub enum Citation {
+    // kanon:ignore RUST/pub-visibility
     /// Citation by character offset within a document.
     #[serde(rename = "char_location")]
     CharLocation {
@@ -428,8 +437,11 @@ pub enum Citation {
 }
 
 /// Request to the LLM provider.
+// WHY: 15 fields maps 1:1 to the Anthropic Messages API surface; splitting into sub-structs
+// would add indirection without reducing conceptual complexity for callers.
 #[derive(Debug, Clone)]
 pub struct CompletionRequest {
+    // kanon:ignore RUST/struct-too-many-fields
     /// Model identifier (e.g. `claude-opus-4-20250514`).
     pub model: String,
     /// System prompt.
@@ -527,6 +539,7 @@ impl StopReason {
     /// The `snake_case` wire-format string for this stop reason.
     #[must_use]
     pub fn as_str(self) -> &'static str {
+        // kanon:ignore RUST/pub-visibility
         match self {
             Self::EndTurn => "end_turn",
             Self::ToolUse => "tool_use",
@@ -573,6 +586,7 @@ impl Usage {
     /// Total tokens (input + output).
     #[must_use]
     pub fn total(&self) -> u64 {
+        // kanon:ignore RUST/pub-visibility
         self.input_tokens + self.output_tokens
     }
 }

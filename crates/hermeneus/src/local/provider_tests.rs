@@ -64,13 +64,22 @@ async fn simple_completion() {
         .await
         .unwrap();
 
-    assert_eq!(response.id, "chatcmpl-test-1");
-    assert_eq!(response.stop_reason, StopReason::EndTurn);
-    assert_eq!(response.usage.input_tokens, 15);
-    assert_eq!(response.usage.output_tokens, 8);
-    assert_eq!(response.content.len(), 1);
+    assert_eq!(response.id, "chatcmpl-test-1", "response id should match");
+    assert_eq!(
+        response.stop_reason,
+        StopReason::EndTurn,
+        "stop reason should be EndTurn"
+    );
+    assert_eq!(response.usage.input_tokens, 15, "input tokens should match");
+    assert_eq!(
+        response.usage.output_tokens, 8,
+        "output tokens should match"
+    );
+    assert_eq!(response.content.len(), 1, "should have one content block");
     match &response.content[0] {
-        ContentBlock::Text { text, .. } => assert_eq!(text, "Hello! How can I help?"),
+        ContentBlock::Text { text, .. } => {
+            assert_eq!(text, "Hello! How can I help?", "response text should match")
+        }
         other => panic!("expected Text, got: {other:?}"),
     }
 }
@@ -110,10 +119,19 @@ data: [DONE]\n\
         .await
         .unwrap();
 
-    assert_eq!(response.id, "chatcmpl-s1");
-    assert_eq!(response.stop_reason, StopReason::EndTurn);
+    assert_eq!(
+        response.id, "chatcmpl-s1",
+        "streaming response id should match"
+    );
+    assert_eq!(
+        response.stop_reason,
+        StopReason::EndTurn,
+        "streaming stop reason should be EndTurn"
+    );
     match &response.content[0] {
-        ContentBlock::Text { text, .. } => assert_eq!(text, "Hi there"),
+        ContentBlock::Text { text, .. } => {
+            assert_eq!(text, "Hi there", "streamed text should be concatenated")
+        }
         other => panic!("expected Text, got: {other:?}"),
     }
 
@@ -121,7 +139,8 @@ data: [DONE]\n\
     assert!(
         events.iter().any(
             |e| matches!(e, crate::anthropic::StreamEvent::TextDelta { text } if text == "Hi")
-        )
+        ),
+        "should have emitted a TextDelta event for 'Hi'"
     );
 }
 
@@ -173,13 +192,17 @@ async fn tool_call_completion() {
 
     let response = provider.complete(&request).await.unwrap();
 
-    assert_eq!(response.stop_reason, StopReason::ToolUse);
-    assert_eq!(response.content.len(), 1);
+    assert_eq!(
+        response.stop_reason,
+        StopReason::ToolUse,
+        "stop reason should be ToolUse"
+    );
+    assert_eq!(response.content.len(), 1, "should have one content block");
     match &response.content[0] {
         ContentBlock::ToolUse { id, name, input } => {
-            assert_eq!(id, "call_abc123");
-            assert_eq!(name, "get_weather");
-            assert_eq!(input["location"], "London");
+            assert_eq!(id, "call_abc123", "tool call id should match");
+            assert_eq!(name, "get_weather", "tool name should match");
+            assert_eq!(input["location"], "London", "tool input should match");
         }
         other => panic!("expected ToolUse, got: {other:?}"),
     }
@@ -197,7 +220,7 @@ async fn connection_error_returns_api_request_error() {
 
     let result = provider.complete(&simple_request("local/test-model")).await;
 
-    assert!(result.is_err());
+    assert!(result.is_err(), "connection to dead server should fail");
     let err = result.unwrap_err();
     let msg = format!("{err}");
     assert!(
@@ -219,7 +242,7 @@ async fn rate_limit_response_maps_to_rate_limited_error() {
     let provider = provider_for(&server);
     let result = provider.complete(&simple_request("local/test-model")).await;
 
-    assert!(result.is_err());
+    assert!(result.is_err(), "429 response should produce an error");
     assert!(
         matches!(result.unwrap_err(), crate::error::Error::RateLimited { .. }),
         "expected RateLimited error"
@@ -239,7 +262,7 @@ async fn server_error_maps_to_api_request_error() {
     let provider = provider_for(&server);
     let result = provider.complete(&simple_request("local/test-model")).await;
 
-    assert!(result.is_err());
+    assert!(result.is_err(), "500 response should produce an error");
     let err = result.unwrap_err();
     let msg = format!("{err}");
     assert!(
@@ -253,24 +276,39 @@ fn supports_model_with_local_prefix() {
     let config = LocalProviderConfig::default();
     let provider = LocalProvider::new(&config).unwrap();
 
-    assert!(provider.supports_model("local/qwen3.5-27b"));
-    assert!(provider.supports_model("local/anything"));
-    assert!(!provider.supports_model("claude-opus-4-20250514"));
-    assert!(!provider.supports_model("qwen3.5-27b"));
+    assert!(
+        provider.supports_model("local/qwen3.5-27b"),
+        "should support local/ prefixed model"
+    );
+    assert!(
+        provider.supports_model("local/anything"),
+        "should support any local/ prefixed model"
+    );
+    assert!(
+        !provider.supports_model("claude-opus-4-20250514"),
+        "should not support non-local models"
+    );
+    assert!(
+        !provider.supports_model("qwen3.5-27b"),
+        "should not support models without local/ prefix"
+    );
 }
 
 #[test]
 fn provider_name_is_local() {
     let config = LocalProviderConfig::default();
     let provider = LocalProvider::new(&config).unwrap();
-    assert_eq!(provider.name(), "local");
+    assert_eq!(provider.name(), "local", "provider name should be 'local'");
 }
 
 #[test]
 fn supports_streaming() {
     let config = LocalProviderConfig::default();
     let provider = LocalProvider::new(&config).unwrap();
-    assert!(provider.supports_streaming());
+    assert!(
+        provider.supports_streaming(),
+        "local provider should support streaming"
+    );
 }
 
 #[tokio::test]
@@ -301,7 +339,7 @@ async fn request_sends_system_message_and_tools() {
     }];
 
     let response = provider.complete(&request).await.unwrap();
-    assert_eq!(response.id, "chatcmpl-verify");
+    assert_eq!(response.id, "chatcmpl-verify", "response id should match");
 }
 
 #[tokio::test]
@@ -331,7 +369,7 @@ async fn model_prefix_stripped_in_request() {
         .await
         .unwrap();
 
-    assert_eq!(response.id, "chatcmpl-strip");
+    assert_eq!(response.id, "chatcmpl-strip", "response id should match");
 
     // Verify the "local/" prefix was stripped from the model in the request.
     let requests: Vec<Request> = server.received_requests().await.unwrap();

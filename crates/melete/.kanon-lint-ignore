@@ -1,0 +1,4 @@
+# WHY: melete is a library crate where all modules are `pub mod` in lib.rs.
+# Items marked `pub` in submodules are intentional public API for downstream
+# crates (nous). The linter flags these because they're not in lib.rs itself.
+RUST/pub-visibility:src/**/*.rs

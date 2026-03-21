@@ -4,7 +4,7 @@ use aletheia_hermeneus::test_utils::MockProvider;
 use super::*;
 use crate::message::NousLifecycle;
 
-fn test_oikos() -> (tempfile::TempDir, Arc<Oikos>) {
+fn make_oikos() -> (tempfile::TempDir, Arc<Oikos>) {
     let dir = tempfile::TempDir::new().expect("tmpdir");
     let root = dir.path();
     std::fs::create_dir_all(root.join("nous/syn")).expect("mkdir");
@@ -25,7 +25,7 @@ fn test_oikos() -> (tempfile::TempDir, Arc<Oikos>) {
     (dir, oikos)
 }
 
-fn test_providers() -> Arc<ProviderRegistry> {
+fn make_providers() -> Arc<ProviderRegistry> {
     let mut providers = ProviderRegistry::new();
     providers.register(Box::new(
         MockProvider::new("Hello!").models(&["test-model"]),
@@ -33,9 +33,9 @@ fn test_providers() -> Arc<ProviderRegistry> {
     Arc::new(providers)
 }
 
-fn test_manager(oikos: Arc<Oikos>) -> NousManager {
+fn make_manager(oikos: Arc<Oikos>) -> NousManager {
     NousManager::new(
-        test_providers(),
+        make_providers(),
         Arc::new(ToolRegistry::new()),
         oikos,
         None,
@@ -67,99 +67,108 @@ fn demiurge_config() -> NousConfig {
 
 #[tokio::test]
 async fn spawn_returns_handle() {
-    let (_dir, oikos) = test_oikos();
-    let mut mgr = test_manager(oikos);
+    let (_dir, oikos) = make_oikos();
+    let mut mgr = make_manager(oikos);
 
     let handle = mgr.spawn(syn_config(), PipelineConfig::default()).await;
-    assert_eq!(handle.id(), "syn");
-    assert_eq!(mgr.count(), 1);
+    assert_eq!(handle.id(), "syn", "spawned handle should have syn id");
+    assert_eq!(mgr.count(), 1, "manager should have one actor after spawn");
 
     mgr.shutdown_all().await;
 }
 
 #[tokio::test]
 async fn get_finds_spawned_actor() {
-    let (_dir, oikos) = test_oikos();
-    let mut mgr = test_manager(oikos);
+    let (_dir, oikos) = make_oikos();
+    let mut mgr = make_manager(oikos);
 
     mgr.spawn(syn_config(), PipelineConfig::default()).await;
 
     let handle = mgr.get("syn").expect("found");
-    assert_eq!(handle.id(), "syn");
+    assert_eq!(handle.id(), "syn", "retrieved handle should have syn id");
 
     mgr.shutdown_all().await;
 }
 
 #[tokio::test]
 async fn get_returns_none_for_unknown() {
-    let (_dir, oikos) = test_oikos();
-    let mgr = test_manager(oikos);
-    assert!(mgr.get("unknown").is_none());
+    let (_dir, oikos) = make_oikos();
+    let mgr = make_manager(oikos);
+    assert!(
+        mgr.get("unknown").is_none(),
+        "unknown id should return None"
+    );
 }
 
 #[tokio::test]
 async fn get_config_returns_stored_config() {
-    let (_dir, oikos) = test_oikos();
-    let mut mgr = test_manager(oikos);
+    let (_dir, oikos) = make_oikos();
+    let mut mgr = make_manager(oikos);
 
     mgr.spawn(syn_config(), PipelineConfig::default()).await;
 
     let config = mgr.get_config("syn").expect("config");
-    assert_eq!(config.id, "syn");
-    assert_eq!(config.model, "test-model");
+    assert_eq!(config.id, "syn", "config id should match");
+    assert_eq!(config.model, "test-model", "config model should match");
 
     mgr.shutdown_all().await;
 }
 
 #[tokio::test]
 async fn get_config_returns_none_for_unknown() {
-    let (_dir, oikos) = test_oikos();
-    let mgr = test_manager(oikos);
-    assert!(mgr.get_config("unknown").is_none());
+    let (_dir, oikos) = make_oikos();
+    let mgr = make_manager(oikos);
+    assert!(
+        mgr.get_config("unknown").is_none(),
+        "unknown id should return None"
+    );
 }
 
 #[tokio::test]
 async fn configs_returns_all() {
-    let (_dir, oikos) = test_oikos();
-    let mut mgr = test_manager(oikos);
+    let (_dir, oikos) = make_oikos();
+    let mut mgr = make_manager(oikos);
 
     mgr.spawn(syn_config(), PipelineConfig::default()).await;
     mgr.spawn(demiurge_config(), PipelineConfig::default())
         .await;
 
     let configs = mgr.configs();
-    assert_eq!(configs.len(), 2);
+    assert_eq!(configs.len(), 2, "should have two configs");
 
     let ids: Vec<&str> = configs.iter().map(|c| c.id.as_str()).collect();
-    assert!(ids.contains(&"syn"));
-    assert!(ids.contains(&"demiurge"));
+    assert!(ids.contains(&"syn"), "configs should include syn");
+    assert!(ids.contains(&"demiurge"), "configs should include demiurge");
 
     mgr.shutdown_all().await;
 }
 
 #[tokio::test]
 async fn list_returns_all_statuses() {
-    let (_dir, oikos) = test_oikos();
-    let mut mgr = test_manager(oikos);
+    let (_dir, oikos) = make_oikos();
+    let mut mgr = make_manager(oikos);
 
     mgr.spawn(syn_config(), PipelineConfig::default()).await;
     mgr.spawn(demiurge_config(), PipelineConfig::default())
         .await;
 
     let statuses = mgr.list().await;
-    assert_eq!(statuses.len(), 2);
+    assert_eq!(statuses.len(), 2, "should list two actors");
 
     let ids: Vec<&str> = statuses.iter().map(|s| s.id.as_str()).collect();
-    assert!(ids.contains(&"syn"));
-    assert!(ids.contains(&"demiurge"));
+    assert!(ids.contains(&"syn"), "statuses should include syn");
+    assert!(
+        ids.contains(&"demiurge"),
+        "statuses should include demiurge"
+    );
 
     mgr.shutdown_all().await;
 }
 
 #[tokio::test]
 async fn shutdown_all_stops_all_actors() {
-    let (_dir, oikos) = test_oikos();
-    let mut mgr = test_manager(oikos);
+    let (_dir, oikos) = make_oikos();
+    let mut mgr = make_manager(oikos);
 
     let handle1 = mgr.spawn(syn_config(), PipelineConfig::default()).await;
     let handle2 = mgr
@@ -168,59 +177,72 @@ async fn shutdown_all_stops_all_actors() {
 
     mgr.shutdown_all().await;
 
-    assert_eq!(mgr.count(), 0);
-    assert!(handle1.status().await.is_err());
-    assert!(handle2.status().await.is_err());
+    assert_eq!(
+        mgr.count(),
+        0,
+        "manager should have zero actors after shutdown"
+    );
+    assert!(
+        handle1.status().await.is_err(),
+        "handle1 should be stopped after shutdown"
+    );
+    assert!(
+        handle2.status().await.is_err(),
+        "handle2 should be stopped after shutdown"
+    );
 }
 
 #[tokio::test]
 async fn spawn_multiple_actors() {
-    let (_dir, oikos) = test_oikos();
-    let mut mgr = test_manager(oikos);
+    let (_dir, oikos) = make_oikos();
+    let mut mgr = make_manager(oikos);
 
     mgr.spawn(syn_config(), PipelineConfig::default()).await;
     mgr.spawn(demiurge_config(), PipelineConfig::default())
         .await;
 
-    assert_eq!(mgr.count(), 2);
+    assert_eq!(mgr.count(), 2, "manager should have two actors");
 
     let syn = mgr.get("syn").expect("syn");
     let dem = mgr.get("demiurge").expect("demiurge");
 
     let s1 = syn.status().await.expect("status");
     let s2 = dem.status().await.expect("status");
-    assert_eq!(s1.lifecycle, NousLifecycle::Idle);
-    assert_eq!(s2.lifecycle, NousLifecycle::Idle);
+    assert_eq!(s1.lifecycle, NousLifecycle::Idle, "syn should be idle");
+    assert_eq!(s2.lifecycle, NousLifecycle::Idle, "demiurge should be idle");
 
     mgr.shutdown_all().await;
 }
 
 #[tokio::test]
 async fn spawn_replaces_existing_actor() {
-    let (_dir, oikos) = test_oikos();
-    let mut mgr = test_manager(oikos);
+    let (_dir, oikos) = make_oikos();
+    let mut mgr = make_manager(oikos);
 
     let old_handle = mgr.spawn(syn_config(), PipelineConfig::default()).await;
     let new_handle = mgr.spawn(syn_config(), PipelineConfig::default()).await;
 
-    assert_eq!(mgr.count(), 1);
+    assert_eq!(mgr.count(), 1, "re-spawn should replace, not add");
 
-    assert!(old_handle.status().await.is_err());
+    assert!(
+        old_handle.status().await.is_err(),
+        "old handle should be dead after replacement"
+    );
 
     let status = new_handle.status().await.expect("status");
-    assert_eq!(status.id, "syn");
+    assert_eq!(status.id, "syn", "new handle should have syn id");
 
     mgr.shutdown_all().await;
 }
 
 #[tokio::test]
 async fn manager_turn_through_handle() {
-    let (_dir, oikos) = test_oikos();
-    let mut mgr = test_manager(oikos);
+    let (_dir, oikos) = make_oikos();
+    let mut mgr = make_manager(oikos);
 
     let handle = mgr.spawn(syn_config(), PipelineConfig::default()).await;
     let result = handle.send_turn("main", "Hello").await.expect("turn");
-    assert_eq!(result.content, "Hello!");
+    assert_eq!(result.content, "Hello!", "turn should return mock response");
 
     mgr.shutdown_all().await;
 }
@@ -228,8 +250,8 @@ async fn manager_turn_through_handle() {
 /// `drain()` cancels all actors via the root token and awaits their exit.
 #[tokio::test]
 async fn drain_stops_all_actors() {
-    let (_dir, oikos) = test_oikos();
-    let mut mgr = test_manager(oikos);
+    let (_dir, oikos) = make_oikos();
+    let mut mgr = make_manager(oikos);
 
     let handle1 = mgr.spawn(syn_config(), PipelineConfig::default()).await;
     let handle2 = mgr
@@ -252,8 +274,8 @@ async fn drain_stops_all_actors() {
 /// Cancelling the manager's root token reaches all actor child tokens.
 #[tokio::test]
 async fn cancel_token_propagates_to_actors() {
-    let (_dir, oikos) = test_oikos();
-    let mut mgr = test_manager(oikos);
+    let (_dir, oikos) = make_oikos();
+    let mut mgr = make_manager(oikos);
 
     let handle = mgr.spawn(syn_config(), PipelineConfig::default()).await;
 
@@ -275,8 +297,8 @@ async fn cancel_token_propagates_to_actors() {
 /// `drain()` with a very short timeout should warn and return, not panic.
 #[tokio::test]
 async fn drain_timeout_does_not_panic() {
-    let (_dir, oikos) = test_oikos();
-    let mut mgr = test_manager(oikos);
+    let (_dir, oikos) = make_oikos();
+    let mut mgr = make_manager(oikos);
 
     mgr.spawn(syn_config(), PipelineConfig::default()).await;
     mgr.spawn(demiurge_config(), PipelineConfig::default())
@@ -288,24 +310,27 @@ async fn drain_timeout_does_not_panic() {
 
 #[tokio::test]
 async fn check_health_reports_alive_actors() {
-    let (_dir, oikos) = test_oikos();
-    let mut mgr = test_manager(oikos);
+    let (_dir, oikos) = make_oikos();
+    let mut mgr = make_manager(oikos);
 
     mgr.spawn(syn_config(), PipelineConfig::default()).await;
 
     let health = mgr.check_health().await;
-    assert_eq!(health.len(), 1);
+    assert_eq!(health.len(), 1, "health map should have one entry");
     let syn_health = health.get("syn").expect("syn health");
     assert!(syn_health.alive, "healthy actor should be alive");
-    assert_eq!(syn_health.panic_count, 0);
+    assert_eq!(
+        syn_health.panic_count, 0,
+        "healthy actor should have zero panics"
+    );
 
     mgr.shutdown_all().await;
 }
 
 #[tokio::test]
 async fn check_health_detects_dead_actor() {
-    let (_dir, oikos) = test_oikos();
-    let mut mgr = test_manager(oikos);
+    let (_dir, oikos) = make_oikos();
+    let mut mgr = make_manager(oikos);
 
     let handle = mgr.spawn(syn_config(), PipelineConfig::default()).await;
 
@@ -322,8 +347,8 @@ async fn check_health_detects_dead_actor() {
 /// is set, distinguishing "busy" from "dead".
 #[tokio::test]
 async fn check_health_busy_actor_reports_alive() {
-    let (_dir, oikos) = test_oikos();
-    let mut mgr = test_manager(oikos);
+    let (_dir, oikos) = make_oikos();
+    let mut mgr = make_manager(oikos);
 
     mgr.spawn(syn_config(), PipelineConfig::default()).await;
 
@@ -359,10 +384,34 @@ async fn check_health_busy_actor_reports_alive() {
 
 #[test]
 fn backoff_calculation() {
-    assert_eq!(super::calculate_backoff(0), Duration::from_secs(5));
-    assert_eq!(super::calculate_backoff(1), Duration::from_secs(15));
-    assert_eq!(super::calculate_backoff(2), Duration::from_secs(45));
-    assert_eq!(super::calculate_backoff(3), Duration::from_secs(135));
-    assert_eq!(super::calculate_backoff(4), Duration::from_secs(300));
-    assert_eq!(super::calculate_backoff(10), Duration::from_secs(300));
+    assert_eq!(
+        super::calculate_backoff(0),
+        Duration::from_secs(5),
+        "attempt 0 should be 5s base"
+    );
+    assert_eq!(
+        super::calculate_backoff(1),
+        Duration::from_secs(15),
+        "attempt 1 should be 15s"
+    );
+    assert_eq!(
+        super::calculate_backoff(2),
+        Duration::from_secs(45),
+        "attempt 2 should be 45s"
+    );
+    assert_eq!(
+        super::calculate_backoff(3),
+        Duration::from_secs(135),
+        "attempt 3 should be 135s"
+    );
+    assert_eq!(
+        super::calculate_backoff(4),
+        Duration::from_secs(300),
+        "attempt 4 should clamp to 300s"
+    );
+    assert_eq!(
+        super::calculate_backoff(10),
+        Duration::from_secs(300),
+        "attempt 10 should clamp to 300s"
+    );
 }

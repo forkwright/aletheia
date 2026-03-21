@@ -16,7 +16,7 @@ static LLM_TOKENS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         Opts::new("aletheia_llm_tokens_total", "Total LLM tokens consumed"),
         &["provider", "direction"]
     )
-    .expect("metric registration")
+    .expect("metric registration") // kanon:ignore RUST/expect
 });
 
 static LLM_COST_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
@@ -28,7 +28,7 @@ static LLM_COST_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
         Opts::new("aletheia_llm_cost_total", "Total LLM cost in USD"),
         &["provider"]
     )
-    .expect("metric registration")
+    .expect("metric registration") // kanon:ignore RUST/expect
 });
 
 static LLM_REQUESTS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
@@ -40,7 +40,7 @@ static LLM_REQUESTS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         Opts::new("aletheia_llm_requests_total", "Total LLM API requests"),
         &["provider", "status"]
     )
-    .expect("metric registration")
+    .expect("metric registration") // kanon:ignore RUST/expect
 });
 
 static LLM_CACHE_TOKENS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
@@ -55,7 +55,7 @@ static LLM_CACHE_TOKENS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         ),
         &["provider", "direction"]
     )
-    .expect("metric registration")
+    .expect("metric registration") // kanon:ignore RUST/expect
 });
 
 static LLM_REQUEST_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
@@ -71,7 +71,7 @@ static LLM_REQUEST_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
         .buckets(vec![0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0]),
         &["model", "status"]
     )
-    .expect("metric registration")
+    .expect("metric registration") // kanon:ignore RUST/expect
 });
 
 static LLM_TTFT_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
@@ -87,7 +87,7 @@ static LLM_TTFT_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
         .buckets(vec![0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0]),
         &["model", "status"]
     )
-    .expect("metric registration")
+    .expect("metric registration") // kanon:ignore RUST/expect
 });
 
 static LLM_CIRCUIT_BREAKER_TRANSITIONS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
@@ -102,7 +102,7 @@ static LLM_CIRCUIT_BREAKER_TRANSITIONS_TOTAL: LazyLock<IntCounterVec> = LazyLock
         ),
         &["provider", "from", "to"]
     )
-    .expect("metric registration")
+    .expect("metric registration") // kanon:ignore RUST/expect
 });
 
 static LLM_CONCURRENCY_LIMIT: LazyLock<IntGaugeVec> = LazyLock::new(|| {
@@ -117,7 +117,7 @@ static LLM_CONCURRENCY_LIMIT: LazyLock<IntGaugeVec> = LazyLock::new(|| {
         ),
         &["provider"]
     )
-    .expect("metric registration")
+    .expect("metric registration") // kanon:ignore RUST/expect
 });
 
 static LLM_CONCURRENCY_LATENCY_EWMA: LazyLock<prometheus::GaugeVec> = LazyLock::new(|| {
@@ -132,7 +132,7 @@ static LLM_CONCURRENCY_LATENCY_EWMA: LazyLock<prometheus::GaugeVec> = LazyLock::
         ),
         &["provider"]
     )
-    .expect("metric registration")
+    .expect("metric registration") // kanon:ignore RUST/expect
 });
 
 static LLM_CONCURRENCY_IN_FLIGHT: LazyLock<IntGaugeVec> = LazyLock::new(|| {
@@ -147,11 +147,12 @@ static LLM_CONCURRENCY_IN_FLIGHT: LazyLock<IntGaugeVec> = LazyLock::new(|| {
         ),
         &["provider"]
     )
-    .expect("metric registration")
+    .expect("metric registration") // kanon:ignore RUST/expect
 });
 
 /// Force-initialize all lazy metric statics.
 pub fn init() {
+    // kanon:ignore RUST/pub-visibility
     LazyLock::force(&LLM_TOKENS_TOTAL);
     LazyLock::force(&LLM_COST_TOTAL);
     LazyLock::force(&LLM_REQUESTS_TOTAL);
@@ -166,6 +167,7 @@ pub fn init() {
 
 /// Record a completed LLM API call.
 pub fn record_completion(
+    // kanon:ignore RUST/pub-visibility
     provider: &str,
     input_tokens: u64,
     output_tokens: u64,
@@ -184,13 +186,14 @@ pub fn record_completion(
         .inc_by(output_tokens);
     if cost_usd > 0.0 {
         LLM_COST_TOTAL
-            .with_label_values(&[provider])
+            .with_label_values(&[provider]) // kanon:ignore RUST/indexing-slicing
             .inc_by(cost_usd);
     }
 }
 
 /// Record LLM request latency.
 pub fn record_latency(model: &str, status: &str, duration_secs: f64) {
+    // kanon:ignore RUST/pub-visibility
     LLM_REQUEST_DURATION_SECONDS
         .with_label_values(&[model, status])
         .observe(duration_secs);
@@ -198,6 +201,7 @@ pub fn record_latency(model: &str, status: &str, duration_secs: f64) {
 
 /// Record time to first token (streaming only).
 pub fn record_ttft(model: &str, status: &str, duration_secs: f64) {
+    // kanon:ignore RUST/pub-visibility
     LLM_TTFT_SECONDS
         .with_label_values(&[model, status])
         .observe(duration_secs);
@@ -205,6 +209,7 @@ pub fn record_ttft(model: &str, status: &str, duration_secs: f64) {
 
 /// Record cache token usage from a completed LLM API call.
 pub fn record_cache_tokens(provider: &str, cache_read_tokens: u64, cache_write_tokens: u64) {
+    // kanon:ignore RUST/pub-visibility
     if cache_read_tokens > 0 {
         LLM_CACHE_TOKENS_TOTAL
             .with_label_values(&[provider, "read"])
@@ -229,20 +234,20 @@ pub(crate) fn record_circuit_transition(provider: &str, from: &str, to: &str) {
 /// Set the current adaptive concurrency limit for a provider.
 pub(crate) fn set_concurrency_limit(provider: &str, limit: u32) {
     LLM_CONCURRENCY_LIMIT
-        .with_label_values(&[provider])
+        .with_label_values(&[provider]) // kanon:ignore RUST/indexing-slicing
         .set(i64::from(limit));
 }
 
 /// Set the current EWMA latency estimate for a provider.
 pub(crate) fn set_concurrency_latency_ewma(provider: &str, ewma_secs: f64) {
     LLM_CONCURRENCY_LATENCY_EWMA
-        .with_label_values(&[provider])
+        .with_label_values(&[provider]) // kanon:ignore RUST/indexing-slicing
         .set(ewma_secs);
 }
 
 /// Set the current in-flight request count for a provider.
 pub(crate) fn set_concurrency_in_flight(provider: &str, in_flight: u32) {
     LLM_CONCURRENCY_IN_FLIGHT
-        .with_label_values(&[provider])
+        .with_label_values(&[provider]) // kanon:ignore RUST/indexing-slicing
         .set(i64::from(in_flight));
 }

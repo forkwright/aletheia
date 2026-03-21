@@ -1,0 +1,85 @@
+# WHY: kanon linter skip_in_test detects *_test.rs (singular), tests.rs, and
+# /tests/ directories, but NOT *_tests.rs (plural), *_tests/ directories, or
+# tests_extended.rs files. These are all test code where .expect(), .unwrap(),
+# direct indexing, and sleep are standard practice.
+RUST/expect:src/**/*_tests.rs
+RUST/expect:src/**/*_tests/*.rs
+RUST/expect:src/**/tests_extended.rs
+RUST/expect:src/test_utils.rs
+RUST/unwrap:src/**/*_tests.rs
+RUST/unwrap:src/**/*_tests/*.rs
+RUST/unwrap:src/**/tests_extended.rs
+RUST/unwrap:src/test_utils.rs
+RUST/indexing-slicing:src/**/*_tests.rs
+RUST/indexing-slicing:src/**/*_tests/*.rs
+RUST/indexing-slicing:src/**/tests_extended.rs
+RUST/bare-assert:src/**/*_tests.rs
+RUST/bare-assert:src/**/*_tests/*.rs
+RUST/bare-assert:src/**/tests_extended.rs
+TESTING/sleep-in-test:src/**/*_tests.rs
+TESTING/sleep-in-test:src/**/tests_extended.rs
+TESTING/no-tests:src/test_utils.rs
+SECURITY/config-write-no-perms:src/**/*_tests.rs
+
+# WHY: hermeneus is a library crate where all modules are `pub mod` in lib.rs.
+# Items marked `pub` in submodules are intentional public API for downstream
+# crates (nous, agora). The linter flags these because they're not in lib.rs
+# itself, but the module tree makes them reachable.
+RUST/pub-visibility:src/**/*.rs
+
+# WHY: hermeneus delegates all tests to submodules (client_tests.rs,
+# provider_tests.rs, etc.) and inline #[cfg(test)] mod tests blocks.
+# lib.rs itself contains only module declarations.
+TESTING/no-tests:src/lib.rs
+
+# WHY: test_utils.rs is gated behind #[cfg(any(test, feature = "test-utils"))].
+# std::sync::Mutex is correct for test mock state (no await across lock).
+RUST/std-mutex-in-async:src/test_utils.rs
+
+# WHY: These as-casts carry #[expect(clippy::as_conversions)] with documented
+# reasoning. Kanon linter re-flags casts already suppressed by clippy.
+RUST/as-cast:src/anthropic/client.rs
+RUST/as-cast:src/anthropic/pricing.rs
+RUST/as-cast:src/anthropic/stream/accumulator.rs
+RUST/as-cast:src/circuit_breaker.rs
+RUST/as-cast:src/concurrency.rs
+RUST/as-cast:src/local/stream.rs
+
+# WHY: .expect() on Mutex::lock() where poisoning indicates prior thread panic.
+# Functions return non-Result types; each has #[expect(clippy::expect_used)].
+RUST/expect:src/circuit_breaker.rs
+RUST/expect:src/concurrency.rs
+RUST/expect:src/health.rs
+
+# WHY: Prometheus metric registration .expect() calls are inside LazyLock
+# initializers. Registration fails only on name/label collision (programming
+# error, not runtime condition). Each has #[expect(clippy::expect_used)].
+RUST/expect:src/metrics.rs
+
+# WHY: Indexing guarded by bounds checks or loop invariants documented in
+# adjacent #[expect(clippy::indexing_slicing)] annotations.
+RUST/indexing-slicing:src/anthropic/stream/accumulator.rs
+RUST/indexing-slicing:src/anthropic/wire/mod.rs
+RUST/indexing-slicing:src/metrics.rs
+RUST/indexing-slicing:src/local/stream.rs
+
+# WHY: std::sync::Mutex is correct — lock held only during brief state
+# reads/writes, never across .await. Each file has a WHY comment.
+RUST/std-mutex-in-async:src/circuit_breaker.rs
+RUST/std-mutex-in-async:src/health.rs
+
+# WHY: circuit_breaker.rs and health.rs use jiff::Timestamp::now() (real wall
+# clock). tokio::time::pause/advance does not affect jiff timestamps, so
+# std::thread::sleep is the only correct approach for cooldown tests.
+TESTING/sleep-in-test:src/circuit_breaker.rs
+TESTING/sleep-in-test:src/concurrency.rs
+TESTING/sleep-in-test:src/health.rs
+
+# WHY: CompletionRequest has 15 fields that map 1:1 to the Anthropic Messages
+# API surface. Splitting would add indirection without reducing complexity.
+RUST/struct-too-many-fields:src/types.rs
+
+# WHY: Both functions already have #[must_use] in code. The installed kanon
+# binary's must-use check doesn't detect the attribute. Code is correct.
+RUST/missing-must-use:src/anthropic/client.rs
+RUST/missing-must-use:src/health.rs

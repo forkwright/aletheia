@@ -37,7 +37,7 @@ use super::{DEFAULT_INBOX_CAPACITY, NousActor};
     clippy::too_many_arguments,
     reason = "actor spawn requires all runtime dependencies"
 )]
-pub fn spawn(
+pub(crate) fn spawn(
     config: NousConfig,
     pipeline_config: PipelineConfig,
     providers: Arc<ProviderRegistry>,

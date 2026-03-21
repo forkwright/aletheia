@@ -31,7 +31,7 @@ fn turn_seq_from_ulid(ulid: &Ulid) -> i64 {
         reason = "u128→i64: mask ensures sign bit is zero so cast never wraps"
     )]
     {
-        ((raw >> 65) & 0x7FFF_FFFF_FFFF_FFFF) as i64
+        ((raw >> 65) & 0x7FFF_FFFF_FFFF_FFFF) as i64 // kanon:ignore RUST/as-cast
     }
 }
 
@@ -79,7 +79,7 @@ pub struct FinalizeResult {
     reason = "sequential persist pipeline with dedup guard adds a few lines over the limit"
 )]
 #[instrument(skip_all, fields(session_id = %session.id))]
-pub fn finalize(
+pub(crate) fn finalize(
     store: &SessionStore,
     session: &SessionState,
     input_content: &str,
@@ -123,7 +123,7 @@ pub fn finalize(
             clippy::as_conversions,
             reason = "usize→i64: message length fits in i64"
         )]
-        let input_token_estimate = (input_content.len() as i64 + 3) / 4;
+        let input_token_estimate = (input_content.len() as i64 + 3) / 4; // kanon:ignore RUST/as-cast
         store
             .append_message(
                 &session.id,
@@ -191,10 +191,10 @@ pub fn finalize(
         let record = UsageRecord {
             session_id: session.id.clone(),
             turn_seq,
-            input_tokens: result.usage.input_tokens as i64,
-            output_tokens: result.usage.output_tokens as i64,
-            cache_read_tokens: result.usage.cache_read_tokens as i64,
-            cache_write_tokens: result.usage.cache_write_tokens as i64,
+            input_tokens: result.usage.input_tokens as i64, // kanon:ignore RUST/as-cast
+            output_tokens: result.usage.output_tokens as i64, // kanon:ignore RUST/as-cast
+            cache_read_tokens: result.usage.cache_read_tokens as i64, // kanon:ignore RUST/as-cast
+            cache_write_tokens: result.usage.cache_write_tokens as i64, // kanon:ignore RUST/as-cast
             model: Some(session.model.clone()),
         };
         store.record_usage(&record).context(error::StoreSnafu)?;
@@ -219,7 +219,7 @@ mod tests {
     use crate::config::NousConfig;
     use crate::pipeline::{ToolCall, TurnUsage};
 
-    fn test_store_and_session() -> (SessionStore, SessionState) {
+    fn make_store_and_session() -> (SessionStore, SessionState) {
         let store = SessionStore::open_in_memory().expect("in-memory store");
         store
             .create_session("ses-1", "test-nous", "main", None, Some("test-model"))
@@ -272,7 +272,7 @@ mod tests {
 
     #[test]
     fn finalize_persists_user_and_assistant_messages() {
-        let (store, session) = test_store_and_session();
+        let (store, session) = make_store_and_session();
         let result = simple_result();
         let config = FinalizeConfig::default();
 
@@ -288,7 +288,7 @@ mod tests {
 
     #[test]
     fn finalize_persists_tool_call_messages() {
-        let (store, session) = test_store_and_session();
+        let (store, session) = make_store_and_session();
         let result = result_with_tools();
         let config = FinalizeConfig::default();
 
@@ -309,7 +309,7 @@ mod tests {
 
     #[test]
     fn finalize_records_usage() {
-        let (store, session) = test_store_and_session();
+        let (store, session) = make_store_and_session();
         let result = simple_result();
         let config = FinalizeConfig::default();
 
@@ -319,7 +319,7 @@ mod tests {
 
     #[test]
     fn finalize_disabled_skips_persistence() {
-        let (store, session) = test_store_and_session();
+        let (store, session) = make_store_and_session();
         let result = simple_result();
         let config = FinalizeConfig {
             persist_messages: false,
@@ -361,7 +361,7 @@ mod tests {
 
     #[test]
     fn finalize_disabled_skips_usage() {
-        let (store, session) = test_store_and_session();
+        let (store, session) = make_store_and_session();
         let result = simple_result();
         let config = FinalizeConfig {
             persist_messages: true,
@@ -375,7 +375,7 @@ mod tests {
 
     #[test]
     fn finalize_dedup_guard_skips_duplicate() {
-        let (store, session) = test_store_and_session();
+        let (store, session) = make_store_and_session();
         let result = simple_result();
         let config = FinalizeConfig::default();
 
@@ -393,7 +393,7 @@ mod tests {
 
     #[test]
     fn finalize_returns_correct_counts() {
-        let (store, session) = test_store_and_session();
+        let (store, session) = make_store_and_session();
 
         // NOTE: No tool calls: user + assistant = 2
         let result = simple_result();

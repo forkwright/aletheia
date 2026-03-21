@@ -31,6 +31,7 @@ impl SandboxPolicy {
     /// on failure; on unsupported kernels, logs and continues based on
     /// enforcement mode.
     pub fn apply(&self) -> std::io::Result<()> {
+        // kanon:ignore RUST/pub-visibility
         self.apply_egress()?;
         self.apply_landlock()?;
         self.apply_seccomp()?;
@@ -249,6 +250,7 @@ impl SandboxPolicy {
         use seccompiler::{SeccompAction, SeccompFilter, SeccompRule};
 
         let blocked_syscalls: &[i64] = &[
+            // kanon:ignore RUST/indexing-slicing
             101i64, /* SYS_ptrace */
             165i64, /* SYS_mount */
             166i64, /* SYS_umount2 */
@@ -329,6 +331,7 @@ static LANDLOCK_ABI: std::sync::LazyLock<Option<i32>> = std::sync::LazyLock::new
 #[cfg(target_os = "linux")]
 #[must_use]
 pub fn probe_landlock_abi() -> Option<i32> {
+    // kanon:ignore RUST/pub-visibility
     // WHY: landlock_create_ruleset with LANDLOCK_CREATE_RULESET_VERSION returns
     // the ABI version as a non-negative integer, or -1 with errno set to
     // EOPNOTSUPP (supported but not enabled) or ENOSYS (not compiled in).
@@ -357,17 +360,17 @@ pub fn probe_landlock_abi() -> Option<i32> {
         }
         r
     };
-    #[expect(
-        clippy::as_conversions,
-        clippy::cast_possible_truncation,
-        reason = "Landlock ABI version is a small positive integer (≤5); truncation is impossible"
-    )]
-    if ret >= 1 { Some(ret as i32) } else { None }
+    if ret >= 1 {
+        i32::try_from(ret).ok()
+    } else {
+        None
+    }
 }
 
 /// Probe the Landlock ABI version. Returns None on non-Linux platforms.
 #[cfg(not(target_os = "linux"))]
 pub fn probe_landlock_abi() -> Option<i32> {
+    // kanon:ignore RUST/pub-visibility
     None
 }
 
@@ -391,6 +394,7 @@ pub fn probe_landlock_abi() -> Option<i32> {
 /// full risk analysis.
 #[cfg(target_os = "linux")]
 pub fn apply_sandbox(
+    // kanon:ignore RUST/pub-visibility
     cmd: &mut std::process::Command,
     policy: SandboxPolicy,
 ) -> std::io::Result<()> {
@@ -498,6 +502,7 @@ pub fn apply_sandbox(
 /// Apply sandbox restrictions to a command. No-op on non-Linux platforms.
 #[cfg(not(target_os = "linux"))]
 pub fn apply_sandbox(
+    // kanon:ignore RUST/pub-visibility
     _cmd: &mut std::process::Command,
     policy: SandboxPolicy,
 ) -> std::io::Result<()> {

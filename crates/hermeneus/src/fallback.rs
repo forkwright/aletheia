@@ -210,7 +210,7 @@ mod tests {
         .build())
     }
 
-    fn test_request(model: &str) -> CompletionRequest {
+    fn make_request(model: &str) -> CompletionRequest {
         CompletionRequest {
             model: model.to_owned(),
             messages: vec![Message {
@@ -230,7 +230,7 @@ mod tests {
             retries_before_fallback: 2,
         };
 
-        let resp = complete_with_fallback(&provider, &test_request("primary-model"), &config)
+        let resp = complete_with_fallback(&provider, &make_request("primary-model"), &config)
             .await
             .unwrap();
 
@@ -251,7 +251,7 @@ mod tests {
             retries_before_fallback: 2,
         };
 
-        let resp = complete_with_fallback(&provider, &test_request("primary-model"), &config)
+        let resp = complete_with_fallback(&provider, &make_request("primary-model"), &config)
             .await
             .unwrap();
 
@@ -271,7 +271,7 @@ mod tests {
             retries_before_fallback: 1,
         };
 
-        let resp = complete_with_fallback(&provider, &test_request("primary-model"), &config)
+        let resp = complete_with_fallback(&provider, &make_request("primary-model"), &config)
             .await
             .unwrap();
 
@@ -287,7 +287,7 @@ mod tests {
             retries_before_fallback: 2,
         };
 
-        let err = complete_with_fallback(&provider, &test_request("primary-model"), &config)
+        let err = complete_with_fallback(&provider, &make_request("primary-model"), &config)
             .await
             .unwrap_err();
 
@@ -306,7 +306,7 @@ mod tests {
             retries_before_fallback: 2,
         };
 
-        let err = complete_with_fallback(&provider, &test_request("primary-model"), &config)
+        let err = complete_with_fallback(&provider, &make_request("primary-model"), &config)
             .await
             .unwrap_err();
 
@@ -329,7 +329,7 @@ mod tests {
             retries_before_fallback: 1,
         };
 
-        let err = complete_with_fallback(&provider, &test_request("primary-model"), &config)
+        let err = complete_with_fallback(&provider, &make_request("primary-model"), &config)
             .await
             .unwrap_err();
 
@@ -348,7 +348,7 @@ mod tests {
             retries_before_fallback: 1,
         };
 
-        let err = complete_with_fallback(&provider, &test_request("primary-model"), &config)
+        let err = complete_with_fallback(&provider, &make_request("primary-model"), &config)
             .await
             .unwrap_err();
 
@@ -368,7 +368,7 @@ mod tests {
             retries_before_fallback: 1,
         };
 
-        let resp = complete_with_fallback(&provider, &test_request("primary-model"), &config)
+        let resp = complete_with_fallback(&provider, &make_request("primary-model"), &config)
             .await
             .unwrap();
 

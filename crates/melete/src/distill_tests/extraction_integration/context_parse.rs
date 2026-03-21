@@ -1,8 +1,6 @@
-#![expect(
-    clippy::indexing_slicing,
-    reason = "test: vec indices are valid after asserting len"
-)]
 //! Tests for context limit enforcement, `nous_id` sanitization, token estimation, and summary parsing.
+#![expect(clippy::expect_used, reason = "test assertions")]
+#[cfg(test)]
 use aletheia_hermeneus::types::{ContentBlock, ToolResultContent};
 
 use super::super::super::*;
@@ -65,14 +63,12 @@ fn enforce_context_limit_drops_from_front() {
         dropped > 0,
         "at least one oversized message should be dropped"
     );
+    let last_msg = messages
+        .last()
+        .unwrap_or_else(|| panic!("messages should not be empty"));
     assert!(
-        messages
-            .last()
-            .expect("messages should not be empty after enforce_context_limit")
-            .content
-            .text()
-            .starts_with('c'),
-        "newest message (starting with 'c') should be kept"
+        last_msg.content.text().starts_with('c'),
+        "newest message starting with 'c' should be kept"
     );
 }
 
@@ -81,7 +77,7 @@ fn sanitize_nous_id_clean_string_unchanged() {
     assert_eq!(
         sanitize_nous_id("my-agent-01"),
         "my-agent-01",
-        "clean string with no special characters should be unchanged"
+        "clean id should be unchanged"
     );
 }
 
@@ -125,7 +121,11 @@ fn sanitize_nous_id_removes_control_chars() {
 fn build_prompt_sanitizes_backtick_in_nous_id() {
     let engine = default_engine();
     let request = engine.build_prompt(&sample_conversation(), "id`injection");
-    let user_text = request.messages[0].content.text();
+    let first_msg = request
+        .messages
+        .first()
+        .expect("request should have at least one message"); // WHY: test assertion
+    let user_text = first_msg.content.text();
     assert!(
         !user_text.contains('`'),
         "backtick must not appear in prompt"
@@ -140,7 +140,11 @@ fn build_prompt_sanitizes_backtick_in_nous_id() {
 fn build_prompt_sanitizes_newline_in_nous_id() {
     let engine = default_engine();
     let request = engine.build_prompt(&sample_conversation(), "id\ninjection");
-    let user_text = request.messages[0].content.text();
+    let first_msg = request
+        .messages
+        .first()
+        .expect("request should have at least one message"); // WHY: test assertion
+    let user_text = first_msg.content.text();
     // NOTE: newline must be stripped from inside the nous_id quoted span
     assert!(
         !user_text.contains("\"id\ninjection\""),
@@ -175,8 +179,8 @@ fn estimate_tokens_includes_tool_use_input() {
             },
         ]),
     };
-    let tokens_text = estimate_tokens(&[msg_text_only]);
-    let tokens_tool = estimate_tokens(&[msg_with_tool]);
+    let tokens_text = estimate_tokens(vec![msg_text_only].as_slice());
+    let tokens_tool = estimate_tokens(vec![msg_with_tool].as_slice());
     assert!(
         tokens_tool > tokens_text,
         "tool use input should increase token estimate: {tokens_tool} vs {tokens_text}"
@@ -201,10 +205,11 @@ fn estimate_tokens_includes_tool_result_content() {
             is_error: Some(false),
         }]),
     };
-    let tokens_empty = estimate_tokens(&[msg_empty_result]);
-    let tokens_large = estimate_tokens(&[msg_large_result]);
+    let tokens_empty = estimate_tokens(vec![msg_empty_result].as_slice());
+    let tokens_large = estimate_tokens(vec![msg_large_result].as_slice());
+    let check = tokens_large > tokens_empty;
     assert!(
-        tokens_large > tokens_empty,
+        check,
         "tool result content should increase token estimate: {tokens_large} vs {tokens_empty}"
     );
 }
@@ -218,7 +223,7 @@ async fn distill_result_contains_memory_flush_field() {
     let result = engine
         .distill(&messages, "test", &provider, 1)
         .await
-        .expect("distill should succeed with a valid provider");
+        .expect("distill should succeed with a valid provider"); // WHY: test assertion
     // NOTE: assert the field exists: mock summary has no decisions to assert content on
     let _ = &result.memory_flush;
 }
@@ -242,16 +247,16 @@ Fixed login bug.
         2,
         "should extract exactly 2 decisions from the summary"
     );
+    let first = flush.decisions.first().expect("should have first decision"); // WHY: test assertion
+    let check = first.content.contains("Decision: Use null check");
     assert!(
-        flush.decisions[0]
-            .content
-            .contains("Decision: Use null check"),
+        check,
         "first extracted decision should contain the null check decision"
     );
+    let second = flush.decisions.get(1).expect("should have second decision"); // WHY: test assertion
+    let check = second.content.contains("Decision: Keep auth module");
     assert!(
-        flush.decisions[1]
-            .content
-            .contains("Decision: Keep auth module"),
+        check,
         "second extracted decision should contain the keep auth module decision"
     );
 }
@@ -272,8 +277,13 @@ Fixed auth.
         2,
         "should extract exactly 2 corrections from the summary"
     );
+    let first = flush
+        .corrections
+        .first()
+        .expect("should have first correction"); // WHY: test assertion
+    let check = first.content.contains("Wrong file at first");
     assert!(
-        flush.corrections[0].content.contains("Wrong file at first"),
+        check,
         "first correction should describe the wrong-file mistake"
     );
 }
@@ -298,7 +308,7 @@ Done.
     );
     let state = flush
         .task_state
-        .expect("task_state should be Some when Task Context section is present");
+        .expect("task_state should be Some when Task Context section is present"); // WHY: test assertion
     assert!(
         state.contains("login flow"),
         "task_state should contain the login flow context from the summary"
@@ -332,8 +342,10 @@ fn parse_summary_flush_source_is_extracted() {
         1,
         "should extract exactly 1 decision from the summary"
     );
+    let first = flush.decisions.first().expect("should have first decision"); // WHY: test assertion
+    let check = matches!(first.source, FlushSource::Extracted);
     assert!(
-        matches!(flush.decisions[0].source, FlushSource::Extracted),
+        check,
         "extracted decision source should be FlushSource::Extracted"
     );
 }

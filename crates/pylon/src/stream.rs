@@ -7,10 +7,6 @@ use utoipa::ToSchema;
 #[derive(Debug, Clone, Serialize, ToSchema)]
 #[serde(tag = "type")]
 #[non_exhaustive]
-#[expect(
-    missing_docs,
-    reason = "SSE event variant fields are self-documenting by name"
-)]
 pub(crate) enum SseEvent {
     /// Incremental text output from the assistant.
     #[serde(rename = "text_delta")]

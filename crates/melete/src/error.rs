@@ -8,7 +8,7 @@ use snafu::Snafu;
 #[non_exhaustive]
 #[expect(
     missing_docs,
-    reason = "snafu error variant fields (source, location) are self-documenting via display format"
+    reason = "snafu variant fields are self-documenting via display format"
 )]
 pub enum Error {
     /// LLM call failed during distillation.
@@ -35,4 +35,4 @@ pub enum Error {
 }
 
 /// Convenience alias for `Result` with melete's [`Error`] type.
-pub type Result<T> = std::result::Result<T, Error>;
+pub(crate) type Result<T> = std::result::Result<T, Error>;

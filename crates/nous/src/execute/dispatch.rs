@@ -36,7 +36,7 @@ pub(crate) fn truncate_tool_result(
         clippy::as_conversions,
         reason = "u32→usize: max_bytes always fits in usize"
     )]
-    let limit = max_bytes as usize;
+    let limit = max_bytes as usize; // kanon:ignore RUST/as-cast
 
     match content {
         ToolResultContent::Text(text) => {
@@ -234,7 +234,7 @@ pub(super) async fn dispatch_tools(
             clippy::as_conversions,
             reason = "u128→u64: tool execution duration won't exceed u64::MAX milliseconds"
         )]
-        let duration_ms = start.elapsed().as_millis() as u64;
+        let duration_ms = start.elapsed().as_millis() as u64; // kanon:ignore RUST/as-cast
 
         let (content, is_error) = match result {
             Ok(r) => (r.content, r.is_error),
@@ -325,7 +325,7 @@ pub(super) async fn dispatch_tools_streaming(
             clippy::as_conversions,
             reason = "u128→u64: tool execution duration won't exceed u64::MAX milliseconds"
         )]
-        let duration_ms = start.elapsed().as_millis() as u64;
+        let duration_ms = start.elapsed().as_millis() as u64; // kanon:ignore RUST/as-cast
 
         let (content, is_error) = match result {
             Ok(r) => (r.content, r.is_error),

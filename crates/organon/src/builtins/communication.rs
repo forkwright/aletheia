@@ -158,7 +158,7 @@ impl ToolExecutor for SessionsSendExecutor {
 }
 
 /// Register communication tools.
-pub fn register(registry: &mut ToolRegistry) -> Result<()> {
+pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(message_def(), Box::new(MessageExecutor))?;
     registry.register(sessions_ask_def(), Box::new(SessionsAskExecutor))?;
     registry.register(sessions_send_def(), Box::new(SessionsSendExecutor))?;
@@ -167,7 +167,7 @@ pub fn register(registry: &mut ToolRegistry) -> Result<()> {
 
 fn message_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("message").expect("valid tool name"),
+        name: ToolName::new("message").expect("valid tool name"), // kanon:ignore RUST/expect
         description: "Send a message to a user or group via Signal".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -200,7 +200,7 @@ fn message_def() -> ToolDef {
 
 fn sessions_ask_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("sessions_ask").expect("valid tool name"),
+        name: ToolName::new("sessions_ask").expect("valid tool name"), // kanon:ignore RUST/expect
         description: "Ask another agent a question and wait for their response".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -251,7 +251,7 @@ fn sessions_ask_def() -> ToolDef {
 
 fn sessions_send_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("sessions_send").expect("valid tool name"),
+        name: ToolName::new("sessions_send").expect("valid tool name"), // kanon:ignore RUST/expect
         description: "Send a message to another agent without waiting for a response".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -318,7 +318,7 @@ mod tests {
         let _ = rustls::crypto::ring::default_provider().install_default();
     }
 
-    fn test_ctx() -> ToolContext {
+    fn mock_ctx() -> ToolContext {
         ToolContext {
             nous_id: NousId::new("test-agent").expect("valid"),
             session_id: SessionId::new(),
@@ -329,7 +329,7 @@ mod tests {
         }
     }
 
-    fn test_ctx_with_services(services: ToolServices) -> ToolContext {
+    fn mock_ctx_with_services(services: ToolServices) -> ToolContext {
         install_crypto_provider();
         ToolContext {
             nous_id: NousId::new("test-agent").expect("valid"),
@@ -407,7 +407,11 @@ mod tests {
     async fn register_communication_tools() {
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
-        assert_eq!(reg.definitions().len(), 3);
+        assert_eq!(
+            reg.definitions().len(),
+            3,
+            "expected reg.definitions().len() to equal 3"
+        );
     }
 
     #[tokio::test]
@@ -417,7 +421,11 @@ mod tests {
         super::register(&mut reg).expect("register");
         let name = ToolName::new("message").expect("valid");
         let def = reg.get_def(&name).expect("found");
-        assert_eq!(def.input_schema.required, vec!["to", "text"]);
+        assert_eq!(
+            def.input_schema.required,
+            vec!["to", "text"],
+            "expected def.input_schema.required to equal vec![\"to\", \"text\"]"
+        );
     }
 
     #[tokio::test]
@@ -427,7 +435,11 @@ mod tests {
         super::register(&mut reg).expect("register");
         let name = ToolName::new("sessions_ask").expect("valid");
         let def = reg.get_def(&name).expect("found");
-        assert_eq!(def.input_schema.required, vec!["agentId", "message"]);
+        assert_eq!(
+            def.input_schema.required,
+            vec!["agentId", "message"],
+            "expected def.input_schema.required to equal vec![\"agentId\", \"message\"]"
+        );
     }
 
     #[tokio::test]
@@ -437,7 +449,11 @@ mod tests {
         super::register(&mut reg).expect("register");
         let name = ToolName::new("sessions_send").expect("valid");
         let def = reg.get_def(&name).expect("found");
-        assert_eq!(def.input_schema.required, vec!["agentId", "message"]);
+        assert_eq!(
+            def.input_schema.required,
+            vec!["agentId", "message"],
+            "expected def.input_schema.required to equal vec![\"agentId\", \"message\"]"
+        );
     }
 
     #[tokio::test]
@@ -450,9 +466,12 @@ mod tests {
             tool_use_id: "tu_1".to_owned(),
             arguments: serde_json::json!({"to": "+1234567890", "text": "hello"}),
         };
-        let result = reg.execute(&input, &test_ctx()).await.expect("execute");
-        assert!(result.is_error);
-        assert!(result.content.text_summary().contains("not available"));
+        let result = reg.execute(&input, &mock_ctx()).await.expect("execute");
+        assert!(result.is_error, "expected result.is_error to be true");
+        assert!(
+            result.content.text_summary().contains("not available"),
+            "expected result.content.text_summary().contains(\"not available\") to be true"
+        );
     }
 
     #[tokio::test]
@@ -465,9 +484,12 @@ mod tests {
             tool_use_id: "tu_1".to_owned(),
             arguments: serde_json::json!({"agentId": "syn", "message": "hello"}),
         };
-        let result = reg.execute(&input, &test_ctx()).await.expect("execute");
-        assert!(result.is_error);
-        assert!(result.content.text_summary().contains("not available"));
+        let result = reg.execute(&input, &mock_ctx()).await.expect("execute");
+        assert!(result.is_error, "expected result.is_error to be true");
+        assert!(
+            result.content.text_summary().contains("not available"),
+            "expected result.content.text_summary().contains(\"not available\") to be true"
+        );
     }
 
     #[tokio::test]
@@ -480,16 +502,19 @@ mod tests {
             tool_use_id: "tu_1".to_owned(),
             arguments: serde_json::json!({"agentId": "syn", "message": "hello"}),
         };
-        let result = reg.execute(&input, &test_ctx()).await.expect("execute");
-        assert!(result.is_error);
-        assert!(result.content.text_summary().contains("not available"));
+        let result = reg.execute(&input, &mock_ctx()).await.expect("execute");
+        assert!(result.is_error, "expected result.is_error to be true");
+        assert!(
+            result.content.text_summary().contains("not available"),
+            "expected result.content.text_summary().contains(\"not available\") to be true"
+        );
     }
 
     #[tokio::test]
     async fn message_rejects_over_4000_chars() {
         install_crypto_provider();
         let messenger = Arc::new(MockMessenger::default());
-        let ctx = test_ctx_with_services(ToolServices {
+        let ctx = mock_ctx_with_services(ToolServices {
             cross_nous: None,
             note_store: None,
             blackboard_store: None,
@@ -509,8 +534,11 @@ mod tests {
             arguments: serde_json::json!({"to": "+1234567890", "text": "x".repeat(4001)}),
         };
         let result = reg.execute(&input, &ctx).await.expect("execute");
-        assert!(result.is_error);
-        assert!(result.content.text_summary().contains("4000"));
+        assert!(result.is_error, "expected result.is_error to be true");
+        assert!(
+            result.content.text_summary().contains("4000"),
+            "expected result.content.text_summary().contains(\"4000\") to be true"
+        );
     }
 
     #[tokio::test]
@@ -518,7 +546,7 @@ mod tests {
         install_crypto_provider();
         let messenger = Arc::new(MockMessenger::default());
         let messenger_ref = Arc::clone(&messenger);
-        let ctx = test_ctx_with_services(ToolServices {
+        let ctx = mock_ctx_with_services(ToolServices {
             cross_nous: None,
             note_store: None,
             blackboard_store: None,
@@ -538,14 +566,26 @@ mod tests {
             arguments: serde_json::json!({"to": "+1234567890", "text": "hello world"}),
         };
         let result = reg.execute(&input, &ctx).await.expect("execute");
-        assert!(!result.is_error);
-        assert!(result.content.text_summary().contains("sent"));
+        assert!(!result.is_error, "expected result.is_error to be false");
+        assert!(
+            result.content.text_summary().contains("sent"),
+            "expected result.content.text_summary().contains(\"sent\") to be true"
+        );
 
         let calls = messenger_ref.send_calls.lock().unwrap();
-        assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].0, "+1234567890");
-        assert_eq!(calls[0].1, "hello world");
-        assert_eq!(calls[0].2, "test-agent");
+        assert_eq!(calls.len(), 1, "expected calls.len() to equal 1");
+        assert_eq!(
+            calls[0].0, "+1234567890",
+            "expected calls[0].0 to equal \"+1234567890\""
+        );
+        assert_eq!(
+            calls[0].1, "hello world",
+            "expected calls[0].1 to equal \"hello world\""
+        );
+        assert_eq!(
+            calls[0].2, "test-agent",
+            "expected calls[0].2 to equal \"test-agent\""
+        );
     }
 
     #[tokio::test]
@@ -553,7 +593,7 @@ mod tests {
         install_crypto_provider();
         let cross = Arc::new(MockCrossNous::default());
         let cross_ref = Arc::clone(&cross);
-        let ctx = test_ctx_with_services(ToolServices {
+        let ctx = mock_ctx_with_services(ToolServices {
             cross_nous: Some(cross),
             messenger: None,
             note_store: None,
@@ -573,15 +613,24 @@ mod tests {
             arguments: serde_json::json!({"agentId": "syn", "message": "do the thing"}),
         };
         let result = reg.execute(&input, &ctx).await.expect("execute");
-        assert!(!result.is_error);
-        assert!(result.content.text_summary().contains("sent"));
+        assert!(!result.is_error, "expected result.is_error to be false");
+        assert!(
+            result.content.text_summary().contains("sent"),
+            "expected result.content.text_summary().contains(\"sent\") to be true"
+        );
 
         let calls = cross_ref.send_calls.lock().unwrap();
-        assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].0, "test-agent");
-        assert_eq!(calls[0].1, "syn");
-        assert_eq!(calls[0].2, "main");
-        assert_eq!(calls[0].3, "do the thing");
+        assert_eq!(calls.len(), 1, "expected calls.len() to equal 1");
+        assert_eq!(
+            calls[0].0, "test-agent",
+            "expected calls[0].0 to equal \"test-agent\""
+        );
+        assert_eq!(calls[0].1, "syn", "expected calls[0].1 to equal \"syn\"");
+        assert_eq!(calls[0].2, "main", "expected calls[0].2 to equal \"main\"");
+        assert_eq!(
+            calls[0].3, "do the thing",
+            "expected calls[0].3 to equal \"do the thing\""
+        );
     }
 
     #[tokio::test]
@@ -589,7 +638,7 @@ mod tests {
         install_crypto_provider();
         let cross = Arc::new(MockCrossNous::default());
         let cross_ref = Arc::clone(&cross);
-        let ctx = test_ctx_with_services(ToolServices {
+        let ctx = mock_ctx_with_services(ToolServices {
             cross_nous: Some(cross),
             messenger: None,
             note_store: None,
@@ -609,10 +658,13 @@ mod tests {
             arguments: serde_json::json!({"agentId": "syn", "message": "hi", "sessionKey": "custom"}),
         };
         let result = reg.execute(&input, &ctx).await.expect("execute");
-        assert!(!result.is_error);
+        assert!(!result.is_error, "expected result.is_error to be false");
 
         let calls = cross_ref.send_calls.lock().unwrap();
-        assert_eq!(calls[0].2, "custom");
+        assert_eq!(
+            calls[0].2, "custom",
+            "expected calls[0].2 to equal \"custom\""
+        );
     }
 
     #[tokio::test]
@@ -620,7 +672,7 @@ mod tests {
         install_crypto_provider();
         let cross = Arc::new(MockCrossNous::default());
         *cross.ask_reply.lock().unwrap() = Some(Ok("the answer is 42".to_owned()));
-        let ctx = test_ctx_with_services(ToolServices {
+        let ctx = mock_ctx_with_services(ToolServices {
             cross_nous: Some(cross),
             messenger: None,
             note_store: None,
@@ -640,8 +692,12 @@ mod tests {
             arguments: serde_json::json!({"agentId": "syn", "message": "what is the answer?"}),
         };
         let result = reg.execute(&input, &ctx).await.expect("execute");
-        assert!(!result.is_error);
-        assert_eq!(result.content.text_summary(), "the answer is 42");
+        assert!(!result.is_error, "expected result.is_error to be false");
+        assert_eq!(
+            result.content.text_summary(),
+            "the answer is 42",
+            "expected result.content.text_summary() to equal \"the answer is 42\""
+        );
     }
 
     #[tokio::test]
@@ -649,7 +705,7 @@ mod tests {
         install_crypto_provider();
         let cross = Arc::new(MockCrossNous::default());
         *cross.ask_reply.lock().unwrap() = Some(Err("timed out after 120s".to_owned()));
-        let ctx = test_ctx_with_services(ToolServices {
+        let ctx = mock_ctx_with_services(ToolServices {
             cross_nous: Some(cross),
             messenger: None,
             note_store: None,
@@ -669,7 +725,10 @@ mod tests {
             arguments: serde_json::json!({"agentId": "syn", "message": "hello?"}),
         };
         let result = reg.execute(&input, &ctx).await.expect("execute");
-        assert!(result.is_error);
-        assert!(result.content.text_summary().contains("timed out"));
+        assert!(result.is_error, "expected result.is_error to be true");
+        assert!(
+            result.content.text_summary().contains("timed out"),
+            "expected result.content.text_summary().contains(\"timed out\") to be true"
+        );
     }
 }

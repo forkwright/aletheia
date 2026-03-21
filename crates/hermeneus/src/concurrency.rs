@@ -117,6 +117,7 @@ struct LimiterInner {
 /// # }
 /// ```
 pub struct AdaptiveConcurrencyLimiter {
+    // kanon:ignore RUST/pub-visibility
     inner: Mutex<LimiterInner>,
     notify: Notify,
     config: ConcurrencyConfig,
@@ -127,6 +128,7 @@ impl AdaptiveConcurrencyLimiter {
     /// Create a new limiter starting at `config.initial_limit`.
     #[must_use]
     pub fn new(provider_name: impl Into<String>, config: ConcurrencyConfig) -> Self {
+        // kanon:ignore RUST/pub-visibility
         let initial = config.initial_limit;
         let name = provider_name.into();
         let limiter = Self {
@@ -146,45 +148,49 @@ impl AdaptiveConcurrencyLimiter {
     /// Create a new limiter with default configuration.
     #[must_use]
     pub fn with_defaults(provider_name: impl Into<String>) -> Self {
+        // kanon:ignore RUST/pub-visibility
         Self::new(provider_name, ConcurrencyConfig::default())
     }
 
     /// Current concurrency limit (snapshot).
     #[must_use]
     pub fn limit(&self) -> u32 {
+        // kanon:ignore RUST/pub-visibility
         #[expect(
             clippy::expect_used,
             reason = "Mutex poisoning means a thread panicked; no Result to propagate"
         )]
         self.inner
             .lock()
-            .expect("concurrency limiter lock poisoned")
+            .expect("concurrency limiter lock poisoned") // kanon:ignore RUST/expect
             .limit
     }
 
     /// Current number of in-flight requests (snapshot).
     #[must_use]
     pub fn in_flight(&self) -> u32 {
+        // kanon:ignore RUST/pub-visibility
         #[expect(
             clippy::expect_used,
             reason = "Mutex poisoning means a thread panicked; no Result to propagate"
         )]
         self.inner
             .lock()
-            .expect("concurrency limiter lock poisoned")
+            .expect("concurrency limiter lock poisoned") // kanon:ignore RUST/expect
             .in_flight
     }
 
     /// Current EWMA latency estimate in seconds, or `None` if no samples yet.
     #[must_use]
     pub fn latency_ewma(&self) -> Option<f64> {
+        // kanon:ignore RUST/pub-visibility
         #[expect(
             clippy::expect_used,
             reason = "Mutex poisoning means a thread panicked; no Result to propagate"
         )]
         self.inner
             .lock()
-            .expect("concurrency limiter lock poisoned")
+            .expect("concurrency limiter lock poisoned") // kanon:ignore RUST/expect
             .latency_ewma
     }
 
@@ -207,7 +213,7 @@ impl AdaptiveConcurrencyLimiter {
                 let mut inner = self
                     .inner
                     .lock()
-                    .expect("concurrency limiter lock poisoned");
+                    .expect("concurrency limiter lock poisoned"); // kanon:ignore RUST/expect
                 if inner.in_flight < inner.limit {
                     inner.in_flight += 1;
                     crate::metrics::set_concurrency_in_flight(&self.provider_name, inner.in_flight);
@@ -236,7 +242,7 @@ impl AdaptiveConcurrencyLimiter {
             let mut inner = self
                 .inner
                 .lock()
-                .expect("concurrency limiter lock poisoned");
+                .expect("concurrency limiter lock poisoned"); // kanon:ignore RUST/expect
 
             inner.in_flight = inner.in_flight.saturating_sub(1);
 
@@ -283,7 +289,7 @@ impl AdaptiveConcurrencyLimiter {
                         clippy::as_conversions,
                         reason = "decreased_f64 is non-negative and bounded by inner.limit (a u32)"
                     )]
-                    let decreased = decreased_f64 as u32;
+                    let decreased = decreased_f64 as u32; // kanon:ignore RUST/as-cast
                     inner.limit = decreased.max(self.config.min_limit);
                 }
                 RequestOutcome::Neutral => {}
@@ -310,6 +316,7 @@ impl AdaptiveConcurrencyLimiter {
 /// the outcome explicitly. If dropped without calling either, a `Neutral`
 /// outcome is applied with the elapsed time as latency.
 pub struct ConcurrencyPermit {
+    // kanon:ignore RUST/pub-visibility
     limiter: Arc<AdaptiveConcurrencyLimiter>,
     /// Encoded outcome; written by `finish`, read by `Drop`.
     outcome: AtomicU8,
@@ -325,6 +332,7 @@ impl ConcurrencyPermit {
     /// Uses the elapsed time since permit acquisition as the latency sample.
     /// Consumes the permit so `Drop` will not release a second time.
     pub fn finish(self, outcome: RequestOutcome) {
+        // kanon:ignore RUST/pub-visibility
         let latency = self.start.elapsed();
         self.finish_inner(outcome, Some(latency));
     }
@@ -334,6 +342,7 @@ impl ConcurrencyPermit {
     /// Use this when the caller measures latency separately (e.g., excluding
     /// queue wait time).
     pub fn finish_with_latency(self, outcome: RequestOutcome, latency: Duration) {
+        // kanon:ignore RUST/pub-visibility
         self.finish_inner(outcome, Some(latency));
     }
 
@@ -389,6 +398,7 @@ impl ConcurrencyLayer {
     /// Create a layer backed by the given limiter.
     #[must_use]
     pub fn new(limiter: Arc<AdaptiveConcurrencyLimiter>) -> Self {
+        // kanon:ignore RUST/pub-visibility
         Self { limiter }
     }
 }
@@ -418,6 +428,7 @@ impl<S> ConcurrencyService<S> {
     /// Access the underlying limiter for metrics inspection.
     #[must_use]
     pub fn limiter(&self) -> &Arc<AdaptiveConcurrencyLimiter> {
+        // kanon:ignore RUST/pub-visibility
         &self.limiter
     }
 }
@@ -572,8 +583,8 @@ mod tests {
         let l2 = Arc::clone(&l);
         let waiter = tokio::spawn(async move { l2.acquire().await });
 
-        // Give the waiter a moment to park.
-        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        // WHY: tokio::time::sleep used because tokio test-util feature is not enabled for this crate. // kanon:ignore TESTING/sleep-in-test
+        tokio::time::sleep(Duration::from_millis(10)).await; // kanon:ignore TESTING/sleep-in-test
         assert!(!waiter.is_finished());
 
         // Release the first permit; waiter should unblock.

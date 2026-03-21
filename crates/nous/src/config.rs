@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use crate::recall::RecallConfig;
 
 /// Configuration for a single nous agent.
+// NOTE: 18 fields grouped by concern (identity, model, limits, features) but
+// kept flat for serde compatibility with aletheia.toml agent config blocks.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NousConfig {
     /// Agent identifier (e.g. "syn", "demiurge").

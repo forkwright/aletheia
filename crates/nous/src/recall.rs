@@ -20,14 +20,14 @@ use crate::error;
 ///
 /// Used as fallback when the embedding provider is mock or unavailable.
 /// `KnowledgeStore` implements this when the `mneme-engine` feature is available.
-pub trait TextSearch: Send + Sync {
+pub(crate) trait TextSearch: Send + Sync {
     /// Search by text (BM25) and return the `k` best-matching results.
     fn search_text(&self, query: &str, k: usize) -> error::Result<Vec<KnowledgeRecallResult>>;
 }
 
 /// Bridges [`aletheia_mneme::knowledge_store::KnowledgeStore::search_text_for_recall`] to [`TextSearch`].
 #[cfg(feature = "knowledge-store")]
-pub struct KnowledgeTextSearch {
+pub(crate) struct KnowledgeTextSearch {
     store: Arc<KnowledgeStore>,
 }
 
@@ -35,7 +35,7 @@ pub struct KnowledgeTextSearch {
 impl KnowledgeTextSearch {
     /// Create a text search adapter wrapping the given knowledge store.
     #[must_use]
-    pub fn new(store: Arc<KnowledgeStore>) -> Self {
+    pub(crate) fn new(store: Arc<KnowledgeStore>) -> Self {
         Self { store }
     }
 }
@@ -270,7 +270,7 @@ impl RecallStage {
     ///
     /// Used as a fallback when the embedding provider is in mock mode.
     /// Scores, ranks, and formats results the same way as [`run`](Self::run).
-    pub fn run_bm25(
+    pub(crate) fn run_bm25(
         &self,
         query: &str,
         nous_id: &str,
@@ -780,7 +780,7 @@ fn extract_quoted_strings(text: &str) -> Vec<String> {
 
 /// Format scored results as a markdown section.
 #[must_use]
-pub fn format_section(results: &[&ScoredResult]) -> String {
+pub(crate) fn format_section(results: &[&ScoredResult]) -> String {
     use std::fmt::Write;
 
     let mut out = String::from(
@@ -800,12 +800,12 @@ pub fn format_section(results: &[&ScoredResult]) -> String {
 /// `RecallConfig::chars_per_token` for operator-configurable behaviour, or
 /// pass `4` directly in tests and contexts without a live config.
 #[must_use]
-pub fn estimate_tokens(text: &str, chars_per_token: u64) -> u64 {
+pub(crate) fn estimate_tokens(text: &str, chars_per_token: u64) -> u64 {
     #[expect(
         clippy::as_conversions,
         reason = "usize→u64: text length always fits in u64"
     )]
-    let len = text.len() as u64;
+    let len = text.len() as u64; // kanon:ignore RUST/as-cast
     len.div_ceil(chars_per_token.max(1))
 }
 

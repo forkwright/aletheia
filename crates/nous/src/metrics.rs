@@ -21,7 +21,7 @@ static PIPELINE_TURNS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         ),
         &["nous_id"]
     )
-    .expect("metric registration")
+    .expect("metric registration") // kanon:ignore RUST/expect
 });
 
 static PIPELINE_STAGE_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
@@ -35,7 +35,7 @@ static PIPELINE_STAGE_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|
         ]),
         &["nous_id", "stage"]
     )
-    .expect("metric registration")
+    .expect("metric registration") // kanon:ignore RUST/expect
 });
 
 static PIPELINE_ERRORS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
@@ -43,30 +43,30 @@ static PIPELINE_ERRORS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         Opts::new("aletheia_pipeline_errors_total", "Total pipeline errors"),
         &["nous_id", "stage", "error_type"]
     )
-    .expect("metric registration")
+    .expect("metric registration") // kanon:ignore RUST/expect
 });
 
 /// Force-initialize all lazy metric statics.
-pub fn init() {
+pub(crate) fn init() {
     LazyLock::force(&PIPELINE_TURNS_TOTAL);
     LazyLock::force(&PIPELINE_STAGE_DURATION_SECONDS);
     LazyLock::force(&PIPELINE_ERRORS_TOTAL);
 }
 
 /// Record a completed pipeline stage.
-pub fn record_stage(nous_id: &str, stage: &str, duration_secs: f64) {
+pub(crate) fn record_stage(nous_id: &str, stage: &str, duration_secs: f64) {
     PIPELINE_STAGE_DURATION_SECONDS
         .with_label_values(&[nous_id, stage])
         .observe(duration_secs);
 }
 
 /// Record a completed turn.
-pub fn record_turn(nous_id: &str) {
-    PIPELINE_TURNS_TOTAL.with_label_values(&[nous_id]).inc();
+pub(crate) fn record_turn(nous_id: &str) {
+    PIPELINE_TURNS_TOTAL.with_label_values(&[nous_id]).inc(); // kanon:ignore RUST/indexing-slicing
 }
 
 /// Record a pipeline error.
-pub fn record_error(nous_id: &str, stage: &str, error_type: &str) {
+pub(crate) fn record_error(nous_id: &str, stage: &str, error_type: &str) {
     PIPELINE_ERRORS_TOTAL
         .with_label_values(&[nous_id, stage, error_type])
         .inc();

@@ -1,10 +1,7 @@
 //! Tests for `DistillEngine` prompt building and section headings.
 //! Tests for `DistillEngine` behavior.
-#![expect(
-    clippy::expect_used,
-    clippy::indexing_slicing,
-    reason = "test assertions use .expect() for descriptive panic messages; test vec indices are valid"
-)]
+#![expect(clippy::expect_used, clippy::unwrap_used, reason = "test assertions")]
+#[cfg(test)]
 use aletheia_hermeneus::test_utils::MockProvider;
 use aletheia_hermeneus::types::{Content, ContentBlock, Message, Role, ToolResultContent};
 
@@ -54,22 +51,22 @@ fn sample_flush_item(content: &str, source: FlushSource) -> FlushItem {
 
 const FULL_SUMMARY: &str = "\
 ## Summary
-Fixed login bug and added tool-based database migration.
+Fixed login bug and added tool-based database schema update.
 
 ## Task Context
 Working on auth module bug fix for nous agent \"syn\".
 
 ## Completed Work
 - Fixed null check on line 42 of src/auth/login.rs
-- Ran database migration tool: migrate_db({\"version\": \"v2\"})
+- Ran database schema update tool: migrate_db({\"version\": \"v2\"})
 - Added regression test for login flow
 
 ## Key Decisions
 - Decision: Add null check rather than restructure auth flow. Reason: Minimal invasive fix.
-- Decision: Use v2 schema for migration. Reason: Backwards compatible.
+- Decision: Use v2 schema for schema update. Reason: Backwards compatible.
 
 ## Current State
-Bug is fixed, migration applied, all tests passing.
+Bug is fixed, schema applied, all tests passing.
 
 ## Open Threads
 - Performance audit of login endpoint deferred to next sprint
@@ -103,7 +100,7 @@ fn build_prompt_when_no_distillation_model_uses_primary() {
     let request = engine.build_prompt(&n_messages(4), "test");
     assert_eq!(
         request.model, "claude-opus-4-20250514",
-        "prompt should use primary model when distillation_model is None"
+        "should use primary model when no distillation_model"
     );
 }
 
@@ -118,7 +115,7 @@ fn build_prompt_downshift_does_not_affect_max_tokens() {
     let request = engine.build_prompt(&n_messages(4), "test");
     assert_eq!(
         request.max_tokens, 8192,
-        "max_tokens should be taken from config even when using a downshift model"
+        "max_tokens should come from config with downshift model"
     );
 }
 
@@ -133,7 +130,7 @@ fn build_prompt_downshift_sonnet_to_haiku() {
     let request = engine.build_prompt(&n_messages(4), "test");
     assert_eq!(
         request.model, "claude-haiku-4-5-20251001",
-        "prompt should downshift from sonnet to haiku when distillation_model is set"
+        "should downshift sonnet to haiku"
     );
 }
 
@@ -148,17 +145,20 @@ fn build_prompt_downshift_opus_to_sonnet() {
     let request = engine.build_prompt(&n_messages(4), "test");
     assert_eq!(
         request.model, "claude-sonnet-4-20250514",
-        "prompt should downshift from opus to sonnet when distillation_model is set"
+        "should downshift opus to sonnet"
     );
 }
 
 #[tokio::test]
 async fn full_pipeline_preserves_tool_results() {
     let messages = vec![
-        text_msg(Role::User, "Run the database migration tool"),
+        text_msg(Role::User, "Run the database schema update tool"),
         text_msg(Role::Assistant, "Running migrate_db({\"version\": \"v2\"})"),
         text_msg(Role::User, "What was the result?"),
-        text_msg(Role::Assistant, "Migration completed. 3 tables updated."),
+        text_msg(
+            Role::Assistant,
+            "Schema update completed. 3 tables updated.",
+        ),
         text_msg(Role::User, "Verify"),
         text_msg(Role::Assistant, "Verification passed."),
         text_msg(Role::User, "Ship it"),
@@ -172,15 +172,15 @@ async fn full_pipeline_preserves_tool_results() {
     let result = engine
         .distill(&messages, "syn", &provider, 1)
         .await
-        .expect("distill should succeed for tool-result pipeline");
+        .expect("distill should succeed for tool-result pipeline"); // WHY: test assertion
 
     assert!(
         result.summary.contains("migrate_db"),
         "summary should contain the tool call name 'migrate_db'"
     );
     assert!(
-        result.summary.contains("database migration"),
-        "summary should mention database migration"
+        result.summary.contains("database schema update"),
+        "summary should mention database schema update"
     );
 }
 
@@ -207,7 +207,7 @@ async fn full_pipeline_preserves_decisions() {
     let result = engine
         .distill(&messages, "syn", &provider, 1)
         .await
-        .expect("distill should succeed for decisions pipeline");
+        .expect("distill should succeed for decisions pipeline"); // WHY: test assertion
 
     assert!(
         result.summary.contains("Decision: Add null check"),
@@ -242,7 +242,7 @@ async fn full_pipeline_preserves_corrections() {
     let result = engine
         .distill(&messages, "syn", &provider, 1)
         .await
-        .expect("distill should succeed for corrections pipeline");
+        .expect("distill should succeed for corrections pipeline"); // WHY: test assertion
 
     assert!(
         result.summary.contains("CORRECTION"),
@@ -263,13 +263,12 @@ async fn full_pipeline_reduces_token_count() {
     let result = engine
         .distill(&messages, "syn", &provider, 1)
         .await
-        .expect("distill should succeed for token reduction pipeline");
+        .expect("distill should succeed for token reduction pipeline"); // WHY: test assertion
 
+    let (after, before) = (result.tokens_after, result.tokens_before);
     assert!(
-        result.tokens_after < result.tokens_before,
-        "tokens_after ({}) should be less than tokens_before ({})",
-        result.tokens_after,
-        result.tokens_before
+        after < before,
+        "tokens_after ({after}) should be less than tokens_before ({before})"
     );
 }
 
@@ -282,7 +281,7 @@ async fn full_pipeline_summary_contains_all_sections() {
     let result = engine
         .distill(&messages, "syn", &provider, 1)
         .await
-        .expect("distill should succeed for all-sections pipeline");
+        .expect("distill should succeed for all-sections pipeline"); // WHY: test assertion
 
     for section in DistillSection::all_standard() {
         let heading = section.heading();
@@ -312,40 +311,40 @@ async fn full_pipeline_verbatim_tail_integrity() {
     let result = engine
         .distill(&messages, "syn", &provider, 1)
         .await
-        .expect("distill should succeed for verbatim tail integrity check");
+        .expect("distill should succeed for verbatim tail integrity check"); // WHY: test assertion
 
+    let vm = &result.verbatim_messages;
+    assert_eq!(vm.len(), 3, "last 3 messages should be kept verbatim");
+    let m0 = vm.first().expect("verbatim msg 0"); // WHY: test assertion
+    let m1 = vm.get(1).expect("verbatim msg 1"); // WHY: test assertion
+    let m2 = vm.get(2).expect("verbatim msg 2"); // WHY: test assertion
     assert_eq!(
-        result.verbatim_messages.len(),
-        3,
-        "last 3 messages should be kept verbatim"
-    );
-    assert_eq!(
-        result.verbatim_messages[0].content.text(),
+        m0.content.text(),
         "Golf — preserved",
         "first verbatim message should be 'Golf — preserved'"
     );
     assert_eq!(
-        result.verbatim_messages[1].content.text(),
+        m1.content.text(),
         "Hotel — preserved",
         "second verbatim message should be 'Hotel — preserved'"
     );
     assert_eq!(
-        result.verbatim_messages[2].content.text(),
+        m2.content.text(),
         "India — preserved",
         "third verbatim message should be 'India — preserved'"
     );
     assert_eq!(
-        result.verbatim_messages[0].role,
+        m0.role,
         Role::User,
         "first verbatim message should have User role"
     );
     assert_eq!(
-        result.verbatim_messages[1].role,
+        m1.role,
         Role::Assistant,
         "second verbatim message should have Assistant role"
     );
     assert_eq!(
-        result.verbatim_messages[2].role,
+        m2.role,
         Role::User,
         "third verbatim message should have User role"
     );
@@ -361,12 +360,10 @@ async fn distill_when_empty_messages_returns_error() {
         result.is_err(),
         "distill should return an error when given no messages"
     );
+    let err_msg = result.unwrap_err().to_string();
     assert!(
-        result
-            .expect_err("distill with empty input should have returned an error")
-            .to_string()
-            .contains("no messages"),
-        "error message should mention 'no messages'"
+        err_msg.contains("no messages"),
+        "error should mention 'no messages'"
     );
 }
 
@@ -384,7 +381,7 @@ async fn distill_when_single_message_all_verbatim() {
     let result = engine
         .distill(&messages, "test", &provider, 1)
         .await
-        .expect("distill should succeed with a single message");
+        .expect("distill should succeed with a single message"); // WHY: test assertion
 
     assert_eq!(
         result.verbatim_messages.len(),
@@ -418,12 +415,13 @@ async fn distill_when_oversized_input_handles_gracefully() {
     let result = engine
         .distill(&messages, "test", &provider, 1)
         .await
-        .expect("distill should succeed with oversized input");
+        .expect("distill should succeed with oversized input"); // WHY: test assertion
 
+    // NOTE: 100 - 3 verbatim = 97
     assert_eq!(
         result.messages_distilled, 97,
         "97 messages should be distilled (100 - 3 verbatim)"
-    ); // 100 - 3 verbatim
+    );
     assert_eq!(
         result.verbatim_messages.len(),
         3,
@@ -482,7 +480,7 @@ async fn distill_when_all_tool_call_messages() {
     let result = engine
         .distill(&messages, "test", &provider, 1)
         .await
-        .expect("distill should succeed with mixed tool-call messages");
+        .expect("distill should succeed with mixed tool-call messages"); // WHY: test assertion
 
     assert_eq!(
         result.messages_distilled, 3,
@@ -512,12 +510,12 @@ async fn distill_when_two_messages_with_tail_three() {
     let result = engine
         .distill(&messages, "test", &provider, 1)
         .await
-        .expect("distill should succeed when message count is less than verbatim_tail");
+        .expect("distill should succeed when message count is less than verbatim_tail"); // WHY: test assertion
 
     assert_eq!(
         result.verbatim_messages.len(),
         2,
-        "both messages should be kept verbatim when count is less than verbatim_tail"
+        "both messages should be verbatim when under tail"
     );
     assert_eq!(
         result.messages_distilled, 0,
@@ -577,7 +575,7 @@ fn section_custom_description_returns_provided_text() {
     assert_eq!(
         section.description(),
         "My custom description",
-        "custom section should return the provided description text"
+        "custom description should match"
     );
 }
 
@@ -595,7 +593,11 @@ fn build_prompt_includes_message_count() {
     let engine = default_engine();
     let messages = n_messages(8);
     let request = engine.build_prompt(&messages, "test");
-    let text = request.messages[0].content.text();
+    let first_msg = request
+        .messages
+        .first()
+        .expect("request should have messages"); // WHY: test assertion
+    let text = first_msg.content.text();
     assert!(
         text.contains("8 messages"),
         "prompt should include the message count '8 messages'"
@@ -609,7 +611,7 @@ fn build_prompt_temperature_is_zero() {
     assert_eq!(
         request.temperature,
         Some(0.0),
-        "distillation prompt should use temperature 0.0 for deterministic output"
+        "should use temperature 0.0 for determinism"
     );
 }
 
@@ -625,7 +627,11 @@ fn build_prompt_with_system_message() {
         text_msg(Role::Assistant, "Hi"),
     ];
     let request = engine.build_prompt(&messages, "test");
-    let text = request.messages[0].content.text();
+    let first_msg = request
+        .messages
+        .first()
+        .expect("request should have messages"); // WHY: test assertion
+    let text = first_msg.content.text();
     assert!(
         text.contains("[SYSTEM]"),
         "prompt should include [SYSTEM] marker when a system message is present"

@@ -11,7 +11,9 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 use aletheia_koina::secret::SecretString;
 
 use super::*;
+use crate::anthropic::pricing::{backoff_delay, estimate_cost, model_family};
 use crate::error::Error;
+use crate::models::BACKOFF_MAX_MS;
 use crate::provider::{LlmProvider, ProviderConfig};
 use crate::types::{CompletionRequest, Content, Message, Role};
 
@@ -110,9 +112,19 @@ async fn complete_success() {
     let config = test_config_with(&server.uri());
     let provider = AnthropicProvider::from_config(&config).expect("valid config");
     let response = provider.complete(&test_request()).await.expect("complete");
-    assert_eq!(response.id, "msg_test");
-    assert_eq!(response.stop_reason, crate::types::StopReason::EndTurn);
-    assert_eq!(response.usage.input_tokens, 10);
+    assert_eq!(
+        response.id, "msg_test",
+        "response id should match wire response"
+    );
+    assert_eq!(
+        response.stop_reason,
+        crate::types::StopReason::EndTurn,
+        "stop reason should be EndTurn"
+    );
+    assert_eq!(
+        response.usage.input_tokens, 10,
+        "input tokens should match wire response"
+    );
 }
 
 #[tokio::test]
@@ -244,10 +256,22 @@ async fn complete_malformed_body() {
 #[test]
 fn estimate_cost_no_pricing_returns_zero() {
     let pricing = HashMap::new();
-    assert!(estimate_cost(&pricing, "claude-opus-4-20250514", 1000, 100).abs() < f64::EPSILON);
-    assert!(estimate_cost(&pricing, "claude-sonnet-4-20250514", 1000, 100).abs() < f64::EPSILON);
-    assert!(estimate_cost(&pricing, "claude-haiku-4-5-20251001", 1000, 100).abs() < f64::EPSILON);
-    assert!(estimate_cost(&pricing, "some-unknown-model", 1000, 100).abs() < f64::EPSILON);
+    assert!(
+        estimate_cost(&pricing, "claude-opus-4-20250514", 1000, 100).abs() < f64::EPSILON,
+        "opus cost should be zero with no pricing"
+    );
+    assert!(
+        estimate_cost(&pricing, "claude-sonnet-4-20250514", 1000, 100).abs() < f64::EPSILON,
+        "sonnet cost should be zero with no pricing"
+    );
+    assert!(
+        estimate_cost(&pricing, "claude-haiku-4-5-20251001", 1000, 100).abs() < f64::EPSILON,
+        "haiku cost should be zero with no pricing"
+    );
+    assert!(
+        estimate_cost(&pricing, "some-unknown-model", 1000, 100).abs() < f64::EPSILON,
+        "unknown model cost should be zero with no pricing"
+    );
 }
 
 #[test]
@@ -261,7 +285,10 @@ fn estimate_cost_uses_config_pricing() {
         },
     );
     let cost = estimate_cost(&pricing, "custom-model", 1000, 100);
-    assert!((cost - 0.015).abs() < 0.0001);
+    assert!(
+        (cost - 0.015).abs() < 0.0001,
+        "cost should match expected value for custom pricing"
+    );
 }
 
 #[test]
@@ -275,7 +302,10 @@ fn estimate_cost_config_overrides_default() {
         },
     );
     let cost = estimate_cost(&pricing, "claude-opus-4-20250514", 1000, 100);
-    assert!((cost - 0.03).abs() < 0.0001);
+    assert!(
+        (cost - 0.03).abs() < 0.0001,
+        "cost should reflect overridden pricing"
+    );
 }
 
 /// Family resolution: pricing keyed under a versioned alias should apply to
@@ -343,16 +373,41 @@ fn estimate_cost_default_pricing_resolves_haiku() {
 
 #[test]
 fn model_family_strips_last_segment() {
-    assert_eq!(model_family("claude-sonnet-4-20250514"), "claude-sonnet-4");
-    assert_eq!(model_family("claude-sonnet-4-6"), "claude-sonnet-4");
+    assert_eq!(
+        model_family("claude-sonnet-4-20250514"),
+        "claude-sonnet-4",
+        "dated snapshot should strip to family"
+    );
+    assert_eq!(
+        model_family("claude-sonnet-4-6"),
+        "claude-sonnet-4",
+        "short alias should strip to family"
+    );
     assert_eq!(
         model_family("claude-haiku-4-5-20251001"),
-        "claude-haiku-4-5"
+        "claude-haiku-4-5",
+        "haiku dated snapshot should strip to family"
     );
-    assert_eq!(model_family("claude-haiku-4-5"), "claude-haiku-4");
-    assert_eq!(model_family("claude-opus-4-20250514"), "claude-opus-4");
-    assert_eq!(model_family("claude-opus-4-6"), "claude-opus-4");
-    assert_eq!(model_family("somemodel"), "somemodel");
+    assert_eq!(
+        model_family("claude-haiku-4-5"),
+        "claude-haiku-4",
+        "haiku short should strip to family"
+    );
+    assert_eq!(
+        model_family("claude-opus-4-20250514"),
+        "claude-opus-4",
+        "opus dated snapshot should strip to family"
+    );
+    assert_eq!(
+        model_family("claude-opus-4-6"),
+        "claude-opus-4",
+        "opus short should strip to family"
+    );
+    assert_eq!(
+        model_family("somemodel"),
+        "somemodel",
+        "no-dash model returns unchanged"
+    );
 }
 
 /// Operator configs often only include pricing for the primary model.
@@ -419,7 +474,11 @@ fn backoff_delay_respects_retry_after() {
     }
     .build();
     let delay = backoff_delay(1, Some(&err));
-    assert_eq!(delay, Duration::from_millis(5000));
+    assert_eq!(
+        delay,
+        Duration::from_millis(5000),
+        "should use retry-after from rate limit error"
+    );
 }
 
 #[test]
@@ -427,8 +486,8 @@ fn backoff_delay_exponential_growth() {
     let d1 = backoff_delay(1, None);
     let d2 = backoff_delay(2, None);
     let d3 = backoff_delay(3, None);
-    assert!(d1 < d2, "attempt 2 should be longer than attempt 1");
-    assert!(d2 < d3, "attempt 3 should be longer than attempt 2");
+    assert!(d1 < d2, "attempt 2 delay should exceed attempt 1");
+    assert!(d2 < d3, "attempt 3 delay should exceed attempt 2");
     assert!(
         d3 <= Duration::from_millis(BACKOFF_MAX_MS + BACKOFF_MAX_MS / 4),
         "delay should be capped near BACKOFF_MAX_MS"

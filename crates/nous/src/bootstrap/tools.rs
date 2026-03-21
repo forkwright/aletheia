@@ -35,7 +35,7 @@ pub(crate) struct ToolExpanded {
 
 /// Generate compact summaries for all registered tools.
 #[must_use]
-pub fn summarize_tools(registry: &ToolRegistry) -> Vec<ToolSummary> {
+pub(crate) fn summarize_tools(registry: &ToolRegistry) -> Vec<ToolSummary> {
     registry
         .definitions()
         .iter()

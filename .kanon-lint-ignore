@@ -73,3 +73,142 @@ TESTING/sleep-in-test:crates/pylon/src/middleware/user_rate_limiter.rs
 # WHY: std::sync::Mutex in pylon IdempotencyLayer is intentional — lock guard
 # is never held across await points.
 RUST/std-mutex-in-async:crates/pylon/src/idempotency.rs
+
+# WHY: kanon linter's skip_in_test logic detects *_test.rs (singular), tests.rs,
+# and /tests/ directories, but NOT *_tests.rs (plural), *_tests/ directories, or
+# tests_extended.rs files. These patterns are all test code where .expect(),
+# .unwrap(), direct indexing, and sleep are standard practice.
+RUST/expect:crates/hermeneus/src/**/*_tests.rs
+RUST/expect:crates/hermeneus/src/**/*_tests/*.rs
+RUST/expect:crates/hermeneus/src/**/tests_extended.rs
+RUST/unwrap:crates/hermeneus/src/**/*_tests.rs
+RUST/unwrap:crates/hermeneus/src/**/*_tests/*.rs
+RUST/unwrap:crates/hermeneus/src/**/tests_extended.rs
+RUST/indexing-slicing:crates/hermeneus/src/**/*_tests.rs
+RUST/indexing-slicing:crates/hermeneus/src/**/*_tests/*.rs
+RUST/indexing-slicing:crates/hermeneus/src/**/tests_extended.rs
+TESTING/sleep-in-test:crates/hermeneus/src/**/*_tests.rs
+TESTING/sleep-in-test:crates/hermeneus/src/**/tests_extended.rs
+TESTING/no-tests:crates/hermeneus/src/test_utils.rs
+
+# WHY: hermeneus is a library crate where all modules are `pub mod` in lib.rs.
+# Items marked `pub` in submodules are intentional public API for downstream crates
+# (nous, agora). The linter flags these because they're not in lib.rs itself, but
+# the module tree makes them reachable.
+RUST/pub-visibility:crates/hermeneus/src/**/*.rs
+
+# WHY: test_utils.rs is gated behind `#[cfg(any(test, feature = "test-utils"))]`
+# and has a module-level `#[expect(clippy::expect_used)]` in lib.rs. The kanon
+# linter does not recognize this as test code.
+RUST/expect:crates/hermeneus/src/test_utils.rs
+RUST/std-mutex-in-async:crates/hermeneus/src/test_utils.rs
+
+# WHY: hermeneus is a library crate that delegates all tests to submodules
+# (types_tests/, client_tests.rs, provider_tests.rs, etc.) and inline #[cfg(test)]
+# mod tests blocks. lib.rs itself contains only module declarations.
+TESTING/no-tests:crates/hermeneus/src/lib.rs
+
+# WHY: These as-casts already carry #[expect(clippy::as_conversions)] annotations
+# with documented reasoning. The kanon linter runs separately from clippy and
+# re-flags the same casts. All are either u128->u64 truncation (LLM call duration
+# in ms never exceeds u64::MAX), u64->f64 for cost estimation, u32->usize for
+# content block indices, or f64->u64 for bounded backoff values.
+RUST/as-cast:crates/hermeneus/src/anthropic/client.rs
+RUST/as-cast:crates/hermeneus/src/anthropic/pricing.rs
+RUST/as-cast:crates/hermeneus/src/anthropic/stream/accumulator.rs
+RUST/as-cast:crates/hermeneus/src/circuit_breaker.rs
+RUST/as-cast:crates/hermeneus/src/concurrency.rs
+RUST/as-cast:crates/hermeneus/src/local/stream.rs
+
+# WHY: These .expect() calls are on Mutex::lock() where poisoning indicates a
+# prior thread panic. The functions return non-Result types (#[must_use] snapshot
+# values, &self methods on state machines) and cannot propagate lock errors.
+# Each has a #[expect(clippy::expect_used)] annotation with documented reasoning.
+RUST/expect:crates/hermeneus/src/circuit_breaker.rs
+RUST/expect:crates/hermeneus/src/concurrency.rs
+RUST/expect:crates/hermeneus/src/health.rs
+
+# WHY: Prometheus metric registration .expect() calls are inside LazyLock
+# initializers. Registration fails only on name/label collision — a compile-time
+# programming error, not a runtime condition. Each has a
+# #[expect(clippy::expect_used)] annotation.
+RUST/expect:crates/hermeneus/src/metrics.rs
+
+# WHY: These indexing operations are guarded by bounds checks or loop invariants
+# documented in adjacent #[expect(clippy::indexing_slicing)] annotations.
+# accumulator.rs: while loop grows vec before indexing; wire/mod.rs: loop bounds
+# guarantee i < len. metrics.rs indexing is inside #[cfg(test)] mod tests.
+RUST/indexing-slicing:crates/hermeneus/src/anthropic/stream/accumulator.rs
+RUST/indexing-slicing:crates/hermeneus/src/anthropic/wire/mod.rs
+RUST/indexing-slicing:crates/hermeneus/src/metrics.rs
+RUST/indexing-slicing:crates/hermeneus/src/local/stream.rs
+
+# WHY: std::sync::Mutex is correct in these files — lock is held only during
+# brief state reads/writes, never across .await. Each file has a WHY comment
+# at the use-site explaining this.
+RUST/std-mutex-in-async:crates/hermeneus/src/circuit_breaker.rs
+RUST/std-mutex-in-async:crates/hermeneus/src/health.rs
+
+# WHY: circuit_breaker.rs and health.rs use jiff::Timestamp::now() (real wall
+# clock) for cooldown timing, not tokio's controllable clock.
+# tokio::time::pause/advance does not affect jiff timestamps, so
+# std::thread::sleep is the only correct approach. concurrency.rs uses
+# tokio::time::sleep because test-util is not enabled for this crate.
+# All sleep calls are in #[cfg(test)] mod tests blocks.
+TESTING/sleep-in-test:crates/hermeneus/src/circuit_breaker.rs
+TESTING/sleep-in-test:crates/hermeneus/src/concurrency.rs
+TESTING/sleep-in-test:crates/hermeneus/src/health.rs
+
+# WHY: CompletionRequest has 15 fields that map 1:1 to the Anthropic Messages API
+# surface. Splitting into sub-structs would add indirection without reducing
+# conceptual complexity. The struct has a WHY comment explaining this.
+RUST/struct-too-many-fields:crates/hermeneus/src/types.rs
+
+# WHY: nous is a library crate where public modules in lib.rs expose items to
+# downstream crates (agora, pylon). Items marked `pub` are intentional API.
+# Inline kanon:ignore comments are reformatted by rustfmt onto separate lines,
+# breaking the linter's same-line suppression check.
+RUST/pub-visibility:crates/nous/src/budget.rs
+RUST/pub-visibility:crates/nous/src/session.rs
+RUST/pub-visibility:crates/nous/src/manager.rs
+RUST/pub-visibility:crates/nous/src/recall.rs
+RUST/pub-visibility:crates/nous/src/cross/router.rs
+RUST/pub-visibility:crates/nous/src/spawn_svc.rs
+RUST/pub-visibility:crates/nous/src/error.rs
+RUST/pub-visibility:crates/nous/src/handle.rs
+RUST/pub-visibility:crates/nous/src/stream.rs
+
+# WHY: NousConfig (18 fields) maps 1:1 to aletheia.toml [agents] section.
+# NousManager (14 fields) holds the actor registry, services, and runtime state.
+# Splitting either into sub-structs would add indirection without reducing
+# conceptual complexity.
+RUST/struct-too-many-fields:crates/nous/src/config.rs
+RUST/struct-too-many-fields:crates/nous/src/manager.rs
+
+# WHY: all three tokio::spawn() calls have `.instrument(span)` at the end of
+# the async block. The linter's regex matches `tokio::spawn(` but does not
+# detect `.instrument()` chained after the closing parenthesis.
+RUST/spawn-no-instrument:crates/nous/src/actor/turn.rs
+RUST/spawn-no-instrument:crates/nous/src/manager.rs
+RUST/spawn-no-instrument:crates/nous/src/skills.rs
+
+# WHY: These as-casts carry #[expect(clippy::as_conversions)] annotations with
+# documented reasoning. The kanon linter runs separately from clippy. The cast
+# in turn.rs is u32->usize for DEGRADED_PANIC_THRESHOLD (small constant).
+RUST/as-cast:crates/nous/src/actor/turn.rs
+
+# WHY: `session_key` is a user-chosen label (e.g. "default", "heartbeat"),
+# not a cryptographic secret. The field name triggers the plain-string-secret
+# heuristic on the word "key".
+RUST/plain-string-secret:crates/nous/src/session.rs
+
+# WHY: indexing in recall.rs word extraction loop is guarded by a `while`
+# loop condition checking `pos < text.len()`. The bounds are maintained by
+# the loop invariant.
+RUST/indexing-slicing:crates/nous/src/recall.rs
+
+# WHY: recall.rs is 822 lines (22 over limit). The module contains the
+# VectorSearch and TextSearch traits, RecallResult, and the word extraction
+# logic — all cohesive recall functionality. Splitting would fragment the
+# abstraction.
+RUST/file-too-long:crates/nous/src/recall.rs

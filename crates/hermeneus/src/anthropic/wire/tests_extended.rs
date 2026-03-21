@@ -18,7 +18,11 @@ fn wire_content_block_web_search_result_with_multiple_results() {
     let converted = block.into_content_block();
     match converted {
         ContentBlock::WebSearchToolResult { content, .. } => {
-            assert_eq!(content.as_array().unwrap().len(), 3);
+            assert_eq!(
+                content.as_array().unwrap().len(),
+                3,
+                "should have 3 search results"
+            );
         }
         _ => panic!("expected WebSearchToolResult"),
     }
@@ -49,16 +53,23 @@ fn wire_response_with_citation_web_search_result_location() {
     match &converted.content[0] {
         ContentBlock::Text { citations, .. } => {
             let cits = citations.as_ref().unwrap();
-            assert_eq!(cits.len(), 1);
+            assert_eq!(cits.len(), 1, "should have one citation");
             match &cits[0] {
                 crate::types::Citation::WebSearchResultLocation {
                     url,
                     title,
                     cited_text,
                 } => {
-                    assert_eq!(url, "https://example.com/article");
-                    assert_eq!(title.as_deref(), Some("Example Article"));
-                    assert_eq!(cited_text, "relevant passage");
+                    assert_eq!(
+                        url, "https://example.com/article",
+                        "citation url should match"
+                    );
+                    assert_eq!(
+                        title.as_deref(),
+                        Some("Example Article"),
+                        "citation title should match"
+                    );
+                    assert_eq!(cited_text, "relevant passage", "cited text should match");
                 }
                 _ => panic!("expected WebSearchResultLocation"),
             }
@@ -89,9 +100,15 @@ fn wire_request_code_execution_server_tool() {
     let wire = WireRequest::from_request(&req, None);
     let json = serde_json::to_value(&wire).unwrap();
     let tools = json["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), 1);
-    assert_eq!(tools[0]["type"], "code_execution_20250522");
-    assert_eq!(tools[0]["name"], "code_execution");
+    assert_eq!(tools.len(), 1, "should have one server tool");
+    assert_eq!(
+        tools[0]["type"], "code_execution_20250522",
+        "server tool type should match"
+    );
+    assert_eq!(
+        tools[0]["name"], "code_execution",
+        "server tool name should match"
+    );
 }
 
 #[test]
@@ -108,8 +125,11 @@ fn wire_request_no_cache_system_is_string() {
     };
     let wire = WireRequest::from_request(&req, None);
     let json = serde_json::to_value(&wire).unwrap();
-    assert!(json["system"].is_string());
-    assert_eq!(json["system"], "test");
+    assert!(
+        json["system"].is_string(),
+        "system should be plain string when cache_system is false"
+    );
+    assert_eq!(json["system"], "test", "system prompt text should match");
 }
 
 #[test]
@@ -255,7 +275,10 @@ fn cache_turns_multi_turn_marks_recent_user_messages() {
                     .is_some_and(|arr| arr.last().is_some_and(|b| b.get("cache_control").is_some()))
         })
         .count();
-    assert_eq!(cached_count, MAX_TURN_CACHE_BREAKPOINTS);
+    assert_eq!(
+        cached_count, MAX_TURN_CACHE_BREAKPOINTS,
+        "should have exactly MAX_TURN_CACHE_BREAKPOINTS cached messages"
+    );
 
     let last = msgs.last().unwrap();
     assert!(
@@ -300,12 +323,19 @@ fn cache_turns_with_block_content() {
     let msgs = json["messages"].as_array().unwrap();
 
     let first_content = msgs[0]["content"].as_array().unwrap();
-    assert_eq!(first_content.len(), 2);
+    assert_eq!(
+        first_content.len(),
+        2,
+        "block content should have two blocks"
+    );
     assert!(
         first_content[0].get("cache_control").is_none(),
         "only last block gets cache_control"
     );
-    assert_eq!(first_content[1]["cache_control"]["type"], "ephemeral");
+    assert_eq!(
+        first_content[1]["cache_control"]["type"], "ephemeral",
+        "last block should have ephemeral cache control"
+    );
 }
 
 #[test]
@@ -329,16 +359,28 @@ fn cache_turns_never_marks_current_message() {
     let wire = WireRequest::from_request(&req, None);
     let json = serde_json::to_value(&wire).unwrap();
     let msgs = json["messages"].as_array().unwrap();
-    assert!(msgs[0]["content"].is_array());
-    assert_eq!(msgs[0]["content"][0]["cache_control"]["type"], "ephemeral");
-    assert!(msgs[1]["content"].is_string());
+    assert!(
+        msgs[0]["content"].is_array(),
+        "previous user message should be wrapped as blocks"
+    );
+    assert_eq!(
+        msgs[0]["content"][0]["cache_control"]["type"], "ephemeral",
+        "previous user message should have cache control"
+    );
+    assert!(
+        msgs[1]["content"].is_string(),
+        "current message should remain plain text"
+    );
 }
 
 #[test]
 fn cache_control_ephemeral_serialization() {
     let cc = CacheControl::ephemeral();
     let json = serde_json::to_value(&cc).unwrap();
-    assert_eq!(json["type"], "ephemeral");
+    assert_eq!(
+        json["type"], "ephemeral",
+        "cache control type should be ephemeral"
+    );
 }
 
 #[test]
@@ -346,14 +388,20 @@ fn cache_control_roundtrip() {
     let cc = CacheControl::ephemeral();
     let json = serde_json::to_string(&cc).unwrap();
     let back: CacheControl = serde_json::from_str(&json).unwrap();
-    assert_eq!(cc, back);
+    assert_eq!(
+        cc, back,
+        "cache control should survive serialization roundtrip"
+    );
 }
 
 #[test]
 fn compute_turn_cache_indices_empty() {
     let messages: Vec<&crate::types::Message> = vec![];
     let indices = compute_turn_cache_indices(&messages);
-    assert!(indices.is_empty());
+    assert!(
+        indices.is_empty(),
+        "empty message list should produce no cache indices"
+    );
 }
 
 #[test]
@@ -370,7 +418,11 @@ fn compute_turn_cache_indices_two_messages() {
     ];
     let refs: Vec<&Message> = msgs.iter().collect();
     let indices = compute_turn_cache_indices(&refs);
-    assert_eq!(indices, vec![0]);
+    assert_eq!(
+        indices,
+        vec![0],
+        "first user message should be the only breakpoint"
+    );
 }
 
 #[test]
@@ -407,8 +459,14 @@ fn compute_turn_cache_indices_respects_max_breakpoints() {
     ];
     let refs: Vec<&Message> = msgs.iter().collect();
     let indices = compute_turn_cache_indices(&refs);
-    assert!(indices.len() <= MAX_TURN_CACHE_BREAKPOINTS);
-    assert!(!indices.contains(&6));
+    assert!(
+        indices.len() <= MAX_TURN_CACHE_BREAKPOINTS,
+        "should not exceed max breakpoints"
+    );
+    assert!(
+        !indices.contains(&6),
+        "current (last) message should not be a breakpoint"
+    );
 }
 
 #[test]
@@ -433,7 +491,11 @@ fn compute_turn_cache_indices_only_picks_user_messages() {
     ];
     let refs: Vec<&Message> = msgs.iter().collect();
     let indices = compute_turn_cache_indices(&refs);
-    assert_eq!(indices, vec![0]);
+    assert_eq!(
+        indices,
+        vec![0],
+        "only user message before last should be selected"
+    );
 }
 
 #[test]
@@ -448,11 +510,23 @@ fn wire_usage_cache_tokens_default_zero() {
         "usage": {"input_tokens": 10, "output_tokens": 5}
     }"#;
     let resp: WireResponse = serde_json::from_str(json).unwrap();
-    assert_eq!(resp.usage.cache_creation_input_tokens, 0);
-    assert_eq!(resp.usage.cache_read_input_tokens, 0);
+    assert_eq!(
+        resp.usage.cache_creation_input_tokens, 0,
+        "cache creation tokens should default to 0"
+    );
+    assert_eq!(
+        resp.usage.cache_read_input_tokens, 0,
+        "cache read tokens should default to 0"
+    );
     let converted = resp.into_response().unwrap();
-    assert_eq!(converted.usage.cache_write_tokens, 0);
-    assert_eq!(converted.usage.cache_read_tokens, 0);
+    assert_eq!(
+        converted.usage.cache_write_tokens, 0,
+        "converted cache write tokens should be 0"
+    );
+    assert_eq!(
+        converted.usage.cache_read_tokens, 0,
+        "converted cache read tokens should be 0"
+    );
 }
 
 #[test]
@@ -473,8 +547,14 @@ fn wire_usage_cache_tokens_parsed() {
     }"#;
     let resp: WireResponse = serde_json::from_str(json).unwrap();
     let converted = resp.into_response().unwrap();
-    assert_eq!(converted.usage.cache_write_tokens, 1500);
-    assert_eq!(converted.usage.cache_read_tokens, 3000);
+    assert_eq!(
+        converted.usage.cache_write_tokens, 1500,
+        "cache write tokens should be parsed from wire"
+    );
+    assert_eq!(
+        converted.usage.cache_read_tokens, 3000,
+        "cache read tokens should be parsed from wire"
+    );
 }
 
 #[test]
@@ -482,10 +562,13 @@ fn content_with_cache_control_text() {
     let content = Content::Text("hello".to_owned());
     let value = content_with_cache_control(&content);
     let arr = value.as_array().unwrap();
-    assert_eq!(arr.len(), 1);
-    assert_eq!(arr[0]["type"], "text");
-    assert_eq!(arr[0]["text"], "hello");
-    assert_eq!(arr[0]["cache_control"]["type"], "ephemeral");
+    assert_eq!(arr.len(), 1, "text content should produce single block");
+    assert_eq!(arr[0]["type"], "text", "block type should be text");
+    assert_eq!(arr[0]["text"], "hello", "block text should match");
+    assert_eq!(
+        arr[0]["cache_control"]["type"], "ephemeral",
+        "should have ephemeral cache control"
+    );
 }
 
 #[test]
@@ -502,9 +585,15 @@ fn content_with_cache_control_blocks() {
     ]);
     let value = content_with_cache_control(&content);
     let arr = value.as_array().unwrap();
-    assert_eq!(arr.len(), 2);
-    assert!(arr[0].get("cache_control").is_none());
-    assert_eq!(arr[1]["cache_control"]["type"], "ephemeral");
+    assert_eq!(arr.len(), 2, "blocks content should preserve block count");
+    assert!(
+        arr[0].get("cache_control").is_none(),
+        "first block should not have cache control"
+    );
+    assert_eq!(
+        arr[1]["cache_control"]["type"], "ephemeral",
+        "last block should have ephemeral cache control"
+    );
 }
 
 #[test]
@@ -540,12 +629,27 @@ fn cache_turns_combined_with_system_and_tools() {
     };
     let wire = WireRequest::from_request(&req, None);
     let json = serde_json::to_value(&wire).unwrap();
-    assert_eq!(json["system"][0]["cache_control"]["type"], "ephemeral");
-    assert_eq!(json["tools"][0]["cache_control"]["type"], "ephemeral");
+    assert_eq!(
+        json["system"][0]["cache_control"]["type"], "ephemeral",
+        "system should have cache control"
+    );
+    assert_eq!(
+        json["tools"][0]["cache_control"]["type"], "ephemeral",
+        "tool should have cache control"
+    );
     let msgs = json["messages"].as_array().unwrap();
-    assert!(msgs[0]["content"].is_array());
-    assert_eq!(msgs[0]["content"][0]["cache_control"]["type"], "ephemeral");
-    assert!(msgs[2]["content"].is_string());
+    assert!(
+        msgs[0]["content"].is_array(),
+        "cached turn should be wrapped as blocks"
+    );
+    assert_eq!(
+        msgs[0]["content"][0]["cache_control"]["type"], "ephemeral",
+        "cached turn should have ephemeral cache control"
+    );
+    assert!(
+        msgs[2]["content"].is_string(),
+        "current turn should remain plain text"
+    );
 }
 
 #[test]
@@ -560,10 +664,10 @@ fn wire_content_block_code_execution_result() {
             stderr,
             return_code,
         } => {
-            assert_eq!(code, "print(42)");
-            assert_eq!(stdout, "42\n");
-            assert!(stderr.is_empty());
-            assert_eq!(return_code, 0);
+            assert_eq!(code, "print(42)", "code should match");
+            assert_eq!(stdout, "42\n", "stdout should match");
+            assert!(stderr.is_empty(), "stderr should be empty");
+            assert_eq!(return_code, 0, "return code should be 0");
         }
         _ => panic!("expected CodeExecutionResult"),
     }
@@ -589,7 +693,10 @@ fn wire_request_disable_passthrough_serialized() {
     let wire = WireRequest::from_request(&req, None);
     let json = serde_json::to_value(&wire).unwrap();
     let tools = json["tools"].as_array().unwrap();
-    assert_eq!(tools[0]["disable_passthrough"], true);
+    assert_eq!(
+        tools[0]["disable_passthrough"], true,
+        "disable_passthrough should be serialized as true"
+    );
 }
 
 #[test]

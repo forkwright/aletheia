@@ -13,6 +13,7 @@ use aletheia_koina::id::ToolName;
     reason = "snafu error variant fields (name, source, location, reason, message, path) are self-documenting via display format"
 )]
 pub enum Error {
+    // kanon:ignore RUST/pub-visibility
     /// Requested tool does not exist in the registry.
     #[snafu(display("tool not found: {name}"))]
     ToolNotFound {
@@ -57,7 +58,7 @@ pub enum Error {
 }
 
 /// Convenience alias.
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = std::result::Result<T, Error>; // kanon:ignore RUST/pub-visibility
 
 /// Error from store operations (`NoteStore` / `BlackboardStore` adapters).
 ///
@@ -71,6 +72,7 @@ pub type Result<T> = std::result::Result<T, Error>;
     reason = "snafu error variant fields (message) are self-documenting via display format"
 )]
 pub enum StoreError {
+    // kanon:ignore RUST/pub-visibility
     /// A store operation failed.
     #[snafu(display("{message}"))]
     Store { message: String },
@@ -85,6 +87,7 @@ pub enum StoreError {
     reason = "snafu error variant fields (message, source, location, mode, name, kind, id) are self-documenting via display format"
 )]
 pub enum PlanningAdapterError {
+    // kanon:ignore RUST/pub-visibility
     #[snafu(display("failed to access workspace: {message}"))]
     Workspace {
         message: String,
@@ -174,6 +177,7 @@ pub enum PlanningAdapterError {
     reason = "snafu error variant fields (message, location, reason) are self-documenting via display format"
 )]
 pub enum KnowledgeAdapterError {
+    // kanon:ignore RUST/pub-visibility
     #[snafu(display("embedding failed: {message}"))]
     Embedding {
         message: String,

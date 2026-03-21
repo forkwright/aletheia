@@ -10,7 +10,7 @@ use crate::pipeline::TurnResult;
 use crate::stream::TurnStreamEvent;
 
 /// Default timeout for sending messages to an actor's inbox.
-pub const DEFAULT_SEND_TIMEOUT: Duration = Duration::from_secs(30);
+pub const DEFAULT_SEND_TIMEOUT: Duration = Duration::from_secs(30); // kanon:ignore RUST/pub-visibility
 
 /// Cloneable handle for communicating with a nous actor.
 ///
@@ -306,8 +306,9 @@ impl NousHandle {
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 #[expect(clippy::expect_used, reason = "test assertions may panic on failure")]
 mod tests {
-    use super::*;
     use tracing::Instrument;
+
+    use super::*;
 
     #[test]
     fn handle_id_returns_correct_value() {

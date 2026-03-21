@@ -66,7 +66,7 @@ fn store_err(e: impl std::fmt::Display) -> StoreError {
 ///
 /// The inner lock guards `SQLite` write access; acquired via `block_in_place`
 /// to avoid holding it across async boundaries.
-pub struct SessionNoteAdapter(pub Arc<Mutex<SessionStore>>);
+pub struct SessionNoteAdapter(pub Arc<Mutex<SessionStore>>); // kanon:ignore RUST/pub-visibility
 
 impl NoteStore for SessionNoteAdapter {
     fn add_note(
@@ -109,7 +109,7 @@ impl NoteStore for SessionNoteAdapter {
 ///
 /// The inner lock guards `SQLite` write access; acquired via `block_in_place`
 /// to avoid holding it across async boundaries.
-pub struct SessionBlackboardAdapter(pub Arc<Mutex<SessionStore>>);
+pub struct SessionBlackboardAdapter(pub Arc<Mutex<SessionStore>>); // kanon:ignore RUST/pub-visibility
 
 impl BlackboardStore for SessionBlackboardAdapter {
     fn write(
@@ -175,7 +175,7 @@ mod tests {
 
     use super::*;
 
-    fn test_store() -> Arc<Mutex<SessionStore>> {
+    fn make_store() -> Arc<Mutex<SessionStore>> {
         Arc::new(Mutex::new(
             SessionStore::open_in_memory().expect("in-memory store"),
         ))
@@ -189,7 +189,7 @@ mod tests {
     /// that path works end-to-end without deadlocking.
     #[tokio::test(flavor = "multi_thread")]
     async fn note_adapter_lock_works_in_async_context() {
-        let store = test_store();
+        let store = make_store();
 
         {
             let s = store.lock().await;
@@ -218,7 +218,7 @@ mod tests {
     /// without deadlocking: lock is released between calls.
     #[tokio::test(flavor = "multi_thread")]
     async fn note_adapter_lock_released_between_calls() {
-        let store = test_store();
+        let store = make_store();
         {
             let s = store.lock().await;
             s.create_session("sess-a", "bob", "key-a", None, None)

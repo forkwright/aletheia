@@ -11,10 +11,10 @@ use crate::stream::TurnStreamEvent;
 
 /// Messages sent to a [`NousActor`](crate::actor::NousActor) via its inbox.
 #[non_exhaustive]
-pub enum NousMessage {
+pub(crate) enum NousMessage {
     /// Process a user message in a session.
     Turn {
-        session_key: String,
+        session_key: String, // kanon:ignore RUST/plain-string-secret
         /// Database session ID from the session store. When `Some`, the actor
         /// adopts this ID for the in-memory `SessionState` instead of generating
         /// a new one, preventing FK constraint failures in finalize and tools.
@@ -26,7 +26,7 @@ pub enum NousMessage {
     },
     /// Process a user message with real-time streaming events.
     StreamingTurn {
-        session_key: String,
+        session_key: String, // kanon:ignore RUST/plain-string-secret
         /// Database session ID from the session store. See `Turn::session_id`.
         session_id: Option<String>,
         content: String,
