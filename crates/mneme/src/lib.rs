@@ -6,9 +6,9 @@
 //!
 //! Depends on `aletheia-koina` for types and errors.
 
-/// Vendored Datalog/graph engine (enabled by `mneme-engine` feature).
+/// Datalog/graph engine (enabled by `mneme-engine` feature, provided by `aletheia-krites`).
 #[cfg(feature = "mneme-engine")]
-pub mod engine;
+pub use aletheia_krites as engine;
 
 /// Database backup and JSON export for session data.
 #[cfg(feature = "sqlite")]

@@ -11,6 +11,7 @@ members = [
     "crates/hermeneus",
     "crates/integration-tests",
     "crates/koina",
+    "crates/krites",
     "crates/mneme",
     "crates/melete",
     "crates/nous",

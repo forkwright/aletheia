@@ -232,6 +232,50 @@ dependencies = [
 ]
 
 [[package]]
+name = "aletheia-krites"
+version = "0.13.0"
+dependencies = [
+ "aho-corasick",
+ "aletheia-eidos",
+ "base64 0.22.1",
+ "bytemuck",
+ "compact_str",
+ "crossbeam",
+ "either",
+ "fjall",
+ "itertools",
+ "jiff",
+ "lru",
+ "ndarray",
+ "ordered-float 5.1.0",
+ "pest",
+ "pest_derive",
+ "priority-queue",
+ "proptest",
+ "rand 0.9.2",
+ "rayon",
+ "regex",
+ "rmp-serde",
+ "rust-stemmers",
+ "rustc-hash",
+ "rustix 1.1.4",
+ "serde",
+ "serde_bytes",
+ "serde_json",
+ "sha2",
+ "smallvec",
+ "snafu",
+ "static_assertions",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "twox-hash",
+ "unicode-normalization",
+ "uuid",
+]
+
+[[package]]
 name = "aletheia-melete"
 version = "0.13.0"
 dependencies = [
@@ -249,42 +293,20 @@ dependencies = [
 name = "aletheia-mneme"
 version = "0.13.0"
 dependencies = [
- "aho-corasick",
  "aletheia-eidos",
  "aletheia-koina",
- "base64 0.22.1",
- "bytemuck",
+ "aletheia-krites",
  "candle-core",
  "candle-nn",
  "candle-transformers",
- "compact_str",
- "crossbeam",
- "either",
- "fjall",
  "hf-hub",
  "hnsw_rs",
- "itertools",
  "jiff",
- "lru",
- "ndarray",
- "ordered-float 5.1.0",
- "pest",
- "pest_derive",
- "priority-queue",
  "proptest",
- "rand 0.9.2",
- "rayon",
- "regex",
- "rmp-serde",
  "rusqlite",
- "rust-stemmers",
- "rustc-hash",
- "rustix 1.1.4",
  "serde",
- "serde_bytes",
  "serde_json",
  "sha2",
- "smallvec",
  "snafu",
  "static_assertions",
  "tempfile",
@@ -292,10 +314,8 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
- "twox-hash",
  "ulid",
  "unicode-normalization",
- "uuid",
 ]
 
 [[package]]
