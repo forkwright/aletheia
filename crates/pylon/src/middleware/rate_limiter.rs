@@ -136,6 +136,7 @@ pub async fn rate_limit(request: Request, next: Next) -> Response {
                 error: ErrorBody {
                     code: "rate_limited".to_owned(),
                     message: format!("rate limited, retry after {retry_after_secs}s"),
+                    request_id: None,
                     details: Some(serde_json::json!({ "retry_after_secs": retry_after_secs })),
                 },
             }),

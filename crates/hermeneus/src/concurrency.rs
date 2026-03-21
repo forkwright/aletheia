@@ -406,7 +406,7 @@ impl<S> Layer<S> for ConcurrencyLayer {
 
 /// Tower `Service` that enforces adaptive concurrency limits.
 ///
-/// Created by [`ConcurrencyLayer::layer`]. Acquires a permit before each
+/// Constructed via [`ConcurrencyLayer::layer`]. Acquires a permit before each
 /// request, measures latency, and classifies the result to update the limiter.
 #[derive(Clone)]
 pub struct ConcurrencyService<S> {

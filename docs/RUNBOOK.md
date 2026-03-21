@@ -23,7 +23,7 @@ aletheia status          # agent status, sessions, cron jobs
 
 ## Start procedure
 
-### 1. check port is free
+## 1. Check port is free
 
 ```bash
 ss -tlnp | grep 18789
@@ -31,7 +31,7 @@ ss -tlnp | grep 18789
 fuser -k 18789/tcp
 ```
 
-### 2. start the binary
+## 2. Start the binary
 
 ```bash
 aletheia
@@ -45,7 +45,7 @@ Or via systemd:
 systemctl --user start aletheia
 ```
 
-### 3. verify
+## 3. Verify
 
 ```bash
 sleep 3
@@ -108,13 +108,13 @@ scripts/backup-cron.sh
 scripts/backup-cron.sh --keep 14 --output-dir /mnt/backup/aletheia
 ```
 
-### Cron setup (daily at 02:00)
+## Cron setup (daily at 02:00)
 
 ```cron
 0 2 * * * /path/to/scripts/backup-cron.sh >> /var/log/aletheia-backup.log 2>&1
 ```
 
-### Environment overrides
+## Environment overrides
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
@@ -125,7 +125,7 @@ scripts/backup-cron.sh --keep 14 --output-dir /mnt/backup/aletheia
 
 The script uses `flock` to prevent concurrent runs. Backup files are named `sessions-<timestamp>.json`.
 
-### Manual restore
+## Manual restore
 
 Backup files are plain JSON exported by `aletheia backup --export-json`. To inspect:
 
@@ -137,7 +137,7 @@ jq '.sessions | length' ~/ergon/instance/backups/sessions-*.json | tail -1
 
 ## Common issues
 
-### EADDRINUSE on port 18789
+## EADDRINUSE on port 18789
 
 ```bash
 fuser 18789/tcp              # find PID
@@ -146,7 +146,7 @@ sleep 2
 aletheia
 ```
 
-### Signal-cli not receiving messages
+## Signal-cli not receiving messages
 
 ```bash
 ps aux | grep signal-cli | grep -v grep
@@ -155,14 +155,14 @@ ps aux | grep signal-cli | grep -v grep
 signal-cli -a +15550100001 receive --timeout 5
 ```
 
-### Prosoche waking too frequently
+## Prosoche waking too frequently
 
 ```bash
 cat <repo>/nous/<agent-id>/PROSOCHE.md
 journalctl --user -u aletheia --since "1 hour ago" | grep prosoche
 ```
 
-### Agent not responding
+## Agent not responding
 
 ```bash
 aletheia status              # check agent and session state
@@ -170,7 +170,7 @@ aletheia health              # check config and connectivity
 ls -la <repo>/nous/<agent-id>/SOUL.md   # verify workspace readable
 ```
 
-### Credential / OAuth token expired
+## Credential / OAuth token expired
 
 ```bash
 # Look for auth errors in logs
@@ -211,7 +211,7 @@ The session store is a SQLite database at `instance/data/sessions.db`.
 sqlite3 instance/data/sessions.db
 ```
 
-### Active session count per agent
+## Active session count per agent
 
 ```sql
 SELECT nous_id, COUNT(*) AS active_sessions
@@ -220,7 +220,7 @@ WHERE status = 'active'
 GROUP BY nous_id;
 ```
 
-### Recent sessions with message counts
+## Recent sessions with message counts
 
 ```sql
 SELECT id, nous_id, status, message_count, token_count_estimate, created_at
@@ -229,7 +229,7 @@ ORDER BY created_at DESC
 LIMIT 20;
 ```
 
-### Token usage by model over the last 7 days
+## Token usage by model over the last 7 days
 
 ```sql
 SELECT model,
@@ -244,7 +244,7 @@ GROUP BY model
 ORDER BY total_output DESC;
 ```
 
-### Large sessions (over 50k tokens)
+## Large sessions (over 50k tokens)
 
 ```sql
 SELECT id, nous_id, token_count_estimate, message_count, status, created_at
@@ -253,7 +253,7 @@ WHERE token_count_estimate > 50000
 ORDER BY token_count_estimate DESC;
 ```
 
-### Recent agent notes
+## Recent agent notes
 
 ```sql
 SELECT n.nous_id, n.category, n.content, n.created_at
@@ -262,7 +262,7 @@ ORDER BY n.created_at DESC
 LIMIT 20;
 ```
 
-### Distillation history
+## Distillation history
 
 ```sql
 SELECT session_id, messages_before, messages_after,
@@ -272,7 +272,7 @@ ORDER BY created_at DESC
 LIMIT 10;
 ```
 
-### Orphaned messages (no parent session)
+## Orphaned messages (no parent session)
 
 ```sql
 SELECT COUNT(*) AS orphan_count
@@ -285,13 +285,13 @@ WHERE s.id IS NULL;
 
 ## Credential rotation
 
-### Check current credential status
+## Check current credential status
 
 ```bash
 aletheia credential status
 ```
 
-### OAuth token (auto-refresh)
+## OAuth token (auto-refresh)
 
 Tokens are refreshed automatically before expiry. To force a refresh:
 
@@ -306,7 +306,7 @@ If refresh fails (e.g. revoked grant), re-authenticate:
 3. Either set `ANTHROPIC_API_KEY` in the environment, or write the JSON credential file.
 4. Verify: `aletheia credential status`
 
-### Static API key rotation
+## Static API key rotation
 
 1. Generate a new key in the Anthropic console.
 2. Update `instance/config/aletheia.toml`:
@@ -318,7 +318,7 @@ If refresh fails (e.g. revoked grant), re-authenticate:
 3. Restart the service: `systemctl --user restart aletheia`
 4. Confirm: `aletheia health`
 
-### Verify the new key is live
+## Verify the new key is live
 
 ```bash
 journalctl --user -u aletheia --since "1 minute ago" | grep -E "401|403|credential|auth"
@@ -329,14 +329,14 @@ journalctl --user -u aletheia --since "1 minute ago" | grep -E "401|403|credenti
 
 ## Performance debugging
 
-### Check current system status
+## Check current system status
 
 ```bash
 aletheia status          # agent states, session counts, cron schedule
 aletheia health          # LLM connectivity and cost
 ```
 
-### Identify slow sessions
+## Identify slow sessions
 
 Sessions with high token counts can slow LLM round-trips. Find them:
 
@@ -355,19 +355,19 @@ curl -sf -X POST http://localhost:18789/api/v1/sessions/<id>/archive \
   -H "Authorization: Bearer <token>"
 ```
 
-### Prometheus metrics
+## Prometheus metrics
 
 ```bash
 curl -sf http://localhost:18789/metrics | grep aletheia
 ```
 
 Key metrics:
-- `aletheia_llm_request_duration_seconds` — LLM latency distribution
-- `aletheia_llm_ttft_seconds` — time-to-first-token
-- `aletheia_llm_input_tokens_total` / `aletheia_llm_output_tokens_total` — throughput
-- `aletheia_llm_cache_tokens_total{type="read"}` — prompt cache hit rate
+- `aletheia_llm_request_duration_seconds` - LLM latency distribution
+- `aletheia_llm_ttft_seconds` - time-to-first-token
+- `aletheia_llm_input_tokens_total` / `aletheia_llm_output_tokens_total` - throughput
+- `aletheia_llm_cache_tokens_total{type="read"}` - prompt cache hit rate
 
-### Maintenance task status
+## Maintenance task status
 
 ```bash
 aletheia maintenance status
@@ -381,7 +381,7 @@ aletheia maintenance run drift-detection --verbose
 aletheia maintenance run db-monitor --verbose
 ```
 
-### Log latency spikes
+## Log latency spikes
 
 ```bash
 journalctl --user -u aletheia --since "1 hour ago" | grep -E "latency|slow|timeout|ms\b"
@@ -391,21 +391,21 @@ journalctl --user -u aletheia --since "1 hour ago" | grep -E "latency|slow|timeo
 
 ## Backup and restore
 
-### Create a backup
+## Create a backup
 
 ```bash
 aletheia backup
 # Writes instance/data/backups/sessions_<timestamp>.db
 ```
 
-### List available backups
+## List available backups
 
 ```bash
 aletheia backup --list
 aletheia backup --list --json    # machine-readable
 ```
 
-### Restore from backup
+## Restore from backup
 
 The backup is a complete SQLite copy. To restore:
 
@@ -416,21 +416,21 @@ systemctl --user start aletheia
 aletheia health
 ```
 
-### Prune old backups
+## Prune old backups
 
 ```bash
 aletheia backup --prune --keep 5    # interactive
 aletheia backup --prune --keep 5 --yes    # skip confirmation
 ```
 
-### Export sessions as JSON (before deletion)
+## Export sessions as JSON (before deletion)
 
 ```bash
 aletheia backup --export-json
 # Writes to instance/data/archive/sessions/
 ```
 
-### Verify backup integrity
+## Verify backup integrity
 
 ```bash
 sqlite3 instance/data/backups/sessions_<timestamp>.db "PRAGMA integrity_check;"
@@ -441,19 +441,19 @@ sqlite3 instance/data/backups/sessions_<timestamp>.db "SELECT COUNT(*) FROM sess
 
 ## Log analysis
 
-### Live log tail
+## Live log tail
 
 ```bash
 journalctl --user -u aletheia -f
 ```
 
-### Last hour of errors
+## Last hour of errors
 
 ```bash
 journalctl --user -u aletheia --since "1 hour ago" --priority err..warning
 ```
 
-### Search for specific patterns
+## Search for specific patterns
 
 ```bash
 # Auth / credential failures
@@ -469,13 +469,13 @@ journalctl --user -u aletheia --since "1 hour ago" | grep -E "500|503|provider|h
 journalctl --user -u aletheia --since "1 hour ago" | grep -E "session|nous_id"
 ```
 
-### Export logs to file
+## Export logs to file
 
 ```bash
 journalctl --user -u aletheia --since "24 hours ago" --output cat > /tmp/aletheia.log
 ```
 
-### Log verbosity
+## Log verbosity
 
 Increase log detail at runtime by setting `RUST_LOG` before starting:
 

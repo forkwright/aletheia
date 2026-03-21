@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # Restore previous Aletheia deployment from backup.
 #
 # Usage: scripts/rollback.sh [backup-file]
@@ -6,8 +7,6 @@
 #
 # Prefer `scripts/deploy.sh --rollback` for integrated rollback with
 # logging and health verification.
-
-set -euo pipefail
 
 INSTANCE_ROOT="${ALETHEIA_ROOT:-$HOME/aletheia/instance}"
 BINARY_DST="${ALETHEIA_BINARY:-$HOME/.local/bin/aletheia}"
@@ -45,18 +44,22 @@ log "Starting ${SERVICE}..."
 systemctl --user daemon-reload
 systemctl --user start "$SERVICE"
 
-# Health check (15s timeout for rollback)
-elapsed=0
-while (( elapsed < 15 )); do
-    if curl -sf --max-time 5 "$HEALTH_URL" &>/dev/null; then
-        log "Rollback complete. Service is healthy."
-        exit 0
-    fi
-    sleep 3
-    elapsed=$(( elapsed + 3 ))
-done
+check_health() {
+    local elapsed=0
+    while (( elapsed < 15 )); do
+        if curl -sf --max-time 5 "$HEALTH_URL" &>/dev/null; then
+            return 0
+        fi
+        sleep 3
+        elapsed=$(( elapsed + 3 ))
+    done
+    return 1
+}
 
-if systemctl --user is-active "$SERVICE" &>/dev/null; then
+# Health check (15s timeout for rollback)
+if check_health; then
+    log "Rollback complete. Service is healthy."
+elif systemctl --user is-active "$SERVICE" &>/dev/null; then
     log "Rollback complete. Service is running (health endpoint not yet responding)."
 else
     die "Service failed to start after rollback"

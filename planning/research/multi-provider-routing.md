@@ -165,7 +165,7 @@ qa_evaluation = "claude-sonnet-4-6"
 ```
 
 **Pros:**
-- Simple to implement and reason about
+- Low implementation and reasoning overhead
 - Predictable cost (operator controls which model handles what)
 - Already partially implemented (Aletheia uses different models for different tasks via `NousConfig`)
 
@@ -248,7 +248,7 @@ fn select_cheapest(
 **Pros:**
 - Automatic cost optimization
 - Adapts to pricing changes without code changes
-- Can reduce costs significantly for simple tasks (use Haiku instead of Opus)
+- Can reduce costs significantly for low-complexity tasks (use Haiku instead of Opus)
 
 **Cons:**
 - Requires accurate capability metadata for all models
@@ -294,7 +294,7 @@ enum LoadBalanceStrategy {
 | Image input | `type: "image"` content block with `source.type: "base64"` | `type: "image_url"` content part with `url` or `data:` URI | Varies by model |
 | Thinking/reasoning | `type: "thinking"` content block with `signature` | `reasoning` field on response (not echoed back as content) | Not supported |
 
-**Adapter complexity: Medium.** The core text message flow is similar across providers. The system prompt handling is the most common difference (separate field vs. message role). Image format differs but is a straightforward translation. Thinking/reasoning is provider-specific and may need to be stripped for non-Anthropic providers.
+**Adapter complexity: Medium.** The core text message flow is similar across providers. The system prompt handling is the most common difference (separate field vs. message role). Image format differs but is a mechanical translation between base64 source blocks and data URIs. Thinking/reasoning is provider-specific and may need to be stripped for non-Anthropic providers.
 
 #### 4.2 tool/Function calling
 

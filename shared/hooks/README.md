@@ -15,7 +15,7 @@ description: Log every turn # optional description
 enabled: true               # default: true. Set false to disable without deleting.
 
 handler:
-  type: shell               # currently only "shell" supported
+  type: shell               # only "shell" supported
   command: /path/to/script  # absolute path to executable
   args: ["{{sessionId}}", "{{nousId}}"]  # template variables from event payload
   timeout: 30s              # max execution time (ms, s, m). Default: 30s

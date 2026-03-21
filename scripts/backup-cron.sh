@@ -11,7 +11,7 @@ set -euo pipefail
 #   ALETHEIA_ROOT       Instance root directory (default: ~/ergon/instance)
 #   ALETHEIA_BINARY     Path to the aletheia binary  (default: ~/ergon/bin/aletheia)
 #   BACKUP_KEEP         Number of backup files to retain (default: 7)
-#   BACKUP_OUTPUT_DIR   Directory for backup files (default: $ALETHEIA_ROOT/backups)
+#   BACKUP_OUTPUT_DIR   Directory for backup files (default: "$ALETHEIA_ROOT/backups")
 #
 # Cron example (daily at 02:00):
 #   0 2 * * * /path/to/scripts/backup-cron.sh >> /var/log/aletheia-backup.log 2>&1

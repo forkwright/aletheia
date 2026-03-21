@@ -395,7 +395,7 @@ Per the MCP spec, tool annotations (like `readOnlyHint`, `destructiveHint`) are 
 
 7. **No WebSocket**: Despite expectations, the spec has no WebSocket transport. Only stdio and Streamable HTTP. This simplifies the transport matrix but limits some deployment patterns.
 
-8. **Dynamic tool registration**: When a server sends `notifications/tools/list_changed`, the client must re-fetch tools and update the registry. This means `ToolRegistry` needs a mechanism for removing/replacing tools at runtime. Currently registration is startup-only. This requires either a new `unregister()`/`replace()` method or a registry rebuild.
+8. **Dynamic tool registration**: When a server sends `notifications/tools/list_changed`, the client must re-fetch tools and update the registry. This means `ToolRegistry` needs a mechanism for removing/replacing tools at runtime. Registration is startup-only. This requires either a new `unregister()`/`replace()` method or a registry rebuild.
 
 9. **JSON Schema dialect**: MCP uses JSON Schema 2020-12 for tool input/output schemas. The `schemars` crate (already in diaporeia for server-side schema generation) and `jsonschema` crate support this, but verify compatibility with the exact dialect servers produce.
 

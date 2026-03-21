@@ -24,28 +24,28 @@
       craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
 
       # Native libraries required by WGPU/Blitz at build and runtime.
-      wgpuNativeDeps = with pkgs; [
-        vulkan-loader
-        libxkbcommon
-        wayland
+      wgpuNativeDeps = [
+        pkgs.vulkan-loader
+        pkgs.libxkbcommon
+        pkgs.wayland
 
         # X11
-        xorg.libX11
-        xorg.libXcursor
-        xorg.libXrandr
-        xorg.libXi
-        xorg.libxcb
+        pkgs.xorg.libX11
+        pkgs.xorg.libXcursor
+        pkgs.xorg.libXrandr
+        pkgs.xorg.libXi
+        pkgs.xorg.libxcb
 
         # Font rendering
-        fontconfig
-        freetype
+        pkgs.fontconfig
+        pkgs.freetype
       ];
 
       # Build-time tools needed by native crates (C compilation, linking).
-      nativeBuildDeps = with pkgs; [
-        pkg-config
-        cmake
-        rustPlatform.bindgenHook
+      nativeBuildDeps = [
+        pkgs.pkg-config
+        pkgs.cmake
+        pkgs.rustPlatform.bindgenHook
       ];
 
       # Shared source filter: include Rust sources, Cargo manifests,
@@ -95,17 +95,17 @@
         # Inherit build inputs so native libraries are available.
         inputsFrom = [ aletheia-desktop ];
 
-        packages = with pkgs; [
+        packages = [
           # Dioxus CLI for hot-patching development
-          dioxus-cli
+          pkgs.dioxus-cli
 
           # Build tooling
-          cargo-deny
-          cargo-watch
+          pkgs.cargo-deny
+          pkgs.cargo-watch
 
           # Wayland session support
-          wayland-protocols
-          wayland-scanner
+          pkgs.wayland-protocols
+          pkgs.wayland-scanner
         ];
 
         # WHY: WGPU discovers the Vulkan ICD loader and GPU-adjacent

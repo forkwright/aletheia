@@ -206,7 +206,7 @@ At spawn time, the manager calls `sections_for_agent_or_domains(agent_id, domain
    description = "SQL SELECT statement to execute"
    ```
 
-### Filtering to specific agents
+## Filtering to specific agents
 
 Use the `agents` field on context entries and the `overlays` table to target content:
 
@@ -234,7 +234,7 @@ Packs are loaded in the order they appear in the `packs` config list. When multi
 - **Tools**: tool names must be unique across all packs; duplicates are rejected at startup
 - **Domain overlays**: merged (union) across all packs for each agent
 
-There is no override or shadowing mechanism; packs compose, they do not replace each other.
+Packs compose additively and do not override or shadow each other.
 
 ## See also
 

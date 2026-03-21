@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # Generate GitHub Actions workflow YAML from templates.
 #
 # Usage: scripts/generate-workflows.sh [--shards N] [--dry-run]
@@ -9,8 +10,6 @@
 # Targets generated:
 #   .github/workflows/ci.yml           (shellcheck, commitlint, standards-sync, verify-generated)
 #   .github/workflows/test-sharded.yml (smart-filtered PR runs + full sharded main runs)
-
-set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -82,7 +81,7 @@ SHARD_LIST="$(build_shard_list "$SHARDS")"
 # WHY standards-sync: prevents local standards/ from drifting from kanon canonical.
 # WHY verify-generated: prevents hand-edits to generated workflow files.
 generate_ci() {
-    cat <<YAML
+    cat <<'YAML'
 # !! GENERATED FILE — do not edit by hand.
 # Edit scripts/generate-workflows.sh and re-run to update.
 
@@ -98,7 +97,7 @@ on:
     branches: [main]
 
 concurrency:
-  group: ci-\${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 # WHY: Principle of least privilege for CI workflows
@@ -117,13 +116,13 @@ jobs:
         run: |
           failed=0
           while IFS= read -r script; do
-            if head -1 "\$script" | grep -qE '(bash|sh)'; then
-              echo "::group::\$script"
-              shellcheck -S warning "\$script" || failed=1
+            if head -1 "$script" | grep -qE '(bash|sh)'; then
+              echo "::group::$script"
+              shellcheck -S warning "$script" || failed=1
               echo "::endgroup::"
             fi
           done < <(find scripts -type f -executable 2>/dev/null)
-          exit \$failed
+          exit "$failed"
 
   commitlint:
     if: github.event_name == 'pull_request'
@@ -137,15 +136,15 @@ jobs:
           TYPES="feat|fix|refactor|chore|docs|test|ci|perf|style|build|revert"
           failed=0
           while IFS= read -r msg; do
-            echo "\$msg" | grep -qE "^Merge " && continue
-            if ! echo "\$msg" | grep -qE "^(\$TYPES)(\\(.+\\))?: .+"; then
-              echo "::error::Bad commit message: \$msg"
+            echo "$msg" | grep -qE "^Merge " && continue
+            if ! echo "$msg" | grep -qE "^($TYPES)(\(.+\))?: .+"; then
+              echo "::error::Bad commit message: $msg"
               echo "  Expected: <type>(<scope>): <description>"
-              echo "  Types: \$TYPES"
+              echo "  Types: $TYPES"
               failed=1
             fi
           done < <(git log --format='%s' origin/main..HEAD)
-          exit \$failed
+          exit "$failed"
 
   standards-sync:
     if: github.event_name == 'pull_request'
@@ -153,34 +152,31 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - name: Fetch canonical standards from kanon
+      - name: Fetch and diff canonical standards from kanon
         env:
-          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mkdir -p /tmp/kanon-standards
-          gh api repos/forkwright/kanon/contents/standards \\
+          tmpdir="$(mktemp -d)"
+          gh api repos/forkwright/kanon/contents/standards \
             --jq '.[].name' | while IFS= read -r fname; do
-            gh api "repos/forkwright/kanon/contents/standards/\${fname}" \\
-              --jq '.content' \\
-              | base64 -d > "/tmp/kanon-standards/\${fname}"
+            gh api "repos/forkwright/kanon/contents/standards/${fname}" \
+              --jq '.content' \
+              | base64 -d > "${tmpdir}/${fname}"
           done
-
-      - name: Diff standards against kanon canonical
-        run: |
           failed=0
           while IFS= read -r fname; do
-            local_file="standards/\${fname}"
-            canonical="/tmp/kanon-standards/\${fname}"
-            if [[ ! -f "\$local_file" ]]; then
-              echo "::error file=\${local_file}::Canonical file '\${fname}' from kanon is missing locally"
+            local_file="standards/${fname}"
+            canonical="${tmpdir}/${fname}"
+            if [[ ! -f "$local_file" ]]; then
+              echo "::error file=${local_file}::Canonical file '${fname}' from kanon is missing locally"
               failed=1
-            elif ! diff -q -- "\$canonical" "\$local_file" > /dev/null 2>&1; then
-              echo "::error file=\${local_file}::Local '\${fname}' diverges from kanon canonical"
-              diff -- "\$canonical" "\$local_file" || true
+            elif ! diff -q -- "$canonical" "$local_file" > /dev/null 2>&1; then
+              echo "::error file=${local_file}::Local '${fname}' diverges from kanon canonical"
+              diff -- "$canonical" "$local_file" || true  # NOTE: show the diff output; non-zero exit expected
               failed=1
             fi
-          done < <(ls /tmp/kanon-standards/)
-          if [[ "\$failed" -ne 0 ]]; then
+          done < <(ls "${tmpdir}/")
+          if [[ "$failed" -ne 0 ]]; then
             echo ""
             echo "Standards diverged from kanon. Update local standards/ to match, or sync kanon."
             echo "Aletheia-specific additions (files only in standards/ but not in kanon) are allowed."
@@ -223,10 +219,10 @@ YAML
 # WHY test-plan job: separates the "what to test" decision from the actual test
 # execution so that both test-shard and test-filtered can branch on it.
 generate_test_sharded() {
-    cat <<YAML
+    sed "s/@@SHARDS@@/${SHARDS}/g; s/@@SHARD_LIST@@/${SHARD_LIST}/g" <<'YAML'
 # !! GENERATED FILE — do not edit by hand.
 # Edit scripts/generate-workflows.sh and re-run to update.
-# Generated with: scripts/generate-workflows.sh --shards ${SHARDS}
+# Generated with: scripts/generate-workflows.sh --shards @@SHARDS@@
 
 name: Test (sharded)
 
@@ -248,7 +244,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: test-sharded-\${{ github.ref }}
+  group: test-sharded-${{ github.ref }}
   cancel-in-progress: true
 
 # WHY: Principle of least privilege for CI workflows
@@ -257,7 +253,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  SHARD_COUNT: ${SHARDS}
+  SHARD_COUNT: @@SHARDS@@
 
 jobs:
   # WHY: Determine whether to run the full sharded suite (pushes to main,
@@ -268,8 +264,8 @@ jobs:
     name: Compute test plan
     runs-on: ubuntu-latest
     outputs:
-      full_suite: \${{ steps.plan.outputs.full_suite }}
-      packages: \${{ steps.plan.outputs.packages }}
+      full_suite: ${{ steps.plan.outputs.full_suite }}
+      packages: ${{ steps.plan.outputs.packages }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
@@ -286,31 +282,31 @@ jobs:
       - name: Compute test plan
         id: plan
         env:
-          EVENT: \${{ github.event_name }}
-          BASE_REF: \${{ github.base_ref }}
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          if [[ "\$EVENT" != "pull_request" ]]; then
-            printf 'Event is %s; running full suite.\\n' "\$EVENT"
-            echo "full_suite=true" >> "\$GITHUB_OUTPUT"
-            echo "packages=" >> "\$GITHUB_OUTPUT"
+          if [[ "$EVENT" != "pull_request" ]]; then
+            printf 'Event is %s; running full suite.\n' "$EVENT"
+            echo "full_suite=true" >> "$GITHUB_OUTPUT"
+            echo "packages=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           # PR: compute changed files relative to the merge base
-          git fetch origin "\$BASE_REF" --depth=1
-          changed=\$(git diff --name-only "origin/\${BASE_REF}...HEAD" || true)
+          git fetch origin "$BASE_REF" --depth=1
+          changed=$(git diff --name-only "origin/${BASE_REF}...HEAD" || true)
 
-          if [[ -z "\$changed" ]]; then
-            printf 'No changed files detected; skipping tests.\\n'
-            echo "full_suite=false" >> "\$GITHUB_OUTPUT"
-            echo "packages=" >> "\$GITHUB_OUTPUT"
+          if [[ -z "$changed" ]]; then
+            printf 'No changed files detected; skipping tests.\n'
+            echo "full_suite=false" >> "$GITHUB_OUTPUT"
+            echo "packages=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          pkgs=\$(echo "\$changed" | python3 scripts/affected-crates.py | sort -u | tr '\\n' ' ' | sed 's/[[:space:]]*\$//')
-          printf 'Affected packages: %s\\n' "\$pkgs"
-          echo "full_suite=false" >> "\$GITHUB_OUTPUT"
-          echo "packages=\${pkgs}" >> "\$GITHUB_OUTPUT"
+          pkgs=$(echo "$changed" | python3 scripts/affected-crates.py | sort -u | tr '\n' ' ' | sed 's/[[:space:]]*$//')
+          printf 'Affected packages: %s\n' "$pkgs"
+          echo "full_suite=false" >> "$GITHUB_OUTPUT"
+          echo "packages=${pkgs}" >> "$GITHUB_OUTPUT"
 
   # WHY: Split the workspace test suite across parallel runners using
   # nextest's hash-based partitioning. Each shard receives a stable,
@@ -318,14 +314,14 @@ jobs:
   # This cuts wall-clock time by ~1/N without duplication or gaps.
   # Only runs on main-branch pushes and workflow_dispatch (full suite).
   test-shard:
-    name: "Test shard \${{ matrix.shard }}/${SHARDS}"
+    name: "Test shard ${{ matrix.shard }}/@@SHARDS@@"
     needs: [test-plan]
     if: needs.test-plan.outputs.full_suite == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        shard: ${SHARD_LIST}
+        shard: @@SHARD_LIST@@
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
@@ -335,20 +331,20 @@ jobs:
         with:
           # WHY: Shard-specific cache key so each runner has its own cache
           # slot and doesn't thrash on concurrent writes.
-          key: shard-\${{ matrix.shard }}
+          key: shard-${{ matrix.shard }}
 
       - name: Install nextest
         uses: taiki-e/install-action@e24b8b7a939c6a537188f34a4163cb153dd85cf6 # v2
         with:
           tool: nextest
 
-      - name: "Test (shard \${{ matrix.shard }}/${SHARDS})"
+      - name: "Test (shard ${{ matrix.shard }}/@@SHARDS@@)"
         env:
-          SHARD: \${{ matrix.shard }}
+          SHARD: ${{ matrix.shard }}
         run: |
-          cargo nextest run \\
-            --workspace \\
-            --partition "hash:\${SHARD}/${SHARDS}"
+          cargo nextest run \
+            --workspace \
+            --partition "hash:${SHARD}/@@SHARDS@@"
 
   # WHY: On pull requests, only test the crates that were changed plus their
   # reverse dependencies. This avoids rebuilding and retesting unaffected
@@ -374,14 +370,14 @@ jobs:
 
       - name: Test (affected crates)
         env:
-          PACKAGES: \${{ needs.test-plan.outputs.packages }}
+          PACKAGES: ${{ needs.test-plan.outputs.packages }}
         run: |
-          if [[ -z "\$PACKAGES" ]]; then
-            printf 'No affected Rust crates detected; skipping tests.\\n'
+          if [[ -z "$PACKAGES" ]]; then
+            printf 'No affected Rust crates detected; skipping tests.\n'
             exit 0
           fi
-          pkg_flags=\$(echo "\$PACKAGES" | tr ' ' '\\n' | grep -v '^\$' | xargs -I{} printf -- '--package %s ' {})
-          cargo nextest run \$pkg_flags
+          pkg_flags=$(echo "$PACKAGES" | tr ' ' '\n' | grep -v '^$' | xargs -I{} printf -- '--package %s ' {})
+          cargo nextest run $pkg_flags
 
   # WHY: Gate merges on a single required status check regardless of whether
   # the full sharded suite or the filtered subset ran. Simpler to configure in
@@ -394,27 +390,27 @@ jobs:
     steps:
       - name: Check test results
         env:
-          PLAN_RESULT: \${{ needs.test-plan.result }}
-          FULL_SUITE: \${{ needs.test-plan.outputs.full_suite }}
-          SHARD_RESULT: \${{ needs.test-shard.result }}
-          FILTERED_RESULT: \${{ needs.test-filtered.result }}
+          PLAN_RESULT: ${{ needs.test-plan.result }}
+          FULL_SUITE: ${{ needs.test-plan.outputs.full_suite }}
+          SHARD_RESULT: ${{ needs.test-shard.result }}
+          FILTERED_RESULT: ${{ needs.test-filtered.result }}
         run: |
-          if [[ "\$PLAN_RESULT" != "success" ]]; then
-            printf 'test-plan failed (result: %s)\\n' "\$PLAN_RESULT" >&2
+          if [[ "$PLAN_RESULT" != "success" ]]; then
+            printf 'test-plan failed (result: %s)\n' "$PLAN_RESULT" >&2
             exit 1
           fi
-          if [[ "\$FULL_SUITE" == "true" ]]; then
-            if [[ "\$SHARD_RESULT" != "success" ]]; then
-              printf 'One or more test shards failed (result: %s)\\n' "\$SHARD_RESULT" >&2
+          if [[ "$FULL_SUITE" == "true" ]]; then
+            if [[ "$SHARD_RESULT" != "success" ]]; then
+              printf 'One or more test shards failed (result: %s)\n' "$SHARD_RESULT" >&2
               exit 1
             fi
           else
-            if [[ "\$FILTERED_RESULT" != "success" ]]; then
-              printf 'Filtered test job failed (result: %s)\\n' "\$FILTERED_RESULT" >&2
+            if [[ "$FILTERED_RESULT" != "success" ]]; then
+              printf 'Filtered test job failed (result: %s)\n' "$FILTERED_RESULT" >&2
               exit 1
             fi
           fi
-          printf 'All tests passed.\\n'
+          printf 'All tests passed.\n'
 YAML
 }
 

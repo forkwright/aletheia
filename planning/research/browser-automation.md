@@ -75,7 +75,7 @@ CDP gives direct access to Chrome internals: DOM, network, rendering, JavaScript
 | Protocol | CDP over WebSocket (sync tungstenite) |
 | Browsers | Chrome/Chromium only |
 
-**Strengths**: Simple API, element-level screenshots (JPEG/PNG), incognito and extension support.
+**Strengths**: Minimal API surface, element-level screenshots (JPEG/PNG), incognito and extension support.
 
 **Weaknesses**: Synchronous. Blocks threads. Incompatible with Aletheia's tokio runtime without `spawn_blocking` wrappers. Chrome-only. Missing frames, file pickers, WebSocket inspection.
 

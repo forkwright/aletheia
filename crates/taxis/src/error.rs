@@ -120,21 +120,21 @@ pub enum Error {
         location: snafu::Location,
     },
 
-    /// The master key file is invalid (wrong length, bad hex).
-    #[snafu(display("invalid master key at {}: {reason}", path.display()))]
-    InvalidMasterKey {
+    /// The primary key file is invalid (wrong length, bad hex).
+    #[snafu(display("invalid primary key at {}: {reason}", path.display()))]
+    InvalidPrimaryKey {
         path: PathBuf,
         reason: String,
         #[snafu(implicit)]
         location: snafu::Location,
     },
 
-    /// The master key file already exists.
+    /// The primary key file already exists.
     #[snafu(display(
-        "master key already exists at {}\n  help: delete the file first if you want to regenerate",
+        "primary key already exists at {}\n  help: delete the file first if you want to regenerate",
         path.display()
     ))]
-    MasterKeyExists {
+    PrimaryKeyExists {
         path: PathBuf,
         #[snafu(implicit)]
         location: snafu::Location,

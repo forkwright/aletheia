@@ -24,7 +24,7 @@ Agora provides a provider-based channel abstraction with four components:
 - **`MessageRouter`**: 4-level priority cascade (exact group, exact source, channel default, global default) with session key templating
 - **`ChannelListener`**: unified inbound polling via mpsc channels, spawns per-provider tasks
 
-Currently only Signal (`semeion`) is implemented. The architecture is explicitly designed for extension: implement the trait, register the provider, add config bindings.
+Only Signal (`semeion`) is implemented. The architecture is explicitly designed for extension: implement the trait, register the provider, add config bindings.
 
 **Voice integration fit:** The `ChannelProvider` contract is text-centric. `InboundMessage.text` carries the message body; `SendParams.text` carries the outbound reply. Voice fits naturally as a "transcription-first" channel: STT produces the `text` field on inbound, TTS converts the `text` field on outbound. The voice channel wraps an audio transport around the existing text pipeline.
 
@@ -203,7 +203,7 @@ VAD determines when the user starts and stops speaking. Critical for turn-taking
 
 **Recommended:** Silero VAD via `voice_activity_detector` crate. Silero V5 achieves 87.7% TPR at 5% FPR, significantly outperforming WebRTC VAD (50% TPR at same FPR). The crate uses ONNX Runtime for inference.
 
-**Alternative (pure Rust):** Energy-based VAD as a fallback. Simple RMS threshold with hangover timer. Less accurate but zero dependencies.
+**Alternative (pure Rust):** Energy-based VAD as a fallback. RMS threshold with hangover timer. Less accurate but zero dependencies.
 
 **Parameters:**
 - Speech threshold: 0.5 probability (Silero default)
@@ -405,7 +405,7 @@ Phase 1 adds only `cpal` as a new dependency (candle already present). Each subs
 
 7. **Opus codec is C.** The recommended `opus-codec` crate vendors C source. This technically violates "no C++ in the brain," though Opus is C (not C++), stable, audited, and an IETF standard. The pure-Rust `mousiki` alternative is decode-only. Accept the C dependency for codec or implement a simpler codec (raw PCM over WebSocket) for Phase 3.
 
-8. **ONNX Runtime for Silero VAD.** The `voice_activity_detector` crate depends on ONNX Runtime (C++ library). This is the same dependency that was removed when fastembed was replaced with candle. Consider implementing Silero's ONNX model via candle (the model is a simple LSTM, feasible to port) to maintain the pure-Rust constraint.
+8. **ONNX Runtime for Silero VAD.** The `voice_activity_detector` crate depends on ONNX Runtime (C++ library). This is the same dependency that was removed when fastembed was replaced with candle. Consider implementing Silero's ONNX model via candle (the model is a single-layer LSTM, feasible to port) to maintain the pure-Rust constraint.
 
 9. **Single-user assumption.** Phase 1 assumes one microphone, one user, one agent. Multi-user voice (e.g., a shared device with speaker identification) requires diarization, which is a substantially harder problem. Defer this.
 

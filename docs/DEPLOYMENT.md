@@ -321,7 +321,7 @@ For the full startup sequence (what the binary does at launch), see [ARCHITECTUR
 
 ## Verification
 
-### Health check
+## Health check
 
 ```bash
 # CLI
@@ -347,7 +347,7 @@ Healthy response:
 
 Status values: `healthy` (all pass), `degraded` (warnings, e.g. no LLM provider), `unhealthy` (failures).
 
-### System status
+## System status
 
 ```bash
 aletheia status
@@ -355,7 +355,7 @@ aletheia status
 
 Displays agent count, active sessions, uptime, and provider status.
 
-### API smoke test
+## API smoke test
 
 Create a session and send a message to verify the full request path. Replace `YOUR_TOKEN` with the token from `aletheia credential status`.
 
@@ -380,7 +380,7 @@ curl -s -X POST \
   http://127.0.0.1:18789/api/v1/sessions/SESSION_ID/messages
 ```
 
-### Prometheus metrics
+## Prometheus metrics
 
 ```bash
 curl -s http://127.0.0.1:18789/metrics

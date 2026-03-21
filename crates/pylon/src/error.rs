@@ -21,6 +21,9 @@ pub struct ErrorBody {
     pub code: String,
     /// Human-readable error message.
     pub message: String,
+    /// Per-request correlation ID for tracing errors across logs and client reports.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_id: Option<String>,
     /// Optional structured details (e.g. retry timing, validation errors).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<serde_json::Value>,
@@ -175,6 +178,7 @@ impl IntoResponse for ApiError {
             error: ErrorBody {
                 code: code.to_owned(),
                 message: client_message,
+                request_id: None,
                 details,
             },
         };

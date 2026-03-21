@@ -1,9 +1,9 @@
 //! Encryption at rest for sensitive configuration fields.
 //!
 //! Sensitive values in `aletheia.toml` (API keys, signing keys, secrets) can be
-//! encrypted with a master key. Encrypted values are stored with an `enc:` prefix
+//! encrypted with a primary key. Encrypted values are stored with an `enc:` prefix
 //! followed by base64-encoded ciphertext. On config load, `enc:` values are
-//! transparently decrypted. If the master key is missing, encrypted values pass
+//! transparently decrypted. If the primary key is missing, encrypted values pass
 //! through as-is with a warning.
 
 use std::path::{Path, PathBuf};
@@ -22,28 +22,28 @@ pub const ENCRYPTED_PREFIX: &str = "enc:";
 /// Length of the ChaCha20-Poly1305 key in bytes.
 const KEY_LEN: usize = 32;
 
-/// Default path for the master key file.
+/// Default path for the primary key file.
 fn default_key_path() -> Option<PathBuf> {
     std::env::var_os("HOME").map(|home| {
         PathBuf::from(home)
             .join(".config")
             .join("aletheia")
-            .join("master.key")
+            .join("primary.key")
     })
 }
 
-/// Resolve the master key file path.
+/// Resolve the primary key file path.
 ///
-/// Checks `ALETHEIA_MASTER_KEY` env var first, then falls back to
-/// `~/.config/aletheia/master.key`.
+/// Checks `ALETHEIA_PRIMARY_KEY` env var first, then falls back to
+/// `~/.config/aletheia/primary.key`.
 #[must_use]
-pub fn master_key_path() -> Option<PathBuf> {
-    std::env::var_os("ALETHEIA_MASTER_KEY")
+pub fn primary_key_path() -> Option<PathBuf> {
+    std::env::var_os("ALETHEIA_PRIMARY_KEY")
         .map(PathBuf::from)
         .or_else(default_key_path)
 }
 
-/// Load the 32-byte master key from the key file.
+/// Load the 32-byte primary key from the key file.
 ///
 /// The file must contain exactly 64 hex characters (32 bytes).
 /// Returns `None` if the file does not exist.
@@ -56,7 +56,7 @@ pub fn master_key_path() -> Option<PathBuf> {
     clippy::result_large_err,
     reason = "taxis Error is inherently large due to PathBuf fields"
 )]
-pub fn load_master_key(path: &Path) -> Result<Option<[u8; KEY_LEN]>> {
+pub fn load_primary_key(path: &Path) -> Result<Option<[u8; KEY_LEN]>> {
     if !path.exists() {
         return Ok(None);
     }
@@ -74,7 +74,7 @@ pub fn load_master_key(path: &Path) -> Result<Option<[u8; KEY_LEN]>> {
 )]
 fn parse_hex_key(hex: &str, path: &Path) -> Result<Option<[u8; KEY_LEN]>> {
     if hex.len() != KEY_LEN * 2 {
-        return Err(error::InvalidMasterKeySnafu {
+        return Err(error::InvalidPrimaryKeySnafu {
             path: path.to_path_buf(),
             reason: format!("expected {} hex characters, got {}", KEY_LEN * 2, hex.len()),
         }
@@ -90,7 +90,7 @@ fn parse_hex_key(hex: &str, path: &Path) -> Result<Option<[u8; KEY_LEN]>> {
             reason = "chunks(2) yields 2-element slices; i < KEY_LEN"
         )]
         let hi = hex_digit(chunk[0]).ok_or_else(|| {
-            error::InvalidMasterKeySnafu {
+            error::InvalidPrimaryKeySnafu {
                 path: path.to_path_buf(),
                 reason: format!("invalid hex character at position {}", i * 2),
             }
@@ -98,7 +98,7 @@ fn parse_hex_key(hex: &str, path: &Path) -> Result<Option<[u8; KEY_LEN]>> {
         })?;
         #[expect(clippy::indexing_slicing, reason = "chunks(2) yields 2-element slices")]
         let lo = hex_digit(chunk[1]).ok_or_else(|| {
-            error::InvalidMasterKeySnafu {
+            error::InvalidPrimaryKeySnafu {
                 path: path.to_path_buf(),
                 reason: format!("invalid hex character at position {}", i * 2 + 1),
             }
@@ -143,7 +143,7 @@ fn to_hex(bytes: &[u8]) -> String {
     s
 }
 
-/// Generate a new random master key and write it to the given path.
+/// Generate a new random primary key and write it to the given path.
 ///
 /// Creates parent directories and sets file permissions to 0600.
 ///
@@ -155,9 +155,9 @@ fn to_hex(bytes: &[u8]) -> String {
     clippy::result_large_err,
     reason = "taxis Error is inherently large due to PathBuf fields"
 )]
-pub fn generate_master_key(path: &Path) -> Result<()> {
+pub fn generate_primary_key(path: &Path) -> Result<()> {
     if path.exists() {
-        return Err(error::MasterKeyExistsSnafu {
+        return Err(error::PrimaryKeyExistsSnafu {
             path: path.to_path_buf(),
         }
         .build());
@@ -218,9 +218,9 @@ pub fn is_encrypted(value: &str) -> bool {
     clippy::result_large_err,
     reason = "taxis Error is inherently large due to PathBuf fields"
 )]
-pub fn encrypt_value(plaintext: &str, master_key: &[u8; KEY_LEN]) -> Result<String> {
+pub fn encrypt_value(plaintext: &str, primary_key: &[u8; KEY_LEN]) -> Result<String> {
     // WHY: ring::error::Unspecified has no useful fields to propagate
-    let unbound = UnboundKey::new(&CHACHA20_POLY1305, master_key)
+    let unbound = UnboundKey::new(&CHACHA20_POLY1305, primary_key)
         .map_err(|_unspecified| build_encrypt_error())?;
     let key = LessSafeKey::new(unbound);
 
@@ -253,7 +253,7 @@ pub fn encrypt_value(plaintext: &str, master_key: &[u8; KEY_LEN]) -> Result<Stri
     clippy::result_large_err,
     reason = "taxis Error is inherently large due to PathBuf fields"
 )]
-pub fn decrypt_value(encrypted: &str, master_key: &[u8; KEY_LEN]) -> Result<String> {
+pub fn decrypt_value(encrypted: &str, primary_key: &[u8; KEY_LEN]) -> Result<String> {
     let encoded = encrypted
         .strip_prefix(ENCRYPTED_PREFIX)
         .ok_or_else(|| build_decrypt_error("missing enc: prefix"))?;
@@ -272,7 +272,7 @@ pub fn decrypt_value(encrypted: &str, master_key: &[u8; KEY_LEN]) -> Result<Stri
     let nonce = Nonce::try_assume_unique_for_key(nonce_bytes)
         .map_err(|_unspecified| build_decrypt_error("invalid nonce"))?;
 
-    let unbound = UnboundKey::new(&CHACHA20_POLY1305, master_key)
+    let unbound = UnboundKey::new(&CHACHA20_POLY1305, primary_key)
         .map_err(|_unspecified| build_decrypt_error("invalid key"))?;
     let key = LessSafeKey::new(unbound);
 
@@ -314,7 +314,7 @@ fn build_decrypt_error(reason: &str) -> error::Error {
     clippy::result_large_err,
     reason = "taxis Error is inherently large due to PathBuf fields"
 )]
-pub fn encrypt_config_file(toml_path: &Path, master_key: &[u8; KEY_LEN]) -> Result<usize> {
+pub fn encrypt_config_file(toml_path: &Path, primary_key: &[u8; KEY_LEN]) -> Result<usize> {
     let content =
         std::fs::read_to_string(toml_path).context(error::ReadConfigSnafu { path: toml_path })?;
     let mut value: toml::Value = toml::from_str(&content).map_err(|e| {
@@ -324,7 +324,7 @@ pub fn encrypt_config_file(toml_path: &Path, master_key: &[u8; KEY_LEN]) -> Resu
         .build()
     })?;
 
-    let count = encrypt_sensitive_values(&mut value, master_key)?;
+    let count = encrypt_sensitive_values(&mut value, primary_key)?;
 
     if count > 0 {
         let encrypted_toml = toml::to_string(&value).map_err(|e| {
@@ -373,12 +373,12 @@ const SENSITIVE_TOML_KEYS: &[&str] = &[
 
 /// Recursively decrypt all `enc:`-prefixed string values in a TOML value tree.
 ///
-/// If `master_key` is `None`, logs a warning for each encrypted value found
+/// If `primary_key` is `None`, logs a warning for each encrypted value found
 /// and leaves it unchanged (plaintext fallback).
-pub fn decrypt_toml_values(value: &mut toml::Value, master_key: Option<&[u8; KEY_LEN]>) {
+pub fn decrypt_toml_values(value: &mut toml::Value, primary_key: Option<&[u8; KEY_LEN]>) {
     match value {
         toml::Value::String(s) if is_encrypted(s) => {
-            if let Some(key) = master_key {
+            if let Some(key) = primary_key {
                 match decrypt_value(s, key) {
                     Ok(plaintext) => *s = plaintext,
                     Err(e) => {
@@ -387,19 +387,19 @@ pub fn decrypt_toml_values(value: &mut toml::Value, master_key: Option<&[u8; KEY
                 }
             } else {
                 warn!(
-                    "encrypted config value found but no master key available \
+                    "encrypted config value found but no primary key available \
                      -- value will remain encrypted"
                 );
             }
         }
         toml::Value::Table(table) => {
             for (_key, val) in table.iter_mut() {
-                decrypt_toml_values(val, master_key);
+                decrypt_toml_values(val, primary_key);
             }
         }
         toml::Value::Array(arr) => {
             for item in arr {
-                decrypt_toml_values(item, master_key);
+                decrypt_toml_values(item, primary_key);
             }
         }
         _ => {
@@ -421,10 +421,10 @@ pub fn decrypt_toml_values(value: &mut toml::Value, master_key: Option<&[u8; KEY
 )]
 pub fn encrypt_sensitive_values(
     value: &mut toml::Value,
-    master_key: &[u8; KEY_LEN],
+    primary_key: &[u8; KEY_LEN],
 ) -> Result<usize> {
     let mut count = 0;
-    encrypt_recursive(value, master_key, &mut count)?;
+    encrypt_recursive(value, primary_key, &mut count)?;
     Ok(count)
 }
 
@@ -434,7 +434,7 @@ pub fn encrypt_sensitive_values(
 )]
 fn encrypt_recursive(
     value: &mut toml::Value,
-    master_key: &[u8; KEY_LEN],
+    primary_key: &[u8; KEY_LEN],
     count: &mut usize,
 ) -> Result<()> {
     match value {
@@ -445,17 +445,17 @@ fn encrypt_recursive(
                         && !s.is_empty()
                         && !is_encrypted(s)
                     {
-                        *s = encrypt_value(s, master_key)?;
+                        *s = encrypt_value(s, primary_key)?;
                         *count += 1;
                     }
                 } else {
-                    encrypt_recursive(val, master_key, count)?;
+                    encrypt_recursive(val, primary_key, count)?;
                 }
             }
         }
         toml::Value::Array(arr) => {
             for item in arr {
-                encrypt_recursive(item, master_key, count)?;
+                encrypt_recursive(item, primary_key, count)?;
             }
         }
         _ => {
@@ -617,7 +617,7 @@ mod tests {
         let signing_key = value["gateway"]["auth"]["signingKey"].as_str().unwrap();
         assert!(
             is_encrypted(signing_key),
-            "without master key, value must stay encrypted"
+            "without primary key, value must stay encrypted"
         );
     }
 
@@ -665,11 +665,11 @@ mod tests {
     }
 
     #[test]
-    fn master_key_file_roundtrip() {
+    fn primary_key_file_roundtrip() {
         let dir = tempfile::tempdir().unwrap();
-        let key_path = dir.path().join("master.key");
+        let key_path = dir.path().join("primary.key");
 
-        generate_master_key(&key_path).unwrap();
+        generate_primary_key(&key_path).unwrap();
 
         assert!(key_path.exists());
 
@@ -684,25 +684,25 @@ mod tests {
             );
         }
 
-        let key = load_master_key(&key_path).unwrap();
-        assert!(key.is_some(), "master key should be loaded");
+        let key = load_primary_key(&key_path).unwrap();
+        assert!(key.is_some(), "primary key should be loaded");
         let key = key.unwrap();
         assert_ne!(key, [0u8; KEY_LEN], "key must not be all zeros");
     }
 
     #[test]
     fn load_missing_key_returns_none() {
-        let result = load_master_key(Path::new("/nonexistent/path/master.key")).unwrap();
+        let result = load_primary_key(Path::new("/nonexistent/path/primary.key")).unwrap();
         assert!(result.is_none());
     }
 
     #[test]
     fn generate_key_rejects_existing_file() {
         let dir = tempfile::tempdir().unwrap();
-        let key_path = dir.path().join("master.key");
+        let key_path = dir.path().join("primary.key");
 
-        generate_master_key(&key_path).unwrap();
-        let result = generate_master_key(&key_path);
+        generate_primary_key(&key_path).unwrap();
+        let result = generate_primary_key(&key_path);
         assert!(result.is_err(), "must reject if key file already exists");
     }
 

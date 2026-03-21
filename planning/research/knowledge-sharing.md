@@ -42,7 +42,7 @@ This is a recall-time preference, not a storage-time restriction. All facts live
 
 Three mechanisms already enable some cross-agent knowledge flow:
 
-**1. Shared facts (empty `nous_id`).** Any code path that inserts a fact with `nous_id = ""` makes it visible to all agents at 0.5 relevance weight. Currently, no extraction pipeline sets `nous_id` to empty; all extracted facts inherit the extracting agent's ID. Shared facts would need an explicit "publish" action.
+**1. Shared facts (empty `nous_id`).** Any code path that inserts a fact with `nous_id = ""` makes it visible to all agents at 0.5 relevance weight. No extraction pipeline sets `nous_id` to empty; all extracted facts inherit the extracting agent's ID. Shared facts would need an explicit "publish" action.
 
 **2. CrossNousRouter.** Point-to-point messaging between agents via `mpsc` channels. Supports fire-and-forget (`send`) and request-response (`ask` with timeout). Messages carry `from`, `to`, `content`, `expects_reply`, and delivery state tracking. The router maintains a ring-buffer audit log (default 1000 entries). This is an explicit, synchronous communication channel, not a knowledge-sharing mechanism, but it could serve as the transport for knowledge publication events.
 

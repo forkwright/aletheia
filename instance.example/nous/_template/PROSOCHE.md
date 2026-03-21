@@ -6,21 +6,21 @@ Prosoche (προσοχή) = directed attention. This file defines what the agent
 
 On each heartbeat tick, execute **only** the numbered items below. Do not investigate, research, or explore beyond these checks.
 
-### 1. Calendar (next 4 hours)
+## 1. Calendar (next 4 hours)
 ```bash
 # Replace with your calendar command(s)
 gcal today -c your@calendar.id
 ```
 Flag anything starting within 4 hours that the operator might not be aware of.
 
-### 2. Tasks due today
+## 2. Tasks due today
 ```bash
 # Replace with your task manager command
 tw
 ```
 Flag any tasks due today or overdue.
 
-### 3. System health
+## 3. System health
 ```bash
 nous-health
 ```

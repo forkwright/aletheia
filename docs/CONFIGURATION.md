@@ -6,7 +6,7 @@ Loaded by the `taxis` crate using figment with a three-layer cascade:
 
 1. Compiled defaults (`AletheiaConfig::default()`)
 2. TOML file (if present)
-3. Environment variables, prefix `ALETHEIA_` (double underscore for nesting: `ALETHEIA_GATEWAY__PORT=9000`)
+3. Environment variables, prefix `ALETHEIA_` (double `_` for nesting: `ALETHEIA_GATEWAY__PORT=9000`)
 
 Later layers override earlier ones. All field names use `snake_case` in TOML; `camelCase` also works via serde compat.
 

@@ -367,7 +367,7 @@ impl Default for LoggingSettings {
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct RedactionSettings {
-    /// Master switch for the redaction layer. Default: `true`.
+    /// Primary switch for the redaction layer. Default: `true`.
     pub enabled: bool,
     /// Field names whose values are replaced with `[REDACTED]`.
     pub redact_fields: Vec<String>,

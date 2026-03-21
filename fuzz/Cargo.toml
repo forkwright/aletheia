@@ -3,6 +3,8 @@ name = "aletheia-fuzz"
 version = "0.0.0"
 publish = false
 edition = "2024"
+rust-version = "1.85"
+license = "AGPL-3.0-or-later"
 
 [package.metadata]
 cargo-fuzz = true
@@ -23,6 +25,11 @@ aletheia-taxis = { path = "../crates/taxis" }
 # Prevent this from interfering with the parent workspace
 [workspace]
 members = ["."]
+
+[workspace.package]
+edition = "2024"
+license = "AGPL-3.0-or-later"
+rust-version = "1.85"
 
 [[bin]]
 name = "fuzz_tool_dispatch"

@@ -272,7 +272,7 @@ fi
 # Download binary if requested
 if [[ -n "$DOWNLOAD_VERSION" ]]; then
     [[ "$DOWNLOAD_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]] \
-        || die "Version must match vX.Y.Z format, got: $DOWNLOAD_VERSION"
+        || die "Version must match vX.Y.Z format, got: ${DOWNLOAD_VERSION}"
     if [[ "$DRY_RUN" == true ]]; then
         log "[dry-run] Would download ${DOWNLOAD_VERSION} from GitHub releases"
     elif download_binary "$DOWNLOAD_VERSION"; then
@@ -285,7 +285,7 @@ fi
 
 # Prereq: instance directory must exist before any deploy step.
 if [[ ! -d "$INSTANCE_ROOT" ]]; then
-    die "Instance directory not found: $INSTANCE_ROOT. Run 'aletheia init' first."
+    die "Instance directory not found: ${INSTANCE_ROOT}. Run 'aletheia init' first."
 fi
 
 log "=== Deploy started ==="
