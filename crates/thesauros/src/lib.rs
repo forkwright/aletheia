@@ -18,3 +18,11 @@ pub mod loader;
 pub mod manifest;
 /// Registration of pack-declared tools into the [`aletheia_organon::registry::ToolRegistry`].
 pub mod tools;
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn crate_compiles() {
+        // NOTE: minimal test verifying the crate links and modules resolve correctly
+    }
+}

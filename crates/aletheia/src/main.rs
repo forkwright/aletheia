@@ -157,12 +157,24 @@ async fn main() -> Result<()> {
         }
         Some(Command::Health(a)) => return commands::health::run(&a).await,
         Some(Command::Backup(a)) => return commands::backup::run(instance_root, &a),
-        Some(Command::Maintenance { action }) => return commands::maintenance::run(action, instance_root),
+        Some(Command::Maintenance { action }) => {
+            return commands::maintenance::run(action, instance_root);
+        }
         Some(Command::Tls { action }) => return commands::tls::run(&action),
-        Some(Command::Status { url }) => return status::run(&url, instance_root).await.map_err(anyhow::Error::from),
-        Some(Command::Credential { action }) => return commands::credential::run(action, instance_root).await,
+        Some(Command::Status { url }) => {
+            return status::run(&url, instance_root)
+                .await
+                .map_err(anyhow::Error::from);
+        }
+        Some(Command::Credential { action }) => {
+            return commands::credential::run(action, instance_root).await;
+        }
         #[cfg(feature = "tui")]
-        Some(Command::Tui(a)) => return theatron_tui::run_tui(a.url, a.token, a.agent, a.session, a.logout).await.map_err(anyhow::Error::from),
+        Some(Command::Tui(a)) => {
+            return theatron_tui::run_tui(a.url, a.token, a.agent, a.session, a.logout)
+                .await
+                .map_err(anyhow::Error::from);
+        }
         #[cfg(not(feature = "tui"))]
         Some(Command::Tui(_)) => anyhow::bail!("TUI not available - rebuild with `--features tui`"),
         Some(Command::Eval(a)) => return commands::eval::run(a).await,
@@ -170,13 +182,24 @@ async fn main() -> Result<()> {
         Some(Command::SessionExport(a)) => return commands::session_export::run(&a).await,
         Some(Command::Import(a)) => return commands::agent_io::import_agent(instance_root, &a),
         Some(Command::SeedSkills(a)) => return commands::agent_io::seed_skills(&a),
-        Some(Command::ExportSkills(a)) => return commands::agent_io::export_skills(instance_root, &a),
-        Some(Command::ReviewSkills(a)) => return commands::agent_io::review_skills(instance_root, &a),
+        Some(Command::ExportSkills(a)) => {
+            return commands::agent_io::export_skills(instance_root, &a);
+        }
+        Some(Command::ReviewSkills(a)) => {
+            return commands::agent_io::review_skills(instance_root, &a);
+        }
         Some(Command::Completions { shell }) => {
-            clap_complete::generate(shell, &mut Cli::command(), "aletheia", &mut std::io::stdout());
+            clap_complete::generate(
+                shell,
+                &mut Cli::command(),
+                "aletheia",
+                &mut std::io::stdout(),
+            );
             return Ok(());
         }
-        Some(Command::MigrateMemory(a)) => return commands::agent_io::migrate_memory(instance_root, a).await,
+        Some(Command::MigrateMemory(a)) => {
+            return commands::agent_io::migrate_memory(instance_root, a).await;
+        }
         Some(Command::CheckConfig) => return commands::check_config::run(instance_root),
         Some(Command::Config { action }) => return commands::config::run(&action, instance_root),
         Some(Command::AddNous(a)) => return commands::add_nous::run(instance_root, &a).await,

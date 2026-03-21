@@ -15,3 +15,12 @@ pub(crate) mod scenario;
 pub mod scenarios;
 /// SSE stream consumer for real-time evaluation output.
 pub mod sse;
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn public_modules_accessible() {
+        // NOTE: verifies that the crate's public module structure is intact
+        let _: fn(&crate::runner::RunReport, &str) = crate::report::print_report;
+    }
+}
