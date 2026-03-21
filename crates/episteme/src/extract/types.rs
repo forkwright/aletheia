@@ -92,7 +92,7 @@ impl Default for ExtractionConfig {
 
 /// A lightweight conversation message for the extraction pipeline.
 ///
-/// Decoupled from mneme's full [`crate::types::Message`] to keep
+/// Decoupled from mneme's full [`aletheia_graphe::types::Message`] to keep
 /// the extraction engine independent of the session store.
 #[derive(Debug, Clone)]
 pub struct ConversationMessage {
