@@ -79,10 +79,6 @@ impl SseEvent {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 #[non_exhaustive]
-#[expect(
-    missing_docs,
-    reason = "webchat event variant fields are self-documenting by name"
-)]
 pub(crate) enum WebchatEvent {
     #[serde(rename = "turn_start")]
     TurnStart {
@@ -142,10 +138,6 @@ impl WebchatEvent {
 /// Turn completion data emitted in `TurnComplete` events.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-#[expect(
-    missing_docs,
-    reason = "turn outcome fields are self-documenting by name"
-)]
 pub(crate) struct TurnOutcome {
     pub text: String,
     pub nous_id: String,

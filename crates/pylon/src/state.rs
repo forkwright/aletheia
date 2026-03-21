@@ -39,8 +39,8 @@ pub struct AppState {
     pub config: Arc<tokio::sync::RwLock<AletheiaConfig>>,
     /// Broadcast channel for config change notifications.
     ///
-    /// Actors and subsystems subscribe via [`config_rx`](Self::config_rx) to
-    /// receive the latest config after each hot-reload.
+    /// Actors and subsystems subscribe via `config_rx` to receive the latest
+    /// config after each hot-reload.
     pub config_tx: tokio::sync::watch::Sender<AletheiaConfig>,
     /// Auth mode from gateway config (`"token"`, `"none"`, etc.).
     pub auth_mode: String,
