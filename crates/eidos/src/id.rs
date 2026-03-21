@@ -1,4 +1,4 @@
-//! Newtype wrappers for mneme-local domain identifiers.
+//! Newtype wrappers for knowledge-domain identifiers.
 //!
 //! These types prevent accidental mixing of ID kinds at compile time.
 //! Cross-crate identifiers (`NousId`, `SessionId`) live in `koina::id`.
@@ -7,7 +7,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-/// Maximum byte length for mneme-local IDs.
+/// Maximum byte length for knowledge-domain IDs.
 const MAX_ID_LEN: usize = 256;
 
 macro_rules! define_id {
@@ -44,7 +44,7 @@ macro_rules! define_id {
             /// the ID was already validated on insert.
             #[must_use]
             #[allow(dead_code, reason = "macro expands for all ID types; not all have callers yet")]
-            pub(crate) fn new_unchecked(id: impl Into<String>) -> Self {
+            pub fn new_unchecked(id: impl Into<String>) -> Self {
                 Self(id.into())
             }
 
@@ -98,7 +98,7 @@ define_id!(
     EmbeddingId
 );
 
-/// Validation errors for mneme-local identifiers.
+/// Validation errors for knowledge-domain identifiers.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 #[expect(
