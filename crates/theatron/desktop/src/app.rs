@@ -19,10 +19,6 @@ use crate::views::ops::Ops;
 use crate::views::planning::Planning;
 use crate::views::settings::Settings;
 
-// ---------------------------------------------------------------------------
-// Routing
-// ---------------------------------------------------------------------------
-
 #[derive(Routable, Clone, PartialEq, Debug)]
 #[rustfmt::skip]
 pub(crate) enum Route {
@@ -42,10 +38,6 @@ pub(crate) enum Route {
         #[route("/settings")]
         Settings {},
 }
-
-// ---------------------------------------------------------------------------
-// Root component
-// ---------------------------------------------------------------------------
 
 /// Root component.
 ///

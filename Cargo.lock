@@ -8155,6 +8155,7 @@ version = "0.13.0"
 dependencies = [
  "dioxus",
  "dirs",
+ "form_urlencoded",
  "futures-util",
  "reqwest 0.13.2",
  "rustls",

@@ -12,10 +12,6 @@ use snafu::{ResultExt, Snafu};
 
 use crate::state::connection::ConnectionConfig;
 
-// ---------------------------------------------------------------------------
-// Errors
-// ---------------------------------------------------------------------------
-
 /// Errors that can occur when loading or saving desktop config.
 #[derive(Debug, Snafu)]
 #[non_exhaustive]
@@ -65,10 +61,6 @@ pub enum ConfigError {
         source: toml::ser::Error,
     },
 }
-
-// ---------------------------------------------------------------------------
-// Config file wrapper
-// ---------------------------------------------------------------------------
 
 /// TOML file envelope: the `[connection]` table within `desktop.toml`.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]

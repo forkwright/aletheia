@@ -107,10 +107,6 @@ impl Default for ConnectionConfig {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Exponential backoff
-// ---------------------------------------------------------------------------
-
 /// Initial backoff delay after a connection failure.
 const INITIAL_BACKOFF: Duration = Duration::from_secs(1);
 

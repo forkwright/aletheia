@@ -2,11 +2,9 @@
 
 use dioxus::prelude::*;
 
+use crate::api::client::authenticated_client;
 use crate::state::connection::ConnectionConfig;
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+use crate::state::fetch::FetchState;
 
 #[derive(Debug, Clone, Default)]
 struct ToolStats {
@@ -59,17 +57,6 @@ struct OpsToolHistory {
     #[serde(default)]
     duration_ms: u64,
 }
-
-#[derive(Debug, Clone)]
-enum FetchState {
-    Loading,
-    Loaded,
-    Error(String),
-}
-
-// ---------------------------------------------------------------------------
-// Styles
-// ---------------------------------------------------------------------------
 
 const CONTAINER_STYLE: &str = "\
     display: flex; \
@@ -147,23 +134,19 @@ const REFRESH_BTN: &str = "\
     cursor: pointer;\
 ";
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
-
 #[component]
 pub(crate) fn Ops() -> Element {
     let config: Signal<ConnectionConfig> = use_context();
     let mut stats = use_signal(ToolStats::default);
-    let mut fetch_state = use_signal(|| FetchState::Loading);
+    let mut fetch_state = use_signal(|| FetchState::<()>::Loading);
 
     let mut do_refresh = move || {
-        let base_url = config.read().server_url.clone();
+        let cfg = config.read().clone();
         fetch_state.set(FetchState::Loading);
 
         spawn(async move {
-            let client = reqwest::Client::new();
-            let url = format!("{}/api/v1/ops/tools", base_url.trim_end_matches('/'));
+            let client = authenticated_client(&cfg);
+            let url = format!("{}/api/v1/ops/tools", cfg.server_url.trim_end_matches('/'));
 
             match client.get(&url).send().await {
                 Ok(resp) if resp.status().is_success() => match resp.json::<OpsResponse>().await {
@@ -191,7 +174,7 @@ pub(crate) fn Ops() -> Element {
                                 })
                                 .collect(),
                         });
-                        fetch_state.set(FetchState::Loaded);
+                        fetch_state.set(FetchState::Loaded(()));
                     }
                     Err(e) => {
                         fetch_state.set(FetchState::Error(format!("parse error: {e}")));

@@ -2,11 +2,9 @@
 
 use dioxus::prelude::*;
 
+use crate::api::client::authenticated_client;
 use crate::state::connection::ConnectionConfig;
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+use crate::state::fetch::FetchState;
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 struct HealthResponse {
@@ -39,17 +37,6 @@ struct DashboardData {
     health: HealthResponse,
     metrics: MetricsResponse,
 }
-
-#[derive(Debug, Clone)]
-enum FetchState {
-    Loading,
-    Loaded(DashboardData),
-    Error(String),
-}
-
-// ---------------------------------------------------------------------------
-// Styles
-// ---------------------------------------------------------------------------
 
 const CONTAINER_STYLE: &str = "\
     display: flex; \
@@ -111,22 +98,18 @@ const REFRESH_BTN: &str = "\
     cursor: pointer;\
 ";
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
-
 #[component]
 pub(crate) fn Metrics() -> Element {
     let config: Signal<ConnectionConfig> = use_context();
-    let mut fetch_state = use_signal(|| FetchState::Loading);
+    let mut fetch_state = use_signal(|| FetchState::<DashboardData>::Loading);
 
     let mut do_refresh = move || {
-        let base_url = config.read().server_url.clone();
+        let cfg = config.read().clone();
         fetch_state.set(FetchState::Loading);
 
         spawn(async move {
-            let client = reqwest::Client::new();
-            let base = base_url.trim_end_matches('/');
+            let client = authenticated_client(&cfg);
+            let base = cfg.server_url.trim_end_matches('/');
 
             let health_url = format!("{base}/api/health");
             let metrics_url = format!("{base}/metrics");

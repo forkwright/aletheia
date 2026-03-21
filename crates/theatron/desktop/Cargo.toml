@@ -30,6 +30,9 @@ tracing = { workspace = true }
 # Error handling
 snafu = { workspace = true }
 
+# URL encoding
+form_urlencoded = "1"
+
 # Futures
 futures-util = "0.3"
 

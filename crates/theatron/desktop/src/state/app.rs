@@ -4,9 +4,20 @@
 //! app root. Child components project into individual fields. This replaces
 //! the monolithic `App` struct from the ratatui TUI.
 
-use super::agent::AgentEntry;
-use super::chat::NousId;
+use theatron_core::id::NousId;
+
 use super::connection::{ConnectionConfig, ConnectionState};
+
+/// A registered agent entry from the pylon server.
+#[derive(Debug, Clone)]
+pub struct AgentEntry {
+    /// Agent identifier.
+    pub id: NousId,
+    /// Human-readable agent name.
+    pub name: String,
+    /// Agent status label (idle, busy, etc.).
+    pub status: String,
+}
 
 /// Root state provided to the entire component tree.
 ///
@@ -46,10 +57,6 @@ impl Default for AppState {
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tab bar (simplified from TUI's TabBar, state lives in AgentChatState)
-// ---------------------------------------------------------------------------
 
 /// Unique tab identifier, distinct from session IDs.
 pub type TabId = u64;
@@ -142,10 +149,6 @@ impl Default for TabBar {
         Self::new()
     }
 }
-
-// ---------------------------------------------------------------------------
-// Overlay
-// ---------------------------------------------------------------------------
 
 /// Modal overlays that block interaction with the main UI.
 #[non_exhaustive]

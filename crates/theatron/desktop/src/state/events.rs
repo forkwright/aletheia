@@ -27,8 +27,7 @@ pub struct EventState {
     pub active_turns: Vec<ActiveTurn>,
 
     /// Per-agent status string from `StatusUpdate` events.
-    /// The string value maps to [`AgentStatus`](crate::state::agent::AgentStatus)
-    /// at the component layer.
+    /// The string value maps to an agent status label at the component layer.
     pub agent_statuses: HashMap<NousId, String>,
 
     /// Per-agent distillation progress from `Distill*` events.

@@ -2,11 +2,9 @@
 
 use dioxus::prelude::*;
 
+use crate::api::client::authenticated_client;
 use crate::state::connection::ConnectionConfig;
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+use crate::state::fetch::FetchState;
 
 #[derive(Debug, Clone, serde::Deserialize)]
 struct FileEntry {
@@ -21,24 +19,12 @@ struct FileEntry {
 }
 
 #[derive(Debug, Clone)]
-enum FetchState {
-    Idle,
-    Loading,
-    Loaded(Vec<FileEntry>),
-    Error(String),
-}
-
-#[derive(Debug, Clone)]
 enum ContentState {
     None,
     Loading,
     Loaded { path: String, content: String },
     Error(String),
 }
-
-// ---------------------------------------------------------------------------
-// Styles
-// ---------------------------------------------------------------------------
 
 const CONTAINER_STYLE: &str = "\
     display: flex; \
@@ -98,23 +84,22 @@ const REFRESH_BTN: &str = "\
     cursor: pointer;\
 ";
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
-
 #[component]
 pub(crate) fn Files() -> Element {
     let config: Signal<ConnectionConfig> = use_context();
-    let mut file_state = use_signal(|| FetchState::Idle);
+    let mut file_state = use_signal(|| FetchState::<Vec<FileEntry>>::Loading);
     let mut content_state = use_signal(|| ContentState::None);
 
     let mut fetch_files = move || {
-        let base_url = config.read().server_url.clone();
+        let cfg = config.read().clone();
         file_state.set(FetchState::Loading);
 
         spawn(async move {
-            let client = reqwest::Client::new();
-            let url = format!("{}/api/v1/workspace/files", base_url.trim_end_matches('/'));
+            let client = authenticated_client(&cfg);
+            let url = format!(
+                "{}/api/v1/workspace/files",
+                cfg.server_url.trim_end_matches('/')
+            );
 
             match client.get(&url).send().await {
                 Ok(resp) if resp.status().is_success() => {
@@ -157,7 +142,7 @@ pub(crate) fn Files() -> Element {
                 div {
                     style: "{TREE_STYLE}",
                     match &*file_state.read() {
-                        FetchState::Idle | FetchState::Loading => rsx! {
+                        FetchState::Loading => rsx! {
                             div { style: "{STATUS_STYLE}", "Loading..." }
                         },
                         FetchState::Error(err) => rsx! {
@@ -215,7 +200,7 @@ fn render_file_item(
     let path = file.path.clone();
     let is_dir = file.is_dir;
     let size = file.size;
-    let base_url = config.read().server_url.clone();
+    let cfg = config.read().clone();
 
     let mut content_state = *content_state;
 
@@ -227,15 +212,17 @@ fn render_file_item(
                     return;
                 }
                 let path = path.clone();
-                let base_url = base_url.clone();
+                let cfg = cfg.clone();
                 content_state.set(ContentState::Loading);
 
                 spawn(async move {
-                    let client = reqwest::Client::new();
+                    let client = authenticated_client(&cfg);
+                    // WHY: URL-encode the path query parameter to handle spaces
+                    // and special characters in file paths.
+                    let base = cfg.server_url.trim_end_matches('/');
+                    let encoded_path: String = form_urlencoded::byte_serialize(path.as_bytes()).collect();
                     let url = format!(
-                        "{}/api/v1/workspace/files/content?path={}",
-                        base_url.trim_end_matches('/'),
-                        &path,
+                        "{base}/api/v1/workspace/files/content?path={encoded_path}",
                     );
 
                     match client.get(&url).send().await {

@@ -2,11 +2,8 @@
 
 use dioxus::prelude::*;
 
+use crate::api::client::authenticated_client;
 use crate::state::connection::ConnectionConfig;
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, serde::Deserialize)]
 struct Plan {
@@ -28,17 +25,15 @@ struct PlanStep {
     status: String,
 }
 
+/// Planning has an extra variant for 404 (endpoint not available), so it
+/// keeps its own state enum rather than using the shared `FetchState<T>`.
 #[derive(Debug, Clone)]
-enum FetchState {
+enum PlanFetchState {
     Loading,
     Loaded(Vec<Plan>),
     NoPlanningAvailable,
     Error(String),
 }
-
-// ---------------------------------------------------------------------------
-// Styles
-// ---------------------------------------------------------------------------
 
 const CONTAINER_STYLE: &str = "\
     display: flex; \
@@ -105,40 +100,36 @@ const REFRESH_BTN: &str = "\
     cursor: pointer;\
 ";
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
-
 #[component]
 pub(crate) fn Planning() -> Element {
     let config: Signal<ConnectionConfig> = use_context();
-    let mut fetch_state = use_signal(|| FetchState::Loading);
+    let mut fetch_state = use_signal(|| PlanFetchState::Loading);
 
     let mut do_refresh = move || {
-        let base_url = config.read().server_url.clone();
-        fetch_state.set(FetchState::Loading);
+        let cfg = config.read().clone();
+        fetch_state.set(PlanFetchState::Loading);
 
         spawn(async move {
-            let client = reqwest::Client::new();
-            let url = format!("{}/api/v1/plans", base_url.trim_end_matches('/'));
+            let client = authenticated_client(&cfg);
+            let url = format!("{}/api/v1/plans", cfg.server_url.trim_end_matches('/'));
 
             match client.get(&url).send().await {
                 Ok(resp) if resp.status().is_success() => match resp.json::<Vec<Plan>>().await {
-                    Ok(plans) => fetch_state.set(FetchState::Loaded(plans)),
+                    Ok(plans) => fetch_state.set(PlanFetchState::Loaded(plans)),
                     Err(e) => {
-                        fetch_state.set(FetchState::Error(format!("parse error: {e}")));
+                        fetch_state.set(PlanFetchState::Error(format!("parse error: {e}")));
                     }
                 },
                 // WHY: 404 means planning endpoint not available on this pylon version.
                 Ok(resp) if resp.status().as_u16() == 404 => {
-                    fetch_state.set(FetchState::NoPlanningAvailable);
+                    fetch_state.set(PlanFetchState::NoPlanningAvailable);
                 }
                 Ok(resp) => {
                     let status = resp.status();
-                    fetch_state.set(FetchState::Error(format!("server returned {status}")));
+                    fetch_state.set(PlanFetchState::Error(format!("server returned {status}")));
                 }
                 Err(e) => {
-                    fetch_state.set(FetchState::Error(format!("connection error: {e}")));
+                    fetch_state.set(PlanFetchState::Error(format!("connection error: {e}")));
                 }
             }
         });
@@ -162,19 +153,19 @@ pub(crate) fn Planning() -> Element {
             }
 
             match &*fetch_state.read() {
-                FetchState::Loading => rsx! {
+                PlanFetchState::Loading => rsx! {
                     div {
                         style: "display: flex; align-items: center; justify-content: center; flex: 1; color: #888;",
                         "Loading plans..."
                     }
                 },
-                FetchState::Error(err) => rsx! {
+                PlanFetchState::Error(err) => rsx! {
                     div {
                         style: "display: flex; align-items: center; justify-content: center; flex: 1; color: #ef4444;",
                         "Error: {err}"
                     }
                 },
-                FetchState::NoPlanningAvailable => rsx! {
+                PlanFetchState::NoPlanningAvailable => rsx! {
                     div {
                         style: "{PLACEHOLDER_STYLE}",
                         div { style: "font-size: 48px;", "[P]" }
@@ -185,7 +176,7 @@ pub(crate) fn Planning() -> Element {
                         }
                     }
                 },
-                FetchState::Loaded(plans) => {
+                PlanFetchState::Loaded(plans) => {
                     if plans.is_empty() {
                         rsx! {
                             div {

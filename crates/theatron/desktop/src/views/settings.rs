@@ -5,10 +5,6 @@ use dioxus::prelude::*;
 use crate::state::connection::ConnectionConfig;
 use crate::theme::ThemeMode;
 
-// ---------------------------------------------------------------------------
-// Styles
-// ---------------------------------------------------------------------------
-
 const CONTAINER_STYLE: &str = "\
     display: flex; \
     flex-direction: column; \
@@ -65,10 +61,6 @@ const ABOUT_STYLE: &str = "\
     font-size: 12px; \
     line-height: 1.6;\
 ";
-
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
 
 #[component]
 pub(crate) fn Settings() -> Element {

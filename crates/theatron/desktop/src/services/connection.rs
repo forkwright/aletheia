@@ -39,10 +39,6 @@ use crate::state::connection::{
     ConnectionConfig, ConnectionState, HEALTH_CHECK_INTERVAL, backoff_duration,
 };
 
-// ---------------------------------------------------------------------------
-// Errors
-// ---------------------------------------------------------------------------
-
 #[derive(Debug, Snafu)]
 #[non_exhaustive]
 /// Errors from connection attempts to a pylon server.
@@ -72,10 +68,6 @@ pub enum ConnectionError {
         source: reqwest::Error,
     },
 }
-
-// ---------------------------------------------------------------------------
-// Minimal API client (replace with theatron-core::ApiClient after P601)
-// ---------------------------------------------------------------------------
 
 /// Minimal HTTP client for pylon communication.
 ///
@@ -166,10 +158,6 @@ impl std::fmt::Debug for PylonClient {
             .finish_non_exhaustive()
     }
 }
-
-// ---------------------------------------------------------------------------
-// Connection service
-// ---------------------------------------------------------------------------
 
 /// Manages the connection lifecycle as a background task.
 ///

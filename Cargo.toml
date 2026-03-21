@@ -23,6 +23,9 @@ members = [
     "crates/taxis",
     "crates/thesauros",
     "crates/theatron/core",
+    # WHY: theatron-desktop requires GTK3/webkit2gtk system libraries (via Dioxus
+    # desktop/webview). CI workflows must use `--exclude theatron-desktop` since
+    # those deps are not available in the CI environment.
     "crates/theatron/desktop",
     "crates/theatron/tui",
 ]

@@ -5,12 +5,9 @@ use std::time::Duration;
 use dioxus::prelude::*;
 use tokio_util::sync::CancellationToken;
 
+use crate::api::client::authenticated_client;
 use crate::components::chat::{ChatMessage, ChatState, ChatStateManager, MessageRole};
 use crate::state::connection::ConnectionConfig;
-
-// ---------------------------------------------------------------------------
-// Styles
-// ---------------------------------------------------------------------------
 
 const CONTAINER_STYLE: &str = "\
     display: flex; \
@@ -126,10 +123,6 @@ const EMPTY_STYLE: &str = "\
     font-size: 16px;\
 ";
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
-
 #[component]
 pub(crate) fn Chat() -> Element {
     let mut chat_state = use_signal(ChatState::default);
@@ -155,15 +148,16 @@ pub(crate) fn Chat() -> Element {
         });
         input_text.set(String::new());
 
-        let base_url = config.read().server_url.clone();
-        let token = cancel_token.read().clone();
+        let cfg = config.read().clone();
 
-        // WHY: Spawn the streaming turn in a Dioxus task so we can process
-        // events and update the signal as they arrive.
+        // WHY: Cancel the previous token before creating a new one so any
+        // lingering stream from a prior turn is torn down.
+        cancel_token.read().cancel();
+        let new_token = CancellationToken::new();
+        cancel_token.set(new_token.clone());
+
         spawn(async move {
-            let client = reqwest::Client::new();
-            let new_token = CancellationToken::new();
-            cancel_token.set(new_token.clone());
+            let client = authenticated_client(&cfg);
 
             let nous_id = chat_state
                 .read()
@@ -179,11 +173,11 @@ pub(crate) fn Chat() -> Element {
 
             let mut rx = crate::api::streaming::stream_turn(
                 client,
-                &base_url,
+                &cfg.server_url,
                 &nous_id,
                 &session_key,
                 &text,
-                new_token,
+                new_token.clone(),
             );
 
             let mut manager = ChatStateManager::new();
@@ -191,7 +185,7 @@ pub(crate) fn Chat() -> Element {
             loop {
                 let event = tokio::select! {
                     biased;
-                    _ = token.cancelled() => break,
+                    _ = new_token.cancelled() => break,
                     event = rx.recv() => event,
                     _ = tokio::time::sleep(Duration::from_millis(100)) => {
                         let mut state = chat_state.write();

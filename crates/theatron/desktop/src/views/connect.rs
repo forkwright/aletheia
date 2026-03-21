@@ -13,10 +13,6 @@ use crate::services::config;
 use crate::services::connection::ConnectionService;
 use crate::state::connection::{ConnectionConfig, ConnectionState};
 
-// ---------------------------------------------------------------------------
-// Styles
-// ---------------------------------------------------------------------------
-
 const CONTAINER_STYLE: &str = "\
     display: flex; \
     flex-direction: column; \
@@ -90,10 +86,6 @@ const STATUS_STYLE: &str = "\
     min-height: 20px;\
 ";
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
-
 /// Connect view component.
 ///
 /// Reads connection state from context and provides a form for the user to
@@ -153,7 +145,7 @@ pub fn ConnectView(
         // NOTE: Update the shared config signal so other components see the new values.
         connection_config.write().clone_from(&new_config);
 
-        // NOTE: Set up channel for background → UI communication.
+        // NOTE: Set up channel for background to UI communication.
         let (tx, mut rx) = mpsc::unbounded_channel::<ConnectionState>();
         let cancel = CancellationToken::new();
         let svc = ConnectionService::new(new_config, cancel, tx);
