@@ -295,7 +295,8 @@ fn import_fact(
 fn content_hash(content: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(content.as_bytes());
-    format!("{:x}", hasher.finalize())[..16].to_owned()
+    let hex = format!("{:x}", hasher.finalize());
+    hex.get(..16).unwrap_or(&hex).to_owned()
 }
 
 fn write_review_file(path: &Path, flagged: &[String]) -> Result<()> {
