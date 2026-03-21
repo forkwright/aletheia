@@ -1,12 +1,8 @@
 #![expect(clippy::unwrap_used, clippy::expect_used, reason = "test assertions")]
-#![expect(
-    clippy::indexing_slicing,
-    clippy::as_conversions,
-    reason = "test helper: fixed-size arrays with compile-time-bounded indices; 6-bit nibbles index 64-element table"
-)]
 use aletheia_koina::secret::SecretString;
 
 use super::*;
+use crate::util::decode_jwt_exp_secs;
 
 #[test]
 fn credential_file_roundtrip() {
@@ -194,21 +190,29 @@ fn env_provider_with_source_forces_oauth() {
 /// signature is unused (no verification is performed).
 fn make_test_oauth_token(exp_secs: u64) -> String {
     fn base64url_encode(input: &[u8]) -> String {
-        const TABLE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+        const TABLE: &[u8; 64] =
+            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+        // SAFETY: index is masked to 0..=63 by & 0x3F, TABLE has exactly 64 elements
+        fn lookup(table: &[u8; 64], idx: u32) -> char {
+            char::from(
+                *table
+                    .get(usize::try_from(idx).unwrap_or(0))
+                    .unwrap_or(&b'A'),
+            )
+        }
         let mut out = String::new();
         for chunk in input.chunks(3) {
-            let mut buf = [0u8; 3];
-            for (i, &b) in chunk.iter().enumerate() {
-                buf[i] = b;
-            }
-            let n = (u32::from(buf[0]) << 16) | (u32::from(buf[1]) << 8) | u32::from(buf[2]);
-            out.push(TABLE[((n >> 18) & 0x3F) as usize] as char);
-            out.push(TABLE[((n >> 12) & 0x3F) as usize] as char);
+            let b0 = u32::from(*chunk.first().unwrap_or(&0));
+            let b1 = u32::from(*chunk.get(1).unwrap_or(&0));
+            let b2 = u32::from(*chunk.get(2).unwrap_or(&0));
+            let n = (b0 << 16) | (b1 << 8) | b2;
+            out.push(lookup(TABLE, (n >> 18) & 0x3F));
+            out.push(lookup(TABLE, (n >> 12) & 0x3F));
             if chunk.len() > 1 {
-                out.push(TABLE[((n >> 6) & 0x3F) as usize] as char);
+                out.push(lookup(TABLE, (n >> 6) & 0x3F));
             }
             if chunk.len() > 2 {
-                out.push(TABLE[(n & 0x3F) as usize] as char);
+                out.push(lookup(TABLE, n & 0x3F));
             }
         }
         out

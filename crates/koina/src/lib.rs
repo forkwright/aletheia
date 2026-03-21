@@ -36,8 +36,9 @@ pub mod tracing_init;
 
 #[cfg(test)]
 mod assertions {
-    use super::id::*;
     use static_assertions::assert_impl_all;
+
+    use super::id::*;
 
     assert_impl_all!(NousId: Send, Sync);
     assert_impl_all!(SessionId: Send, Sync);

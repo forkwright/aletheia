@@ -5,7 +5,10 @@
 )]
 
 use crate::id::FactId;
-use crate::knowledge::{CausalEdge, EpistemicTier, Fact, TemporalOrdering, far_future};
+use crate::knowledge::{
+    CausalEdge, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
+    TemporalOrdering, far_future,
+};
 use crate::knowledge_store::KnowledgeStore;
 
 /// Helper: create a minimal fact with the given ID and content.
@@ -15,20 +18,28 @@ fn make_fact(id: &str, content: &str) -> Fact {
         id: FactId::from(id),
         nous_id: "test-nous".to_owned(),
         content: content.to_owned(),
-        confidence: 0.9,
-        tier: EpistemicTier::Inferred,
-        valid_from: now,
-        valid_to: far_future(),
-        superseded_by: None,
-        source_session_id: Some("test-session".to_owned()),
-        recorded_at: now,
-        access_count: 0,
-        last_accessed_at: None,
-        stability_hours: 720.0,
         fact_type: "observation".to_owned(),
-        is_forgotten: false,
-        forgotten_at: None,
-        forget_reason: None,
+        temporal: FactTemporal {
+            valid_from: now,
+            valid_to: far_future(),
+            recorded_at: now,
+        },
+        provenance: FactProvenance {
+            confidence: 0.9,
+            tier: EpistemicTier::Inferred,
+            source_session_id: Some("test-session".to_owned()),
+            stability_hours: 720.0,
+        },
+        lifecycle: FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
     }
 }
 

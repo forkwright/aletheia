@@ -81,12 +81,16 @@ mod tests {
         ));
 
         let redacted = redact(&config);
-        assert_eq!(redacted["gateway"]["auth"]["signingKey"], REDACTED);
+        assert_eq!(
+            redacted["gateway"]["auth"]["signingKey"], REDACTED,
+            "signing key should be redacted"
+        );
         // INVARIANT: raw secret must not appear anywhere in the output
         assert!(
             !redacted
                 .to_string()
-                .contains("super-secret-jwt-signing-key")
+                .contains("super-secret-jwt-signing-key"),
+            "raw secret must not appear in redacted output"
         );
     }
 
@@ -97,8 +101,14 @@ mod tests {
         config.gateway.tls.cert_path = Some("/etc/ssl/cert.pem".to_owned());
 
         let redacted = redact(&config);
-        assert_eq!(redacted["gateway"]["tls"]["keyPath"], REDACTED);
-        assert_eq!(redacted["gateway"]["tls"]["certPath"], REDACTED);
+        assert_eq!(
+            redacted["gateway"]["tls"]["keyPath"], REDACTED,
+            "tls key path should be redacted"
+        );
+        assert_eq!(
+            redacted["gateway"]["tls"]["certPath"], REDACTED,
+            "tls cert path should be redacted"
+        );
     }
 
     #[test]
@@ -106,17 +116,35 @@ mod tests {
         let config = AletheiaConfig::default();
         let redacted = redact(&config);
 
-        assert_eq!(redacted["gateway"]["port"], 18789);
-        assert_eq!(redacted["agents"]["defaults"]["contextTokens"], 200_000);
-        assert_eq!(redacted["embedding"]["provider"], "candle");
+        assert_eq!(
+            redacted["gateway"]["port"], 18789,
+            "non-sensitive gateway port should be preserved"
+        );
+        assert_eq!(
+            redacted["agents"]["defaults"]["contextTokens"], 200_000,
+            "non-sensitive context tokens should be preserved"
+        );
+        assert_eq!(
+            redacted["embedding"]["provider"], "candle",
+            "non-sensitive embedding provider should be preserved"
+        );
     }
 
     #[test]
     fn result_is_valid_json_structure() {
         let config = AletheiaConfig::default();
         let redacted = redact(&config);
-        assert!(redacted.is_object());
-        assert!(redacted["agents"].is_object());
-        assert!(redacted["gateway"].is_object());
+        assert!(
+            redacted.is_object(),
+            "redacted output should be a JSON object"
+        );
+        assert!(
+            redacted["agents"].is_object(),
+            "agents section should be a JSON object"
+        );
+        assert!(
+            redacted["gateway"].is_object(),
+            "gateway section should be a JSON object"
+        );
     }
 }

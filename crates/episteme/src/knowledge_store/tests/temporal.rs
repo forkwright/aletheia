@@ -7,7 +7,9 @@
 use std::sync::Arc;
 
 use super::super::*;
-use crate::knowledge::{EmbeddedChunk, EpistemicTier, Fact};
+use crate::knowledge::{
+    EmbeddedChunk, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
+};
 
 const DIM: usize = 4;
 
@@ -24,20 +26,28 @@ fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
         id: crate::id::FactId::new_unchecked(id),
         nous_id: nous_id.to_owned(),
         content: content.to_owned(),
-        confidence: 0.9,
-        tier: EpistemicTier::Inferred,
-        valid_from: test_ts("2026-01-01"),
-        valid_to: crate::knowledge::far_future(),
-        superseded_by: None,
-        source_session_id: None,
-        recorded_at: test_ts("2026-03-01T00:00:00Z"),
-        access_count: 0,
-        last_accessed_at: None,
-        stability_hours: 720.0,
         fact_type: String::new(),
-        is_forgotten: false,
-        forgotten_at: None,
-        forget_reason: None,
+        temporal: FactTemporal {
+            valid_from: test_ts("2026-01-01"),
+            valid_to: crate::knowledge::far_future(),
+            recorded_at: test_ts("2026-03-01T00:00:00Z"),
+        },
+        provenance: FactProvenance {
+            confidence: 0.9,
+            tier: EpistemicTier::Inferred,
+            source_session_id: None,
+            stability_hours: 720.0,
+        },
+        lifecycle: FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
     }
 }
 
@@ -52,23 +62,31 @@ fn make_temporal_fact(
         id: crate::id::FactId::new_unchecked(id),
         nous_id: nous_id.to_owned(),
         content: content.to_owned(),
-        confidence: 0.9,
-        tier: EpistemicTier::Inferred,
-        valid_from: crate::knowledge::parse_timestamp(valid_from)
-            .expect("valid_from timestamp in make_temporal_fact"),
-        valid_to: crate::knowledge::parse_timestamp(valid_to)
-            .expect("valid_to timestamp in make_temporal_fact"),
-        superseded_by: None,
-        source_session_id: None,
-        recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
-            .expect("recorded_at timestamp in make_temporal_fact"),
-        access_count: 0,
-        last_accessed_at: None,
-        stability_hours: 720.0,
         fact_type: String::new(),
-        is_forgotten: false,
-        forgotten_at: None,
-        forget_reason: None,
+        temporal: FactTemporal {
+            valid_from: crate::knowledge::parse_timestamp(valid_from)
+                .expect("valid_from timestamp in make_temporal_fact"),
+            valid_to: crate::knowledge::parse_timestamp(valid_to)
+                .expect("valid_to timestamp in make_temporal_fact"),
+            recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
+                .expect("recorded_at timestamp in make_temporal_fact"),
+        },
+        provenance: FactProvenance {
+            confidence: 0.9,
+            tier: EpistemicTier::Inferred,
+            source_session_id: None,
+            stability_hours: 720.0,
+        },
+        lifecycle: FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
     }
 }
 
@@ -229,7 +247,7 @@ fn temporal_diff_added_and_removed() {
 fn temporal_diff_supersession_chain() {
     let store = make_store();
     let mut fact_a = make_temporal_fact("a", "agent", "version 1", "2026-01-01", "2026-03-01");
-    fact_a.superseded_by = Some(crate::id::FactId::new_unchecked("b"));
+    fact_a.lifecycle.superseded_by = Some(crate::id::FactId::new_unchecked("b"));
     store.insert_fact(&fact_a).expect("insert a");
     store
         .insert_fact(&make_temporal_fact(

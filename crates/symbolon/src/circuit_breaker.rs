@@ -5,7 +5,6 @@
 //! requests when the failure threshold is exceeded.
 
 use std::collections::VecDeque;
-use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 /// Circuit breaker state.
@@ -70,18 +69,19 @@ struct Inner {
 ///
 /// Thread-safe via `std::sync::Mutex`: all operations are short
 /// (no `.await` while holding the lock).
-pub struct CircuitBreaker {
-    inner: Mutex<Inner>,
+pub(crate) struct CircuitBreaker {
+    // WHY: std::sync::Mutex is correct here because the lock is never held across .await
+    inner: std::sync::Mutex<Inner>,
     config: CircuitBreakerConfig,
 }
 
 impl CircuitBreaker {
     /// Create a new circuit breaker starting in Closed state.
     #[must_use]
-    pub fn new(config: CircuitBreakerConfig) -> Self {
+    pub(crate) fn new(config: CircuitBreakerConfig) -> Self {
         let initial_cooldown = config.cooldown;
         Self {
-            inner: Mutex::new(Inner {
+            inner: std::sync::Mutex::new(Inner {
                 state: CircuitState::Closed,
                 failures: VecDeque::new(),
                 opened_at: None,
@@ -94,14 +94,11 @@ impl CircuitBreaker {
 
     /// Current circuit state.
     #[must_use]
-    pub fn state(&self) -> CircuitState {
-        #[expect(
-            clippy::expect_used,
-            reason = "Mutex poisoning means a thread panicked; no Result return to propagate through"
-        )]
+    pub(crate) fn state(&self) -> CircuitState {
+        // WHY: Mutex poisoning means a thread panicked; no recovery path exists
         self.inner
             .lock()
-            .expect("circuit breaker lock poisoned")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .state
             .clone()
     }
@@ -112,12 +109,12 @@ impl CircuitBreaker {
     /// - Open: allowed only if cooldown has elapsed (transitions to `HalfOpen`)
     /// - `HalfOpen`: blocked (one probe is already in flight)
     #[must_use]
-    pub fn check_allowed(&self) -> bool {
-        #[expect(
-            clippy::expect_used,
-            reason = "Mutex poisoning means a thread panicked; no Result return to propagate through"
-        )]
-        let mut inner = self.inner.lock().expect("circuit breaker lock poisoned");
+    pub(crate) fn check_allowed(&self) -> bool {
+        // WHY: Mutex poisoning means a thread panicked; recover with stale state
+        let mut inner = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         match inner.state {
             CircuitState::Closed => true,
             CircuitState::HalfOpen => false,
@@ -147,12 +144,12 @@ impl CircuitBreaker {
     /// - Closed: clears failure history
     /// - `HalfOpen`: closes the circuit (probe succeeded)
     /// - Open: no-op (requests should not reach here)
-    pub fn record_success(&self) {
-        #[expect(
-            clippy::expect_used,
-            reason = "Mutex poisoning means a thread panicked; no Result return to propagate through"
-        )]
-        let mut inner = self.inner.lock().expect("circuit breaker lock poisoned");
+    pub(crate) fn record_success(&self) {
+        // WHY: Mutex poisoning means a thread panicked; recover with stale state
+        let mut inner = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         match inner.state {
             CircuitState::Closed => {
                 inner.failures.clear();
@@ -180,12 +177,12 @@ impl CircuitBreaker {
     /// - Closed: adds failure to sliding window; trips to Open if threshold exceeded
     /// - `HalfOpen`: reopens circuit with exponentially increased cooldown
     /// - Open: no-op (requests should not reach here)
-    pub fn record_failure(&self) {
-        #[expect(
-            clippy::expect_used,
-            reason = "Mutex poisoning means a thread panicked; no Result return to propagate through"
-        )]
-        let mut inner = self.inner.lock().expect("circuit breaker lock poisoned");
+    pub(crate) fn record_failure(&self) {
+        // WHY: Mutex poisoning means a thread panicked; recover with stale state
+        let mut inner = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let now = Instant::now();
 
         match inner.state {
@@ -198,12 +195,8 @@ impl CircuitBreaker {
                     inner.failures.pop_front();
                 }
 
-                #[expect(
-                    clippy::cast_possible_truncation,
-                    clippy::as_conversions,
-                    reason = "failure_threshold is u32, VecDeque::len fits"
-                )]
-                let count = inner.failures.len() as u32;
+                // WHY: failure count is bounded by failure_threshold (u32), so truncation is impossible
+                let count = u32::try_from(inner.failures.len()).unwrap_or(u32::MAX);
                 if count >= self.config.failure_threshold {
                     let prev = inner.state.clone();
                     inner.state = CircuitState::Open;

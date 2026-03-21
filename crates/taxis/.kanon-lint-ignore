@@ -1,0 +1,69 @@
+# WHY: taxis is a public library crate — all pub items in these modules are
+# re-exported via `pub mod` in lib.rs and form the crate's public API.
+RUST/pub-visibility:src/cascade.rs
+RUST/pub-visibility:src/config/mod.rs
+RUST/pub-visibility:src/config/maintenance.rs
+RUST/pub-visibility:src/config/resolved.rs
+RUST/pub-visibility:src/encrypt.rs
+RUST/pub-visibility:src/error.rs
+RUST/pub-visibility:src/interpolate.rs
+RUST/pub-visibility:src/loader.rs
+RUST/pub-visibility:src/oikos.rs
+RUST/pub-visibility:src/preflight.rs
+RUST/pub-visibility:src/redact.rs
+RUST/pub-visibility:src/reload.rs
+RUST/pub-visibility:src/validate.rs
+RUST/pub-visibility:src/workspace_schema.rs
+
+# WHY: config_tests.rs files are test-only (included from #[cfg(test)] modules)
+# but lack their own #[cfg(test)] boundary, causing false positives for rules
+# that skip test code via the cfg(test) line marker.
+RUST/bare-assert:src/config_tests.rs
+RUST/bare-assert:src/config/config_tests.rs
+RUST/expect:src/config_tests.rs
+RUST/expect:src/config/config_tests.rs
+RUST/indexing-slicing:src/config_tests.rs
+RUST/indexing-slicing:src/config/config_tests.rs
+RUST/import-order:src/config_tests.rs
+RUST/import-order:src/config/config_tests.rs
+
+# WHY: "master key" is standard cryptographic terminology, not deprecated language.
+STANDARDS/deprecated-term:src/encrypt.rs
+STANDARDS/deprecated-term:src/error.rs
+STANDARDS/deprecated-term:src/loader.rs
+STANDARDS/deprecated-term:src/config/maintenance.rs
+
+# WHY: AletheiaConfig (14 fields) and AgentDefaults (15 fields) are serde config
+# root types — each field maps to a distinct TOML section/key. Grouping into
+# sub-structs would break the on-disk schema.
+RUST/struct-too-many-fields:src/config/mod.rs
+
+# WHY: interpolate.rs string slicing uses indices from str::find on ASCII
+# delimiters (${, }, :-, :?) which are always valid UTF-8 boundaries.
+# Each slice already has #[expect(clippy::string_slice)] with a reason.
+RUST/string-slice:src/interpolate.rs
+
+# WHY: "Box<dyn Error>" appears only in #[expect()] reason strings explaining
+# why clippy::result_large_err is suppressed, not in actual code.
+RUST/box-dyn-error:src/loader.rs
+RUST/box-dyn-error:src/reload.rs
+RUST/box-dyn-error:src/interpolate.rs
+
+# WHY: .unwrap() in doc-comment examples (workspace_schema.rs line 15) and
+# doctest code (interpolate.rs line 44) — not reachable library code.
+RUST/unwrap:src/workspace_schema.rs
+RUST/unwrap:src/interpolate.rs
+
+# WHY: encrypt.rs indexing uses byte offsets from ring/base64 operations on
+# known-length buffers. Each index is preceded by a length check.
+RUST/indexing-slicing:src/encrypt.rs
+
+# WHY: session_key is a routing pattern ("{source}"), not a cryptographic secret.
+RUST/plain-string-secret:src/config/mod.rs
+
+# WHY: generate_master_key writes then immediately sets 0600 permissions.
+# The TOCTOU window is acceptable for a CLI-invoked config operation.
+SECURITY/config-write-no-perms:src/encrypt.rs
+
+# WHY: loader.rs is configuration loading, not database migration code.
+STORAGE/no-migration-checksum:src/loader.rs

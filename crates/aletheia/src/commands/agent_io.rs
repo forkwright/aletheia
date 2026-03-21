@@ -368,7 +368,10 @@ pub(crate) fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
 
     #[cfg(feature = "recall")]
     {
-        use aletheia_mneme::knowledge::{EpistemicTier, Fact, default_stability_hours};
+        use aletheia_mneme::knowledge::{
+            EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
+            default_stability_hours,
+        };
         use aletheia_mneme::knowledge_store::KnowledgeStore;
 
         let store = KnowledgeStore::open_mem()
@@ -408,20 +411,28 @@ pub(crate) fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
                 id: aletheia_mneme::id::FactId::from(fact_id.clone()),
                 nous_id: nous_id.to_owned(),
                 content: content_json.clone(),
-                confidence: 0.5,
-                tier: EpistemicTier::Assumed,
-                valid_from: now,
-                valid_to: aletheia_mneme::knowledge::far_future(),
-                superseded_by: None,
-                source_session_id: None,
-                recorded_at: now,
-                access_count: 0,
-                last_accessed_at: None,
-                stability_hours: default_stability_hours("skill"),
                 fact_type: "skill".to_owned(),
-                is_forgotten: false,
-                forgotten_at: None,
-                forget_reason: None,
+                temporal: FactTemporal {
+                    valid_from: now,
+                    valid_to: aletheia_mneme::knowledge::far_future(),
+                    recorded_at: now,
+                },
+                provenance: FactProvenance {
+                    confidence: 0.5,
+                    tier: EpistemicTier::Assumed,
+                    source_session_id: None,
+                    stability_hours: default_stability_hours("skill"),
+                },
+                lifecycle: FactLifecycle {
+                    superseded_by: None,
+                    is_forgotten: false,
+                    forgotten_at: None,
+                    forget_reason: None,
+                },
+                access: FactAccess {
+                    access_count: 0,
+                    last_accessed_at: None,
+                },
             };
 
             store

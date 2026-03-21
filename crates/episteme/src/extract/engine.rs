@@ -240,7 +240,10 @@ Rules:
         source: &str,
         nous_id: &str,
     ) -> Result<PersistResult, ExtractionError> {
-        use crate::knowledge::{Entity, EpistemicTier, Fact, Relationship, far_future};
+        use crate::knowledge::{
+            Entity, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
+            Relationship, far_future,
+        };
 
         let now = jiff::Timestamp::now();
         let mut result = PersistResult::default();
@@ -378,20 +381,28 @@ Rules:
                 id,
                 nous_id: nous_id.to_owned(),
                 content,
-                confidence,
-                tier: EpistemicTier::Inferred,
-                valid_from: now,
-                valid_to: far_future(),
-                superseded_by: None,
-                source_session_id: Some(source.to_owned()),
-                recorded_at: now,
-                access_count: 0,
-                last_accessed_at: None,
-                stability_hours: classified_type.base_stability_hours(),
                 fact_type: classified_type.as_str().to_owned(),
-                is_forgotten: false,
-                forgotten_at: None,
-                forget_reason: None,
+                temporal: FactTemporal {
+                    valid_from: now,
+                    valid_to: far_future(),
+                    recorded_at: now,
+                },
+                provenance: FactProvenance {
+                    confidence,
+                    tier: EpistemicTier::Inferred,
+                    source_session_id: Some(source.to_owned()),
+                    stability_hours: classified_type.base_stability_hours(),
+                },
+                lifecycle: FactLifecycle {
+                    superseded_by: None,
+                    is_forgotten: false,
+                    forgotten_at: None,
+                    forget_reason: None,
+                },
+                access: FactAccess {
+                    access_count: 0,
+                    last_accessed_at: None,
+                },
             };
             store.insert_fact(&f).map_err(|e| {
                 PersistSnafu {

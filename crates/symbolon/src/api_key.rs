@@ -120,27 +120,21 @@ pub(crate) fn list(store: &AuthStore) -> Result<Vec<ApiKeyRecord>> {
 
 /// Parse an API key into `(global_prefix, holder_prefix, secret)`.
 fn parse_key(raw: &str) -> Result<(&str, &str, &str)> {
-    let parts: Vec<&str> = raw.splitn(3, '_').collect();
-    // parts.len() != 3 is checked before any index access
-    #[expect(
-        clippy::indexing_slicing,
-        reason = "guarded by parts.len() != 3 check above"
-    )]
-    if parts.len() != 3 || parts[0] != KEY_PREFIX {
+    let mut iter = raw.splitn(3, '_');
+    let prefix = iter
+        .next()
+        .ok_or_else(|| error::InvalidApiKeySnafu.build())?;
+    let holder = iter
+        .next()
+        .ok_or_else(|| error::InvalidApiKeySnafu.build())?;
+    let secret = iter
+        .next()
+        .ok_or_else(|| error::InvalidApiKeySnafu.build())?;
+
+    if prefix != KEY_PREFIX || holder.is_empty() || secret.is_empty() {
         return Err(error::InvalidApiKeySnafu.build());
     }
-    #[expect(
-        clippy::indexing_slicing,
-        reason = "len == 3 is asserted by the guard above"
-    )]
-    if parts[1].is_empty() || parts[2].is_empty() {
-        return Err(error::InvalidApiKeySnafu.build());
-    }
-    #[expect(
-        clippy::indexing_slicing,
-        reason = "len == 3 is asserted by the guard above"
-    )]
-    Ok((parts[0], parts[1], parts[2]))
+    Ok((prefix, holder, secret))
 }
 
 fn now_iso() -> String {
@@ -169,28 +163,18 @@ fn time_from_unix(secs: u64) -> String {
 mod hex {
     const HEX_CHARS: &[u8; 16] = b"0123456789abcdef";
 
-    pub fn encode(bytes: &[u8]) -> String {
+    pub(super) fn encode(bytes: &[u8]) -> String {
         let mut s = String::with_capacity(bytes.len() * 2);
         for &b in bytes {
-            // nibble is 0..=15, HEX_CHARS has exactly 16 elements
-            #[expect(
-                clippy::indexing_slicing,
-                reason = "nibble 0..=15 always indexes 16-element HEX_CHARS"
-            )]
-            #[expect(
-                clippy::as_conversions,
-                reason = "nibble cast: b>>4 is 0..=15, safe usize cast; u8→char is ASCII"
-            )]
-            s.push(HEX_CHARS[(b >> 4) as usize] as char);
-            #[expect(
-                clippy::indexing_slicing,
-                reason = "nibble 0..=15 always indexes 16-element HEX_CHARS"
-            )]
-            #[expect(
-                clippy::as_conversions,
-                reason = "nibble cast: b&0x0f is 0..=15, safe usize cast; u8→char is ASCII"
-            )]
-            s.push(HEX_CHARS[(b & 0x0f) as usize] as char);
+            // SAFETY: nibble is 0..=15, HEX_CHARS has exactly 16 elements
+            let hi = usize::from(b >> 4);
+            let lo = usize::from(b & 0x0f);
+            if let Some(&ch) = HEX_CHARS.get(hi) {
+                s.push(char::from(ch));
+            }
+            if let Some(&ch) = HEX_CHARS.get(lo) {
+                s.push(char::from(ch));
+            }
         }
         s
     }
@@ -205,13 +189,13 @@ mod hex {
 mod tests {
     use super::*;
 
-    fn test_store() -> AuthStore {
+    fn memory_store() -> AuthStore {
         AuthStore::open_in_memory().unwrap()
     }
 
     #[test]
     fn generate_and_validate_roundtrip() {
-        let store = test_store();
+        let store = memory_store();
         let (key, record) = generate(&store, "test", Role::Operator, None, None).unwrap();
 
         assert!(key.starts_with("ale_test_"));
@@ -225,7 +209,7 @@ mod tests {
 
     #[test]
     fn generate_agent_key_with_nous_id() {
-        let store = test_store();
+        let store = memory_store();
         let (key, _) = generate(&store, "syn", Role::Agent, Some("syn"), None).unwrap();
         let claims = validate(&store, &key).unwrap();
         assert_eq!(claims.role, Role::Agent);
@@ -234,7 +218,7 @@ mod tests {
 
     #[test]
     fn revoked_key_rejected() {
-        let store = test_store();
+        let store = memory_store();
         let (key, record) = generate(&store, "test", Role::Operator, None, None).unwrap();
 
         revoke(&store, &record.id).unwrap();
@@ -244,7 +228,7 @@ mod tests {
 
     #[test]
     fn malformed_key_rejected() {
-        let store = test_store();
+        let store = memory_store();
         assert!(validate(&store, "not-a-key").is_err());
         assert!(validate(&store, "ale_").is_err());
         assert!(validate(&store, "ale__secret").is_err());
@@ -253,13 +237,13 @@ mod tests {
 
     #[test]
     fn nonexistent_key_rejected() {
-        let store = test_store();
+        let store = memory_store();
         assert!(validate(&store, "ale_test_nonexistent").is_err());
     }
 
     #[test]
     fn list_returns_all_keys() {
-        let store = test_store();
+        let store = memory_store();
         generate(&store, "a", Role::Operator, None, None).unwrap();
         generate(&store, "b", Role::Agent, Some("syn"), None).unwrap();
 
@@ -277,7 +261,7 @@ mod tests {
 
     #[test]
     fn key_secret_is_64_hex_chars() {
-        let store = test_store();
+        let store = memory_store();
         let (key, _) = generate(&store, "test", Role::Operator, None, None).unwrap();
         let parts: Vec<&str> = key.splitn(3, '_').collect();
         assert_eq!(parts[2].len(), 64); // NOTE: 32 bytes * 2 hex chars

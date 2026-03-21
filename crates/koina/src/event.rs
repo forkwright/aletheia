@@ -27,7 +27,7 @@
 //!
 //! let emitter = EventEmitter::new();
 //! emitter.emit(&StageCompleted { stage: "context", duration_ms: 42 });
-//! assert_eq!(emitter.event_count(), 1);
+//! assert_eq!(emitter.event_count(), 1, "emitter must record one event");
 //! ```
 
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -195,9 +195,9 @@ impl EventEmitter {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use std::sync::atomic::AtomicU64;
+
+    use super::*;
 
     struct TestEvent {
         stage: &'static str,

@@ -48,6 +48,11 @@ use crate::error::{EnvVarRequiredSnafu, EnvVarUnterminatedSnafu, Result};
     clippy::result_large_err,
     reason = "shared Error enum contains figment::Error; boxing would require a crate-wide change"
 )]
+#[must_use]
+#[expect(
+    clippy::double_must_use,
+    reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+)]
 pub fn interpolate_env_vars(content: &str) -> Result<String> {
     let mut result = String::with_capacity(content.len());
     let mut rest = content;
@@ -154,7 +159,11 @@ mod tests {
     #[test]
     fn no_placeholders_returns_content_unchanged() {
         let input = "[gateway]\nport = 18789\n";
-        assert_eq!(interpolate_env_vars(input).unwrap(), input);
+        assert_eq!(
+            interpolate_env_vars(input).unwrap(),
+            input,
+            "input with no placeholders should pass through unchanged"
+        );
     }
 
     #[test]
@@ -163,7 +172,7 @@ mod tests {
             jail.set_env("_TAX_INTERP_TEST_PORT", "9999");
             let out = interpolate_env_vars("port = ${_TAX_INTERP_TEST_PORT}")
                 .map_err(|e| e.to_string())?;
-            assert_eq!(out, "port = 9999");
+            assert_eq!(out, "port = 9999", "set env var should be substituted");
             Ok(())
         });
     }
@@ -174,7 +183,7 @@ mod tests {
             // NOTE: _TAX_INTERP_UNSET_XYZ is not set in the jail
             let out = interpolate_env_vars("val = ${_TAX_INTERP_UNSET_XYZ}")
                 .map_err(|e| e.to_string())?;
-            assert_eq!(out, "val = ");
+            assert_eq!(out, "val = ", "unset var should substitute empty string");
             Ok(())
         });
     }
@@ -185,7 +194,10 @@ mod tests {
             // NOTE: _TAX_INTERP_MISSING is not set in the jail
             let out = interpolate_env_vars("port = ${_TAX_INTERP_MISSING:-18789}")
                 .map_err(|e| e.to_string())?;
-            assert_eq!(out, "port = 18789");
+            assert_eq!(
+                out, "port = 18789",
+                "default value should be used when var is unset"
+            );
             Ok(())
         });
     }
@@ -196,7 +208,7 @@ mod tests {
             jail.set_env("_TAX_INTERP_PRESENT", "42");
             let out = interpolate_env_vars("port = ${_TAX_INTERP_PRESENT:-99}")
                 .map_err(|e| e.to_string())?;
-            assert_eq!(out, "port = 42");
+            assert_eq!(out, "port = 42", "set var should override default value");
             Ok(())
         });
     }
@@ -237,7 +249,10 @@ mod tests {
             jail.set_env("_TAX_INTERP_PRESENT2", "secret");
             let out = interpolate_env_vars("key = ${_TAX_INTERP_PRESENT2:?must be set}")
                 .map_err(|e| e.to_string())?;
-            assert_eq!(out, "key = secret");
+            assert_eq!(
+                out, "key = secret",
+                "required var should substitute its value when set"
+            );
             Ok(())
         });
     }
@@ -259,7 +274,10 @@ mod tests {
             jail.set_env("_TAX_INTERP_PORT2", "8080");
             let out = interpolate_env_vars("bind = \"${_TAX_INTERP_HOST}:${_TAX_INTERP_PORT2}\"")
                 .map_err(|e| e.to_string())?;
-            assert_eq!(out, "bind = \"localhost:8080\"");
+            assert_eq!(
+                out, "bind = \"localhost:8080\"",
+                "multiple substitutions should all resolve"
+            );
             Ok(())
         });
     }
@@ -270,7 +288,10 @@ mod tests {
             // The first `:-` is the operator; the rest is the default value.
             let out = interpolate_env_vars("url = ${_TAX_INTERP_URL:-http://localhost:8080}")
                 .map_err(|e| e.to_string())?;
-            assert_eq!(out, "url = http://localhost:8080");
+            assert_eq!(
+                out, "url = http://localhost:8080",
+                "colon in default value should be preserved"
+            );
             Ok(())
         });
     }

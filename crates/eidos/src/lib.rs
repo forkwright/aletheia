@@ -9,3 +9,16 @@
 pub mod id;
 /// Knowledge graph domain types: facts, entities, relationships, embeddings.
 pub mod knowledge;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn public_reexports_accessible() {
+        let _: id::FactId = "f-1".into();
+        let _: id::EntityId = "e-1".into();
+        let _: id::EmbeddingId = "emb-1".into();
+        let _ = knowledge::EpistemicTier::Verified;
+    }
+}

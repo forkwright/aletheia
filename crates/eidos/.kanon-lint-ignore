@@ -1,0 +1,8 @@
+# WHY: eidos is a public library crate — all pub items in id.rs and knowledge.rs
+# are re-exported via `pub mod id` and `pub mod knowledge` in lib.rs.
+RUST/pub-visibility:src/id.rs
+RUST/pub-visibility:src/knowledge.rs
+
+# WHY: linter regex doesn't recognize #[must_use = "message"] form (only bare #[must_use]).
+# These functions have #[must_use = "..."] which satisfies the actual standard.
+RUST/missing-must-use:src/id.rs

@@ -1,0 +1,24 @@
+# WHY: koina is a public library crate — all pub items are re-exported
+# via `pub mod` in lib.rs, making them part of the public API.
+RUST/pub-visibility:src/cleanup.rs
+RUST/pub-visibility:src/credential.rs
+RUST/pub-visibility:src/defaults.rs
+RUST/pub-visibility:src/disk_space.rs
+RUST/pub-visibility:src/error.rs
+RUST/pub-visibility:src/event.rs
+RUST/pub-visibility:src/http.rs
+RUST/pub-visibility:src/id.rs
+RUST/pub-visibility:src/output_buffer.rs
+RUST/pub-visibility:src/redact.rs
+RUST/pub-visibility:src/redacting_layer.rs
+RUST/pub-visibility:src/secret.rs
+RUST/pub-visibility:src/system.rs
+RUST/pub-visibility:src/tracing_init.rs
+
+# WHY: system.rs trait (System) has fn signatures with &[u8] type annotations
+# that the indexing-slicing regex matches as false positives.
+RUST/indexing-slicing:src/system.rs
+
+# WHY: linter regex doesn't recognize #[must_use = "message"] form (only bare #[must_use]).
+# These functions have #[must_use = "..."] which satisfies the actual standard.
+RUST/missing-must-use:src/id.rs

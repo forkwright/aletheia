@@ -362,89 +362,145 @@ mod tests {
     fn oikos_path_structure() {
         let oikos = Oikos::from_root("/srv/aletheia/instance");
 
-        assert_eq!(oikos.root(), Path::new("/srv/aletheia/instance"));
-        assert_eq!(oikos.theke(), PathBuf::from("/srv/aletheia/instance/theke"));
+        assert_eq!(
+            oikos.root(),
+            Path::new("/srv/aletheia/instance"),
+            "root path should match"
+        );
+        assert_eq!(
+            oikos.theke(),
+            PathBuf::from("/srv/aletheia/instance/theke"),
+            "theke path should be under root"
+        );
         assert_eq!(
             oikos.shared(),
-            PathBuf::from("/srv/aletheia/instance/shared")
+            PathBuf::from("/srv/aletheia/instance/shared"),
+            "shared path should be under root"
         );
         assert_eq!(
             oikos.nous_dir("syn"),
-            PathBuf::from("/srv/aletheia/instance/nous/syn")
+            PathBuf::from("/srv/aletheia/instance/nous/syn"),
+            "nous dir should include agent id"
         );
         assert_eq!(
             oikos.nous_file("syn", "SOUL.md"),
-            PathBuf::from("/srv/aletheia/instance/nous/syn/SOUL.md")
+            PathBuf::from("/srv/aletheia/instance/nous/syn/SOUL.md"),
+            "nous file should include agent id and filename"
         );
         assert_eq!(
             oikos.config(),
-            PathBuf::from("/srv/aletheia/instance/config")
+            PathBuf::from("/srv/aletheia/instance/config"),
+            "config path should be under root"
         );
         assert_eq!(
             oikos.sessions_db(),
-            PathBuf::from("/srv/aletheia/instance/data/sessions.db")
+            PathBuf::from("/srv/aletheia/instance/data/sessions.db"),
+            "sessions db should be under data/"
         );
     }
 
     #[test]
     fn oikos_env_override() {
         let oikos = Oikos::from_root("/custom/path");
-        assert_eq!(oikos.root(), Path::new("/custom/path"));
+        assert_eq!(
+            oikos.root(),
+            Path::new("/custom/path"),
+            "custom root should be preserved"
+        );
     }
 
     #[test]
     fn shared_subdirs() {
         let oikos = Oikos::from_root("/test");
-        assert_eq!(oikos.shared_tools(), PathBuf::from("/test/shared/tools"));
-        assert_eq!(oikos.shared_skills(), PathBuf::from("/test/shared/skills"));
-        assert_eq!(oikos.shared_hooks(), PathBuf::from("/test/shared/hooks"));
+        assert_eq!(
+            oikos.shared_tools(),
+            PathBuf::from("/test/shared/tools"),
+            "shared tools path"
+        );
+        assert_eq!(
+            oikos.shared_skills(),
+            PathBuf::from("/test/shared/skills"),
+            "shared skills path"
+        );
+        assert_eq!(
+            oikos.shared_hooks(),
+            PathBuf::from("/test/shared/hooks"),
+            "shared hooks path"
+        );
         assert_eq!(
             oikos.coordination(),
-            PathBuf::from("/test/shared/coordination")
+            PathBuf::from("/test/shared/coordination"),
+            "coordination path"
         );
     }
 
     #[test]
     fn data_paths() {
         let oikos = Oikos::from_root("/srv/instance");
-        assert_eq!(oikos.data(), PathBuf::from("/srv/instance/data"));
+        assert_eq!(
+            oikos.data(),
+            PathBuf::from("/srv/instance/data"),
+            "data path"
+        );
         assert_eq!(
             oikos.sessions_db(),
-            PathBuf::from("/srv/instance/data/sessions.db")
+            PathBuf::from("/srv/instance/data/sessions.db"),
+            "sessions db path"
         );
         assert_eq!(
             oikos.planning_db(),
-            PathBuf::from("/srv/instance/data/planning.db")
+            PathBuf::from("/srv/instance/data/planning.db"),
+            "planning db path"
         );
         assert_eq!(
             oikos.knowledge_db(),
-            PathBuf::from("/srv/instance/data/knowledge.fjall")
+            PathBuf::from("/srv/instance/data/knowledge.fjall"),
+            "knowledge db path"
         );
-        assert_eq!(oikos.logs(), PathBuf::from("/srv/instance/logs"));
-        assert_eq!(oikos.signal(), PathBuf::from("/srv/instance/signal"));
+        assert_eq!(
+            oikos.logs(),
+            PathBuf::from("/srv/instance/logs"),
+            "logs path"
+        );
+        assert_eq!(
+            oikos.signal(),
+            PathBuf::from("/srv/instance/signal"),
+            "signal path"
+        );
     }
 
     #[test]
     fn config_paths() {
         let oikos = Oikos::from_root("/srv/instance");
-        assert_eq!(oikos.config(), PathBuf::from("/srv/instance/config"));
+        assert_eq!(
+            oikos.config(),
+            PathBuf::from("/srv/instance/config"),
+            "config path"
+        );
         assert_eq!(
             oikos.credentials(),
-            PathBuf::from("/srv/instance/config/credentials")
+            PathBuf::from("/srv/instance/config/credentials"),
+            "credentials path"
         );
         assert_eq!(
             oikos.session_key(),
-            PathBuf::from("/srv/instance/config/session.key")
+            PathBuf::from("/srv/instance/config/session.key"),
+            "session key path"
         );
     }
 
     #[test]
     fn nous_root_and_files() {
         let oikos = Oikos::from_root("/srv/instance");
-        assert_eq!(oikos.nous_root(), PathBuf::from("/srv/instance/nous"));
+        assert_eq!(
+            oikos.nous_root(),
+            PathBuf::from("/srv/instance/nous"),
+            "nous root path"
+        );
         assert_eq!(
             oikos.nous_file("demiurge", "SOUL.md"),
-            PathBuf::from("/srv/instance/nous/demiurge/SOUL.md")
+            PathBuf::from("/srv/instance/nous/demiurge/SOUL.md"),
+            "nous file path for demiurge"
         );
     }
 
@@ -453,7 +509,10 @@ mod tests {
         let dir = tempfile::tempdir().expect("create temp dir");
         let oikos = Oikos::from_root(dir.path());
         let cf = oikos.config_file();
-        assert!(cf.to_string_lossy().ends_with("aletheia.json"));
+        assert!(
+            cf.to_string_lossy().ends_with("aletheia.json"),
+            "should default to json when no toml exists"
+        );
     }
 
     #[test]
@@ -468,7 +527,10 @@ mod tests {
 
         let oikos = Oikos::from_root(dir.path());
         let cf = oikos.config_file();
-        assert!(cf.to_string_lossy().ends_with("aletheia.toml"));
+        assert!(
+            cf.to_string_lossy().ends_with("aletheia.toml"),
+            "should prefer toml when it exists"
+        );
     }
 
     fn make_valid_instance() -> tempfile::TempDir {
@@ -483,7 +545,10 @@ mod tests {
     fn validate_passes_with_valid_layout() {
         let dir = make_valid_instance();
         let oikos = Oikos::from_root(dir.path());
-        assert!(oikos.validate().is_ok());
+        assert!(
+            oikos.validate().is_ok(),
+            "valid instance layout should pass validation"
+        );
     }
 
     #[test]
@@ -546,7 +611,10 @@ mod tests {
         std::fs::create_dir_all(dir.path().join("data")).unwrap();
         let oikos = Oikos::from_root(dir.path());
         // NOTE: missing nous/ is a warning, not an error: the test verifies this
-        assert!(oikos.validate().is_ok());
+        assert!(
+            oikos.validate().is_ok(),
+            "missing nous/ should warn but pass"
+        );
     }
 
     #[test]
@@ -597,7 +665,10 @@ mod tests {
         let dir = make_valid_instance();
         // NOTE: nous/ already created by make_valid_instance
         let oikos = Oikos::from_root(dir.path());
-        assert!(oikos.validate_workspace_path("nous").is_ok());
+        assert!(
+            oikos.validate_workspace_path("nous").is_ok(),
+            "relative nous/ path should be accepted"
+        );
     }
 
     #[test]
@@ -605,7 +676,10 @@ mod tests {
         let dir = make_valid_instance();
         let oikos = Oikos::from_root(dir.path());
         let abs = dir.path().join("nous").to_string_lossy().into_owned();
-        assert!(oikos.validate_workspace_path(&abs).is_ok());
+        assert!(
+            oikos.validate_workspace_path(&abs).is_ok(),
+            "absolute nous/ path should be accepted"
+        );
     }
 
     #[test]
@@ -647,7 +721,11 @@ mod tests {
 
         let env = TestSystem::new().with_env("ALETHEIA_ROOT", "/custom/root");
         let oikos = Oikos::discover_with(&env);
-        assert_eq!(oikos.root(), Path::new("/custom/root"));
+        assert_eq!(
+            oikos.root(),
+            Path::new("/custom/root"),
+            "ALETHEIA_ROOT env var should override default"
+        );
     }
 
     #[test]
@@ -656,6 +734,10 @@ mod tests {
 
         let env = TestSystem::new(); // no ALETHEIA_ROOT set
         let oikos = Oikos::discover_with(&env);
-        assert_eq!(oikos.root(), Path::new("instance"));
+        assert_eq!(
+            oikos.root(),
+            Path::new("instance"),
+            "should fall back to 'instance' when env var unset"
+        );
     }
 }

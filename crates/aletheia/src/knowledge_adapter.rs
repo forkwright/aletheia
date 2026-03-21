@@ -5,7 +5,9 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use aletheia_mneme::embedding::EmbeddingProvider;
-use aletheia_mneme::knowledge::{EpistemicTier, Fact};
+use aletheia_mneme::knowledge::{
+    EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
+};
 use aletheia_mneme::knowledge_store::{HybridQuery, KnowledgeStore};
 use aletheia_organon::error::{
     DatalogQuerySnafu, EmbeddingSnafu, FactQuerySnafu, InvalidReasonSnafu, KnowledgeAdapterError,
@@ -146,21 +148,29 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
             let new_fact = Fact {
                 id: aletheia_mneme::id::FactId::from(new_id.as_str()),
                 nous_id,
-                content: new_content,
-                confidence: 1.0,
-                tier: EpistemicTier::Verified,
-                valid_from: ts_now,
-                valid_to: aletheia_mneme::knowledge::far_future(),
-                superseded_by: None,
-                source_session_id: None,
-                recorded_at: ts_now,
-                access_count: 0,
-                last_accessed_at: None,
-                stability_hours: aletheia_mneme::knowledge::default_stability_hours(""),
                 fact_type: String::new(),
-                is_forgotten: false,
-                forgotten_at: None,
-                forget_reason: None,
+                content: new_content,
+                temporal: FactTemporal {
+                    valid_from: ts_now,
+                    valid_to: aletheia_mneme::knowledge::far_future(),
+                    recorded_at: ts_now,
+                },
+                provenance: FactProvenance {
+                    confidence: 1.0,
+                    tier: EpistemicTier::Verified,
+                    source_session_id: None,
+                    stability_hours: aletheia_mneme::knowledge::default_stability_hours(""),
+                },
+                lifecycle: FactLifecycle {
+                    superseded_by: None,
+                    is_forgotten: false,
+                    forgotten_at: None,
+                    forget_reason: None,
+                },
+                access: FactAccess {
+                    access_count: 0,
+                    last_accessed_at: None,
+                },
             };
             self.store.insert_fact(&new_fact).map_err(|e| {
                 MutateStoreSnafu {
@@ -243,16 +253,18 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
                 .unwrap_or(jiff::Timestamp::UNIX_EPOCH);
             let out = facts
                 .into_iter()
-                .filter(|f| f.recorded_at >= since_ts)
+                .filter(|f| f.temporal.recorded_at >= since_ts)
                 .map(|f| FactSummary {
                     id: f.id.to_string(),
                     content: f.content,
-                    confidence: f.confidence,
-                    tier: f.tier.to_string(),
-                    recorded_at: aletheia_mneme::knowledge::format_timestamp(&f.recorded_at),
-                    is_forgotten: f.is_forgotten,
-                    forgotten_at: f.forgotten_at.map(|s| s.to_string()),
-                    forget_reason: f.forget_reason.map(|r| r.to_string()),
+                    confidence: f.provenance.confidence,
+                    tier: f.provenance.tier.to_string(),
+                    recorded_at: aletheia_mneme::knowledge::format_timestamp(
+                        &f.temporal.recorded_at,
+                    ),
+                    is_forgotten: f.lifecycle.is_forgotten,
+                    forgotten_at: f.lifecycle.forgotten_at.map(|s| s.to_string()),
+                    forget_reason: f.lifecycle.forget_reason.map(|r| r.to_string()),
                 })
                 .collect();
             Ok(out)
@@ -352,12 +364,12 @@ fn fact_to_summary(f: Fact) -> FactSummary {
     FactSummary {
         id: f.id.to_string(),
         content: f.content,
-        confidence: f.confidence,
-        tier: f.tier.to_string(),
-        recorded_at: aletheia_mneme::knowledge::format_timestamp(&f.recorded_at),
-        is_forgotten: f.is_forgotten,
-        forgotten_at: f.forgotten_at.map(|t| t.to_string()),
-        forget_reason: f.forget_reason.map(|r| r.to_string()),
+        confidence: f.provenance.confidence,
+        tier: f.provenance.tier.to_string(),
+        recorded_at: aletheia_mneme::knowledge::format_timestamp(&f.temporal.recorded_at),
+        is_forgotten: f.lifecycle.is_forgotten,
+        forgotten_at: f.lifecycle.forgotten_at.map(|t| t.to_string()),
+        forget_reason: f.lifecycle.forget_reason.map(|r| r.to_string()),
     }
 }
 

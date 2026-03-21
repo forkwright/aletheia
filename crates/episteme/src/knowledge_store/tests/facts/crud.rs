@@ -10,7 +10,9 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use super::super::super::*;
-use crate::knowledge::{EpistemicTier, Fact, ForgetReason};
+use crate::knowledge::{
+    EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal, ForgetReason,
+};
 
 const DIM: usize = 4;
 
@@ -27,20 +29,28 @@ fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
         id: crate::id::FactId::new_unchecked(id),
         nous_id: nous_id.to_owned(),
         content: content.to_owned(),
-        confidence: 0.9,
-        tier: EpistemicTier::Inferred,
-        valid_from: test_ts("2026-01-01"),
-        valid_to: crate::knowledge::far_future(),
-        superseded_by: None,
-        source_session_id: None,
-        recorded_at: test_ts("2026-03-01T00:00:00Z"),
-        access_count: 0,
-        last_accessed_at: None,
-        stability_hours: 720.0,
         fact_type: String::new(),
-        is_forgotten: false,
-        forgotten_at: None,
-        forget_reason: None,
+        temporal: FactTemporal {
+            valid_from: test_ts("2026-01-01"),
+            valid_to: crate::knowledge::far_future(),
+            recorded_at: test_ts("2026-03-01T00:00:00Z"),
+        },
+        provenance: FactProvenance {
+            confidence: 0.9,
+            tier: EpistemicTier::Inferred,
+            source_session_id: None,
+            stability_hours: 720.0,
+        },
+        lifecycle: FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
     }
 }
 
@@ -110,7 +120,7 @@ fn insert_fact_and_retrieve() {
         "retrieved fact should have expected content"
     );
     assert!(
-        (results[0].confidence - 0.9).abs() < f64::EPSILON,
+        (results[0].provenance.confidence - 0.9).abs() < f64::EPSILON,
         "retrieved fact confidence should match inserted value"
     );
 }
@@ -136,7 +146,7 @@ fn upsert_fact_overwrites() {
     store.insert_fact(&fact).expect("insert fact");
 
     fact.content = "Updated content".to_owned();
-    fact.confidence = 0.95;
+    fact.provenance.confidence = 0.95;
     store.insert_fact(&fact).expect("upsert fact");
 
     let results = store
@@ -152,7 +162,7 @@ fn upsert_fact_overwrites() {
         "upsert should overwrite content"
     );
     assert!(
-        (results[0].confidence - 0.95).abs() < f64::EPSILON,
+        (results[0].provenance.confidence - 0.95).abs() < f64::EPSILON,
         "upsert should overwrite confidence"
     );
 }
@@ -170,16 +180,16 @@ fn forget_fact_excludes_from_query() {
         )
         .expect("forget fact");
     assert!(
-        forgotten.is_forgotten,
+        forgotten.lifecycle.is_forgotten,
         "returned fact should be marked as forgotten"
     );
     assert_eq!(
-        forgotten.forget_reason,
+        forgotten.lifecycle.forget_reason,
         Some(ForgetReason::UserRequested),
         "forget reason should be preserved"
     );
     assert!(
-        forgotten.forgotten_at.is_some(),
+        forgotten.lifecycle.forgotten_at.is_some(),
         "forgotten_at timestamp should be set"
     );
 
@@ -214,15 +224,15 @@ fn forget_fact_then_unforget_restores_recall() {
         .unforget_fact(&crate::id::FactId::new_unchecked("f1"))
         .expect("unforget");
     assert!(
-        !restored.is_forgotten,
+        !restored.lifecycle.is_forgotten,
         "unforgotten fact should not be marked as forgotten"
     );
     assert!(
-        restored.forgotten_at.is_none(),
+        restored.lifecycle.forgotten_at.is_none(),
         "unforgotten fact should have no forgotten_at timestamp"
     );
     assert!(
-        restored.forget_reason.is_none(),
+        restored.lifecycle.forget_reason.is_none(),
         "unforgotten fact should have no forget reason"
     );
 
@@ -255,11 +265,11 @@ fn forget_preserves_in_audit() {
     assert!(found.is_some(), "audit must return forgotten facts");
     let found = found.expect("f1 must appear in audit after forget");
     assert!(
-        found.is_forgotten,
+        found.lifecycle.is_forgotten,
         "audited fact should be marked as forgotten"
     );
     assert_eq!(
-        found.forget_reason,
+        found.lifecycle.forget_reason,
         Some(ForgetReason::Privacy),
         "audit should preserve forget reason"
     );
@@ -284,7 +294,7 @@ fn forget_reason_roundtrips() {
             .forget_fact(&crate::id::FactId::new_unchecked(id), reason)
             .expect("forget");
         assert_eq!(
-            forgotten.forget_reason,
+            forgotten.lifecycle.forget_reason,
             Some(reason),
             "reason must round-trip for {reason}"
         );
@@ -304,7 +314,7 @@ fn forget_reason_roundtrips() {
             .find(|f| f.id.as_str() == id)
             .unwrap_or_else(|| panic!("missing {id} in list_forgotten"));
         assert_eq!(
-            found.forget_reason,
+            found.lifecycle.forget_reason,
             Some(reason),
             "forget reason should round-trip for {reason}"
         );
@@ -369,7 +379,7 @@ fn increment_access_updates_count() {
         .find(|f| f.id.as_str() == "f1")
         .expect("found");
     assert_eq!(
-        found.access_count, 2,
+        found.access.access_count, 2,
         "access count should reflect two increments"
     );
 }
@@ -410,7 +420,7 @@ fn insert_fact_confidence_out_of_range_rejected() {
     let store = make_store();
 
     let mut high = make_fact("f-high", "agent-a", "High confidence");
-    high.confidence = 1.5;
+    high.provenance.confidence = 1.5;
     let result = store.insert_fact(&high);
     assert!(result.is_err(), "confidence > 1.0 must be rejected");
     assert!(
@@ -422,7 +432,7 @@ fn insert_fact_confidence_out_of_range_rejected() {
     );
 
     let mut negative = make_fact("f-neg", "agent-a", "Negative confidence");
-    negative.confidence = -0.5;
+    negative.provenance.confidence = -0.5;
     let result = store.insert_fact(&negative);
     assert!(result.is_err(), "confidence < 0.0 must be rejected");
     assert!(

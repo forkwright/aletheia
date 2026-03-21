@@ -232,9 +232,11 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::sync::{Arc, Mutex};
+
     use tracing_subscriber::layer::SubscriberExt;
+
+    use super::*;
 
     #[derive(Clone)]
     struct TestWriter(Arc<Mutex<Vec<u8>>>);

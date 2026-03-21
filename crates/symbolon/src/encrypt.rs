@@ -221,7 +221,7 @@ fn write_key_file(path: &Path, key: &[u8; KEY_LEN]) -> std::io::Result<()> {
 mod tests {
     use super::*;
 
-    fn test_key() -> [u8; KEY_LEN] {
+    fn fixture_key() -> [u8; KEY_LEN] {
         let mut k = [0u8; KEY_LEN];
         for (i, b) in k.iter_mut().enumerate() {
             // NOTE: i is in 0..KEY_LEN (32), which fits in u8.
@@ -239,7 +239,7 @@ mod tests {
 
     #[test]
     fn encrypt_then_decrypt_roundtrip() {
-        let key = test_key();
+        let key = fixture_key();
         let plaintext = b"hello, credential world";
         let encoded = encrypt(&key, plaintext).unwrap();
         let decoded = decrypt(&key, &encoded).unwrap();
@@ -251,7 +251,7 @@ mod tests {
 
     #[test]
     fn different_nonces_produce_different_ciphertexts() {
-        let key = test_key();
+        let key = fixture_key();
         let plaintext = b"same plaintext";
         let enc1 = encrypt(&key, plaintext).unwrap();
         let enc2 = encrypt(&key, plaintext).unwrap();
@@ -260,8 +260,8 @@ mod tests {
 
     #[test]
     fn wrong_key_fails_decryption() {
-        let key = test_key();
-        let mut bad_key = test_key();
+        let key = fixture_key();
+        let mut bad_key = fixture_key();
         bad_key[0] ^= 0xFF;
         let encoded = encrypt(&key, b"secret").unwrap();
         let result = decrypt(&bad_key, &encoded);
@@ -270,7 +270,7 @@ mod tests {
 
     #[test]
     fn tampered_ciphertext_fails_decryption() {
-        let key = test_key();
+        let key = fixture_key();
         let mut encoded = encrypt(&key, b"secret data").unwrap();
         // NOTE: flip the last character to corrupt the GCM authentication tag.
         if let Some(c) = encoded.pop() {

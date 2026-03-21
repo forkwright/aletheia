@@ -56,6 +56,11 @@ pub fn primary_key_path() -> Option<PathBuf> {
     clippy::result_large_err,
     reason = "taxis Error is inherently large due to PathBuf fields"
 )]
+#[must_use]
+#[expect(
+    clippy::double_must_use,
+    reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+)]
 pub fn load_primary_key(path: &Path) -> Result<Option<[u8; KEY_LEN]>> {
     if !path.exists() {
         return Ok(None);
@@ -155,6 +160,11 @@ fn to_hex(bytes: &[u8]) -> String {
     clippy::result_large_err,
     reason = "taxis Error is inherently large due to PathBuf fields"
 )]
+#[must_use]
+#[expect(
+    clippy::double_must_use,
+    reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+)]
 pub fn generate_primary_key(path: &Path) -> Result<()> {
     if path.exists() {
         return Err(error::PrimaryKeyExistsSnafu {
@@ -218,6 +228,11 @@ pub fn is_encrypted(value: &str) -> bool {
     clippy::result_large_err,
     reason = "taxis Error is inherently large due to PathBuf fields"
 )]
+#[must_use]
+#[expect(
+    clippy::double_must_use,
+    reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+)]
 pub fn encrypt_value(plaintext: &str, primary_key: &[u8; KEY_LEN]) -> Result<String> {
     // WHY: ring::error::Unspecified has no useful fields to propagate
     let unbound = UnboundKey::new(&CHACHA20_POLY1305, primary_key)
@@ -252,6 +267,11 @@ pub fn encrypt_value(plaintext: &str, primary_key: &[u8; KEY_LEN]) -> Result<Str
 #[expect(
     clippy::result_large_err,
     reason = "taxis Error is inherently large due to PathBuf fields"
+)]
+#[must_use]
+#[expect(
+    clippy::double_must_use,
+    reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
 )]
 pub fn decrypt_value(encrypted: &str, primary_key: &[u8; KEY_LEN]) -> Result<String> {
     let encoded = encrypted
@@ -313,6 +333,11 @@ fn build_decrypt_error(reason: &str) -> error::Error {
 #[expect(
     clippy::result_large_err,
     reason = "taxis Error is inherently large due to PathBuf fields"
+)]
+#[must_use]
+#[expect(
+    clippy::double_must_use,
+    reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
 )]
 pub fn encrypt_config_file(toml_path: &Path, primary_key: &[u8; KEY_LEN]) -> Result<usize> {
     let content =
@@ -481,12 +506,12 @@ fn is_sensitive_key(key: &str) -> bool {
 )]
 #[expect(
     clippy::as_conversions,
-    reason = "test: wrapping cast by design in test_key()"
+    reason = "test: wrapping cast by design in fixture_key()"
 )]
 mod tests {
     use super::*;
 
-    fn test_key() -> [u8; KEY_LEN] {
+    fn fixture_key() -> [u8; KEY_LEN] {
         let mut key = [0u8; KEY_LEN];
         for (i, byte) in key.iter_mut().enumerate() {
             #[expect(
@@ -502,7 +527,7 @@ mod tests {
 
     #[test]
     fn encrypt_decrypt_roundtrip() {
-        let key = test_key();
+        let key = fixture_key();
         let plaintext = "sk-ant-api-secret-key-12345";
         let encrypted = encrypt_value(plaintext, &key).unwrap();
 
@@ -510,41 +535,65 @@ mod tests {
             is_encrypted(&encrypted),
             "encrypted value must start with enc:"
         );
-        assert!(encrypted.starts_with(ENCRYPTED_PREFIX));
+        assert!(
+            encrypted.starts_with(ENCRYPTED_PREFIX),
+            "encrypted value should have enc: prefix"
+        );
 
         let decrypted = decrypt_value(&encrypted, &key).unwrap();
-        assert_eq!(decrypted, plaintext);
+        assert_eq!(
+            decrypted, plaintext,
+            "decrypted value should match original plaintext"
+        );
     }
 
     #[test]
     fn encrypt_decrypt_empty_string() {
-        let key = test_key();
+        let key = fixture_key();
         let encrypted = encrypt_value("", &key).unwrap();
         let decrypted = decrypt_value(&encrypted, &key).unwrap();
-        assert_eq!(decrypted, "");
+        assert_eq!(
+            decrypted, "",
+            "empty string should roundtrip through encryption"
+        );
     }
 
     #[test]
     fn encrypt_decrypt_unicode() {
-        let key = test_key();
+        let key = fixture_key();
         let plaintext = "secret-with-unicode-\u{1f512}\u{1f511}";
         let encrypted = encrypt_value(plaintext, &key).unwrap();
         let decrypted = decrypt_value(&encrypted, &key).unwrap();
-        assert_eq!(decrypted, plaintext);
+        assert_eq!(
+            decrypted, plaintext,
+            "unicode string should roundtrip through encryption"
+        );
     }
 
     #[test]
     fn detect_encrypted_vs_plaintext() {
-        assert!(is_encrypted("enc:abc123"));
-        assert!(!is_encrypted("plaintext-value"));
-        assert!(!is_encrypted(""));
-        assert!(!is_encrypted("ENC:uppercase-not-matched"));
+        assert!(
+            is_encrypted("enc:abc123"),
+            "enc: prefixed value should be detected as encrypted"
+        );
+        assert!(
+            !is_encrypted("plaintext-value"),
+            "plaintext value should not be detected as encrypted"
+        );
+        assert!(
+            !is_encrypted(""),
+            "empty string should not be detected as encrypted"
+        );
+        assert!(
+            !is_encrypted("ENC:uppercase-not-matched"),
+            "uppercase ENC: should not match"
+        );
     }
 
     #[test]
     fn wrong_key_fails_decryption() {
-        let key1 = test_key();
-        let mut key2 = test_key();
+        let key1 = fixture_key();
+        let mut key2 = fixture_key();
         key2[0] ^= 0xff;
 
         let encrypted = encrypt_value("secret", &key1).unwrap();
@@ -554,7 +603,7 @@ mod tests {
 
     #[test]
     fn corrupted_ciphertext_fails() {
-        let key = test_key();
+        let key = fixture_key();
         let encrypted = encrypt_value("secret", &key).unwrap();
 
         let mut chars: Vec<char> = encrypted.chars().collect();
@@ -568,21 +617,21 @@ mod tests {
 
     #[test]
     fn too_short_ciphertext_fails() {
-        let key = test_key();
+        let key = fixture_key();
         let result = decrypt_value("enc:AAAA", &key);
         assert!(result.is_err(), "too-short ciphertext must fail");
     }
 
     #[test]
     fn invalid_base64_fails() {
-        let key = test_key();
+        let key = fixture_key();
         let result = decrypt_value("enc:!!!invalid!!!", &key);
         assert!(result.is_err(), "invalid base64 must fail");
     }
 
     #[test]
     fn decrypt_toml_with_key() {
-        let key = test_key();
+        let key = fixture_key();
         let secret = "my-jwt-signing-key";
         let encrypted = encrypt_value(secret, &key).unwrap();
 
@@ -597,12 +646,15 @@ mod tests {
         decrypt_toml_values(&mut value, Some(&key));
 
         let signing_key = value["gateway"]["auth"]["signingKey"].as_str().unwrap();
-        assert_eq!(signing_key, secret);
+        assert_eq!(
+            signing_key, secret,
+            "decrypted signing key should match original"
+        );
     }
 
     #[test]
     fn decrypt_toml_without_key_leaves_encrypted() {
-        let key = test_key();
+        let key = fixture_key();
         let encrypted = encrypt_value("secret", &key).unwrap();
 
         let toml_str = format!(
@@ -623,7 +675,7 @@ mod tests {
 
     #[test]
     fn encrypt_sensitive_values_in_toml() {
-        let key = test_key();
+        let key = fixture_key();
         let toml_str = r#"
             [gateway]
             port = 18789
@@ -644,12 +696,15 @@ mod tests {
         assert!(is_encrypted(signing_key), "signingKey must be encrypted");
 
         let decrypted = decrypt_value(signing_key, &key).unwrap();
-        assert_eq!(decrypted, "my-secret-key");
+        assert_eq!(
+            decrypted, "my-secret-key",
+            "decrypted sensitive value should match original"
+        );
     }
 
     #[test]
     fn encrypt_skips_already_encrypted_values() {
-        let key = test_key();
+        let key = fixture_key();
         let already = encrypt_value("existing", &key).unwrap();
 
         let toml_str = format!(
@@ -671,7 +726,7 @@ mod tests {
 
         generate_primary_key(&key_path).unwrap();
 
-        assert!(key_path.exists());
+        assert!(key_path.exists(), "key file should exist after generation");
 
         #[cfg(unix)]
         {
@@ -693,7 +748,7 @@ mod tests {
     #[test]
     fn load_missing_key_returns_none() {
         let result = load_primary_key(Path::new("/nonexistent/path/primary.key")).unwrap();
-        assert!(result.is_none());
+        assert!(result.is_none(), "missing key file should return None");
     }
 
     #[test]
@@ -709,25 +764,33 @@ mod tests {
     #[test]
     fn hex_key_parsing_rejects_wrong_length() {
         let result = parse_hex_key("abcd", Path::new("test.key"));
-        assert!(result.is_err());
+        assert!(result.is_err(), "short hex string should be rejected");
     }
 
     #[test]
     fn hex_key_parsing_rejects_invalid_chars() {
         let bad = "zz".repeat(KEY_LEN);
         let result = parse_hex_key(&bad, Path::new("test.key"));
-        assert!(result.is_err());
+        assert!(result.is_err(), "invalid hex characters should be rejected");
     }
 
     #[test]
     fn each_encryption_produces_different_ciphertext() {
-        let key = test_key();
+        let key = fixture_key();
         let plaintext = "same-input";
         let enc1 = encrypt_value(plaintext, &key).unwrap();
         let enc2 = encrypt_value(plaintext, &key).unwrap();
         assert_ne!(enc1, enc2, "random nonce must produce different ciphertext");
 
-        assert_eq!(decrypt_value(&enc1, &key).unwrap(), plaintext);
-        assert_eq!(decrypt_value(&enc2, &key).unwrap(), plaintext);
+        assert_eq!(
+            decrypt_value(&enc1, &key).unwrap(),
+            plaintext,
+            "first encryption should decrypt correctly"
+        );
+        assert_eq!(
+            decrypt_value(&enc2, &key).unwrap(),
+            plaintext,
+            "second encryption should decrypt correctly"
+        );
     }
 }

@@ -67,6 +67,8 @@ impl AuthStore {
     pub(crate) fn open(path: &Path) -> Result<Self> {
         info!("Opening auth store at {}", path.display());
         let conn = Connection::open(path).context(error::DatabaseSnafu)?;
+        conn.busy_timeout(std::time::Duration::from_secs(5))
+            .context(error::DatabaseSnafu)?;
 
         conn.execute_batch(
             "PRAGMA journal_mode = WAL;
@@ -82,6 +84,8 @@ impl AuthStore {
     /// Open an in-memory auth store (for testing).
     pub(crate) fn open_in_memory() -> Result<Self> {
         let conn = Connection::open_in_memory().context(error::DatabaseSnafu)?;
+        conn.busy_timeout(std::time::Duration::from_secs(5))
+            .context(error::DatabaseSnafu)?;
         conn.execute_batch("PRAGMA foreign_keys = ON;")
             .context(error::DatabaseSnafu)?;
         initialize(&conn)?;
@@ -410,20 +414,20 @@ impl<T> OptionalExt<T> for std::result::Result<T, rusqlite::Error> {
 mod tests {
     use super::*;
 
-    fn test_store() -> AuthStore {
+    fn memory_store() -> AuthStore {
         AuthStore::open_in_memory().expect("open in-memory auth store")
     }
 
     #[test]
     fn fresh_database_initializes() {
-        let store = test_store();
+        let store = memory_store();
         let version = get_schema_version(store.conn()).unwrap();
         assert_eq!(version, SCHEMA_VERSION);
     }
 
     #[test]
     fn idempotent_initialization() {
-        let store = test_store();
+        let store = memory_store();
         initialize(store.conn()).unwrap();
         let version = get_schema_version(store.conn()).unwrap();
         assert_eq!(version, SCHEMA_VERSION);
@@ -431,7 +435,7 @@ mod tests {
 
     #[test]
     fn schema_corruption_returns_error() {
-        let store = test_store();
+        let store = memory_store();
         // NOTE: simulate corruption: drop and recreate schema_version empty to verify error path
         store
             .conn()
@@ -446,7 +450,7 @@ mod tests {
 
     #[test]
     fn tables_exist_after_init() {
-        let store = test_store();
+        let store = memory_store();
         for table in &["users", "api_keys", "revoked_tokens"] {
             let exists: bool = store
                 .conn()
@@ -462,7 +466,7 @@ mod tests {
 
     #[test]
     fn user_crud() {
-        let store = test_store();
+        let store = memory_store();
         let user = store
             .create_user("u1", "alice", "$argon2id$hash", Role::Operator)
             .unwrap();
@@ -486,7 +490,7 @@ mod tests {
 
     #[test]
     fn duplicate_username_rejected() {
-        let store = test_store();
+        let store = memory_store();
         store
             .create_user("u1", "alice", "$hash1", Role::Operator)
             .unwrap();
@@ -496,13 +500,13 @@ mod tests {
 
     #[test]
     fn delete_nonexistent_user_returns_false() {
-        let store = test_store();
+        let store = memory_store();
         assert!(!store.delete_user("nobody").unwrap());
     }
 
     #[test]
     fn token_revocation_lifecycle() {
-        let store = test_store();
+        let store = memory_store();
         let jti = "test-jti-123";
 
         assert!(!store.is_token_revoked(jti).unwrap());
@@ -512,7 +516,7 @@ mod tests {
 
     #[test]
     fn expired_revocation_cleanup() {
-        let store = test_store();
+        let store = memory_store();
         store
             .revoke_token("old-jti", "2000-01-01T00:00:00.000Z")
             .unwrap();
@@ -529,7 +533,7 @@ mod tests {
 
     #[test]
     fn api_key_store_and_find() {
-        let store = test_store();
+        let store = memory_store();
         let record = ApiKeyRecord {
             id: "k1".to_owned(),
             prefix: "syn".to_owned(),
@@ -553,7 +557,7 @@ mod tests {
 
     #[test]
     fn api_key_revoke() {
-        let store = test_store();
+        let store = memory_store();
         let record = ApiKeyRecord {
             id: "k1".to_owned(),
             prefix: "test".to_owned(),
@@ -575,7 +579,7 @@ mod tests {
 
     #[test]
     fn api_key_list() {
-        let store = test_store();
+        let store = memory_store();
         for i in 0..3 {
             let record = ApiKeyRecord {
                 id: format!("k{i}"),
@@ -597,14 +601,14 @@ mod tests {
 
     #[test]
     fn update_nonexistent_user_role_errors() {
-        let store = test_store();
+        let store = memory_store();
         let result = store.update_user_role("nobody", Role::Operator);
         assert!(result.is_err());
     }
 
     #[test]
     fn revoke_nonexistent_api_key_errors() {
-        let store = test_store();
+        let store = memory_store();
         let result = store.revoke_api_key("no-such-key");
         assert!(result.is_err());
     }

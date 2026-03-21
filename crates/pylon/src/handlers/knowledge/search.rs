@@ -54,7 +54,7 @@ pub async fn search(
 
     let mut results: Vec<SearchResult> = all_facts
         .iter()
-        .filter(|f| !f.is_forgotten)
+        .filter(|f| !f.lifecycle.is_forgotten)
         .filter_map(|f| {
             let content_lower = f.content.to_lowercase();
             // NOTE: Simple BM25-like scoring: term frequency weighted by confidence.
@@ -65,12 +65,12 @@ pub async fn search(
                 }
             }
             if score > 0.0 {
-                score *= f.confidence;
+                score *= f.provenance.confidence;
                 Some(SearchResult {
                     id: f.id.to_string(),
                     content: f.content.clone(),
-                    confidence: f.confidence,
-                    tier: f.tier.as_str().to_string(),
+                    confidence: f.provenance.confidence,
+                    tier: f.provenance.tier.as_str().to_string(),
                     fact_type: f.fact_type.clone(),
                     score,
                 })
@@ -125,30 +125,31 @@ pub async fn timeline(
     let mut events: Vec<TimelineEvent> = Vec::new();
 
     for fact in &facts {
-        if fact.is_forgotten {
+        if fact.lifecycle.is_forgotten {
             continue;
         }
         events.push(TimelineEvent {
-            timestamp: fact.recorded_at.to_string(),
+            timestamp: fact.temporal.recorded_at.to_string(),
             event_type: "created".to_string(),
             description: truncate_content(&fact.content, 80),
             fact_id: fact.id.to_string(),
-            confidence: Some(fact.confidence),
+            confidence: Some(fact.provenance.confidence),
         });
 
-        if fact.access_count > 0 && fact.last_accessed_at.is_some() {
+        if fact.access.access_count > 0 && fact.access.last_accessed_at.is_some() {
             events.push(TimelineEvent {
                 timestamp: fact
+                    .access
                     .last_accessed_at
                     .map(|t| t.to_string())
                     .unwrap_or_default(),
                 event_type: "accessed".to_string(),
                 description: format!(
                     "{} accesses, stability: {:.0}h",
-                    fact.access_count, fact.stability_hours
+                    fact.access.access_count, fact.provenance.stability_hours
                 ),
                 fact_id: fact.id.to_string(),
-                confidence: Some(fact.confidence),
+                confidence: Some(fact.provenance.confidence),
             });
         }
     }
@@ -227,27 +228,29 @@ pub(super) fn sort_facts(facts: &mut [aletheia_mneme::knowledge::Fact], sort: &s
     match sort {
         "confidence" => facts.sort_by(|a, b| {
             let cmp = a
+                .provenance
                 .confidence
-                .partial_cmp(&b.confidence)
+                .partial_cmp(&b.provenance.confidence)
                 .unwrap_or(std::cmp::Ordering::Equal);
             if desc { cmp.reverse() } else { cmp }
         }),
         "recency" => facts.sort_by(|a, b| {
-            let cmp = a.last_accessed_at.cmp(&b.last_accessed_at);
+            let cmp = a.access.last_accessed_at.cmp(&b.access.last_accessed_at);
             if desc { cmp.reverse() } else { cmp }
         }),
         "created" => facts.sort_by(|a, b| {
-            let cmp = a.recorded_at.cmp(&b.recorded_at);
+            let cmp = a.temporal.recorded_at.cmp(&b.temporal.recorded_at);
             if desc { cmp.reverse() } else { cmp }
         }),
         "access_count" => facts.sort_by(|a, b| {
-            let cmp = a.access_count.cmp(&b.access_count);
+            let cmp = a.access.access_count.cmp(&b.access.access_count);
             if desc { cmp.reverse() } else { cmp }
         }),
         "fsrs_review" => facts.sort_by(|a, b| {
             let cmp = a
+                .provenance
                 .stability_hours
-                .partial_cmp(&b.stability_hours)
+                .partial_cmp(&b.provenance.stability_hours)
                 .unwrap_or(std::cmp::Ordering::Equal);
             if desc { cmp.reverse() } else { cmp }
         }),

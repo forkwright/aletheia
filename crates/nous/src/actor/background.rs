@@ -398,24 +398,35 @@ async fn run_skill_extraction(
                         let fact_id =
                             aletheia_mneme::id::FactId::from(ulid::Ulid::new().to_string());
                         let now = jiff::Timestamp::now();
+                        use aletheia_mneme::knowledge::{
+                            FactAccess, FactLifecycle, FactProvenance, FactTemporal,
+                        };
                         let fact = aletheia_mneme::knowledge::Fact {
                             id: fact_id.clone(),
                             nous_id: nous_id.to_owned(),
                             content,
-                            confidence: 0.6, // Pending review: moderate confidence
-                            tier: aletheia_mneme::knowledge::EpistemicTier::Inferred,
-                            valid_from: now,
-                            valid_to: jiff::Timestamp::from_second(i64::MAX / 2).unwrap_or(now),
-                            superseded_by: None,
-                            source_session_id: None,
-                            recorded_at: now,
-                            access_count: 0,
-                            last_accessed_at: None,
-                            stability_hours: 720.0,
                             fact_type: "skill_pending".to_owned(),
-                            is_forgotten: false,
-                            forgotten_at: None,
-                            forget_reason: None,
+                            temporal: FactTemporal {
+                                valid_from: now,
+                                valid_to: jiff::Timestamp::from_second(i64::MAX / 2).unwrap_or(now),
+                                recorded_at: now,
+                            },
+                            provenance: FactProvenance {
+                                confidence: 0.6, // Pending review: moderate confidence
+                                tier: aletheia_mneme::knowledge::EpistemicTier::Inferred,
+                                source_session_id: None,
+                                stability_hours: 720.0,
+                            },
+                            lifecycle: FactLifecycle {
+                                superseded_by: None,
+                                is_forgotten: false,
+                                forgotten_at: None,
+                                forget_reason: None,
+                            },
+                            access: FactAccess {
+                                access_count: 0,
+                                last_accessed_at: None,
+                            },
                         };
 
                         match store.insert_fact(&fact) {

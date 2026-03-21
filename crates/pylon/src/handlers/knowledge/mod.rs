@@ -300,12 +300,12 @@ pub async fn list_facts(
             _ => None,
         };
         if let Some(t) = tier_enum {
-            facts.retain(|f| f.tier == t);
+            facts.retain(|f| f.provenance.tier == t);
         }
     }
 
     if !query.include_forgotten {
-        facts.retain(|f| !f.is_forgotten);
+        facts.retain(|f| !f.lifecycle.is_forgotten);
     }
 
     let total = facts.len();
@@ -437,25 +437,35 @@ mod tests {
 
     fn make_fact(id: &str, content: &str, confidence: f64) -> aletheia_mneme::knowledge::Fact {
         use aletheia_mneme::id::FactId;
-        use aletheia_mneme::knowledge::EpistemicTier;
+        use aletheia_mneme::knowledge::{
+            EpistemicTier, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
+        };
         aletheia_mneme::knowledge::Fact {
             id: FactId::new(id).unwrap(),
             nous_id: "test-nous".to_owned(),
-            content: content.to_owned(),
-            confidence,
-            tier: EpistemicTier::Inferred,
-            valid_from: jiff::Timestamp::UNIX_EPOCH,
-            valid_to: jiff::Timestamp::UNIX_EPOCH,
-            superseded_by: None,
-            source_session_id: None,
-            recorded_at: jiff::Timestamp::UNIX_EPOCH,
-            access_count: 0,
-            last_accessed_at: None,
-            stability_hours: 24.0,
             fact_type: "knowledge".to_owned(),
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
+            content: content.to_owned(),
+            temporal: FactTemporal {
+                valid_from: jiff::Timestamp::UNIX_EPOCH,
+                valid_to: jiff::Timestamp::UNIX_EPOCH,
+                recorded_at: jiff::Timestamp::UNIX_EPOCH,
+            },
+            provenance: FactProvenance {
+                confidence,
+                tier: EpistemicTier::Inferred,
+                source_session_id: None,
+                stability_hours: 24.0,
+            },
+            lifecycle: FactLifecycle {
+                superseded_by: None,
+                is_forgotten: false,
+                forgotten_at: None,
+                forget_reason: None,
+            },
+            access: FactAccess {
+                access_count: 0,
+                last_accessed_at: None,
+            },
         }
     }
 
@@ -529,8 +539,8 @@ mod tests {
             make_fact("a", "one access", 0.5),
             make_fact("b", "five accesses", 0.5),
         ];
-        facts[0].access_count = 1;
-        facts[1].access_count = 5;
+        facts[0].access.access_count = 1;
+        facts[1].access.access_count = 5;
         sort_facts(&mut facts, "access_count", "desc");
         assert_eq!(facts[0].id.as_str(), "b");
         assert_eq!(facts[1].id.as_str(), "a");

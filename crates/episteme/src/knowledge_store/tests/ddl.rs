@@ -5,10 +5,6 @@
         reason = "test assertions in feature-gated engine tests"
     )
 )]
-#![expect(
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 
 use super::super::*;
 
@@ -112,7 +108,9 @@ fn build_hybrid_query_accepts_valid_seed_ids() {
 #[cfg(feature = "mneme-engine")]
 #[test]
 fn hybrid_search_empty_seeds_returns_results() {
-    use crate::knowledge::{EmbeddedChunk, EpistemicTier, Fact};
+    use crate::knowledge::{
+        EmbeddedChunk, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
+    };
 
     let dim = 4;
     let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim }).expect("open_mem");
@@ -121,21 +119,30 @@ fn hybrid_search_empty_seeds_returns_results() {
         id: crate::id::FactId::new_unchecked("f1"),
         nous_id: "test".to_owned(),
         content: "Rust systems programming".to_owned(),
-        confidence: 0.9,
-        tier: EpistemicTier::Inferred,
-        valid_from: crate::knowledge::parse_timestamp("2026-01-01").expect("valid test timestamp"),
-        valid_to: crate::knowledge::far_future(),
-        superseded_by: None,
-        source_session_id: None,
-        recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
-            .expect("valid test timestamp"),
-        access_count: 0,
-        last_accessed_at: None,
-        stability_hours: 720.0,
         fact_type: String::new(),
-        is_forgotten: false,
-        forgotten_at: None,
-        forget_reason: None,
+        temporal: FactTemporal {
+            valid_from: crate::knowledge::parse_timestamp("2026-01-01")
+                .expect("valid test timestamp"),
+            valid_to: crate::knowledge::far_future(),
+            recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
+                .expect("valid test timestamp"),
+        },
+        provenance: FactProvenance {
+            confidence: 0.9,
+            tier: EpistemicTier::Inferred,
+            source_session_id: None,
+            stability_hours: 720.0,
+        },
+        lifecycle: FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
     };
     store.insert_fact(&fact).expect("insert fact");
 
@@ -180,7 +187,10 @@ fn hybrid_search_empty_seeds_returns_results() {
     reason = "integration test with setup/assert phases"
 )]
 fn hybrid_search_graph_aggregation() {
-    use crate::knowledge::{EmbeddedChunk, Entity, EpistemicTier, Fact, Relationship};
+    use crate::knowledge::{
+        EmbeddedChunk, Entity, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance,
+        FactTemporal, Relationship,
+    };
 
     let dim = 4;
     let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim }).expect("open_mem");
@@ -189,21 +199,30 @@ fn hybrid_search_graph_aggregation() {
         id: crate::id::FactId::new_unchecked("f1"),
         nous_id: "test".to_owned(),
         content: "Rust systems programming".to_owned(),
-        confidence: 0.9,
-        tier: EpistemicTier::Inferred,
-        valid_from: crate::knowledge::parse_timestamp("2026-01-01").expect("valid test timestamp"),
-        valid_to: crate::knowledge::far_future(),
-        superseded_by: None,
-        source_session_id: None,
-        recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
-            .expect("valid test timestamp"),
-        access_count: 0,
-        last_accessed_at: None,
-        stability_hours: 720.0,
         fact_type: String::new(),
-        is_forgotten: false,
-        forgotten_at: None,
-        forget_reason: None,
+        temporal: FactTemporal {
+            valid_from: crate::knowledge::parse_timestamp("2026-01-01")
+                .expect("valid test timestamp"),
+            valid_to: crate::knowledge::far_future(),
+            recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
+                .expect("valid test timestamp"),
+        },
+        provenance: FactProvenance {
+            confidence: 0.9,
+            tier: EpistemicTier::Inferred,
+            source_session_id: None,
+            stability_hours: 720.0,
+        },
+        lifecycle: FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
     };
     store.insert_fact(&f1).expect("insert f1");
     store
@@ -223,21 +242,30 @@ fn hybrid_search_graph_aggregation() {
         id: crate::id::FactId::new_unchecked("f2"),
         nous_id: "test".to_owned(),
         content: "Rust memory safety".to_owned(),
-        confidence: 0.9,
-        tier: EpistemicTier::Inferred,
-        valid_from: crate::knowledge::parse_timestamp("2026-01-01").expect("valid test timestamp"),
-        valid_to: crate::knowledge::far_future(),
-        superseded_by: None,
-        source_session_id: None,
-        recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
-            .expect("valid test timestamp"),
-        access_count: 0,
-        last_accessed_at: None,
-        stability_hours: 720.0,
         fact_type: String::new(),
-        is_forgotten: false,
-        forgotten_at: None,
-        forget_reason: None,
+        temporal: FactTemporal {
+            valid_from: crate::knowledge::parse_timestamp("2026-01-01")
+                .expect("valid test timestamp"),
+            valid_to: crate::knowledge::far_future(),
+            recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
+                .expect("valid test timestamp"),
+        },
+        provenance: FactProvenance {
+            confidence: 0.9,
+            tier: EpistemicTier::Inferred,
+            source_session_id: None,
+            stability_hours: 720.0,
+        },
+        lifecycle: FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
     };
     store.insert_fact(&f2).expect("insert f2");
     store
@@ -331,7 +359,10 @@ fn hybrid_search_graph_aggregation() {
 #[cfg(feature = "mneme-engine")]
 #[test]
 fn hybrid_search_two_signal_no_graph() {
-    use crate::knowledge::{EmbeddedChunk, Entity, EpistemicTier, Fact};
+    use crate::knowledge::{
+        EmbeddedChunk, Entity, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance,
+        FactTemporal,
+    };
 
     let dim = 4;
     let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim }).expect("open_mem");
@@ -340,21 +371,30 @@ fn hybrid_search_two_signal_no_graph() {
         id: crate::id::FactId::new_unchecked("f-twosig"),
         nous_id: "test".to_owned(),
         content: "unique harpsichord melody testing".to_owned(),
-        confidence: 0.9,
-        tier: EpistemicTier::Inferred,
-        valid_from: crate::knowledge::parse_timestamp("2026-01-01").expect("valid test timestamp"),
-        valid_to: crate::knowledge::far_future(),
-        superseded_by: None,
-        source_session_id: None,
-        recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
-            .expect("valid test timestamp"),
-        access_count: 0,
-        last_accessed_at: None,
-        stability_hours: 720.0,
         fact_type: String::new(),
-        is_forgotten: false,
-        forgotten_at: None,
-        forget_reason: None,
+        temporal: FactTemporal {
+            valid_from: crate::knowledge::parse_timestamp("2026-01-01")
+                .expect("valid test timestamp"),
+            valid_to: crate::knowledge::far_future(),
+            recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
+                .expect("valid test timestamp"),
+        },
+        provenance: FactProvenance {
+            confidence: 0.9,
+            tier: EpistemicTier::Inferred,
+            source_session_id: None,
+            stability_hours: 720.0,
+        },
+        lifecycle: FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
     };
     store.insert_fact(&fact).expect("insert fact");
 
@@ -409,7 +449,9 @@ fn hybrid_search_two_signal_no_graph() {
 #[cfg(feature = "mneme-engine")]
 #[test]
 fn hybrid_search_absent_signal_rank_is_negative_one() {
-    use crate::knowledge::{EpistemicTier, Fact};
+    use crate::knowledge::{
+        EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
+    };
 
     let dim = 4;
     let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim }).expect("open_mem");
@@ -418,21 +460,30 @@ fn hybrid_search_absent_signal_rank_is_negative_one() {
         id: crate::id::FactId::new_unchecked("f-bm25-only"),
         nous_id: "test".to_owned(),
         content: "unique xylophone testing keyword".to_owned(),
-        confidence: 0.9,
-        tier: EpistemicTier::Inferred,
-        valid_from: crate::knowledge::parse_timestamp("2026-01-01").expect("valid test timestamp"),
-        valid_to: crate::knowledge::far_future(),
-        superseded_by: None,
-        source_session_id: None,
-        recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
-            .expect("valid test timestamp"),
-        access_count: 0,
-        last_accessed_at: None,
-        stability_hours: 720.0,
         fact_type: String::new(),
-        is_forgotten: false,
-        forgotten_at: None,
-        forget_reason: None,
+        temporal: FactTemporal {
+            valid_from: crate::knowledge::parse_timestamp("2026-01-01")
+                .expect("valid test timestamp"),
+            valid_to: crate::knowledge::far_future(),
+            recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
+                .expect("valid test timestamp"),
+        },
+        provenance: FactProvenance {
+            confidence: 0.9,
+            tier: EpistemicTier::Inferred,
+            source_session_id: None,
+            stability_hours: 720.0,
+        },
+        lifecycle: FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
     };
     store.insert_fact(&fact).expect("insert fact");
 

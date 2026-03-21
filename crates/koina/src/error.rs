@@ -81,8 +81,9 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
-    use super::*;
     use snafu::ResultExt;
+
+    use super::*;
 
     #[test]
     fn error_display_includes_path() {

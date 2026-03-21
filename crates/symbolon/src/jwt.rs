@@ -73,6 +73,7 @@ impl JwtConfig {
     ///
     /// Returns an error if `auth_mode` is not `"none"` and the signing
     /// key is still the built-in insecure placeholder.
+    #[must_use = "validation result must be checked before proceeding"]
     pub fn validate_for_auth_mode(&self, auth_mode: &str) -> Result<()> {
         if auth_mode != "none" && self.has_insecure_key() {
             tracing::error!(
@@ -113,6 +114,7 @@ impl JwtManager {
     /// # Errors
     ///
     /// Returns an error if the JWT claims cannot be encoded or signed.
+    #[must_use = "issued token must be delivered to the caller"]
     #[instrument(skip(self), fields(kind = "access"))]
     pub fn issue_access(&self, sub: &str, role: Role, nous_id: Option<&str>) -> Result<String> {
         self.issue(
@@ -137,6 +139,7 @@ impl JwtManager {
     /// Returns an error if the token's expiration time has passed.
     /// Returns an error if the token is malformed, has an invalid
     /// signature, or fails any other JWT validation check.
+    #[must_use = "validated claims must be checked before granting access"]
     pub fn validate(&self, token: &str) -> Result<Claims> {
         let (header_payload, signature) = token.rsplit_once('.').ok_or_else(|| {
             error::TokenDecodeSnafu {
@@ -239,6 +242,7 @@ impl JwtManager {
     /// Exposed for tests that need to craft tokens with specific claims (e.g. expired tokens).
     /// Production code should use [`issue_access`](Self::issue_access) or
     /// `issue_refresh`.
+    #[must_use = "encoded token must be delivered to the caller"]
     pub fn encode_claims(&self, claims: &Claims) -> Result<String> {
         let payload_json = serde_json::to_vec(claims).map_err(|e| {
             error::TokenEncodeSnafu {
@@ -302,7 +306,7 @@ fn now_unix() -> i64 {
 mod tests {
     use super::*;
 
-    fn test_manager() -> JwtManager {
+    fn hmac_manager() -> JwtManager {
         JwtManager::new(JwtConfig {
             signing_key: SecretString::from("test-secret-key-for-jwt".to_owned()),
             access_ttl: Duration::from_secs(3600),
@@ -313,7 +317,7 @@ mod tests {
 
     #[test]
     fn issue_and_validate_access_token() {
-        let mgr = test_manager();
+        let mgr = hmac_manager();
         let token = mgr.issue_access("user-1", Role::Operator, None).unwrap();
         let claims = mgr.validate(&token).unwrap();
         assert_eq!(claims.sub, "user-1");
@@ -324,7 +328,7 @@ mod tests {
 
     #[test]
     fn issue_and_validate_agent_token() {
-        let mgr = test_manager();
+        let mgr = hmac_manager();
         let token = mgr
             .issue_access("agent-syn", Role::Agent, Some("syn"))
             .unwrap();
@@ -336,7 +340,7 @@ mod tests {
 
     #[test]
     fn issue_and_validate_refresh_token() {
-        let mgr = test_manager();
+        let mgr = hmac_manager();
         let token = mgr.issue_refresh("user-1", Role::Operator).unwrap();
         let claims = mgr.validate(&token).unwrap();
         assert_eq!(claims.kind, TokenKind::Refresh);
@@ -344,7 +348,7 @@ mod tests {
 
     #[test]
     fn wrong_signing_key_rejected() {
-        let mgr1 = test_manager();
+        let mgr1 = hmac_manager();
         let mgr2 = JwtManager::new(JwtConfig {
             signing_key: SecretString::from("different-key".to_owned()),
             ..JwtConfig::default()
@@ -356,7 +360,7 @@ mod tests {
 
     #[test]
     fn expired_token_rejected() {
-        let mgr = test_manager();
+        let mgr = hmac_manager();
 
         let claims = Claims {
             sub: "user-1".to_owned(),
@@ -376,7 +380,7 @@ mod tests {
 
     #[test]
     fn refresh_flow_produces_valid_tokens() {
-        let mgr = test_manager();
+        let mgr = hmac_manager();
         let refresh = mgr.issue_refresh("user-1", Role::Operator).unwrap();
         let pair = mgr.refresh(&refresh).unwrap();
 
@@ -390,7 +394,7 @@ mod tests {
 
     #[test]
     fn refresh_with_access_token_rejected() {
-        let mgr = test_manager();
+        let mgr = hmac_manager();
         let access = mgr.issue_access("user-1", Role::Operator, None).unwrap();
         let result = mgr.refresh(&access);
         assert!(result.is_err());
@@ -398,7 +402,7 @@ mod tests {
 
     #[test]
     fn claims_jti_is_unique() {
-        let mgr = test_manager();
+        let mgr = hmac_manager();
         let t1 = mgr.issue_access("user-1", Role::Operator, None).unwrap();
         let t2 = mgr.issue_access("user-1", Role::Operator, None).unwrap();
         let c1 = mgr.validate(&t1).unwrap();
@@ -419,7 +423,7 @@ mod tests {
 
     #[test]
     fn malformed_token_rejected() {
-        let mgr = test_manager();
+        let mgr = hmac_manager();
         assert!(mgr.validate("not.a.jwt").is_err());
         assert!(mgr.validate("").is_err());
         assert!(mgr.validate("abc123").is_err());
@@ -427,7 +431,7 @@ mod tests {
 
     #[test]
     fn tampered_payload_rejected() {
-        let mgr = test_manager();
+        let mgr = hmac_manager();
         let token = mgr.issue_access("user-1", Role::Operator, None).unwrap();
 
         let parts: Vec<&str> = token.splitn(3, '.').collect();
@@ -448,7 +452,7 @@ mod tests {
 
     #[test]
     fn tampered_signature_rejected() {
-        let mgr = test_manager();
+        let mgr = hmac_manager();
         let token = mgr.issue_access("user-1", Role::Operator, None).unwrap();
 
         let parts: Vec<&str> = token.splitn(3, '.').collect();
@@ -463,7 +467,7 @@ mod tests {
 
     #[test]
     fn token_has_three_dot_separated_segments() {
-        let mgr = test_manager();
+        let mgr = hmac_manager();
         let token = mgr.issue_access("user-1", Role::Operator, None).unwrap();
         assert_eq!(
             token.matches('.').count(),
@@ -533,7 +537,7 @@ mod tests {
 
     #[test]
     fn round_trip_preserves_all_claim_fields() {
-        let mgr = test_manager();
+        let mgr = hmac_manager();
         let token = mgr
             .issue_access("agent-syn", Role::Agent, Some("syn"))
             .unwrap();
@@ -551,14 +555,14 @@ mod tests {
 
     #[test]
     fn empty_string_token_rejected() {
-        let mgr = test_manager();
+        let mgr = hmac_manager();
         let err = mgr.validate("");
         assert!(err.is_err(), "empty token must be rejected");
     }
 
     #[test]
     fn single_segment_token_rejected() {
-        let mgr = test_manager();
+        let mgr = hmac_manager();
         assert!(
             mgr.validate("onlyone").is_err(),
             "single-segment token must be rejected"
@@ -567,7 +571,7 @@ mod tests {
 
     #[test]
     fn two_segment_token_rejected() {
-        let mgr = test_manager();
+        let mgr = hmac_manager();
         assert!(
             mgr.validate("header.payload").is_err(),
             "two-segment token (no signature) must be rejected"
