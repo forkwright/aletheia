@@ -1,0 +1,12 @@
+# krites: embedded Datalog engine — synchronous filesystem access is required
+# for storage backends and HNSW persistence. Library code must not call
+# process-terminating functions.
+
+disallowed-methods = [
+    { path = "std::process::exit", reason = "do not call process::exit from library code" },
+    { path = "std::process::abort", reason = "do not call process::abort from library code" },
+
+    { path = "std::fs::read", reason = "use storage abstraction or explicitly expect this lint with justification" },
+    { path = "std::fs::write", reason = "use storage abstraction or explicitly expect this lint with justification" },
+    { path = "std::fs::File::open", reason = "use storage abstraction or explicitly expect this lint with justification" },
+]

@@ -1,0 +1,162 @@
+//! Reorder and sort fixed rule.
+#![expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
+use std::collections::BTreeMap;
+
+use compact_str::CompactString;
+use itertools::Itertools;
+
+use crate::data::expr::{Expr, eval_bytecode};
+use crate::data::functions::OP_LIST;
+use crate::data::program::WrongFixedRuleOptionError;
+use crate::data::symb::Symbol;
+use crate::data::value::DataValue;
+use crate::error::InternalResult as Result;
+use crate::fixed_rule::error::{ConfigSnafu, FixedRuleError};
+use crate::fixed_rule::{FixedRule, FixedRulePayload};
+use crate::parse::SourceSpan;
+use crate::runtime::db::Poison;
+use crate::runtime::temp_store::RegularTempStore;
+
+pub(crate) struct ReorderSort;
+
+impl FixedRule for ReorderSort {
+    #[expect(
+        clippy::expect_used,
+        reason = "sort buffer entries always have a trailing sorter element"
+    )]
+    fn run(
+        &self,
+        payload: FixedRulePayload<'_, '_>,
+        out: &mut RegularTempStore,
+        poison: Poison,
+    ) -> Result<()> {
+        let in_rel = payload.get_input(0)?;
+
+        let mut out_list = match payload.expr_option("out", None)? {
+            Expr::Const {
+                val: DataValue::List(l),
+                span,
+            } => l
+                .iter()
+                .map(|d| Expr::Const {
+                    val: d.clone(),
+                    span,
+                })
+                .collect_vec(),
+            Expr::Apply { op, args, .. } if *op == OP_LIST => args.to_vec(),
+            _ => {
+                return Err(WrongFixedRuleOptionError {
+                    name: "out".to_string(),
+                    span: payload.span(),
+                    rule_name: payload.name().to_string(),
+                    help: "This option must evaluate to a list".to_string(),
+                }
+                .into());
+            }
+        };
+
+        let mut sort_by = payload.expr_option(
+            "sort_by",
+            Some(Expr::Const {
+                val: DataValue::Null,
+                span: SourceSpan(0, 0),
+            }),
+        )?;
+        let sort_descending = payload.bool_option("descending", Some(false))?;
+        let break_ties = payload.bool_option("break_ties", Some(false))?;
+        let skip = payload.non_neg_integer_option("skip", Some(0))?;
+        let take = payload.non_neg_integer_option("take", Some(0))?;
+
+        let binding_map = in_rel.get_binding_map(0);
+        sort_by.fill_binding_indices(&binding_map)?;
+        for out in out_list.iter_mut() {
+            out.fill_binding_indices(&binding_map)?;
+        }
+        let out_bytecods: Vec<_> = out_list.iter().map(|e| e.compile()).try_collect()?;
+        let sort_by_bytecodes = sort_by.compile()?;
+        let mut stack = vec![];
+
+        let mut buffer = vec![];
+        for tuple in in_rel.iter()? {
+            let tuple = tuple?;
+            let sorter = eval_bytecode(&sort_by_bytecodes, &tuple, &mut stack)?;
+            let mut s_tuple: Vec<_> = out_bytecods
+                .iter()
+                .map(|ex| eval_bytecode(ex, &tuple, &mut stack))
+                .try_collect()?;
+            s_tuple.push(sorter);
+            buffer.push(s_tuple);
+            poison.check()?;
+        }
+        if sort_descending {
+            buffer.sort_by(|l, r| r.last().cmp(&l.last()));
+        } else {
+            buffer.sort_by(|l, r| l.last().cmp(&r.last()));
+        }
+
+        let mut count = 0usize;
+        let mut rank = 0usize;
+        let mut last = &DataValue::Bot;
+        let take_plus_skip = take.saturating_add(skip);
+        for val in &buffer {
+            let sorter = val.last().expect("sort buffer entries must be non-empty");
+
+            if sorter == last {
+                count += 1;
+            } else {
+                count += 1;
+                rank = count;
+                last = sorter;
+            }
+
+            if take != 0 && count > take_plus_skip {
+                break;
+            }
+
+            if count <= skip {
+                continue;
+            }
+            let mut out_t = vec![DataValue::from(if break_ties { count } else { rank } as i64)];
+            out_t.extend_from_slice(&val[0..val.len() - 1]);
+            out.put(out_t);
+            poison.check()?;
+        }
+        Ok(())
+    }
+
+    fn arity(
+        &self,
+        opts: &BTreeMap<CompactString, Expr>,
+        _rule_head: &[Symbol],
+        _span: SourceSpan,
+    ) -> Result<usize> {
+        let out_opts = opts.get("out").ok_or_else(|| {
+            ConfigSnafu {
+                rule: "ReorderSort",
+                param: "out",
+                message: "option 'out' not provided",
+            }
+            .build()
+        })?;
+        Ok(match out_opts {
+            Expr::Const {
+                val: DataValue::List(l),
+                ..
+            } => l.len() + 1,
+            Expr::Apply { op, args, .. } if **op == OP_LIST => args.len() + 1,
+            _ => {
+                return Err(FixedRuleError::Config {
+                    rule: "ReorderSort".to_string(),
+                    param: "out".to_string(),
+                    message: "invalid option 'out' given, expect a list".to_string(),
+                    location: snafu::location!(),
+                }
+                .into());
+            }
+        })
+    }
+}

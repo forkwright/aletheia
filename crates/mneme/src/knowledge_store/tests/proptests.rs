@@ -145,7 +145,7 @@ proptest! {
                 .rows
                 .first()
                 .and_then(|r| r.first())
-                .and_then(crate::engine::data::value::DataValue::get_int)
+                .and_then(crate::engine::DataValue::get_int)
                 .unwrap_or(0)
         };
 
@@ -164,7 +164,7 @@ proptest! {
             .rows
             .first()
             .and_then(|r| r.first())
-            .and_then(crate::engine::data::value::DataValue::get_int)
+            .and_then(crate::engine::DataValue::get_int)
             .unwrap_or(0);
         prop_assert_eq!(
             entity_count_after,
