@@ -21,7 +21,6 @@ use serde::{Deserialize, Serialize};
 /// ```
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-#[non_exhaustive]
 pub enum ConnectionState {
     /// No connection attempted yet, or explicitly disconnected by the user.
     #[default]
@@ -32,18 +31,26 @@ pub enum ConnectionState {
     Connected,
     /// Lost connection, attempting to restore. `attempt` counts consecutive
     /// failures (1-indexed).
-    Reconnecting { attempt: u32 },
+    Reconnecting {
+        /// Consecutive reconnection failures (1-indexed).
+        attempt: u32,
+    },
     /// Permanently failed: requires user intervention (e.g. bad URL, auth
     /// rejected, max retries exceeded).
-    Failed { reason: String },
+    Failed {
+        /// Human-readable failure description.
+        reason: String,
+    },
 }
 
 impl ConnectionState {
+    /// Whether the connection is in the `Connected` state.
     #[must_use]
     pub fn is_connected(&self) -> bool {
         matches!(self, Self::Connected)
     }
 
+    /// Whether the connection is in the `Disconnected` state.
     #[must_use]
     pub fn is_disconnected(&self) -> bool {
         matches!(self, Self::Disconnected)
@@ -99,10 +106,6 @@ impl Default for ConnectionConfig {
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// Exponential backoff
-// ---------------------------------------------------------------------------
 
 /// Initial backoff delay after a connection failure.
 const INITIAL_BACKOFF: Duration = Duration::from_secs(1);

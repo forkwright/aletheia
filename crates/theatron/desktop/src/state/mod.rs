@@ -5,6 +5,7 @@
 //! component layer.
 
 pub mod app;
-pub mod chat;
 pub mod collections;
+pub mod connection;
 pub mod events;
+pub(crate) mod fetch;

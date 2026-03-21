@@ -343,7 +343,10 @@ mod tests {
     fn parse_tool_start_valid() {
         let data = r#"{"toolName":"read_file","toolId":"t1"}"#;
         let result = parse_stream_event("tool_start", data);
-        if let Some(StreamEvent::ToolStart { tool_name, tool_id }) = result {
+        if let Some(StreamEvent::ToolStart {
+            tool_name, tool_id, ..
+        }) = result
+        {
             assert_eq!(tool_name, "read_file");
             assert_eq!(&*tool_id, "t1");
         } else {

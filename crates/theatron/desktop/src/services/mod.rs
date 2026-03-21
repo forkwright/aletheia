@@ -3,4 +3,6 @@
 //! Each service runs as a background task (Dioxus coroutine or tokio task)
 //! and writes into signal-backed state as events arrive.
 
+pub mod config;
+pub mod connection;
 pub mod sse;
