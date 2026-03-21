@@ -9,6 +9,7 @@ use std::sync::atomic::Ordering;
 use compact_str::CompactString;
 use either::{Either, Left, Right};
 use itertools::Itertools;
+use tracing::debug;
 
 use crate::data::program::RelationOp;
 use crate::data::relation::{ColType, ColumnDef, NullableColType, StoredRelationMetadata};
@@ -22,8 +23,6 @@ use crate::runtime::db::{RunningQueryCleanup, RunningQueryHandle, seconds_since_
 use crate::runtime::error::{InvalidOperationSnafu, ReadOnlyViolationSnafu};
 use crate::runtime::relation::InputRelationHandle;
 use crate::runtime::transact::SessionTx;
-use tracing::debug;
-
 use crate::{DataValue, DbCore as Db, NamedRows, Poison, Storage, ValidityTs};
 
 enum ControlCode {

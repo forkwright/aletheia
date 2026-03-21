@@ -1,0 +1,160 @@
+# WHY: these files are test modules included from #[cfg(test)] blocks via
+# #[path] or mod directives. The linter scans them as standalone library files,
+# but .expect(), bare asserts, direct indexing, Connection::open without
+# busy_timeout, and config-write-no-perms are all acceptable in test code.
+RUST/expect:src/backup_tests.rs
+RUST/bare-assert:src/backup_tests.rs
+RUST/indexing-slicing:src/backup_tests.rs
+STORAGE/no-query-timeout:src/backup_tests.rs
+STORAGE/no-migration-checksum:src/backup_tests.rs
+SECURITY/config-write-no-perms:src/backup_tests.rs
+
+RUST/expect:src/export_tests.rs
+RUST/bare-assert:src/export_tests.rs
+RUST/indexing-slicing:src/export_tests.rs
+SECURITY/config-write-no-perms:src/export_tests.rs
+
+RUST/expect:src/import_tests/mod.rs
+RUST/bare-assert:src/import_tests/mod.rs
+RUST/indexing-slicing:src/import_tests/mod.rs
+
+RUST/expect:src/import_tests/validation.rs
+RUST/bare-assert:src/import_tests/validation.rs
+RUST/indexing-slicing:src/import_tests/validation.rs
+RUST/as-cast:src/import_tests/validation.rs
+RUST/format-single-var:src/import_tests/validation.rs
+RUST/import-order:src/import_tests/validation.rs
+
+RUST/expect:src/import_tests/workspace_files.rs
+RUST/bare-assert:src/import_tests/workspace_files.rs
+RUST/indexing-slicing:src/import_tests/workspace_files.rs
+SECURITY/config-write-no-perms:src/import_tests/workspace_files.rs
+
+RUST/expect:src/retention_tests/mod.rs
+RUST/bare-assert:src/retention_tests/mod.rs
+RUST/indexing-slicing:src/retention_tests/mod.rs
+STORAGE/no-query-timeout:src/retention_tests/mod.rs
+STORAGE/no-migration-checksum:src/retention_tests/mod.rs
+SECURITY/config-write-no-perms:src/retention_tests/mod.rs
+
+RUST/expect:src/retention_tests/archive.rs
+RUST/bare-assert:src/retention_tests/archive.rs
+RUST/indexing-slicing:src/retention_tests/archive.rs
+RUST/import-order:src/retention_tests/archive.rs
+SECURITY/config-write-no-perms:src/retention_tests/archive.rs
+
+RUST/expect:src/retention_tests/core.rs
+RUST/bare-assert:src/retention_tests/core.rs
+RUST/indexing-slicing:src/retention_tests/core.rs
+
+RUST/expect:src/retention_tests/policy.rs
+RUST/bare-assert:src/retention_tests/policy.rs
+RUST/indexing-slicing:src/retention_tests/policy.rs
+
+RUST/expect:src/store/tests/mod.rs
+RUST/bare-assert:src/store/tests/mod.rs
+RUST/indexing-slicing:src/store/tests/mod.rs
+STORAGE/no-query-timeout:src/store/tests/mod.rs
+
+RUST/expect:src/store/tests/advanced.rs
+RUST/bare-assert:src/store/tests/advanced.rs
+RUST/indexing-slicing:src/store/tests/advanced.rs
+
+RUST/expect:src/store/tests/blackboard.rs
+RUST/bare-assert:src/store/tests/blackboard.rs
+RUST/indexing-slicing:src/store/tests/blackboard.rs
+
+RUST/expect:src/store/tests/edge_cases.rs
+RUST/bare-assert:src/store/tests/edge_cases.rs
+RUST/indexing-slicing:src/store/tests/edge_cases.rs
+
+RUST/expect:src/store/tests/hooks.rs
+RUST/bare-assert:src/store/tests/hooks.rs
+RUST/indexing-slicing:src/store/tests/hooks.rs
+
+RUST/expect:src/store/tests/session_crud.rs
+RUST/bare-assert:src/store/tests/session_crud.rs
+RUST/indexing-slicing:src/store/tests/session_crud.rs
+STORAGE/no-query-timeout:src/store/tests/session_crud.rs
+
+# WHY: graphe is a public library crate — all modules are `pub mod` in lib.rs,
+# so all pub items within them are intentional public API surface.
+RUST/pub-visibility:src/backup.rs
+RUST/pub-visibility:src/error.rs
+RUST/pub-visibility:src/export.rs
+RUST/pub-visibility:src/import.rs
+RUST/pub-visibility:src/migration.rs
+RUST/pub-visibility:src/portability.rs
+RUST/pub-visibility:src/recovery.rs
+RUST/pub-visibility:src/retention.rs
+RUST/pub-visibility:src/schema.rs
+RUST/pub-visibility:src/store/mod.rs
+RUST/pub-visibility:src/store/message.rs
+RUST/pub-visibility:src/store/peripherals.rs
+RUST/pub-visibility:src/store/session.rs
+RUST/pub-visibility:src/types.rs
+RUST/pub-visibility:src/lib.rs
+
+# WHY: portability types use both camelCase (serde rename_all for JSON wire compat)
+# and snake_case (Rust convention). The mixed casing is intentional.
+API/mixed-casing:src/portability.rs
+
+# WHY: ExportedSession has 13 fields because it's a wire-format struct matching
+# the TypeScript AgentFile schema. Splitting would break serialization compat.
+RUST/struct-too-many-fields:src/portability.rs
+
+# WHY: session_key and key are logical lookup keys, not cryptographic secrets.
+# The linter flags any field containing "key" as a potential secret.
+RUST/plain-string-secret:src/portability.rs
+RUST/plain-string-secret:src/types.rs
+
+# WHY: lib.rs re-exports eidos types — it is not migration code and has no
+# checksum to verify. portability.rs defines the AgentFile wire format, not
+# migration SQL. store/mod.rs delegates to migration.rs which has checksums.
+STORAGE/no-migration-checksum:src/lib.rs
+STORAGE/no-migration-checksum:src/portability.rs
+STORAGE/no-migration-checksum:src/store/mod.rs
+
+# WHY: lib.rs has no standalone tests because test coverage is provided by
+# submodule test files (backup_tests, export_tests, import_tests, etc.).
+TESTING/no-tests:src/lib.rs
+
+# WHY: recovery copy_table() uses format!() for SQL table/column identifiers,
+# which cannot be parameterized in SQL. Table names come from sqlite_master,
+# not user input.
+STORAGE/sql-string-concat:src/recovery.rs
+
+# WHY: these as-casts and string slices already have #[expect] attributes with
+# documented reasons. The kanon linter does not recognize clippy expects.
+RUST/as-cast:src/export.rs
+RUST/string-slice:src/export.rs
+RUST/as-cast:src/store/message.rs
+
+# WHY: the linter flags row.get(N) inside rusqlite row mapper closures and
+# [param] array literals passed to rusqlite as direct indexing. Both are safe:
+# row.get() returns Result<T> (not panicking) and [param] is a literal array.
+RUST/indexing-slicing:src/backup.rs
+RUST/indexing-slicing:src/export.rs
+RUST/indexing-slicing:src/retention.rs
+RUST/indexing-slicing:src/store/message.rs
+RUST/indexing-slicing:src/store/peripherals.rs
+RUST/indexing-slicing:src/store/session.rs
+
+# WHY: as_bytes()[1] is guarded by a len >= 2 check and already has a clippy
+# #[expect] attribute documenting the safety invariant.
+RUST/indexing-slicing:src/import.rs
+
+# WHY: retention.rs uses .expect() on bounded timestamp arithmetic (i64 range)
+# where overflow is impossible. Already has a #[expect] attribute with reason.
+RUST/expect:src/retention.rs
+
+# WHY: Result already has #[must_use]. Adding bare #[must_use] to functions
+# returning Result triggers clippy::double_must_use. The return type's
+# #[must_use] is sufficient — callers already get a warning if they discard it.
+RUST/missing-must-use:src/backup.rs
+RUST/missing-must-use:src/migration.rs
+RUST/missing-must-use:src/recovery.rs
+RUST/missing-must-use:src/retention.rs
+RUST/missing-must-use:src/store/message.rs
+RUST/missing-must-use:src/store/peripherals.rs
+RUST/missing-must-use:src/store/session.rs

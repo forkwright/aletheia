@@ -40,10 +40,10 @@ impl KnowledgeStore {
         old_fact: &crate::knowledge::Fact,
         new_fact: &crate::knowledge::Fact,
     ) -> crate::error::Result<()> {
-        use crate::engine::DataValue;
-        use crate::knowledge::format_timestamp;
         use std::collections::BTreeMap;
 
+        use crate::engine::DataValue;
+        use crate::knowledge::format_timestamp;
         let now = jiff::Timestamp::now();
         let now_str = format_timestamp(&now);
 
@@ -166,9 +166,9 @@ impl KnowledgeStore {
         now: &str,
         limit: i64,
     ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
-        use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
+        use crate::engine::DataValue;
         let mut params = BTreeMap::new();
         params.insert(String::from("nous_id"), DataValue::Str(nous_id.into()));
         params.insert(String::from("now"), DataValue::Str(now.into()));
@@ -181,9 +181,9 @@ impl KnowledgeStore {
     /// Point-in-time fact query.
     #[instrument(skip(self))]
     pub fn query_facts_at(&self, time: &str) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
-        use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
+        use crate::engine::DataValue;
         let mut params = BTreeMap::new();
         params.insert(String::from("time"), DataValue::Str(time.into()));
 
@@ -349,9 +349,9 @@ impl KnowledgeStore {
         nous_id: &str,
         limit: i64,
     ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
-        use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
+        use crate::engine::DataValue;
         let mut params = BTreeMap::new();
         params.insert(String::from("nous_id"), DataValue::Str(nous_id.into()));
         params.insert(String::from("limit"), DataValue::from(limit));
@@ -402,9 +402,9 @@ impl KnowledgeStore {
         &self,
         ids: &[&str],
     ) -> crate::error::Result<std::collections::HashSet<String>> {
-        use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
+        use crate::engine::DataValue;
         if ids.is_empty() {
             return Ok(std::collections::HashSet::new());
         }
@@ -446,9 +446,9 @@ impl KnowledgeStore {
         at_time: &str,
         filter: Option<&str>,
     ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
-        use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
+        use crate::engine::DataValue;
         let mut params = BTreeMap::new();
         params.insert(String::from("nous_id"), DataValue::Str(nous_id.into()));
         params.insert(String::from("at_time"), DataValue::Str(at_time.into()));
@@ -472,9 +472,9 @@ impl KnowledgeStore {
         from_time: &str,
         to_time: &str,
     ) -> crate::error::Result<crate::knowledge::FactDiff> {
-        use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
+        use crate::engine::DataValue;
         let mut params = BTreeMap::new();
         params.insert(String::from("nous_id"), DataValue::Str(nous_id.into()));
         params.insert(String::from("from_time"), DataValue::Str(from_time.into()));
@@ -554,9 +554,9 @@ impl KnowledgeStore {
     /// a `nous_id` filter and returns facts from every agent.
     #[instrument(skip(self))]
     pub fn list_all_facts(&self, limit: i64) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
-        use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
+        use crate::engine::DataValue;
         let mut params = BTreeMap::new();
         params.insert(String::from("limit"), DataValue::from(limit));
 
@@ -596,9 +596,9 @@ impl KnowledgeStore {
         nous_id: &str,
         limit: i64,
     ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
-        use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
+        use crate::engine::DataValue;
         let mut params = BTreeMap::new();
         params.insert(String::from("nous_id"), DataValue::Str(nous_id.into()));
         params.insert(String::from("limit"), DataValue::from(limit));
@@ -735,9 +735,9 @@ impl KnowledgeStore {
         fact_type: &str,
         limit: i64,
     ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
-        use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
+        use crate::engine::DataValue;
         let mut params = BTreeMap::new();
         params.insert(String::from("nous_id"), DataValue::Str(nous_id.into()));
         params.insert(String::from("fact_type"), DataValue::Str(fact_type.into()));

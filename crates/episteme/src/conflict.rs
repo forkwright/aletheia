@@ -230,7 +230,9 @@ pub(crate) fn intra_batch_dedup(
 
         if is_dup {
             if let Some(idx) = replace_idx {
-                kept[idx] = fact;
+                if let Some(slot) = kept.get_mut(idx) {
+                    *slot = fact;
+                }
             }
             dropped += 1;
         } else {
@@ -269,20 +271,18 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
 /// Uses HNSW vector search with cosine distance ≤ 0.28 (similarity ≥ 0.72),
 /// filtered to currently valid facts for the given nous.
 #[cfg(feature = "mneme-engine")]
-#[expect(
-    clippy::cast_possible_wrap,
-    reason = "MAX_CANDIDATES = 5, always fits in i64"
-)]
 pub(crate) fn retrieve_candidates(
     store: &crate::knowledge_store::KnowledgeStore,
     fact: &FactForConflictCheck,
     nous_id: &str,
 ) -> Result<Vec<ConflictCandidate>, ConflictError> {
-    use crate::engine::DataValue;
     use std::collections::BTreeMap;
 
+    use crate::engine::DataValue;
+
+    let max_candidates = i64::try_from(MAX_CANDIDATES).unwrap_or(i64::from(i32::MAX));
     let recall_results = store
-        .search_vectors(fact.embedding.clone(), MAX_CANDIDATES as i64, 50)
+        .search_vectors(fact.embedding.clone(), max_candidates, 50)
         .map_err(|e| {
             CandidateRetrievalSnafu {
                 message: e.to_string(),

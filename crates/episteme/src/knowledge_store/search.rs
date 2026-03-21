@@ -6,9 +6,9 @@ use super::marshal::{
     build_hybrid_query, embedding_to_params, extract_str, rows_to_hybrid_results,
     rows_to_recall_results,
 };
-use super::{HybridQuery, HybridResult, KnowledgeStore, queries};
 use tracing::instrument;
 
+use super::{HybridQuery, HybridResult, KnowledgeStore, queries};
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
     /// Insert a vector embedding for semantic search.
@@ -46,9 +46,9 @@ impl KnowledgeStore {
         k: i64,
         ef: i64,
     ) -> crate::error::Result<Vec<crate::knowledge::RecallResult>> {
-        use crate::engine::{Array1, DataValue, Vector};
         use std::collections::BTreeMap;
 
+        use crate::engine::{Array1, DataValue, Vector};
         let mut params = BTreeMap::new();
         params.insert(
             "query_vec".to_owned(),
@@ -111,9 +111,9 @@ impl KnowledgeStore {
         query_text: &str,
         k: i64,
     ) -> crate::error::Result<Vec<crate::knowledge::RecallResult>> {
-        use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
+        use crate::engine::DataValue;
         let mut params = BTreeMap::new();
         params.insert("query_text".to_owned(), DataValue::Str(query_text.into()));
         params.insert("k".to_owned(), DataValue::from(k));
@@ -128,9 +128,9 @@ impl KnowledgeStore {
     /// When `seed_entities` is empty, the graph signal contributes zero to RRF.
     #[instrument(skip(self, q), fields(limit = q.limit, ef = q.ef))]
     pub fn search_hybrid(&self, q: &HybridQuery) -> crate::error::Result<Vec<HybridResult>> {
-        use crate::engine::{Array1, DataValue, Vector};
         use std::collections::BTreeMap;
 
+        use crate::engine::{Array1, DataValue, Vector};
         let mut params = BTreeMap::new();
         params.insert(
             "query_text".to_owned(),
@@ -334,10 +334,10 @@ impl KnowledgeStore {
         for (rank, id) in expanded_ids.iter().enumerate() {
             graph_results.push(HybridResult {
                 id: crate::id::FactId::new_unchecked(id.as_str()),
-                rrf_score: 1.0 / (60.0 + rank as f64 + 1.0),
+                rrf_score: 1.0 / (60.0 + rank as f64 + 1.0), // SAFETY: rank fits f64
                 bm25_rank: -1,
                 vec_rank: -1,
-                graph_rank: (rank + 1) as i64,
+                graph_rank: i64::try_from(rank + 1).unwrap_or(i64::MAX),
             });
         }
 
@@ -402,9 +402,9 @@ impl KnowledgeStore {
         at_time: &str,
         ids: &[&str],
     ) -> crate::error::Result<std::collections::HashSet<String>> {
-        use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
+        use crate::engine::DataValue;
         if ids.is_empty() {
             return Ok(std::collections::HashSet::new());
         }

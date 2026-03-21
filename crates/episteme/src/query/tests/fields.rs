@@ -341,9 +341,9 @@ fn query_builder_injection_colon_put() {
 }
 
 mod proptests {
-    use super::*;
     use proptest::prelude::*;
 
+    use super::*;
     proptest! {
         #[test]
         fn query_builder_never_produces_raw_user_input(

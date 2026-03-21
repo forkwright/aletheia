@@ -1,0 +1,275 @@
+# WHY: vendored CozoDB engine — .expect() calls are used throughout for
+# lock acquisition, invariant assertions, and infallible conversions where
+# returning Result is not possible (trait impls, closures, Drop).
+RUST/expect:src/data/aggr/numeric.rs
+RUST/expect:src/data/expr/expr_impl.rs
+RUST/expect:src/data/expr/mod.rs
+RUST/expect:src/data/functions/bits.rs
+RUST/expect:src/data/functions/math/mod.rs
+RUST/expect:src/data/functions/temporal.rs
+RUST/expect:src/data/functions/utility.rs
+RUST/expect:src/data/json.rs
+RUST/expect:src/data/memcmp.rs
+RUST/expect:src/data/program/input.rs
+RUST/expect:src/data/program/magic.rs
+RUST/expect:src/data/tuple.rs
+RUST/expect:src/data/value.rs
+RUST/expect:src/fixed_rule/algos/label_propagation.rs
+RUST/expect:src/fixed_rule/algos/louvain.rs
+RUST/expect:src/fixed_rule/algos/random_walk.rs
+RUST/expect:src/fixed_rule/algos/shortest_path_bfs.rs
+RUST/expect:src/fixed_rule/algos/shortest_path_dijkstra.rs
+RUST/expect:src/fixed_rule/algos/strongly_connected_components.rs
+RUST/expect:src/fixed_rule/algos/top_sort.rs
+RUST/expect:src/fixed_rule/algos/yen.rs
+RUST/expect:src/fixed_rule/utilities/constant.rs
+RUST/expect:src/fixed_rule/utilities/reorder_sort.rs
+RUST/expect:src/fts/ast.rs
+RUST/expect:src/fts/indexing.rs
+RUST/expect:src/fts/mod.rs
+RUST/expect:src/parse/expr.rs
+RUST/expect:src/parse/fts.rs
+RUST/expect:src/parse/imperative.rs
+RUST/expect:src/parse/mod.rs
+RUST/expect:src/parse/query/atoms.rs
+RUST/expect:src/parse/query/fixed_rules.rs
+RUST/expect:src/parse/query/program.rs
+RUST/expect:src/parse/schema.rs
+RUST/expect:src/parse/sys/parse.rs
+RUST/expect:src/query/compile.rs
+RUST/expect:src/query/eval.rs
+RUST/expect:src/query/graph.rs
+RUST/expect:src/query/magic.rs
+RUST/expect:src/query/ra/join.rs
+RUST/expect:src/query/ra/mod.rs
+RUST/expect:src/query/ra/search.rs
+RUST/expect:src/query/ra/sort.rs
+RUST/expect:src/query/ra/sources.rs
+RUST/expect:src/query/stored/mutation.rs
+RUST/expect:src/query/stored/validation.rs
+RUST/expect:src/query/stratify.rs
+RUST/expect:src/runtime/callback.rs
+RUST/expect:src/runtime/db.rs
+RUST/expect:src/runtime/exec.rs
+RUST/expect:src/runtime/hnsw/put.rs
+RUST/expect:src/runtime/hnsw/remove.rs
+RUST/expect:src/runtime/hnsw/search.rs
+RUST/expect:src/runtime/hnsw/types.rs
+RUST/expect:src/runtime/imperative.rs
+RUST/expect:src/runtime/relation/handles.rs
+RUST/expect:src/runtime/relation/index_create.rs
+RUST/expect:src/runtime/relation/index_management.rs
+RUST/expect:src/runtime/sys.rs
+RUST/expect:src/runtime/temp_store.rs
+RUST/expect:src/runtime/transact.rs
+RUST/expect:src/storage/fjall_backend.rs
+RUST/expect:src/storage/mem.rs
+
+# WHY: vendored CozoDB engine — query_cache.rs uses .expect() for Mutex
+# lock acquisition where poisoning is unrecoverable. Already suppressed
+# via #[expect(clippy::expect_used)] on the module in lib.rs.
+RUST/expect:src/query_cache.rs
+
+# WHY: vendored CozoDB engine — as-casts are deliberate in binary
+# serialization (memcmp), numeric type coercion (DataValue arithmetic),
+# and graph algorithm index arithmetic throughout the engine.
+RUST/as-cast:src/data/aggr/boolean.rs
+RUST/as-cast:src/data/aggr/mod.rs
+RUST/as-cast:src/data/aggr/numeric.rs
+RUST/as-cast:src/data/functions/aggregate.rs
+RUST/as-cast:src/data/functions/bits.rs
+RUST/as-cast:src/data/functions/math/arithmetic.rs
+RUST/as-cast:src/data/functions/math/mod.rs
+RUST/as-cast:src/data/functions/math/transcendental.rs
+RUST/as-cast:src/data/functions/string.rs
+RUST/as-cast:src/data/functions/temporal.rs
+RUST/as-cast:src/data/functions/trig.rs
+RUST/as-cast:src/data/functions/utility.rs
+RUST/as-cast:src/data/functions/vector.rs
+RUST/as-cast:src/data/memcmp.rs
+RUST/as-cast:src/data/program/search/hnsw_normalize.rs
+RUST/as-cast:src/data/program/search/lsh_fts.rs
+RUST/as-cast:src/data/relation.rs
+RUST/as-cast:src/data/value.rs
+RUST/as-cast:src/fixed_rule/algos/all_pairs_shortest_path.rs
+RUST/as-cast:src/fixed_rule/algos/degree_centrality.rs
+RUST/as-cast:src/fixed_rule/algos/kcore.rs
+RUST/as-cast:src/fixed_rule/algos/kruskal.rs
+RUST/as-cast:src/fixed_rule/algos/label_propagation.rs
+RUST/as-cast:src/fixed_rule/algos/louvain.rs
+RUST/as-cast:src/fixed_rule/algos/pagerank.rs
+RUST/as-cast:src/fixed_rule/algos/prim.rs
+RUST/as-cast:src/fixed_rule/algos/shortest_path_dijkstra.rs
+RUST/as-cast:src/fixed_rule/algos/strongly_connected_components.rs
+RUST/as-cast:src/fixed_rule/algos/top_sort.rs
+RUST/as-cast:src/fixed_rule/algos/triangles.rs
+RUST/as-cast:src/fixed_rule/algos/yen.rs
+RUST/as-cast:src/fixed_rule/csr/mod.rs
+RUST/as-cast:src/fixed_rule/csr/page_rank.rs
+RUST/as-cast:src/fixed_rule/utilities/reorder_sort.rs
+RUST/as-cast:src/fixed_rule/utilities/rrf.rs
+RUST/as-cast:src/fts/indexing.rs
+RUST/as-cast:src/fts/mod.rs
+RUST/as-cast:src/fts/tokenizer/ngram_tokenizer.rs
+RUST/as-cast:src/parse/expr.rs
+RUST/as-cast:src/parse/fts.rs
+RUST/as-cast:src/parse/query/program.rs
+RUST/as-cast:src/parse/schema.rs
+RUST/as-cast:src/parse/sys/parse.rs
+RUST/as-cast:src/query/magic.rs
+RUST/as-cast:src/runtime/db.rs
+RUST/as-cast:src/runtime/exec.rs
+RUST/as-cast:src/runtime/hnsw/mmap_storage.rs
+RUST/as-cast:src/runtime/hnsw/put.rs
+RUST/as-cast:src/runtime/hnsw/remove.rs
+RUST/as-cast:src/runtime/hnsw/search.rs
+RUST/as-cast:src/runtime/hnsw/types.rs
+RUST/as-cast:src/runtime/minhash_lsh.rs
+RUST/as-cast:src/runtime/relation/index_create.rs
+RUST/as-cast:src/runtime/relation/relation_crud.rs
+RUST/as-cast:src/runtime/sys.rs
+
+# WHY: vendored CozoDB engine — direct indexing is used in performance-critical
+# graph algorithm inner loops, binary serialization (memcmp/tuple), and query
+# evaluation where bounds are guaranteed by preceding length checks or loop
+# invariants.
+RUST/indexing-slicing:src/data/aggr/mod.rs
+RUST/indexing-slicing:src/data/aggr/numeric.rs
+RUST/indexing-slicing:src/data/expr/expr_impl.rs
+RUST/indexing-slicing:src/data/expr/mod.rs
+RUST/indexing-slicing:src/data/expr/op.rs
+RUST/indexing-slicing:src/data/functions/string.rs
+RUST/indexing-slicing:src/data/functions/utility.rs
+RUST/indexing-slicing:src/data/functions/vector.rs
+RUST/indexing-slicing:src/data/memcmp.rs
+RUST/indexing-slicing:src/data/program/magic.rs
+RUST/indexing-slicing:src/data/relation.rs
+RUST/indexing-slicing:src/data/tuple.rs
+RUST/indexing-slicing:src/data/value.rs
+RUST/indexing-slicing:src/fixed_rule/algos/all_pairs_shortest_path.rs
+RUST/indexing-slicing:src/fixed_rule/algos/astar.rs
+RUST/indexing-slicing:src/fixed_rule/algos/bfs.rs
+RUST/indexing-slicing:src/fixed_rule/algos/degree_centrality.rs
+RUST/indexing-slicing:src/fixed_rule/algos/dfs.rs
+RUST/indexing-slicing:src/fixed_rule/algos/kcore.rs
+RUST/indexing-slicing:src/fixed_rule/algos/kruskal.rs
+RUST/indexing-slicing:src/fixed_rule/algos/label_propagation.rs
+RUST/indexing-slicing:src/fixed_rule/algos/louvain.rs
+RUST/indexing-slicing:src/fixed_rule/algos/prim.rs
+RUST/indexing-slicing:src/fixed_rule/algos/random_walk.rs
+RUST/indexing-slicing:src/fixed_rule/algos/shortest_path_bfs.rs
+RUST/indexing-slicing:src/fixed_rule/algos/shortest_path_dijkstra.rs
+RUST/indexing-slicing:src/fixed_rule/algos/strongly_connected_components.rs
+RUST/indexing-slicing:src/fixed_rule/algos/triangles.rs
+RUST/indexing-slicing:src/fixed_rule/algos/yen.rs
+RUST/indexing-slicing:src/fixed_rule/csr/mod.rs
+RUST/indexing-slicing:src/fixed_rule/csr/page_rank.rs
+RUST/indexing-slicing:src/fts/indexing.rs
+RUST/indexing-slicing:src/fts/mod.rs
+RUST/indexing-slicing:src/fts/tokenizer/ngram_tokenizer.rs
+RUST/indexing-slicing:src/fts/tokenizer/split_compound_words.rs
+RUST/indexing-slicing:src/parse/expr.rs
+RUST/indexing-slicing:src/parse/query/atoms.rs
+RUST/indexing-slicing:src/query/compile.rs
+RUST/indexing-slicing:src/query/eval.rs
+RUST/indexing-slicing:src/query/graph.rs
+RUST/indexing-slicing:src/query/ra/join.rs
+RUST/indexing-slicing:src/query/ra/mod.rs
+RUST/indexing-slicing:src/query/ra/search.rs
+RUST/indexing-slicing:src/query/ra/sources.rs
+RUST/indexing-slicing:src/query/sort.rs
+RUST/indexing-slicing:src/query/stored/mutation.rs
+RUST/indexing-slicing:src/query/stored/validation.rs
+RUST/indexing-slicing:src/runtime/exec.rs
+RUST/indexing-slicing:src/runtime/hnsw/atomic_save.rs
+RUST/indexing-slicing:src/runtime/hnsw/mmap_storage.rs
+RUST/indexing-slicing:src/runtime/hnsw/put.rs
+RUST/indexing-slicing:src/runtime/hnsw/remove.rs
+RUST/indexing-slicing:src/runtime/hnsw/search.rs
+RUST/indexing-slicing:src/runtime/hnsw/types.rs
+RUST/indexing-slicing:src/runtime/minhash_lsh.rs
+RUST/indexing-slicing:src/runtime/relation/handles.rs
+RUST/indexing-slicing:src/runtime/temp_store.rs
+RUST/indexing-slicing:src/storage/fjall_backend.rs
+RUST/indexing-slicing:src/storage/mem.rs
+RUST/indexing-slicing:src/storage/mod.rs
+RUST/indexing-slicing:src/storage/temp.rs
+
+# WHY: vendored CozoDB engine — string slicing operates on validated input
+# positions in the parser, FTS tokenizer, and memcmp serialization layers.
+RUST/string-slice:src/data/memcmp.rs
+RUST/string-slice:src/fixed_rule/algos/yen.rs
+RUST/string-slice:src/fixed_rule/utilities/reorder_sort.rs
+RUST/string-slice:src/fts/indexing.rs
+RUST/string-slice:src/query/ra/sources.rs
+RUST/string-slice:src/query/stored/mutation.rs
+RUST/string-slice:src/runtime/hnsw/put.rs
+RUST/string-slice:src/runtime/hnsw/remove.rs
+RUST/string-slice:src/runtime/minhash_lsh.rs
+RUST/string-slice:src/runtime/relation/handles.rs
+RUST/string-slice:src/runtime/relation/index_create.rs
+RUST/string-slice:src/runtime/temp_store.rs
+
+# WHY: vendored CozoDB engine — pub items in pub(crate) modules are visible
+# only within the crate. The module-level pub(crate) visibility gates external
+# access, so pub on individual items enables cross-module use within the engine.
+RUST/pub-visibility:src/data/expr/expr_impl.rs
+RUST/pub-visibility:src/data/expr/op.rs
+RUST/pub-visibility:src/data/memcmp.rs
+RUST/pub-visibility:src/data/tuple.rs
+RUST/pub-visibility:src/data/value.rs
+RUST/pub-visibility:src/fixed_rule/csr/page_rank.rs
+RUST/pub-visibility:src/runtime/callback.rs
+RUST/pub-visibility:src/runtime/db.rs
+RUST/pub-visibility:src/runtime/exec.rs
+RUST/pub-visibility:src/runtime/minhash_lsh.rs
+RUST/pub-visibility:src/runtime/relation/handles.rs
+RUST/pub-visibility:src/runtime/temp_store.rs
+RUST/pub-visibility:src/runtime/transact.rs
+RUST/pub-visibility:src/storage/fjall_backend.rs
+RUST/pub-visibility:src/storage/mem.rs
+
+# WHY: error.rs and query_cache.rs are pub mod — their pub items ARE the
+# public API surface. Re-exported in lib.rs.
+RUST/pub-visibility:src/error.rs
+RUST/pub-visibility:src/query_cache.rs
+
+# WHY: vendored CozoDB engine — missing-must-use on pub fns in pub(crate)
+# modules. These are internal engine methods where callers consistently
+# handle Results via ? propagation.
+RUST/missing-must-use:src/data/expr/expr_impl.rs
+RUST/missing-must-use:src/runtime/db.rs
+RUST/missing-must-use:src/runtime/transact.rs
+
+# WHY: vendored CozoDB engine — HnswSearch, HnswIndexManifest, and
+# RelationHandle structs have many fields because they represent complex
+# domain objects (search parameters, index metadata, relation state).
+RUST/struct-too-many-fields:src/data/program/search/mod.rs
+RUST/struct-too-many-fields:src/runtime/hnsw/types.rs
+RUST/struct-too-many-fields:src/runtime/relation/handles.rs
+
+# WHY: vendored CozoDB engine — std::sync::Mutex is used for a synchronous
+# LRU cache that is never held across await points. The Mutex protects only
+# an in-memory data structure with sub-microsecond hold times.
+RUST/std-mutex-in-async:src/query_cache.rs
+
+# WHY: vendored CozoDB engine — the DATALOG/raw-mutation rule matches a
+# Datalog query string literal that constructs a mutation payload for the
+# engine's own system operations (relation create/alter/drop).
+DATALOG/raw-mutation:src/runtime/db.rs
+
+# WHY: gen_stopwords.py is a vendored code-generation script, not project
+# Python code. The linter's Python f-string check is a false positive on
+# a Rust-ecosystem build tool.
+PYTHON/empty-fstring:src/fts/tokenizer/stop_word_filter/gen_stopwords.py
+
+# WHY: vendored CozoDB engine — tests.rs is a generated Unicode folding
+# test table (2496 lines). stopwords.rs is generated stop-word data
+# (21885 lines). Both are data files, not hand-written code.
+RUST/file-too-long:src/fts/tokenizer/ascii_folding_filter/tests.rs
+RUST/file-too-long:src/fts/tokenizer/stop_word_filter/stopwords.rs
+
+# WHY: vendored CozoDB engine — bare assert! calls in the NgramTokenizer
+# constructor validate invariants (min_gram > 0, min_gram <= max_gram)
+# that are programming errors, not runtime failures. panic is correct.
+RUST/bare-assert:src/fts/tokenizer/ngram_tokenizer.rs

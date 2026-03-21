@@ -146,8 +146,16 @@ impl PutBuilder {
             .collect();
         let data = row_strs.join(", ");
 
-        let key_fields: Vec<&str> = self.all_fields[..self.key_count].to_vec();
-        let value_fields: Vec<&str> = self.all_fields[self.key_count..].to_vec();
+        let key_fields: Vec<&str> = self
+            .all_fields
+            .get(..self.key_count)
+            .unwrap_or(&self.all_fields)
+            .to_vec();
+        let value_fields: Vec<&str> = self
+            .all_fields
+            .get(self.key_count..)
+            .unwrap_or(&[])
+            .to_vec();
 
         let put_clause = if value_fields.is_empty() {
             format!(

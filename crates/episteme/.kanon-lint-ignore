@@ -1,0 +1,177 @@
+# WHY: test files included from #[cfg(test)] modules in lib.rs lack their own
+# #[cfg(test)] boundary, so the linter cannot detect they are test code.
+# .expect(), direct indexing, and multi-line asserts (which already have
+# descriptive messages the single-line linter heuristic cannot see) are acceptable.
+RUST/bare-assert:src/conflict_tests.rs
+RUST/bare-assert:src/consolidation/consolidation_tests.rs
+RUST/bare-assert:src/embedding_tests.rs
+RUST/bare-assert:src/extract/refinement_tests.rs
+RUST/bare-assert:src/extract/tests/utilities.rs
+RUST/bare-assert:src/graph_intelligence_tests/engine_dependent.rs
+RUST/bare-assert:src/graph_intelligence_tests/graph_algorithms.rs
+RUST/bare-assert:src/graph_intelligence_tests/scoring_functions.rs
+RUST/bare-assert:src/instinct_tests/basic_behavior.rs
+RUST/bare-assert:src/instinct_tests/requirements.rs
+RUST/bare-assert:src/knowledge_store/tests/mod.rs
+RUST/bare-assert:src/knowledge_store/tests/proptests.rs
+RUST/bare-assert:src/phase_f_integration_tests.rs
+RUST/bare-assert:src/query/tests/fields.rs
+RUST/bare-assert:src/recall_tests/edge_cases.rs
+RUST/bare-assert:src/recall_tests/ranking.rs
+RUST/bare-assert:src/recall_tests/scoring.rs
+RUST/bare-assert:src/skills/extract_tests.rs
+RUST/bare-assert:src/skill_tests.rs
+RUST/bare-assert:src/succession_tests.rs
+RUST/expect:src/conflict_tests.rs
+RUST/expect:src/consolidation/consolidation_tests.rs
+RUST/expect:src/embedding_tests.rs
+RUST/expect:src/extract/refinement_tests.rs
+RUST/expect:src/extract/tests/utilities.rs
+RUST/expect:src/graph_intelligence_tests/engine_dependent.rs
+RUST/expect:src/graph_intelligence_tests/graph_algorithms.rs
+RUST/expect:src/graph_intelligence_tests/scoring_functions.rs
+RUST/expect:src/instinct_tests/basic_behavior.rs
+RUST/expect:src/instinct_tests/requirements.rs
+RUST/expect:src/knowledge_store/tests/mod.rs
+RUST/expect:src/knowledge_store/tests/proptests.rs
+RUST/expect:src/phase_f_integration_tests.rs
+RUST/expect:src/query/tests/fields.rs
+RUST/expect:src/recall_tests/edge_cases.rs
+RUST/expect:src/recall_tests/ranking.rs
+RUST/expect:src/recall_tests/scoring.rs
+RUST/expect:src/skills/extract_tests.rs
+RUST/expect:src/skill_tests.rs
+RUST/expect:src/succession_tests.rs
+RUST/indexing-slicing:src/conflict_tests.rs
+RUST/indexing-slicing:src/consolidation/consolidation_tests.rs
+RUST/indexing-slicing:src/embedding_tests.rs
+RUST/indexing-slicing:src/extract/refinement_tests.rs
+RUST/indexing-slicing:src/extract/tests/utilities.rs
+RUST/indexing-slicing:src/graph_intelligence_tests/engine_dependent.rs
+RUST/indexing-slicing:src/graph_intelligence_tests/graph_algorithms.rs
+RUST/indexing-slicing:src/graph_intelligence_tests/scoring_functions.rs
+RUST/indexing-slicing:src/instinct_tests/basic_behavior.rs
+RUST/indexing-slicing:src/instinct_tests/requirements.rs
+RUST/indexing-slicing:src/knowledge_store/tests/mod.rs
+RUST/indexing-slicing:src/knowledge_store/tests/proptests.rs
+RUST/indexing-slicing:src/phase_f_integration_tests.rs
+RUST/indexing-slicing:src/query/tests/fields.rs
+RUST/indexing-slicing:src/recall_tests/edge_cases.rs
+RUST/indexing-slicing:src/recall_tests/ranking.rs
+RUST/indexing-slicing:src/recall_tests/scoring.rs
+RUST/indexing-slicing:src/skills/extract_tests.rs
+RUST/indexing-slicing:src/skill_tests.rs
+RUST/indexing-slicing:src/succession_tests.rs
+
+# WHY: episteme is a public library crate — these modules are `pub mod` in lib.rs,
+# making all pub items part of the public API.
+RUST/pub-visibility:src/conflict.rs
+RUST/pub-visibility:src/consolidation/engine.rs
+RUST/pub-visibility:src/embedding.rs
+RUST/pub-visibility:src/extract/diff.rs
+RUST/pub-visibility:src/extract/engine.rs
+RUST/pub-visibility:src/extract/error.rs
+RUST/pub-visibility:src/extract/lesson.rs
+RUST/pub-visibility:src/extract/provider.rs
+RUST/pub-visibility:src/extract/refinement.rs
+RUST/pub-visibility:src/hnsw_index.rs
+RUST/pub-visibility:src/instinct.rs
+RUST/pub-visibility:src/knowledge_portability.rs
+RUST/pub-visibility:src/knowledge_store/causal.rs
+RUST/pub-visibility:src/knowledge_store/entity.rs
+RUST/pub-visibility:src/knowledge_store/facts.rs
+RUST/pub-visibility:src/knowledge_store/search.rs
+RUST/pub-visibility:src/knowledge_store/skills.rs
+RUST/pub-visibility:src/query/builders.rs
+RUST/pub-visibility:src/query/queries.rs
+RUST/pub-visibility:src/query/schema.rs
+RUST/pub-visibility:src/recall.rs
+RUST/pub-visibility:src/skill.rs
+RUST/pub-visibility:src/skills/candidate.rs
+RUST/pub-visibility:src/skills/extract.rs
+RUST/pub-visibility:src/skills/heuristics.rs
+RUST/pub-visibility:src/skills/signature.rs
+RUST/pub-visibility:src/vocab.rs
+
+# WHY: linter regex matches &[f32] slice type annotations as indexing expressions.
+RUST/indexing-slicing:src/conflict.rs
+
+# WHY: Jaro-Winkler algorithm uses loop-bounded array access where indices are
+# mathematically guaranteed within bounds by the algorithm construction.
+RUST/indexing-slicing:src/dedup.rs
+
+# WHY: is_upper_snake_case checks bytes[0] and bytes[len-1] after an is_empty()
+# guard, guaranteeing both indices are in bounds. Linter regex can't prove this.
+RUST/indexing-slicing:src/vocab.rs
+
+# WHY: CozoDB query results are accessed via row[N] after row.len() guards.
+# The column positions are determined by the Datalog query schema. Converting
+# every access to row.get(N).and_then(extract) would obscure the 1:1 mapping
+# between query columns and struct fields without improving safety.
+RUST/indexing-slicing:src/knowledge_store/entity.rs
+RUST/indexing-slicing:src/knowledge_store/causal.rs
+RUST/indexing-slicing:src/knowledge_store/facts.rs
+RUST/indexing-slicing:src/knowledge_store/marshal.rs
+RUST/indexing-slicing:src/knowledge_store/migration.rs
+RUST/indexing-slicing:src/knowledge_store/search.rs
+RUST/indexing-slicing:src/knowledge_portability.rs
+RUST/indexing-slicing:src/graph_intelligence.rs
+RUST/indexing-slicing:src/consolidation/engine.rs
+
+# WHY: &[f32] slice type annotations and hnsw search result access trigger the
+# indexing regex as false positives.
+RUST/indexing-slicing:src/hnsw_index.rs
+RUST/indexing-slicing:src/embedding.rs
+
+# WHY: DP algorithm and windows(2) indexing are bounded by loop/iterator
+# construction. The linter regex can't prove these bounds.
+RUST/indexing-slicing:src/skills/extract.rs
+RUST/indexing-slicing:src/skills/heuristics.rs
+
+# WHY: CozoDB Datalog query strings use :put/:rm/:create syntax for schema mutations.
+# These are CozoDB script operations, not raw SQL — the transaction API is CozoDB's
+# db.run() with ScriptMutability::Mutable, which is already used.
+DATALOG/raw-mutation:src/knowledge_store/migration.rs
+DATALOG/raw-mutation:src/query/builders.rs
+
+# WHY: CozoDB Datalog queries are built via format!() to compose relation names and
+# field lists dynamically. These are CozoDB scripts (not SQL), and the dynamic parts
+# are schema identifiers (relation names, field names), not user input.
+STORAGE/sql-string-concat:src/knowledge_store/migration.rs
+STORAGE/sql-string-concat:src/query/builders.rs
+
+# WHY: format!("deleted file: {path}") triggers the linter's SQL keyword heuristic
+# on "deleted" but this is a human-readable summary string, not a SQL query.
+STORAGE/sql-string-concat:src/extract/lesson.rs
+
+# WHY: Result already has #[must_use]. Adding bare #[must_use] to functions
+# returning Result triggers clippy::double_must_use. The return type's
+# #[must_use] is sufficient — callers already get a warning if they discard it.
+RUST/missing-must-use:src/extract/engine.rs
+RUST/missing-must-use:src/knowledge_store/mod.rs
+RUST/missing-must-use:src/skill.rs
+RUST/missing-must-use:src/skills/candidate.rs
+RUST/missing-must-use:src/skills/extract.rs
+
+# WHY: candidate.rs uses .expect() on deserialization of self-generated JSON
+# round-trip data. Already has #[expect(clippy::expect_used)] with reason.
+RUST/expect:src/skills/candidate.rs
+
+# WHY: extract/engine.rs processes LLM response text at known-valid byte
+# positions from split()/find() operations on ASCII delimiters.
+# Already has #[expect(clippy::string_slice)] with reason.
+RUST/string-slice:src/extract/engine.rs
+
+# WHY: skill.rs SKILL.md parser slices at positions found by find()/rfind()
+# on ASCII characters. Already has #[expect(clippy::string_slice)] with reason.
+RUST/string-slice:src/skill.rs
+
+# WHY: as-casts in these files convert between numeric types (usize↔f64)
+# where values are bounded. Already covered by #[expect(clippy::as_conversions,
+# clippy::cast_precision_loss)] with reason strings.
+RUST/as-cast:src/instinct.rs
+RUST/as-cast:src/query_rewrite.rs
+RUST/as-cast:src/recall.rs
+RUST/as-cast:src/skills/extract.rs
+RUST/as-cast:src/skills/heuristics.rs
+RUST/as-cast:src/skills/signature.rs

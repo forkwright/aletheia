@@ -1,0 +1,8 @@
+# WHY: lib.rs is a facade crate that re-exports `aletheia_graphe::migration`.
+# The rule triggers on the word "migration" but this file contains no migration logic.
+STORAGE/no-migration-checksum:src/lib.rs
+
+# WHY: coexistence_tests module uses #[cfg(all(test, feature = "sqlite", feature = "mneme-engine"))]
+# which the linter's #[cfg(test)] regex doesn't match. The .expect() calls are test assertions
+# already covered by #[expect(clippy::expect_used)].
+RUST/expect:src/lib.rs

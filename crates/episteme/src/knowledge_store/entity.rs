@@ -5,9 +5,9 @@
 use super::marshal::{
     entity_to_params, extract_bool, extract_float, extract_int, extract_str, relationship_to_params,
 };
-use super::{KnowledgeStore, QueryResult, queries};
 use tracing::instrument;
 
+use super::{KnowledgeStore, QueryResult, queries};
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
     /// Insert or update an entity.
@@ -43,9 +43,9 @@ impl KnowledgeStore {
         &self,
         entity_id: &crate::id::EntityId,
     ) -> crate::error::Result<QueryResult> {
-        use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
+        use crate::engine::DataValue;
         let mut params = BTreeMap::new();
         params.insert(
             "entity_id".to_owned(),
@@ -62,9 +62,9 @@ impl KnowledgeStore {
         fact_id: &crate::id::FactId,
         entity_id: &crate::id::EntityId,
     ) -> crate::error::Result<()> {
-        use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
+        use crate::engine::DataValue;
         let now = crate::knowledge::format_timestamp(&jiff::Timestamp::now());
         let mut params = BTreeMap::new();
         params.insert(
@@ -143,9 +143,9 @@ impl KnowledgeStore {
         canonical_id: &crate::id::EntityId,
         merged_id: &crate::id::EntityId,
     ) -> crate::error::Result<crate::dedup::MergeRecord> {
-        use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
+        use crate::engine::DataValue;
         let canonical = self.load_entity(canonical_id)?;
         let merged = self.load_entity(merged_id)?;
 
@@ -423,9 +423,9 @@ impl KnowledgeStore {
         &self,
         entity_id: &crate::id::EntityId,
     ) -> crate::error::Result<crate::knowledge::Entity> {
-        use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
+        use crate::engine::DataValue;
         let mut params = BTreeMap::new();
         params.insert("id".to_owned(), DataValue::Str(entity_id.as_str().into()));
         let script = r"?[id, name, entity_type, aliases, created_at, updated_at] :=
@@ -466,9 +466,9 @@ impl KnowledgeStore {
 
     /// Count relationships involving an entity (as src or dst).
     fn count_relationships(&self, entity_id: &str) -> crate::error::Result<i64> {
-        use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
+        use crate::engine::DataValue;
         let mut params = BTreeMap::new();
         params.insert("eid".to_owned(), DataValue::Str(entity_id.into()));
         let script = r"?[count(src)] :=
@@ -489,9 +489,9 @@ impl KnowledgeStore {
         from_id: &crate::id::EntityId,
         to_id: &crate::id::EntityId,
     ) -> crate::error::Result<u32> {
-        use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
+        use crate::engine::DataValue;
         let mut params = BTreeMap::new();
         params.insert(
             "from_id".to_owned(),
@@ -546,9 +546,9 @@ impl KnowledgeStore {
         from_id: &crate::id::EntityId,
         to_id: &crate::id::EntityId,
     ) -> crate::error::Result<u32> {
-        use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
+        use crate::engine::DataValue;
         let mut params = BTreeMap::new();
         params.insert(
             "from_id".to_owned(),
@@ -603,9 +603,9 @@ impl KnowledgeStore {
         from_id: &crate::id::EntityId,
         to_id: &crate::id::EntityId,
     ) -> crate::error::Result<u32> {
-        use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
+        use crate::engine::DataValue;
         let mut params = BTreeMap::new();
         params.insert(
             "from_id".to_owned(),
@@ -654,9 +654,9 @@ impl KnowledgeStore {
         entity_id: &crate::id::EntityId,
         new_alias: &str,
     ) -> crate::error::Result<()> {
-        use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
+        use crate::engine::DataValue;
         let entity = self.load_entity(entity_id)?;
         let lower_new = new_alias.to_lowercase();
 
@@ -691,9 +691,9 @@ impl KnowledgeStore {
 
     /// Delete an entity from the entities relation.
     fn delete_entity(&self, entity_id: &crate::id::EntityId) -> crate::error::Result<()> {
-        use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
+        use crate::engine::DataValue;
         let mut params = BTreeMap::new();
         params.insert("id".to_owned(), DataValue::Str(entity_id.as_str().into()));
         self.run_mut(&queries::rm_entity(), params)
@@ -704,9 +704,9 @@ impl KnowledgeStore {
         &self,
         candidate: &crate::dedup::EntityMergeCandidate,
     ) -> crate::error::Result<()> {
-        use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
+        use crate::engine::DataValue;
         let now = crate::knowledge::format_timestamp(&jiff::Timestamp::now());
         let mut params = BTreeMap::new();
         params.insert(

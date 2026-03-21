@@ -474,7 +474,7 @@ mod proptests {
             prop_assert_eq!(patterns.len(), 1, "should produce exactly one pattern");
             prop_assert_eq!(
                 patterns[0].total_count,
-                n as u32,
+                u32::try_from(n).unwrap_or(u32::MAX),
                 "total_count should equal the number of observations"
             );
         }

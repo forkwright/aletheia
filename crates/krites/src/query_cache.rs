@@ -34,7 +34,7 @@ pub struct QueryCacheStats {
 ///
 /// The cache does not store compiled query plans — it tracks *which queries
 /// have been seen* and exposes hit/miss metrics so callers can observe query
-/// repetition patterns and make caching decisions accordingly.
+/// repetition patterns and make caching decisions from the metrics.
 pub struct QueryCache {
     inner: Mutex<LruCache<String, ()>>,
     hits: AtomicU64,
@@ -70,7 +70,7 @@ impl QueryCache {
     /// `false` (cache miss) if it was not.  On a miss the entry is inserted;
     /// on a hit the entry is promoted to the most-recently-used position.
     ///
-    /// The hit or miss counter is incremented accordingly.
+    /// The hit or miss counter is incremented to reflect the outcome.
     pub fn check(&self, query: &str) -> bool {
         let normalized = Self::normalize(query);
         // WHY: lock held only for the duration of the LRU lookup — no await points.

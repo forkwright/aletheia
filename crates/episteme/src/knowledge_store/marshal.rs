@@ -197,17 +197,13 @@ pub(super) fn compute_tool_overlap(a: &[String], b: &[String]) -> f64 {
     if union == 0 {
         return 1.0;
     }
-    intersection as f64 / union as f64
+    intersection as f64 / union as f64 // SAFETY: set counts fit f64
 }
 
 /// Compute name similarity using longest common subsequence ratio.
 ///
 /// Returns 1.0 for identical names, 0.0 for completely different.
 #[cfg(feature = "mneme-engine")]
-#[expect(
-    clippy::cast_precision_loss,
-    reason = "name lengths are small; precision loss is impossible in practice"
-)]
 pub(super) fn compute_name_similarity(a: &str, b: &str) -> f64 {
     if a == b {
         return 1.0;
@@ -221,7 +217,7 @@ pub(super) fn compute_name_similarity(a: &str, b: &str) -> f64 {
         return 1.0;
     }
     let lcs = lcs_char_length(&a_chars, &b_chars);
-    lcs as f64 / max_len as f64
+    lcs as f64 / max_len as f64 // SAFETY: string lengths fit f64
 }
 
 /// Classic DP Longest Common Subsequence length for char slices.
@@ -318,12 +314,7 @@ pub(super) fn rows_to_facts(
 
         let tier = parse_epistemic_tier(&tier_str);
 
-        #[expect(
-            clippy::cast_possible_truncation,
-            clippy::cast_sign_loss,
-            reason = "access count fits in u32"
-        )]
-        let access_count = row.get(10).and_then(|v| extract_int(v).ok()).unwrap_or(0) as u32;
+        let access_count = row.get(10).and_then(|v| extract_int(v).ok()).unwrap_or(0) as u32; // SAFETY: access count fits u32
         let last_accessed_at = row
             .get(11)
             .and_then(|v| extract_str(v).ok())
@@ -460,12 +451,7 @@ pub(super) fn rows_to_raw_facts(
             .build()
         })?)?;
         let tier = parse_epistemic_tier(&tier_str);
-        #[expect(
-            clippy::cast_possible_truncation,
-            clippy::cast_sign_loss,
-            reason = "access count fits in u32"
-        )]
-        let access_count = row.get(10).and_then(|v| extract_int(v).ok()).unwrap_or(0) as u32;
+        let access_count = row.get(10).and_then(|v| extract_int(v).ok()).unwrap_or(0) as u32; // SAFETY: access count fits u32
         let last_accessed_at = row
             .get(11)
             .and_then(|v| extract_str(v).ok())

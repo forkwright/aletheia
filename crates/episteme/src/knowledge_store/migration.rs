@@ -11,9 +11,9 @@ impl KnowledgeStore {
         reason = "migration is a single linear sequence"
     )]
     pub(super) fn migrate_v1_to_v2(&self) -> crate::error::Result<()> {
-        use crate::engine::{DataValue, ScriptMutability};
         use std::collections::BTreeMap;
 
+        use crate::engine::{DataValue, ScriptMutability};
         tracing::info!("migrating knowledge schema v1 -> v2");
 
         let all_facts = self
@@ -134,9 +134,9 @@ impl KnowledgeStore {
         reason = "migration is a single linear sequence"
     )]
     pub(super) fn migrate_v2_to_v3(&self) -> crate::error::Result<()> {
-        use crate::engine::{DataValue, ScriptMutability};
         use std::collections::BTreeMap;
 
+        use crate::engine::{DataValue, ScriptMutability};
         tracing::info!("migrating knowledge schema v2 -> v3");
 
         let all_facts = self
@@ -263,9 +263,9 @@ impl KnowledgeStore {
 
     /// Migrate v3 → v4: add `fact_entities`, `merge_audit`, `pending_merges` relations.
     pub(super) fn migrate_v3_to_v4(&self) -> crate::error::Result<()> {
-        use crate::engine::{DataValue, ScriptMutability};
         use std::collections::BTreeMap;
 
+        use crate::engine::{DataValue, ScriptMutability};
         tracing::info!("migrating knowledge schema v3 -> v4");
 
         // WHY: bounded range [3..6) to avoid creating relations from later migrations (causal_edges = index 6).
@@ -314,9 +314,9 @@ impl KnowledgeStore {
     }
 
     pub(super) fn migrate_v4_to_v5(&self) -> crate::error::Result<()> {
-        use crate::engine::{DataValue, ScriptMutability};
         use std::collections::BTreeMap;
 
+        use crate::engine::{DataValue, ScriptMutability};
         tracing::info!("migrating knowledge schema v4 -> v5");
 
         self.db
@@ -354,9 +354,9 @@ impl KnowledgeStore {
 
     /// Migrate v5 → v6: add `causal_edges` relation.
     pub(super) fn migrate_v5_to_v6(&self) -> crate::error::Result<()> {
-        use crate::engine::{DataValue, ScriptMutability};
         use std::collections::BTreeMap;
 
+        use crate::engine::{DataValue, ScriptMutability};
         tracing::info!("migrating knowledge schema v5 -> v6");
 
         // KNOWLEDGE_DDL[6] is the causal_edges relation (index 6, zero-based).

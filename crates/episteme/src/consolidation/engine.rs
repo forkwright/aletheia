@@ -52,7 +52,7 @@ impl KnowledgeStore {
         params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
         params.insert(
             "min_count".to_owned(),
-            DataValue::from(config.entity_fact_threshold as i64),
+            DataValue::from(i64::try_from(config.entity_fact_threshold).unwrap_or(i64::MAX)),
         );
         params.insert("cutoff".to_owned(), DataValue::Str(cutoff.clone().into()));
 
@@ -67,8 +67,8 @@ impl KnowledgeStore {
 
         let mut candidates = Vec::new();
         for row in &result.rows {
-            let entity_id_str = row[0].get_str().unwrap_or_default();
-            let fact_count = i64_as_usize(row[1].get_int().unwrap_or(0));
+            let entity_id_str = row.get(0).and_then(|v| v.get_str()).unwrap_or_default();
+            let fact_count = i64_as_usize(row.get(1).and_then(|v| v.get_int()).unwrap_or(0));
             let entity_id = EntityId::from(entity_id_str);
 
             let facts = self
@@ -112,7 +112,7 @@ impl KnowledgeStore {
         params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
         params.insert(
             "min_count".to_owned(),
-            DataValue::from(config.community_fact_threshold as i64),
+            DataValue::from(i64::try_from(config.community_fact_threshold).unwrap_or(i64::MAX)),
         );
         params.insert("cutoff".to_owned(), DataValue::Str(cutoff.clone().into()));
 
@@ -127,8 +127,8 @@ impl KnowledgeStore {
 
         let mut candidates = Vec::new();
         for row in &result.rows {
-            let cluster_id = row[0].get_int().unwrap_or(-1);
-            let fact_count = i64_as_usize(row[1].get_int().unwrap_or(0));
+            let cluster_id = row.get(0).and_then(|v| v.get_int()).unwrap_or(-1);
+            let fact_count = i64_as_usize(row.get(1).and_then(|v| v.get_int()).unwrap_or(0));
 
             let facts = self
                 .gather_cluster_facts(nous_id, cluster_id, &cutoff)
@@ -419,11 +419,11 @@ impl KnowledgeStore {
         );
         params.insert(
             "original_count".to_owned(),
-            DataValue::from(record.original_count as i64),
+            DataValue::from(i64::try_from(record.original_count).unwrap_or(i64::MAX)),
         );
         params.insert(
             "consolidated_count".to_owned(),
-            DataValue::from(record.consolidated_count as i64),
+            DataValue::from(i64::try_from(record.consolidated_count).unwrap_or(i64::MAX)),
         );
         params.insert(
             "original_fact_ids".to_owned(),
@@ -459,7 +459,12 @@ impl KnowledgeStore {
         })?;
 
         if let Some(row) = result.rows.first() {
-            Ok(Some(row[0].get_str().unwrap_or_default().to_owned()))
+            Ok(Some(
+                row.get(0)
+                    .and_then(|v| v.get_str())
+                    .unwrap_or_default()
+                    .to_owned(),
+            ))
         } else {
             Ok(None)
         }
@@ -512,11 +517,7 @@ impl KnowledgeStore {
             let now = jiff::Timestamp::now();
             if let Ok(span) = now.since(last_ts) {
                 let total_minutes = i64::from(span.get_hours()) * 60 + span.get_minutes();
-                #[expect(
-                    clippy::cast_precision_loss,
-                    reason = "elapsed minutes as f64 is fine for rate limiting"
-                )]
-                let elapsed_hours = total_minutes as f64 / 60.0;
+                let elapsed_hours = (total_minutes as f64) / 60.0; // SAFETY: minutes fit f64
                 if elapsed_hours < config.rate_limit_hours {
                     return Err(RateLimitedSnafu {
                         elapsed_hours,
@@ -575,10 +576,18 @@ fn run_llm_consolidation(
 fn parse_fact_rows(rows: &[Vec<DataValue>]) -> Vec<(FactId, String, f64, String)> {
     rows.iter()
         .map(|row| {
-            let id = FactId::from(row[0].get_str().unwrap_or_default());
-            let content = row[1].get_str().unwrap_or_default().to_owned();
-            let confidence = row[2].get_float().unwrap_or(0.0);
-            let recorded_at = row[3].get_str().unwrap_or_default().to_owned();
+            let id = FactId::from(row.get(0).and_then(|v| v.get_str()).unwrap_or_default());
+            let content = row
+                .get(1)
+                .and_then(|v| v.get_str())
+                .unwrap_or_default()
+                .to_owned();
+            let confidence = row.get(2).and_then(|v| v.get_float()).unwrap_or(0.0);
+            let recorded_at = row
+                .get(3)
+                .and_then(|v| v.get_str())
+                .unwrap_or_default()
+                .to_owned();
             (id, content, confidence, recorded_at)
         })
         .collect()

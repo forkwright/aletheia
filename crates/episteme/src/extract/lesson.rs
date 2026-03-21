@@ -197,7 +197,7 @@ fn build_lesson(changes: &[ChangeRecord], config: &LessonConfig) -> ExtractedLes
         // PR modifies/adds/deletes file.
         relationships.push(super::types::ExtractedRelationship {
             source: pr_name.clone(),
-            relation: format!("{}", change.change_type),
+            relation: change.change_type.to_string(),
             target: file_entity_name.clone(),
             confidence: 1.0,
         });
@@ -206,7 +206,7 @@ fn build_lesson(changes: &[ChangeRecord], config: &LessonConfig) -> ExtractedLes
         let change_fact_idx = facts.len();
         facts.push(super::types::ExtractedFact {
             subject: pr_name.clone(),
-            predicate: format!("{}", change.change_type),
+            predicate: change.change_type.to_string(),
             object: change.file_path.clone(),
             confidence: 1.0,
             is_correction: false,

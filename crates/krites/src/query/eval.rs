@@ -14,9 +14,6 @@ use std::collections::btree_map::Entry;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use itertools::Itertools;
-
-use crate::error::InternalResult as Result;
-
 #[cfg(not(target_arch = "wasm32"))]
 use rayon::prelude::*;
 use tracing::{debug, trace};
@@ -26,6 +23,7 @@ use crate::data::program::{MagicSymbol, NoEntryError};
 use crate::data::symb::{PROG_ENTRY, Symbol};
 use crate::data::tuple::Tuple;
 use crate::data::value::DataValue;
+use crate::error::InternalResult as Result;
 use crate::fixed_rule::FixedRulePayload;
 use crate::parse::SourceSpan;
 use crate::query::compile::{

@@ -463,10 +463,10 @@ fn persist_skips_is_type() {
 
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod proptests {
-    use super::utils;
-    use super::*;
     use proptest::prelude::*;
 
+    use super::utils;
+    use super::*;
     proptest! {
         #[test]
         fn parse_never_panics_on_arbitrary_input(input in "\\PC{0,500}") {

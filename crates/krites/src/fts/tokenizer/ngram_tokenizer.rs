@@ -299,7 +299,7 @@ mod tests {
     use super::{CodepointFrontiers, StutteringIterator, utf8_codepoint_width};
 
     #[test]
-    fn test_utf8_codepoint_width() {
+    fn utf8_codepoint_width_matches_byte_ranges() {
         for i in 0..128 {
             assert_eq!(utf8_codepoint_width(i), 1);
         }
@@ -315,7 +315,7 @@ mod tests {
     }
 
     #[test]
-    fn test_codepoint_frontiers() {
+    fn codepoint_frontiers_track_char_boundaries() {
         assert_eq!(CodepointFrontiers::for_str("").collect::<Vec<_>>(), vec![0]);
         assert_eq!(
             CodepointFrontiers::for_str("abcd").collect::<Vec<_>>(),
@@ -328,14 +328,14 @@ mod tests {
     }
 
     #[test]
-    fn test_stutterring_iterator_empty() {
+    fn stuttering_iterator_yields_none_for_single_element() {
         let rg: Vec<usize> = vec![0];
         let mut it = StutteringIterator::new(rg.into_iter(), 1, 2);
         assert_eq!(it.next(), None);
     }
 
     #[test]
-    fn test_stutterring_iterator() {
+    fn stuttering_iterator_produces_overlapping_ngram_pairs() {
         let mut it = StutteringIterator::new(0..10, 1, 2);
         assert_eq!(it.next(), Some((0, 1)));
         assert_eq!(it.next(), Some((0, 2)));

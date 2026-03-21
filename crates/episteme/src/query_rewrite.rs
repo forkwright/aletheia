@@ -15,7 +15,7 @@ use tracing::instrument;
 ///
 /// Keeps mneme independent of hermeneus. The nous layer bridges this trait
 /// to the full `LlmProvider` + `CompletionRequest` API.
-pub trait RewriteProvider: Send + Sync {
+pub(crate) trait RewriteProvider: Send + Sync {
     /// Generate a completion from a system prompt and user message.
     fn complete(&self, system: &str, user_message: &str) -> Result<String, RewriteError>;
 }
@@ -23,7 +23,7 @@ pub trait RewriteProvider: Send + Sync {
 /// Errors from the query rewriting pipeline.
 #[derive(Debug)]
 #[non_exhaustive]
-pub enum RewriteError {
+pub(crate) enum RewriteError {
     /// The LLM provider returned an error.
     LlmCall(String),
     /// The LLM response could not be parsed.
@@ -41,7 +41,7 @@ impl std::fmt::Display for RewriteError {
 
 /// Configuration for query rewriting behavior.
 #[derive(Debug, Clone)]
-pub struct RewriteConfig {
+pub(crate) struct RewriteConfig {
     /// Maximum number of variant queries to generate (2-4).
     pub max_variants: usize,
     /// Whether to always include the original query in the variant set.
@@ -59,7 +59,7 @@ impl Default for RewriteConfig {
 
 /// Result of a query rewrite operation.
 #[derive(Debug, Clone)]
-pub struct RewriteResult {
+pub(crate) struct RewriteResult {
     /// The original query string.
     pub original: String,
     /// Generated search variant queries (may include the original).
@@ -69,20 +69,20 @@ pub struct RewriteResult {
 }
 
 /// LLM-powered query rewriter for the recall pipeline.
-pub struct QueryRewriter {
+pub(crate) struct QueryRewriter {
     config: RewriteConfig,
 }
 
 impl QueryRewriter {
     /// Create a new query rewriter with the given configuration.
     #[must_use]
-    pub fn new(config: RewriteConfig) -> Self {
+    pub(crate) fn new(config: RewriteConfig) -> Self {
         Self { config }
     }
 
     /// Create a query rewriter with default configuration.
     #[must_use]
-    pub fn with_defaults() -> Self {
+    pub(crate) fn with_defaults() -> Self {
         Self::new(RewriteConfig::default())
     }
 
@@ -91,7 +91,7 @@ impl QueryRewriter {
     /// Returns the original query plus generated variants. Never fails;
     /// falls back to the original query on any error.
     #[instrument(skip(self, provider, context))]
-    pub fn rewrite(
+    pub(crate) fn rewrite(
         &self,
         query: &str,
         context: Option<&str>,
@@ -204,7 +204,7 @@ fn strip_code_fences(s: &str) -> &str {
 
 /// Configuration for multi-tier search behavior.
 #[derive(Debug, Clone)]
-pub struct TieredSearchConfig {
+pub(crate) struct TieredSearchConfig {
     /// Minimum results from fast path before escalating to enhanced search.
     pub fast_path_min_results: usize,
     /// Minimum RRF score threshold for fast path results to be considered sufficient.
@@ -232,7 +232,7 @@ impl Default for TieredSearchConfig {
 /// Which search tier produced the final results.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum SearchTier {
+pub(crate) enum SearchTier {
     /// Single-query hybrid search (BM25 + vector).
     Fast,
     /// LLM query rewrite + multi-query hybrid search.
@@ -253,7 +253,7 @@ impl std::fmt::Display for SearchTier {
 
 /// Results from a tiered search operation.
 #[derive(Debug, Clone)]
-pub struct TieredSearchResult<T> {
+pub(crate) struct TieredSearchResult<T> {
     /// Which tier produced the final results.
     pub tier: SearchTier,
     /// The merged, deduplicated results.
@@ -268,7 +268,10 @@ pub struct TieredSearchResult<T> {
 ///
 /// Deduplicates by ID, combining RRF scores from all query variants.
 /// Results from multiple queries for the same document get boosted.
-pub fn rrf_merge<T: HasId + HasRrfScore + Clone>(results_per_query: &[Vec<T>], k: f64) -> Vec<T> {
+pub(crate) fn rrf_merge<T: HasId + HasRrfScore + Clone>(
+    results_per_query: &[Vec<T>],
+    k: f64,
+) -> Vec<T> {
     use std::collections::HashMap;
 
     let mut score_map: HashMap<String, (f64, T)> = HashMap::new();
@@ -278,7 +281,7 @@ pub fn rrf_merge<T: HasId + HasRrfScore + Clone>(results_per_query: &[Vec<T>], k
             #[expect(
                 clippy::cast_precision_loss,
                 clippy::as_conversions,
-                reason = "usize→f64: rank is small enough for f64"
+                reason = "usize→f64: rank index fits in f64"
             )]
             let rrf_contribution = 1.0 / (k + rank as f64 + 1.0);
             let entry = score_map
@@ -301,12 +304,12 @@ pub fn rrf_merge<T: HasId + HasRrfScore + Clone>(results_per_query: &[Vec<T>], k
 }
 
 /// Trait for types that have an ID field for deduplication.
-pub trait HasId {
+pub(crate) trait HasId {
     fn id(&self) -> &str;
 }
 
 /// Trait for types that have a mutable RRF score.
-pub trait HasRrfScore {
+pub(crate) trait HasRrfScore {
     #[expect(
         dead_code,
         reason = "trait API completeness; only set_rrf_score used by merge"

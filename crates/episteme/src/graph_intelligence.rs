@@ -27,7 +27,7 @@ use std::collections::{HashMap, HashSet};
 ///
 /// Caches `PageRank` scores, community (cluster) assignments, and the `PageRank` max
 /// meta-entry. Updated by background recomputation.
-pub const GRAPH_SCORES_DDL: &str = r":create graph_scores {
+pub(crate) const GRAPH_SCORES_DDL: &str = r":create graph_scores {
     entity_id: String, score_type: String =>
     score: Float default 0.0, cluster_id: Int default -1, updated_at: String
 }";
@@ -38,7 +38,7 @@ pub const GRAPH_SCORES_DDL: &str = r":create graph_scores {
 /// default to empty when no graph data is available, producing identical
 /// scores to the base 6-factor formula (backward compatible).
 #[derive(Debug, Clone, Default)]
-pub struct GraphContext {
+pub(crate) struct GraphContext {
     /// `entity_id` → normalized `PageRank` score [0.0, 1.0]
     pub pageranks: HashMap<String, f64>,
     /// `entity_id` → `Louvain` `cluster_id`
@@ -54,20 +54,20 @@ pub struct GraphContext {
 impl GraphContext {
     /// Returns `true` when no graph data has been loaded.
     #[must_use]
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.pageranks.is_empty() && self.clusters.is_empty()
     }
 
     /// Look up the normalized `PageRank` importance for an entity.
     /// Returns 0.0 if the entity has no `PageRank` score.
     #[must_use]
-    pub fn importance(&self, entity_id: &str) -> f64 {
+    pub(crate) fn importance(&self, entity_id: &str) -> f64 {
         self.pageranks.get(entity_id).copied().unwrap_or(0.0)
     }
 
     /// Check whether a given entity is in the same cluster as any query context entity.
     #[must_use]
-    pub fn same_cluster(&self, entity_id: &str) -> bool {
+    pub(crate) fn same_cluster(&self, entity_id: &str) -> bool {
         self.clusters
             .get(entity_id)
             .is_some_and(|cid| self.context_clusters.contains(cid))
@@ -75,13 +75,13 @@ impl GraphContext {
 
     /// Get the supersession chain length for a fact.
     #[must_use]
-    pub fn chain_length(&self, fact_id: &str) -> u32 {
+    pub(crate) fn chain_length(&self, fact_id: &str) -> u32 {
         self.chain_lengths.get(fact_id).copied().unwrap_or(0)
     }
 
     /// Get the BFS hop count for a fact.
     #[must_use]
-    pub fn hops(&self, fact_id: &str) -> Option<u32> {
+    pub(crate) fn hops(&self, fact_id: &str) -> Option<u32> {
         self.proximity.get(fact_id).copied().flatten()
     }
 }
@@ -94,7 +94,7 @@ impl GraphContext {
 /// `importance` is the normalized `PageRank` in [0.0, 1.0].
 /// Boost range: [1.0, 1.5]: at importance=0.0 the score is unchanged.
 #[must_use]
-pub fn score_epistemic_tier_with_importance(base_tier_score: f64, importance: f64) -> f64 {
+pub(crate) fn score_epistemic_tier_with_importance(base_tier_score: f64, importance: f64) -> f64 {
     let boost = 1.0 + (importance.clamp(0.0, 1.0) * 0.5); // [1.0, 1.5]
     (base_tier_score * boost).min(1.0)
 }
@@ -104,7 +104,10 @@ pub fn score_epistemic_tier_with_importance(base_tier_score: f64, importance: f6
 /// Same-cluster facts get a proximity floor of 0.3 even if no direct path exists.
 /// This reflects that entities in the same community are semantically related.
 #[must_use]
-pub fn score_relationship_proximity_with_cluster(base_hop_score: f64, same_cluster: bool) -> f64 {
+pub(crate) fn score_relationship_proximity_with_cluster(
+    base_hop_score: f64,
+    same_cluster: bool,
+) -> f64 {
     if same_cluster {
         base_hop_score.max(0.3)
     } else {
@@ -117,7 +120,7 @@ pub fn score_relationship_proximity_with_cluster(base_hop_score: f64, same_clust
 /// Facts at the end of long supersession chains are in actively-maintained domains.
 /// Each predecessor adds 0.05 to the access score, capped at +0.2 (`chain_length=4`).
 #[must_use]
-pub fn score_access_with_evolution(base_access_score: f64, chain_length: u32) -> f64 {
+pub(crate) fn score_access_with_evolution(base_access_score: f64, chain_length: u32) -> f64 {
     let evolution_bonus = (f64::from(chain_length) * 0.05).min(0.2);
     (base_access_score + evolution_bonus).min(1.0)
 }
@@ -128,7 +131,7 @@ pub fn score_access_with_evolution(base_access_score: f64, chain_length: u32) ->
 /// and stores results into `graph_scores`.
 ///
 /// Parameters: `$now` (ISO 8601 timestamp string).
-pub const RECOMPUTE_GRAPH_SCORES: &str = r"
+pub(crate) const RECOMPUTE_GRAPH_SCORES: &str = r"
 edges[src, dst] := *relationships{src, dst}
 edges_w[src, dst, weight] := *relationships{src, dst, weight}
 
@@ -154,7 +157,7 @@ comm[labels, entity_id] <~ CommunityDetectionLouvain(edges_w[])
 ";
 
 /// Datalog script to load all graph scores into memory.
-pub const LOAD_GRAPH_SCORES: &str = r"
+pub(crate) const LOAD_GRAPH_SCORES: &str = r"
 ?[entity_id, score_type, score, cluster_id] :=
     *graph_scores{entity_id, score_type, score, cluster_id}
 ";
@@ -165,7 +168,7 @@ pub const LOAD_GRAPH_SCORES: &str = r"
 /// Parameters: `$seeds` (list of entity IDs).
 ///
 /// Returns rows of `[entity_id, hops]`.
-pub const BFS_PROXIMITY_4HOP: &str = r"
+pub(crate) const BFS_PROXIMITY_4HOP: &str = r"
 seed[id] := id in $seeds
 
 hop0[id, h] := seed[id], h = 0
@@ -184,7 +187,7 @@ hop4[dst, h] := hop3[src, _], *relationships{src, dst}, not hop0[dst, _], not ho
 /// Datalog script for computing supersession chain lengths.
 ///
 /// Counts how many predecessors each fact has in its supersession chain.
-pub const SUPERSESSION_CHAIN_LENGTHS: &str = r"
+pub(crate) const SUPERSESSION_CHAIN_LENGTHS: &str = r"
 chain[id, d] := *facts{id, superseded_by}, is_null(superseded_by), d = 0
 chain[id, n] := *facts{id, superseded_by}, superseded_by = next_id, not is_null(next_id),
     chain[next_id, prev_n], n = prev_n + 1
@@ -197,33 +200,33 @@ chain[id, n] := *facts{id, superseded_by}, superseded_by = next_id, not is_null(
 ///
 /// Set to `true` by `insert_entity` / `insert_relationship`. Cleared by the
 /// background recomputation task.
-pub struct GraphDirtyFlag {
+pub(crate) struct GraphDirtyFlag {
     inner: std::sync::atomic::AtomicBool,
 }
 
 impl GraphDirtyFlag {
     /// Create a new flag, initially clean.
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             inner: std::sync::atomic::AtomicBool::new(false),
         }
     }
 
     /// Mark the graph as dirty (needs recomputation).
-    pub fn mark_dirty(&self) {
+    pub(crate) fn mark_dirty(&self) {
         self.inner.store(true, std::sync::atomic::Ordering::Release);
     }
 
     /// Check if the graph is dirty and clear the flag atomically.
     /// Returns `true` if it was dirty.
-    pub fn take_dirty(&self) -> bool {
+    pub(crate) fn take_dirty(&self) -> bool {
         self.inner.swap(false, std::sync::atomic::Ordering::AcqRel)
     }
 
     /// Check if the graph is dirty without clearing.
     #[must_use]
-    pub fn is_dirty(&self) -> bool {
+    pub(crate) fn is_dirty(&self) -> bool {
         self.inner.load(std::sync::atomic::Ordering::Acquire)
     }
 }
@@ -236,13 +239,8 @@ impl Default for GraphDirtyFlag {
 
 /// Convert an `i64` hop/depth value to `u32`, clamping negatives to 0.
 #[cfg(feature = "mneme-engine")]
-#[expect(
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    reason = "hop counts are small non-negative values"
-)]
 fn i64_to_u32(v: i64) -> u32 {
-    v.clamp(0, i64::from(u32::MAX)) as u32
+    v.clamp(0, i64::from(u32::MAX)) as u32 // SAFETY: clamped to u32 range
 }
 
 /// Parse rows of `[entity_id: String, value: Int]` into a `HashMap<String, u32>`.
@@ -273,7 +271,7 @@ fn parse_hop_rows(
 #[cfg(feature = "mneme-engine")]
 impl crate::knowledge_store::KnowledgeStore {
     /// Initialize the `graph_scores` relation. Called during schema setup.
-    pub fn init_graph_scores(&self) -> crate::error::Result<()> {
+    pub(crate) fn init_graph_scores(&self) -> crate::error::Result<()> {
         self.run_mut_query(GRAPH_SCORES_DDL, std::collections::BTreeMap::new())?;
         Ok(())
     }
@@ -282,7 +280,7 @@ impl crate::knowledge_store::KnowledgeStore {
     ///
     /// Populates pageranks and cluster assignments. Caller should then fill
     /// `context_clusters`, `proximity`, and `chain_lengths` based on query context.
-    pub fn load_graph_context(&self) -> crate::error::Result<GraphContext> {
+    pub(crate) fn load_graph_context(&self) -> crate::error::Result<GraphContext> {
         let result = self.run_query(LOAD_GRAPH_SCORES, std::collections::BTreeMap::new())?;
 
         let mut ctx = GraphContext::default();
@@ -322,7 +320,7 @@ impl crate::knowledge_store::KnowledgeStore {
     ///
     /// Uses a 5ms timeout budget. Falls back to the existing 2-hop neighborhood
     /// query if the budget is exceeded.
-    pub fn compute_bfs_proximity(
+    pub(crate) fn compute_bfs_proximity(
         &self,
         seed_entity_ids: &[String],
     ) -> crate::error::Result<HashMap<String, u32>> {
@@ -378,7 +376,7 @@ impl crate::knowledge_store::KnowledgeStore {
     }
 
     /// Compute supersession chain lengths for all facts.
-    pub fn compute_chain_lengths(&self) -> crate::error::Result<HashMap<String, u32>> {
+    pub(crate) fn compute_chain_lengths(&self) -> crate::error::Result<HashMap<String, u32>> {
         let result = self.run_query(
             SUPERSESSION_CHAIN_LENGTHS,
             std::collections::BTreeMap::new(),
@@ -387,7 +385,7 @@ impl crate::knowledge_store::KnowledgeStore {
     }
 
     /// Run the combined `PageRank` + `Louvain` recomputation and store to `graph_scores`.
-    pub fn recompute_graph_scores(&self) -> crate::error::Result<()> {
+    pub(crate) fn recompute_graph_scores(&self) -> crate::error::Result<()> {
         let now = crate::knowledge::format_timestamp(&jiff::Timestamp::now());
         let mut params = std::collections::BTreeMap::new();
         params.insert("now".to_owned(), crate::engine::DataValue::Str(now.into()));
@@ -399,7 +397,7 @@ impl crate::knowledge_store::KnowledgeStore {
     ///
     /// Joins `facts`, `fact_entities`, and supersession chain data to produce
     /// `DomainVolatility` scores for all entities with linked facts.
-    pub fn compute_domain_volatility(
+    pub(crate) fn compute_domain_volatility(
         &self,
     ) -> crate::error::Result<Vec<crate::succession::DomainVolatility>> {
         let result = self.run_query(
@@ -450,7 +448,7 @@ impl crate::knowledge_store::KnowledgeStore {
     /// Intended for background scheduling: runs the volatility Datalog,
     /// computes scores, and upserts them into `graph_scores` with
     /// `score_type = "volatility"`.
-    pub fn compute_and_store_volatility(&self) -> crate::error::Result<()> {
+    pub(crate) fn compute_and_store_volatility(&self) -> crate::error::Result<()> {
         let volatilities = self.compute_domain_volatility()?;
         let now = crate::knowledge::format_timestamp(&jiff::Timestamp::now());
 
@@ -478,7 +476,7 @@ impl crate::knowledge_store::KnowledgeStore {
     ///
     /// Returns a map of `entity_id → volatility_score` for all entities
     /// that have stored volatility data.
-    pub fn load_volatility_scores(&self) -> crate::error::Result<HashMap<String, f64>> {
+    pub(crate) fn load_volatility_scores(&self) -> crate::error::Result<HashMap<String, f64>> {
         let result = self.run_query(
             r"?[entity_id, score] := *graph_scores{entity_id, score_type, score}, score_type = 'volatility'",
             std::collections::BTreeMap::new(),
@@ -501,7 +499,7 @@ impl crate::knowledge_store::KnowledgeStore {
     ///
     /// Returns the top entities by fact count, average stability, and
     /// volatility scores. Useful for understanding what each nous "knows about."
-    pub fn nous_knowledge_profile(
+    pub(crate) fn nous_knowledge_profile(
         &self,
         nous_id: &str,
     ) -> crate::error::Result<crate::succession::KnowledgeProfile> {
@@ -565,7 +563,7 @@ impl crate::knowledge_store::KnowledgeStore {
     /// so the pipeline can skip all graph traversal when the weight is zero.
     /// Use [`RecallWeights::graph_recall_active`](crate::recall::RecallWeights::graph_recall_active)
     /// to pre-check.
-    pub fn build_graph_context(
+    pub(crate) fn build_graph_context(
         &self,
         seed_entity_ids: &[String],
         relationship_proximity_weight: f64,

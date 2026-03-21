@@ -398,15 +398,11 @@ pub const CONSOLIDATION_AUDIT_DDL: &str = r":create consolidation_audit {
 #[cfg(feature = "mneme-engine")]
 pub(crate) fn age_cutoff(min_age_days: u32) -> String {
     let now = jiff::Timestamp::now();
-    #[expect(
-        clippy::expect_used,
-        reason = "overflow only occurs for extreme min_age_days values beyond practical use"
-    )]
     let cutoff = now
         .checked_sub(jiff::SignedDuration::from_hours(
             i64::from(min_age_days) * 24,
         ))
-        .expect("age cutoff subtraction overflows only for extreme min_age_days values");
+        .unwrap_or(now);
     crate::knowledge::format_timestamp(&cutoff)
 }
 
