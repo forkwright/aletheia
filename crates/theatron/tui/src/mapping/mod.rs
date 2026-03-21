@@ -5,12 +5,13 @@ mod streams;
 
 #[cfg(test)]
 mod tests {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
     use crate::api::types::SseEvent;
     use crate::app::test_helpers::*;
     use crate::events::{Event, StreamEvent};
     use crate::msg::{MessageActionKind, Msg, OverlayKind};
     use crate::state::Overlay;
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     fn key(code: KeyCode) -> crossterm::event::Event {
         crossterm::event::Event::Key(KeyEvent::new(code, KeyModifiers::NONE))

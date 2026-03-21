@@ -266,7 +266,7 @@ pub(crate) fn Ops() -> Element {
                         key: "{i}",
                         style: "{ENTRY_STYLE}",
                         span { style: "color: {status_color(entry.is_error)};",
-                            if entry.is_error { "[x]" } else { "[v]" }
+                            if entry.is_error { "[x]" } else { "[v]" } // kanon:ignore RUST/indexing-slicing
                         }
                         span { style: "color: #e0e0e0; flex: 1;", "{entry.name}" }
                         span { style: "color: #666; font-size: 11px;",

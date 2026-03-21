@@ -8,7 +8,7 @@ use crate::events::{Event, StreamEvent};
 use crate::msg::Msg;
 
 impl App {
-    pub fn map_event(&self, event: Event) -> Option<Msg> {
+    pub(crate) fn map_event(&self, event: Event) -> Option<Msg> {
         match event {
             Event::Terminal(term_event) => self.map_terminal(term_event),
             Event::Sse(sse_event) => Some(self.map_sse(sse_event)),

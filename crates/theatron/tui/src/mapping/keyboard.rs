@@ -80,7 +80,7 @@ impl crate::app::App {
             }
 
             (KeyModifiers::ALT, KeyCode::Char(c @ '1'..='9')) => {
-                let n = (c as usize) - ('1' as usize);
+                let n = usize::try_from(u32::from(c) - u32::from('1')).unwrap_or(0);
                 Some(Msg::TabJump(n))
             }
 

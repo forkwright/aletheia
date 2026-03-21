@@ -8,7 +8,7 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 use crate::app::{AgentStatus, App};
 use crate::theme::{self, Theme};
 
-pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
+pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let mut lines: Vec<Line> = Vec::new();
 
     lines.push(Line::raw(""));

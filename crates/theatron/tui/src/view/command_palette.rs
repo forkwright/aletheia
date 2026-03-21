@@ -11,7 +11,7 @@ use crate::app::App;
 use crate::command::CommandCategory;
 use crate::theme::Theme;
 
-pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
+pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     if !app.interaction.command_palette.active || area.height < 2 {
         return;
     }
@@ -93,7 +93,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let paragraph = Paragraph::new(lines).block(block);
     frame.render_widget(paragraph, area);
 
-    let cursor_x = area.x + 1 + palette.cursor as u16;
+    let cursor_x = area.x + 1 + u16::try_from(palette.cursor).unwrap_or(u16::MAX);
     let cursor_y = area.y + 1;
     frame.set_cursor_position((cursor_x, cursor_y));
 }

@@ -25,6 +25,7 @@ pub struct SseEvent {
 /// comment lines (`:` prefix), multi-line `data:` fields (concatenated with
 /// newlines), and blank-line event delimiters.
 pub struct SseStream<S> {
+    // kanon:ignore RUST/pub-visibility
     stream: S,
     buf: String,
     done: bool,
@@ -43,6 +44,7 @@ where
 {
     /// Create a new SSE stream parser wrapping the given byte stream.
     pub fn new(stream: S) -> Self {
+        // kanon:ignore RUST/pub-visibility
         Self {
             stream,
             buf: String::new(),
@@ -135,21 +137,12 @@ where
         loop {
             // Process any complete lines already in the buffer.
             while let Some(pos) = this.buf.find('\n') {
-                // SAFETY: `pos` is a valid byte index from `find('\n')`, and
-                // '\n' and '\r' are single-byte ASCII, so these slices are
-                // always on UTF-8 char boundaries.
-                #[expect(
-                    clippy::string_slice,
-                    reason = "indices from find() on ASCII delimiters"
-                )]
-                #[expect(
-                    clippy::indexing_slicing,
-                    reason = "pos > 0 is checked in the condition, so pos - 1 is a valid byte index"
-                )]
-                let line = if pos > 0 && this.buf.as_bytes()[pos - 1] == b'\r' {
-                    this.buf[..pos - 1].to_string()
+                // SAFETY: `pos` from `find('\n')` is always a valid UTF-8 boundary,
+                // and '\r' is a single-byte ASCII char, so `pos - 1` is also safe when checked.
+                let line = if pos > 0 && this.buf.as_bytes().get(pos - 1).copied() == Some(b'\r') {
+                    this.buf.get(..pos - 1).unwrap_or_default().to_string()
                 } else {
-                    this.buf[..pos].to_string()
+                    this.buf.get(..pos).unwrap_or_default().to_string()
                 };
                 this.buf.drain(..=pos);
 

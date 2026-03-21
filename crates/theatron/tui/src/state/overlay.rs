@@ -15,7 +15,7 @@ pub enum Overlay {
     Settings(SettingsOverlay),
     ToolApproval(ToolApprovalOverlay),
     PlanApproval(PlanApprovalOverlay),
-    #[allow(
+    #[expect(
         dead_code,
         reason = "overlay set by action dispatcher; lint fires in lib but not test target"
     )]
@@ -33,7 +33,7 @@ pub struct SessionSearchOverlay {
 }
 
 impl SessionSearchOverlay {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             query: String::new(),
             cursor: 0,
@@ -67,7 +67,7 @@ pub struct ContextActionsOverlay {
 }
 
 impl ContextActionsOverlay {
-    pub fn selected_action(&self) -> Option<&ContextAction> {
+    pub(crate) fn selected_action(&self) -> Option<&ContextAction> {
         self.actions.get(self.cursor)
     }
 }
@@ -112,6 +112,10 @@ pub struct PlanStepApproval {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions use direct indexing for clarity"
+)]
 mod tests {
     use super::*;
 

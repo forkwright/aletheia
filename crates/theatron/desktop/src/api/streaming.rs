@@ -51,7 +51,7 @@ use theatron_core::id::{NousId, SessionId, ToolId, TurnId};
 /// `client` must have auth headers pre-configured. `Accept: text/event-stream`
 /// is set per-request.
 #[tracing::instrument(skip_all, fields(nous_id, session_key))]
-pub fn stream_turn(
+pub(crate) fn stream_turn(
     client: Client,
     base_url: &str,
     nous_id: &str,

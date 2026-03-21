@@ -74,7 +74,7 @@ use aletheia_koina::http::CONTENT_TYPE_JSON;
     )),
     modifiers(&SecurityAddon),
 )]
-pub struct ApiDoc;
+pub(crate) struct ApiDoc;
 
 struct SecurityAddon;
 

@@ -17,11 +17,13 @@ pub(crate) use registry::{KeyContext, all_keybindings};
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions may panic on failure")]
 mod tests {
+    use std::collections::HashMap;
+
+    use crossterm::event::{KeyCode, KeyModifiers};
+
     use super::*;
     use crate::app::test_helpers::*;
     use crate::app::{Overlay, SelectionContext};
-    use crossterm::event::{KeyCode, KeyModifiers};
-    use std::collections::HashMap;
 
     #[test]
     fn all_keybindings_is_not_empty() {

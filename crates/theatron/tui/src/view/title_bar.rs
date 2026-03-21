@@ -7,7 +7,7 @@ use ratatui::widgets::Paragraph;
 use crate::app::App;
 use crate::theme::Theme;
 
-pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
+pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let agent_name = app
         .dashboard
         .focused_agent

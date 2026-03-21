@@ -1,0 +1,40 @@
+# WHY: pylon's AppState, IdempotencyLayer, create_router, SecurityConfig,
+# PylonServer are public API consumed by the aletheia binary crate.
+RUST/pub-visibility:src/idempotency.rs
+RUST/pub-visibility:src/router.rs
+RUST/pub-visibility:src/security.rs
+RUST/pub-visibility:src/server.rs
+RUST/pub-visibility:src/state.rs
+RUST/pub-visibility:src/middleware/rate_limiter.rs
+
+# WHY: AppState has 13 fields but fields are grouped into state slices via
+# FromRef for handler extraction. Restructuring breaks the axum FromRef pattern.
+RUST/struct-too-many-fields:src/state.rs
+
+# WHY: .expect() calls are already annotated with #[expect(clippy::expect_used)]
+# at function or module level. Kanon lint doesn't recognize clippy suppression.
+RUST/expect:src/handlers/metrics.rs
+RUST/expect:src/idempotency.rs
+RUST/expect:src/metrics.rs
+RUST/expect:src/openapi.rs
+RUST/expect:src/server.rs
+
+# WHY: session_key fields in request types are client-chosen deduplication
+# identifiers, not cryptographic secrets.
+RUST/plain-string-secret:src/handlers/sessions/types.rs
+
+# WHY: router.rs contains route definitions, not database migrations.
+STORAGE/no-migration-checksum:src/router.rs
+
+# WHY: all tokio::spawn calls already have .instrument(span) with named spans.
+RUST/spawn-no-instrument:src/handlers/sessions/streaming.rs
+RUST/spawn-no-instrument:src/server.rs
+
+# WHY: sync test uses std::time::Instant and needs real sleep for stale_after_secs=0.
+# Production cleanup loop uses tokio::time::sleep correctly.
+TESTING/sleep-in-test:src/middleware/mod.rs
+TESTING/sleep-in-test:src/middleware/user_rate_limiter.rs
+
+# WHY: std::sync::Mutex is intentional — lock guard is never held across
+# await points (O(1) HashMap lookup only).
+RUST/std-mutex-in-async:src/idempotency.rs

@@ -21,7 +21,7 @@ use ratatui::widgets::{
 use crate::state::settings::{FieldType, SaveStatus, SettingsOverlay};
 use crate::theme::Theme;
 
-pub fn render(overlay: &SettingsOverlay, frame: &mut Frame, area: Rect, theme: &Theme) {
+pub(crate) fn render(overlay: &SettingsOverlay, frame: &mut Frame, area: Rect, theme: &Theme) {
     let popup = centered_rect(POPUP_WIDTH_PCT, POPUP_HEIGHT_PCT, area);
     frame.render_widget(Clear, popup);
 
@@ -160,7 +160,7 @@ pub fn render(overlay: &SettingsOverlay, frame: &mut Frame, area: Rect, theme: &
         .style(Style::default().bg(theme.colors.surface));
 
     let inner = block.inner(popup);
-    let visible_height = inner.height as usize;
+    let visible_height = usize::from(inner.height);
     let total_lines = lines.len();
 
     let cursor_line = estimate_cursor_line(overlay);
@@ -174,7 +174,7 @@ pub fn render(overlay: &SettingsOverlay, frame: &mut Frame, area: Rect, theme: &
 
     let paragraph = Paragraph::new(lines)
         .block(block)
-        .scroll((scroll as u16, 0))
+        .scroll((u16::try_from(scroll).unwrap_or(u16::MAX), 0))
         .wrap(Wrap { trim: false });
     frame.render_widget(paragraph, popup);
 

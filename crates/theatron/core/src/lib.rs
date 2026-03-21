@@ -16,3 +16,13 @@ pub mod id;
 
 /// SSE wire protocol parser for reqwest response streams.
 pub mod sse;
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn public_modules_exist() {
+        // WHY: smoke test verifying the four public modules compile and link
+        let _ = std::any::type_name::<super::api::ApiClient>();
+        let _ = std::any::type_name::<super::id::NousId>();
+    }
+}

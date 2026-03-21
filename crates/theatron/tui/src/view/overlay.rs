@@ -28,7 +28,7 @@ const HELP_KEY_COLUMN_WIDTH: usize = 13;
 /// Maximum number of tool-input lines shown in the tool approval overlay before truncating.
 const TOOL_APPROVAL_INPUT_LINES: usize = 10;
 
-pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
+pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let overlay = match &app.layout.overlay {
         Some(o) => o,
         None => return,
@@ -365,7 +365,7 @@ fn render_plan_approval(
     plan: &crate::app::PlanApprovalOverlay,
     theme: &Theme,
 ) {
-    let cost = format!("${:.2}", plan.total_cost_cents as f64 / 100.0);
+    let cost = format!("${:.2}", f64::from(plan.total_cost_cents) / 100.0);
     let title = format!("Plan ({} steps, ~{})", plan.steps.len(), cost);
 
     let mut lines = vec![Line::raw("")];
@@ -492,7 +492,7 @@ fn render_system_status(app: &App, frame: &mut Frame, area: Rect, theme: &Theme)
 
     lines.push(Line::raw(""));
 
-    let cost = app.dashboard.daily_cost_cents as f64 / 100.0;
+    let cost = f64::from(app.dashboard.daily_cost_cents) / 100.0;
     lines.push(Line::from(Span::styled("  Today", section_style)));
     lines.push(Line::raw(""));
     lines.push(Line::from(Span::styled(
@@ -585,7 +585,7 @@ fn render_diff_view(
     let all_lines = diff::render_diff_view_immutable(diff_state, inner_area, theme);
 
     let total = all_lines.len();
-    let visible_height = inner_area.height as usize;
+    let visible_height = usize::from(inner_area.height);
 
     let scroll = diff_state
         .scroll_offset
@@ -594,7 +594,7 @@ fn render_diff_view(
     let block = overlay_block(&format!("Diff [{}]", diff_state.mode.label()), theme);
     let paragraph = Paragraph::new(all_lines)
         .block(block)
-        .scroll((scroll as u16, 0));
+        .scroll((u16::try_from(scroll).unwrap_or(u16::MAX), 0));
     frame.render_widget(paragraph, area);
 }
 
@@ -624,7 +624,7 @@ fn render_session_search(
         )));
     }
 
-    let visible_height = area.height.saturating_sub(6) as usize;
+    let visible_height = usize::from(area.height.saturating_sub(6));
     let start = if search.selected >= visible_height {
         search.selected - visible_height + 1
     } else {

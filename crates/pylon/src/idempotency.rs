@@ -5,6 +5,7 @@
 //! creating duplicate turns.
 
 use std::collections::{HashMap, VecDeque};
+// WHY: lock not held across await points
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 

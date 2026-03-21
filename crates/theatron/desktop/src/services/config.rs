@@ -6,6 +6,7 @@
 //! NOTE: Auth tokens are currently stored in plaintext. Future versions should
 //! integrate with the OS keyring (libsecret, Keychain, Credential Manager).
 
+use std::io::Write;
 use std::path::PathBuf;
 
 use snafu::{ResultExt, Snafu};
@@ -82,7 +83,8 @@ fn config_path() -> Result<PathBuf, ConfigError> {
 /// # Errors
 ///
 /// Returns an error if the file exists but cannot be read or parsed.
-pub fn load() -> Result<ConnectionConfig, ConfigError> {
+#[must_use]
+pub(crate) fn load() -> Result<ConnectionConfig, ConfigError> {
     let path = config_path()?;
 
     if !path.exists() {
@@ -102,7 +104,8 @@ pub fn load() -> Result<ConnectionConfig, ConfigError> {
 ///
 /// Returns an error if the directory cannot be created or the file cannot
 /// be written.
-pub fn save(config: &ConnectionConfig) -> Result<(), ConfigError> {
+#[must_use]
+pub(crate) fn save(config: &ConnectionConfig) -> Result<(), ConfigError> {
     let path = config_path()?;
 
     if let Some(parent) = path.parent() {
@@ -115,7 +118,19 @@ pub fn save(config: &ConnectionConfig) -> Result<(), ConfigError> {
         connection: config.clone(),
     };
     let content = toml::to_string_pretty(&desktop).context(SerializeSnafu)?;
-    std::fs::write(&path, content).context(WriteFileSnafu { path: &path })?;
+    // SAFETY: Config may contain auth tokens; restrict to owner-only access.
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&path)
+            .context(WriteFileSnafu { path: &path })?;
+        file.write_all(content.as_bytes())
+            .context(WriteFileSnafu { path: &path })?;
+    }
 
     Ok(())
 }
@@ -125,7 +140,7 @@ pub fn save(config: &ConnectionConfig) -> Result<(), ConfigError> {
 /// Logs a warning if loading fails. Suitable for startup where a missing
 /// or corrupt config file should not prevent the app from launching.
 #[must_use]
-pub fn load_or_default() -> ConnectionConfig {
+pub(crate) fn load_or_default() -> ConnectionConfig {
     match load() {
         Ok(config) => config,
         Err(e) => {

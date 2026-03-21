@@ -44,7 +44,7 @@ pub(crate) enum Route {
 /// Provides connection state and config as context signals, then renders
 /// either the connect view or the main content based on connection state.
 #[component]
-pub fn App() -> Element {
+pub(crate) fn App() -> Element {
     let loaded_config = use_hook(config::load_or_default);
     let connection_state = use_signal(ConnectionState::default);
     let connection_config = use_signal(|| loaded_config);

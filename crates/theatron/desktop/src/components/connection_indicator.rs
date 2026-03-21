@@ -40,7 +40,7 @@ pub enum IndicatorColor {
 impl IndicatorColor {
     /// CSS-compatible color string for rendering.
     #[must_use]
-    pub fn css(self) -> &'static str {
+    pub(crate) fn css(self) -> &'static str {
         match self {
             Self::Green => "#22c55e",
             Self::Yellow => "#eab308",
@@ -52,7 +52,7 @@ impl IndicatorColor {
 impl ConnectionIndicator {
     /// Derive indicator state from the SSE connection state.
     #[must_use]
-    pub fn from_state(state: &SseConnectionState) -> Self {
+    pub(crate) fn from_state(state: &SseConnectionState) -> Self {
         match state {
             SseConnectionState::Connected => Self {
                 color: IndicatorColor::Green,

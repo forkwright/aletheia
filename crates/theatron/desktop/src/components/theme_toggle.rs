@@ -9,7 +9,7 @@ use crate::theme::ThemeMode;
 /// Reads `Signal<ThemeMode>` from context (provided by `ThemeProvider`)
 /// and advances to the next mode on click.
 #[component]
-pub fn ThemeToggle() -> Element {
+pub(crate) fn ThemeToggle() -> Element {
     let mut mode = use_context::<Signal<ThemeMode>>();
     let current = mode();
     let icon = current.icon();

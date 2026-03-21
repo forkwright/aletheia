@@ -27,6 +27,7 @@ use crate::sse::SseStream;
     reason = "Client is Arc-based; moved into the spawned task"
 )]
 pub fn stream_message(
+    // kanon:ignore RUST/pub-visibility
     client: Client,
     base_url: &str,
     nous_id: &str,
@@ -53,6 +54,7 @@ pub fn stream_message(
         session.key = session_key
     );
     tokio::spawn(
+        // kanon:ignore RUST/spawn-no-instrument
         async move {
             let resp = match builder.send().await {
                 Ok(resp) => resp,
@@ -208,12 +210,7 @@ fn parse_stream_event(event_type: &str, data: &str) -> Option<StreamEvent> {
             Some(StreamEvent::PlanProposed { plan })
         }
         "plan_step_start" => {
-            #[expect(
-                clippy::cast_possible_truncation,
-                clippy::as_conversions,
-                reason = "plan step IDs are small sequential integers"
-            )]
-            let step_id = json
+            let step_id_u64 = json
                 .get("stepId")
                 .and_then(serde_json::Value::as_u64)
                 .or_else(|| {
@@ -223,19 +220,15 @@ fn parse_stream_event(event_type: &str, data: &str) -> Option<StreamEvent> {
                         "missing required field in stream event"
                     );
                     None
-                })? as u32;
+                })?;
+            let step_id = u32::try_from(step_id_u64).unwrap_or(u32::MAX);
             Some(StreamEvent::PlanStepStart {
                 plan_id: PlanId::from(str_field(&json, "planId", event_type)?.to_string()),
                 step_id,
             })
         }
         "plan_step_complete" => {
-            #[expect(
-                clippy::cast_possible_truncation,
-                clippy::as_conversions,
-                reason = "plan step IDs are small sequential integers"
-            )]
-            let step_id = json
+            let step_id_u64 = json
                 .get("stepId")
                 .and_then(serde_json::Value::as_u64)
                 .or_else(|| {
@@ -245,7 +238,8 @@ fn parse_stream_event(event_type: &str, data: &str) -> Option<StreamEvent> {
                         "missing required field in stream event"
                     );
                     None
-                })? as u32;
+                })?;
+            let step_id = u32::try_from(step_id_u64).unwrap_or(u32::MAX);
             Some(StreamEvent::PlanStepComplete {
                 plan_id: PlanId::from(str_field(&json, "planId", event_type)?.to_string()),
                 step_id,

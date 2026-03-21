@@ -24,3 +24,12 @@ pub(crate) mod views;
 pub fn run() {
     dioxus::launch(app::App);
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn crate_modules_accessible() {
+        // NOTE: Validates that the public module tree compiles and links.
+        let _ = super::state::events::EventState::default();
+    }
+}

@@ -18,7 +18,7 @@ const MIN_CHAT_PANE_WIDTH: u16 = 40;
 /// Minimum column width for the operations pane.
 const MIN_OPS_PANE_WIDTH: u16 = 20;
 
-pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
+pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let ops = &app.layout.ops;
     let focused = ops.focused_pane == FocusedPane::Operations;
 
@@ -48,7 +48,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     }
 
     let mut lines: Vec<Line> = Vec::new();
-    let inner_width = inner.width.saturating_sub(1) as usize;
+    let inner_width = usize::from(inner.width.saturating_sub(1));
     let mut item_idx: usize = 0;
 
     // Summary row: total calls, errors, elapsed time.
@@ -105,7 +105,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         }
     }
 
-    let visible_height = inner.height as usize;
+    let visible_height = usize::from(inner.height);
     let total_lines = lines.len();
     let scroll = if total_lines > visible_height {
         total_lines
@@ -117,7 +117,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
 
     let paragraph = Paragraph::new(lines)
         .wrap(Wrap { trim: false })
-        .scroll((scroll as u16, 0));
+        .scroll((u16::try_from(scroll).unwrap_or(u16::MAX), 0));
 
     frame.render_widget(paragraph, inner);
 }
@@ -226,6 +226,10 @@ fn render_thinking_block(
 #[expect(
     clippy::indexing_slicing,
     reason = "TOOL_OUTPUT_TRUNCATE_LINES < output_lines.len() is checked by the `truncated` boolean before slicing"
+)]
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "millisecond durations never approach f64 precision limits"
 )]
 fn render_tool_call(
     tc: &crate::state::ops::OpsToolCall,
@@ -428,17 +432,14 @@ fn render_summary_row(
     let summary = &ops.summary;
     let mut spans = vec![
         Span::styled(" ", Style::default()),
-        Span::styled(
-            format!("{}", summary.total_calls),
-            theme.style_accent_bold(),
-        ),
+        Span::styled(summary.total_calls.to_string(), theme.style_accent_bold()),
         Span::styled(" calls", theme.style_muted()),
     ];
 
     if summary.total_errors > 0 {
         spans.push(Span::styled(" · ", theme.style_dim()));
         spans.push(Span::styled(
-            format!("{}", summary.total_errors),
+            summary.total_errors.to_string(),
             theme.style_error(),
         ));
         spans.push(Span::styled(" err", theme.style_error()));
@@ -456,14 +457,14 @@ fn render_summary_row(
         if let Some(stats) = summary.categories.get(cat) {
             let mut cat_spans = vec![
                 Span::styled("  ", Style::default()),
-                Span::styled(format!("{cat}"), theme.style_muted()),
+                Span::styled(cat.to_string(), theme.style_muted()),
                 Span::styled(" ", Style::default()),
-                Span::styled(format!("{}", stats.success), theme.style_success()),
+                Span::styled(stats.success.to_string(), theme.style_success()),
                 Span::styled("/", theme.style_dim()),
             ];
 
             if stats.fail > 0 {
-                cat_spans.push(Span::styled(format!("{}", stats.fail), theme.style_error()));
+                cat_spans.push(Span::styled(stats.fail.to_string(), theme.style_error()));
             } else {
                 cat_spans.push(Span::styled("0", theme.style_dim()));
             }
@@ -481,9 +482,9 @@ fn render_summary_row(
 }
 
 /// Calculate the width for the ops pane in columns, respecting minimum widths.
-pub fn ops_pane_width(total_width: u16, pct: u16) -> u16 {
+pub(crate) fn ops_pane_width(total_width: u16, pct: u16) -> u16 {
     let available = total_width.saturating_sub(MIN_CHAT_PANE_WIDTH);
-    let desired = (total_width as u32 * pct as u32 / 100) as u16;
+    let desired = u16::try_from(u32::from(total_width) * u32::from(pct) / 100).unwrap_or(u16::MAX);
     desired.clamp(MIN_OPS_PANE_WIDTH, available.max(MIN_OPS_PANE_WIDTH))
 }
 

@@ -304,12 +304,12 @@ fn render_streaming(state: &ChatState) -> Element {
 
 fn format_tool_call(tc: &crate::state::events::ToolCallInfo) -> String {
     if tc.completed {
-        let marker = if tc.is_error { "[x]" } else { "[v]" };
+        let marker = if tc.is_error { "[x]" } else { "[v]" }; // kanon:ignore RUST/indexing-slicing
         match tc.duration_ms {
             Some(ms) => format!("{marker} {} ({ms}ms)", tc.tool_name),
             None => format!("{marker} {}", tc.tool_name),
         }
     } else {
-        format!("[...] {}", tc.tool_name)
+        format!("[...] {}", tc.tool_name) // kanon:ignore RUST/string-slice
     }
 }

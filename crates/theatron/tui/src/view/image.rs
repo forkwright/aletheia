@@ -180,6 +180,10 @@ fn render_halfblock_cached(path: &Path, max_width: usize) -> Vec<Line<'static>> 
 /// Each text row represents two pixel rows, doubling effective vertical resolution.
 /// Images are scaled to fit within `max_width` columns and [`MAX_IMAGE_HEIGHT`] rows,
 /// maintaining aspect ratio. Never upscales.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "Rgba<u8> is [u8; 4], indices 0..3 always valid"
+)]
 fn load_and_render_halfblocks(path: &Path, max_width: usize) -> Vec<Line<'static>> {
     let img = match image::open(path) {
         Ok(img) => img,
@@ -237,7 +241,8 @@ fn load_and_render_halfblocks(path: &Path, max_width: usize) -> Vec<Line<'static
     // Pixel rows → half-block text rows
     let mut y = 0u32;
     while y < new_h {
-        let mut spans: Vec<Span<'static>> = Vec::with_capacity(new_w as usize + 1); // u32→usize: widening on 32/64-bit
+        let mut spans: Vec<Span<'static>> =
+            Vec::with_capacity(usize::try_from(new_w).unwrap_or(usize::MAX) + 1);
         spans.push(Span::raw("  ")); // left margin
 
         for x in 0..new_w {
@@ -310,6 +315,10 @@ fn format_file_info(path: &Path) -> String {
 }
 
 /// Human-readable file size formatting.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "file sizes displayed for human readability; sub-byte precision irrelevant"
+)]
 fn format_size(bytes: u64) -> String {
     if bytes < 1024 {
         format!("{bytes} B")
@@ -321,6 +330,10 @@ fn format_size(bytes: u64) -> String {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions use direct indexing for clarity"
+)]
 mod tests {
     use super::*;
 

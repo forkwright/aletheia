@@ -117,7 +117,7 @@ pub(crate) fn render_side_by_side(
     theme: &Theme,
 ) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
-    let half_width = (width as usize) / 2;
+    let half_width = usize::from(width) / 2;
     // NOTE: 6-char line-number gutter "NNNN "
     let gutter = 6;
     let content_width = half_width.saturating_sub(gutter + 2);
@@ -134,7 +134,7 @@ pub(crate) fn render_side_by_side(
     ]));
 
     let separator_line = Line::from(vec![Span::styled(
-        "─".repeat(width as usize),
+        "─".repeat(usize::from(width)),
         theme.style_dim(),
     )]);
     lines.push(separator_line);
@@ -354,7 +354,7 @@ pub(crate) fn render_diff_view(
         Span::styled(": scroll", theme.style_dim()),
     ]));
     all_lines.push(Line::from(vec![Span::styled(
-        "─".repeat(area.width as usize),
+        "─".repeat(usize::from(area.width)),
         theme.style_dim(),
     )]));
 
@@ -410,7 +410,7 @@ pub(crate) fn render_diff_view_immutable(
         Span::styled(": scroll", theme.style_dim()),
     ]));
     all_lines.push(Line::from(vec![Span::styled(
-        "─".repeat(area.width as usize),
+        "─".repeat(usize::from(area.width)),
         theme.style_dim(),
     )]));
 

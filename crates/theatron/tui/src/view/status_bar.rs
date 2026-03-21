@@ -13,7 +13,7 @@ use crate::app::App;
 use crate::keybindings;
 use crate::theme::Theme;
 
-pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
+pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let line1 = render_keybindings(app, area.width, theme);
     let line2 = render_info_bar(app, area.width, theme);
 
@@ -35,7 +35,7 @@ fn render_keybindings(app: &App, width: u16, theme: &Theme) -> Line<'static> {
         });
 
     let hints_width = hint_str.width();
-    let pad = (width as usize).saturating_sub(hints_width + 1);
+    let pad = usize::from(width).saturating_sub(hints_width + 1);
     Line::from(vec![
         Span::raw(" ".repeat(pad)),
         Span::styled(hint_str, theme.style_dim()),
@@ -51,7 +51,7 @@ fn render_keybindings(app: &App, width: u16, theme: &Theme) -> Line<'static> {
 /// 4. Selection / filter indicators
 /// 5. Right side: scroll position, cost, context gauge
 fn render_info_bar(app: &App, width: u16, theme: &Theme) -> Line<'static> {
-    let total = width as usize;
+    let total = usize::from(width);
 
     // Right side (lowest priority): scroll position, cost, context gauge.
     let mut right_spans = Vec::new();
@@ -315,7 +315,7 @@ fn cost_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
 }
 
 fn format_cost(cents: u32) -> String {
-    format!("${:.2}", cents as f64 / 100.0)
+    format!("${:.2}", f64::from(cents) / 100.0)
 }
 
 fn scroll_position_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
@@ -329,6 +329,10 @@ fn scroll_position_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
         viewport,
     ) {
         Some((offset, _size)) => {
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "percentage is always 0–100, fits in u16"
+            )]
             let pct = (offset * 100.0).round() as u16;
             vec![
                 Span::styled(format!("{pct}%"), theme.style_dim()),
@@ -396,7 +400,7 @@ fn context_gauge_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
 
     match app.dashboard.context_usage_pct {
         Some(pct) => {
-            let filled = (pct as usize * GAUGE_WIDTH) / 100;
+            let filled = (usize::from(pct) * GAUGE_WIDTH) / 100;
             let empty = GAUGE_WIDTH.saturating_sub(filled);
 
             let color = if pct <= CONTEXT_WARN_THRESHOLD {
@@ -476,9 +480,9 @@ mod tests {
             // Every span must not exceed the given width when summed.
             let total: usize = line.spans.iter().map(|s| s.content.width()).sum();
             assert!(
-                total <= w as usize + 5, // small slack for edge cases in span building
+                total <= usize::from(w) + 5, // small slack for edge cases in span building
                 "width={w}: rendered {total} cols, expected ≤ {}",
-                w as usize + 5
+                usize::from(w) + 5
             );
         }
     }

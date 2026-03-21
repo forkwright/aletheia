@@ -123,7 +123,7 @@ impl VirtualScroll {
         } else {
             total
                 .saturating_sub(vh)
-                .saturating_sub(scroll_offset as u64)
+                .saturating_sub(u64::try_from(scroll_offset).unwrap_or(u64::MAX))
         };
 
         let bottom_line = top_line + vh;
@@ -193,10 +193,18 @@ impl VirtualScroll {
         } else {
             total
                 .saturating_sub(vh)
-                .saturating_sub(scroll_offset as u64)
+                .saturating_sub(u64::try_from(scroll_offset).unwrap_or(u64::MAX))
         };
 
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "terminal line counts never approach f64 precision limits"
+        )]
         let size_ratio = vh as f64 / total as f64;
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "terminal line counts never approach f64 precision limits"
+        )]
         let offset_ratio = top_line as f64 / total as f64;
 
         Some((offset_ratio, size_ratio))
@@ -347,8 +355,8 @@ mod tests {
     #[test]
     fn push_item_amortized() {
         let mut vs = VirtualScroll::new();
-        for i in 0..1000 {
-            vs.push_item((i % 5 + 1) as u16);
+        for i in 0u16..1000 {
+            vs.push_item(i % 5 + 1);
         }
         assert_eq!(vs.len(), 1000);
         assert_eq!(
@@ -461,16 +469,20 @@ mod tests {
     fn benchmark_visible_slice_15k_items() {
         let mut vs = VirtualScroll::new();
         // Simulate 15K messages with variable heights
-        for i in 0..15_000 {
-            vs.push_item((i % 7 + 2) as u16); // heights 2..8
+        for i in 0u16..15_000 {
+            vs.push_item(i % 7 + 2); // heights 2..8
         }
 
         let start = std::time::Instant::now();
-        let iterations = 10_000;
+        let iterations: usize = 10_000;
         for offset in 0..iterations {
             let _ = vs.visible_slice(offset % 1000, false, 40);
         }
         let elapsed = start.elapsed();
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "iteration count fits in u32"
+        )]
         let per_call = elapsed / iterations as u32;
 
         // Must be sub-microsecond per call (binary search on 15K items)
@@ -484,8 +496,8 @@ mod tests {
     fn benchmark_push_item_amortized() {
         let mut vs = VirtualScroll::new();
         let start = std::time::Instant::now();
-        for i in 0..15_000 {
-            vs.push_item((i % 5 + 1) as u16);
+        for i in 0u16..15_000 {
+            vs.push_item(i % 5 + 1);
         }
         let elapsed = start.elapsed();
 

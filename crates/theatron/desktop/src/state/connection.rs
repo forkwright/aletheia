@@ -46,26 +46,26 @@ pub enum ConnectionState {
 impl ConnectionState {
     /// Whether the connection is in the `Connected` state.
     #[must_use]
-    pub fn is_connected(&self) -> bool {
+    pub(crate) fn is_connected(&self) -> bool {
         matches!(self, Self::Connected)
     }
 
     /// Whether the connection is in the `Disconnected` state.
     #[must_use]
-    pub fn is_disconnected(&self) -> bool {
+    pub(crate) fn is_disconnected(&self) -> bool {
         matches!(self, Self::Disconnected)
     }
 
     /// Whether the UI should show the connect form (not connected or actively
     /// trying to connect).
     #[must_use]
-    pub fn needs_connect_view(&self) -> bool {
+    pub(crate) fn needs_connect_view(&self) -> bool {
         !matches!(self, Self::Connected)
     }
 
     /// Short label for status bar display.
     #[must_use]
-    pub fn label(&self) -> &str {
+    pub(crate) fn label(&self) -> &str {
         match self {
             Self::Disconnected => "disconnected",
             Self::Connecting => "connecting",
@@ -114,13 +114,13 @@ const INITIAL_BACKOFF: Duration = Duration::from_secs(1);
 const MAX_BACKOFF: Duration = Duration::from_secs(30);
 
 /// Interval between periodic health checks once connected.
-pub const HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(30);
+pub(crate) const HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(30);
 
 /// Calculate backoff duration for the given attempt number (1-indexed).
 ///
 /// Sequence: 1s, 2s, 4s, 8s, 16s, 30s, 30s, ...
 #[must_use]
-pub fn backoff_duration(attempt: u32) -> Duration {
+pub(crate) fn backoff_duration(attempt: u32) -> Duration {
     let shift = attempt.saturating_sub(1).min(63);
     let multiplier = 1u64.checked_shl(shift).unwrap_or(u64::MAX);
     let secs = INITIAL_BACKOFF.as_secs().saturating_mul(multiplier);

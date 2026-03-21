@@ -59,7 +59,7 @@ impl Default for AppState {
 }
 
 /// Unique tab identifier, distinct from session IDs.
-pub type TabId = u64;
+pub(crate) type TabId = u64;
 
 /// Metadata for a tab. The actual chat state lives in `AgentChatState`,
 /// owned by the tab's component, not here.
@@ -88,7 +88,7 @@ pub struct TabBar {
 impl TabBar {
     /// Create an empty tab bar.
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             tabs: Vec::new(),
             active: 0,
@@ -97,7 +97,7 @@ impl TabBar {
     }
 
     /// Create a new tab, returning its index.
-    pub fn create(&mut self, agent_id: NousId, title: impl Into<String>) -> usize {
+    pub(crate) fn create(&mut self, agent_id: NousId, title: impl Into<String>) -> usize {
         let id = self.next_id;
         self.next_id += 1;
         self.tabs.push(TabEntry {
@@ -110,7 +110,7 @@ impl TabBar {
     }
 
     /// Close a tab by index. Returns the removed entry.
-    pub fn close(&mut self, index: usize) -> Option<TabEntry> {
+    pub(crate) fn close(&mut self, index: usize) -> Option<TabEntry> {
         if index >= self.tabs.len() {
             return None;
         }
@@ -127,19 +127,19 @@ impl TabBar {
 
     /// Number of open tabs.
     #[must_use]
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.tabs.len()
     }
 
     /// Whether the tab bar is empty.
     #[must_use]
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.tabs.is_empty()
     }
 
     /// Get the active tab entry.
     #[must_use]
-    pub fn active_tab(&self) -> Option<&TabEntry> {
+    pub(crate) fn active_tab(&self) -> Option<&TabEntry> {
         self.tabs.get(self.active)
     }
 }

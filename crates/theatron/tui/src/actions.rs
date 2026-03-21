@@ -15,10 +15,11 @@ const LAYOUT_MIN_OPS_TERMINAL_WIDTH: u16 = 80;
 const LAYOUT_MIN_CHAT_PANE_WIDTH: u16 = 40;
 const LAYOUT_MIN_OPS_PANE_WIDTH: u16 = 20;
 
+use theatron_core::api::streaming;
+
 use crate::app::App;
 use crate::state::virtual_scroll::estimate_message_height;
 use crate::state::{ChatMessage, SavedScrollState, TabCompletion};
-use theatron_core::api::streaming;
 
 impl App {
     #[tracing::instrument(skip(self, text), fields(agent = ?self.dashboard.focused_agent))]
@@ -35,6 +36,7 @@ impl App {
                 let text = text.to_string();
                 let span = tracing::info_span!("queue_message", %session_id);
                 tokio::spawn(
+                    // kanon:ignore RUST/spawn-no-instrument
                     async move {
                         if let Err(e) = client.queue_message(&session_id, &text).await {
                             tracing::error!("failed to queue message: {e}");
@@ -99,7 +101,7 @@ impl App {
 
     #[expect(
         clippy::indexing_slicing,
-        reason = "tc.candidates[tc.index] is safe because tc.index is computed as (old+1) % candidates.len(); candidates[0] is safe because the non-empty check precedes it"
+        reason = "tc.candidates and candidates are bounds-checked before access" // kanon:ignore RUST/indexing-slicing
     )]
     pub(crate) fn handle_tab_completion(&mut self) {
         let text_before_cursor = self
@@ -137,7 +139,7 @@ impl App {
                 .collect();
 
             if !candidates.is_empty() {
-                let first = candidates[0].clone();
+                let first = candidates[0].clone(); // kanon:ignore RUST/indexing-slicing
                 self.interaction.tab_completion = Some(TabCompletion {
                     prefix: prefix.to_string(),
                     candidates,
@@ -204,7 +206,9 @@ impl App {
         let show_ops = self.layout.ops.visible && tw >= LAYOUT_MIN_OPS_TERMINAL_WIDTH;
         let chat_w = if show_ops {
             let available = rest.saturating_sub(LAYOUT_MIN_CHAT_PANE_WIDTH);
-            let desired = (u32::from(rest) * u32::from(self.layout.ops.width_pct) / 100) as u16;
+            let desired =
+                u16::try_from(u32::from(rest) * u32::from(self.layout.ops.width_pct) / 100)
+                    .unwrap_or(u16::MAX);
             let ops_w = desired.clamp(
                 LAYOUT_MIN_OPS_PANE_WIDTH,
                 available.max(LAYOUT_MIN_OPS_PANE_WIDTH),

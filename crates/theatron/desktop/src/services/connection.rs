@@ -87,7 +87,8 @@ impl PylonClient {
     ///
     /// Returns `InvalidToken` if the auth token contains non-ASCII characters.
     /// Returns `ClientBuild` if the reqwest client cannot be constructed.
-    pub fn new(config: &ConnectionConfig) -> Result<Self, ConnectionError> {
+    #[must_use]
+    pub(crate) fn new(config: &ConnectionConfig) -> Result<Self, ConnectionError> {
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
@@ -119,6 +120,7 @@ impl PylonClient {
     /// Check server reachability via `GET /api/health`.
     ///
     /// Returns `Ok(())` if the server responds with a 2xx status.
+    #[must_use]
     pub async fn health(&self) -> Result<(), ConnectionError> {
         let url = format!("{}/api/health", self.base_url);
         let resp = self
@@ -140,13 +142,13 @@ impl PylonClient {
 
     /// The underlying reqwest client, for use by SSE and streaming layers.
     #[must_use]
-    pub fn raw_client(&self) -> &reqwest::Client {
+    pub(crate) fn raw_client(&self) -> &reqwest::Client {
         &self.client
     }
 
     /// The base URL this client is configured for.
     #[must_use]
-    pub fn base_url(&self) -> &str {
+    pub(crate) fn base_url(&self) -> &str {
         &self.base_url
     }
 }
@@ -171,7 +173,7 @@ impl std::fmt::Debug for PylonClient {
 ///
 /// State changes are sent through an unbounded mpsc channel so a Dioxus
 /// coroutine can receive them on the UI thread and write to signals.
-pub struct ConnectionService {
+pub(crate) struct ConnectionService {
     config: ConnectionConfig,
     cancel: CancellationToken,
     tx: mpsc::UnboundedSender<ConnectionState>,
@@ -180,7 +182,7 @@ pub struct ConnectionService {
 impl ConnectionService {
     /// Create a new connection service.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         config: ConnectionConfig,
         cancel: CancellationToken,
         tx: mpsc::UnboundedSender<ConnectionState>,

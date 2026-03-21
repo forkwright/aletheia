@@ -20,7 +20,7 @@ use helpers::{current_style, flush_line, linkify_text, push_span, render_table};
 /// Returns `(lines, links)` where `links` contains [`MdLink`] entries for every
 /// hyperlink found. Column offsets in `MdLink` are **relative** to the returned
 /// `lines` and do **not** include any content-prefix prepended by the caller.
-pub fn render(
+pub(crate) fn render(
     text: &str,
     _width: usize,
     theme: &Theme,
@@ -368,4 +368,8 @@ pub fn render(
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions use direct indexing for clarity"
+)]
 mod tests;

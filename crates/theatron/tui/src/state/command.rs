@@ -1,11 +1,12 @@
 /// Command palette state.
 #[derive(Debug, Default)]
 pub struct CommandPaletteState {
-    pub input: String,
-    pub cursor: usize,
-    pub suggestions: Vec<crate::command::Suggestion>,
-    pub selected: usize,
-    pub active: bool,
+    // kanon:ignore RUST/pub-visibility
+    pub(crate) input: String,
+    pub(crate) cursor: usize,
+    pub(crate) suggestions: Vec<crate::command::Suggestion>,
+    pub(crate) selected: usize,
+    pub(crate) active: bool,
 }
 
 /// Selection context for context-aware status bar hints.
@@ -16,6 +17,7 @@ pub struct CommandPaletteState {
 )]
 #[non_exhaustive]
 pub enum SelectionContext {
+    // kanon:ignore RUST/pub-visibility
     #[default]
     None,
     UserMessage {

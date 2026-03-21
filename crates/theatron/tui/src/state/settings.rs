@@ -1,35 +1,35 @@
 use std::collections::HashMap;
 
 #[derive(Debug)]
-pub struct SettingsOverlay {
-    pub sections: Vec<SettingsSection>,
-    pub cursor: usize,
-    pub editing: Option<EditState>,
-    pub pending_changes: HashMap<String, serde_json::Value>,
-    pub save_status: SaveStatus,
-    pub scroll_offset: usize,
+pub(crate) struct SettingsOverlay {
+    pub(crate) sections: Vec<SettingsSection>,
+    pub(crate) cursor: usize,
+    pub(crate) editing: Option<EditState>,
+    pub(crate) pending_changes: HashMap<String, serde_json::Value>,
+    pub(crate) save_status: SaveStatus,
+    pub(crate) scroll_offset: usize,
 }
 
 #[derive(Debug)]
-pub struct SettingsSection {
-    pub name: String,
-    pub fields: Vec<SettingsField>,
+pub(crate) struct SettingsSection {
+    pub(crate) name: String,
+    pub(crate) fields: Vec<SettingsField>,
 }
 
 #[derive(Debug, Clone)]
-pub struct SettingsField {
-    pub key: String,
-    pub label: String,
-    pub value: serde_json::Value,
-    pub original_value: serde_json::Value,
-    pub field_type: FieldType,
-    pub editable: bool,
-    pub requires_restart: bool,
+pub(crate) struct SettingsField {
+    pub(crate) key: String,
+    pub(crate) label: String,
+    pub(crate) value: serde_json::Value,
+    pub(crate) original_value: serde_json::Value,
+    pub(crate) field_type: FieldType,
+    pub(crate) editable: bool,
+    pub(crate) requires_restart: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum FieldType {
+pub(crate) enum FieldType {
     Bool,
     Integer,
     #[expect(
@@ -41,14 +41,14 @@ pub enum FieldType {
 }
 
 #[derive(Debug)]
-pub struct EditState {
-    pub buffer: String,
-    pub cursor: usize,
+pub(crate) struct EditState {
+    pub(crate) buffer: String,
+    pub(crate) cursor: usize,
 }
 
 #[derive(Debug)]
 #[non_exhaustive]
-pub enum SaveStatus {
+pub(crate) enum SaveStatus {
     Idle,
     Saving,
     #[expect(
@@ -60,7 +60,7 @@ pub enum SaveStatus {
 }
 
 impl SettingsOverlay {
-    pub fn from_config(config: &serde_json::Value) -> Self {
+    pub(crate) fn from_config(config: &serde_json::Value) -> Self {
         let sections = build_sections(config);
         Self {
             sections,
@@ -72,11 +72,11 @@ impl SettingsOverlay {
         }
     }
 
-    pub fn total_fields(&self) -> usize {
+    pub(crate) fn total_fields(&self) -> usize {
         self.sections.iter().map(|s| s.fields.len()).sum()
     }
 
-    pub fn current_field(&self) -> Option<&SettingsField> {
+    pub(crate) fn current_field(&self) -> Option<&SettingsField> {
         let mut idx = 0;
         for section in &self.sections {
             for field in &section.fields {
@@ -89,7 +89,7 @@ impl SettingsOverlay {
         None
     }
 
-    pub fn current_field_mut(&mut self) -> Option<&mut SettingsField> {
+    pub(crate) fn current_field_mut(&mut self) -> Option<&mut SettingsField> {
         let mut idx = 0;
         for section in &mut self.sections {
             for field in &mut section.fields {
@@ -102,7 +102,7 @@ impl SettingsOverlay {
         None
     }
 
-    pub fn has_changes(&self) -> bool {
+    pub(crate) fn has_changes(&self) -> bool {
         self.sections
             .iter()
             .any(|s| s.fields.iter().any(|f| f.value != f.original_value))
@@ -112,7 +112,7 @@ impl SettingsOverlay {
         clippy::indexing_slicing,
         reason = "parts.len() == 2 guard ensures indices 0 and 1 are valid before accessing them"
     )]
-    pub fn changed_sections(&self) -> HashMap<String, serde_json::Value> {
+    pub(crate) fn changed_sections(&self) -> HashMap<String, serde_json::Value> {
         let mut result: HashMap<String, serde_json::Value> = HashMap::new();
         for section in &self.sections {
             for field in &section.fields {
@@ -133,7 +133,7 @@ impl SettingsOverlay {
         result
     }
 
-    pub fn reset(&mut self) {
+    pub(crate) fn reset(&mut self) {
         for section in &mut self.sections {
             for field in &mut section.fields {
                 field.value = field.original_value.clone();

@@ -13,6 +13,7 @@ use crate::error::{ErrorBody, ErrorResponse};
 
 /// Per-IP sliding-window rate limiter for anonymous HTTP requests.
 pub struct RateLimiter {
+    // kanon:ignore RUST/pub-visibility
     max_requests: u32,
     window: Duration,
     state: Mutex<HashMap<String, (Instant, u32)>>,
@@ -25,7 +26,7 @@ pub struct RateLimiter {
 impl RateLimiter {
     /// Create a rate limiter that allows `requests_per_minute` per client IP.
     #[must_use]
-    pub fn new(requests_per_minute: u32) -> Self {
+    pub(crate) fn new(requests_per_minute: u32) -> Self {
         Self {
             max_requests: requests_per_minute,
             window: Duration::from_secs(60),
@@ -36,7 +37,7 @@ impl RateLimiter {
 
     /// Set whether to trust `X-Forwarded-For` / `X-Real-IP` headers for IP resolution.
     #[must_use]
-    pub fn with_trust_proxy(mut self, trust_proxy: bool) -> Self {
+    pub(crate) fn with_trust_proxy(mut self, trust_proxy: bool) -> Self {
         self.trust_proxy = trust_proxy;
         self
     }
@@ -45,7 +46,7 @@ impl RateLimiter {
     ///
     /// Returns `None` if the request is allowed, or `Some(retry_after_secs)`
     /// if the limit has been exceeded.
-    pub fn check(&self, client: &str) -> Option<u64> {
+    pub(crate) fn check(&self, client: &str) -> Option<u64> {
         let now = Instant::now();
         let mut state = self
             .state

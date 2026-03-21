@@ -216,6 +216,10 @@ pub(crate) async fn handle_sse_distill_after(app: &mut App, nous_id: NousId) {
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions may panic on failure")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions use direct indexing for clarity"
+)]
 mod tests {
     use super::*;
     use crate::app::test_helpers::*;

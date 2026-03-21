@@ -91,7 +91,7 @@ const STATUS_STYLE: &str = "\
 /// Reads connection state from context and provides a form for the user to
 /// configure and initiate a server connection.
 #[component]
-pub fn ConnectView(
+pub(crate) fn ConnectView(
     connection_state: Signal<ConnectionState>,
     connection_config: Signal<ConnectionConfig>,
 ) -> Element {
