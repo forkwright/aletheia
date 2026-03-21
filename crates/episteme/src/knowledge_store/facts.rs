@@ -17,9 +17,9 @@ impl KnowledgeStore {
             }
         );
         ensure!(
-            (0.0..=1.0).contains(&fact.confidence),
+            (0.0..=1.0).contains(&fact.provenance.confidence),
             crate::error::InvalidConfidenceSnafu {
-                value: fact.confidence
+                value: fact.provenance.confidence
             }
         );
         let params = fact_to_params(fact);
@@ -30,6 +30,10 @@ impl KnowledgeStore {
     ///
     /// Sets `valid_to` on the old fact to `now` and `superseded_by` to the new
     /// fact's ID, then inserts the new fact.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "sequential param mapping, splitting adds indirection"
+    )]
     #[instrument(skip(self, old_fact, new_fact), fields(old_id = %old_fact.id, new_id = %new_fact.id))]
     pub fn supersede_fact(
         &self,
@@ -50,7 +54,7 @@ impl KnowledgeStore {
         );
         params.insert(
             String::from("old_valid_from"),
-            DataValue::Str(format_timestamp(&old_fact.valid_from).into()),
+            DataValue::Str(format_timestamp(&old_fact.temporal.valid_from).into()),
         );
         params.insert(
             String::from("old_content"),
@@ -62,11 +66,11 @@ impl KnowledgeStore {
         );
         params.insert(
             String::from("old_confidence"),
-            DataValue::from(old_fact.confidence),
+            DataValue::from(old_fact.provenance.confidence),
         );
         params.insert(
             String::from("old_tier"),
-            DataValue::Str(old_fact.tier.as_str().into()),
+            DataValue::Str(old_fact.provenance.tier.as_str().into()),
         );
         params.insert(String::from("now"), DataValue::Str(now_str.as_str().into()));
         params.insert(
@@ -75,20 +79,28 @@ impl KnowledgeStore {
         );
         params.insert(
             String::from("old_source"),
-            DataValue::Str(old_fact.source_session_id.as_deref().unwrap_or("").into()),
+            DataValue::Str(
+                old_fact
+                    .provenance
+                    .source_session_id
+                    .as_deref()
+                    .unwrap_or("")
+                    .into(),
+            ),
         );
         params.insert(
             String::from("old_recorded"),
-            DataValue::Str(format_timestamp(&old_fact.recorded_at).into()),
+            DataValue::Str(format_timestamp(&old_fact.temporal.recorded_at).into()),
         );
         params.insert(
             String::from("old_access_count"),
-            DataValue::from(i64::from(old_fact.access_count)),
+            DataValue::from(i64::from(old_fact.access.access_count)),
         );
         params.insert(
             String::from("old_last_accessed_at"),
             DataValue::Str(
                 old_fact
+                    .access
                     .last_accessed_at
                     .as_ref()
                     .map(format_timestamp)
@@ -98,7 +110,7 @@ impl KnowledgeStore {
         );
         params.insert(
             String::from("old_stability_hours"),
-            DataValue::from(old_fact.stability_hours),
+            DataValue::from(old_fact.provenance.stability_hours),
         );
         params.insert(
             String::from("old_fact_type"),
@@ -106,7 +118,7 @@ impl KnowledgeStore {
         );
         params.insert(
             String::from("old_is_forgotten"),
-            DataValue::Bool(old_fact.is_forgotten),
+            DataValue::Bool(old_fact.lifecycle.is_forgotten),
         );
         params.insert(String::from("old_forgotten_at"), DataValue::Null);
         params.insert(String::from("old_forget_reason"), DataValue::Null);
@@ -117,19 +129,26 @@ impl KnowledgeStore {
         );
         params.insert(
             String::from("new_confidence"),
-            DataValue::from(new_fact.confidence),
+            DataValue::from(new_fact.provenance.confidence),
         );
         params.insert(
             String::from("new_tier"),
-            DataValue::Str(new_fact.tier.as_str().into()),
+            DataValue::Str(new_fact.provenance.tier.as_str().into()),
         );
         params.insert(
             String::from("source_session_id"),
-            DataValue::Str(new_fact.source_session_id.as_deref().unwrap_or("").into()),
+            DataValue::Str(
+                new_fact
+                    .provenance
+                    .source_session_id
+                    .as_deref()
+                    .unwrap_or("")
+                    .into(),
+            ),
         );
         params.insert(
             String::from("stability_hours"),
-            DataValue::from(new_fact.stability_hours),
+            DataValue::from(new_fact.provenance.stability_hours),
         );
         params.insert(
             String::from("fact_type"),
@@ -190,8 +209,8 @@ impl KnowledgeStore {
                 }
             };
             for mut fact in facts {
-                fact.access_count = fact.access_count.saturating_add(1);
-                fact.last_accessed_at = Some(now);
+                fact.access.access_count = fact.access.access_count.saturating_add(1);
+                fact.access.last_accessed_at = Some(now);
                 if let Err(e) = self.insert_fact(&fact) {
                     tracing::warn!(error = %e, fact_id = %id, "failed to write incremented access count");
                 }
@@ -475,7 +494,7 @@ impl KnowledgeStore {
         let mut pure_removed = Vec::new();
 
         for old in &removed {
-            if let Some(ref new_id) = old.superseded_by
+            if let Some(ref new_id) = old.lifecycle.superseded_by
                 && added_ids.contains(new_id.as_str())
                 && let Some(new_fact) = added.iter().find(|f| f.id == *new_id)
             {
@@ -662,7 +681,7 @@ impl KnowledgeStore {
         // WHY: CozoDB in-memory read-modify-write: read the record, change the
         // field in Rust, then upsert it back. Same pattern as increment_access.
         for mut fact in existing {
-            fact.confidence = confidence;
+            fact.provenance.confidence = confidence;
             self.insert_fact(&fact)?;
         }
 

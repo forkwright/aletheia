@@ -22,13 +22,6 @@
         reason = "module internals; only exercised by crate-level tests"
     )
 )]
-#![cfg_attr(
-    test,
-    expect(
-        clippy::indexing_slicing,
-        reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-    )
-)]
 
 use serde::{Deserialize, Serialize};
 
@@ -374,7 +367,9 @@ mod tests {
     #[cfg(feature = "mneme-engine")]
     mod engine_tests {
         use super::*;
-        use crate::knowledge::{Entity, Fact, far_future};
+        use crate::knowledge::{
+            Entity, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal, far_future,
+        };
         use crate::knowledge_store::KnowledgeStore;
 
         fn test_store() -> std::sync::Arc<KnowledgeStore> {
@@ -397,20 +392,28 @@ mod tests {
                 id: crate::id::FactId::from(id),
                 nous_id: nous_id.to_owned(),
                 content: format!("fact content for {id}"),
-                confidence: 0.9,
-                tier: EpistemicTier::Inferred,
-                valid_from: jiff::Timestamp::now(),
-                valid_to: far_future(),
-                superseded_by: None,
-                source_session_id: None,
-                recorded_at: jiff::Timestamp::now(),
-                access_count: 0,
-                last_accessed_at: None,
-                stability_hours: 720.0,
                 fact_type: "observation".to_owned(),
-                is_forgotten: false,
-                forgotten_at: None,
-                forget_reason: None,
+                temporal: FactTemporal {
+                    valid_from: jiff::Timestamp::now(),
+                    valid_to: far_future(),
+                    recorded_at: jiff::Timestamp::now(),
+                },
+                provenance: FactProvenance {
+                    confidence: 0.9,
+                    tier: EpistemicTier::Inferred,
+                    source_session_id: None,
+                    stability_hours: 720.0,
+                },
+                lifecycle: FactLifecycle {
+                    superseded_by: None,
+                    is_forgotten: false,
+                    forgotten_at: None,
+                    forget_reason: None,
+                },
+                access: FactAccess {
+                    access_count: 0,
+                    last_accessed_at: None,
+                },
             }
         }
 
@@ -428,12 +431,12 @@ mod tests {
             let store = test_store();
 
             let mut fact_a = make_fact("fact-a", "syn");
-            fact_a.superseded_by = Some(crate::id::FactId::from("fact-b"));
-            fact_a.valid_to = jiff::Timestamp::now();
+            fact_a.lifecycle.superseded_by = Some(crate::id::FactId::from("fact-b"));
+            fact_a.temporal.valid_to = jiff::Timestamp::now();
 
             let mut fact_b = make_fact("fact-b", "syn");
-            fact_b.superseded_by = Some(crate::id::FactId::from("fact-c"));
-            fact_b.valid_to = jiff::Timestamp::now();
+            fact_b.lifecycle.superseded_by = Some(crate::id::FactId::from("fact-c"));
+            fact_b.temporal.valid_to = jiff::Timestamp::now();
 
             let fact_c = make_fact("fact-c", "syn");
 
@@ -471,8 +474,9 @@ mod tests {
                 let mut fact = make_fact(&id, "syn");
                 if i < 8 {
                     let replacement_id = format!("f-v-rep-{i}");
-                    fact.superseded_by = Some(crate::id::FactId::from(replacement_id.as_str()));
-                    fact.valid_to = jiff::Timestamp::now();
+                    fact.lifecycle.superseded_by =
+                        Some(crate::id::FactId::from(replacement_id.as_str()));
+                    fact.temporal.valid_to = jiff::Timestamp::now();
 
                     let rep = make_fact(&replacement_id, "syn");
                     store.insert_fact(&rep).expect("insert replacement");
@@ -510,8 +514,8 @@ mod tests {
                 let mut fact = make_fact(&id, "syn");
                 if i == 0 {
                     let rep_id = "f-s-rep-0";
-                    fact.superseded_by = Some(crate::id::FactId::from(rep_id));
-                    fact.valid_to = jiff::Timestamp::now();
+                    fact.lifecycle.superseded_by = Some(crate::id::FactId::from(rep_id));
+                    fact.temporal.valid_to = jiff::Timestamp::now();
                     let rep = make_fact(rep_id, "syn");
                     store.insert_fact(&rep).expect("insert rep");
                     link_fact_entity(&store, rep_id, "ent-stable");

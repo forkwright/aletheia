@@ -11,6 +11,46 @@ use crate::id::{EmbeddingId, EntityId, FactId};
 /// Maximum byte length for fact content strings.
 pub const MAX_CONTENT_LENGTH: usize = 102_400;
 
+/// Bi-temporal validity and recording timestamps for a fact.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[expect(missing_docs, reason = "temporal fields are self-documenting by name")]
+pub struct FactTemporal {
+    pub valid_from: jiff::Timestamp,
+    pub valid_to: jiff::Timestamp,
+    pub recorded_at: jiff::Timestamp,
+}
+
+/// Provenance: where a fact came from and how trustworthy it is.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[expect(
+    missing_docs,
+    reason = "provenance fields are self-documenting by name"
+)]
+pub struct FactProvenance {
+    pub confidence: f64,
+    pub tier: EpistemicTier,
+    pub source_session_id: Option<String>,
+    pub stability_hours: f64,
+}
+
+/// Lifecycle state for supersession and intentional forgetting.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[expect(missing_docs, reason = "lifecycle fields are self-documenting by name")]
+pub struct FactLifecycle {
+    pub superseded_by: Option<FactId>,
+    pub is_forgotten: bool,
+    pub forgotten_at: Option<jiff::Timestamp>,
+    pub forget_reason: Option<ForgetReason>,
+}
+
+/// Access-tracking counters for FSRS decay.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[expect(missing_docs, reason = "access fields are self-documenting by name")]
+pub struct FactAccess {
+    pub access_count: u32,
+    pub last_accessed_at: Option<jiff::Timestamp>,
+}
+
 /// A memory fact extracted from conversation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[expect(missing_docs, reason = "fact fields are self-documenting by name")]
@@ -18,24 +58,20 @@ pub struct Fact {
     pub id: FactId,
     pub nous_id: String,
     pub fact_type: String,
-
     pub content: String,
-    pub confidence: f64,
-    pub tier: EpistemicTier,
 
-    pub valid_from: jiff::Timestamp,
-    pub valid_to: jiff::Timestamp,
-    pub recorded_at: jiff::Timestamp,
-    pub source_session_id: Option<String>,
-
-    pub superseded_by: Option<FactId>,
-    pub is_forgotten: bool,
-    pub forgotten_at: Option<jiff::Timestamp>,
-    pub forget_reason: Option<ForgetReason>,
-
-    pub access_count: u32,
-    pub last_accessed_at: Option<jiff::Timestamp>,
-    pub stability_hours: f64,
+    /// Bi-temporal validity and recording timestamps.
+    #[serde(flatten)]
+    pub temporal: FactTemporal,
+    /// Provenance and confidence metadata.
+    #[serde(flatten)]
+    pub provenance: FactProvenance,
+    /// Supersession and forgetting lifecycle.
+    #[serde(flatten)]
+    pub lifecycle: FactLifecycle,
+    /// Access-tracking counters.
+    #[serde(flatten)]
+    pub access: FactAccess,
 }
 
 /// An entity in the knowledge graph.
@@ -342,7 +378,7 @@ pub fn default_stability_hours(fact_type: &str) -> f64 {
 pub fn far_future() -> jiff::Timestamp {
     jiff::civil::date(9999, 1, 1)
         .to_zoned(jiff::tz::TimeZone::UTC)
-        .expect("valid far-future date")
+        .expect("valid far-future date") // SAFETY: 9999-01-01 is a valid Gregorian date
         .timestamp()
 }
 
@@ -384,7 +420,7 @@ pub fn parse_timestamp(s: &str) -> Option<jiff::Timestamp> {
     if let Ok(date) = s.parse::<jiff::civil::Date>() {
         return Some(
             date.to_zoned(jiff::tz::TimeZone::UTC)
-                .expect("valid UTC conversion")
+                .expect("valid UTC conversion") // SAFETY: UTC conversion of a valid parsed date is infallible
                 .timestamp(),
         );
     }
@@ -486,5 +522,5 @@ pub struct RecallResult {
 }
 
 #[cfg(test)]
-#[path = "knowledge_tests.rs"]
+#[path = "knowledge_test.rs"]
 mod tests;

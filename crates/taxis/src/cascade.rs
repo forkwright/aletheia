@@ -260,9 +260,10 @@ pub fn resolve_all_with(
     reason = "test: index 0 is valid after asserting results.len() >= 1"
 )]
 mod tests {
-    use super::*;
     use std::fs;
     use std::path::Path;
+
+    use super::*;
 
     fn setup_oikos() -> (tempfile::TempDir, Oikos) {
         let dir = tempfile::tempdir().expect("create temp dir");
@@ -288,12 +289,25 @@ mod tests {
         mkfile(dir.path(), "theke/tools/theke-tool.md");
 
         let results = discover(&oikos, "syn", "tools", Some("md"));
-        assert_eq!(results.len(), 3);
+        assert_eq!(
+            results.len(),
+            3,
+            "should discover files from all three tiers"
+        );
 
         let names: Vec<&str> = results.iter().map(|r| r.name.as_str()).collect();
-        assert!(names.contains(&"agent-only.md"));
-        assert!(names.contains(&"shared-tool.md"));
-        assert!(names.contains(&"theke-tool.md"));
+        assert!(
+            names.contains(&"agent-only.md"),
+            "should include nous-tier file"
+        );
+        assert!(
+            names.contains(&"shared-tool.md"),
+            "should include shared-tier file"
+        );
+        assert!(
+            names.contains(&"theke-tool.md"),
+            "should include theke-tier file"
+        );
     }
 
     #[test]
@@ -304,8 +318,16 @@ mod tests {
         mkfile(dir.path(), "theke/tools/override.md");
 
         let results = discover(&oikos, "syn", "tools", Some("md"));
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].tier, Tier::Nous);
+        assert_eq!(
+            results.len(),
+            1,
+            "duplicate filename should resolve to single entry"
+        );
+        assert_eq!(
+            results[0].tier,
+            Tier::Nous,
+            "nous tier should win over shared and theke"
+        );
     }
 
     #[test]
@@ -315,8 +337,16 @@ mod tests {
         mkfile(dir.path(), "theke/hooks/common.md");
 
         let results = discover(&oikos, "syn", "hooks", Some("md"));
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].tier, Tier::Shared);
+        assert_eq!(
+            results.len(),
+            1,
+            "duplicate filename should resolve to single entry"
+        );
+        assert_eq!(
+            results[0].tier,
+            Tier::Shared,
+            "shared tier should win over theke"
+        );
     }
 
     #[test]
@@ -326,19 +356,28 @@ mod tests {
         mkfile(dir.path(), "shared/tools/tool.yaml");
 
         let md = discover(&oikos, "syn", "tools", Some("md"));
-        assert_eq!(md.len(), 1);
-        assert_eq!(md[0].name, "tool.md");
+        assert_eq!(md.len(), 1, "md filter should match exactly one file");
+        assert_eq!(
+            md[0].name, "tool.md",
+            "md filter should return the .md file"
+        );
 
         let yaml = discover(&oikos, "syn", "tools", Some("yaml"));
-        assert_eq!(yaml.len(), 1);
-        assert_eq!(yaml[0].name, "tool.yaml");
+        assert_eq!(yaml.len(), 1, "yaml filter should match exactly one file");
+        assert_eq!(
+            yaml[0].name, "tool.yaml",
+            "yaml filter should return the .yaml file"
+        );
     }
 
     #[test]
     fn missing_dirs_return_empty() {
         let (_dir, oikos) = setup_oikos();
         let results = discover(&oikos, "syn", "nonexistent", None);
-        assert!(results.is_empty());
+        assert!(
+            results.is_empty(),
+            "nonexistent subdir should return empty results"
+        );
     }
 
     #[test]
@@ -348,8 +387,11 @@ mod tests {
         mkfile(dir.path(), "shared/tools/visible.md");
 
         let results = discover(&oikos, "syn", "tools", Some("md"));
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].name, "visible.md");
+        assert_eq!(results.len(), 1, "hidden files should be excluded");
+        assert_eq!(
+            results[0].name, "visible.md",
+            "only visible file should be returned"
+        );
     }
 
     #[test]
@@ -359,8 +401,11 @@ mod tests {
         mkfile(dir.path(), "theke/USER.md");
 
         let path = resolve(&oikos, "syn", "USER.md", None);
-        assert!(path.is_some());
-        assert!(path.unwrap().to_string_lossy().contains("nous/syn"));
+        assert!(path.is_some(), "resolve should find USER.md in nous tier");
+        assert!(
+            path.unwrap().to_string_lossy().contains("nous/syn"),
+            "resolve should prefer nous tier"
+        );
     }
 
     #[test]
@@ -369,15 +414,21 @@ mod tests {
         mkfile(dir.path(), "theke/USER.md");
 
         let path = resolve(&oikos, "syn", "USER.md", None);
-        assert!(path.is_some());
-        assert!(path.unwrap().to_string_lossy().contains("theke"));
+        assert!(path.is_some(), "resolve should find USER.md in theke tier");
+        assert!(
+            path.unwrap().to_string_lossy().contains("theke"),
+            "resolve should fall back to theke"
+        );
     }
 
     #[test]
     fn resolve_returns_none_for_missing() {
         let (_dir, oikos) = setup_oikos();
         let path = resolve(&oikos, "syn", "NONEXISTENT.md", None);
-        assert!(path.is_none());
+        assert!(
+            path.is_none(),
+            "resolve should return None for missing file"
+        );
     }
 
     #[test]
@@ -388,10 +439,26 @@ mod tests {
         mkfile(dir.path(), "theke/config.yaml");
 
         let results = resolve_all(&oikos, "syn", "config.yaml", None);
-        assert_eq!(results.len(), 3);
-        assert_eq!(results[0].tier, Tier::Nous);
-        assert_eq!(results[1].tier, Tier::Shared);
-        assert_eq!(results[2].tier, Tier::Theke);
+        assert_eq!(
+            results.len(),
+            3,
+            "resolve_all should find file in all three tiers"
+        );
+        assert_eq!(
+            results[0].tier,
+            Tier::Nous,
+            "first result should be nous tier"
+        );
+        assert_eq!(
+            results[1].tier,
+            Tier::Shared,
+            "second result should be shared tier"
+        );
+        assert_eq!(
+            results[2].tier,
+            Tier::Theke,
+            "third result should be theke tier"
+        );
     }
 
     #[test]
@@ -407,12 +474,30 @@ mod tests {
         let syn_names: Vec<&str> = syn.iter().map(|r| r.name.as_str()).collect();
         let demi_names: Vec<&str> = demi.iter().map(|r| r.name.as_str()).collect();
 
-        assert!(syn_names.contains(&"syn-only.md"));
-        assert!(!syn_names.contains(&"demi-only.md"));
-        assert!(demi_names.contains(&"demi-only.md"));
-        assert!(!demi_names.contains(&"syn-only.md"));
-        assert!(syn_names.contains(&"common.md"));
-        assert!(demi_names.contains(&"common.md"));
+        assert!(
+            syn_names.contains(&"syn-only.md"),
+            "syn should see its own file"
+        );
+        assert!(
+            !syn_names.contains(&"demi-only.md"),
+            "syn should not see demiurge file"
+        );
+        assert!(
+            demi_names.contains(&"demi-only.md"),
+            "demiurge should see its own file"
+        );
+        assert!(
+            !demi_names.contains(&"syn-only.md"),
+            "demiurge should not see syn file"
+        );
+        assert!(
+            syn_names.contains(&"common.md"),
+            "syn should see shared file"
+        );
+        assert!(
+            demi_names.contains(&"common.md"),
+            "demiurge should see shared file"
+        );
     }
 
     #[test]
@@ -423,7 +508,11 @@ mod tests {
         mkfile(dir.path(), "shared/tools/readme.txt");
 
         let results = discover(&oikos, "syn", "tools", None);
-        assert_eq!(results.len(), 3);
+        assert_eq!(
+            results.len(),
+            3,
+            "no extension filter should return all files"
+        );
     }
 
     #[test]
@@ -432,12 +521,13 @@ mod tests {
         mkfile(dir.path(), "nous/syn/hooks/pre-turn.sh");
 
         let found = resolve(&oikos, "syn", "pre-turn.sh", Some("hooks"));
-        assert!(found.is_some());
+        assert!(found.is_some(), "resolve with subdir should find the file");
         assert!(
             found
                 .unwrap()
                 .to_string_lossy()
-                .contains("hooks/pre-turn.sh")
+                .contains("hooks/pre-turn.sh"),
+            "resolved path should contain subdir and filename"
         );
     }
 
@@ -448,23 +538,50 @@ mod tests {
         mkfile(dir.path(), "theke/config.yaml");
 
         let results = resolve_all(&oikos, "syn", "config.yaml", None);
-        assert_eq!(results.len(), 2);
-        assert_eq!(results[0].tier, Tier::Nous);
-        assert_eq!(results[1].tier, Tier::Theke);
+        assert_eq!(
+            results.len(),
+            2,
+            "resolve_all should find file in two tiers"
+        );
+        assert_eq!(
+            results[0].tier,
+            Tier::Nous,
+            "first result should be nous tier"
+        );
+        assert_eq!(
+            results[1].tier,
+            Tier::Theke,
+            "second result should be theke tier"
+        );
     }
 
     #[test]
     fn tier_display() {
-        assert_eq!(Tier::Nous.to_string(), "nous");
-        assert_eq!(Tier::Shared.to_string(), "shared");
-        assert_eq!(Tier::Theke.to_string(), "theke");
+        assert_eq!(
+            Tier::Nous.to_string(),
+            "nous",
+            "Nous tier display should be 'nous'"
+        );
+        assert_eq!(
+            Tier::Shared.to_string(),
+            "shared",
+            "Shared tier display should be 'shared'"
+        );
+        assert_eq!(
+            Tier::Theke.to_string(),
+            "theke",
+            "Theke tier display should be 'theke'"
+        );
     }
 
     #[test]
     fn resolve_all_empty_when_no_match() {
         let (_dir, oikos) = setup_oikos();
         let results = resolve_all(&oikos, "syn", "nonexistent.md", None);
-        assert!(results.is_empty());
+        assert!(
+            results.is_empty(),
+            "resolve_all should return empty for missing file"
+        );
     }
 
     // ── *_with variants (FileSystem trait) ───────────────────────────────
@@ -484,12 +601,22 @@ mod tests {
 
         let oikos = in_memory_oikos();
         let results = discover_with(&fs, &oikos, "syn", "tools", Some("md"));
-        assert_eq!(results.len(), 3);
+        assert_eq!(
+            results.len(),
+            3,
+            "in-memory discover should find all three tiers"
+        );
 
         let names: Vec<&str> = results.iter().map(|r| r.name.as_str()).collect();
-        assert!(names.contains(&"agent.md"));
-        assert!(names.contains(&"shared.md"));
-        assert!(names.contains(&"theke.md"));
+        assert!(names.contains(&"agent.md"), "should include nous-tier file");
+        assert!(
+            names.contains(&"shared.md"),
+            "should include shared-tier file"
+        );
+        assert!(
+            names.contains(&"theke.md"),
+            "should include theke-tier file"
+        );
     }
 
     #[test]
@@ -502,8 +629,16 @@ mod tests {
 
         let oikos = in_memory_oikos();
         let results = discover_with(&fs, &oikos, "syn", "tools", Some("md"));
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].tier, Tier::Nous);
+        assert_eq!(
+            results.len(),
+            1,
+            "duplicate name should resolve to one entry"
+        );
+        assert_eq!(
+            results[0].tier,
+            Tier::Nous,
+            "nous tier should win in-memory"
+        );
     }
 
     #[test]
@@ -516,8 +651,15 @@ mod tests {
 
         let oikos = in_memory_oikos();
         let results = discover_with(&fs, &oikos, "syn", "tools", Some("md"));
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].name, "visible.md");
+        assert_eq!(
+            results.len(),
+            1,
+            "hidden files should be excluded in-memory"
+        );
+        assert_eq!(
+            results[0].name, "visible.md",
+            "only visible file should be returned"
+        );
     }
 
     #[test]
@@ -531,10 +673,13 @@ mod tests {
         let oikos = in_memory_oikos();
         let md = discover_with(&fs, &oikos, "syn", "tools", Some("md"));
         let yaml = discover_with(&fs, &oikos, "syn", "tools", Some("yaml"));
-        assert_eq!(md.len(), 1);
-        assert_eq!(md[0].name, "tool.md");
-        assert_eq!(yaml.len(), 1);
-        assert_eq!(yaml[0].name, "tool.yaml");
+        assert_eq!(md.len(), 1, "md filter should match one file");
+        assert_eq!(md[0].name, "tool.md", "md filter should return .md file");
+        assert_eq!(yaml.len(), 1, "yaml filter should match one file");
+        assert_eq!(
+            yaml[0].name, "tool.yaml",
+            "yaml filter should return .yaml file"
+        );
     }
 
     #[test]
@@ -547,9 +692,12 @@ mod tests {
 
         let oikos = in_memory_oikos();
         let found = resolve_with(&fs, &oikos, "syn", "USER.md", None);
-        assert!(found.is_some());
+        assert!(found.is_some(), "resolve_with should find USER.md");
         let path = found.unwrap();
-        assert!(path.to_string_lossy().contains("nous/syn"));
+        assert!(
+            path.to_string_lossy().contains("nous/syn"),
+            "resolve_with should prefer nous tier"
+        );
     }
 
     #[test]
@@ -561,8 +709,14 @@ mod tests {
 
         let oikos = in_memory_oikos();
         let found = resolve_with(&fs, &oikos, "syn", "SYSTEM.md", None);
-        assert!(found.is_some());
-        assert!(found.unwrap().to_string_lossy().contains("theke"));
+        assert!(
+            found.is_some(),
+            "resolve_with should find SYSTEM.md in theke"
+        );
+        assert!(
+            found.unwrap().to_string_lossy().contains("theke"),
+            "resolve_with should fall back to theke"
+        );
     }
 
     #[test]
@@ -571,7 +725,10 @@ mod tests {
 
         let fs = TestSystem::new();
         let oikos = in_memory_oikos();
-        assert!(resolve_with(&fs, &oikos, "syn", "MISSING.md", None).is_none());
+        assert!(
+            resolve_with(&fs, &oikos, "syn", "MISSING.md", None).is_none(),
+            "absent file should return None"
+        );
     }
 
     #[test]
@@ -585,10 +742,18 @@ mod tests {
 
         let oikos = in_memory_oikos();
         let results = resolve_all_with(&fs, &oikos, "syn", "config.toml", None);
-        assert_eq!(results.len(), 3);
-        assert_eq!(results[0].tier, Tier::Nous);
-        assert_eq!(results[1].tier, Tier::Shared);
-        assert_eq!(results[2].tier, Tier::Theke);
+        assert_eq!(
+            results.len(),
+            3,
+            "resolve_all_with should find all three tiers"
+        );
+        assert_eq!(results[0].tier, Tier::Nous, "first result should be nous");
+        assert_eq!(
+            results[1].tier,
+            Tier::Shared,
+            "second result should be shared"
+        );
+        assert_eq!(results[2].tier, Tier::Theke, "third result should be theke");
     }
 
     #[test]
@@ -598,6 +763,9 @@ mod tests {
         let fs = TestSystem::new();
         let oikos = in_memory_oikos();
         let results = resolve_all_with(&fs, &oikos, "syn", "none.md", None);
-        assert!(results.is_empty());
+        assert!(
+            results.is_empty(),
+            "resolve_all_with should return empty for missing file"
+        );
     }
 }

@@ -217,7 +217,7 @@ fn format_unix_iso(unix_secs: i64) -> String {
 mod tests {
     use super::*;
 
-    fn test_service() -> AuthService {
+    fn memory_service() -> AuthService {
         AuthService::in_memory(AuthConfig {
             jwt: JwtConfig {
                 signing_key: SecretString::from("test-jwt-secret"),
@@ -253,7 +253,7 @@ mod tests {
 
     #[test]
     fn register_and_login() {
-        let svc = test_service();
+        let svc = memory_service();
         svc.register_user("alice", &secret("hunter2"), Role::Operator)
             .unwrap();
 
@@ -267,7 +267,7 @@ mod tests {
 
     #[test]
     fn login_wrong_password() {
-        let svc = test_service();
+        let svc = memory_service();
         svc.register_user("alice", &secret("hunter2"), Role::Operator)
             .unwrap();
 
@@ -277,14 +277,14 @@ mod tests {
 
     #[test]
     fn login_nonexistent_user() {
-        let svc = test_service();
+        let svc = memory_service();
         let result = svc.login("nobody", &secret("password"));
         assert!(result.is_err());
     }
 
     #[test]
     fn validate_then_logout_then_reject() {
-        let svc = test_service();
+        let svc = memory_service();
         svc.register_user("alice", &secret("pw"), Role::Operator)
             .unwrap();
         let pair = svc.login("alice", &secret("pw")).unwrap();
@@ -302,7 +302,7 @@ mod tests {
 
     #[test]
     fn refresh_token_flow() {
-        let svc = test_service();
+        let svc = memory_service();
         svc.register_user("alice", &secret("pw"), Role::Operator)
             .unwrap();
         let pair = svc.login("alice", &secret("pw")).unwrap();
@@ -318,7 +318,7 @@ mod tests {
 
     #[test]
     fn refresh_with_access_token_rejected() {
-        let svc = test_service();
+        let svc = memory_service();
         svc.register_user("alice", &secret("pw"), Role::Operator)
             .unwrap();
         let pair = svc.login("alice", &secret("pw")).unwrap();
@@ -329,7 +329,7 @@ mod tests {
 
     #[test]
     fn api_key_generate_authenticate_revoke() {
-        let svc = test_service();
+        let svc = memory_service();
         let (key, record) = svc
             .generate_api_key("test", Role::Operator, None, None)
             .unwrap();
@@ -354,7 +354,7 @@ mod tests {
             kind: TokenKind::Access,
         };
 
-        let svc = test_service();
+        let svc = memory_service();
         svc.authorize(
             &claims,
             &Action::ReadSession {
@@ -387,7 +387,7 @@ mod tests {
             kind: TokenKind::Access,
         };
 
-        let svc = test_service();
+        let svc = memory_service();
 
         svc.authorize(
             &claims,
@@ -442,7 +442,7 @@ mod tests {
             kind: TokenKind::Access,
         };
 
-        let svc = test_service();
+        let svc = memory_service();
 
         svc.authorize(&claims, &Action::ReadDashboard).unwrap();
 
@@ -481,7 +481,7 @@ mod tests {
             kind: TokenKind::Access,
         };
 
-        let svc = test_service();
+        let svc = memory_service();
         assert!(
             svc.authorize(
                 &claims,
@@ -495,14 +495,14 @@ mod tests {
 
     #[test]
     fn sql_injection_in_username_parameterized() {
-        let svc = test_service();
+        let svc = memory_service();
         let result = svc.login("'; DROP TABLE users; --", &secret("pw"));
         assert!(result.is_err());
     }
 
     #[test]
     fn duplicate_user_registration_rejected() {
-        let svc = test_service();
+        let svc = memory_service();
         svc.register_user("alice", &secret("pw1"), Role::Operator)
             .unwrap();
         let result = svc.register_user("alice", &secret("pw2"), Role::Readonly);

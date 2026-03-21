@@ -23,6 +23,7 @@ macro_rules! define_id {
             /// # Errors
             /// Returns `IdValidationError` if the value is empty or exceeds
             /// the maximum length.
+            #[must_use = "returns a validated identifier that should not be discarded"]
             pub fn new(id: impl Into<String>) -> Result<Self, IdValidationError> {
                 let id = id.into();
                 if id.is_empty() {
@@ -43,7 +44,6 @@ macro_rules! define_id {
             /// Create without validation: for internal row parsing where
             /// the ID was already validated on insert.
             #[must_use]
-            #[allow(dead_code, reason = "macro expands for all ID types; not all have callers yet")]
             pub fn new_unchecked(id: impl Into<String>) -> Self {
                 Self(id.into())
             }

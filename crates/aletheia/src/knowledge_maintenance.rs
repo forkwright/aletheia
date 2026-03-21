@@ -54,7 +54,10 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
         for mut fact in facts {
             items_processed += 1;
 
-            let reference_time = fact.last_accessed_at.unwrap_or(fact.recorded_at);
+            let reference_time = fact
+                .access
+                .last_accessed_at
+                .unwrap_or(fact.temporal.recorded_at);
             let age_secs = now.duration_since(reference_time).as_secs();
             #[expect(
                 clippy::cast_precision_loss,
@@ -64,12 +67,16 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
             let age_hours = (age_secs as f64 / 3600.0).max(0.0);
 
             let fact_type = FactType::from_str_lossy(&fact.fact_type);
-            let decay_score =
-                engine.score_decay(age_hours, fact_type, fact.tier, fact.access_count);
+            let decay_score = engine.score_decay(
+                age_hours,
+                fact_type,
+                fact.provenance.tier,
+                fact.access.access_count,
+            );
 
-            let new_confidence = (fact.confidence * decay_score).clamp(0.0, 1.0);
-            if (fact.confidence - new_confidence).abs() > 0.01 {
-                fact.confidence = new_confidence;
+            let new_confidence = (fact.provenance.confidence * decay_score).clamp(0.0, 1.0);
+            if (fact.provenance.confidence - new_confidence).abs() > 0.01 {
+                fact.provenance.confidence = new_confidence;
                 if let Err(e) = self.store.insert_fact(&fact) {
                     tracing::warn!(
                         fact_id = %fact.id,

@@ -40,6 +40,11 @@ use crate::oikos::Oikos;
     clippy::result_large_err,
     reason = "figment::Error is inherently large"
 )]
+#[must_use]
+#[expect(
+    clippy::double_must_use,
+    reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+)]
 pub fn load_config(oikos: &Oikos) -> Result<AletheiaConfig> {
     load_config_with(oikos, &RealSystem)
 }
@@ -57,6 +62,11 @@ pub fn load_config(oikos: &Oikos) -> Result<AletheiaConfig> {
 #[expect(
     clippy::result_large_err,
     reason = "figment::Error is inherently large"
+)]
+#[must_use]
+#[expect(
+    clippy::double_must_use,
+    reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
 )]
 pub fn load_config_with(oikos: &Oikos, fs: &impl FileSystem) -> Result<AletheiaConfig> {
     let toml_path = oikos.config().join("aletheia.toml");
@@ -130,6 +140,11 @@ fn decrypt_toml_content(content: &str) -> String {
 #[expect(
     clippy::result_large_err,
     reason = "figment::Error is inherently large"
+)]
+#[must_use]
+#[expect(
+    clippy::double_must_use,
+    reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
 )]
 pub fn write_config(oikos: &Oikos, config: &AletheiaConfig) -> Result<()> {
     write_config_checked(oikos, config, None)
@@ -219,9 +234,18 @@ mod tests {
             let oikos = Oikos::from_root(jail.directory());
             let config = load_config(&oikos).map_err(|e| e.to_string())?;
 
-            assert_eq!(config.agents.defaults.context_tokens, 200_000);
-            assert_eq!(config.gateway.port, 18789);
-            assert_eq!(config.agents.defaults.model.primary, "claude-sonnet-4-6");
+            assert_eq!(
+                config.agents.defaults.context_tokens, 200_000,
+                "no-config default context tokens should be 200k"
+            );
+            assert_eq!(
+                config.gateway.port, 18789,
+                "no-config default port should be 18789"
+            );
+            assert_eq!(
+                config.agents.defaults.model.primary, "claude-sonnet-4-6",
+                "no-config default model should be sonnet"
+            );
             Ok(())
         });
     }
@@ -238,9 +262,18 @@ mod tests {
             let oikos = Oikos::from_root(jail.directory());
             let config = load_config(&oikos).map_err(|e| e.to_string())?;
 
-            assert_eq!(config.gateway.port, 9999);
-            assert_eq!(config.agents.defaults.context_tokens, 100_000);
-            assert_eq!(config.agents.defaults.model.primary, "claude-sonnet-4-6");
+            assert_eq!(
+                config.gateway.port, 9999,
+                "toml port override should take effect"
+            );
+            assert_eq!(
+                config.agents.defaults.context_tokens, 100_000,
+                "toml context tokens override should take effect"
+            );
+            assert_eq!(
+                config.agents.defaults.model.primary, "claude-sonnet-4-6",
+                "unset model should use default"
+            );
             Ok(())
         });
     }
@@ -255,7 +288,10 @@ mod tests {
             let oikos = Oikos::from_root(jail.directory());
             let config = load_config(&oikos).map_err(|e| e.to_string())?;
 
-            assert_eq!(config.gateway.port, 7777);
+            assert_eq!(
+                config.gateway.port, 7777,
+                "env var should override toml port"
+            );
             Ok(())
         });
     }
@@ -266,8 +302,14 @@ mod tests {
             let oikos = Oikos::from_root("/nonexistent/path/that/does/not/exist");
             let config = load_config(&oikos).map_err(|e| e.to_string())?;
 
-            assert_eq!(config.gateway.port, 18789);
-            assert_eq!(config.agents.defaults.context_tokens, 200_000);
+            assert_eq!(
+                config.gateway.port, 18789,
+                "missing dir should fall back to default port"
+            );
+            assert_eq!(
+                config.agents.defaults.context_tokens, 200_000,
+                "missing dir should fall back to default context tokens"
+            );
             Ok(())
         });
     }
@@ -285,8 +327,14 @@ mod tests {
             write_config(&oikos, &config).map_err(|e| e.to_string())?;
             let loaded = load_config(&oikos).map_err(|e| e.to_string())?;
 
-            assert_eq!(loaded.gateway.port, 9876);
-            assert_eq!(loaded.agents.defaults.context_tokens, 200_000);
+            assert_eq!(
+                loaded.gateway.port, 9876,
+                "written port should survive roundtrip"
+            );
+            assert_eq!(
+                loaded.agents.defaults.context_tokens, 200_000,
+                "default context tokens should survive roundtrip"
+            );
             Ok(())
         });
     }
@@ -305,7 +353,10 @@ mod tests {
             fs.add_file(toml_path, b"[gateway]\nport = 4242\n");
 
             let config = load_config_with(&oikos, &fs).map_err(|e| e.to_string())?;
-            assert_eq!(config.gateway.port, 4242);
+            assert_eq!(
+                config.gateway.port, 4242,
+                "in-memory toml port should be loaded"
+            );
             Ok(())
         });
     }
@@ -319,8 +370,14 @@ mod tests {
             let fs = TestSystem::new(); // empty — no files
 
             let config = load_config_with(&oikos, &fs).map_err(|e| e.to_string())?;
-            assert_eq!(config.gateway.port, 18789);
-            assert_eq!(config.agents.defaults.context_tokens, 200_000);
+            assert_eq!(
+                config.gateway.port, 18789,
+                "empty filesystem should use default port"
+            );
+            assert_eq!(
+                config.agents.defaults.context_tokens, 200_000,
+                "empty filesystem should use default context tokens"
+            );
             Ok(())
         });
     }
@@ -339,7 +396,10 @@ mod tests {
             fs.add_file(toml_path, b"[gateway]\nport = 1111\n");
 
             let config = load_config_with(&oikos, &fs).map_err(|e| e.to_string())?;
-            assert_eq!(config.gateway.port, 5555);
+            assert_eq!(
+                config.gateway.port, 5555,
+                "env var should override in-memory toml port"
+            );
             Ok(())
         });
     }

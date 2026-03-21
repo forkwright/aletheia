@@ -292,11 +292,11 @@ pub(crate) fn rank_skills(candidates: Vec<Fact>) -> Vec<Fact> {
                 reason = "usize→f64: array index and length for ranking; sub-LSB precision loss is acceptable"
             )]
             let position_score = 1.0 - (i as f64 / total as f64);
-            let confidence = fact.confidence.clamp(0.0, 1.0);
+            let confidence = fact.provenance.confidence.clamp(0.0, 1.0);
 
-            let access_score = f64::from(fact.access_count.min(20)) / 20.0;
+            let access_score = f64::from(fact.access.access_count.min(20)) / 20.0;
 
-            let reference_secs = fact.last_accessed_at.unwrap_or(fact.valid_from).as_second();
+            let reference_secs = fact.access.last_accessed_at.unwrap_or(fact.temporal.valid_from).as_second();
             #[expect(
                 clippy::cast_precision_loss,
                 clippy::as_conversions,
@@ -470,24 +470,34 @@ mod tests {
 
     #[cfg(feature = "knowledge-store")]
     fn make_fact(id: &str, content: &str, confidence: f64, access_count: u32) -> Fact {
+        use aletheia_mneme::knowledge::{FactAccess, FactLifecycle, FactProvenance, FactTemporal};
+        let now = jiff::Timestamp::now();
         Fact {
             id: aletheia_mneme::id::FactId::from(id),
             nous_id: "test-agent".to_owned(),
             content: content.to_owned(),
-            confidence,
-            tier: aletheia_mneme::knowledge::EpistemicTier::Verified,
-            valid_from: jiff::Timestamp::now(),
-            valid_to: jiff::Timestamp::from_second(i64::MAX / 2).unwrap_or(jiff::Timestamp::now()),
-            superseded_by: None,
-            source_session_id: None,
-            recorded_at: jiff::Timestamp::now(),
-            access_count,
-            last_accessed_at: None,
-            stability_hours: 2190.0,
             fact_type: "skill".to_owned(),
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
+            temporal: FactTemporal {
+                valid_from: now,
+                valid_to: jiff::Timestamp::from_second(i64::MAX / 2).unwrap_or(now),
+                recorded_at: now,
+            },
+            provenance: FactProvenance {
+                confidence,
+                tier: aletheia_mneme::knowledge::EpistemicTier::Verified,
+                source_session_id: None,
+                stability_hours: 2190.0,
+            },
+            lifecycle: FactLifecycle {
+                superseded_by: None,
+                is_forgotten: false,
+                forgotten_at: None,
+                forget_reason: None,
+            },
+            access: FactAccess {
+                access_count,
+                last_accessed_at: None,
+            },
         }
     }
 

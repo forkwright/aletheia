@@ -138,6 +138,7 @@ impl NousId {
     /// # Errors
     /// Returns an error if the ID is empty, exceeds 64 characters,
     /// or contains characters other than lowercase alphanumeric and hyphens.
+    #[must_use = "returns a validated identifier that should not be discarded"]
     pub fn new(id: impl Into<CompactString>) -> Result<Self, IdError> {
         let id = id.into();
         validate_id(&id, "NousId")?;
@@ -200,6 +201,7 @@ impl SessionId {
     ///
     /// # Errors
     /// Returns an error if the string is not a valid UUID.
+    #[must_use = "returns a parsed session identifier that should not be discarded"]
     pub fn parse(s: &str) -> Result<Self, IdError> {
         Uuid::parse_str(s)
             .map(Self)
@@ -276,6 +278,7 @@ impl ToolName {
     /// # Errors
     /// Returns an error if the name is empty, exceeds 128 characters,
     /// or contains characters other than alphanumeric, hyphens, and underscores.
+    #[must_use = "returns a validated tool name that should not be discarded"]
     pub fn new(name: impl Into<CompactString>) -> Result<Self, IdError> {
         let name = name.into();
         if name.is_empty() {

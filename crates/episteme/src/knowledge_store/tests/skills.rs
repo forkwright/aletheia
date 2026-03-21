@@ -7,7 +7,9 @@
 use std::sync::Arc;
 
 use super::super::*;
-use crate::knowledge::{EpistemicTier, Fact};
+use crate::knowledge::{
+    EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
+};
 
 const DIM: usize = 4;
 
@@ -24,20 +26,28 @@ fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
         id: crate::id::FactId::new_unchecked(id),
         nous_id: nous_id.to_owned(),
         content: content.to_owned(),
-        confidence: 0.9,
-        tier: EpistemicTier::Inferred,
-        valid_from: test_ts("2026-01-01"),
-        valid_to: crate::knowledge::far_future(),
-        superseded_by: None,
-        source_session_id: None,
-        recorded_at: test_ts("2026-03-01T00:00:00Z"),
-        access_count: 0,
-        last_accessed_at: None,
-        stability_hours: 720.0,
         fact_type: String::new(),
-        is_forgotten: false,
-        forgotten_at: None,
-        forget_reason: None,
+        temporal: FactTemporal {
+            valid_from: test_ts("2026-01-01"),
+            valid_to: crate::knowledge::far_future(),
+            recorded_at: test_ts("2026-03-01T00:00:00Z"),
+        },
+        provenance: FactProvenance {
+            confidence: 0.9,
+            tier: EpistemicTier::Inferred,
+            source_session_id: None,
+            stability_hours: 720.0,
+        },
+        lifecycle: FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
     }
 }
 
@@ -55,20 +65,28 @@ fn make_skill_fact(id: &str, nous_id: &str, skill_name: &str, domain_tags: &[&st
         id: crate::id::FactId::new_unchecked(id),
         nous_id: nous_id.to_owned(),
         content,
-        confidence: 0.5,
-        tier: EpistemicTier::Assumed,
-        valid_from: test_ts("2026-01-01"),
-        valid_to: crate::knowledge::far_future(),
-        superseded_by: None,
-        source_session_id: None,
-        recorded_at: test_ts("2026-03-01T00:00:00Z"),
-        access_count: 0,
-        last_accessed_at: None,
-        stability_hours: 2190.0,
         fact_type: "skill".to_owned(),
-        is_forgotten: false,
-        forgotten_at: None,
-        forget_reason: None,
+        temporal: FactTemporal {
+            valid_from: test_ts("2026-01-01"),
+            valid_to: crate::knowledge::far_future(),
+            recorded_at: test_ts("2026-03-01T00:00:00Z"),
+        },
+        provenance: FactProvenance {
+            confidence: 0.5,
+            tier: EpistemicTier::Assumed,
+            source_session_id: None,
+            stability_hours: 2190.0,
+        },
+        lifecycle: FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
     }
 }
 
@@ -88,15 +106,15 @@ fn find_skills_for_nous_returns_only_skills() {
 fn find_skills_for_nous_ordered_by_confidence() {
     let store = make_store();
     let mut low = make_skill_fact("sk-low", "alice", "low-conf", &["test"]);
-    low.confidence = 0.3;
+    low.provenance.confidence = 0.3;
     store.insert_fact(&low).expect("insert low");
     let mut high = make_skill_fact("sk-high", "alice", "high-conf", &["test"]);
-    high.confidence = 0.9;
+    high.provenance.confidence = 0.9;
     store.insert_fact(&high).expect("insert high");
     let results = store.find_skills_for_nous("alice", 100).expect("query");
     assert_eq!(results.len(), 2);
     assert!(
-        results[0].confidence >= results[1].confidence,
+        results[0].provenance.confidence >= results[1].provenance.confidence,
         "skills should be ordered by confidence descending"
     );
 }
@@ -223,11 +241,11 @@ fn skill_usage_tracking_via_increment_access() {
         .find(|f| f.id.as_str() == "sk-usage")
         .expect("find skill");
     assert_eq!(
-        found.access_count, 2,
+        found.access.access_count, 2,
         "usage_count should be 2 after two increments"
     );
     assert!(
-        found.last_accessed_at.is_some(),
+        found.access.last_accessed_at.is_some(),
         "last_accessed_at should be set"
     );
 }
@@ -236,18 +254,18 @@ fn skill_usage_tracking_via_increment_access() {
 fn skill_decay_retires_stale_skills() {
     let store = make_store();
     let mut stale = make_skill_fact("sk-stale", "alice", "stale-skill", &["test"]);
-    stale.valid_from = jiff::Timestamp::now()
+    stale.temporal.valid_from = jiff::Timestamp::now()
         .checked_sub(jiff::SignedDuration::from_hours(24 * 120))
         .expect("subtract 120 days");
-    stale.confidence = 0.5;
-    stale.access_count = 0;
+    stale.provenance.confidence = 0.5;
+    stale.access.access_count = 0;
     store.insert_fact(&stale).expect("insert stale skill");
     let mut fresh = make_skill_fact("sk-fresh", "alice", "fresh-skill", &["test"]);
     // WHY: Override defaults so the skill is clearly fresh (valid_from=now, high confidence).
     // make_skill_fact defaults to valid_from=2026-01-01 which can look stale to decay logic.
-    fresh.valid_from = jiff::Timestamp::now();
-    fresh.confidence = 0.9;
-    fresh.access_count = 5;
+    fresh.temporal.valid_from = jiff::Timestamp::now();
+    fresh.provenance.confidence = 0.9;
+    fresh.access.access_count = 5;
     store.insert_fact(&fresh).expect("insert fresh skill");
     let (active, _needs_review, retired) = store.run_skill_decay("alice").expect("run skill decay");
     assert!(
@@ -266,7 +284,7 @@ fn skill_quality_metrics_returns_correct_counts() {
     let skill1 = make_skill_fact("sk-m1", "alice", "skill-one", &["rust"]);
     store.insert_fact(&skill1).expect("insert skill 1");
     let mut skill2 = make_skill_fact("sk-m2", "alice", "skill-two", &["python"]);
-    skill2.access_count = 5;
+    skill2.access.access_count = 5;
     store.insert_fact(&skill2).expect("insert skill 2");
     let metrics = store.skill_quality_metrics("alice").expect("get metrics");
     assert_eq!(metrics.total_active, 2);
@@ -280,14 +298,14 @@ fn skill_decay_high_usage_survives_longer() {
         .checked_sub(jiff::SignedDuration::from_hours(24 * 50))
         .expect("subtract 50 days");
     let mut low = make_skill_fact("sk-low-use", "alice", "low-usage", &["test"]);
-    low.valid_from = past;
-    low.access_count = 1;
-    low.confidence = 0.7;
+    low.temporal.valid_from = past;
+    low.access.access_count = 1;
+    low.provenance.confidence = 0.7;
     store.insert_fact(&low).expect("insert low usage");
     let mut high = make_skill_fact("sk-high-use", "alice", "high-usage", &["test"]);
-    high.valid_from = past;
-    high.access_count = 15;
-    high.confidence = 0.7;
+    high.temporal.valid_from = past;
+    high.access.access_count = 15;
+    high.provenance.confidence = 0.7;
     store.insert_fact(&high).expect("insert high usage");
     let (active, _needs_review, retired) = store.run_skill_decay("alice").expect("run decay");
     let remaining = store.find_skills_for_nous("alice", 100).expect("query");

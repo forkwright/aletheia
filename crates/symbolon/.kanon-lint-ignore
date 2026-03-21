@@ -1,0 +1,47 @@
+# Rules to skip for specific paths
+# Format: RULE/name:path/glob
+
+# CircuitBreaker tests use std::time::Instant for elapsed() checks.
+# tokio::time::pause() does not control std::time::Instant, so real
+# sleep() calls (1-15ms) are the only correct approach for testing
+# time-based state transitions in this synchronous component.
+TESTING/sleep-in-test:src/circuit_breaker.rs
+
+# jwt and credential are pub mod in lib.rs — their pub items are the public API.
+# The pub-visibility rule cannot trace module visibility from lib.rs re-exports.
+RUST/pub-visibility:src/jwt.rs
+RUST/pub-visibility:src/credential.rs
+
+# store.rs uses rusqlite array-literal parameter binding: [username], [key_hash], etc.
+# The indexing-slicing rule's regex matches these as direct indexing false positives.
+RUST/indexing-slicing:src/store.rs
+
+# types.rs stores irreversible Argon2id and blake3 hashes, not the raw secrets.
+# The field names (password_hash, key_hash) contain "password"/"key" triggering the rule,
+# but the stored values are one-way hashes that cannot recover the original secret.
+RUST/plain-string-secret:src/types.rs
+
+# credential.rs: CredentialFile.token and OAuthResponse.access_token/refresh_token
+# require serde Serialize roundtrip to write the actual value to disk files and parse
+# API responses. SecretString's Serialize impl outputs "[REDACTED]", breaking I/O.
+RUST/plain-string-secret:src/credential.rs
+
+# encrypt() and hex::encode() function signatures contain &[u8; KEY_LEN] and &[u8]
+# which the indexing-slicing regex matches as false positives on `[u8`.
+RUST/indexing-slicing:src/encrypt.rs
+RUST/indexing-slicing:src/api_key.rs
+RUST/indexing-slicing:src/credential_tests.rs
+
+# credential_tests.rs is a #[cfg(test)] module included via #[path].
+# Test code legitimately uses .unwrap(), .expect(), and bare assert!() for assertions.
+RUST/unwrap:src/credential_tests.rs
+RUST/expect:src/credential_tests.rs
+RUST/bare-assert:src/credential_tests.rs
+
+# Test code writes to tempdir() paths — no real security concern for ephemeral test files.
+SECURITY/config-write-no-perms:src/credential_tests.rs
+
+# WHY: linter regex doesn't recognize #[must_use = "message"] form (only bare #[must_use]).
+# These functions have #[must_use = "..."] which satisfies the actual standard.
+RUST/missing-must-use:src/jwt.rs
+RUST/missing-must-use:src/credential.rs

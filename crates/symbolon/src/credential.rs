@@ -13,22 +13,20 @@ use aletheia_koina::secret::SecretString;
 
 use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
 use crate::encrypt::{ENCRYPTED_SENTINEL, decrypt, encrypt, load_or_create_key};
+use crate::util::decode_jwt_exp_secs;
 
 /// Return current time as milliseconds since UNIX epoch, warning if the clock
 /// is before epoch rather than silently returning zero.
-#[expect(clippy::cast_possible_truncation, reason = "ms timestamps fit in u64")]
-#[expect(
-    clippy::as_conversions,
-    reason = "u128→u64: ms timestamps fit in u64 for the next 500M years"
-)]
 fn unix_epoch_ms() -> u64 {
-    SystemTime::now()
+    // WHY: as_millis() returns u128 but ms timestamps fit in u64 for ~500M years
+    let ms = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap_or_else(|_| {
             tracing::warn!("system clock before UNIX epoch, using epoch as fallback");
             Duration::default()
         })
-        .as_millis() as u64
+        .as_millis();
+    u64::try_from(ms).unwrap_or(u64::MAX)
 }
 
 /// Claude Code production OAuth client ID.
@@ -160,34 +158,27 @@ impl CredentialFile {
 
     /// Seconds remaining until token expires. Returns `None` if no expiry set.
     #[must_use]
-    #[expect(
-        clippy::cast_possible_wrap,
-        reason = "ms timestamps fit in i64 until year 292M"
-    )]
-    #[expect(
-        clippy::as_conversions,
-        reason = "u64→i64: ms timestamps fit in i64 until year 292M"
-    )]
     pub fn seconds_remaining(&self) -> Option<i64> {
         let expires_at_ms = self.expires_at?;
         let now_ms = unix_epoch_ms();
-        Some((expires_at_ms as i64 - now_ms as i64) / 1000)
+        // WHY: ms timestamps fit in i64 until year 292M; subtraction gives signed delta
+        let expires_i64 = i64::try_from(expires_at_ms).unwrap_or(i64::MAX);
+        let now_i64 = i64::try_from(now_ms).unwrap_or(i64::MAX);
+        Some((expires_i64 - now_i64) / 1000)
     }
 
     /// Whether the token needs refresh (expired or within threshold).
     #[must_use]
-    #[expect(clippy::cast_possible_wrap, reason = "threshold constant fits in i64")]
-    #[expect(
-        clippy::as_conversions,
-        reason = "usize→i64: constant is small, fits in i64"
-    )]
     #[expect(
         dead_code,
         reason = "refresh logic inlined in refresh_loop; kept as public API"
     )]
     pub(crate) fn needs_refresh(&self) -> bool {
         match self.seconds_remaining() {
-            Some(remaining) => remaining < REFRESH_THRESHOLD_SECS as i64,
+            // WHY: REFRESH_THRESHOLD_SECS is a small constant that fits in i64
+            Some(remaining) => {
+                remaining < i64::try_from(REFRESH_THRESHOLD_SECS).unwrap_or(i64::MAX)
+            }
             None => false,
         }
     }
@@ -219,83 +210,6 @@ fn default_expires_in() -> u64 {
 
 /// OAuth token prefix used by Claude Code for OAuth access tokens.
 const OAUTH_TOKEN_PREFIX: &str = "sk-ant-oat";
-
-/// Decode a base64url-encoded string (no padding required) into raw bytes.
-///
-/// WHY: extracts JWT payload segments to read `exp` claims without pulling in a
-/// dedicated crate for this ~30-line function. Base64url differs from standard
-/// Base64 only in the `+`/`-` and `/`/`_` substitutions and the omission of `=` padding.
-fn base64url_decode(s: &str) -> Option<Vec<u8>> {
-    /// Map a single base64url character to its 6-bit value.
-    fn char_val(b: u8) -> Option<u8> {
-        match b {
-            b'A'..=b'Z' => Some(b - b'A'),
-            b'a'..=b'z' => Some(b - b'a' + 26),
-            b'0'..=b'9' => Some(b - b'0' + 52),
-            b'-' | b'+' => Some(62),
-            b'_' | b'/' => Some(63),
-            b'=' => Some(0), // NOTE: padding treated as zero bits
-            _ => None,
-        }
-    }
-
-    let bytes = s.as_bytes();
-    let end = bytes.iter().rposition(|&b| b != b'=').map_or(0, |i| i + 1);
-    // end is rposition()+1 which is <= bytes.len(), so this slice is valid
-    #[expect(
-        clippy::indexing_slicing,
-        reason = "end <= bytes.len() by construction from rposition"
-    )]
-    let bytes = &bytes[..end];
-
-    let mut out = Vec::with_capacity(bytes.len() * 6 / 8 + 1);
-    let mut buf: u32 = 0;
-    let mut bits: u32 = 0;
-
-    for &b in bytes {
-        let v = char_val(b)?;
-        buf = (buf << 6) | u32::from(v);
-        bits += 6;
-        if bits >= 8 {
-            bits -= 8;
-            // SAFETY: bits is 0-7 after decrement, so buf >> bits yields a value
-            // whose lowest 8 bits are the decoded byte; upper bits are stripped.
-            #[expect(
-                clippy::cast_possible_truncation,
-                clippy::as_conversions,
-                reason = "bits is 0-7 so buf >> bits fits in u8; upper bits are overflow from accumulation"
-            )]
-            out.push((buf >> bits) as u8);
-        }
-    }
-
-    Some(out)
-}
-
-/// Attempt to extract the `exp` (expiry, seconds since epoch) claim from a
-/// dot-segmented token without verifying its signature.
-///
-/// WHY: OAuth access tokens stored in env vars carry no separate expiry metadata;
-/// reading the `exp` claim embedded in the token's payload segment is the only
-/// non-network way to detect a stale token and allow fallthrough to a refreshable
-/// file-based provider.
-///
-/// NOTE: signature is intentionally not verified: only the expiry claim is read.
-/// Returns `None` when the token has no recognisable payload segment or no `exp`
-/// field; the caller must treat `None` as "expiry unknown" (do not fall through).
-fn decode_jwt_exp_secs(token: &str) -> Option<u64> {
-    // NOTE: dot-segmented format — first segment is vendor prefix or JWT header,
-    // second segment is the JSON payload containing the exp claim.
-    let mut segs = token.splitn(4, '.');
-    let _first = segs.next()?;
-    let payload_b64 = segs.next()?;
-
-    let payload = base64url_decode(payload_b64)?;
-    let value: serde_json::Value = serde_json::from_slice(&payload).ok()?;
-
-    // NOTE: exp is seconds since epoch per JWT spec (RFC 7519).
-    value.get("exp").and_then(serde_json::Value::as_u64)
-}
 
 /// Reads a credential from an environment variable.
 ///
@@ -617,18 +531,13 @@ async fn refresh_loop(
                 continue;
             };
             let now_ms = unix_epoch_ms();
-            #[expect(clippy::cast_possible_wrap, reason = "ms timestamps fit in i64")]
-            #[expect(
-                clippy::as_conversions,
-                reason = "u64→i64: ms timestamps fit in i64 until year 292M"
-            )]
-            let remaining_secs = (s.expires_at_ms as i64 - now_ms as i64) / 1000;
-            #[expect(clippy::cast_possible_wrap, reason = "threshold constant fits in i64")]
-            #[expect(
-                clippy::as_conversions,
-                reason = "usize→i64: constant is small, fits in i64"
-            )]
-            let needs = remaining_secs < REFRESH_THRESHOLD_SECS as i64;
+            // WHY: ms timestamps fit in i64 until year 292M; subtraction gives signed delta
+            let expires_i64 = i64::try_from(s.expires_at_ms).unwrap_or(i64::MAX);
+            let now_i64 = i64::try_from(now_ms).unwrap_or(i64::MAX);
+            let remaining_secs = (expires_i64 - now_i64) / 1000;
+            // WHY: REFRESH_THRESHOLD_SECS is a small constant that fits in i64
+            let threshold = i64::try_from(REFRESH_THRESHOLD_SECS).unwrap_or(i64::MAX);
+            let needs = remaining_secs < threshold;
             (
                 s.refresh_token.expose_secret().to_owned(),
                 s.subscription_type.clone(),
@@ -737,6 +646,7 @@ async fn do_refresh(client: &reqwest::Client, refresh_token: &str) -> Option<OAu
 /// Returns an error if the credential file cannot be read, contains no refresh
 /// token, the OAuth refresh request fails, or the updated credentials cannot
 /// be saved.
+#[must_use = "refreshed credentials must be used or persisted"]
 pub async fn force_refresh(path: &Path) -> Result<CredentialFile, String> {
     let cred = CredentialFile::load(path)
         .ok_or_else(|| format!("cannot read credential file: {}", path.display()))?;

@@ -7,7 +7,8 @@
 )]
 
 use aletheia_mneme::knowledge::{
-    EmbeddedChunk, Entity, EpistemicTier, Fact, RecallResult, Relationship,
+    EmbeddedChunk, Entity, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance,
+    FactTemporal, RecallResult, Relationship,
 };
 use aletheia_mneme::recall::{FactorScores, RecallEngine, ScoredResult};
 
@@ -21,7 +22,7 @@ fn fact_to_scored(fact: &Fact, engine: &RecallEngine, query_nous: &str) -> Score
             vector_similarity: 0.8,
             decay: 0.5,
             relevance: engine.score_relevance(&fact.nous_id, query_nous),
-            epistemic_tier: engine.score_epistemic_tier(fact.tier.as_str()),
+            epistemic_tier: engine.score_epistemic_tier(fact.provenance.tier.as_str()),
             relationship_proximity: 0.5,
             access_frequency: 0.3,
         },
@@ -36,20 +37,28 @@ fn sample_fact(id: &str, nous_id: &str, tier: EpistemicTier) -> Fact {
         id: id.into(),
         nous_id: nous_id.to_owned(),
         content: format!("fact from {id}"),
-        confidence: 0.9,
-        tier,
-        valid_from: ts,
-        valid_to: far,
-        superseded_by: None,
-        source_session_id: None,
-        recorded_at: ts,
-        access_count: 0,
-        last_accessed_at: None,
-        stability_hours: 720.0,
         fact_type: String::new(),
-        is_forgotten: false,
-        forgotten_at: None,
-        forget_reason: None,
+        temporal: FactTemporal {
+            valid_from: ts,
+            valid_to: far,
+            recorded_at: ts,
+        },
+        provenance: FactProvenance {
+            confidence: 0.9,
+            tier,
+            source_session_id: None,
+            stability_hours: 720.0,
+        },
+        lifecycle: FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
     }
 }
 

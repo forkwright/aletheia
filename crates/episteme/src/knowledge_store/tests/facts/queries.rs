@@ -10,7 +10,9 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use super::super::super::*;
-use crate::knowledge::{EpistemicTier, Fact};
+use crate::knowledge::{
+    EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
+};
 
 const DIM: usize = 4;
 
@@ -27,20 +29,28 @@ fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
         id: crate::id::FactId::new_unchecked(id),
         nous_id: nous_id.to_owned(),
         content: content.to_owned(),
-        confidence: 0.9,
-        tier: EpistemicTier::Inferred,
-        valid_from: test_ts("2026-01-01"),
-        valid_to: crate::knowledge::far_future(),
-        superseded_by: None,
-        source_session_id: None,
-        recorded_at: test_ts("2026-03-01T00:00:00Z"),
-        access_count: 0,
-        last_accessed_at: None,
-        stability_hours: 720.0,
         fact_type: String::new(),
-        is_forgotten: false,
-        forgotten_at: None,
-        forget_reason: None,
+        temporal: FactTemporal {
+            valid_from: test_ts("2026-01-01"),
+            valid_to: crate::knowledge::far_future(),
+            recorded_at: test_ts("2026-03-01T00:00:00Z"),
+        },
+        provenance: FactProvenance {
+            confidence: 0.9,
+            tier: EpistemicTier::Inferred,
+            source_session_id: None,
+            stability_hours: 720.0,
+        },
+        lifecycle: FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
     }
 }
 
@@ -53,7 +63,7 @@ fn query_facts_excludes_expired() {
         .expect("insert active");
 
     let mut expired = make_fact("f-expired", "agent-a", "Expired fact");
-    expired.valid_to =
+    expired.temporal.valid_to =
         crate::knowledge::parse_timestamp("2025-01-01").expect("valid expiry timestamp");
     store.insert_fact(&expired).expect("insert expired");
 
@@ -99,9 +109,9 @@ fn query_facts_at_returns_snapshot() {
     let store = make_store();
 
     let mut fact = make_fact("f1", "agent-a", "Temporal fact");
-    fact.valid_from = crate::knowledge::parse_timestamp("2026-01-01")
+    fact.temporal.valid_from = crate::knowledge::parse_timestamp("2026-01-01")
         .expect("valid_from timestamp for temporal test");
-    fact.valid_to = crate::knowledge::parse_timestamp("2026-06-01")
+    fact.temporal.valid_to = crate::knowledge::parse_timestamp("2026-06-01")
         .expect("valid_to timestamp for temporal test");
     store.insert_fact(&fact).expect("insert temporal fact");
 

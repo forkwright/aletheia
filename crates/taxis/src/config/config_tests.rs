@@ -660,8 +660,9 @@ fn agency_from_json() {
 }
 
 mod proptests {
-    use super::*;
     use proptest::prelude::*;
+
+    use super::*;
 
     fn arb_channel_binding() -> impl Strategy<Value = ChannelBinding> {
         (

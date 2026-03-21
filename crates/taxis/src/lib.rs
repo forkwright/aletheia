@@ -30,3 +30,17 @@ pub mod reload;
 pub mod validate;
 /// Config-time validation of agent workspace directory structure.
 pub mod workspace_schema;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn public_modules_accessible() {
+        // INVARIANT: all public modules must be importable
+        let _ = std::any::type_name::<config::AletheiaConfig>();
+        let _ = std::any::type_name::<cascade::Tier>();
+        let _ = std::any::type_name::<error::Error>();
+        let _ = std::any::type_name::<oikos::Oikos>();
+    }
+}

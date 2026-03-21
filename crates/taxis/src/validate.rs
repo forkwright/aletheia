@@ -21,6 +21,11 @@ pub struct ValidationError {
 /// Serializes to JSON and validates each top-level section using
 /// [`validate_section`]. Returns all validation errors collected
 /// across all sections.
+#[must_use]
+#[expect(
+    clippy::double_must_use,
+    reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+)]
 pub fn validate_config(config: &AletheiaConfig) -> Result<(), ValidationError> {
     let value = serde_json::to_value(config).unwrap_or(Value::Null);
     let Value::Object(ref sections) = value else {
@@ -53,6 +58,11 @@ pub fn validate_config(config: &AletheiaConfig) -> Result<(), ValidationError> {
 /// Returns [`ValidationError`] if any field value is out of range, empty when
 /// required, or the section name is unrecognized. The error contains all
 /// collected validation messages.
+#[must_use]
+#[expect(
+    clippy::double_must_use,
+    reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+)]
 pub fn validate_section(section: &str, value: &Value) -> Result<(), ValidationError> {
     let mut errors = Vec::new();
 
@@ -296,39 +306,52 @@ fn check_positive_u32(parent: &Value, key: &str, errors: &mut Vec<String>) {
     reason = "test: vec[0] is valid after asserting errors are non-empty"
 )]
 mod tests {
-    use super::*;
     use serde_json::json;
+
+    use super::*;
 
     #[test]
     fn rejects_zero_timeout() {
         let section = json!({ "defaults": { "timeoutSeconds": 0 } });
         let result = validate_section("agents", &section);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().errors[0].contains("timeoutSeconds"));
+        assert!(result.is_err(), "zero timeoutSeconds should be rejected");
+        assert!(
+            result.unwrap_err().errors[0].contains("timeoutSeconds"),
+            "error should mention timeoutSeconds"
+        );
     }
 
     #[test]
     fn rejects_excessive_tool_iterations() {
         let section = json!({ "defaults": { "maxToolIterations": 10_001 } });
         let result = validate_section("agents", &section);
-        assert!(result.is_err());
+        assert!(
+            result.is_err(),
+            "maxToolIterations exceeding 10000 should be rejected"
+        );
     }
 
     #[test]
     fn accepts_tool_iterations_within_unrestricted_range() {
         let section = json!({ "defaults": { "maxToolIterations": 10_000 } });
-        assert!(validate_section("agents", &section).is_ok());
+        assert!(
+            validate_section("agents", &section).is_ok(),
+            "maxToolIterations at 10000 should be accepted"
+        );
     }
 
     #[test]
     fn rejects_invalid_port() {
         let section = json!({ "port": 0 });
         let result = validate_section("gateway", &section);
-        assert!(result.is_err());
+        assert!(result.is_err(), "port 0 should be rejected");
 
         let section = json!({ "port": 70000 });
         let result = validate_section("gateway", &section);
-        assert!(result.is_err());
+        assert!(
+            result.is_err(),
+            "port 70000 exceeding 65535 should be rejected"
+        );
     }
 
     #[test]
@@ -337,7 +360,10 @@ mod tests {
             "dbMonitoring": { "warnThresholdMb": 500, "alertThresholdMb": 100 }
         });
         let result = validate_section("maintenance", &section);
-        assert!(result.is_err());
+        assert!(
+            result.is_err(),
+            "warn threshold exceeding alert threshold should be rejected"
+        );
     }
 
     #[test]
@@ -350,19 +376,25 @@ mod tests {
                 "thinkingBudget": 10_000
             }
         });
-        assert!(validate_section("agents", &section).is_ok());
+        assert!(
+            validate_section("agents", &section).is_ok(),
+            "valid agent defaults should be accepted"
+        );
     }
 
     #[test]
     fn accepts_valid_gateway() {
         let section = json!({ "port": 8080, "cors": { "maxAgeSecs": 3600 } });
-        assert!(validate_section("gateway", &section).is_ok());
+        assert!(
+            validate_section("gateway", &section).is_ok(),
+            "valid gateway config should be accepted"
+        );
     }
 
     #[test]
     fn unknown_section_errors() {
         let result = validate_section("nonexistent", &json!({}));
-        assert!(result.is_err());
+        assert!(result.is_err(), "unknown config section should be rejected");
     }
 
     #[test]
@@ -374,9 +406,15 @@ mod tests {
             }
         });
         let result = validate_section("agents", &section);
-        assert!(result.is_err());
+        assert!(
+            result.is_err(),
+            "bootstrapMaxTokens exceeding contextTokens should be rejected"
+        );
         let err = result.unwrap_err();
-        assert!(err.errors[0].contains("bootstrapMaxTokens"));
+        assert!(
+            err.errors[0].contains("bootstrapMaxTokens"),
+            "error should mention bootstrapMaxTokens"
+        );
     }
 
     #[test]
@@ -387,14 +425,17 @@ mod tests {
                 "bootstrapMaxTokens": 40_000
             }
         });
-        assert!(validate_section("agents", &section).is_ok());
+        assert!(
+            validate_section("agents", &section).is_ok(),
+            "bootstrapMaxTokens within contextTokens should be accepted"
+        );
     }
 
     #[test]
     fn rejects_invalid_auth_mode() {
         let section = json!({ "auth": { "mode": "magic" } });
         let result = validate_section("gateway", &section);
-        assert!(result.is_err());
+        assert!(result.is_err(), "invalid auth mode should be rejected");
         let err = result.unwrap_err();
         assert!(err.errors[0].contains("gateway.auth.mode"));
     }
@@ -414,20 +455,29 @@ mod tests {
     fn rejects_zero_embedding_dimension() {
         let section = json!({ "dimension": 0 });
         let result = validate_section("embedding", &section);
-        assert!(result.is_err());
+        assert!(
+            result.is_err(),
+            "zero embedding dimension should be rejected"
+        );
     }
 
     #[test]
     fn rejects_empty_embedding_provider() {
         let section = json!({ "provider": "" });
         let result = validate_section("embedding", &section);
-        assert!(result.is_err());
+        assert!(
+            result.is_err(),
+            "empty embedding provider should be rejected"
+        );
     }
 
     #[test]
     fn accepts_valid_embedding() {
         let section = json!({ "provider": "candle", "dimension": 384 });
-        assert!(validate_section("embedding", &section).is_ok());
+        assert!(
+            validate_section("embedding", &section).is_ok(),
+            "valid embedding config should be accepted"
+        );
     }
 
     #[test]
@@ -440,7 +490,7 @@ mod tests {
             }
         });
         let result = validate_section("channels", &section);
-        assert!(result.is_err());
+        assert!(result.is_err(), "zero signal httpPort should be rejected");
     }
 
     #[test]
@@ -452,7 +502,10 @@ mod tests {
                 }
             }
         });
-        assert!(validate_section("channels", &section).is_ok());
+        assert!(
+            validate_section("channels", &section).is_ok(),
+            "valid channel config should be accepted"
+        );
     }
 
     #[test]
@@ -461,7 +514,10 @@ mod tests {
             { "channel": "signal", "source": "*", "nousId": "" }
         ]);
         let result = validate_section("bindings", &section);
-        assert!(result.is_err());
+        assert!(
+            result.is_err(),
+            "binding with empty nousId should be rejected"
+        );
     }
 
     #[test]
@@ -469,14 +525,20 @@ mod tests {
         let section = json!([
             { "channel": "signal", "source": "*", "nousId": "main" }
         ]);
-        assert!(validate_section("bindings", &section).is_ok());
+        assert!(
+            validate_section("bindings", &section).is_ok(),
+            "valid binding config should be accepted"
+        );
     }
 
     #[test]
     fn rejects_invalid_credential_source() {
         let section = json!({ "source": "magic" });
         let result = validate_section("credential", &section);
-        assert!(result.is_err());
+        assert!(
+            result.is_err(),
+            "invalid credential source should be rejected"
+        );
         let err = result.unwrap_err();
         assert!(err.errors[0].contains("credential.source"));
     }
@@ -496,7 +558,7 @@ mod tests {
     fn rejects_invalid_agency_level() {
         let section = json!({ "defaults": { "agency": "yolo" } });
         let result = validate_section("agents", &section);
-        assert!(result.is_err());
+        assert!(result.is_err(), "invalid agency level should be rejected");
         let err = result.unwrap_err();
         assert!(err.errors[0].contains("agency"));
     }
@@ -516,7 +578,7 @@ mod tests {
     fn rejects_empty_model_primary() {
         let section = json!({ "defaults": { "model": { "primary": "" } } });
         let result = validate_section("agents", &section);
-        assert!(result.is_err());
+        assert!(result.is_err(), "empty model primary should be rejected");
         let err = result.unwrap_err();
         assert!(
             err.errors.iter().any(|e| e.contains("model.primary")),
@@ -528,7 +590,7 @@ mod tests {
     fn rejects_empty_model_fallback() {
         let section = json!({ "defaults": { "model": { "primary": "claude-sonnet-4-6", "fallbacks": [""] } } });
         let result = validate_section("agents", &section);
-        assert!(result.is_err());
+        assert!(result.is_err(), "empty model fallback should be rejected");
         let err = result.unwrap_err();
         assert!(
             err.errors.iter().any(|e| e.contains("fallbacks[0]")),
@@ -546,7 +608,10 @@ mod tests {
                 }
             }
         });
-        assert!(validate_section("agents", &section).is_ok());
+        assert!(
+            validate_section("agents", &section).is_ok(),
+            "valid model ids should be accepted"
+        );
     }
 
     #[test]
@@ -574,7 +639,10 @@ mod tests {
     #[test]
     fn accepts_token_budget_at_maximum() {
         let section = json!({ "defaults": { "contextTokens": 1_000_000_u64 } });
-        assert!(validate_section("agents", &section).is_ok());
+        assert!(
+            validate_section("agents", &section).is_ok(),
+            "token budget at maximum should be accepted"
+        );
     }
 
     #[test]

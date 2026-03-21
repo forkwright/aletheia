@@ -118,6 +118,11 @@ impl WorkspaceSchema {
     ///
     /// Returns [`WorkspaceSchemaError`] listing every missing file or directory
     /// when one or more requirements are not satisfied.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
     pub fn validate(&self, workspace: &Path) -> Result<(), WorkspaceSchemaError> {
         let mut failures: Vec<String> = Vec::new();
 
@@ -308,7 +313,10 @@ mod tests {
     #[test]
     fn empty_schema_always_passes() {
         let ws = make_workspace(&[], &[]);
-        assert!(WorkspaceSchema::new().validate(ws.path()).is_ok());
+        assert!(
+            WorkspaceSchema::new().validate(ws.path()).is_ok(),
+            "empty schema should always pass validation"
+        );
     }
 
     // ── validate_agent_workspaces ─────────────────────────────────────────

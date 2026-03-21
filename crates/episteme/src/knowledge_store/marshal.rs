@@ -13,7 +13,7 @@ pub(super) fn fact_to_params(
     p.insert("id".to_owned(), DataValue::Str(fact.id.as_str().into()));
     p.insert(
         "valid_from".to_owned(),
-        DataValue::Str(format_timestamp(&fact.valid_from).into()),
+        DataValue::Str(format_timestamp(&fact.temporal.valid_from).into()),
     );
     p.insert(
         "content".to_owned(),
@@ -23,44 +23,50 @@ pub(super) fn fact_to_params(
         "nous_id".to_owned(),
         DataValue::Str(fact.nous_id.as_str().into()),
     );
-    p.insert("confidence".to_owned(), DataValue::from(fact.confidence));
-    p.insert("tier".to_owned(), DataValue::Str(fact.tier.as_str().into()));
+    p.insert(
+        "confidence".to_owned(),
+        DataValue::from(fact.provenance.confidence),
+    );
+    p.insert(
+        "tier".to_owned(),
+        DataValue::Str(fact.provenance.tier.as_str().into()),
+    );
     p.insert(
         "valid_to".to_owned(),
-        DataValue::Str(format_timestamp(&fact.valid_to).into()),
+        DataValue::Str(format_timestamp(&fact.temporal.valid_to).into()),
     );
     p.insert(
         "superseded_by".to_owned(),
-        match &fact.superseded_by {
+        match &fact.lifecycle.superseded_by {
             Some(s) => DataValue::Str(s.as_str().into()),
             None => DataValue::Null,
         },
     );
     p.insert(
         "source_session_id".to_owned(),
-        match &fact.source_session_id {
+        match &fact.provenance.source_session_id {
             Some(s) => DataValue::Str(s.as_str().into()),
             None => DataValue::Null,
         },
     );
     p.insert(
         "recorded_at".to_owned(),
-        DataValue::Str(format_timestamp(&fact.recorded_at).into()),
+        DataValue::Str(format_timestamp(&fact.temporal.recorded_at).into()),
     );
     p.insert(
         "access_count".to_owned(),
-        DataValue::from(i64::from(fact.access_count)),
+        DataValue::from(i64::from(fact.access.access_count)),
     );
     p.insert(
         "last_accessed_at".to_owned(),
-        match &fact.last_accessed_at {
+        match &fact.access.last_accessed_at {
             Some(ts) => DataValue::Str(format_timestamp(ts).into()),
             None => DataValue::Str("".into()),
         },
     );
     p.insert(
         "stability_hours".to_owned(),
-        DataValue::from(fact.stability_hours),
+        DataValue::from(fact.provenance.stability_hours),
     );
     p.insert(
         "fact_type".to_owned(),
@@ -68,18 +74,18 @@ pub(super) fn fact_to_params(
     );
     p.insert(
         "is_forgotten".to_owned(),
-        DataValue::Bool(fact.is_forgotten),
+        DataValue::Bool(fact.lifecycle.is_forgotten),
     );
     p.insert(
         "forgotten_at".to_owned(),
-        match &fact.forgotten_at {
+        match &fact.lifecycle.forgotten_at {
             Some(ts) => DataValue::Str(format_timestamp(ts).into()),
             None => DataValue::Null,
         },
     );
     p.insert(
         "forget_reason".to_owned(),
-        match &fact.forget_reason {
+        match &fact.lifecycle.forget_reason {
             Some(r) => DataValue::Str(r.as_str().into()),
             None => DataValue::Null,
         },
@@ -352,23 +358,31 @@ pub(super) fn rows_to_facts(
                 nous_id_col
             },
             content,
-            confidence,
-            tier,
-            valid_from: crate::knowledge::parse_timestamp(&valid_from)
-                .unwrap_or(jiff::Timestamp::UNIX_EPOCH),
-            valid_to: crate::knowledge::parse_timestamp(&valid_to)
-                .unwrap_or_else(crate::knowledge::far_future),
-            superseded_by: superseded_by.map(crate::id::FactId::new_unchecked),
-            source_session_id,
-            recorded_at: crate::knowledge::parse_timestamp(&recorded_at)
-                .unwrap_or(jiff::Timestamp::UNIX_EPOCH),
-            access_count,
-            last_accessed_at: crate::knowledge::parse_timestamp(&last_accessed_at),
-            stability_hours,
             fact_type,
-            is_forgotten,
-            forgotten_at: forgotten_at.and_then(|s| crate::knowledge::parse_timestamp(&s)),
-            forget_reason,
+            temporal: crate::knowledge::FactTemporal {
+                valid_from: crate::knowledge::parse_timestamp(&valid_from)
+                    .unwrap_or(jiff::Timestamp::UNIX_EPOCH),
+                valid_to: crate::knowledge::parse_timestamp(&valid_to)
+                    .unwrap_or_else(crate::knowledge::far_future),
+                recorded_at: crate::knowledge::parse_timestamp(&recorded_at)
+                    .unwrap_or(jiff::Timestamp::UNIX_EPOCH),
+            },
+            provenance: crate::knowledge::FactProvenance {
+                confidence,
+                tier,
+                source_session_id,
+                stability_hours,
+            },
+            lifecycle: crate::knowledge::FactLifecycle {
+                superseded_by: superseded_by.map(crate::id::FactId::new_unchecked),
+                is_forgotten,
+                forgotten_at: forgotten_at.and_then(|s| crate::knowledge::parse_timestamp(&s)),
+                forget_reason,
+            },
+            access: crate::knowledge::FactAccess {
+                access_count,
+                last_accessed_at: crate::knowledge::parse_timestamp(&last_accessed_at),
+            },
         });
     }
     Ok(out)
@@ -481,23 +495,31 @@ pub(super) fn rows_to_raw_facts(
             id: crate::id::FactId::new_unchecked(id),
             nous_id,
             content,
-            confidence,
-            tier,
-            valid_from: crate::knowledge::parse_timestamp(&valid_from)
-                .unwrap_or(jiff::Timestamp::UNIX_EPOCH),
-            valid_to: crate::knowledge::parse_timestamp(&valid_to)
-                .unwrap_or_else(crate::knowledge::far_future),
-            superseded_by: superseded_by.map(crate::id::FactId::new_unchecked),
-            source_session_id,
-            recorded_at: crate::knowledge::parse_timestamp(&recorded_at)
-                .unwrap_or(jiff::Timestamp::UNIX_EPOCH),
-            access_count,
-            last_accessed_at: crate::knowledge::parse_timestamp(&last_accessed_at),
-            stability_hours,
             fact_type,
-            is_forgotten,
-            forgotten_at: forgotten_at.and_then(|s| crate::knowledge::parse_timestamp(&s)),
-            forget_reason,
+            temporal: crate::knowledge::FactTemporal {
+                valid_from: crate::knowledge::parse_timestamp(&valid_from)
+                    .unwrap_or(jiff::Timestamp::UNIX_EPOCH),
+                valid_to: crate::knowledge::parse_timestamp(&valid_to)
+                    .unwrap_or_else(crate::knowledge::far_future),
+                recorded_at: crate::knowledge::parse_timestamp(&recorded_at)
+                    .unwrap_or(jiff::Timestamp::UNIX_EPOCH),
+            },
+            provenance: crate::knowledge::FactProvenance {
+                confidence,
+                tier,
+                source_session_id,
+                stability_hours,
+            },
+            lifecycle: crate::knowledge::FactLifecycle {
+                superseded_by: superseded_by.map(crate::id::FactId::new_unchecked),
+                is_forgotten,
+                forgotten_at: forgotten_at.and_then(|s| crate::knowledge::parse_timestamp(&s)),
+                forget_reason,
+            },
+            access: crate::knowledge::FactAccess {
+                access_count,
+                last_accessed_at: crate::knowledge::parse_timestamp(&last_accessed_at),
+            },
         });
     }
     Ok(out)
@@ -540,20 +562,28 @@ pub(super) fn rows_to_facts_partial(
             id: crate::id::FactId::new_unchecked(id),
             nous_id: String::new(),
             content,
-            confidence,
-            tier,
-            valid_from: jiff::Timestamp::UNIX_EPOCH,
-            valid_to: crate::knowledge::far_future(),
-            superseded_by: None,
-            source_session_id: None,
-            recorded_at: jiff::Timestamp::UNIX_EPOCH,
-            access_count: 0,
-            last_accessed_at: None,
-            stability_hours: 720.0,
             fact_type: String::new(),
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
+            temporal: crate::knowledge::FactTemporal {
+                valid_from: jiff::Timestamp::UNIX_EPOCH,
+                valid_to: crate::knowledge::far_future(),
+                recorded_at: jiff::Timestamp::UNIX_EPOCH,
+            },
+            provenance: crate::knowledge::FactProvenance {
+                confidence,
+                tier,
+                source_session_id: None,
+                stability_hours: 720.0,
+            },
+            lifecycle: crate::knowledge::FactLifecycle {
+                superseded_by: None,
+                is_forgotten: false,
+                forgotten_at: None,
+                forget_reason: None,
+            },
+            access: crate::knowledge::FactAccess {
+                access_count: 0,
+                last_accessed_at: None,
+            },
         });
     }
     Ok(out)

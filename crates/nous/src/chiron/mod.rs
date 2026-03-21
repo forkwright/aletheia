@@ -270,7 +270,9 @@ pub fn store_audit_report(
     knowledge_store: &aletheia_mneme::knowledge_store::KnowledgeStore,
     report: &AuditReport,
 ) -> crate::error::Result<()> {
-    use aletheia_mneme::knowledge::{EpistemicTier, far_future};
+    use aletheia_mneme::knowledge::{
+        EpistemicTier, FactAccess, FactLifecycle, FactProvenance, FactTemporal, far_future,
+    };
     use snafu::ResultExt;
 
     let now = jiff::Timestamp::now();
@@ -300,19 +302,27 @@ pub fn store_audit_report(
             nous_id: report.nous_id.clone(),
             fact_type: String::from("audit"),
             content,
-            confidence,
-            tier,
-            valid_from: now,
-            valid_to: far_future(),
-            recorded_at: now,
-            source_session_id: None,
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-            access_count: 0,
-            last_accessed_at: None,
-            stability_hours: aletheia_mneme::knowledge::FactType::Audit.base_stability_hours(),
+            temporal: FactTemporal {
+                valid_from: now,
+                valid_to: far_future(),
+                recorded_at: now,
+            },
+            provenance: FactProvenance {
+                confidence,
+                tier,
+                source_session_id: None,
+                stability_hours: aletheia_mneme::knowledge::FactType::Audit.base_stability_hours(),
+            },
+            lifecycle: FactLifecycle {
+                superseded_by: None,
+                is_forgotten: false,
+                forgotten_at: None,
+                forget_reason: None,
+            },
+            access: FactAccess {
+                access_count: 0,
+                last_accessed_at: None,
+            },
         };
 
         knowledge_store

@@ -31,8 +31,8 @@
 //!
 //! let mut sys = TestSystem::new();
 //! sys.add_file("/etc/aletheia.toml", b"port = 9000");
-//! assert!(has_config(&sys, Path::new("/etc/aletheia.toml")));
-//! assert!(!has_config(&sys, Path::new("/etc/missing.toml")));
+//! assert!(has_config(&sys, Path::new("/etc/aletheia.toml")), "config file must exist");
+//! assert!(!has_config(&sys, Path::new("/etc/missing.toml")), "missing file must not exist");
 //! ```
 
 use std::collections::{HashMap, HashSet};
@@ -240,14 +240,13 @@ impl Environment for RealSystem {
 /// use aletheia_koina::system::{Clock, Environment, FileSystem, TestSystem};
 /// use jiff::Timestamp;
 ///
-/// let epoch: Timestamp = "1970-01-01T00:00:00Z".parse().unwrap();
 /// let sys = TestSystem::new()
-///     .with_clock(epoch)
+///     .with_clock(Timestamp::UNIX_EPOCH)
 ///     .with_env("HOME", "/home/alice");
 ///
-/// assert_eq!(sys.now(), epoch);
-/// assert_eq!(sys.var("HOME").as_deref(), Some("/home/alice"));
-/// assert!(!sys.exists(Path::new("/etc/missing")));
+/// assert_eq!(sys.now(), Timestamp::UNIX_EPOCH, "clock must return configured time");
+/// assert_eq!(sys.var("HOME").as_deref(), Some("/home/alice"), "env var must match");
+/// assert!(!sys.exists(Path::new("/etc/missing")), "path must not exist");
 /// ```
 #[derive(Debug, Clone)]
 pub struct TestSystem {
@@ -331,33 +330,22 @@ impl TestSystem {
 
     /// Acquire the files lock.
     ///
-    /// # Panics
-    ///
-    /// Panics if the mutex is poisoned (another thread panicked while holding
-    /// it). Poison means the in-memory store is already in an undefined state;
-    /// propagating would only hide the root cause.
-    #[expect(
-        clippy::expect_used,
-        reason = "Mutex poisoning is a programming error — a panic in another thread \
-                  has left the in-memory store in an undefined state"
-    )]
+    /// Recovers from mutex poisoning by accepting the potentially-inconsistent
+    /// state. In a test-only type, this avoids cascading panics while still
+    /// letting the original failure propagate through test assertions.
     fn files_guard(&self) -> std::sync::MutexGuard<'_, HashMap<PathBuf, Vec<u8>>> {
-        self.files.lock().expect("files lock poisoned")
+        self.files
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     /// Acquire the dirs lock.
     ///
-    /// # Panics
-    ///
-    /// Panics if the mutex is poisoned. See [`files_guard`] for the rationale.
-    ///
-    /// [`files_guard`]: TestSystem::files_guard
-    #[expect(
-        clippy::expect_used,
-        reason = "Mutex poisoning is a programming error — same rationale as files_guard"
-    )]
+    /// See [`files_guard`](TestSystem::files_guard) for rationale.
     fn dirs_guard(&self) -> std::sync::MutexGuard<'_, HashSet<PathBuf>> {
-        self.dirs.lock().expect("dirs lock poisoned")
+        self.dirs
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 }
 

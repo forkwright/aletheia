@@ -21,7 +21,7 @@ use super::{
 };
 use crate::engine::DataValue;
 use crate::id::{EntityId, FactId};
-use crate::knowledge::EpistemicTier;
+use crate::knowledge::{EpistemicTier, FactAccess, FactLifecycle, FactProvenance, FactTemporal};
 use crate::knowledge_store::KnowledgeStore;
 
 /// Convert a non-negative `i64` from a Datalog row to `usize`.
@@ -260,20 +260,28 @@ impl KnowledgeStore {
                 id: new_id.clone(),
                 nous_id: nous_id.to_owned(),
                 content: consolidated.content.clone(),
-                confidence: consolidated.confidence,
-                tier: EpistemicTier::Inferred,
-                valid_from: now,
-                valid_to: far_future,
-                superseded_by: None,
-                source_session_id: None,
-                recorded_at: now,
-                access_count: 0,
-                last_accessed_at: None,
-                stability_hours: crate::knowledge::FactType::Observation.base_stability_hours(),
                 fact_type: "observation".to_owned(),
-                is_forgotten: false,
-                forgotten_at: None,
-                forget_reason: None,
+                temporal: FactTemporal {
+                    valid_from: now,
+                    valid_to: far_future,
+                    recorded_at: now,
+                },
+                provenance: FactProvenance {
+                    confidence: consolidated.confidence,
+                    tier: EpistemicTier::Inferred,
+                    source_session_id: None,
+                    stability_hours: crate::knowledge::FactType::Observation.base_stability_hours(),
+                },
+                lifecycle: FactLifecycle {
+                    superseded_by: None,
+                    is_forgotten: false,
+                    forgotten_at: None,
+                    forget_reason: None,
+                },
+                access: FactAccess {
+                    access_count: 0,
+                    last_accessed_at: None,
+                },
             };
             self.insert_fact(&fact).map_err(|e| {
                 StoreSnafu {

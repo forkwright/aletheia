@@ -11,7 +11,9 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use super::super::super::*;
-use crate::knowledge::{EpistemicTier, Fact, ForgetReason};
+use crate::knowledge::{
+    EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal, ForgetReason,
+};
 
 const DIM: usize = 4;
 
@@ -28,20 +30,28 @@ fn make_fact(id: &str, nous_id: &str, content: &str) -> crate::knowledge::Fact {
         id: crate::id::FactId::new_unchecked(id),
         nous_id: nous_id.to_owned(),
         content: content.to_owned(),
-        confidence: 0.9,
-        tier: EpistemicTier::Inferred,
-        valid_from: test_ts("2026-01-01"),
-        valid_to: crate::knowledge::far_future(),
-        superseded_by: None,
-        source_session_id: None,
-        recorded_at: test_ts("2026-03-01T00:00:00Z"),
-        access_count: 0,
-        last_accessed_at: None,
-        stability_hours: 720.0,
         fact_type: String::new(),
-        is_forgotten: false,
-        forgotten_at: None,
-        forget_reason: None,
+        temporal: FactTemporal {
+            valid_from: test_ts("2026-01-01"),
+            valid_to: crate::knowledge::far_future(),
+            recorded_at: test_ts("2026-03-01T00:00:00Z"),
+        },
+        provenance: FactProvenance {
+            confidence: 0.9,
+            tier: EpistemicTier::Inferred,
+            source_session_id: None,
+            stability_hours: 720.0,
+        },
+        lifecycle: FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
     }
 }
 
@@ -87,7 +97,7 @@ fn audit_all_facts_returns_forgotten() {
         2,
         "audit should return both visible and forgotten facts"
     );
-    let forgotten_count = all.iter().filter(|f| f.is_forgotten).count();
+    let forgotten_count = all.iter().filter(|f| f.lifecycle.is_forgotten).count();
     assert_eq!(
         forgotten_count, 1,
         "audit should show exactly one forgotten fact"
@@ -128,7 +138,7 @@ fn forget_already_forgotten_is_idempotent() {
         "audit should return the one fact that was forgotten twice"
     );
     assert!(
-        all[0].is_forgotten,
+        all[0].lifecycle.is_forgotten,
         "fact forgotten twice should still be marked as forgotten"
     );
 }
@@ -189,13 +199,19 @@ fn forget_with_all_reasons() {
     let all = store.audit_all_facts("agent-a", 100).expect("audit");
     assert_eq!(all.len(), 4, "audit should return all four forgotten facts");
     for fact in &all {
-        assert!(fact.is_forgotten, "each fact should be marked as forgotten");
         assert!(
-            fact.forget_reason.is_some(),
+            fact.lifecycle.is_forgotten,
+            "each fact should be marked as forgotten"
+        );
+        assert!(
+            fact.lifecycle.forget_reason.is_some(),
             "each forgotten fact should have a reason"
         );
     }
-    let reasons: Vec<ForgetReason> = all.iter().filter_map(|f| f.forget_reason).collect();
+    let reasons: Vec<ForgetReason> = all
+        .iter()
+        .filter_map(|f| f.lifecycle.forget_reason)
+        .collect();
     assert!(
         reasons.contains(&ForgetReason::UserRequested),
         "UserRequested reason should be present"
@@ -259,7 +275,7 @@ fn run_query_malformed_datalog_errors() {
 fn insert_fact_confidence_zero() {
     let store = make_store();
     let mut fact = make_fact("fc0", "agent-a", "zero confidence");
-    fact.confidence = 0.0;
+    fact.provenance.confidence = 0.0;
     store.insert_fact(&fact).expect("insert zero confidence");
     let results = store
         .query_facts("agent-a", "2026-06-01", 10)
@@ -269,7 +285,7 @@ fn insert_fact_confidence_zero() {
         .find(|f| f.id.as_str() == "fc0")
         .expect("find fact");
     assert!(
-        (found.confidence - 0.0).abs() < f64::EPSILON,
+        (found.provenance.confidence - 0.0).abs() < f64::EPSILON,
         "zero confidence should be stored and retrieved correctly"
     );
 }
@@ -278,7 +294,7 @@ fn insert_fact_confidence_zero() {
 fn insert_fact_confidence_one() {
     let store = make_store();
     let mut fact = make_fact("fc1", "agent-a", "full confidence");
-    fact.confidence = 1.0;
+    fact.provenance.confidence = 1.0;
     store.insert_fact(&fact).expect("insert full confidence");
     let results = store
         .query_facts("agent-a", "2026-06-01", 10)
@@ -288,7 +304,7 @@ fn insert_fact_confidence_one() {
         .find(|f| f.id.as_str() == "fc1")
         .expect("find fact");
     assert!(
-        (found.confidence - 1.0).abs() < f64::EPSILON,
+        (found.provenance.confidence - 1.0).abs() < f64::EPSILON,
         "full confidence should be stored and retrieved correctly"
     );
 }
@@ -360,22 +376,30 @@ fn concurrent_inserts() {
                     id: crate::id::FactId::new_unchecked(format!("f-concurrent-{i}")),
                     nous_id: "agent-a".to_owned(),
                     content: format!("Concurrent fact {i}"),
-                    confidence: 0.9,
-                    tier: EpistemicTier::Inferred,
-                    valid_from: crate::knowledge::parse_timestamp("2026-01-01")
-                        .expect("valid test timestamp"),
-                    valid_to: crate::knowledge::far_future(),
-                    superseded_by: None,
-                    source_session_id: None,
-                    recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
-                        .expect("valid test timestamp"),
-                    access_count: 0,
-                    last_accessed_at: None,
-                    stability_hours: 720.0,
                     fact_type: String::new(),
-                    is_forgotten: false,
-                    forgotten_at: None,
-                    forget_reason: None,
+                    temporal: FactTemporal {
+                        valid_from: crate::knowledge::parse_timestamp("2026-01-01")
+                            .expect("valid test timestamp"),
+                        valid_to: crate::knowledge::far_future(),
+                        recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
+                            .expect("valid test timestamp"),
+                    },
+                    provenance: FactProvenance {
+                        confidence: 0.9,
+                        tier: EpistemicTier::Inferred,
+                        source_session_id: None,
+                        stability_hours: 720.0,
+                    },
+                    lifecycle: FactLifecycle {
+                        superseded_by: None,
+                        is_forgotten: false,
+                        forgotten_at: None,
+                        forget_reason: None,
+                    },
+                    access: FactAccess {
+                        access_count: 0,
+                        last_accessed_at: None,
+                    },
                 };
                 s.insert_fact(&fact).expect("concurrent insert");
             })
@@ -539,7 +563,7 @@ async fn audit_all_facts_async_works() {
         2,
         "async audit should return both visible and forgotten facts"
     );
-    let forgotten_count = all.iter().filter(|f| f.is_forgotten).count();
+    let forgotten_count = all.iter().filter(|f| f.lifecycle.is_forgotten).count();
     assert_eq!(
         forgotten_count, 1,
         "async audit should show exactly one forgotten fact"
@@ -560,11 +584,11 @@ async fn forget_fact_async_works() {
         .await
         .expect("async forget");
     assert!(
-        forgotten.is_forgotten,
+        forgotten.lifecycle.is_forgotten,
         "async forget should mark fact as forgotten"
     );
     assert_eq!(
-        forgotten.forget_reason,
+        forgotten.lifecycle.forget_reason,
         Some(ForgetReason::Incorrect),
         "async forget should set the correct reason"
     );
@@ -578,7 +602,7 @@ async fn forget_fact_async_works() {
         .find(|f| f.id.as_str() == "f-forget-async")
         .expect("found");
     assert!(
-        found.is_forgotten,
+        found.lifecycle.is_forgotten,
         "async-forgotten fact should appear as forgotten in audit"
     );
 }
@@ -610,7 +634,7 @@ async fn unforget_fact_async_works() {
         .find(|f| f.id.as_str() == "f-unforget-async")
         .expect("found");
     assert!(
-        !found.is_forgotten,
+        !found.lifecycle.is_forgotten,
         "async-unforgotten fact should not be marked as forgotten"
     );
 }
@@ -635,7 +659,7 @@ async fn increment_access_async_works() {
         .find(|f| f.id.as_str() == "f-access-async")
         .expect("found");
     assert_eq!(
-        found.access_count, 1,
+        found.access.access_count, 1,
         "async increment should update access count to 1"
     );
 }

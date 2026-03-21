@@ -238,38 +238,66 @@ mod tests {
 
     #[test]
     fn gateway_port_requires_restart() {
-        assert!(requires_restart("gateway.port"));
+        assert!(
+            requires_restart("gateway.port"),
+            "gateway.port should require restart"
+        );
     }
 
     #[test]
     fn tls_settings_require_restart() {
-        assert!(requires_restart("gateway.tls.enabled"));
-        assert!(requires_restart("gateway.tls.certPath"));
+        assert!(
+            requires_restart("gateway.tls.enabled"),
+            "tls enabled should require restart"
+        );
+        assert!(
+            requires_restart("gateway.tls.certPath"),
+            "tls cert path should require restart"
+        );
     }
 
     #[test]
     fn channel_settings_require_restart() {
-        assert!(requires_restart("channels.signal.enabled"));
+        assert!(
+            requires_restart("channels.signal.enabled"),
+            "channel enabled should require restart"
+        );
     }
 
     #[test]
     fn agent_defaults_hot_reloadable() {
-        assert!(!requires_restart("agents.defaults.timeoutSeconds"));
-        assert!(!requires_restart("agents.defaults.maxToolIterations"));
-        assert!(!requires_restart("agents.defaults.thinkingBudget"));
+        assert!(
+            !requires_restart("agents.defaults.timeoutSeconds"),
+            "timeout should be hot-reloadable"
+        );
+        assert!(
+            !requires_restart("agents.defaults.maxToolIterations"),
+            "tool iterations should be hot-reloadable"
+        );
+        assert!(
+            !requires_restart("agents.defaults.thinkingBudget"),
+            "thinking budget should be hot-reloadable"
+        );
     }
 
     #[test]
     fn maintenance_hot_reloadable() {
-        assert!(!requires_restart("maintenance.traceRotation.maxAgeDays"));
-        assert!(!requires_restart(
-            "maintenance.dbMonitoring.warnThresholdMb"
-        ));
+        assert!(
+            !requires_restart("maintenance.traceRotation.maxAgeDays"),
+            "trace rotation should be hot-reloadable"
+        );
+        assert!(
+            !requires_restart("maintenance.dbMonitoring.warnThresholdMb"),
+            "db monitoring should be hot-reloadable"
+        );
     }
 
     #[test]
     fn embedding_hot_reloadable() {
-        assert!(!requires_restart("embedding.provider"));
+        assert!(
+            !requires_restart("embedding.provider"),
+            "embedding provider should be hot-reloadable"
+        );
     }
 
     #[test]

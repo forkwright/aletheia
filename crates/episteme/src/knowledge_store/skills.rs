@@ -213,20 +213,28 @@ impl KnowledgeStore {
             id: new_id.clone(),
             nous_id: nous_id.to_owned(),
             content: skill_json,
-            confidence: 0.8,
-            tier: crate::knowledge::EpistemicTier::Verified,
-            valid_from: now,
-            valid_to: jiff::Timestamp::from_second(i64::MAX / 2).unwrap_or(now),
-            superseded_by: None,
-            source_session_id: None,
-            recorded_at: now,
-            access_count: 0,
-            last_accessed_at: None,
-            stability_hours: 2190.0,
             fact_type: "skill".to_owned(),
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
+            temporal: crate::knowledge::FactTemporal {
+                valid_from: now,
+                valid_to: jiff::Timestamp::from_second(i64::MAX / 2).unwrap_or(now),
+                recorded_at: now,
+            },
+            provenance: crate::knowledge::FactProvenance {
+                confidence: 0.8,
+                tier: crate::knowledge::EpistemicTier::Verified,
+                source_session_id: None,
+                stability_hours: 2190.0,
+            },
+            lifecycle: crate::knowledge::FactLifecycle {
+                superseded_by: None,
+                is_forgotten: false,
+                forgotten_at: None,
+                forget_reason: None,
+            },
+            access: crate::knowledge::FactAccess {
+                access_count: 0,
+                last_accessed_at: None,
+            },
         };
 
         self.insert_fact(&approved_fact)?;
@@ -259,14 +267,22 @@ impl KnowledgeStore {
         let mut retired = 0usize;
 
         for fact in &skills {
-            let reference_secs = fact.last_accessed_at.unwrap_or(fact.valid_from).as_second();
+            let reference_secs = fact
+                .access
+                .last_accessed_at
+                .unwrap_or(fact.temporal.valid_from)
+                .as_second();
             #[expect(
                 clippy::cast_precision_loss,
                 reason = "age in seconds → days; sub-second precision unnecessary"
             )]
             let days = ((now_secs - reference_secs).max(0) as f64) / 86_400.0;
 
-            let score = crate::skill::skill_decay_score(days, fact.access_count, fact.confidence);
+            let score = crate::skill::skill_decay_score(
+                days,
+                fact.access.access_count,
+                fact.provenance.confidence,
+            );
 
             if score < crate::skill::decay::RETIRE_THRESHOLD {
                 self.forget_fact(&fact.id, crate::knowledge::ForgetReason::Stale)?;
@@ -301,9 +317,13 @@ impl KnowledgeStore {
         let mut named_usage: Vec<(String, u32)> = Vec::with_capacity(total_active);
 
         for fact in &active_skills {
-            usage_counts.push(fact.access_count);
+            usage_counts.push(fact.access.access_count);
 
-            let ref_secs = fact.last_accessed_at.unwrap_or(fact.valid_from).as_second();
+            let ref_secs = fact
+                .access
+                .last_accessed_at
+                .unwrap_or(fact.temporal.valid_from)
+                .as_second();
             #[expect(
                 clippy::cast_precision_loss,
                 reason = "days since use for display; precision loss is acceptable"
@@ -311,7 +331,11 @@ impl KnowledgeStore {
             let days = ((now_secs - ref_secs).max(0) as f64) / 86_400.0;
             days_since_use.push(days);
 
-            let score = crate::skill::skill_decay_score(days, fact.access_count, fact.confidence);
+            let score = crate::skill::skill_decay_score(
+                days,
+                fact.access.access_count,
+                fact.provenance.confidence,
+            );
             if score < crate::skill::decay::NEEDS_REVIEW_THRESHOLD {
                 needs_review += 1;
             }
@@ -320,7 +344,7 @@ impl KnowledgeStore {
                 Ok(s) => s.name,
                 Err(_) => fact.id.to_string(),
             };
-            named_usage.push((name, fact.access_count));
+            named_usage.push((name, fact.access.access_count));
         }
 
         let avg_usage_count = if total_active > 0 {

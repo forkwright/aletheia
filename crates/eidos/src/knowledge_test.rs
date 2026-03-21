@@ -93,20 +93,28 @@ fn fact_serde_roundtrip() {
         id: FactId::from("fact-1"),
         nous_id: "syn".to_owned(),
         content: "The researcher published findings on memory consolidation".to_owned(),
-        confidence: 0.95,
-        tier: EpistemicTier::Verified,
-        valid_from: test_timestamp("2026-02-01"),
-        valid_to: far_future(),
-        superseded_by: None,
-        source_session_id: Some("ses-123".to_owned()),
-        recorded_at: test_timestamp("2026-02-28T00:00:00Z"),
-        access_count: 0,
-        last_accessed_at: None,
-        stability_hours: 720.0,
         fact_type: String::new(),
-        is_forgotten: false,
-        forgotten_at: None,
-        forget_reason: None,
+        temporal: FactTemporal {
+            valid_from: test_timestamp("2026-02-01"),
+            valid_to: far_future(),
+            recorded_at: test_timestamp("2026-02-28T00:00:00Z"),
+        },
+        provenance: FactProvenance {
+            confidence: 0.95,
+            tier: EpistemicTier::Verified,
+            source_session_id: Some("ses-123".to_owned()),
+            stability_hours: 720.0,
+        },
+        lifecycle: FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
     };
     let json = serde_json::to_string(&fact).expect("Fact serialization is infallible");
     let back: Fact =
@@ -116,7 +124,7 @@ fn fact_serde_roundtrip() {
         "fact content should survive serde roundtrip"
     );
     assert_eq!(
-        fact.tier, back.tier,
+        fact.provenance.tier, back.provenance.tier,
         "fact tier should survive serde roundtrip"
     );
 }
@@ -222,20 +230,28 @@ fn fact_with_empty_content() {
         id: FactId::from("f-empty"),
         nous_id: "syn".to_owned(),
         content: String::new(),
-        confidence: 0.5,
-        tier: EpistemicTier::Assumed,
-        valid_from: test_timestamp("2026-01-01"),
-        valid_to: far_future(),
-        superseded_by: None,
-        source_session_id: None,
-        recorded_at: test_timestamp("2026-01-01T00:00:00Z"),
-        access_count: 0,
-        last_accessed_at: None,
-        stability_hours: 720.0,
         fact_type: String::new(),
-        is_forgotten: false,
-        forgotten_at: None,
-        forget_reason: None,
+        temporal: FactTemporal {
+            valid_from: test_timestamp("2026-01-01"),
+            valid_to: far_future(),
+            recorded_at: test_timestamp("2026-01-01T00:00:00Z"),
+        },
+        provenance: FactProvenance {
+            confidence: 0.5,
+            tier: EpistemicTier::Assumed,
+            source_session_id: None,
+            stability_hours: 720.0,
+        },
+        lifecycle: FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
     };
     let json =
         serde_json::to_string(&fact).expect("Fact with empty content serializes successfully");
@@ -253,20 +269,28 @@ fn fact_with_unicode_content() {
         id: FactId::from("f-uni"),
         nous_id: "syn".to_owned(),
         content: "The user writes \u{65E5}\u{672C}\u{8A9E} and emoji \u{1F980}".to_owned(),
-        confidence: 0.9,
-        tier: EpistemicTier::Verified,
-        valid_from: test_timestamp("2026-01-01"),
-        valid_to: far_future(),
-        superseded_by: None,
-        source_session_id: None,
-        recorded_at: test_timestamp("2026-01-01T00:00:00Z"),
-        access_count: 0,
-        last_accessed_at: None,
-        stability_hours: 720.0,
         fact_type: String::new(),
-        is_forgotten: false,
-        forgotten_at: None,
-        forget_reason: None,
+        temporal: FactTemporal {
+            valid_from: test_timestamp("2026-01-01"),
+            valid_to: far_future(),
+            recorded_at: test_timestamp("2026-01-01T00:00:00Z"),
+        },
+        provenance: FactProvenance {
+            confidence: 0.9,
+            tier: EpistemicTier::Verified,
+            source_session_id: None,
+            stability_hours: 720.0,
+        },
+        lifecycle: FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
     };
     let json =
         serde_json::to_string(&fact).expect("Fact with unicode content serializes successfully");
@@ -608,23 +632,31 @@ fn fact_with_supersession() {
         id: FactId::from("f-old"),
         nous_id: "syn".to_owned(),
         content: "outdated claim".to_owned(),
-        confidence: 0.7,
-        tier: EpistemicTier::Inferred,
-        valid_from: test_timestamp("2026-01-01"),
-        valid_to: test_timestamp("2026-02-01"),
-        superseded_by: Some(FactId::from("f-new")),
-        source_session_id: None,
-        recorded_at: test_timestamp("2026-01-01T00:00:00Z"),
-        access_count: 0,
-        last_accessed_at: None,
-        stability_hours: 720.0,
         fact_type: String::new(),
-        is_forgotten: false,
-        forgotten_at: None,
-        forget_reason: None,
+        temporal: FactTemporal {
+            valid_from: test_timestamp("2026-01-01"),
+            valid_to: test_timestamp("2026-02-01"),
+            recorded_at: test_timestamp("2026-01-01T00:00:00Z"),
+        },
+        provenance: FactProvenance {
+            confidence: 0.7,
+            tier: EpistemicTier::Inferred,
+            source_session_id: None,
+            stability_hours: 720.0,
+        },
+        lifecycle: FactLifecycle {
+            superseded_by: Some(FactId::from("f-new")),
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
     };
     assert_eq!(
-        fact.superseded_by.as_ref().map(FactId::as_str),
+        fact.lifecycle.superseded_by.as_ref().map(FactId::as_str),
         Some("f-new"),
         "superseded_by should reference the new fact id"
     );
@@ -633,7 +665,7 @@ fn fact_with_supersession() {
     let back: Fact = serde_json::from_str(&json)
         .expect("Fact with superseded_by should deserialize from its own JSON");
     assert_eq!(
-        back.superseded_by.as_ref().map(FactId::as_str),
+        back.lifecycle.superseded_by.as_ref().map(FactId::as_str),
         Some("f-new"),
         "superseded_by should survive serde roundtrip"
     );
@@ -645,23 +677,31 @@ fn fact_with_session_source() {
         id: FactId::from("f-src"),
         nous_id: "syn".to_owned(),
         content: "extracted from conversation".to_owned(),
-        confidence: 0.85,
-        tier: EpistemicTier::Verified,
-        valid_from: test_timestamp("2026-03-01"),
-        valid_to: far_future(),
-        superseded_by: None,
-        source_session_id: Some("ses-abc-123".to_owned()),
-        recorded_at: test_timestamp("2026-03-01T00:00:00Z"),
-        access_count: 3,
-        last_accessed_at: Some(test_timestamp("2026-03-05T12:00:00Z")),
-        stability_hours: 4380.0,
         fact_type: "relationship".to_owned(),
-        is_forgotten: false,
-        forgotten_at: None,
-        forget_reason: None,
+        temporal: FactTemporal {
+            valid_from: test_timestamp("2026-03-01"),
+            valid_to: far_future(),
+            recorded_at: test_timestamp("2026-03-01T00:00:00Z"),
+        },
+        provenance: FactProvenance {
+            confidence: 0.85,
+            tier: EpistemicTier::Verified,
+            source_session_id: Some("ses-abc-123".to_owned()),
+            stability_hours: 4380.0,
+        },
+        lifecycle: FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: FactAccess {
+            access_count: 3,
+            last_accessed_at: Some(test_timestamp("2026-03-05T12:00:00Z")),
+        },
     };
     assert_eq!(
-        fact.source_session_id.as_deref(),
+        fact.provenance.source_session_id.as_deref(),
         Some("ses-abc-123"),
         "source_session_id should be set"
     );
@@ -670,7 +710,7 @@ fn fact_with_session_source() {
     let back: Fact = serde_json::from_str(&json)
         .expect("Fact with source_session_id should deserialize from its own JSON");
     assert_eq!(
-        back.source_session_id.as_deref(),
+        back.provenance.source_session_id.as_deref(),
         Some("ses-abc-123"),
         "source_session_id should survive serde roundtrip"
     );

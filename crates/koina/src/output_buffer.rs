@@ -23,8 +23,8 @@
 //!     if e.contains('B') { "audit" } else { "main" }
 //! });
 //!
-//! assert_eq!(buf.drain("main").len(), 1);
-//! assert_eq!(buf.drain("audit").len(), 2);
+//! assert_eq!(buf.drain("main").len(), 1, "main output must have one event");
+//! assert_eq!(buf.drain("audit").len(), 2, "audit output must have two events");
 //! ```
 
 use std::collections::HashMap;

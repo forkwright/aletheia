@@ -401,7 +401,8 @@ pub fn persist_lesson(
     use super::error::PersistSnafu;
     use super::utils::slugify;
     use crate::knowledge::{
-        CausalEdge, Entity, EpistemicTier, Fact, Relationship, TemporalOrdering, far_future,
+        CausalEdge, Entity, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance,
+        FactTemporal, Relationship, TemporalOrdering, far_future,
     };
 
     let now = jiff::Timestamp::now();
@@ -471,20 +472,28 @@ pub fn persist_lesson(
             id,
             nous_id: config.nous_id.clone(),
             content,
-            confidence: fact.confidence,
-            tier: EpistemicTier::Inferred,
-            valid_from: now,
-            valid_to: far_future(),
-            superseded_by: None,
-            source_session_id: Some(config.source.clone()),
-            recorded_at: now,
-            access_count: 0,
-            last_accessed_at: None,
-            stability_hours: classified_type.base_stability_hours(),
             fact_type: classified_type.as_str().to_owned(),
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
+            temporal: FactTemporal {
+                valid_from: now,
+                valid_to: far_future(),
+                recorded_at: now,
+            },
+            provenance: FactProvenance {
+                confidence: fact.confidence,
+                tier: EpistemicTier::Inferred,
+                source_session_id: Some(config.source.clone()),
+                stability_hours: classified_type.base_stability_hours(),
+            },
+            lifecycle: FactLifecycle {
+                superseded_by: None,
+                is_forgotten: false,
+                forgotten_at: None,
+                forget_reason: None,
+            },
+            access: FactAccess {
+                access_count: 0,
+                last_accessed_at: None,
+            },
         };
         store.insert_fact(&f).map_err(|e| {
             PersistSnafu {
