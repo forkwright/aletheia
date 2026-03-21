@@ -202,10 +202,6 @@ impl<'a> BackupManager<'a> {
         for session_id in &session_ids {
             let json = build_session_json(self.conn, session_id)?;
             let path = output_dir.join(format!("{session_id}.json"));
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
-            )]
             std::fs::write(&path, json).context(error::IoSnafu { path: path.clone() })?;
             #[cfg(unix)]
             {

@@ -1,0 +1,36 @@
+[package]
+name = "aletheia-graphe"
+version.workspace = true
+description = "Session persistence layer for Aletheia"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = ["sqlite"]
+sqlite = ["dep:rusqlite", "dep:sha2"]
+# WHY: gates error variants that reference tokio::task::JoinError; no runtime dep.
+mneme-engine = ["dep:tokio"]
+hnsw_rs = []
+
+[dependencies]
+aletheia-eidos = { path = "../eidos" }
+aletheia-koina = { path = "../koina" }
+jiff = { workspace = true, features = ["serde"] }
+rusqlite = { workspace = true, optional = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { version = "0.10", optional = true }
+snafu = { workspace = true }
+tokio = { workspace = true, optional = true }
+tracing = { workspace = true }
+ulid = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+static_assertions = { workspace = true }
+tempfile = { workspace = true }

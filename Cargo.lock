@@ -165,6 +165,54 @@ dependencies = [
 ]
 
 [[package]]
+name = "aletheia-episteme"
+version = "0.13.0"
+dependencies = [
+ "aletheia-eidos",
+ "aletheia-graphe",
+ "aletheia-koina",
+ "aletheia-krites",
+ "candle-core",
+ "candle-nn",
+ "candle-transformers",
+ "hf-hub",
+ "hnsw_rs",
+ "jiff",
+ "proptest",
+ "serde",
+ "serde_json",
+ "snafu",
+ "static_assertions",
+ "tempfile",
+ "tokenizers",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "ulid",
+ "unicode-normalization",
+]
+
+[[package]]
+name = "aletheia-graphe"
+version = "0.13.0"
+dependencies = [
+ "aletheia-eidos",
+ "aletheia-koina",
+ "jiff",
+ "proptest",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "snafu",
+ "static_assertions",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "ulid",
+]
+
+[[package]]
 name = "aletheia-hermeneus"
 version = "0.13.0"
 dependencies = [
@@ -294,28 +342,14 @@ name = "aletheia-mneme"
 version = "0.13.0"
 dependencies = [
  "aletheia-eidos",
- "aletheia-koina",
+ "aletheia-episteme",
+ "aletheia-graphe",
  "aletheia-krites",
- "candle-core",
- "candle-nn",
- "candle-transformers",
- "hf-hub",
- "hnsw_rs",
- "jiff",
  "proptest",
- "rusqlite",
- "serde",
  "serde_json",
- "sha2",
- "snafu",
- "static_assertions",
  "tempfile",
- "tokenizers",
  "tokio",
- "tracing",
  "tracing-subscriber",
- "ulid",
- "unicode-normalization",
 ]
 
 [[package]]

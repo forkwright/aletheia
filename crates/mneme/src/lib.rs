@@ -1,97 +1,87 @@
 #![deny(missing_docs)]
 //! aletheia-mneme: session store and memory engine
 //!
-//! Mneme (Μνήμη): "memory." Manages sessions, messages, and usage tracking
-//! via embedded `SQLite` and the Datalog knowledge engine.
-//!
-//! Depends on `aletheia-koina` for types and errors.
+//! Mneme (Μνήμη): "memory." Thin facade that re-exports from the extracted
+//! sub-crates: graphe (session persistence), episteme (knowledge pipeline),
+//! eidos (types), and krites (Datalog engine).
+
+// ── Types (eidos) ──────────────────────────────────────────────────────────
+
+/// Newtype wrappers for knowledge-domain identifiers (re-exported from `eidos`).
+pub use aletheia_eidos::id;
+/// Knowledge graph domain types: facts, entities, relationships, embeddings (re-exported from `eidos`).
+pub use aletheia_eidos::knowledge;
+
+// ── Engine (krites) ────────────────────────────────────────────────────────
 
 /// Datalog/graph engine (enabled by `mneme-engine` feature, provided by `aletheia-krites`).
 #[cfg(feature = "mneme-engine")]
 pub use aletheia_krites as engine;
 
+// ── Session persistence (graphe) ───────────────────────────────────────────
+
 /// Database backup and JSON export for session data.
 #[cfg(feature = "sqlite")]
-pub mod backup;
-/// Conflict detection pipeline for fact insertion.
-pub mod conflict;
-/// LLM-driven fact consolidation for knowledge maintenance.
-pub mod consolidation;
-/// Entity deduplication pipeline for merging semantically identical entities.
-pub(crate) mod dedup;
-/// Embedding provider trait and implementations (candle, mock).
-pub mod embedding;
+pub use aletheia_graphe::backup;
 /// Mneme-specific error types and result alias.
-pub mod error;
+pub use aletheia_graphe::error;
 /// Agent export: build an `AgentFile` from session store and workspace.
 #[cfg(feature = "sqlite")]
-pub mod export;
-/// LLM-driven knowledge extraction pipeline (entities, relationships, facts).
-pub mod extract;
-/// Graph-enhanced recall scoring: PageRank boost, community proximity, supersession chains.
-pub(crate) mod graph_intelligence;
-/// In-memory HNSW vector index backed by `hnsw_rs`.
-#[cfg(feature = "hnsw_rs")]
-pub mod hnsw_index;
-/// Newtype wrappers for knowledge-domain identifiers (re-exported from `eidos`).
-pub use aletheia_eidos::id;
+pub use aletheia_graphe::export;
 /// Agent import: restore an agent from a portable `AgentFile`.
 #[cfg(feature = "sqlite")]
-pub mod import;
-/// Instinct system: behavioral memory from tool usage patterns.
-pub mod instinct;
-/// Knowledge graph domain types: facts, entities, relationships, embeddings (re-exported from `eidos`).
-pub use aletheia_eidos::knowledge;
-/// `CozoDB`-backed knowledge store for graph traversal and vector search.
-pub mod knowledge_store;
+pub use aletheia_graphe::import;
 /// Versioned `SQLite` schema migration runner.
 #[cfg(feature = "sqlite")]
-pub mod migration;
+pub use aletheia_graphe::migration;
 /// Agent portability schema: `AgentFile` format for cross-runtime export/import.
 #[cfg(feature = "sqlite")]
-pub mod portability;
-/// Typed Datalog query builder for compile-time schema validation.
-#[cfg(feature = "mneme-engine")]
-pub mod query;
-/// LLM-powered query rewriting for recall pipeline enhancement.
-pub(crate) mod query_rewrite;
-/// 6-factor recall scoring engine for knowledge retrieval ranking.
-pub mod recall;
-/// SQLite corruption detection, read-only fallback, and auto-repair.
+pub use aletheia_graphe::portability;
+/// `SQLite` corruption detection, read-only fallback, and auto-repair.
 #[cfg(feature = "sqlite")]
-pub mod recovery;
+pub use aletheia_graphe::recovery;
 /// Session retention policies and automated cleanup of old data.
 #[cfg(feature = "sqlite")]
-pub mod retention;
+pub use aletheia_graphe::retention;
 /// `SQLite` schema DDL constants.
 #[cfg(feature = "sqlite")]
-pub mod schema;
-/// Skill storage helpers and SKILL.md parser.
-pub mod skill;
-/// Skill auto-capture: heuristic filter, signature hashing, and candidate tracking.
-pub mod skills;
+pub use aletheia_graphe::schema;
 /// `SQLite` session store (WAL mode, prepared statements, transactional writes).
 #[cfg(feature = "sqlite")]
-pub mod store;
-/// Ecological succession: domain volatility tracking and adaptive decay rates.
-pub(crate) mod succession;
+pub use aletheia_graphe::store;
 /// Core types for sessions, messages, usage records, and agent notes.
-pub mod types;
+pub use aletheia_graphe::types;
+
+// ── Knowledge pipeline (episteme) ──────────────────────────────────────────
+
+/// Conflict detection pipeline for fact insertion.
+pub use aletheia_episteme::conflict;
+/// LLM-driven fact consolidation for knowledge maintenance.
+pub use aletheia_episteme::consolidation;
+/// Embedding provider trait and implementations (candle, mock).
+pub use aletheia_episteme::embedding;
+/// LLM-driven knowledge extraction pipeline (entities, relationships, facts).
+pub use aletheia_episteme::extract;
+/// In-memory HNSW vector index backed by `hnsw_rs`.
+#[cfg(feature = "hnsw_rs")]
+pub use aletheia_episteme::hnsw_index;
+/// Instinct system: behavioral memory from tool usage patterns.
+pub use aletheia_episteme::instinct;
+/// Knowledge graph export/import for agent portability.
+pub use aletheia_episteme::knowledge_portability;
+/// `CozoDB`-backed knowledge store for graph traversal and vector search.
+pub use aletheia_episteme::knowledge_store;
+/// Typed Datalog query builder for compile-time schema validation.
+#[cfg(feature = "mneme-engine")]
+pub use aletheia_episteme::query;
+/// 6-factor recall scoring engine for knowledge retrieval ranking.
+pub use aletheia_episteme::recall;
+/// Skill storage helpers and SKILL.md parser.
+pub use aletheia_episteme::skill;
+/// Skill auto-capture: heuristic filter, signature hashing, and candidate tracking.
+pub use aletheia_episteme::skills;
 /// Relationship type normalization and validation for knowledge graph extraction.
-pub mod vocab;
-
-#[cfg(test)]
-mod phase_f_integration_tests;
-#[cfg(test)]
-mod succession_tests;
-
-#[cfg(all(test, feature = "sqlite"))]
-mod assertions {
-    use super::store::SessionStore;
-    use static_assertions::assert_impl_all;
-
-    assert_impl_all!(SessionStore: Send);
-}
+pub use aletheia_episteme::vocab;
 
 /// Verify that `mneme-engine` and `sqlite` features coexist without `SQLite`
 /// link conflicts.

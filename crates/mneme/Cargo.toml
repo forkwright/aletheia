@@ -12,45 +12,27 @@ workspace = true
 
 [features]
 default = ["sqlite", "graph-algo"]
-graph-algo = []
+graph-algo = ["aletheia-episteme/graph-algo"]
 # Gates MockEmbeddingProvider and other test helpers. No test code in release binaries.
-test-support = []
-sqlite = ["dep:rusqlite", "dep:sha2"]
-embed-candle = ["dep:candle-core", "dep:candle-nn", "dep:candle-transformers", "dep:tokenizers", "dep:hf-hub"]
+test-support = ["aletheia-episteme/test-support"]
+sqlite = ["aletheia-graphe/sqlite"]
+embed-candle = ["aletheia-episteme/embed-candle"]
 # mneme-engine coexists with sqlite (no link conflict verified).
-# Build with: cargo build -p aletheia-mneme --no-default-features --features mneme-engine
-# In production binary, only one storage backend is active.
-mneme-engine = ["dep:aletheia-krites", "dep:tokio"]
-storage-fjall = ["mneme-engine", "aletheia-krites/storage-fjall"]
-hnsw_rs = ["dep:hnsw_rs"]
+mneme-engine = ["dep:aletheia-krites", "aletheia-graphe/mneme-engine", "aletheia-episteme/mneme-engine"]
+storage-fjall = ["mneme-engine", "aletheia-episteme/storage-fjall"]
+hnsw_rs = ["aletheia-episteme/hnsw_rs"]
 
 [dependencies]
 aletheia-eidos = { path = "../eidos" }
-aletheia-koina = { path = "../koina" }
+aletheia-graphe = { path = "../graphe", default-features = false }
+aletheia-episteme = { path = "../episteme", default-features = false }
 aletheia-krites = { path = "../krites", optional = true }
-jiff = { workspace = true, features = ["serde"] }
-rusqlite = { workspace = true, optional = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-snafu = { workspace = true }
-tokio = { workspace = true, optional = true }
-tracing = { workspace = true }
-ulid = { workspace = true }
-unicode-normalization = { version = "0.1" }
-sha2 = { version = "0.10", optional = true }
-hnsw_rs = { version = "0.3", optional = true }
-
-# Candle embedding dependencies — activated by embed-candle feature
-candle-core = { version = "=0.9.2", optional = true }
-candle-nn = { version = "=0.9.2", optional = true }
-candle-transformers = { version = "=0.9.2", optional = true }
-tokenizers = { version = "0.22", optional = true, default-features = false, features = ["fancy-regex"] }
-hf-hub = { version = "0.5", optional = true, default-features = false, features = ["ureq", "rustls-tls", "tokio"] }
 
 [dev-dependencies]
-static_assertions = { workspace = true }
-tempfile = { workspace = true }
+aletheia-episteme = { path = "../episteme", features = ["test-support"] }
 proptest = { workspace = true }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
 tokio = { workspace = true }
 tracing-subscriber = { workspace = true }
 
