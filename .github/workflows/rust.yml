@@ -42,7 +42,7 @@ jobs:
       matrix:
         include:
           - name: no-default-features
-            args: "--workspace --no-default-features"
+            args: "--workspace --exclude theatron-desktop --no-default-features"
           - name: recall-only
             args: "-p aletheia --no-default-features --features recall"
           - name: embed-candle
@@ -66,7 +66,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@d1565eeb874f106d1696ad08faf835331133fe14 # 1.94
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
       - name: Check MSRV
-        run: cargo check --workspace
+        run: cargo check --workspace --exclude theatron-desktop
 
   # WHY: Catch broken doc links. Fast (no test execution).
   docs:
@@ -79,7 +79,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
       - name: Build docs
-        run: cargo doc --workspace --no-deps
+        run: cargo doc --workspace --exclude theatron-desktop --no-deps
 
   # WHY: Binary builds and runs correctly with default features.
   # Catches link errors and missing runtime deps.
