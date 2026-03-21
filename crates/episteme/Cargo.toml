@@ -1,0 +1,49 @@
+[package]
+name = "aletheia-episteme"
+version.workspace = true
+description = "Knowledge pipeline for Aletheia"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = ["graph-algo"]
+graph-algo = []
+test-support = []
+mneme-engine = ["dep:aletheia-krites", "dep:tokio", "aletheia-graphe/mneme-engine"]
+storage-fjall = ["mneme-engine", "aletheia-krites/storage-fjall"]
+embed-candle = ["dep:candle-core", "dep:candle-nn", "dep:candle-transformers", "dep:tokenizers", "dep:hf-hub"]
+hnsw_rs = ["dep:hnsw_rs", "aletheia-graphe/hnsw_rs"]
+
+[dependencies]
+aletheia-eidos = { path = "../eidos" }
+aletheia-graphe = { path = "../graphe", default-features = false }
+aletheia-koina = { path = "../koina" }
+aletheia-krites = { path = "../krites", optional = true }
+jiff = { workspace = true, features = ["serde"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+snafu = { workspace = true }
+tokio = { workspace = true, optional = true }
+tracing = { workspace = true }
+ulid = { workspace = true }
+unicode-normalization = { version = "0.1" }
+hnsw_rs = { version = "0.3", optional = true }
+
+# Candle embedding dependencies
+candle-core = { version = "=0.9.2", optional = true }
+candle-nn = { version = "=0.9.2", optional = true }
+candle-transformers = { version = "=0.9.2", optional = true }
+tokenizers = { version = "0.22", optional = true, default-features = false, features = ["fancy-regex"] }
+hf-hub = { version = "0.5", optional = true, default-features = false, features = ["ureq", "rustls-tls", "tokio"] }
+
+[dev-dependencies]
+proptest = { workspace = true }
+static_assertions = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true }
+tracing-subscriber = { workspace = true }

@@ -179,10 +179,6 @@ fn archive_sessions(conn: &Connection, session_ids: &[String], archive_dir: &Pat
         let archive = build_session_archive(conn, session_id)?;
         let path = archive_dir.join(format!("{session_id}.json"));
         let json = serde_json::to_string_pretty(&archive).context(error::StoredJsonSnafu)?;
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
-        )]
         std::fs::write(&path, json).context(error::IoSnafu { path: path.clone() })?;
         #[cfg(unix)]
         {

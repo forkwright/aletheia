@@ -240,10 +240,6 @@ fn export_import_preserves_unicode() {
         .expect("add unicode note");
 
     let dir = tempfile::tempdir().expect("create temp dir");
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
-    )]
     std::fs::write(dir.path().join("unicode.txt"), &combined).expect("write unicode.txt");
 
     let exported = export_agent(

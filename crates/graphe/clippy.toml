@@ -1,4 +1,5 @@
-# mneme: thin facade re-exporting graphe (sessions) and episteme (knowledge).
+# graphe: session persistence layer — must not make direct LLM API calls
+# and must not bypass the module's own store abstraction.
 
 disallowed-methods = [
     { path = "std::process::exit", reason = "do not call process::exit from library code" },
