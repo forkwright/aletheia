@@ -25,6 +25,7 @@ aletheia-taxis = { path = "../taxis" }
 aletheia-thesauros = { path = "../thesauros" }
 jiff = { workspace = true }
 prometheus = { workspace = true }
+rusqlite = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
