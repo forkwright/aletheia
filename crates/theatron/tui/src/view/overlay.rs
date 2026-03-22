@@ -297,12 +297,42 @@ fn render_tool_approval(
     approval: &crate::app::ToolApprovalOverlay,
     theme: &Theme,
 ) {
+    let risk_lower = approval.risk.to_lowercase();
+    let risk_style = if risk_lower.contains("high") || risk_lower.contains("destructive") {
+        theme.style_error_bold()
+    } else if risk_lower.contains("medium") || risk_lower.contains("irreversible") {
+        Style::default()
+            .fg(theme.status.warning)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        theme.style_error()
+    };
+    let risk_icon = if risk_lower.contains("destructive") || risk_lower.contains("high") {
+        "⚠ "
+    } else {
+        "! "
+    };
+
+    let humanized_name = approval
+        .tool_name
+        .replace('_', " ")
+        .split_whitespace()
+        .map(|w| {
+            let mut c = w.chars();
+            match c.next() {
+                None => String::new(),
+                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+
     let mut lines = vec![
         Line::raw(""),
         Line::from(vec![
             Span::styled("  Tool: ", theme.style_muted()),
             Span::styled(
-                &approval.tool_name,
+                humanized_name,
                 Style::default()
                     .fg(theme.status.warning)
                     .add_modifier(Modifier::BOLD),
@@ -310,7 +340,7 @@ fn render_tool_approval(
         ]),
         Line::from(vec![
             Span::styled("  Risk: ", theme.style_muted()),
-            Span::styled(&approval.risk, theme.style_error()),
+            Span::styled(format!("{risk_icon}{}", approval.risk), risk_style),
         ]),
         Line::from(vec![
             Span::styled("  Reason: ", theme.style_muted()),
@@ -343,6 +373,13 @@ fn render_tool_approval(
         Span::styled("pprove  ", theme.style_muted()),
         Span::styled("[D]", theme.style_error_bold()),
         Span::styled("eny  ", theme.style_muted()),
+        Span::styled(
+            "[L]",
+            Style::default()
+                .fg(theme.colors.accent)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" Always allow  ", theme.style_muted()),
         Span::styled(
             "[Esc]",
             Style::default()

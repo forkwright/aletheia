@@ -109,6 +109,8 @@ pub struct InteractionState {
     pub tool_expanded: HashSet<crate::id::ToolId>,
     pub filter: FilterState,
     pub(crate) keymap: KeyMap,
+    /// Tool names that bypass the approval dialog for the lifetime of this TUI session.
+    pub(crate) always_allowed_tools: HashSet<String>,
 }
 
 /// Sidebar, overlay, view stack, ops, tabs, and memory inspector.
@@ -216,6 +218,7 @@ impl App {
                 tool_expanded: HashSet::new(),
                 filter: FilterState::default(),
                 keymap,
+                always_allowed_tools: HashSet::new(),
             },
             layout: LayoutState {
                 sidebar_visible: true,

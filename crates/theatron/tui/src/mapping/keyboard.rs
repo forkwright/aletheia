@@ -459,6 +459,9 @@ impl crate::app::App {
             (_, KeyCode::Char('d' | 'D')) if self.is_tool_approval_overlay() => {
                 Some(Msg::CloseOverlay)
             }
+            (_, KeyCode::Char('l' | 'L')) if self.is_tool_approval_overlay() => {
+                Some(Msg::ToolApprovalAlwaysAllow)
+            }
 
             (_, KeyCode::Char(' ')) if self.is_plan_approval_overlay() => Some(Msg::OverlaySelect),
             (_, KeyCode::Char('a' | 'A')) if self.is_plan_approval_overlay() => {
