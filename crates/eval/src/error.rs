@@ -63,6 +63,14 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// File I/O error during result persistence.
+    #[snafu(display("I/O error: {source}"))]
+    Io {
+        source: std::io::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Convenience alias for `Result` with eval's [`Error`] type.

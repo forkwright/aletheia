@@ -1,4 +1,6 @@
-//! `aletheia eval`: behavioral evaluation scenarios against a live instance.
+//! `aletheia eval`: behavioral and cognitive evaluation against a live instance.
+
+use std::path::Path;
 
 use anyhow::Result;
 use clap::Args;
@@ -20,6 +22,12 @@ pub(crate) struct EvalArgs {
     /// Per-scenario timeout in seconds
     #[arg(long, default_value_t = 30)]
     pub timeout: u64,
+    /// Write evaluation results as JSONL training data to this file
+    #[arg(long)]
+    pub jsonl_output: Option<String>,
+    /// Print default trigger configuration and exit
+    #[arg(long)]
+    pub show_triggers: bool,
 }
 
 pub(crate) async fn run(args: EvalArgs) -> Result<()> {
@@ -29,7 +37,16 @@ pub(crate) async fn run(args: EvalArgs) -> Result<()> {
         scenario,
         json: json_output,
         timeout,
+        jsonl_output,
+        show_triggers,
     } = args;
+
+    if show_triggers {
+        let config = aletheia_dokimion::triggers::TriggerConfig::default_config();
+        let json = serde_json::to_string_pretty(&config)?;
+        println!("{json}");
+        return Ok(());
+    }
 
     if scenario.as_deref() == Some("list") {
         let scenarios = aletheia_dokimion::scenarios::all_scenarios();
@@ -61,6 +78,16 @@ pub(crate) async fn run(args: EvalArgs) -> Result<()> {
         aletheia_dokimion::report::print_report_json(&report);
     } else {
         aletheia_dokimion::report::print_report(&report, &url);
+    }
+
+    if let Some(ref path) = jsonl_output {
+        let records = aletheia_dokimion::persistence::records_from_report(&report);
+        aletheia_dokimion::persistence::append_jsonl(Path::new(path), &records)?;
+        tracing::info!(
+            path = path,
+            records = records.len(),
+            "eval results written to JSONL"
+        );
     }
 
     let total = report.passed + report.failed + report.skipped;

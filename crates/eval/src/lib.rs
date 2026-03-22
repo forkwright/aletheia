@@ -1,10 +1,14 @@
 #![deny(missing_docs)]
-//! Behavioral evaluation framework for Aletheia runtime instances.
+//! Behavioral and cognitive evaluation framework for Aletheia runtime instances.
 
 /// HTTP client for communicating with the Aletheia API during evaluation runs.
 pub(crate) mod client;
+/// Cognitive evaluations: recall@k, sycophancy detection, adversarial testing.
+pub(crate) mod cognitive;
 /// Eval-specific error types and result alias.
 pub(crate) mod error;
+/// JSONL persistence for evaluation results as training data.
+pub mod persistence;
 /// Evaluation report types for summarizing scenario results.
 pub mod report;
 /// Evaluation scenario runner: executes scenarios and collects results.
@@ -15,6 +19,8 @@ pub(crate) mod scenario;
 pub mod scenarios;
 /// SSE stream consumer for real-time evaluation output.
 pub mod sse;
+/// Configurable evaluation trigger scheduling.
+pub mod triggers;
 
 #[cfg(test)]
 mod tests {

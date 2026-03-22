@@ -155,6 +155,27 @@ impl EvalClient {
         self.expect_ok(&url, resp).await
     }
 
+    /// Search the knowledge store for facts matching a query.
+    #[instrument(skip(self))]
+    pub async fn search_knowledge(
+        &self,
+        query: &str,
+        nous_id: &str,
+        limit: u32,
+    ) -> Result<KnowledgeSearchResponse> {
+        let base = format!("{}/api/v1/knowledge/search", self.base_url);
+        let mut req = self.http.get(&base).query(&[
+            ("q", query),
+            ("nous_id", nous_id),
+            ("limit", &limit.to_string()),
+        ]);
+        if let Some(ref token) = self.token {
+            req = req.header("authorization", format!("Bearer {}", token.expose_secret()));
+        }
+        let resp = req.send().await.context(error::HttpSnafu)?;
+        self.expect_ok(&base, resp).await
+    }
+
     /// Send a GET request without any auth header.
     #[instrument(skip(self))]
     pub async fn raw_get(&self, path: &str) -> Result<reqwest::Response> {
@@ -373,6 +394,27 @@ pub struct HistoryMessage {
     pub tool_call_id: Option<String>,
     pub tool_name: Option<String>,
     pub created_at: String,
+}
+
+/// Response from the knowledge search endpoint.
+#[derive(Debug, Clone, Deserialize)]
+pub struct KnowledgeSearchResponse {
+    /// Matching facts ordered by relevance.
+    #[serde(default)]
+    pub facts: Vec<KnowledgeFact>,
+}
+
+/// A fact returned by the knowledge search API.
+#[derive(Debug, Clone, Deserialize)]
+pub struct KnowledgeFact {
+    /// Unique fact identifier.
+    pub id: String,
+    /// Fact content text.
+    #[serde(default)]
+    pub content: String,
+    /// Confidence score (0.0 to 1.0).
+    #[serde(default)]
+    pub confidence: f64,
 }
 
 #[cfg(test)]
