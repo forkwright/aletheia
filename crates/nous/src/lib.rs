@@ -42,6 +42,8 @@ pub mod metrics;
 pub mod pipeline;
 /// Semantic recall stage: vector search over knowledge memories.
 pub mod recall;
+/// Parallel research orchestrator: spawns domain researchers via the sub-agent system.
+pub mod research;
 /// Specialized role templates for ephemeral sub-agents.
 pub mod roles;
 /// Session state tracking within a nous actor.

@@ -19,6 +19,7 @@ test-core = ["knowledge-store"]
 test-full = ["test-core"]
 
 [dependencies]
+aletheia-dianoia = { path = "../dianoia" }
 aletheia-hermeneus = { path = "../hermeneus" }
 aletheia-koina = { path = "../koina" }
 aletheia-melete = { path = "../melete" }

@@ -359,6 +359,7 @@ dependencies = [
 name = "aletheia-nous"
 version = "0.13.0"
 dependencies = [
+ "aletheia-dianoia",
  "aletheia-hermeneus",
  "aletheia-koina",
  "aletheia-melete",
