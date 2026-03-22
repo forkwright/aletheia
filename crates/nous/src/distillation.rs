@@ -498,6 +498,8 @@ mod tests {
                 facts: vec![],
                 task_state: None,
             },
+            pruning_stats: None,
+            contradiction_log: aletheia_melete::contradiction::ContradictionLog::empty(),
         };
 
         apply_distillation(&store, "ses-1", &result, &history).expect("apply distillation");
