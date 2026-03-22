@@ -368,6 +368,7 @@ dependencies = [
  "jiff",
  "prometheus",
  "proptest",
+ "rusqlite",
  "serde",
  "serde_json",
  "snafu",

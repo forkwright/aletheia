@@ -11,6 +11,8 @@ pub mod bootstrap;
 pub mod budget;
 /// Chiron self-auditing loop: prosoche checks, audit triggers, and knowledge graph storage.
 pub mod chiron;
+/// Per-agent per-domain competence tracking with rolling statistics and model escalation.
+pub mod competence;
 /// Per-agent and per-pipeline configuration types.
 pub mod config;
 /// Inter-agent messaging: fire-and-forget, request-response, and delivery audit.
@@ -48,6 +50,8 @@ pub(crate) mod skills;
 pub mod spawn_svc;
 /// Real-time streaming events for the turn pipeline.
 pub mod stream;
+/// Uncertainty quantification: calibration tracking for agent confidence predictions.
+pub mod uncertainty;
 /// User-facing error formatting for display in chat responses.
 pub mod user_error;
 /// Working state management: task stack, focus context, wait state.
