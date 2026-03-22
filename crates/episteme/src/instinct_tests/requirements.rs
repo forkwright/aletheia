@@ -1,13 +1,8 @@
 //! Tests for detailed instinct requirements: aggregation, patterns, serialization.
 #![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(
-    clippy::cast_possible_truncation,
-    reason = "proptest range 5..=30 is safe to cast to u32"
-)]
-#![expect(
-    clippy::as_conversions,
     clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+    reason = "knowledge engine: ported codebase with direct indexing throughout"
 )]
 use super::super::*;
 use crate::knowledge::parse_timestamp;
