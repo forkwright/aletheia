@@ -11,6 +11,8 @@
 pub mod anthropic;
 /// Circuit breaker (Closed / Open / HalfOpen) with exponential backoff for LLM provider health.
 pub mod circuit_breaker;
+/// Complexity-based model routing: scores queries and routes to Haiku/Sonnet/Opus.
+pub mod complexity;
 /// Adaptive concurrency limiter (AIMD) for LLM calls based on response latency.
 pub mod concurrency;
 /// Hermeneus-specific error types for provider, API, and authentication failures.
