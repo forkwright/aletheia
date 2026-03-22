@@ -52,3 +52,18 @@ pub(crate) async fn serve_stdio(state: Arc<DiaporeiaState>) -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // NOTE: Full integration coverage requires a running DiaporeiaState (session store,
+    // nous manager, etc.) and is provided at the integration level.
+
+    #[test]
+    fn streamable_http_router_signature_is_correct() {
+        // Compile-time verification that the function has the expected signature.
+        let _fn: fn(std::sync::Arc<crate::state::DiaporeiaState>) -> axum::Router =
+            streamable_http_router;
+    }
+}

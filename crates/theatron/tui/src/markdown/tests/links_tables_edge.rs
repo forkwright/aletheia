@@ -1,5 +1,5 @@
 //! Tests for links, images, tables, structural elements, and edge cases.
-#![expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
+#![expect(clippy::expect_used, reason = "test assertions may panic on failure")]
 use ratatui::style::{Color, Modifier};
 
 use super::super::*;
@@ -171,7 +171,7 @@ fn horizontal_rule_spans_full_line() {
     // Must be a solid run of dashes (at least 10)
     let rule_line = lines.iter().find(|l| line_text(l).contains('─'));
     assert!(rule_line.is_some(), "rule line must exist");
-    let rule_text = line_text(rule_line.unwrap());
+    let rule_text = line_text(rule_line.expect("horizontal rule line must exist"));
     let dash_count = rule_text.chars().filter(|&c| c == '─').count();
     assert!(
         dash_count >= 10,
@@ -185,7 +185,11 @@ fn horizontal_rule_uses_dim_foreground_color() {
     let rule_line = lines.iter().find(|l| line_text(l).contains('─'));
     assert!(rule_line.is_some(), "rule line must exist");
     assert!(
-        span_has_fg(rule_line.unwrap(), "─", theme.text.fg_dim),
+        span_has_fg(
+            rule_line.expect("horizontal rule line must exist"),
+            "─",
+            theme.text.fg_dim
+        ),
         "horizontal rule must use dim (fg_dim) color"
     );
 }
@@ -216,8 +220,8 @@ fn consecutive_paragraphs_have_blank_line_separator() {
         "both paragraphs must appear on some line"
     );
     assert_ne!(
-        first.unwrap(),
-        second.unwrap(),
+        first.expect("first paragraph must be on some line"),
+        second.expect("second paragraph must be on some line"),
         "two paragraphs must be on different lines"
     );
 }
@@ -238,8 +242,8 @@ fn hard_line_break_creates_new_line() {
         "both parts of hard break must appear on some line"
     );
     assert_ne!(
-        first.unwrap(),
-        second.unwrap(),
+        first.expect("first part of hard break must be on some line"),
+        second.expect("second part of hard break must be on some line"),
         "hard break must split into separate lines"
     );
 }
@@ -297,7 +301,7 @@ fn deeply_nested_list_indents_each_level() {
         l5_line.is_some(),
         "l5 (depth-5) item must appear on some line"
     );
-    let l5_text = line_text(l5_line.unwrap());
+    let l5_text = line_text(l5_line.expect("depth-5 list item must be on some line"));
     assert!(
         l5_text.starts_with("        "),
         "depth-5 item must have 8-space indent, got: {l5_text:?}"
@@ -379,7 +383,11 @@ fn code_block_language_label_uses_accent_color() {
     let header = lines.iter().find(|l| line_text(l).contains("python"));
     assert!(header.is_some(), "python language label must appear");
     assert!(
-        span_has_fg(header.unwrap(), "python", theme.code.lang),
+        span_has_fg(
+            header.expect("python language label must exist"),
+            "python",
+            theme.code.lang
+        ),
         "language label must use code_lang color"
     );
 }
@@ -403,7 +411,7 @@ fn inline_code_has_background_color() {
         .flat_map(|l| l.spans.iter())
         .find(|s| s.content.contains("`foo`"));
     assert!(code_span.is_some(), "inline code span must exist");
-    let span = code_span.unwrap();
+    let span = code_span.expect("inline code span must exist");
     assert_eq!(
         span.style.fg,
         Some(theme.status.warning),

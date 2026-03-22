@@ -1,6 +1,6 @@
 //! Cross-crate tests converting mneme types to hermeneus types.
 
-#![expect(clippy::unwrap_used, reason = "test assertions")]
+#![expect(clippy::expect_used, reason = "test assertions")]
 #![cfg(feature = "sqlite-tests")]
 #![expect(
     clippy::indexing_slicing,
@@ -41,19 +41,19 @@ fn convert_message(msg: &m::Message) -> h::Message {
 
 #[test]
 fn build_completion_request_from_mneme_history() {
-    let store = SessionStore::open_in_memory().unwrap();
+    let store = SessionStore::open_in_memory().expect("open in-memory session store");
     store
         .create_session("ses-1", "syn", "main", None, None)
-        .unwrap();
+        .expect("create session");
 
     store
         .append_message("ses-1", m::Role::User, "what is 2+2?", None, None, 20)
-        .unwrap();
+        .expect("append user message");
     store
         .append_message("ses-1", m::Role::Assistant, "4", None, None, 10)
-        .unwrap();
+        .expect("append assistant message");
 
-    let history = store.get_history("ses-1", None).unwrap();
+    let history = store.get_history("ses-1", None).expect("get history");
     let messages: Vec<h::Message> = history.iter().map(convert_message).collect();
 
     let request = h::CompletionRequest {
@@ -75,10 +75,10 @@ fn build_completion_request_from_mneme_history() {
 
 #[test]
 fn tool_result_converts_to_content_block() {
-    let store = SessionStore::open_in_memory().unwrap();
+    let store = SessionStore::open_in_memory().expect("open in-memory session store");
     store
         .create_session("ses-1", "syn", "main", None, None)
-        .unwrap();
+        .expect("create session");
 
     store
         .append_message(
@@ -89,9 +89,9 @@ fn tool_result_converts_to_content_block() {
             Some("exec"),
             30,
         )
-        .unwrap();
+        .expect("append tool result message");
 
-    let history = store.get_history("ses-1", None).unwrap();
+    let history = store.get_history("ses-1", None).expect("get history");
     let converted = convert_message(&history[0]);
 
     match &converted.content {

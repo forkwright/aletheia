@@ -1,7 +1,6 @@
 #![cfg(feature = "storage-fjall")]
 // Integration test: start the server, verify health, send a session request.
 // Uses raw TCP + HTTP/1.1 to avoid reqwest TLS provider requirements.
-#![expect(clippy::unwrap_used, reason = "test assertions")]
 #![expect(clippy::expect_used, reason = "test assertions")]
 
 use std::io::{BufRead, BufReader, Write};
@@ -12,7 +11,10 @@ use std::time::Duration;
 
 fn find_free_port() -> u16 {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind to free port");
-    listener.local_addr().unwrap().port()
+    listener
+        .local_addr()
+        .expect("bound listener has local addr")
+        .port()
 }
 
 fn binary_path() -> PathBuf {
@@ -34,10 +36,10 @@ fn setup_instance(port: u16) -> tempfile::TempDir {
     let tmp = tempfile::tempdir().expect("create temp dir");
     let instance = tmp.path();
 
-    std::fs::create_dir_all(instance.join("config")).unwrap();
-    std::fs::create_dir_all(instance.join("data")).unwrap();
-    std::fs::create_dir_all(instance.join("logs")).unwrap();
-    std::fs::create_dir_all(instance.join("nous/_default")).unwrap();
+    std::fs::create_dir_all(instance.join("config")).expect("create config dir");
+    std::fs::create_dir_all(instance.join("data")).expect("create data dir");
+    std::fs::create_dir_all(instance.join("logs")).expect("create logs dir");
+    std::fs::create_dir_all(instance.join("nous/_default")).expect("create nous/_default dir");
 
     let config = format!(
         r#"[gateway]
@@ -62,7 +64,8 @@ dimension = 384
         clippy::disallowed_methods,
         reason = "integration tests write fixture files to temp directories; synchronous I/O is required in test setup"
     )]
-    std::fs::write(instance.join("config/aletheia.toml"), config).unwrap();
+    std::fs::write(instance.join("config/aletheia.toml"), config)
+        .expect("write aletheia.toml config");
     tmp
 }
 
@@ -116,7 +119,13 @@ fn server_starts_serves_health_and_shuts_down() {
 
     // Start server
     let mut child = Command::new(&binary)
-        .args(["-r", instance.path().to_str().unwrap()])
+        .args([
+            "-r",
+            instance
+                .path()
+                .to_str()
+                .expect("instance path is valid UTF-8"),
+        ])
         .env_remove("ANTHROPIC_API_KEY")
         .env_remove("ANTHROPIC_AUTH_TOKEN")
         .stdout(Stdio::piped())

@@ -100,3 +100,29 @@ pub async fn openapi_json() -> impl IntoResponse {
         .expect("OpenAPI spec serialization");
     ([(header::CONTENT_TYPE, CONTENT_TYPE_JSON)], spec)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn openapi_spec_serializes_without_panic() {
+        #[expect(clippy::expect_used, reason = "test assertion")]
+        let json = ApiDoc::openapi()
+            .to_json()
+            .expect("OpenAPI spec serialization must not fail");
+        assert!(!json.is_empty());
+    }
+
+    #[test]
+    fn openapi_spec_json_contains_api_health_path() {
+        #[expect(clippy::expect_used, reason = "test assertion")]
+        let json = ApiDoc::openapi()
+            .to_json()
+            .expect("OpenAPI spec serialization must not fail");
+        assert!(
+            json.contains("/api/health"),
+            "spec JSON must include the health endpoint path"
+        );
+    }
+}

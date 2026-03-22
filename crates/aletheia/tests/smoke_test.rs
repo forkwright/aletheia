@@ -4,7 +4,6 @@
 //! every subcommand is reachable, parses arguments, and produces useful output
 //! or graceful failures without a live server.
 
-#![expect(clippy::unwrap_used, reason = "test assertions")]
 #![expect(clippy::expect_used, reason = "test assertions")]
 
 use assert_cmd::Command;
@@ -30,11 +29,9 @@ fn top_level_help_exits_zero() {
 #[test]
 fn top_level_version_format() {
     // --version should print "aletheia X.Y.Z"
-    aletheia()
-        .arg("--version")
-        .assert()
-        .success()
-        .stdout(predicate::str::is_match(r"aletheia \d+\.\d+\.\d+").unwrap());
+    aletheia().arg("--version").assert().success().stdout(
+        predicate::str::is_match(r"aletheia \d+\.\d+\.\d+").expect("version regex is valid"),
+    );
 }
 
 #[test]
@@ -203,7 +200,9 @@ fn init_with_missing_api_key_fails_usefully() {
         .args([
             "init",
             "--instance-root",
-            instance_path.to_str().unwrap(),
+            instance_path
+                .to_str()
+                .expect("instance path is valid UTF-8"),
             "--yes",
         ])
         .env_remove("ANTHROPIC_API_KEY")

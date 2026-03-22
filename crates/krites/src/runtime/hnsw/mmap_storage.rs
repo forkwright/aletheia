@@ -444,21 +444,26 @@ impl MmapVectorStorage {
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used, clippy::expect_used, reason = "test assertions")]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 
     #[test]
     fn roundtrip_push_and_get() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("tempdir creation should succeed");
         let path = dir.path().join("vectors.bin");
-        let mut storage = MmapVectorStorage::open(&path, 3).unwrap();
+        let mut storage =
+            MmapVectorStorage::open(&path, 3).expect("opening new storage should succeed");
         assert!(storage.is_empty(), "new storage must be empty");
 
         let v1 = [1.0f32, 2.0, 3.0];
         let v2 = [4.0f32, 5.0, 6.0];
-        let idx1 = storage.push(&v1).unwrap();
-        let idx2 = storage.push(&v2).unwrap();
+        let idx1 = storage
+            .push(&v1)
+            .expect("pushing first vector should succeed");
+        let idx2 = storage
+            .push(&v2)
+            .expect("pushing second vector should succeed");
 
         assert_eq!(idx1, 0, "first vector index");
         assert_eq!(idx2, 1, "second vector index");
@@ -475,10 +480,13 @@ mod tests {
 
     #[test]
     fn access_hint_switching() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("tempdir creation should succeed");
         let path = dir.path().join("vectors.bin");
-        let mut storage = MmapVectorStorage::open(&path, 2).unwrap();
-        storage.push(&[1.0, 2.0]).unwrap();
+        let mut storage =
+            MmapVectorStorage::open(&path, 2).expect("opening new storage should succeed");
+        storage
+            .push(&[1.0, 2.0])
+            .expect("pushing vector should succeed");
 
         assert_eq!(
             storage.access_hint(),
@@ -495,16 +503,17 @@ mod tests {
 
     #[test]
     fn dimension_mismatch_rejected() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("tempdir creation should succeed");
         let path = dir.path().join("vectors.bin");
-        let mut storage = MmapVectorStorage::open(&path, 4).unwrap();
+        let mut storage =
+            MmapVectorStorage::open(&path, 4).expect("opening new storage should succeed");
         let result = storage.push(&[1.0, 2.0]);
         assert!(result.is_err(), "wrong dimension should error");
     }
 
     #[test]
     fn zero_dimension_rejected() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("tempdir creation should succeed");
         let path = dir.path().join("vectors.bin");
         let result = MmapVectorStorage::open(&path, 0);
         assert!(result.is_err(), "zero dimension should error");
@@ -512,17 +521,23 @@ mod tests {
 
     #[test]
     fn reopen_persists_data() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("tempdir creation should succeed");
         let path = dir.path().join("vectors.bin");
 
         {
-            let mut storage = MmapVectorStorage::open(&path, 2).unwrap();
-            storage.push(&[1.0, 2.0]).unwrap();
-            storage.push(&[3.0, 4.0]).unwrap();
-            storage.flush().unwrap();
+            let mut storage =
+                MmapVectorStorage::open(&path, 2).expect("opening new storage should succeed");
+            storage
+                .push(&[1.0, 2.0])
+                .expect("pushing first vector should succeed");
+            storage
+                .push(&[3.0, 4.0])
+                .expect("pushing second vector should succeed");
+            storage.flush().expect("flush should succeed");
         }
 
-        let storage = MmapVectorStorage::open(&path, 2).unwrap();
+        let storage =
+            MmapVectorStorage::open(&path, 2).expect("reopening persisted storage should succeed");
         assert_eq!(storage.len(), 2, "persisted count");
         let got = storage.get(1).expect("vector 1 after reopen");
         assert_eq!(got, &[3.0f32, 4.0], "persisted vector roundtrip");
@@ -530,9 +545,10 @@ mod tests {
 
     #[test]
     fn mmap_fallback_for_empty_file() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("tempdir creation should succeed");
         let path = dir.path().join("empty.bin");
-        let storage = MmapVectorStorage::open(&path, 4).unwrap();
+        let storage =
+            MmapVectorStorage::open(&path, 4).expect("opening empty storage should succeed");
         assert!(storage.is_empty(), "empty file yields empty storage");
         assert!(storage.get(0).is_none(), "no vectors in empty storage");
     }

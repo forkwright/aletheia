@@ -1,6 +1,6 @@
 //! Unit tests for CLI argument parsing.
 
-#![expect(clippy::unwrap_used, reason = "test assertions")]
+#![expect(clippy::expect_used, reason = "test assertions")]
 
 use std::path::PathBuf;
 
@@ -15,7 +15,7 @@ use clap::Parser;
 fn cli_help_works() {
     let result = Cli::try_parse_from(["aletheia", "--help"]);
     assert!(result.is_err(), "help flag should produce an error result");
-    let err = result.unwrap_err();
+    let err = result.expect_err("help flag should produce an error result");
     assert_eq!(
         err.kind(),
         clap::error::ErrorKind::DisplayHelp,
@@ -163,7 +163,7 @@ fn export_with_output_parses() {
         Some(Command::Export(args)) => {
             assert_eq!(args.nous_id, "demiurge", "nous_id should be set");
             assert_eq!(
-                args.output.unwrap(),
+                args.output.expect("export output path should be set"),
                 PathBuf::from("/tmp/backup.agent.json"),
                 "output path should be set"
             );
@@ -228,7 +228,8 @@ fn session_export_with_output_file_parses() {
     match cli.command {
         Some(Command::SessionExport(args)) => {
             assert_eq!(
-                args.output.unwrap(),
+                args.output
+                    .expect("session-export output path should be set"),
                 PathBuf::from("/tmp/session.md"),
                 "output path should be set"
             );
@@ -255,7 +256,7 @@ fn init_non_interactive_with_instance_path_parses() {
             ..
         })) => {
             assert_eq!(
-                instance_root.unwrap(),
+                instance_root.expect("instance_root should be set"),
                 PathBuf::from("/tmp/test-instance"),
                 "instance_root should be set"
             );
@@ -295,7 +296,7 @@ fn init_non_interactive_with_all_flags_parses() {
             ..
         })) => {
             assert_eq!(
-                instance_root.unwrap(),
+                instance_root.expect("instance_root should be set"),
                 PathBuf::from("/srv/aletheia"),
                 "instance_root should be set"
             );
@@ -349,7 +350,7 @@ fn init_instance_root_alias_accepted() {
     match cli.command {
         Some(Command::Init(InitArgs { instance_root, .. })) => {
             assert_eq!(
-                instance_root.unwrap(),
+                instance_root.expect("instance_root alias should be set"),
                 PathBuf::from("/custom/path"),
                 "instance_root alias should be accepted"
             );

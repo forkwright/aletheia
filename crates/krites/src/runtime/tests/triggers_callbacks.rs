@@ -23,7 +23,7 @@ use crate::runtime::db::Poison;
 use crate::runtime::temp_store::RegularTempStore;
 
 #[test]
-fn test_trigger() {
+fn when_trigger_set_on_put_reverse_relation_synced() {
     let db = DbInstance::default();
     db.run_default(":create friends {fr: Int, to: Int => data: Any}")
         .expect("creating friends relation should succeed");
@@ -83,7 +83,7 @@ fn test_trigger() {
 }
 
 #[test]
-fn test_callback() {
+fn when_callback_registered_receives_all_operation_events() {
     let db = DbInstance::default();
     let mut collected = vec![];
     let (_id, receiver) = db.register_callback("friends", None);
@@ -95,6 +95,7 @@ fn test_callback() {
         .expect("second put into friends should succeed");
     db.run_default(r"?[fr, to] <- [[1,9],[4,5]] :rm friends {fr, to}")
         .expect("removing from friends should succeed");
+    // kanon:ignore TESTING/sleep-in-test reason = "sync test; callback delivery uses a cross-thread channel with no async runtime available for pause+advance"
     std::thread::sleep(Duration::from_secs_f64(0.01));
     while let Ok(d) = receiver.try_recv() {
         collected.push(d);
@@ -173,7 +174,7 @@ fn test_callback() {
 }
 
 #[test]
-fn test_update() {
+fn when_partial_update_issued_only_specified_columns_changed() {
     let db = DbInstance::default();
     db.run_default(":create friends {fr: Int, to: Int => a: Any, b: Any, c: Any}")
         .expect("creating friends relation should succeed");
@@ -202,7 +203,7 @@ fn test_update() {
 }
 
 #[test]
-fn test_index() {
+fn when_secondary_index_created_query_planner_uses_index() {
     let db = DbInstance::default();
     db.run_default(":create friends {fr: Int, to: Int => data: Any}")
         .expect("creating friends relation should succeed");
@@ -305,7 +306,7 @@ fn test_index() {
 }
 
 #[test]
-fn test_json_objects() {
+fn when_json_object_literal_used_in_query_parses_correctly() {
     let db = DbInstance::default();
     db.run_default("?[a] := a = {'a': 1}")
         .expect("inline JSON object query should succeed");
@@ -318,7 +319,7 @@ fn test_json_objects() {
 }
 
 #[test]
-fn test_custom_rules() {
+fn when_custom_fixed_rule_registered_executes_with_correct_output() {
     let db = DbInstance::default();
     struct Custom;
 
@@ -372,7 +373,7 @@ fn test_custom_rules() {
 }
 
 #[test]
-fn test_index_short() {
+fn when_short_index_created_on_single_column_query_planner_uses_it() {
     let db = DbInstance::default();
     db.run_default(":create friends {fr: Int, to: Int => data: Any}")
         .expect("creating friends relation should succeed");
@@ -468,7 +469,7 @@ fn test_index_short() {
 }
 
 #[test]
-fn test_multi_tx() {
+fn when_multi_transaction_committed_all_rows_persisted() {
     let db = DbInstance::default();
     let tx = db.multi_transaction_test(true);
     tx.run_script(":create a {a}", Default::default())
@@ -514,7 +515,7 @@ fn test_multi_tx() {
 }
 
 #[test]
-fn test_vec_types() {
+fn when_vector_column_stored_roundtrip_returns_float_values() {
     let db = DbInstance::default();
     db.run_default(":create a {k: String => v: <F32; 8>}")
         .expect("creating relation with F32 vector column should succeed");

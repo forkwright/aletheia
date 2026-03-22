@@ -283,3 +283,48 @@ fn apply_security_headers(
 
     r
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::security::{CorsConfig, CsrfConfig, RateLimitConfig, TlsConfig};
+
+    fn make_security() -> SecurityConfig {
+        SecurityConfig {
+            body_limit_bytes: 10 * 1024 * 1024,
+            cors: CorsConfig::default(),
+            csrf: CsrfConfig::default(),
+            tls: TlsConfig::default(),
+            rate_limit: RateLimitConfig::default(),
+        }
+    }
+
+    #[tokio::test]
+    async fn fallback_handler_returns_gone_for_old_nous_path() {
+        #[expect(clippy::expect_used, reason = "test assertion")]
+        let uri: axum::http::Uri = "/api/nous/syn".parse().expect("parse URI");
+        let response = fallback_handler(uri).await;
+        assert_eq!(response.status(), axum::http::StatusCode::GONE);
+    }
+
+    #[tokio::test]
+    async fn fallback_handler_returns_404_for_unknown_path() {
+        #[expect(clippy::expect_used, reason = "test assertion")]
+        let uri: axum::http::Uri = "/api/unknown".parse().expect("parse URI");
+        let response = fallback_handler(uri).await;
+        assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn build_cors_layer_with_empty_origins_does_not_panic() {
+        let security = make_security();
+        let _layer = build_cors_layer(&security);
+    }
+
+    #[test]
+    fn build_cors_layer_with_explicit_origin_does_not_panic() {
+        let mut security = make_security();
+        security.cors.allowed_origins = vec!["https://example.com".to_owned()];
+        let _layer = build_cors_layer(&security);
+    }
+}

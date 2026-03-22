@@ -1,6 +1,5 @@
 //! Integration tests for the pylon HTTP gateway.
 
-#![expect(clippy::unwrap_used, reason = "test assertions")]
 #![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(
     clippy::indexing_slicing,

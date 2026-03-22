@@ -1,9 +1,8 @@
+#![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(
     clippy::indexing_slicing,
     reason = "test: vec indices valid after asserting len"
 )]
-#![expect(clippy::unwrap_used, reason = "test assertions")]
-#![expect(clippy::expect_used, reason = "test assertions")]
 use std::collections::HashSet;
 use std::future::Future;
 use std::path::PathBuf;
@@ -80,9 +79,14 @@ impl PlanningService for MockPlanning {
         _appetite_minutes: Option<u32>,
         _owner: &str,
     ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>> {
-        let result = self.create_result.lock().unwrap().take().unwrap_or(Ok(
-            r#"{"id":"01J0000000000000000000000","name":"test","state":"Created"}"#.to_owned(),
-        ));
+        let result = self
+            .create_result
+            .lock()
+            .expect("lock not poisoned")
+            .take()
+            .unwrap_or(Ok(
+                r#"{"id":"01J0000000000000000000000","name":"test","state":"Created"}"#.to_owned(),
+            ));
         Box::pin(async move { result })
     }
 
@@ -90,9 +94,14 @@ impl PlanningService for MockPlanning {
         &self,
         _project_id: &str,
     ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>> {
-        let result = self.load_result.lock().unwrap().take().unwrap_or(Ok(
-            r#"{"id":"01J0000000000000000000000","state":"Created"}"#.to_owned(),
-        ));
+        let result = self
+            .load_result
+            .lock()
+            .expect("lock not poisoned")
+            .take()
+            .unwrap_or(Ok(
+                r#"{"id":"01J0000000000000000000000","state":"Created"}"#.to_owned(),
+            ));
         Box::pin(async move { result })
     }
 
@@ -103,11 +112,16 @@ impl PlanningService for MockPlanning {
     ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>> {
         self.transition_calls
             .lock()
-            .unwrap()
+            .expect("lock not poisoned")
             .push((project_id.to_owned(), transition.to_owned()));
-        let result = self.transition_result.lock().unwrap().take().unwrap_or(Ok(
-            r#"{"id":"01J0000000000000000000000","state":"Researching"}"#.to_owned(),
-        ));
+        let result = self
+            .transition_result
+            .lock()
+            .expect("lock not poisoned")
+            .take()
+            .unwrap_or(Ok(
+                r#"{"id":"01J0000000000000000000000","state":"Researching"}"#.to_owned(),
+            ));
         Box::pin(async move { result })
     }
 
@@ -117,14 +131,18 @@ impl PlanningService for MockPlanning {
         name: &str,
         goal: &str,
     ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>> {
-        self.add_phase_calls.lock().unwrap().push((
-            project_id.to_owned(),
-            name.to_owned(),
-            goal.to_owned(),
-        ));
-        let result = self.add_phase_result.lock().unwrap().take().unwrap_or(Ok(
-            r#"{"id":"01J0000000000000000000000","phases":[{"name":"Phase 1"}]}"#.to_owned(),
-        ));
+        self.add_phase_calls
+            .lock()
+            .expect("lock not poisoned")
+            .push((project_id.to_owned(), name.to_owned(), goal.to_owned()));
+        let result = self
+            .add_phase_result
+            .lock()
+            .expect("lock not poisoned")
+            .take()
+            .unwrap_or(Ok(
+                r#"{"id":"01J0000000000000000000000","phases":[{"name":"Phase 1"}]}"#.to_owned(),
+            ));
         Box::pin(async move { result })
     }
 
@@ -135,15 +153,18 @@ impl PlanningService for MockPlanning {
         plan_id: &str,
         _achievement: Option<&str>,
     ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>> {
-        self.complete_plan_calls.lock().unwrap().push((
-            project_id.to_owned(),
-            phase_id.to_owned(),
-            plan_id.to_owned(),
-        ));
+        self.complete_plan_calls
+            .lock()
+            .expect("lock not poisoned")
+            .push((
+                project_id.to_owned(),
+                phase_id.to_owned(),
+                plan_id.to_owned(),
+            ));
         let result = self
             .complete_plan_result
             .lock()
-            .unwrap()
+            .expect("lock not poisoned")
             .take()
             .unwrap_or(Ok(r#"{"status":"plan completed"}"#.to_owned()));
         Box::pin(async move { result })
@@ -156,16 +177,19 @@ impl PlanningService for MockPlanning {
         plan_id: &str,
         reason: &str,
     ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>> {
-        self.fail_plan_calls.lock().unwrap().push((
-            project_id.to_owned(),
-            phase_id.to_owned(),
-            plan_id.to_owned(),
-            reason.to_owned(),
-        ));
+        self.fail_plan_calls
+            .lock()
+            .expect("lock not poisoned")
+            .push((
+                project_id.to_owned(),
+                phase_id.to_owned(),
+                plan_id.to_owned(),
+                reason.to_owned(),
+            ));
         let result = self
             .fail_plan_result
             .lock()
-            .unwrap()
+            .expect("lock not poisoned")
             .take()
             .unwrap_or(Ok(r#"{"status":"plan failed"}"#.to_owned()));
         Box::pin(async move { result })
@@ -244,7 +268,7 @@ async fn plan_create_success() {
 #[tokio::test]
 async fn plan_create_error_propagates() {
     let mock = Arc::new(MockPlanning::default());
-    *mock.create_result.lock().unwrap() = Some(Err(SaveProjectSnafu {
+    *mock.create_result.lock().expect("lock not poisoned") = Some(Err(SaveProjectSnafu {
         message: "project already exists".to_owned(),
     }
     .build()));
@@ -285,7 +309,7 @@ async fn plan_research_skip_dispatches_correctly() {
         "plan_research with skip=true should succeed"
     );
 
-    let calls = mock_ref.transition_calls.lock().unwrap();
+    let calls = mock_ref.transition_calls.lock().expect("lock not poisoned");
     assert_eq!(calls.len(), 1, "expected exactly one transition call");
     assert_eq!(
         calls[0].1, "skip_research",
@@ -311,7 +335,7 @@ async fn plan_research_no_skip_dispatches_start() {
         "plan_research without skip should succeed"
     );
 
-    let calls = mock_ref.transition_calls.lock().unwrap();
+    let calls = mock_ref.transition_calls.lock().expect("lock not poisoned");
     assert_eq!(
         calls[0].1, "start_research",
         "omitting skip should dispatch the start_research transition"
@@ -338,7 +362,7 @@ async fn plan_roadmap_add_phase_calls_add_phase() {
     let result = reg.execute(&input, &ctx).await.expect("execute");
     assert!(!result.is_error, "plan_roadmap add_phase should succeed");
 
-    let calls = mock_ref.add_phase_calls.lock().unwrap();
+    let calls = mock_ref.add_phase_calls.lock().expect("lock not poisoned");
     assert_eq!(calls.len(), 1, "expected exactly one add_phase call");
     assert_eq!(
         calls[0].1, "Foundation",
@@ -349,7 +373,7 @@ async fn plan_roadmap_add_phase_calls_add_phase() {
         "phase goal should be passed through to the service"
     );
 
-    let t_calls = mock_ref.transition_calls.lock().unwrap();
+    let t_calls = mock_ref.transition_calls.lock().expect("lock not poisoned");
     assert!(
         t_calls.is_empty(),
         "add_phase should not trigger any state transition"
@@ -398,7 +422,10 @@ async fn plan_step_complete_dispatches() {
     let result = reg.execute(&input, &ctx).await.expect("execute");
     assert!(!result.is_error, "plan_step_complete should succeed");
 
-    let calls = mock_ref.complete_plan_calls.lock().unwrap();
+    let calls = mock_ref
+        .complete_plan_calls
+        .lock()
+        .expect("lock not poisoned");
     assert_eq!(calls.len(), 1, "expected exactly one complete_plan call");
     assert_eq!(
         calls[0],
@@ -427,7 +454,7 @@ async fn plan_step_fail_dispatches() {
     let result = reg.execute(&input, &ctx).await.expect("execute");
     assert!(!result.is_error, "plan_step_fail should succeed");
 
-    let calls = mock_ref.fail_plan_calls.lock().unwrap();
+    let calls = mock_ref.fail_plan_calls.lock().expect("lock not poisoned");
     assert_eq!(calls.len(), 1, "expected exactly one fail_plan call");
     assert_eq!(
         calls[0].3, "compilation error",
@@ -454,7 +481,7 @@ async fn plan_verify_revert_dispatches_correctly() {
     let result = reg.execute(&input, &ctx).await.expect("execute");
     assert!(!result.is_error, "plan_verify revert action should succeed");
 
-    let calls = mock_ref.transition_calls.lock().unwrap();
+    let calls = mock_ref.transition_calls.lock().expect("lock not poisoned");
     assert_eq!(
         calls[0].1, "revert_to_planning",
         "revert action should dispatch the revert_to_planning transition"
@@ -476,7 +503,10 @@ async fn plan_execute_maps_actions() {
         ("abandon", "abandon"),
         ("start_verification", "start_verification"),
     ] {
-        *mock_ref.transition_result.lock().unwrap() = Some(Ok(r#"{"state":"ok"}"#.to_owned()));
+        *mock_ref
+            .transition_result
+            .lock()
+            .expect("lock not poisoned") = Some(Ok(r#"{"state":"ok"}"#.to_owned()));
 
         let input = ToolInput {
             name: ToolName::new("plan_execute").expect("valid"),
@@ -488,7 +518,7 @@ async fn plan_execute_maps_actions() {
         };
         reg.execute(&input, &ctx).await.expect("execute");
 
-        let calls = mock_ref.transition_calls.lock().unwrap();
+        let calls = mock_ref.transition_calls.lock().expect("lock not poisoned");
         let last = calls.last().expect("should have a call");
         assert_eq!(
             last.1, expected_transition,
@@ -537,7 +567,7 @@ async fn plan_requirements_start_scoping_dispatches() {
         "plan_requirements start_scoping should succeed"
     );
 
-    let calls = mock_ref.transition_calls.lock().unwrap();
+    let calls = mock_ref.transition_calls.lock().expect("lock not poisoned");
     assert_eq!(calls.len(), 1, "expected exactly one transition call");
     assert_eq!(
         calls[0].1, "start_scoping",
@@ -563,7 +593,7 @@ async fn plan_requirements_complete_dispatches_start_planning() {
         "plan_requirements complete action should succeed"
     );
 
-    let calls = mock_ref.transition_calls.lock().unwrap();
+    let calls = mock_ref.transition_calls.lock().expect("lock not poisoned");
     assert_eq!(calls.len(), 1, "expected exactly one transition call");
     assert_eq!(
         calls[0].1, "start_planning",
@@ -589,7 +619,7 @@ async fn plan_discuss_complete_dispatches_start_execution() {
         "plan_discuss complete action should succeed"
     );
 
-    let calls = mock_ref.transition_calls.lock().unwrap();
+    let calls = mock_ref.transition_calls.lock().expect("lock not poisoned");
     assert_eq!(calls.len(), 1, "expected exactly one transition call");
     assert_eq!(
         calls[0].1, "start_execution",
@@ -637,7 +667,7 @@ async fn plan_roadmap_start_discussion_dispatches() {
         "plan_roadmap start_discussion action should succeed"
     );
 
-    let calls = mock_ref.transition_calls.lock().unwrap();
+    let calls = mock_ref.transition_calls.lock().expect("lock not poisoned");
     assert_eq!(calls.len(), 1, "expected exactly one transition call");
     assert_eq!(
         calls[0].1, "start_discussion",
@@ -663,7 +693,7 @@ async fn plan_roadmap_start_execution_dispatches() {
         "plan_roadmap start_execution action should succeed"
     );
 
-    let calls = mock_ref.transition_calls.lock().unwrap();
+    let calls = mock_ref.transition_calls.lock().expect("lock not poisoned");
     assert_eq!(calls.len(), 1, "expected exactly one transition call");
     assert_eq!(
         calls[0].1, "start_execution",
@@ -689,7 +719,7 @@ async fn plan_verify_complete_dispatches() {
         "plan_verify complete action should succeed"
     );
 
-    let calls = mock_ref.transition_calls.lock().unwrap();
+    let calls = mock_ref.transition_calls.lock().expect("lock not poisoned");
     assert_eq!(calls.len(), 1, "expected exactly one transition call");
     assert_eq!(
         calls[0].1, "complete",

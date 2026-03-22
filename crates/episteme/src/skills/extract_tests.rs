@@ -1,4 +1,3 @@
-#![expect(clippy::unwrap_used, reason = "test assertions")]
 #![expect(clippy::expect_used, reason = "test assertions")]
 use super::*;
 use crate::skills::heuristics::PatternType;
@@ -266,7 +265,7 @@ fn parse_malformed_json_returns_error() {
         result.is_err(),
         "parsing non-JSON text should return an error"
     );
-    let err = result.unwrap_err();
+    let err = result.expect_err("non-JSON text should fail parsing");
     assert!(
         err.to_string().contains("invalid JSON"),
         "error message should indicate the input was invalid JSON"

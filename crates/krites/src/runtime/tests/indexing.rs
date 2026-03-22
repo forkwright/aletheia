@@ -12,7 +12,7 @@ use crate::fts::{TokenizerCache, TokenizerConfig};
 use crate::runtime::db::ScriptMutability;
 
 #[test]
-fn test_vec_index_insertion() {
+fn when_hnsw_filter_changes_disqualified_entry_removed_from_index() {
     let db = DbInstance::default();
     db.run_default(
         r"
@@ -61,7 +61,7 @@ fn test_vec_index_insertion() {
 }
 
 #[test]
-fn test_vec_index() {
+fn when_hnsw_index_created_knn_query_returns_nearest_neighbors() {
     let db = DbInstance::default();
     db.run_default(
         r"
@@ -137,7 +137,7 @@ fn test_vec_index() {
 }
 
 #[test]
-fn test_fts_indexing() {
+fn when_fts_index_created_text_search_finds_matching_rows() {
     let db = DbInstance::default();
     db.run_default(r":create a {k: String => v: String}")
         .expect("creating FTS base relation should succeed");
@@ -188,7 +188,7 @@ fn test_fts_indexing() {
 }
 
 #[test]
-fn test_lsh_indexing2() {
+fn when_lsh_index_created_exact_match_found_across_thresholds() {
     for i in 1..10 {
         let f = i as f64 / 10.;
         let db = DbInstance::default();
@@ -213,7 +213,7 @@ fn test_lsh_indexing2() {
 }
 
 #[test]
-fn test_lsh_indexing3() {
+fn when_lsh_index_on_text_field_exact_match_found_across_thresholds() {
     for i in 1..10 {
         let f = i as f64 / 10.;
         let db = DbInstance::default();
@@ -291,7 +291,7 @@ fn filtering() {
 }
 
 #[test]
-fn test_lsh_indexing4() {
+fn when_lsh_row_deleted_similarity_search_returns_empty() {
     for i in 1..10 {
         let f = i as f64 / 10.;
         let db = DbInstance::default();
@@ -318,7 +318,7 @@ fn test_lsh_indexing4() {
 }
 
 #[test]
-fn test_lsh_indexing() {
+fn when_lsh_index_built_similarity_search_returns_matching_results() {
     let db = DbInstance::default();
     db.run_default(r":create a {k: String => v: String}")
         .expect("creating LSH base relation should succeed");
@@ -393,7 +393,7 @@ fn test_lsh_indexing() {
 }
 
 #[test]
-fn test_insertions() {
+fn when_hnsw_bulk_insert_with_filter_knn_returns_filtered_results() {
     let db = DbInstance::default();
     db.run_default(r":create a {k => v: <F32; 1536> default rand_vec(1536)}")
         .expect("creating relation with default rand_vec column should succeed");

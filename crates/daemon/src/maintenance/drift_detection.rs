@@ -187,7 +187,23 @@ fn matches_patterns(relative: &Path, patterns: &[String]) -> bool {
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
+    use std::os::unix::fs::PermissionsExt;
+
     use super::*;
+
+    /// Write a test fixture file with explicit 0o644 permissions.
+    fn write_fixture(path: impl AsRef<Path>, content: &str) {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "test fixture: synchronous write in non-async test context"
+        )]
+        fs::write(path.as_ref(), content).expect("write fixture");
+        let mut perms = fs::metadata(path.as_ref())
+            .expect("read fixture metadata")
+            .permissions();
+        perms.set_mode(0o644);
+        fs::set_permissions(path.as_ref(), perms).expect("set fixture permissions");
+    }
 
     fn make_config(tmp: &Path) -> DriftDetectionConfig {
         DriftDetectionConfig {
@@ -216,11 +232,7 @@ mod tests {
         let config = make_config(tmp.path());
 
         fs::create_dir_all(config.example_root.join("config")).unwrap();
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
-        )]
-        fs::write(config.example_root.join("config/aletheia.toml"), "").unwrap();
+        write_fixture(config.example_root.join("config/aletheia.toml"), "");
 
         fs::create_dir_all(config.instance_root.join("config")).unwrap();
 
@@ -241,11 +253,7 @@ mod tests {
         let config = make_config(tmp.path());
 
         fs::create_dir_all(config.example_root.join("nous")).unwrap();
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
-        )]
-        fs::write(config.example_root.join("nous/SOUL.md"), "").unwrap();
+        write_fixture(config.example_root.join("nous/SOUL.md"), "");
 
         fs::create_dir_all(&config.instance_root).unwrap();
 
@@ -266,23 +274,11 @@ mod tests {
         let config = make_config(tmp.path());
 
         fs::create_dir_all(config.example_root.join("data")).unwrap();
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
-        )]
-        fs::write(config.example_root.join("data/sessions.db"), "").unwrap();
+        write_fixture(config.example_root.join("data/sessions.db"), "");
         fs::create_dir_all(config.example_root.join("signal")).unwrap();
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
-        )]
-        fs::write(config.example_root.join("config.db"), "").unwrap();
+        write_fixture(config.example_root.join("config.db"), "");
         fs::create_dir_all(config.example_root.join("logs")).unwrap();
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
-        )]
-        fs::write(config.example_root.join("logs/.gitkeep"), "").unwrap();
+        write_fixture(config.example_root.join("logs/.gitkeep"), "");
 
         fs::create_dir_all(&config.instance_root).unwrap();
 
@@ -330,17 +326,9 @@ mod tests {
         let config = make_config(tmp.path());
 
         fs::create_dir_all(config.example_root.join("config")).unwrap();
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
-        )]
-        fs::write(config.example_root.join("config/aletheia.toml"), "").unwrap();
+        write_fixture(config.example_root.join("config/aletheia.toml"), "");
         fs::create_dir_all(config.instance_root.join("config")).unwrap();
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
-        )]
-        fs::write(config.instance_root.join("config/aletheia.toml"), "").unwrap();
+        write_fixture(config.instance_root.join("config/aletheia.toml"), "");
 
         let detector = DriftDetector::new(config);
         let report = detector.check().expect("check succeeds");
@@ -378,23 +366,11 @@ mod tests {
         let config = make_config(tmp.path());
 
         fs::create_dir_all(config.example_root.join("config")).unwrap();
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
-        )]
-        fs::write(config.example_root.join("config/aletheia.toml"), "").unwrap();
+        write_fixture(config.example_root.join("config/aletheia.toml"), "");
         fs::create_dir_all(config.example_root.join("packs/starter")).unwrap();
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
-        )]
-        fs::write(config.example_root.join("packs/starter/pack.toml"), "").unwrap();
+        write_fixture(config.example_root.join("packs/starter/pack.toml"), "");
         fs::create_dir_all(config.example_root.join("services")).unwrap();
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
-        )]
-        fs::write(config.example_root.join("services/aletheia.service"), "").unwrap();
+        write_fixture(config.example_root.join("services/aletheia.service"), "");
 
         fs::create_dir_all(&config.instance_root).unwrap();
 
@@ -443,15 +419,10 @@ mod tests {
         let config = make_config(tmp.path());
 
         fs::create_dir_all(config.example_root.join("level1/level2/level3")).unwrap();
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
-        )]
-        fs::write(
+        write_fixture(
             config.example_root.join("level1/level2/level3/deep.yaml"),
             "",
-        )
-        .unwrap();
+        );
 
         fs::create_dir_all(&config.instance_root).unwrap();
 

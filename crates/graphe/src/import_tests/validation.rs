@@ -1,5 +1,4 @@
 //! Tests for import validation, dry-run, knowledge import, and error handling.
-#![expect(clippy::unwrap_used, reason = "test assertions")]
 #![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(
     clippy::as_conversions,
@@ -414,7 +413,9 @@ fn import_rejects_future_version() {
     );
 
     assert!(result.is_err(), "future version should be rejected");
-    let err = result.unwrap_err().to_string();
+    let err = result
+        .expect_err("future version should be rejected")
+        .to_string();
     assert!(
         err.contains(&format!("{}", AGENT_FILE_VERSION + 1)),
         "error should mention the unsupported version number"

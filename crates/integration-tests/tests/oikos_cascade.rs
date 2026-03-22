@@ -1,6 +1,6 @@
 //! Cross-crate tests for taxis oikos + cascade resolution.
 
-#![expect(clippy::unwrap_used, reason = "test assertions")]
+#![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(
     clippy::indexing_slicing,
     reason = "integration tests: index-based assertions on known-length slices"
@@ -13,19 +13,19 @@ use aletheia_taxis::cascade::{self, Tier};
 use aletheia_taxis::oikos::Oikos;
 
 fn setup() -> (tempfile::TempDir, Oikos) {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir().expect("create temp dir");
     let oikos = Oikos::from_root(dir.path());
     (dir, oikos)
 }
 
 fn mkfile(base: &Path, rel: &str) {
     let path = base.join(rel);
-    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::create_dir_all(path.parent().expect("path has parent")).expect("create fixture directory");
     #[expect(
         clippy::disallowed_methods,
         reason = "integration tests write fixture files to temp directories; synchronous I/O is required in test setup"
     )]
-    fs::write(&path, format!("content of {rel}")).unwrap();
+    fs::write(&path, format!("content of {rel}")).expect("write fixture file");
 }
 
 #[test]
@@ -58,7 +58,11 @@ fn resolve_single_file_falls_through() {
 
     let path = cascade::resolve(&oikos, "syn", "readme.md", Some("docs"));
     assert!(path.is_some());
-    assert!(path.unwrap().to_string_lossy().contains("theke"));
+    assert!(
+        path.expect("resolved path must exist")
+            .to_string_lossy()
+            .contains("theke")
+    );
 }
 
 #[test]
