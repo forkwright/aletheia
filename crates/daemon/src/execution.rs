@@ -5,6 +5,7 @@ use std::sync::Arc;
 use snafu::ResultExt;
 
 use crate::bridge::DaemonBridge;
+use crate::cron::{evolution, graph_cleanup, reflection};
 use crate::error::{self, Result};
 use crate::maintenance::{
     DbMonitor, DriftDetector, KnowledgeMaintenanceExecutor, MaintenanceConfig, RetentionExecutor,
@@ -282,6 +283,11 @@ pub(crate) async fn execute_builtin(
                     output: Some("no bridge configured".to_owned()),
                 })
             }
+        }
+        BuiltinTask::EvolutionSearch => evolution::execute_evolution(nous_id, bridge).await,
+        BuiltinTask::SelfReflection => reflection::execute_reflection(nous_id, bridge).await,
+        BuiltinTask::GraphCleanup => {
+            graph_cleanup::execute_graph_cleanup(nous_id, knowledge_executor).await
         }
         BuiltinTask::RetentionExecution => {
             let Some(executor) = retention_executor else {

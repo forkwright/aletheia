@@ -184,5 +184,25 @@ pub(crate) fn build_config(
         knowledge_maintenance: aletheia_oikonomos::maintenance::KnowledgeMaintenanceConfig {
             enabled: settings.knowledge_maintenance_enabled,
         },
+        cron: aletheia_oikonomos::cron::CronConfig {
+            evolution: aletheia_oikonomos::cron::CronEvolutionConfig {
+                enabled: settings.cron_tasks.evolution.enabled,
+                interval: std::time::Duration::from_secs(
+                    settings.cron_tasks.evolution.interval_secs,
+                ),
+            },
+            reflection: aletheia_oikonomos::cron::CronReflectionConfig {
+                enabled: settings.cron_tasks.reflection.enabled,
+                interval: std::time::Duration::from_secs(
+                    settings.cron_tasks.reflection.interval_secs,
+                ),
+            },
+            graph_cleanup: aletheia_oikonomos::cron::CronGraphCleanupConfig {
+                enabled: settings.cron_tasks.graph_cleanup.enabled,
+                interval: std::time::Duration::from_secs(
+                    settings.cron_tasks.graph_cleanup.interval_secs,
+                ),
+            },
+        },
     }
 }

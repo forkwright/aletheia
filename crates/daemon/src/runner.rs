@@ -189,6 +189,53 @@ impl TaskRunner {
         if config.knowledge_maintenance.enabled && self.knowledge_executor.is_some() {
             self.register_knowledge_maintenance_tasks();
         }
+
+        self.register_cron_tasks(&config.cron);
+    }
+
+    /// Register cron tasks (evolution, reflection, graph cleanup) based on configuration.
+    ///
+    /// All cron tasks are disabled by default. Each is registered only if
+    /// its `enabled` flag is set in the configuration.
+    fn register_cron_tasks(&mut self, config: &crate::cron::CronConfig) {
+        if config.evolution.enabled {
+            self.register(TaskDef {
+                id: "cron-evolution".to_owned(),
+                name: "Evolution: config variant search".to_owned(),
+                nous_id: self.nous_id.clone(),
+                schedule: Schedule::Interval(config.evolution.interval),
+                action: TaskAction::Builtin(BuiltinTask::EvolutionSearch),
+                enabled: true,
+                catch_up: false,
+                ..TaskDef::default()
+            });
+        }
+
+        if config.reflection.enabled {
+            self.register(TaskDef {
+                id: "cron-reflection".to_owned(),
+                name: "Reflection: self-evaluation".to_owned(),
+                nous_id: self.nous_id.clone(),
+                schedule: Schedule::Interval(config.reflection.interval),
+                action: TaskAction::Builtin(BuiltinTask::SelfReflection),
+                enabled: true,
+                catch_up: false,
+                ..TaskDef::default()
+            });
+        }
+
+        if config.graph_cleanup.enabled && self.knowledge_executor.is_some() {
+            self.register(TaskDef {
+                id: "cron-graph-cleanup".to_owned(),
+                name: "Graph cleanup: orphan removal".to_owned(),
+                nous_id: self.nous_id.clone(),
+                schedule: Schedule::Interval(config.graph_cleanup.interval),
+                action: TaskAction::Builtin(BuiltinTask::GraphCleanup),
+                enabled: true,
+                catch_up: false,
+                ..TaskDef::default()
+            });
+        }
     }
 
     /// Register the 7 knowledge maintenance tasks with their schedules.

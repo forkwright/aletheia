@@ -30,4 +30,6 @@ pub struct MaintenanceConfig {
     pub retention: RetentionConfig,
     /// Knowledge graph maintenance settings.
     pub knowledge_maintenance: KnowledgeMaintenanceConfig,
+    /// Cron task configuration (evolution, reflection, graph cleanup).
+    pub cron: crate::cron::CronConfig,
 }
