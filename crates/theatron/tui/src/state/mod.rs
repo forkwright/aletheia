@@ -1,6 +1,7 @@
 mod agent;
 mod chat;
 mod command;
+pub(crate) mod editor;
 mod filter;
 mod input;
 pub mod memory;

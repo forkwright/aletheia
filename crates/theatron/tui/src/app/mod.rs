@@ -144,6 +144,7 @@ pub struct LayoutState {
     pub(crate) tab_bar: TabBar,
     pub memory: MemoryInspectorState,
     pub(crate) metrics: MetricsState,
+    pub(crate) editor: crate::state::editor::EditorState,
     pub(crate) pending_g: bool,
     pub(crate) bell_enabled: bool,
     /// Cross-agent notification log with read/unread tracking.
@@ -262,6 +263,7 @@ impl App {
                 tab_bar: TabBar::new(),
                 memory: MemoryInspectorState::new(),
                 metrics: MetricsState::new(),
+                editor: crate::state::editor::EditorState::default(),
                 pending_g: false,
                 bell_enabled,
                 notifications: NotificationStore::default(),
