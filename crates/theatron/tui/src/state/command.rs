@@ -1,3 +1,21 @@
+/// Inline slash-command autocomplete triggered by `/`.
+#[derive(Debug, Default, Clone)]
+pub struct SlashCompleteState {
+    // kanon:ignore RUST/pub-visibility
+    pub(crate) active: bool,
+    pub(crate) query: String,
+    pub(crate) suggestions: Vec<SlashSuggestion>,
+    pub(crate) cursor: usize,
+}
+
+/// A single slash-command suggestion entry.
+#[derive(Debug, Clone)]
+pub struct SlashSuggestion {
+    pub(crate) name: String,
+    pub(crate) description: String,
+    pub(crate) execute_as: String,
+}
+
 /// Command palette state.
 #[derive(Debug, Default)]
 pub struct CommandPaletteState {
@@ -41,6 +59,15 @@ pub enum SelectionContext {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn slash_complete_default_inactive() {
+        let state = SlashCompleteState::default();
+        assert!(!state.active);
+        assert!(state.query.is_empty());
+        assert_eq!(state.cursor, 0);
+        assert!(state.suggestions.is_empty());
+    }
 
     #[test]
     fn command_palette_default_inactive() {

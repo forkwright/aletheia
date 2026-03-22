@@ -66,6 +66,8 @@ pub fn test_app() -> App {
             tick_count: 0,
             error_toast: None,
             success_toast: None,
+            toasts: Vec::new(),
+            error_banner: None,
             dirty: true,
             frame_cache: None,
             render: RenderState {
@@ -80,6 +82,7 @@ pub fn test_app() -> App {
             input: InputState::default(),
             tab_completion: None,
             command_palette: CommandPaletteState::default(),
+            slash_complete: SlashCompleteState::default(),
             command_history: Vec::new(),
             command_history_index: None,
             selection: SelectionContext::default(),
@@ -100,6 +103,7 @@ pub fn test_app() -> App {
             memory: MemoryInspectorState::new(),
             pending_g: false,
             bell_enabled: false,
+            notifications: NotificationStore::default(),
         },
     }
 }

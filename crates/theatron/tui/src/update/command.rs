@@ -205,7 +205,7 @@ fn refresh_suggestions(app: &mut App) {
     );
 }
 
-async fn execute_command(app: &mut App) {
+pub(crate) async fn execute_command(app: &mut App) {
     let input = app.interaction.command_palette.input.trim().to_string();
     app.interaction.command_palette.active = false;
     app.interaction.command_palette.input.clear();
@@ -328,6 +328,13 @@ async fn execute_command(app: &mut App) {
         }
         "export" => {
             execute_export(app);
+        }
+        "search" => {
+            super::search::handle_open(app);
+        }
+        "notifications" | "notif" => {
+            app.layout.notifications.mark_all_read();
+            app.layout.overlay = Some(Overlay::NotificationHistory { scroll: 0 });
         }
         _ => {
             app.viewport.error_toast =

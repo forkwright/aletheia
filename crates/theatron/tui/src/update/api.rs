@@ -181,6 +181,7 @@ pub(crate) fn handle_tick(app: &mut App) {
     {
         app.viewport.success_toast = None;
     }
+    app.viewport.toasts.retain(|t| !t.is_expired());
     super::sse::check_sse_reconnect_timeout(app);
     super::sse::check_distill_auto_dismiss(app);
     check_stream_stall(app);

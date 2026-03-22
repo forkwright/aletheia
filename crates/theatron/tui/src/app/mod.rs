@@ -31,10 +31,11 @@ use crate::state::virtual_scroll::VirtualScroll;
 )]
 pub use crate::state::{
     ActiveTool, AgentState, AgentStatus, ChatMessage, CommandPaletteState, ContextAction,
-    ContextActionsOverlay, DecisionCardOverlay, DecisionField, DecisionOption, FilterState,
-    FocusedPane, InputState, MemoryInspectorState, OpsState, Overlay, PlanApprovalOverlay,
-    PlanStepApproval, SelectionContext, SessionPickerOverlay, SubmittedDecision, TabCompletion,
-    ToolApprovalOverlay, ToolCallInfo, ToolSummary, View, ViewStack,
+    ContextActionsOverlay, DecisionCardOverlay, DecisionField, DecisionOption, ErrorBanner,
+    FilterState, FocusedPane, InputState, MemoryInspectorState, NotificationStore, OpsState,
+    Overlay, PlanApprovalOverlay, PlanStepApproval, SelectionContext, SessionPickerOverlay,
+    SlashCompleteState, SubmittedDecision, TabCompletion, Toast, ToolApprovalOverlay, ToolCallInfo,
+    ToolSummary, View, ViewStack,
 };
 
 /// Default terminal width used before the first resize event arrives.
@@ -105,16 +106,21 @@ pub struct ViewportState {
     pub tick_count: u64,
     pub error_toast: Option<ErrorToast>,
     pub success_toast: Option<ErrorToast>,
+    /// Multi-type toast queue; each entry auto-dismisses after `duration_secs`.
+    pub toasts: Vec<Toast>,
+    /// Persistent top-of-viewport error banner, dismissed explicitly.
+    pub error_banner: Option<ErrorBanner>,
     pub(crate) dirty: bool,
     pub(crate) frame_cache: Option<Buffer>,
     pub render: RenderState,
 }
 
-/// Input, tab completion, command palette, selection, filter, and key state.
+/// Input, tab completion, command palette, slash complete, selection, filter, and key state.
 pub struct InteractionState {
     pub input: InputState,
     pub tab_completion: Option<TabCompletion>,
     pub command_palette: CommandPaletteState,
+    pub slash_complete: SlashCompleteState,
     pub command_history: Vec<String>,
     pub command_history_index: Option<usize>,
     pub selection: SelectionContext,
@@ -126,7 +132,7 @@ pub struct InteractionState {
     pub(crate) always_allowed_tools: HashSet<String>,
 }
 
-/// Sidebar, overlay, view stack, ops, tabs, and memory inspector.
+/// Sidebar, overlay, view stack, ops, tabs, memory inspector, and notification log.
 pub struct LayoutState {
     pub sidebar_visible: bool,
     pub thinking_expanded: bool,
@@ -138,6 +144,8 @@ pub struct LayoutState {
     pub memory: MemoryInspectorState,
     pub(crate) pending_g: bool,
     pub(crate) bell_enabled: bool,
+    /// Cross-agent notification log with read/unread tracking.
+    pub notifications: NotificationStore,
 }
 
 pub struct App {
@@ -216,6 +224,8 @@ impl App {
                 tick_count: 0,
                 error_toast: None,
                 success_toast: None,
+                toasts: Vec::new(),
+                error_banner: None,
                 dirty: true,
                 frame_cache: None,
                 render: RenderState {
@@ -230,6 +240,7 @@ impl App {
                 input: InputState::default(),
                 tab_completion: None,
                 command_palette: CommandPaletteState::default(),
+                slash_complete: SlashCompleteState::default(),
                 command_history,
                 command_history_index: None,
                 selection: SelectionContext::default(),
@@ -250,6 +261,7 @@ impl App {
                 memory: MemoryInspectorState::new(),
                 pending_g: false,
                 bell_enabled,
+                notifications: NotificationStore::default(),
             },
         };
 
@@ -519,12 +531,14 @@ impl App {
         let had_animation = self.connection.active_turn_id.is_some()
             || self.viewport.error_toast.is_some()
             || self.viewport.success_toast.is_some()
-            || self.connection.stall_message.is_some();
+            || self.connection.stall_message.is_some()
+            || !self.viewport.toasts.is_empty();
         crate::update::update(self, msg).await;
         let has_animation = self.connection.active_turn_id.is_some()
             || self.viewport.error_toast.is_some()
             || self.viewport.success_toast.is_some()
-            || self.connection.stall_message.is_some();
+            || self.connection.stall_message.is_some()
+            || !self.viewport.toasts.is_empty();
         self.viewport.dirty = had_animation || has_animation;
     }
 

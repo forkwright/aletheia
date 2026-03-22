@@ -25,6 +25,10 @@ impl crate::app::App {
             return self.map_palette_key(key);
         }
 
+        if self.interaction.slash_complete.active {
+            return self.map_slash_complete_key(key);
+        }
+
         if self.interaction.filter.editing {
             return self.map_filter_editing_key(key);
         }
@@ -159,7 +163,7 @@ impl crate::app::App {
             }
 
             (KeyModifiers::NONE, KeyCode::Char('/')) if self.interaction.input.text.is_empty() => {
-                Some(Msg::SessionSearchOpen)
+                Some(Msg::SlashCompleteOpen)
             }
 
             (KeyModifiers::NONE, KeyCode::Char('v'))
@@ -261,6 +265,26 @@ impl crate::app::App {
 
             (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => Some(Msg::CharInput(c)),
 
+            _ => None,
+        }
+    }
+
+    #[expect(
+        clippy::unused_self,
+        reason = "consistent method signature with other map_ methods"
+    )]
+    fn map_slash_complete_key(&self, key: KeyEvent) -> Option<Msg> {
+        match (key.modifiers, key.code) {
+            (_, KeyCode::Esc) | (KeyModifiers::CONTROL, KeyCode::Char('c')) => {
+                Some(Msg::SlashCompleteClose)
+            }
+            (_, KeyCode::Enter) => Some(Msg::SlashCompleteSelect),
+            (_, KeyCode::Up) => Some(Msg::SlashCompleteUp),
+            (_, KeyCode::Down) => Some(Msg::SlashCompleteDown),
+            (_, KeyCode::Backspace) => Some(Msg::SlashCompleteBackspace),
+            (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => {
+                Some(Msg::SlashCompleteInput(c))
+            }
             _ => None,
         }
     }

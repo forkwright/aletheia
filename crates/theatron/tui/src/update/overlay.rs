@@ -24,6 +24,10 @@ pub(crate) async fn handle_open_overlay(app: &mut App, kind: OverlayKind) {
                 OverlayKind::SystemStatus => Overlay::SystemStatus,
                 OverlayKind::ContextBudget => Overlay::ContextBudget,
                 OverlayKind::Settings => unreachable!(),
+                OverlayKind::NotificationHistory => {
+                    app.layout.notifications.mark_all_read();
+                    Overlay::NotificationHistory { scroll: 0 }
+                }
             });
         }
     }
@@ -114,6 +118,9 @@ pub(crate) fn handle_overlay_up(app: &mut App) {
                 card.cursor = card.cursor.saturating_sub(1);
             }
         }
+        Some(Overlay::NotificationHistory { scroll }) => {
+            *scroll = scroll.saturating_sub(1);
+        }
         _ => {
             // NOTE: no overlay or non-navigable overlay, nothing to do
         }
@@ -151,6 +158,9 @@ pub(crate) fn handle_overlay_down(app: &mut App) {
                 let max = card.options.len().saturating_sub(1);
                 card.cursor = (card.cursor + 1).min(max);
             }
+        }
+        Some(Overlay::NotificationHistory { scroll }) => {
+            *scroll += 1;
         }
         _ => {
             // NOTE: no overlay or non-navigable overlay, nothing to do

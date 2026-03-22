@@ -180,6 +180,20 @@ pub static COMMANDS: &[Command] = &[
         category: CommandCategory::Action,
         shortcut: None,
     },
+    Command {
+        name: "search",
+        aliases: &[],
+        description: "Search sessions and messages",
+        category: CommandCategory::Query,
+        shortcut: None,
+    },
+    Command {
+        name: "notifications",
+        aliases: &["notif"],
+        description: "View notification history",
+        category: CommandCategory::Navigation,
+        shortcut: None,
+    },
 ];
 
 const MAX_SUGGESTIONS: usize = 8;

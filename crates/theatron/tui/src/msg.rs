@@ -301,6 +301,29 @@ pub enum Msg {
     /// Cancel the active LLM turn immediately (Esc / Ctrl+C during streaming).
     CancelTurn,
 
+    SlashCompleteOpen,
+    SlashCompleteClose,
+    SlashCompleteInput(char),
+    SlashCompleteBackspace,
+    SlashCompleteUp,
+    SlashCompleteDown,
+    SlashCompleteSelect,
+
+    #[expect(dead_code, reason = "sent by API event bridge; not yet wired")]
+    ToastPush {
+        message: String,
+        kind: NotificationKind,
+        duration_secs: u64,
+    },
+    #[expect(dead_code, reason = "sent by API event bridge; not yet wired")]
+    ErrorBannerSet(String),
+    #[expect(dead_code, reason = "sent by API event bridge; not yet wired")]
+    ErrorBannerDismiss,
+
+    #[expect(
+        dead_code,
+        reason = "accessible via :search command; direct keybinding removed"
+    )]
     SessionSearchOpen,
     SessionSearchClose,
     SessionSearchInput(char),
@@ -378,6 +401,40 @@ pub enum OverlayKind {
     ContextBudget,
     #[expect(dead_code, reason = "planned TUI feature")]
     Settings,
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "opened programmatically; not yet wired to keyboard"
+        )
+    )]
+    NotificationHistory,
+}
+
+/// Severity / type of a notification or toast.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum NotificationKind {
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "API bridge sends these; not yet wired")
+    )]
+    Info,
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "API bridge sends these; not yet wired")
+    )]
+    Warning,
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "API bridge sends these; not yet wired")
+    )]
+    Error,
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "API bridge sends these; not yet wired")
+    )]
+    Success,
 }
 
 /// Transient error toast that auto-dismisses.
@@ -477,5 +534,46 @@ mod tests {
         let msg = Msg::Tick;
         let debug = format!("{:?}", msg);
         assert!(debug.contains("Tick"));
+    }
+
+    #[test]
+    fn notification_kind_variants_distinct() {
+        let kinds = [
+            NotificationKind::Info,
+            NotificationKind::Warning,
+            NotificationKind::Error,
+            NotificationKind::Success,
+        ];
+        let debugs: Vec<String> = kinds.iter().map(|k| format!("{:?}", k)).collect();
+        for (i, d) in debugs.iter().enumerate() {
+            for (j, d2) in debugs.iter().enumerate() {
+                if i != j {
+                    assert_ne!(d, d2);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn overlay_kind_notification_history_debug() {
+        let kind = OverlayKind::NotificationHistory;
+        let debug = format!("{:?}", kind);
+        assert!(debug.contains("NotificationHistory"));
+    }
+
+    #[test]
+    fn slash_complete_msgs_debug() {
+        let msgs = [
+            Msg::SlashCompleteOpen,
+            Msg::SlashCompleteClose,
+            Msg::SlashCompleteUp,
+            Msg::SlashCompleteDown,
+            Msg::SlashCompleteSelect,
+            Msg::SlashCompleteInput('q'),
+            Msg::SlashCompleteBackspace,
+        ];
+        for m in &msgs {
+            assert!(!format!("{:?}", m).is_empty());
+        }
     }
 }

@@ -95,11 +95,11 @@ mod tests {
     }
 
     #[test]
-    fn slash_on_empty_input_opens_session_search() {
+    fn slash_on_empty_input_opens_slash_complete() {
         let app = test_app();
         let event = Event::Terminal(key(KeyCode::Char('/')));
         let msg = app.map_event(event);
-        assert!(matches!(msg, Some(Msg::SessionSearchOpen)));
+        assert!(matches!(msg, Some(Msg::SlashCompleteOpen)));
     }
 
     #[test]
