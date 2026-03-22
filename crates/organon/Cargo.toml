@@ -20,6 +20,7 @@ test-support = ["aletheia-hermeneus/test-support"]
 [dependencies]
 aletheia-hermeneus = { path = "../hermeneus" }
 aletheia-koina = { path = "../koina" }
+aletheia-taxis = { path = "../taxis" }
 base64 = { workspace = true }
 indexmap = { workspace = true }
 jiff = { workspace = true }
@@ -27,6 +28,7 @@ prometheus = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+serde_yaml = { workspace = true }
 snafu = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }

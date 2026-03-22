@@ -12,7 +12,10 @@ use tracing::info_span;
 use aletheia_koina::id::ToolName;
 
 use crate::error::{self, Result};
-use crate::types::{ToolCategory, ToolContext, ToolDef, ToolInput, ToolResult};
+use crate::types::{
+    ApprovalRequirement, Reversibility, ToolCallMetadata, ToolCategory, ToolContext, ToolDef,
+    ToolInput, ToolResult,
+};
 
 /// The trait tool implementations must satisfy.
 ///
@@ -99,6 +102,8 @@ impl ToolRegistry {
         })?;
         let span = info_span!("tool_execute",
             tool.name = %input.name,
+            tool.reversibility = %tool.def.reversibility,
+            tool.approval = %ApprovalRequirement::from(tool.def.reversibility),
             tool.duration_ms = tracing::field::Empty,
             tool.status = tracing::field::Empty,
         );
@@ -182,6 +187,33 @@ impl ToolRegistry {
             .collect()
     }
 
+    /// Look up the reversibility level for a tool by name.
+    #[must_use]
+    pub fn reversibility(&self, name: &ToolName) -> Option<Reversibility> {
+        // kanon:ignore RUST/pub-visibility
+        self.tools.get(name).map(|t| t.def.reversibility)
+    }
+
+    /// Determine what approval is required for a tool call.
+    #[must_use]
+    pub fn approval_requirement(&self, name: &ToolName) -> Option<ApprovalRequirement> {
+        // kanon:ignore RUST/pub-visibility
+        self.tools
+            .get(name)
+            .map(|t| ApprovalRequirement::from(t.def.reversibility))
+    }
+
+    /// Build session-log metadata for a tool call.
+    #[must_use]
+    pub fn call_metadata(&self, name: &ToolName, dry_run: bool) -> Option<ToolCallMetadata> {
+        // kanon:ignore RUST/pub-visibility
+        self.tools.get(name).map(|t| ToolCallMetadata {
+            reversibility: t.def.reversibility,
+            approval: ApprovalRequirement::from(t.def.reversibility),
+            dry_run,
+        })
+    }
+
     /// Catalog of lazy tools (`auto_activate=false`) for the `enable_tool` executor.
     #[must_use]
     pub fn lazy_tool_catalog(&self) -> Vec<(ToolName, String)> {
@@ -206,7 +238,7 @@ mod tests {
     use aletheia_koina::id::{NousId, SessionId};
 
     use super::*;
-    use crate::types::{InputSchema, PropertyDef, PropertyType};
+    use crate::types::{InputSchema, PropertyDef, PropertyType, Reversibility};
 
     /// Mock executor that captures calls for verification.
     struct MockExecutor {
@@ -255,6 +287,7 @@ mod tests {
                 required: vec![],
             },
             category,
+            reversibility: Reversibility::Irreversible,
             auto_activate: false,
         }
     }
@@ -410,6 +443,7 @@ mod tests {
                 required: vec!["path".to_owned()],
             },
             category: ToolCategory::Workspace,
+            reversibility: Reversibility::Irreversible,
             auto_activate: false,
         };
         reg.register(def, exec).expect("register");
@@ -498,6 +532,7 @@ mod tests {
                 required: vec![],
             },
             category,
+            reversibility: Reversibility::Irreversible,
             auto_activate,
         }
     }
@@ -652,6 +687,7 @@ mod tests {
                 required: vec!["path".to_owned()],
             },
             category: ToolCategory::Workspace,
+            reversibility: Reversibility::Irreversible,
             auto_activate: false,
         };
         reg.register(def, exec).expect("register");
@@ -684,6 +720,7 @@ mod tests {
                 required: vec![],
             },
             category: ToolCategory::Workspace,
+            reversibility: Reversibility::Irreversible,
             auto_activate: false,
         };
         reg.register(def, exec).expect("register");
@@ -715,6 +752,7 @@ mod tests {
                 required: vec![],
             },
             category: ToolCategory::Workspace,
+            reversibility: Reversibility::Irreversible,
             auto_activate: false,
         };
         reg.register(def, exec).expect("register");
@@ -740,6 +778,7 @@ mod tests {
                     required: vec![],
                 },
                 category: ToolCategory::Research,
+                reversibility: Reversibility::Irreversible,
                 auto_activate: false,
             },
             exec,

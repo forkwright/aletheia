@@ -14,8 +14,8 @@ use aletheia_koina::id::ToolName;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, ToolCategory, ToolContext, ToolDef, ToolInput,
-    ToolResult,
+    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
+    ToolInput, ToolResult,
 };
 
 use crate::builtins::workspace::extract_str;
@@ -187,6 +187,7 @@ fn datalog_query_def() -> ToolDef {
             required: vec!["query".to_owned()],
         },
         category: ToolCategory::Memory,
+        reversibility: Reversibility::FullyReversible,
         auto_activate: false,
     }
 }

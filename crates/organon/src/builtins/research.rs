@@ -20,8 +20,8 @@ use aletheia_koina::id::ToolName;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, ToolCategory, ToolContext, ToolDef, ToolInput,
-    ToolResult,
+    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
+    ToolInput, ToolResult,
 };
 
 use super::workspace::{extract_opt_u64, extract_str};
@@ -359,6 +359,7 @@ fn web_fetch_def() -> ToolDef {
             required: vec!["url".to_owned()],
         },
         category: ToolCategory::Research,
+        reversibility: Reversibility::Irreversible,
         auto_activate: false,
     }
 }

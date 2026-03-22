@@ -21,8 +21,8 @@ use crate::error::Result;
 use crate::process_guard::ProcessGuard;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, ToolCategory, ToolContext, ToolDef, ToolInput,
-    ToolResult,
+    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
+    ToolInput, ToolResult,
 };
 
 use super::workspace::{extract_opt_bool, extract_opt_u64, extract_str, validate_path};
@@ -429,6 +429,7 @@ fn grep_def() -> ToolDef {
             required: vec!["pattern".to_owned()],
         },
         category: ToolCategory::Workspace,
+        reversibility: Reversibility::FullyReversible,
         auto_activate: true,
     }
 }
@@ -489,6 +490,7 @@ fn find_def() -> ToolDef {
             required: vec!["pattern".to_owned()],
         },
         category: ToolCategory::Workspace,
+        reversibility: Reversibility::FullyReversible,
         auto_activate: true,
     }
 }
@@ -522,6 +524,7 @@ fn ls_def() -> ToolDef {
             required: vec![],
         },
         category: ToolCategory::Workspace,
+        reversibility: Reversibility::FullyReversible,
         auto_activate: true,
     }
 }

@@ -8,7 +8,7 @@ use indexmap::IndexMap;
 
 use aletheia_koina::id::ToolName;
 
-use crate::types::{InputSchema, PropertyDef, PropertyType, ToolCategory, ToolDef};
+use crate::types::{InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolDef};
 
 pub(super) fn plan_create_def() -> ToolDef {
     ToolDef {
@@ -74,6 +74,7 @@ pub(super) fn plan_create_def() -> ToolDef {
             required: vec!["name".to_owned(), "description".to_owned()],
         },
         category: ToolCategory::Planning,
+        reversibility: Reversibility::Reversible,
         auto_activate: false,
     }
 }
@@ -107,6 +108,7 @@ pub(super) fn plan_research_def() -> ToolDef {
             required: vec!["project_id".to_owned()],
         },
         category: ToolCategory::Planning,
+        reversibility: Reversibility::Reversible,
         auto_activate: false,
     }
 }
@@ -140,6 +142,7 @@ pub(super) fn plan_requirements_def() -> ToolDef {
             required: vec!["project_id".to_owned(), "action".to_owned()],
         },
         category: ToolCategory::Planning,
+        reversibility: Reversibility::Reversible,
         auto_activate: false,
     }
 }
@@ -195,6 +198,7 @@ pub(super) fn plan_roadmap_def() -> ToolDef {
             required: vec!["project_id".to_owned(), "action".to_owned()],
         },
         category: ToolCategory::Planning,
+        reversibility: Reversibility::Reversible,
         auto_activate: false,
     }
 }
@@ -228,6 +232,7 @@ pub(super) fn plan_discuss_def() -> ToolDef {
             required: vec!["project_id".to_owned(), "action".to_owned()],
         },
         category: ToolCategory::Planning,
+        reversibility: Reversibility::Reversible,
         auto_activate: false,
     }
 }
@@ -267,6 +272,7 @@ pub(super) fn plan_execute_def() -> ToolDef {
             required: vec!["project_id".to_owned(), "action".to_owned()],
         },
         category: ToolCategory::Planning,
+        reversibility: Reversibility::PartiallyReversible,
         auto_activate: false,
     }
 }
@@ -314,6 +320,7 @@ pub(super) fn plan_verify_def() -> ToolDef {
             required: vec!["project_id".to_owned(), "action".to_owned()],
         },
         category: ToolCategory::Planning,
+        reversibility: Reversibility::PartiallyReversible,
         auto_activate: false,
     }
 }
@@ -336,6 +343,7 @@ pub(super) fn plan_status_def() -> ToolDef {
             required: vec!["project_id".to_owned()],
         },
         category: ToolCategory::Planning,
+        reversibility: Reversibility::FullyReversible,
         auto_activate: false,
     }
 }
@@ -391,6 +399,7 @@ pub(super) fn plan_step_complete_def() -> ToolDef {
             ],
         },
         category: ToolCategory::Planning,
+        reversibility: Reversibility::PartiallyReversible,
         auto_activate: false,
     }
 }
@@ -447,6 +456,7 @@ pub(super) fn plan_step_fail_def() -> ToolDef {
             ],
         },
         category: ToolCategory::Planning,
+        reversibility: Reversibility::PartiallyReversible,
         auto_activate: false,
     }
 }

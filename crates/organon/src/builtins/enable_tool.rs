@@ -14,8 +14,8 @@ use aletheia_koina::id::ToolName;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, ToolCategory, ToolContext, ToolDef, ToolInput,
-    ToolResult,
+    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
+    ToolInput, ToolResult,
 };
 
 use super::workspace::extract_str;
@@ -102,6 +102,7 @@ fn enable_tool_def() -> ToolDef {
             required: vec!["name".to_owned()],
         },
         category: ToolCategory::System,
+        reversibility: Reversibility::FullyReversible,
         auto_activate: true,
     }
 }
