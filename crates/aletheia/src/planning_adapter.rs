@@ -295,6 +295,70 @@ impl PlanningService for FilesystemPlanningService {
                 .context(TaskJoinSnafu)?
         })
     }
+
+    fn verify_criteria(
+        &self,
+        project_id: &str,
+        phase_id: &str,
+        criteria_json: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>> {
+        let root = self.projects_root.clone();
+        let project_id = project_id.to_owned();
+        let phase_id = phase_id.to_owned();
+        let criteria_json = criteria_json.to_owned();
+        Box::pin(async move {
+            tokio::task::spawn_blocking(move || {
+                let ws_path = root.join(&project_id);
+                let ws = ProjectWorkspace::open(&ws_path).map_err(|e| {
+                    WorkspaceSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
+                let project = ws.load_project().map_err(|e| {
+                    LoadProjectSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
+
+                let phase_ulid: ulid::Ulid = phase_id.parse().map_err(|e: ulid::DecodeError| {
+                    InvalidIdSnafu {
+                        kind: "phase_id".to_owned(),
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
+
+                let phase = project
+                    .phases
+                    .iter()
+                    .find(|p| p.id == phase_ulid)
+                    .ok_or_else(|| {
+                        NotFoundSnafu {
+                            kind: "phase",
+                            id: &phase_id,
+                        }
+                        .build()
+                    })?;
+
+                let inputs: Vec<aletheia_dianoia::verify::CriterionInput> =
+                    serde_json::from_str(&criteria_json).context(SerializeSnafu)?;
+
+                let result = aletheia_dianoia::verify::verify_phase(phase, &inputs);
+                let traces = aletheia_dianoia::verify::trace_goals(phase, &result.criteria);
+
+                let output = serde_json::json!({
+                    "verification": result,
+                    "goal_traces": traces,
+                });
+
+                serde_json::to_string_pretty(&output).context(SerializeSnafu)
+            })
+            .await
+            .context(TaskJoinSnafu)?
+        })
+    }
 }
 
 fn parse_mode(
