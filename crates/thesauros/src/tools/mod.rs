@@ -30,6 +30,10 @@ struct ShellToolExecutor {
 }
 
 impl ToolExecutor for ShellToolExecutor {
+    #[expect(
+        clippy::too_many_lines,
+        reason = "shell execution pipeline: spawn, pipe I/O, timeout, error handling"
+    )]
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,

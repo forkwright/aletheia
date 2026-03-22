@@ -101,6 +101,7 @@ pub fn test_app() -> App {
             ops: OpsState::default(),
             tab_bar: TabBar::new(),
             memory: MemoryInspectorState::new(),
+            metrics: crate::state::MetricsState::new(),
             pending_g: false,
             bell_enabled: false,
             notifications: NotificationStore::default(),

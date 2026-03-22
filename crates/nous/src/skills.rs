@@ -323,9 +323,10 @@ pub(crate) fn rank_skills(candidates: Vec<Fact>) -> Vec<Fact> {
 mod tests {
     #![expect(
         clippy::indexing_slicing,
-        reason = "test: vec indices are valid after asserting len"
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "test assertions may panic on failure"
     )]
-    #![expect(clippy::expect_used, reason = "test assertions may panic on failure")]
 
     use super::*;
 

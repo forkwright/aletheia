@@ -22,6 +22,8 @@ pub enum View {
     MemoryInspector,
     /// Fact detail within the memory inspector.
     FactDetail { fact_id: String },
+    /// Metrics dashboard: token usage, cost, service health, per-agent stats.
+    Metrics,
 }
 
 impl View {
@@ -34,6 +36,7 @@ impl View {
             Self::MessageDetail { .. } => "Message",
             Self::MemoryInspector => "Memory",
             Self::FactDetail { .. } => "Fact",
+            Self::Metrics => "Metrics",
         }
     }
 }
@@ -251,6 +254,17 @@ mod tests {
             "Conversation"
         );
         assert_eq!(View::MessageDetail { message_index: 0 }.label(), "Message");
+        assert_eq!(View::Metrics.label(), "Metrics");
+    }
+
+    #[test]
+    fn metrics_view_push_pop() {
+        let mut stack = ViewStack::new();
+        stack.push(View::Metrics);
+        assert_eq!(stack.current(), &View::Metrics);
+        assert_eq!(stack.breadcrumbs(), vec!["Home", "Metrics"]);
+        stack.pop();
+        assert!(stack.is_home());
     }
 
     #[test]

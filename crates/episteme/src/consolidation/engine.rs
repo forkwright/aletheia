@@ -4,7 +4,6 @@
 //! identification, LLM-driven consolidation execution, and audit trail.
 #![expect(
     clippy::as_conversions,
-    clippy::indexing_slicing,
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
 )]
 
@@ -38,10 +37,6 @@ impl KnowledgeStore {
 
     /// Find entity-overflow consolidation candidates.
     #[instrument(skip(self))]
-    #[expect(
-        clippy::cast_possible_wrap,
-        reason = "entity_fact_threshold is small (typically 10), fits i64"
-    )]
     pub fn find_entity_overflow_candidates(
         &self,
         nous_id: &str,
@@ -67,8 +62,8 @@ impl KnowledgeStore {
 
         let mut candidates = Vec::new();
         for row in &result.rows {
-            let entity_id_str = row.get(0).and_then(|v| v.get_str()).unwrap_or_default();
-            let fact_count = i64_as_usize(row.get(1).and_then(|v| v.get_int()).unwrap_or(0));
+            let entity_id_str = row.first().and_then(|v| v.get_str()).unwrap_or_default();
+            let fact_count = i64_as_usize(row.get(1).and_then(DataValue::get_int).unwrap_or(0));
             let entity_id = EntityId::new(entity_id_str).map_err(|e| {
                 StoreSnafu {
                     message: e.to_string(),
@@ -103,10 +98,6 @@ impl KnowledgeStore {
 
     /// Find community-overflow consolidation candidates.
     #[instrument(skip(self))]
-    #[expect(
-        clippy::cast_possible_wrap,
-        reason = "community_fact_threshold is small (typically 20), fits i64"
-    )]
     pub fn find_community_overflow_candidates(
         &self,
         nous_id: &str,
@@ -132,8 +123,8 @@ impl KnowledgeStore {
 
         let mut candidates = Vec::new();
         for row in &result.rows {
-            let cluster_id = row.get(0).and_then(|v| v.get_int()).unwrap_or(-1);
-            let fact_count = i64_as_usize(row.get(1).and_then(|v| v.get_int()).unwrap_or(0));
+            let cluster_id = row.first().and_then(DataValue::get_int).unwrap_or(-1);
+            let fact_count = i64_as_usize(row.get(1).and_then(DataValue::get_int).unwrap_or(0));
 
             let facts = self
                 .gather_cluster_facts(nous_id, cluster_id, &cutoff)
@@ -399,10 +390,6 @@ impl KnowledgeStore {
     }
 
     /// Record a consolidation audit entry.
-    #[expect(
-        clippy::cast_possible_wrap,
-        reason = "fact counts are small, well within i64 range"
-    )]
     fn record_consolidation_audit(
         &self,
         record: &ConsolidationAuditRecord,
@@ -470,7 +457,7 @@ impl KnowledgeStore {
 
         if let Some(row) = result.rows.first() {
             Ok(Some(
-                row.get(0)
+                row.first()
                     .and_then(|v| v.get_str())
                     .unwrap_or_default()
                     .to_owned(),
@@ -527,7 +514,11 @@ impl KnowledgeStore {
             let now = jiff::Timestamp::now();
             if let Ok(span) = now.since(last_ts) {
                 let total_minutes = i64::from(span.get_hours()) * 60 + span.get_minutes();
-                let elapsed_hours = (total_minutes as f64) / 60.0; // SAFETY: minutes fit f64
+                #[expect(
+                    clippy::cast_precision_loss,
+                    reason = "total_minutes is an elapsed time value; precision loss is acceptable for rate-limit comparison"
+                )]
+                let elapsed_hours = (total_minutes as f64) / 60.0;
                 if elapsed_hours < config.rate_limit_hours {
                     return Err(RateLimitedSnafu {
                         elapsed_hours,
@@ -586,7 +577,7 @@ fn run_llm_consolidation(
 fn parse_fact_rows(rows: &[Vec<DataValue>]) -> Vec<(FactId, String, f64, String)> {
     rows.iter()
         .filter_map(|row| {
-            let Ok(id) = FactId::new(row.get(0).and_then(|v| v.get_str()).unwrap_or_default())
+            let Ok(id) = FactId::new(row.first().and_then(|v| v.get_str()).unwrap_or_default())
             else {
                 return None;
             };
@@ -595,7 +586,7 @@ fn parse_fact_rows(rows: &[Vec<DataValue>]) -> Vec<(FactId, String, f64, String)
                 .and_then(|v| v.get_str())
                 .unwrap_or_default()
                 .to_owned();
-            let confidence = row.get(2).and_then(|v| v.get_float()).unwrap_or(0.0);
+            let confidence = row.get(2).and_then(DataValue::get_float).unwrap_or(0.0);
             let recorded_at = row
                 .get(3)
                 .and_then(|v| v.get_str())

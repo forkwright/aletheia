@@ -524,7 +524,7 @@ fn guard_result_rate_limited() {
     assert_ne!(g, GuardResult::Allow, "RateLimited should not equal Allow");
     match g {
         GuardResult::RateLimited { retry_after_ms } => {
-            assert_eq!(retry_after_ms, 5000, "retry_after_ms should match")
+            assert_eq!(retry_after_ms, 5000, "retry_after_ms should match");
         }
         _ => panic!("wrong variant"),
     }
@@ -537,7 +537,7 @@ fn guard_result_loop_detected() {
     };
     match g {
         GuardResult::LoopDetected { pattern } => {
-            assert_eq!(pattern, "exec:abc", "pattern should match")
+            assert_eq!(pattern, "exec:abc", "pattern should match");
         }
         _ => panic!("wrong variant"),
     }
@@ -550,7 +550,7 @@ fn guard_result_rejected() {
     };
     match g {
         GuardResult::Rejected { reason } => {
-            assert!(reason.contains("unsafe"), "reason should contain unsafe")
+            assert!(reason.contains("unsafe"), "reason should contain unsafe");
         }
         _ => panic!("wrong variant"),
     }

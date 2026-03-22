@@ -6,50 +6,6 @@ use aletheia_hermeneus::types::{Content, ContentBlock, Message, Role};
 
 use crate::distill::DistillSection;
 
-/// Legacy hardcoded distillation system prompt with all seven standard sections.
-#[deprecated(note = "use build_system_prompt() with configured sections")]
-pub(crate) const DISTILLATION_SYSTEM_PROMPT: &str = "\
-You are a context distillation engine. Your task is to compress a conversation \
-history into a structured summary that preserves all essential information for \
-continuing the work.
-
-Produce a summary with EXACTLY these sections. Omit a section only if it has \
-no content.
-
-## Summary
-One sentence describing what this conversation is about.
-
-## Task Context
-What was being worked on and why. Include the agent/nous identity if relevant.
-
-## Completed Work
-- Bullet list of concrete actions taken and their outcomes
-- Include file paths, function names, and specific details
-- Focus on results, not process
-
-## Key Decisions
-- Decisions made with their rationale — these MUST be preserved
-- Format: \"Decision: X. Reason: Y.\"
-
-## Current State
-Where things stand right now. What is done, what is in progress, what is half-finished.
-
-## Open Threads
-- Unfinished items, pending questions, next steps
-- Items deferred for later
-
-## Corrections
-- Anything that was wrong and corrected
-- Mistakes made and how they were fixed
-- These prevent repeating errors
-
-Rules:
-- Use first person: \"I was...\", \"I decided...\"
-- Be specific: file paths, line numbers, function names, exact values
-- Preserve names, identifiers, and numbers exactly
-- Target 400-600 words total
-- Every fact in the summary must be traceable to the conversation";
-
 /// Generate the distillation system prompt from configured sections.
 #[must_use]
 pub(crate) fn build_system_prompt(sections: &[DistillSection]) -> String {

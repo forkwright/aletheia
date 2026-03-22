@@ -46,6 +46,9 @@ static PIPELINE_ERRORS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
     .expect("metric registration") // kanon:ignore RUST/expect
 });
 
+// WHY: init() is intended to be called during server startup to pre-register
+// metrics before the first request; not yet wired into the startup sequence.
+#[allow(dead_code)]
 /// Force-initialize all lazy metric statics.
 pub(crate) fn init() {
     LazyLock::force(&PIPELINE_TURNS_TOTAL);

@@ -248,7 +248,14 @@ impl Default for GraphDirtyFlag {
 /// Convert an `i64` hop/depth value to `u32`, clamping negatives to 0.
 #[cfg(feature = "mneme-engine")]
 fn i64_to_u32(v: i64) -> u32 {
-    v.clamp(0, i64::from(u32::MAX)) as u32 // SAFETY: clamped to u32 range
+    // WHY: clamped to [0, u32::MAX] before cast; sign loss and truncation are impossible.
+    #[expect(
+        clippy::cast_sign_loss,
+        clippy::cast_possible_truncation,
+        reason = "value is clamped to [0, u32::MAX] before the as-cast"
+    )]
+    let result = v.clamp(0, i64::from(u32::MAX)) as u32;
+    result
 }
 
 /// Parse rows of `[entity_id: String, value: Int]` into a `HashMap<String, u32>`.
@@ -278,6 +285,9 @@ fn parse_hop_rows(
 
 #[cfg(feature = "mneme-engine")]
 impl crate::knowledge_store::KnowledgeStore {
+    // WHY: only called from schema setup code outside the test target; dead_code
+    // fires in lib test build because graph_scores is not wired into test harness.
+    #[allow(dead_code)]
     /// Initialize the `graph_scores` relation. Called during schema setup.
     pub(crate) fn init_graph_scores(&self) -> crate::error::Result<()> {
         self.run_mut_query(GRAPH_SCORES_DDL, std::collections::BTreeMap::new())?;

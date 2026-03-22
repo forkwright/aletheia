@@ -1,7 +1,7 @@
 #![expect(
     clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+    clippy::cast_precision_loss,
+    reason = "knowledge engine: numeric casts for elapsed-time and count calculations; values fit f64"
 )]
 use snafu::ResultExt;
 use tracing::instrument;

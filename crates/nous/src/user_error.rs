@@ -2,6 +2,9 @@
 
 use std::fmt;
 
+// WHY: UserFacingError and to_user_facing are not yet wired into the API response
+// layer; they exist as the planned user-facing error presentation surface.
+#[allow(dead_code)]
 /// Presentation errors for end users.
 ///
 /// The full technical error is logged via tracing at the call site.
@@ -72,6 +75,7 @@ impl fmt::Display for UserFacingError {
     }
 }
 
+#[allow(dead_code)]
 /// Convert a pipeline error into a user-facing error, if applicable.
 ///
 /// Returns `None` for internal errors that should not be shown to users.

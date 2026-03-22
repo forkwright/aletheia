@@ -288,11 +288,14 @@ pub enum Msg {
     MemoryPageDown,
     MemoryPageUp,
 
-    #[expect(dead_code, reason = "planned TUI feature")]
+    // WHY: #[allow] over #[expect] — constructed only in test code so dead_code fires for
+    // the lib target but not the test target; #[expect] would cause unfulfilled-expectation
+    // errors in the test compilation unit.
+    #[allow(dead_code)]
     ShowError(String),
-    #[expect(dead_code, reason = "planned TUI feature")]
+    #[allow(dead_code)]
     ShowSuccess(String),
-    #[expect(dead_code, reason = "planned TUI feature")]
+    #[allow(dead_code)]
     DismissError,
 
     #[expect(dead_code, reason = "planned TUI feature")]
@@ -334,6 +337,19 @@ pub enum Msg {
     SessionSearchDown,
     SessionSearchSelect,
 
+    // WHY: #[allow] over #[expect] — constructed in tests only; see ShowError note above.
+    #[allow(dead_code)]
+    MetricsOpen,
+    #[allow(dead_code)]
+    MetricsClose,
+    #[allow(dead_code)]
+    MetricsSelectUp,
+    #[allow(dead_code)]
+    MetricsSelectDown,
+    /// Loaded result from async health check triggered on open.
+    #[allow(dead_code)]
+    MetricsHealthLoaded(bool),
+
     #[expect(dead_code, reason = "planned TUI feature")]
     DiffOpen,
     DiffClose,
@@ -372,20 +388,14 @@ pub enum MessageActionKind {
     Delete,
     OpenLinks,
     Inspect,
-    #[expect(
-        dead_code,
-        reason = "constructed in context action overlay; lint fires in lib but not test target"
-    )]
+    // WHY: #[allow] over #[expect] — constructed only in test code so dead_code fires for
+    // the lib target but not the test target; #[expect] would cause unfulfilled-expectation
+    // errors in the test compilation unit.
+    #[allow(dead_code)]
     QuoteInReply,
-    #[expect(
-        dead_code,
-        reason = "constructed in context action overlay; lint fires in lib but not test target"
-    )]
+    #[allow(dead_code)]
     RateResponse,
-    #[expect(
-        dead_code,
-        reason = "constructed in context action overlay; lint fires in lib but not test target"
-    )]
+    #[allow(dead_code)]
     FlagForReview,
 }
 

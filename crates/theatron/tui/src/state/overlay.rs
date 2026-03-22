@@ -16,10 +16,8 @@ pub enum Overlay {
     Settings(SettingsOverlay),
     ToolApproval(ToolApprovalOverlay),
     PlanApproval(PlanApprovalOverlay),
-    #[expect(
-        dead_code,
-        reason = "overlay set by action dispatcher; lint fires in lib but not test target"
-    )]
+    // WHY: #[allow] over #[expect] — constructed only in test code; see msg.rs QuoteInReply note.
+    #[allow(dead_code)]
     ContextActions(ContextActionsOverlay),
     DiffView(crate::diff::DiffViewState),
     SessionSearch(SessionSearchOverlay),

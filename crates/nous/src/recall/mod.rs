@@ -5,8 +5,6 @@ mod scoring;
 mod search;
 
 use std::collections::HashSet;
-#[cfg(feature = "knowledge-store")]
-use std::sync::Arc;
 
 use tracing::{debug, instrument};
 

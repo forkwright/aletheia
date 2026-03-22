@@ -81,7 +81,10 @@ pub(crate) fn handle_drill_in(app: &mut App) {
             }
         }
         // NOTE: already at detail level, no further drill-in
-        View::MessageDetail { .. } | View::MemoryInspector | View::FactDetail { .. } => {}
+        View::MessageDetail { .. }
+        | View::MemoryInspector
+        | View::FactDetail { .. }
+        | View::Metrics => {}
     }
 }
 

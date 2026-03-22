@@ -2,6 +2,7 @@
     feature = "mneme-engine",
     expect(
         clippy::expect_used,
+        clippy::indexing_slicing,
         reason = "test assertions in feature-gated engine tests"
     )
 )]

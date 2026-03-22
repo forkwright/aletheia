@@ -15,7 +15,7 @@ use tracing::instrument;
 ///
 /// Keeps mneme independent of hermeneus. The nous layer bridges this trait
 /// to the full `LlmProvider` + `CompletionRequest` API.
-pub(crate) trait RewriteProvider: Send + Sync {
+pub trait RewriteProvider: Send + Sync {
     /// Generate a completion from a system prompt and user message.
     fn complete(&self, system: &str, user_message: &str) -> Result<String, RewriteError>;
 }
@@ -23,7 +23,7 @@ pub(crate) trait RewriteProvider: Send + Sync {
 /// Errors from the query rewriting pipeline.
 #[derive(Debug)]
 #[non_exhaustive]
-pub(crate) enum RewriteError {
+pub enum RewriteError {
     /// The LLM provider returned an error.
     LlmCall(String),
     /// The LLM response could not be parsed.
@@ -69,7 +69,7 @@ pub(crate) struct RewriteResult {
 }
 
 /// LLM-powered query rewriter for the recall pipeline.
-pub(crate) struct QueryRewriter {
+pub struct QueryRewriter {
     config: RewriteConfig,
 }
 
@@ -204,7 +204,7 @@ fn strip_code_fences(s: &str) -> &str {
 
 /// Configuration for multi-tier search behavior.
 #[derive(Debug, Clone)]
-pub(crate) struct TieredSearchConfig {
+pub struct TieredSearchConfig {
     /// Minimum results from fast path before escalating to enhanced search.
     pub fast_path_min_results: usize,
     /// Minimum RRF score threshold for fast path results to be considered sufficient.
@@ -232,7 +232,7 @@ impl Default for TieredSearchConfig {
 /// Which search tier produced the final results.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-pub(crate) enum SearchTier {
+pub enum SearchTier {
     /// Single-query hybrid search (BM25 + vector).
     Fast,
     /// LLM query rewrite + multi-query hybrid search.
@@ -253,7 +253,7 @@ impl std::fmt::Display for SearchTier {
 
 /// Results from a tiered search operation.
 #[derive(Debug, Clone)]
-pub(crate) struct TieredSearchResult<T> {
+pub struct TieredSearchResult<T> {
     /// Which tier produced the final results.
     pub tier: SearchTier,
     /// The merged, deduplicated results.

@@ -326,7 +326,11 @@ fn render_tool_approval(
             let mut c = w.chars();
             match c.next() {
                 None => String::new(),
-                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                Some(f) => {
+                    let mut s = f.to_uppercase().collect::<String>();
+                    s.push_str(c.as_str());
+                    s
+                }
             }
         })
         .collect::<Vec<_>>()

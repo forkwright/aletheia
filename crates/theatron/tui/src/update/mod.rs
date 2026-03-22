@@ -4,6 +4,7 @@ mod diff;
 mod filter;
 mod input;
 pub(crate) mod memory;
+pub(crate) mod metrics;
 mod navigation;
 mod overlay;
 mod search;
@@ -293,6 +294,12 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::MemorySearchResults(_) => {}
         Msg::MemoryActionResult(msg) => memory::handle_action_result(app, msg),
 
+        Msg::MetricsOpen => metrics::handle_open(app).await,
+        Msg::MetricsClose => metrics::handle_close(app),
+        Msg::MetricsSelectUp => metrics::handle_select_up(app),
+        Msg::MetricsSelectDown => metrics::handle_select_down(app),
+        Msg::MetricsHealthLoaded(healthy) => metrics::handle_health_loaded(app, healthy),
+
         Msg::ExportConversation => command::execute_export_from_msg(app),
 
         Msg::SlashCompleteOpen => slash::handle_open(app),
@@ -444,5 +451,30 @@ mod tests {
             app.viewport.success_toast.as_ref().unwrap().message,
             "saved"
         );
+    }
+
+    #[tokio::test]
+    async fn metrics_close_does_not_panic() {
+        let mut app = test_app();
+        update(&mut app, Msg::MetricsClose).await;
+    }
+
+    #[tokio::test]
+    async fn metrics_select_up_does_not_panic() {
+        let mut app = test_app();
+        update(&mut app, Msg::MetricsSelectUp).await;
+    }
+
+    #[tokio::test]
+    async fn metrics_select_down_does_not_panic() {
+        let mut app = test_app();
+        update(&mut app, Msg::MetricsSelectDown).await;
+    }
+
+    #[tokio::test]
+    async fn metrics_health_loaded_sets_flag() {
+        let mut app = test_app();
+        update(&mut app, Msg::MetricsHealthLoaded(true)).await;
+        assert_eq!(app.layout.metrics.api_healthy, Some(true));
     }
 }

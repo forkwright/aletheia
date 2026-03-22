@@ -98,6 +98,11 @@ impl EmbeddingProvider for MockEmbeddingProvider {
         for &b in bytes {
             hash = hash.wrapping_mul(33).wrapping_add(u64::from(b));
         }
+        #[expect(
+            clippy::as_conversions,
+            clippy::cast_precision_loss,
+            reason = "mock embedding: usize→u64 and u64→f32 for deterministic hash; values bounded by dim and modulo"
+        )]
         for (i, v) in vec.iter_mut().enumerate() {
             #[expect(
                 clippy::as_conversions,

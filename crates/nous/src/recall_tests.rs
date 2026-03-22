@@ -304,6 +304,8 @@ fn vector_search_trait_is_object_safe() {
 )]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod knowledge_bridge_tests {
+    use std::sync::Arc;
+
     use aletheia_mneme::knowledge::EmbeddedChunk;
     use aletheia_mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
 

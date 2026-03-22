@@ -1,6 +1,10 @@
 //! Per-agent per-domain competence tracking with rolling statistics.
 
 use jiff::Timestamp;
+#[expect(
+    clippy::disallowed_types,
+    reason = "competence tracker owns its own isolated SQLite file; not part of the shared SessionStore pipeline"
+)]
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt as _;
@@ -96,7 +100,11 @@ pub struct EscalationRecommendation {
     pub should_escalate: bool,
 }
 
-/// Tracks agent competence per domain with SQLite persistence.
+/// Tracks agent competence per domain with `SQLite` persistence.
+#[expect(
+    clippy::disallowed_types,
+    reason = "competence tracker owns its own isolated SQLite file; not part of the shared SessionStore pipeline"
+)]
 pub struct CompetenceTracker {
     conn: Connection,
 }
@@ -107,6 +115,10 @@ impl CompetenceTracker {
     /// # Errors
     ///
     /// Returns `CompetenceStore` if the database cannot be opened or initialized.
+    #[expect(
+        clippy::disallowed_types,
+        reason = "competence tracker owns its own isolated SQLite file; not part of the shared SessionStore pipeline"
+    )]
     pub fn open(path: &std::path::Path) -> error::Result<Self> {
         let conn = Connection::open(path).context(error::CompetenceStoreSnafu {
             message: "failed to open competence database",
@@ -119,6 +131,10 @@ impl CompetenceTracker {
     /// # Errors
     ///
     /// Returns `CompetenceStore` if the schema cannot be created.
+    #[expect(
+        clippy::disallowed_types,
+        reason = "competence tracker owns its own isolated SQLite file; not part of the shared SessionStore pipeline"
+    )]
     pub fn open_in_memory() -> error::Result<Self> {
         let conn = Connection::open_in_memory().context(error::CompetenceStoreSnafu {
             message: "failed to open in-memory competence database",
@@ -126,6 +142,10 @@ impl CompetenceTracker {
         Self::init(conn)
     }
 
+    #[expect(
+        clippy::disallowed_types,
+        reason = "competence tracker owns its own isolated SQLite file; not part of the shared SessionStore pipeline"
+    )]
     fn init(conn: Connection) -> error::Result<Self> {
         conn.execute_batch(
             "PRAGMA journal_mode = WAL;
@@ -191,7 +211,7 @@ impl CompetenceTracker {
             message: "failed to insert outcome",
         })?;
 
-        self.ensure_domain(&tx, nous_id, domain, &now)?;
+        Self::ensure_domain(&tx, nous_id, domain, &now)?;
 
         let score_delta = match outcome {
             TaskOutcome::Success => SUCCESS_BONUS,
@@ -232,7 +252,7 @@ impl CompetenceTracker {
     /// Returns `CompetenceStore` on database write failure.
     pub fn record_correction(&self, nous_id: &str, domain: &str) -> error::Result<()> {
         let now = Timestamp::now().to_string();
-        self.ensure_domain(&self.conn, nous_id, domain, &now)?;
+        Self::ensure_domain(&self.conn, nous_id, domain, &now)?;
 
         self.conn
             .execute(
@@ -258,7 +278,7 @@ impl CompetenceTracker {
     /// Returns `CompetenceStore` on database write failure.
     pub fn record_disagreement(&self, nous_id: &str, domain: &str) -> error::Result<()> {
         let now = Timestamp::now().to_string();
-        self.ensure_domain(&self.conn, nous_id, domain, &now)?;
+        Self::ensure_domain(&self.conn, nous_id, domain, &now)?;
 
         self.conn
             .execute(
@@ -345,7 +365,16 @@ impl CompetenceTracker {
         let overall_score = if domains.is_empty() {
             DEFAULT_SCORE
         } else {
-            domains.iter().map(|d| d.score).sum::<f64>() / domains.len() as f64
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "domain count will never exceed 2^53; precision loss is not a concern here"
+            )]
+            #[expect(
+                clippy::as_conversions,
+                reason = "usize-to-f64 for averaging; domain count is bounded and safe"
+            )]
+            let len = domains.len() as f64;
+            domains.iter().map(|d| d.score).sum::<f64>() / len
         };
 
         Ok(AgentCompetence {
@@ -443,8 +472,11 @@ impl CompetenceTracker {
         })
     }
 
+    #[expect(
+        clippy::disallowed_types,
+        reason = "competence tracker owns its own isolated SQLite file; not part of the shared SessionStore pipeline"
+    )]
     fn ensure_domain(
-        &self,
         conn: &Connection,
         nous_id: &str,
         domain: &str,

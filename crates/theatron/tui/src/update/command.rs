@@ -336,6 +336,9 @@ pub(crate) async fn execute_command(app: &mut App) {
             app.layout.notifications.mark_all_read();
             app.layout.overlay = Some(Overlay::NotificationHistory { scroll: 0 });
         }
+        "metrics" | "stats" => {
+            super::metrics::handle_open(app).await;
+        }
         _ => {
             app.viewport.error_toast =
                 Some(ErrorToast::new(format!("Unknown command: {cmd_name}")));

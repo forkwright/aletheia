@@ -194,6 +194,13 @@ pub static COMMANDS: &[Command] = &[
         category: CommandCategory::Navigation,
         shortcut: None,
     },
+    Command {
+        name: "metrics",
+        aliases: &["stats"],
+        description: "Open metrics dashboard",
+        category: CommandCategory::Navigation,
+        shortcut: None,
+    },
 ];
 
 const MAX_SUGGESTIONS: usize = 8;

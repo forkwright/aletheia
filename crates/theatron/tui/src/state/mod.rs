@@ -4,6 +4,7 @@ mod command;
 mod filter;
 mod input;
 pub mod memory;
+pub(crate) mod metrics;
 pub mod notification;
 pub(crate) mod ops;
 mod overlay;
@@ -19,6 +20,7 @@ pub use command::{CommandPaletteState, SelectionContext, SlashCompleteState, Sla
 pub use filter::{FilterScope, FilterState};
 pub use input::{InputState, TabCompletion};
 pub use memory::MemoryInspectorState;
+pub(crate) use metrics::MetricsState;
 pub use notification::{ErrorBanner, NotificationStore, Toast};
 pub use ops::{FocusedPane, OpsState};
 pub use overlay::{
