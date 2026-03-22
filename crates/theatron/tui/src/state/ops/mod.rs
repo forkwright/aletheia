@@ -89,6 +89,7 @@ mod tests {
             primary_arg: None,
             error_message: None,
             category: ToolCategory::Other,
+            started_at: std::time::Instant::now(),
         });
         state.scroll_offset = 10;
         state.selected_item = Some(0);

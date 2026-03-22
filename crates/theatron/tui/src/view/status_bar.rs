@@ -167,6 +167,19 @@ fn render_info_bar(app: &App, width: u16, theme: &Theme) -> Line<'static> {
         }
     }
 
+    // Optional: stall warning message (visible during agent stall detection).
+    if let Some(ref msg) = app.connection.stall_message {
+        let stall = [
+            Span::styled(" │ ", theme.style_dim()),
+            Span::styled(msg.clone(), theme.style_warning()),
+        ];
+        let stall_w: usize = stall.iter().map(|s| s.content.width()).sum();
+        if used + stall_w + 1 < total {
+            spans.extend(stall);
+            used += stall_w;
+        }
+    }
+
     // Right side: show only when there is room for it with at least one space of padding.
     if used + right_width + 1 < total {
         let pad = total - used - right_width;
@@ -251,24 +264,11 @@ fn agent_identity_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
         .map(|a| (a.emoji.clone().unwrap_or_default(), a.name.clone()))
         .unwrap_or_else(|| (String::new(), "no agent".to_string()));
 
-    let session_key = agent
-        .and_then(|a| {
-            app.dashboard.focused_session_id.as_ref().and_then(|sid| {
-                a.sessions
-                    .iter()
-                    .find(|s| s.id == *sid)
-                    .map(|s| s.key.clone())
-            })
-        })
-        .unwrap_or_else(|| "—".to_string());
-
     let mut spans = Vec::new();
     if !emoji.is_empty() {
         spans.push(Span::styled(format!("{emoji} "), theme.style_fg()));
     }
     spans.push(Span::styled(name, theme.style_accent()));
-    spans.push(Span::styled(" · ", theme.style_dim()));
-    spans.push(Span::styled(session_key, theme.style_muted()));
     spans
 }
 

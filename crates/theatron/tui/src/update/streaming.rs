@@ -23,6 +23,9 @@ pub(crate) fn handle_stream_turn_start(app: &mut App, turn_id: TurnId, nous_id: 
     app.connection.streaming_text.clear();
     app.connection.streaming_thinking.clear();
     app.connection.streaming_tool_calls.clear();
+    app.connection.stream_last_event_at = Some(std::time::Instant::now());
+    app.connection.stall_warned = false;
+    app.connection.stall_message = None;
     app.viewport.render.markdown_cache.clear();
     if let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == nous_id) {
         agent.status = AgentStatus::Streaming;
@@ -247,6 +250,9 @@ pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutc
     app.connection.streaming_text.clear();
     app.connection.streaming_thinking.clear();
     app.connection.streaming_tool_calls.clear();
+    app.connection.stream_last_event_at = None;
+    app.connection.stall_warned = false;
+    app.connection.stall_message = None;
     app.viewport.render.markdown_cache.clear();
     app.connection.active_turn_id = None;
     app.connection.stream_rx = None;
@@ -282,6 +288,9 @@ pub(crate) fn handle_stream_turn_abort(app: &mut App, reason: String) {
     app.connection.streaming_text.clear();
     app.connection.streaming_thinking.clear();
     app.connection.streaming_tool_calls.clear();
+    app.connection.stream_last_event_at = None;
+    app.connection.stall_warned = false;
+    app.connection.stall_message = None;
     app.connection.active_turn_id = None;
     app.connection.stream_rx = None;
     if let Some(ref agent_id) = app.dashboard.focused_agent
@@ -299,6 +308,9 @@ pub(crate) fn handle_stream_error(app: &mut App, msg: String) {
     app.viewport.error_toast = Some(ErrorToast::new(sanitize_for_display(&msg).into_owned()));
     app.connection.active_turn_id = None;
     app.connection.stream_rx = None;
+    app.connection.stream_last_event_at = None;
+    app.connection.stall_warned = false;
+    app.connection.stall_message = None;
     // WHY: Clear tool calls to remove stale spinners; preserve streaming_text
     // so the user can read any partial response received before the error.
     app.connection.streaming_tool_calls.clear();
@@ -308,6 +320,66 @@ pub(crate) fn handle_stream_error(app: &mut App, msg: String) {
         agent.status = AgentStatus::Idle;
         agent.active_tool = None;
     }
+}
+
+#[tracing::instrument(skip_all)]
+// SAFETY: sanitized at ingestion: streaming_text already sanitized via handle_stream_text_delta.
+pub(crate) async fn handle_cancel_turn(app: &mut App) {
+    let turn_id = match app.connection.active_turn_id.take() {
+        Some(id) => id,
+        None => return,
+    };
+
+    // Fire-and-forget: tell the server to abort. Errors are non-fatal; the
+    // stream receiver being dropped is sufficient to stop local processing.
+    let client = app.client.clone();
+    let id = turn_id.to_string();
+    tokio::spawn(async move {
+        if let Err(e) = client.abort_turn(&id).await {
+            tracing::warn!(error = %e, "abort_turn request failed");
+        }
+    });
+
+    // Commit partial streaming text as an incomplete turn marker.
+    let partial = std::mem::take(&mut app.connection.streaming_text);
+    let marker = if partial.is_empty() {
+        "[interrupted by user]".to_string()
+    } else {
+        format!("{partial}\n\n[interrupted by user]")
+    };
+    let marker_lower = marker.to_lowercase();
+    let tool_calls = std::mem::take(&mut app.connection.streaming_tool_calls);
+    let width = app
+        .viewport
+        .render
+        .virtual_scroll
+        .cached_width()
+        .max(app.viewport.terminal_width.saturating_sub(2).max(1));
+    let h = estimate_message_height(marker.len(), width);
+    app.dashboard.messages.push(ChatMessage {
+        role: "assistant".to_string(),
+        text: marker,
+        text_lower: marker_lower,
+        timestamp: None,
+        model: None,
+        tool_calls,
+    });
+    app.viewport.render.virtual_scroll.push_item(h);
+
+    app.connection.streaming_thinking.clear();
+    app.connection.stream_rx = None;
+    app.connection.stream_last_event_at = None;
+    app.connection.stall_warned = false;
+    app.connection.stall_message = None;
+    app.viewport.render.markdown_cache.clear();
+
+    if let Some(ref agent_id) = app.dashboard.focused_agent
+        && let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == *agent_id)
+    {
+        agent.status = AgentStatus::Idle;
+        agent.active_tool = None;
+    }
+    app.layout.ops.auto_hide_if_configured();
 }
 
 #[cfg(test)]

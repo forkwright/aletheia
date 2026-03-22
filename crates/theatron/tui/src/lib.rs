@@ -172,6 +172,11 @@ async fn run_loop(mut terminal: DefaultTerminal, app: &mut App) -> error::Result
         if matches!(&event, Event::Sse(_)) {
             app.connection.sse_last_event_at = Some(std::time::Instant::now());
         }
+        // WHY: Every stream event resets the stall clock. Any data from the server
+        // (text deltas, tool starts, tool results) proves the agent is responsive.
+        if matches!(&event, Event::Stream(_)) {
+            app.connection.stream_last_event_at = Some(std::time::Instant::now());
+        }
 
         if let Some(msg) = app.map_event(event) {
             app.update(msg).await;

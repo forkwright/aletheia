@@ -5,7 +5,7 @@ use crate::app::App;
 use crate::id::{NousId, SessionId};
 use crate::msg::ErrorToast;
 use crate::sanitize::sanitize_for_display;
-use crate::state::{ActiveTool, AgentState, AgentStatus};
+use crate::state::{ActiveTool, AgentState, AgentStatus, ChatMessage};
 
 const RECONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
 
@@ -213,6 +213,14 @@ pub(crate) async fn handle_sse_distill_after(app: &mut App, nous_id: NousId) {
     }
     if app.dashboard.focused_agent.as_ref() == Some(&nous_id) {
         app.load_focused_session().await;
+        app.dashboard.messages.push(ChatMessage {
+            role: "system".to_string(),
+            text: "— conversation summarized —".to_string(),
+            text_lower: "— conversation summarized —".to_string(),
+            timestamp: None,
+            model: None,
+            tool_calls: Vec::new(),
+        });
     }
 }
 

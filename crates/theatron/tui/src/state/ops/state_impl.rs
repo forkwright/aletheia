@@ -34,6 +34,8 @@ pub struct OpsState {
     pub(crate) summary: OpsSummary,
     /// Wall-clock start time for the current turn (elapsed display).
     pub(crate) turn_started_at: Option<std::time::Instant>,
+    /// When true, show all tool calls including successful ones. Default: false (show only errors).
+    pub(crate) show_all_successful: bool,
 }
 
 impl Default for OpsState {
@@ -53,6 +55,7 @@ impl Default for OpsState {
             diffs: Vec::new(),
             summary: OpsSummary::default(),
             turn_started_at: None,
+            show_all_successful: false,
         }
     }
 }
@@ -91,6 +94,12 @@ impl OpsState {
         self.selected_item = None;
         self.summary = OpsSummary::default();
         self.turn_started_at = Some(std::time::Instant::now());
+        self.show_all_successful = false;
+    }
+
+    /// Toggle visibility of all successful tool calls.
+    pub(crate) fn toggle_show_all(&mut self) {
+        self.show_all_successful = !self.show_all_successful;
     }
 
     /// Switch keyboard focus between panes.
@@ -187,6 +196,7 @@ impl OpsState {
             primary_arg,
             error_message: None,
             category,
+            started_at: std::time::Instant::now(),
         });
     }
 

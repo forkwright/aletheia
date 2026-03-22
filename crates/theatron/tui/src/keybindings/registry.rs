@@ -84,7 +84,7 @@ pub(crate) fn all_keybindings() -> &'static [Keybinding] {
         },
         Keybinding {
             keys: "/",
-            description: "Search sessions",
+            description: "Search history",
             contexts: &[KeyContext::Chat],
             show_in_status_bar: true,
         },

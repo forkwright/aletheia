@@ -159,6 +159,9 @@ pub(crate) fn handle_dismiss_error(app: &mut App) {
     app.viewport.error_toast = None;
 }
 
+const STALL_WARN_SECS: u64 = 30;
+const STALL_CANCEL_SECS: u64 = 60;
+
 #[tracing::instrument(skip_all)]
 pub(crate) fn handle_tick(app: &mut App) {
     app.viewport.tick_count = app.viewport.tick_count.wrapping_add(1);
@@ -180,6 +183,33 @@ pub(crate) fn handle_tick(app: &mut App) {
     }
     super::sse::check_sse_reconnect_timeout(app);
     super::sse::check_distill_auto_dismiss(app);
+    check_stream_stall(app);
+}
+
+fn check_stream_stall(app: &mut App) {
+    let Some(last_event) = app.connection.stream_last_event_at else {
+        // Clear any stall message if no active turn.
+        if app.connection.active_turn_id.is_none() {
+            app.connection.stall_message = None;
+        }
+        return;
+    };
+
+    if app.connection.active_turn_id.is_none() {
+        app.connection.stall_message = None;
+        return;
+    }
+
+    let elapsed = last_event.elapsed().as_secs();
+    if elapsed >= STALL_CANCEL_SECS {
+        app.connection.stall_message = Some(
+            format!("No response for {elapsed}s — Ctrl+C to cancel").to_string(),
+        );
+    } else if elapsed >= STALL_WARN_SECS && !app.connection.stall_warned {
+        app.connection.stall_warned = true;
+        app.connection.stall_message =
+            Some("No response for 30s — agent may be stalled".to_string());
+    }
 }
 
 /// Sanitize session fields that may contain external data.
