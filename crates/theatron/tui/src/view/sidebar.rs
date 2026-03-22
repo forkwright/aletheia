@@ -78,16 +78,38 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
 
         lines.push(Line::from(spans));
 
-        if let Some(ref tool) = agent.active_tool {
-            let elapsed = tool.started_at.elapsed().as_secs_f32();
-            let ch = theme::spinner_frame(app.viewport.tick_count);
-            lines.push(Line::from(vec![
-                Span::raw("     "),
-                Span::styled(
-                    format!("{} {} {:.1}s", ch, tool.name, elapsed),
-                    theme.style_muted(),
-                ),
-            ]));
+        match agent.status {
+            AgentStatus::Streaming => {
+                let elapsed_secs = if is_focused {
+                    app.layout.ops.turn_started_at.map(|t| t.elapsed().as_secs())
+                } else {
+                    None
+                };
+                let label = if let Some(secs) = elapsed_secs {
+                    format!("thinking… {:02}:{:02}", secs / 60, secs % 60)
+                } else {
+                    "thinking…".to_string()
+                };
+                lines.push(Line::from(vec![
+                    Span::raw("     "),
+                    Span::styled(label, theme.style_muted()),
+                ]));
+            }
+            AgentStatus::Working => {
+                if let Some(ref tool) = agent.active_tool {
+                    let secs = tool.started_at.elapsed().as_secs();
+                    let elapsed_str = format!("{:02}:{:02}", secs / 60, secs % 60);
+                    let label = tool_status_label(&tool.name);
+                    lines.push(Line::from(vec![
+                        Span::raw("     "),
+                        Span::styled(
+                            format!("{label} {elapsed_str}"),
+                            theme.style_muted(),
+                        ),
+                    ]));
+                }
+            }
+            AgentStatus::Idle | AgentStatus::Compacting => {}
         }
 
         if let Some(ref stage) = agent.compaction_stage {
@@ -108,4 +130,15 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
 
     let paragraph = Paragraph::new(lines).block(block);
     frame.render_widget(paragraph, area);
+}
+
+fn tool_status_label(name: &str) -> &'static str {
+    match name {
+        "Read" | "read_file" | "Glob" | "Grep" => "reading files…",
+        "Write" | "write_file" | "Edit" | "edit_file" | "NotebookEdit" => "writing…",
+        "Bash" | "bash" | "exec" => "running command…",
+        "WebSearch" | "web_search" => "searching…",
+        "WebFetch" | "web_fetch" => "fetching…",
+        _ => "working…",
+    }
 }

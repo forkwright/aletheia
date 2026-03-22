@@ -115,6 +115,8 @@ pub(crate) struct OpsToolCall {
     pub(crate) error_message: Option<String>,
     /// Tool category for KPI grouping.
     pub(crate) category: ToolCategory,
+    /// Wall-clock start time for elapsed display in running tools.
+    pub(crate) started_at: std::time::Instant,
 }
 
 /// A single thinking block in the operations pane.

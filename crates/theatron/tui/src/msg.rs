@@ -85,6 +85,8 @@ pub enum Msg {
     OpsSelectPrev,
     OpsSelectNext,
     OpsToggleExpand,
+    /// Toggle display of successful tool calls (collapse behind "show all").
+    OpsToggleShowAll,
     OpenOverlay(OverlayKind),
     CloseOverlay,
     Resize(u16, u16),
@@ -295,6 +297,9 @@ pub enum Msg {
 
     #[expect(dead_code, reason = "planned TUI feature")]
     ExportConversation,
+
+    /// Cancel the active LLM turn immediately (Esc / Ctrl+C during streaming).
+    CancelTurn,
 
     SessionSearchOpen,
     SessionSearchClose,

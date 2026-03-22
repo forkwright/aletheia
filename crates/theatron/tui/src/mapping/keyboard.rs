@@ -7,6 +7,16 @@ use crate::state::Overlay;
 
 impl crate::app::App {
     pub(super) fn map_key(&self, key: KeyEvent) -> Option<Msg> {
+        // WHY: Ctrl+C during an active turn cancels it immediately rather than quitting.
+        // This is the highest-priority check so overlays and selection mode cannot
+        // intercept it — the user's intent is unambiguous when a turn is running.
+        if self.connection.active_turn_id.is_some()
+            && key.modifiers == KeyModifiers::CONTROL
+            && key.code == KeyCode::Char('c')
+        {
+            return Some(Msg::CancelTurn);
+        }
+
         if self.layout.overlay.is_some() {
             return self.map_overlay_key(key);
         }
@@ -58,6 +68,15 @@ impl crate::app::App {
             && self.layout.ops.focused_pane == crate::state::FocusedPane::Operations
         {
             return self.map_ops_pane_key(key);
+        }
+
+        // WHY: Esc during an active turn (no modal, home view, ops chat-focused) cancels it.
+        // Checked after filter/selection/ops so those modal contexts handle Esc first.
+        if self.connection.active_turn_id.is_some()
+            && matches!(key.code, KeyCode::Esc)
+            && self.layout.view_stack.is_home()
+        {
+            return Some(Msg::CancelTurn);
         }
 
         if let Some(action) = self.interaction.keymap.lookup(key.modifiers, key.code) {
@@ -178,6 +197,7 @@ impl crate::app::App {
             (_, KeyCode::Char('j')) | (_, KeyCode::Down) => Some(Msg::OpsSelectNext),
             (_, KeyCode::Char('k')) | (_, KeyCode::Up) => Some(Msg::OpsSelectPrev),
             (_, KeyCode::Enter) => Some(Msg::OpsToggleExpand),
+            (_, KeyCode::Char('s')) => Some(Msg::OpsToggleShowAll),
             _ => None,
         }
     }

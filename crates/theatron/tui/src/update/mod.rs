@@ -99,6 +99,7 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::OpsSelectPrev => app.layout.ops.select_prev(),
         Msg::OpsSelectNext => app.layout.ops.select_next(),
         Msg::OpsToggleExpand => app.layout.ops.toggle_selected(),
+        Msg::OpsToggleShowAll => app.layout.ops.toggle_show_all(),
         Msg::Resize(w, h) => navigation::handle_resize(app, w, h),
         Msg::ViewDrillIn => view_nav::handle_drill_in(app),
         Msg::ViewPopBack => view_nav::handle_pop_back(app),
@@ -207,6 +208,7 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         }
         Msg::StreamTurnAbort { reason } => streaming::handle_stream_turn_abort(app, reason),
         Msg::StreamError(msg) => streaming::handle_stream_error(app, msg),
+        Msg::CancelTurn => streaming::handle_cancel_turn(app).await,
 
         Msg::AgentsLoaded(agents) => api::handle_agents_loaded(app, agents),
         Msg::SessionsLoaded { nous_id, sessions } => {

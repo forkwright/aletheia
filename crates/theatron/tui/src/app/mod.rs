@@ -78,6 +78,13 @@ pub struct ConnectionState {
     pub streaming_text: String,
     pub streaming_thinking: String,
     pub streaming_tool_calls: Vec<ToolCallInfo>,
+    /// Timestamp of the last stream event received during the current turn.
+    /// Used for stall detection.
+    pub(crate) stream_last_event_at: Option<std::time::Instant>,
+    /// Set once the 30s stall warning has been shown for the current turn.
+    pub(crate) stall_warned: bool,
+    /// Non-dismissing status message shown during stall conditions.
+    pub(crate) stall_message: Option<String>,
 }
 
 /// Scroll position, virtual scroll index, and markdown render cache.
@@ -196,6 +203,9 @@ impl App {
                 streaming_text: String::new(),
                 streaming_thinking: String::new(),
                 streaming_tool_calls: Vec::new(),
+                stream_last_event_at: None,
+                stall_warned: false,
+                stall_message: None,
             },
             viewport: ViewportState {
                 terminal_width: DEFAULT_TERMINAL_WIDTH,
@@ -505,11 +515,13 @@ impl App {
         // tick-driven animation is actually visible: streaming spinner or toast dismissal.
         let had_animation = self.connection.active_turn_id.is_some()
             || self.viewport.error_toast.is_some()
-            || self.viewport.success_toast.is_some();
+            || self.viewport.success_toast.is_some()
+            || self.connection.stall_message.is_some();
         crate::update::update(self, msg).await;
         let has_animation = self.connection.active_turn_id.is_some()
             || self.viewport.error_toast.is_some()
-            || self.viewport.success_toast.is_some();
+            || self.viewport.success_toast.is_some()
+            || self.connection.stall_message.is_some();
         self.viewport.dirty = had_animation || has_animation;
     }
 

@@ -32,7 +32,7 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         .borders(Borders::LEFT)
         .border_style(border_style)
         .title(Span::styled(
-            " ops ",
+            " Activity ",
             if focused {
                 theme.style_accent_bold()
             } else {
@@ -70,17 +70,31 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         item_idx += 1;
     }
 
+    let mut hidden_count = 0usize;
     for tc in &ops.tool_calls {
         let is_selected = ops.selected_item == Some(item_idx);
-        render_tool_call(
-            tc,
-            &mut lines,
-            inner_width,
-            theme,
-            is_selected,
-            app.viewport.tick_count,
-        );
+        if tc.status == OpsToolStatus::Complete && !ops.show_all_successful {
+            hidden_count += 1;
+        } else {
+            render_tool_call(
+                tc,
+                &mut lines,
+                inner_width,
+                theme,
+                is_selected,
+                app.viewport.tick_count,
+            );
+        }
         item_idx += 1;
+    }
+    if hidden_count > 0 {
+        lines.push(Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("▸ {hidden_count} successful  s=show all"),
+                theme.style_dim(),
+            ),
+        ]));
     }
 
     if !ops.diffs.is_empty() {
@@ -266,13 +280,18 @@ fn render_tool_call(
         ),
     };
 
-    let duration_str = tc.duration_ms.map(|ms| {
+    let duration_str = if let Some(ms) = tc.duration_ms {
         if ms >= MS_PER_SECOND {
-            format!(" ({:.1}s)", ms as f64 / MS_PER_SECOND as f64)
+            Some(format!(" ({:.1}s)", ms as f64 / MS_PER_SECOND as f64))
         } else {
-            format!(" ({}ms)", ms)
+            Some(format!(" ({}ms)", ms))
         }
-    });
+    } else if tc.status == OpsToolStatus::Running {
+        let secs = tc.started_at.elapsed().as_secs();
+        if secs > 0 { Some(format!(" ({secs}s)")) } else { None }
+    } else {
+        None
+    };
 
     let icon = tc.category.icon();
     let icon_style = if tc.category.is_destructive() {

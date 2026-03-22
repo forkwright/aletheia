@@ -55,6 +55,9 @@ pub fn test_app() -> App {
             streaming_text: String::new(),
             streaming_thinking: String::new(),
             streaming_tool_calls: Vec::new(),
+            stream_last_event_at: None,
+            stall_warned: false,
+            stall_message: None,
         },
         viewport: ViewportState {
             terminal_width: DEFAULT_TERMINAL_WIDTH,
