@@ -91,6 +91,7 @@ pub fn test_app() -> App {
             filter: FilterState::default(),
             keymap: KeyMap::build(&HashMap::new()),
             always_allowed_tools: HashSet::new(),
+            queued_messages: Vec::new(),
         },
         layout: LayoutState {
             sidebar_visible: true,

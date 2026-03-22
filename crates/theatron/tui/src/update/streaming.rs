@@ -288,6 +288,9 @@ pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutc
         outcome.cache_read_tokens,
         outcome.cache_write_tokens,
     );
+
+    // WHY: auto-send the next queued message now that the turn is complete
+    crate::update::input::send_next_queued(app);
 }
 
 #[tracing::instrument(skip_all)]

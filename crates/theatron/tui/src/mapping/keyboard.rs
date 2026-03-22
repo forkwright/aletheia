@@ -21,6 +21,12 @@ impl crate::app::App {
             return self.map_overlay_key(key);
         }
 
+        // WHY: history search intercepts all keys while active — typed chars refine the
+        // search query, Ctrl+R finds the next match, Enter accepts, Esc cancels.
+        if self.interaction.input.history_search.is_some() {
+            return self.map_history_search_key(key);
+        }
+
         if self.interaction.command_palette.active {
             return self.map_palette_key(key);
         }
@@ -88,6 +94,23 @@ impl crate::app::App {
         }
 
         match (key.modifiers, key.code) {
+            // WHY: Ctrl+R opens reverse history search when input has text or history exists
+            (KeyModifiers::CONTROL, KeyCode::Char('r')) => Some(Msg::HistorySearchOpen),
+
+            // WHY: Ctrl+V reads clipboard content (text or image)
+            (KeyModifiers::CONTROL, KeyCode::Char('v')) => Some(Msg::ClipboardPaste),
+
+            // WHY: Esc with empty input and queued messages cancels the last queued message
+            (_, KeyCode::Esc)
+                if self.interaction.input.text.is_empty()
+                    && !self.interaction.queued_messages.is_empty()
+                    && self.layout.view_stack.is_home() =>
+            {
+                Some(Msg::QueuedMessageCancel(
+                    self.interaction.queued_messages.len() - 1,
+                ))
+            }
+
             (KeyModifiers::CONTROL, KeyCode::Char('w'))
                 if self.interaction.input.text.is_empty() =>
             {
@@ -118,6 +141,10 @@ impl crate::app::App {
             }
             (_, KeyCode::BackTab) => Some(Msg::PrevAgent),
 
+            // WHY: backslash+Enter inserts a newline (trailing '\' is removed)
+            (_, KeyCode::Enter) if self.interaction.input.text.ends_with('\\') => {
+                Some(Msg::NewlineInsert)
+            }
             (_, KeyCode::Enter) => Some(Msg::Submit),
             (_, KeyCode::Backspace) => Some(Msg::Backspace),
             (_, KeyCode::Delete) => Some(Msg::Delete),
@@ -548,6 +575,25 @@ impl crate::app::App {
             (_, KeyCode::Backspace) => Some(Msg::SessionSearchBackspace),
             (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => {
                 Some(Msg::SessionSearchInput(c))
+            }
+            _ => None,
+        }
+    }
+
+    #[expect(
+        clippy::unused_self,
+        reason = "consistent method signature with other map_ methods"
+    )]
+    fn map_history_search_key(&self, key: KeyEvent) -> Option<Msg> {
+        match (key.modifiers, key.code) {
+            (KeyModifiers::CONTROL, KeyCode::Char('c')) | (_, KeyCode::Esc) => {
+                Some(Msg::HistorySearchClose)
+            }
+            (KeyModifiers::CONTROL, KeyCode::Char('r')) => Some(Msg::HistorySearchNext),
+            (_, KeyCode::Enter) => Some(Msg::HistorySearchAccept),
+            (_, KeyCode::Backspace) => Some(Msg::HistorySearchBackspace),
+            (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => {
+                Some(Msg::HistorySearchInput(c))
             }
             _ => None,
         }
