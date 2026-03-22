@@ -29,6 +29,7 @@ use commands::credential;
 use commands::eval::EvalArgs;
 use commands::health::HealthArgs;
 use commands::maintenance;
+use commands::memory;
 use commands::session_export::SessionExportArgs;
 use commands::tls;
 
@@ -69,6 +70,11 @@ enum Command {
     Maintenance {
         #[command(subcommand)]
         action: maintenance::Action,
+    },
+    /// Knowledge graph inspection and maintenance
+    Memory {
+        #[command(subcommand)]
+        action: memory::Action,
     },
     /// TLS certificate management
     Tls {
@@ -159,6 +165,9 @@ async fn main() -> Result<()> {
         Some(Command::Backup(a)) => return commands::backup::run(instance_root, &a),
         Some(Command::Maintenance { action }) => {
             return commands::maintenance::run(action, instance_root);
+        }
+        Some(Command::Memory { action }) => {
+            return commands::memory::run(action, instance_root);
         }
         Some(Command::Tls { action }) => return commands::tls::run(&action),
         Some(Command::Status { url }) => {
