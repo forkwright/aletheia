@@ -6,9 +6,11 @@ use tracing::instrument;
 use aletheia_hermeneus::provider::LlmProvider;
 use aletheia_hermeneus::types::{CompletionRequest, Content, ContentBlock, Message, Role};
 
+use crate::contradiction::{self, ContradictionLog};
 use crate::error::{EmptySummarySnafu, LlmCallSnafu, NoMessagesSnafu, Result};
 use crate::flush::{FlushItem, FlushSource, MemoryFlush};
 use crate::prompt;
+use crate::similarity::{self, DEFAULT_SIMILARITY_THRESHOLD, PruningStats};
 
 /// Maximum conversation turns to skip between distillation retry attempts.
 const MAX_BACKOFF_TURNS: u32 = 8;
@@ -148,6 +150,17 @@ pub struct DistillConfig {
     pub verbatim_tail: usize,
     /// Sections to include in the structured summary.
     pub sections: Vec<DistillSection>,
+    /// Jaccard similarity threshold for deduplication before distillation.
+    /// Range: 0.0 to 1.0. Default: 0.85.
+    #[serde(default = "default_similarity_threshold")]
+    pub similarity_threshold: f64,
+    /// Whether to run LLM-based contradiction detection during distillation.
+    #[serde(default)]
+    pub detect_contradictions: bool,
+}
+
+fn default_similarity_threshold() -> f64 {
+    DEFAULT_SIMILARITY_THRESHOLD
 }
 
 impl Default for DistillConfig {
@@ -160,6 +173,8 @@ impl Default for DistillConfig {
             distillation_model: None,
             verbatim_tail: 3,
             sections: DistillSection::all_standard(),
+            similarity_threshold: DEFAULT_SIMILARITY_THRESHOLD,
+            detect_contradictions: false,
         }
     }
 }
@@ -183,6 +198,10 @@ pub struct DistillResult {
     pub verbatim_messages: Vec<Message>,
     /// Structured memory items extracted from the summary for long-term persistence.
     pub memory_flush: MemoryFlush,
+    /// Statistics from similarity pruning (if any messages were compared).
+    pub pruning_stats: Option<PruningStats>,
+    /// Contradictions detected across chunks during distillation.
+    pub contradiction_log: ContradictionLog,
 }
 
 /// The distillation engine.
@@ -334,7 +353,56 @@ impl DistillEngine {
         let verbatim = &messages[split_at..];
 
         let tokens_before = estimate_tokens(messages);
-        let request = self.build_prompt(to_summarize, nous_id);
+
+        let (pruned_messages, pruning_stats) =
+            similarity::prune_similar_messages(to_summarize, self.config.similarity_threshold);
+
+        if pruning_stats.pruned_count > 0 {
+            tracing::info!(
+                total = pruning_stats.total_chunks,
+                pruned = pruning_stats.pruned_count,
+                reduction_pct = format_args!("{:.0}", pruning_stats.reduction_percent()),
+                "pruned {} of {} chunks ({:.0}% reduction)",
+                pruning_stats.pruned_count,
+                pruning_stats.total_chunks,
+                pruning_stats.reduction_percent(),
+            );
+        }
+
+        let contradiction_log = if self.config.detect_contradictions {
+            let chunks: Vec<String> = pruned_messages
+                .iter()
+                .map(similarity::extract_text)
+                .filter(|t| !t.is_empty())
+                .collect();
+
+            let model = self
+                .config
+                .distillation_model
+                .as_deref()
+                .unwrap_or(&self.config.model);
+
+            match contradiction::detect_contradictions(&chunks, provider, model).await {
+                Ok(log) => {
+                    if !log.is_empty() {
+                        tracing::warn!(
+                            count = log.contradictions.len(),
+                            "detected {} contradiction(s) across chunks",
+                            log.contradictions.len(),
+                        );
+                    }
+                    log
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "contradiction detection failed, continuing without");
+                    ContradictionLog::empty()
+                }
+            }
+        } else {
+            ContradictionLog::empty()
+        };
+
+        let request = self.build_prompt(&pruned_messages, nous_id);
 
         let response = match provider.complete(&request).await.context(LlmCallSnafu) {
             Ok(r) => {
@@ -366,6 +434,8 @@ impl DistillEngine {
             timestamp,
             verbatim_messages: verbatim.to_vec(),
             memory_flush,
+            pruning_stats: Some(pruning_stats),
+            contradiction_log,
         })
     }
 
