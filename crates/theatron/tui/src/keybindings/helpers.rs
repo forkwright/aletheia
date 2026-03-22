@@ -139,6 +139,7 @@ pub(crate) fn context_label(app: &App) -> &'static str {
         Some(Overlay::ContextActions(_)) => "Context Actions",
         Some(Overlay::DiffView(_)) => "Diff Viewer",
         Some(Overlay::SessionSearch(_)) => "Session Search",
+        Some(Overlay::DecisionCard(_)) => "Decision",
     }
 }
 

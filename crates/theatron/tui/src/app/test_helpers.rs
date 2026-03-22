@@ -43,6 +43,7 @@ pub fn test_app() -> App {
             context_tokens_used: None,
             context_tokens_total: None,
             saved_sessions: HashMap::new(),
+            submitted_decisions: Vec::new(),
         },
         connection: ConnectionState {
             sse: None,
