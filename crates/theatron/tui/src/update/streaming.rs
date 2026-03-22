@@ -9,6 +9,12 @@ use crate::state::{
     ToolApprovalOverlay, ToolCallInfo,
 };
 
+/// Context window size in tokens for the given model.
+/// All current Claude models use 200K context.
+fn model_context_window(_model: &str) -> u32 {
+    200_000
+}
+
 #[tracing::instrument(skip_all, fields(%turn_id, %nous_id))]
 pub(crate) fn handle_stream_turn_start(app: &mut App, turn_id: TurnId, nous_id: NousId) {
     app.connection.active_turn_id = Some(turn_id);
@@ -228,6 +234,20 @@ pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutc
         agent.active_tool = None;
     }
     app.layout.ops.auto_hide_if_configured();
+    let ctx_used = outcome
+        .input_tokens
+        .saturating_add(outcome.cache_read_tokens);
+    if ctx_used > 0 {
+        let ctx_total = model_context_window(&outcome.model);
+        app.dashboard.context_tokens_used = Some(ctx_used);
+        app.dashboard.context_tokens_total = Some(ctx_total);
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "percentage is always 0–100, fits in u8"
+        )]
+        let pct = ((u64::from(ctx_used) * 100) / u64::from(ctx_total)).min(100) as u8;
+        app.dashboard.context_usage_pct = Some(pct);
+    }
     if let Ok(cents) = app.client.today_cost_cents().await {
         app.dashboard.daily_cost_cents = cents;
     }

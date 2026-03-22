@@ -40,6 +40,8 @@ pub struct AgentState {
     pub sessions: Vec<Session>,
     pub model: Option<String>,
     pub compaction_stage: Option<String>,
+    /// Set when distillation completes; cleared after 3-second auto-dismiss delay.
+    pub distill_completed_at: Option<std::time::Instant>,
     /// Number of unread messages since the user last focused this agent.
     /// Cleared when the user switches to this agent.
     pub unread_count: u32,

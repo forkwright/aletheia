@@ -55,6 +55,7 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
             render_context_actions(frame, compact_area, ctx, theme);
         }
         Overlay::SystemStatus => render_system_status(app, frame, popup_area, theme),
+        Overlay::ContextBudget => render_context_budget(app, frame, popup_area, theme),
         Overlay::Settings(settings) => super::settings::render(settings, frame, area, theme),
         Overlay::SessionSearch(search) => render_session_search(frame, popup_area, search, theme),
         Overlay::DiffView(diff_state) => {
@@ -690,6 +691,89 @@ fn render_session_search(
         .block(block)
         .wrap(Wrap { trim: false });
     frame.render_widget(paragraph, area);
+}
+
+fn render_context_budget(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
+    const GAUGE_WIDTH: usize = 30;
+    const WARN_THRESHOLD: u8 = 70;
+    const CRITICAL_THRESHOLD: u8 = 90;
+
+    let block = overlay_block("Context Budget", theme);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let pct = app.dashboard.context_usage_pct.unwrap_or(0);
+    let used = app.dashboard.context_tokens_used;
+    let total = app.dashboard.context_tokens_total;
+
+    let color = if pct <= WARN_THRESHOLD {
+        theme.status.success
+    } else if pct <= CRITICAL_THRESHOLD {
+        theme.status.warning
+    } else {
+        theme.status.error
+    };
+
+    let filled = (usize::from(pct) * GAUGE_WIDTH) / 100;
+    let empty = GAUGE_WIDTH.saturating_sub(filled);
+    let bar = format!("[{}{}]", "=".repeat(filled), ".".repeat(empty));
+
+    let token_line = match (used, total) {
+        (Some(u), Some(t)) => format!(
+            "{pct}%  {bar}  ({} / {} tokens)",
+            format_tokens(u),
+            format_tokens(t)
+        ),
+        _ => format!("{pct}%  {bar}"),
+    };
+
+    let warn_badge = if pct > WARN_THRESHOLD {
+        if pct > CRITICAL_THRESHOLD {
+            "  ⚠ approaching limit"
+        } else {
+            "  ⚠ high usage"
+        }
+    } else {
+        ""
+    };
+
+    let lines = vec![
+        Line::from(vec![Span::styled(
+            "Context window usage",
+            theme.style_accent_bold(),
+        )]),
+        Line::raw(""),
+        Line::from(vec![
+            Span::styled(token_line, ratatui::style::Style::default().fg(color)),
+            Span::styled(warn_badge, theme.style_warning()),
+        ]),
+        Line::raw(""),
+        Line::from(vec![Span::styled(
+            "  Used tokens include input + cache reads.",
+            theme.style_muted(),
+        )]),
+        Line::from(vec![Span::styled(
+            "  Total capacity based on current model (200K).",
+            theme.style_muted(),
+        )]),
+        Line::raw(""),
+        Line::from(vec![Span::styled("  Esc  close", theme.style_dim())]),
+    ];
+
+    let para = Paragraph::new(lines)
+        .wrap(Wrap { trim: false })
+        .style(ratatui::style::Style::default());
+    frame.render_widget(para, inner);
+}
+
+fn format_tokens(n: u32) -> String {
+    if n >= 1_000_000 {
+        format!("{}M", n / 1_000_000)
+    } else if n >= 1_000 {
+        format!("{}K", n / 1_000)
+    } else {
+        format!("{n}")
+    }
 }
 
 /// Create a centered rect within the given area.
