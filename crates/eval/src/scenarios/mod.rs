@@ -17,6 +17,7 @@ pub fn all_scenarios() -> Vec<Box<dyn Scenario>> {
     scenarios.extend(nous::scenarios());
     scenarios.extend(session::scenarios());
     scenarios.extend(conversation::scenarios());
+    scenarios.extend(crate::cognitive::cognitive_scenarios());
     scenarios
 }
 
