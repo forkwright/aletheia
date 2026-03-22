@@ -226,7 +226,10 @@ mod tests {
             .expect("create session");
         let config = NousConfig {
             id: "test-nous".to_owned(),
-            model: "test-model".to_owned(),
+            generation: crate::config::NousGenerationConfig {
+                model: "test-model".to_owned(),
+                ..crate::config::NousGenerationConfig::default()
+            },
             ..NousConfig::default()
         };
         let session = SessionState::new("ses-1".to_owned(), "main".to_owned(), &config);
@@ -343,7 +346,10 @@ mod tests {
         // WHY: Do NOT call store.create_session: the actor wouldn't have done so.
         let config_nous = NousConfig {
             id: "test-nous".to_owned(),
-            model: "test-model".to_owned(),
+            generation: crate::config::NousGenerationConfig {
+                model: "test-model".to_owned(),
+                ..crate::config::NousGenerationConfig::default()
+            },
             ..NousConfig::default()
         };
         let session = SessionState::new("ses-orphan".to_owned(), "main".to_owned(), &config_nous);
@@ -435,7 +441,10 @@ mod tests {
         // Before the fix, the actor would generate a different ULID here.
         let config = NousConfig {
             id: "test-nous".to_owned(),
-            model: "test-model".to_owned(),
+            generation: crate::config::NousGenerationConfig {
+                model: "test-model".to_owned(),
+                ..crate::config::NousGenerationConfig::default()
+            },
             ..NousConfig::default()
         };
         let session = SessionState::new(db_session_id.to_owned(), "main".to_owned(), &config);
@@ -472,7 +481,10 @@ mod tests {
         // NOTE: Actor would have generated a DIFFERENT ID (before the fix)
         let config = NousConfig {
             id: "test-nous".to_owned(),
-            model: "test-model".to_owned(),
+            generation: crate::config::NousGenerationConfig {
+                model: "test-model".to_owned(),
+                ..crate::config::NousGenerationConfig::default()
+            },
             ..NousConfig::default()
         };
         let divergent_session =

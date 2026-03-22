@@ -74,22 +74,26 @@ impl SpawnService for SpawnServiceImpl {
         let config = NousConfig {
             id: spawn_id.clone(),
             name: None,
-            model,
-            context_window: 200_000,
-            max_output_tokens: 16_384,
-            bootstrap_max_tokens: 4_000,
-            thinking_enabled: false,
-            thinking_budget: 0,
-            max_tool_iterations: 100,
-            loop_detection_threshold: 3,
+            generation: crate::config::NousGenerationConfig {
+                model,
+                context_window: 200_000,
+                max_output_tokens: 16_384,
+                bootstrap_max_tokens: 4_000,
+                thinking_enabled: false,
+                thinking_budget: 0,
+                chars_per_token: 4,
+                prosoche_model: "claude-haiku-4-5-20251001".to_owned(),
+            },
+            limits: crate::config::NousLimits {
+                max_tool_iterations: 100,
+                loop_detection_threshold: 3,
+                session_token_cap: 500_000,
+                max_tool_result_bytes: 32_768,
+            },
             domains: Vec::new(),
             server_tools: Vec::new(),
             cache_enabled: true,
-            session_token_cap: 500_000,
             recall: crate::recall::RecallConfig::default(),
-            chars_per_token: 4,
-            prosoche_model: "claude-haiku-4-5-20251001".to_owned(),
-            max_tool_result_bytes: 32_768,
         };
 
         let pipeline_config = PipelineConfig {

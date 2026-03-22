@@ -4,16 +4,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::recall::RecallConfig;
 
-/// Configuration for a single nous agent.
-// NOTE: 18 fields grouped by concern (identity, model, limits, features) but
-// kept flat for serde compatibility with aletheia.toml agent config blocks.
+/// LLM generation settings for a nous agent.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NousConfig {
-    /// Agent identifier (e.g. "syn", "demiurge").
-    pub id: String,
-    /// Human-readable display name (e.g. "Syn"). Falls back to `id` if absent.
-    #[serde(default)]
-    pub name: Option<String>,
+#[serde(default)]
+pub struct NousGenerationConfig {
     /// Default model for this agent.
     pub model: String,
     /// Maximum context window tokens.
@@ -26,10 +20,76 @@ pub struct NousConfig {
     pub thinking_enabled: bool,
     /// Token budget for extended thinking.
     pub thinking_budget: u32,
+    /// Characters per token for conservative token-budget estimation.
+    pub chars_per_token: u32,
+    /// Model to use for prosoche heartbeat sessions instead of the primary model.
+    pub prosoche_model: String,
+}
+
+impl Default for NousGenerationConfig {
+    fn default() -> Self {
+        use aletheia_koina::defaults as d;
+        Self {
+            model: "claude-opus-4-20250514".to_owned(),
+            context_window: d::CONTEXT_TOKENS,
+            max_output_tokens: d::MAX_OUTPUT_TOKENS,
+            bootstrap_max_tokens: d::BOOTSTRAP_MAX_TOKENS,
+            thinking_enabled: false,
+            thinking_budget: 10_000,
+            chars_per_token: default_chars_per_token(),
+            prosoche_model: default_prosoche_model(),
+        }
+    }
+}
+
+/// Resource and safety limits for a nous agent.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct NousLimits {
     /// Maximum tool execution iterations per turn.
     pub max_tool_iterations: u32,
     /// Loop detection threshold (identical tool calls).
     pub loop_detection_threshold: u32,
+    /// Maximum cumulative tokens (input + output) allowed per session.
+    ///
+    /// Once a session exceeds this budget the guard stage rejects further
+    /// turns with a `GuardResult::Rejected` response. Set to `0` to disable
+    /// the cap (default: 500,000).
+    pub session_token_cap: u64,
+    /// Maximum size in bytes for a single tool result before truncation.
+    ///
+    /// Results exceeding this limit are truncated with an indicator showing
+    /// the original and truncated sizes. Set to `0` to disable. Default:
+    /// 32 768 bytes (32 KB).
+    pub max_tool_result_bytes: u32,
+}
+
+impl Default for NousLimits {
+    fn default() -> Self {
+        use aletheia_koina::defaults as d;
+        Self {
+            max_tool_iterations: d::MAX_TOOL_ITERATIONS,
+            loop_detection_threshold: 3,
+            session_token_cap: default_session_token_cap(),
+            max_tool_result_bytes: default_max_tool_result_bytes(),
+        }
+    }
+}
+
+/// Configuration for a single nous agent.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NousConfig {
+    /// Agent identifier (e.g. "syn", "demiurge").
+    pub id: String,
+    /// Human-readable display name (e.g. "Syn"). Falls back to `id` if absent.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// LLM generation settings (model, token limits, thinking).
+    #[serde(flatten)]
+    pub generation: NousGenerationConfig,
+    /// Resource and safety limits.
+    #[serde(flatten)]
+    pub limits: NousLimits,
     /// Domain tags for this agent (static config + pack overlays).
     #[serde(default)]
     pub domains: Vec<String>,
@@ -39,39 +99,9 @@ pub struct NousConfig {
     /// Whether prompt caching is enabled for this agent.
     #[serde(default = "default_cache_enabled")]
     pub cache_enabled: bool,
-    /// Maximum cumulative tokens (input + output) allowed per session.
-    ///
-    /// Once a session exceeds this budget the guard stage rejects further
-    /// turns with a `GuardResult::Rejected` response. Set to `0` to disable
-    /// the cap (default: 500,000).
-    #[serde(default = "default_session_token_cap")]
-    pub session_token_cap: u64,
     /// Per-agent recall pipeline configuration.
-    ///
-    /// Overrides the global defaults for this agent's recall stage.
-    /// Wired from the taxis per-agent config block at startup.
     #[serde(default)]
     pub recall: RecallConfig,
-    /// Characters per token for conservative token-budget estimation.
-    ///
-    /// Used by `CharEstimator` when sizing bootstrap sections and recall
-    /// output.  The default of 4 follows the common "1 token ≈ 4 chars"
-    /// heuristic. Wired from `agents.defaults.chars_per_token` at startup.
-    #[serde(default = "default_chars_per_token")]
-    pub chars_per_token: u32,
-    /// Model to use for prosoche heartbeat sessions instead of the primary model.
-    ///
-    /// Prosoche checks are simple health/attention tasks that don't need
-    /// advanced reasoning. Defaults to Haiku-tier to reduce cost.
-    #[serde(default = "default_prosoche_model")]
-    pub prosoche_model: String,
-    /// Maximum size in bytes for a single tool result before truncation.
-    ///
-    /// Results exceeding this limit are truncated with an indicator showing
-    /// the original and truncated sizes. Set to `0` to disable. Default:
-    /// 32 768 bytes (32 KB). Wired from `agents.defaults.maxToolResultBytes`.
-    #[serde(default = "default_max_tool_result_bytes")]
-    pub max_tool_result_bytes: u32,
 }
 
 fn default_cache_enabled() -> bool {
@@ -100,26 +130,15 @@ fn default_max_tool_result_bytes() -> u32 {
 
 impl Default for NousConfig {
     fn default() -> Self {
-        use aletheia_koina::defaults as d;
         Self {
             id: "default".to_owned(),
             name: None,
-            model: "claude-opus-4-20250514".to_owned(),
-            context_window: d::CONTEXT_TOKENS,
-            max_output_tokens: d::MAX_OUTPUT_TOKENS,
-            bootstrap_max_tokens: d::BOOTSTRAP_MAX_TOKENS,
-            thinking_enabled: false,
-            thinking_budget: 10_000,
-            max_tool_iterations: d::MAX_TOOL_ITERATIONS,
-            loop_detection_threshold: 3,
+            generation: NousGenerationConfig::default(),
+            limits: NousLimits::default(),
             domains: Vec::new(),
             server_tools: Vec::new(),
             cache_enabled: true,
-            session_token_cap: default_session_token_cap(),
             recall: RecallConfig::default(),
-            chars_per_token: default_chars_per_token(),
-            prosoche_model: default_prosoche_model(),
-            max_tool_result_bytes: default_max_tool_result_bytes(),
         }
     }
 }
@@ -193,13 +212,13 @@ mod tests {
     #[test]
     fn nous_config_defaults() {
         let config = NousConfig::default();
-        assert_eq!(config.context_window, 200_000);
+        assert_eq!(config.generation.context_window, 200_000);
         assert_eq!(
-            config.max_tool_iterations,
+            config.limits.max_tool_iterations,
             aletheia_koina::defaults::MAX_TOOL_ITERATIONS,
             "default should match koina::defaults"
         );
-        assert!(!config.thinking_enabled);
+        assert!(!config.generation.thinking_enabled);
     }
 
     #[test]
@@ -215,7 +234,7 @@ mod tests {
         let json = serde_json::to_string(&config).unwrap();
         let back: NousConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(config.id, back.id);
-        assert_eq!(config.model, back.model);
+        assert_eq!(config.generation.model, back.generation.model);
     }
 
     #[test]
@@ -241,25 +260,29 @@ mod tests {
         let config = NousConfig {
             id: "chiron".to_owned(),
             name: Some("Chiron".to_owned()),
-            model: "claude-haiku-4-5-20251001".to_owned(),
-            context_window: 100_000,
-            max_output_tokens: 8_192,
-            bootstrap_max_tokens: 20_000,
-            thinking_enabled: true,
-            thinking_budget: 5_000,
-            max_tool_iterations: 10,
-            loop_detection_threshold: 5,
+            generation: NousGenerationConfig {
+                model: "claude-haiku-4-5-20251001".to_owned(),
+                context_window: 100_000,
+                max_output_tokens: 8_192,
+                bootstrap_max_tokens: 20_000,
+                thinking_enabled: true,
+                thinking_budget: 5_000,
+                chars_per_token: 4,
+                prosoche_model: "claude-haiku-4-5-20251001".to_owned(),
+            },
+            limits: NousLimits {
+                max_tool_iterations: 10,
+                loop_detection_threshold: 5,
+                session_token_cap: 250_000,
+                max_tool_result_bytes: 32_768,
+            },
             domains: vec!["medical".to_owned()],
             server_tools: Vec::new(),
             cache_enabled: false,
-            session_token_cap: 250_000,
             recall: RecallConfig::default(),
-            chars_per_token: 4,
-            prosoche_model: "claude-haiku-4-5-20251001".to_owned(),
-            max_tool_result_bytes: 32_768,
         };
         assert_eq!(config.name.as_deref(), Some("Chiron"));
-        assert!(config.thinking_enabled);
+        assert!(config.generation.thinking_enabled);
         assert_eq!(config.domains.len(), 1);
         assert!(!config.cache_enabled);
     }
@@ -267,6 +290,9 @@ mod tests {
     #[test]
     fn prosoche_model_defaults_to_haiku() {
         let config = NousConfig::default();
-        assert_eq!(config.prosoche_model, "claude-haiku-4-5-20251001");
+        assert_eq!(
+            config.generation.prosoche_model,
+            "claude-haiku-4-5-20251001"
+        );
     }
 }

@@ -88,9 +88,9 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
             spec.retries_before_fallback,
         ),
         None => (
-            defaults.model.primary.clone(),
-            defaults.model.fallbacks.clone(),
-            defaults.model.retries_before_fallback,
+            defaults.model_defaults.model.primary.clone(),
+            defaults.model_defaults.model.fallbacks.clone(),
+            defaults.model_defaults.model.retries_before_fallback,
         ),
     };
 
@@ -98,7 +98,7 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
 
     let thinking_enabled = agent
         .and_then(|a| a.thinking_enabled)
-        .unwrap_or(defaults.thinking_enabled);
+        .unwrap_or(defaults.model_defaults.thinking_enabled);
 
     let max_tool_iterations = match agency {
         AgencyLevel::Unrestricted => 10_000,
@@ -137,13 +137,13 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
             retries_before_fallback,
         },
         limits: TokenLimits {
-            context_tokens: defaults.context_tokens,
-            max_output_tokens: defaults.max_output_tokens,
-            bootstrap_max_tokens: defaults.bootstrap_max_tokens,
-            thinking_budget: defaults.thinking_budget,
-            chars_per_token: defaults.chars_per_token,
+            context_tokens: defaults.model_defaults.context_tokens,
+            max_output_tokens: defaults.model_defaults.max_output_tokens,
+            bootstrap_max_tokens: defaults.model_defaults.bootstrap_max_tokens,
+            thinking_budget: defaults.model_defaults.thinking_budget,
+            chars_per_token: defaults.model_defaults.chars_per_token,
             history_budget_ratio: defaults.history_budget_ratio,
-            max_tool_result_bytes: defaults.max_tool_result_bytes,
+            max_tool_result_bytes: defaults.model_defaults.max_tool_result_bytes,
         },
         capabilities: AgentCapabilities {
             thinking_enabled,
@@ -155,6 +155,6 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
         allowed_roots,
         domains,
         recall,
-        prosoche_model: defaults.prosoche_model.clone(),
+        prosoche_model: defaults.model_defaults.prosoche_model.clone(),
     }
 }

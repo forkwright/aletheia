@@ -67,8 +67,8 @@ async fn thinking_only_response() {
 
     let tools = ToolRegistry::new();
     let mut config = test_config();
-    config.thinking_enabled = true;
-    config.thinking_budget = 5_000;
+    config.generation.thinking_enabled = true;
+    config.generation.thinking_budget = 5_000;
 
     let result = execute(
         &test_pipeline_ctx(),
@@ -220,8 +220,8 @@ async fn max_iterations_one_exits_immediately() {
 
     let tools = make_registry_with("exec", Box::new(EchoExecutor));
     let mut config = test_config();
-    config.max_tool_iterations = 1;
-    config.loop_detection_threshold = 100;
+    config.limits.max_tool_iterations = 1;
+    config.limits.loop_detection_threshold = 100;
 
     let result = execute(
         &test_pipeline_ctx(),

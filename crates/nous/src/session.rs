@@ -38,13 +38,13 @@ impl SessionState {
             id,
             nous_id: config.id.clone(),
             session_key,
-            model: config.model.clone(),
+            model: config.generation.model.clone(),
             turn: 0,
             turn_id: Ulid::new(),
             token_estimate: 0,
             distillation_count: 0,
-            thinking_enabled: config.thinking_enabled,
-            thinking_budget: config.thinking_budget,
+            thinking_enabled: config.generation.thinking_enabled,
+            thinking_budget: config.generation.thinking_budget,
             bootstrap_hash: None,
             cumulative_tokens: 0,
         }
@@ -262,7 +262,7 @@ mod tests {
     #[test]
     fn session_state_model_from_config() {
         let mut config = make_config();
-        config.model = "claude-haiku-4-5-20251001".to_owned();
+        config.generation.model = "claude-haiku-4-5-20251001".to_owned();
         let state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &config);
         assert_eq!(state.model, "claude-haiku-4-5-20251001");
     }
@@ -270,8 +270,8 @@ mod tests {
     #[test]
     fn session_state_thinking_from_config() {
         let mut config = make_config();
-        config.thinking_enabled = true;
-        config.thinking_budget = 5_000;
+        config.generation.thinking_enabled = true;
+        config.generation.thinking_budget = 5_000;
         let state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &config);
         assert!(state.thinking_enabled);
         assert_eq!(state.thinking_budget, 5_000);

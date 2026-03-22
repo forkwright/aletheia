@@ -172,6 +172,9 @@ async fn check_disk_space(path: &Path) -> Vec<AttentionItem> {
 
 /// Get disk usage percentage for the filesystem containing `path` via `df`.
 async fn disk_usage_percent(path: &Path) -> std::io::Result<f64> {
+    // NOTE: tokio::process::Child kills the child on Drop, providing the same
+    // orphan-prevention guarantee as ProcessGuard. If this future is cancelled,
+    // tokio kills the child automatically.
     let output = tokio::process::Command::new("df")
         .args(["--output=pcent", "--"])
         .arg(path)

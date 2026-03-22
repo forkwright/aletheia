@@ -69,7 +69,7 @@ pub async fn create(
     })?;
 
     let id = ulid::Ulid::new().to_string();
-    let model = config.model.clone();
+    let model = config.generation.model.clone();
 
     let state_clone = state.clone();
     let id_clone = id.clone();
@@ -342,6 +342,14 @@ pub async fn rename(
         .build());
     }
 
+    // SAFETY: enforce max session name length to prevent oversized input.
+    if body.name.len() > MAX_SESSION_NAME_LEN {
+        return Err(BadRequestSnafu {
+            message: format!("name exceeds maximum length of {MAX_SESSION_NAME_LEN} bytes"),
+        }
+        .build());
+    }
+
     let state_clone = state.clone();
     let id_clone = id.clone();
     let name = body.name;
@@ -356,6 +364,9 @@ pub async fn rename(
     info!(session_id = %id, "session renamed");
     Ok(StatusCode::NO_CONTENT)
 }
+
+/// Maximum session name length in bytes.
+const MAX_SESSION_NAME_LEN: usize = 255;
 
 /// Maximum number of messages returnable per history request.
 const MAX_HISTORY_LIMIT: u32 = 1000;

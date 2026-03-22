@@ -183,7 +183,7 @@ impl NousManager {
         let id = config.id.clone();
 
         let extra_bootstrap = {
-            let estimator = CharEstimator::new(u64::from(config.chars_per_token));
+            let estimator = CharEstimator::new(u64::from(config.generation.chars_per_token));
             let mut sections = Vec::new();
             for pack in self.packs.iter() {
                 let agent_sections = pack.sections_for_agent_or_domains(&id, &config.domains);

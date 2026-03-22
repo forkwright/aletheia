@@ -280,11 +280,11 @@ impl Default for RecallSettings {
     }
 }
 
-/// Default values applied to every agent unless overridden.
+/// LLM model and generation defaults for agents.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
-pub struct AgentDefaults {
+pub struct AgentModelDefaults {
     /// Primary model and fallback chain.
     pub model: ModelSpec,
     /// Maximum input context window size in tokens.
@@ -297,6 +297,39 @@ pub struct AgentDefaults {
     pub thinking_enabled: bool,
     /// Maximum tokens allocated to extended thinking when enabled.
     pub thinking_budget: u32,
+    /// Characters per token for conservative token-budget estimation.
+    pub chars_per_token: u32,
+    /// Model used for prosoche heartbeat sessions.
+    pub prosoche_model: String,
+    /// Maximum size in bytes for a single tool result before truncation.
+    pub max_tool_result_bytes: u32,
+}
+
+impl Default for AgentModelDefaults {
+    fn default() -> Self {
+        use aletheia_koina::defaults as d;
+        Self {
+            model: ModelSpec::default(),
+            context_tokens: d::CONTEXT_TOKENS,
+            max_output_tokens: d::MAX_OUTPUT_TOKENS,
+            bootstrap_max_tokens: d::BOOTSTRAP_MAX_TOKENS,
+            thinking_enabled: false,
+            thinking_budget: 10_000,
+            chars_per_token: d::CHARS_PER_TOKEN,
+            prosoche_model: "claude-haiku-4-5-20251001".to_owned(),
+            max_tool_result_bytes: d::MAX_TOOL_RESULT_BYTES,
+        }
+    }
+}
+
+/// Default values applied to every agent unless overridden.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct AgentDefaults {
+    /// Model and generation settings.
+    #[serde(flatten)]
+    pub model_defaults: AgentModelDefaults,
     /// Agent autonomy level. Controls effective tool iteration limits when
     /// `max_tool_iterations` is not explicitly overridden per-agent.
     pub agency: AgencyLevel,
@@ -308,52 +341,21 @@ pub struct AgentDefaults {
     pub caching: CachingConfig,
     /// Recall pipeline settings applied to all agents unless overridden.
     pub recall: RecallSettings,
-    /// Characters per token for conservative token-budget estimation.
-    ///
-    /// Used by `CharEstimator` when counting tokens from raw text length.
-    /// The default of 4 follows the common "1 token ≈ 4 chars" heuristic for
-    /// English text. Increase for more conservative budgets; decrease for
-    /// languages with shorter tokens.
-    pub chars_per_token: u32,
     /// Fraction of the context window reserved for conversation history.
-    ///
-    /// The pipeline partitions the context window into three zones:
-    /// `history` (this fraction), `turn reserve` (`max_output_tokens`), and
-    /// `bootstrap` (the remainder, capped at `bootstrap_max_tokens`).
-    /// Default: 0.6 (60 % of the context window).
     pub history_budget_ratio: f64,
-    /// Model used for prosoche heartbeat sessions instead of the primary model.
-    ///
-    /// Prosoche checks are simple health/attention tasks that don't need
-    /// advanced reasoning. Defaults to Haiku-tier to reduce cost.
-    pub prosoche_model: String,
-    /// Maximum size in bytes for a single tool result before truncation.
-    ///
-    /// Tool results exceeding this limit are truncated to fit, with a
-    /// `[truncated: {original} -> {truncated} bytes]` indicator appended.
-    /// Set to `0` to disable truncation. Default: 32 768 (32 KB).
-    pub max_tool_result_bytes: u32,
 }
 
 impl Default for AgentDefaults {
     fn default() -> Self {
         use aletheia_koina::defaults as d;
         Self {
-            model: ModelSpec::default(),
-            context_tokens: d::CONTEXT_TOKENS,
-            max_output_tokens: d::MAX_OUTPUT_TOKENS,
-            bootstrap_max_tokens: d::BOOTSTRAP_MAX_TOKENS,
-            thinking_enabled: false,
-            thinking_budget: 10_000,
+            model_defaults: AgentModelDefaults::default(),
             agency: AgencyLevel::Standard,
             max_tool_iterations: d::MAX_TOOL_ITERATIONS,
             allowed_roots: Vec::new(),
             caching: CachingConfig::default(),
             recall: RecallSettings::default(),
-            chars_per_token: d::CHARS_PER_TOKEN,
             history_budget_ratio: d::HISTORY_BUDGET_RATIO,
-            prosoche_model: "claude-haiku-4-5-20251001".to_owned(),
-            max_tool_result_bytes: d::MAX_TOOL_RESULT_BYTES,
         }
     }
 }
@@ -410,12 +412,12 @@ pub struct NousDefinition {
     /// Human-readable display name.
     #[serde(default)]
     pub name: Option<String>,
-    /// Model override; when `None`, inherits from [`AgentDefaults::model`].
+    /// Model override; when `None`, inherits from `AgentDefaults`.
     #[serde(default)]
     pub model: Option<ModelSpec>,
     /// Filesystem path to the agent's workspace directory.
     pub workspace: String,
-    /// Thinking override; when `None`, inherits from [`AgentDefaults::thinking_enabled`].
+    /// Thinking override; when `None`, inherits from `AgentDefaults`.
     #[serde(default)]
     pub thinking_enabled: Option<bool>,
     /// Agency level override; when `None`, inherits from [`AgentDefaults::agency`].

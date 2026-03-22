@@ -1,6 +1,6 @@
 //! RAII guard for subprocess lifecycle management.
 //!
-//! [`ProcessGuard`] wraps a [`std::process::Child`] and guarantees the child
+//! `ProcessGuard` wraps a [`std::process::Child`] and guarantees the child
 //! process is killed and reaped when the guard is dropped: including on
 //! panic.  This prevents both orphan processes (child outlives parent) and
 //! zombie accumulation (child exited but not reaped).
@@ -8,7 +8,7 @@
 //! # Usage pattern
 //!
 //! Wrap the child immediately after `spawn()`, then interact via
-//! [`get_mut()`][ProcessGuard::get_mut]:
+//! `get_mut()`:
 //!
 //! ```ignore
 //! let child = Command::new("sh").arg("-c").arg(cmd).spawn()?;
@@ -30,13 +30,13 @@
 /// [`Child`][std::process::Child].  Both calls ignore errors: `kill()` fails
 /// if the process has already exited (safe), and `wait()` fails if the OS
 /// has already reaped the zombie (safe).
-pub(crate) struct ProcessGuard {
+pub struct ProcessGuard {
     child: Option<std::process::Child>,
 }
 
 impl ProcessGuard {
     /// Wrap a spawned child process in a kill-on-drop guard.
-    pub(crate) fn new(child: std::process::Child) -> Self {
+    pub fn new(child: std::process::Child) -> Self {
         Self { child: Some(child) }
     }
 
@@ -50,7 +50,7 @@ impl ProcessGuard {
         clippy::expect_used,
         reason = "panics intentionally when called after detach() — documented invariant"
     )]
-    pub(crate) fn get_mut(&mut self) -> &mut std::process::Child {
+    pub fn get_mut(&mut self) -> &mut std::process::Child {
         self.child.as_mut().expect("ProcessGuard already consumed") // kanon:ignore RUST/expect
     }
 
@@ -67,7 +67,7 @@ impl ProcessGuard {
         clippy::expect_used,
         reason = "panics intentionally when called twice — documented invariant"
     )]
-    pub(crate) fn detach(mut self) -> std::process::Child {
+    pub fn detach(mut self) -> std::process::Child {
         self.child.take().expect("ProcessGuard already consumed") // kanon:ignore RUST/expect
     }
 }

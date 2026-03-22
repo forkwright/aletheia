@@ -173,7 +173,10 @@ priority = "important"
 
     let config = NousConfig {
         id: "test-agent".to_owned(),
-        model: "mock-model".to_owned(),
+        generation: aletheia_nous::config::NousGenerationConfig {
+            model: "mock-model".to_owned(),
+            ..Default::default()
+        },
         ..NousConfig::default()
     };
     let handle = manager.spawn(config, PipelineConfig::default()).await;
@@ -322,7 +325,10 @@ domains = ["healthcare"]
 
     let chiron_config = NousConfig {
         id: "chiron".to_owned(),
-        model: "mock-model".to_owned(),
+        generation: aletheia_nous::config::NousGenerationConfig {
+            model: "mock-model".to_owned(),
+            ..Default::default()
+        },
         domains: vec!["healthcare".to_owned()],
         ..NousConfig::default()
     };
@@ -356,7 +362,10 @@ domains = ["healthcare"]
 
     let hermes_config = NousConfig {
         id: "hermes".to_owned(),
-        model: "mock-model".to_owned(),
+        generation: aletheia_nous::config::NousGenerationConfig {
+            model: "mock-model".to_owned(),
+            ..Default::default()
+        },
         ..NousConfig::default()
     };
     let hermes_handle = hermes_manager

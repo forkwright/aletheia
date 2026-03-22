@@ -162,7 +162,7 @@ async fn loop_detection_triggers() {
 
     let tools = make_registry_with("exec", Box::new(EchoExecutor));
     let mut config = test_config();
-    config.loop_detection_threshold = 3;
+    config.limits.loop_detection_threshold = 3;
 
     let err = execute(
         &test_pipeline_ctx(),
@@ -193,8 +193,8 @@ async fn max_iterations_respected() {
 
     let tools = make_registry_with("exec", Box::new(EchoExecutor));
     let mut config = test_config();
-    config.max_tool_iterations = 3;
-    config.loop_detection_threshold = 100;
+    config.limits.max_tool_iterations = 3;
+    config.limits.loop_detection_threshold = 100;
 
     let result = execute(
         &test_pipeline_ctx(),
@@ -416,8 +416,8 @@ async fn max_iterations_stops_loop() {
 
     let tools = make_registry_with("echo", Box::new(EchoExecutor));
     let mut config = test_config();
-    config.max_tool_iterations = 2;
-    config.loop_detection_threshold = 100;
+    config.limits.max_tool_iterations = 2;
+    config.limits.loop_detection_threshold = 100;
     let result = execute(
         &test_pipeline_ctx(),
         &test_session(),

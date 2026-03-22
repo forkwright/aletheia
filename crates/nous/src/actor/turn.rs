@@ -380,7 +380,9 @@ impl NousActor {
                 // WHY: prosoche heartbeat sessions use a cheap model to avoid
                 // wasting Opus-tier capacity on routine health checks.
                 if crate::session::SessionManager::is_background(session_key) {
-                    state.model.clone_from(&self.config.prosoche_model);
+                    state
+                        .model
+                        .clone_from(&self.config.generation.prosoche_model);
                 }
                 state
             });

@@ -27,7 +27,7 @@ pub async fn list(State(state): State<NousState>, _claims: Claims) -> Json<NousL
         .map(|c| NousSummary {
             id: c.id.clone(),
             name: c.name.clone().unwrap_or_else(|| c.id.clone()),
-            model: c.model.clone(),
+            model: c.generation.model.clone(),
             status: "active".to_owned(),
         })
         .collect();
@@ -66,12 +66,12 @@ pub async fn get_status(
 
     Ok(Json(NousStatus {
         id: config.id.clone(),
-        model: config.model.clone(),
-        context_window: config.context_window,
-        max_output_tokens: config.max_output_tokens,
-        thinking_enabled: config.thinking_enabled,
-        thinking_budget: config.thinking_budget,
-        max_tool_iterations: config.max_tool_iterations,
+        model: config.generation.model.clone(),
+        context_window: config.generation.context_window,
+        max_output_tokens: config.generation.max_output_tokens,
+        thinking_enabled: config.generation.thinking_enabled,
+        thinking_budget: config.generation.thinking_budget,
+        max_tool_iterations: config.limits.max_tool_iterations,
         status,
     }))
 }

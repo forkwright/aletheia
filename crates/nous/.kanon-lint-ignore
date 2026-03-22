@@ -23,10 +23,8 @@ SECURITY/config-write-no-perms:src/**/*_tests.rs
 # breaking the linter's same-line suppression check.
 RUST/pub-visibility:src/**/*.rs
 
-# WHY: NousConfig (18 fields) maps 1:1 to aletheia.toml [agents] section.
-# NousManager (14 fields) holds actor registry, services, and runtime state.
-# Splitting either would add indirection without reducing complexity.
-RUST/struct-too-many-fields:src/config.rs
+# WHY: NousManager (14 fields) holds actor registry, services, and runtime state.
+# Splitting would add indirection without reducing complexity.
 RUST/struct-too-many-fields:src/manager.rs
 
 # WHY: all three tokio::spawn() calls have `.instrument(span)` at the end of

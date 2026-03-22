@@ -33,9 +33,9 @@ STANDARDS/deprecated-term:src/error.rs
 STANDARDS/deprecated-term:src/loader.rs
 STANDARDS/deprecated-term:src/config/maintenance.rs
 
-# WHY: AletheiaConfig (14 fields) and AgentDefaults (15 fields) are serde config
-# root types — each field maps to a distinct TOML section/key. Grouping into
-# sub-structs would break the on-disk schema.
+# WHY: AletheiaConfig (14 fields) is the serde config root type — each field maps
+# to a distinct TOML section/key. Slightly over the 12-field limit but further
+# decomposition would fragment the top-level config hierarchy.
 RUST/struct-too-many-fields:src/config/mod.rs
 
 # WHY: interpolate.rs string slicing uses indices from str::find on ASCII

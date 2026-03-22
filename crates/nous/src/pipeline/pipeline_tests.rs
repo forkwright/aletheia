@@ -368,7 +368,10 @@ async fn run_pipeline_simple() {
     let oikos = Oikos::from_root(root);
     let nous_config = NousConfig {
         id: "test-agent".to_owned(),
-        model: "test-model".to_owned(),
+        generation: crate::config::NousGenerationConfig {
+            model: "test-model".to_owned(),
+            ..crate::config::NousGenerationConfig::default()
+        },
         ..NousConfig::default()
     };
     let pipeline_config = PipelineConfig::default();

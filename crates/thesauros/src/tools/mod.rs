@@ -1,6 +1,7 @@
 //! Pack tool registration and shell execution.
 
 use std::future::Future;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::process::{Command, Stdio};
@@ -8,6 +9,7 @@ use std::time::Duration;
 
 use aletheia_koina::defaults::MAX_OUTPUT_BYTES;
 use aletheia_koina::id::ToolName;
+use aletheia_organon::process_guard::ProcessGuard;
 use aletheia_organon::registry::{ToolExecutor, ToolRegistry};
 use aletheia_organon::types::{
     InputSchema, PropertyDef, PropertyType, ToolCategory, ToolContext, ToolDef, ToolInput,
@@ -42,7 +44,7 @@ impl ToolExecutor for ShellToolExecutor {
             let timeout = Duration::from_millis(self.timeout_ms);
 
             // WHY: retry on ETXTBSY (errno 26): benign race between writing/chmod and exec
-            let mut child = {
+            let mut guard = {
                 let mut last_err = None;
                 let mut spawned = None;
                 for attempt in 0..4 {
@@ -68,7 +70,9 @@ impl ToolExecutor for ShellToolExecutor {
                     }
                 }
                 if let Some(c) = spawned {
-                    c
+                    // SAFETY: ProcessGuard ensures child is killed and reaped if we
+                    // exit early (timeout, error, or panic).
+                    ProcessGuard::new(c)
                 } else {
                     let msg = last_err.map_or_else(
                         || "spawn failed: binary not found or inaccessible".to_owned(),
@@ -78,7 +82,7 @@ impl ToolExecutor for ShellToolExecutor {
                 }
             };
 
-            if let Some(mut stdin) = child.stdin.take() {
+            if let Some(mut stdin) = guard.get_mut().stdin.take() {
                 use std::io::Write;
                 if let Err(e) = stdin.write_all(json_input.as_bytes()) {
                     return Ok(ToolResult::error(format!(
@@ -87,12 +91,33 @@ impl ToolExecutor for ShellToolExecutor {
                 }
             }
 
+            // WHY: take pipes before moving guard to the background thread so
+            // reads complete independently of the child's exit.
+            let stdout_pipe = guard.get_mut().stdout.take();
+            let stderr_pipe = guard.get_mut().stderr.take();
+            let child_pid = guard.get_mut().id();
+
             // WHY: wait in a background thread to avoid blocking the async runtime;
-            // enforce timeout from the async side via oneshot + tokio timeout
+            // enforce timeout from the async side via oneshot + tokio timeout.
+            // ProcessGuard ensures the child is killed if the thread panics.
             let (tx, rx) = tokio::sync::oneshot::channel();
             std::thread::spawn(move || {
-                let result = child.wait_with_output();
+                let mut stdout_buf = Vec::new();
+                let mut stderr_buf = Vec::new();
+                if let Some(mut pipe) = stdout_pipe {
+                    let _ = pipe.read_to_end(&mut stdout_buf);
+                }
+                if let Some(mut pipe) = stderr_pipe {
+                    let _ = pipe.read_to_end(&mut stderr_buf);
+                }
+                let result = guard.get_mut().wait().map(|status| std::process::Output {
+                    status,
+                    stdout: stdout_buf,
+                    stderr: stderr_buf,
+                });
                 let _ = tx.send(result);
+                // NOTE: guard drops here — kills and reaps child if still alive
+                // (no-op if already exited). This handles the panic path too.
             });
 
             let output_result = match tokio::time::timeout(timeout, rx).await {
@@ -104,6 +129,15 @@ impl ToolExecutor for ShellToolExecutor {
                     ));
                 }
                 Err(_) => {
+                    // WHY: kill child by PID to unblock the background thread's
+                    // read_to_end(). The thread will then exit and drop the
+                    // ProcessGuard (which reaps the zombie).
+                    let _ = std::process::Command::new("kill")
+                        .args(["-9", &child_pid.to_string()])
+                        .stdin(Stdio::null())
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null())
+                        .output();
                     return Ok(ToolResult::error(format!(
                         "command timed out after {}ms",
                         self.timeout_ms

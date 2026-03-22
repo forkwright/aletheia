@@ -28,6 +28,9 @@ use crate::stream::{SseEvent, TurnOutcome, UsageData, WebchatEvent};
 use super::types::{SendMessageRequest, StreamTurnRequest};
 use super::{find_session, resolve_session};
 
+/// Maximum user message size in bytes (256 KB).
+const MAX_MESSAGE_BYTES: usize = 262_144;
+
 /// Guard that aborts a spawned task when dropped.
 ///
 /// Stored alongside the SSE response stream so that when the client
@@ -182,6 +185,14 @@ pub async fn send_message(
         .build());
     }
 
+    // SAFETY: enforce max message size to prevent memory exhaustion from oversized payloads.
+    if content.len() > MAX_MESSAGE_BYTES {
+        return Err(BadRequestSnafu {
+            message: format!("content exceeds maximum size of {MAX_MESSAGE_BYTES} bytes"),
+        }
+        .build());
+    }
+
     let nous_id = &session.nous_id;
     let handle = state
         .nous_manager
@@ -197,11 +208,11 @@ pub async fn send_message(
     if let Some(config) = state.nous_manager.get_config(nous_id)
         && state
             .provider_registry
-            .find_provider(&config.model)
+            .find_provider(&config.generation.model)
             .is_none()
     {
         return Err(InternalSnafu {
-            message: format!("no provider for model {}", config.model),
+            message: format!("no provider for model {}", config.generation.model),
         }
         .build());
     }
@@ -348,6 +359,14 @@ pub async fn stream_turn(
         .build());
     }
 
+    // SAFETY: enforce max message size to prevent memory exhaustion from oversized payloads.
+    if message.len() > MAX_MESSAGE_BYTES {
+        return Err(BadRequestSnafu {
+            message: format!("message exceeds maximum size of {MAX_MESSAGE_BYTES} bytes"),
+        }
+        .build());
+    }
+
     let handle = state
         .nous_manager
         .get(&agent_id)
@@ -362,7 +381,7 @@ pub async fn stream_turn(
     let model = state
         .nous_manager
         .get_config(&agent_id)
-        .map(|c| c.model.clone());
+        .map(|c| c.generation.model.clone());
 
     let session_id = resolve_session(&state, &agent_id, &session_key, model.as_deref()).await?;
 
