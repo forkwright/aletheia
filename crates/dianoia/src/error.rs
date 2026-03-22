@@ -94,6 +94,38 @@ pub enum Error {
         /// Source location captured by snafu.
         location: snafu::Location,
     },
+
+    /// Filesystem error during handoff file operations.
+    #[snafu(display("handoff I/O error at {}", path.display()))]
+    HandoffIo {
+        /// The path at which the I/O error occurred.
+        path: PathBuf,
+        /// The underlying I/O error.
+        source: std::io::Error,
+        #[snafu(implicit)]
+        /// Source location captured by snafu.
+        location: snafu::Location,
+    },
+
+    /// Failed to deserialize a handoff file from JSON.
+    #[snafu(display("handoff deserialization error"))]
+    HandoffDeserialize {
+        /// The underlying deserialization error.
+        source: serde_json::Error,
+        #[snafu(implicit)]
+        /// Source location captured by snafu.
+        location: snafu::Location,
+    },
+
+    /// Failed to serialize handoff context to JSON.
+    #[snafu(display("handoff serialization error"))]
+    HandoffSerialize {
+        /// The underlying serialization error.
+        source: serde_json::Error,
+        #[snafu(implicit)]
+        /// Source location captured by snafu.
+        location: snafu::Location,
+    },
 }
 
 /// Convenience alias for `Result` with dianoia's [`Error`] type.
