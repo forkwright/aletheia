@@ -287,6 +287,10 @@ pub(crate) fn render_for_view(
             super::memory::render_fact_detail(app, frame, area, theme);
             Vec::new()
         }
+        View::EntityDetail { .. } => {
+            super::memory::render_entity_detail(app, frame, area, theme);
+            Vec::new()
+        }
         View::Metrics => {
             super::metrics::render(app, frame, area, theme);
             Vec::new()

@@ -641,6 +641,61 @@ impl ApiClient {
         Ok(())
     }
 
+    /// Fetch all knowledge entities.
+    #[tracing::instrument(skip(self))]
+    pub async fn knowledge_entities(&self) -> Result<serde_json::Value> {
+        let resp = self
+            .request(reqwest::Method::GET, "/api/v1/knowledge/entities")
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "load entities",
+            })?;
+        let resp = Self::check_status(resp, "entities request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "entities response",
+        })
+    }
+
+    /// Fetch relationships for a specific entity.
+    #[tracing::instrument(skip(self))]
+    pub async fn knowledge_entity_relationships(
+        &self,
+        entity_id: &str,
+    ) -> Result<serde_json::Value> {
+        let encoded = encode_path(entity_id);
+        let resp = self
+            .request(
+                reqwest::Method::GET,
+                &format!("/api/v1/knowledge/entities/{encoded}/relationships"),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "load entity relationships",
+            })?;
+        let resp = Self::check_status(resp, "entity relationships request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "entity relationships response",
+        })
+    }
+
+    /// Fetch the knowledge activity timeline.
+    #[tracing::instrument(skip(self))]
+    pub async fn knowledge_timeline(&self) -> Result<serde_json::Value> {
+        let resp = self
+            .request(reqwest::Method::GET, "/api/v1/knowledge/timeline")
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "load timeline",
+            })?;
+        let resp = Self::check_status(resp, "timeline request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "timeline response",
+        })
+    }
+
     /// Update the confidence score for a knowledge fact.
     #[tracing::instrument(skip(self))]
     pub async fn knowledge_update_confidence(&self, fact_id: &str, confidence: f64) -> Result<()> {
