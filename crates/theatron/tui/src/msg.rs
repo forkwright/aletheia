@@ -288,11 +288,11 @@ pub enum Msg {
     MemoryPageDown,
     MemoryPageUp,
 
-    #[expect(dead_code, reason = "planned TUI feature")]
+    #[cfg_attr(not(test), expect(dead_code, reason = "planned TUI feature"))]
     ShowError(String),
-    #[expect(dead_code, reason = "planned TUI feature")]
+    #[cfg_attr(not(test), expect(dead_code, reason = "planned TUI feature"))]
     ShowSuccess(String),
-    #[expect(dead_code, reason = "planned TUI feature")]
+    #[cfg_attr(not(test), expect(dead_code, reason = "planned TUI feature"))]
     DismissError,
 
     #[expect(dead_code, reason = "planned TUI feature")]
@@ -372,19 +372,19 @@ pub enum MessageActionKind {
     Delete,
     OpenLinks,
     Inspect,
-    #[expect(
-        dead_code,
-        reason = "constructed in context action overlay; lint fires in lib but not test target"
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "constructed in context action overlay; used in test target")
     )]
     QuoteInReply,
-    #[expect(
-        dead_code,
-        reason = "constructed in context action overlay; lint fires in lib but not test target"
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "constructed in context action overlay; used in test target")
     )]
     RateResponse,
-    #[expect(
-        dead_code,
-        reason = "constructed in context action overlay; lint fires in lib but not test target"
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "constructed in context action overlay; used in test target")
     )]
     FlagForReview,
 }

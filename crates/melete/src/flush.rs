@@ -50,6 +50,7 @@ impl FlushSource {
 
 impl MemoryFlush {
     /// Create an empty flush.
+    #[cfg_attr(not(test), expect(dead_code, reason = "planned flush pipeline integration"))]
     #[must_use]
     pub(crate) fn empty() -> Self {
         Self {
@@ -61,6 +62,7 @@ impl MemoryFlush {
     }
 
     /// Check if there's anything to flush.
+    #[cfg_attr(not(test), expect(dead_code, reason = "planned flush pipeline integration"))]
     #[must_use]
     pub(crate) fn is_empty(&self) -> bool {
         self.decisions.is_empty()
@@ -70,6 +72,7 @@ impl MemoryFlush {
     }
 
     /// Render as markdown for writing to a memory file.
+    #[cfg_attr(not(test), expect(dead_code, reason = "planned flush pipeline integration"))]
     #[must_use]
     pub(crate) fn to_markdown(&self) -> String {
         let mut out = String::new();

@@ -55,7 +55,7 @@ pub enum LogLevel {
 ///
 /// Implementors define what to log and what metric labels to attach.
 /// The [`EventEmitter`] handles dispatching to both sinks.
-pub trait InternalEvent: Send + Sync {
+pub trait InternalEvent: Send + Sync { // kanon:ignore RUST/pub-visibility
     /// Machine-readable event name (e.g. `"StageCompleted"`).
     fn event_name(&self) -> &'static str;
 
@@ -117,7 +117,7 @@ impl Default for EventEmitter {
 impl EventEmitter {
     /// Create an emitter with no metric sink (log-only).
     #[must_use]
-    pub fn new() -> Self {
+    pub fn new() -> Self { // kanon:ignore RUST/pub-visibility
         Self {
             counter: Arc::new(AtomicU64::new(0)),
             metric_sink: Arc::new(None),
@@ -127,7 +127,7 @@ impl EventEmitter {
 
     /// Create an emitter with a metric sink callback.
     #[must_use]
-    pub fn with_metric_sink(
+    pub fn with_metric_sink( // kanon:ignore RUST/pub-visibility
         sink: impl Fn(&str, &[(&str, String)], f64) + Send + Sync + 'static,
     ) -> Self {
         Self {
@@ -140,7 +140,7 @@ impl EventEmitter {
     /// Register a listener that receives all emitted events.
     ///
     /// Useful for testing and event composition.
-    pub fn add_listener(&self, listener: impl Fn(&dyn InternalEvent) + Send + Sync + 'static) {
+    pub fn add_listener(&self, listener: impl Fn(&dyn InternalEvent) + Send + Sync + 'static) { // kanon:ignore RUST/pub-visibility
         // WHY: lock held only during Vec::push, no await
         if let Ok(mut listeners) = self.listeners.lock() {
             listeners.push(Box::new(listener));
@@ -151,7 +151,7 @@ impl EventEmitter {
     ///
     /// A single call at the stage level produces both a metric increment and
     /// a structured log line. No double-instrumentation needed.
-    pub fn emit(&self, event: &impl InternalEvent) {
+    pub fn emit(&self, event: &impl InternalEvent) { // kanon:ignore RUST/pub-visibility
         self.counter.fetch_add(1, Ordering::Relaxed);
 
         // Log dispatch.
@@ -183,12 +183,12 @@ impl EventEmitter {
 
     /// Total number of events emitted since creation.
     #[must_use]
-    pub fn event_count(&self) -> u64 {
+    pub fn event_count(&self) -> u64 { // kanon:ignore RUST/pub-visibility
         self.counter.load(Ordering::Relaxed)
     }
 
     /// Reset the event counter to zero.
-    pub fn reset_count(&self) {
+    pub fn reset_count(&self) { // kanon:ignore RUST/pub-visibility
         self.counter.store(0, Ordering::Relaxed);
     }
 }

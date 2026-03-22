@@ -165,6 +165,7 @@ impl NamedRows {
         })
     }
     /// Make named rows from JSON
+    #[must_use]
     pub fn from_json(value: &JsonValue) -> Result<Self> {
         let headers = value
             .get("headers")
@@ -275,6 +276,7 @@ impl<'s, S: Storage<'s>> Db<S> {
     /// # Errors
     ///
     /// Returns an error if the storage backend fails during initial setup.
+    #[must_use]
     pub fn new(storage: S) -> Result<Self> {
         let ret = Self {
             db: storage,
@@ -294,6 +296,7 @@ impl<'s, S: Storage<'s>> Db<S> {
     }
 
     /// Must be called after creation of the database to initialize the runtime state.
+    #[must_use]
     pub fn initialize(&'s self) -> Result<()> {
         self.load_last_ids()?;
         Ok(())
@@ -307,6 +310,7 @@ impl<'s, S: Storage<'s>> Db<S> {
     /// Backup the running database into an Sqlite file.
     ///
     /// Not currently supported: requires the removed `storage-sqlite` feature.
+    #[must_use]
     pub fn backup_db(&'s self, _out_file: impl AsRef<Path>) -> Result<()> {
         UnsupportedSnafu {
             operation: "backup",
@@ -317,6 +321,7 @@ impl<'s, S: Storage<'s>> Db<S> {
     /// Restore from an Sqlite backup.
     ///
     /// Not currently supported: requires the removed `storage-sqlite` feature.
+    #[must_use]
     pub fn restore_backup(&'s self, _in_file: impl AsRef<Path>) -> Result<()> {
         UnsupportedSnafu {
             operation: "restore",
@@ -339,6 +344,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         .fail()?
     }
     /// Register a custom fixed rule implementation.
+    #[must_use]
     pub fn register_fixed_rule<R>(&self, name: String, rule_impl: R) -> Result<()>
     where
         R: FixedRule + 'static,
@@ -357,6 +363,7 @@ impl<'s, S: Storage<'s>> Db<S> {
     }
 
     /// Unregister a custom fixed rule implementation.
+    #[must_use]
     pub fn unregister_fixed_rule(&self, name: &str) -> Result<bool> {
         if DEFAULT_FIXED_RULES.contains_key(name) {
             InvalidOperationSnafu {
@@ -478,6 +485,7 @@ impl Poison {
     ///
     /// Returns a query-killed error if the user initiated termination.
     #[inline(always)]
+    #[must_use]
     pub fn check(&self) -> Result<()> {
         if self.0.load(Ordering::Relaxed) {
             QueryKilledSnafu.fail()?;

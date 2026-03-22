@@ -11,6 +11,7 @@
 )]
 
 use aletheia_mneme::embedding::{EmbeddingProvider, MockEmbeddingProvider};
+
 use proptest::prelude::*;
 
 proptest! {

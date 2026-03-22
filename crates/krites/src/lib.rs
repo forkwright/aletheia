@@ -29,6 +29,7 @@ pub use crate::runtime::db::{NamedRows, ScriptMutability, TransactionPayload};
 #[cfg(feature = "storage-fjall")]
 pub use crate::storage::fjall_backend::FjallStorage;
 pub use crate::storage::mem::MemStorage;
+
 pub use ndarray::Array1;
 
 pub(crate) use crate::data::expr::Expr;

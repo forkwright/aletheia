@@ -153,10 +153,6 @@ fn clamp_scroll_offset(app: &mut App) {
     }
     let total = app.viewport.render.virtual_scroll.total_height();
     let vh = chat_viewport_height(app) as u64;
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "scroll offset bounded by content height which fits in usize on supported platforms"
-    )]
     let max_offset = total.saturating_sub(vh) as usize;
     if app.viewport.render.scroll_offset > max_offset {
         app.viewport.render.scroll_offset = max_offset;
@@ -381,10 +377,6 @@ mod tests {
             app.viewport.render.scroll_offset = 3;
             handle_scroll_up(&mut app);
             // Offset should be 6 (3 + 3) as long as content allows.
-            #[expect(
-                clippy::cast_possible_truncation,
-                reason = "scroll offset bounded by content height which fits in usize on supported platforms"
-            )]
             let max = total.saturating_sub(vh) as usize;
             assert!(app.viewport.render.scroll_offset <= max);
             assert!(!app.viewport.render.auto_scroll);

@@ -27,7 +27,7 @@ impl fmt::Display for CredentialSource {
 }
 
 /// A resolved credential paired with its source.
-pub struct Credential {
+pub struct Credential { // kanon:ignore RUST/pub-visibility
     /// The secret value (API key or access token).
     pub secret: SecretString,
     /// Where this credential was obtained from.
@@ -41,7 +41,7 @@ pub struct Credential {
 /// contexts. The `get_credential()` method is intentionally synchronous: the
 /// refreshing providers store the current token in memory and refresh
 /// asynchronously in a background task.
-pub trait CredentialProvider: Send + Sync {
+pub trait CredentialProvider: Send + Sync { // kanon:ignore RUST/pub-visibility
     /// Resolve the current credential value.
     ///
     /// Returns `None` if no credential is available (env var unset, file

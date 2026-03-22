@@ -8,6 +8,7 @@ use std::collections::HashSet;
 use std::fmt as stdfmt;
 use std::io::Write;
 use std::time::SystemTime;
+
 use tokio::sync::Mutex;
 
 use serde_json::{Map, Value};
@@ -32,7 +33,7 @@ struct RedactedSpanFields {
 /// `[REDACTED]`. Fields matching `truncate_fields` are capped at
 /// `truncate_length` characters. All string values are scanned for API key
 /// patterns via [`redact_sensitive`].
-pub struct RedactingLayer<W> {
+pub struct RedactingLayer<W> { // kanon:ignore RUST/pub-visibility
     writer: Mutex<W>,
     redact_fields: HashSet<String>,
     truncate_fields: HashSet<String>,
@@ -42,7 +43,7 @@ pub struct RedactingLayer<W> {
 impl<W> RedactingLayer<W> {
     /// Create a redacting layer that writes JSON to the given writer.
     #[must_use]
-    pub fn new(
+    pub fn new( // kanon:ignore RUST/pub-visibility
         writer: W,
         redact_fields: impl IntoIterator<Item = String>,
         truncate_fields: impl IntoIterator<Item = String>,

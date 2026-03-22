@@ -140,8 +140,9 @@ impl ChannelListener {
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
-    use super::*;
     use tracing::Instrument;
+
+    use super::*;
 
     #[test]
     fn redact_phone_long_number() {

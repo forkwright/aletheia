@@ -94,7 +94,7 @@ impl AnthropicProvider {
     ///
     /// # Errors
     /// Returns `ProviderInit` if `api_key` is missing.
-    #[must_use = "returns configured provider or error"]
+    #[must_use]
     pub fn from_config(config: &ProviderConfig) -> Result<Self> {
         // kanon:ignore RUST/pub-visibility
         let api_key = config

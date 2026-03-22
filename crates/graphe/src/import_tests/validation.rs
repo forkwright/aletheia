@@ -650,8 +650,9 @@ fn import_skip_both_flags_imports_nothing_from_disk_or_sessions() {
 }
 
 mod proptests {
-    use super::*;
     use proptest::prelude::*;
+
+    use super::*;
 
     proptest! {
         #[test]

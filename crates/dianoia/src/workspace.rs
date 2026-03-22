@@ -33,6 +33,7 @@ impl ProjectWorkspace {
     /// # Errors
     ///
     /// Returns a workspace I/O error if the workspace directories cannot be created.
+    #[must_use]
     pub fn create(root: impl Into<PathBuf>) -> Result<Self> {
         let root = root.into();
         let layout = Self::build_layout(&root);
@@ -49,6 +50,7 @@ impl ProjectWorkspace {
     }
 
     /// Open an existing workspace.
+    #[must_use]
     pub fn open(root: impl Into<PathBuf>) -> Result<Self> {
         let root = root.into();
         if !root.exists() {
@@ -63,6 +65,7 @@ impl ProjectWorkspace {
     ///
     /// Returns a serialization error if the project cannot be serialized to JSON.
     /// Returns a workspace I/O error if the project file cannot be written.
+    #[must_use]
     pub fn save_project(&self, project: &Project) -> Result<()> {
         let layout = self.layout();
         let json = serde_json::to_string_pretty(project).context(error::WorkspaceSerializeSnafu)?;
@@ -77,6 +80,7 @@ impl ProjectWorkspace {
     }
 
     /// Load project state from disk.
+    #[must_use]
     pub fn load_project(&self) -> Result<Project> {
         let layout = self.layout();
         if !layout.project_file.exists() {
@@ -95,6 +99,7 @@ impl ProjectWorkspace {
     }
 
     /// Write a blocker file for stuck detection integration.
+    #[must_use]
     pub fn write_blocker(&self, phase_id: &str, blocker: &Blocker) -> Result<()> {
         let layout = self.layout();
         let phase_blockers = layout.blockers_dir.join(phase_id);
@@ -117,6 +122,7 @@ impl ProjectWorkspace {
     }
 
     /// Read all blockers for a phase.
+    #[must_use]
     pub fn read_blockers(&self, phase_id: &str) -> Result<Vec<Blocker>> {
         let layout = self.layout();
         let phase_blockers = layout.blockers_dir.join(phase_id);

@@ -8,6 +8,7 @@ use crate::distill::DistillSection;
 
 /// Legacy hardcoded distillation system prompt with all seven standard sections.
 #[deprecated(note = "use build_system_prompt() with configured sections")]
+#[expect(dead_code, reason = "deprecated; retained until callers are removed")]
 pub(crate) const DISTILLATION_SYSTEM_PROMPT: &str = "\
 You are a context distillation engine. Your task is to compress a conversation \
 history into a structured summary that preserves all essential information for \

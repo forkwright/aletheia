@@ -50,6 +50,7 @@ impl Default for RecoveryConfig {
 ///
 /// Returns `Ok(true)` if the database passes, `Ok(false)` if corruption
 /// is detected. Returns `Err` only for connection-level failures.
+#[must_use]
 pub fn check_integrity(conn: &Connection) -> Result<bool> {
     let result: String = conn
         .pragma_query_value(None, "integrity_check", |row| row.get(0))
@@ -91,6 +92,7 @@ pub fn is_disk_full_error(err: &rusqlite::Error) -> bool {
 ///
 /// # Errors
 /// Returns an error if the read-only connection cannot be opened.
+#[must_use]
 pub fn open_read_only(path: &Path) -> Result<Connection> {
     let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
         .context(error::DatabaseSnafu)?;
@@ -106,6 +108,7 @@ pub fn open_read_only(path: &Path) -> Result<Connection> {
 ///
 /// # Errors
 /// Returns an error if the copy fails.
+#[must_use]
 pub fn backup_corrupt_file(path: &Path) -> Result<PathBuf> {
     let timestamp = jiff::Zoned::now().strftime("%Y%m%dT%H%M%S");
     let backup_name = format!(
@@ -138,6 +141,7 @@ pub fn backup_corrupt_file(path: &Path) -> Result<PathBuf> {
 /// # Errors
 /// Returns an error only for fatal I/O failures. Partial read failures from
 /// the corrupt database are logged and skipped.
+#[must_use]
 pub fn attempt_recovery(corrupt_path: &Path, new_path: &Path) -> Result<bool> {
     // WHY: Open the corrupt database read-only so we don't modify it.
     let old_conn = match open_read_only(corrupt_path) {
@@ -323,6 +327,7 @@ fn copy_table(
 /// passes an error that is disk-full (detected via [`is_disk_full_error`]), the
 /// function falls through directly to the read-only fallback without attempting
 /// the repair workflow, which would itself require writing to a full disk (#1720).
+#[must_use]
 pub fn recover_database(path: &Path, config: &RecoveryConfig) -> Result<(Connection, StoreMode)> {
     let path_display = path.display().to_string();
 

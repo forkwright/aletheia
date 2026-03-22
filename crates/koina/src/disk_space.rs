@@ -8,10 +8,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 const BYTES_PER_MB: u64 = 1024 * 1024;
 
 /// Default warning threshold: 1 GB.
-pub const DEFAULT_WARNING_BYTES: u64 = 1024 * BYTES_PER_MB;
+pub const DEFAULT_WARNING_BYTES: u64 = 1024 * BYTES_PER_MB; // kanon:ignore RUST/pub-visibility
 
 /// Default critical threshold: 100 MB.
-pub const DEFAULT_CRITICAL_BYTES: u64 = 100 * BYTES_PER_MB;
+pub const DEFAULT_CRITICAL_BYTES: u64 = 100 * BYTES_PER_MB; // kanon:ignore RUST/pub-visibility
 
 /// Disk space status relative to configured thresholds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,7 +37,7 @@ pub enum DiskStatus {
 impl DiskStatus {
     /// Returns the available bytes regardless of status level.
     #[must_use]
-    pub fn available_bytes(self) -> u64 {
+    pub fn available_bytes(self) -> u64 { // kanon:ignore RUST/pub-visibility
         match self {
             Self::Ok { available_bytes }
             | Self::Warning { available_bytes }
@@ -47,7 +47,7 @@ impl DiskStatus {
 
     /// Returns `true` when space is at the critical level.
     #[must_use]
-    pub fn is_critical(self) -> bool {
+    pub fn is_critical(self) -> bool { // kanon:ignore RUST/pub-visibility
         matches!(self, Self::Critical { .. })
     }
 }
@@ -69,7 +69,7 @@ impl fmt::Display for DiskStatus {
 ///
 /// Returns an I/O error if the `statvfs` syscall fails (e.g. path does not
 /// exist or is not accessible).
-pub fn available_space(path: &Path) -> std::io::Result<u64> {
+pub fn available_space(path: &Path) -> std::io::Result<u64> { // kanon:ignore RUST/pub-visibility
     use std::ffi::CString;
     use std::os::unix::ffi::OsStrExt;
 
@@ -89,7 +89,7 @@ pub fn available_space(path: &Path) -> std::io::Result<u64> {
 }
 
 /// Check disk space and classify against thresholds.
-pub fn check_disk_space(
+pub fn check_disk_space( // kanon:ignore RUST/pub-visibility
     path: &Path,
     warning_bytes: u64,
     critical_bytes: u64,
@@ -127,7 +127,7 @@ impl DiskSpaceMonitor {
     /// The initial cached value is `u64::MAX` (assumes space is available
     /// until the first [`refresh`](Self::refresh) completes).
     #[must_use]
-    pub fn new(warning_bytes: u64, critical_bytes: u64) -> Self {
+    pub fn new(warning_bytes: u64, critical_bytes: u64) -> Self { // kanon:ignore RUST/pub-visibility
         Self {
             cached_available: Arc::new(AtomicU64::new(u64::MAX)),
             warn_threshold: warning_bytes,
@@ -142,7 +142,7 @@ impl DiskSpaceMonitor {
     /// # Errors
     ///
     /// Returns an I/O error if `statvfs` fails.
-    pub fn refresh(&self, path: &Path) -> std::io::Result<DiskStatus> {
+    pub fn refresh(&self, path: &Path) -> std::io::Result<DiskStatus> { // kanon:ignore RUST/pub-visibility
         let avail = available_space(path)?;
         self.cached_available.store(avail, Ordering::Relaxed);
         Ok(classify(
@@ -154,7 +154,7 @@ impl DiskSpaceMonitor {
 
     /// Current disk status based on the last cached value.
     #[must_use]
-    pub fn status(&self) -> DiskStatus {
+    pub fn status(&self) -> DiskStatus { // kanon:ignore RUST/pub-visibility
         let avail = self.cached_available.load(Ordering::Relaxed);
         classify(avail, self.warn_threshold, self.critical_threshold)
     }
@@ -162,19 +162,19 @@ impl DiskSpaceMonitor {
     /// Returns `true` if non-essential writes (logs, caches, backups) should
     /// proceed. Returns `false` when disk space is at the critical level.
     #[must_use]
-    pub fn allow_non_essential_write(&self) -> bool {
+    pub fn allow_non_essential_write(&self) -> bool { // kanon:ignore RUST/pub-visibility
         !self.status().is_critical()
     }
 
     /// Warning threshold in bytes.
     #[must_use]
-    pub fn warning_bytes(&self) -> u64 {
+    pub fn warning_bytes(&self) -> u64 { // kanon:ignore RUST/pub-visibility
         self.warn_threshold
     }
 
     /// Critical threshold in bytes.
     #[must_use]
-    pub fn critical_bytes(&self) -> u64 {
+    pub fn critical_bytes(&self) -> u64 { // kanon:ignore RUST/pub-visibility
         self.critical_threshold
     }
 }

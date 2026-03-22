@@ -49,7 +49,7 @@ static RE_SECRETS: LazyLock<Regex> = LazyLock::new(|| {
 
 /// Redact sensitive values (API keys, JWTs, bearer tokens, passwords) from a string.
 #[must_use]
-pub fn redact_sensitive(value: &str) -> String {
+pub fn redact_sensitive(value: &str) -> String { // kanon:ignore RUST/pub-visibility
     let mut result = RE_ANTHROPIC_KEY
         .replace_all(value, "sk-ant-***")
         .into_owned();

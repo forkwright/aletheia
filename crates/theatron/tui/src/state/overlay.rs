@@ -16,9 +16,9 @@ pub enum Overlay {
     Settings(SettingsOverlay),
     ToolApproval(ToolApprovalOverlay),
     PlanApproval(PlanApprovalOverlay),
-    #[expect(
-        dead_code,
-        reason = "overlay set by action dispatcher; lint fires in lib but not test target"
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "overlay set by action dispatcher; used in test target")
     )]
     ContextActions(ContextActionsOverlay),
     DiffView(crate::diff::DiffViewState),

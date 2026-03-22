@@ -113,7 +113,7 @@ impl ToolOutcome {
 
 /// An aggregated behavioral pattern derived from tool observations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct BehavioralPattern {
+pub struct BehavioralPattern {
     /// Human-readable pattern description.
     pub pattern: String,
     /// Tool name this pattern is about.
@@ -160,7 +160,7 @@ impl BehavioralPattern {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
-pub(crate) enum ContextCategory {
+pub enum ContextCategory {
     /// File operations, grep, code-related queries.
     Code,
     /// Web search, API lookups, documentation.

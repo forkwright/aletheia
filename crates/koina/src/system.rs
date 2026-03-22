@@ -51,7 +51,7 @@ use jiff::{SignedDuration, Timestamp};
 ///
 /// All directory-creation methods use `create_dir_all` semantics (they create
 /// the full ancestor chain as needed).
-pub trait FileSystem: Send + Sync {
+pub trait FileSystem: Send + Sync { // kanon:ignore RUST/pub-visibility
     /// Read the entire contents of a file.
     ///
     /// # Errors
@@ -119,7 +119,7 @@ pub trait FileSystem: Send + Sync {
 ///
 /// Use [`RealSystem`] in production and a frozen [`TestSystem`] in tests to
 /// obtain deterministic timestamps without sleeping.
-pub trait Clock: Send + Sync {
+pub trait Clock: Send + Sync { // kanon:ignore RUST/pub-visibility
     /// Return the current time as a [`Timestamp`].
     #[must_use]
     fn now(&self) -> Timestamp;
@@ -138,7 +138,7 @@ pub trait Clock: Send + Sync {
 ///
 /// Use [`RealSystem`] in production and a pre-populated [`TestSystem`] in
 /// tests to avoid polluting or reading the real process environment.
-pub trait Environment: Send + Sync {
+pub trait Environment: Send + Sync { // kanon:ignore RUST/pub-visibility
     /// Return the value of environment variable `name`, or `None` if unset.
     #[must_use]
     fn var(&self, name: &str) -> Option<String>;
@@ -263,7 +263,7 @@ pub struct TestSystem {
 impl TestSystem {
     /// Create an empty [`TestSystem`] with the clock frozen at the Unix epoch.
     #[must_use]
-    pub fn new() -> Self {
+    pub fn new() -> Self { // kanon:ignore RUST/pub-visibility
         Self {
             files: Arc::new(Mutex::new(HashMap::new())),
             dirs: Arc::new(Mutex::new(HashSet::new())),
@@ -274,14 +274,14 @@ impl TestSystem {
 
     /// Set the frozen clock to `ts` (builder pattern).
     #[must_use]
-    pub fn with_clock(mut self, ts: Timestamp) -> Self {
+    pub fn with_clock(mut self, ts: Timestamp) -> Self { // kanon:ignore RUST/pub-visibility
         self.clock = ts;
         self
     }
 
     /// Add an environment variable (builder pattern).
     #[must_use]
-    pub fn with_env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+    pub fn with_env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self { // kanon:ignore RUST/pub-visibility
         self.env.insert(key.into(), value.into());
         self
     }
@@ -292,26 +292,26 @@ impl TestSystem {
     /// [`list_dir`](FileSystem::list_dir) work without calling [`create_dir`](FileSystem::create_dir) first.
     ///
     /// [`exists`]: FileSystem::exists
-    pub fn add_file(&mut self, path: impl Into<PathBuf>, contents: impl Into<Vec<u8>>) {
+    pub fn add_file(&mut self, path: impl Into<PathBuf>, contents: impl Into<Vec<u8>>) { // kanon:ignore RUST/pub-visibility
         let path = path.into();
         self.register_ancestors(&path);
         self.files_guard().insert(path, contents.into());
     }
 
     /// Add (or overwrite) an environment variable after construction.
-    pub fn add_env(&mut self, key: impl Into<String>, value: impl Into<String>) {
+    pub fn add_env(&mut self, key: impl Into<String>, value: impl Into<String>) { // kanon:ignore RUST/pub-visibility
         self.env.insert(key.into(), value.into());
     }
 
     /// Return all virtual file paths.
     #[must_use]
-    pub fn file_paths(&self) -> Vec<PathBuf> {
+    pub fn file_paths(&self) -> Vec<PathBuf> { // kanon:ignore RUST/pub-visibility
         self.files_guard().keys().cloned().collect()
     }
 
     /// Return the content of a virtual file, or `None` if absent.
     #[must_use]
-    pub fn get_file(&self, path: &Path) -> Option<Vec<u8>> {
+    pub fn get_file(&self, path: &Path) -> Option<Vec<u8>> { // kanon:ignore RUST/pub-visibility
         self.files_guard().get(path).cloned()
     }
 

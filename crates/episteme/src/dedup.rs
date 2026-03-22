@@ -154,7 +154,8 @@ fn jaro_winkler(s1: &str, s2: &str) -> f64 {
         .take(4)
         .take_while(|(a, b)| a == b)
         .count();
-    let prefix_f = prefix_len as f64; // SAFETY: prefix_len is at most 4
+    #[expect(clippy::cast_precision_loss, reason = "prefix_len is at most 4; fits in f64 exactly")]
+    let prefix_f = prefix_len as f64;
     jaro + (prefix_f * 0.1 * (1.0 - jaro))
 }
 
@@ -204,8 +205,10 @@ fn jaro(s1: &str, s2: &str) -> f64 {
         }
         k += 1;
     }
-    let s1_f = s1_len as f64; // SAFETY: string lengths won't exceed 2^52
-    let s2_f = s2_len as f64; // SAFETY: string lengths won't exceed 2^52
+    #[expect(clippy::cast_precision_loss, reason = "string lengths in practice won't exceed 2^52; fits f64 mantissa")]
+    let s1_f = s1_len as f64;
+    #[expect(clippy::cast_precision_loss, reason = "string lengths in practice won't exceed 2^52; fits f64 mantissa")]
+    let s2_f = s2_len as f64;
     (matches / s1_f + matches / s2_f + (matches - transpositions / 2.0) / matches) / 3.0
 }
 

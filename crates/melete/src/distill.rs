@@ -238,6 +238,7 @@ impl DistillEngine {
     /// Call once at the start of each conversation turn, before calling
     /// [`should_distill`][Self::should_distill]. Returns `true` if the engine is
     /// still in a backoff period and distillation should be skipped this turn.
+    #[cfg_attr(not(test), expect(dead_code, reason = "called from tests only; production integration pending"))]
     pub(crate) fn tick_turn(&self) -> bool {
         let mut state = self.lock_retry_state();
         if state.turns_to_skip > 0 {
@@ -250,6 +251,7 @@ impl DistillEngine {
     /// Returns `true` if the engine is in an active backoff period.
     ///
     /// Does not advance state. Use `tick_turn` to advance.
+    #[cfg_attr(not(test), expect(dead_code, reason = "called from tests only; production integration pending"))]
     pub(crate) fn in_backoff(&self) -> bool {
         self.lock_retry_state().turns_to_skip > 0
     }
@@ -259,6 +261,7 @@ impl DistillEngine {
     /// Returns true when message count meets the minimum (accounting for
     /// verbatim tail) AND the token estimate exceeds the threshold ratio
     /// of the context window.
+    #[cfg_attr(not(test), expect(dead_code, reason = "called from tests only; production integration pending"))]
     pub(crate) fn should_distill(
         &self,
         message_count: usize,
@@ -440,6 +443,7 @@ impl DistillEngine {
     }
 
     /// Access the engine configuration.
+    #[cfg_attr(not(test), expect(dead_code, reason = "called from tests only; production integration pending"))]
     pub(crate) fn config(&self) -> &DistillConfig {
         &self.config
     }

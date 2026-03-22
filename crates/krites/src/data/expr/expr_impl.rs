@@ -251,6 +251,7 @@ impl Expr {
         Ok(())
     }
     /// Evaluate the expression to a constant value if possible
+    #[must_use]
     pub fn eval_to_const(mut self) -> Result<DataValue> {
         self.partial_eval()?;
         match self {

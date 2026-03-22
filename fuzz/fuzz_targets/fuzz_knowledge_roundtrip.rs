@@ -7,8 +7,9 @@
 
 #![no_main]
 
-use libfuzzer_sys::fuzz_target;
 use std::sync::LazyLock;
+
+use libfuzzer_sys::fuzz_target;
 
 use aletheia_mneme::knowledge::{
     EpistemicTier, Fact, FactType, ForgetReason, far_future, format_timestamp, parse_timestamp,

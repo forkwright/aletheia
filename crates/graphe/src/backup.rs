@@ -114,6 +114,7 @@ impl<'a> BackupManager<'a> {
     /// sequences. Any future changes to path construction MUST go through
     /// `validate_backup_path` (a private helper in this module).
     #[instrument(skip(self))]
+    #[must_use]
     pub fn create_backup(&self) -> Result<Option<BackupResult>> {
         if let Some(ref monitor) = self.disk_monitor
             && !monitor.allow_non_essential_write()
@@ -171,6 +172,7 @@ impl<'a> BackupManager<'a> {
     /// Exports are non-essential writes. When disk space is critical, this
     /// method returns `Ok(None)` instead of writing.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn export_sessions_json(&self, output_dir: &Path) -> Result<Option<ExportResult>> {
         if let Some(ref monitor) = self.disk_monitor
             && !monitor.allow_non_essential_write()
@@ -224,6 +226,7 @@ impl<'a> BackupManager<'a> {
 
     /// List available backup files.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn list_backups(&self) -> Result<Vec<BackupInfo>> {
         if !self.backup_dir.exists() {
             return Ok(Vec::new());
@@ -261,6 +264,7 @@ impl<'a> BackupManager<'a> {
 
     /// Prune old backups, keeping the N most recent.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn prune_backups(&self, keep: usize) -> Result<u32> {
         let backups = self.list_backups()?;
         let mut removed = 0u32;

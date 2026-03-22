@@ -188,6 +188,7 @@ pub struct PendingMigration {
 /// Returns [`error::Error::Migration`] if a migration's SQL fails.
 /// Returns [`error::Error::ChecksumMismatch`] if a recorded checksum does not
 /// match the current migration SQL.
+#[must_use]
 pub fn run_migrations(conn: &Connection) -> Result<MigrationResult> {
     let was_fresh = !schema_version_table_exists(conn);
 
@@ -268,6 +269,7 @@ pub fn run_migrations(conn: &Connection) -> Result<MigrationResult> {
 /// # Errors
 ///
 /// Returns [`error::Error::Database`] if `SQLite` operations fail.
+#[must_use]
 pub fn check_migrations(conn: &Connection) -> Result<Vec<PendingMigration>> {
     bootstrap_version_table(conn)?;
     let current = get_schema_version(conn);
@@ -293,6 +295,7 @@ pub fn check_migrations(conn: &Connection) -> Result<Vec<PendingMigration>> {
 /// Returns [`error::Error::Database`] if a `SQLite` query fails.
 /// Returns [`error::Error::ChecksumMismatch`] if a stored checksum does not
 /// match the checksum computed from the current migration SQL.
+#[must_use]
 pub fn verify_migration_checksums(conn: &Connection, current_version: u32) -> Result<()> {
     for migration in MIGRATIONS {
         if migration.version > current_version {

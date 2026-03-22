@@ -113,6 +113,7 @@ Rules:
     ///
     /// Strips markdown code fences if present.
     #[instrument(skip(self, response))]
+    #[must_use]
     pub fn parse_response(&self, response: &str) -> Result<Extraction, ExtractionError> {
         let trimmed = strip_code_fences(response);
         serde_json::from_str(trimmed).context(ParseResponseSnafu)

@@ -100,7 +100,7 @@ impl MeetAggrStore {
     pub(crate) fn wrap(self) -> TempStore {
         TempStore::MeetAggr(self)
     }
-    pub(crate) fn exists(&self, key: &Tuple) -> bool {
+    pub fn exists(&self, key: &Tuple) -> bool {
         let truncated = &key[0..self.grouping_len];
         self.inner.contains_key(truncated)
     }

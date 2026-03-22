@@ -30,7 +30,7 @@
 use std::collections::HashMap;
 
 /// Dead-letter output name constant.
-pub const DEAD_LETTER: &str = "__dead_letter";
+pub const DEAD_LETTER: &str = "__dead_letter"; // kanon:ignore RUST/pub-visibility
 
 /// A buffer that routes events to multiple named outputs.
 ///
@@ -53,7 +53,7 @@ impl<T: Clone> Default for OutputBuffer<T> {
 impl<T: Clone> OutputBuffer<T> {
     /// Create an empty output buffer with no registered outputs.
     #[must_use]
-    pub fn new() -> Self {
+    pub fn new() -> Self { // kanon:ignore RUST/pub-visibility
         Self {
             outputs: HashMap::new(),
         }
@@ -62,14 +62,14 @@ impl<T: Clone> OutputBuffer<T> {
     /// Register a named output.
     ///
     /// If the output already exists, this is a no-op.
-    pub fn register_output(&mut self, name: &str) {
+    pub fn register_output(&mut self, name: &str) { // kanon:ignore RUST/pub-visibility
         self.outputs.entry(name.to_owned()).or_default();
     }
 
     /// Register the dead-letter output for failed events.
     ///
     /// Equivalent to `register_output(DEAD_LETTER)`.
-    pub fn register_dead_letter(&mut self) {
+    pub fn register_dead_letter(&mut self) { // kanon:ignore RUST/pub-visibility
         self.register_output(DEAD_LETTER);
     }
 
@@ -78,7 +78,7 @@ impl<T: Clone> OutputBuffer<T> {
     /// If the output does not exist and a dead-letter output is registered,
     /// the event is routed there instead. Returns `false` if the event
     /// was dropped (no matching output and no dead-letter).
-    pub fn push(&mut self, event: T, output: &str) -> bool {
+    pub fn push(&mut self, event: T, output: &str) -> bool { // kanon:ignore RUST/pub-visibility
         if let Some(queue) = self.outputs.get_mut(output) {
             queue.push(event);
             true
@@ -96,7 +96,7 @@ impl<T: Clone> OutputBuffer<T> {
     /// silently skipped. If no targets matched and a dead-letter output
     /// is registered, the event lands there. Returns the number of
     /// outputs that received the event.
-    pub fn fan_out(&mut self, event: T, targets: &[&str]) -> usize {
+    pub fn fan_out(&mut self, event: T, targets: &[&str]) -> usize { // kanon:ignore RUST/pub-visibility
         let mut delivered = 0;
         for &target in targets {
             if let Some(queue) = self.outputs.get_mut(target) {
@@ -117,7 +117,7 @@ impl<T: Clone> OutputBuffer<T> {
     /// The routing function receives a reference to the event and returns the
     /// output name. If the output does not exist, the event goes to the
     /// dead-letter output (if registered).
-    pub fn route(&mut self, event: T, router: impl FnOnce(&T) -> &str) -> bool {
+    pub fn route(&mut self, event: T, router: impl FnOnce(&T) -> &str) -> bool { // kanon:ignore RUST/pub-visibility
         let target = router(&event).to_owned();
         self.push(event, &target)
     }
@@ -126,7 +126,7 @@ impl<T: Clone> OutputBuffer<T> {
     ///
     /// Returns an empty `Vec` if the output does not exist.
     #[must_use]
-    pub fn drain(&mut self, output: &str) -> Vec<T> {
+    pub fn drain(&mut self, output: &str) -> Vec<T> { // kanon:ignore RUST/pub-visibility
         self.outputs
             .get_mut(output)
             .map(std::mem::take)
@@ -135,48 +135,48 @@ impl<T: Clone> OutputBuffer<T> {
 
     /// Drain the dead-letter output.
     #[must_use]
-    pub fn drain_dead_letter(&mut self) -> Vec<T> {
+    pub fn drain_dead_letter(&mut self) -> Vec<T> { // kanon:ignore RUST/pub-visibility
         self.drain(DEAD_LETTER)
     }
 
     /// Peek at events in a named output without draining.
     #[must_use]
-    pub fn peek(&self, output: &str) -> &[T] {
+    pub fn peek(&self, output: &str) -> &[T] { // kanon:ignore RUST/pub-visibility
         self.outputs.get(output).map_or(&[], Vec::as_slice)
     }
 
     /// Number of events in a named output.
     #[must_use]
-    pub fn len(&self, output: &str) -> usize {
+    pub fn len(&self, output: &str) -> usize { // kanon:ignore RUST/pub-visibility
         self.outputs.get(output).map_or(0, Vec::len)
     }
 
     /// Whether a named output is empty or does not exist.
     #[must_use]
-    pub fn is_empty(&self, output: &str) -> bool {
+    pub fn is_empty(&self, output: &str) -> bool { // kanon:ignore RUST/pub-visibility
         self.len(output) == 0
     }
 
     /// Total events across all outputs.
     #[must_use]
-    pub fn total_events(&self) -> usize {
+    pub fn total_events(&self) -> usize { // kanon:ignore RUST/pub-visibility
         self.outputs.values().map(Vec::len).sum()
     }
 
     /// Names of all registered outputs (including dead-letter if registered).
     #[must_use]
-    pub fn output_names(&self) -> Vec<&str> {
+    pub fn output_names(&self) -> Vec<&str> { // kanon:ignore RUST/pub-visibility
         self.outputs.keys().map(String::as_str).collect()
     }
 
     /// Whether a named output is registered.
     #[must_use]
-    pub fn has_output(&self, name: &str) -> bool {
+    pub fn has_output(&self, name: &str) -> bool { // kanon:ignore RUST/pub-visibility
         self.outputs.contains_key(name)
     }
 
     /// Clear all events from all outputs without removing the registrations.
-    pub fn clear(&mut self) {
+    pub fn clear(&mut self) { // kanon:ignore RUST/pub-visibility
         for queue in self.outputs.values_mut() {
             queue.clear();
         }

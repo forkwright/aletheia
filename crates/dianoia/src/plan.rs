@@ -88,6 +88,7 @@ impl Plan {
     }
 
     /// Record an iteration. Returns `Err` if `max_iterations` exceeded.
+    #[must_use]
     pub fn record_iteration(&mut self) -> Result<()> {
         self.iterations += 1;
         if self.iterations > self.max_iterations {

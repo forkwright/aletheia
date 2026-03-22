@@ -31,6 +31,7 @@ impl SessionStore {
 
     /// Get notes for a session.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn get_notes(&self, session_id: &str) -> Result<Vec<AgentNote>> {
         let mut stmt = self
             .conn
@@ -61,6 +62,7 @@ impl SessionStore {
 
     /// Delete a note by ID.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn delete_note(&self, note_id: i64) -> Result<bool> {
         self.require_writable()?;
         let rows = self
@@ -98,6 +100,7 @@ impl SessionStore {
 
     /// Read a blackboard entry by key, filtering expired entries.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn blackboard_read(&self, key: &str) -> Result<Option<BlackboardRow>> {
         let result = self
             .conn
@@ -124,6 +127,7 @@ impl SessionStore {
 
     /// List all non-expired blackboard entries.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn blackboard_list(&self) -> Result<Vec<BlackboardRow>> {
         let mut stmt = self
             .conn
@@ -157,6 +161,7 @@ impl SessionStore {
 
     /// Delete a blackboard entry. Only the original author can delete.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn blackboard_delete(&self, key: &str, author: &str) -> Result<bool> {
         self.require_writable()?;
         let rows = self

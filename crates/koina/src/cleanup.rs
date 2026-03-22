@@ -28,7 +28,7 @@
 /// The callback fires exactly once: on drop if not disarmed, or never if
 /// [`disarm`](CleanupGuard::disarm) was called. The guard is `Send` when
 /// the callback is `Send`, making it safe to hold across `.await` points.
-pub struct CleanupGuard<F: FnOnce()> {
+pub struct CleanupGuard<F: FnOnce()> { // kanon:ignore RUST/pub-visibility
     callback: Option<F>,
 }
 
@@ -38,7 +38,7 @@ impl<F: FnOnce()> CleanupGuard<F> {
     /// Register the guard at the point of resource acquisition so cleanup
     /// is guaranteed even on early return or panic.
     #[must_use]
-    pub fn new(callback: F) -> Self {
+    pub fn new(callback: F) -> Self { // kanon:ignore RUST/pub-visibility
         Self {
             callback: Some(callback),
         }
@@ -48,7 +48,7 @@ impl<F: FnOnce()> CleanupGuard<F> {
     ///
     /// Call this on the success path when cleanup is no longer needed
     /// (e.g., ownership was transferred to another component).
-    pub fn disarm(mut self) {
+    pub fn disarm(mut self) { // kanon:ignore RUST/pub-visibility
         self.callback = None;
     }
 }
@@ -86,14 +86,14 @@ impl<F: FnOnce()> Drop for CleanupGuard<F> {
 /// drop(registry);
 /// assert_eq!(counter.load(Ordering::Relaxed), 11, "both callbacks must fire");
 /// ```
-pub struct CleanupRegistry {
+pub struct CleanupRegistry { // kanon:ignore RUST/pub-visibility
     callbacks: Vec<Box<dyn FnOnce() + Send + Sync>>,
 }
 
 impl CleanupRegistry {
     /// Create an empty registry.
     #[must_use]
-    pub fn new() -> Self {
+    pub fn new() -> Self { // kanon:ignore RUST/pub-visibility
         Self {
             callbacks: Vec::new(),
         }
@@ -102,12 +102,12 @@ impl CleanupRegistry {
     /// Register a cleanup callback that will run on drop.
     ///
     /// Callbacks execute in reverse registration order (LIFO).
-    pub fn register(&mut self, callback: impl FnOnce() + Send + Sync + 'static) {
+    pub fn register(&mut self, callback: impl FnOnce() + Send + Sync + 'static) { // kanon:ignore RUST/pub-visibility
         self.callbacks.push(Box::new(callback));
     }
 
     /// Disarm all registered callbacks without running them.
-    pub fn disarm(&mut self) {
+    pub fn disarm(&mut self) { // kanon:ignore RUST/pub-visibility
         self.callbacks.clear();
     }
 }

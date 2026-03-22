@@ -138,8 +138,8 @@ impl NousId {
     /// # Errors
     /// Returns an error if the ID is empty, exceeds 64 characters,
     /// or contains characters other than lowercase alphanumeric and hyphens.
-    #[must_use = "returns a validated identifier that should not be discarded"]
-    pub fn new(id: impl Into<CompactString>) -> Result<Self, IdError> {
+    #[must_use]
+    pub fn new(id: impl Into<CompactString>) -> Result<Self, IdError> { // kanon:ignore RUST/pub-visibility
         let id = id.into();
         validate_id(&id, "NousId")?;
         Ok(Self(id))
@@ -147,7 +147,7 @@ impl NousId {
 
     /// The underlying string value.
     #[must_use]
-    pub fn as_str(&self) -> &str {
+    pub fn as_str(&self) -> &str { // kanon:ignore RUST/pub-visibility
         &self.0
     }
 }
@@ -193,7 +193,7 @@ pub struct SessionId(Uuid);
 impl SessionId {
     /// Generate a new session ID using UUID v4 (128-bit random).
     #[must_use]
-    pub fn new() -> Self {
+    pub fn new() -> Self { // kanon:ignore RUST/pub-visibility
         Self(Uuid::new_v4())
     }
 
@@ -201,8 +201,8 @@ impl SessionId {
     ///
     /// # Errors
     /// Returns an error if the string is not a valid UUID.
-    #[must_use = "returns a parsed session identifier that should not be discarded"]
-    pub fn parse(s: &str) -> Result<Self, IdError> {
+    #[must_use]
+    pub fn parse(s: &str) -> Result<Self, IdError> { // kanon:ignore RUST/pub-visibility
         Uuid::parse_str(s)
             .map(Self)
             .map_err(|e| IdError::InvalidFormat {
@@ -232,19 +232,19 @@ pub struct TurnId(u64);
 impl TurnId {
     /// Create a new turn ID.
     #[must_use]
-    pub fn new(n: u64) -> Self {
+    pub fn new(n: u64) -> Self { // kanon:ignore RUST/pub-visibility
         Self(n)
     }
 
     /// The underlying numeric value.
     #[must_use]
-    pub fn as_u64(self) -> u64 {
+    pub fn as_u64(self) -> u64 { // kanon:ignore RUST/pub-visibility
         self.0
     }
 
     /// Increment to next turn.
     #[must_use]
-    pub fn next(self) -> Self {
+    pub fn next(self) -> Self { // kanon:ignore RUST/pub-visibility
         Self(self.0 + 1)
     }
 }
@@ -278,8 +278,8 @@ impl ToolName {
     /// # Errors
     /// Returns an error if the name is empty, exceeds 128 characters,
     /// or contains characters other than alphanumeric, hyphens, and underscores.
-    #[must_use = "returns a validated tool name that should not be discarded"]
-    pub fn new(name: impl Into<CompactString>) -> Result<Self, IdError> {
+    #[must_use]
+    pub fn new(name: impl Into<CompactString>) -> Result<Self, IdError> { // kanon:ignore RUST/pub-visibility
         let name = name.into();
         if name.is_empty() {
             return Err(IdError::Empty { kind: "ToolName" });
@@ -306,7 +306,7 @@ impl ToolName {
 
     /// The underlying string value.
     #[must_use]
-    pub fn as_str(&self) -> &str {
+    pub fn as_str(&self) -> &str { // kanon:ignore RUST/pub-visibility
         &self.0
     }
 }

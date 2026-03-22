@@ -106,6 +106,7 @@ impl std::fmt::Display for SkillParseError {
 ///
 /// Supports optional YAML frontmatter (delimited by `---`) with `tools` and
 /// `domains` fields. Falls back to extracting from markdown sections.
+#[must_use]
 pub fn parse_skill_md(source: &str, slug: &str) -> Result<SkillContent, SkillParseError> {
     let err = |reason: &str| SkillParseError {
         path: slug.to_owned(),
@@ -286,6 +287,7 @@ fn derive_domain_tags(slug: &str) -> Vec<String> {
 /// Scan a directory for subdirectories containing SKILL.md files.
 ///
 /// Returns `(slug, content_string)` pairs for each found skill.
+#[must_use]
 pub fn scan_skill_dir(dir: &std::path::Path) -> Result<Vec<(String, String)>, std::io::Error> {
     let mut skills = Vec::new();
 

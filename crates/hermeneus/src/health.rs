@@ -120,7 +120,7 @@ impl ProviderHealthTracker {
     /// Returns `Ok(())` if Up or Degraded. Returns `Err(health)` if Down,
     /// unless the cooldown has elapsed (auto-transitions to Degraded).
     /// `Down(AuthFailure)` never auto-recovers.
-    #[must_use = "caller must handle provider unavailability"]
+    #[must_use]
     pub fn check_available(&self) -> Result<(), ProviderHealth> {
         // kanon:ignore RUST/pub-visibility
         #[expect(

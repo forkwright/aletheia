@@ -5,9 +5,9 @@
 //! API key validation, Argon2id password hashing, and RBAC permission checks.
 
 /// API key generation, validation, and revocation.
-pub(crate) mod api_key;
+pub mod api_key;
 /// Unified auth facade composing JWT, API keys, passwords, and RBAC.
-pub(crate) mod auth;
+pub mod auth;
 /// Three-state circuit breaker for OAuth token refresh.
 pub(crate) mod circuit_breaker;
 /// Credential provider implementations for LLM API key resolution.

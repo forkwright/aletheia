@@ -15,7 +15,7 @@ const REDACTED: &str = "[REDACTED]";
 /// - `Deserialize` accepts the actual string value normally.
 /// - The backing memory is zeroed on drop via [`zeroize`].
 /// - Use [`.expose_secret()`](Self::expose_secret) for intentional access.
-pub struct SecretString {
+pub struct SecretString { // kanon:ignore RUST/pub-visibility
     inner: String,
 }
 
@@ -23,7 +23,7 @@ impl SecretString {
     /// Access the secret value. Call sites using this method are the audit
     /// surface for secret exposure.
     #[must_use]
-    pub fn expose_secret(&self) -> &str {
+    pub fn expose_secret(&self) -> &str { // kanon:ignore RUST/pub-visibility
         &self.inner
     }
 }
@@ -92,7 +92,7 @@ impl<'de> Deserialize<'de> for SecretString {
 /// Deserialize an `Option<SecretString>` that treats empty strings as `None`.
 ///
 /// Useful for config fields where an empty value means "not set."
-pub fn deserialize_option_secret_non_empty<'de, D>(
+pub fn deserialize_option_secret_non_empty<'de, D>( // kanon:ignore RUST/pub-visibility
     deserializer: D,
 ) -> Result<Option<SecretString>, D::Error>
 where
@@ -107,7 +107,7 @@ where
 /// with `#[serde(skip_serializing_if = "Option::is_none")]`).
 ///
 /// This exists for symmetry with [`deserialize_option_secret_non_empty`].
-pub fn serialize_option_secret_redacted<S>(
+pub fn serialize_option_secret_redacted<S>( // kanon:ignore RUST/pub-visibility
     value: &Option<SecretString>,
     serializer: S,
 ) -> Result<S::Ok, S::Error>

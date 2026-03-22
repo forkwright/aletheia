@@ -6,7 +6,7 @@ use aletheia_koina::id::ToolName;
 
 /// Errors from tool registry operations.
 #[derive(Debug, Snafu)]
-#[snafu(visibility(pub(crate)))]
+#[snafu(visibility(pub))]
 #[non_exhaustive]
 #[expect(
     missing_docs,

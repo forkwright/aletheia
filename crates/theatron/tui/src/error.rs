@@ -2,7 +2,7 @@ use snafu::prelude::*;
 
 /// Unified error type for the TUI crate.
 #[derive(Debug, Snafu)]
-#[snafu(visibility(pub(crate)))]
+#[snafu(visibility(pub))]
 #[expect(
     missing_docs,
     reason = "snafu error variant fields (source, message, url, context, event_type, detail) are self-documenting via display format"
@@ -59,4 +59,5 @@ pub enum Error {
     ProtocolMismatch { detail: String },
 }
 
+/// Result alias for the TUI crate.
 pub(crate) type Result<T, E = Error> = std::result::Result<T, E>;

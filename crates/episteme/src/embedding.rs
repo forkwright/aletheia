@@ -99,9 +99,16 @@ impl EmbeddingProvider for MockEmbeddingProvider {
             hash = hash.wrapping_mul(33).wrapping_add(u64::from(b));
         }
         for (i, v) in vec.iter_mut().enumerate() {
-            let idx = i as u64; // SAFETY: embedding dim is small, fits u64
+            #[expect(clippy::as_conversions, reason = "embedding dim is small; usize fits u64 on all platforms")]
+            let idx = i as u64;
             let h = hash.wrapping_mul(idx + 1).wrapping_add(idx * 2_654_435_761);
-            *v = ((h % 10000) as f32 / 5000.0) - 1.0; // SAFETY: h%10000 fits f32
+            #[expect(
+                clippy::as_conversions,
+                clippy::cast_precision_loss,
+                reason = "h%10000 < 10000; fits f32 mantissa exactly"
+            )]
+            let hf = (h % 10000) as f32;
+            *v = (hf / 5000.0) - 1.0;
         }
         let norm: f32 = vec.iter().map(|x| x * x).sum::<f32>().sqrt();
         if norm > 0.0 {

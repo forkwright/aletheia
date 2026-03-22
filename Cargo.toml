@@ -52,6 +52,9 @@ missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 module_name_repetitions = "allow"
 must_use_candidate = "allow"
+# WHY: kanon standards require #[must_use] on all Result-returning pub fns;
+# double_must_use fires when Result (already #[must_use]) is the return type.
+double_must_use = "allow"
 
 # Deny-level
 dbg_macro = "deny"

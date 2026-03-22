@@ -29,7 +29,7 @@ pub(crate) struct KnowledgeTextSearch {
 impl KnowledgeTextSearch {
     /// Create a text search adapter wrapping the given knowledge store.
     #[must_use]
-    pub(crate) fn new(store: Arc<KnowledgeStore>) -> Self {
+    pub fn new(store: Arc<KnowledgeStore>) -> Self {
         Self { store }
     }
 }

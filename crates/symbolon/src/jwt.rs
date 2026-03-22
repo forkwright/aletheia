@@ -73,7 +73,7 @@ impl JwtConfig {
     ///
     /// Returns an error if `auth_mode` is not `"none"` and the signing
     /// key is still the built-in insecure placeholder.
-    #[must_use = "validation result must be checked before proceeding"]
+    #[must_use]
     pub fn validate_for_auth_mode(&self, auth_mode: &str) -> Result<()> {
         if auth_mode != "none" && self.has_insecure_key() {
             tracing::error!(
@@ -114,7 +114,7 @@ impl JwtManager {
     /// # Errors
     ///
     /// Returns an error if the JWT claims cannot be encoded or signed.
-    #[must_use = "issued token must be delivered to the caller"]
+    #[must_use]
     #[instrument(skip(self), fields(kind = "access"))]
     pub fn issue_access(&self, sub: &str, role: Role, nous_id: Option<&str>) -> Result<String> {
         self.issue(
@@ -139,7 +139,7 @@ impl JwtManager {
     /// Returns an error if the token's expiration time has passed.
     /// Returns an error if the token is malformed, has an invalid
     /// signature, or fails any other JWT validation check.
-    #[must_use = "validated claims must be checked before granting access"]
+    #[must_use]
     pub fn validate(&self, token: &str) -> Result<Claims> {
         let (header_payload, signature) = token.rsplit_once('.').ok_or_else(|| {
             error::TokenDecodeSnafu {
@@ -242,7 +242,7 @@ impl JwtManager {
     /// Exposed for tests that need to craft tokens with specific claims (e.g. expired tokens).
     /// Production code should use [`issue_access`](Self::issue_access) or
     /// `issue_refresh`.
-    #[must_use = "encoded token must be delivered to the caller"]
+    #[must_use]
     pub fn encode_claims(&self, claims: &Claims) -> Result<String> {
         let payload_json = serde_json::to_vec(claims).map_err(|e| {
             error::TokenEncodeSnafu {
