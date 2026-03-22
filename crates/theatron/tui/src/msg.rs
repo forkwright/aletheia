@@ -94,6 +94,8 @@ pub enum Msg {
     OverlaySelect,
     OverlayFilter(char),
     OverlayFilterBackspace,
+    /// Approve a tool call and add it to the session-scoped always-allow list.
+    ToolApprovalAlwaysAllow,
 
     SseConnected,
     SseDisconnected,

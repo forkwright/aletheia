@@ -49,6 +49,46 @@ impl std::fmt::Display for ToolCategory {
     }
 }
 
+impl ToolCategory {
+    /// Unicode icon for TUI display.
+    #[must_use]
+    pub(crate) fn icon(self) -> &'static str {
+        match self {
+            Self::Read => "←",
+            Self::Write => "→",
+            Self::Search => "⊛",
+            Self::Exec => "▶",
+            Self::Http => "↗",
+            Self::Other => "·",
+        }
+    }
+
+    /// Human-readable display name.
+    #[must_use]
+    pub(crate) fn display_name(self) -> &'static str {
+        match self {
+            Self::Read => "read",
+            Self::Write => "write",
+            Self::Search => "search",
+            Self::Exec => "exec",
+            Self::Http => "http",
+            Self::Other => "other",
+        }
+    }
+
+    /// Whether this category is read-only (non-destructive).
+    #[must_use]
+    pub(crate) fn is_read_only(self) -> bool {
+        matches!(self, Self::Read | Self::Search)
+    }
+
+    /// Whether this category performs destructive or irreversible operations.
+    #[must_use]
+    pub(crate) fn is_destructive(self) -> bool {
+        matches!(self, Self::Exec | Self::Write)
+    }
+}
+
 /// Auto-show behavior configuration.
 ///
 /// Additional variants (`Always`, `Manual`) will be added when config wiring lands.

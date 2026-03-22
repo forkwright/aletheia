@@ -29,6 +29,28 @@ pub(crate) async fn handle_open_overlay(app: &mut App, kind: OverlayKind) {
     }
 }
 
+pub(crate) fn handle_tool_approval_always_allow(app: &mut App) {
+    let Some(crate::state::Overlay::ToolApproval(ref approval)) = app.layout.overlay else {
+        return;
+    };
+    let turn_id = approval.turn_id.clone();
+    let tool_id = approval.tool_id.clone();
+    let tool_name = approval.tool_name.clone();
+    let client = app.client.clone();
+    let span = tracing::info_span!("approve_tool_always", %turn_id, %tool_id, %tool_name);
+    tokio::spawn(
+        // kanon:ignore RUST/spawn-no-instrument
+        async move {
+            if let Err(e) = client.approve_tool(&turn_id, &tool_id).await {
+                tracing::error!("failed to approve tool: {e}");
+            }
+        }
+        .instrument(span),
+    );
+    app.interaction.always_allowed_tools.insert(tool_name);
+    app.layout.overlay = None;
+}
+
 pub(crate) fn handle_close_overlay(app: &mut App) {
     // NOTE: Esc in settings edit mode cancels the edit, not the overlay itself
     if let Some(Overlay::Settings(ref s)) = app.layout.overlay

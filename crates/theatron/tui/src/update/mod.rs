@@ -108,6 +108,7 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::OverlayUp => overlay::handle_overlay_up(app),
         Msg::OverlayDown => overlay::handle_overlay_down(app),
         Msg::OverlaySelect => overlay::handle_overlay_select(app).await,
+        Msg::ToolApprovalAlwaysAllow => overlay::handle_tool_approval_always_allow(app),
         Msg::OverlayFilter(c) => {
             if matches!(
                 &app.layout.overlay,

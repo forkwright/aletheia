@@ -266,6 +266,50 @@ impl std::fmt::Display for ToolCategory {
     }
 }
 
+impl ToolCategory {
+    /// Unicode icon for TUI display.
+    #[must_use]
+    pub fn icon(self) -> &'static str {
+        match self {
+            Self::Workspace => "≡",
+            Self::Memory => "⊙",
+            Self::Communication => "↔",
+            Self::Planning => "◈",
+            Self::System => "⚙",
+            Self::Agent => "⊛",
+            Self::Research => "⊕",
+            Self::Domain => "○",
+        }
+    }
+
+    /// Human-readable display name.
+    #[must_use]
+    pub fn display_name(self) -> &'static str {
+        match self {
+            Self::Workspace => "Workspace",
+            Self::Memory => "Memory",
+            Self::Communication => "Communication",
+            Self::Planning => "Planning",
+            Self::System => "System",
+            Self::Agent => "Agent",
+            Self::Research => "Research",
+            Self::Domain => "Domain",
+        }
+    }
+
+    /// Whether this category is read-only (non-destructive).
+    #[must_use]
+    pub fn is_read_only(self) -> bool {
+        matches!(self, Self::Research | Self::Planning)
+    }
+
+    /// Whether this category performs destructive or irreversible operations.
+    #[must_use]
+    pub fn is_destructive(self) -> bool {
+        matches!(self, Self::System | Self::Agent | Self::Communication)
+    }
+}
+
 /// What the tool executor returns.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolResult {
