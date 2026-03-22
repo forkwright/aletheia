@@ -81,7 +81,10 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         match agent.status {
             AgentStatus::Streaming => {
                 let elapsed_secs = if is_focused {
-                    app.layout.ops.turn_started_at.map(|t| t.elapsed().as_secs())
+                    app.layout
+                        .ops
+                        .turn_started_at
+                        .map(|t| t.elapsed().as_secs())
                 } else {
                     None
                 };
@@ -102,10 +105,7 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
                     let label = tool_status_label(&tool.name);
                     lines.push(Line::from(vec![
                         Span::raw("     "),
-                        Span::styled(
-                            format!("{label} {elapsed_str}"),
-                            theme.style_muted(),
-                        ),
+                        Span::styled(format!("{label} {elapsed_str}"), theme.style_muted()),
                     ]));
                 }
             }

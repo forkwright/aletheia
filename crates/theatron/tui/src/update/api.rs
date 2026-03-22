@@ -203,9 +203,8 @@ fn check_stream_stall(app: &mut App) {
 
     let elapsed = last_event.elapsed().as_secs();
     if elapsed >= STALL_CANCEL_SECS {
-        app.connection.stall_message = Some(
-            format!("No response for {elapsed}s — Ctrl+C to cancel").to_string(),
-        );
+        app.connection.stall_message =
+            Some(format!("No response for {elapsed}s — Ctrl+C to cancel").to_string());
     } else if elapsed >= STALL_WARN_SECS && !app.connection.stall_warned {
         app.connection.stall_warned = true;
         app.connection.stall_message =
