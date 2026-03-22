@@ -541,6 +541,8 @@ mod tests {
                 name: "test_tool".to_string(),
                 duration_ms: Some(100),
                 is_error: false,
+                tool_id: None,
+                output: None,
             });
         app.interaction.selected_message = Some(0);
         handle_message_action(&mut app, MessageActionKind::Inspect);

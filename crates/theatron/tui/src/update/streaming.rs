@@ -20,12 +20,14 @@ fn model_context_window(_model: &str) -> u32 {
 #[tracing::instrument(skip_all, fields(%turn_id, %nous_id))]
 pub(crate) fn handle_stream_turn_start(app: &mut App, turn_id: TurnId, nous_id: NousId) {
     app.connection.active_turn_id = Some(turn_id);
+    app.connection.stream_phase = crate::state::StreamPhase::Requesting;
     app.connection.streaming_text.clear();
     app.connection.streaming_thinking.clear();
     app.connection.streaming_tool_calls.clear();
     app.connection.stream_last_event_at = Some(std::time::Instant::now());
     app.connection.stall_warned = false;
     app.connection.stall_message = None;
+    app.connection.streaming_line_buffer.clear();
     app.viewport.render.markdown_cache.clear();
     if let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == nous_id) {
         agent.status = AgentStatus::Streaming;
@@ -37,12 +39,18 @@ pub(crate) fn handle_stream_turn_start(app: &mut App, turn_id: TurnId, nous_id: 
 #[tracing::instrument(skip_all, fields(len = text.len()))]
 // SAFETY: sanitized at ingestion: streaming text from LLM API.
 pub(crate) fn handle_stream_text_delta(app: &mut App, text: String) {
+    app.connection.stream_phase = crate::state::StreamPhase::Streaming;
     let clean = sanitize_for_display(&text);
-    app.connection.streaming_text.push_str(&clean);
-    // PERF: Markdown re-rendering is deferred to the frame boundary (app.view)
-    // so that multiple text deltas arriving between frames are batched into a
-    // single markdown::render call. At 100 tokens/sec with 60fps rendering,
-    // this reduces markdown parses from ~100/sec to at most 60/sec.
+    // PERF: Line-by-line streaming. Buffer partial lines and flush only complete
+    // lines (ending in `\n`) to streaming_text. The incomplete tail stays in the
+    // line buffer. This prevents markdown re-parses on every token within a line.
+    app.connection.streaming_line_buffer.push_str(&clean);
+    if let Some(last_newline) = app.connection.streaming_line_buffer.rfind('\n') {
+        let complete = app.connection.streaming_line_buffer[..=last_newline].to_string();
+        let remainder = app.connection.streaming_line_buffer[last_newline + 1..].to_string();
+        app.connection.streaming_text.push_str(&complete);
+        app.connection.streaming_line_buffer = remainder;
+    }
     if app.viewport.render.auto_scroll {
         app.viewport.render.scroll_offset = 0;
     }
@@ -51,6 +59,7 @@ pub(crate) fn handle_stream_text_delta(app: &mut App, text: String) {
 #[tracing::instrument(skip_all, fields(len = text.len()))]
 // SAFETY: sanitized at ingestion: thinking text from LLM API.
 pub(crate) fn handle_stream_thinking_delta(app: &mut App, text: String) {
+    app.connection.stream_phase = crate::state::StreamPhase::Thinking;
     let clean = sanitize_for_display(&text);
     app.connection.streaming_thinking.push_str(&clean);
     app.layout.ops.push_thinking(&clean);
@@ -61,13 +70,17 @@ pub(crate) fn handle_stream_thinking_delta(app: &mut App, text: String) {
 pub(crate) fn handle_stream_tool_start(
     app: &mut App,
     tool_name: String,
+    tool_id: ToolId,
     input: Option<serde_json::Value>,
 ) {
+    app.connection.stream_phase = crate::state::StreamPhase::Streaming;
     let clean_name = sanitize_for_display(&tool_name).into_owned();
     app.connection.streaming_tool_calls.push(ToolCallInfo {
         name: clean_name.clone(),
+        tool_id: Some(tool_id),
         duration_ms: None,
         is_error: false,
+        output: None,
     });
     let input_json = input.map(|v| v.to_string());
     app.layout
@@ -87,6 +100,7 @@ pub(crate) fn handle_stream_tool_start(
 pub(crate) fn handle_stream_tool_result(
     app: &mut App,
     tool_name: String,
+    tool_id: ToolId,
     is_error: bool,
     duration_ms: u64,
     result: Option<String>,
@@ -100,6 +114,11 @@ pub(crate) fn handle_stream_tool_result(
     {
         tc.duration_ms = Some(duration_ms);
         tc.is_error = is_error;
+        tc.output = result.clone();
+    }
+    // WHY: Auto-expand failed tool cards so errors are immediately visible.
+    if is_error {
+        app.interaction.tool_expanded.insert(tool_id);
     }
     app.layout
         .ops
@@ -122,6 +141,7 @@ pub(crate) fn handle_stream_tool_approval_required(
     risk: String,
     reason: String,
 ) {
+    app.connection.stream_phase = crate::state::StreamPhase::Waiting;
     // WHY: If the user previously chose "always allow" for this tool, auto-approve
     // without presenting the dialog again.
     if app
@@ -206,6 +226,12 @@ pub(crate) fn handle_stream_plan_proposed(app: &mut App, plan: Plan) {
 // SAFETY: sanitized at ingestion: streaming_text already sanitized via handle_stream_text_delta,
 // model name from API is sanitized here.
 pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutcome) {
+    app.connection.stream_phase = crate::state::StreamPhase::Done;
+    // Flush any remaining partial line from the line buffer.
+    if !app.connection.streaming_line_buffer.is_empty() {
+        let remaining = std::mem::take(&mut app.connection.streaming_line_buffer);
+        app.connection.streaming_text.push_str(&remaining);
+    }
     // WHY: Only commit the streamed message when the completing turn belongs to the
     // currently focused agent.  If the user switched agents mid-stream the message
     // belongs to the old agent's session; pushing it here would corrupt the new
@@ -235,6 +261,7 @@ pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutc
             timestamp: None,
             model: Some(sanitize_for_display(&outcome.model).into_owned()),
             tool_calls,
+            kind: crate::state::MessageKind::default(),
         });
         app.viewport.render.virtual_scroll.push_item(h);
         // WHY: Keep the viewport anchored when scrolled up by compensating the
@@ -291,12 +318,15 @@ pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutc
 
     // WHY: auto-send the next queued message now that the turn is complete
     crate::update::input::send_next_queued(app);
+    app.connection.stream_phase = crate::state::StreamPhase::Idle;
 }
 
 #[tracing::instrument(skip_all)]
 pub(crate) fn handle_stream_turn_abort(app: &mut App, reason: String) {
     tracing::info!("turn aborted: {reason}");
+    app.connection.stream_phase = crate::state::StreamPhase::Idle;
     app.connection.streaming_text.clear();
+    app.connection.streaming_line_buffer.clear();
     app.connection.streaming_thinking.clear();
     app.connection.streaming_tool_calls.clear();
     app.connection.stream_last_event_at = None;
@@ -316,6 +346,8 @@ pub(crate) fn handle_stream_turn_abort(app: &mut App, reason: String) {
 // SAFETY: sanitized at ingestion: error messages may contain external data.
 pub(crate) fn handle_stream_error(app: &mut App, msg: String) {
     tracing::error!("stream error: {msg}");
+    app.connection.stream_phase = crate::state::StreamPhase::Error;
+    app.connection.streaming_line_buffer.clear();
     app.viewport.error_toast = Some(ErrorToast::new(sanitize_for_display(&msg).into_owned()));
     app.connection.active_turn_id = None;
     app.connection.stream_rx = None;
@@ -351,6 +383,12 @@ pub(crate) async fn handle_cancel_turn(app: &mut App) {
         }
     });
 
+    app.connection.stream_phase = crate::state::StreamPhase::Idle;
+    // Flush line buffer into streaming text before committing.
+    if !app.connection.streaming_line_buffer.is_empty() {
+        let remaining = std::mem::take(&mut app.connection.streaming_line_buffer);
+        app.connection.streaming_text.push_str(&remaining);
+    }
     // Commit partial streaming text as an incomplete turn marker.
     let partial = std::mem::take(&mut app.connection.streaming_text);
     let marker = if partial.is_empty() {
@@ -374,6 +412,7 @@ pub(crate) async fn handle_cancel_turn(app: &mut App) {
         timestamp: None,
         model: None,
         tool_calls,
+        kind: crate::state::MessageKind::default(),
     });
     app.viewport.render.virtual_scroll.push_item(h);
 
@@ -423,9 +462,12 @@ mod tests {
     #[test]
     fn text_delta_appends() {
         let mut app = test_app();
+        // PERF: line buffering — partial lines stay in streaming_line_buffer
+        // until a newline flushes them to streaming_text.
         handle_stream_text_delta(&mut app, "hello ".to_string());
-        handle_stream_text_delta(&mut app, "world".to_string());
-        assert_eq!(app.connection.streaming_text, "hello world");
+        handle_stream_text_delta(&mut app, "world\n".to_string());
+        assert_eq!(app.connection.streaming_text, "hello world\n");
+        assert!(app.connection.streaming_line_buffer.is_empty());
     }
 
     #[test]
@@ -441,7 +483,12 @@ mod tests {
         app.dashboard.agents.push(test_agent("syn", "Syn"));
         app.dashboard.focused_agent = Some("syn".into());
 
-        handle_stream_tool_start(&mut app, "read_file".to_string(), None);
+        handle_stream_tool_start(
+            &mut app,
+            "read_file".to_string(),
+            ToolId::from("t1".to_string()),
+            None,
+        );
 
         assert_eq!(app.connection.streaming_tool_calls.len(), 1);
         assert_eq!(app.connection.streaming_tool_calls[0].name, "read_file");
@@ -461,8 +508,9 @@ mod tests {
         app.dashboard.agents.push(test_agent("syn", "Syn"));
         app.dashboard.focused_agent = Some("syn".into());
 
-        handle_stream_tool_start(&mut app, "read_file".to_string(), None);
-        handle_stream_tool_result(&mut app, "read_file".to_string(), false, 150, None);
+        let tid = ToolId::from("t1".to_string());
+        handle_stream_tool_start(&mut app, "read_file".to_string(), tid.clone(), None);
+        handle_stream_tool_result(&mut app, "read_file".to_string(), tid, false, 150, None);
 
         assert_eq!(
             app.connection.streaming_tool_calls[0].duration_ms,
@@ -478,8 +526,9 @@ mod tests {
         app.dashboard.agents.push(test_agent("syn", "Syn"));
         app.dashboard.focused_agent = Some("syn".into());
 
-        handle_stream_tool_start(&mut app, "write_file".to_string(), None);
-        handle_stream_tool_result(&mut app, "write_file".to_string(), true, 50, None);
+        let tid = ToolId::from("t2".to_string());
+        handle_stream_tool_start(&mut app, "write_file".to_string(), tid.clone(), None);
+        handle_stream_tool_result(&mut app, "write_file".to_string(), tid, true, 50, None);
 
         assert!(app.connection.streaming_tool_calls[0].is_error);
     }
@@ -616,6 +665,8 @@ mod tests {
             name: "read_file".to_string(),
             duration_ms: None,
             is_error: false,
+            tool_id: None,
+            output: None,
         });
         app.dashboard.agents[0].status = AgentStatus::Working;
 
@@ -654,6 +705,8 @@ mod tests {
             name: "grep".to_string(),
             duration_ms: None,
             is_error: false,
+            tool_id: None,
+            output: None,
         });
         app.dashboard.agents[0].status = AgentStatus::Working;
         app.dashboard.agents[0].active_tool = Some(ActiveTool {
@@ -677,23 +730,24 @@ mod tests {
     #[test]
     fn text_delta_defers_markdown_cache() {
         let mut app = test_app();
-        handle_stream_text_delta(&mut app, "hello".to_string());
+        handle_stream_text_delta(&mut app, "hello\n".to_string());
         // PERF: markdown cache is no longer updated per-delta; it is refreshed
         // once per frame in App::refresh_streaming_markdown_cache.
         assert!(
             app.viewport.render.markdown_cache.text.is_empty(),
             "cache must not update on delta (deferred to frame boundary)"
         );
-        assert_eq!(app.connection.streaming_text, "hello");
+        assert_eq!(app.connection.streaming_text, "hello\n");
     }
 
     #[test]
     fn refresh_markdown_cache_updates_after_delta() {
         let mut app = test_app();
         app.viewport.terminal_width = 80;
-        handle_stream_text_delta(&mut app, "hello\nworld".to_string());
+        // PERF: "hello\n" flushes to streaming_text; "world\n" completes the second line.
+        handle_stream_text_delta(&mut app, "hello\nworld\n".to_string());
         app.refresh_streaming_markdown_cache();
-        assert_eq!(app.viewport.render.markdown_cache.text, "hello\nworld");
+        assert_eq!(app.viewport.render.markdown_cache.text, "hello\nworld\n");
         assert!(!app.viewport.render.markdown_cache.lines.is_empty());
         // Width should be terminal_width - 4 (matching the view's inner_width - 2)
         assert_eq!(app.viewport.render.markdown_cache.width, 76);

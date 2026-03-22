@@ -445,6 +445,8 @@ mod tests {
                 name: "read_file".to_string(),
                 duration_ms: None,
                 is_error: false,
+                tool_id: None,
+                output: None,
             });
 
         handle_focus_agent(&mut app, "beta".into()).await;

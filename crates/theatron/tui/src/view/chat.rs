@@ -7,7 +7,7 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use crate::app::App;
 use crate::hyperlink::{self, OscLink};
 use crate::markdown;
-use crate::state::FilterScope;
+use crate::state::{FilterScope, MessageKind, StreamPhase};
 use crate::theme::{self, Theme};
 use crate::view::image;
 
@@ -66,7 +66,18 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) ->
     let mut lines: Vec<Line> = Vec::new();
     lines.push(Line::raw("")); // top padding
 
-    if filter_active {
+    // PERF: Static buffer for finalized messages. When committed messages haven't
+    // changed and the width is the same, reuse the cached rendered lines instead
+    // of re-parsing markdown. This prevents redundant work during streaming frames
+    // where only the streaming section changes.
+    let static_cache_valid = !filter_active
+        && app.viewport.render.static_message_count == app.dashboard.messages.len()
+        && app.viewport.render.static_width == inner_width
+        && !app.dashboard.messages.is_empty();
+
+    if static_cache_valid {
+        lines.extend(app.viewport.render.static_lines.iter().cloned());
+    } else if filter_active {
         // Filtered path: iterate all messages, skip non-matching.
         // This is acceptable because filtering is interactive and users rarely
         // have 15K messages with a filter active.
@@ -405,6 +416,28 @@ fn render_message(
     para_links: &mut Vec<(usize, u16, String, String)>,
 ) {
     let theme = ctx.theme;
+
+    // Dispatch on message kind for distinct rendering per type.
+    match msg.kind {
+        MessageKind::ToolStatusLine => {
+            render_tool_status_line(msg, lines, theme);
+            return;
+        }
+        MessageKind::ThinkingStatusLine => {
+            render_thinking_status_line(msg, lines, theme);
+            return;
+        }
+        MessageKind::DistillationMarker => {
+            render_distillation_marker(msg, lines, ctx.inner_width, theme);
+            return;
+        }
+        MessageKind::TopicBoundary => {
+            render_topic_boundary(lines, ctx.inner_width, theme);
+            return;
+        }
+        MessageKind::Standard => {}
+    }
+
     let (role_label, role_style) = match msg.role.as_str() {
         "user" => ("you", theme.style_user()),
         "assistant" => (ctx.agent_name, theme.style_assistant()),
@@ -444,6 +477,11 @@ fn render_message(
 
     lines.push(Line::from(header_spans));
 
+    // Tool calls as collapsible cards
+    if !msg.tool_calls.is_empty() {
+        render_tool_cards(app, &msg.tool_calls, lines, ctx.inner_width, theme);
+    }
+
     // Message content: markdown parsed with syntax highlighting
     let (md_lines, md_links) = markdown::render(
         &msg.text,
@@ -462,7 +500,6 @@ fn render_message(
     let highlight_bg = Style::default().bg(theme.colors.accent_dim);
 
     // Offset: paragraph line index of the first markdown line for this message.
-    // +1 for the header line; +1 more if tool calls were rendered.
     let md_para_offset = lines.len();
 
     for line in md_lines {
@@ -500,6 +537,135 @@ fn render_message(
     }
 
     // Breathing room between messages
+    lines.push(Line::raw(""));
+}
+
+/// Render tool calls as collapsible cards with status icons.
+///
+/// Each card shows: status icon + tool name + duration on one line.
+/// Expanded cards show the tool output below. Errors are auto-expanded.
+fn render_tool_cards(
+    app: &App,
+    tool_calls: &[crate::state::ToolCallInfo],
+    lines: &mut Vec<Line<'static>>,
+    inner_width: usize,
+    theme: &Theme,
+) {
+    for tc in tool_calls {
+        let icon = if tc.is_error { "✗" } else { "✓" };
+        let icon_style = if tc.is_error {
+            Style::default().fg(theme.status.error)
+        } else {
+            Style::default().fg(theme.status.success)
+        };
+
+        let is_expanded = tc
+            .tool_id
+            .as_ref()
+            .is_some_and(|id| app.interaction.tool_expanded.contains(id));
+
+        let toggle = if is_expanded { "▾" } else { "▸" };
+
+        let mut card_spans = vec![
+            Span::styled(format!("  {toggle} "), theme.style_dim()),
+            Span::styled(icon, icon_style),
+            Span::raw(" "),
+            Span::styled(tc.name.clone(), theme.style_fg()),
+        ];
+
+        if let Some(ms) = tc.duration_ms {
+            card_spans.push(Span::styled(
+                format!(" · {}", format_duration_adaptive(ms)),
+                theme.style_dim(),
+            ));
+        }
+
+        lines.push(Line::from(card_spans));
+
+        // Expanded output
+        if is_expanded && let Some(ref output) = tc.output {
+            let max_width = inner_width.saturating_sub(6);
+            for output_line in output.lines().take(20) {
+                let truncated: String = output_line.chars().take(max_width).collect();
+                lines.push(Line::from(vec![
+                    Span::raw("      "),
+                    Span::styled(truncated, theme.style_dim()),
+                ]));
+            }
+            let line_count = output.lines().count();
+            if line_count > 20 {
+                lines.push(Line::from(vec![
+                    Span::raw("      "),
+                    Span::styled(
+                        format!("… ({} more lines)", line_count.saturating_sub(20)),
+                        theme.style_muted(),
+                    ),
+                ]));
+            }
+        }
+    }
+}
+
+/// Compact one-line tool status: `✓ tool_name · duration`.
+fn render_tool_status_line(
+    msg: &crate::app::ChatMessage,
+    lines: &mut Vec<Line<'static>>,
+    theme: &Theme,
+) {
+    lines.push(Line::from(vec![
+        Span::raw("  "),
+        Span::styled("·", theme.style_dim()),
+        Span::raw(" "),
+        Span::styled(msg.text.clone(), theme.style_muted()),
+    ]));
+}
+
+/// Compact thinking indicator line.
+fn render_thinking_status_line(
+    msg: &crate::app::ChatMessage,
+    lines: &mut Vec<Line<'static>>,
+    theme: &Theme,
+) {
+    lines.push(Line::from(vec![
+        Span::raw("  "),
+        Span::styled("◆", Style::default().fg(theme.thinking.border)),
+        Span::raw(" "),
+        Span::styled(msg.text.clone(), Style::default().fg(theme.thinking.fg)),
+    ]));
+}
+
+/// Distillation summary boundary marker.
+fn render_distillation_marker(
+    msg: &crate::app::ChatMessage,
+    lines: &mut Vec<Line<'static>>,
+    inner_width: usize,
+    theme: &Theme,
+) {
+    let border_len = inner_width.saturating_sub(18).min(30);
+    let border = "─".repeat(border_len);
+    lines.push(Line::from(vec![
+        Span::raw(" "),
+        Span::styled(
+            format!("─── distilled {border}"),
+            Style::default().fg(theme.colors.accent),
+        ),
+    ]));
+    if !msg.text.is_empty() {
+        lines.push(Line::from(vec![
+            Span::raw("  "),
+            Span::styled(msg.text.clone(), theme.style_dim()),
+        ]));
+    }
+    lines.push(Line::raw(""));
+}
+
+/// Visual separator between conversation topics.
+fn render_topic_boundary(lines: &mut Vec<Line<'static>>, inner_width: usize, theme: &Theme) {
+    let border = "─".repeat(inner_width.saturating_sub(4).min(40));
+    lines.push(Line::from(vec![
+        Span::raw("  "),
+        Span::styled(border, theme.style_dim()),
+    ]));
     lines.push(Line::raw(""));
 }
 
@@ -632,6 +798,11 @@ fn render_streaming(
     theme: &Theme,
     name: &str,
 ) {
+    let phase = app.connection.stream_phase;
+
+    // Phase-specific status indicator
+    render_phase_indicator(app, lines, theme, name, phase);
+
     // Thinking block (if visible)
     if app.layout.thinking_expanded && !app.connection.streaming_thinking.is_empty() {
         lines.push(Line::from(vec![
@@ -657,13 +828,8 @@ fn render_streaming(
         ]));
     }
 
-    // Streaming text with cursor
+    // Streaming text: render complete lines via markdown, partial line as plain text
     if !app.connection.streaming_text.is_empty() {
-        lines.push(Line::from(vec![Span::styled(
-            format!(" {}", name),
-            theme.style_assistant(),
-        )]));
-
         // Use cached markdown if text AND width match (streaming content, no OSC 8 links).
         let render_width = inner_width.saturating_sub(2);
         let rendered = if app.viewport.render.markdown_cache.text == app.connection.streaming_text
@@ -686,6 +852,17 @@ fn render_streaming(
             lines.push(Line::from(padded_spans));
         }
 
+        // Render the partial line buffer (not yet flushed to streaming_text)
+        if !app.connection.streaming_line_buffer.is_empty() {
+            lines.push(Line::from(vec![
+                Span::raw(" "),
+                Span::styled(
+                    app.connection.streaming_line_buffer.clone(),
+                    theme.style_fg(),
+                ),
+            ]));
+        }
+
         // Braille cursor
         let ch = theme::spinner_frame(app.viewport.tick_count);
         lines.push(Line::from(vec![
@@ -697,23 +874,43 @@ fn render_streaming(
                     .add_modifier(Modifier::BOLD),
             ),
         ]));
+    } else if !app.connection.streaming_line_buffer.is_empty() {
+        // Only partial line buffer (no complete lines yet)
+        lines.push(Line::from(vec![
+            Span::raw(" "),
+            Span::styled(
+                app.connection.streaming_line_buffer.clone(),
+                theme.style_fg(),
+            ),
+        ]));
+        let ch = theme::spinner_frame(app.viewport.tick_count);
+        lines.push(Line::from(vec![
+            Span::raw(" "),
+            Span::styled(
+                ch.to_string(),
+                Style::default()
+                    .fg(theme.status.streaming)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]));
     } else if app.connection.active_turn_id.is_some() {
-        // No text yet: show agent name header then phase indicators or thinking fallback
-        lines.push(Line::from(vec![Span::styled(
-            format!(" {}", name),
-            theme.style_assistant(),
-        )]));
-
+        // No text yet: show tool call phase lines or thinking indicator
         let tool_calls = &app.layout.ops.tool_calls;
         if tool_calls.is_empty() {
-            // Nothing running yet: classic thinking indicator
             let ch = theme::spinner_frame(app.viewport.tick_count);
+            let label = match phase {
+                StreamPhase::Requesting => "connecting…",
+                StreamPhase::Thinking => "thinking…",
+                StreamPhase::Compacting => "compacting context…",
+                StreamPhase::Waiting => "waiting for approval…",
+                _ => "thinking…",
+            };
             lines.push(Line::from(vec![Span::styled(
-                format!("  {} thinking…", ch),
+                format!("  {} {label}", ch),
                 theme.style_muted(),
             )]));
         } else {
-            // Show last 5 tool calls as phase lines
+            // Show last 5 tool calls as collapsible card lines
             let start = tool_calls.len().saturating_sub(5);
             for call in &tool_calls[start..] {
                 let icon: String = match call.status {
@@ -744,13 +941,53 @@ fn render_streaming(
                 ) {
                     phase_text.push_str(&format!(" · {}", format_duration_adaptive(ms)));
                 }
+                // Pulsing border for running tools
+                let border_style =
+                    if matches!(call.status, crate::state::ops::OpsToolStatus::Running) {
+                        let pulse = (app.viewport.tick_count / 8).is_multiple_of(2);
+                        if pulse {
+                            Style::default().fg(theme.status.spinner)
+                        } else {
+                            theme.style_dim()
+                        }
+                    } else {
+                        theme.style_dim()
+                    };
                 lines.push(Line::from(vec![
-                    Span::raw("  "),
+                    Span::styled("  │", border_style),
+                    Span::raw(" "),
                     Span::styled(icon, icon_style),
                     Span::raw(" "),
                     Span::styled(phase_text, theme.style_muted()),
                 ]));
             }
         }
+    }
+}
+
+/// Render the stream phase indicator header.
+fn render_phase_indicator(
+    app: &App,
+    lines: &mut Vec<Line<'static>>,
+    theme: &Theme,
+    name: &str,
+    phase: StreamPhase,
+) {
+    let has_text = !app.connection.streaming_text.is_empty()
+        || !app.connection.streaming_line_buffer.is_empty();
+
+    // Show agent name header for streaming response
+    if has_text || app.connection.active_turn_id.is_some() {
+        let phase_suffix = match phase {
+            StreamPhase::Requesting => " · connecting",
+            StreamPhase::Compacting => " · compacting",
+            StreamPhase::Waiting => " · waiting",
+            StreamPhase::Error => " · error",
+            _ => "",
+        };
+        lines.push(Line::from(vec![
+            Span::styled(format!(" {name}"), theme.style_assistant()),
+            Span::styled(phase_suffix, theme.style_dim()),
+        ]));
     }
 }

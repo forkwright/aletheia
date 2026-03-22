@@ -16,7 +16,7 @@ pub(crate) mod virtual_scroll;
 
 pub use agent::{ActiveTool, AgentState, AgentStatus, ToolSummary};
 pub(crate) use chat::{ArcVec, MarkdownCache, SavedScrollState};
-pub use chat::{ChatMessage, ToolCallInfo};
+pub use chat::{ChatMessage, MessageKind, StreamPhase, ToolCallInfo};
 pub use command::{CommandPaletteState, SelectionContext, SlashCompleteState, SlashSuggestion};
 pub use filter::{FilterScope, FilterState};
 pub use input::{

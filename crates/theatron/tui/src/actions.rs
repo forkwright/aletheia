@@ -19,7 +19,7 @@ use theatron_core::api::streaming;
 
 use crate::app::App;
 use crate::state::virtual_scroll::estimate_message_height;
-use crate::state::{ChatMessage, SavedScrollState, TabCompletion};
+use crate::state::{ChatMessage, MessageKind, SavedScrollState, TabCompletion};
 
 impl App {
     #[tracing::instrument(skip(self, text), fields(agent = ?self.dashboard.focused_agent))]
@@ -57,6 +57,7 @@ impl App {
             timestamp: None,
             model: None,
             tool_calls: Vec::new(),
+            kind: MessageKind::default(),
         };
         let width = self
             .viewport

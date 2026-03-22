@@ -220,6 +220,7 @@ pub(crate) async fn handle_sse_distill_after(app: &mut App, nous_id: NousId) {
             timestamp: None,
             model: None,
             tool_calls: Vec::new(),
+            kind: crate::state::MessageKind::default(),
         });
     }
 }
@@ -471,6 +472,7 @@ mod tests {
             timestamp: None,
             model: None,
             tool_calls: Vec::new(),
+            kind: crate::state::MessageKind::default(),
         });
 
         // Simulate the gap: stream started (stream_rx set) but StreamTurnStart
@@ -503,6 +505,7 @@ mod tests {
             timestamp: None,
             model: None,
             tool_calls: Vec::new(),
+            kind: crate::state::MessageKind::default(),
         });
 
         handle_sse_turn_after(&mut app, "syn".into(), "s1".into()).await;
@@ -530,6 +533,7 @@ mod tests {
             timestamp: None,
             model: None,
             tool_calls: Vec::new(),
+            kind: crate::state::MessageKind::default(),
         });
 
         let (_tx, rx) = tokio::sync::mpsc::channel(1);

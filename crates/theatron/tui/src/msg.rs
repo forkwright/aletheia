@@ -174,13 +174,11 @@ pub enum Msg {
     StreamThinkingDelta(String),
     StreamToolStart {
         tool_name: String,
-        #[expect(dead_code, reason = "planned TUI feature")]
         tool_id: ToolId,
         input: Option<serde_json::Value>,
     },
     StreamToolResult {
         tool_name: String,
-        #[expect(dead_code, reason = "planned TUI feature")]
         tool_id: ToolId,
         is_error: bool,
         duration_ms: u64,

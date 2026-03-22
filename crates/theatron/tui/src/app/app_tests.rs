@@ -88,6 +88,7 @@ mod tests {
             timestamp: None,
             model: None,
             tool_calls: Vec::new(),
+            kind: crate::state::MessageKind::default(),
         }]
         .into();
         app.viewport.render.scroll_offset = 42;
@@ -109,6 +110,7 @@ mod tests {
             timestamp: None,
             model: None,
             tool_calls: Vec::new(),
+            kind: crate::state::MessageKind::default(),
         }]
         .into();
         app.viewport.render.scroll_offset = 10;
@@ -170,6 +172,7 @@ mod tests {
             timestamp: None,
             model: None,
             tool_calls: Vec::new(),
+            kind: crate::state::MessageKind::default(),
         });
 
         // App grew; tab snapshot is unchanged (COW semantics).
