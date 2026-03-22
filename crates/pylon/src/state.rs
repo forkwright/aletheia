@@ -54,6 +54,9 @@ pub struct AppState {
 }
 
 impl AppState {
+    // WHY: config_rx is a subscriber API for hot-reload propagation; not yet
+    // wired into actor lifecycle, but required for future config-change support.
+    #[allow(dead_code)]
     /// Subscribe to config change notifications.
     ///
     /// Returns a `watch::Receiver` that yields the latest config after each

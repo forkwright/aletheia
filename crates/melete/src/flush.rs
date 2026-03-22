@@ -39,6 +39,8 @@ pub enum FlushSource {
 }
 
 impl FlushSource {
+    // WHY: #[allow] over #[expect] — used only in test code (via write_section → to_markdown).
+    #[allow(dead_code)]
     fn label(&self) -> &str {
         match self {
             Self::Extracted => "extracted",
@@ -51,6 +53,8 @@ impl FlushSource {
 impl MemoryFlush {
     /// Create an empty flush.
     #[must_use]
+    // WHY: #[allow] — used only in test code; production path not yet wired.
+    #[allow(dead_code)]
     pub(crate) fn empty() -> Self {
         Self {
             decisions: vec![],
@@ -62,6 +66,7 @@ impl MemoryFlush {
 
     /// Check if there's anything to flush.
     #[must_use]
+    #[allow(dead_code)] // WHY: used only in test code; production path not yet wired.
     pub(crate) fn is_empty(&self) -> bool {
         self.decisions.is_empty()
             && self.corrections.is_empty()
@@ -71,6 +76,7 @@ impl MemoryFlush {
 
     /// Render as markdown for writing to a memory file.
     #[must_use]
+    #[allow(dead_code)] // WHY: used only in test code; production path not yet wired.
     pub(crate) fn to_markdown(&self) -> String {
         let mut out = String::new();
 
