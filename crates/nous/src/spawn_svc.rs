@@ -87,6 +87,8 @@ impl SpawnService for SpawnServiceImpl {
             limits: crate::config::NousLimits {
                 max_tool_iterations: 100,
                 loop_detection_threshold: 3,
+                consecutive_error_threshold: 4,
+                loop_max_warnings: 2,
                 session_token_cap: 500_000,
                 max_tool_result_bytes: 32_768,
             },
