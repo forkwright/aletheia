@@ -502,6 +502,22 @@ pub trait PlanningService: Send + Sync {
     fn list_projects(
         &self,
     ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>>;
+
+    /// Verify phase criteria against provided evidence.
+    ///
+    /// `criteria_json` is a JSON array of criterion evaluations, each with:
+    /// `criterion` (string), `status` ("met"/"partially-met"/"not-met"),
+    /// `evidence` (array of `{kind, content}`), `detail` (string),
+    /// and optional `proposed_fix` (string).
+    ///
+    /// Returns a JSON verification result with overall status, per-criterion
+    /// results, gaps, and goal-backward traces.
+    fn verify_criteria(
+        &self,
+        project_id: &str,
+        phase_id: &str,
+        criteria_json: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>>;
 }
 
 /// A result from knowledge store search.

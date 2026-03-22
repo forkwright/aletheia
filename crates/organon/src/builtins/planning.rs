@@ -13,7 +13,8 @@ use crate::types::{PlanningService, ToolContext, ToolInput, ToolResult};
 mod defs;
 use defs::{
     plan_create_def, plan_discuss_def, plan_execute_def, plan_requirements_def, plan_research_def,
-    plan_roadmap_def, plan_status_def, plan_step_complete_def, plan_step_fail_def, plan_verify_def,
+    plan_roadmap_def, plan_status_def, plan_step_complete_def, plan_step_fail_def,
+    plan_verify_criteria_def, plan_verify_def,
 };
 
 fn require_planning(
@@ -327,6 +328,34 @@ impl ToolExecutor for PlanStepCompleteExecutor {
     }
 }
 
+struct PlanVerifyCriteriaExecutor;
+
+impl ToolExecutor for PlanVerifyCriteriaExecutor {
+    fn execute<'a>(
+        &'a self,
+        input: &'a ToolInput,
+        ctx: &'a ToolContext,
+    ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
+        Box::pin(async {
+            let planning = match require_planning(ctx) {
+                Ok(p) => p,
+                Err(r) => return Ok(r),
+            };
+            let project_id = extract_str(&input.arguments, "project_id", &input.name)?;
+            let phase_id = extract_str(&input.arguments, "phase_id", &input.name)?;
+            let criteria = extract_str(&input.arguments, "criteria", &input.name)?;
+
+            match planning
+                .verify_criteria(project_id, phase_id, criteria)
+                .await
+            {
+                Ok(json) => Ok(ToolResult::text(json)),
+                Err(e) => Ok(ToolResult::error(e.to_string())),
+            }
+        })
+    }
+}
+
 struct PlanStepFailExecutor;
 
 impl ToolExecutor for PlanStepFailExecutor {
@@ -368,6 +397,10 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(plan_status_def(), Box::new(PlanStatusExecutor))?;
     registry.register(plan_step_complete_def(), Box::new(PlanStepCompleteExecutor))?;
     registry.register(plan_step_fail_def(), Box::new(PlanStepFailExecutor))?;
+    registry.register(
+        plan_verify_criteria_def(),
+        Box::new(PlanVerifyCriteriaExecutor),
+    )?;
     Ok(())
 }
 

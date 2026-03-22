@@ -404,6 +404,64 @@ pub(super) fn plan_step_complete_def() -> ToolDef {
     }
 }
 
+pub(super) fn plan_verify_criteria_def() -> ToolDef {
+    ToolDef {
+        name: ToolName::new("plan_verify_criteria").expect("valid tool name"), // kanon:ignore RUST/expect
+        description: "Verify phase success criteria with evidence and goal-backward tracing"
+            .to_owned(),
+        extended_description: Some(
+            "Submit criterion evaluations for a phase. Each criterion includes status \
+             (met/partially-met/not-met), evidence (file paths, test results), and detail. \
+             Returns structured verification result with overall status, per-criterion \
+             results, gaps with proposed fixes, and goal-backward traces."
+                .to_owned(),
+        ),
+        input_schema: InputSchema {
+            properties: IndexMap::from([
+                (
+                    "project_id".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::String,
+                        description: "Project ID".to_owned(),
+                        enum_values: None,
+                        default: None,
+                    },
+                ),
+                (
+                    "phase_id".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::String,
+                        description: "Phase ID to verify".to_owned(),
+                        enum_values: None,
+                        default: None,
+                    },
+                ),
+                (
+                    "criteria".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::String,
+                        description: "JSON array of criterion evaluations. Each: \
+                            {criterion: string, status: 'met'|'partially-met'|'not-met', \
+                            evidence: [{kind: string, content: string}], detail: string, \
+                            proposed_fix?: string}"
+                            .to_owned(),
+                        enum_values: None,
+                        default: None,
+                    },
+                ),
+            ]),
+            required: vec![
+                "project_id".to_owned(),
+                "phase_id".to_owned(),
+                "criteria".to_owned(),
+            ],
+        },
+        category: ToolCategory::Planning,
+        reversibility: Reversibility::FullyReversible,
+        auto_activate: false,
+    }
+}
+
 pub(super) fn plan_step_fail_def() -> ToolDef {
     ToolDef {
         name: ToolName::new("plan_step_fail").expect("valid tool name"), // kanon:ignore RUST/expect

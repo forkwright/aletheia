@@ -200,6 +200,18 @@ impl PlanningService for MockPlanning {
     ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>> {
         Box::pin(async { Ok("[]".to_owned()) })
     }
+
+    fn verify_criteria(
+        &self,
+        _project_id: &str,
+        _phase_id: &str,
+        _criteria_json: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>> {
+        Box::pin(async {
+            Ok(r#"{"verification":{"status":"Met","summary":"all criteria met"},"goal_traces":[]}"#
+                .to_owned())
+        })
+    }
 }
 
 #[tokio::test]
@@ -209,8 +221,8 @@ async fn register_planning_tools() {
     let planning_tools = reg.definitions_for_category(ToolCategory::Planning);
     assert_eq!(
         planning_tools.len(),
-        10,
-        "expected 10 planning tools to be registered"
+        11,
+        "expected 11 planning tools to be registered"
     );
 }
 
@@ -740,6 +752,7 @@ async fn plan_missing_service_returns_error_for_all_tools() {
         "plan_discuss",
         "plan_execute",
         "plan_verify",
+        "plan_verify_criteria",
         "plan_status",
         "plan_step_complete",
         "plan_step_fail",
@@ -760,4 +773,31 @@ async fn plan_missing_service_returns_error_for_all_tools() {
             "{tool_name}: expected 'not configured' in error"
         );
     }
+}
+
+#[tokio::test]
+async fn plan_verify_criteria_dispatches_to_service() {
+    let mock = Arc::new(MockPlanning::default());
+    let ctx = test_ctx_with_planning(mock);
+    let mut reg = ToolRegistry::new();
+    super::register(&mut reg).expect("register");
+    let criteria = r#"[{"criterion":"tests pass","status":"Met","evidence":[],"detail":"ok"}]"#;
+    let input = ToolInput {
+        name: ToolName::new("plan_verify_criteria").expect("valid"),
+        tool_use_id: "tu_1".to_owned(),
+        arguments: serde_json::json!({
+            "project_id": "proj1",
+            "phase_id": "phase1",
+            "criteria": criteria
+        }),
+    };
+    let result = reg.execute(&input, &ctx).await.expect("execute");
+    assert!(
+        !result.is_error,
+        "plan_verify_criteria should succeed when service is available"
+    );
+    assert!(
+        result.content.text_summary().contains("Met"),
+        "response should include verification status"
+    );
 }

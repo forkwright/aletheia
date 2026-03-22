@@ -18,10 +18,14 @@ pub mod phase;
 pub mod plan;
 /// Project types and lifecycle management: creation, phase tracking, and state transitions.
 pub mod project;
+/// State reconciler: keeps planning state consistent between database and filesystem.
+pub mod reconciler;
 /// Project lifecycle state machine: valid transitions, pause/resume, and terminal states.
 pub mod state;
 /// Pattern-based stuck detection: repeated errors, same-args loops, alternating failures, escalating retries.
 pub mod stuck;
+/// Verification workflow: goal-backward tracing against phase success criteria.
+pub mod verify;
 /// On-disk workspace persistence: project serialization, blocker files, and directory layout.
 pub mod workspace;
 
@@ -36,4 +40,7 @@ mod assertions {
     assert_impl_all!(crate::stuck::StuckDetector: Send, Sync);
     assert_impl_all!(crate::handoff::HandoffFile: Send, Sync);
     assert_impl_all!(crate::handoff::HandoffContext: Send, Sync);
+    assert_impl_all!(crate::verify::VerificationResult: Send, Sync);
+    assert_impl_all!(crate::reconciler::ReconciliationResult: Send, Sync);
+    assert_impl_all!(crate::reconciler::ReconciliationSummary: Send, Sync);
 }
