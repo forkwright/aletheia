@@ -166,6 +166,108 @@ impl std::fmt::Display for EpistemicTier {
     }
 }
 
+/// Knowledge lifecycle stage for graduated pruning.
+///
+/// Facts progress through stages as decay increases, rather than being
+/// deleted immediately. Each stage represents a different level of
+/// recall priority and pruning eligibility.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum KnowledgeStage {
+    /// Fully active, included in standard recall. Decay score >= 0.7.
+    Active,
+    /// Recall score declining. Still retrievable but deprioritized. Decay in [0.3, 0.7).
+    Fading,
+    /// Low recall probability. Excluded from default recall, available on explicit query. Decay in [0.1, 0.3).
+    Dormant,
+    /// Below retention threshold. Candidate for permanent removal. Decay < 0.1.
+    Archived,
+}
+
+/// Decay score threshold for transitioning from Active to Fading.
+const STAGE_ACTIVE_THRESHOLD: f64 = 0.7;
+/// Decay score threshold for transitioning from Fading to Dormant.
+const STAGE_FADING_THRESHOLD: f64 = 0.3;
+/// Decay score threshold for transitioning from Dormant to Archived.
+const STAGE_DORMANT_THRESHOLD: f64 = 0.1;
+
+impl KnowledgeStage {
+    /// Determine the lifecycle stage from a decay score in [0.0, 1.0].
+    #[must_use]
+    pub fn from_decay_score(decay_score: f64) -> Self {
+        if decay_score >= STAGE_ACTIVE_THRESHOLD {
+            Self::Active
+        } else if decay_score >= STAGE_FADING_THRESHOLD {
+            Self::Fading
+        } else if decay_score >= STAGE_DORMANT_THRESHOLD {
+            Self::Dormant
+        } else {
+            Self::Archived
+        }
+    }
+
+    /// Return the `snake_case` string representation.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Fading => "fading",
+            Self::Dormant => "dormant",
+            Self::Archived => "archived",
+        }
+    }
+
+    /// Whether this stage is eligible for graduated pruning.
+    ///
+    /// Only `Archived` facts may be permanently removed.
+    #[must_use]
+    pub fn is_prunable(self) -> bool {
+        matches!(self, Self::Archived)
+    }
+
+    /// Whether facts in this stage should appear in default recall results.
+    #[must_use]
+    pub fn in_default_recall(self) -> bool {
+        matches!(self, Self::Active | Self::Fading)
+    }
+}
+
+impl std::fmt::Display for KnowledgeStage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl std::str::FromStr for KnowledgeStage {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "active" => Ok(Self::Active),
+            "fading" => Ok(Self::Fading),
+            "dormant" => Ok(Self::Dormant),
+            "archived" => Ok(Self::Archived),
+            other => Err(format!("unknown knowledge stage: {other}")),
+        }
+    }
+}
+
+/// Record of a stage transition for audit trail.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StageTransition {
+    /// The fact that transitioned.
+    pub fact_id: FactId,
+    /// Previous stage.
+    pub from: KnowledgeStage,
+    /// New stage.
+    pub to: KnowledgeStage,
+    /// Decay score that triggered the transition.
+    pub decay_score: f64,
+    /// When the transition occurred.
+    pub transitioned_at: jiff::Timestamp,
+}
+
 /// Reason for intentionally forgetting a fact.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

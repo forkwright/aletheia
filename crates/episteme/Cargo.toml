@@ -25,6 +25,7 @@ aletheia-graphe = { path = "../graphe", default-features = false }
 aletheia-koina = { path = "../koina" }
 aletheia-krites = { path = "../krites", optional = true }
 jiff = { workspace = true, features = ["serde"] }
+rand = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }

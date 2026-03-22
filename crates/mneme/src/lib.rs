@@ -58,6 +58,8 @@ pub use aletheia_graphe::types;
 pub use aletheia_episteme::conflict;
 /// LLM-driven fact consolidation for knowledge maintenance.
 pub use aletheia_episteme::consolidation;
+/// Multi-factor temporal decay with lifecycle stages and graduated pruning.
+pub use aletheia_episteme::decay;
 /// Embedding provider trait and implementations (candle, mock).
 pub use aletheia_episteme::embedding;
 /// LLM-driven knowledge extraction pipeline (entities, relationships, facts).
@@ -76,6 +78,8 @@ pub use aletheia_episteme::knowledge_store;
 pub use aletheia_episteme::query;
 /// 6-factor recall scoring engine for knowledge retrieval ranking.
 pub use aletheia_episteme::recall;
+/// Serendipity engine: cross-domain discovery, surprise scoring, and context injection.
+pub use aletheia_episteme::serendipity;
 /// Skill storage helpers and SKILL.md parser.
 pub use aletheia_episteme::skill;
 /// Skill auto-capture: heuristic filter, signature hashing, and candidate tracking.
