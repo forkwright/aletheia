@@ -21,7 +21,9 @@ use aletheia_koina::id::ToolName;
 use aletheia_organon::registry::ToolRegistry;
 use aletheia_organon::types::ToolContext;
 
-use self::dispatch::{build_messages, classify_signals, dispatch_tools, dispatch_tools_streaming};
+use self::dispatch::{
+    DispatchResult, build_messages, classify_signals, dispatch_tools, dispatch_tools_streaming,
+};
 use crate::config::NousConfig;
 use crate::error;
 use crate::pipeline::{LoopDetector, PipelineContext, ToolCall, TurnResult, TurnUsage};
@@ -160,7 +162,11 @@ pub async fn execute(
     let mut messages = build_messages(&ctx.messages);
     let mut all_tool_calls: Vec<ToolCall> = Vec::new();
     let mut total_usage = TurnUsage::default();
-    let mut loop_detector = LoopDetector::new(config.limits.loop_detection_threshold);
+    let mut loop_detector = LoopDetector::with_limits(
+        config.limits.loop_detection_threshold,
+        config.limits.consecutive_error_threshold,
+        config.limits.loop_max_warnings,
+    );
     let mut iterations: u32 = 0;
     let mut final_content = String::new();
     let mut final_stop_reason = String::new();
@@ -213,7 +219,6 @@ pub async fn execute(
             }
         };
 
-        // Destructure to move content without cloning when pushing to messages.
         let aletheia_hermeneus::types::CompletionResponse {
             content: response_content,
             stop_reason,
@@ -243,7 +248,10 @@ pub async fn execute(
             content: Content::Blocks(response_content),
         });
 
-        let tool_results = dispatch_tools(
+        let DispatchResult {
+            mut blocks,
+            loop_warning,
+        } = dispatch_tools(
             &extracted.tool_uses,
             tools,
             tool_ctx,
@@ -254,9 +262,17 @@ pub async fn execute(
         )
         .await?;
 
+        if let Some(ref warning) = loop_warning {
+            debug!(warning = warning.as_str(), "loop warning injected");
+            blocks.push(ContentBlock::Text {
+                text: format!("[System: {warning}]"),
+                citations: None,
+            });
+        }
+
         messages.push(Message {
             role: Role::User,
-            content: Content::Blocks(tool_results),
+            content: Content::Blocks(blocks),
         });
     }
 
@@ -313,7 +329,11 @@ pub async fn execute_streaming(
     let mut messages = build_messages(&ctx.messages);
     let mut all_tool_calls: Vec<ToolCall> = Vec::new();
     let mut total_usage = TurnUsage::default();
-    let mut loop_detector = LoopDetector::new(config.limits.loop_detection_threshold);
+    let mut loop_detector = LoopDetector::with_limits(
+        config.limits.loop_detection_threshold,
+        config.limits.consecutive_error_threshold,
+        config.limits.loop_max_warnings,
+    );
     let mut iterations: u32 = 0;
     let mut final_content = String::new();
     let mut final_stop_reason = String::new();
@@ -381,7 +401,6 @@ pub async fn execute_streaming(
             }
         };
 
-        // Destructure to move content without cloning when pushing to messages.
         let aletheia_hermeneus::types::CompletionResponse {
             content: response_content,
             stop_reason,
@@ -410,7 +429,10 @@ pub async fn execute_streaming(
             content: Content::Blocks(response_content),
         });
 
-        let tool_results = dispatch_tools_streaming(
+        let DispatchResult {
+            mut blocks,
+            loop_warning,
+        } = dispatch_tools_streaming(
             &extracted.tool_uses,
             tools,
             tool_ctx,
@@ -422,9 +444,17 @@ pub async fn execute_streaming(
         )
         .await?;
 
+        if let Some(ref warning) = loop_warning {
+            debug!(warning = warning.as_str(), "loop warning injected");
+            blocks.push(ContentBlock::Text {
+                text: format!("[System: {warning}]"),
+                citations: None,
+            });
+        }
+
         messages.push(Message {
             role: Role::User,
-            content: Content::Blocks(tool_results),
+            content: Content::Blocks(blocks),
         });
     }
 

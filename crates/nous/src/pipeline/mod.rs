@@ -23,6 +23,7 @@ use crate::error;
 use crate::history::HistoryResult;
 use crate::session::SessionState;
 use crate::stream::TurnStreamEvent;
+use crate::working_state::WorkingState;
 
 /// Input to the pipeline: an inbound message.
 #[derive(Debug, Clone)]
@@ -56,6 +57,8 @@ pub struct PipelineContext {
     pub recall_result: Option<crate::recall::RecallStageResult>,
     /// History stage output, if history was loaded.
     pub history_result: Option<HistoryResult>,
+    /// Working state from the previous turn (loaded from persistence).
+    pub working_state: Option<WorkingState>,
 }
 
 impl Default for PipelineContext {
@@ -70,6 +73,7 @@ impl Default for PipelineContext {
             guard_result: GuardResult::Allow,
             recall_result: None,
             history_result: None,
+            working_state: None,
         }
     }
 }
@@ -103,13 +107,60 @@ pub enum GuardResult {
     Rejected { reason: String },
 }
 
+/// Verdict from loop detection after recording a tool call.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum LoopVerdict {
+    /// No loop detected.
+    Ok,
+    /// Loop pattern detected; inject a warning and continue.
+    Warn {
+        /// Detected pattern description.
+        pattern: String,
+        /// Human-readable warning to inject into conversation.
+        message: String,
+    },
+    /// Loop confirmed after repeated warnings; halt execution.
+    Halt {
+        /// Detected pattern description.
+        pattern: String,
+        /// Human-readable halt message.
+        message: String,
+    },
+}
+
+/// A recorded tool call with execution outcome.
+#[derive(Debug, Clone)]
+struct CallRecord {
+    /// `tool_name:input_hash` signature for identity comparison.
+    signature: String,
+    /// Tool name (without hash) for pattern descriptions.
+    tool_name: String,
+    /// Whether the tool call returned an error.
+    is_error: bool,
+}
+
 /// Loop detector: tracks repeated tool call patterns with a capped ring buffer.
+///
+/// Detects four patterns:
+/// 1. Same tool called with identical arguments N times
+/// 2. Alternating between two failing tools
+/// 3. Consecutive errors from the same tool (escalating retries)
+/// 4. Circular tool chains (A → B → C → A with same context)
+///
+/// Uses a two-tier response: first `Warn`, then `Halt` after `max_warnings`.
 #[derive(Debug, Clone)]
 pub struct LoopDetector {
-    /// Recent tool call signatures (ring buffer, capped at `window` entries).
-    history: VecDeque<String>,
+    /// Recent tool call records (ring buffer, capped at `window` entries).
+    history: VecDeque<CallRecord>,
     /// Threshold for identical consecutive calls.
     threshold: u32,
+    /// Threshold for consecutive error detection.
+    error_threshold: u32,
+    /// Maximum warnings before escalating to halt.
+    max_warnings: u32,
+    /// Number of warnings issued so far.
+    warnings_issued: u32,
     /// Maximum history entries retained.
     window: usize,
 }
@@ -117,10 +168,6 @@ pub struct LoopDetector {
 const DEFAULT_LOOP_WINDOW: usize = 50;
 
 /// Maximum cycle length tested during the cycle-detection pass.
-///
-/// Patterns longer than this are not detected. Limiting the scan keeps
-/// detection O(`CYCLE_DETECTION_MAX_LEN` × threshold) per call, which is
-/// negligible for practical threshold and cycle-length values.
 const CYCLE_DETECTION_MAX_LEN: usize = 10;
 
 impl LoopDetector {
@@ -130,25 +177,227 @@ impl LoopDetector {
         Self {
             history: VecDeque::with_capacity(DEFAULT_LOOP_WINDOW),
             threshold,
+            error_threshold: 4,
+            max_warnings: 2,
+            warnings_issued: 0,
             window: DEFAULT_LOOP_WINDOW,
         }
     }
 
-    /// Record a tool call and check for loops.
+    /// Create a loop detector with full configuration.
+    #[must_use]
+    pub fn with_limits(threshold: u32, error_threshold: u32, max_warnings: u32) -> Self {
+        Self {
+            history: VecDeque::with_capacity(DEFAULT_LOOP_WINDOW),
+            threshold,
+            error_threshold,
+            max_warnings,
+            warnings_issued: 0,
+            window: DEFAULT_LOOP_WINDOW,
+        }
+    }
+
+    /// Record a tool call and check for loop patterns.
     ///
-    /// Returns `Some(pattern)` if a loop is detected: either N consecutive
-    /// identical calls, or a repeating sequence of length
-    /// 2–`CYCLE_DETECTION_MAX_LEN` repeated at least N times, where
-    /// N = threshold. This catches both single-tool hammering and longer
-    /// cycles such as A → B → C → A.
-    pub fn record(&mut self, tool_name: &str, input_hash: &str) -> Option<String> {
+    /// Returns [`LoopVerdict::Ok`] if no pattern is detected,
+    /// [`LoopVerdict::Warn`] on first detection (inject warning and continue),
+    /// or [`LoopVerdict::Halt`] after `max_warnings` have been issued.
+    pub fn record(&mut self, tool_name: &str, input_hash: &str, is_error: bool) -> LoopVerdict {
         let signature = format!("{tool_name}:{input_hash}");
-        self.history.push_back(signature.clone());
+        self.history.push_back(CallRecord {
+            signature,
+            tool_name: tool_name.to_owned(),
+            is_error,
+        });
 
         if self.history.len() > self.window {
             self.history.pop_front();
         }
 
+        if let Some(pattern) = self.detect_same_args() {
+            return self.emit_verdict(pattern);
+        }
+
+        if let Some(pattern) = self.detect_alternating_failure() {
+            return self.emit_verdict(pattern);
+        }
+
+        if let Some(pattern) = self.detect_consecutive_errors() {
+            return self.emit_verdict(pattern);
+        }
+
+        if let Some(pattern) = self.detect_cycle() {
+            return self.emit_verdict(pattern);
+        }
+
+        LoopVerdict::Ok
+    }
+
+    /// Reset the detector (e.g. on new turn).
+    pub fn reset(&mut self) {
+        self.history.clear();
+        self.warnings_issued = 0;
+    }
+
+    /// Number of calls currently in the history window.
+    #[must_use]
+    pub fn call_count(&self) -> usize {
+        self.history.len()
+    }
+
+    /// Count consecutive identical signatures at the tail of the history.
+    #[must_use]
+    pub fn pattern_count(&self) -> usize {
+        let Some(last) = self.history.back() else {
+            return 0;
+        };
+        self.history
+            .iter()
+            .rev()
+            .take_while(|r| r.signature == last.signature)
+            .count()
+    }
+
+    /// Number of loop warnings issued during this detector's lifetime.
+    #[must_use]
+    pub fn warnings_issued(&self) -> u32 {
+        self.warnings_issued
+    }
+
+    /// Convert a detected pattern into a `Warn` or `Halt` verdict.
+    fn emit_verdict(&mut self, pattern: String) -> LoopVerdict {
+        if self.warnings_issued >= self.max_warnings {
+            LoopVerdict::Halt {
+                message: format!(
+                    "Loop confirmed after {} warnings. Pattern: {pattern}. \
+                     Stopping execution — user intervention required.",
+                    self.warnings_issued
+                ),
+                pattern,
+            }
+        } else {
+            self.warnings_issued += 1;
+            LoopVerdict::Warn {
+                message: format!("Loop detected: {pattern}. Try a different approach."),
+                pattern,
+            }
+        }
+    }
+
+    /// Detect N consecutive identical tool call signatures.
+    fn detect_same_args(&self) -> Option<String> {
+        #[expect(
+            clippy::as_conversions,
+            reason = "u32→usize: threshold is a small constant, fits in usize"
+        )]
+        let t = self.threshold as usize; // kanon:ignore RUST/as-cast
+        if self.history.len() < t {
+            return None;
+        }
+
+        let last = self.history.back()?;
+        let count = self
+            .history
+            .iter()
+            .rev()
+            .take(t)
+            .filter(|r| r.signature == last.signature)
+            .count();
+
+        if count >= t {
+            Some(last.signature.clone())
+        } else {
+            None
+        }
+    }
+
+    /// Detect two failing tools alternating: A(err) → B(err) → A(err) → B(err).
+    fn detect_alternating_failure(&self) -> Option<String> {
+        #[expect(
+            clippy::as_conversions,
+            reason = "u32→usize: threshold is a small constant, fits in usize"
+        )]
+        let t = self.threshold as usize; // kanon:ignore RUST/as-cast
+        let needed = 2 * t;
+        let n = self.history.len();
+        if n < needed {
+            return None;
+        }
+
+        let tail_start = n - needed;
+        let first = self.history.get(tail_start)?;
+        let second = self.history.get(tail_start + 1)?;
+
+        if !first.is_error || !second.is_error || first.tool_name == second.tool_name {
+            return None;
+        }
+
+        let matches = (0..t).all(|rep| {
+            let a_idx = tail_start + rep * 2;
+            let b_idx = a_idx + 1;
+            match (self.history.get(a_idx), self.history.get(b_idx)) {
+                (Some(a), Some(b)) => {
+                    a.is_error
+                        && b.is_error
+                        && a.tool_name == first.tool_name
+                        && b.tool_name == second.tool_name
+                }
+                _ => false,
+            }
+        });
+
+        if matches {
+            Some(format!(
+                "alternating failures: {} and {}",
+                first.tool_name, second.tool_name
+            ))
+        } else {
+            None
+        }
+    }
+
+    /// Detect N consecutive errors from the same tool (escalating retries).
+    fn detect_consecutive_errors(&self) -> Option<String> {
+        #[expect(
+            clippy::as_conversions,
+            reason = "u32→usize: error_threshold is a small constant, fits in usize"
+        )]
+        let t = self.error_threshold as usize; // kanon:ignore RUST/as-cast
+        if self.history.len() < t {
+            return None;
+        }
+
+        let trailing: Vec<&CallRecord> = self
+            .history
+            .iter()
+            .rev()
+            .take_while(|r| r.is_error)
+            .collect();
+
+        if trailing.len() < t {
+            return None;
+        }
+
+        // WHY: check if all trailing errors are from the same tool (escalating retries on one tool)
+        let tool = &trailing.first()?.tool_name;
+        let same_tool = trailing.iter().take(t).all(|r| r.tool_name == *tool);
+
+        if same_tool {
+            Some(format!(
+                "escalating retries: {} failed {} consecutive times",
+                tool,
+                trailing.len()
+            ))
+        } else {
+            Some(format!(
+                "consecutive failures: {} errors in a row",
+                trailing.len()
+            ))
+        }
+    }
+
+    /// Detect repeating cycles of length 2–`CYCLE_DETECTION_MAX_LEN`.
+    fn detect_cycle(&self) -> Option<String> {
         let n = self.history.len();
         #[expect(
             clippy::as_conversions,
@@ -156,15 +405,6 @@ impl LoopDetector {
         )]
         let t = self.threshold as usize; // kanon:ignore RUST/as-cast
 
-        let recent = self.history.iter().rev().take(t);
-        let all_same = recent.clone().count() >= t && recent.clone().all(|s| *s == signature);
-        if all_same {
-            return Some(signature);
-        }
-
-        // NOTE: cycle detection: a cycle of length L is confirmed when the last L×threshold
-        // history entries consist of exactly `threshold` repetitions of the same L-length pattern;
-        // `VecDeque::get` is used to avoid allocation in the inner comparison.
         for cycle_len in 2..=CYCLE_DETECTION_MAX_LEN {
             let needed = cycle_len * t;
             if n < needed {
@@ -173,15 +413,22 @@ impl LoopDetector {
             let pattern_start = n - cycle_len;
             let all_match = (1..t).all(|rep| {
                 let seg_start = n - cycle_len * (rep + 1);
-                (0..cycle_len)
-                    .all(|i| self.history.get(pattern_start + i) == self.history.get(seg_start + i))
+                (0..cycle_len).all(|i| {
+                    match (
+                        self.history.get(pattern_start + i),
+                        self.history.get(seg_start + i),
+                    ) {
+                        (Some(a), Some(b)) => a.signature == b.signature,
+                        _ => false,
+                    }
+                })
             });
             if all_match {
                 let pattern: String = self
                     .history
                     .iter()
                     .skip(pattern_start)
-                    .map(String::as_str)
+                    .map(|r| r.signature.as_str())
                     .fold(String::new(), |mut acc, s| {
                         if !acc.is_empty() {
                             acc.push(',');
@@ -194,28 +441,6 @@ impl LoopDetector {
         }
 
         None
-    }
-
-    /// Reset the detector (e.g. on new turn).
-    pub fn reset(&mut self) {
-        self.history.clear();
-    }
-
-    /// Number of calls currently in the history window.
-    #[must_use]
-    pub fn call_count(&self) -> usize {
-        self.history.len()
-    }
-
-    /// Count consecutive identical entries at the tail of the history.
-    ///
-    /// Returns 0 if empty, otherwise the number of trailing entries matching the last one.
-    #[must_use]
-    pub fn pattern_count(&self) -> usize {
-        let Some(last) = self.history.back() else {
-            return 0;
-        };
-        self.history.iter().rev().take_while(|s| *s == last).count()
     }
 }
 

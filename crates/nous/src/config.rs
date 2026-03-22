@@ -48,8 +48,12 @@ impl Default for NousGenerationConfig {
 pub struct NousLimits {
     /// Maximum tool execution iterations per turn.
     pub max_tool_iterations: u32,
-    /// Loop detection threshold (identical tool calls).
+    /// Loop detection threshold (identical tool calls before detection).
     pub loop_detection_threshold: u32,
+    /// Consecutive error threshold (same-tool errors before detection).
+    pub consecutive_error_threshold: u32,
+    /// Maximum loop warnings before escalating to halt.
+    pub loop_max_warnings: u32,
     /// Maximum cumulative tokens (input + output) allowed per session.
     ///
     /// Once a session exceeds this budget the guard stage rejects further
@@ -70,6 +74,8 @@ impl Default for NousLimits {
         Self {
             max_tool_iterations: d::MAX_TOOL_ITERATIONS,
             loop_detection_threshold: 3,
+            consecutive_error_threshold: 4,
+            loop_max_warnings: 2,
             session_token_cap: default_session_token_cap(),
             max_tool_result_bytes: default_max_tool_result_bytes(),
         }
@@ -273,6 +279,8 @@ mod tests {
             limits: NousLimits {
                 max_tool_iterations: 10,
                 loop_detection_threshold: 5,
+                consecutive_error_threshold: 4,
+                loop_max_warnings: 2,
                 session_token_cap: 250_000,
                 max_tool_result_bytes: 32_768,
             },

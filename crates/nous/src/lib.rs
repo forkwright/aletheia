@@ -50,3 +50,5 @@ pub mod spawn_svc;
 pub mod stream;
 /// User-facing error formatting for display in chat responses.
 pub mod user_error;
+/// Working state management: task stack, focus context, wait state.
+pub mod working_state;
