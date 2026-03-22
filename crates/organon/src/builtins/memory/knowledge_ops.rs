@@ -14,8 +14,8 @@ use aletheia_koina::id::ToolName;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, ToolCategory, ToolContext, ToolDef, ToolInput,
-    ToolResult,
+    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
+    ToolInput, ToolResult,
 };
 
 use crate::builtins::workspace::{extract_opt_u64, extract_str};
@@ -247,6 +247,7 @@ fn memory_search_def() -> ToolDef {
             required: vec!["query".to_owned()],
         },
         category: ToolCategory::Memory,
+        reversibility: Reversibility::FullyReversible,
         auto_activate: true,
     }
 }
@@ -280,6 +281,7 @@ fn memory_correct_def() -> ToolDef {
             required: vec!["fact_id".to_owned(), "new_content".to_owned()],
         },
         category: ToolCategory::Memory,
+        reversibility: Reversibility::PartiallyReversible,
         auto_activate: false,
     }
 }
@@ -313,6 +315,7 @@ fn memory_retract_def() -> ToolDef {
             required: vec!["fact_id".to_owned()],
         },
         category: ToolCategory::Memory,
+        reversibility: Reversibility::PartiallyReversible,
         auto_activate: false,
     }
 }
@@ -352,6 +355,7 @@ fn memory_forget_def() -> ToolDef {
             required: vec!["fact_id".to_owned(), "reason".to_owned()],
         },
         category: ToolCategory::Memory,
+        reversibility: Reversibility::PartiallyReversible,
         auto_activate: false,
     }
 }
@@ -394,6 +398,7 @@ fn memory_audit_def() -> ToolDef {
             required: vec![],
         },
         category: ToolCategory::Memory,
+        reversibility: Reversibility::FullyReversible,
         auto_activate: false,
     }
 }

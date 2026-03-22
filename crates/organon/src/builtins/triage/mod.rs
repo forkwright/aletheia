@@ -29,8 +29,8 @@ use aletheia_koina::id::ToolName;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, ToolCategory, ToolContext, ToolDef, ToolInput,
-    ToolResult,
+    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
+    ToolInput, ToolResult,
 };
 
 use prompt_gen::generate_prompt;
@@ -646,6 +646,7 @@ fn issue_scan_def() -> ToolDef {
             required: vec!["repo".to_owned()],
         },
         category: ToolCategory::Planning,
+        reversibility: Reversibility::FullyReversible,
         auto_activate: false,
     }
 }
@@ -708,6 +709,7 @@ fn issue_triage_def() -> ToolDef {
             required: vec!["repo".to_owned(), "staging_dir".to_owned()],
         },
         category: ToolCategory::Planning,
+        reversibility: Reversibility::PartiallyReversible,
         auto_activate: false,
     }
 }
@@ -763,6 +765,7 @@ fn issue_approve_def() -> ToolDef {
             ],
         },
         category: ToolCategory::Planning,
+        reversibility: Reversibility::PartiallyReversible,
         auto_activate: false,
     }
 }

@@ -16,8 +16,8 @@ use super::workspace::{extract_opt_u64, extract_str};
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, SpawnRequest, ToolCategory, ToolContext, ToolDef,
-    ToolInput, ToolResult,
+    InputSchema, PropertyDef, PropertyType, Reversibility, SpawnRequest, ToolCategory, ToolContext,
+    ToolDef, ToolInput, ToolResult,
 };
 
 const DEFAULT_TIMEOUT_SECS: u64 = 300;
@@ -240,6 +240,7 @@ fn sessions_spawn_def() -> ToolDef {
             required: vec!["role".to_owned(), "task".to_owned()],
         },
         category: ToolCategory::Agent,
+        reversibility: Reversibility::PartiallyReversible,
         auto_activate: false,
     }
 }
@@ -279,6 +280,7 @@ fn sessions_dispatch_def() -> ToolDef {
             required: vec!["tasks".to_owned()],
         },
         category: ToolCategory::Agent,
+        reversibility: Reversibility::Irreversible,
         auto_activate: false,
     }
 }

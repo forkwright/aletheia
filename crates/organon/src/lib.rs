@@ -9,6 +9,8 @@
 
 /// Built-in tool implementations that ship with the platform.
 pub mod builtins;
+/// User-defined slash commands loaded from YAML files via oikos cascade.
+pub mod custom_commands;
 /// Organon-specific error types and result alias.
 pub mod error;
 /// Prometheus metrics for tool execution counts, latency, and error rates.

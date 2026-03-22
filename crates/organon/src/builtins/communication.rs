@@ -15,8 +15,8 @@ use super::workspace::{extract_opt_u64, extract_str};
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, ToolCategory, ToolContext, ToolDef, ToolInput,
-    ToolResult,
+    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
+    ToolInput, ToolResult,
 };
 
 const MESSAGE_MAX_LEN: usize = 4000;
@@ -194,6 +194,7 @@ fn message_def() -> ToolDef {
             required: vec!["to".to_owned(), "text".to_owned()],
         },
         category: ToolCategory::Communication,
+        reversibility: Reversibility::Irreversible,
         auto_activate: true,
     }
 }
@@ -245,6 +246,7 @@ fn sessions_ask_def() -> ToolDef {
             required: vec!["agentId".to_owned(), "message".to_owned()],
         },
         category: ToolCategory::Communication,
+        reversibility: Reversibility::Reversible,
         auto_activate: true,
     }
 }
@@ -287,6 +289,7 @@ fn sessions_send_def() -> ToolDef {
             required: vec!["agentId".to_owned(), "message".to_owned()],
         },
         category: ToolCategory::Communication,
+        reversibility: Reversibility::Irreversible,
         auto_activate: true,
     }
 }

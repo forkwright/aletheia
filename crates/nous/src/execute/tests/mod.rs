@@ -140,6 +140,7 @@ fn make_tool_def(name: &str) -> ToolDef {
             required: vec![],
         },
         category: ToolCategory::Workspace,
+        reversibility: aletheia_organon::types::Reversibility::Irreversible,
         auto_activate: false,
     }
 }

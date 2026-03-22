@@ -11,8 +11,8 @@ use crate::error::{self, Result};
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::sandbox::{SandboxConfig, SandboxEnforcement};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, ToolCategory, ToolContext, ToolDef, ToolInput,
-    ToolResult,
+    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
+    ToolInput, ToolResult,
 };
 
 use super::sandbox::{ComputerUseSessionConfig, execute_sandboxed_action};
@@ -236,6 +236,7 @@ fn computer_use_def() -> ToolDef {
             required: vec!["action".to_owned()],
         },
         category: ToolCategory::System,
+        reversibility: Reversibility::Irreversible,
         auto_activate: false,
     }
 }

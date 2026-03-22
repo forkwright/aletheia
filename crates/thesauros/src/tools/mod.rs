@@ -255,6 +255,7 @@ fn prepare_tool(
         extended_description: None,
         input_schema,
         category: ToolCategory::Domain,
+        reversibility: aletheia_organon::types::Reversibility::Irreversible,
         auto_activate: false,
     };
 
