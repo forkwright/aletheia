@@ -1,3 +1,5 @@
+use tracing::Instrument;
+
 use crate::api::types::{Plan, TurnOutcome};
 use crate::app::App;
 use crate::id::{NousId, ToolId, TurnId};
@@ -117,6 +119,27 @@ pub(crate) fn handle_stream_tool_approval_required(
     risk: String,
     reason: String,
 ) {
+    // WHY: If the user previously chose "always allow" for this tool, auto-approve
+    // without presenting the dialog again.
+    if app
+        .interaction
+        .always_allowed_tools
+        .contains(tool_name.as_str())
+    {
+        let client = app.client.clone();
+        let span = tracing::info_span!("auto_approve_tool", %turn_id, %tool_id, %tool_name);
+        tokio::spawn(
+            // kanon:ignore RUST/spawn-no-instrument
+            async move {
+                if let Err(e) = client.approve_tool(&turn_id, &tool_id).await {
+                    tracing::error!("failed to auto-approve tool: {e}");
+                }
+            }
+            .instrument(span),
+        );
+        return;
+    }
+
     app.layout.overlay = Some(Overlay::ToolApproval(ToolApprovalOverlay {
         turn_id,
         tool_id,

@@ -274,9 +274,19 @@ fn render_tool_call(
         }
     });
 
+    let icon = tc.category.icon();
+    let icon_style = if tc.category.is_destructive() {
+        theme.style_error()
+    } else if tc.category.is_read_only() {
+        theme.style_dim()
+    } else {
+        theme.style_muted()
+    };
+
     let mut header = vec![
         Span::styled(marker, marker_style),
         Span::styled(format!(" {status_icon}"), status_style),
+        Span::styled(format!(" {icon}"), icon_style),
         Span::styled(
             format!(" {}", tc.name),
             Style::default()
@@ -455,9 +465,17 @@ fn render_summary_row(
     // Per-category rows with tallies and percentiles.
     for cat in CATEGORY_ORDER {
         if let Some(stats) = summary.categories.get(cat) {
+            let icon_style = if cat.is_destructive() {
+                theme.style_error()
+            } else if cat.is_read_only() {
+                theme.style_dim()
+            } else {
+                theme.style_muted()
+            };
             let mut cat_spans = vec![
                 Span::styled("  ", Style::default()),
-                Span::styled(cat.to_string(), theme.style_muted()),
+                Span::styled(cat.icon(), icon_style),
+                Span::styled(format!(" {}", cat.display_name()), theme.style_muted()),
                 Span::styled(" ", Style::default()),
                 Span::styled(stats.success.to_string(), theme.style_success()),
                 Span::styled("/", theme.style_dim()),

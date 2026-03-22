@@ -83,6 +83,7 @@ pub fn test_app() -> App {
             tool_expanded: HashSet::new(),
             filter: FilterState::default(),
             keymap: KeyMap::build(&HashMap::new()),
+            always_allowed_tools: HashSet::new(),
         },
         layout: LayoutState {
             sidebar_visible: true,
