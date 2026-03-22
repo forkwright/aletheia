@@ -20,15 +20,13 @@ Module and crate names use Greek terms reflecting their essential nature (nous =
 aletheia
 ├── koina          -  errors, tracing, safe wrappers, fs utils
 ├── taxis          -  config, path resolution, oikos hierarchy, secret refs
-├── mneme          -  session store (SQLite) + knowledge engine (vendored Datalog) + candle
-│   ├── store      -  SQLite session store: WAL, migrations, retention
-│   ├── knowledge  -  Datalog knowledge graph, HNSW vectors, entity relations
-│   ├── embedding  -  EmbeddingProvider trait: candle (local default)
-│   ├── extract    -  LLM-driven fact extraction, entity resolution
-│   ├── recall     -  hybrid retrieval (vector + graph + BM25), MMR diversity
-│   └── engine/    -  embedded Datalog + HNSW engine (mneme-engine feature gate)
+├── mneme          -  thin facade re-exporting eidos, graphe, episteme, krites
+│   ├── eidos      -  shared knowledge types (Fact, Entity, Relationship, EpistemicTier)
+│   ├── graphe     -  SQLite session store: WAL, migrations, retention, backup
+│   ├── episteme   -  knowledge pipeline: extraction, recall, consolidation, embeddings
+│   └── krites     -  embedded Datalog engine + HNSW vectors (mneme-engine feature gate)
 ├── hermeneus      -  Anthropic client, model routing, credentials, provider trait
-├── organon        -  tool registry + built-in tools
+├── organon        -  tool registry + 36 built-in tools
 ├── nous           -  agent pipeline, bootstrap, recall, finalize, actor model
 ├── dianoia        -  planning / project orchestration
 ├── pylon          -  Axum HTTP gateway, SSE streaming
@@ -36,10 +34,12 @@ aletheia
 ├── symbolon       -  JWT auth, sessions, RBAC
 ├── agora          -  channel registry + ChannelProvider trait
 │   └── semeion    -  Signal (signal-cli subprocess)
-├── daemon         -  oikonomos: per-nous background tasks, cron, evolution, prosoche
-├── melete         -  distillation, reflection, memory flush, consolidation
+├── daemon         -  oikonomos: per-nous background tasks, cron, prosoche
+├── melete         -  context distillation, compression, token budget management
+├── thesauros      -  domain pack loader (knowledge, tools, config overlays)
 └── theatron       -  presentation umbrella (crates/theatron/)
-    └── tui        -  terminal dashboard                                  (crates/theatron/tui/)
+    ├── core       -  shared API client, types, SSE infrastructure  (crates/theatron/core/)
+    └── tui        -  terminal dashboard                            (crates/theatron/tui/)
 ```
 
 ---
@@ -105,37 +105,54 @@ The oikos hierarchy is described in [CONFIGURATION.md](CONFIGURATION.md).
 
 ## Rust crate workspace
 
-Application crates in `crates/`, plus the `integration-tests` support crate.
+23 workspace members in `crates/`, plus `theatron-desktop` excluded from workspace (GTK3 CI deps).
 
 ### Crates
 
-| Crate | Domain | Depends On |
-|-------|--------|------------|
-| `koina` | Errors (snafu), tracing, fs utilities, safe wrappers | nothing (leaf) |
-| `taxis` | Config loading (figment TOML cascade), path resolution, oikos hierarchy | koina |
-| `mneme` | Unified memory store, embedding provider trait, knowledge retrieval. Includes embedded Datalog+HNSW engine behind `mneme-engine` feature gate. | koina |
-| `hermeneus` | Anthropic client, model routing, credential management, provider trait | koina |
-| `organon` | Tool registry, tool definitions, built-in tool set | koina, hermeneus |
-| `symbolon` | JWT tokens, password hashing, RBAC policies | koina |
-| `melete` | Context distillation, compression strategies, token budget management | koina, hermeneus |
-| `agora` | Channel registry, ChannelProvider trait, Signal JSON-RPC client | koina, taxis |
-| `daemon` | Background task scheduling, cron jobs, lifecycle events (`oikonomos` internally) | koina |
-| `dianoia` | Multi-phase planning orchestrator, project context tracking | koina |
-| `thesauros` | Domain pack loader - external knowledge, tools, config overlays | koina, organon |
-| `nous` | Agent pipeline, NousActor (tokio), bootstrap, recall, execute, finalize | koina, taxis, mneme, hermeneus, organon, melete, thesauros |
-| `pylon` | Axum HTTP gateway, SSE streaming, auth middleware | koina, taxis, hermeneus, organon, mneme, nous, symbolon |
-| `diaporeia` | MCP server interface for external AI agents (`crates/diaporeia`) | koina, taxis, nous, organon, mneme, symbolon |
-| `theatron-core` | Shared presentation types and traits for Aletheia UIs (`crates/theatron/core/`) | nothing (leaf) |
-| `theatron-tui` | Terminal dashboard (`crates/theatron/tui/`) | theatron-core, reqwest (standalone UI client) |
-| `theatron-desktop` | Dioxus desktop UI (`crates/theatron/desktop/`) - in progress | theatron-core |
-| `aletheia` | Binary entrypoint (Clap CLI) - wires all crates together | taxis, hermeneus, organon, mneme, nous, symbolon, pylon, agora, thesauros, daemon, dianoia, theatron-tui (optional) |
+| Crate | Directory | Domain | Depends On |
+|-------|-----------|--------|------------|
+| `koina` | `crates/koina` | Errors (snafu), tracing, fs utilities, safe wrappers | nothing (leaf) |
+| `taxis` | `crates/taxis` | Config loading (figment TOML cascade), path resolution, oikos hierarchy | koina |
+| `eidos` | `crates/eidos` | Shared knowledge types: Fact, Entity, Relationship, EpistemicTier | nothing (leaf) |
+| `graphe` | `crates/graphe` | SQLite session store: WAL, migrations, retention, backup, export/import | eidos, koina |
+| `episteme` | `crates/episteme` | Knowledge pipeline: extraction, recall, consolidation, embedding provider | eidos, koina, graphe, krites (opt) |
+| `krites` | `crates/krites` | Embedded Datalog engine with HNSW and graph support | eidos |
+| `mneme` | `crates/mneme` | Thin facade re-exporting eidos, graphe, episteme, krites | eidos, graphe, episteme, krites |
+| `hermeneus` | `crates/hermeneus` | Anthropic client, model routing, credential management, provider trait | koina, taxis |
+| `organon` | `crates/organon` | Tool registry, tool definitions, 36 built-in tools, sandbox | koina, hermeneus |
+| `symbolon` | `crates/symbolon` | JWT tokens, password hashing, RBAC policies | koina |
+| `melete` | `crates/melete` | Context distillation, compression strategies, token budget management | hermeneus |
+| `agora` | `crates/agora` | Channel registry, ChannelProvider trait, Signal JSON-RPC client | koina, taxis |
+| `daemon` (oikonomos) | `crates/daemon` | Per-nous background task scheduling, cron jobs, prosoche | koina |
+| `dianoia` | `crates/dianoia` | Multi-phase planning orchestrator, project context tracking | nothing (leaf) |
+| `thesauros` | `crates/thesauros` | Domain pack loader: external knowledge, tools, config overlays | koina, organon |
+| `nous` | `crates/nous` | Agent pipeline, NousActor (tokio), bootstrap, recall, execute, finalize | koina, taxis, mneme, hermeneus, organon, melete, thesauros |
+| `pylon` | `crates/pylon` | Axum HTTP gateway, SSE streaming, auth middleware | koina, taxis, hermeneus, organon, mneme, nous, symbolon |
+| `diaporeia` | `crates/diaporeia` | MCP server interface for external AI agents | koina, taxis, nous, organon, mneme, symbolon |
+| `theatron-core` | `crates/theatron/core` | Shared API client, types, SSE infrastructure for UIs | koina |
+| `theatron-tui` | `crates/theatron/tui` | Terminal dashboard | koina, theatron-core |
+| `theatron-desktop` | `crates/theatron/desktop` | Dioxus desktop UI (excluded from workspace, requires GTK3) | theatron-core |
+| `aletheia` | `crates/aletheia` | Binary entrypoint (Clap CLI), wires all crates together | koina, taxis, hermeneus, organon, mneme, nous, symbolon, pylon, agora, thesauros, daemon, dianoia, dokimion, diaporeia (opt), theatron-tui (opt) |
 
 **Support crates** (not part of the application dependency graph):
 
-| Crate | Domain | Depends On |
-|-------|--------|------------|
-| `eval` | Behavioral eval framework (HTTP scenario runner) | nothing (leaf) |
-| `integration-tests` | Cross-crate integration test suite | koina, taxis, mneme, hermeneus, nous, organon, pylon, symbolon, thesauros |
+| Crate | Directory | Domain | Depends On |
+|-------|-----------|--------|------------|
+| `dokimion` | `crates/eval` | Behavioral eval framework (HTTP scenario runner) | koina |
+| `integration-tests` | `crates/integration-tests` | Cross-crate integration test suite | dokimion, koina, taxis, mneme, hermeneus, nous, organon, pylon, symbolon, thesauros |
+
+### Mneme facade
+
+Mneme was decomposed into four sub-crates. The `mneme` crate is now a thin facade that re-exports their public APIs:
+
+| Sub-crate | Re-exports | Feature gate |
+|-----------|------------|--------------|
+| `eidos` | `id`, `knowledge` | always |
+| `graphe` | `backup`, `error`, `export`, `import`, `migration`, `portability`, `recovery`, `retention`, `schema`, `store`, `types` | `sqlite` (default) for most |
+| `episteme` | `conflict`, `consolidation`, `embedding`, `extract`, `hnsw_index`, `instinct`, `knowledge_portability`, `knowledge_store`, `query`, `recall`, `skill`, `skills`, `vocab` | some behind `mneme-engine` or `hnsw_rs` |
+| `krites` | `engine` | `mneme-engine` |
+
+Downstream crates depend on `mneme` and get the full API surface without knowing about the decomposition.
 
 ### Dependency graph
 
@@ -148,18 +165,18 @@ Application crates in `crates/`, plus the `integration-tests` support crate.
             / | \ \ | \ \ | \   |      | \    |
   symbolon  | organon |  taxis hermeneus  koina
             |  |  \   |    |
-            | hermeneus mneme
-            |    |       |
-            koina koina  koina
+            | hermeneus mneme (facade)
+            |    |      / | \ \
+            koina koina eidos graphe episteme krites
 ```
 
 **Layer rules:**
-- **Leaf** (no workspace deps): `koina`
-- **Low** (koina only): `taxis`, `hermeneus`, `symbolon`, `mneme` (includes embedded Datalog+HNSW engine behind feature gate)
-- **Mid**: `melete` (koina + hermeneus), `organon` (koina + hermeneus), `agora` (koina + taxis), `daemon` (koina), `dianoia` (koina), `thesauros` (koina + organon)
+- **Leaf** (no workspace deps): `koina`, `eidos`, `dianoia`
+- **Low** (one workspace dep): `taxis`, `hermeneus`, `symbolon`, `krites` (eidos only), `daemon` (koina), `melete` (hermeneus), `theatron-core` (koina), `dokimion` (koina)
+- **Mid**: `graphe` (eidos + koina), `episteme` (eidos + koina + graphe + krites), `mneme` (facade), `organon` (koina + hermeneus), `agora` (koina + taxis), `thesauros` (koina + organon)
 - **High**: `nous` (multiple mid+low deps), `pylon` (multiple deps including nous), `diaporeia` (MCP server, multiple deps including nous)
-- **Top**: `aletheia` binary, `theatron-tui` (terminal dashboard), `theatron-desktop` (Dioxus desktop, in progress)
-- **Support**: `eval` (behavioral scenario runner), `integration-tests`
+- **Top**: `aletheia` binary, `theatron-tui` (koina + theatron-core), `theatron-desktop` (Dioxus desktop, excluded from workspace)
+- **Support**: `integration-tests`
 
 Imports flow downward only. Lower-layer crates must not depend on higher layers.
 
@@ -167,7 +184,7 @@ Imports flow downward only. Lower-layer crates must not depend on higher layers.
 
 | Trait | Crate | Purpose |
 |-------|-------|---------|
-| `EmbeddingProvider` | mneme | Vector embeddings from text |
+| `EmbeddingProvider` | episteme | Vector embeddings from text |
 | `ChannelProvider` | agora | Send/receive on a messaging channel |
 | `LlmProvider` | hermeneus | LLM API calls |
 
@@ -211,11 +228,13 @@ strip = "symbols"
 
 ## Structural properties
 
-- **koina is a true leaf node.** No workspace deps in Rust.
+- **koina, eidos, and dianoia are true leaf nodes.** No workspace deps in Rust.
 - **symbolon depends only on koina** (plus external crates: reqwest, rusqlite, ring, argon2).
-- **Datalog+HNSW engine is embedded** inside `mneme/src/engine/`, gated behind the `mneme-engine` feature.
+- **mneme is a thin facade.** It re-exports from eidos (types), graphe (session store), episteme (knowledge pipeline), and krites (Datalog engine). No logic of its own.
+- **krites contains the Datalog+HNSW engine**, gated behind the `mneme-engine` feature.
+- **EmbeddingProvider lives in episteme**, not mneme.
 - **Trait boundaries are extension points.** `EmbeddingProvider`, `ChannelProvider`, `LlmProvider` - implement the trait, swap the provider.
 - **daemon depends only on koina** - lightweight scheduling, not a high-layer crate. No other application crate imports it.
-- **dianoia depends only on koina** - planning context decoupled from the agent pipeline. No other application crate imports it.
+- **dianoia has no workspace dependencies** - planning context fully decoupled from the agent pipeline. No other application crate imports it.
 - **thesauros loads domain packs** - knowledge, tools, config overlays bundled as portable extensions. Depends on koina + organon.
 - **nous requires a multi-thread Tokio runtime** (`rt-multi-thread`). The actor model and spawn-based timeout machinery depend on multiple OS threads. Single-thread runtime will deadlock.
