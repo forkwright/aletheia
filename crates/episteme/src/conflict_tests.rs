@@ -36,7 +36,7 @@ fn make_candidate(
     similarity: f64,
 ) -> ConflictCandidate {
     ConflictCandidate {
-        existing_fact_id: FactId::from(id),
+        existing_fact_id: FactId::new(id).expect("valid test id"),
         existing_content: content.to_owned(),
         existing_confidence: confidence,
         existing_tier: tier,
@@ -262,7 +262,7 @@ fn resolve_contradicts_new_higher_confidence() {
     assert_eq!(
         action,
         ConflictAction::Supersede {
-            old_id: FactId::from("f-old")
+            old_id: FactId::new("f-old").expect("valid test id")
         },
         "resolve contradicts new higher confidence: values should be equal"
     );
@@ -288,7 +288,7 @@ fn resolve_contradicts_equal_confidence_new_wins() {
     assert_eq!(
         action,
         ConflictAction::Supersede {
-            old_id: FactId::from("f-old")
+            old_id: FactId::new("f-old").expect("valid test id")
         },
         "resolve contradicts equal confidence new wins: values should be equal"
     );
@@ -302,7 +302,7 @@ fn resolve_refines_supersedes() {
     assert_eq!(
         action,
         ConflictAction::Supersede {
-            old_id: FactId::from("f-old")
+            old_id: FactId::new("f-old").expect("valid test id")
         },
         "resolve refines supersedes: values should be equal"
     );
@@ -387,7 +387,7 @@ fn verified_can_be_superseded_by_verified() {
     assert_eq!(
         action,
         ConflictAction::Supersede {
-            old_id: FactId::from("f-old")
+            old_id: FactId::new("f-old").expect("valid test id")
         },
         "verified can be superseded by verified: values should be equal"
     );
@@ -401,7 +401,7 @@ fn verified_can_be_superseded_by_inferred() {
     assert_eq!(
         action,
         ConflictAction::Supersede {
-            old_id: FactId::from("f-old")
+            old_id: FactId::new("f-old").expect("valid test id")
         },
         "verified can be superseded by inferred: values should be equal"
     );
@@ -480,7 +480,7 @@ fn correction_fact_wins_contradiction_regardless_of_confidence() {
     assert_eq!(
         action,
         ConflictAction::Supersede {
-            old_id: FactId::from("f-old")
+            old_id: FactId::new("f-old").expect("valid test id")
         },
         "correction fact wins contradiction regardless of confidence: values should be equal"
     );
@@ -555,13 +555,13 @@ fn classify_each_type_produces_correct_action() {
         (
             "CONTRADICTS",
             ConflictAction::Supersede {
-                old_id: FactId::from("f-1"),
+                old_id: FactId::new("f-1").expect("valid test id"),
             },
         ),
         (
             "REFINES",
             ConflictAction::Supersede {
-                old_id: FactId::from("f-1"),
+                old_id: FactId::new("f-1").expect("valid test id"),
             },
         ),
         ("SUPPLEMENTS", ConflictAction::Insert),
@@ -663,10 +663,10 @@ fn conflict_action_equality() {
     );
     assert_eq!(
         ConflictAction::Supersede {
-            old_id: FactId::from("a")
+            old_id: FactId::new("a").expect("valid test id")
         },
         ConflictAction::Supersede {
-            old_id: FactId::from("a")
+            old_id: FactId::new("a").expect("valid test id")
         },
         "conflict action equality: values should be equal"
     );

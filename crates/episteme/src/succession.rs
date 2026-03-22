@@ -334,7 +334,7 @@ mod tests {
     #[test]
     fn domain_volatility_serde_roundtrip() {
         let dv = DomainVolatility {
-            entity_id: EntityId::from("ent-1"),
+            entity_id: EntityId::new("ent-1").expect("valid test id"),
             total_facts: 10,
             superseded_facts: 3,
             avg_chain_length: 1.5,
@@ -353,7 +353,7 @@ mod tests {
         let profile = KnowledgeProfile {
             nous_id: "syn".to_owned(),
             top_entities: vec![EntityProfile {
-                entity_id: EntityId::from("ent-1"),
+                entity_id: EntityId::new("ent-1").expect("valid test id"),
                 entity_name: "Alice".to_owned(),
                 fact_count: 5,
                 avg_stability_hours: 720.0,
@@ -382,7 +382,7 @@ mod tests {
 
         fn make_entity(id: &str, name: &str) -> Entity {
             Entity {
-                id: EntityId::new_unchecked(id),
+                id: EntityId::new(id).expect("valid test id"),
                 name: name.to_owned(),
                 entity_type: "concept".to_owned(),
                 aliases: vec![],
@@ -393,7 +393,7 @@ mod tests {
 
         fn make_fact(id: &str, nous_id: &str) -> Fact {
             Fact {
-                id: crate::id::FactId::from(id),
+                id: crate::id::FactId::new(id).expect("valid test id"),
                 nous_id: nous_id.to_owned(),
                 content: format!("fact content for {id}"),
                 fact_type: "observation".to_owned(),
@@ -424,8 +424,8 @@ mod tests {
         fn link_fact_entity(store: &KnowledgeStore, fact_id: &str, entity_id: &str) {
             store
                 .insert_fact_entity(
-                    &crate::id::FactId::from(fact_id),
-                    &EntityId::new_unchecked(entity_id),
+                    &crate::id::FactId::new(fact_id).expect("valid test id"),
+                    &EntityId::new(entity_id).expect("valid test id"),
                 )
                 .expect("insert_fact_entity");
         }
@@ -435,11 +435,13 @@ mod tests {
             let store = mem_store();
 
             let mut fact_a = make_fact("fact-a", "syn");
-            fact_a.lifecycle.superseded_by = Some(crate::id::FactId::from("fact-b"));
+            fact_a.lifecycle.superseded_by =
+                Some(crate::id::FactId::new("fact-b").expect("valid test id"));
             fact_a.temporal.valid_to = jiff::Timestamp::now();
 
             let mut fact_b = make_fact("fact-b", "syn");
-            fact_b.lifecycle.superseded_by = Some(crate::id::FactId::from("fact-c"));
+            fact_b.lifecycle.superseded_by =
+                Some(crate::id::FactId::new("fact-c").expect("valid test id"));
             fact_b.temporal.valid_to = jiff::Timestamp::now();
 
             let fact_c = make_fact("fact-c", "syn");
@@ -478,8 +480,9 @@ mod tests {
                 let mut fact = make_fact(&id, "syn");
                 if i < 8 {
                     let replacement_id = format!("f-v-rep-{i}");
-                    fact.lifecycle.superseded_by =
-                        Some(crate::id::FactId::from(replacement_id.as_str()));
+                    fact.lifecycle.superseded_by = Some(
+                        crate::id::FactId::new(replacement_id.as_str()).expect("valid test id"),
+                    );
                     fact.temporal.valid_to = jiff::Timestamp::now();
 
                     let rep = make_fact(&replacement_id, "syn");
@@ -518,7 +521,8 @@ mod tests {
                 let mut fact = make_fact(&id, "syn");
                 if i == 0 {
                     let rep_id = "f-s-rep-0";
-                    fact.lifecycle.superseded_by = Some(crate::id::FactId::from(rep_id));
+                    fact.lifecycle.superseded_by =
+                        Some(crate::id::FactId::new(rep_id).expect("valid test id"));
                     fact.temporal.valid_to = jiff::Timestamp::now();
                     let rep = make_fact(rep_id, "syn");
                     store.insert_fact(&rep).expect("insert rep");

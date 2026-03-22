@@ -390,7 +390,7 @@ pub(crate) fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
             if let Some(existing_id) = existing {
                 if args.force {
                     if let Err(e) = store.forget_fact(
-                        &aletheia_mneme::id::FactId::from(existing_id),
+                        &aletheia_mneme::id::FactId::new(existing_id)?,
                         aletheia_mneme::knowledge::ForgetReason::Outdated,
                     ) {
                         eprintln!("  WARN: failed to supersede {slug}: {e}");
@@ -408,7 +408,7 @@ pub(crate) fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
 
             let fact_id = ulid::Ulid::new().to_string();
             let fact = Fact {
-                id: aletheia_mneme::id::FactId::from(fact_id.clone()),
+                id: aletheia_mneme::id::FactId::new(fact_id.clone())?,
                 nous_id: nous_id.to_owned(),
                 content: content_json.clone(),
                 fact_type: "skill".to_owned(),
@@ -442,7 +442,7 @@ pub(crate) fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
             let embedding_text = format!("{}: {}", skill.name, skill.description);
             let emb_id = ulid::Ulid::new().to_string();
             let chunk = aletheia_mneme::knowledge::EmbeddedChunk {
-                id: aletheia_mneme::id::EmbeddingId::from(emb_id),
+                id: aletheia_mneme::id::EmbeddingId::new(emb_id)?,
                 content: embedding_text,
                 source_type: "fact".to_owned(),
                 source_id: fact_id,
@@ -631,7 +631,7 @@ pub(crate) fn review_skills(
                     .fact_id
                     .as_deref()
                     .ok_or_else(|| anyhow::anyhow!("--fact-id required for approve action"))?;
-                let fact_id = aletheia_mneme::id::FactId::from(fid);
+                let fact_id = aletheia_mneme::id::FactId::new(fid)?;
                 let new_id = store
                     .approve_pending_skill(&fact_id, nous_id)
                     .map_err(|e| anyhow::anyhow!("failed to approve skill: {e}"))?;
@@ -642,7 +642,7 @@ pub(crate) fn review_skills(
                     .fact_id
                     .as_deref()
                     .ok_or_else(|| anyhow::anyhow!("--fact-id required for reject action"))?;
-                let fact_id = aletheia_mneme::id::FactId::from(fid);
+                let fact_id = aletheia_mneme::id::FactId::new(fid)?;
                 store
                     .reject_pending_skill(&fact_id)
                     .map_err(|e| anyhow::anyhow!("failed to reject skill: {e}"))?;

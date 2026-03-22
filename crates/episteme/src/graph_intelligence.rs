@@ -23,6 +23,9 @@
 
 use std::collections::{HashMap, HashSet};
 
+#[cfg(feature = "mneme-engine")]
+use snafu::ResultExt;
+
 /// Datalog DDL for the `graph_scores` relation.
 ///
 /// Caches `PageRank` scores, community (cluster) assignments, and the `PageRank` max
@@ -353,7 +356,9 @@ impl crate::knowledge_store::KnowledgeStore {
     fn bfs_fallback_2hop(&self, seed_entity_ids: &[String]) -> HashMap<String, u32> {
         let mut proximity = HashMap::new();
         for seed_id in seed_entity_ids {
-            let entity_id = crate::id::EntityId::new_unchecked(seed_id);
+            let Ok(entity_id) = crate::id::EntityId::new(seed_id) else {
+                continue;
+            };
             if let Ok(neighborhood) = self.entity_neighborhood(&entity_id) {
                 for row in &neighborhood.rows {
                     if let Some(neighbor_id) = row.first().and_then(|v| v.get_str()) {
@@ -430,8 +435,9 @@ impl crate::knowledge_store::KnowledgeStore {
             let volatility_score =
                 crate::succession::compute_volatility(total, superseded, avg_chain_length);
 
+            let eid = crate::id::EntityId::new(entity_id).context(crate::error::InvalidIdSnafu)?;
             volatilities.push(crate::succession::DomainVolatility {
-                entity_id: crate::id::EntityId::new_unchecked(entity_id),
+                entity_id: eid,
                 total_facts: total,
                 superseded_facts: superseded,
                 avg_chain_length,
@@ -525,8 +531,9 @@ impl crate::knowledge_store::KnowledgeStore {
             let fact_count = row.get(2).and_then(DataValue::get_int).unwrap_or(0);
             let avg_stability = row.get(3).and_then(DataValue::get_float).unwrap_or(0.0);
 
+            let eid = crate::id::EntityId::new(entity_id).context(crate::error::InvalidIdSnafu)?;
             top_entities.push(crate::succession::EntityProfile {
-                entity_id: crate::id::EntityId::new_unchecked(entity_id),
+                entity_id: eid,
                 entity_name,
                 fact_count: i64_to_u32(fact_count),
                 avg_stability_hours: avg_stability,

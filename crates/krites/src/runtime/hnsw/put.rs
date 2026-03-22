@@ -778,7 +778,13 @@ impl<'a> SessionTx<'a> {
                          (embedding failure or incomplete write) — run index rebuild to repair"
                     );
                 }
-                Err(_) => {} // I/O error scanning base: skip this entry
+                Err(e) => {
+                    warn!(
+                        index = %manifest.index_name,
+                        error = %e,
+                        "I/O error scanning base relation during orphan check — skipping entry"
+                    );
+                }
             }
         }
 

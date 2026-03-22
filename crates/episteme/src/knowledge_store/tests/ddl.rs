@@ -63,7 +63,10 @@ fn build_hybrid_query_with_seeds() {
     let q = HybridQuery {
         text: "test".into(),
         embedding: vec![0.0; 4],
-        seed_entities: vec!["e-rust".into(), "e-python".into()],
+        seed_entities: vec![
+            crate::id::EntityId::new("e-rust").expect("valid test id"),
+            crate::id::EntityId::new("e-python").expect("valid test id"),
+        ],
         limit: 5,
         ef: 20,
     };
@@ -93,7 +96,7 @@ fn build_hybrid_query_accepts_valid_seed_ids() {
         let q = HybridQuery {
             text: "test".into(),
             embedding: vec![0.0; 4],
-            seed_entities: vec![crate::id::EntityId::from(seed)],
+            seed_entities: vec![crate::id::EntityId::new(seed).expect("valid test id")],
             limit: 5,
             ef: 20,
         };
@@ -116,7 +119,7 @@ fn hybrid_search_empty_seeds_returns_results() {
     let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim }).expect("open_mem");
 
     let fact = Fact {
-        id: crate::id::FactId::new_unchecked("f1"),
+        id: crate::id::FactId::new("f1").expect("valid test id"),
         nous_id: "test".to_owned(),
         content: "Rust systems programming".to_owned(),
         fact_type: String::new(),
@@ -147,7 +150,7 @@ fn hybrid_search_empty_seeds_returns_results() {
     store.insert_fact(&fact).expect("insert fact");
 
     let chunk = EmbeddedChunk {
-        id: crate::id::EmbeddingId::new_unchecked("f1"),
+        id: crate::id::EmbeddingId::new("f1").expect("valid test id"),
         content: "Rust systems programming".to_owned(),
         source_type: "fact".to_owned(),
         source_id: "f1".to_owned(),
@@ -196,7 +199,7 @@ fn hybrid_search_graph_aggregation() {
     let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim }).expect("open_mem");
 
     let f1 = Fact {
-        id: crate::id::FactId::new_unchecked("f1"),
+        id: crate::id::FactId::new("f1").expect("valid test id"),
         nous_id: "test".to_owned(),
         content: "Rust systems programming".to_owned(),
         fact_type: String::new(),
@@ -227,7 +230,7 @@ fn hybrid_search_graph_aggregation() {
     store.insert_fact(&f1).expect("insert f1");
     store
         .insert_embedding(&EmbeddedChunk {
-            id: crate::id::EmbeddingId::new_unchecked("f1"),
+            id: crate::id::EmbeddingId::new("f1").expect("valid test id"),
             content: "Rust systems programming".to_owned(),
             source_type: "fact".to_owned(),
             source_id: "f1".to_owned(),
@@ -239,7 +242,7 @@ fn hybrid_search_graph_aggregation() {
         .expect("insert f1 embedding");
 
     let f2 = Fact {
-        id: crate::id::FactId::new_unchecked("f2"),
+        id: crate::id::FactId::new("f2").expect("valid test id"),
         nous_id: "test".to_owned(),
         content: "Rust memory safety".to_owned(),
         fact_type: String::new(),
@@ -270,7 +273,7 @@ fn hybrid_search_graph_aggregation() {
     store.insert_fact(&f2).expect("insert f2");
     store
         .insert_embedding(&EmbeddedChunk {
-            id: crate::id::EmbeddingId::new_unchecked("f2"),
+            id: crate::id::EmbeddingId::new("f2").expect("valid test id"),
             content: "Rust memory safety".to_owned(),
             source_type: "fact".to_owned(),
             source_id: "f2".to_owned(),
@@ -284,7 +287,7 @@ fn hybrid_search_graph_aggregation() {
     for (id, name) in [("s1", "Seed1"), ("s2", "Seed2"), ("s3", "Seed3")] {
         store
             .insert_entity(&Entity {
-                id: crate::id::EntityId::new_unchecked(id),
+                id: crate::id::EntityId::new(id).expect("valid test id"),
                 name: name.to_owned(),
                 entity_type: "concept".to_owned(),
                 aliases: vec![],
@@ -296,8 +299,8 @@ fn hybrid_search_graph_aggregation() {
             .expect("insert entity");
         store
             .insert_relationship(&Relationship {
-                src: crate::id::EntityId::new_unchecked(id),
-                dst: crate::id::EntityId::new_unchecked("f1"),
+                src: crate::id::EntityId::new(id).expect("valid test id"),
+                dst: crate::id::EntityId::new("f1").expect("valid test id"),
                 relation: "describes".to_owned(),
                 weight: 0.7,
                 created_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
@@ -307,8 +310,8 @@ fn hybrid_search_graph_aggregation() {
     }
     store
         .insert_relationship(&Relationship {
-            src: crate::id::EntityId::new_unchecked("s1"),
-            dst: crate::id::EntityId::new_unchecked("f2"),
+            src: crate::id::EntityId::new("s1").expect("valid test id"),
+            dst: crate::id::EntityId::new("f2").expect("valid test id"),
             relation: "describes".to_owned(),
             weight: 0.7,
             created_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
@@ -321,9 +324,9 @@ fn hybrid_search_graph_aggregation() {
             text: "Rust programming".to_owned(),
             embedding: vec![0.9, 0.1, 0.1, 0.1],
             seed_entities: vec![
-                crate::id::EntityId::new_unchecked("s1"),
-                crate::id::EntityId::new_unchecked("s2"),
-                crate::id::EntityId::new_unchecked("s3"),
+                crate::id::EntityId::new("s1").expect("valid test id"),
+                crate::id::EntityId::new("s2").expect("valid test id"),
+                crate::id::EntityId::new("s3").expect("valid test id"),
             ],
             limit: 10,
             ef: 20,
@@ -368,7 +371,7 @@ fn hybrid_search_two_signal_no_graph() {
     let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim }).expect("open_mem");
 
     let fact = Fact {
-        id: crate::id::FactId::new_unchecked("f-twosig"),
+        id: crate::id::FactId::new("f-twosig").expect("valid test id"),
         nous_id: "test".to_owned(),
         content: "unique harpsichord melody testing".to_owned(),
         fact_type: String::new(),
@@ -400,7 +403,7 @@ fn hybrid_search_two_signal_no_graph() {
 
     store
         .insert_embedding(&EmbeddedChunk {
-            id: crate::id::EmbeddingId::new_unchecked("f-twosig"),
+            id: crate::id::EmbeddingId::new("f-twosig").expect("valid test id"),
             content: "unique harpsichord melody testing".to_owned(),
             source_type: "fact".to_owned(),
             source_id: "f-twosig".to_owned(),
@@ -413,7 +416,7 @@ fn hybrid_search_two_signal_no_graph() {
 
     store
         .insert_entity(&Entity {
-            id: crate::id::EntityId::new_unchecked("e-unrelated"),
+            id: crate::id::EntityId::new("e-unrelated").expect("valid test id"),
             name: "Unrelated".to_owned(),
             entity_type: "concept".to_owned(),
             aliases: vec![],
@@ -428,7 +431,7 @@ fn hybrid_search_two_signal_no_graph() {
         .search_hybrid(&HybridQuery {
             text: "harpsichord melody".to_owned(),
             embedding: vec![0.7, 0.3, 0.2, 0.1],
-            seed_entities: vec![crate::id::EntityId::new_unchecked("e-unrelated")],
+            seed_entities: vec![crate::id::EntityId::new("e-unrelated").expect("valid test id")],
             limit: 5,
             ef: 20,
         })
@@ -457,7 +460,7 @@ fn hybrid_search_absent_signal_rank_is_negative_one() {
     let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim }).expect("open_mem");
 
     let fact = Fact {
-        id: crate::id::FactId::new_unchecked("f-bm25-only"),
+        id: crate::id::FactId::new("f-bm25-only").expect("valid test id"),
         nous_id: "test".to_owned(),
         content: "unique xylophone testing keyword".to_owned(),
         fact_type: String::new(),

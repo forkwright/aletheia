@@ -15,7 +15,7 @@ use crate::knowledge_store::KnowledgeStore;
 fn make_fact(id: &str, content: &str) -> Fact {
     let now = jiff::Timestamp::now();
     Fact {
-        id: FactId::from(id),
+        id: FactId::new(id).expect("valid test id"),
         nous_id: "test-nous".to_owned(),
         content: content.to_owned(),
         fact_type: "observation".to_owned(),
@@ -46,8 +46,8 @@ fn make_fact(id: &str, content: &str) -> Fact {
 /// Helper: create a causal edge.
 fn make_edge(cause: &str, effect: &str, confidence: f64) -> CausalEdge {
     CausalEdge {
-        cause: FactId::from(cause),
-        effect: FactId::from(effect),
+        cause: FactId::new(cause).expect("valid test id"),
+        effect: FactId::new(effect).expect("valid test id"),
         ordering: TemporalOrdering::Before,
         confidence,
         created_at: jiff::Timestamp::now(),
@@ -72,7 +72,7 @@ fn insert_and_query_causal_edge() {
 
     // Query effects of fact-a.
     let effects = store
-        .query_effects(&FactId::from("fact-a"))
+        .query_effects(&FactId::new("fact-a").expect("valid test id"))
         .expect("query_effects should succeed");
     assert_eq!(effects.len(), 1, "should have one effect");
     assert_eq!(
@@ -87,7 +87,7 @@ fn insert_and_query_causal_edge() {
 
     // Query causes of fact-b.
     let causes = store
-        .query_causes(&FactId::from("fact-b"))
+        .query_causes(&FactId::new("fact-b").expect("valid test id"))
         .expect("query_causes should succeed");
     assert_eq!(causes.len(), 1, "should have one cause");
     assert_eq!(causes[0].cause.as_str(), "fact-a", "cause should be fact-a");
@@ -136,11 +136,14 @@ fn remove_causal_edge() {
         .expect("insert edge");
 
     store
-        .remove_causal_edge(&FactId::from("f1"), &FactId::from("f2"))
+        .remove_causal_edge(
+            &FactId::new("f1").expect("valid test id"),
+            &FactId::new("f2").expect("valid test id"),
+        )
         .expect("remove edge should succeed");
 
     let effects = store
-        .query_effects(&FactId::from("f1"))
+        .query_effects(&FactId::new("f1").expect("valid test id"))
         .expect("query_effects should succeed");
     assert!(effects.is_empty(), "should have no effects after removal");
 }
@@ -161,7 +164,10 @@ fn confidence_propagation_direct() {
         .expect("insert edge");
 
     let conf = store
-        .propagate_confidence(&FactId::from("f1"), &FactId::from("f2"))
+        .propagate_confidence(
+            &FactId::new("f1").expect("valid test id"),
+            &FactId::new("f2").expect("valid test id"),
+        )
         .expect("propagate_confidence should succeed");
     assert!(conf.is_some(), "should find a path");
     assert!(
@@ -191,7 +197,10 @@ fn confidence_propagation_chain() {
         .expect("insert edge b->c");
 
     let conf = store
-        .propagate_confidence(&FactId::from("a"), &FactId::from("c"))
+        .propagate_confidence(
+            &FactId::new("a").expect("valid test id"),
+            &FactId::new("c").expect("valid test id"),
+        )
         .expect("propagate_confidence should succeed");
     assert!(conf.is_some(), "should find a path a->b->c");
     let expected = 0.8 * 0.5;
@@ -213,7 +222,10 @@ fn confidence_propagation_no_path() {
         .expect("insert y");
 
     let conf = store
-        .propagate_confidence(&FactId::from("x"), &FactId::from("y"))
+        .propagate_confidence(
+            &FactId::new("x").expect("valid test id"),
+            &FactId::new("y").expect("valid test id"),
+        )
         .expect("propagate_confidence should succeed");
     assert!(conf.is_none(), "should return None when no path exists");
 }
@@ -227,7 +239,10 @@ fn confidence_propagation_same_node() {
         .expect("insert z");
 
     let conf = store
-        .propagate_confidence(&FactId::from("z"), &FactId::from("z"))
+        .propagate_confidence(
+            &FactId::new("z").expect("valid test id"),
+            &FactId::new("z").expect("valid test id"),
+        )
         .expect("propagate_confidence should succeed");
     assert_eq!(conf, Some(1.0), "self-path should have confidence 1.0");
 }
@@ -272,8 +287,8 @@ fn causal_edge_with_concurrent_ordering() {
         .expect("insert c2");
 
     let edge = CausalEdge {
-        cause: FactId::from("c1"),
-        effect: FactId::from("c2"),
+        cause: FactId::new("c1").expect("valid test id"),
+        effect: FactId::new("c2").expect("valid test id"),
         ordering: TemporalOrdering::Concurrent,
         confidence: 0.75,
         created_at: jiff::Timestamp::now(),
@@ -283,7 +298,7 @@ fn causal_edge_with_concurrent_ordering() {
         .expect("insert concurrent edge");
 
     let effects = store
-        .query_effects(&FactId::from("c1"))
+        .query_effects(&FactId::new("c1").expect("valid test id"))
         .expect("query_effects should succeed");
     assert_eq!(effects.len(), 1, "one effect");
     assert_eq!(

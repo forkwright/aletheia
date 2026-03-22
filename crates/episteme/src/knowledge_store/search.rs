@@ -2,6 +2,8 @@
     clippy::as_conversions,
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
 )]
+use snafu::ResultExt;
+
 use super::marshal::{
     build_hybrid_query, embedding_to_params, extract_str, rows_to_hybrid_results,
     rows_to_recall_results,
@@ -78,8 +80,9 @@ impl KnowledgeStore {
         let source_ids: Vec<crate::id::FactId> = results
             .iter()
             .filter(|r| r.source_type == "fact")
-            .map(|r| crate::id::FactId::new_unchecked(&r.source_id))
-            .collect();
+            .map(|r| crate::id::FactId::new(&r.source_id))
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .context(crate::error::InvalidIdSnafu)?;
         if let Err(e) = self.increment_access(&source_ids) {
             tracing::warn!(error = %e, "failed to increment access counts");
         }
@@ -317,7 +320,9 @@ impl KnowledgeStore {
                 let Some(entity_id_str) = entity_row.first().and_then(|v| v.get_str()) else {
                     continue;
                 };
-                let entity_id = crate::id::EntityId::new_unchecked(entity_id_str);
+                let Ok(entity_id) = crate::id::EntityId::new(entity_id_str) else {
+                    continue;
+                };
                 if let Ok(neighborhood) = self.entity_neighborhood(&entity_id) {
                     for row in &neighborhood.rows {
                         if let Some(neighbor_id) = row.first().and_then(|v| v.get_str())
@@ -332,8 +337,11 @@ impl KnowledgeStore {
 
         let mut graph_results = Vec::new();
         for (rank, id) in expanded_ids.iter().enumerate() {
+            let Ok(fact_id) = crate::id::FactId::new(id.as_str()) else {
+                continue;
+            };
             graph_results.push(HybridResult {
-                id: crate::id::FactId::new_unchecked(id.as_str()),
+                id: fact_id,
                 rrf_score: 1.0 / (60.0 + rank as f64 + 1.0), // SAFETY: rank fits f64
                 bm25_rank: -1,
                 vec_rank: -1,

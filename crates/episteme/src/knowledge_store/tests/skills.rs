@@ -23,7 +23,7 @@ fn test_ts(s: &str) -> jiff::Timestamp {
 
 fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
     Fact {
-        id: crate::id::FactId::new_unchecked(id),
+        id: crate::id::FactId::new(id).expect("valid test id"),
         nous_id: nous_id.to_owned(),
         content: content.to_owned(),
         fact_type: String::new(),
@@ -62,7 +62,7 @@ fn make_skill_fact(id: &str, nous_id: &str, skill_name: &str, domain_tags: &[&st
     })
     .expect("skill content serializes to JSON");
     Fact {
-        id: crate::id::FactId::new_unchecked(id),
+        id: crate::id::FactId::new(id).expect("valid test id"),
         nous_id: nous_id.to_owned(),
         content,
         fact_type: "skill".to_owned(),
@@ -199,7 +199,7 @@ fn find_skills_excludes_forgotten() {
     store.insert_fact(&skill).expect("insert");
     store
         .forget_fact(
-            &crate::id::FactId::new_unchecked("sk-forget"),
+            &crate::id::FactId::new("sk-forget").expect("valid test id"),
             crate::knowledge::ForgetReason::Outdated,
         )
         .expect("forget");
@@ -230,10 +230,10 @@ fn skill_usage_tracking_via_increment_access() {
     let skill = make_skill_fact("sk-usage", "alice", "usage-test", &["rust"]);
     store.insert_fact(&skill).expect("insert skill");
     store
-        .increment_access(&[crate::id::FactId::new_unchecked("sk-usage")])
+        .increment_access(&[crate::id::FactId::new("sk-usage").expect("valid test id")])
         .expect("increment");
     store
-        .increment_access(&[crate::id::FactId::new_unchecked("sk-usage")])
+        .increment_access(&[crate::id::FactId::new("sk-usage").expect("valid test id")])
         .expect("increment again");
     let results = store.find_skills_for_nous("alice", 100).expect("query");
     let found = results

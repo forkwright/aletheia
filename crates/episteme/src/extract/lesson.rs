@@ -410,7 +410,12 @@ pub fn persist_lesson(
 
     // Insert entities.
     for entity in &lesson.entities {
-        let id = crate::id::EntityId::from(slugify(&entity.name));
+        let id = crate::id::EntityId::new(slugify(&entity.name)).map_err(|e| {
+            PersistSnafu {
+                message: e.to_string(),
+            }
+            .build()
+        })?;
         let aliases = if entity.description.is_empty() {
             vec![]
         } else {
@@ -440,9 +445,21 @@ pub fn persist_lesson(
 
     // Insert relationships.
     for rel in &lesson.relationships {
+        let src = crate::id::EntityId::new(slugify(&rel.source)).map_err(|e| {
+            PersistSnafu {
+                message: e.to_string(),
+            }
+            .build()
+        })?;
+        let dst = crate::id::EntityId::new(slugify(&rel.target)).map_err(|e| {
+            PersistSnafu {
+                message: e.to_string(),
+            }
+            .build()
+        })?;
         let r = Relationship {
-            src: crate::id::EntityId::from(slugify(&rel.source)),
-            dst: crate::id::EntityId::from(slugify(&rel.target)),
+            src,
+            dst,
             relation: rel.relation.clone(),
             weight: rel.confidence,
             created_at: now,
@@ -460,7 +477,13 @@ pub fn persist_lesson(
     let mut fact_ids: Vec<crate::id::FactId> = Vec::new();
     for (i, fact) in lesson.facts.iter().enumerate() {
         let content = format!("{} {} {}", fact.subject, fact.predicate, fact.object);
-        let id = crate::id::FactId::from(format!("lesson-{}-{i}", slugify(&config.source)));
+        let id = crate::id::FactId::new(format!("lesson-{}-{i}", slugify(&config.source)))
+            .map_err(|e| {
+                PersistSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
         fact_ids.push(id.clone());
 
         let classified_type = fact.fact_type.as_deref().map_or_else(

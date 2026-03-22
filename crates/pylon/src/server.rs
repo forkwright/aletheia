@@ -210,6 +210,7 @@ async fn serve_plain(app: axum::Router, bind_addr: &str) -> Result<(), ServerErr
 
 #[cfg(feature = "tls")]
 async fn serve_tls(app: axum::Router, config: &ServerConfig) -> Result<(), ServerError> {
+    use std::path::Path;
     use std::time::Duration;
 
     use axum_server::tls_rustls::RustlsConfig;

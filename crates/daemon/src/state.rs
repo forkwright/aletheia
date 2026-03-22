@@ -38,6 +38,14 @@ impl TaskStateStore {
             }
             .build()
         })?;
+        conn.busy_timeout(std::time::Duration::from_secs(5))
+            .map_err(|e| {
+                crate::error::TaskFailedSnafu {
+                    task_id: "state-db-open".to_owned(),
+                    reason: e.to_string(),
+                }
+                .build()
+            })?;
         Self::create_schema(&conn)?;
         Ok(Self { conn })
     }

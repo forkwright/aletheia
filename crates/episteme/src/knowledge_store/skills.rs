@@ -3,6 +3,7 @@
     clippy::indexing_slicing,
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
 )]
+use snafu::ResultExt;
 use tracing::instrument;
 
 use super::KnowledgeStore;
@@ -200,7 +201,8 @@ impl KnowledgeStore {
             })?;
         "approved".clone_into(&mut pending_skill.status);
 
-        let new_id = crate::id::FactId::from(ulid::Ulid::new().to_string());
+        let new_id = crate::id::FactId::new(ulid::Ulid::new().to_string())
+            .context(crate::error::InvalidIdSnafu)?;
         let skill_json = serde_json::to_string(&pending_skill.skill).map_err(|e| {
             crate::error::EngineQuerySnafu {
                 message: format!("failed to serialize skill: {e}"),
@@ -409,7 +411,10 @@ impl KnowledgeStore {
         skill_content: &crate::skill::SkillContent,
     ) -> crate::error::Result<Option<crate::id::FactId>> {
         if let Some(existing_id) = self.find_skill_by_name(nous_id, &skill_content.name)? {
-            return Ok(Some(crate::id::FactId::from(existing_id.as_str())));
+            return Ok(Some(
+                crate::id::FactId::new(existing_id.as_str())
+                    .context(crate::error::InvalidIdSnafu)?,
+            ));
         }
 
         let query = format!("{} {}", skill_content.name, skill_content.description);

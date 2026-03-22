@@ -146,7 +146,12 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
 
             let ts_now = jiff::Timestamp::now();
             let new_fact = Fact {
-                id: aletheia_mneme::id::FactId::from(new_id.as_str()),
+                id: aletheia_mneme::id::FactId::new(new_id.as_str()).map_err(|e| {
+                    MutateStoreSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?,
                 nous_id,
                 fact_type: String::new(),
                 content: new_content,
@@ -276,9 +281,15 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
         fact_id: &str,
         reason: &str,
     ) -> Pin<Box<dyn Future<Output = Result<FactSummary, KnowledgeAdapterError>> + Send + '_>> {
-        let fact_id = aletheia_mneme::id::FactId::from(fact_id);
+        let fact_id_str = fact_id.to_owned();
         let reason = reason.to_owned();
         Box::pin(async move {
+            let fact_id = aletheia_mneme::id::FactId::new(fact_id_str).map_err(|e| {
+                MutateStoreSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
             let reason: aletheia_mneme::knowledge::ForgetReason = reason
                 .parse()
                 .map_err(|e: String| InvalidReasonSnafu { reason: e }.build())?;
@@ -300,8 +311,14 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
         &self,
         fact_id: &str,
     ) -> Pin<Box<dyn Future<Output = Result<FactSummary, KnowledgeAdapterError>> + Send + '_>> {
-        let fact_id = aletheia_mneme::id::FactId::from(fact_id);
+        let fact_id_str = fact_id.to_owned();
         Box::pin(async move {
+            let fact_id = aletheia_mneme::id::FactId::new(fact_id_str).map_err(|e| {
+                MutateStoreSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
             let fact = self.store.unforget_fact_async(fact_id).await.map_err(|e| {
                 MutateStoreSnafu {
                     message: e.to_string(),

@@ -271,7 +271,6 @@ impl DiaporeiaServer {
         Parameters(_params): Parameters<params::KnowledgeSearchParams>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Expensive)?;
-        // TODO(#1137): Wire to RecallEngine when knowledge store integration is complete.
         Ok(CallToolResult::success(vec![rmcp::model::Content::text(
             "Knowledge search is not available in this configuration. \
              The server must be built with the 'recall' feature enabled \

@@ -93,7 +93,7 @@ fn dedup_candidate_generation_finds_duplicate_instinct_patterns() {
 
     let entities = vec![
         EntityInfo {
-            id: EntityId::from("instinct-grep-1"),
+            id: EntityId::new("instinct-grep-1").expect("valid test id"),
             name: "grep code preference".to_owned(),
             entity_type: "tool_pattern".to_owned(),
             aliases: vec![],
@@ -101,7 +101,7 @@ fn dedup_candidate_generation_finds_duplicate_instinct_patterns() {
             created_at: ts_a,
         },
         EntityInfo {
-            id: EntityId::from("instinct-grep-2"),
+            id: EntityId::new("instinct-grep-2").expect("valid test id"),
             name: "grep code preference".to_owned(),
             entity_type: "tool_pattern".to_owned(),
             aliases: vec![],
@@ -168,7 +168,7 @@ fn conflict_detection_identifies_contradicting_behavioral_preferences() {
     );
 
     let existing = ConflictCandidate {
-        existing_fact_id: FactId::from("fact-old-preference"),
+        existing_fact_id: FactId::new("fact-old-preference").expect("valid test id"),
         existing_content:
             "When working on code tasks, tool 'grep' is preferred (success rate: 82%, n=11)"
                 .to_owned(),

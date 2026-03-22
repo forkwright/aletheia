@@ -11,14 +11,15 @@ pub mod id;
 pub mod knowledge;
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 
     #[test]
     fn public_reexports_accessible() {
-        let _: id::FactId = "f-1".into();
-        let _: id::EntityId = "e-1".into();
-        let _: id::EmbeddingId = "emb-1".into();
+        let _ = id::FactId::new("f-1").expect("valid");
+        let _ = id::EntityId::new("e-1").expect("valid");
+        let _ = id::EmbeddingId::new("emb-1").expect("valid");
         let _ = knowledge::EpistemicTier::Verified;
     }
 }

@@ -280,7 +280,12 @@ Rules:
         };
 
         for entity in entities {
-            let id = crate::id::EntityId::from(slugify(&entity.name));
+            let id = crate::id::EntityId::new(slugify(&entity.name)).map_err(|e| {
+                PersistSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
             let aliases = if entity.description.is_empty() {
                 vec![]
             } else {
@@ -343,9 +348,21 @@ Rules:
                     continue;
                 }
             };
+            let src = crate::id::EntityId::new(slugify(&rel.source)).map_err(|e| {
+                PersistSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
+            let dst = crate::id::EntityId::new(slugify(&rel.target)).map_err(|e| {
+                PersistSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
             let r = Relationship {
-                src: crate::id::EntityId::from(slugify(&rel.source)),
-                dst: crate::id::EntityId::from(slugify(&rel.target)),
+                src,
+                dst,
                 relation: relation_type,
                 weight: rel.confidence,
                 created_at: now,
@@ -361,11 +378,17 @@ Rules:
 
         for (i, fact) in facts.iter().enumerate() {
             let content = format!("{} {} {}", fact.subject, fact.predicate, fact.object);
-            let id = crate::id::FactId::from(format!(
+            let id = crate::id::FactId::new(format!(
                 "{}-{}-{i}",
                 slugify(&fact.subject),
                 slugify(&fact.predicate)
-            ));
+            ))
+            .map_err(|e| {
+                PersistSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
             let classified_type = fact.fact_type.as_deref().map_or_else(
                 || crate::knowledge::FactType::classify(&content),
                 crate::knowledge::FactType::from_str_lossy,

@@ -382,7 +382,7 @@ mod tests {
         created: &str,
     ) -> EntityInfo {
         EntityInfo {
-            id: EntityId::from(id),
+            id: EntityId::new(id).expect("valid test id"),
             name: name.to_owned(),
             entity_type: etype.to_owned(),
             aliases: aliases.into_iter().map(String::from).collect(),
@@ -610,8 +610,8 @@ mod tests {
         let a = entity("e1", "John Smith", "person", vec![], 5, "2026-01-02");
         let b = entity("e2", "john smith", "person", vec![], 2, "2026-01-01");
         let (canonical, merged) = pick_canonical(&a, &b);
-        assert_eq!(canonical.id, EntityId::from("e1"));
-        assert_eq!(merged.id, EntityId::from("e2"));
+        assert_eq!(canonical.id, EntityId::new("e1").expect("valid test id"));
+        assert_eq!(merged.id, EntityId::new("e2").expect("valid test id"));
     }
 
     #[test]
@@ -621,7 +621,7 @@ mod tests {
         let (canonical, _) = pick_canonical(&a, &b);
         assert_eq!(
             canonical.id,
-            EntityId::from("e2"),
+            EntityId::new("e2").expect("valid test id"),
             "older entity should be canonical"
         );
     }
@@ -683,7 +683,7 @@ mod tests {
 
         fn make_entity(id: &str, name: &str, etype: &str) -> EntityInfo {
             EntityInfo {
-                id: EntityId::from(id),
+                id: EntityId::new(id).expect("valid test id"),
                 name: name.to_owned(),
                 entity_type: etype.to_owned(),
                 aliases: vec![],

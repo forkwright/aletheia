@@ -3,6 +3,8 @@
 //! Supports inserting causal edges between fact nodes, querying direct
 //! effects/causes, and propagating confidence through causal chains.
 
+#[cfg(feature = "mneme-engine")]
+use snafu::ResultExt;
 use tracing::instrument;
 
 use super::{KnowledgeStore, queries};
@@ -174,7 +176,8 @@ impl KnowledgeStore {
         queue.push_back((start.as_str().to_owned(), 1.0));
 
         while let Some((current, _)) = queue.pop_front() {
-            let current_id = crate::id::FactId::from(current.as_str());
+            let current_id =
+                crate::id::FactId::new(current.as_str()).context(crate::error::InvalidIdSnafu)?;
             let effects = self.query_effects(&current_id)?;
 
             for edge in effects {
@@ -233,9 +236,13 @@ fn rows_to_causal_edges(
         let created_at =
             crate::knowledge::parse_timestamp(&created_at_str).unwrap_or_else(jiff::Timestamp::now);
 
+        let cause =
+            crate::id::FactId::new(cause_str.as_str()).context(crate::error::InvalidIdSnafu)?;
+        let effect =
+            crate::id::FactId::new(effect_str.as_str()).context(crate::error::InvalidIdSnafu)?;
         edges.push(crate::knowledge::CausalEdge {
-            cause: crate::id::FactId::from(cause_str.as_str()),
-            effect: crate::id::FactId::from(effect_str.as_str()),
+            cause,
+            effect,
             ordering,
             confidence,
             created_at,

@@ -14,6 +14,7 @@ use qdrant_client::qdrant::{
 };
 
 use aletheia_mneme::embedding::{EmbeddingConfig, EmbeddingProvider, create_provider};
+use aletheia_mneme::id::{EmbeddingId, FactId};
 use aletheia_mneme::knowledge::{
     EmbeddedChunk, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
     far_future, parse_timestamp,
@@ -255,7 +256,7 @@ fn import_fact(
     let valid_from = parse_timestamp(&record.created_at).unwrap_or(now);
 
     let fact = Fact {
-        id: fact_id.clone().into(),
+        id: FactId::new(&fact_id).expect("ULID fact_id is always valid"),
         nous_id: agent_id.to_owned(),
         content: record.content.clone(),
         fact_type: String::new(),
@@ -287,7 +288,7 @@ fn import_fact(
 
     if let Ok(embedding) = embedder.embed(&record.content) {
         let chunk = EmbeddedChunk {
-            id: format!("emb-{fact_id}").into(),
+            id: EmbeddingId::new(&format!("emb-{fact_id}")).expect("emb- prefix + ULID is always valid"),
             content: record.content.clone(),
             source_type: "fact".to_owned(),
             source_id: fact_id,

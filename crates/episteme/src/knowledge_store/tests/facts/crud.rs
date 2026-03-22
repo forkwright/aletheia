@@ -26,7 +26,7 @@ fn test_ts(s: &str) -> jiff::Timestamp {
 
 fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
     Fact {
-        id: crate::id::FactId::new_unchecked(id),
+        id: crate::id::FactId::new(id).expect("valid test id"),
         nous_id: nous_id.to_owned(),
         content: content.to_owned(),
         fact_type: String::new(),
@@ -175,7 +175,7 @@ fn forget_fact_excludes_from_query() {
 
     let forgotten = store
         .forget_fact(
-            &crate::id::FactId::new_unchecked("f1"),
+            &crate::id::FactId::new("f1").expect("valid test id"),
             ForgetReason::UserRequested,
         )
         .expect("forget fact");
@@ -210,7 +210,7 @@ fn forget_fact_then_unforget_restores_recall() {
 
     store
         .forget_fact(
-            &crate::id::FactId::new_unchecked("f1"),
+            &crate::id::FactId::new("f1").expect("valid test id"),
             ForgetReason::Outdated,
         )
         .expect("forget");
@@ -221,7 +221,7 @@ fn forget_fact_then_unforget_restores_recall() {
     assert!(results.is_empty(), "forgotten fact excluded from recall");
 
     let restored = store
-        .unforget_fact(&crate::id::FactId::new_unchecked("f1"))
+        .unforget_fact(&crate::id::FactId::new("f1").expect("valid test id"))
         .expect("unforget");
     assert!(
         !restored.lifecycle.is_forgotten,
@@ -255,7 +255,7 @@ fn forget_preserves_in_audit() {
 
     store
         .forget_fact(
-            &crate::id::FactId::new_unchecked("f1"),
+            &crate::id::FactId::new("f1").expect("valid test id"),
             ForgetReason::Privacy,
         )
         .expect("forget");
@@ -291,7 +291,7 @@ fn forget_reason_roundtrips() {
         store.insert_fact(&fact).expect("insert");
 
         let forgotten = store
-            .forget_fact(&crate::id::FactId::new_unchecked(id), reason)
+            .forget_fact(&crate::id::FactId::new(id).expect("valid test id"), reason)
             .expect("forget");
         assert_eq!(
             forgotten.lifecycle.forget_reason,
@@ -325,7 +325,7 @@ fn forget_reason_roundtrips() {
 fn forget_nonexistent_fact_errors() {
     let store = make_store();
     let result = store.forget_fact(
-        &crate::id::FactId::new_unchecked("nonexistent"),
+        &crate::id::FactId::new("nonexistent").expect("valid test id"),
         ForgetReason::UserRequested,
     );
     assert!(result.is_err(), "forgetting non-existent fact must error");
@@ -344,7 +344,7 @@ fn forget_excluded_from_temporal_diff() {
 
     store
         .forget_fact(
-            &crate::id::FactId::new_unchecked("f-diff"),
+            &crate::id::FactId::new("f-diff").expect("valid test id"),
             ForgetReason::Incorrect,
         )
         .expect("forget");
@@ -365,10 +365,10 @@ fn increment_access_updates_count() {
     store.insert_fact(&fact).expect("insert fact");
 
     store
-        .increment_access(&[crate::id::FactId::new_unchecked("f1")])
+        .increment_access(&[crate::id::FactId::new("f1").expect("valid test id")])
         .expect("increment");
     store
-        .increment_access(&[crate::id::FactId::new_unchecked("f1")])
+        .increment_access(&[crate::id::FactId::new("f1").expect("valid test id")])
         .expect("increment again");
 
     let results = store
@@ -396,7 +396,7 @@ fn increment_access_empty_ids_is_noop() {
 fn increment_access_nonexistent_id_is_silent() {
     let store = make_store();
     store
-        .increment_access(&[crate::id::FactId::new_unchecked("nonexistent")])
+        .increment_access(&[crate::id::FactId::new("nonexistent").expect("valid test id")])
         .expect("increment nonexistent should not error");
 }
 

@@ -8,7 +8,7 @@ fn test_timestamp(s: &str) -> jiff::Timestamp {
 
 #[test]
 fn entity_id_from_str() {
-    let id = EntityId::from("alice");
+    let id = EntityId::new("alice").expect("valid test id");
     assert_eq!(id.as_str(), "alice", "as_str should return inner value");
     assert_eq!(
         id.to_string(),
@@ -19,7 +19,7 @@ fn entity_id_from_str() {
 
 #[test]
 fn entity_id_from_string() {
-    let id = EntityId::from("bob".to_owned());
+    let id = EntityId::new("bob".to_owned()).expect("valid test id");
     assert_eq!(
         id.as_str(),
         "bob",
@@ -29,7 +29,7 @@ fn entity_id_from_string() {
 
 #[test]
 fn entity_id_serde_transparent() {
-    let id = EntityId::from("e-123");
+    let id = EntityId::new("e-123").expect("valid test id");
     let json = serde_json::to_string(&id).expect("EntityId serialization is infallible");
     assert_eq!(
         json, r#""e-123""#,
@@ -42,7 +42,7 @@ fn entity_id_serde_transparent() {
 
 #[test]
 fn entity_id_prevents_mixing_with_plain_string() {
-    let eid = EntityId::from("nous-1");
+    let eid = EntityId::new("nous-1").expect("valid test id");
     let plain: String = "nous-1".to_owned();
     assert_eq!(
         eid.as_str(),
@@ -53,7 +53,7 @@ fn entity_id_prevents_mixing_with_plain_string() {
 
 #[test]
 fn entity_id_display_matches_inner_string() {
-    let id = EntityId::from("project-aletheia");
+    let id = EntityId::new("project-aletheia").expect("valid test id");
     assert_eq!(
         format!("{id}"),
         "project-aletheia",
@@ -63,7 +63,7 @@ fn entity_id_display_matches_inner_string() {
 
 #[test]
 fn entity_id_clone_equality() {
-    let a = EntityId::from("e-42");
+    let a = EntityId::new("e-42").expect("valid test id");
     let b = a.clone();
     assert_eq!(a, b, "cloned EntityId must equal original");
     assert_eq!(
@@ -90,7 +90,7 @@ fn epistemic_tier_serde_roundtrip() {
 #[test]
 fn fact_serde_roundtrip() {
     let fact = Fact {
-        id: FactId::from("fact-1"),
+        id: FactId::new("fact-1").expect("valid test id"),
         nous_id: "syn".to_owned(),
         content: "The researcher published findings on memory consolidation".to_owned(),
         fact_type: String::new(),
@@ -132,7 +132,7 @@ fn fact_serde_roundtrip() {
 #[test]
 fn entity_serde_roundtrip() {
     let entity = Entity {
-        id: EntityId::from("e-1"),
+        id: EntityId::new("e-1").expect("valid test id"),
         name: "Dr. Chen".to_owned(),
         entity_type: "person".to_owned(),
         aliases: vec!["acme_user".to_owned(), "test-user-01".to_owned()],
@@ -155,8 +155,8 @@ fn entity_serde_roundtrip() {
 #[test]
 fn relationship_serde_roundtrip() {
     let rel = Relationship {
-        src: EntityId::from("e-1"),
-        dst: EntityId::from("e-2"),
+        src: EntityId::new("e-1").expect("valid test id"),
+        dst: EntityId::new("e-2").expect("valid test id"),
         relation: "works_on".to_owned(),
         weight: 0.85,
         created_at: test_timestamp("2026-02-28T00:00:00Z"),
@@ -181,7 +181,7 @@ fn relationship_serde_roundtrip() {
 #[test]
 fn embedded_chunk_serde_roundtrip() {
     let chunk = EmbeddedChunk {
-        id: EmbeddingId::from("emb-1"),
+        id: EmbeddingId::new("emb-1").expect("valid test id"),
         content: "some text".to_owned(),
         source_type: "fact".to_owned(),
         source_id: "fact-1".to_owned(),
@@ -227,7 +227,7 @@ fn recall_result_serde_roundtrip() {
 #[test]
 fn fact_with_empty_content() {
     let fact = Fact {
-        id: FactId::from("f-empty"),
+        id: FactId::new("f-empty").expect("valid test id"),
         nous_id: "syn".to_owned(),
         content: String::new(),
         fact_type: String::new(),
@@ -266,7 +266,7 @@ fn fact_with_empty_content() {
 #[test]
 fn fact_with_unicode_content() {
     let fact = Fact {
-        id: FactId::from("f-uni"),
+        id: FactId::new("f-uni").expect("valid test id"),
         nous_id: "syn".to_owned(),
         content: "The user writes \u{65E5}\u{672C}\u{8A9E} and emoji \u{1F980}".to_owned(),
         fact_type: String::new(),
@@ -305,7 +305,7 @@ fn fact_with_unicode_content() {
 #[test]
 fn entity_empty_aliases() {
     let entity = Entity {
-        id: EntityId::from("e-2"),
+        id: EntityId::new("e-2").expect("valid test id"),
         name: "Aletheia".to_owned(),
         entity_type: "project".to_owned(),
         aliases: vec![],
@@ -579,7 +579,7 @@ fn fact_diff_empty() {
 #[test]
 fn embedded_chunk_fields() {
     let chunk = EmbeddedChunk {
-        id: EmbeddingId::from("emb-42"),
+        id: EmbeddingId::new("emb-42").expect("valid test id"),
         content: "test content".to_owned(),
         source_type: "note".to_owned(),
         source_id: "note-7".to_owned(),
@@ -629,7 +629,7 @@ fn epistemic_tier_ordering() {
 #[test]
 fn fact_with_supersession() {
     let fact = Fact {
-        id: FactId::from("f-old"),
+        id: FactId::new("f-old").expect("valid test id"),
         nous_id: "syn".to_owned(),
         content: "outdated claim".to_owned(),
         fact_type: String::new(),
@@ -645,7 +645,7 @@ fn fact_with_supersession() {
             stability_hours: 720.0,
         },
         lifecycle: FactLifecycle {
-            superseded_by: Some(FactId::from("f-new")),
+            superseded_by: Some(FactId::new("f-new").expect("valid test id")),
             is_forgotten: false,
             forgotten_at: None,
             forget_reason: None,
@@ -674,7 +674,7 @@ fn fact_with_supersession() {
 #[test]
 fn fact_with_session_source() {
     let fact = Fact {
-        id: FactId::from("f-src"),
+        id: FactId::new("f-src").expect("valid test id"),
         nous_id: "syn".to_owned(),
         content: "extracted from conversation".to_owned(),
         fact_type: "relationship".to_owned(),

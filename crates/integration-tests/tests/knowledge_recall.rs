@@ -34,7 +34,7 @@ fn sample_fact(id: &str, nous_id: &str, tier: EpistemicTier) -> Fact {
     let ts = jiff::Timestamp::from_second(1_735_689_600).expect("valid epoch");
     let far = aletheia_mneme::knowledge::far_future();
     Fact {
-        id: id.into(),
+        id: aletheia_mneme::id::FactId::new(id).expect("valid test id"),
         nous_id: nous_id.to_owned(),
         content: format!("fact from {id}"),
         fact_type: String::new(),
@@ -103,7 +103,7 @@ fn knowledge_types_all_serialize() {
     let ts = jiff::Timestamp::from_second(1_735_689_600).expect("valid epoch");
     let fact = sample_fact("f-1", "syn", EpistemicTier::Verified);
     let entity = Entity {
-        id: "e-1".into(),
+        id: aletheia_mneme::id::EntityId::new("e-1").expect("valid test id"),
         name: "Dr. Chen".to_owned(),
         entity_type: "person".to_owned(),
         aliases: vec!["A".to_owned()],
@@ -111,14 +111,14 @@ fn knowledge_types_all_serialize() {
         updated_at: ts,
     };
     let rel = Relationship {
-        src: "e-1".into(),
-        dst: "e-2".into(),
+        src: aletheia_mneme::id::EntityId::new("e-1").expect("valid test id"),
+        dst: aletheia_mneme::id::EntityId::new("e-2").expect("valid test id"),
         relation: "works_on".to_owned(),
         weight: 0.9,
         created_at: ts,
     };
     let chunk = EmbeddedChunk {
-        id: "emb-1".into(),
+        id: aletheia_mneme::id::EmbeddingId::new("emb-1").expect("valid test id"),
         content: "some text".to_owned(),
         source_type: "fact".to_owned(),
         source_id: "f-1".to_owned(),

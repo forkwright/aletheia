@@ -486,8 +486,6 @@ pub fn apply_sandbox(
     // unlikely in practice: each thread has its own arena: but the risk is
     // not zero on arena exhaustion when threads share an arena.
     // No deadlock has been observed in production use.
-    // TODO(#1140): pre-compile seccomp BPF in the parent and use raw Landlock
-    // syscalls in the child to eliminate all post-fork allocations.
     #[expect(
         unsafe_code,
         reason = "pre_exec requires unsafe; runs sandbox setup between fork and exec"

@@ -295,7 +295,14 @@ pub fn store_audit_report(
             CheckStatus::Fail => EpistemicTier::Assumed,
         };
 
-        let fact_id = aletheia_mneme::id::FactId::from(format!("audit-{}", ulid::Ulid::new()));
+        let fact_id = match aletheia_mneme::id::FactId::new(format!("audit-{}", ulid::Ulid::new()))
+        {
+            Ok(id) => id,
+            Err(e) => {
+                tracing::warn!(error = %e, "failed to create audit fact ID");
+                return Ok(());
+            }
+        };
 
         let fact = aletheia_mneme::knowledge::Fact {
             id: fact_id,

@@ -24,7 +24,7 @@ fn test_ts(s: &str) -> jiff::Timestamp {
 
 fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
     Fact {
-        id: crate::id::FactId::new_unchecked(id),
+        id: crate::id::FactId::new(id).expect("valid test id"),
         nous_id: nous_id.to_owned(),
         content: content.to_owned(),
         fact_type: String::new(),
@@ -54,7 +54,7 @@ fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
 
 fn make_entity(id: &str, name: &str, entity_type: &str) -> Entity {
     Entity {
-        id: crate::id::EntityId::new_unchecked(id),
+        id: crate::id::EntityId::new(id).expect("valid test id"),
         name: name.to_owned(),
         entity_type: entity_type.to_owned(),
         aliases: vec![],
@@ -65,8 +65,8 @@ fn make_entity(id: &str, name: &str, entity_type: &str) -> Entity {
 
 fn make_relationship(src: &str, dst: &str, relation: &str, weight: f64) -> Relationship {
     Relationship {
-        src: crate::id::EntityId::new_unchecked(src),
-        dst: crate::id::EntityId::new_unchecked(dst),
+        src: crate::id::EntityId::new(src).expect("valid test id"),
+        dst: crate::id::EntityId::new(dst).expect("valid test id"),
         relation: relation.to_owned(),
         weight,
         created_at: test_ts("2026-03-01T00:00:00Z"),
@@ -80,7 +80,7 @@ fn insert_entity_and_query_neighborhood() {
     store.insert_entity(&entity).expect("insert entity");
 
     let rows = store
-        .entity_neighborhood(&crate::id::EntityId::new_unchecked("e1"))
+        .entity_neighborhood(&crate::id::EntityId::new("e1").expect("valid test id"))
         .expect("neighborhood");
     assert!(rows.rows.is_empty());
 }
@@ -117,7 +117,7 @@ fn insert_relationship_and_retrieve_neighborhood() {
         .expect("insert relationship");
 
     let rows = store
-        .entity_neighborhood(&crate::id::EntityId::new_unchecked("e1"))
+        .entity_neighborhood(&crate::id::EntityId::new("e1").expect("valid test id"))
         .expect("neighborhood");
     assert!(
         !rows.rows.is_empty(),
@@ -139,12 +139,12 @@ fn insert_relationship_bidirectional_neighborhood() {
         .expect("insert rel");
 
     let from_e1 = store
-        .entity_neighborhood(&crate::id::EntityId::new_unchecked("e1"))
+        .entity_neighborhood(&crate::id::EntityId::new("e1").expect("valid test id"))
         .expect("e1 neighborhood");
     assert!(!from_e1.rows.is_empty());
 
     let _from_e2 = store
-        .entity_neighborhood(&crate::id::EntityId::new_unchecked("e2"))
+        .entity_neighborhood(&crate::id::EntityId::new("e2").expect("valid test id"))
         .expect("e2 neighborhood");
 }
 
@@ -169,7 +169,7 @@ fn entity_neighborhood_2hop() {
         .expect("rel e2-e3");
 
     let rows = store
-        .entity_neighborhood(&crate::id::EntityId::new_unchecked("e1"))
+        .entity_neighborhood(&crate::id::EntityId::new("e1").expect("valid test id"))
         .expect("2-hop neighborhood");
     assert!(
         rows.rows.len() >= 2,
@@ -182,7 +182,7 @@ fn entity_neighborhood_2hop() {
 fn entity_neighborhood_nonexistent_entity() {
     let store = make_store();
     let rows = store
-        .entity_neighborhood(&crate::id::EntityId::new_unchecked("nonexistent"))
+        .entity_neighborhood(&crate::id::EntityId::new("nonexistent").expect("valid test id"))
         .expect("neighborhood of missing entity should succeed");
     assert!(rows.rows.is_empty());
 }
@@ -287,7 +287,8 @@ fn concurrent_entity_inserts() {
             let s = Arc::clone(&store);
             std::thread::spawn(move || {
                 let entity = Entity {
-                    id: crate::id::EntityId::new_unchecked(format!("e-concurrent-{i}")),
+                    id: crate::id::EntityId::new(format!("e-concurrent-{i}"))
+                        .expect("valid test id"),
                     name: format!("Entity {i}"),
                     entity_type: "concept".to_owned(),
                     aliases: vec![],
@@ -320,7 +321,7 @@ fn insert_entity_unicode() {
     let entity = make_entity("eu1", "Ελληνικά", "language");
     store.insert_entity(&entity).expect("insert unicode entity");
     let rows = store
-        .entity_neighborhood(&crate::id::EntityId::new_unchecked("eu1"))
+        .entity_neighborhood(&crate::id::EntityId::new("eu1").expect("valid test id"))
         .expect("neighborhood query");
     assert!(rows.rows.is_empty() || !rows.rows.is_empty());
 }
