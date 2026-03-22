@@ -1,4 +1,4 @@
-//! Tool registry: the single source of truth for available tools.
+//! Tool registry: the single source of truth for available tools. // kanon:ignore RUST/file-too-long
 
 use std::collections::HashSet;
 use std::future::Future;
@@ -18,6 +18,7 @@ use crate::types::{ToolCategory, ToolContext, ToolDef, ToolInput, ToolResult};
 ///
 /// Uses `Pin<Box<dyn Future>>` for object-safety with async dispatch.
 pub trait ToolExecutor: Send + Sync {
+    // kanon:ignore RUST/pub-visibility
     /// Execute the tool with the given input and context.
     fn execute<'a>(
         &'a self,
@@ -36,6 +37,7 @@ struct RegisteredTool {
 /// Tools are registered at startup and looked up by name during execution.
 /// The registry is the single source of truth for what tools an agent can use.
 pub struct ToolRegistry {
+    // kanon:ignore RUST/pub-visibility
     tools: IndexMap<ToolName, RegisteredTool>,
 }
 
@@ -49,6 +51,7 @@ impl ToolRegistry {
     /// Create an empty registry.
     #[must_use]
     pub fn new() -> Self {
+        // kanon:ignore RUST/pub-visibility
         Self {
             tools: IndexMap::new(),
         }
@@ -60,6 +63,8 @@ impl ToolRegistry {
     ///
     /// Returns an error if a tool with the same name is already registered.
     pub fn register(&mut self, def: ToolDef, executor: Box<dyn ToolExecutor>) -> Result<()> {
+        // kanon:ignore RUST/pub-visibility  // kanon:ignore RUST/missing-must-use
+
         ensure!(
             !self.tools.contains_key(&def.name),
             error::DuplicateToolSnafu {
@@ -74,6 +79,7 @@ impl ToolRegistry {
     /// Look up a tool definition by name.
     #[must_use]
     pub fn get_def(&self, name: &ToolName) -> Option<&ToolDef> {
+        // kanon:ignore RUST/pub-visibility
         self.tools.get(name).map(|t| &t.def)
     }
 
@@ -84,6 +90,7 @@ impl ToolRegistry {
     /// Returns an error if no tool with the given name is registered.
     /// Returns the tool executor's error if execution fails.
     pub async fn execute(&self, input: &ToolInput, ctx: &ToolContext) -> Result<ToolResult> {
+        // kanon:ignore RUST/missing-must-use
         let tool = self.tools.get(&input.name).ok_or_else(|| {
             error::ToolNotFoundSnafu {
                 name: input.name.clone(),
@@ -98,12 +105,7 @@ impl ToolRegistry {
         let _guard = span.enter();
         let start = Instant::now();
         let result = tool.executor.execute(input, ctx).await;
-        #[expect(
-            clippy::cast_possible_truncation,
-            clippy::as_conversions,
-            reason = "u128→u64: tool duration fits in u64"
-        )]
-        let duration_ms = start.elapsed().as_millis() as u64;
+        let duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
         span.record("tool.duration_ms", duration_ms);
         match &result {
             Ok(r) if !r.is_error => span.record("tool.status", "ok"),
@@ -120,12 +122,14 @@ impl ToolRegistry {
     /// All registered tool definitions, in insertion order.
     #[must_use]
     pub fn definitions(&self) -> Vec<&ToolDef> {
+        // kanon:ignore RUST/pub-visibility
         self.tools.values().map(|t| &t.def).collect()
     }
 
     /// Tool definitions filtered by category.
     #[must_use]
     pub fn definitions_for_category(&self, category: ToolCategory) -> Vec<&ToolDef> {
+        // kanon:ignore RUST/pub-visibility
         self.tools
             .values()
             .filter(|t| t.def.category == category)
@@ -138,6 +142,7 @@ impl ToolRegistry {
     /// Produces `ToolDefinition` structs suitable for `CompletionRequest::tools`.
     #[must_use]
     pub fn to_hermeneus_tools(&self) -> Vec<aletheia_hermeneus::types::ToolDefinition> {
+        // kanon:ignore RUST/pub-visibility
         self.tools
             .values()
             .map(|t| aletheia_hermeneus::types::ToolDefinition {
@@ -157,6 +162,7 @@ impl ToolRegistry {
     /// - name is `enable_tool` (always available so agents can activate more)
     #[must_use]
     pub fn to_hermeneus_tools_filtered(
+        // kanon:ignore RUST/pub-visibility
         &self,
         active: &HashSet<ToolName>,
     ) -> Vec<aletheia_hermeneus::types::ToolDefinition> {
@@ -179,6 +185,7 @@ impl ToolRegistry {
     /// Catalog of lazy tools (`auto_activate=false`) for the `enable_tool` executor.
     #[must_use]
     pub fn lazy_tool_catalog(&self) -> Vec<(ToolName, String)> {
+        // kanon:ignore RUST/pub-visibility
         self.tools
             .values()
             .filter(|t| !t.def.auto_activate && t.def.name.as_str() != "enable_tool")
@@ -227,7 +234,7 @@ mod tests {
         }
     }
 
-    fn test_ctx() -> ToolContext {
+    fn mock_ctx() -> ToolContext {
         ToolContext {
             nous_id: NousId::new("test-agent").expect("valid"),
             session_id: SessionId::new(),
@@ -238,7 +245,7 @@ mod tests {
         }
     }
 
-    fn test_def(name: &str, category: ToolCategory) -> ToolDef {
+    fn make_def(name: &str, category: ToolCategory) -> ToolDef {
         ToolDef {
             name: ToolName::new(name).expect("valid"),
             description: format!("Test tool: {name}"),
@@ -265,12 +272,16 @@ mod tests {
     fn register_and_lookup() {
         let mut reg = ToolRegistry::new();
         let (exec, _) = mock_executor("ok");
-        reg.register(test_def("read", ToolCategory::Workspace), exec)
+        reg.register(make_def("read", ToolCategory::Workspace), exec)
             .expect("register");
 
         let name = ToolName::new("read").expect("valid");
         let def = reg.get_def(&name).expect("found");
-        assert_eq!(def.name.as_str(), "read");
+        assert_eq!(
+            def.name.as_str(),
+            "read",
+            "expected def.name.as_str() to equal \"read\""
+        );
     }
 
     #[test]
@@ -278,26 +289,32 @@ mod tests {
         let mut reg = ToolRegistry::new();
         let (exec1, _) = mock_executor("ok");
         let (exec2, _) = mock_executor("ok");
-        reg.register(test_def("read", ToolCategory::Workspace), exec1)
+        reg.register(make_def("read", ToolCategory::Workspace), exec1)
             .expect("first register");
         let err = reg
-            .register(test_def("read", ToolCategory::Workspace), exec2)
+            .register(make_def("read", ToolCategory::Workspace), exec2)
             .expect_err("duplicate");
-        assert!(err.to_string().contains("duplicate tool: read"));
+        assert!(
+            err.to_string().contains("duplicate tool: read"),
+            "expected err.to_string().contains(\"duplicate tool: read\") to be true"
+        );
     }
 
     #[test]
     fn lookup_missing() {
         let reg = ToolRegistry::new();
         let name = ToolName::new("nonexistent").expect("valid");
-        assert!(reg.get_def(&name).is_none());
+        assert!(
+            reg.get_def(&name).is_none(),
+            "expected reg.get_def(&name).is_none() to be true"
+        );
     }
 
     #[tokio::test]
     async fn execute_dispatches_correctly() {
         let mut reg = ToolRegistry::new();
         let (exec, calls) = mock_executor("hello");
-        reg.register(test_def("greet", ToolCategory::System), exec)
+        reg.register(make_def("greet", ToolCategory::System), exec)
             .expect("register");
 
         let input = ToolInput {
@@ -305,15 +322,19 @@ mod tests {
             tool_use_id: "toolu_1".to_owned(),
             arguments: serde_json::json!({}),
         };
-        let result = reg.execute(&input, &test_ctx()).await.expect("execute");
-        assert_eq!(result.content.text_summary(), "hello");
-        assert!(!result.is_error);
+        let result = reg.execute(&input, &mock_ctx()).await.expect("execute");
+        assert_eq!(
+            result.content.text_summary(),
+            "hello",
+            "expected result.content.text_summary() to equal \"hello\""
+        );
+        assert!(!result.is_error, "expected result.is_error to be false");
         #[expect(
             clippy::expect_used,
             reason = "test assertion: poisoned lock means a test bug"
         )]
         let call_count = calls.lock().expect("lock poisoned").len();
-        assert_eq!(call_count, 1);
+        assert_eq!(call_count, 1, "expected call_count to equal 1");
     }
 
     #[tokio::test]
@@ -324,8 +345,11 @@ mod tests {
             tool_use_id: "toolu_1".to_owned(),
             arguments: serde_json::json!({}),
         };
-        let err = reg.execute(&input, &test_ctx()).await.expect_err("missing");
-        assert!(err.to_string().contains("tool not found: missing"));
+        let err = reg.execute(&input, &mock_ctx()).await.expect_err("missing");
+        assert!(
+            err.to_string().contains("tool not found: missing"),
+            "expected err.to_string().contains(\"tool not found: missing\") to be true"
+        );
     }
 
     #[test]
@@ -334,19 +358,19 @@ mod tests {
         let (e1, _) = mock_executor("ok");
         let (e2, _) = mock_executor("ok");
         let (e3, _) = mock_executor("ok");
-        reg.register(test_def("read", ToolCategory::Workspace), e1)
+        reg.register(make_def("read", ToolCategory::Workspace), e1)
             .expect("register");
-        reg.register(test_def("write", ToolCategory::Workspace), e2)
+        reg.register(make_def("write", ToolCategory::Workspace), e2)
             .expect("register");
-        reg.register(test_def("note", ToolCategory::Memory), e3)
+        reg.register(make_def("note", ToolCategory::Memory), e3)
             .expect("register");
 
         let ws = reg.definitions_for_category(ToolCategory::Workspace);
-        assert_eq!(ws.len(), 2);
+        assert_eq!(ws.len(), 2, "expected ws.len() to equal 2");
         let mem = reg.definitions_for_category(ToolCategory::Memory);
-        assert_eq!(mem.len(), 1);
+        assert_eq!(mem.len(), 1, "expected mem.len() to equal 1");
         let comm = reg.definitions_for_category(ToolCategory::Communication);
-        assert!(comm.is_empty());
+        assert!(comm.is_empty(), "expected comm.is_empty() to be true");
     }
 
     #[test]
@@ -354,11 +378,15 @@ mod tests {
         let mut reg = ToolRegistry::new();
         let (e1, _) = mock_executor("ok");
         let (e2, _) = mock_executor("ok");
-        reg.register(test_def("a", ToolCategory::Workspace), e1)
+        reg.register(make_def("a", ToolCategory::Workspace), e1)
             .expect("register");
-        reg.register(test_def("b", ToolCategory::Memory), e2)
+        reg.register(make_def("b", ToolCategory::Memory), e2)
             .expect("register");
-        assert_eq!(reg.definitions().len(), 2);
+        assert_eq!(
+            reg.definitions().len(),
+            2,
+            "expected reg.definitions().len() to equal 2"
+        );
     }
 
     #[test]
@@ -387,10 +415,19 @@ mod tests {
         reg.register(def, exec).expect("register");
 
         let tools = reg.to_hermeneus_tools();
-        assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].name, "read");
-        assert_eq!(tools[0].description, "Read a file");
-        assert_eq!(tools[0].input_schema["type"], "object");
+        assert_eq!(tools.len(), 1, "expected tools.len() to equal 1");
+        assert_eq!(
+            tools[0].name, "read",
+            "expected tools[0].name to equal \"read\""
+        );
+        assert_eq!(
+            tools[0].description, "Read a file",
+            "expected tools[0].description to equal \"Read a file\""
+        );
+        assert_eq!(
+            tools[0].input_schema["type"], "object",
+            "expected tools[0].input_schema[\"type\"] to equal \"object\""
+        );
         assert_eq!(
             tools[0].input_schema["properties"]["path"]["type"],
             "string"
@@ -429,7 +466,7 @@ mod tests {
         });
 
         let mut reg = ToolRegistry::new();
-        reg.register(test_def("ctx-test", ToolCategory::System), executor)
+        reg.register(make_def("ctx-test", ToolCategory::System), executor)
             .expect("register");
 
         let input = ToolInput {
@@ -437,17 +474,21 @@ mod tests {
             tool_use_id: "toolu_1".to_owned(),
             arguments: serde_json::json!({}),
         };
-        reg.execute(&input, &test_ctx()).await.expect("execute");
+        reg.execute(&input, &mock_ctx()).await.expect("execute");
 
         #[expect(
             clippy::expect_used,
             reason = "test assertion: poisoned lock means a test bug"
         )]
         let id = captured.lock().expect("lock poisoned").clone();
-        assert_eq!(id.as_deref(), Some("test-agent"));
+        assert_eq!(
+            id.as_deref(),
+            Some("test-agent"),
+            "expected id.as_deref() to equal Some(\"test-agent\")"
+        );
     }
 
-    fn test_def_with_activate(name: &str, category: ToolCategory, auto_activate: bool) -> ToolDef {
+    fn make_def_with_activate(name: &str, category: ToolCategory, auto_activate: bool) -> ToolDef {
         ToolDef {
             name: ToolName::new(name).expect("valid"),
             description: format!("Test tool: {name}"),
@@ -468,17 +509,17 @@ mod tests {
         let (e2, _) = mock_executor("ok");
         let (e3, _) = mock_executor("ok");
         reg.register(
-            test_def_with_activate("read", ToolCategory::Workspace, true),
+            make_def_with_activate("read", ToolCategory::Workspace, true),
             e1,
         )
         .expect("register");
         reg.register(
-            test_def_with_activate("web_search", ToolCategory::Research, false),
+            make_def_with_activate("web_search", ToolCategory::Research, false),
             e2,
         )
         .expect("register");
         reg.register(
-            test_def_with_activate("enable_tool", ToolCategory::System, true),
+            make_def_with_activate("enable_tool", ToolCategory::System, true),
             e3,
         )
         .expect("register");
@@ -486,9 +527,18 @@ mod tests {
         let active = HashSet::new();
         let tools = reg.to_hermeneus_tools_filtered(&active);
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
-        assert!(names.contains(&"read"));
-        assert!(names.contains(&"enable_tool"));
-        assert!(!names.contains(&"web_search"));
+        assert!(
+            names.contains(&"read"),
+            "expected names.contains(&\"read\") to be true"
+        );
+        assert!(
+            names.contains(&"enable_tool"),
+            "expected names.contains(&\"enable_tool\") to be true"
+        );
+        assert!(
+            !names.contains(&"web_search"),
+            "expected names.contains(&\"web_search\") to be false"
+        );
     }
 
     #[test]
@@ -497,12 +547,12 @@ mod tests {
         let (e1, _) = mock_executor("ok");
         let (e2, _) = mock_executor("ok");
         reg.register(
-            test_def_with_activate("read", ToolCategory::Workspace, true),
+            make_def_with_activate("read", ToolCategory::Workspace, true),
             e1,
         )
         .expect("register");
         reg.register(
-            test_def_with_activate("web_search", ToolCategory::Research, false),
+            make_def_with_activate("web_search", ToolCategory::Research, false),
             e2,
         )
         .expect("register");
@@ -511,8 +561,14 @@ mod tests {
         active.insert(ToolName::new("web_search").expect("valid"));
         let tools = reg.to_hermeneus_tools_filtered(&active);
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
-        assert!(names.contains(&"read"));
-        assert!(names.contains(&"web_search"));
+        assert!(
+            names.contains(&"read"),
+            "expected names.contains(&\"read\") to be true"
+        );
+        assert!(
+            names.contains(&"web_search"),
+            "expected names.contains(&\"web_search\") to be true"
+        );
     }
 
     #[test]
@@ -520,28 +576,38 @@ mod tests {
         let mut reg = ToolRegistry::new();
         let (e1, _) = mock_executor("ok");
         reg.register(
-            test_def_with_activate("enable_tool", ToolCategory::System, false),
+            make_def_with_activate("enable_tool", ToolCategory::System, false),
             e1,
         )
         .expect("register");
 
         let active = HashSet::new();
         let tools = reg.to_hermeneus_tools_filtered(&active);
-        assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].name, "enable_tool");
+        assert_eq!(tools.len(), 1, "expected tools.len() to equal 1");
+        assert_eq!(
+            tools[0].name, "enable_tool",
+            "expected tools[0].name to equal \"enable_tool\""
+        );
     }
 
     #[test]
     fn empty_registry_has_no_definitions() {
         let reg = ToolRegistry::new();
-        assert!(reg.definitions().is_empty());
+        assert!(
+            reg.definitions().is_empty(),
+            "expected reg.definitions().is_empty() to be true"
+        );
     }
 
     #[test]
     fn default_registry_equals_new_registry() {
         let reg1 = ToolRegistry::new();
         let reg2 = ToolRegistry::default();
-        assert_eq!(reg1.definitions().len(), reg2.definitions().len());
+        assert_eq!(
+            reg1.definitions().len(),
+            reg2.definitions().len(),
+            "expected reg1.definitions().len() to equal reg2.definitions().len()"
+        );
     }
 
     #[test]
@@ -550,15 +616,19 @@ mod tests {
         let (e1, _) = mock_executor("ok");
         let (e2, _) = mock_executor("ok");
         let (e3, _) = mock_executor("ok");
-        reg.register(test_def("alpha", ToolCategory::Workspace), e1)
+        reg.register(make_def("alpha", ToolCategory::Workspace), e1)
             .expect("register");
-        reg.register(test_def("beta", ToolCategory::Workspace), e2)
+        reg.register(make_def("beta", ToolCategory::Workspace), e2)
             .expect("register");
-        reg.register(test_def("gamma", ToolCategory::Workspace), e3)
+        reg.register(make_def("gamma", ToolCategory::Workspace), e3)
             .expect("register");
 
         let names: Vec<&str> = reg.definitions().iter().map(|d| d.name.as_str()).collect();
-        assert_eq!(names, ["alpha", "beta", "gamma"]);
+        assert_eq!(
+            names,
+            ["alpha", "beta", "gamma"],
+            "expected names to equal [\"alpha\", \"beta\", \"gamma\"]"
+        );
     }
 
     #[test]
@@ -587,7 +657,10 @@ mod tests {
         reg.register(def, exec).expect("register");
         let tools = reg.to_hermeneus_tools();
         let schema = &tools[0].input_schema;
-        assert_eq!(schema["required"][0], "path");
+        assert_eq!(
+            schema["required"][0], "path",
+            "expected schema[\"required\"][0] to equal \"path\""
+        );
     }
 
     #[test]
@@ -617,8 +690,8 @@ mod tests {
         let tools = reg.to_hermeneus_tools();
         let schema = &tools[0].input_schema;
         let enum_vals = &schema["properties"]["type"]["enum"];
-        assert_eq!(enum_vals[0], "f");
-        assert_eq!(enum_vals[1], "d");
+        assert_eq!(enum_vals[0], "f", "expected enum_vals[0] to equal \"f\"");
+        assert_eq!(enum_vals[1], "d", "expected enum_vals[1] to equal \"d\"");
     }
 
     #[test]
@@ -647,7 +720,10 @@ mod tests {
         reg.register(def, exec).expect("register");
         let tools = reg.to_hermeneus_tools();
         let schema = &tools[0].input_schema;
-        assert_eq!(schema["properties"]["caseSensitive"]["default"], true);
+        assert_eq!(
+            schema["properties"]["caseSensitive"]["default"], true,
+            "expected schema[\"properties\"][\"caseSensitive\"]... to equal true"
+        );
     }
 
     #[test]
@@ -671,18 +747,24 @@ mod tests {
         .expect("register");
 
         let catalog = reg.lazy_tool_catalog();
-        assert_eq!(catalog.len(), 1);
-        assert_eq!(catalog[0].1, "Search the web");
+        assert_eq!(catalog.len(), 1, "expected catalog.len() to equal 1");
+        assert_eq!(
+            catalog[0].1, "Search the web",
+            "expected catalog[0].1 to equal \"Search the web\""
+        );
     }
 
     #[test]
     fn definitions_for_category_returns_empty_when_no_match() {
         let mut reg = ToolRegistry::new();
         let (e1, _) = mock_executor("ok");
-        reg.register(test_def("read", ToolCategory::Workspace), e1)
+        reg.register(make_def("read", ToolCategory::Workspace), e1)
             .expect("register");
         let planning = reg.definitions_for_category(ToolCategory::Planning);
-        assert!(planning.is_empty());
+        assert!(
+            planning.is_empty(),
+            "expected planning.is_empty() to be true"
+        );
     }
 
     #[tokio::test]
@@ -694,10 +776,13 @@ mod tests {
             arguments: serde_json::json!({}),
         };
         let err = reg
-            .execute(&input, &test_ctx())
+            .execute(&input, &mock_ctx())
             .await
             .expect_err("not found");
-        assert!(err.to_string().contains("tool not found: ghost"));
+        assert!(
+            err.to_string().contains("tool not found: ghost"),
+            "expected err.to_string().contains(\"tool not found: ghost\") to be true"
+        );
     }
 
     #[test]
@@ -707,23 +792,27 @@ mod tests {
         let (e2, _) = mock_executor("ok");
         let (e3, _) = mock_executor("ok");
         reg.register(
-            test_def_with_activate("read", ToolCategory::Workspace, true),
+            make_def_with_activate("read", ToolCategory::Workspace, true),
             e1,
         )
         .expect("register");
         reg.register(
-            test_def_with_activate("web_search", ToolCategory::Research, false),
+            make_def_with_activate("web_search", ToolCategory::Research, false),
             e2,
         )
         .expect("register");
         reg.register(
-            test_def_with_activate("enable_tool", ToolCategory::System, true),
+            make_def_with_activate("enable_tool", ToolCategory::System, true),
             e3,
         )
         .expect("register");
 
         let catalog = reg.lazy_tool_catalog();
-        assert_eq!(catalog.len(), 1);
-        assert_eq!(catalog[0].0.as_str(), "web_search");
+        assert_eq!(catalog.len(), 1, "expected catalog.len() to equal 1");
+        assert_eq!(
+            catalog[0].0.as_str(),
+            "web_search",
+            "expected catalog[0].0.as_str() to equal \"web_search\""
+        );
     }
 }

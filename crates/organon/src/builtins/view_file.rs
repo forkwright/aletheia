@@ -190,7 +190,7 @@ fn execute_by_kind(
 }
 
 /// Register the `view_file` tool.
-pub fn register(registry: &mut ToolRegistry) -> Result<()> {
+pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(view_file_def(), Box::new(ViewFileExecutor))?;
     Ok(())
 }
@@ -198,7 +198,7 @@ pub fn register(registry: &mut ToolRegistry) -> Result<()> {
 fn view_file_def() -> crate::types::ToolDef {
     use aletheia_koina::id::ToolName;
     ToolDef {
-        name: ToolName::new("view_file").expect("valid tool name"),
+        name: ToolName::new("view_file").expect("valid tool name"), // kanon:ignore RUST/expect
         description: "View a file — images, PDFs, and text. For images and PDFs, the content is sent directly to the model for visual analysis.".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -244,7 +244,7 @@ mod tests {
     use super::*;
     use crate::types::ToolResultContent;
 
-    fn test_ctx(dir: &Path) -> ToolContext {
+    fn mock_ctx(dir: &Path) -> ToolContext {
         ToolContext {
             nous_id: NousId::new("test-agent").expect("valid"),
             session_id: SessionId::new(),
@@ -271,11 +271,15 @@ mod tests {
             reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
         )]
         std::fs::write(dir.path().join("hello.txt"), "hello world").expect("write");
-        let ctx = test_ctx(dir.path());
+        let ctx = mock_ctx(dir.path());
         let input = tool_input(serde_json::json!({ "path": "hello.txt" }));
         let result = ViewFileExecutor.execute(&input, &ctx).await.expect("exec");
-        assert!(!result.is_error);
-        assert_eq!(result.content.text_summary(), "hello world");
+        assert!(!result.is_error, "expected result.is_error to be false");
+        assert_eq!(
+            result.content.text_summary(),
+            "hello world",
+            "expected result.content.text_summary() to equal \"hello world\""
+        );
     }
 
     #[tokio::test]
@@ -286,10 +290,14 @@ mod tests {
             reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
         )]
         std::fs::write(dir.path().join("lines.txt"), "a\nb\nc\nd\ne").expect("write");
-        let ctx = test_ctx(dir.path());
+        let ctx = mock_ctx(dir.path());
         let input = tool_input(serde_json::json!({ "path": "lines.txt", "maxLines": 2 }));
         let result = ViewFileExecutor.execute(&input, &ctx).await.expect("exec");
-        assert_eq!(result.content.text_summary(), "a\nb");
+        assert_eq!(
+            result.content.text_summary(),
+            "a\nb",
+            "expected result.content.text_summary() to equal \"a\nb\""
+        );
     }
 
     #[tokio::test]
@@ -311,18 +319,27 @@ mod tests {
             reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
         )]
         std::fs::write(dir.path().join("test.png"), &png_bytes).expect("write");
-        let ctx = test_ctx(dir.path());
+        let ctx = mock_ctx(dir.path());
         let input = tool_input(serde_json::json!({ "path": "test.png" }));
         let result = ViewFileExecutor.execute(&input, &ctx).await.expect("exec");
-        assert!(!result.is_error);
+        assert!(!result.is_error, "expected result.is_error to be false");
         match &result.content {
             ToolResultContent::Blocks(blocks) => {
-                assert_eq!(blocks.len(), 2);
+                assert_eq!(blocks.len(), 2, "expected blocks.len() to equal 2");
                 match &blocks[0] {
                     ToolResultBlock::Image { source } => {
-                        assert_eq!(source.media_type, "image/png");
-                        assert_eq!(source.source_type, "base64");
-                        assert!(!source.data.is_empty());
+                        assert_eq!(
+                            source.media_type, "image/png",
+                            "expected source.media_type to equal \"image/png\""
+                        );
+                        assert_eq!(
+                            source.source_type, "base64",
+                            "expected source.source_type to equal \"base64\""
+                        );
+                        assert!(
+                            !source.data.is_empty(),
+                            "expected source.data.is_empty() to be false"
+                        );
                     }
                     other => panic!("expected Image block, got {other:?}"),
                 }
@@ -339,10 +356,10 @@ mod tests {
             reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
         )]
         std::fs::write(dir.path().join("data.bin"), b"\x00\x01\x02").expect("write");
-        let ctx = test_ctx(dir.path());
+        let ctx = mock_ctx(dir.path());
         let input = tool_input(serde_json::json!({ "path": "data.bin" }));
         let result = ViewFileExecutor.execute(&input, &ctx).await.expect("exec");
-        assert!(result.is_error);
+        assert!(result.is_error, "expected result.is_error to be true");
         assert!(
             result
                 .content
@@ -354,23 +371,29 @@ mod tests {
     #[tokio::test]
     async fn view_missing_file_errors() {
         let dir = tempfile::tempdir().expect("tmpdir");
-        let ctx = test_ctx(dir.path());
+        let ctx = mock_ctx(dir.path());
         let input = tool_input(serde_json::json!({ "path": "nope.txt" }));
         let result = ViewFileExecutor.execute(&input, &ctx).await.expect("exec");
-        assert!(result.is_error);
-        assert!(result.content.text_summary().contains("file not found"));
+        assert!(result.is_error, "expected result.is_error to be true");
+        assert!(
+            result.content.text_summary().contains("file not found"),
+            "expected result.content.text_summary().contains(\"file not found\") to be true"
+        );
     }
 
     #[tokio::test]
     async fn view_path_traversal_blocked() {
         let dir = tempfile::tempdir().expect("tmpdir");
-        let ctx = test_ctx(dir.path());
+        let ctx = mock_ctx(dir.path());
         let input = tool_input(serde_json::json!({ "path": "../../etc/passwd" }));
         let err = ViewFileExecutor
             .execute(&input, &ctx)
             .await
             .expect_err("should reject traversal");
-        assert!(err.to_string().contains("outside allowed roots"));
+        assert!(
+            err.to_string().contains("outside allowed roots"),
+            "expected err.to_string().contains(\"outside allowed roots\") to be true"
+        );
     }
 
     #[tokio::test]
@@ -378,6 +401,9 @@ mod tests {
         let mut reg = crate::registry::ToolRegistry::new();
         register(&mut reg).expect("register");
         let name = ToolName::new("view_file").expect("valid");
-        assert!(reg.get_def(&name).is_some());
+        assert!(
+            reg.get_def(&name).is_some(),
+            "expected reg.get_def(&name).is_some() to be true"
+        );
     }
 }

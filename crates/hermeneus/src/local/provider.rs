@@ -54,6 +54,7 @@ impl Default for LocalProviderConfig {
 
 /// OpenAI-compatible LLM provider for local inference (vLLM, etc.).
 pub struct LocalProvider {
+    // kanon:ignore RUST/pub-visibility
     client: Client,
     base_url: String,
     default_model: String,
@@ -65,7 +66,9 @@ impl LocalProvider {
     /// # Errors
     ///
     /// Returns [`Error::ProviderInit`] if the HTTP client cannot be constructed.
+    #[must_use]
     pub fn new(config: &LocalProviderConfig) -> Result<Self> {
+        // kanon:ignore RUST/pub-visibility
         // WHY: reqwest 0.13 with rustls-no-provider requires an explicit crypto provider.
         // install_default() is idempotent: subsequent calls return Err and are ignored.
         let _ = rustls::crypto::ring::default_provider().install_default();

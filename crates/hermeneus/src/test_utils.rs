@@ -2,7 +2,7 @@
 
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Mutex;
+use std::sync::Mutex; // kanon:ignore RUST/std-mutex-in-async
 
 use crate::error::{self, Result};
 use crate::provider::LlmProvider;
@@ -11,6 +11,7 @@ use crate::types::{CompletionRequest, CompletionResponse, ContentBlock, StopReas
 /// Build a [`CompletionResponse`] with a single text block.
 #[must_use]
 pub fn make_response(text: &str) -> CompletionResponse {
+    // kanon:ignore RUST/pub-visibility
     CompletionResponse {
         id: "msg_mock".to_owned(),
         model: "mock-model".to_owned(),
@@ -50,6 +51,7 @@ pub fn make_response(text: &str) -> CompletionResponse {
 /// let provider = MockProvider::error("network timeout");
 /// ```
 pub struct MockProvider {
+    // kanon:ignore RUST/pub-visibility
     // WHY: std::sync::Mutex is intentional: lock never held across .await
     responses: Mutex<Vec<CompletionResponse>>,
     error: Mutex<Option<error::Error>>,
@@ -62,6 +64,7 @@ impl MockProvider {
     /// Create a mock that always returns the given text.
     #[must_use]
     pub fn new(text: &str) -> Self {
+        // kanon:ignore RUST/pub-visibility
         Self {
             responses: Mutex::new(vec![make_response(text)]),
             error: Mutex::new(None),
@@ -76,6 +79,7 @@ impl MockProvider {
     /// When only one response remains, it is cloned indefinitely.
     #[must_use]
     pub fn with_responses(responses: Vec<CompletionResponse>) -> Self {
+        // kanon:ignore RUST/pub-visibility
         Self {
             responses: Mutex::new(responses),
             error: Mutex::new(None),
@@ -88,6 +92,7 @@ impl MockProvider {
     /// Create a mock that returns an [`ApiRequest`](error::ApiRequestSnafu) error.
     #[must_use]
     pub fn error(message: &str) -> Self {
+        // kanon:ignore RUST/pub-visibility
         Self {
             responses: Mutex::new(Vec::new()),
             error: Mutex::new(Some(
@@ -105,6 +110,7 @@ impl MockProvider {
     /// Set the model list returned by `supported_models`.
     #[must_use]
     pub fn models(mut self, models: &'static [&'static str]) -> Self {
+        // kanon:ignore RUST/pub-visibility
         self.models = models;
         self
     }
@@ -112,6 +118,7 @@ impl MockProvider {
     /// Set the provider name returned by `name`.
     #[must_use]
     pub fn named(mut self, name: &'static str) -> Self {
+        // kanon:ignore RUST/pub-visibility
         self.provider_name = name;
         self
     }
@@ -119,6 +126,7 @@ impl MockProvider {
     /// Return all captured requests (most recent last).
     #[must_use]
     pub fn captured_requests(&self) -> Vec<CompletionRequest> {
+        // kanon:ignore RUST/pub-visibility
         self.requests
             .lock()
             .expect("mock request lock poisoned")

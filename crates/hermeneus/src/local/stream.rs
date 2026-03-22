@@ -111,7 +111,7 @@ impl StreamAccumulator {
             clippy::indexing_slicing,
             reason = "idx is bounded: while loop above grows vec to len > idx"
         )]
-        let acc = &mut self.tool_calls[idx];
+        let acc = &mut self.tool_calls[idx]; // kanon:ignore RUST/indexing-slicing
 
         if let Some(id) = &tc.id {
             acc.id.clone_from(id);
@@ -130,7 +130,7 @@ impl StreamAccumulator {
                     clippy::as_conversions,
                     reason = "block index is bounded by tool call count, safe truncation"
                 )]
-                let index = block_index as u32;
+                let index = block_index as u32; // kanon:ignore RUST/as-cast
                 on_event(StreamEvent::ContentBlockStart {
                     index,
                     block_type: "tool_use".to_owned(),

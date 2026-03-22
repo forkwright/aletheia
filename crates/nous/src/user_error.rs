@@ -8,11 +8,7 @@ use std::fmt;
 /// This type carries only what a user should see.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-#[expect(
-    missing_docs,
-    reason = "variant fields (provider, suggestion, limit_tokens, tool_name, message, session_id, retry_after_secs) are self-documenting by name"
-)]
-pub enum UserFacingError {
+pub(crate) enum UserFacingError {
     /// The LLM provider is currently unavailable.
     ProviderUnavailable {
         provider: String,
@@ -80,7 +76,7 @@ impl fmt::Display for UserFacingError {
 ///
 /// Returns `None` for internal errors that should not be shown to users.
 #[must_use]
-pub fn to_user_facing(error: &crate::error::Error) -> Option<UserFacingError> {
+pub(crate) fn to_user_facing(error: &crate::error::Error) -> Option<UserFacingError> {
     use aletheia_hermeneus::error::Error as HError;
 
     use crate::error::Error;

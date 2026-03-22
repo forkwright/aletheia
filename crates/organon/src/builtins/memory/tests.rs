@@ -164,7 +164,11 @@ fn ctx_with_services(
 async fn register_memory_tools() {
     let mut reg = ToolRegistry::new();
     super::register(&mut reg).expect("register");
-    assert_eq!(reg.definitions().len(), 8);
+    assert_eq!(
+        reg.definitions().len(),
+        8,
+        "expected reg.definitions().len() to equal 8"
+    );
 }
 
 #[tokio::test]
@@ -173,7 +177,10 @@ async fn memory_search_def_requires_query() {
     super::register(&mut reg).expect("register");
     let name = ToolName::new("memory_search").expect("valid");
     let def = reg.get_def(&name).expect("found");
-    assert!(def.input_schema.required.contains(&"query".to_owned()));
+    assert!(
+        def.input_schema.required.contains(&"query".to_owned()),
+        "expected def.input_schema.required.contains(&\"query\".to_owned()) to be true"
+    );
 }
 
 #[tokio::test]
@@ -190,7 +197,7 @@ async fn memory_search_no_knowledge_returns_error() {
         arguments: serde_json::json!({"query": "test"}),
     };
     let result = reg.execute(&input, &ctx).await.expect("execute");
-    assert!(result.is_error);
+    assert!(result.is_error, "expected result.is_error to be true");
     assert!(
         result
             .content
@@ -211,8 +218,11 @@ async fn memory_search_no_services_returns_error() {
         arguments: serde_json::json!({"query": "test"}),
     };
     let result = reg.execute(&input, &test_ctx()).await.expect("execute");
-    assert!(result.is_error);
-    assert!(result.content.text_summary().contains("not configured"));
+    assert!(result.is_error, "expected result.is_error to be true");
+    assert!(
+        result.content.text_summary().contains("not configured"),
+        "expected result.content.text_summary().contains(\"not configured\") to be true"
+    );
 }
 
 #[tokio::test]
@@ -229,8 +239,11 @@ async fn note_add_and_list() {
         arguments: serde_json::json!({"action": "add", "content": "first note", "category": "task"}),
     };
     let r1 = reg.execute(&add1, &ctx).await.expect("execute");
-    assert!(!r1.is_error);
-    assert!(r1.content.text_summary().contains("#1"));
+    assert!(!r1.is_error, "expected r1.is_error to be false");
+    assert!(
+        r1.content.text_summary().contains("#1"),
+        "expected r1.content.text_summary().contains(\"#1\") to be true"
+    );
 
     let add2 = ToolInput {
         name: ToolName::new("note").expect("valid"),
@@ -238,8 +251,11 @@ async fn note_add_and_list() {
         arguments: serde_json::json!({"action": "add", "content": "second note"}),
     };
     let r2 = reg.execute(&add2, &ctx).await.expect("execute");
-    assert!(!r2.is_error);
-    assert!(r2.content.text_summary().contains("#2"));
+    assert!(!r2.is_error, "expected r2.is_error to be false");
+    assert!(
+        r2.content.text_summary().contains("#2"),
+        "expected r2.content.text_summary().contains(\"#2\") to be true"
+    );
 
     let list = ToolInput {
         name: ToolName::new("note").expect("valid"),
@@ -247,10 +263,16 @@ async fn note_add_and_list() {
         arguments: serde_json::json!({"action": "list"}),
     };
     let r3 = reg.execute(&list, &ctx).await.expect("execute");
-    assert!(!r3.is_error);
+    assert!(!r3.is_error, "expected r3.is_error to be false");
     let text = r3.content.text_summary();
-    assert!(text.contains("first note"));
-    assert!(text.contains("second note"));
+    assert!(
+        text.contains("first note"),
+        "expected text.contains(\"first note\") to be true"
+    );
+    assert!(
+        text.contains("second note"),
+        "expected text.contains(\"second note\") to be true"
+    );
 }
 
 #[tokio::test]
@@ -274,8 +296,11 @@ async fn note_delete() {
         arguments: serde_json::json!({"action": "delete", "id": 1}),
     };
     let r = reg.execute(&del, &ctx).await.expect("execute");
-    assert!(!r.is_error);
-    assert!(r.content.text_summary().contains("deleted"));
+    assert!(!r.is_error, "expected r.is_error to be false");
+    assert!(
+        r.content.text_summary().contains("deleted"),
+        "expected r.content.text_summary().contains(\"deleted\") to be true"
+    );
 
     let list = ToolInput {
         name: ToolName::new("note").expect("valid"),
@@ -283,7 +308,10 @@ async fn note_delete() {
         arguments: serde_json::json!({"action": "list"}),
     };
     let r3 = reg.execute(&list, &ctx).await.expect("execute");
-    assert!(r3.content.text_summary().contains("No session notes"));
+    assert!(
+        r3.content.text_summary().contains("No session notes"),
+        "expected r3.content.text_summary().contains(\"No session notes\") to be true"
+    );
 }
 
 #[tokio::test]
@@ -301,8 +329,11 @@ async fn note_rejects_over_500_chars() {
         arguments: serde_json::json!({"action": "add", "content": long_content}),
     };
     let result = reg.execute(&input, &ctx).await.expect("execute");
-    assert!(result.is_error);
-    assert!(result.content.text_summary().contains("500"));
+    assert!(result.is_error, "expected result.is_error to be true");
+    assert!(
+        result.content.text_summary().contains("500"),
+        "expected result.content.text_summary().contains(\"500\") to be true"
+    );
 }
 
 #[tokio::test]
@@ -322,8 +353,11 @@ async fn blackboard_write_and_read() {
         arguments: serde_json::json!({"action": "write", "key": "goal", "value": "ship M0b"}),
     };
     let r1 = reg.execute(&write, &ctx).await.expect("execute");
-    assert!(!r1.is_error);
-    assert!(r1.content.text_summary().contains("[goal] written"));
+    assert!(!r1.is_error, "expected r1.is_error to be false");
+    assert!(
+        r1.content.text_summary().contains("[goal] written"),
+        "expected r1.content.text_summary().contains(\"[goal] written\") to be true"
+    );
 
     let read = ToolInput {
         name: ToolName::new("blackboard").expect("valid"),
@@ -331,8 +365,11 @@ async fn blackboard_write_and_read() {
         arguments: serde_json::json!({"action": "read", "key": "goal"}),
     };
     let r2 = reg.execute(&read, &ctx).await.expect("execute");
-    assert!(!r2.is_error);
-    assert!(r2.content.text_summary().contains("ship M0b"));
+    assert!(!r2.is_error, "expected r2.is_error to be false");
+    assert!(
+        r2.content.text_summary().contains("ship M0b"),
+        "expected r2.content.text_summary().contains(\"ship M0b\") to be true"
+    );
 }
 
 #[tokio::test]
@@ -361,10 +398,16 @@ async fn blackboard_list() {
         arguments: serde_json::json!({"action": "list"}),
     };
     let r = reg.execute(&list, &ctx).await.expect("execute");
-    assert!(!r.is_error);
+    assert!(!r.is_error, "expected r.is_error to be false");
     let text = r.content.text_summary();
-    assert!(text.contains("[a] = 1"));
-    assert!(text.contains("[b] = 2"));
+    assert!(
+        text.contains("[a] = 1"),
+        "expected text.contains(\"[a] = 1\") to be true"
+    );
+    assert!(
+        text.contains("[b] = 2"),
+        "expected text.contains(\"[b] = 2\") to be true"
+    );
 }
 
 #[tokio::test]
@@ -399,7 +442,10 @@ async fn blackboard_delete_only_author() {
         arguments: serde_json::json!({"action": "delete", "key": "secret"}),
     };
     let r = reg.execute(&del, &other_ctx).await.expect("execute");
-    assert!(r.content.text_summary().contains("not your entry"));
+    assert!(
+        r.content.text_summary().contains("not your entry"),
+        "expected r.content.text_summary().contains(\"not your entry\") to be true"
+    );
 
     let del2 = ToolInput {
         name: ToolName::new("blackboard").expect("valid"),
@@ -407,7 +453,10 @@ async fn blackboard_delete_only_author() {
         arguments: serde_json::json!({"action": "delete", "key": "secret"}),
     };
     let r2 = reg.execute(&del2, &ctx).await.expect("execute");
-    assert!(r2.content.text_summary().contains("deleted"));
+    assert!(
+        r2.content.text_summary().contains("deleted"),
+        "expected r2.content.text_summary().contains(\"deleted\") to be true"
+    );
 }
 
 #[tokio::test]
@@ -424,7 +473,7 @@ async fn memory_correct_no_knowledge_returns_error() {
         arguments: serde_json::json!({"fact_id": "f-1", "new_content": "corrected"}),
     };
     let result = reg.execute(&input, &ctx).await.expect("execute");
-    assert!(result.is_error);
+    assert!(result.is_error, "expected result.is_error to be true");
     assert!(
         result
             .content
@@ -447,7 +496,7 @@ async fn memory_retract_no_knowledge_returns_error() {
         arguments: serde_json::json!({"fact_id": "f-1"}),
     };
     let result = reg.execute(&input, &ctx).await.expect("execute");
-    assert!(result.is_error);
+    assert!(result.is_error, "expected result.is_error to be true");
     assert!(
         result
             .content
@@ -470,7 +519,7 @@ async fn memory_audit_no_knowledge_returns_error() {
         arguments: serde_json::json!({}),
     };
     let result = reg.execute(&input, &ctx).await.expect("execute");
-    assert!(result.is_error);
+    assert!(result.is_error, "expected result.is_error to be true");
     assert!(
         result
             .content
@@ -485,7 +534,7 @@ async fn memory_correct_not_auto_activated() {
     super::register(&mut reg).expect("register");
     let name = ToolName::new("memory_correct").expect("valid");
     let def = reg.get_def(&name).expect("found");
-    assert!(!def.auto_activate);
+    assert!(!def.auto_activate, "expected def.auto_activate to be false");
 }
 
 #[tokio::test]
@@ -494,7 +543,7 @@ async fn memory_retract_not_auto_activated() {
     super::register(&mut reg).expect("register");
     let name = ToolName::new("memory_retract").expect("valid");
     let def = reg.get_def(&name).expect("found");
-    assert!(!def.auto_activate);
+    assert!(!def.auto_activate, "expected def.auto_activate to be false");
 }
 
 #[tokio::test]
@@ -503,7 +552,7 @@ async fn memory_audit_not_auto_activated() {
     super::register(&mut reg).expect("register");
     let name = ToolName::new("memory_audit").expect("valid");
     let def = reg.get_def(&name).expect("found");
-    assert!(!def.auto_activate);
+    assert!(!def.auto_activate, "expected def.auto_activate to be false");
 }
 
 #[tokio::test]
@@ -520,7 +569,7 @@ async fn memory_forget_no_knowledge_returns_error() {
         arguments: serde_json::json!({"fact_id": "f-1", "reason": "privacy"}),
     };
     let result = reg.execute(&input, &ctx).await.expect("execute");
-    assert!(result.is_error);
+    assert!(result.is_error, "expected result.is_error to be true");
     assert!(
         result
             .content
@@ -535,7 +584,7 @@ async fn memory_forget_not_auto_activated() {
     super::register(&mut reg).expect("register");
     let name = ToolName::new("memory_forget").expect("valid");
     let def = reg.get_def(&name).expect("found");
-    assert!(!def.auto_activate);
+    assert!(!def.auto_activate, "expected def.auto_activate to be false");
 }
 
 #[tokio::test]
@@ -587,7 +636,7 @@ async fn datalog_query_no_knowledge_returns_error() {
         arguments: serde_json::json!({"query": "?[x] := x = 42"}),
     };
     let result = reg.execute(&input, &ctx).await.expect("execute");
-    assert!(result.is_error);
+    assert!(result.is_error, "expected result.is_error to be true");
     assert!(
         result
             .content
@@ -602,7 +651,7 @@ async fn datalog_query_not_auto_activated() {
     super::register(&mut reg).expect("register");
     let name = ToolName::new("datalog_query").expect("valid");
     let def = reg.get_def(&name).expect("found");
-    assert!(!def.auto_activate);
+    assert!(!def.auto_activate, "expected def.auto_activate to be false");
 }
 
 #[tokio::test]
@@ -630,7 +679,10 @@ fn markdown_table_empty_result() {
         truncated: false,
     };
     let table = super::datalog::format_as_markdown_table(&result);
-    assert_eq!(table, "No results.");
+    assert_eq!(
+        table, "No results.",
+        "expected table to equal \"No results.\""
+    );
 }
 
 #[test]
@@ -650,10 +702,22 @@ fn markdown_table_formats_correctly() {
         truncated: false,
     };
     let table = super::datalog::format_as_markdown_table(&result);
-    assert!(table.contains("| id | name |"));
-    assert!(table.contains("| --- | --- |"));
-    assert!(table.contains("| 1 | alice |"));
-    assert!(table.contains("| 2 | null |"));
+    assert!(
+        table.contains("| id | name |"),
+        "expected table.contains(\"| id | name |\") to be true"
+    );
+    assert!(
+        table.contains("| --- | --- |"),
+        "expected table.contains(\"| --- | --- |\") to be true"
+    );
+    assert!(
+        table.contains("| 1 | alice |"),
+        "expected table.contains(\"| 1 | alice |\") to be true"
+    );
+    assert!(
+        table.contains("| 2 | null |"),
+        "expected table.contains(\"| 2 | null |\") to be true"
+    );
 }
 
 #[tokio::test]

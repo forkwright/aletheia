@@ -7,6 +7,7 @@
 pub(crate) mod batch;
 mod client;
 pub(crate) mod error;
+pub(crate) mod pricing;
 pub(crate) mod stream;
 pub(crate) mod wire;
 

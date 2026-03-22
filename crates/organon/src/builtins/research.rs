@@ -47,21 +47,21 @@ fn is_private_ip(ip: &IpAddr) -> bool {
             v4.is_loopback()                                          // 127.0.0.0/8
                 || v4.is_private()                                    // 10/8, 172.16/12, 192.168/16
                 || v4.is_link_local()                                 // 169.254.0.0/16
-                || v4.octets()[0] == 0                                // 0.0.0.0/8
+                || v4.octets().first() == Some(&0)                     // 0.0.0.0/8
                 || *v4 == Ipv4Addr::new(169, 254, 169, 254)          // AWS metadata
                 || *v4 == Ipv4Addr::new(169, 254, 169, 123) // AWS NTP
         }
         IpAddr::V6(v6) => {
             *v6 == Ipv6Addr::LOCALHOST                                // ::1
-                || (v6.segments()[0] & 0xfe00) == 0xfc00              // fc00::/7 (ULA)
-                || (v6.segments()[0] & 0xffc0) == 0xfe80              // fe80::/10 (link-local)
+                || (v6.segments().first().unwrap_or(&0) & 0xfe00) == 0xfc00  // fc00::/7 (ULA)
+                || (v6.segments().first().unwrap_or(&0) & 0xffc0) == 0xfe80  // fe80::/10 (link-local)
                 // WHY: IPv4-mapped addresses (::ffff:127.x.x.x) are loopback when
                 // the embedded IPv4 address is private. Unmap and re-check.
                 || v6.to_ipv4_mapped().is_some_and(|v4| {
                     v4.is_loopback()
                         || v4.is_private()
                         || v4.is_link_local()
-                        || v4.octets()[0] == 0
+                        || v4.octets().first() == Some(&0)
                 })
         }
     }
@@ -196,12 +196,7 @@ impl ToolExecutor for WebFetchExecutor {
                 body
             };
 
-            #[expect(
-                clippy::cast_possible_truncation,
-                clippy::as_conversions,
-                reason = "u64→usize: max_length fits in usize"
-            )]
-            let max_len = max_length as usize;
+            let max_len = usize::try_from(max_length).unwrap_or(usize::MAX);
             let truncated = if text.len() > max_len {
                 let mut end = max_len;
                 while end > 0 && !text.is_char_boundary(end) {
@@ -226,7 +221,6 @@ impl ToolExecutor for WebFetchExecutor {
 /// Strip HTML tags and collapse whitespace for readable text extraction.
 #[expect(
     clippy::indexing_slicing,
-    clippy::as_conversions,
     reason = "byte-level state machine: all accesses are bounds-checked by while i < bytes.len() and explicit length guards"
 )]
 fn strip_html_tags(html: &str) -> String {
@@ -243,6 +237,7 @@ fn strip_html_tags(html: &str) -> String {
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'<' {
+            // kanon:ignore RUST/indexing-slicing
             if i + 7 < lower_bytes.len() && &lower_bytes[i..i + 7] == b"<script" {
                 in_script = true;
             }
@@ -267,6 +262,7 @@ fn strip_html_tags(html: &str) -> String {
         }
 
         if bytes[i] == b'>' {
+            // kanon:ignore RUST/indexing-slicing
             in_tag = false;
             if !last_was_whitespace && !result.is_empty() {
                 result.push(' ');
@@ -282,6 +278,7 @@ fn strip_html_tags(html: &str) -> String {
         }
 
         if bytes[i] == b'&' {
+            // kanon:ignore RUST/indexing-slicing
             if i + 4 <= bytes.len() && &bytes[i..i + 4] == b"&lt;" {
                 result.push('<');
                 last_was_whitespace = false;
@@ -314,7 +311,7 @@ fn strip_html_tags(html: &str) -> String {
             }
         }
 
-        let ch = bytes[i] as char;
+        let ch = char::from(bytes[i]); // kanon:ignore RUST/indexing-slicing
         if ch.is_ascii_whitespace() {
             if !last_was_whitespace && !result.is_empty() {
                 result.push(' ');
@@ -332,7 +329,7 @@ fn strip_html_tags(html: &str) -> String {
 
 fn web_fetch_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("web_fetch").expect("valid tool name"),
+        name: ToolName::new("web_fetch").expect("valid tool name"), // kanon:ignore RUST/expect
         description:
             "Fetch a URL and return its content as text. HTML pages are converted to readable text."
                 .to_owned(),
@@ -367,7 +364,7 @@ fn web_fetch_def() -> ToolDef {
 }
 
 /// Register the `web_fetch` research tool into the registry.
-pub fn register(registry: &mut ToolRegistry) -> Result<()> {
+pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(web_fetch_def(), Box::new(WebFetchExecutor))?;
     Ok(())
 }
@@ -388,7 +385,7 @@ mod tests {
         let _ = rustls::crypto::ring::default_provider().install_default();
     }
 
-    fn test_ctx() -> ToolContext {
+    fn mock_ctx() -> ToolContext {
         install_crypto_provider();
         ToolContext {
             nous_id: NousId::new("test-agent").expect("valid"),
@@ -415,40 +412,56 @@ mod tests {
     fn strip_html_basic() {
         let html = "<html><body><h1>Title</h1><p>Hello world</p></body></html>";
         let text = strip_html_tags(html);
-        assert_eq!(text, "Title Hello world");
+        assert_eq!(
+            text, "Title Hello world",
+            "expected text to equal \"Title Hello world\""
+        );
     }
 
     #[test]
     fn strip_html_script_and_style() {
         let html = "<p>Before</p><script>var x = 1;</script><style>.a{}</style><p>After</p>";
         let text = strip_html_tags(html);
-        assert_eq!(text, "Before After");
+        assert_eq!(
+            text, "Before After",
+            "expected text to equal \"Before After\""
+        );
     }
 
     #[test]
     fn strip_html_entities() {
         let html = "&amp; &lt;tag&gt; &quot;quoted&quot;";
         let text = strip_html_tags(html);
-        assert_eq!(text, "& <tag> \"quoted\"");
+        assert_eq!(
+            text, "& <tag> \"quoted\"",
+            "expected text to equal \"& <tag> \"quoted\"\""
+        );
     }
 
     #[test]
     fn strip_html_whitespace_collapse() {
         let html = "<p>  lots   of    spaces  </p>";
         let text = strip_html_tags(html);
-        assert_eq!(text, "lots of spaces");
+        assert_eq!(
+            text, "lots of spaces",
+            "expected text to equal \"lots of spaces\""
+        );
     }
 
     #[test]
     fn web_fetch_def_is_lazy() {
         let def = web_fetch_def();
-        assert!(!def.auto_activate);
-        assert_eq!(def.category, ToolCategory::Research);
+        assert!(!def.auto_activate, "expected def.auto_activate to be false");
+        assert_eq!(
+            def.category,
+            ToolCategory::Research,
+            "expected def.category to equal ToolCategory::Research"
+        );
     }
 
     #[tokio::test]
     async fn web_fetch_invalid_url() {
-        let ctx = test_ctx();
+        let ctx = mock_ctx();
         let executor = WebFetchExecutor;
         let input = ToolInput {
             name: ToolName::new("web_fetch").expect("valid"),
@@ -457,7 +470,10 @@ mod tests {
         };
 
         let result = executor.execute(&input, &ctx).await.expect("execute");
-        assert!(result.is_error);
-        assert!(result.content.text_summary().contains("http"));
+        assert!(result.is_error, "expected result.is_error to be true");
+        assert!(
+            result.content.text_summary().contains("http"),
+            "expected result.content.text_summary().contains(\"http\") to be true"
+        );
     }
 }

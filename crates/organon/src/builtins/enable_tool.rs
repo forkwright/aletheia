@@ -84,7 +84,7 @@ impl ToolExecutor for EnableToolExecutor {
 
 fn enable_tool_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("enable_tool").expect("valid tool name"),
+        name: ToolName::new("enable_tool").expect("valid tool name"), // kanon:ignore RUST/expect
         description: "Activate a tool for this session. Some tools are not loaded by default \
                       and must be enabled first. Call with the tool name to activate it."
             .to_owned(),
@@ -107,7 +107,7 @@ fn enable_tool_def() -> ToolDef {
 }
 
 /// Register the `enable_tool` tool into the registry.
-pub fn register(registry: &mut ToolRegistry) -> Result<()> {
+pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(enable_tool_def(), Box::new(EnableToolExecutor))?;
     Ok(())
 }
@@ -128,7 +128,7 @@ mod tests {
         let _ = rustls::crypto::ring::default_provider().install_default();
     }
 
-    fn test_ctx_with_catalog(catalog: Vec<(ToolName, String)>) -> ToolContext {
+    fn mock_ctx_with_catalog(catalog: Vec<(ToolName, String)>) -> ToolContext {
         install_crypto_provider();
         ToolContext {
             nous_id: NousId::new("test-agent").expect("valid"),
@@ -161,7 +161,7 @@ mod tests {
 
     #[tokio::test]
     async fn activate_known_tool() {
-        let ctx = test_ctx_with_catalog(vec![(
+        let ctx = mock_ctx_with_catalog(vec![(
             ToolName::new("web_search").expect("valid"),
             "Search the web".to_owned(),
         )]);
@@ -172,7 +172,7 @@ mod tests {
             .await
             .expect("execute");
 
-        assert!(!result.is_error);
+        assert!(!result.is_error, "expected result.is_error to be false");
         assert!(
             result
                 .content
@@ -185,12 +185,15 @@ mod tests {
             reason = "test assertion: poisoned lock means a test bug"
         )]
         let active = ctx.active_tools.read().expect("lock poisoned");
-        assert!(active.contains(&ToolName::new("web_search").expect("valid")));
+        assert!(
+            active.contains(&ToolName::new("web_search").expect("valid")),
+            "expected active.contains(&ToolName::new(\"web_search\").expect(\"valid\")) to be true"
+        );
     }
 
     #[tokio::test]
     async fn unknown_tool_lists_available() {
-        let ctx = test_ctx_with_catalog(vec![
+        let ctx = mock_ctx_with_catalog(vec![
             (
                 ToolName::new("web_search").expect("valid"),
                 "Search the web".to_owned(),
@@ -207,15 +210,21 @@ mod tests {
             .await
             .expect("execute");
 
-        assert!(result.is_error);
+        assert!(result.is_error, "expected result.is_error to be true");
         let text = result.content.text_summary();
-        assert!(text.contains("web_search"));
-        assert!(text.contains("web_fetch"));
+        assert!(
+            text.contains("web_search"),
+            "expected text.contains(\"web_search\") to be true"
+        );
+        assert!(
+            text.contains("web_fetch"),
+            "expected text.contains(\"web_fetch\") to be true"
+        );
     }
 
     #[tokio::test]
     async fn double_activate_is_idempotent() {
-        let ctx = test_ctx_with_catalog(vec![(
+        let ctx = mock_ctx_with_catalog(vec![(
             ToolName::new("web_search").expect("valid"),
             "Search the web".to_owned(),
         )]);
@@ -231,11 +240,14 @@ mod tests {
             .await
             .expect("second");
 
-        assert!(!result.is_error);
-        assert!(result.content.text_summary().contains("already active"));
+        assert!(!result.is_error, "expected result.is_error to be false");
+        assert!(
+            result.content.text_summary().contains("already active"),
+            "expected result.content.text_summary().contains(\"already active\") to be true"
+        );
     }
 
-    fn test_ctx_with_server_tools(config: ServerToolConfig) -> ToolContext {
+    fn mock_ctx_with_server_tools(config: ServerToolConfig) -> ToolContext {
         install_crypto_provider();
         ToolContext {
             nous_id: NousId::new("test-agent").expect("valid"),
@@ -260,7 +272,7 @@ mod tests {
 
     #[tokio::test]
     async fn enable_tool_activates_server_web_search() {
-        let ctx = test_ctx_with_server_tools(ServerToolConfig {
+        let ctx = mock_ctx_with_server_tools(ServerToolConfig {
             web_search: true,
             web_search_max_uses: Some(5),
             code_execution: false,
@@ -272,7 +284,7 @@ mod tests {
             .await
             .expect("execute");
 
-        assert!(!result.is_error);
+        assert!(!result.is_error, "expected result.is_error to be false");
         assert!(
             result
                 .content
@@ -285,12 +297,15 @@ mod tests {
             reason = "test assertion: poisoned lock means a test bug"
         )]
         let active = ctx.active_tools.read().expect("lock poisoned");
-        assert!(active.contains(&ToolName::new("web_search").expect("valid")));
+        assert!(
+            active.contains(&ToolName::new("web_search").expect("valid")),
+            "expected active.contains(&ToolName::new(\"web_search\").expect(\"valid\")) to be true"
+        );
     }
 
     #[tokio::test]
     async fn enable_tool_server_tool_not_in_disabled_config() {
-        let ctx = test_ctx_with_server_tools(ServerToolConfig::default());
+        let ctx = mock_ctx_with_server_tools(ServerToolConfig::default());
 
         let executor = EnableToolExecutor;
         let result = executor
@@ -298,13 +313,16 @@ mod tests {
             .await
             .expect("execute");
 
-        assert!(result.is_error);
-        assert!(result.content.text_summary().contains("not found"));
+        assert!(result.is_error, "expected result.is_error to be true");
+        assert!(
+            result.content.text_summary().contains("not found"),
+            "expected result.content.text_summary().contains(\"not found\") to be true"
+        );
     }
 
     #[tokio::test]
     async fn enable_tool_lists_server_tools_in_available() {
-        let ctx = test_ctx_with_server_tools(ServerToolConfig {
+        let ctx = mock_ctx_with_server_tools(ServerToolConfig {
             web_search: true,
             web_search_max_uses: None,
             code_execution: true,
@@ -316,9 +334,15 @@ mod tests {
             .await
             .expect("execute");
 
-        assert!(result.is_error);
+        assert!(result.is_error, "expected result.is_error to be true");
         let text = result.content.text_summary();
-        assert!(text.contains("web_search"));
-        assert!(text.contains("code_execution"));
+        assert!(
+            text.contains("web_search"),
+            "expected text.contains(\"web_search\") to be true"
+        );
+        assert!(
+            text.contains("code_execution"),
+            "expected text.contains(\"code_execution\") to be true"
+        );
     }
 }

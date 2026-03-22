@@ -25,7 +25,7 @@ impl NousActor {
     /// cancellation only occurs at shutdown when the actor is consumed.
     pub(super) async fn handle_turn(
         &mut self,
-        session_key: String,
+        session_key: String, // kanon:ignore RUST/plain-string-secret
         session_id: Option<String>,
         content: String,
         caller_span: tracing::Span,
@@ -79,7 +79,7 @@ impl NousActor {
     /// Only called from the sequential actor loop.
     pub(super) async fn handle_streaming_turn(
         &mut self,
-        session_key: String,
+        session_key: String, // kanon:ignore RUST/plain-string-secret
         session_id: Option<String>,
         content: String,
         stream_tx: mpsc::Sender<TurnStreamEvent>,

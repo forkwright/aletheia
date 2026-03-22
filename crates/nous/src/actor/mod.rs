@@ -30,7 +30,7 @@ mod background;
 mod spawn;
 mod turn;
 
-pub use spawn::spawn;
+pub(crate) use spawn::spawn;
 
 /// Default bounded channel capacity for the actor inbox.
 pub const DEFAULT_INBOX_CAPACITY: usize = 32;

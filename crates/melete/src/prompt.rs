@@ -8,7 +8,7 @@ use crate::distill::DistillSection;
 
 /// Legacy hardcoded distillation system prompt with all seven standard sections.
 #[deprecated(note = "use build_system_prompt() with configured sections")]
-pub const DISTILLATION_SYSTEM_PROMPT: &str = "\
+pub(crate) const DISTILLATION_SYSTEM_PROMPT: &str = "\
 You are a context distillation engine. Your task is to compress a conversation \
 history into a structured summary that preserves all essential information for \
 continuing the work.
@@ -52,7 +52,7 @@ Rules:
 
 /// Generate the distillation system prompt from configured sections.
 #[must_use]
-pub fn build_system_prompt(sections: &[DistillSection]) -> String {
+pub(crate) fn build_system_prompt(sections: &[DistillSection]) -> String {
     let mut prompt = String::from(
         "You are a context distillation engine. Your task is to compress a conversation \
          history into a structured summary that preserves all essential information for \
@@ -79,7 +79,7 @@ pub fn build_system_prompt(sections: &[DistillSection]) -> String {
 
 /// Format conversation messages into readable text for the distillation LLM.
 #[must_use]
-pub fn format_messages(messages: &[Message], include_tool_calls: bool) -> String {
+pub(crate) fn format_messages(messages: &[Message], include_tool_calls: bool) -> String {
     let mut output = String::new();
 
     for msg in messages {

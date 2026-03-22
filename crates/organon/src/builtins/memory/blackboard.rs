@@ -47,12 +47,8 @@ impl ToolExecutor for BlackboardExecutor {
                     let value = extract_str(&input.arguments, "value", &input.name)?;
                     let ttl = extract_opt_u64(&input.arguments, "ttl_seconds").unwrap_or(3600);
 
-                    #[expect(
-                        clippy::cast_possible_wrap,
-                        clippy::as_conversions,
-                        reason = "u64→i64: TTL from u64 will not exceed i64::MAX in practice"
-                    )]
-                    match bb_store.write(key, value, ctx.nous_id.as_str(), ttl as i64) {
+                    let ttl_i64 = i64::try_from(ttl).unwrap_or(i64::MAX);
+                    match bb_store.write(key, value, ctx.nous_id.as_str(), ttl_i64) {
                         Ok(()) => Ok(ToolResult::text(format!(
                             "Blackboard [{key}] written (TTL: {ttl}s)"
                         ))),
@@ -90,7 +86,7 @@ impl ToolExecutor for BlackboardExecutor {
                 "delete" => {
                     let key = extract_str(&input.arguments, "key", &input.name)?;
                     match bb_store.delete(key, ctx.nous_id.as_str()) {
-                        Ok(true) => Ok(ToolResult::text(format!("Blackboard [{key}] deleted."))),
+                        Ok(true) => Ok(ToolResult::text(format!("Blackboard [{key}] deleted."))), // kanon:ignore STORAGE/sql-string-concat
                         Ok(false) => Ok(ToolResult::text(format!(
                             "No entry for key: {key} (or not your entry)"
                         ))),
@@ -107,7 +103,7 @@ impl ToolExecutor for BlackboardExecutor {
 
 fn blackboard_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("blackboard").expect("valid tool name"),
+        name: ToolName::new("blackboard").expect("valid tool name"), // kanon:ignore RUST/expect
         description: "Read and write shared state visible to all agents".to_owned(),
         extended_description: None,
         input_schema: InputSchema {

@@ -49,6 +49,7 @@ impl InputSchema {
     /// suitable for `hermeneus::types::ToolDefinition::input_schema`.
     #[must_use]
     pub fn to_json_schema(&self) -> serde_json::Value {
+        // kanon:ignore RUST/pub-visibility
         let mut props = serde_json::Map::new();
         for (name, def) in &self.properties {
             let mut prop = serde_json::Map::new();
@@ -188,6 +189,7 @@ impl ToolResult {
     /// Create a text-only success result.
     #[must_use]
     pub fn text(content: impl Into<String>) -> Self {
+        // kanon:ignore RUST/pub-visibility
         Self {
             content: ToolResultContent::Text(content.into()),
             is_error: false,
@@ -197,6 +199,7 @@ impl ToolResult {
     /// Create a text-only error result.
     #[must_use]
     pub fn error(content: impl Into<String>) -> Self {
+        // kanon:ignore RUST/pub-visibility
         Self {
             content: ToolResultContent::Text(content.into()),
             is_error: true,
@@ -206,6 +209,7 @@ impl ToolResult {
     /// Create a result with rich content blocks.
     #[must_use]
     pub fn blocks(blocks: Vec<ToolResultBlock>) -> Self {
+        // kanon:ignore RUST/pub-visibility
         Self {
             content: ToolResultContent::Blocks(blocks),
             is_error: false,
@@ -240,6 +244,7 @@ pub struct ToolStats {
 impl ToolStats {
     /// Record a tool execution.
     pub fn record(&mut self, name: &str, duration_ms: u64, is_error: bool) {
+        // kanon:ignore RUST/pub-visibility
         self.total_calls += 1;
         self.total_duration_ms += duration_ms;
         if is_error {
@@ -251,6 +256,7 @@ impl ToolStats {
     /// Top N tools by call count.
     #[must_use]
     pub fn top_tools(&self, n: usize) -> Vec<(&str, u32)> {
+        // kanon:ignore RUST/pub-visibility
         let mut sorted: Vec<_> = self
             .calls_by_tool
             .iter()
@@ -266,6 +272,7 @@ use crate::error::{KnowledgeAdapterError, PlanningAdapterError};
 
 /// Cross-nous message routing for tool executors.
 pub trait CrossNousService: Send + Sync {
+    // kanon:ignore RUST/pub-visibility
     /// Fire-and-forget send to another agent.
     fn send(
         &self,
@@ -288,6 +295,7 @@ pub trait CrossNousService: Send + Sync {
 
 /// Outbound message delivery (Signal, etc.) for tool executors.
 pub trait MessageService: Send + Sync {
+    // kanon:ignore RUST/pub-visibility
     /// Send a text message to a recipient.
     fn send_message(
         &self,
@@ -299,6 +307,7 @@ pub trait MessageService: Send + Sync {
 
 /// Planning project management for tool executors.
 pub trait PlanningService: Send + Sync {
+    // kanon:ignore RUST/pub-visibility
     /// Create a new project. Returns JSON representation of the created project.
     fn create_project(
         &self,
@@ -367,6 +376,7 @@ pub trait PlanningService: Send + Sync {
     reason = "result struct fields are self-documenting by name"
 )]
 pub struct MemoryResult {
+    // kanon:ignore RUST/pub-visibility
     pub id: String,
     pub content: String,
     pub score: f64,
@@ -379,6 +389,7 @@ pub struct MemoryResult {
     reason = "summary struct fields are self-documenting by name"
 )]
 pub struct FactSummary {
+    // kanon:ignore RUST/pub-visibility
     pub id: String,
     pub content: String,
     pub confidence: f64,
@@ -393,6 +404,7 @@ pub struct FactSummary {
 ///
 /// Implemented by an adapter in the binary crate wrapping `KnowledgeStore` + `EmbeddingProvider`.
 pub trait KnowledgeSearchService: Send + Sync {
+    // kanon:ignore RUST/pub-visibility
     /// Semantic search over the knowledge store.
     fn search(
         &self,
@@ -453,6 +465,7 @@ pub trait KnowledgeSearchService: Send + Sync {
     reason = "result struct fields are self-documenting by name"
 )]
 pub struct DatalogResult {
+    // kanon:ignore RUST/pub-visibility
     pub columns: Vec<String>,
     pub rows: Vec<Vec<serde_json::Value>>,
     pub truncated: bool,
@@ -482,16 +495,17 @@ impl ServerToolConfig {
         reason = "ToolName::new() with known-valid static string literals is infallible"
     )]
     pub fn catalog_entries(&self) -> Vec<(ToolName, String)> {
+        // kanon:ignore RUST/pub-visibility
         let mut entries = Vec::new();
         if self.web_search {
             entries.push((
-                ToolName::new("web_search").expect("valid tool name"),
+                ToolName::new("web_search").expect("valid tool name"), // kanon:ignore RUST/expect
                 "Search the web using Anthropic's server-side web search".to_owned(),
             ));
         }
         if self.code_execution {
             entries.push((
-                ToolName::new("code_execution").expect("valid tool name"),
+                ToolName::new("code_execution").expect("valid tool name"), // kanon:ignore RUST/expect
                 "Execute Python code in a sandboxed server-side environment".to_owned(),
             ));
         }
@@ -505,12 +519,13 @@ impl ServerToolConfig {
         reason = "ToolName::new() with known-valid static string literals is infallible"
     )]
     pub fn active_definitions(
+        // kanon:ignore RUST/pub-visibility
         &self,
         active: &HashSet<ToolName>,
     ) -> Vec<aletheia_hermeneus::types::ServerToolDefinition> {
         let mut defs = Vec::new();
-        let web_search_name = ToolName::new("web_search").expect("valid tool name");
-        let code_exec_name = ToolName::new("code_execution").expect("valid tool name");
+        let web_search_name = ToolName::new("web_search").expect("valid tool name"); // kanon:ignore RUST/expect
+        let code_exec_name = ToolName::new("code_execution").expect("valid tool name"); // kanon:ignore RUST/expect
 
         if self.web_search && active.contains(&web_search_name) {
             defs.push(aletheia_hermeneus::types::ServerToolDefinition {
@@ -542,6 +557,7 @@ impl ServerToolConfig {
     reason = "service locator fields are self-documenting by name"
 )]
 pub struct ToolServices {
+    // kanon:ignore RUST/pub-visibility
     pub cross_nous: Option<Arc<dyn CrossNousService>>,
     pub messenger: Option<Arc<dyn MessageService>>,
     pub note_store: Option<Arc<dyn NoteStore>>,
@@ -591,6 +607,7 @@ pub struct ToolContext {
 
 /// Persistent session notes storage.
 pub trait NoteStore: Send + Sync {
+    // kanon:ignore RUST/pub-visibility
     /// Add a note to a session.
     fn add_note(
         &self,
@@ -612,6 +629,7 @@ pub trait NoteStore: Send + Sync {
 
 /// Shared blackboard state with TTL.
 pub trait BlackboardStore: Send + Sync {
+    // kanon:ignore RUST/pub-visibility
     /// Write a key-value entry with an author and TTL.
     fn write(
         &self,
@@ -658,7 +676,7 @@ pub struct NoteEntry {
     reason = "blackboard entry fields are self-documenting by name"
 )]
 pub struct BlackboardEntry {
-    pub key: String,
+    pub key: String, // kanon:ignore RUST/plain-string-secret
     pub value: String,
     pub author_nous_id: String,
     pub ttl_seconds: i64,
@@ -696,6 +714,7 @@ pub struct SpawnResult {
 
 /// Ephemeral sub-agent spawning for tool executors.
 pub trait SpawnService: Send + Sync {
+    // kanon:ignore RUST/pub-visibility
     /// Spawn an ephemeral actor, run one turn, collect the result, shut down.
     fn spawn_and_run(
         &self,

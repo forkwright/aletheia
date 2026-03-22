@@ -368,7 +368,7 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
             reason = "i comes from 0..formatted.len(), so index is always in bounds"
         )]
         for i in (0..formatted.len()).rev() {
-            let part_tokens = self.estimator.estimate(&formatted[i]);
+            let part_tokens = self.estimator.estimate(&formatted[i]); // kanon:ignore RUST/indexing-slicing
             if tokens_used + part_tokens > max_tokens {
                 break;
             }
@@ -391,7 +391,7 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
             reason = "kept only contains indices from 0..formatted.len(), so all are valid"
         )]
         for i in kept {
-            result.push_str(&formatted[i]);
+            result.push_str(&formatted[i]); // kanon:ignore RUST/indexing-slicing
         }
 
         let final_tokens = self.estimator.estimate(&result);

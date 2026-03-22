@@ -69,7 +69,7 @@ pub enum DistillSection {
 impl DistillSection {
     /// Markdown heading for this section.
     #[must_use]
-    pub fn heading(&self) -> String {
+    pub(crate) fn heading(&self) -> String {
         match self {
             Self::Summary => "## Summary".to_owned(),
             Self::TaskContext => "## Task Context".to_owned(),
@@ -84,7 +84,7 @@ impl DistillSection {
 
     /// Description text for this section (used in the system prompt).
     #[must_use]
-    pub fn description(&self) -> &str {
+    pub(crate) fn description(&self) -> &str {
         match self {
             Self::Summary => "One sentence describing what this conversation is about.",
             Self::TaskContext => {
@@ -117,7 +117,7 @@ impl DistillSection {
 
     /// All standard sections in default order.
     #[must_use]
-    pub fn all_standard() -> Vec<Self> {
+    pub(crate) fn all_standard() -> Vec<Self> {
         vec![
             Self::Summary,
             Self::TaskContext,
@@ -219,7 +219,7 @@ impl DistillEngine {
     /// Call once at the start of each conversation turn, before calling
     /// [`should_distill`][Self::should_distill]. Returns `true` if the engine is
     /// still in a backoff period and distillation should be skipped this turn.
-    pub fn tick_turn(&self) -> bool {
+    pub(crate) fn tick_turn(&self) -> bool {
         let mut state = self.lock_retry_state();
         if state.turns_to_skip > 0 {
             state.turns_to_skip -= 1;
@@ -230,8 +230,8 @@ impl DistillEngine {
 
     /// Returns `true` if the engine is in an active backoff period.
     ///
-    /// Does not advance state. Use [`tick_turn`][Self::tick_turn] to advance.
-    pub fn in_backoff(&self) -> bool {
+    /// Does not advance state. Use `tick_turn` to advance.
+    pub(crate) fn in_backoff(&self) -> bool {
         self.lock_retry_state().turns_to_skip > 0
     }
 
@@ -240,7 +240,7 @@ impl DistillEngine {
     /// Returns true when message count meets the minimum (accounting for
     /// verbatim tail) AND the token estimate exceeds the threshold ratio
     /// of the context window.
-    pub fn should_distill(
+    pub(crate) fn should_distill(
         &self,
         message_count: usize,
         token_estimate: u64,
@@ -260,12 +260,12 @@ impl DistillEngine {
             clippy::as_conversions,
             reason = "u64→f64: token counts fit in f64 mantissa"
         )]
-        let ratio = token_estimate as f64 / context_window as f64;
+        let ratio = token_estimate as f64 / context_window as f64; // WHY: u64→f64 precision loss acceptable for ratio comparison
         ratio >= threshold
     }
 
     /// Build the distillation prompt for the given messages.
-    pub fn build_prompt(&self, messages: &[Message], nous_id: &str) -> CompletionRequest {
+    pub(crate) fn build_prompt(&self, messages: &[Message], nous_id: &str) -> CompletionRequest {
         let formatted = prompt::format_messages(messages, self.config.include_tool_calls);
         let system_prompt = prompt::build_system_prompt(&self.config.sections);
 
@@ -306,7 +306,7 @@ impl DistillEngine {
     /// Only the summarization group is sent to the LLM.
     ///
     /// Records success or failure into the backoff state so that
-    /// [`tick_turn`][Self::tick_turn] gates subsequent retry attempts.
+    /// `tick_turn` gates subsequent retry attempts.
     #[instrument(skip(self, messages, provider), fields(nous_id, distillation_number))]
     pub async fn distill(
         &self,
@@ -326,7 +326,7 @@ impl DistillEngine {
             clippy::indexing_slicing,
             reason = "split_at = messages.len() - tail where tail ≤ messages.len()"
         )]
-        let to_summarize = &messages[..split_at];
+        let to_summarize = &messages[..split_at]; // WHY: slice, not string; split_at ≤ len by construction
         #[expect(
             clippy::indexing_slicing,
             reason = "split_at ≤ messages.len() by construction"
@@ -370,7 +370,7 @@ impl DistillEngine {
     }
 
     /// Access the engine configuration.
-    pub fn config(&self) -> &DistillConfig {
+    pub(crate) fn config(&self) -> &DistillConfig {
         &self.config
     }
 }
@@ -395,7 +395,7 @@ fn estimate_tokens(messages: &[Message]) -> u64 {
         clippy::as_conversions,
         reason = "usize→u64: widening cast, always valid"
     )]
-    (total_chars as u64).div_ceil(4)
+    (total_chars as u64).div_ceil(4) // WHY: usize→u64 widening cast, always valid on 64-bit
 }
 
 /// Character count for a single message across all content types.

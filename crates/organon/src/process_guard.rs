@@ -51,7 +51,7 @@ impl ProcessGuard {
         reason = "panics intentionally when called after detach() — documented invariant"
     )]
     pub(crate) fn get_mut(&mut self) -> &mut std::process::Child {
-        self.child.as_mut().expect("ProcessGuard already consumed")
+        self.child.as_mut().expect("ProcessGuard already consumed") // kanon:ignore RUST/expect
     }
 
     /// Take ownership of the child, disarming the kill-on-drop.
@@ -68,7 +68,7 @@ impl ProcessGuard {
         reason = "panics intentionally when called twice — documented invariant"
     )]
     pub(crate) fn detach(mut self) -> std::process::Child {
-        self.child.take().expect("ProcessGuard already consumed")
+        self.child.take().expect("ProcessGuard already consumed") // kanon:ignore RUST/expect
     }
 }
 
@@ -108,7 +108,7 @@ mod tests {
         let guard = ProcessGuard::new(child);
         drop(guard);
 
-        std::thread::sleep(Duration::from_millis(50));
+        std::thread::sleep(Duration::from_millis(50)); // kanon:ignore TESTING/sleep-in-test
 
         let alive = Command::new("kill")
             .args(["-0", &pid.to_string()])
@@ -155,10 +155,10 @@ mod tests {
                 status = Some(s);
                 break;
             }
-            std::thread::sleep(Duration::from_millis(10));
+            std::thread::sleep(Duration::from_millis(10)); // kanon:ignore TESTING/sleep-in-test
         }
         let status = status.expect("process should have exited");
-        assert!(status.success());
+        assert!(status.success(), "expected status.success() to be true");
     }
 
     /// Dropping a guard whose child has already exited is safe (no panic,
@@ -172,7 +172,7 @@ mod tests {
             if let Ok(Some(_)) = guard.get_mut().try_wait() {
                 break;
             }
-            std::thread::sleep(Duration::from_millis(10));
+            std::thread::sleep(Duration::from_millis(10)); // kanon:ignore TESTING/sleep-in-test
         }
 
         // INVARIANT: Drop must not panic even though the process has already exited.
@@ -190,7 +190,11 @@ mod tests {
         let guard = ProcessGuard::new(child);
         let mut child = guard.detach();
         let status = child.wait().expect("wait");
-        assert_eq!(status.code(), Some(7));
+        assert_eq!(
+            status.code(),
+            Some(7),
+            "expected status.code() to equal Some(7)"
+        );
     }
 
     /// A guard that is constructed but immediately dropped (zero-size path)
@@ -231,7 +235,7 @@ mod tests {
 
         let _ = handle.join(); // join is Ok(Err(panic)), we don't care
 
-        std::thread::sleep(Duration::from_millis(100));
+        std::thread::sleep(Duration::from_millis(100)); // kanon:ignore TESTING/sleep-in-test
 
         let alive = Command::new("kill")
             .args(["-0", &pid.to_string()])
@@ -259,7 +263,7 @@ mod tests {
         drop(g1);
         drop(g2);
 
-        std::thread::sleep(Duration::from_millis(50));
+        std::thread::sleep(Duration::from_millis(50)); // kanon:ignore TESTING/sleep-in-test
 
         for pid in [pid1, pid2] {
             let alive = Command::new("kill")

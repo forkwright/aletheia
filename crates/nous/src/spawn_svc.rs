@@ -199,7 +199,7 @@ mod tests {
 
     use super::*;
 
-    fn test_oikos() -> (tempfile::TempDir, Arc<Oikos>) {
+    fn make_oikos() -> (tempfile::TempDir, Arc<Oikos>) {
         let dir = tempfile::TempDir::new().expect("tmpdir");
         let root = dir.path();
         std::fs::create_dir_all(root.join("shared")).expect("mkdir");
@@ -208,7 +208,7 @@ mod tests {
         (dir, oikos)
     }
 
-    fn test_providers() -> Arc<ProviderRegistry> {
+    fn make_providers() -> Arc<ProviderRegistry> {
         let response = CompletionResponse {
             id: "msg_mock".to_owned(),
             model: "mock-model".to_owned(),
@@ -231,14 +231,14 @@ mod tests {
         Arc::new(providers)
     }
 
-    fn test_spawn_service(oikos: Arc<Oikos>) -> SpawnServiceImpl {
-        SpawnServiceImpl::new(test_providers(), Arc::new(ToolRegistry::new()), oikos)
+    fn make_spawn_service(oikos: Arc<Oikos>) -> SpawnServiceImpl {
+        SpawnServiceImpl::new(make_providers(), Arc::new(ToolRegistry::new()), oikos)
     }
 
     #[tokio::test]
     async fn spawn_runs_single_turn() {
-        let (_dir, oikos) = test_oikos();
-        let svc = test_spawn_service(oikos);
+        let (_dir, oikos) = make_oikos();
+        let svc = make_spawn_service(oikos);
 
         let result = svc
             .spawn_and_run(
@@ -272,7 +272,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn spawn_timeout_returns_error() {
-        let (_dir, oikos) = test_oikos();
+        let (_dir, oikos) = make_oikos();
 
         let mut providers = ProviderRegistry::new();
         providers.register(Box::new(SlowProvider));
@@ -311,7 +311,8 @@ mod tests {
             >,
         > {
             Box::pin(async {
-                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                // WHY: real sleep required to test timeout in multi_thread runtime
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await; // kanon:ignore TESTING/sleep-in-test
                 Ok(CompletionResponse {
                     id: "slow".to_owned(),
                     model: "claude-sonnet-4-20250514".to_owned(),
@@ -354,8 +355,8 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_with_explicit_model() {
-        let (_dir, oikos) = test_oikos();
-        let svc = test_spawn_service(oikos);
+        let (_dir, oikos) = make_oikos();
+        let svc = make_spawn_service(oikos);
 
         let result = svc
             .spawn_and_run(
@@ -376,8 +377,8 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_cleans_up_workspace() {
-        let (_dir, oikos) = test_oikos();
-        let svc = test_spawn_service(Arc::clone(&oikos));
+        let (_dir, oikos) = make_oikos();
+        let svc = make_spawn_service(Arc::clone(&oikos));
 
         let result = svc
             .spawn_and_run(

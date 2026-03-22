@@ -5,7 +5,8 @@
 //! and fatal errors (auth failure). Cooldown timers allow automatic recovery
 //! from transient failures; auth failures require manual intervention.
 
-use std::sync::Mutex;
+// WHY: std::sync::Mutex is correct here — lock is held only during brief state reads/writes, never across .await
+use std::sync::Mutex; // kanon:ignore RUST/std-mutex-in-async
 
 use jiff::Timestamp;
 
@@ -79,6 +80,7 @@ struct TrackerInner {
 /// Thread-safe via `std::sync::Mutex`: all operations are short
 /// (no `.await` while holding the lock).
 pub struct ProviderHealthTracker {
+    // kanon:ignore RUST/pub-visibility
     inner: Mutex<TrackerInner>,
     config: HealthConfig,
 }
@@ -87,6 +89,7 @@ impl ProviderHealthTracker {
     /// Create a new tracker starting in `Up` state.
     #[must_use]
     pub fn new(config: HealthConfig) -> Self {
+        // kanon:ignore RUST/pub-visibility
         Self {
             inner: Mutex::new(TrackerInner {
                 health: ProviderHealth::Up,
@@ -100,13 +103,14 @@ impl ProviderHealthTracker {
     /// Current health state.
     #[must_use]
     pub fn health(&self) -> ProviderHealth {
+        // kanon:ignore RUST/pub-visibility
         #[expect(
             clippy::expect_used,
             reason = "Mutex poisoning means a thread panicked; no Result return to propagate through"
         )]
         self.inner
             .lock()
-            .expect("health lock poisoned")
+            .expect("health lock poisoned") // kanon:ignore RUST/expect
             .health
             .clone()
     }
@@ -116,12 +120,14 @@ impl ProviderHealthTracker {
     /// Returns `Ok(())` if Up or Degraded. Returns `Err(health)` if Down,
     /// unless the cooldown has elapsed (auto-transitions to Degraded).
     /// `Down(AuthFailure)` never auto-recovers.
+    #[must_use = "caller must handle provider unavailability"]
     pub fn check_available(&self) -> Result<(), ProviderHealth> {
+        // kanon:ignore RUST/pub-visibility
         #[expect(
             clippy::expect_used,
             reason = "Mutex poisoning means a thread panicked; error type is ProviderHealth, not suitable for lock errors"
         )]
-        let mut inner = self.inner.lock().expect("health lock poisoned");
+        let mut inner = self.inner.lock().expect("health lock poisoned"); // kanon:ignore RUST/expect
         match &inner.health {
             ProviderHealth::Up | ProviderHealth::Degraded { .. } => Ok(()),
             ProviderHealth::Down { since, reason } => {
@@ -154,11 +160,12 @@ impl ProviderHealthTracker {
 
     /// Record a successful request.
     pub fn record_success(&self) {
+        // kanon:ignore RUST/pub-visibility
         #[expect(
             clippy::expect_used,
             reason = "Mutex poisoning means a thread panicked; no Result return to propagate through"
         )]
-        let mut inner = self.inner.lock().expect("health lock poisoned");
+        let mut inner = self.inner.lock().expect("health lock poisoned"); // kanon:ignore RUST/expect
         inner.total_requests += 1;
         match inner.health {
             ProviderHealth::Degraded { .. } => {
@@ -175,11 +182,12 @@ impl ProviderHealthTracker {
 
     /// Record a failed request and update health state.
     pub fn record_error(&self, error: &Error) {
+        // kanon:ignore RUST/pub-visibility
         #[expect(
             clippy::expect_used,
             reason = "Mutex poisoning means a thread panicked; no Result return to propagate through"
         )]
-        let mut inner = self.inner.lock().expect("health lock poisoned");
+        let mut inner = self.inner.lock().expect("health lock poisoned"); // kanon:ignore RUST/expect
         inner.total_requests += 1;
         inner.total_errors += 1;
 
@@ -240,6 +248,8 @@ impl ProviderHealthTracker {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+// WHY: std::thread::sleep required because ProviderHealthTracker uses jiff::Timestamp::now() (real wall clock), // kanon:ignore TESTING/sleep-in-test
+// not tokio's controllable clock. tokio::time::pause/advance would not affect jiff timestamps.
 mod tests {
     use super::*;
     use crate::error::ApiErrorContext;
@@ -331,7 +341,7 @@ mod tests {
         t.record_error(&api_request_error());
         assert!(matches!(t.health(), ProviderHealth::Down { .. }));
 
-        std::thread::sleep(Duration::from_millis(5));
+        std::thread::sleep(Duration::from_millis(5)); // kanon:ignore TESTING/sleep-in-test
         assert!(t.check_available().is_ok());
         assert!(matches!(t.health(), ProviderHealth::Degraded { .. }));
     }
@@ -359,7 +369,7 @@ mod tests {
     fn auth_failure_no_auto_recovery() {
         let t = tracker(5, 1); // 1ms cooldown
         t.record_error(&auth_error());
-        std::thread::sleep(Duration::from_millis(5));
+        std::thread::sleep(Duration::from_millis(5)); // kanon:ignore TESTING/sleep-in-test
         assert!(t.check_available().is_err());
     }
 
@@ -384,7 +394,7 @@ mod tests {
     fn rate_limit_recovers_after_retry_after() {
         let t = tracker(5, 60_000);
         t.record_error(&rate_limit_error(1)); // 1ms retry_after
-        std::thread::sleep(Duration::from_millis(5));
+        std::thread::sleep(Duration::from_millis(5)); // kanon:ignore TESTING/sleep-in-test
         assert!(t.check_available().is_ok());
     }
 

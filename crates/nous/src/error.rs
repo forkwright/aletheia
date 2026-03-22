@@ -226,12 +226,13 @@ pub enum Error {
 }
 
 /// Convenience alias for results with [`Error`].
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = std::result::Result<T, Error>; // kanon:ignore RUST/pub-visibility
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use snafu::IntoError as _;
+
+    use super::*;
 
     #[test]
     fn error_display_context_assembly() {

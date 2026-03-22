@@ -14,7 +14,7 @@ use crate::config::NousConfig;
 pub struct SessionState {
     pub id: String,
     pub nous_id: String,
-    pub session_key: String,
+    pub session_key: String, // kanon:ignore RUST/plain-string-secret
 
     pub model: String,
     pub thinking_enabled: bool,
@@ -69,7 +69,7 @@ impl SessionState {
             clippy::as_conversions,
             reason = "f64→i64: threshold product fits in i64"
         )]
-        let threshold = (f64::from(context_window) * threshold_ratio) as i64;
+        let threshold = (f64::from(context_window) * threshold_ratio) as i64; // kanon:ignore RUST/as-cast
         self.token_estimate >= threshold
     }
 }
@@ -125,7 +125,7 @@ impl SessionManager {
 mod tests {
     use super::*;
 
-    fn test_config() -> NousConfig {
+    fn make_config() -> NousConfig {
         NousConfig {
             id: "syn".to_owned(),
             ..NousConfig::default()
@@ -134,7 +134,7 @@ mod tests {
 
     #[test]
     fn create_session_state() {
-        let state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &test_config());
+        let state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &make_config());
         assert_eq!(state.nous_id, "syn");
         assert_eq!(state.turn, 0);
         assert_eq!(state.token_estimate, 0);
@@ -142,7 +142,7 @@ mod tests {
 
     #[test]
     fn next_turn_increments() {
-        let mut state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &test_config());
+        let mut state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &make_config());
         assert_eq!(state.next_turn(), 1);
         assert_eq!(state.next_turn(), 2);
         assert_eq!(state.next_turn(), 3);
@@ -150,7 +150,7 @@ mod tests {
 
     #[test]
     fn distillation_threshold() {
-        let mut state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &test_config());
+        let mut state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &make_config());
         assert!(!state.needs_distillation(0.9, 200_000)); // 0 tokens
 
         state.token_estimate = 180_001;
@@ -162,7 +162,7 @@ mod tests {
 
     #[test]
     fn session_manager_creates() {
-        let mgr = SessionManager::new(test_config());
+        let mgr = SessionManager::new(make_config());
         let state = mgr.create_session("ses-1", "main");
         assert_eq!(state.id, "ses-1");
         assert_eq!(state.nous_id, "syn");
@@ -188,14 +188,14 @@ mod tests {
 
     #[test]
     fn distillation_exact_threshold() {
-        let mut state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &test_config());
+        let mut state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &make_config());
         state.token_estimate = 180_000;
         assert!(state.needs_distillation(0.9, 200_000));
     }
 
     #[test]
     fn distillation_zero_ratio_always_triggers() {
-        let mut state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &test_config());
+        let mut state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &make_config());
         state.token_estimate = 1;
         assert!(state.needs_distillation(0.0, 200_000));
     }
@@ -214,7 +214,7 @@ mod tests {
 
     #[test]
     fn next_turn_monotonic() {
-        let mut state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &test_config());
+        let mut state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &make_config());
         let mut prev = 0;
         for _ in 0..20 {
             let next = state.next_turn();
@@ -225,7 +225,7 @@ mod tests {
 
     #[test]
     fn session_state_initial_values() {
-        let state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &test_config());
+        let state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &make_config());
         assert_eq!(state.id, "ses-1");
         assert_eq!(state.session_key, "main");
         assert_eq!(state.distillation_count, 0);
@@ -234,34 +234,34 @@ mod tests {
 
     #[test]
     fn distillation_ratio_one_always_triggers_with_tokens() {
-        let mut state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &test_config());
+        let mut state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &make_config());
         state.token_estimate = 200_000;
         assert!(state.needs_distillation(1.0, 200_000));
     }
 
     #[test]
     fn distillation_zero_tokens_never_triggers() {
-        let state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &test_config());
+        let state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &make_config());
         assert!(!state.needs_distillation(0.5, 200_000));
     }
 
     #[test]
     fn distillation_negative_tokens() {
-        let mut state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &test_config());
+        let mut state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &make_config());
         state.token_estimate = -100;
         assert!(!state.needs_distillation(0.9, 200_000));
     }
 
     #[test]
     fn session_manager_config_accessor() {
-        let config = test_config();
+        let config = make_config();
         let mgr = SessionManager::new(config);
         assert_eq!(mgr.config().id, "syn");
     }
 
     #[test]
     fn session_state_model_from_config() {
-        let mut config = test_config();
+        let mut config = make_config();
         config.model = "claude-haiku-4-5-20251001".to_owned();
         let state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &config);
         assert_eq!(state.model, "claude-haiku-4-5-20251001");
@@ -269,7 +269,7 @@ mod tests {
 
     #[test]
     fn session_state_thinking_from_config() {
-        let mut config = test_config();
+        let mut config = make_config();
         config.thinking_enabled = true;
         config.thinking_budget = 5_000;
         let state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &config);

@@ -12,7 +12,7 @@ use crate::types::{InputSchema, PropertyDef, PropertyType, ToolCategory, ToolDef
 
 pub(super) fn plan_create_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("plan_create").expect("valid tool name"),
+        name: ToolName::new("plan_create").expect("valid tool name"), // kanon:ignore RUST/expect
         description: "Create a new planning project with phases and plans".to_owned(),
         extended_description: Some(
             "Creates a multi-phase planning project. Modes: 'full' (research through verification), \
@@ -80,7 +80,7 @@ pub(super) fn plan_create_def() -> ToolDef {
 
 pub(super) fn plan_research_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("plan_research").expect("valid tool name"),
+        name: ToolName::new("plan_research").expect("valid tool name"), // kanon:ignore RUST/expect
         description: "Advance project to research phase or skip research".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -113,7 +113,7 @@ pub(super) fn plan_research_def() -> ToolDef {
 
 pub(super) fn plan_requirements_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("plan_requirements").expect("valid tool name"),
+        name: ToolName::new("plan_requirements").expect("valid tool name"), // kanon:ignore RUST/expect
         description: "Manage requirements scoping phase".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -146,7 +146,7 @@ pub(super) fn plan_requirements_def() -> ToolDef {
 
 pub(super) fn plan_roadmap_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("plan_roadmap").expect("valid tool name"),
+        name: ToolName::new("plan_roadmap").expect("valid tool name"), // kanon:ignore RUST/expect
         description: "Manage project roadmap: add phases, start discussion or execution".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -201,7 +201,7 @@ pub(super) fn plan_roadmap_def() -> ToolDef {
 
 pub(super) fn plan_discuss_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("plan_discuss").expect("valid tool name"),
+        name: ToolName::new("plan_discuss").expect("valid tool name"), // kanon:ignore RUST/expect
         description: "Complete discussion phase and advance to execution".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -234,7 +234,7 @@ pub(super) fn plan_discuss_def() -> ToolDef {
 
 pub(super) fn plan_execute_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("plan_execute").expect("valid tool name"),
+        name: ToolName::new("plan_execute").expect("valid tool name"), // kanon:ignore RUST/expect
         description: "Manage plan execution: start, pause, resume, abandon, or verify".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -273,7 +273,7 @@ pub(super) fn plan_execute_def() -> ToolDef {
 
 pub(super) fn plan_verify_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("plan_verify").expect("valid tool name"),
+        name: ToolName::new("plan_verify").expect("valid tool name"), // kanon:ignore RUST/expect
         description: "Complete verification or revert to an earlier phase".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -320,7 +320,7 @@ pub(super) fn plan_verify_def() -> ToolDef {
 
 pub(super) fn plan_status_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("plan_status").expect("valid tool name"),
+        name: ToolName::new("plan_status").expect("valid tool name"), // kanon:ignore RUST/expect
         description: "Get current project status including phases and completion".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -342,7 +342,7 @@ pub(super) fn plan_status_def() -> ToolDef {
 
 pub(super) fn plan_step_complete_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("plan_step_complete").expect("valid tool name"),
+        name: ToolName::new("plan_step_complete").expect("valid tool name"), // kanon:ignore RUST/expect
         description: "Mark a plan step as successfully completed".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -397,7 +397,7 @@ pub(super) fn plan_step_complete_def() -> ToolDef {
 
 pub(super) fn plan_step_fail_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("plan_step_fail").expect("valid tool name"),
+        name: ToolName::new("plan_step_fail").expect("valid tool name"), // kanon:ignore RUST/expect
         description: "Mark a plan step as failed with a reason".to_owned(),
         extended_description: None,
         input_schema: InputSchema {

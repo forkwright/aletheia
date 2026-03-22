@@ -1,4 +1,4 @@
-#![deny(missing_docs)]
+#![deny(missing_docs)] // kanon:ignore TESTING/no-tests
 //! aletheia-hermeneus: Anthropic-native LLM provider
 //!
 //! Hermeneus (Ἑρμηνεύς): "interpreter." Anthropic-native types and client

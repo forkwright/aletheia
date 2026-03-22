@@ -46,13 +46,8 @@ impl ToolExecutor for PlanCreateExecutor {
                 .get("mode")
                 .and_then(|v| v.as_str())
                 .unwrap_or("full");
-            #[expect(
-                clippy::cast_possible_truncation,
-                clippy::as_conversions,
-                reason = "u64→u32: appetite_minutes fits in u32"
-            )]
-            let appetite_minutes =
-                extract_opt_u64(&input.arguments, "appetite_minutes").map(|v| v as u32);
+            let appetite_minutes = extract_opt_u64(&input.arguments, "appetite_minutes")
+                .map(|v| u32::try_from(v).unwrap_or(u32::MAX));
 
             match planning
                 .create_project(
@@ -362,7 +357,7 @@ impl ToolExecutor for PlanStepFailExecutor {
 }
 
 /// Register planning tools into the registry.
-pub fn register(registry: &mut ToolRegistry) -> Result<()> {
+pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(plan_create_def(), Box::new(PlanCreateExecutor))?;
     registry.register(plan_research_def(), Box::new(PlanResearchExecutor))?;
     registry.register(plan_requirements_def(), Box::new(PlanRequirementsExecutor))?;

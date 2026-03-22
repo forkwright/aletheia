@@ -92,8 +92,8 @@ impl ToolExecutor for NoteExecutor {
                             .build()
                         })?;
                     match note_store.delete_note(id) {
-                        Ok(_) => Ok(ToolResult::text(format!("Note #{id} deleted."))),
-                        Err(e) => Ok(ToolResult::error(format!("Failed to delete note: {e}"))),
+                        Ok(_) => Ok(ToolResult::text(format!("Note #{id} deleted."))), // kanon:ignore STORAGE/sql-string-concat
+                        Err(e) => Ok(ToolResult::error(format!("Failed to delete note: {e}"))), // kanon:ignore STORAGE/sql-string-concat
                     }
                 }
                 _ => Ok(ToolResult::error(format!("Unknown action: {action}"))),
@@ -104,7 +104,7 @@ impl ToolExecutor for NoteExecutor {
 
 fn note_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("note").expect("valid tool name"),
+        name: ToolName::new("note").expect("valid tool name"), // kanon:ignore RUST/expect
         description: "Write a note to persistent session memory that survives distillation"
             .to_owned(),
         extended_description: None,

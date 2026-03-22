@@ -42,7 +42,7 @@ pub(crate) fn score_relevance(issue: &GitHubIssue, context_keywords: &[&str]) ->
             clippy::cast_precision_loss,
             reason = "label count is small enough that usize->f64 is exact"
         )]
-        let count = label_matches.len() as f64;
+        let count = label_matches.len() as f64; // kanon:ignore RUST/as-cast
         let label_score = 0.1 + (0.2 * f64::min(count / 2.0, 1.0));
         score += label_score;
         reasons.push(format!(
@@ -69,7 +69,7 @@ pub(crate) fn score_relevance(issue: &GitHubIssue, context_keywords: &[&str]) ->
                 clippy::cast_precision_loss,
                 reason = "keyword counts are small enough that usize->f64 is exact"
             )]
-            let ratio = matched.len() as f64 / context_keywords.len() as f64;
+            let ratio = matched.len() as f64 / context_keywords.len() as f64; // kanon:ignore RUST/as-cast
             let kw_score = 0.35 * ratio;
             score += kw_score;
             reasons.push(format!(

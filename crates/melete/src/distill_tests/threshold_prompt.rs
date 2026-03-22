@@ -1,9 +1,6 @@
 //! Tests for distillation threshold checks and prompt building.
 #![expect(clippy::expect_used, reason = "test assertions")]
-#![expect(
-    clippy::indexing_slicing,
-    reason = "test: vec indices are valid after asserting len"
-)]
+#[cfg(test)]
 use aletheia_hermeneus::test_utils::MockProvider;
 use aletheia_hermeneus::types::{CompletionResponse, ContentBlock, StopReason, Usage};
 
@@ -123,8 +120,9 @@ Bug is fixed, test passes.
 #[test]
 fn should_distill_below_threshold_returns_false() {
     let engine = default_engine();
+    let check = !engine.should_distill(10, 50_000, 200_000, 0.8);
     assert!(
-        !engine.should_distill(10, 50_000, 200_000, 0.8),
+        check,
         "should not distill when token usage is well below the threshold"
     );
 }
@@ -133,8 +131,9 @@ fn should_distill_below_threshold_returns_false() {
 fn should_distill_at_threshold_returns_true() {
     let engine = default_engine();
     // NOTE: 10 >= min_messages(6) + verbatim_tail(3) = 9, tokens at threshold
+    let check = engine.should_distill(10, 160_000, 200_000, 0.8);
     assert!(
-        engine.should_distill(10, 160_000, 200_000, 0.8),
+        check,
         "should distill when token usage is exactly at the 0.8 threshold"
     );
 }
@@ -152,8 +151,9 @@ fn should_distill_above_threshold_returns_true() {
 fn should_distill_too_few_messages_returns_false() {
     let engine = default_engine();
     // NOTE: 5 < min_messages(6) + verbatim_tail(3) = 9
+    let check = !engine.should_distill(5, 190_000, 200_000, 0.8);
     assert!(
-        !engine.should_distill(5, 190_000, 200_000, 0.8),
+        check,
         "should not distill when message count is too low even if tokens are high"
     );
 }
@@ -171,8 +171,9 @@ fn should_distill_zero_context_window_returns_false() {
 fn should_distill_exact_min_plus_tail() {
     let engine = default_engine();
     // NOTE: exactly min_messages(6) + verbatim_tail(3) = 9
+    let check = engine.should_distill(9, 180_000, 200_000, 0.8);
     assert!(
-        engine.should_distill(9, 180_000, 200_000, 0.8),
+        check,
         "should distill when message count equals exactly min_messages + verbatim_tail"
     );
 }
@@ -181,8 +182,9 @@ fn should_distill_exact_min_plus_tail() {
 fn should_distill_below_min_plus_tail_returns_false() {
     let engine = default_engine();
     // NOTE: 8 < min_messages(6) + verbatim_tail(3) = 9
+    let check = !engine.should_distill(8, 190_000, 200_000, 0.8);
     assert!(
-        !engine.should_distill(8, 190_000, 200_000, 0.8),
+        check,
         "should not distill when message count is one below min_messages + verbatim_tail"
     );
 }
@@ -197,7 +199,7 @@ fn build_prompt_has_system_prompt() {
         request.system.is_some(),
         "build_prompt should produce a system prompt"
     );
-    let system = request.system.expect("system prompt should be present");
+    let system = request.system.expect("system prompt should be present"); // WHY: test assertion
     assert!(
         system.contains("## Summary"),
         "system prompt should contain ## Summary section"
@@ -218,7 +220,11 @@ fn build_prompt_includes_nous_id() {
     let messages = sample_conversation();
     let request = engine.build_prompt(&messages, "my-agent");
 
-    let user_text = request.messages[0].content.text();
+    let first_msg = request
+        .messages
+        .first()
+        .expect("request should have messages"); // WHY: test assertion
+    let user_text = first_msg.content.text();
     assert!(
         user_text.contains("my-agent"),
         "prompt user message should include the nous_id"
@@ -231,7 +237,11 @@ fn build_prompt_formats_messages_with_roles() {
     let messages = sample_conversation();
     let request = engine.build_prompt(&messages, "test-nous");
 
-    let user_text = request.messages[0].content.text();
+    let first_msg = request
+        .messages
+        .first()
+        .expect("request should have messages"); // WHY: test assertion
+    let user_text = first_msg.content.text();
     assert!(
         user_text.contains("[USER]"),
         "prompt should format user messages with [USER] role label"
@@ -292,7 +302,7 @@ async fn distill_success_returns_result() {
         "distill should succeed with a valid provider and messages"
     );
 
-    let result = result.expect("distill result should be Ok");
+    let result = result.expect("distill result should be Ok"); // WHY: test assertion
     assert!(
         result.summary.contains("Fixed login bug"),
         "distill result summary should contain the mock LLM output"
@@ -322,16 +332,17 @@ async fn distill_token_estimates_populated() {
     let result = engine
         .distill(&messages, "test-nous", &provider, 1)
         .await
-        .expect("distill should succeed with a valid provider");
+        .expect("distill should succeed with a valid provider"); // WHY: test assertion
 
     assert!(
         result.tokens_before > 0,
         "tokens_before should be non-zero for a non-empty conversation"
     );
+    // NOTE: 200 from mock Usage output_tokens
     assert_eq!(
         result.tokens_after, 200,
-        "tokens_after should match the mock usage output_tokens"
-    ); // from mock Usage
+        "tokens_after should match mock usage"
+    );
 }
 
 #[tokio::test]
@@ -343,7 +354,7 @@ async fn distill_distillation_number_passed_through() {
     let result = engine
         .distill(&messages, "test-nous", &provider, 42)
         .await
-        .expect("distill should succeed with a valid provider");
+        .expect("distill should succeed with a valid provider"); // WHY: test assertion
     assert_eq!(
         result.distillation_number, 42,
         "distillation_number should be passed through unchanged"
@@ -359,7 +370,7 @@ async fn distill_timestamp_is_valid() {
     let result = engine
         .distill(&messages, "test-nous", &provider, 1)
         .await
-        .expect("distill should succeed with a valid provider");
+        .expect("distill should succeed with a valid provider"); // WHY: test assertion
 
     // NOTE: jiff::Timestamp::to_string() produces RFC 3339 / ISO 8601
     assert!(

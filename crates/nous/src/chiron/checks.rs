@@ -1,9 +1,9 @@
 //! Concrete prosoche check implementations for Chiron self-auditing.
 //!
 //! Three default checks:
-//! - [`KnowledgeConsistencyCheck`]: knowledge graph integrity (temporal bounds, supersession chains)
-//! - [`ToolSuccessRateCheck`]: tool call success rate over recent actions
-//! - [`ResponseQualityCheck`]: response quality heuristics (length, empty responses)
+//! - `KnowledgeConsistencyCheck`: knowledge graph integrity (temporal bounds, supersession chains)
+//! - `ToolSuccessRateCheck`: tool call success rate over recent actions
+//! - `ResponseQualityCheck`: response quality heuristics (length, empty responses)
 
 use super::{CheckContext, CheckResult, CheckStatus, ProsocheCheck};
 
@@ -29,7 +29,7 @@ const SHORT_RESPONSE_WARN_FRACTION: f64 = 0.30;
 const SHORT_RESPONSE_FAIL_FRACTION: f64 = 0.50;
 
 /// Checks knowledge graph integrity: temporal bounds and supersession chain consistency.
-pub struct KnowledgeConsistencyCheck;
+pub(crate) struct KnowledgeConsistencyCheck;
 
 impl ProsocheCheck for KnowledgeConsistencyCheck {
     fn name(&self) -> &'static str {
@@ -69,7 +69,7 @@ impl ProsocheCheck for KnowledgeConsistencyCheck {
             clippy::cast_precision_loss,
             reason = "usize→f64: fact counts are far below f64 precision limits"
         )]
-        let violation_rate = total_violations as f64 / ctx.fact_count as f64;
+        let violation_rate = total_violations as f64 / ctx.fact_count as f64; // kanon:ignore RUST/as-cast
         let score = (1.0 - violation_rate).max(0.0);
 
         let evidence = format!(
@@ -97,7 +97,7 @@ impl ProsocheCheck for KnowledgeConsistencyCheck {
 }
 
 /// Checks tool call success rate over recent actions.
-pub struct ToolSuccessRateCheck;
+pub(crate) struct ToolSuccessRateCheck;
 
 impl ProsocheCheck for ToolSuccessRateCheck {
     fn name(&self) -> &'static str {
@@ -126,7 +126,7 @@ impl ProsocheCheck for ToolSuccessRateCheck {
             clippy::cast_precision_loss,
             reason = "usize→f64: tool call counts are far below f64 precision limits"
         )]
-        let rate = successes as f64 / total as f64;
+        let rate = successes as f64 / total as f64; // kanon:ignore RUST/as-cast
 
         let evidence = format!(
             "{successes}/{total} tool calls succeeded ({:.1}% success rate)",
@@ -156,7 +156,7 @@ impl ProsocheCheck for ToolSuccessRateCheck {
 }
 
 /// Heuristic check on response quality: flags excessive short or empty responses.
-pub struct ResponseQualityCheck;
+pub(crate) struct ResponseQualityCheck;
 
 impl ProsocheCheck for ResponseQualityCheck {
     fn name(&self) -> &'static str {
@@ -190,7 +190,7 @@ impl ProsocheCheck for ResponseQualityCheck {
             clippy::cast_precision_loss,
             reason = "usize→f64: response counts are far below f64 precision limits"
         )]
-        let short_fraction = short_count as f64 / total as f64;
+        let short_fraction = short_count as f64 / total as f64; // kanon:ignore RUST/as-cast
         let score = (1.0 - short_fraction).max(0.0);
 
         let evidence = format!(

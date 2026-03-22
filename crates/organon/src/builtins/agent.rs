@@ -175,7 +175,7 @@ impl ToolExecutor for SessionsDispatchExecutor {
 }
 
 /// Register agent coordination tools.
-pub fn register(registry: &mut ToolRegistry) -> Result<()> {
+pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(sessions_spawn_def(), Box::new(SessionsSpawnExecutor))?;
     registry.register(sessions_dispatch_def(), Box::new(SessionsDispatchExecutor))?;
     Ok(())
@@ -183,7 +183,7 @@ pub fn register(registry: &mut ToolRegistry) -> Result<()> {
 
 fn sessions_spawn_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("sessions_spawn").expect("valid tool name"),
+        name: ToolName::new("sessions_spawn").expect("valid tool name"), // kanon:ignore RUST/expect
         description: "Spawn an ephemeral sub-agent to execute a single task".to_owned(),
         extended_description: Some(
             "Creates a temporary agent with a role-appropriate model and tool set. \
@@ -246,7 +246,7 @@ fn sessions_spawn_def() -> ToolDef {
 
 fn sessions_dispatch_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("sessions_dispatch").expect("valid tool name"),
+        name: ToolName::new("sessions_dispatch").expect("valid tool name"), // kanon:ignore RUST/expect
         description: "Spawn multiple sub-agents in parallel and collect their results".to_owned(),
         extended_description: Some(
             "Dispatches an array of tasks to ephemeral sub-agents running concurrently. \
@@ -308,7 +308,7 @@ mod tests {
         let _ = rustls::crypto::ring::default_provider().install_default();
     }
 
-    fn test_ctx() -> ToolContext {
+    fn mock_ctx() -> ToolContext {
         ToolContext {
             nous_id: NousId::new("test-agent").expect("valid"),
             session_id: SessionId::new(),
@@ -319,7 +319,7 @@ mod tests {
         }
     }
 
-    fn test_ctx_with_spawn(spawn: Arc<dyn SpawnService>) -> ToolContext {
+    fn mock_ctx_with_spawn(spawn: Arc<dyn SpawnService>) -> ToolContext {
         install_crypto_provider();
         ToolContext {
             nous_id: NousId::new("test-agent").expect("valid"),
@@ -366,7 +366,11 @@ mod tests {
     async fn register_agent_tools() {
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
-        assert_eq!(reg.definitions().len(), 2);
+        assert_eq!(
+            reg.definitions().len(),
+            2,
+            "expected reg.definitions().len() to equal 2"
+        );
     }
 
     #[tokio::test]
@@ -375,8 +379,16 @@ mod tests {
         super::register(&mut reg).expect("register");
         let name = ToolName::new("sessions_spawn").expect("valid");
         let def = reg.get_def(&name).expect("found");
-        assert_eq!(def.input_schema.required, vec!["role", "task"]);
-        assert_eq!(def.category, crate::types::ToolCategory::Agent);
+        assert_eq!(
+            def.input_schema.required,
+            vec!["role", "task"],
+            "expected def.input_schema.required to equal vec![\"role\", \"task\"]"
+        );
+        assert_eq!(
+            def.category,
+            crate::types::ToolCategory::Agent,
+            "expected def.category to equal crate::types::ToolCategory::Agent"
+        );
     }
 
     #[tokio::test]
@@ -385,7 +397,11 @@ mod tests {
         super::register(&mut reg).expect("register");
         let name = ToolName::new("sessions_dispatch").expect("valid");
         let def = reg.get_def(&name).expect("found");
-        assert_eq!(def.input_schema.required, vec!["tasks"]);
+        assert_eq!(
+            def.input_schema.required,
+            vec!["tasks"],
+            "expected def.input_schema.required to equal vec![\"tasks\"]"
+        );
     }
 
     #[tokio::test]
@@ -397,15 +413,18 @@ mod tests {
             tool_use_id: "tu_1".to_owned(),
             arguments: serde_json::json!({"role": "coder", "task": "write code"}),
         };
-        let result = reg.execute(&input, &test_ctx()).await.expect("execute");
-        assert!(result.is_error);
-        assert!(result.content.text_summary().contains("not available"));
+        let result = reg.execute(&input, &mock_ctx()).await.expect("execute");
+        assert!(result.is_error, "expected result.is_error to be true");
+        assert!(
+            result.content.text_summary().contains("not available"),
+            "expected result.content.text_summary().contains(\"not available\") to be true"
+        );
     }
 
     #[tokio::test]
     async fn spawn_returns_json_result() {
         let spawn = Arc::new(MockSpawnService);
-        let ctx = test_ctx_with_spawn(spawn);
+        let ctx = mock_ctx_with_spawn(spawn);
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
 
@@ -415,13 +434,22 @@ mod tests {
             arguments: serde_json::json!({"role": "coder", "task": "write code"}),
         };
         let result = reg.execute(&input, &ctx).await.expect("execute");
-        assert!(!result.is_error);
+        assert!(!result.is_error, "expected result.is_error to be false");
 
         let json: serde_json::Value =
             serde_json::from_str(&result.content.text_summary()).expect("json");
-        assert_eq!(json["content"], "mock result");
-        assert_eq!(json["input_tokens"], 100);
-        assert_eq!(json["output_tokens"], 50);
+        assert_eq!(
+            json["content"], "mock result",
+            "expected json[\"content\"] to equal \"mock result\""
+        );
+        assert_eq!(
+            json["input_tokens"], 100,
+            "expected json[\"input_tokens\"] to equal 100"
+        );
+        assert_eq!(
+            json["output_tokens"], 50,
+            "expected json[\"output_tokens\"] to equal 50"
+        );
     }
 
     #[tokio::test]
@@ -433,14 +461,14 @@ mod tests {
             tool_use_id: "tu_1".to_owned(),
             arguments: serde_json::json!({"tasks": [{"role": "coder", "task": "write code"}]}),
         };
-        let result = reg.execute(&input, &test_ctx()).await.expect("execute");
-        assert!(result.is_error);
+        let result = reg.execute(&input, &mock_ctx()).await.expect("execute");
+        assert!(result.is_error, "expected result.is_error to be true");
     }
 
     #[tokio::test]
     async fn dispatch_rejects_too_many_tasks() {
         let spawn = Arc::new(MockSpawnService);
-        let ctx = test_ctx_with_spawn(spawn);
+        let ctx = mock_ctx_with_spawn(spawn);
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
 
@@ -453,14 +481,17 @@ mod tests {
             arguments: serde_json::json!({"tasks": tasks}),
         };
         let result = reg.execute(&input, &ctx).await.expect("execute");
-        assert!(result.is_error);
-        assert!(result.content.text_summary().contains("Too many tasks"));
+        assert!(result.is_error, "expected result.is_error to be true");
+        assert!(
+            result.content.text_summary().contains("Too many tasks"),
+            "expected result.content.text_summary().contains(\"Too many tasks\") to be true"
+        );
     }
 
     #[tokio::test]
     async fn dispatch_collects_results() {
         let spawn = Arc::new(MockSpawnService);
-        let ctx = test_ctx_with_spawn(spawn);
+        let ctx = mock_ctx_with_spawn(spawn);
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
 
@@ -475,10 +506,10 @@ mod tests {
             }),
         };
         let result = reg.execute(&input, &ctx).await.expect("execute");
-        assert!(!result.is_error);
+        assert!(!result.is_error, "expected result.is_error to be false");
 
         let json: Vec<serde_json::Value> =
             serde_json::from_str(&result.content.text_summary()).expect("json");
-        assert_eq!(json.len(), 2);
+        assert_eq!(json.len(), 2, "expected json.len() to equal 2");
     }
 }

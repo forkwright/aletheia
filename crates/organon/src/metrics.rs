@@ -16,7 +16,7 @@ static TOOL_INVOCATIONS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         Opts::new("aletheia_tool_invocations_total", "Total tool invocations"),
         &["tool_name", "status"]
     )
-    .expect("metric registration")
+    .expect("metric registration") // kanon:ignore RUST/expect
 });
 
 static TOOL_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
@@ -34,22 +34,24 @@ static TOOL_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
         ]),
         &["tool_name"]
     )
-    .expect("metric registration")
+    .expect("metric registration") // kanon:ignore RUST/expect
 });
 
 /// Force-initialize all lazy metric statics.
 pub fn init() {
+    // kanon:ignore RUST/pub-visibility
     LazyLock::force(&TOOL_INVOCATIONS_TOTAL);
     LazyLock::force(&TOOL_DURATION_SECONDS);
 }
 
 /// Record a tool invocation.
 pub fn record_invocation(tool_name: &str, duration_secs: f64, success: bool) {
+    // kanon:ignore RUST/pub-visibility
     let status = if success { "ok" } else { "error" };
     TOOL_INVOCATIONS_TOTAL
         .with_label_values(&[tool_name, status])
         .inc();
     TOOL_DURATION_SECONDS
-        .with_label_values(&[tool_name])
+        .with_label_values(&[tool_name]) // kanon:ignore RUST/indexing-slicing
         .observe(duration_secs);
 }

@@ -365,7 +365,7 @@ fn days_to_ymd(days: u64) -> (u64, u64, u64) {
 }
 
 /// Register filesystem tools (`grep`, `find`, `ls`) into the registry.
-pub fn register(registry: &mut ToolRegistry) -> Result<()> {
+pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(grep_def(), Box::new(GrepExecutor))?;
     registry.register(find_def(), Box::new(FindExecutor))?;
     registry.register(ls_def(), Box::new(LsExecutor))?;
@@ -374,7 +374,7 @@ pub fn register(registry: &mut ToolRegistry) -> Result<()> {
 
 fn grep_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("grep").expect("valid tool name"),
+        name: ToolName::new("grep").expect("valid tool name"), // kanon:ignore RUST/expect
         description: "Search file contents for a pattern using ripgrep".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -435,7 +435,7 @@ fn grep_def() -> ToolDef {
 
 fn find_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("find").expect("valid tool name"),
+        name: ToolName::new("find").expect("valid tool name"), // kanon:ignore RUST/expect
         description: "Find files by name pattern using fd".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -495,7 +495,7 @@ fn find_def() -> ToolDef {
 
 fn ls_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("ls").expect("valid tool name"),
+        name: ToolName::new("ls").expect("valid tool name"), // kanon:ignore RUST/expect
         description: "List directory contents with file sizes and modification times".to_owned(),
         extended_description: None,
         input_schema: InputSchema {

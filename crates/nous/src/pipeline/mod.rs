@@ -154,7 +154,7 @@ impl LoopDetector {
             clippy::as_conversions,
             reason = "u32→usize: threshold is a small constant, fits in usize"
         )]
-        let t = self.threshold as usize;
+        let t = self.threshold as usize; // kanon:ignore RUST/as-cast
 
         let recent = self.history.iter().rev().take(t);
         let all_same = recent.clone().count() >= t && recent.clone().all(|s| *s == signature);
@@ -343,8 +343,8 @@ pub async fn assemble_context_with_extra(
         reason = "u64→i64: budget fits in i64 for practical context windows"
     )]
     {
-        ctx.remaining_tokens = budget.remaining() as i64;
-        ctx.history_budget = budget.history_budget() as i64;
+        ctx.remaining_tokens = budget.remaining() as i64; // kanon:ignore RUST/as-cast
+        ctx.history_budget = budget.history_budget() as i64; // kanon:ignore RUST/as-cast
     }
 
     Ok(())
@@ -382,7 +382,7 @@ pub fn check_guard(session: &SessionState, config: &NousConfig) -> GuardResult {
     clippy::too_many_lines,
     reason = "pipeline orchestration is sequential, splitting adds indirection"
 )]
-pub async fn run_pipeline(
+pub(crate) async fn run_pipeline(
     input: PipelineInput,
     oikos: &Oikos,
     config: &NousConfig,
@@ -483,7 +483,7 @@ pub async fn run_pipeline(
     {
         pipeline_span.record(
             "pipeline.total_duration_ms",
-            pipeline_start.elapsed().as_millis() as u64,
+            pipeline_start.elapsed().as_millis() as u64, // kanon:ignore RUST/as-cast
         );
     }
     pipeline_span.record("pipeline.stages_completed", stages_completed);
@@ -491,7 +491,7 @@ pub async fn run_pipeline(
         clippy::as_conversions,
         reason = "usize→u64: tool call count fits in u64"
     )]
-    pipeline_span.record("pipeline.tool_calls", result.tool_calls.len() as u64);
+    pipeline_span.record("pipeline.tool_calls", result.tool_calls.len() as u64); // kanon:ignore RUST/as-cast
 
     // Single event emission replaces separate metrics::record_turn + tracing::info.
     crate::metrics::record_turn(&config.id);
@@ -500,7 +500,7 @@ pub async fn run_pipeline(
         clippy::as_conversions,
         reason = "usize→u64: tool call count fits in u64"
     )]
-    let tool_calls_count = result.tool_calls.len() as u64;
+    let tool_calls_count = result.tool_calls.len() as u64; // kanon:ignore RUST/as-cast
     emitter.emit(&events::TurnCompleted {
         nous_id: config.id.clone(),
         model: config.model.clone(),

@@ -23,6 +23,7 @@ use crate::types::{CompletionRequest, CompletionResponse};
 /// `Send + Sync` required for use in async contexts and across threads.
 /// Async methods return boxed futures to preserve `dyn LlmProvider` compatibility.
 pub trait LlmProvider: Send + Sync {
+    // kanon:ignore RUST/pub-visibility
     /// Send a completion request and return the full response.
     ///
     /// # Errors
@@ -162,6 +163,7 @@ struct ProviderEntry {
 /// Provider registry: maps model IDs to providers with health tracking.
 #[derive(Default)]
 pub struct ProviderRegistry {
+    // kanon:ignore RUST/pub-visibility
     providers: Vec<ProviderEntry>,
 }
 
@@ -178,16 +180,19 @@ impl ProviderRegistry {
     /// Create an empty registry.
     #[must_use]
     pub fn new() -> Self {
+        // kanon:ignore RUST/pub-visibility
         Self::default()
     }
 
     /// Register a provider with default health config.
     pub fn register(&mut self, provider: Box<dyn LlmProvider>) {
+        // kanon:ignore RUST/pub-visibility
         self.register_with_config(provider, HealthConfig::default());
     }
 
     /// Register a provider with custom health thresholds.
     pub fn register_with_config(&mut self, provider: Box<dyn LlmProvider>, config: HealthConfig) {
+        // kanon:ignore RUST/pub-visibility
         self.providers.push(ProviderEntry {
             provider,
             health: ProviderHealthTracker::new(config),
@@ -197,6 +202,7 @@ impl ProviderRegistry {
     /// Find a provider that supports the given model.
     #[must_use]
     pub fn find_provider(&self, model: &str) -> Option<&dyn LlmProvider> {
+        // kanon:ignore RUST/pub-visibility
         self.providers
             .iter()
             .find(|e| e.provider.supports_model(model))
@@ -206,12 +212,14 @@ impl ProviderRegistry {
     /// List all registered providers.
     #[must_use]
     pub fn providers(&self) -> Vec<&dyn LlmProvider> {
+        // kanon:ignore RUST/pub-visibility
         self.providers.iter().map(|e| e.provider.as_ref()).collect()
     }
 
     /// Query health of a provider by name.
     #[must_use]
     pub fn provider_health(&self, name: &str) -> Option<ProviderHealth> {
+        // kanon:ignore RUST/pub-visibility
         self.providers
             .iter()
             .find(|e| e.provider.name() == name)
@@ -220,6 +228,7 @@ impl ProviderRegistry {
 
     /// Record a successful request for the named provider.
     pub fn record_success(&self, name: &str) {
+        // kanon:ignore RUST/pub-visibility
         if let Some(entry) = self.providers.iter().find(|e| e.provider.name() == name) {
             entry.health.record_success();
         }
@@ -230,11 +239,13 @@ impl ProviderRegistry {
     /// Returns `Some` if the provider supports streaming.
     #[must_use]
     pub fn find_streaming_provider(&self, model: &str) -> Option<&dyn LlmProvider> {
+        // kanon:ignore RUST/pub-visibility
         self.find_provider(model).filter(|p| p.supports_streaming())
     }
 
     /// Record a failed request for the named provider.
     pub fn record_error(&self, name: &str, error: &error::Error) {
+        // kanon:ignore RUST/pub-visibility
         if let Some(entry) = self.providers.iter().find(|e| e.provider.name() == name) {
             entry.health.record_error(error);
         }

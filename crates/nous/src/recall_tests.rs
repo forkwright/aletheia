@@ -113,10 +113,19 @@ fn recall_disabled_returns_empty() {
             &MockVectorSearch::empty(),
             10000,
         )
-        .unwrap();
-    assert_eq!(result.candidates_found, 0);
-    assert_eq!(result.results_injected, 0);
-    assert!(result.recall_section.is_none());
+        .expect("recall should succeed when disabled");
+    assert_eq!(
+        result.candidates_found, 0,
+        "disabled recall should find zero candidates"
+    );
+    assert_eq!(
+        result.results_injected, 0,
+        "disabled recall should inject zero results"
+    );
+    assert!(
+        result.recall_section.is_none(),
+        "disabled recall should have no section"
+    );
 }
 
 #[test]
@@ -131,9 +140,15 @@ fn recall_empty_candidates_returns_empty() {
             &MockVectorSearch::empty(),
             10000,
         )
-        .unwrap();
-    assert_eq!(result.candidates_found, 0);
-    assert!(result.recall_section.is_none());
+        .expect("recall should succeed with empty candidates");
+    assert_eq!(
+        result.candidates_found, 0,
+        "empty store should find zero candidates"
+    );
+    assert!(
+        result.recall_section.is_none(),
+        "empty results should have no section"
+    );
 }
 
 #[test]
@@ -143,9 +158,18 @@ fn recall_formats_section_correctly() {
     let refs: Vec<&ScoredResult> = vec![&a, &b];
     let section = format_section(&refs);
 
-    assert!(section.starts_with("## Recalled Knowledge"));
-    assert!(section.contains("[0.87] User prefers dark mode"));
-    assert!(section.contains("[0.72] Project deadline is March 15"));
+    assert!(
+        section.starts_with("## Recalled Knowledge"),
+        "section should start with header"
+    );
+    assert!(
+        section.contains("[0.87] User prefers dark mode"),
+        "section should contain first result"
+    );
+    assert!(
+        section.contains("[0.72] Project deadline is March 15"),
+        "section should contain second result"
+    );
 }
 
 #[test]
@@ -168,12 +192,18 @@ fn recall_respects_min_score() {
             &MockVectorSearch::new(results),
             10000,
         )
-        .unwrap();
+        .expect("recall should succeed");
 
-    assert_eq!(result.candidates_found, 3);
-    assert!(result.results_injected <= 3);
+    assert_eq!(result.candidates_found, 3, "should find all 3 candidates");
+    assert!(
+        result.results_injected <= 3,
+        "should inject at most 3 results"
+    );
     if let Some(ref section) = result.recall_section {
-        assert!(!section.contains("distant match"));
+        assert!(
+            !section.contains("distant match"),
+            "distant match should be filtered by min_score"
+        );
     }
 }
 
@@ -196,10 +226,13 @@ fn recall_respects_max_results() {
             &MockVectorSearch::new(results),
             50000,
         )
-        .unwrap();
+        .expect("recall should succeed");
 
-    assert_eq!(result.candidates_found, 10);
-    assert!(result.results_injected <= 3);
+    assert_eq!(result.candidates_found, 10, "should find all 10 candidates");
+    assert!(
+        result.results_injected <= 3,
+        "should inject at most max_results=3"
+    );
 }
 
 #[test]
@@ -223,30 +256,40 @@ fn recall_respects_token_budget() {
             &MockVectorSearch::new(results),
             200,
         )
-        .unwrap();
+        .expect("recall should succeed");
 
-    assert!(result.tokens_consumed <= 200);
-    assert!(result.results_injected < 5);
+    assert!(
+        result.tokens_consumed <= 200,
+        "should not exceed token budget"
+    );
+    assert!(
+        result.results_injected < 5,
+        "budget should limit injected results"
+    );
 }
 
 #[test]
 fn estimate_tokens_heuristic() {
-    assert_eq!(estimate_tokens("", 4), 0);
-    assert_eq!(estimate_tokens("abcd", 4), 1);
-    assert_eq!(estimate_tokens("abcde", 4), 2);
+    assert_eq!(estimate_tokens("", 4), 0, "empty string should be 0 tokens");
+    assert_eq!(estimate_tokens("abcd", 4), 1, "4 chars should be 1 token");
+    assert_eq!(
+        estimate_tokens("abcde", 4),
+        2,
+        "5 chars should round up to 2 tokens"
+    );
     let text = "x".repeat(400);
-    assert_eq!(estimate_tokens(&text, 4), 100);
+    assert_eq!(estimate_tokens(&text, 4), 100, "400 chars / 4 = 100 tokens");
 }
 
 #[test]
 fn estimate_tokens_custom_divisor() {
-    assert_eq!(estimate_tokens("abcdefgh", 2), 4);
-    assert_eq!(estimate_tokens("hello", 3), 2);
+    assert_eq!(estimate_tokens("abcdefgh", 2), 4, "8 chars / 2 = 4 tokens");
+    assert_eq!(estimate_tokens("hello", 3), 2, "5 chars / 3 rounds up to 2");
 }
 
 #[test]
 fn estimate_tokens_divisor_clamp() {
-    assert_eq!(estimate_tokens("a", 0), 1);
+    assert_eq!(estimate_tokens("a", 0), 1, "divisor 0 should clamp to 1");
 }
 
 #[test]
@@ -292,7 +335,7 @@ mod knowledge_bridge_tests {
         let results = search
             .search_vectors(vec![0.0; DIM], 5, 10)
             .expect("search should not error on empty store");
-        assert!(results.is_empty());
+        assert!(results.is_empty(), "empty store should return no results");
     }
 
     #[test]
@@ -305,9 +348,12 @@ mod knowledge_bridge_tests {
         let results = search
             .search_vectors(vec![1.0, 0.0, 0.0, 0.0], 5, 10)
             .expect("search");
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].content, "Rust is a systems language");
-        assert_eq!(results[0].source_type, "fact");
+        assert_eq!(results.len(), 1, "should find one matching result");
+        assert_eq!(
+            results[0].content, "Rust is a systems language",
+            "content should match"
+        );
+        assert_eq!(results[0].source_type, "fact", "source_type should be fact");
     }
 
     #[test]
@@ -322,12 +368,15 @@ mod knowledge_bridge_tests {
         let results = search
             .search_vectors(vec![1.0, 0.0, 0.0, 0.0], 5, 10)
             .expect("search");
-        assert_eq!(results.len(), 2);
+        assert_eq!(results.len(), 2, "should find both results");
         assert!(
             results[0].distance <= results[1].distance,
             "closer vector should have smaller distance"
         );
-        assert_eq!(results[0].content, "close");
+        assert_eq!(
+            results[0].content, "close",
+            "closest result should be first"
+        );
     }
 
     #[test]
@@ -370,8 +419,11 @@ fn terminology_discovery_finds_novel_terms() {
     ];
 
     let terms = discover_terminology(&results, "physics research");
-    assert!(!terms.is_empty());
-    assert!(terms.contains(&"quantum".to_owned()));
+    assert!(!terms.is_empty(), "should discover novel terms");
+    assert!(
+        terms.contains(&"quantum".to_owned()),
+        "should find quantum as novel term"
+    );
 }
 
 #[test]
@@ -395,7 +447,7 @@ fn terminology_discovery_ignores_stopwords() {
 #[test]
 fn terminology_discovery_empty_results() {
     let terms = discover_terminology(&[], "some query");
-    assert!(terms.is_empty());
+    assert!(terms.is_empty(), "empty results should produce no terms");
 }
 
 #[test]
@@ -410,7 +462,11 @@ fn terminology_discovery_skips_short_words() {
     }];
 
     let terms = discover_terminology(&results, "test");
-    assert_eq!(terms, vec!["quantum"]);
+    assert_eq!(
+        terms,
+        vec!["quantum"],
+        "only words >3 chars should be included"
+    );
 }
 
 #[test]
@@ -452,13 +508,16 @@ fn gap_detection_finds_quoted_strings() {
 
 #[test]
 fn stopword_is_stopword() {
-    assert!(is_stopword("the"));
-    assert!(is_stopword("and"));
-    assert!(is_stopword("but"));
-    assert!(is_stopword("with"));
-    assert!(!is_stopword("quantum"));
-    assert!(!is_stopword("neural"));
-    assert!(!is_stopword("database"));
+    assert!(is_stopword("the"), "the should be a stopword");
+    assert!(is_stopword("and"), "and should be a stopword");
+    assert!(is_stopword("but"), "but should be a stopword");
+    assert!(is_stopword("with"), "with should be a stopword");
+    assert!(!is_stopword("quantum"), "quantum should not be a stopword");
+    assert!(!is_stopword("neural"), "neural should not be a stopword");
+    assert!(
+        !is_stopword("database"),
+        "database should not be a stopword"
+    );
 }
 
 #[test]
@@ -483,7 +542,7 @@ fn iterative_recall_deduplicates() {
     let stage = RecallStage::new(config);
     let result = stage
         .run("physics", "syn", &mock_embed(), &search, 50000)
-        .unwrap();
+        .expect("recall should succeed");
 
     assert_eq!(
         result.candidates_found, 3,
@@ -502,7 +561,7 @@ fn iterative_recall_disabled_by_default() {
     let stage = RecallStage::new(config);
     let _result = stage
         .run("test query", "syn", &mock_embed(), &search, 50000)
-        .unwrap();
+        .expect("recall should succeed");
 
     assert_eq!(
         search.call_count(),

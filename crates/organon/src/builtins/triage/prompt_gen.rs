@@ -59,7 +59,7 @@ pub(crate) fn generate_prompt(issue: &GitHubIssue, repo: &str) -> String {
         if issue.body.len() > max_body {
             let truncated = issue.body.get(..max_body).unwrap_or(&issue.body);
             prompt.push_str(truncated);
-            prompt.push_str("\n\n[...truncated]\n\n");
+            prompt.push_str("\n\n[...truncated]\n\n"); // kanon:ignore RUST/string-slice
         } else {
             prompt.push_str(&issue.body);
             prompt.push_str("\n\n");
@@ -330,9 +330,9 @@ fn extract_acceptance_criteria(issue: &GitHubIssue) -> Vec<String> {
         let trimmed = line.trim();
         if let Some(rest) = trimmed
             .strip_prefix("- [ ] ")
-            .or_else(|| trimmed.strip_prefix("- [x] "))
+            .or_else(|| trimmed.strip_prefix("- [x] ")) // kanon:ignore RUST/indexing-slicing
             .or_else(|| trimmed.strip_prefix("* [ ] "))
-            .or_else(|| trimmed.strip_prefix("* [x] "))
+            .or_else(|| trimmed.strip_prefix("* [x] ")) // kanon:ignore RUST/indexing-slicing
             && !rest.is_empty()
         {
             criteria.push(rest.to_owned());
@@ -484,31 +484,51 @@ mod tests {
     #[test]
     fn domain_inferred_from_labels() {
         let issue = make_issue("Fix thing", "", &["pylon"]);
-        assert_eq!(infer_domain(&issue), "pylon");
+        assert_eq!(
+            infer_domain(&issue),
+            "pylon",
+            "expected infer_domain(&issue) to equal \"pylon\""
+        );
     }
 
     #[test]
     fn domain_inferred_from_title() {
         let issue = make_issue("Fix mneme query cache", "", &[]);
-        assert_eq!(infer_domain(&issue), "mneme");
+        assert_eq!(
+            infer_domain(&issue),
+            "mneme",
+            "expected infer_domain(&issue) to equal \"mneme\""
+        );
     }
 
     #[test]
     fn domain_fallback_to_general() {
         let issue = make_issue("Vague issue", "", &[]);
-        assert_eq!(infer_domain(&issue), "general");
+        assert_eq!(
+            infer_domain(&issue),
+            "general",
+            "expected infer_domain(&issue) to equal \"general\""
+        );
     }
 
     #[test]
     fn branch_type_from_bug_label() {
         let issue = make_issue("Crash", "", &["bug"]);
-        assert_eq!(infer_branch_type(&issue), "fix");
+        assert_eq!(
+            infer_branch_type(&issue),
+            "fix",
+            "expected infer_branch_type(&issue) to equal \"fix\""
+        );
     }
 
     #[test]
     fn branch_type_default_to_feat() {
         let issue = make_issue("New thing", "", &[]);
-        assert_eq!(infer_branch_type(&issue), "feat");
+        assert_eq!(
+            infer_branch_type(&issue),
+            "feat",
+            "expected infer_branch_type(&issue) to equal \"feat\""
+        );
     }
 
     #[test]
@@ -525,7 +545,10 @@ mod tests {
     fn task_preserves_imperative() {
         let issue = make_issue("Add query cache", "", &[]);
         let task = infer_task(&issue);
-        assert_eq!(task, "Add query cache");
+        assert_eq!(
+            task, "Add query cache",
+            "expected task to equal \"Add query cache\""
+        );
     }
 
     #[test]
@@ -537,7 +560,11 @@ mod tests {
         );
         let criteria = extract_acceptance_criteria(&issue);
         assert_eq!(criteria.len(), 3, "should extract all checkboxes");
-        assert_eq!(criteria.first(), Some(&"First thing".to_owned()));
+        assert_eq!(
+            criteria.first(),
+            Some(&"First thing".to_owned()),
+            "expected criteria.first() to equal Some(&\"First thing\".to_owned())"
+        );
     }
 
     #[test]
@@ -569,12 +596,24 @@ mod tests {
     fn blast_radius_fallback_to_domain() {
         let issue = make_issue("Fix thing", "No paths mentioned", &[]);
         let paths = infer_blast_radius(&issue, "pylon");
-        assert_eq!(paths, vec!["crates/pylon/src/"]);
+        assert_eq!(
+            paths,
+            vec!["crates/pylon/src/"],
+            "expected paths to equal vec![\"crates/pylon/src/\"]"
+        );
     }
 
     #[test]
     fn slug_generation() {
-        assert_eq!(infer_slug("Add Query Cache"), "add-query-cache");
-        assert_eq!(infer_slug("Fix: memory leak!"), "fix-memory-leak");
+        assert_eq!(
+            infer_slug("Add Query Cache"),
+            "add-query-cache",
+            "expected infer_slug(\"Add Query Cache\") to equal \"add-query-cache\""
+        );
+        assert_eq!(
+            infer_slug("Fix: memory leak!"),
+            "fix-memory-leak",
+            "expected infer_slug(\"Fix: memory leak!\") to equal \"fix-memory-leak\""
+        );
     }
 }

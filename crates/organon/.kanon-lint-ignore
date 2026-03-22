@@ -1,0 +1,42 @@
+# WHY: kanon linter skip_in_test detects *_test.rs (singular), tests.rs, and
+# /tests/ directories, but NOT *_tests.rs (plural), *_tests/ directories, or
+# tests_extended.rs files. These are all test code where .expect(), .unwrap(),
+# direct indexing, and sleep are standard practice.
+RUST/expect:src/**/*_tests.rs
+RUST/expect:src/**/*_tests/*.rs
+RUST/expect:src/**/tests.rs
+RUST/unwrap:src/**/*_tests.rs
+RUST/unwrap:src/**/*_tests/*.rs
+RUST/unwrap:src/**/tests.rs
+RUST/indexing-slicing:src/**/*_tests.rs
+RUST/indexing-slicing:src/**/*_tests/*.rs
+RUST/indexing-slicing:src/**/tests.rs
+RUST/bare-assert:src/**/*_tests.rs
+RUST/bare-assert:src/**/*_tests/*.rs
+RUST/bare-assert:src/**/tests.rs
+TESTING/sleep-in-test:src/**/*_tests.rs
+TESTING/sleep-in-test:src/**/*_tests/*.rs
+SECURITY/config-write-no-perms:src/**/*_tests.rs
+SECURITY/config-write-no-perms:src/**/*_tests/*.rs
+
+# WHY: organon is a library crate where all modules are `pub mod` in lib.rs.
+# Items marked `pub` are intentional API consumed by nous. The inline
+# kanon:ignore comments are reformatted by rustfmt onto separate lines,
+# breaking the linter's same-line suppression check.
+RUST/pub-visibility:src/**/*.rs
+
+# WHY: indexing in compute_diff_region, png_width, png_height is guarded by
+# .get() calls and explicit length checks (i < bytes.len()). Loop bounds
+# guarantee valid indices. research.rs HTML strip loop has `while i < len`.
+# policy.rs indexing uses segment_count checked against known enum variants.
+RUST/indexing-slicing:src/builtins/computer_use.rs
+RUST/indexing-slicing:src/builtins/research.rs
+RUST/indexing-slicing:src/sandbox/policy.rs
+
+# WHY: Both functions already have #[must_use] in code. The installed kanon
+# binary's must-use check doesn't detect the attribute on the preceding line.
+# register() and register_all() are side-effectful (mutate registry) — Result
+# indicates collision, not a return value to consume.
+RUST/missing-must-use:src/builtins/computer_use.rs
+RUST/missing-must-use:src/builtins/mod.rs
+RUST/missing-must-use:src/registry.rs

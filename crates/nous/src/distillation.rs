@@ -299,7 +299,7 @@ pub fn convert_to_hermeneus_messages(
 mod tests {
     use super::*;
 
-    fn test_session(overrides: impl FnOnce(&mut Session)) -> Session {
+    fn make_session(overrides: impl FnOnce(&mut Session)) -> Session {
         let mut session = Session {
             id: "ses-1".to_owned(),
             nous_id: "test-nous".to_owned(),
@@ -331,7 +331,7 @@ mod tests {
 
     #[test]
     fn trigger_on_high_context() {
-        let session = test_session(|s| {
+        let session = make_session(|s| {
             s.metrics.last_input_tokens = 130_000;
         });
         let config = DistillTriggerConfig::default();
@@ -342,7 +342,7 @@ mod tests {
 
     #[test]
     fn trigger_on_message_count() {
-        let session = test_session(|s| {
+        let session = make_session(|s| {
             s.metrics.message_count = 160;
         });
         let config = DistillTriggerConfig::default();
@@ -353,7 +353,7 @@ mod tests {
 
     #[test]
     fn trigger_on_never_distilled() {
-        let session = test_session(|s| {
+        let session = make_session(|s| {
             s.metrics.message_count = 35;
             s.metrics.distillation_count = 0;
         });
@@ -368,7 +368,7 @@ mod tests {
         let eight_days_ago = jiff::Timestamp::now()
             .checked_sub(jiff::SignedDuration::from_hours(8 * 24))
             .expect("valid timestamp");
-        let session = test_session(|s| {
+        let session = make_session(|s| {
             s.metrics.message_count = 25;
             s.metrics.distillation_count = 1;
             s.metrics.last_distilled_at = Some(eight_days_ago.to_string());
@@ -381,7 +381,7 @@ mod tests {
 
     #[test]
     fn no_trigger_ephemeral_session() {
-        let session = test_session(|s| {
+        let session = make_session(|s| {
             s.session_type = aletheia_mneme::types::SessionType::Ephemeral;
             s.session_key = "ask:demiurge".to_owned();
             s.metrics.last_input_tokens = 130_000;
@@ -397,7 +397,7 @@ mod tests {
 
     #[test]
     fn trigger_on_non_ephemeral_session_with_same_thresholds() {
-        let session = test_session(|s| {
+        let session = make_session(|s| {
             s.session_type = aletheia_mneme::types::SessionType::Primary;
             s.metrics.last_input_tokens = 130_000;
             s.metrics.message_count = 200;
@@ -412,7 +412,7 @@ mod tests {
 
     #[test]
     fn no_trigger_below_thresholds() {
-        let session = test_session(|s| {
+        let session = make_session(|s| {
             s.metrics.message_count = 5;
             s.metrics.token_count_estimate = 1000;
             s.metrics.distillation_count = 0;
@@ -424,7 +424,7 @@ mod tests {
 
     #[test]
     fn no_trigger_first_turn() {
-        let session = test_session(|s| {
+        let session = make_session(|s| {
             s.metrics.message_count = 0;
             s.metrics.token_count_estimate = 200_000;
             s.metrics.last_input_tokens = 200_000;
@@ -436,7 +436,7 @@ mod tests {
 
     #[test]
     fn trigger_on_legacy_threshold() {
-        let session = test_session(|s| {
+        let session = make_session(|s| {
             s.metrics.message_count = 15;
             s.metrics.token_count_estimate = 100_000;
             s.metrics.distillation_count = 1;

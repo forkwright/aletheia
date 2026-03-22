@@ -8,7 +8,7 @@ use super::DeliveryState;
 
 /// A single delivery audit record.
 #[derive(Debug, Clone)]
-pub struct DeliveryEntry {
+pub(crate) struct DeliveryEntry {
     /// ID of the delivered message.
     pub message_id: Ulid,
     /// Sender nous ID.
@@ -22,7 +22,7 @@ pub struct DeliveryEntry {
 }
 
 /// Ring-buffer delivery audit log.
-pub struct DeliveryLog {
+pub(crate) struct DeliveryLog {
     pub(super) entries: VecDeque<DeliveryEntry>,
     max_entries: usize,
 }
@@ -30,7 +30,7 @@ pub struct DeliveryLog {
 impl DeliveryLog {
     /// Create a delivery log with the given maximum capacity.
     #[must_use]
-    pub fn new(max_entries: usize) -> Self {
+    pub(crate) fn new(max_entries: usize) -> Self {
         Self {
             entries: VecDeque::with_capacity(max_entries.min(1024)),
             max_entries,
@@ -38,7 +38,7 @@ impl DeliveryLog {
     }
 
     /// Append an entry, evicting the oldest if at capacity.
-    pub fn record(&mut self, entry: DeliveryEntry) {
+    pub(crate) fn record(&mut self, entry: DeliveryEntry) {
         if self.entries.len() >= self.max_entries {
             self.entries.pop_front();
         }
@@ -47,13 +47,13 @@ impl DeliveryLog {
 
     /// Most recent entries, newest first, up to `limit`.
     #[must_use]
-    pub fn recent(&self, limit: usize) -> Vec<&DeliveryEntry> {
+    pub(crate) fn recent(&self, limit: usize) -> Vec<&DeliveryEntry> {
         self.entries.iter().rev().take(limit).collect()
     }
 
     /// Recent entries involving the given nous (as sender or receiver), newest first.
     #[must_use]
-    pub fn for_nous(&self, nous_id: &str, limit: usize) -> Vec<&DeliveryEntry> {
+    pub(crate) fn for_nous(&self, nous_id: &str, limit: usize) -> Vec<&DeliveryEntry> {
         self.entries
             .iter()
             .rev()

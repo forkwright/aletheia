@@ -43,7 +43,7 @@ impl TokenEstimator for CharEstimator {
             reason = "usize→u64: text length always fits in u64"
         )]
         {
-            (text.len() as u64).div_ceil(self.chars_per_token)
+            (text.len() as u64).div_ceil(self.chars_per_token) // kanon:ignore RUST/as-cast
         }
     }
 }
@@ -86,7 +86,7 @@ impl TokenBudget {
             clippy::as_conversions,
             reason = "u64→f64→u64: context_window fits in f64 mantissa for practical model sizes"
         )]
-        let reserved_for_history = (context_window as f64 * history_ratio) as u64;
+        let reserved_for_history = (context_window as f64 * history_ratio) as u64; // kanon:ignore RUST/as-cast
         let computed = context_window
             .saturating_sub(turn_reserve)
             .saturating_sub(reserved_for_history);
@@ -153,8 +153,9 @@ impl TokenBudget {
     }
 }
 
-use crate::config::StageBudget;
 use std::time::{Duration, Instant};
+
+use crate::config::StageBudget;
 
 /// Tracks wall-clock time per pipeline stage and enforces limits.
 pub(crate) struct TimeBudget {
@@ -204,7 +205,7 @@ pub(crate) enum StageTimingStatus {
 impl TimeBudget {
     /// Create a new time budget from per-stage limits.
     #[must_use]
-    pub fn new(stage_budgets: StageBudget) -> Self {
+    pub(crate) fn new(stage_budgets: StageBudget) -> Self {
         Self {
             pipeline_start: Instant::now(),
             stage_budgets,
@@ -215,7 +216,7 @@ impl TimeBudget {
 
     /// Returns `true` if the total pipeline time budget has been exceeded.
     #[must_use]
-    pub fn total_exceeded(&self) -> bool {
+    pub(crate) fn total_exceeded(&self) -> bool {
         if self.stage_budgets.total_secs == 0 {
             return false;
         }
@@ -225,7 +226,7 @@ impl TimeBudget {
 
     /// Wall-clock time remaining before the total pipeline budget expires.
     #[must_use]
-    pub fn total_remaining(&self) -> Duration {
+    pub(crate) fn total_remaining(&self) -> Duration {
         if self.stage_budgets.total_secs == 0 {
             return Duration::from_secs(u64::MAX);
         }
@@ -237,7 +238,7 @@ impl TimeBudget {
     ///
     /// Returns `None` if both the stage-specific and total budgets are unlimited.
     #[must_use]
-    pub fn stage_limit(&self, stage_name: &str) -> Option<Duration> {
+    pub(crate) fn stage_limit(&self, stage_name: &str) -> Option<Duration> {
         let stage_secs = match stage_name {
             "context" => self.stage_budgets.context_secs,
             "recall" => self.stage_budgets.recall_secs,
@@ -259,12 +260,12 @@ impl TimeBudget {
     }
 
     /// Mark the start of a pipeline stage for timing.
-    pub fn begin_stage(&mut self, name: &str) {
+    pub(crate) fn begin_stage(&mut self, name: &str) {
         self.current_stage = Some((name.to_owned(), Instant::now()));
     }
 
     /// Record the current stage as finished with the given status.
-    pub fn end_stage(&mut self, status: StageTimingStatus) {
+    pub(crate) fn end_stage(&mut self, status: StageTimingStatus) {
         if let Some((name, start)) = self.current_stage.take() {
             self.stage_elapsed.push(StageTimingRecord {
                 name,
@@ -276,14 +277,14 @@ impl TimeBudget {
 
     /// Completed stage timing records, in execution order.
     #[must_use]
-    pub fn summary(&self) -> &[StageTimingRecord] {
+    pub(crate) fn summary(&self) -> &[StageTimingRecord] {
         &self.stage_elapsed
     }
 
     /// Total wall-clock time since the pipeline started.
     #[must_use]
     #[expect(dead_code, reason = "time budget not yet wired into pipeline stages")]
-    pub fn total_elapsed(&self) -> Duration {
+    pub(crate) fn total_elapsed(&self) -> Duration {
         self.pipeline_start.elapsed()
     }
 }
