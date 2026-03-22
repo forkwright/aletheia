@@ -122,7 +122,6 @@ jobs:
         run: |
           cargo nextest run \
             --workspace \
-            --exclude theatron-desktop \
             --partition "hash:${SHARD}/4"
 
   # WHY: On pull requests, only test the crates that were changed plus their

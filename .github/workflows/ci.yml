@@ -38,7 +38,7 @@ jobs:
               echo "::endgroup::"
             fi
           done < <(find scripts -type f -executable 2>/dev/null)
-          exit $failed
+          exit "$failed"
 
   commitlint:
     if: github.event_name == 'pull_request'
@@ -60,7 +60,7 @@ jobs:
               failed=1
             fi
           done < <(git log --format='%s' origin/main..HEAD)
-          exit $failed
+          exit "$failed"
 
   standards-sync:
     if: github.event_name == 'pull_request'
@@ -68,33 +68,30 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - name: Fetch canonical standards from kanon
+      - name: Fetch and diff canonical standards from kanon
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mkdir -p /tmp/kanon-standards
+          tmpdir="$(mktemp -d)"
           gh api repos/forkwright/kanon/contents/standards \
             --jq '.[].name' | while IFS= read -r fname; do
             gh api "repos/forkwright/kanon/contents/standards/${fname}" \
               --jq '.content' \
-              | base64 -d > "/tmp/kanon-standards/${fname}"
+              | base64 -d > "${tmpdir}/${fname}"
           done
-
-      - name: Diff standards against kanon canonical
-        run: |
           failed=0
           while IFS= read -r fname; do
             local_file="standards/${fname}"
-            canonical="/tmp/kanon-standards/${fname}"
+            canonical="${tmpdir}/${fname}"
             if [[ ! -f "$local_file" ]]; then
               echo "::error file=${local_file}::Canonical file '${fname}' from kanon is missing locally"
               failed=1
             elif ! diff -q -- "$canonical" "$local_file" > /dev/null 2>&1; then
               echo "::error file=${local_file}::Local '${fname}' diverges from kanon canonical"
-              diff -- "$canonical" "$local_file" || true
+              diff -- "$canonical" "$local_file" || true  # NOTE: show the diff output; non-zero exit expected
               failed=1
             fi
-          done < <(ls /tmp/kanon-standards/)
+          done < <(ls "${tmpdir}/")
           if [[ "$failed" -ne 0 ]]; then
             echo ""
             echo "Standards diverged from kanon. Update local standards/ to match, or sync kanon."
