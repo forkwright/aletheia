@@ -24,6 +24,9 @@ pub enum Overlay {
     DiffView(crate::diff::DiffViewState),
     SessionSearch(SessionSearchOverlay),
     DecisionCard(DecisionCardOverlay),
+    NotificationHistory {
+        scroll: usize,
+    },
 }
 
 #[derive(Debug)]

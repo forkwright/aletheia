@@ -1,4 +1,9 @@
 //! HTTP client for the Aletheia gateway REST API.
+// WHY: all async methods return Result which is already #[must_use]; outer attrs add caller context.
+#![expect(
+    clippy::double_must_use,
+    reason = "Result return type is must_use; outer attr adds caller context"
+)]
 
 use reqwest::{Client, Response, StatusCode, header};
 use snafu::prelude::*;
@@ -443,9 +448,9 @@ impl ApiClient {
             clippy::cast_possible_truncation,
             clippy::cast_sign_loss,
             clippy::as_conversions,
-            reason = "clamped to u32 range above"
+            reason = "clamped to [0, u32::MAX] above; kanon:ignore RUST/as-cast"
         )]
-        let cents = cents_f as u32; // kanon:ignore RUST/as-cast
+        let cents = cents_f as u32;
         Ok(cents)
     }
 

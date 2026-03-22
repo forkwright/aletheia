@@ -4,10 +4,12 @@ mod filter_bar;
 pub(crate) mod image;
 mod input;
 mod memory;
+pub(crate) mod notification;
 pub(crate) mod ops;
 mod overlay;
 pub(crate) mod settings;
 mod sidebar;
+mod slash;
 mod status_bar;
 pub(crate) mod tab_bar;
 mod title_bar;
@@ -24,6 +26,7 @@ const MIN_CHAT_WIDTH: u16 = 40;
 const MIN_SIDEBAR_TERMINAL_WIDTH: u16 = 60;
 const MIN_OPS_TERMINAL_WIDTH: u16 = 80;
 const MAX_PALETTE_SUGGESTIONS: usize = 12;
+const MAX_SLASH_SUGGESTIONS: usize = 8;
 const STATUS_BAR_HEIGHT: u16 = 2;
 
 #[tracing::instrument(skip_all)]
@@ -35,11 +38,14 @@ pub(crate) fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
     let area = frame.area();
     let theme = &app.theme;
 
-    let has_toast = app.viewport.error_toast.is_some() || app.viewport.success_toast.is_some();
+    let has_banner = app.viewport.error_banner.is_some();
+    let has_old_toast = app.viewport.error_toast.is_some() || app.viewport.success_toast.is_some();
+    let has_new_toast = !app.viewport.toasts.is_empty();
     let palette_active = app.interaction.command_palette.active;
+    let slash_active = app.interaction.slash_complete.active;
     let show_tabs = tab_bar::should_show(app);
 
-    // NOTE: When palette is active it replaces the status bar, expanding to fit suggestions.
+    // NOTE: When palette or slash complete is active it replaces the status bar.
     let bottom_height = if palette_active {
         let suggestion_lines = app
             .interaction
@@ -49,19 +55,45 @@ pub(crate) fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
             .min(MAX_PALETTE_SUGGESTIONS);
         let suggestion_lines = u16::try_from(suggestion_lines).unwrap_or(u16::MAX);
         (STATUS_BAR_HEIGHT + suggestion_lines).max(3)
+    } else if slash_active {
+        let suggestion_lines = app
+            .interaction
+            .slash_complete
+            .suggestions
+            .len()
+            .min(MAX_SLASH_SUGGESTIONS);
+        let suggestion_lines = u16::try_from(suggestion_lines).unwrap_or(u16::MAX);
+        (STATUS_BAR_HEIGHT + suggestion_lines).max(3)
     } else {
         STATUS_BAR_HEIGHT
     };
 
     let tab_height: u16 = if show_tabs { 1 } else { 0 };
 
-    let mut constraints = vec![Constraint::Length(1)];
+    // Index offsets for the dynamic layout slots.
+    let banner_offset: usize = if has_banner { 1 } else { 0 };
+    let tab_offset: usize = if show_tabs { 1 } else { 0 };
+    let title_idx: usize = 0;
+    let body_idx: usize = 1 + banner_offset + tab_offset;
+    let bottom_idx: usize = body_idx + 1;
+    let old_toast_idx: usize = bottom_idx + 1;
+    let new_toast_idx: usize = bottom_idx + 1 + usize::from(has_old_toast);
+    // tab_idx is 1 + banner_offset; only used inside `if show_tabs`.
+    let tab_idx: usize = 1 + banner_offset;
+
+    let mut constraints = vec![Constraint::Length(1)]; // title
+    if has_banner {
+        constraints.push(Constraint::Length(1));
+    }
     if show_tabs {
         constraints.push(Constraint::Length(tab_height));
     }
     constraints.push(Constraint::Min(5));
     constraints.push(Constraint::Length(bottom_height));
-    if has_toast {
+    if has_old_toast {
+        constraints.push(Constraint::Length(1));
+    }
+    if has_new_toast {
         constraints.push(Constraint::Length(1));
     }
 
@@ -70,13 +102,11 @@ pub(crate) fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
         .constraints(constraints)
         .split(area);
 
-    let title_idx = 0;
-    let tab_idx = if show_tabs { 1 } else { 0 };
-    let body_idx = if show_tabs { 2 } else { 1 };
-    let bottom_idx = if show_tabs { 3 } else { 2 };
-    let toast_idx = if show_tabs { 4 } else { 3 };
-
     title_bar::render(app, frame, vertical[title_idx], theme);
+
+    if has_banner {
+        notification::render_banner(app, frame, vertical[1], theme);
+    }
 
     if show_tabs {
         tab_bar::render(app, frame, vertical[tab_idx], theme);
@@ -84,11 +114,13 @@ pub(crate) fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
 
     if palette_active {
         command_palette::render(app, frame, vertical[bottom_idx], theme);
+    } else if slash_active {
+        slash::render(app, frame, vertical[bottom_idx], theme);
     } else {
         status_bar::render(app, frame, vertical[bottom_idx], theme);
     }
 
-    if has_toast {
+    if has_old_toast {
         if let Some(ref toast) = app.viewport.error_toast {
             let toast_line = ratatui::text::Line::from(vec![
                 ratatui::text::Span::styled(" \u{2717} ", theme.style_error_bold()),
@@ -96,7 +128,7 @@ pub(crate) fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
             ]);
             let toast_widget = ratatui::widgets::Paragraph::new(toast_line)
                 .style(ratatui::style::Style::default().bg(theme.colors.surface_dim));
-            frame.render_widget(toast_widget, vertical[toast_idx]);
+            frame.render_widget(toast_widget, vertical[old_toast_idx]);
         } else if let Some(ref toast) = app.viewport.success_toast {
             let toast_line = ratatui::text::Line::from(vec![
                 ratatui::text::Span::styled(" \u{2713} ", theme.style_success_bold()),
@@ -104,8 +136,28 @@ pub(crate) fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
             ]);
             let toast_widget = ratatui::widgets::Paragraph::new(toast_line)
                 .style(ratatui::style::Style::default().bg(theme.colors.surface_dim));
-            frame.render_widget(toast_widget, vertical[toast_idx]);
+            frame.render_widget(toast_widget, vertical[old_toast_idx]);
         }
+    }
+
+    if has_new_toast && let Some(toast) = app.viewport.toasts.last() {
+        use crate::msg::NotificationKind;
+        let (icon, icon_style) = match toast.kind {
+            NotificationKind::Info => (" ℹ ", theme.style_fg()),
+            NotificationKind::Warning => (
+                " ⚠ ",
+                ratatui::style::Style::default().fg(theme.status.warning),
+            ),
+            NotificationKind::Error => (" \u{2717} ", theme.style_error_bold()),
+            NotificationKind::Success => (" \u{2713} ", theme.style_success_bold()),
+        };
+        let toast_line = ratatui::text::Line::from(vec![
+            ratatui::text::Span::styled(icon, icon_style),
+            ratatui::text::Span::styled(&toast.message, theme.style_fg()),
+        ]);
+        let toast_widget = ratatui::widgets::Paragraph::new(toast_line)
+            .style(ratatui::style::Style::default().bg(theme.colors.surface_dim));
+        frame.render_widget(toast_widget, vertical[new_toast_idx]);
     }
 
     let show_sidebar = app.layout.sidebar_visible && area.width >= MIN_SIDEBAR_TERMINAL_WIDTH;
