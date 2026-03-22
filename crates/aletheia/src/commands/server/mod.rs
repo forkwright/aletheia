@@ -365,6 +365,7 @@ pub(crate) async fn run(args: Args) -> Result<()> {
                 server_tools: Vec::new(),
                 cache_enabled: resolved.capabilities.cache_enabled,
                 recall: resolved.recall.into(),
+                tool_allowlist: None,
             };
             nous_manager
                 .spawn(

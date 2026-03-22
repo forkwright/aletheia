@@ -42,6 +42,8 @@ pub mod metrics;
 pub mod pipeline;
 /// Semantic recall stage: vector search over knowledge memories.
 pub mod recall;
+/// Specialized role templates for ephemeral sub-agents.
+pub mod roles;
 /// Session state tracking within a nous actor.
 pub mod session;
 /// Skill loading: queries mneme for task-relevant skills and injects them as bootstrap sections.
