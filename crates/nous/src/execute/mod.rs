@@ -15,7 +15,7 @@ use aletheia_hermeneus::health::ProviderHealth;
 use aletheia_hermeneus::provider::{LlmProvider, ProviderRegistry};
 use aletheia_hermeneus::types::{
     CompletionRequest, Content, ContentBlock, Message, Role, ServerToolDefinition, StopReason,
-    ThinkingConfig,
+    ThinkingConfig, ToolResultContent,
 };
 use aletheia_koina::id::ToolName;
 use aletheia_organon::registry::ToolRegistry;
@@ -190,7 +190,11 @@ pub async fn execute(
         }
 
         let (active, server_tools) = resolve_active_server_tools(tool_ctx, config);
-        let tool_defs = tools.to_hermeneus_tools_filtered(&active);
+        let mut tool_defs = tools.to_hermeneus_tools_filtered(&active);
+
+        if let Some(allowlist) = &config.tool_allowlist {
+            tool_defs.retain(|td| allowlist.iter().any(|a| a == &td.name));
+        }
 
         let request = CompletionRequest {
             model: config.generation.model.clone(),
@@ -248,11 +252,37 @@ pub async fn execute(
             content: Content::Blocks(response_content),
         });
 
+        // WHY: belt-and-suspenders enforcement of role tool restrictions at execution time,
+        // in addition to the presentation-level filtering above
+        let mut denied_blocks: Vec<ContentBlock> = Vec::new();
+        let effective_tool_uses: Vec<_> = if let Some(allowlist) = &config.tool_allowlist {
+            let (allowed, denied): (Vec<_>, Vec<_>) = extracted
+                .tool_uses
+                .into_iter()
+                .partition(|(_, name, _)| allowlist.iter().any(|a| a == name));
+
+            for (id, name, _) in &denied {
+                warn!(tool = %name, tool_use_id = %id, "tool call denied by role policy");
+                denied_blocks.push(ContentBlock::ToolResult {
+                    tool_use_id: id.clone(),
+                    content: ToolResultContent::Text(format!(
+                        "Tool '{name}' is not available for this role. Available tools: {}",
+                        allowlist.join(", ")
+                    )),
+                    is_error: Some(true),
+                });
+            }
+
+            allowed
+        } else {
+            extracted.tool_uses
+        };
+
         let DispatchResult {
             mut blocks,
             loop_warning,
         } = dispatch_tools(
-            &extracted.tool_uses,
+            &effective_tool_uses,
             tools,
             tool_ctx,
             &mut loop_detector,
@@ -261,6 +291,8 @@ pub async fn execute(
             config.limits.max_tool_result_bytes,
         )
         .await?;
+
+        blocks.extend(denied_blocks);
 
         if let Some(ref warning) = loop_warning {
             debug!(warning = warning.as_str(), "loop warning injected");
@@ -348,7 +380,10 @@ pub async fn execute_streaming(
             budget_tokens: config.generation.thinking_budget,
         });
 
-    let tool_defs = tools.to_hermeneus_tools();
+    let mut tool_defs = tools.to_hermeneus_tools();
+    if let Some(allowlist) = &config.tool_allowlist {
+        tool_defs.retain(|td| allowlist.iter().any(|a| a == &td.name));
+    }
 
     loop {
         iterations += 1;
@@ -429,11 +464,35 @@ pub async fn execute_streaming(
             content: Content::Blocks(response_content),
         });
 
+        let mut denied_blocks: Vec<ContentBlock> = Vec::new();
+        let effective_tool_uses: Vec<_> = if let Some(allowlist) = &config.tool_allowlist {
+            let (allowed, denied): (Vec<_>, Vec<_>) = extracted
+                .tool_uses
+                .into_iter()
+                .partition(|(_, name, _)| allowlist.iter().any(|a| a == name));
+
+            for (id, name, _) in &denied {
+                warn!(tool = %name, tool_use_id = %id, "tool call denied by role policy");
+                denied_blocks.push(ContentBlock::ToolResult {
+                    tool_use_id: id.clone(),
+                    content: ToolResultContent::Text(format!(
+                        "Tool '{name}' is not available for this role. Available tools: {}",
+                        allowlist.join(", ")
+                    )),
+                    is_error: Some(true),
+                });
+            }
+
+            allowed
+        } else {
+            extracted.tool_uses
+        };
+
         let DispatchResult {
             mut blocks,
             loop_warning,
         } = dispatch_tools_streaming(
-            &extracted.tool_uses,
+            &effective_tool_uses,
             tools,
             tool_ctx,
             &mut loop_detector,
@@ -443,6 +502,8 @@ pub async fn execute_streaming(
             config.limits.max_tool_result_bytes,
         )
         .await?;
+
+        blocks.extend(denied_blocks);
 
         if let Some(ref warning) = loop_warning {
             debug!(warning = warning.as_str(), "loop warning injected");

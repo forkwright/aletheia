@@ -108,6 +108,13 @@ pub struct NousConfig {
     /// Per-agent recall pipeline configuration.
     #[serde(default)]
     pub recall: RecallConfig,
+    /// Tool allowlist for sub-agent role enforcement.
+    ///
+    /// When `Some`, only the listed tool names are available during execution.
+    /// When `None`, all registered tools are available. Set by role templates
+    /// during ephemeral sub-agent spawning.
+    #[serde(default)]
+    pub tool_allowlist: Option<Vec<String>>,
 }
 
 fn default_cache_enabled() -> bool {
@@ -145,6 +152,7 @@ impl Default for NousConfig {
             server_tools: Vec::new(),
             cache_enabled: true,
             recall: RecallConfig::default(),
+            tool_allowlist: None,
         }
     }
 }
@@ -288,6 +296,7 @@ mod tests {
             server_tools: Vec::new(),
             cache_enabled: false,
             recall: RecallConfig::default(),
+            tool_allowlist: None,
         };
         assert_eq!(config.name.as_deref(), Some("Chiron"));
         assert!(config.generation.thinking_enabled);

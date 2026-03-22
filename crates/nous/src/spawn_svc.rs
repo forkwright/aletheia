@@ -15,15 +15,13 @@ use aletheia_taxis::oikos::Oikos;
 
 use crate::actor;
 use crate::config::{NousConfig, PipelineConfig, StageBudget};
+use crate::roles::Role;
 
 const SONNET_MODEL: &str = "claude-sonnet-4-20250514";
-const HAIKU_MODEL: &str = "claude-haiku-4-5-20251001";
 
-fn model_for_role(role: &str) -> &'static str {
-    match role {
-        "explorer" | "runner" => HAIKU_MODEL,
-        _ => SONNET_MODEL,
-    }
+/// Resolve role from string, returning typed role or falling back to model heuristic.
+fn resolve_role(role_str: &str) -> Option<Role> {
+    Role::parse(role_str)
 }
 
 /// Concrete [`SpawnService`] that bridges to `actor::spawn`.
@@ -63,10 +61,20 @@ impl SpawnService for SpawnServiceImpl {
             parent_nous_id,
             ulid::Ulid::new().to_string().to_lowercase()
         );
-        let model = request
-            .model
+        let role = resolve_role(&request.role);
+        let template = role.map(Role::template);
+
+        let model = request.model.clone().unwrap_or_else(|| {
+            template
+                .as_ref()
+                .map_or_else(|| SONNET_MODEL.to_owned(), |t| t.model.to_owned())
+        });
+
+        let tool_allowlist = request
+            .allowed_tools
             .clone()
-            .unwrap_or_else(|| model_for_role(&request.role).to_owned());
+            .or_else(|| template.as_ref().and_then(|t| t.tool_policy.to_allowlist()));
+
         let timeout = Duration::from_secs(request.timeout_secs);
         let task = request.task.clone();
         let session_key = format!("spawn:{}", ulid::Ulid::new().to_string().to_lowercase());
@@ -96,6 +104,7 @@ impl SpawnService for SpawnServiceImpl {
             server_tools: Vec::new(),
             cache_enabled: true,
             recall: crate::recall::RecallConfig::default(),
+            tool_allowlist,
         };
 
         let pipeline_config = PipelineConfig {
@@ -114,7 +123,13 @@ impl SpawnService for SpawnServiceImpl {
             spawn.role = %request.role,
         );
 
-        let role_desc = request.role.clone();
+        let soul_content = template.as_ref().map_or_else(
+            || {
+                let role_str = request.role.clone();
+                format!("You are an ephemeral {role_str} sub-agent. Complete the assigned task precisely and concisely.")
+            },
+            |t| t.system_prompt.to_owned(),
+        );
 
         Box::pin(
             async move {
@@ -123,12 +138,7 @@ impl SpawnService for SpawnServiceImpl {
                     return Err(format!("failed to create spawn workspace: {e}"));
                 }
                 let soul_path = nous_dir.join("SOUL.md");
-                if let Err(e) = tokio::fs::write(
-                    &soul_path,
-                    format!("You are an ephemeral {role_desc} sub-agent. Complete the assigned task precisely and concisely."),
-                )
-                .await
-                {
+                if let Err(e) = tokio::fs::write(&soul_path, &soul_content).await {
                     return Err(format!("failed to write SOUL.md: {e}"));
                 }
 
@@ -177,10 +187,7 @@ impl SpawnService for SpawnServiceImpl {
                     Err(_elapsed) => {
                         warn!(timeout_secs = timeout.as_secs(), "sub-agent timed out");
                         Ok(SpawnResult {
-                            content: format!(
-                                "Sub-agent timed out after {}s",
-                                timeout.as_secs()
-                            ),
+                            content: format!("Sub-agent timed out after {}s", timeout.as_secs()),
                             is_error: true,
                             input_tokens: 0,
                             output_tokens: 0,
@@ -266,14 +273,18 @@ mod tests {
         assert_eq!(result.output_tokens, 80);
     }
 
-    #[tokio::test]
-    async fn spawn_uses_role_default_model() {
-        assert_eq!(model_for_role("coder"), SONNET_MODEL);
-        assert_eq!(model_for_role("reviewer"), SONNET_MODEL);
-        assert_eq!(model_for_role("researcher"), SONNET_MODEL);
-        assert_eq!(model_for_role("explorer"), HAIKU_MODEL);
-        assert_eq!(model_for_role("runner"), HAIKU_MODEL);
-        assert_eq!(model_for_role("unknown"), SONNET_MODEL);
+    #[test]
+    fn spawn_uses_role_default_model() {
+        use crate::roles::Role;
+        assert_eq!(Role::Coder.template().model, "claude-sonnet-4-20250514");
+        assert_eq!(Role::Reviewer.template().model, "claude-opus-4-20250514");
+        assert_eq!(
+            Role::Researcher.template().model,
+            "claude-sonnet-4-20250514"
+        );
+        assert_eq!(Role::Explorer.template().model, "claude-haiku-4-5-20251001");
+        assert_eq!(Role::Runner.template().model, "claude-haiku-4-5-20251001");
+        assert!(resolve_role("unknown").is_none());
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -343,20 +354,19 @@ mod tests {
     }
 
     #[test]
-    fn model_for_role_defaults_to_sonnet() {
-        assert_eq!(model_for_role(""), SONNET_MODEL);
-        assert_eq!(model_for_role("analyst"), SONNET_MODEL);
-        assert_eq!(model_for_role("planner"), SONNET_MODEL);
+    fn resolve_role_known_roles() {
+        assert!(resolve_role("coder").is_some());
+        assert!(resolve_role("reviewer").is_some());
+        assert!(resolve_role("researcher").is_some());
+        assert!(resolve_role("explorer").is_some());
+        assert!(resolve_role("runner").is_some());
     }
 
     #[test]
-    fn model_for_role_explorer_uses_haiku() {
-        assert_eq!(model_for_role("explorer"), HAIKU_MODEL);
-    }
-
-    #[test]
-    fn model_for_role_runner_uses_haiku() {
-        assert_eq!(model_for_role("runner"), HAIKU_MODEL);
+    fn resolve_role_unknown_returns_none() {
+        assert!(resolve_role("").is_none());
+        assert!(resolve_role("analyst").is_none());
+        assert!(resolve_role("planner").is_none());
     }
 
     #[tokio::test]
