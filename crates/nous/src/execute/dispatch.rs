@@ -13,8 +13,16 @@ use aletheia_organon::registry::ToolRegistry;
 use aletheia_organon::types::{ToolContext, ToolInput};
 
 use crate::error;
-use crate::pipeline::{InteractionSignal, LoopDetector, ToolCall};
+use crate::pipeline::{InteractionSignal, LoopDetector, LoopVerdict, ToolCall};
 use crate::stream::TurnStreamEvent;
+
+/// Result of dispatching tool calls, including optional loop warning.
+pub(super) struct DispatchResult {
+    /// Tool result content blocks to send back to the LLM.
+    pub blocks: Vec<ContentBlock>,
+    /// Loop warning message to inject into conversation, if detected.
+    pub loop_warning: Option<String>,
+}
 
 /// Truncate a tool result if it exceeds `max_bytes`.
 ///
@@ -188,6 +196,10 @@ pub(super) fn build_messages(
 }
 
 /// Dispatch tool calls from an LLM response and collect results.
+///
+/// Records each tool call in the loop detector AFTER execution (so error
+/// status is known). On [`LoopVerdict::Warn`], stops processing remaining
+/// tools and returns the warning. On [`LoopVerdict::Halt`], returns an error.
 pub(super) async fn dispatch_tools(
     tool_uses: &[(String, String, serde_json::Value)],
     tools: &ToolRegistry,
@@ -196,19 +208,10 @@ pub(super) async fn dispatch_tools(
     all_tool_calls: &mut Vec<ToolCall>,
     iterations: u32,
     max_tool_result_bytes: u32,
-) -> error::Result<Vec<ContentBlock>> {
+) -> error::Result<DispatchResult> {
     let mut tool_results: Vec<ContentBlock> = Vec::new();
 
     for (tool_id, tool_name, tool_input) in tool_uses {
-        let input_hash = simple_hash(tool_input);
-        if let Some(pattern) = loop_detector.record(tool_name, &input_hash) {
-            return Err(error::LoopDetectedSnafu {
-                iterations,
-                pattern,
-            }
-            .build());
-        }
-
         let tool_name_id = ToolName::new(tool_name.as_str()).map_err(|_err| {
             error::PipelineStageSnafu {
                 stage: "execute",
@@ -262,9 +265,30 @@ pub(super) async fn dispatch_tools(
             content,
             is_error: Some(is_error),
         });
+
+        let input_hash = simple_hash(tool_input);
+        match loop_detector.record(tool_name, &input_hash, is_error) {
+            LoopVerdict::Ok => {}
+            LoopVerdict::Warn { message, .. } => {
+                return Ok(DispatchResult {
+                    blocks: tool_results,
+                    loop_warning: Some(message),
+                });
+            }
+            LoopVerdict::Halt { pattern, .. } => {
+                return Err(error::LoopDetectedSnafu {
+                    iterations,
+                    pattern,
+                }
+                .build());
+            }
+        }
     }
 
-    Ok(tool_results)
+    Ok(DispatchResult {
+        blocks: tool_results,
+        loop_warning: None,
+    })
 }
 
 /// Dispatch tool calls with streaming events emitted to the channel.
@@ -281,19 +305,10 @@ pub(super) async fn dispatch_tools_streaming(
     iterations: u32,
     stream_tx: &mpsc::Sender<TurnStreamEvent>,
     max_tool_result_bytes: u32,
-) -> error::Result<Vec<ContentBlock>> {
+) -> error::Result<DispatchResult> {
     let mut tool_results: Vec<ContentBlock> = Vec::new();
 
     for (tool_id, tool_name, tool_input) in tool_uses {
-        let input_hash = simple_hash(tool_input);
-        if let Some(pattern) = loop_detector.record(tool_name, &input_hash) {
-            return Err(error::LoopDetectedSnafu {
-                iterations,
-                pattern,
-            }
-            .build());
-        }
-
         let tool_name_id = ToolName::new(tool_name.as_str()).map_err(|_err| {
             error::PipelineStageSnafu {
                 stage: "execute",
@@ -362,9 +377,30 @@ pub(super) async fn dispatch_tools_streaming(
             content,
             is_error: Some(is_error),
         });
+
+        let input_hash = simple_hash(tool_input);
+        match loop_detector.record(tool_name, &input_hash, is_error) {
+            LoopVerdict::Ok => {}
+            LoopVerdict::Warn { message, .. } => {
+                return Ok(DispatchResult {
+                    blocks: tool_results,
+                    loop_warning: Some(message),
+                });
+            }
+            LoopVerdict::Halt { pattern, .. } => {
+                return Err(error::LoopDetectedSnafu {
+                    iterations,
+                    pattern,
+                }
+                .build());
+            }
+        }
     }
 
-    Ok(tool_results)
+    Ok(DispatchResult {
+        blocks: tool_results,
+        loop_warning: None,
+    })
 }
 
 #[cfg(test)]
