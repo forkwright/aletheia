@@ -12,7 +12,9 @@
 
 use aletheia_koina::id::ToolName;
 use aletheia_organon::testing::{MockToolExecutor, ToolExecutorSpec, make_test_context};
-use aletheia_organon::types::{InputSchema, PropertyDef, PropertyType, ToolCategory, ToolDef};
+use aletheia_organon::types::{
+    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolDef,
+};
 use indexmap::IndexMap;
 
 fn echo_def() -> ToolDef {
@@ -25,6 +27,7 @@ fn echo_def() -> ToolDef {
             required: vec![],
         },
         category: ToolCategory::System,
+        reversibility: Reversibility::Irreversible,
         auto_activate: false,
     }
 }
@@ -49,6 +52,7 @@ fn note_def() -> ToolDef {
             required: vec!["text".to_owned()],
         },
         category: ToolCategory::Memory,
+        reversibility: Reversibility::Irreversible,
         auto_activate: false,
     }
 }

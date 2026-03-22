@@ -31,6 +31,8 @@ pub struct ToolDef {
     pub input_schema: InputSchema,
     /// Semantic category.
     pub category: ToolCategory,
+    /// How reversible this tool's effects are.
+    pub reversibility: Reversibility,
     /// Whether the tool activates automatically by domain without explicit config.
     pub auto_activate: bool,
 }
@@ -133,6 +135,94 @@ impl std::fmt::Display for PropertyType {
             Self::Object => f.write_str("object"),
         }
     }
+}
+
+/// How reversible a tool's effects are.
+///
+/// Used by the approval system to determine which tool calls need confirmation
+/// and whether counterfactual dry-run simulation is meaningful.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum Reversibility {
+    /// Read-only operations with no side effects (ls, read, search).
+    FullyReversible,
+    /// Can be undone (write file with backup, git commit can revert).
+    Reversible,
+    /// Partial undo possible (delete file can restore from backup if exists).
+    PartiallyReversible,
+    /// Cannot be undone (exec with external side effects, API calls, messages).
+    #[default]
+    Irreversible,
+}
+
+impl std::fmt::Display for Reversibility {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::FullyReversible => f.write_str("fully_reversible"),
+            Self::Reversible => f.write_str("reversible"),
+            Self::PartiallyReversible => f.write_str("partially_reversible"),
+            Self::Irreversible => f.write_str("irreversible"),
+        }
+    }
+}
+
+impl Reversibility {
+    /// Whether this tool's effects can be simulated in a dry run.
+    #[must_use]
+    pub fn supports_dry_run(self) -> bool {
+        matches!(self, Self::FullyReversible | Self::Reversible)
+    }
+}
+
+/// What level of approval a tool call requires before execution.
+///
+/// Derived from [`Reversibility`] but can be overridden per-tool.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum ApprovalRequirement {
+    /// No approval needed (read-only, fully reversible).
+    None,
+    /// Approval recommended but not enforced.
+    Advisory,
+    /// Approval required before execution.
+    Required,
+    /// Approval required with explicit confirmation prompt.
+    Mandatory,
+}
+
+impl std::fmt::Display for ApprovalRequirement {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::None => f.write_str("none"),
+            Self::Advisory => f.write_str("advisory"),
+            Self::Required => f.write_str("required"),
+            Self::Mandatory => f.write_str("mandatory"),
+        }
+    }
+}
+
+impl From<Reversibility> for ApprovalRequirement {
+    fn from(rev: Reversibility) -> Self {
+        match rev {
+            Reversibility::FullyReversible => Self::None,
+            Reversibility::Reversible => Self::Advisory,
+            Reversibility::PartiallyReversible => Self::Required,
+            Reversibility::Irreversible => Self::Mandatory,
+        }
+    }
+}
+
+/// Metadata recorded per tool call for session audit trails.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCallMetadata {
+    /// The tool's reversibility classification at call time.
+    pub reversibility: Reversibility,
+    /// The approval requirement that was applied.
+    pub approval: ApprovalRequirement,
+    /// Whether the call was a dry-run simulation.
+    pub dry_run: bool,
 }
 
 /// Semantic tool category: classifies tool purpose.

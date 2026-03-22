@@ -288,7 +288,8 @@ fn import_fact(
 
     if let Ok(embedding) = embedder.embed(&record.content) {
         let chunk = EmbeddedChunk {
-            id: EmbeddingId::new(&format!("emb-{fact_id}")).expect("emb- prefix + ULID is always valid"),
+            id: EmbeddingId::new(&format!("emb-{fact_id}"))
+                .expect("emb- prefix + ULID is always valid"),
             content: record.content.clone(),
             source_type: "fact".to_owned(),
             source_id: fact_id,

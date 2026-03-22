@@ -17,7 +17,7 @@
 use aletheia_koina::id::ToolName;
 use aletheia_organon::registry::ToolRegistry;
 use aletheia_organon::testing::{MockToolExecutor, make_test_context, make_tool_input};
-use aletheia_organon::types::{InputSchema, ToolCategory, ToolDef};
+use aletheia_organon::types::{InputSchema, Reversibility, ToolCategory, ToolDef};
 use indexmap::IndexMap;
 use proptest::prelude::*;
 
@@ -36,6 +36,7 @@ fn make_def(name: &str) -> ToolDef {
             required: vec![],
         },
         category: ToolCategory::System,
+        reversibility: Reversibility::Irreversible,
         auto_activate: false,
     }
 }
