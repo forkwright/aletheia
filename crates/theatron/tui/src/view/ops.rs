@@ -288,7 +288,11 @@ fn render_tool_call(
         }
     } else if tc.status == OpsToolStatus::Running {
         let secs = tc.started_at.elapsed().as_secs();
-        if secs > 0 { Some(format!(" ({secs}s)")) } else { None }
+        if secs > 0 {
+            Some(format!(" ({secs}s)"))
+        } else {
+            None
+        }
     } else {
         None
     };

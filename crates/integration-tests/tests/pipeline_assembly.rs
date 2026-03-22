@@ -8,8 +8,8 @@
 
 use aletheia_nous::config::{NousConfig, PipelineConfig};
 use aletheia_nous::pipeline::{
-    GuardResult, InteractionSignal, LoopDetector, PipelineContext, PipelineInput, PipelineMessage,
-    ToolCall, TurnResult, TurnUsage,
+    GuardResult, InteractionSignal, LoopDetector, LoopVerdict, PipelineContext, PipelineInput,
+    PipelineMessage, ToolCall, TurnResult, TurnUsage,
 };
 use aletheia_nous::session::{SessionManager, SessionState};
 
@@ -44,20 +44,15 @@ fn pipeline_context_guard_blocks_flow() {
 fn loop_detector_integrates_with_guard() {
     let mut detector = LoopDetector::new(3);
 
-    detector.record("exec", "hash1");
-    detector.record("exec", "hash1");
-    let loop_result = detector.record("exec", "hash1");
+    detector.record("exec", "hash1", false);
+    detector.record("exec", "hash1", false);
+    let loop_result = detector.record("exec", "hash1", false);
 
-    let guard = match loop_result {
-        Some(pattern) => GuardResult::LoopDetected { pattern },
-        None => GuardResult::Allow,
-    };
-
-    match guard {
-        GuardResult::LoopDetected { ref pattern } => {
-            assert_eq!(pattern, "exec:hash1");
+    match loop_result {
+        LoopVerdict::Halt { ref pattern, .. } | LoopVerdict::Warn { ref pattern, .. } => {
+            assert!(pattern.contains("exec"));
         }
-        _ => panic!("expected LoopDetected"),
+        LoopVerdict::Ok | _ => panic!("expected Halt or Warn after 3 identical calls"),
     }
 }
 

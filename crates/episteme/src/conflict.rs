@@ -13,7 +13,6 @@
 #![cfg_attr(
     any(feature = "mneme-engine", test),
     expect(
-        clippy::as_conversions,
         clippy::indexing_slicing,
         reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
     )
@@ -229,10 +228,10 @@ pub(crate) fn intra_batch_dedup(
         }
 
         if is_dup {
-            if let Some(idx) = replace_idx {
-                if let Some(slot) = kept.get_mut(idx) {
-                    *slot = fact;
-                }
+            if let Some(idx) = replace_idx
+                && let Some(slot) = kept.get_mut(idx)
+            {
+                *slot = fact;
             }
             dropped += 1;
         } else {

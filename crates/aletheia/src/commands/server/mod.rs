@@ -356,6 +356,8 @@ pub(crate) async fn run(args: Args) -> Result<()> {
                 limits: aletheia_nous::config::NousLimits {
                     max_tool_iterations: resolved.capabilities.max_tool_iterations,
                     loop_detection_threshold: 3,
+                    consecutive_error_threshold: 4,
+                    loop_max_warnings: 2,
                     session_token_cap: 500_000,
                     max_tool_result_bytes: resolved.limits.max_tool_result_bytes,
                 },

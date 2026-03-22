@@ -14,6 +14,13 @@ pub(crate) enum InitError {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+    #[cfg(feature = "tui")]
+    #[snafu(display("setup wizard failed: {message}"))]
+    TuiWizard {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
     #[snafu(display("ANTHROPIC_API_KEY not set"))]
     MissingApiKey {
         source: std::env::VarError,
@@ -173,6 +180,45 @@ pub(crate) fn run(args: RunArgs) -> Result<(), InitError> {
         }
     } else {
         let root = root.unwrap_or_else(|| PathBuf::from("./instance"));
+
+        #[cfg(feature = "tui")]
+        if theatron_tui::wizard::is_tty() {
+            let preset_key = api_key.as_ref().map(|k| k.expose_secret().to_owned());
+            let wa = theatron_tui::run_wizard(Some(root.clone()), preset_key).map_err(|e| {
+                TuiWizardSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
+            let root_path = wa.root.clone();
+            let config_path = root_path.join("config/aletheia.toml");
+            if config_path.exists() {
+                let overwrite: bool = cliclack::confirm("Instance already exists. Overwrite?")
+                    .initial_value(false)
+                    .interact()
+                    .context(PromptSnafu)?;
+                if !overwrite {
+                    cliclack::outro_cancel("Aborted.").context(PromptSnafu)?;
+                    return Ok(());
+                }
+            }
+            let answers = wizard_answers_to_answers(&wa);
+            scaffold(&answers)?;
+            write_user_profile_from_wizard(&wa)?;
+            cliclack::outro(format!(
+                "Done! Start the server:\n\
+                 \n\
+                 \x1b[36m  aletheia -r {}\x1b[0m\n\
+                 \n\
+                 Then connect in another terminal:\n\
+                 \n\
+                 \x1b[36m  aletheia tui\x1b[0m",
+                root_path.display()
+            ))
+            .context(PromptSnafu)?;
+            return Ok(());
+        }
+
         collect_interactive(Answers {
             root,
             api_key,
@@ -323,3 +369,58 @@ mod scaffold;
 
 use helpers::{capitalize, detect_timezone};
 use scaffold::scaffold;
+
+#[cfg(feature = "tui")]
+fn wizard_answers_to_answers(wa: &theatron_tui::wizard::WizardAnswers) -> Answers {
+    use aletheia_koina::secret::SecretString;
+    Answers {
+        root: wa.root.clone(),
+        api_key: wa.api_key.clone().map(SecretString::from),
+        api_provider: wa.api_provider.clone(),
+        model: wa.model.clone(),
+        agent_id: wa.agent_id.clone(),
+        agent_name: wa.agent_name.clone(),
+        bind: wa.bind.clone(),
+        auth_mode: wa.auth_mode.clone(),
+        timezone: wa.timezone.clone(),
+        credential_source: wa.credential_source.clone(),
+    }
+}
+
+/// Write operator profile data collected by the TUI wizard into USER.md.
+///
+/// Replaces placeholder lines in the template with actual name, role, and
+/// timezone so the agent has real context from first run.
+#[cfg(feature = "tui")]
+fn write_user_profile_from_wizard(
+    wa: &theatron_tui::wizard::WizardAnswers,
+) -> Result<(), InitError> {
+    if wa.user_name.is_empty() && wa.user_role.is_empty() {
+        return Ok(());
+    }
+
+    let user_md_path = wa.root.join(format!("nous/{}/USER.md", wa.agent_id));
+    if !user_md_path.exists() {
+        return Ok(());
+    }
+
+    let content = std::fs::read_to_string(&user_md_path).context(WriteFileSnafu {
+        path: user_md_path.clone(),
+    })?;
+
+    let updated = content
+        .replace(
+            "- **Name:** (learned from conversation)",
+            &format!("- **Name:** {}", wa.user_name),
+        )
+        .replace(
+            "- **Role:** (learned from conversation)",
+            &format!("- **Role:** {}", wa.user_role),
+        )
+        .replace(
+            "- **Timezone:** (detected from system or learned)",
+            &format!("- **Timezone:** {}", wa.timezone),
+        );
+
+    std::fs::write(&user_md_path, updated).context(WriteFileSnafu { path: user_md_path })
+}

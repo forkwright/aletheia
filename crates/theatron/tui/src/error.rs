@@ -57,6 +57,10 @@ pub enum Error {
     /// SSE protocol state machine received an event out of sequence.
     #[snafu(display("protocol mismatch: {detail}"))]
     ProtocolMismatch { detail: String },
+
+    /// The user aborted the setup wizard (pressed Esc or Ctrl+C).
+    #[snafu(display("setup wizard aborted"))]
+    WizardAborted,
 }
 
 pub(crate) type Result<T, E = Error> = std::result::Result<T, E>;

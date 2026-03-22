@@ -24,6 +24,8 @@ mod state;
 mod theme;
 mod update;
 mod view;
+/// Setup wizard for first-run instance initialization.
+pub mod wizard;
 
 use crossterm::event::EventStream;
 use crossterm::{
@@ -41,6 +43,19 @@ use crate::config::Config;
 use crate::error::{IoSnafu, LogDirectiveSnafu};
 use crate::events::Event;
 use crate::hyperlink::OscLink;
+
+/// Run the interactive TUI setup wizard for first-run instance initialization.
+///
+/// Returns [`wizard::WizardAnswers`] when the user confirms on the final step.
+/// Returns [`error::Error::WizardAborted`] if the user presses Esc or Ctrl+C.
+///
+/// Call [`wizard::is_tty`] first to verify the terminal supports interactive input.
+pub fn run_wizard(
+    root: Option<std::path::PathBuf>,
+    api_key: Option<String>,
+) -> Result<wizard::WizardAnswers, error::Error> {
+    wizard::run(root, api_key)
+}
 
 /// Entry point for the TUI, callable from the main `aletheia` binary or standalone.
 ///
