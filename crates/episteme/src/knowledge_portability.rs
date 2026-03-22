@@ -7,8 +7,12 @@
     )
 )]
 
+#[cfg(feature = "mneme-engine")]
+use snafu::ResultExt;
+#[cfg(feature = "mneme-engine")]
 use tracing::{info, instrument, warn};
 
+#[cfg(feature = "mneme-engine")]
 use crate::error::Result;
 
 /// Build a `KnowledgeExport` from the knowledge store.
@@ -63,7 +67,8 @@ fn query_all_entities(
         if row.len() < 6 {
             continue;
         }
-        let id = crate::id::EntityId::new_unchecked(row[0].get_str().unwrap_or_default());
+        let id = crate::id::EntityId::new(row[0].get_str().unwrap_or_default())
+            .context(crate::error::InvalidIdSnafu)?;
         let name = row[1].get_str().unwrap_or_default().to_owned();
         let entity_type = row[2].get_str().unwrap_or_default().to_owned();
         let aliases_str = row[3].get_str().unwrap_or_default();
@@ -107,8 +112,10 @@ fn query_all_relationships(
         if row.len() < 5 {
             continue;
         }
-        let src = crate::id::EntityId::new_unchecked(row[0].get_str().unwrap_or_default());
-        let dst = crate::id::EntityId::new_unchecked(row[1].get_str().unwrap_or_default());
+        let src = crate::id::EntityId::new(row[0].get_str().unwrap_or_default())
+            .context(crate::error::InvalidIdSnafu)?;
+        let dst = crate::id::EntityId::new(row[1].get_str().unwrap_or_default())
+            .context(crate::error::InvalidIdSnafu)?;
         let relation = row[2].get_str().unwrap_or_default().to_owned();
         let weight = row[3].get_float().unwrap_or(0.0);
         let created_at = crate::knowledge::parse_timestamp(row[4].get_str().unwrap_or_default())

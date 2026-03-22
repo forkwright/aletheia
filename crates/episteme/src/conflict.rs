@@ -344,8 +344,14 @@ pub(crate) fn retrieve_candidates(
                 _ => EpistemicTier::Assumed,
             };
 
+            let existing_fact_id = FactId::new(fact_id.clone()).map_err(|e| {
+                CandidateRetrievalSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
             candidates.push(ConflictCandidate {
-                existing_fact_id: FactId::from(fact_id.clone()),
+                existing_fact_id,
                 existing_content: content,
                 existing_confidence: confidence,
                 existing_tier: tier,

@@ -18,7 +18,7 @@ mod engine_tests {
 
     fn make_entity(id: &str, name: &str) -> Entity {
         Entity {
-            id: crate::id::EntityId::new_unchecked(id),
+            id: crate::id::EntityId::new(id).expect("valid test id"),
             name: name.to_owned(),
             entity_type: "person".to_owned(),
             aliases: vec![],
@@ -29,8 +29,8 @@ mod engine_tests {
 
     fn make_relationship(src: &str, dst: &str, relation: &str, weight: f64) -> Relationship {
         Relationship {
-            src: crate::id::EntityId::new_unchecked(src),
-            dst: crate::id::EntityId::new_unchecked(dst),
+            src: crate::id::EntityId::new(src).expect("valid test id"),
+            dst: crate::id::EntityId::new(dst).expect("valid test id"),
             relation: relation.to_owned(),
             weight,
             created_at: jiff::Timestamp::now(),

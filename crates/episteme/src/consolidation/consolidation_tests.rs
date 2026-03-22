@@ -70,7 +70,7 @@ fn consolidation_config_defaults() {
 #[test]
 fn trigger_type_labels() {
     let entity = ConsolidationTrigger::EntityOverflow {
-        entity_id: EntityId::from("e-1"),
+        entity_id: EntityId::new("e-1").expect("valid test id"),
         fact_count: 15,
     };
     assert_eq!(
@@ -191,13 +191,13 @@ fn extract_json_array_none() {
 fn user_message_formatting() {
     let facts = vec![
         (
-            FactId::from("f-1"),
+            FactId::new("f-1").expect("valid test id"),
             "Alice works at Acme".to_owned(),
             0.9,
             "2026-01-01T00:00:00Z".to_owned(),
         ),
         (
-            FactId::from("f-2"),
+            FactId::new("f-2").expect("valid test id"),
             "Alice likes Rust".to_owned(),
             0.85,
             "2026-01-02T00:00:00Z".to_owned(),
@@ -244,7 +244,7 @@ fn batch_facts_splits_correctly() {
     let facts: Vec<(FactId, String, f64, String)> = (0..7)
         .map(|i| {
             (
-                FactId::from(format!("f-{i}")),
+                FactId::new(format!("f-{i}")).expect("valid test id"),
                 format!("fact {i}"),
                 0.8,
                 "2026-01-01T00:00:00Z".to_owned(),
@@ -280,7 +280,7 @@ fn batch_facts_single_batch() {
     let facts: Vec<(FactId, String, f64, String)> = (0..5)
         .map(|i| {
             (
-                FactId::from(format!("f-{i}")),
+                FactId::new(format!("f-{i}")).expect("valid test id"),
                 format!("fact {i}"),
                 0.8,
                 "2026-01-01T00:00:00Z".to_owned(),
@@ -307,7 +307,10 @@ fn consolidated_fact_serde_roundtrip() {
         content: "Alice is a senior engineer at Acme Corp".to_owned(),
         confidence: 0.95,
         tier: "inferred".to_owned(),
-        source_fact_ids: vec![FactId::from("f-1"), FactId::from("f-2")],
+        source_fact_ids: vec![
+            FactId::new("f-1").expect("valid test id"),
+            FactId::new("f-2").expect("valid test id"),
+        ],
     };
     let json = serde_json::to_string(&fact).expect("serialize");
     let back: ConsolidatedFact = serde_json::from_str(&json).expect("deserialize");
@@ -329,7 +332,7 @@ fn consolidated_fact_serde_roundtrip() {
 #[test]
 fn consolidation_trigger_serde_roundtrip() {
     let trigger = ConsolidationTrigger::EntityOverflow {
-        entity_id: EntityId::from("e-alice"),
+        entity_id: EntityId::new("e-alice").expect("valid test id"),
         fact_count: 15,
     };
     let json = serde_json::to_string(&trigger).expect("serialize");
@@ -398,7 +401,7 @@ fn entity_fact_count_11_triggers_entity_overflow() {
     );
 
     let trigger = ConsolidationTrigger::EntityOverflow {
-        entity_id: EntityId::from("e-alice"),
+        entity_id: EntityId::new("e-alice").expect("valid test id"),
         fact_count,
     };
     assert_eq!(
@@ -497,7 +500,7 @@ fn parse_response_missing_required_content_field_errors() {
 #[test]
 fn batch_single_fact_produces_one_batch_of_one() {
     let facts: Vec<(FactId, String, f64, String)> = vec![(
-        FactId::from("f-1"),
+        FactId::new("f-1").expect("valid test id"),
         "Alice is a software engineer at Acme Corp".to_owned(),
         0.9,
         "2026-01-01T00:00:00Z".to_owned(),
@@ -523,7 +526,7 @@ fn batch_exactly_batch_size_produces_single_batch() {
     let facts: Vec<(FactId, String, f64, String)> = (0..batch_size)
         .map(|i| {
             (
-                FactId::from(format!("f-{i}")),
+                FactId::new(format!("f-{i}")).expect("valid test id"),
                 format!("fact {i} about bob@example.org"),
                 0.8,
                 "2026-01-01T00:00:00Z".to_owned(),
@@ -562,7 +565,7 @@ mod proptests {
             let facts: Vec<(FactId, String, f64, String)> = (0..count)
                 .map(|i| {
                     (
-                        FactId::from(format!("f-{i}")),
+                        FactId::new(format!("f-{i}")).expect("valid test id"),
                         format!("synthetic fact {i}"),
                         0.8,
                         "2026-01-01T00:00:00Z".to_owned(),

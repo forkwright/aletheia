@@ -41,13 +41,6 @@ macro_rules! define_id {
                 Ok(Self(id))
             }
 
-            /// Create without validation: for internal row parsing where
-            /// the ID was already validated on insert.
-            #[must_use]
-            pub fn new_unchecked(id: impl Into<String>) -> Self {
-                Self(id.into())
-            }
-
             /// The underlying string value.
             #[must_use]
             pub fn as_str(&self) -> &str {
@@ -67,17 +60,19 @@ macro_rules! define_id {
             }
         }
 
-        /// Backward-compatibility conversion from `String`.
-        impl From<String> for $name {
-            fn from(s: String) -> Self {
-                Self(s)
+        impl TryFrom<String> for $name {
+            type Error = IdValidationError;
+
+            fn try_from(s: String) -> Result<Self, Self::Error> {
+                Self::new(s)
             }
         }
 
-        /// Backward-compatibility conversion from `&str`.
-        impl From<&str> for $name {
-            fn from(s: &str) -> Self {
-                Self(s.to_owned())
+        impl TryFrom<&str> for $name {
+            type Error = IdValidationError;
+
+            fn try_from(s: &str) -> Result<Self, Self::Error> {
+                Self::new(s)
             }
         }
     };
@@ -136,8 +131,8 @@ mod tests {
 
     #[test]
     fn fact_id_and_entity_id_are_distinct_types() {
-        let fact: FactId = "id-1".into();
-        let entity: EntityId = "id-1".into();
+        let fact = FactId::new("id-1").expect("valid");
+        let entity = EntityId::new("id-1").expect("valid");
         assert_eq!(fact.as_str(), entity.as_str());
     }
 
@@ -187,12 +182,14 @@ mod tests {
     }
 
     #[test]
-    fn from_string_backward_compat() {
-        let id: FactId = "test".into();
+    fn try_from_conversions() {
+        let id = FactId::try_from("test").expect("valid");
         assert_eq!(id.as_str(), "test");
 
-        let id2: FactId = String::from("test2").into();
+        let id2 = FactId::try_from(String::from("test2")).expect("valid");
         assert_eq!(id2.as_str(), "test2");
+
+        assert!(FactId::try_from("").is_err());
     }
 
     #[test]

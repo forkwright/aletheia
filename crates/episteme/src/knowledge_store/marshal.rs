@@ -3,6 +3,7 @@
     clippy::indexing_slicing,
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
 )]
+use snafu::ResultExt;
 #[cfg(feature = "mneme-engine")]
 pub(super) fn fact_to_params(
     fact: &crate::knowledge::Fact,
@@ -341,8 +342,13 @@ pub(super) fn rows_to_facts(
             .unwrap_or(None)
             .and_then(|s| s.parse::<crate::knowledge::ForgetReason>().ok());
 
+        let fact_id = crate::id::FactId::new(id).context(crate::error::InvalidIdSnafu)?;
+        let superseded_by_id = superseded_by
+            .map(crate::id::FactId::new)
+            .transpose()
+            .context(crate::error::InvalidIdSnafu)?;
         out.push(Fact {
-            id: crate::id::FactId::new_unchecked(id),
+            id: fact_id,
             nous_id: if nous_id_col.is_empty() {
                 nous_id.to_owned()
             } else {
@@ -365,7 +371,7 @@ pub(super) fn rows_to_facts(
                 stability_hours,
             },
             lifecycle: crate::knowledge::FactLifecycle {
-                superseded_by: superseded_by.map(crate::id::FactId::new_unchecked),
+                superseded_by: superseded_by_id,
                 is_forgotten,
                 forgotten_at: forgotten_at.and_then(|s| crate::knowledge::parse_timestamp(&s)),
                 forget_reason,
@@ -477,8 +483,13 @@ pub(super) fn rows_to_raw_facts(
             .and_then(|v| extract_optional_str(v).ok())
             .unwrap_or(None)
             .and_then(|s| s.parse::<crate::knowledge::ForgetReason>().ok());
+        let fact_id = crate::id::FactId::new(id).context(crate::error::InvalidIdSnafu)?;
+        let superseded_by_id = superseded_by
+            .map(crate::id::FactId::new)
+            .transpose()
+            .context(crate::error::InvalidIdSnafu)?;
         out.push(Fact {
-            id: crate::id::FactId::new_unchecked(id),
+            id: fact_id,
             nous_id,
             content,
             fact_type,
@@ -497,7 +508,7 @@ pub(super) fn rows_to_raw_facts(
                 stability_hours,
             },
             lifecycle: crate::knowledge::FactLifecycle {
-                superseded_by: superseded_by.map(crate::id::FactId::new_unchecked),
+                superseded_by: superseded_by_id,
                 is_forgotten,
                 forgotten_at: forgotten_at.and_then(|s| crate::knowledge::parse_timestamp(&s)),
                 forget_reason,
@@ -544,8 +555,9 @@ pub(super) fn rows_to_facts_partial(
         })?)?;
         let tier = parse_epistemic_tier(&tier_str);
 
+        let fact_id = crate::id::FactId::new(id).context(crate::error::InvalidIdSnafu)?;
         out.push(Fact {
-            id: crate::id::FactId::new_unchecked(id),
+            id: fact_id,
             nous_id: String::new(),
             content,
             fact_type: String::new(),
@@ -683,8 +695,9 @@ pub(super) fn rows_to_hybrid_results(
             }
             .build()
         })?)?;
+        let fact_id = crate::id::FactId::new(id).context(crate::error::InvalidIdSnafu)?;
         out.push(super::HybridResult {
-            id: crate::id::FactId::new_unchecked(id),
+            id: fact_id,
             rrf_score,
             bm25_rank,
             vec_rank,

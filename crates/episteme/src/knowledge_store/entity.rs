@@ -2,6 +2,8 @@
     clippy::indexing_slicing,
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
 )]
+use snafu::ResultExt;
+
 use super::marshal::{
     entity_to_params, extract_bool, extract_float, extract_int, extract_str, relationship_to_params,
 };
@@ -108,8 +110,10 @@ impl KnowledgeStore {
             let updated_at = crate::knowledge::parse_timestamp(&extract_str(&row[5])?)
                 .unwrap_or_else(jiff::Timestamp::now);
 
+            let id = crate::id::EntityId::new(extract_str(&row[0])?)
+                .context(crate::error::InvalidIdSnafu)?;
             entities.push(crate::knowledge::Entity {
-                id: crate::id::EntityId::new_unchecked(extract_str(&row[0])?),
+                id,
                 name: extract_str(&row[1])?,
                 entity_type: extract_str(&row[2])?,
                 aliases,
@@ -250,9 +254,13 @@ impl KnowledgeStore {
             if row.len() < 9 {
                 continue;
             }
+            let entity_a = crate::id::EntityId::new(extract_str(&row[0])?)
+                .context(crate::error::InvalidIdSnafu)?;
+            let entity_b = crate::id::EntityId::new(extract_str(&row[1])?)
+                .context(crate::error::InvalidIdSnafu)?;
             results.push(crate::dedup::EntityMergeCandidate {
-                entity_a: crate::id::EntityId::new_unchecked(extract_str(&row[0])?),
-                entity_b: crate::id::EntityId::new_unchecked(extract_str(&row[1])?),
+                entity_a,
+                entity_b,
                 name_a: extract_str(&row[2])?,
                 name_b: extract_str(&row[3])?,
                 name_similarity: extract_float(&row[4])?,
@@ -298,9 +306,13 @@ impl KnowledgeStore {
             }
             let merged_at = crate::knowledge::parse_timestamp(&extract_str(&row[6])?)
                 .unwrap_or_else(jiff::Timestamp::now);
+            let canonical_entity_id = crate::id::EntityId::new(extract_str(&row[0])?)
+                .context(crate::error::InvalidIdSnafu)?;
+            let merged_entity_id = crate::id::EntityId::new(extract_str(&row[1])?)
+                .context(crate::error::InvalidIdSnafu)?;
             results.push(crate::dedup::MergeRecord {
-                canonical_entity_id: crate::id::EntityId::new_unchecked(extract_str(&row[0])?),
-                merged_entity_id: crate::id::EntityId::new_unchecked(extract_str(&row[1])?),
+                canonical_entity_id,
+                merged_entity_id,
                 merged_entity_name: extract_str(&row[2])?,
                 merge_score: extract_float(&row[3])?,
                 facts_transferred: u32::try_from(extract_int(&row[4])?).unwrap_or(0),
@@ -406,8 +418,9 @@ impl KnowledgeStore {
 
             let rel_count = self.count_relationships(&id_str)?;
 
+            let id = crate::id::EntityId::new(&id_str).context(crate::error::InvalidIdSnafu)?;
             entities.push(crate::dedup::EntityInfo {
-                id: crate::id::EntityId::new_unchecked(&id_str),
+                id,
                 name,
                 entity_type,
                 aliases,

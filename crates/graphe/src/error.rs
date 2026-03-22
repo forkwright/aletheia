@@ -268,6 +268,14 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// Knowledge-domain identifier validation failed.
+    #[snafu(display("invalid identifier: {source}"))]
+    InvalidId {
+        source: aletheia_eidos::id::IdValidationError,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Result alias using mneme's [`Error`] type.

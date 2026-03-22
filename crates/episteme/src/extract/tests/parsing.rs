@@ -318,7 +318,7 @@ fn persist_round_trip() {
     assert_eq!(result.facts_inserted, 1, "should insert 1 fact");
 
     let neighborhood = store
-        .entity_neighborhood(&crate::id::EntityId::new_unchecked("dr-chen"))
+        .entity_neighborhood(&crate::id::EntityId::new("dr-chen").expect("valid test id"))
         .expect("entity neighborhood query for dr-chen should succeed");
     assert!(
         !neighborhood.rows.is_empty(),
@@ -418,7 +418,7 @@ fn persist_normalizes_relation_type() {
     );
 
     let neighborhood = store
-        .entity_neighborhood(&crate::id::EntityId::new_unchecked("nyx"))
+        .entity_neighborhood(&crate::id::EntityId::new("nyx").expect("valid test id"))
         .expect("entity neighborhood query for nyx should succeed");
     assert!(
         neighborhood
@@ -471,7 +471,7 @@ fn persist_accepts_novel_type() {
     );
 
     let neighborhood = store
-        .entity_neighborhood(&crate::id::EntityId::new_unchecked("nyx"))
+        .entity_neighborhood(&crate::id::EntityId::new("nyx").expect("valid test id"))
         .expect("entity neighborhood query for nyx should succeed");
     assert!(
         neighborhood
