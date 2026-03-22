@@ -134,6 +134,7 @@ pub(crate) fn context_label(app: &App) -> &'static str {
         Some(Overlay::ToolApproval(_)) => "Tool Approval",
         Some(Overlay::PlanApproval(_)) => "Plan Approval",
         Some(Overlay::SystemStatus) => "System Status",
+        Some(Overlay::ContextBudget) => "Context Budget",
         Some(Overlay::Settings(_)) => "Settings",
         Some(Overlay::ContextActions(_)) => "Context Actions",
         Some(Overlay::DiffView(_)) => "Diff Viewer",

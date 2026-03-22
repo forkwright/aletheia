@@ -358,6 +358,7 @@ pub enum OverlayKind {
     #[expect(dead_code, reason = "planned TUI feature")]
     SessionPickerAll,
     SystemStatus,
+    ContextBudget,
     #[expect(dead_code, reason = "planned TUI feature")]
     Settings,
 }
