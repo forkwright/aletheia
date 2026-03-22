@@ -1,12 +1,8 @@
 name: Release Please
 
 on:
-  # WHY: schedule instead of push-on-every-merge. During active dispatch
-  # batches we merge 10-30 PRs/hour. Running release-please on each wastes
-  # CI minutes and creates noise. Hourly is enough to capture all work.
-  schedule:
-    - cron: "0 * * * *"
-  workflow_dispatch:
+  push:
+    branches: [main]
 
 permissions:
   contents: write

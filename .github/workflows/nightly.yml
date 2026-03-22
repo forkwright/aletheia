@@ -5,10 +5,6 @@ on:
     - cron: "0 8 * * *" # 02:00 CST
   workflow_dispatch:
 
-# WHY: Principle of least privilege for CI workflows
-permissions:
-  contents: read
-
 jobs:
   rust-full:
     runs-on: ubuntu-latest
@@ -23,13 +19,13 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Clippy (all features)
-        run: cargo clippy --workspace --exclude theatron-desktop --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
       - name: Test (default features)
-        run: cargo test --workspace --exclude theatron-desktop
+        run: cargo test --workspace
 
       - name: Test (all features)
-        run: cargo test --workspace --exclude theatron-desktop --all-features
+        run: cargo test --workspace --all-features
 
       - name: Audit dependencies
         run: |
