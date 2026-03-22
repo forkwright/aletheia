@@ -21,6 +21,9 @@ embed-candle = ["aletheia-episteme/embed-candle"]
 mneme-engine = ["dep:aletheia-krites", "aletheia-graphe/mneme-engine", "aletheia-episteme/mneme-engine"]
 storage-fjall = ["mneme-engine", "aletheia-episteme/storage-fjall"]
 hnsw_rs = ["aletheia-episteme/hnsw_rs"]
+# Test tiers (see docs/test-tiers.md)
+test-core = ["mneme-engine"]
+test-full = ["test-core", "embed-candle"]
 
 [dependencies]
 aletheia-eidos = { path = "../eidos" }

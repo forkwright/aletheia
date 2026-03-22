@@ -16,6 +16,8 @@ sqlite = ["dep:rusqlite", "dep:sha2"]
 # WHY: gates error variants that reference tokio::task::JoinError; no runtime dep.
 mneme-engine = ["dep:tokio"]
 hnsw_rs = []
+test-core = []
+test-full = []
 
 [dependencies]
 aletheia-eidos = { path = "../eidos" }
