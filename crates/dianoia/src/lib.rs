@@ -23,6 +23,8 @@ pub mod reconciler;
 /// Project lifecycle state machine: valid transitions, pause/resume, and terminal states.
 pub mod state;
 /// Pattern-based stuck detection: repeated errors, same-args loops, alternating failures, escalating retries.
+pub mod research;
+/// Stuck detection: prevent blind retry loops via error-pattern hashing.
 pub mod stuck;
 /// Verification workflow: goal-backward tracing against phase success criteria.
 pub mod verify;
