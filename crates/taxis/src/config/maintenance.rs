@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 
 use super::{EgressPolicy, SandboxEnforcementMode};
 
-// TODO(#1129): Wire retention policy fields when the executor is implemented.
 /// Data retention policy configuration (reserved for future use).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

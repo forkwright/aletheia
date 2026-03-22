@@ -27,7 +27,7 @@ fn test_ts(s: &str) -> jiff::Timestamp {
 
 fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
     Fact {
-        id: crate::id::FactId::new_unchecked(id),
+        id: crate::id::FactId::new(id).expect("valid test id"),
         nous_id: nous_id.to_owned(),
         content: content.to_owned(),
         fact_type: String::new(),
@@ -57,7 +57,7 @@ fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
 
 fn make_entity(id: &str, name: &str, entity_type: &str) -> Entity {
     Entity {
-        id: crate::id::EntityId::new_unchecked(id),
+        id: crate::id::EntityId::new(id).expect("valid test id"),
         name: name.to_owned(),
         entity_type: entity_type.to_owned(),
         aliases: vec![],
@@ -68,8 +68,8 @@ fn make_entity(id: &str, name: &str, entity_type: &str) -> Entity {
 
 fn make_relationship(src: &str, dst: &str, relation: &str, weight: f64) -> Relationship {
     Relationship {
-        src: crate::id::EntityId::new_unchecked(src),
-        dst: crate::id::EntityId::new_unchecked(dst),
+        src: crate::id::EntityId::new(src).expect("valid test id"),
+        dst: crate::id::EntityId::new(dst).expect("valid test id"),
         relation: relation.to_owned(),
         weight,
         created_at: test_ts("2026-03-01T00:00:00Z"),
@@ -162,8 +162,8 @@ proptest! {
 
         let rel_count_before = count_rels(&store);
 
-        let canonical_id = crate::id::EntityId::new_unchecked(format!("e{ci}"));
-        let merged_id = crate::id::EntityId::new_unchecked(format!("e{mi}"));
+        let canonical_id = crate::id::EntityId::new(format!("e{ci}")).expect("valid test id");
+        let merged_id = crate::id::EntityId::new(format!("e{mi}")).expect("valid test id");
 
         store
             .execute_merge(&canonical_id, &merged_id)
@@ -319,7 +319,7 @@ mod merge {
 
             for i in 0..n {
                 let entity = Entity {
-                    id: EntityId::new_unchecked(format!("e{i}")),
+                    id: EntityId::new(format!("e{i}")).expect("valid test id"),
                     name: format!("entity-{i}"),
                     entity_type: "concept".to_owned(),
                     aliases: vec![],
@@ -336,8 +336,8 @@ mod merge {
                     continue;
                 }
                 let rel = Relationship {
-                    src: EntityId::new_unchecked(format!("e{src_idx}")),
-                    dst: EntityId::new_unchecked(format!("e{dst_idx}")),
+                    src: EntityId::new(format!("e{src_idx}")).expect("valid test id"),
+                    dst: EntityId::new(format!("e{dst_idx}")).expect("valid test id"),
                     relation: RELATION_TYPES[rel_type_idx % RELATION_TYPES.len()].to_owned(),
                     weight: 0.8,
                     created_at: now,
@@ -352,8 +352,8 @@ mod merge {
             );
             let rel_count_before = count_all_rels(&store);
 
-            let canonical_id = EntityId::new_unchecked(format!("e{canonical_idx}"));
-            let merged_id = EntityId::new_unchecked(format!("e{merged_idx}"));
+            let canonical_id = EntityId::new(format!("e{canonical_idx}")).expect("valid test id");
+            let merged_id = EntityId::new(format!("e{merged_idx}")).expect("valid test id");
 
             store
                 .execute_merge(&canonical_id, &merged_id)

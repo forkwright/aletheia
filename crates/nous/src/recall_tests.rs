@@ -318,7 +318,7 @@ mod knowledge_bridge_tests {
 
     fn make_chunk(id: &str, content: &str, embedding: Vec<f32>) -> EmbeddedChunk {
         EmbeddedChunk {
-            id: id.into(),
+            id: aletheia_mneme::id::EmbeddingId::new(id).expect("valid test id"),
             content: content.to_owned(),
             source_type: "fact".to_owned(),
             source_id: format!("fact-{id}"),

@@ -396,7 +396,13 @@ async fn run_skill_extraction(
                 match pending.to_json() {
                     Ok(content) => {
                         let fact_id =
-                            aletheia_mneme::id::FactId::from(ulid::Ulid::new().to_string());
+                            match aletheia_mneme::id::FactId::new(ulid::Ulid::new().to_string()) {
+                                Ok(id) => id,
+                                Err(e) => {
+                                    warn!(error = %e, "failed to create fact ID for skill");
+                                    return;
+                                }
+                            };
                         let now = jiff::Timestamp::now();
                         use aletheia_mneme::knowledge::{
                             FactAccess, FactLifecycle, FactProvenance, FactTemporal,

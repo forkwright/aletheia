@@ -27,7 +27,7 @@ fn test_ts(s: &str) -> jiff::Timestamp {
 
 fn make_fact(id: &str, nous_id: &str, content: &str) -> crate::knowledge::Fact {
     crate::knowledge::Fact {
-        id: crate::id::FactId::new_unchecked(id),
+        id: crate::id::FactId::new(id).expect("valid test id"),
         nous_id: nous_id.to_owned(),
         content: content.to_owned(),
         fact_type: String::new(),
@@ -87,7 +87,7 @@ fn audit_all_facts_returns_forgotten() {
     store.insert_fact(&f2).expect("insert f2");
     store
         .forget_fact(
-            &crate::id::FactId::new_unchecked("f2"),
+            &crate::id::FactId::new("f2").expect("valid test id"),
             ForgetReason::UserRequested,
         )
         .expect("forget f2");
@@ -121,13 +121,13 @@ fn forget_already_forgotten_is_idempotent() {
     store.insert_fact(&f1).expect("insert f1");
     store
         .forget_fact(
-            &crate::id::FactId::new_unchecked("f1"),
+            &crate::id::FactId::new("f1").expect("valid test id"),
             ForgetReason::Outdated,
         )
         .expect("first forget");
     store
         .forget_fact(
-            &crate::id::FactId::new_unchecked("f1"),
+            &crate::id::FactId::new("f1").expect("valid test id"),
             ForgetReason::Outdated,
         )
         .expect("second forget should not panic");
@@ -149,7 +149,7 @@ fn unforget_never_forgotten_is_noop() {
     let f1 = make_fact("f1", "agent-a", "never forgotten");
     store.insert_fact(&f1).expect("insert f1");
     store
-        .unforget_fact(&crate::id::FactId::new_unchecked("f1"))
+        .unforget_fact(&crate::id::FactId::new("f1").expect("valid test id"))
         .expect("unforget should succeed");
     let results = store
         .query_facts("agent-a", "2026-06-01", 10)
@@ -169,7 +169,7 @@ fn unforget_never_forgotten_is_noop() {
 fn forget_nonexistent_fact_is_err() {
     let store = make_store();
     let result = store.forget_fact(
-        &crate::id::FactId::new_unchecked("nonexistent"),
+        &crate::id::FactId::new("nonexistent").expect("valid test id"),
         ForgetReason::UserRequested,
     );
     assert!(
@@ -193,7 +193,10 @@ fn forget_with_all_reasons() {
     }
     for (id, reason) in &reasons {
         store
-            .forget_fact(&crate::id::FactId::new_unchecked(*id), *reason)
+            .forget_fact(
+                &crate::id::FactId::new(*id).expect("valid test id"),
+                *reason,
+            )
             .expect("forget");
     }
     let all = store.audit_all_facts("agent-a", 100).expect("audit");
@@ -359,7 +362,7 @@ fn retrieve_nonexistent_fact() {
 fn forget_nonexistent_fact_returns_error() {
     let store = make_store();
     let result = store.forget_fact(
-        &crate::id::FactId::new_unchecked("nonexistent"),
+        &crate::id::FactId::new("nonexistent").expect("valid test id"),
         ForgetReason::UserRequested,
     );
     assert!(result.is_err(), "forgetting a non-existent fact must error");
@@ -373,7 +376,7 @@ fn concurrent_inserts() {
             let s = Arc::clone(&store);
             std::thread::spawn(move || {
                 let fact = Fact {
-                    id: crate::id::FactId::new_unchecked(format!("f-concurrent-{i}")),
+                    id: crate::id::FactId::new(format!("f-concurrent-{i}")).expect("valid test id"),
                     nous_id: "agent-a".to_owned(),
                     content: format!("Concurrent fact {i}"),
                     fact_type: String::new(),
@@ -550,7 +553,7 @@ async fn audit_all_facts_async_works() {
         .expect("insert");
     store
         .forget_fact(
-            &crate::id::FactId::new_unchecked("faa2"),
+            &crate::id::FactId::new("faa2").expect("valid test id"),
             ForgetReason::Incorrect,
         )
         .expect("forget");
@@ -578,7 +581,7 @@ async fn forget_fact_async_works() {
 
     let forgotten = store
         .forget_fact_async(
-            crate::id::FactId::new_unchecked("f-forget-async"),
+            crate::id::FactId::new("f-forget-async").expect("valid test id"),
             ForgetReason::Incorrect,
         )
         .await
@@ -615,13 +618,13 @@ async fn unforget_fact_async_works() {
 
     store
         .forget_fact_async(
-            crate::id::FactId::new_unchecked("f-unforget-async"),
+            crate::id::FactId::new("f-unforget-async").expect("valid test id"),
             ForgetReason::Outdated,
         )
         .await
         .expect("forget");
     store
-        .unforget_fact_async(crate::id::FactId::new_unchecked("f-unforget-async"))
+        .unforget_fact_async(crate::id::FactId::new("f-unforget-async").expect("valid test id"))
         .await
         .expect("unforget");
 
@@ -646,7 +649,9 @@ async fn increment_access_async_works() {
     store.insert_fact_async(fact).await.expect("insert");
 
     store
-        .increment_access_async(vec![crate::id::FactId::new_unchecked("f-access-async")])
+        .increment_access_async(vec![
+            crate::id::FactId::new("f-access-async").expect("valid test id"),
+        ])
         .await
         .expect("async increment");
 

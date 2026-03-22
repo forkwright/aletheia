@@ -24,7 +24,7 @@ fn test_ts(s: &str) -> jiff::Timestamp {
 
 fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
     Fact {
-        id: crate::id::FactId::new_unchecked(id),
+        id: crate::id::FactId::new(id).expect("valid test id"),
         nous_id: nous_id.to_owned(),
         content: content.to_owned(),
         fact_type: String::new(),
@@ -54,7 +54,7 @@ fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
 
 fn make_embedding(id: &str, content: &str, source_id: &str, nous_id: &str) -> EmbeddedChunk {
     EmbeddedChunk {
-        id: crate::id::EmbeddingId::new_unchecked(id),
+        id: crate::id::EmbeddingId::new(id).expect("valid test id"),
         content: content.to_owned(),
         source_type: "fact".to_owned(),
         source_id: source_id.to_owned(),
@@ -178,7 +178,7 @@ mod correctness {
 
     fn fact(id: &str, content: &str) -> Fact {
         Fact {
-            id: crate::id::FactId::new_unchecked(id),
+            id: crate::id::FactId::new(id).expect("valid test id"),
             nous_id: "test-nous".to_owned(),
             content: content.to_owned(),
             fact_type: String::new(),
@@ -208,7 +208,7 @@ mod correctness {
 
     fn embedding(id: &str, source_id: &str, vec: Vec<f32>) -> EmbeddedChunk {
         EmbeddedChunk {
-            id: crate::id::EmbeddingId::new_unchecked(id),
+            id: crate::id::EmbeddingId::new(id).expect("valid test id"),
             content: format!("content for {id}"),
             source_type: "fact".to_owned(),
             source_id: source_id.to_owned(),
@@ -243,7 +243,7 @@ mod correctness {
 
         store
             .forget_fact(
-                &crate::id::FactId::new_unchecked("sv-forgotten"),
+                &crate::id::FactId::new("sv-forgotten").expect("valid test id"),
                 ForgetReason::UserRequested,
             )
             .expect("forget fact");
@@ -270,7 +270,7 @@ mod correctness {
         store.insert_fact(&fact_data).expect("insert fact");
 
         let wrong_dim = EmbeddedChunk {
-            id: crate::id::EmbeddingId::new_unchecked("dim-check"),
+            id: crate::id::EmbeddingId::new("dim-check").expect("valid test id"),
             content: "dimension validation fact".to_owned(),
             source_type: "fact".to_owned(),
             source_id: "dim-check".to_owned(),
@@ -303,7 +303,7 @@ mod correctness {
         store.insert_fact(&fact_data).expect("insert fact");
 
         let correct = EmbeddedChunk {
-            id: crate::id::EmbeddingId::new_unchecked("dim-ok"),
+            id: crate::id::EmbeddingId::new("dim-ok").expect("valid test id"),
             content: "correct dimension fact".to_owned(),
             source_type: "fact".to_owned(),
             source_id: "dim-ok".to_owned(),

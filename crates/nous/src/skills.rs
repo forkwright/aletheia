@@ -473,7 +473,7 @@ mod tests {
         use aletheia_mneme::knowledge::{FactAccess, FactLifecycle, FactProvenance, FactTemporal};
         let now = jiff::Timestamp::now();
         Fact {
-            id: aletheia_mneme::id::FactId::from(id),
+            id: aletheia_mneme::id::FactId::new(id).expect("valid test id"),
             nous_id: "test-agent".to_owned(),
             content: content.to_owned(),
             fact_type: "skill".to_owned(),

@@ -23,7 +23,7 @@ fn test_ts(s: &str) -> jiff::Timestamp {
 
 fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
     Fact {
-        id: crate::id::FactId::new_unchecked(id),
+        id: crate::id::FactId::new(id).expect("valid test id"),
         nous_id: nous_id.to_owned(),
         content: content.to_owned(),
         fact_type: String::new(),
@@ -59,7 +59,7 @@ fn make_temporal_fact(
     valid_to: &str,
 ) -> Fact {
     Fact {
-        id: crate::id::FactId::new_unchecked(id),
+        id: crate::id::FactId::new(id).expect("valid test id"),
         nous_id: nous_id.to_owned(),
         content: content.to_owned(),
         fact_type: String::new(),
@@ -92,7 +92,7 @@ fn make_temporal_fact(
 
 fn make_embedding(id: &str, content: &str, source_id: &str, nous_id: &str) -> EmbeddedChunk {
     EmbeddedChunk {
-        id: crate::id::EmbeddingId::new_unchecked(id),
+        id: crate::id::EmbeddingId::new(id).expect("valid test id"),
         content: content.to_owned(),
         source_type: "fact".to_owned(),
         source_id: source_id.to_owned(),
@@ -247,7 +247,7 @@ fn temporal_diff_added_and_removed() {
 fn temporal_diff_supersession_chain() {
     let store = make_store();
     let mut fact_a = make_temporal_fact("a", "agent", "version 1", "2026-01-01", "2026-03-01");
-    fact_a.lifecycle.superseded_by = Some(crate::id::FactId::new_unchecked("b"));
+    fact_a.lifecycle.superseded_by = Some(crate::id::FactId::new("b").expect("valid test id"));
     store.insert_fact(&fact_a).expect("insert a");
     store
         .insert_fact(&make_temporal_fact(
@@ -320,7 +320,7 @@ fn temporal_query_excludes_forgotten_facts() {
         .expect("insert");
     store
         .forget_fact(
-            &crate::id::FactId::new_unchecked("t1"),
+            &crate::id::FactId::new("t1").expect("valid test id"),
             crate::knowledge::ForgetReason::UserRequested,
         )
         .expect("forget");

@@ -69,7 +69,12 @@ impl KnowledgeStore {
         for row in &result.rows {
             let entity_id_str = row.get(0).and_then(|v| v.get_str()).unwrap_or_default();
             let fact_count = i64_as_usize(row.get(1).and_then(|v| v.get_int()).unwrap_or(0));
-            let entity_id = EntityId::from(entity_id_str);
+            let entity_id = EntityId::new(entity_id_str).map_err(|e| {
+                StoreSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
 
             let facts = self
                 .gather_entity_facts(nous_id, &entity_id, &cutoff)
@@ -255,7 +260,12 @@ impl KnowledgeStore {
         let mut new_fact_ids = Vec::new();
 
         for consolidated in &result.consolidated_facts {
-            let new_id = FactId::from(ulid::Ulid::new().to_string());
+            let new_id = FactId::new(ulid::Ulid::new().to_string()).map_err(|e| {
+                StoreSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
             let fact = crate::knowledge::Fact {
                 id: new_id.clone(),
                 nous_id: nous_id.to_owned(),
@@ -575,8 +585,11 @@ fn run_llm_consolidation(
 /// Parse fact rows from query results.
 fn parse_fact_rows(rows: &[Vec<DataValue>]) -> Vec<(FactId, String, f64, String)> {
     rows.iter()
-        .map(|row| {
-            let id = FactId::from(row.get(0).and_then(|v| v.get_str()).unwrap_or_default());
+        .filter_map(|row| {
+            let Ok(id) = FactId::new(row.get(0).and_then(|v| v.get_str()).unwrap_or_default())
+            else {
+                return None;
+            };
             let content = row
                 .get(1)
                 .and_then(|v| v.get_str())
@@ -588,7 +601,7 @@ fn parse_fact_rows(rows: &[Vec<DataValue>]) -> Vec<(FactId, String, f64, String)
                 .and_then(|v| v.get_str())
                 .unwrap_or_default()
                 .to_owned();
-            (id, content, confidence, recorded_at)
+            Some((id, content, confidence, recorded_at))
         })
         .collect()
 }
