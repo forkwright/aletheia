@@ -88,6 +88,7 @@ pub(crate) fn handle_close_overlay(app: &mut App) {
             .instrument(span),
         );
     }
+    // NOTE: DecisionCard close without submit = skip, no API call needed
     app.layout.overlay = None;
 }
 
@@ -107,6 +108,11 @@ pub(crate) fn handle_overlay_up(app: &mut App) {
         }
         Some(Overlay::Settings(_)) => {
             super::settings::handle_up(app);
+        }
+        Some(Overlay::DecisionCard(card)) => {
+            if card.focused_field == crate::state::DecisionField::Options {
+                card.cursor = card.cursor.saturating_sub(1);
+            }
         }
         _ => {
             // NOTE: no overlay or non-navigable overlay, nothing to do
@@ -139,6 +145,12 @@ pub(crate) fn handle_overlay_down(app: &mut App) {
         }
         Some(Overlay::Settings(_)) => {
             super::settings::handle_down(app);
+        }
+        Some(Overlay::DecisionCard(card)) => {
+            if card.focused_field == crate::state::DecisionField::Options {
+                let max = card.options.len().saturating_sub(1);
+                card.cursor = (card.cursor + 1).min(max);
+            }
         }
         _ => {
             // NOTE: no overlay or non-navigable overlay, nothing to do
@@ -238,6 +250,18 @@ pub(crate) async fn handle_overlay_select(app: &mut App) {
         }
         Some(Overlay::Settings(_)) => {
             super::settings::handle_enter(app);
+        }
+        Some(Overlay::DecisionCard(_)) => {
+            if let Some(Overlay::DecisionCard(card)) = app.layout.overlay.take() {
+                let chosen = card.chosen_label().to_string();
+                let decision = crate::state::SubmittedDecision {
+                    question: card.question,
+                    chosen_label: chosen,
+                    notes: card.notes,
+                    submitted_at: std::time::Instant::now(),
+                };
+                app.dashboard.submitted_decisions.push(decision);
+            }
         }
         _ => {
             app.layout.overlay = None;

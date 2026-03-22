@@ -20,9 +20,9 @@ pub use input::{InputState, TabCompletion};
 pub use memory::MemoryInspectorState;
 pub use ops::{FocusedPane, OpsState};
 pub use overlay::{
-    ContextAction, ContextActionsOverlay, Overlay, PlanApprovalOverlay, PlanStepApproval,
-    SearchResult, SearchResultKind, SessionPickerOverlay, SessionSearchOverlay,
-    ToolApprovalOverlay,
+    ContextAction, ContextActionsOverlay, DecisionCardOverlay, DecisionField, DecisionOption,
+    Overlay, PlanApprovalOverlay, PlanStepApproval, SearchResult, SearchResultKind,
+    SessionPickerOverlay, SessionSearchOverlay, SubmittedDecision, ToolApprovalOverlay,
 };
 pub(crate) use tab::TabBar;
 pub use view_stack::{View, ViewStack};

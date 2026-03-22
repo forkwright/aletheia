@@ -11,6 +11,25 @@ use crate::state::FilterScope;
 use crate::theme::{self, Theme};
 use crate::view::image;
 
+fn format_duration_adaptive(ms: u64) -> String {
+    if ms < 60_000 {
+        let s = ms / 1000;
+        if s == 0 {
+            "<1s".to_string()
+        } else {
+            format!("{s}s")
+        }
+    } else if ms < 3_600_000 {
+        let m = ms / 60_000;
+        let s = (ms % 60_000) / 1000;
+        format!("{m}m{s}s")
+    } else {
+        let h = ms / 3_600_000;
+        let m = (ms % 3_600_000) / 60_000;
+        format!("{h}h{m}m")
+    }
+}
+
 struct MessageCtx<'a> {
     inner_width: usize,
     theme: &'a Theme,
@@ -99,6 +118,9 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) ->
             Span::styled("no matches", theme.style_dim()),
         ]));
     }
+
+    // Submitted decision fact cards
+    render_decision_fact_cards(app, &mut lines, inner_width, theme);
 
     // Streaming response (in progress)
     if !app.connection.streaming_text.is_empty()
@@ -526,6 +548,51 @@ fn highlight_span(
     }
 }
 
+fn render_decision_fact_cards(
+    app: &App,
+    lines: &mut Vec<Line<'static>>,
+    inner_width: usize,
+    theme: &Theme,
+) {
+    if app.dashboard.submitted_decisions.is_empty() {
+        return;
+    }
+    for decision in &app.dashboard.submitted_decisions {
+        let border_len = inner_width.saturating_sub(14).min(30);
+        let border_line = "─".repeat(border_len);
+        lines.push(Line::from(vec![
+            Span::raw(" "),
+            Span::styled(
+                format!("─── decision {border_line}"),
+                Style::default().fg(theme.colors.accent),
+            ),
+        ]));
+        lines.push(Line::from(vec![
+            Span::raw(" "),
+            Span::styled("Q: ", theme.style_dim()),
+            Span::styled(decision.question.clone(), theme.style_fg()),
+        ]));
+        lines.push(Line::from(vec![
+            Span::raw(" "),
+            Span::styled("A: ", theme.style_dim()),
+            Span::styled(decision.chosen_label.clone(), theme.style_accent_bold()),
+        ]));
+        if !decision.notes.is_empty() {
+            lines.push(Line::from(vec![
+                Span::raw(" "),
+                Span::styled("  note: ", theme.style_dim()),
+                Span::styled(decision.notes.clone(), theme.style_muted()),
+            ]));
+        }
+        let bottom_border = "─".repeat(inner_width.saturating_sub(2).min(38));
+        lines.push(Line::from(vec![
+            Span::raw(" "),
+            Span::styled(bottom_border, Style::default().fg(theme.colors.accent)),
+        ]));
+        lines.push(Line::raw(""));
+    }
+}
+
 fn render_streaming(
     app: &App,
     lines: &mut Vec<Line<'static>>,
@@ -599,12 +666,59 @@ fn render_streaming(
             ),
         ]));
     } else if app.connection.active_turn_id.is_some() {
-        // No text yet: show spinner with agent name
-        let ch = theme::spinner_frame(app.viewport.tick_count);
+        // No text yet: show agent name header then phase indicators or thinking fallback
+        lines.push(Line::from(vec![Span::styled(
+            format!(" {}", name),
+            theme.style_assistant(),
+        )]));
 
-        lines.push(Line::from(vec![
-            Span::styled(format!(" {}", name), theme.style_assistant()),
-            Span::styled(format!(" {} thinking…", ch), theme.style_muted()),
-        ]));
+        let tool_calls = &app.layout.ops.tool_calls;
+        if tool_calls.is_empty() {
+            // Nothing running yet: classic thinking indicator
+            let ch = theme::spinner_frame(app.viewport.tick_count);
+            lines.push(Line::from(vec![Span::styled(
+                format!("  {} thinking…", ch),
+                theme.style_muted(),
+            )]));
+        } else {
+            // Show last 5 tool calls as phase lines
+            let start = tool_calls.len().saturating_sub(5);
+            for call in &tool_calls[start..] {
+                let icon: String = match call.status {
+                    crate::state::ops::OpsToolStatus::Running => {
+                        theme::spinner_frame(app.viewport.tick_count).to_string()
+                    }
+                    crate::state::ops::OpsToolStatus::Complete => "✓".to_string(),
+                    crate::state::ops::OpsToolStatus::Failed => "✗".to_string(),
+                };
+                let icon_style = match call.status {
+                    crate::state::ops::OpsToolStatus::Running => Style::default()
+                        .fg(theme.status.spinner)
+                        .add_modifier(Modifier::BOLD),
+                    crate::state::ops::OpsToolStatus::Complete => {
+                        Style::default().fg(theme.status.success)
+                    }
+                    crate::state::ops::OpsToolStatus::Failed => {
+                        Style::default().fg(theme.status.error)
+                    }
+                };
+                let mut phase_text = call.name.clone();
+                if let Some(ref arg) = call.primary_arg {
+                    phase_text.push_str(&format!(" ({arg})"));
+                }
+                if let (Some(ms), false) = (
+                    call.duration_ms,
+                    matches!(call.status, crate::state::ops::OpsToolStatus::Running),
+                ) {
+                    phase_text.push_str(&format!(" · {}", format_duration_adaptive(ms)));
+                }
+                lines.push(Line::from(vec![
+                    Span::raw("  "),
+                    Span::styled(icon, icon_style),
+                    Span::raw(" "),
+                    Span::styled(phase_text, theme.style_muted()),
+                ]));
+            }
+        }
     }
 }

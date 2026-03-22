@@ -63,6 +63,7 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
             frame.render_widget(Clear, diff_area);
             render_diff_view(diff_state, frame, diff_area, theme);
         }
+        Overlay::DecisionCard(card) => render_decision_card(frame, popup_area, card, theme),
     }
 }
 
@@ -813,6 +814,110 @@ fn format_tokens(n: u32) -> String {
     }
 }
 
+fn render_decision_card(
+    frame: &mut Frame,
+    area: Rect,
+    card: &crate::state::DecisionCardOverlay,
+    theme: &Theme,
+) {
+    let block = overlay_block("decision", theme);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let mut lines: Vec<Line> = Vec::new();
+    lines.push(Line::raw(""));
+    lines.push(Line::from(vec![
+        Span::raw("  "),
+        Span::styled(
+            card.question.clone(),
+            Style::default()
+                .fg(theme.text.fg)
+                .add_modifier(Modifier::BOLD),
+        ),
+    ]));
+    lines.push(Line::raw(""));
+
+    for (i, opt) in card.options.iter().enumerate() {
+        let selected =
+            i == card.cursor && card.focused_field == crate::state::DecisionField::Options;
+        let cursor_str = if selected { "▸" } else { " " };
+        let cursor_style = if selected {
+            Style::default().fg(theme.borders.selected)
+        } else {
+            Style::default()
+        };
+        let mut spans = vec![
+            Span::styled(format!("  {cursor_str} "), cursor_style),
+            Span::styled(
+                opt.label.clone(),
+                if selected {
+                    theme.style_accent_bold()
+                } else {
+                    theme.style_fg()
+                },
+            ),
+        ];
+        if opt.is_recommendation {
+            spans.push(Span::styled(" ★ recommended", theme.style_dim()));
+        }
+        lines.push(Line::from(spans));
+        if let Some(ref desc) = opt.description {
+            lines.push(Line::from(vec![
+                Span::raw("      "),
+                Span::styled(desc.clone(), theme.style_muted()),
+            ]));
+        }
+    }
+    lines.push(Line::raw(""));
+
+    let custom_focused = card.focused_field == crate::state::DecisionField::CustomAnswer;
+    let custom_label_style = if custom_focused {
+        theme.style_accent_bold()
+    } else {
+        theme.style_dim()
+    };
+    let custom_display = if card.custom_answer.is_empty() && !custom_focused {
+        "─".to_string()
+    } else {
+        format!("{}_", card.custom_answer)
+    };
+    lines.push(Line::from(vec![
+        Span::raw("  "),
+        Span::styled("custom: ", custom_label_style),
+        Span::styled(custom_display, theme.style_fg()),
+    ]));
+    lines.push(Line::raw(""));
+
+    let notes_focused = card.focused_field == crate::state::DecisionField::Notes;
+    let notes_label_style = if notes_focused {
+        theme.style_accent_bold()
+    } else {
+        theme.style_dim()
+    };
+    let notes_display = if card.notes.is_empty() && !notes_focused {
+        "─".to_string()
+    } else {
+        format!("{}_", card.notes)
+    };
+    lines.push(Line::from(vec![
+        Span::raw("  "),
+        Span::styled("notes:  ", notes_label_style),
+        Span::styled(notes_display, theme.style_fg()),
+    ]));
+    lines.push(Line::raw(""));
+
+    lines.push(Line::from(vec![
+        Span::raw("  "),
+        Span::styled("[Enter] submit", theme.style_muted()),
+        Span::raw("  "),
+        Span::styled("[Tab] next field", theme.style_muted()),
+        Span::raw("  "),
+        Span::styled("[Esc] skip", theme.style_muted()),
+    ]));
+
+    let para = Paragraph::new(lines).wrap(Wrap { trim: false });
+    frame.render_widget(para, inner);
+}
 /// Create a centered rect within the given area.
 #[expect(
     clippy::indexing_slicing,
