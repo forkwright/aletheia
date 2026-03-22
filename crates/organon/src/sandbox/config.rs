@@ -235,3 +235,82 @@ impl SandboxConfig {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn expand_tilde_replaces_prefix_with_home() {
+        // WHY: Read current HOME rather than setting it to avoid env mutation in concurrent tests.
+        if let Ok(home) = std::env::var("HOME") {
+            let path = Path::new("~/projects");
+            let expanded = expand_tilde(path);
+            assert_eq!(expanded, PathBuf::from(format!("{home}/projects")));
+        }
+    }
+
+    #[test]
+    fn expand_tilde_leaves_absolute_path_unchanged() {
+        let path = Path::new("/usr/local/bin");
+        let expanded = expand_tilde(path);
+        assert_eq!(expanded, PathBuf::from("/usr/local/bin"));
+    }
+
+    #[test]
+    fn expand_tilde_leaves_relative_path_unchanged() {
+        let path = Path::new("relative/path");
+        let expanded = expand_tilde(path);
+        assert_eq!(expanded, PathBuf::from("relative/path"));
+    }
+
+    #[test]
+    fn sandbox_config_disabled_sets_enabled_false() {
+        let config = SandboxConfig::disabled();
+        assert!(!config.enabled);
+    }
+
+    #[test]
+    fn build_policy_when_disabled_returns_disabled_policy() {
+        let config = SandboxConfig::disabled();
+        let policy = config.build_policy(Path::new("/workspace"), &[]);
+        assert!(!policy.enabled);
+        assert!(policy.read_paths.is_empty());
+        assert!(policy.write_paths.is_empty());
+        assert!(policy.exec_paths.is_empty());
+        assert_eq!(policy.egress, EgressPolicy::Allow);
+    }
+
+    #[test]
+    fn build_policy_includes_workspace_in_write_paths() {
+        let config = SandboxConfig {
+            enabled: true,
+            ..SandboxConfig::default()
+        };
+        let workspace = Path::new("/tmp/workspace");
+        let policy = config.build_policy(workspace, &[]);
+        assert!(
+            policy.write_paths.contains(&workspace.to_path_buf()),
+            "workspace must be writable"
+        );
+    }
+
+    #[test]
+    fn build_policy_includes_extra_read_paths() {
+        let config = SandboxConfig {
+            enabled: true,
+            extra_read_paths: vec![PathBuf::from("/data/shared")],
+            ..SandboxConfig::default()
+        };
+        let policy = config.build_policy(Path::new("/workspace"), &[]);
+        assert!(
+            policy.read_paths.contains(&PathBuf::from("/data/shared")),
+            "extra read path must be in policy"
+        );
+    }
+
+    #[test]
+    fn egress_policy_default_is_allow() {
+        assert_eq!(EgressPolicy::default(), EgressPolicy::Allow);
+    }
+}

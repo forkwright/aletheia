@@ -7,8 +7,7 @@
 //!
 //! Run: `cargo test -p aletheia-organon --features test-support --test spec_validation`
 
-#![expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
-#![expect(clippy::expect_used, reason = "test: known-valid tool name literals")]
+#![expect(clippy::expect_used, reason = "test assertions may panic on failure")]
 
 use aletheia_koina::id::ToolName;
 use aletheia_organon::testing::{MockToolExecutor, ToolExecutorSpec, make_test_context};

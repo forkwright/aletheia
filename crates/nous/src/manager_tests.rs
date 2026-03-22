@@ -296,6 +296,7 @@ async fn cancel_token_propagates_to_actors() {
             if handle.status().await.is_err() {
                 break;
             }
+            // kanon:ignore TESTING/sleep-in-test reason = "polling loop waiting for real actor shutdown; pause+advance would freeze the actor's own timers"
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
     })
@@ -344,6 +345,7 @@ async fn check_health_detects_dead_actor() {
     let handle = mgr.spawn(syn_config(), PipelineConfig::default()).await;
 
     handle.shutdown().await.expect("shutdown");
+    // kanon:ignore TESTING/sleep-in-test reason = "waiting for actor task to fully stop before health check; real async shutdown cannot use pause+advance"
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     let health = mgr.check_health().await;
@@ -370,6 +372,7 @@ async fn check_health_busy_actor_reports_alive() {
 
     let handle = mgr.actors.get("syn").expect("entry").handle.clone();
     handle.shutdown().await.expect("shutdown sent");
+    // kanon:ignore TESTING/sleep-in-test reason = "waiting for actor task to stop before checking busy state; real async shutdown cannot use pause+advance"
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     let health = mgr.check_health().await;

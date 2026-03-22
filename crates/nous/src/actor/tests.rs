@@ -2,7 +2,6 @@
     clippy::indexing_slicing,
     reason = "test: vec indices are valid after asserting len"
 )]
-#![expect(clippy::unwrap_used, reason = "test assertions")]
 #![expect(clippy::expect_used, reason = "test assertions")]
 use tokio_util::sync::CancellationToken;
 
@@ -240,7 +239,11 @@ async fn send_after_shutdown_returns_error() {
 
     let err = handle.send_turn("main", "Hello").await;
     assert!(err.is_err());
-    assert!(err.unwrap_err().to_string().contains("inbox closed"));
+    assert!(
+        err.expect_err("send after shutdown should fail")
+            .to_string()
+            .contains("inbox closed")
+    );
 }
 
 #[tokio::test]
@@ -283,7 +286,7 @@ async fn validate_workspace_creates_missing_dir() {
     let oikos = Oikos::from_root(root);
     super::spawn::validate_workspace(&oikos, "test-agent")
         .await
-        .unwrap();
+        .expect("validate_workspace should create missing agent dir");
     assert!(root.join("nous/test-agent").exists());
 }
 
@@ -298,7 +301,9 @@ async fn validate_workspace_fails_without_soul() {
     let oikos = Oikos::from_root(root);
     let result = super::spawn::validate_workspace(&oikos, "test-agent").await;
     assert!(result.is_err());
-    let msg = result.unwrap_err().to_string();
+    let msg = result
+        .expect_err("missing SOUL.md should fail validation")
+        .to_string();
     assert!(
         msg.contains("SOUL.md"),
         "error should mention SOUL.md: {msg}"
@@ -370,7 +375,9 @@ async fn actor_survives_pipeline_panic() {
 
     let result = handle.send_turn("main", "Hello").await;
     assert!(result.is_err(), "panicking turn should return error");
-    let msg = result.unwrap_err().to_string();
+    let msg = result
+        .expect_err("panicking turn should return error")
+        .to_string();
     assert!(
         msg.contains("panic") || msg.contains("pipeline"),
         "error should mention panic: {msg}"
@@ -436,7 +443,9 @@ async fn send_timeout_fires_when_inbox_full() {
         .send_turn_with_timeout("main", "Hello", std::time::Duration::from_millis(50))
         .await;
     assert!(result.is_err());
-    let msg = result.unwrap_err().to_string();
+    let msg = result
+        .expect_err("full inbox should reject send")
+        .to_string();
     assert!(
         msg.contains("inbox full"),
         "should report inbox full: {msg}"
@@ -462,7 +471,9 @@ async fn degraded_state_after_repeated_panics() {
 
     let result = handle.send_turn("main", "more work").await;
     assert!(result.is_err());
-    let msg = result.unwrap_err().to_string();
+    let msg = result
+        .expect_err("degraded actor should reject work")
+        .to_string();
     assert!(msg.contains("degraded"), "should report degraded: {msg}");
 
     handle.shutdown().await.expect("shutdown");
@@ -487,6 +498,7 @@ async fn background_task_reaping() {
 async fn status_includes_uptime() {
     let (handle, join, _dir) = spawn_test_actor();
 
+    // kanon:ignore TESTING/sleep-in-test reason = "uptime is measured by std::time::Instant; tokio::time::advance does not affect it"
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
     let status = handle.status().await.expect("status");

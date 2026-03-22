@@ -53,6 +53,8 @@ fn backup_creates_valid_sqlite_database() {
     let db_path = dir.path().join("sessions.db");
 
     let conn = Connection::open(&db_path).expect("open file-based SQLite connection");
+    conn.busy_timeout(std::time::Duration::from_secs(5))
+        .expect("set busy timeout");
     conn.execute_batch("PRAGMA foreign_keys = ON;")
         .expect("enable foreign keys");
     migration::run_migrations(&conn).expect("run migrations");
@@ -74,6 +76,9 @@ fn backup_creates_valid_sqlite_database() {
     assert_eq!(result.sessions_count, 1);
 
     let backup_conn = Connection::open(&result.path).expect("open backup SQLite database");
+    backup_conn
+        .busy_timeout(std::time::Duration::from_secs(5))
+        .expect("set busy timeout");
     let count: u32 = backup_conn
         .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
         .expect("query session count from backup");
@@ -95,6 +100,8 @@ fn prune_keeps_correct_number() {
     }
 
     let conn = Connection::open_in_memory().expect("open in-memory SQLite connection");
+    conn.busy_timeout(std::time::Duration::from_secs(5))
+        .expect("set busy timeout");
     let manager = BackupManager::new(&conn, &backup_dir);
 
     let backups = manager.list_backups().expect("list backups");
@@ -118,6 +125,8 @@ fn list_backups_returns_correct_metadata() {
     std::fs::write(backup_dir.join("other.txt"), "ignored").expect("write non-matching file");
 
     let conn = Connection::open_in_memory().expect("open in-memory SQLite connection");
+    conn.busy_timeout(std::time::Duration::from_secs(5))
+        .expect("set busy timeout");
     let manager = BackupManager::new(&conn, &backup_dir);
 
     let backups = manager.list_backups().expect("list backups");
@@ -129,6 +138,8 @@ fn list_backups_returns_correct_metadata() {
 #[test]
 fn list_backups_empty_when_no_dir() {
     let conn = Connection::open_in_memory().expect("open in-memory SQLite connection");
+    conn.busy_timeout(std::time::Duration::from_secs(5))
+        .expect("set busy timeout");
     let manager = BackupManager::new(&conn, "/nonexistent/path");
     let backups = manager
         .list_backups()
@@ -184,6 +195,8 @@ fn restore_backup_preserves_data() {
     let db_path = dir.path().join("sessions.db");
 
     let conn = Connection::open(&db_path).expect("open file-based SQLite connection");
+    conn.busy_timeout(std::time::Duration::from_secs(5))
+        .expect("set busy timeout");
     conn.execute_batch("PRAGMA foreign_keys = ON;")
         .expect("enable foreign keys");
     migration::run_migrations(&conn).expect("run migrations");
@@ -214,6 +227,9 @@ fn restore_backup_preserves_data() {
         .expect("backup should not be skipped without disk monitor");
 
     let backup_conn = Connection::open(&result.path).expect("open backup SQLite database");
+    backup_conn
+        .busy_timeout(std::time::Duration::from_secs(5))
+        .expect("set busy timeout");
     let session_count: u32 = backup_conn
         .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
         .expect("query session count from backup");
@@ -458,6 +474,8 @@ fn backup_empty_store() {
     let db_path = dir.path().join("empty.db");
 
     let conn = Connection::open(&db_path).expect("open file-based SQLite connection");
+    conn.busy_timeout(std::time::Duration::from_secs(5))
+        .expect("set busy timeout");
     conn.execute_batch("PRAGMA foreign_keys = ON;")
         .expect("enable foreign keys");
     migration::run_migrations(&conn).expect("run migrations");
@@ -475,6 +493,9 @@ fn backup_empty_store() {
     assert_eq!(result.messages_count, 0);
 
     let backup_conn = Connection::open(&result.path).expect("open backup SQLite database");
+    backup_conn
+        .busy_timeout(std::time::Duration::from_secs(5))
+        .expect("set busy timeout");
     let count: u32 = backup_conn
         .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
         .expect("query session count from backup");
@@ -532,6 +553,8 @@ fn prune_keeps_zero() {
     }
 
     let conn = Connection::open_in_memory().expect("open in-memory SQLite connection");
+    conn.busy_timeout(std::time::Duration::from_secs(5))
+        .expect("set busy timeout");
     let manager = BackupManager::new(&conn, &backup_dir);
 
     let removed = manager.prune_backups(0).expect("prune all backups");
@@ -550,6 +573,8 @@ fn list_backups_empty_dir() {
     std::fs::create_dir_all(&backup_dir).expect("create backup dir");
 
     let conn = Connection::open_in_memory().expect("open in-memory SQLite connection");
+    conn.busy_timeout(std::time::Duration::from_secs(5))
+        .expect("set busy timeout");
     let manager = BackupManager::new(&conn, &backup_dir);
 
     let backups = manager.list_backups().expect("list backups in empty dir");
@@ -590,6 +615,8 @@ fn restore_from_corrupt_file_errors() {
     std::fs::write(&corrupt_path, b"this is not a sqlite database").expect("write corrupt file");
 
     if let Ok(c) = Connection::open(&corrupt_path) {
+        c.busy_timeout(std::time::Duration::from_secs(5))
+            .expect("set busy timeout");
         let result = c.query_row("SELECT COUNT(*) FROM sessions", [], |row| {
             row.get::<_, u32>(0)
         });

@@ -1,7 +1,6 @@
 //! Tests for script execution and cross-agent fact listing.
 //! Tests for fact query filtering, confidence, concurrent ops, and cross-agent listing.
 #![expect(clippy::expect_used, reason = "test assertions")]
-#![expect(clippy::unwrap_used, reason = "test assertions")]
 #![expect(
     clippy::indexing_slicing,
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
@@ -483,12 +482,18 @@ fn list_all_facts_returns_facts_across_agents() {
         "list_all_facts should include fact f2 from agent-b"
     );
     assert_eq!(
-        all.iter().find(|f| f.id.as_str() == "f1").unwrap().nous_id,
+        all.iter()
+            .find(|f| f.id.as_str() == "f1")
+            .expect("f1 must be in all facts")
+            .nous_id,
         "agent-a",
         "f1 should belong to agent-a"
     );
     assert_eq!(
-        all.iter().find(|f| f.id.as_str() == "f2").unwrap().nous_id,
+        all.iter()
+            .find(|f| f.id.as_str() == "f2")
+            .expect("f2 must be in all facts")
+            .nous_id,
         "agent-b",
         "f2 should belong to agent-b"
     );

@@ -11,7 +11,6 @@
 //! - Real `SessionStore` ↔ `SessionBlackboardAdapter` ↔ blackboard tool executor path
 //! - `KnowledgeSearchService` → memory tool executor wiring
 
-#![expect(clippy::unwrap_used, reason = "test assertions")]
 #![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(
     clippy::indexing_slicing,
@@ -238,11 +237,11 @@ impl StubKnowledgeService {
     fn seed_fact(&self, id: &str, content: &str) {
         self.facts
             .lock()
-            .unwrap()
+            .expect("facts mutex should not be poisoned")
             .push((id.to_owned(), content.to_owned()));
         self.audited
             .lock()
-            .unwrap()
+            .expect("audited mutex should not be poisoned")
             .push((id.to_owned(), content.to_owned()));
     }
 }
@@ -258,7 +257,7 @@ impl KnowledgeSearchService for StubKnowledgeService {
         let results: Vec<MemoryResult> = self
             .facts
             .lock()
-            .unwrap()
+            .expect("facts mutex should not be poisoned")
             .iter()
             .filter(|(_, content)| content.contains(query))
             .map(|(id, content)| MemoryResult {
@@ -277,12 +276,15 @@ impl KnowledgeSearchService for StubKnowledgeService {
         _new_content: &str,
         _nous_id: &str,
     ) -> Pin<Box<dyn Future<Output = Result<String, KnowledgeAdapterError>> + Send + '_>> {
-        let mut n = self.next_id.lock().unwrap();
+        let mut n = self
+            .next_id
+            .lock()
+            .expect("next_id mutex should not be poisoned");
         let new_id = format!("fact-corrected-{n}");
         *n += 1;
         self.corrected
             .lock()
-            .unwrap()
+            .expect("corrected mutex should not be poisoned")
             .push((fact_id.to_owned(), new_id.clone()));
         Box::pin(std::future::ready(Ok(new_id)))
     }
@@ -292,7 +294,10 @@ impl KnowledgeSearchService for StubKnowledgeService {
         fact_id: &str,
         _reason: Option<&str>,
     ) -> Pin<Box<dyn Future<Output = Result<(), KnowledgeAdapterError>> + Send + '_>> {
-        self.retracted.lock().unwrap().push(fact_id.to_owned());
+        self.retracted
+            .lock()
+            .expect("retracted mutex should not be poisoned")
+            .push(fact_id.to_owned());
         Box::pin(std::future::ready(Ok(())))
     }
 
@@ -306,7 +311,7 @@ impl KnowledgeSearchService for StubKnowledgeService {
         let facts: Vec<FactSummary> = self
             .audited
             .lock()
-            .unwrap()
+            .expect("audited mutex should not be poisoned")
             .iter()
             .map(|(id, content)| FactSummary {
                 id: id.clone(),
@@ -496,7 +501,10 @@ async fn memory_correct_tool_reports_new_id() {
     );
 
     // Verify the stub recorded the correction
-    let corrected = svc.corrected.lock().unwrap();
+    let corrected = svc
+        .corrected
+        .lock()
+        .expect("corrected mutex should not be poisoned");
     assert_eq!(corrected.len(), 1);
     assert_eq!(corrected[0].0, "fact-42");
 }

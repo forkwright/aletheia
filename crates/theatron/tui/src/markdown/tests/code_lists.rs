@@ -1,5 +1,5 @@
 //! Tests for code blocks, lists, and blockquotes.
-#![expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
+#![expect(clippy::expect_used, reason = "test assertions may panic on failure")]
 use ratatui::style::{Color, Modifier};
 
 use super::super::*;
@@ -195,7 +195,7 @@ fn nested_unordered_list_indents_child_items() {
     // Nested items must be indented (2 spaces per level beyond first)
     let nested_line = lines.iter().find(|l| line_text(l).contains("nested"));
     assert!(nested_line.is_some(), "nested item line must exist");
-    let nested_text = line_text(nested_line.unwrap());
+    let nested_text = line_text(nested_line.expect("nested item line must exist"));
     assert!(
         nested_text.starts_with("  "),
         "depth-2 item must have 2-space indent, got: {nested_text:?}"
@@ -203,7 +203,7 @@ fn nested_unordered_list_indents_child_items() {
 
     let deep_line = lines.iter().find(|l| line_text(l).contains("deep"));
     assert!(deep_line.is_some(), "deep item line must exist");
-    let deep_text = line_text(deep_line.unwrap());
+    let deep_text = line_text(deep_line.expect("deep item line must exist"));
     assert!(
         deep_text.starts_with("    "),
         "depth-3 item must have 4-space indent, got: {deep_text:?}"
@@ -238,7 +238,7 @@ fn blockquote_renders_with_vertical_bar_prefix() {
         "blockquote border │ must appear; lines: {lines:?}"
     );
 
-    let border_text = line_text(border_line.unwrap());
+    let border_text = line_text(border_line.expect("blockquote border line must exist"));
     assert!(
         border_text.contains("hello"),
         "│ border and content must be on the SAME line, got: {border_text:?}"
@@ -269,7 +269,8 @@ fn blockquote_with_bold_content_applies_bold_modifier() {
         "border line must exist in bold blockquote"
     );
     assert!(
-        line_text(border_line.unwrap()).contains("bold inside"),
+        line_text(border_line.expect("border line must exist in bold blockquote"))
+            .contains("bold inside"),
         "border and bold content must be on the same line"
     );
 }
@@ -288,7 +289,7 @@ fn nested_blockquote_indents_inner_content() {
         .iter()
         .find(|l| line_text(l).contains("deeply nested"));
     assert!(content_line.is_some(), "content line must exist");
-    let text = line_text(content_line.unwrap());
+    let text = line_text(content_line.expect("nested blockquote content line must exist"));
     let border_count = text.matches('│').count();
     assert!(
         border_count >= 2,

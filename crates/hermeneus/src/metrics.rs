@@ -251,3 +251,43 @@ pub(crate) fn set_concurrency_in_flight(provider: &str, in_flight: u32) {
         .with_label_values(&[provider]) // kanon:ignore RUST/indexing-slicing
         .set(i64::from(in_flight));
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn init_does_not_panic() {
+        init();
+    }
+
+    #[test]
+    fn record_completion_success_does_not_panic() {
+        init();
+        record_completion("anthropic", 100, 50, 0.001, true);
+    }
+
+    #[test]
+    fn record_completion_failure_does_not_panic() {
+        init();
+        record_completion("anthropic", 0, 0, 0.0, false);
+    }
+
+    #[test]
+    fn record_latency_does_not_panic() {
+        init();
+        record_latency("claude-sonnet-4-6", "ok", 1.5);
+    }
+
+    #[test]
+    fn record_ttft_does_not_panic() {
+        init();
+        record_ttft("claude-sonnet-4-6", "ok", 0.25);
+    }
+
+    #[test]
+    fn record_cache_tokens_does_not_panic() {
+        init();
+        record_cache_tokens("anthropic", 1000, 500);
+    }
+}

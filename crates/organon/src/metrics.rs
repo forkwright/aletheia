@@ -55,3 +55,25 @@ pub fn record_invocation(tool_name: &str, duration_secs: f64, success: bool) {
         .with_label_values(&[tool_name]) // kanon:ignore RUST/indexing-slicing
         .observe(duration_secs);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn init_does_not_panic() {
+        init();
+    }
+
+    #[test]
+    fn record_invocation_success_does_not_panic() {
+        init();
+        record_invocation("read_file", 0.05, true);
+    }
+
+    #[test]
+    fn record_invocation_failure_does_not_panic() {
+        init();
+        record_invocation("write_file", 0.01, false);
+    }
+}

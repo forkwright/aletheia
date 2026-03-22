@@ -110,7 +110,9 @@ async fn no_provider_for_model_returns_error() {
         err.is_err(),
         "execute with no matching provider should return an error"
     );
-    let msg = err.unwrap_err().to_string();
+    let msg = err
+        .expect_err("execute with no matching provider should error")
+        .to_string();
     assert!(msg.contains("no provider"), "got: {msg}");
 }
 

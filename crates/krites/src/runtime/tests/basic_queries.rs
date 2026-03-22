@@ -11,7 +11,7 @@ use crate::DbInstance;
 use crate::data::value::DataValue;
 
 #[test]
-fn test_limit_offset() {
+fn when_limit_offset_applied_query_returns_correct_slice() {
     let db = DbInstance::default();
     let res = db
         .run_default("?[a] := a in [5,3,1,2,4] :limit 2")
@@ -52,7 +52,7 @@ fn test_limit_offset() {
 }
 
 #[test]
-fn test_normal_aggr_empty() {
+fn when_count_aggregation_over_empty_set_returns_zero() {
     let db = DbInstance::default();
     let res = db
         .run_default("?[count(a)] := a in []")
@@ -66,7 +66,7 @@ fn test_normal_aggr_empty() {
 }
 
 #[test]
-fn test_meet_aggr_empty() {
+fn when_min_aggregation_over_empty_set_returns_null() {
     let db = DbInstance::default();
     let res = db
         .run_default("?[min(a)] := a in []")
@@ -90,7 +90,7 @@ fn test_meet_aggr_empty() {
 }
 
 #[test]
-fn test_layers() {
+fn when_layered_rules_define_sum_aggregation_combines_correctly() {
     let _ = tracing_subscriber::fmt().with_test_writer().try_init();
 
     let db = DbInstance::default();
@@ -109,7 +109,7 @@ fn test_layers() {
 }
 
 #[test]
-fn test_conditions() {
+fn when_filter_conditions_applied_only_matching_rows_returned() {
     let _ = tracing_subscriber::fmt().with_test_writer().try_init();
     let db = DbInstance::default();
     db.run_default(
@@ -143,7 +143,7 @@ fn test_conditions() {
 }
 
 #[test]
-fn test_classical() {
+fn when_recursive_grandparent_rule_applied_finds_correct_ancestor() {
     let _ = tracing_subscriber::fmt().with_test_writer().try_init();
     let db = DbInstance::default();
     let res = db

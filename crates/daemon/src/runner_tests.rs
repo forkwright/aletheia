@@ -1,4 +1,3 @@
-#![expect(clippy::unwrap_used, reason = "test assertions")]
 #![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(
     clippy::indexing_slicing,
@@ -126,11 +125,12 @@ async fn builtin_prosoche_executes() {
     runner.tasks[0].next_run = Some(
         jiff::Timestamp::now()
             .checked_add(jiff::SignedDuration::from_secs(-1))
-            .unwrap(),
+            .expect("past timestamp arithmetic should succeed"),
     );
 
     runner.tick();
 
+    // kanon:ignore TESTING/sleep-in-test reason = "prosoche spawns a real child process; tokio::time::pause cannot advance OS-level process execution"
     tokio::time::sleep(Duration::from_millis(100)).await;
     runner.check_in_flight().await;
 
@@ -196,7 +196,10 @@ async fn retention_without_executor_skips() {
     )
     .await;
     assert!(result.is_ok());
-    let output = result.unwrap().output.unwrap_or_default();
+    let output = result
+        .expect("retention execution should not error")
+        .output
+        .unwrap_or_default();
     assert!(output.contains("skipped"));
 }
 
@@ -302,7 +305,7 @@ async fn disabled_task_not_in_tick() {
     runner.tasks[0].next_run = Some(
         jiff::Timestamp::now()
             .checked_add(jiff::SignedDuration::from_secs(-10))
-            .unwrap(),
+            .expect("past timestamp arithmetic should succeed"),
     );
 
     runner.tick();
@@ -419,7 +422,9 @@ fn backoff_applied_on_failure() {
     assert_eq!(runner.tasks[0].consecutive_failures, 1);
     assert!(runner.tasks[0].backoff_until.is_some());
 
-    let backoff = runner.tasks[0].backoff_until.unwrap();
+    let backoff = runner.tasks[0]
+        .backoff_until
+        .expect("backoff should be set after first failure");
     let expected_min = Instant::now() + Duration::from_secs(55);
     assert!(
         backoff > expected_min,
@@ -428,7 +433,9 @@ fn backoff_applied_on_failure() {
 
     runner.record_task_failure("backoff-task", "test error 2");
     assert_eq!(runner.tasks[0].consecutive_failures, 2);
-    let backoff = runner.tasks[0].backoff_until.unwrap();
+    let backoff = runner.tasks[0]
+        .backoff_until
+        .expect("backoff should be set after second failure");
     let expected_min = Instant::now() + Duration::from_secs(295);
     assert!(
         backoff > expected_min,
@@ -470,6 +477,7 @@ async fn hung_task_cancelled_after_2x_timeout() {
     // NOTE: Simulate a hung task by spawning a long sleep.
     let handle = tokio::spawn(
         async {
+            // kanon:ignore TESTING/sleep-in-test reason = "simulates a hung task; the runner cancels the handle before the sleep elapses"
             tokio::time::sleep(Duration::from_secs(60)).await;
             Ok(ExecutionResult {
                 success: true,
@@ -485,7 +493,7 @@ async fn hung_task_cancelled_after_2x_timeout() {
             handle,
             started_at: Instant::now()
                 .checked_sub(Duration::from_millis(150))
-                .unwrap(),
+                .expect("subtracting 150ms from now should succeed"),
             timeout: Duration::from_millis(50),
             warned: false,
         },
@@ -516,21 +524,23 @@ fn missed_cron_catchup_fires_on_startup() {
 
     let three_hours_ago = jiff::Timestamp::now()
         .checked_sub(jiff::SignedDuration::from_hours(3))
-        .unwrap();
+        .expect("timestamp arithmetic should succeed");
     runner.set_last_run("hourly-task", three_hours_ago);
 
     runner.tasks[0].next_run = Some(
         jiff::Timestamp::now()
             .checked_add(jiff::SignedDuration::from_hours(1))
-            .unwrap(),
+            .expect("timestamp arithmetic should succeed"),
     );
 
     runner.check_missed_cron_catchup();
 
-    let next = runner.tasks[0].next_run.unwrap();
+    let next = runner.tasks[0]
+        .next_run
+        .expect("next_run should be set after catch-up");
     let diff = next
         .since(jiff::Timestamp::now())
-        .unwrap()
+        .expect("duration since should succeed")
         .get_seconds()
         .abs();
     assert!(diff < 5, "catch-up should set next_run to ~now");
@@ -555,17 +565,22 @@ fn missed_cron_catchup_skips_disabled_catch_up() {
 
     let three_hours_ago = jiff::Timestamp::now()
         .checked_sub(jiff::SignedDuration::from_hours(3))
-        .unwrap();
+        .expect("timestamp arithmetic should succeed");
     runner.set_last_run("no-catchup", three_hours_ago);
 
     let future_run = jiff::Timestamp::now()
         .checked_add(jiff::SignedDuration::from_hours(1))
-        .unwrap();
+        .expect("timestamp arithmetic should succeed");
     runner.tasks[0].next_run = Some(future_run);
 
     runner.check_missed_cron_catchup();
 
-    assert_eq!(runner.tasks[0].next_run.unwrap(), future_run);
+    assert_eq!(
+        runner.tasks[0]
+            .next_run
+            .expect("next_run should remain unchanged"),
+        future_run
+    );
 }
 
 #[test]
@@ -602,6 +617,7 @@ async fn in_flight_reported_in_status() {
 
     let handle = tokio::spawn(
         async {
+            // kanon:ignore TESTING/sleep-in-test reason = "simulates an in-flight task; handle is aborted before sleep elapses"
             tokio::time::sleep(Duration::from_secs(60)).await;
             Ok(ExecutionResult {
                 success: true,

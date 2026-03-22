@@ -348,6 +348,53 @@ fn spawn_sighup_handler(state: Arc<AppState>) -> tokio::task::JoinHandle<()> {
     )
 }
 
+#[cfg(test)]
+mod tests {
+    use snafu::IntoError as _;
+
+    use super::*;
+    use crate::security::{CorsConfig, CsrfConfig, RateLimitConfig, TlsConfig};
+
+    fn make_security() -> SecurityConfig {
+        SecurityConfig {
+            body_limit_bytes: 10 * 1024 * 1024,
+            cors: CorsConfig::default(),
+            csrf: CsrfConfig::default(),
+            tls: TlsConfig::default(),
+            rate_limit: RateLimitConfig::default(),
+        }
+    }
+
+    #[test]
+    fn server_config_fields_are_accessible() {
+        let config = ServerConfig {
+            bind_addr: "127.0.0.1:3000".to_owned(),
+            instance_path: std::path::PathBuf::from("/tmp/instance"),
+            security: make_security(),
+        };
+        assert_eq!(config.bind_addr, "127.0.0.1:3000");
+        assert_eq!(
+            config.instance_path,
+            std::path::PathBuf::from("/tmp/instance")
+        );
+    }
+
+    #[test]
+    fn server_error_bind_display_includes_addr() {
+        let err = BindSnafu {
+            addr: "0.0.0.0:3000".to_owned(),
+        }
+        .into_error(std::io::Error::from(std::io::ErrorKind::AddrInUse));
+        assert!(err.to_string().contains("0.0.0.0:3000"));
+    }
+
+    #[test]
+    fn server_error_tls_not_compiled_display() {
+        let err: ServerError = TlsNotCompiledSnafu.build();
+        assert!(err.to_string().contains("TLS"));
+    }
+}
+
 #[expect(
     clippy::expect_used,
     reason = "signal handler installation is infallible on supported platforms"

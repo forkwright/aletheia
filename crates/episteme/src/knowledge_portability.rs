@@ -191,3 +191,28 @@ pub struct KnowledgeImportResult {
     /// Number of relationships successfully imported.
     pub relationships_imported: usize,
 }
+
+#[cfg(all(test, feature = "mneme-engine"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn knowledge_import_result_default_starts_at_zero() {
+        let result = KnowledgeImportResult::default();
+        assert_eq!(result.facts_imported, 0);
+        assert_eq!(result.entities_imported, 0);
+        assert_eq!(result.relationships_imported, 0);
+    }
+
+    #[test]
+    fn knowledge_import_result_fields_are_independent() {
+        let result = KnowledgeImportResult {
+            facts_imported: 5,
+            entities_imported: 3,
+            relationships_imported: 2,
+        };
+        assert_eq!(result.facts_imported, 5);
+        assert_eq!(result.entities_imported, 3);
+        assert_eq!(result.relationships_imported, 2);
+    }
+}

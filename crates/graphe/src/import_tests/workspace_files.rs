@@ -1,5 +1,4 @@
 //! Tests for workspace file import, session restoration, and path handling.
-#![expect(clippy::unwrap_used, reason = "test assertions")]
 #![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(
     clippy::indexing_slicing,
@@ -144,7 +143,9 @@ fn rejects_unsupported_version() {
     );
 
     assert!(result.is_err(), "unsupported version should be rejected");
-    let err = result.unwrap_err().to_string();
+    let err = result
+        .expect_err("unsupported version should be rejected")
+        .to_string();
     assert!(
         err.contains("unsupported agent file version: 99"),
         "error should mention unsupported version"
@@ -396,7 +397,9 @@ fn import_rejects_path_traversal() {
     );
 
     assert!(result.is_err(), "path traversal should be rejected");
-    let err = result.unwrap_err().to_string();
+    let err = result
+        .expect_err("path traversal should be rejected")
+        .to_string();
     assert!(
         err.contains("unsafe path"),
         "error should mention unsafe path"

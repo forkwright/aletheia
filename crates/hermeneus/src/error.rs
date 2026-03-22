@@ -125,3 +125,73 @@ impl Error {
 
 /// Convenience alias for `Result<T, Error>`.
 pub type Result<T> = std::result::Result<T, Error>; // kanon:ignore RUST/pub-visibility
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn api_error_context_empty_has_empty_fields() {
+        let ctx = ApiErrorContext::empty();
+        assert!(ctx.model.is_empty());
+        assert!(ctx.credential_source.is_empty());
+    }
+
+    #[test]
+    fn rate_limited_is_retryable() {
+        let err = RateLimitedSnafu {
+            retry_after_ms: 1000u64,
+        }
+        .build();
+        assert!(err.is_retryable());
+    }
+
+    #[test]
+    fn api_request_error_is_retryable() {
+        let err = ApiRequestSnafu {
+            message: "connection timeout".to_owned(),
+        }
+        .build();
+        assert!(err.is_retryable());
+    }
+
+    #[test]
+    fn api_error_5xx_is_retryable() {
+        let err = Error::ApiError {
+            status: 503u16,
+            message: "service unavailable".to_owned(),
+            context: ApiErrorContext::empty(),
+            location: snafu::location!(),
+        };
+        assert!(err.is_retryable());
+    }
+
+    #[test]
+    fn api_error_4xx_is_not_retryable() {
+        let err = Error::ApiError {
+            status: 401u16,
+            message: "unauthorized".to_owned(),
+            context: ApiErrorContext::empty(),
+            location: snafu::location!(),
+        };
+        assert!(!err.is_retryable());
+    }
+
+    #[test]
+    fn unsupported_model_is_not_retryable() {
+        let err = UnsupportedModelSnafu {
+            model: "gpt-99".to_owned(),
+        }
+        .build();
+        assert!(!err.is_retryable());
+    }
+
+    #[test]
+    fn auth_failed_is_not_retryable() {
+        let err = AuthFailedSnafu {
+            message: "invalid key".to_owned(),
+        }
+        .build();
+        assert!(!err.is_retryable());
+    }
+}

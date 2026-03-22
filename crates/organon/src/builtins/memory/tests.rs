@@ -1,4 +1,3 @@
-#![expect(clippy::unwrap_used, reason = "test assertions")]
 #![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(
     clippy::as_conversions,
@@ -44,24 +43,37 @@ impl NoteStore for MockNoteStore {
         category: &str,
         content: &str,
     ) -> Result<i64, StoreError> {
-        let mut id = self.next_id.lock().unwrap();
+        let mut id = self
+            .next_id
+            .lock()
+            .expect("next_id mutex should not be poisoned");
         let note_id = *id;
         *id += 1;
-        self.notes.lock().unwrap().push(NoteEntry {
-            id: note_id,
-            category: category.to_owned(),
-            content: content.to_owned(),
-            created_at: "2026-01-01T00:00:00Z".to_owned(),
-        });
+        self.notes
+            .lock()
+            .expect("notes mutex should not be poisoned")
+            .push(NoteEntry {
+                id: note_id,
+                category: category.to_owned(),
+                content: content.to_owned(),
+                created_at: "2026-01-01T00:00:00Z".to_owned(),
+            });
         Ok(note_id)
     }
 
     fn get_notes(&self, _session_id: &str) -> Result<Vec<NoteEntry>, StoreError> {
-        Ok(self.notes.lock().unwrap().clone())
+        Ok(self
+            .notes
+            .lock()
+            .expect("notes mutex should not be poisoned")
+            .clone())
     }
 
     fn delete_note(&self, note_id: i64) -> Result<bool, StoreError> {
-        let mut notes = self.notes.lock().unwrap();
+        let mut notes = self
+            .notes
+            .lock()
+            .expect("notes mutex should not be poisoned");
         let len_before = notes.len();
         notes.retain(|n| n.id != note_id);
         Ok(notes.len() < len_before)
@@ -88,7 +100,10 @@ impl BlackboardStore for MockBlackboardStore {
         author: &str,
         ttl_seconds: i64,
     ) -> Result<(), StoreError> {
-        let mut entries = self.entries.lock().unwrap();
+        let mut entries = self
+            .entries
+            .lock()
+            .expect("entries mutex should not be poisoned");
         entries.retain(|e| e.key != key);
         entries.push(BlackboardEntry {
             key: key.to_owned(),
@@ -105,18 +120,25 @@ impl BlackboardStore for MockBlackboardStore {
         Ok(self
             .entries
             .lock()
-            .unwrap()
+            .expect("entries mutex should not be poisoned")
             .iter()
             .find(|e| e.key == key)
             .cloned())
     }
 
     fn list(&self) -> Result<Vec<BlackboardEntry>, StoreError> {
-        Ok(self.entries.lock().unwrap().clone())
+        Ok(self
+            .entries
+            .lock()
+            .expect("entries mutex should not be poisoned")
+            .clone())
     }
 
     fn delete(&self, key: &str, author: &str) -> Result<bool, StoreError> {
-        let mut entries = self.entries.lock().unwrap();
+        let mut entries = self
+            .entries
+            .lock()
+            .expect("entries mutex should not be poisoned");
         let len_before = entries.len();
         entries.retain(|e| !(e.key == key && e.author_nous_id == author));
         Ok(entries.len() < len_before)

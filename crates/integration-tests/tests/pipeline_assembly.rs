@@ -1,6 +1,6 @@
 //! Integration: nous pipeline types assembled from config + session.
 
-#![expect(clippy::unwrap_used, reason = "test assertions")]
+#![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(
     clippy::indexing_slicing,
     reason = "integration tests: index-based assertions on known-length slices"
@@ -114,8 +114,9 @@ fn pipeline_message_serde() {
         content: "hello".to_owned(),
         token_estimate: 5,
     };
-    let json = serde_json::to_string(&msg).unwrap();
-    let back: PipelineMessage = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&msg).expect("PipelineMessage serializes to JSON");
+    let back: PipelineMessage =
+        serde_json::from_str(&json).expect("PipelineMessage deserializes from JSON");
     assert_eq!(msg.role, back.role);
     assert_eq!(msg.content, back.content);
 }

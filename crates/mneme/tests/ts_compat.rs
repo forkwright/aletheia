@@ -1,5 +1,4 @@
 //! Cross-format compatibility test: verifies Rust can parse TS-exported `AgentFile`.
-#![expect(clippy::unwrap_used, reason = "test assertions")]
 #![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(
     clippy::indexing_slicing,
@@ -49,9 +48,11 @@ fn deserialize_ts_format_agent_file() {
 #[test]
 fn roundtrip_preserves_ts_format() {
     let json = include_str!("fixtures/ts-compat-agent.json");
-    let agent: AgentFile = serde_json::from_str(json).unwrap();
-    let re_serialized = serde_json::to_string_pretty(&agent).unwrap();
-    let re_parsed: AgentFile = serde_json::from_str(&re_serialized).unwrap();
+    let agent: AgentFile =
+        serde_json::from_str(json).expect("TS compat fixture parses as AgentFile");
+    let re_serialized = serde_json::to_string_pretty(&agent).expect("AgentFile serializes to JSON");
+    let re_parsed: AgentFile =
+        serde_json::from_str(&re_serialized).expect("re-serialized AgentFile re-parses");
 
     assert_eq!(agent.version, re_parsed.version);
     assert_eq!(agent.nous.id, re_parsed.nous.id);

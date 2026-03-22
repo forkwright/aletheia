@@ -2,7 +2,7 @@
     clippy::indexing_slicing,
     reason = "test: vec indices are valid after asserting len"
 )]
-#![expect(clippy::unwrap_used, reason = "test assertions")]
+#![expect(clippy::expect_used, reason = "test assertions")]
 use std::fs;
 
 use tempfile::TempDir;
@@ -74,7 +74,10 @@ async fn assemble_missing_required_errors() {
     let assembler = BootstrapAssembler::new(&oikos);
     let mut budget = default_budget();
 
-    let err = assembler.assemble("test", &mut budget).await.unwrap_err();
+    let err = assembler
+        .assemble("test", &mut budget)
+        .await
+        .expect_err("assemble with invalid config should fail");
     let msg = err.to_string();
     assert!(
         msg.contains("SOUL.md"),

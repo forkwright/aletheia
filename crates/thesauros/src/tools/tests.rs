@@ -1,5 +1,5 @@
 //! Tests for thesauros tools.
-#![expect(clippy::unwrap_used, reason = "test assertions")]
+#![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(
     clippy::indexing_slicing,
     reason = "test: vec indices are valid after asserting len"
@@ -14,16 +14,16 @@ use super::*;
 use crate::manifest::{PackInputSchema, PackManifest, PackPropertyDef, PackToolDef};
 
 fn setup_pack_dir(files: &[(&str, &str)]) -> TempDir {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("create temp dir");
     for (name, content) in files {
         let path = dir.path().join(name);
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).unwrap();
+            fs::create_dir_all(parent).expect("create parent dir");
         }
         // WHY: explicit File ensures fd is closed before chmod/exec: avoids ETXTBSY
-        let file = std::fs::File::create(&path).unwrap();
-        std::io::Write::write_all(&mut &file, content.as_bytes()).unwrap();
-        file.sync_all().unwrap();
+        let file = std::fs::File::create(&path).expect("create pack file");
+        std::io::Write::write_all(&mut &file, content.as_bytes()).expect("write pack file content");
+        file.sync_all().expect("sync pack file");
         drop(file);
     }
     dir
@@ -31,9 +31,11 @@ fn setup_pack_dir(files: &[(&str, &str)]) -> TempDir {
 
 fn make_executable(dir: &TempDir, path: &str) {
     let full = dir.path().join(path);
-    let mut perms = fs::metadata(&full).unwrap().permissions();
+    let mut perms = fs::metadata(&full)
+        .expect("get file metadata")
+        .permissions();
     perms.set_mode(0o755);
-    fs::set_permissions(&full, perms).unwrap();
+    fs::set_permissions(&full, perms).expect("set executable permissions");
 }
 
 fn minimal_loaded_pack(dir: &TempDir, tools: Vec<PackToolDef>) -> LoadedPack {
@@ -63,7 +65,7 @@ fn validate_command_path_missing() {
     let dir = setup_pack_dir(&[]);
     let result = validate_command_path(dir.path(), "tools/missing.sh");
     assert!(matches!(
-        result.unwrap_err(),
+        result.expect_err("missing command path should fail"),
         error::Error::ToolCommandNotFound { .. }
     ));
 }
@@ -73,7 +75,7 @@ fn validate_command_path_escape_rejected() {
     let dir = setup_pack_dir(&[("tools/test.sh", "#!/bin/sh")]);
     let result = validate_command_path(dir.path(), "../../../etc/passwd");
     // NOTE: returns ToolCommandNotFound (can't canonicalize) or ToolCommandEscape
-    let err = result.unwrap_err();
+    let err = result.expect_err("path traversal should be rejected");
     assert!(
         matches!(err, error::Error::ToolCommandNotFound { .. })
             || matches!(err, error::Error::ToolCommandEscape { .. })
@@ -83,34 +85,35 @@ fn validate_command_path_escape_rejected() {
 #[test]
 fn parse_property_type_all_variants() {
     assert_eq!(
-        parse_property_type("string", "t").unwrap(),
+        parse_property_type("string", "t").expect("string is a valid property type"),
         PropertyType::String
     );
     assert_eq!(
-        parse_property_type("number", "t").unwrap(),
+        parse_property_type("number", "t").expect("number is a valid property type"),
         PropertyType::Number
     );
     assert_eq!(
-        parse_property_type("integer", "t").unwrap(),
+        parse_property_type("integer", "t").expect("integer is a valid property type"),
         PropertyType::Integer
     );
     assert_eq!(
-        parse_property_type("boolean", "t").unwrap(),
+        parse_property_type("boolean", "t").expect("boolean is a valid property type"),
         PropertyType::Boolean
     );
     assert_eq!(
-        parse_property_type("array", "t").unwrap(),
+        parse_property_type("array", "t").expect("array is a valid property type"),
         PropertyType::Array
     );
     assert_eq!(
-        parse_property_type("object", "t").unwrap(),
+        parse_property_type("object", "t").expect("object is a valid property type"),
         PropertyType::Object
     );
 }
 
 #[test]
 fn parse_property_type_unknown_rejected() {
-    let err = parse_property_type("float", "my_tool").unwrap_err();
+    let err =
+        parse_property_type("float", "my_tool").expect_err("float is not a valid property type");
     assert!(matches!(err, error::Error::UnknownPropertyType { .. }));
     assert!(err.to_string().contains("float"));
     assert!(err.to_string().contains("my_tool"));
@@ -142,7 +145,7 @@ fn convert_input_schema_success() {
         required: vec!["sql".to_owned()],
     };
 
-    let result = convert_input_schema(&schema, "test").unwrap();
+    let result = convert_input_schema(&schema, "test").expect("valid schema should convert");
     assert_eq!(result.properties.len(), 2);
     assert_eq!(result.properties["sql"].property_type, PropertyType::String);
     assert_eq!(
@@ -231,18 +234,22 @@ async fn shell_executor_runs_script() {
     make_executable(&dir, "tools/echo.sh");
 
     let executor = ShellToolExecutor {
-        command_path: dir.path().join("tools/echo.sh").canonicalize().unwrap(),
+        command_path: dir
+            .path()
+            .join("tools/echo.sh")
+            .canonicalize()
+            .expect("canonicalize echo.sh path"),
         pack_root: dir.path().to_path_buf(),
         timeout_ms: 5000,
     };
 
     let input = ToolInput {
-        name: ToolName::new("echo_tool").unwrap(),
+        name: ToolName::new("echo_tool").expect("echo_tool is a valid tool name"),
         tool_use_id: "toolu_1".to_owned(),
         arguments: serde_json::json!({"message": "hello"}),
     };
     let ctx = ToolContext {
-        nous_id: aletheia_koina::id::NousId::new("test").unwrap(),
+        nous_id: aletheia_koina::id::NousId::new("test").expect("test is a valid nous id"),
         session_id: aletheia_koina::id::SessionId::new(),
         workspace: dir.path().to_path_buf(),
         allowed_roots: vec![],
@@ -250,7 +257,10 @@ async fn shell_executor_runs_script() {
         active_tools: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashSet::new())),
     };
 
-    let result = executor.execute(&input, &ctx).await.unwrap();
+    let result = executor
+        .execute(&input, &ctx)
+        .await
+        .expect("echo executor should succeed");
     assert!(
         !result.is_error,
         "unexpected error: {}",
@@ -265,18 +275,22 @@ async fn shell_executor_nonzero_exit_is_error() {
     make_executable(&dir, "tools/fail.sh");
 
     let executor = ShellToolExecutor {
-        command_path: dir.path().join("tools/fail.sh").canonicalize().unwrap(),
+        command_path: dir
+            .path()
+            .join("tools/fail.sh")
+            .canonicalize()
+            .expect("canonicalize fail.sh path"),
         pack_root: dir.path().to_path_buf(),
         timeout_ms: 5000,
     };
 
     let input = ToolInput {
-        name: ToolName::new("fail_tool").unwrap(),
+        name: ToolName::new("fail_tool").expect("fail_tool is a valid tool name"),
         tool_use_id: "toolu_1".to_owned(),
         arguments: serde_json::json!({}),
     };
     let ctx = ToolContext {
-        nous_id: aletheia_koina::id::NousId::new("test").unwrap(),
+        nous_id: aletheia_koina::id::NousId::new("test").expect("test is a valid nous id"),
         session_id: aletheia_koina::id::SessionId::new(),
         workspace: dir.path().to_path_buf(),
         allowed_roots: vec![],
@@ -284,7 +298,10 @@ async fn shell_executor_nonzero_exit_is_error() {
         active_tools: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashSet::new())),
     };
 
-    let result = executor.execute(&input, &ctx).await.unwrap();
+    let result = executor
+        .execute(&input, &ctx)
+        .await
+        .expect("fail executor should return result");
     assert!(result.is_error);
 }
 
@@ -345,20 +362,24 @@ async fn shell_metacharacters_in_arguments_passed_safely_via_stdin() {
     make_executable(&dir, "tools/cat.sh");
 
     let executor = ShellToolExecutor {
-        command_path: dir.path().join("tools/cat.sh").canonicalize().unwrap(),
+        command_path: dir
+            .path()
+            .join("tools/cat.sh")
+            .canonicalize()
+            .expect("canonicalize cat.sh path"),
         pack_root: dir.path().to_path_buf(),
         timeout_ms: 5000,
     };
 
     let input = ToolInput {
-        name: ToolName::new("cat_tool").unwrap(),
+        name: ToolName::new("cat_tool").expect("cat_tool is a valid tool name"),
         tool_use_id: "toolu_meta".to_owned(),
         arguments: serde_json::json!({
             "cmd": "; rm -rf / && echo pwned | cat /etc/passwd $(whoami) `id`"
         }),
     };
     let ctx = ToolContext {
-        nous_id: aletheia_koina::id::NousId::new("test").unwrap(),
+        nous_id: aletheia_koina::id::NousId::new("test").expect("test is a valid nous id"),
         session_id: aletheia_koina::id::SessionId::new(),
         workspace: dir.path().to_path_buf(),
         allowed_roots: vec![],
@@ -366,7 +387,10 @@ async fn shell_metacharacters_in_arguments_passed_safely_via_stdin() {
         active_tools: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashSet::new())),
     };
 
-    let result = executor.execute(&input, &ctx).await.unwrap();
+    let result = executor
+        .execute(&input, &ctx)
+        .await
+        .expect("metacharacter executor should succeed");
     let text = result.content.text_summary();
     assert!(
         text.contains("; rm -rf /"),
@@ -383,7 +407,7 @@ async fn shell_metacharacters_in_arguments_passed_safely_via_stdin() {
 fn validate_command_path_rejects_absolute_path_outside_root() {
     let dir = setup_pack_dir(&[("tools/test.sh", "#!/bin/sh")]);
     let result = validate_command_path(dir.path(), "/etc/passwd");
-    let err = result.unwrap_err();
+    let err = result.expect_err("absolute path outside root must be rejected");
     assert!(
         matches!(
             err,
@@ -397,7 +421,7 @@ fn validate_command_path_rejects_absolute_path_outside_root() {
 fn validate_command_path_rejects_dotdot_traversal() {
     let dir = setup_pack_dir(&[("tools/test.sh", "#!/bin/sh")]);
     let result = validate_command_path(dir.path(), "tools/../../etc/passwd");
-    let err = result.unwrap_err();
+    let err = result.expect_err(".. traversal must be rejected");
     assert!(
         matches!(
             err,
@@ -411,10 +435,10 @@ fn validate_command_path_rejects_dotdot_traversal() {
 fn validate_command_path_rejects_symlink_escape() {
     let dir = setup_pack_dir(&[("tools/legit.sh", "#!/bin/sh")]);
     let symlink_path = dir.path().join("tools/escape");
-    std::os::unix::fs::symlink("/etc", &symlink_path).unwrap();
+    std::os::unix::fs::symlink("/etc", &symlink_path).expect("create symlink for escape test");
 
     let result = validate_command_path(dir.path(), "tools/escape/passwd");
-    let err = result.unwrap_err();
+    let err = result.expect_err("symlink escape must be rejected");
     assert!(
         matches!(
             err,
@@ -430,20 +454,24 @@ async fn shell_executor_does_not_expand_env_vars_in_arguments() {
     make_executable(&dir, "tools/cat.sh");
 
     let executor = ShellToolExecutor {
-        command_path: dir.path().join("tools/cat.sh").canonicalize().unwrap(),
+        command_path: dir
+            .path()
+            .join("tools/cat.sh")
+            .canonicalize()
+            .expect("canonicalize cat.sh path"),
         pack_root: dir.path().to_path_buf(),
         timeout_ms: 5000,
     };
 
     let input = ToolInput {
-        name: ToolName::new("cat_tool").unwrap(),
+        name: ToolName::new("cat_tool").expect("cat_tool is a valid tool name"),
         tool_use_id: "toolu_env".to_owned(),
         arguments: serde_json::json!({
             "path": "$HOME/.ssh/id_rsa"
         }),
     };
     let ctx = ToolContext {
-        nous_id: aletheia_koina::id::NousId::new("test").unwrap(),
+        nous_id: aletheia_koina::id::NousId::new("test").expect("test is a valid nous id"),
         session_id: aletheia_koina::id::SessionId::new(),
         workspace: dir.path().to_path_buf(),
         allowed_roots: vec![],
@@ -451,7 +479,10 @@ async fn shell_executor_does_not_expand_env_vars_in_arguments() {
         active_tools: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashSet::new())),
     };
 
-    let result = executor.execute(&input, &ctx).await.unwrap();
+    let result = executor
+        .execute(&input, &ctx)
+        .await
+        .expect("env var executor should succeed");
     let text = result.content.text_summary();
     assert!(
         text.contains("$HOME"),
@@ -465,18 +496,22 @@ async fn shell_executor_timeout_returns_error() {
     make_executable(&dir, "tools/slow.sh");
 
     let executor = ShellToolExecutor {
-        command_path: dir.path().join("tools/slow.sh").canonicalize().unwrap(),
+        command_path: dir
+            .path()
+            .join("tools/slow.sh")
+            .canonicalize()
+            .expect("canonicalize slow.sh path"),
         pack_root: dir.path().to_path_buf(),
         timeout_ms: 100,
     };
 
     let input = ToolInput {
-        name: ToolName::new("slow_tool").unwrap(),
+        name: ToolName::new("slow_tool").expect("slow_tool is a valid tool name"),
         tool_use_id: "toolu_slow".to_owned(),
         arguments: serde_json::json!({}),
     };
     let ctx = ToolContext {
-        nous_id: aletheia_koina::id::NousId::new("test").unwrap(),
+        nous_id: aletheia_koina::id::NousId::new("test").expect("test is a valid nous id"),
         session_id: aletheia_koina::id::SessionId::new(),
         workspace: dir.path().to_path_buf(),
         allowed_roots: vec![],
@@ -484,7 +519,10 @@ async fn shell_executor_timeout_returns_error() {
         active_tools: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashSet::new())),
     };
 
-    let result = executor.execute(&input, &ctx).await.unwrap();
+    let result = executor
+        .execute(&input, &ctx)
+        .await
+        .expect("timeout executor should return result");
     assert!(result.is_error);
     assert!(
         result.content.text_summary().contains("timed out"),
@@ -510,18 +548,18 @@ async fn shell_executor_truncates_at_char_boundary() {
             .path()
             .join("tools/multibyte.sh")
             .canonicalize()
-            .unwrap(),
+            .expect("canonicalize multibyte.sh path"),
         pack_root: dir.path().to_path_buf(),
         timeout_ms: 5000,
     };
 
     let input = ToolInput {
-        name: ToolName::new("mb_tool").unwrap(),
+        name: ToolName::new("mb_tool").expect("mb_tool is a valid tool name"),
         tool_use_id: "toolu_mb".to_owned(),
         arguments: serde_json::json!({}),
     };
     let ctx = ToolContext {
-        nous_id: aletheia_koina::id::NousId::new("test").unwrap(),
+        nous_id: aletheia_koina::id::NousId::new("test").expect("test is a valid nous id"),
         session_id: aletheia_koina::id::SessionId::new(),
         workspace: dir.path().to_path_buf(),
         allowed_roots: vec![],
@@ -529,7 +567,10 @@ async fn shell_executor_truncates_at_char_boundary() {
         active_tools: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashSet::new())),
     };
 
-    let result = executor.execute(&input, &ctx).await.unwrap();
+    let result = executor
+        .execute(&input, &ctx)
+        .await
+        .expect("truncation executor should succeed");
     let text = result.content.text_summary();
     assert!(text.is_char_boundary(0), "result must be valid UTF-8");
     assert!(

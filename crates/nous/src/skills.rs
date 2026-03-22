@@ -325,7 +325,7 @@ mod tests {
         clippy::indexing_slicing,
         reason = "test: vec indices are valid after asserting len"
     )]
-    #![expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
+    #![expect(clippy::expect_used, reason = "test assertions may panic on failure")]
 
     use super::*;
 
@@ -504,7 +504,8 @@ mod tests {
     #[cfg(feature = "knowledge-store")]
     #[test]
     fn fact_to_section_uses_flexible_priority() {
-        let skill_json = serde_json::to_string(&sample_skill()).unwrap();
+        let skill_json =
+            serde_json::to_string(&sample_skill()).expect("sample skill serializes to JSON");
         let fact = make_fact("fact-1", &skill_json, 0.9, 3);
         let section = fact_to_section(&fact);
         assert_eq!(section.priority, SectionPriority::Flexible);
@@ -513,7 +514,8 @@ mod tests {
     #[cfg(feature = "knowledge-store")]
     #[test]
     fn fact_to_section_is_truncatable() {
-        let skill_json = serde_json::to_string(&sample_skill()).unwrap();
+        let skill_json =
+            serde_json::to_string(&sample_skill()).expect("sample skill serializes to JSON");
         let fact = make_fact("fact-1", &skill_json, 0.9, 0);
         let section = fact_to_section(&fact);
         assert!(section.truncatable);
@@ -522,7 +524,8 @@ mod tests {
     #[cfg(feature = "knowledge-store")]
     #[test]
     fn fact_to_section_parses_json_skill_content() {
-        let skill_json = serde_json::to_string(&sample_skill()).unwrap();
+        let skill_json =
+            serde_json::to_string(&sample_skill()).expect("sample skill serializes to JSON");
         let fact = make_fact("fact-1", &skill_json, 0.9, 0);
         let section = fact_to_section(&fact);
         assert!(section.content.contains("rust-error-handling"));
@@ -551,7 +554,7 @@ mod tests {
     #[cfg(feature = "knowledge-store")]
     #[test]
     fn fact_to_section_has_nonzero_token_estimate() {
-        let skill_json = serde_json::to_string(&sample_skill()).unwrap();
+        let skill_json = serde_json::to_string(&sample_skill()).expect("serialize sample skill");
         let fact = make_fact("fact-1", &skill_json, 0.9, 0);
         let section = fact_to_section(&fact);
         assert!(section.tokens > 0);

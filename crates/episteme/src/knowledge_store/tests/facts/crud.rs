@@ -1,6 +1,5 @@
 //! Tests for basic fact CRUD: insert, retrieve, forget, access.
 #![expect(clippy::expect_used, reason = "test assertions")]
-#![expect(clippy::unwrap_used, reason = "test assertions")]
 #![expect(
     clippy::indexing_slicing,
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
@@ -329,7 +328,9 @@ fn forget_nonexistent_fact_errors() {
         ForgetReason::UserRequested,
     );
     assert!(result.is_err(), "forgetting non-existent fact must error");
-    let err = result.unwrap_err().to_string();
+    let err = result
+        .expect_err("forgetting non-existent fact must error")
+        .to_string();
     assert!(
         err.contains("not found"),
         "error should mention not found: {err}"
