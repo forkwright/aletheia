@@ -33,9 +33,9 @@ pub use crate::state::{
     ActiveTool, AgentState, AgentStatus, ChatMessage, CommandPaletteState, ContextAction,
     ContextActionsOverlay, DecisionCardOverlay, DecisionField, DecisionOption, ErrorBanner,
     FilterState, FocusedPane, InputState, MemoryInspectorState, NotificationStore, OpsState,
-    Overlay, PlanApprovalOverlay, PlanStepApproval, SelectionContext, SessionPickerOverlay,
-    SlashCompleteState, SubmittedDecision, TabCompletion, Toast, ToolApprovalOverlay, ToolCallInfo,
-    ToolSummary, View, ViewStack,
+    Overlay, PlanApprovalOverlay, PlanStepApproval, PlanningDashboardState, RetrospectiveState,
+    SelectionContext, SessionPickerOverlay, SlashCompleteState, SubmittedDecision, TabCompletion,
+    Toast, ToolApprovalOverlay, ToolCallInfo, ToolSummary, View, ViewStack,
 };
 
 /// Default terminal width used before the first resize event arrives.
@@ -142,6 +142,8 @@ pub struct LayoutState {
     pub ops: OpsState,
     pub(crate) tab_bar: TabBar,
     pub memory: MemoryInspectorState,
+    pub planning: crate::state::PlanningDashboardState,
+    pub retrospective: crate::state::RetrospectiveState,
     pub(crate) pending_g: bool,
     pub(crate) bell_enabled: bool,
     /// Cross-agent notification log with read/unread tracking.
@@ -259,6 +261,8 @@ impl App {
                 ops: OpsState::default(),
                 tab_bar: TabBar::new(),
                 memory: MemoryInspectorState::new(),
+                planning: crate::state::PlanningDashboardState::new(),
+                retrospective: crate::state::RetrospectiveState::new(),
                 pending_g: false,
                 bell_enabled,
                 notifications: NotificationStore::default(),

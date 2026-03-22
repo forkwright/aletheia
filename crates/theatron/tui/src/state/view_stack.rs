@@ -22,6 +22,10 @@ pub enum View {
     MemoryInspector,
     /// Fact detail within the memory inspector.
     FactDetail { fact_id: String },
+    /// Planning dashboard: project phases, execution, checkpoints.
+    Planning,
+    /// Retrospective: post-mortem for completed projects.
+    Retrospective,
 }
 
 impl View {
@@ -34,6 +38,8 @@ impl View {
             Self::MessageDetail { .. } => "Message",
             Self::MemoryInspector => "Memory",
             Self::FactDetail { .. } => "Fact",
+            Self::Planning => "Planning",
+            Self::Retrospective => "Retrospective",
         }
     }
 }

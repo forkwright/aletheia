@@ -7,6 +7,7 @@ mod memory;
 pub(crate) mod notification;
 pub(crate) mod ops;
 mod overlay;
+pub(crate) mod planning;
 pub(crate) mod settings;
 mod sidebar;
 mod slash;

@@ -194,6 +194,20 @@ pub static COMMANDS: &[Command] = &[
         category: CommandCategory::Navigation,
         shortcut: None,
     },
+    Command {
+        name: "planning",
+        aliases: &["plan"],
+        description: "Open planning dashboard",
+        category: CommandCategory::Navigation,
+        shortcut: None,
+    },
+    Command {
+        name: "retrospective",
+        aliases: &["retro"],
+        description: "Project retrospective view",
+        category: CommandCategory::Navigation,
+        shortcut: None,
+    },
 ];
 
 const MAX_SUGGESTIONS: usize = 8;

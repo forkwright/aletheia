@@ -7,6 +7,7 @@ pub mod memory;
 pub mod notification;
 pub(crate) mod ops;
 mod overlay;
+pub(crate) mod planning;
 pub mod settings;
 pub(crate) mod tab;
 pub(crate) mod view_stack;
@@ -26,5 +27,6 @@ pub use overlay::{
     Overlay, PlanApprovalOverlay, PlanStepApproval, SearchResult, SearchResultKind,
     SessionPickerOverlay, SessionSearchOverlay, SubmittedDecision, ToolApprovalOverlay,
 };
+pub use planning::{PlanningDashboardState, RetrospectiveState};
 pub(crate) use tab::TabBar;
 pub use view_stack::{View, ViewStack};

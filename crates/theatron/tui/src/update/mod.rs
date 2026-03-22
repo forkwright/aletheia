@@ -6,6 +6,7 @@ mod input;
 pub(crate) mod memory;
 mod navigation;
 mod overlay;
+pub(crate) mod planning;
 mod search;
 pub(crate) mod selection;
 pub(crate) mod settings;
@@ -255,6 +256,22 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::SettingsLoaded(config) => settings::handle_loaded(app, config),
         Msg::SettingsSaved => settings::handle_saved(app),
         Msg::SettingsSaveError(msg) => settings::handle_save_error(app, msg),
+        Msg::PlanningOpen => planning::handle_open(app),
+        Msg::PlanningClose => planning::handle_close(app),
+        Msg::PlanningTabNext => planning::handle_tab_next(app),
+        Msg::PlanningTabPrev => planning::handle_tab_prev(app),
+        Msg::PlanningSelectUp => planning::handle_select_up(app),
+        Msg::PlanningSelectDown => planning::handle_select_down(app),
+        Msg::PlanningToggleExpand => planning::handle_toggle_expand(app),
+        Msg::PlanningApproveCheckpoint => planning::handle_approve_checkpoint(app),
+
+        Msg::RetroOpen => planning::handle_retro_open(app),
+        Msg::RetroClose => planning::handle_retro_close(app),
+        Msg::RetroSectionNext => planning::handle_retro_section_next(app),
+        Msg::RetroSectionPrev => planning::handle_retro_section_prev(app),
+        Msg::RetroScrollUp => planning::handle_retro_scroll_up(app),
+        Msg::RetroScrollDown => planning::handle_retro_scroll_down(app),
+
         Msg::MemoryOpen => memory::handle_open(app).await,
         Msg::MemoryClose => memory::handle_close(app),
         Msg::MemoryTabNext => memory::handle_tab_next(app),

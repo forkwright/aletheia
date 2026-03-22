@@ -1,9 +1,6 @@
 //! HTTP client for the Aletheia gateway REST API.
 // WHY: all async methods return Result which is already #[must_use]; outer attrs add caller context.
-#![expect(
-    clippy::double_must_use,
-    reason = "Result return type is must_use; outer attr adds caller context"
-)]
+#![allow(clippy::double_must_use)]
 
 use reqwest::{Client, Response, StatusCode, header};
 use snafu::prelude::*;

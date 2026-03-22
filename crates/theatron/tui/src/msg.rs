@@ -241,6 +241,36 @@ pub enum Msg {
     #[expect(dead_code, reason = "planned TUI feature")]
     SettingsSaveError(String),
 
+    #[expect(dead_code, reason = "dispatched via command palette, not keybindings")]
+    PlanningOpen,
+    #[expect(dead_code, reason = "dispatched via command palette, not keybindings")]
+    PlanningClose,
+    #[expect(dead_code, reason = "dispatched via command palette, not keybindings")]
+    PlanningTabNext,
+    #[expect(dead_code, reason = "dispatched via command palette, not keybindings")]
+    PlanningTabPrev,
+    #[expect(dead_code, reason = "dispatched via command palette, not keybindings")]
+    PlanningSelectUp,
+    #[expect(dead_code, reason = "dispatched via command palette, not keybindings")]
+    PlanningSelectDown,
+    #[expect(dead_code, reason = "dispatched via command palette, not keybindings")]
+    PlanningToggleExpand,
+    #[expect(dead_code, reason = "dispatched via command palette, not keybindings")]
+    PlanningApproveCheckpoint,
+
+    #[expect(dead_code, reason = "dispatched via command palette, not keybindings")]
+    RetroOpen,
+    #[expect(dead_code, reason = "dispatched via command palette, not keybindings")]
+    RetroClose,
+    #[expect(dead_code, reason = "dispatched via command palette, not keybindings")]
+    RetroSectionNext,
+    #[expect(dead_code, reason = "dispatched via command palette, not keybindings")]
+    RetroSectionPrev,
+    #[expect(dead_code, reason = "dispatched via command palette, not keybindings")]
+    RetroScrollUp,
+    #[expect(dead_code, reason = "dispatched via command palette, not keybindings")]
+    RetroScrollDown,
+
     MemoryOpen,
     MemoryClose,
     MemoryTabNext,
@@ -288,11 +318,11 @@ pub enum Msg {
     MemoryPageDown,
     MemoryPageUp,
 
-    #[expect(dead_code, reason = "planned TUI feature")]
+    #[cfg_attr(not(test), expect(dead_code, reason = "planned TUI feature"))]
     ShowError(String),
-    #[expect(dead_code, reason = "planned TUI feature")]
+    #[cfg_attr(not(test), expect(dead_code, reason = "planned TUI feature"))]
     ShowSuccess(String),
-    #[expect(dead_code, reason = "planned TUI feature")]
+    #[cfg_attr(not(test), expect(dead_code, reason = "planned TUI feature"))]
     DismissError,
 
     #[expect(dead_code, reason = "planned TUI feature")]
@@ -372,19 +402,28 @@ pub enum MessageActionKind {
     Delete,
     OpenLinks,
     Inspect,
-    #[expect(
-        dead_code,
-        reason = "constructed in context action overlay; lint fires in lib but not test target"
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "constructed in context action overlay; lint fires in lib but not test target"
+        )
     )]
     QuoteInReply,
-    #[expect(
-        dead_code,
-        reason = "constructed in context action overlay; lint fires in lib but not test target"
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "constructed in context action overlay; lint fires in lib but not test target"
+        )
     )]
     RateResponse,
-    #[expect(
-        dead_code,
-        reason = "constructed in context action overlay; lint fires in lib but not test target"
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "constructed in context action overlay; lint fires in lib but not test target"
+        )
     )]
     FlagForReview,
 }

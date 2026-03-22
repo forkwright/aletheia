@@ -270,10 +270,7 @@ pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutc
         let ctx_total = model_context_window(&outcome.model);
         app.dashboard.context_tokens_used = Some(ctx_used);
         app.dashboard.context_tokens_total = Some(ctx_total);
-        #[expect(
-            clippy::cast_possible_truncation,
-            reason = "percentage is always 0–100, fits in u8"
-        )]
+        #[allow(clippy::cast_possible_truncation)]
         let pct = ((u64::from(ctx_used) * 100) / u64::from(ctx_total)).min(100) as u8;
         app.dashboard.context_usage_pct = Some(pct);
     }

@@ -377,7 +377,6 @@ fn split_vertical<const N: usize>(area: Rect, heights: &[u16; N]) -> [Rect; N] {
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use super::*;
     use crate::wizard::state::WizardState;
