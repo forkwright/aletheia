@@ -229,7 +229,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Search, embeddings, metrics, and tool policy
 
 #### TUI
-- TUI dashboard MVP (Phases 1–3)
+- TUI dashboard MVP (Phases 1-3)
 - Svelte 5 web UI with streaming backend
 - Graph visualization, file explorer, and pipeline decomposition
 - Syntax highlighting, sidebar, slash commands, and file uploads

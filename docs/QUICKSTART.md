@@ -25,8 +25,8 @@ sudo cp aletheia /usr/local/bin/
 ```
 
 The tarball extracts to `aletheia-${VERSION}/` and contains:
-- `aletheia` — the binary
-- `instance.example/` — reference config and directory layout for first-time setup
+- `aletheia`: the binary
+- `instance.example/`: reference config and directory layout for first-time setup
 
 Or build from source (requires Rust 1.94+):
 

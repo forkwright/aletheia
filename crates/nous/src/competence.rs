@@ -60,7 +60,7 @@ impl TaskOutcome {
 pub struct DomainScore {
     /// Domain name (e.g., "coding", "research").
     pub domain: String,
-    /// Competence score (0.0–1.0), starts at 0.5.
+    /// Competence score (0.0-1.0), starts at 0.5.
     pub score: f64,
     /// Total successes recorded.
     pub successes: u32,
@@ -213,27 +213,38 @@ impl CompetenceTracker {
 
         Self::ensure_domain(&tx, nous_id, domain, &now)?;
 
-        let score_delta = match outcome {
-            TaskOutcome::Success => SUCCESS_BONUS,
-            TaskOutcome::Partial => 0.0,
-            TaskOutcome::Failure => -CORRECTION_PENALTY,
-        };
-        let counter_field = match outcome {
-            TaskOutcome::Success => "successes",
-            TaskOutcome::Partial => "partials",
-            TaskOutcome::Failure => "failures",
-        };
-
-        tx.execute(
-            &format!(
+        match outcome {
+            TaskOutcome::Success => tx.execute(
                 "UPDATE competence_domains
-                 SET score = MAX({MIN_SCORE}, MIN({MAX_SCORE}, score + ?1)),
-                     {counter_field} = {counter_field} + 1,
-                     updated_at = ?2
-                 WHERE nous_id = ?3 AND domain = ?4"
+                     SET score = MAX(?1, MIN(?2, score + ?3)),
+                         successes = successes + 1,
+                         updated_at = ?4
+                     WHERE nous_id = ?5 AND domain = ?6",
+                params![MIN_SCORE, MAX_SCORE, SUCCESS_BONUS, now, nous_id, domain],
             ),
-            params![score_delta, now, nous_id, domain],
-        )
+            TaskOutcome::Partial => tx.execute(
+                "UPDATE competence_domains
+                     SET updated_at = ?1,
+                         partials = partials + 1
+                     WHERE nous_id = ?2 AND domain = ?3",
+                params![now, nous_id, domain],
+            ),
+            TaskOutcome::Failure => tx.execute(
+                "UPDATE competence_domains
+                     SET score = MAX(?1, MIN(?2, score + ?3)),
+                         failures = failures + 1,
+                         updated_at = ?4
+                     WHERE nous_id = ?5 AND domain = ?6",
+                params![
+                    MIN_SCORE,
+                    MAX_SCORE,
+                    -CORRECTION_PENALTY,
+                    now,
+                    nous_id,
+                    domain
+                ],
+            ),
+        }
         .context(error::CompetenceStoreSnafu {
             message: "failed to update domain score",
         })?;
@@ -256,14 +267,12 @@ impl CompetenceTracker {
 
         self.conn
             .execute(
-                &format!(
-                    "UPDATE competence_domains
-                 SET score = MAX({MIN_SCORE}, score - ?1),
+                "UPDATE competence_domains
+                 SET score = MAX(?1, score - ?2),
                      corrections = corrections + 1,
-                     updated_at = ?2
-                 WHERE nous_id = ?3 AND domain = ?4"
-                ),
-                params![CORRECTION_PENALTY, now, nous_id, domain],
+                     updated_at = ?3
+                 WHERE nous_id = ?4 AND domain = ?5",
+                params![MIN_SCORE, CORRECTION_PENALTY, now, nous_id, domain],
             )
             .context(error::CompetenceStoreSnafu {
                 message: "failed to record correction",
@@ -282,14 +291,12 @@ impl CompetenceTracker {
 
         self.conn
             .execute(
-                &format!(
-                    "UPDATE competence_domains
-                 SET score = MAX({MIN_SCORE}, score - ?1),
+                "UPDATE competence_domains
+                 SET score = MAX(?1, score - ?2),
                      disagreements = disagreements + 1,
-                     updated_at = ?2
-                 WHERE nous_id = ?3 AND domain = ?4"
-                ),
-                params![DISAGREEMENT_PENALTY, now, nous_id, domain],
+                     updated_at = ?3
+                 WHERE nous_id = ?4 AND domain = ?5",
+                params![MIN_SCORE, DISAGREEMENT_PENALTY, now, nous_id, domain],
             )
             .context(error::CompetenceStoreSnafu {
                 message: "failed to record disagreement",

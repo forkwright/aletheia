@@ -30,7 +30,6 @@ use snafu::ResultExt;
 ///
 /// Caches `PageRank` scores, community (cluster) assignments, and the `PageRank` max
 /// meta-entry. Updated by background recomputation.
-#[expect(dead_code, reason = "reserved for future graph intelligence queries")]
 pub(crate) const GRAPH_SCORES_DDL: &str = r":create graph_scores {
     entity_id: String, score_type: String =>
     score: Float default 0.0, cluster_id: Int default -1, updated_at: String
@@ -135,7 +134,6 @@ pub(crate) fn score_access_with_evolution(base_access_score: f64, chain_length: 
 /// and stores results into `graph_scores`.
 ///
 /// Parameters: `$now` (ISO 8601 timestamp string).
-#[expect(dead_code, reason = "reserved for future graph intelligence queries")]
 pub(crate) const RECOMPUTE_GRAPH_SCORES: &str = r"
 edges[src, dst] := *relationships{src, dst}
 edges_w[src, dst, weight] := *relationships{src, dst, weight}
@@ -162,7 +160,6 @@ comm[labels, entity_id] <~ CommunityDetectionLouvain(edges_w[])
 ";
 
 /// Datalog script to load all graph scores into memory.
-#[expect(dead_code, reason = "reserved for future graph intelligence queries")]
 pub(crate) const LOAD_GRAPH_SCORES: &str = r"
 ?[entity_id, score_type, score, cluster_id] :=
     *graph_scores{entity_id, score_type, score, cluster_id}
@@ -174,7 +171,6 @@ pub(crate) const LOAD_GRAPH_SCORES: &str = r"
 /// Parameters: `$seeds` (list of entity IDs).
 ///
 /// Returns rows of `[entity_id, hops]`.
-#[expect(dead_code, reason = "reserved for future graph intelligence queries")]
 pub(crate) const BFS_PROXIMITY_4HOP: &str = r"
 seed[id] := id in $seeds
 
@@ -194,7 +190,6 @@ hop4[dst, h] := hop3[src, _], *relationships{src, dst}, not hop0[dst, _], not ho
 /// Datalog script for computing supersession chain lengths.
 ///
 /// Counts how many predecessors each fact has in its supersession chain.
-#[expect(dead_code, reason = "reserved for future graph intelligence queries")]
 pub(crate) const SUPERSESSION_CHAIN_LENGTHS: &str = r"
 chain[id, d] := *facts{id, superseded_by}, is_null(superseded_by), d = 0
 chain[id, n] := *facts{id, superseded_by}, superseded_by = next_id, not is_null(next_id),

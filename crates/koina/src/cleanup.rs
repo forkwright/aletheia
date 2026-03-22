@@ -2,8 +2,8 @@
 //!
 //! [`CleanupGuard`](crate::cleanup::CleanupGuard) executes a callback when dropped, ensuring resource cleanup
 //! fires on normal return, early error exit, panic, and async cancellation.
-//! Register the guard at the point of resource acquisition — not in a separate
-//! `Drop` impl — so cleanup is tied to the acquisition scope.
+//! Register the guard at the point of resource acquisition, not in a separate
+//! `Drop` impl, so cleanup is tied to the acquisition scope.
 //!
 //! # Example
 //!
@@ -65,7 +65,7 @@ impl<F: FnOnce()> Drop for CleanupGuard<F> {
 ///
 /// Unlike [`CleanupGuard`] (single callback), `CleanupRegistry` accumulates
 /// callbacks over time and runs them in reverse registration order (LIFO) on
-/// drop — matching the natural resource acquisition/release pattern.
+/// drop, matching the natural resource acquisition/release pattern.
 ///
 /// # Example
 ///

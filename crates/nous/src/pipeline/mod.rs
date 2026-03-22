@@ -396,7 +396,7 @@ impl LoopDetector {
         }
     }
 
-    /// Detect repeating cycles of length 2–`CYCLE_DETECTION_MAX_LEN`.
+    /// Detect repeating cycles of length 2-`CYCLE_DETECTION_MAX_LEN`.
     fn detect_cycle(&self) -> Option<String> {
         let n = self.history.len();
         #[expect(

@@ -110,6 +110,10 @@ impl Default for Answers {
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "init wizard is sequential; splitting adds indirection"
+)]
 pub(crate) fn run(args: RunArgs) -> Result<(), InitError> {
     let RunArgs {
         root,
@@ -422,5 +426,9 @@ fn write_user_profile_from_wizard(
             &format!("- **Timezone:** {}", wa.timezone),
         );
 
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "aletheia CLI commands use synchronous filesystem operations for config and certificate generation"
+    )]
     std::fs::write(&user_md_path, updated).context(WriteFileSnafu { path: user_md_path })
 }

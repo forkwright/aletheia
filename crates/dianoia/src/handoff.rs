@@ -157,6 +157,13 @@ impl HandoffFile {
             })?;
             std::fs::write(&json_path, json).context(error::HandoffIoSnafu { path: &json_path })?;
             std::fs::write(&md_path, markdown).context(error::HandoffIoSnafu { path: &md_path })?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let perms = std::fs::Permissions::from_mode(0o640);
+                let _ = std::fs::set_permissions(&json_path, perms.clone());
+                let _ = std::fs::set_permissions(&md_path, perms);
+            }
         }
 
         Ok(())

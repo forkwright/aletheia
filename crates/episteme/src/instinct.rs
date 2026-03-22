@@ -18,7 +18,7 @@ const MAX_CONTEXT_SUMMARY_LEN: usize = 100;
 /// Minimum observations before a behavioral pattern is created.
 const MIN_OBSERVATIONS: u32 = 5;
 
-/// Minimum success rate (0.0–1.0) before a behavioral pattern is created.
+/// Minimum success rate (0.0-1.0) before a behavioral pattern is created.
 const MIN_SUCCESS_RATE: f64 = 0.80;
 
 /// Patterns matching potential secret values in tool parameters.
@@ -124,7 +124,7 @@ pub(crate) struct BehavioralPattern {
     pub success_count: u32,
     /// Total number of observations.
     pub total_count: u32,
-    /// Success rate (0.0–1.0).
+    /// Success rate (0.0-1.0).
     pub success_rate: f64,
     /// When first observed.
     pub first_observed: jiff::Timestamp,

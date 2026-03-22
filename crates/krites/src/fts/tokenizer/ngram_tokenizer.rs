@@ -99,8 +99,9 @@ pub(crate) struct NgramTokenizer {
 impl NgramTokenizer {
     /// Configures a new Ngram tokenizer
     pub(crate) fn new(min_gram: usize, max_gram: usize, prefix_only: bool) -> NgramTokenizer {
-        assert!(min_gram > 0, "min_gram must be greater than 0");
-        assert!(
+        // INVARIANT: caller (FtsConfig::build_tokenizer) validates these before construction.
+        debug_assert!(min_gram > 0, "min_gram must be greater than 0");
+        debug_assert!(
             min_gram <= max_gram,
             "min_gram must not be greater than max_gram"
         );
@@ -195,7 +196,8 @@ where
         min_gram: usize,
         max_gram: usize,
     ) -> StutteringIterator<T> {
-        assert!(min_gram > 0);
+        // INVARIANT: NgramTokenizer::new guarantees min_gram > 0.
+        debug_assert!(min_gram > 0, "min_gram must be greater than 0");
         let memory: Vec<usize> = (&mut underlying).take(max_gram + 1).collect();
         if memory.len() <= min_gram {
             StutteringIterator {

@@ -2,10 +2,10 @@
 //!
 //! Verifies that required resources are available before any service starts:
 //!
-//! 1. **Disk space** — the data directory filesystem must have at least
+//! 1. **Disk space**: the data directory filesystem must have at least
 //!    `MIN_REQUIRED_MB` megabytes free.
-//! 2. **Port bindability** — the configured gateway TCP port must be available.
-//! 3. **Directory permissions** — `config/` must be readable and `data/` must
+//! 2. **Port bindability**: the configured gateway TCP port must be available.
+//! 3. **Directory permissions**: `config/` must be readable and `data/` must
 //!    be writable.
 //!
 //! All checks are collected so that a single startup attempt reports every

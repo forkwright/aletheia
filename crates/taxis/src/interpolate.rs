@@ -2,8 +2,8 @@
 //!
 //! Supports two substitution forms processed before TOML deserialization:
 //!
-//! - `${VAR:-default}` — substitutes `default` when `VAR` is unset
-//! - `${VAR:?error message}` — aborts startup with `error message` when `VAR` is unset
+//! - `${VAR:-default}`: substitutes `default` when `VAR` is unset
+//! - `${VAR:?error message}`: aborts startup with `error message` when `VAR` is unset
 //!
 //! Plain `${VAR}` without an operator substitutes the variable value or an empty
 //! string if unset.

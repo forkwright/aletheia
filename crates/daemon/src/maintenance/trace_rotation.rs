@@ -150,8 +150,17 @@ impl TraceRotator {
                 tracing::warn!(
                     path = %entry.path.display(),
                     error = %e,
-                    "could not create replacement trace file after rotation — writers may stall until next rotation"
+                    "could not create replacement trace file after rotation, writers may stall until next rotation"
                 );
+            } else {
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let _ = std::fs::set_permissions(
+                        &entry.path,
+                        std::fs::Permissions::from_mode(0o640),
+                    );
+                }
             }
 
             if self.config.compress {

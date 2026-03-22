@@ -18,7 +18,6 @@
     any(feature = "mneme-engine", test),
     expect(
         clippy::as_conversions,
-        clippy::cast_precision_loss,
         clippy::indexing_slicing,
         reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
     )
@@ -37,9 +36,9 @@ pub struct EntityMergeCandidate {
     pub name_a: String,
     /// Display name of entity B.
     pub name_b: String,
-    /// Jaro-Winkler similarity between names (0.0–1.0).
+    /// Jaro-Winkler similarity between names (0.0-1.0).
     pub name_similarity: f64,
-    /// Cosine similarity between name embeddings (0.0–1.0).
+    /// Cosine similarity between name embeddings (0.0-1.0).
     pub embed_similarity: f64,
     /// Whether both entities share the same `entity_type`.
     pub type_match: bool,

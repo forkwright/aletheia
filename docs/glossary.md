@@ -392,6 +392,6 @@ Pylon guards the boundary      Outside world reaches Nous only through Pylon
 
 ## Further reading
 
-- [gnomon.md](gnomon.md) - Naming philosophy, construction system, layer test (L1–L4)
-- [lexicon.md](lexicon.md) - Full crate registry with L1–L4 analysis for each name
+- [gnomon.md](gnomon.md) - Naming philosophy, construction system, layer test (L1-L4)
+- [lexicon.md](lexicon.md) - Full crate registry with L1-L4 analysis for each name
 - [ARCHITECTURE.md](ARCHITECTURE.md) - Crate workspace, module map, dependency graph

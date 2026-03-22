@@ -250,6 +250,8 @@ fn copy_table(
     table: &str,
 ) -> std::result::Result<u64, rusqlite::Error> {
     let columns = {
+        // SAFETY: SQLite PRAGMA does not support parameterized table names.
+        // `table` originates from `sqlite_master` (database catalog), not user input.
         let mut stmt = src.prepare(&format!(
             "PRAGMA table_info('{}')",
             table.replace('\'', "''")
@@ -269,6 +271,8 @@ fn copy_table(
     let placeholders: Vec<String> = (1..=columns.len()).map(|i| format!("?{i}")).collect();
     let placeholder_list = placeholders.join(", ");
 
+    // SAFETY: table and column names originate from sqlite_master catalog
+    // query, not user input. SQLite does not support parameterized identifiers.
     let select_sql = format!("SELECT {col_list} FROM {table}");
     let insert_sql =
         format!("INSERT OR IGNORE INTO {table} ({col_list}) VALUES ({placeholder_list})");

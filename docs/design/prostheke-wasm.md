@@ -253,9 +253,9 @@ A reasonable initial limit: 50MB per WASM component. Configurable per plugin in
 
 ## See also
 
-- `crates/thesauros/` — current domain pack mechanism (`prostheke` extends this, not
+- `crates/thesauros/`, current domain pack mechanism (`prostheke` extends this, not
   replaces it)
-- `docs/PACKS.md` — domain pack reference
-- `docs/ARCHITECTURE.md` — M5 milestone context
-- `docs/PROJECT.md` — milestone map
+- `docs/PACKS.md`, domain pack reference
+- `docs/ARCHITECTURE.md`, M5 milestone context
+- `docs/PROJECT.md`, milestone map
 - Original design source: `git show 8ace85eb4^:docs/PLUGINS-DESIGN.md`

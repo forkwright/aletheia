@@ -32,7 +32,7 @@ pub struct QueryCacheStats {
 /// the most-recently-used position and increments the hit counter; a miss
 /// inserts the entry and increments the miss counter.
 ///
-/// The cache does not store compiled query plans — it tracks *which queries
+/// The cache does not store compiled query plans. It tracks *which queries
 /// have been seen* and exposes hit/miss metrics so callers can observe query
 /// repetition patterns and make caching decisions from the metrics.
 pub struct QueryCache {

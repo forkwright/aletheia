@@ -30,7 +30,7 @@ impl CategoryStats {
         self.success + self.fail
     }
 
-    /// Compute a percentile (0–100) from the sorted durations.
+    /// Compute a percentile (0-100) from the sorted durations.
     /// Returns `None` if no durations have been recorded.
     pub(crate) fn percentile(&self, p: u8) -> Option<u64> {
         if self.durations.is_empty() {

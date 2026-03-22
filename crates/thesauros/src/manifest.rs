@@ -165,7 +165,7 @@ pub(crate) fn load_manifest(pack_root: &Path) -> Result<PackManifest> {
 
 /// Validate pack name and version fields.
 ///
-/// Name must be 1–64 characters, alphanumeric and hyphens only.
+/// Name must be 1-64 characters, alphanumeric and hyphens only.
 /// Version must be non-empty.
 fn validate_manifest(manifest: &PackManifest) -> Result<()> {
     if !is_valid_pack_name(&manifest.name) {
@@ -185,7 +185,7 @@ fn validate_manifest(manifest: &PackManifest) -> Result<()> {
     Ok(())
 }
 
-/// Returns `true` if the name is 1–64 ASCII alphanumeric/hyphen characters.
+/// Returns `true` if the name is 1-64 ASCII alphanumeric/hyphen characters.
 fn is_valid_pack_name(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= 64

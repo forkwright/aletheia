@@ -1,4 +1,4 @@
-//! Runtime sandbox policy application — Landlock, seccomp, network namespaces.
+//! Runtime sandbox policy application: Landlock, seccomp, network namespaces.
 use std::net::IpAddr;
 use std::path::PathBuf;
 

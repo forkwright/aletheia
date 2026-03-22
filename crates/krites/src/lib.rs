@@ -131,7 +131,7 @@ fn convert_internal(e: crate::error::InternalError) -> Error {
     }
 }
 
-/// Internal dispatch enum — one variant per storage backend.
+/// Internal dispatch enum: one variant per storage backend.
 enum DbInner {
     /// In-memory storage backend.
     Mem(crate::runtime::db::Db<MemStorage>),

@@ -73,6 +73,14 @@ impl ProjectWorkspace {
         std::fs::write(&layout.project_file, json).context(error::WorkspaceIoSnafu {
             path: &layout.project_file,
         })?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(
+                &layout.project_file,
+                std::fs::Permissions::from_mode(0o640),
+            );
+        }
         Ok(())
     }
 

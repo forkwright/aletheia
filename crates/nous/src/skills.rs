@@ -140,7 +140,7 @@ impl SkillLoader {
     /// # Latency
     ///
     /// Instrumented with a `skill_loader.resolve_skills` tracing span. Target
-    /// is < 100 ms warm (typical: 12–57 ms per planning estimates).
+    /// is < 100 ms warm (typical: 12-57 ms per planning estimates).
     ///
     /// # Cancel safety
     ///
@@ -270,7 +270,7 @@ pub(crate) fn fact_to_section(fact: &Fact) -> BootstrapSection {
 /// `score = 0.40 × position + 0.35 × confidence + 0.15 × access + 0.10 × recency`
 ///
 /// - **position**: BM25/search rank (first result = 1.0, last = 0.0).
-/// - **confidence**: fact confidence from mneme (0.0–1.0).
+/// - **confidence**: fact confidence from mneme (0.0-1.0).
 /// - **access**: normalised `access_count`, capped at 20 accesses.
 /// - **recency**: exponential decay with 30-day half-life since last access (or `valid_from`).
 #[cfg(any(feature = "knowledge-store", test))]
@@ -323,7 +323,6 @@ pub(crate) fn rank_skills(candidates: Vec<Fact>) -> Vec<Fact> {
 mod tests {
     #![expect(
         clippy::indexing_slicing,
-        clippy::unwrap_used,
         clippy::expect_used,
         reason = "test assertions may panic on failure"
     )]

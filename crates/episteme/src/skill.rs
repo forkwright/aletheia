@@ -29,7 +29,7 @@ pub mod decay {
 /// Formula: `score = recency × usage_boost × confidence`
 /// - **recency**: exponential decay with configurable half-life
 /// - **`usage_boost`**: high-usage skills (>10 uses) decay 3× slower
-/// - **confidence**: fact confidence (0.0–1.0) acts as a ceiling
+/// - **confidence**: fact confidence (0.0-1.0) acts as a ceiling
 ///
 /// The half-life for low-usage skills is `stale_days` (default 28). For
 /// high-usage skills (>10 uses), it's `stale_days × 3`.

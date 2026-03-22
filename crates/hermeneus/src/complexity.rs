@@ -185,7 +185,7 @@ impl Default for ComplexityConfig {
 /// Result of complexity scoring.
 #[derive(Debug, Clone)]
 pub struct ComplexityScore {
-    /// Numeric score (0–100).
+    /// Numeric score (0-100).
     pub score: u32,
     /// Determined model tier.
     pub tier: ModelTier,
@@ -231,7 +231,7 @@ pub struct RoutingOutcome {
 
 /// Score the complexity of a query across multiple dimensions.
 ///
-/// Returns a [`ComplexityScore`] with a numeric score (0–100), the determined
+/// Returns a [`ComplexityScore`] with a numeric score (0-100), the determined
 /// tier, and a human-readable reason string.
 #[must_use]
 pub fn score_complexity(input: &ComplexityInput<'_>) -> ComplexityScore {

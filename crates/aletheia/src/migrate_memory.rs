@@ -315,6 +315,11 @@ fn content_hash(content: &str) -> String {
 fn write_review_file(path: &Path, flagged: &[String]) -> Result<()> {
     use std::io::Write;
     let mut f = std::fs::File::create(path).context("failed to create review file")?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o640));
+    }
     writeln!(f, "# Memory Migration Review")?;
     writeln!(f)?;
     writeln!(f, "The following facts were flagged during migration:")?;

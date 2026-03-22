@@ -81,7 +81,7 @@ impl CredentialFile {
     ///
     /// Accepts three on-disk layouts:
     ///
-    /// * **Encrypted**: prefixed with `ALETHEIA_ENC_V1:` — decrypted using the
+    /// * **Encrypted**: prefixed with `ALETHEIA_ENC_V1:`, decrypted using the
     ///   sidecar key file (`<path>.key`) before parsing.
     /// * **Flat**: `{"token": "...", "refreshToken": "..."}` (native) or with the
     ///   `"accessToken"` alias produced by older Claude Code versions.

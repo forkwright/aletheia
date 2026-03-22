@@ -30,6 +30,7 @@ pub(super) fn scaffold(answers: &Answers) -> Result<(), InitError> {
     std::fs::write(&config_path, config_toml).context(WriteFileSnafu {
         path: config_path.clone(),
     })?;
+    set_permissions(&config_path, 0o640)?;
 
     if let Some(ref key) = answers.api_key {
         let cred_path = root.join(format!("config/credentials/{}.json", answers.api_provider));
