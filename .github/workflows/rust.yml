@@ -49,6 +49,8 @@ jobs:
             args: "-p aletheia --features embed-candle"
           - name: migrate-qdrant
             args: "-p aletheia --features migrate-qdrant"
+          - name: test-core
+            args: "--workspace --features test-core"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable

@@ -16,6 +16,8 @@ workspace = true
 computer-use = []
 # Gates MockToolExecutor, ToolExecutorSpec, and other test helpers. No test code in release binaries.
 test-support = ["aletheia-hermeneus/test-support"]
+test-core = []
+test-full = []
 
 [dependencies]
 aletheia-hermeneus = { path = "../hermeneus" }

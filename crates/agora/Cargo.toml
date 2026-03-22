@@ -10,6 +10,10 @@ rust-version.workspace = true
 [lints]
 workspace = true
 
+[features]
+test-core = []
+test-full = []
+
 [dependencies]
 aletheia-koina = { path = "../koina" }
 aletheia-taxis = { path = "../taxis" }

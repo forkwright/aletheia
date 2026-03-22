@@ -11,6 +11,10 @@ publish = false
 name = "aletheia-tui"
 path = "src/main.rs"
 
+[features]
+test-core = []
+test-full = []
+
 [dependencies]
 aletheia-koina = { path = "../../koina" }
 theatron-core = { path = "../core" }

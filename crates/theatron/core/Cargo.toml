@@ -7,6 +7,10 @@ rust-version.workspace = true
 description = "Shared API client, types, SSE, and streaming infrastructure for Aletheia UIs"
 publish = false
 
+[features]
+test-core = []
+test-full = []
+
 [dependencies]
 aletheia-koina = { path = "../../koina" }
 bytes = { workspace = true }
