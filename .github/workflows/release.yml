@@ -84,25 +84,33 @@ jobs:
           cp "target/${BUILD_TARGET}/release/aletheia" "${dir}/"
           cp -r instance.example "${dir}/" 2>/dev/null || true
           tar czf "${ARTIFACT}-${version}.tar.gz" "${dir}"
+          cp "target/${BUILD_TARGET}/release/aletheia" "${ARTIFACT}-${version}"
           echo "TARBALL=${ARTIFACT}-${version}.tar.gz" >> "$GITHUB_ENV"
+          echo "BINARY=${ARTIFACT}-${version}" >> "$GITHUB_ENV"
         env:
           ARTIFACT: ${{ matrix.artifact }}
           VERSION: ${{ steps.version.outputs.version }}
           BUILD_TARGET: ${{ matrix.target }}
 
-      - name: Generate checksum (Linux)
+      - name: Generate checksums (Linux)
         if: runner.os == 'Linux'
-        run: sha256sum "$TARBALL" > "$TARBALL.sha256"
+        run: |
+          sha256sum "$TARBALL" > "$TARBALL.sha256"
+          sha256sum "$BINARY" > "$BINARY.sha256"
 
-      - name: Generate checksum (macOS)
+      - name: Generate checksums (macOS)
         if: runner.os == 'macOS'
-        run: shasum -a 256 "$TARBALL" > "$TARBALL.sha256"
+        run: |
+          shasum -a 256 "$TARBALL" > "$TARBALL.sha256"
+          shasum -a 256 "$BINARY" > "$BINARY.sha256"
 
-      - name: Upload tarball and checksum
+      - name: Upload release assets
         run: |
           gh release upload "${GITHUB_REF#refs/tags/}" \
             "$TARBALL" \
             "$TARBALL.sha256" \
+            "$BINARY" \
+            "$BINARY.sha256" \
             --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

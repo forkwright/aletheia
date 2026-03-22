@@ -12,7 +12,19 @@ One binary. No containers. No external databases. No cloud dependencies beyond y
 
 ## Install
 
-See [QUICKSTART.md](docs/QUICKSTART.md) for install instructions, setup, and first run.
+Download the tarball from [releases](https://github.com/forkwright/aletheia/releases), extract, and run `init`:
+
+```bash
+VERSION=v0.13.0
+curl -L "https://github.com/forkwright/aletheia/releases/download/${VERSION}/aletheia-linux-x86_64-${VERSION}.tar.gz" \
+  -o aletheia.tar.gz
+tar xzf aletheia.tar.gz
+cd "aletheia-${VERSION}"
+sudo cp aletheia /usr/local/bin/
+aletheia init
+```
+
+The tarball contains `instance.example/` with the reference config layout. See [QUICKSTART.md](docs/QUICKSTART.md) for full install, macOS, and source build instructions.
 
 ---
 

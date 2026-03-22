@@ -2,17 +2,31 @@
 
 ## Install
 
-Download the prebuilt binary for your platform:
+Download the prebuilt tarball for your platform. Replace `VERSION` with the latest tag from the [releases page](https://github.com/forkwright/aletheia/releases):
 
 ```bash
 # Linux x86_64
-curl -L https://github.com/forkwright/aletheia/releases/latest/download/aletheia-linux-x86_64 -o aletheia
-chmod +x aletheia && sudo mv aletheia /usr/local/bin/
+VERSION=v0.13.0
+curl -L "https://github.com/forkwright/aletheia/releases/download/${VERSION}/aletheia-linux-x86_64-${VERSION}.tar.gz" \
+  -o aletheia.tar.gz
+sha256sum -c "aletheia-linux-x86_64-${VERSION}.tar.gz.sha256"
+tar xzf aletheia.tar.gz
+cd "aletheia-${VERSION}"
+sudo cp aletheia /usr/local/bin/
 
 # macOS Apple Silicon
-curl -L https://github.com/forkwright/aletheia/releases/latest/download/aletheia-macos-aarch64 -o aletheia
-chmod +x aletheia && sudo mv aletheia /usr/local/bin/
+VERSION=v0.13.0
+curl -L "https://github.com/forkwright/aletheia/releases/download/${VERSION}/aletheia-macos-aarch64-${VERSION}.tar.gz" \
+  -o aletheia.tar.gz
+shasum -a 256 -c "aletheia-macos-aarch64-${VERSION}.tar.gz.sha256"
+tar xzf aletheia.tar.gz
+cd "aletheia-${VERSION}"
+sudo cp aletheia /usr/local/bin/
 ```
+
+The tarball extracts to `aletheia-${VERSION}/` and contains:
+- `aletheia` — the binary
+- `instance.example/` — reference config and directory layout for first-time setup
 
 Or build from source (requires Rust 1.94+):
 
@@ -60,6 +74,22 @@ aletheia --help       # full command reference
 ```
 
 Everything runs locally. The embedded knowledge engine, session store, and embedding model are all inside the binary. No external databases, containers, or sidecars.
+
+## Upgrade
+
+To upgrade an existing installation, replace the binary. Your instance directory, config, and database are untouched:
+
+```bash
+aletheia backup          # create a pre-upgrade backup
+VERSION=v0.13.0
+curl -L "https://github.com/forkwright/aletheia/releases/download/${VERSION}/aletheia-linux-x86_64-${VERSION}.tar.gz" \
+  -o aletheia.tar.gz
+tar xzf aletheia.tar.gz
+sudo cp "aletheia-${VERSION}/aletheia" /usr/local/bin/aletheia
+aletheia health          # verify the new version is running
+```
+
+See [UPGRADING.md](UPGRADING.md) for config compatibility, schema migrations, and rollback procedures.
 
 ## Optional: Signal messaging
 
