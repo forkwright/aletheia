@@ -52,6 +52,10 @@ impl crate::app::App {
             };
         }
 
+        if self.is_editor_view() {
+            return self.map_editor_key(key);
+        }
+
         if self.is_memory_view() {
             return self.map_memory_key(key);
         }
@@ -344,6 +348,78 @@ impl crate::app::App {
 
             (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => {
                 Some(Msg::CommandPaletteInput(c))
+            }
+            _ => None,
+        }
+    }
+
+    fn is_editor_view(&self) -> bool {
+        matches!(
+            self.layout.view_stack.current(),
+            crate::state::view_stack::View::FileEditor
+        )
+    }
+
+    fn map_editor_key(&self, key: KeyEvent) -> Option<Msg> {
+        let editor = &self.layout.editor;
+
+        match (key.modifiers, key.code) {
+            (KeyModifiers::CONTROL, KeyCode::Char('c'))
+            | (KeyModifiers::CONTROL, KeyCode::Char('q')) => return Some(Msg::Quit),
+            _ => {}
+        }
+
+        // WHY: Modal inputs (rename, new file, confirm delete) intercept all keys.
+        if editor.confirm_delete.is_some() {
+            return match (key.modifiers, key.code) {
+                (_, KeyCode::Char('y')) => Some(Msg::EditorConfirmDelete(true)),
+                (_, KeyCode::Char('n')) | (_, KeyCode::Esc) => {
+                    Some(Msg::EditorConfirmDelete(false))
+                }
+                _ => None,
+            };
+        }
+
+        if editor.rename_input.is_some() || editor.new_file_input.is_some() {
+            return match (key.modifiers, key.code) {
+                (_, KeyCode::Esc) => Some(Msg::EditorModalCancel),
+                (_, KeyCode::Enter) => Some(Msg::EditorNewline),
+                (_, KeyCode::Backspace) => Some(Msg::EditorBackspace),
+                (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => {
+                    Some(Msg::EditorCharInput(c))
+                }
+                _ => None,
+            };
+        }
+
+        match (key.modifiers, key.code) {
+            (_, KeyCode::Esc) => Some(Msg::EditorClose),
+            (KeyModifiers::CONTROL, KeyCode::Char('s')) => Some(Msg::EditorSave),
+            (KeyModifiers::CONTROL, KeyCode::Char('x')) => Some(Msg::EditorCut),
+            (KeyModifiers::CONTROL, KeyCode::Char('k')) => Some(Msg::EditorCopy),
+            (KeyModifiers::CONTROL, KeyCode::Char('u')) => Some(Msg::EditorPaste),
+            (KeyModifiers::CONTROL, KeyCode::Char('t')) => Some(Msg::EditorTreeToggle),
+            (KeyModifiers::CONTROL, KeyCode::Char('n')) => Some(Msg::EditorNewFileStart),
+            (_, KeyCode::Tab) => Some(Msg::EditorFocusToggle),
+            (_, KeyCode::F(2)) => Some(Msg::EditorRenameStart),
+            (_, KeyCode::F(5)) => Some(Msg::EditorRefreshTree),
+            (_, KeyCode::F(8)) => Some(Msg::EditorDeleteStart),
+            (_, KeyCode::Enter) => Some(Msg::EditorNewline),
+            (_, KeyCode::Backspace) => Some(Msg::EditorBackspace),
+            (_, KeyCode::Delete) => Some(Msg::EditorDelete),
+            (KeyModifiers::ALT, KeyCode::Right) => Some(Msg::EditorTabNext),
+            (KeyModifiers::ALT, KeyCode::Left) => Some(Msg::EditorTabPrev),
+            (_, KeyCode::Up) => Some(Msg::EditorCursorUp),
+            (_, KeyCode::Down) => Some(Msg::EditorCursorDown),
+            (_, KeyCode::Left) => Some(Msg::EditorCursorLeft),
+            (_, KeyCode::Right) => Some(Msg::EditorCursorRight),
+            (_, KeyCode::Home) => Some(Msg::EditorCursorHome),
+            (_, KeyCode::End) => Some(Msg::EditorCursorEnd),
+            (_, KeyCode::PageUp) => Some(Msg::EditorPageUp),
+            (_, KeyCode::PageDown) => Some(Msg::EditorPageDown),
+            (KeyModifiers::CONTROL, KeyCode::Char('w')) => Some(Msg::EditorTabClose),
+            (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => {
+                Some(Msg::EditorCharInput(c))
             }
             _ => None,
         }

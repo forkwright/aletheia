@@ -1,5 +1,6 @@
 mod chat;
 mod command_palette;
+mod editor;
 mod filter_bar;
 pub(crate) mod image;
 mod input;

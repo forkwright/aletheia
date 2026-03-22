@@ -102,6 +102,7 @@ pub fn test_app() -> App {
             tab_bar: TabBar::new(),
             memory: MemoryInspectorState::new(),
             metrics: crate::state::MetricsState::new(),
+            editor: crate::state::editor::EditorState::default(),
             pending_g: false,
             bell_enabled: false,
             notifications: NotificationStore::default(),

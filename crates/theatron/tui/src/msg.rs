@@ -288,6 +288,43 @@ pub enum Msg {
     MemoryPageDown,
     MemoryPageUp,
 
+    #[expect(dead_code, reason = "opened via :editor command, not Msg pipeline")]
+    EditorOpen,
+    EditorClose,
+    EditorCharInput(char),
+    EditorNewline,
+    EditorBackspace,
+    EditorDelete,
+    EditorCursorUp,
+    EditorCursorDown,
+    EditorCursorLeft,
+    EditorCursorRight,
+    EditorCursorHome,
+    EditorCursorEnd,
+    EditorPageUp,
+    EditorPageDown,
+    EditorSave,
+    EditorTabNext,
+    EditorTabPrev,
+    EditorTabClose,
+    EditorTreeToggle,
+    EditorFocusToggle,
+    #[expect(dead_code, reason = "tree expand triggered via Enter on directory")]
+    EditorTreeExpand,
+    EditorCut,
+    EditorCopy,
+    EditorPaste,
+    EditorNewFileStart,
+    EditorRenameStart,
+    EditorDeleteStart,
+    EditorConfirmDelete(bool),
+    EditorModalCancel,
+    EditorRefreshTree,
+    #[expect(dead_code, reason = "triggered by Tick handler, not keyboard")]
+    EditorAutosaveTick,
+    #[expect(dead_code, reason = "triggered by render, not keyboard")]
+    EditorScrollTree(usize),
+
     // WHY: #[allow] over #[expect] — constructed only in test code so dead_code fires for
     // the lib target but not the test target; #[expect] would cause unfulfilled-expectation
     // errors in the test compilation unit.

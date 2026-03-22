@@ -291,5 +291,9 @@ pub(crate) fn render_for_view(
             super::metrics::render(app, frame, area, theme);
             Vec::new()
         }
+        View::FileEditor => {
+            super::editor::render(app, frame, area, theme);
+            Vec::new()
+        }
     }
 }

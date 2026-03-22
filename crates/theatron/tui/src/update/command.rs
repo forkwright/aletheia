@@ -339,6 +339,9 @@ pub(crate) async fn execute_command(app: &mut App) {
         "metrics" | "stats" => {
             super::metrics::handle_open(app).await;
         }
+        "editor" | "edit" | "e" => {
+            super::editor::handle_open(app);
+        }
         _ => {
             app.viewport.error_toast =
                 Some(ErrorToast::new(format!("Unknown command: {cmd_name}")));

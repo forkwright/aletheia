@@ -24,6 +24,8 @@ pub enum View {
     FactDetail { fact_id: String },
     /// Metrics dashboard: token usage, cost, service health, per-agent stats.
     Metrics,
+    /// Built-in file editor with syntax highlighting and tabs.
+    FileEditor,
 }
 
 impl View {
@@ -37,6 +39,7 @@ impl View {
             Self::MemoryInspector => "Memory",
             Self::FactDetail { .. } => "Fact",
             Self::Metrics => "Metrics",
+            Self::FileEditor => "Editor",
         }
     }
 }
