@@ -112,6 +112,7 @@ mod tests {
             timestamp: None,
             model: None,
             tool_calls: Vec::new(),
+            kind: crate::state::MessageKind::default(),
         });
         let event = Event::Terminal(key(KeyCode::Up));
         let msg = app.map_event(event);

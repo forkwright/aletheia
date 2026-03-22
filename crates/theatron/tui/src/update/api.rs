@@ -58,6 +58,7 @@ pub(crate) fn handle_history_loaded(app: &mut App, messages: Vec<HistoryMessage>
                 timestamp: m.created_at.map(|t| sanitize_for_display(&t).into_owned()),
                 model: m.model.map(|m| sanitize_for_display(&m).into_owned()),
                 tool_calls: Vec::new(),
+                kind: crate::state::MessageKind::default(),
             })
         })
         .collect();

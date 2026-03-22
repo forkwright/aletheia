@@ -33,16 +33,18 @@ use crate::state::virtual_scroll::VirtualScroll;
 pub use crate::state::{
     ActiveTool, AgentState, AgentStatus, ChatMessage, CommandPaletteState, ContextAction,
     ContextActionsOverlay, DecisionCardOverlay, DecisionField, DecisionOption, ErrorBanner,
-    FilterState, FocusedPane, InputState, MemoryInspectorState, NotificationStore, OpsState,
-    Overlay, PlanApprovalOverlay, PlanStepApproval, SelectionContext, SessionPickerOverlay,
-    SlashCompleteState, SubmittedDecision, TabCompletion, Toast, ToolApprovalOverlay, ToolCallInfo,
-    ToolSummary, View, ViewStack,
+    FilterState, FocusedPane, InputState, MemoryInspectorState, MessageKind, NotificationStore,
+    OpsState, Overlay, PlanApprovalOverlay, PlanStepApproval, SelectionContext,
+    SessionPickerOverlay, SlashCompleteState, StreamPhase, SubmittedDecision, TabCompletion, Toast,
+    ToolApprovalOverlay, ToolCallInfo, ToolSummary, View, ViewStack,
 };
 
 /// Default terminal width used before the first resize event arrives.
 const DEFAULT_TERMINAL_WIDTH: u16 = 120;
 /// Default terminal height used before the first resize event arrives.
 const DEFAULT_TERMINAL_HEIGHT: u16 = 40;
+/// Minimum interval between renders in milliseconds (30fps cap).
+const MIN_RENDER_INTERVAL_MS: u64 = 33;
 
 // ---------------------------------------------------------------------------
 // Sub-structs: group related fields so App stays under ~10 top-level fields.
@@ -82,6 +84,12 @@ pub struct ConnectionState {
     pub streaming_text: String,
     pub streaming_thinking: String,
     pub streaming_tool_calls: Vec<ToolCallInfo>,
+    /// Current stream lifecycle phase. Drives status indicator rendering.
+    pub stream_phase: crate::state::StreamPhase,
+    /// Partial line buffer for line-by-line streaming.
+    /// Complete lines (ending in `\n`) are flushed to `streaming_text`;
+    /// the incomplete tail stays here until the next delta.
+    pub(crate) streaming_line_buffer: String,
     /// Timestamp of the last stream event received during the current turn.
     /// Used for stall detection.
     pub(crate) stream_last_event_at: Option<std::time::Instant>,
@@ -98,6 +106,13 @@ pub struct RenderState {
     pub(crate) scroll_states: HashMap<NousId, SavedScrollState>,
     pub(crate) virtual_scroll: VirtualScroll,
     pub markdown_cache: MarkdownCache,
+    /// Pre-rendered lines for finalized (committed) messages.
+    /// PERF: Never re-rendered; only appended when a new message is committed.
+    pub(crate) static_lines: Vec<ratatui::text::Line<'static>>,
+    /// Number of committed messages covered by `static_lines`.
+    pub(crate) static_message_count: usize,
+    /// Width used to render `static_lines`. Cache invalidated on width change.
+    pub(crate) static_width: usize,
 }
 
 /// Terminal dimensions, tick counter, dirty flag, frame cache, and render state.
@@ -113,6 +128,8 @@ pub struct ViewportState {
     pub error_banner: Option<ErrorBanner>,
     pub(crate) dirty: bool,
     pub(crate) frame_cache: Option<Buffer>,
+    /// Timestamp of the last completed render. Used for 30fps throttling.
+    pub(crate) last_render_at: Option<std::time::Instant>,
     pub render: RenderState,
 }
 
@@ -219,6 +236,8 @@ impl App {
                 streaming_text: String::new(),
                 streaming_thinking: String::new(),
                 streaming_tool_calls: Vec::new(),
+                stream_phase: crate::state::StreamPhase::default(),
+                streaming_line_buffer: String::new(),
                 stream_last_event_at: None,
                 stall_warned: false,
                 stall_message: None,
@@ -233,12 +252,16 @@ impl App {
                 error_banner: None,
                 dirty: true,
                 frame_cache: None,
+                last_render_at: None,
                 render: RenderState {
                     scroll_offset: 0,
                     auto_scroll: true,
                     scroll_states: HashMap::new(),
                     virtual_scroll: VirtualScroll::new(),
                     markdown_cache: MarkdownCache::default(),
+                    static_lines: Vec::new(),
+                    static_message_count: 0,
+                    static_width: 0,
                 },
             },
             interaction: InteractionState {
@@ -490,12 +513,15 @@ impl App {
                                     .map(|t| sanitize_for_display(&t).into_owned()),
                                 model: m.model.map(|m| sanitize_for_display(&m).into_owned()),
                                 tool_calls: Vec::new(),
+                                kind: MessageKind::default(),
                             })
                         })
                         .collect();
                     // Stale streaming markdown from the previous session must not
                     // bleed through when the user switches agents.
                     self.viewport.render.markdown_cache.clear();
+                    self.viewport.render.static_lines.clear();
+                    self.viewport.render.static_message_count = 0;
                     self.rebuild_virtual_scroll();
                     self.scroll_to_bottom();
                 }
@@ -569,6 +595,7 @@ impl App {
             tab.state.streaming.streaming_thinking = self.connection.streaming_thinking.clone();
             tab.state.streaming.streaming_tool_calls = self.connection.streaming_tool_calls.clone();
             tab.state.streaming.active_turn_id = self.connection.active_turn_id.clone();
+            tab.state.streaming.stream_phase = self.connection.stream_phase;
             tab.state.markdown_cache = self.viewport.render.markdown_cache.clone();
             tab.state.ops = self.layout.ops.clone();
         }
@@ -591,6 +618,7 @@ impl App {
             self.connection.streaming_thinking = tab.state.streaming.streaming_thinking.clone();
             self.connection.streaming_tool_calls = tab.state.streaming.streaming_tool_calls.clone();
             self.connection.active_turn_id = tab.state.streaming.active_turn_id.clone();
+            self.connection.stream_phase = tab.state.streaming.stream_phase;
             self.viewport.render.markdown_cache = tab.state.markdown_cache.clone();
             self.layout.ops = tab.state.ops.clone();
         }
@@ -634,25 +662,33 @@ impl App {
 
     #[tracing::instrument(skip_all)]
     pub fn view(&mut self, frame: &mut Frame) -> Vec<OscLink> {
-        if !self.viewport.dirty {
-            // PERF: No state changed since last frame: replay the cached buffer.
-            // ratatui diffs against the previous frame, so identical content produces
-            // zero terminal output. This skips all layout and widget computation.
-            if let Some(ref cached) = self.viewport.frame_cache
-                && cached.area == frame.area()
-            {
-                *frame.buffer_mut() = cached.clone();
-                return Vec::new();
-            }
-            // Cache miss (terminal resized or first frame): fall through to full render.
+        // PERF: 30fps render throttle. Skip the frame if less than 33ms elapsed
+        // since the last render AND the state hasn't changed.
+        if !self.viewport.dirty
+            && let Some(ref cached) = self.viewport.frame_cache
+            && cached.area == frame.area()
+        {
+            *frame.buffer_mut() = cached.clone();
+            return Vec::new();
+        }
+        if let Some(last) = self.viewport.last_render_at
+            && last.elapsed() < std::time::Duration::from_millis(MIN_RENDER_INTERVAL_MS)
+            && !self.viewport.dirty
+            && let Some(ref cached) = self.viewport.frame_cache
+            && cached.area == frame.area()
+        {
+            *frame.buffer_mut() = cached.clone();
+            return Vec::new();
         }
         // PERF: Refresh the streaming markdown cache once per frame instead of on
         // every text delta. Multiple deltas arriving between frames are batched
         // into a single markdown::render call, reducing CPU from O(tokens) to O(frames).
         self.refresh_streaming_markdown_cache();
+        self.refresh_static_lines_cache();
         let links = view::render(self, frame);
         self.viewport.frame_cache = Some(frame.buffer_mut().clone());
         self.viewport.dirty = false;
+        self.viewport.last_render_at = Some(std::time::Instant::now());
         links
     }
 
@@ -677,6 +713,73 @@ impl App {
         .0;
         self.viewport.render.markdown_cache.text = self.connection.streaming_text.clone();
         self.viewport.render.markdown_cache.width = width;
+    }
+
+    /// Rebuild the static lines cache for finalized (committed) messages.
+    ///
+    /// PERF: This cache prevents re-parsing markdown for messages that haven't
+    /// changed. During streaming, only the streaming section re-renders.
+    /// The cache is invalidated when: message count changes, terminal width changes,
+    /// or a session switch clears it.
+    pub(crate) fn refresh_static_lines_cache(&mut self) {
+        let inner_width = usize::from(self.viewport.terminal_width.saturating_sub(2));
+        let msg_count = self.dashboard.messages.len();
+
+        if self.viewport.render.static_message_count == msg_count
+            && self.viewport.render.static_width == inner_width
+        {
+            return;
+        }
+
+        let agent_name: &str = self
+            .dashboard
+            .focused_agent
+            .as_ref()
+            .and_then(|id| self.dashboard.agents.iter().find(|a| a.id == *id))
+            .map(|a| a.name_lower.as_str())
+            .unwrap_or("assistant");
+
+        // PERF: Only render new messages appended since the last cache build,
+        // unless width changed (which requires full re-render).
+        let start = if self.viewport.render.static_width == inner_width {
+            self.viewport.render.static_message_count
+        } else {
+            self.viewport.render.static_lines.clear();
+            0
+        };
+
+        let render_width = inner_width.saturating_sub(2);
+        for idx in start..msg_count {
+            let msg = &self.dashboard.messages[idx];
+            let (role_label, role_style) = match msg.role.as_str() {
+                "user" => ("you", self.theme.style_user()),
+                "assistant" => (agent_name, self.theme.style_assistant()),
+                _ => ("system", self.theme.style_muted()),
+            };
+            self.viewport
+                .render
+                .static_lines
+                .push(ratatui::text::Line::from(vec![
+                    ratatui::text::Span::styled(format!(" {role_label}"), role_style),
+                ]));
+            let (md_lines, _) =
+                crate::markdown::render(&msg.text, render_width, &self.theme, &self.highlighter);
+            for line in md_lines {
+                let mut padded = vec![ratatui::text::Span::raw(" ")];
+                padded.extend(line.spans);
+                self.viewport
+                    .render
+                    .static_lines
+                    .push(ratatui::text::Line::from(padded));
+            }
+            self.viewport
+                .render
+                .static_lines
+                .push(ratatui::text::Line::raw(""));
+        }
+
+        self.viewport.render.static_message_count = msg_count;
+        self.viewport.render.static_width = inner_width;
     }
 }
 

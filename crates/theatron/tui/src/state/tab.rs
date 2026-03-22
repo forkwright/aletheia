@@ -19,6 +19,7 @@ pub(crate) struct TabStreamingState {
     pub(crate) streaming_thinking: String,
     pub(crate) streaming_tool_calls: Vec<ToolCallInfo>,
     pub(crate) active_turn_id: Option<TurnId>,
+    pub(crate) stream_phase: crate::state::chat::StreamPhase,
 }
 
 /// Per-tab snapshot of isolated session state.
@@ -452,6 +453,7 @@ mod tests {
             timestamp: None,
             model: None,
             tool_calls: Vec::new(),
+            kind: crate::state::MessageKind::default(),
         });
         bar.tabs[0].state.scroll.scroll_offset = 42;
         bar.tabs[0].state.input.text = "typing...".to_string();

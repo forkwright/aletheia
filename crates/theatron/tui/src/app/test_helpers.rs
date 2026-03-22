@@ -59,6 +59,8 @@ pub fn test_app() -> App {
             stream_last_event_at: None,
             stall_warned: false,
             stall_message: None,
+            stream_phase: crate::state::StreamPhase::Idle,
+            streaming_line_buffer: String::new(),
         },
         viewport: ViewportState {
             terminal_width: DEFAULT_TERMINAL_WIDTH,
@@ -70,12 +72,16 @@ pub fn test_app() -> App {
             error_banner: None,
             dirty: true,
             frame_cache: None,
+            last_render_at: None,
             render: RenderState {
                 scroll_offset: 0,
                 auto_scroll: true,
                 scroll_states: HashMap::new(),
                 virtual_scroll: VirtualScroll::new(),
                 markdown_cache: MarkdownCache::default(),
+                static_lines: Vec::new(),
+                static_message_count: 0,
+                static_width: 0,
             },
         },
         interaction: InteractionState {
@@ -123,6 +129,7 @@ pub fn test_app_with_messages(msgs: Vec<(&str, &str)>) -> App {
             timestamp: None,
             model: None,
             tool_calls: Vec::new(),
+            kind: MessageKind::default(),
         });
     }
     app

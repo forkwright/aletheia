@@ -218,15 +218,24 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::StreamTextDelta(text) => streaming::handle_stream_text_delta(app, text),
         Msg::StreamThinkingDelta(text) => streaming::handle_stream_thinking_delta(app, text),
         Msg::StreamToolStart {
-            tool_name, input, ..
-        } => streaming::handle_stream_tool_start(app, tool_name, input),
+            tool_name,
+            tool_id,
+            input,
+        } => streaming::handle_stream_tool_start(app, tool_name, tool_id, input),
         Msg::StreamToolResult {
             tool_name,
+            tool_id,
             is_error,
             duration_ms,
             result,
-            ..
-        } => streaming::handle_stream_tool_result(app, tool_name, is_error, duration_ms, result),
+        } => streaming::handle_stream_tool_result(
+            app,
+            tool_name,
+            tool_id,
+            is_error,
+            duration_ms,
+            result,
+        ),
         Msg::StreamToolApprovalRequired {
             turn_id,
             tool_name,
