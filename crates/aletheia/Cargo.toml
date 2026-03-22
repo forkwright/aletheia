@@ -29,6 +29,9 @@ embed-candle = ["aletheia-mneme/embed-candle"]
 migrate-qdrant = ["dep:qdrant-client", "aletheia-mneme/mneme-engine", "aletheia-mneme/storage-fjall"]
 tls = ["aletheia-pylon/tls"]
 tui = ["dep:theatron-tui"]
+# Test tiers (see docs/test-tiers.md)
+test-core = ["aletheia-mneme/test-core", "aletheia-nous/test-core"]
+test-full = ["test-core", "aletheia-mneme/test-full"]
 
 [dependencies]
 aletheia-diaporeia = { path = "../diaporeia", optional = true }

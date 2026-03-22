@@ -38,7 +38,7 @@ fn full_knowledge_lifecycle() {
         .query_facts(nous, query_time, 10)
         .expect("query after correct");
     assert_eq!(results.len(), 1, "only corrected fact should be visible");
-    assert_eq!(results[0].id, "f-2");
+    assert_eq!(results[0].id.as_str(), "f-2");
     assert_eq!(
         results[0].content,
         "Cody's favorite languages are Rust and TypeScript"
@@ -70,7 +70,10 @@ fn full_knowledge_lifecycle() {
         .iter()
         .find(|r| r.id == "f-2")
         .expect("corrected in audit");
-    assert_eq!(new.valid_to, "9999-12-31", "new fact should be current");
+    assert_eq!(
+        new.valid_to, "9999-01-01T00:00:00Z",
+        "new fact should be current"
+    );
     assert!(
         new.superseded_by.is_none(),
         "new fact should not be superseded"

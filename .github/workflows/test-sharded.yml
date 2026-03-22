@@ -122,6 +122,7 @@ jobs:
         run: |
           cargo nextest run \
             --workspace \
+            --features test-core \
             --partition "hash:${SHARD}/4"
 
   # WHY: On pull requests, only test the crates that were changed plus their
@@ -155,7 +156,7 @@ jobs:
             exit 0
           fi
           pkg_flags=$(echo "$PACKAGES" | tr ' ' '\n' | grep -v '^$' | xargs -I{} printf -- '--package %s ' {})
-          cargo nextest run $pkg_flags
+          cargo nextest run --features test-core $pkg_flags
 
   # WHY: Gate merges on a single required status check regardless of whether
   # the full sharded suite or the filtered subset ran. Simpler to configure in

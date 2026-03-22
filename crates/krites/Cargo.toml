@@ -14,6 +14,8 @@ workspace = true
 default = ["graph-algo"]
 graph-algo = []
 storage-fjall = ["dep:fjall"]
+test-core = []
+test-full = []
 
 [dependencies]
 aletheia-eidos = { path = "../eidos" }

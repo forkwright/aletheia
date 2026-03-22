@@ -101,14 +101,14 @@ use std::sync::Arc;
 #[cfg(feature = "knowledge-store")]
 use tracing::{Instrument, warn};
 
-#[cfg(feature = "knowledge-store")]
+#[cfg(any(feature = "knowledge-store", test))]
 use aletheia_mneme::knowledge::Fact;
 #[cfg(feature = "knowledge-store")]
 use aletheia_mneme::knowledge_store::KnowledgeStore;
 
-#[cfg(feature = "knowledge-store")]
+#[cfg(any(feature = "knowledge-store", test))]
 use crate::bootstrap::{BootstrapSection, SectionPriority};
-#[cfg(feature = "knowledge-store")]
+#[cfg(any(feature = "knowledge-store", test))]
 use crate::budget::{CharEstimator, TokenEstimator as _};
 
 /// Default number of skills to inject per session.
@@ -244,7 +244,7 @@ impl SkillLoader {
 ///
 /// Tries to parse `content` as JSON [`SkillContent`] and format it as markdown.
 /// Falls back to the raw content string if parsing fails (e.g. plain-text skills).
-#[cfg(feature = "knowledge-store")]
+#[cfg(any(feature = "knowledge-store", test))]
 pub(crate) fn fact_to_section(fact: &Fact) -> BootstrapSection {
     let content = if let Ok(skill) =
         serde_json::from_str::<aletheia_mneme::skill::SkillContent>(&fact.content)
@@ -273,7 +273,7 @@ pub(crate) fn fact_to_section(fact: &Fact) -> BootstrapSection {
 /// - **confidence**: fact confidence from mneme (0.0–1.0).
 /// - **access**: normalised `access_count`, capped at 20 accesses.
 /// - **recency**: exponential decay with 30-day half-life since last access (or `valid_from`).
-#[cfg(feature = "knowledge-store")]
+#[cfg(any(feature = "knowledge-store", test))]
 pub(crate) fn rank_skills(candidates: Vec<Fact>) -> Vec<Fact> {
     let total = candidates.len();
     if total <= 1 {
@@ -468,7 +468,6 @@ mod tests {
         assert!(!md.contains("**Tools:**"));
     }
 
-    #[cfg(feature = "knowledge-store")]
     fn make_fact(id: &str, content: &str, confidence: f64, access_count: u32) -> Fact {
         use aletheia_mneme::knowledge::{FactAccess, FactLifecycle, FactProvenance, FactTemporal};
         let now = jiff::Timestamp::now();
@@ -501,7 +500,6 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "knowledge-store")]
     #[test]
     fn fact_to_section_uses_flexible_priority() {
         let skill_json = serde_json::to_string(&sample_skill()).unwrap();
@@ -510,7 +508,6 @@ mod tests {
         assert_eq!(section.priority, SectionPriority::Flexible);
     }
 
-    #[cfg(feature = "knowledge-store")]
     #[test]
     fn fact_to_section_is_truncatable() {
         let skill_json = serde_json::to_string(&sample_skill()).unwrap();
@@ -519,7 +516,6 @@ mod tests {
         assert!(section.truncatable);
     }
 
-    #[cfg(feature = "knowledge-store")]
     #[test]
     fn fact_to_section_parses_json_skill_content() {
         let skill_json = serde_json::to_string(&sample_skill()).unwrap();
@@ -528,7 +524,6 @@ mod tests {
         assert!(section.content.contains("rust-error-handling"));
     }
 
-    #[cfg(feature = "knowledge-store")]
     #[test]
     fn fact_to_section_falls_back_to_plain_text() {
         let fact = make_fact("fact-2", "plain text skill description", 0.8, 0);
@@ -536,7 +531,6 @@ mod tests {
         assert_eq!(section.content, "plain text skill description");
     }
 
-    #[cfg(feature = "knowledge-store")]
     #[test]
     fn fact_to_section_name_includes_fact_id() {
         let fact = make_fact("my-skill-id", "content", 0.7, 0);
@@ -548,7 +542,6 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "knowledge-store")]
     #[test]
     fn fact_to_section_has_nonzero_token_estimate() {
         let skill_json = serde_json::to_string(&sample_skill()).unwrap();
@@ -557,14 +550,12 @@ mod tests {
         assert!(section.tokens > 0);
     }
 
-    #[cfg(feature = "knowledge-store")]
     #[test]
     fn rank_skills_empty_returns_empty() {
         let ranked = rank_skills(vec![]);
         assert!(ranked.is_empty());
     }
 
-    #[cfg(feature = "knowledge-store")]
     #[test]
     fn rank_skills_single_passes_through() {
         let fact = make_fact("f1", "content", 0.9, 0);
@@ -573,7 +564,6 @@ mod tests {
         assert_eq!(ranked[0].id.as_str(), "f1");
     }
 
-    #[cfg(feature = "knowledge-store")]
     #[test]
     fn rank_skills_preserves_all_facts() {
         let facts: Vec<Fact> = (0..10)
@@ -583,7 +573,6 @@ mod tests {
         assert_eq!(ranked.len(), 10);
     }
 
-    #[cfg(feature = "knowledge-store")]
     #[test]
     fn rank_skills_high_confidence_can_overcome_lower_position() {
         let low_conf = make_fact("low", "content", 0.0, 0);
@@ -592,7 +581,6 @@ mod tests {
         assert_eq!(ranked[0].id.as_str(), "high");
     }
 
-    #[cfg(feature = "knowledge-store")]
     #[test]
     fn rank_skills_returns_sorted_order() {
         let facts: Vec<Fact> = vec![

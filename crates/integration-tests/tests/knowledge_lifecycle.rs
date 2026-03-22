@@ -1,5 +1,10 @@
 //! Integration tests for knowledge lifecycle: correct, retract, and audit operations.
 #![cfg(feature = "engine-tests")]
+#![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test: vec indices valid after length assertions"
+)]
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -7,28 +12,49 @@ use std::sync::Arc;
 use serde_json::Value as JsonValue;
 
 use aletheia_mneme::engine::DataValue;
-use aletheia_mneme::knowledge::{EpistemicTier, Fact};
+use aletheia_mneme::id::FactId;
+use aletheia_mneme::knowledge::{
+    EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
+};
 use aletheia_mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
+
+const TS_2026: &str = "2026-01-01T00:00:00Z";
+fn far_future() -> jiff::Timestamp {
+    aletheia_mneme::knowledge::far_future()
+}
+const TS_RECORDED: &str = "2026-03-01T00:00:00Z";
+
+fn ts(s: &str) -> jiff::Timestamp {
+    s.parse().expect("valid timestamp")
+}
 
 fn make_fact(id: &str, nous_id: &str, content: &str, confidence: f64, tier: EpistemicTier) -> Fact {
     Fact {
-        id: id.to_owned(),
+        id: FactId::new(id).expect("valid test id"),
         nous_id: nous_id.to_owned(),
         content: content.to_owned(),
-        confidence,
-        tier,
-        valid_from: "2026-01-01T00:00:00Z".to_owned(),
-        valid_to: "9999-12-31".to_owned(),
-        superseded_by: None,
-        source_session_id: Some("ses-test".to_owned()),
-        recorded_at: "2026-03-01T00:00:00Z".to_owned(),
-        access_count: 0,
-        last_accessed_at: String::new(),
-        stability_hours: 720.0,
         fact_type: String::new(),
-        is_forgotten: false,
-        forgotten_at: None,
-        forget_reason: None,
+        temporal: FactTemporal {
+            valid_from: ts(TS_2026),
+            valid_to: far_future(),
+            recorded_at: ts(TS_RECORDED),
+        },
+        provenance: FactProvenance {
+            confidence,
+            tier,
+            source_session_id: Some("ses-test".to_owned()),
+            stability_hours: 720.0,
+        },
+        lifecycle: FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
     }
 }
 
@@ -66,23 +92,31 @@ fn correct_fact(
         .expect("correct: supersede old fact");
 
     let new_fact = Fact {
-        id: new_id.to_owned(),
+        id: FactId::new(new_id).expect("valid test id"),
         nous_id: nous_id.to_owned(),
         content: new_content.to_owned(),
-        confidence: 1.0,
-        tier: EpistemicTier::Verified,
-        valid_from: correction_time.to_owned(),
-        valid_to: "9999-12-31".to_owned(),
-        superseded_by: None,
-        source_session_id: None,
-        recorded_at: correction_time.to_owned(),
-        access_count: 0,
-        last_accessed_at: String::new(),
-        stability_hours: 720.0,
         fact_type: String::new(),
-        is_forgotten: false,
-        forgotten_at: None,
-        forget_reason: None,
+        temporal: FactTemporal {
+            valid_from: ts(correction_time),
+            valid_to: far_future(),
+            recorded_at: ts(correction_time),
+        },
+        provenance: FactProvenance {
+            confidence: 1.0,
+            tier: EpistemicTier::Verified,
+            source_session_id: None,
+            stability_hours: 720.0,
+        },
+        lifecycle: FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
     };
     store
         .insert_fact(&new_fact)
@@ -112,7 +146,6 @@ fn retract_fact(store: &Arc<KnowledgeStore>, fact_id: &str, retraction_time: &st
 }
 
 /// Raw Datalog audit query: returns ALL facts for a `nous_id` without temporal filtering.
-/// This is what `audit_facts` SHOULD do (the adapter currently filters out historical facts).
 fn audit_all_facts(store: &Arc<KnowledgeStore>, nous_id: &str) -> Vec<AuditRow> {
     let script = r"
         ?[id, content, confidence, tier, valid_from, valid_to, superseded_by, recorded_at,
@@ -224,6 +257,7 @@ fn open_store() -> Arc<KnowledgeStore> {
     KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4 }).expect("open_mem")
 }
 
+#[path = "knowledge_lifecycle/forget.rs"]
 mod forget;
-#[test]
+#[path = "knowledge_lifecycle/lifecycle.rs"]
 mod lifecycle;

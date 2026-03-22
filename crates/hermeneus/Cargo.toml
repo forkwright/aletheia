@@ -32,6 +32,8 @@ local-llm = []
 # Use `test-support` (preferred); `test-utils` kept for compatibility.
 test-utils = []
 test-support = ["test-utils"]
+test-core = []
+test-full = []
 
 [dev-dependencies]
 proptest = { workspace = true }

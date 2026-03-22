@@ -40,7 +40,7 @@ fn supersession_chain() {
     // Only v3 visible in query
     let results = store.query_facts(nous, query_time, 10).expect("query");
     assert_eq!(results.len(), 1, "only latest fact should be visible");
-    assert_eq!(results[0].id, "v3");
+    assert_eq!(results[0].id.as_str(), "v3");
     assert_eq!(results[0].content, "Project migrated fully to Rust");
 
     // Audit shows full chain
@@ -76,7 +76,7 @@ fn supersession_chain() {
         a_v2.valid_to, "2026-07-01T00:00:00Z",
         "v2 expired at v3 creation"
     );
-    assert_eq!(a_v3.valid_to, "9999-12-31", "v3 still current");
+    assert_eq!(a_v3.valid_to, "9999-01-01T00:00:00Z", "v3 still current");
 }
 
 // --- Forget lifecycle tests ---
@@ -104,9 +104,9 @@ fn forget_excludes_from_recall() {
         .expect("query before forget");
     assert_eq!(results.len(), 1);
 
-    // Forget it
+    let fid = FactId::new("f-forget").expect("valid test id");
     store
-        .forget_fact("f-forget", ForgetReason::Privacy)
+        .forget_fact(&fid, ForgetReason::Privacy)
         .expect("forget");
 
     // Not visible after forget
@@ -135,8 +135,9 @@ fn forget_preserves_for_audit() {
     );
     store.insert_fact(&fact).expect("insert");
 
+    let fid = FactId::new("f-audit").expect("valid test id");
     store
-        .forget_fact("f-audit", ForgetReason::Privacy)
+        .forget_fact(&fid, ForgetReason::Privacy)
         .expect("forget");
 
     let audit = audit_all_facts(&store, nous);
@@ -172,8 +173,9 @@ fn unforget_restores_to_search() {
     );
     store.insert_fact(&fact).expect("insert");
 
+    let fid = FactId::new("f-unforget").expect("valid test id");
     store
-        .forget_fact("f-unforget", ForgetReason::Outdated)
+        .forget_fact(&fid, ForgetReason::Outdated)
         .expect("forget");
 
     let results = store
@@ -181,13 +183,13 @@ fn unforget_restores_to_search() {
         .expect("query after forget");
     assert!(results.is_empty(), "should be excluded after forget");
 
-    store.unforget_fact("f-unforget").expect("unforget");
+    store.unforget_fact(&fid).expect("unforget");
 
     let results = store
         .query_facts(nous, query_time, 10)
         .expect("query after unforget");
     assert_eq!(results.len(), 1, "should be restored after unforget");
-    assert_eq!(results[0].id, "f-unforget");
+    assert_eq!(results[0].id.as_str(), "f-unforget");
 
     // Audit should show cleared forget metadata
     let audit = audit_all_facts(&store, nous);
@@ -228,7 +230,8 @@ fn forget_with_each_reason() {
             EpistemicTier::Verified,
         );
         store.insert_fact(&fact).expect("insert");
-        store.forget_fact(&id, *reason).expect("forget");
+        let fid = FactId::new(&id).expect("valid test id");
+        store.forget_fact(&fid, *reason).expect("forget");
     }
 
     let audit = audit_all_facts(&store, nous);
@@ -269,8 +272,9 @@ fn full_forget_lifecycle() {
     assert_eq!(results.len(), 1);
 
     // 3. Forget: privacy
+    let fid = FactId::new("f-lifecycle").expect("valid test id");
     store
-        .forget_fact("f-lifecycle", ForgetReason::Privacy)
+        .forget_fact(&fid, ForgetReason::Privacy)
         .expect("forget");
 
     // 4. Search: not found
@@ -286,7 +290,7 @@ fn full_forget_lifecycle() {
     assert_eq!(audit[0].forget_reason.as_deref(), Some("privacy"));
 
     // 6. Unforget
-    store.unforget_fact("f-lifecycle").expect("unforget");
+    store.unforget_fact(&fid).expect("unforget");
 
     // 7. Search: found again
     let results = store

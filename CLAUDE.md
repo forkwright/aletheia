@@ -22,10 +22,14 @@ Shell: [standards/SHELL.md](standards/SHELL.md)
 ```bash
 cargo build                            # Debug build
 cargo build --release                  # Release (LTO, stripped)
-cargo test --workspace                 # All tests
+cargo test --workspace                 # Default tests (~4,800)
+cargo test --workspace --features test-core  # + storage/engine tests
+cargo test --workspace --features test-full  # + ML embedding tests
 cargo test -p aletheia-hermeneus       # Single crate
 cargo clippy --workspace               # Lint (zero warnings)
 ```
+
+Test tiers: [docs/test-tiers.md](docs/test-tiers.md)
 
 ## Key patterns
 

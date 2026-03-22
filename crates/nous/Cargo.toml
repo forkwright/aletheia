@@ -14,6 +14,9 @@ workspace = true
 knowledge-store = ["aletheia-mneme/mneme-engine"]
 # Gates mock search implementations and other test helpers. No test code in release binaries.
 test-support = ["aletheia-hermeneus/test-utils", "aletheia-organon/test-support"]
+# Test tiers (see docs/test-tiers.md)
+test-core = ["knowledge-store"]
+test-full = ["test-core"]
 
 [dependencies]
 aletheia-hermeneus = { path = "../hermeneus" }
