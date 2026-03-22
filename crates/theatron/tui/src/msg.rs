@@ -299,6 +299,8 @@ pub enum Msg {
     MemoryActionResult(String),
     MemoryPageDown,
     MemoryPageUp,
+    MemoryDriftTabNext,
+    MemoryDriftTabPrev,
 
     #[expect(dead_code, reason = "opened via :editor command, not Msg pipeline")]
     EditorOpen,

@@ -51,6 +51,7 @@ impl FactSort {
 pub(crate) enum MemoryTab {
     Facts,
     Graph,
+    Drift,
     Timeline,
 }
 
@@ -59,6 +60,7 @@ impl MemoryTab {
         match self {
             Self::Facts => "Facts",
             Self::Graph => "Graph",
+            Self::Drift => "Drift",
             Self::Timeline => "Timeline",
         }
     }
@@ -66,7 +68,8 @@ impl MemoryTab {
     pub(crate) fn next(self) -> Self {
         match self {
             Self::Facts => Self::Graph,
-            Self::Graph => Self::Timeline,
+            Self::Graph => Self::Drift,
+            Self::Drift => Self::Timeline,
             Self::Timeline => Self::Facts,
         }
     }
@@ -75,7 +78,47 @@ impl MemoryTab {
         match self {
             Self::Facts => Self::Timeline,
             Self::Graph => Self::Facts,
-            Self::Timeline => Self::Graph,
+            Self::Drift => Self::Graph,
+            Self::Timeline => Self::Drift,
+        }
+    }
+}
+
+/// Sub-tabs within the Drift panel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub(crate) enum DriftTab {
+    Suggestions,
+    Orphans,
+    Stale,
+    Isolated,
+}
+
+impl DriftTab {
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::Suggestions => "Suggestions",
+            Self::Orphans => "Orphans",
+            Self::Stale => "Stale",
+            Self::Isolated => "Isolated",
+        }
+    }
+
+    pub(crate) fn next(self) -> Self {
+        match self {
+            Self::Suggestions => Self::Orphans,
+            Self::Orphans => Self::Stale,
+            Self::Stale => Self::Isolated,
+            Self::Isolated => Self::Suggestions,
+        }
+    }
+
+    pub(crate) fn prev(self) -> Self {
+        match self {
+            Self::Suggestions => Self::Isolated,
+            Self::Orphans => Self::Suggestions,
+            Self::Stale => Self::Orphans,
+            Self::Isolated => Self::Stale,
         }
     }
 }
@@ -176,6 +219,74 @@ pub(crate) struct SimilarFact {
     pub(crate) id: String,
     pub(crate) content: String,
     pub(crate) similarity: f64,
+}
+
+/// An entity with computed graph statistics for the summary view.
+#[derive(Debug, Clone)]
+pub(crate) struct GraphEntityStat {
+    pub(crate) entity: MemoryEntity,
+    pub(crate) relationship_count: usize,
+    pub(crate) community_id: Option<u32>,
+    pub(crate) pagerank: f64,
+}
+
+/// A drift analysis suggestion (delete, review, or merge).
+#[derive(Debug, Clone)]
+pub(crate) struct DriftSuggestion {
+    pub(crate) action: String,
+    pub(crate) entity_name: String,
+    pub(crate) reason: String,
+}
+
+/// A cluster of entities identified as isolated (<3 members).
+#[derive(Debug, Clone)]
+pub(crate) struct IsolatedCluster {
+    pub(crate) entity_names: Vec<String>,
+    pub(crate) size: usize,
+}
+
+/// Aggregate health metrics for the knowledge graph.
+#[derive(Debug, Clone)]
+pub(crate) struct GraphHealthMetrics {
+    pub(crate) total_entities: usize,
+    pub(crate) total_relationships: usize,
+    pub(crate) orphan_count: usize,
+    pub(crate) stale_count: usize,
+    pub(crate) avg_cluster_size: f64,
+    pub(crate) community_count: usize,
+    pub(crate) isolated_cluster_count: usize,
+}
+
+impl Default for GraphHealthMetrics {
+    fn default() -> Self {
+        Self {
+            total_entities: 0,
+            total_relationships: 0,
+            orphan_count: 0,
+            stale_count: 0,
+            avg_cluster_size: 0.0,
+            community_count: 0,
+            isolated_cluster_count: 0,
+        }
+    }
+}
+
+/// A fact related to a graph entity (for the node card).
+#[derive(Debug, Clone)]
+pub(crate) struct NodeCardFact {
+    pub(crate) content: String,
+    pub(crate) confidence: f64,
+    pub(crate) tier: String,
+}
+
+/// Full detail for a selected entity (node card view).
+#[derive(Debug, Clone)]
+pub(crate) struct GraphNodeCard {
+    pub(crate) entity: MemoryEntity,
+    pub(crate) pagerank: f64,
+    pub(crate) community_id: Option<u32>,
+    pub(crate) relationships_grouped: Vec<(String, Vec<MemoryRelationship>)>,
+    pub(crate) related_facts: Vec<NodeCardFact>,
 }
 
 /// Search result from the knowledge API.
@@ -303,7 +414,7 @@ impl Default for MemorySearchState {
     }
 }
 
-/// State for the knowledge graph and timeline views.
+/// State for the knowledge graph, drift analysis, and timeline views.
 #[derive(Debug)]
 pub(crate) struct MemoryGraphState {
     /// Entities loaded for graph view.
@@ -312,6 +423,30 @@ pub(crate) struct MemoryGraphState {
     pub(crate) relationships: Vec<MemoryRelationship>,
     /// Timeline events.
     pub(crate) timeline_events: Vec<MemoryTimelineEvent>,
+    /// Entities with computed stats (PageRank, community, relationship count).
+    pub(crate) entity_stats: Vec<GraphEntityStat>,
+    /// Aggregate graph health metrics.
+    pub(crate) health: GraphHealthMetrics,
+    /// Selected entity index in the entity list.
+    pub(crate) selected_entity: usize,
+    /// Scroll offset for the entity list.
+    pub(crate) entity_scroll_offset: usize,
+    /// Current drift sub-tab.
+    pub(crate) drift_tab: DriftTab,
+    /// Drift suggestions (delete/review/merge).
+    pub(crate) drift_suggestions: Vec<DriftSuggestion>,
+    /// Names of orphaned entities (0 relationships).
+    pub(crate) orphaned_entities: Vec<String>,
+    /// Names of stale entities (>30d since update).
+    pub(crate) stale_entities: Vec<String>,
+    /// Clusters with fewer than 3 members.
+    pub(crate) isolated_clusters: Vec<IsolatedCluster>,
+    /// Selected item index in the current drift list.
+    pub(crate) drift_selected: usize,
+    /// Scroll offset for drift lists.
+    pub(crate) drift_scroll_offset: usize,
+    /// Loaded node card for entity detail view.
+    pub(crate) node_card: Option<GraphNodeCard>,
 }
 
 impl MemoryGraphState {
@@ -320,6 +455,18 @@ impl MemoryGraphState {
             entities: Vec::new(),
             relationships: Vec::new(),
             timeline_events: Vec::new(),
+            entity_stats: Vec::new(),
+            health: GraphHealthMetrics::default(),
+            selected_entity: 0,
+            entity_scroll_offset: 0,
+            drift_tab: DriftTab::Suggestions,
+            drift_suggestions: Vec::new(),
+            orphaned_entities: Vec::new(),
+            stale_entities: Vec::new(),
+            isolated_clusters: Vec::new(),
+            drift_selected: 0,
+            drift_scroll_offset: 0,
+            node_card: None,
         }
     }
 }
@@ -448,14 +595,16 @@ mod tests {
     #[test]
     fn memory_tab_cycle() {
         assert_eq!(MemoryTab::Facts.next(), MemoryTab::Graph);
-        assert_eq!(MemoryTab::Graph.next(), MemoryTab::Timeline);
+        assert_eq!(MemoryTab::Graph.next(), MemoryTab::Drift);
+        assert_eq!(MemoryTab::Drift.next(), MemoryTab::Timeline);
         assert_eq!(MemoryTab::Timeline.next(), MemoryTab::Facts);
     }
 
     #[test]
     fn memory_tab_cycle_prev() {
         assert_eq!(MemoryTab::Facts.prev(), MemoryTab::Timeline);
-        assert_eq!(MemoryTab::Timeline.prev(), MemoryTab::Graph);
+        assert_eq!(MemoryTab::Timeline.prev(), MemoryTab::Drift);
+        assert_eq!(MemoryTab::Drift.prev(), MemoryTab::Graph);
         assert_eq!(MemoryTab::Graph.prev(), MemoryTab::Facts);
     }
 
@@ -463,7 +612,40 @@ mod tests {
     fn memory_tab_labels() {
         assert_eq!(MemoryTab::Facts.label(), "Facts");
         assert_eq!(MemoryTab::Graph.label(), "Graph");
+        assert_eq!(MemoryTab::Drift.label(), "Drift");
         assert_eq!(MemoryTab::Timeline.label(), "Timeline");
+    }
+
+    #[test]
+    fn drift_tab_cycle() {
+        assert_eq!(DriftTab::Suggestions.next(), DriftTab::Orphans);
+        assert_eq!(DriftTab::Orphans.next(), DriftTab::Stale);
+        assert_eq!(DriftTab::Stale.next(), DriftTab::Isolated);
+        assert_eq!(DriftTab::Isolated.next(), DriftTab::Suggestions);
+    }
+
+    #[test]
+    fn drift_tab_cycle_prev() {
+        assert_eq!(DriftTab::Suggestions.prev(), DriftTab::Isolated);
+        assert_eq!(DriftTab::Isolated.prev(), DriftTab::Stale);
+        assert_eq!(DriftTab::Stale.prev(), DriftTab::Orphans);
+        assert_eq!(DriftTab::Orphans.prev(), DriftTab::Suggestions);
+    }
+
+    #[test]
+    fn drift_tab_labels() {
+        assert_eq!(DriftTab::Suggestions.label(), "Suggestions");
+        assert_eq!(DriftTab::Orphans.label(), "Orphans");
+        assert_eq!(DriftTab::Stale.label(), "Stale");
+        assert_eq!(DriftTab::Isolated.label(), "Isolated");
+    }
+
+    #[test]
+    fn graph_health_metrics_default() {
+        let health = GraphHealthMetrics::default();
+        assert_eq!(health.total_entities, 0);
+        assert_eq!(health.orphan_count, 0);
+        assert_eq!(health.avg_cluster_size, 0.0);
     }
 
     #[test]

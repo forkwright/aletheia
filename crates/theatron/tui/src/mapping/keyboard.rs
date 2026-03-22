@@ -457,6 +457,7 @@ impl crate::app::App {
             self.layout.view_stack.current(),
             crate::state::view_stack::View::MemoryInspector
                 | crate::state::view_stack::View::FactDetail { .. }
+                | crate::state::view_stack::View::EntityDetail { .. }
         )
     }
 
@@ -517,6 +518,16 @@ impl crate::app::App {
             };
         }
 
+        if matches!(
+            self.layout.view_stack.current(),
+            crate::state::view_stack::View::EntityDetail { .. }
+        ) {
+            return match (key.modifiers, key.code) {
+                (_, KeyCode::Esc) => Some(Msg::MemoryPopBack),
+                _ => None,
+            };
+        }
+
         match (key.modifiers, key.code) {
             (_, KeyCode::Esc) => Some(Msg::MemoryClose),
             (_, KeyCode::Up) | (KeyModifiers::NONE, KeyCode::Char('k')) => {
@@ -538,6 +549,8 @@ impl crate::app::App {
             (KeyModifiers::NONE, KeyCode::Char('d')) => Some(Msg::MemoryForget),
             (KeyModifiers::NONE, KeyCode::Char('r')) => Some(Msg::MemoryRestore),
             (KeyModifiers::NONE, KeyCode::Char('e')) => Some(Msg::MemoryEditConfidence),
+            (KeyModifiers::NONE, KeyCode::Char(']')) => Some(Msg::MemoryDriftTabNext),
+            (KeyModifiers::NONE, KeyCode::Char('[')) => Some(Msg::MemoryDriftTabPrev),
             (_, KeyCode::Tab) => Some(Msg::MemoryTabNext),
             (KeyModifiers::SHIFT, KeyCode::BackTab) => Some(Msg::MemoryTabPrev),
             _ => None,
