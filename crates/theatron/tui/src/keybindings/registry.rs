@@ -93,8 +93,14 @@ pub(crate) fn all_keybindings() -> &'static [Keybinding] {
         },
         Keybinding {
             keys: "Ctrl+Y",
-            description: "Copy last response",
-            contexts: &[KeyContext::Chat],
+            description: "Yank (paste from kill ring)",
+            contexts: &[KeyContext::Input],
+            show_in_status_bar: false,
+        },
+        Keybinding {
+            keys: "Alt+Y",
+            description: "Cycle kill ring",
+            contexts: &[KeyContext::Input],
             show_in_status_bar: false,
         },
         Keybinding {
@@ -296,7 +302,7 @@ pub(crate) fn all_keybindings() -> &'static [Keybinding] {
             show_in_status_bar: false,
         },
         Keybinding {
-            keys: "Ctrl+E",
+            keys: "Ctrl+E / Ctrl+G",
             description: "Open $EDITOR",
             contexts: &[KeyContext::Input],
             show_in_status_bar: false,
@@ -304,6 +310,42 @@ pub(crate) fn all_keybindings() -> &'static [Keybinding] {
         Keybinding {
             keys: "Up/Down",
             description: "Input history",
+            contexts: &[KeyContext::Input],
+            show_in_status_bar: false,
+        },
+        Keybinding {
+            keys: "Alt+B / Alt+F",
+            description: "Word navigation",
+            contexts: &[KeyContext::Input],
+            show_in_status_bar: false,
+        },
+        Keybinding {
+            keys: "Ctrl+R",
+            description: "Reverse history search",
+            contexts: &[KeyContext::Input],
+            show_in_status_bar: false,
+        },
+        Keybinding {
+            keys: "Ctrl+J",
+            description: "Insert newline",
+            contexts: &[KeyContext::Input],
+            show_in_status_bar: false,
+        },
+        Keybinding {
+            keys: "\\+Enter",
+            description: "Insert newline",
+            contexts: &[KeyContext::Input],
+            show_in_status_bar: false,
+        },
+        Keybinding {
+            keys: "Ctrl+L",
+            description: "Clear screen",
+            contexts: &[KeyContext::Input],
+            show_in_status_bar: false,
+        },
+        Keybinding {
+            keys: "Ctrl+V",
+            description: "Paste (text or image)",
             contexts: &[KeyContext::Input],
             show_in_status_bar: false,
         },

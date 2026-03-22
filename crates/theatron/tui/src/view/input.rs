@@ -11,8 +11,26 @@ use crate::theme::Theme;
 pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let is_streaming = app.connection.active_turn_id.is_some();
 
-    let prompt_str = if is_streaming { "queued › " } else { "› " };
-    let prompt_color = if is_streaming {
+    // WHY: show search prompt when reverse history search is active
+    let prompt_owned: String;
+    let prompt_str = if app.interaction.input.history_search.is_some() {
+        let query = app
+            .interaction
+            .input
+            .history_search
+            .as_ref()
+            .map(|s| s.query.as_str())
+            .unwrap_or("");
+        prompt_owned = format!("(search)`{query}'› ");
+        prompt_owned.as_str()
+    } else if is_streaming {
+        "queued › "
+    } else {
+        "› "
+    };
+    let prompt_color = if app.interaction.input.history_search.is_some() {
+        theme.status.info
+    } else if is_streaming {
         theme.status.warning
     } else {
         theme.colors.accent
@@ -21,6 +39,14 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let prompt_width = UnicodeWidthStr::width(prompt_str);
     let content_width = usize::from(area.width.max(1));
     let visible_rows = usize::from(area.height.saturating_sub(1));
+
+    // Reserve rows for image attachment thumbnails
+    let attachment_rows = if app.interaction.input.image_attachments.is_empty() {
+        0
+    } else {
+        1 // one-line summary per attachment
+    };
+    let text_visible_rows = visible_rows.saturating_sub(attachment_rows);
 
     let text = app.interaction.input.text.as_str();
     let cursor_byte = app.interaction.input.cursor;
@@ -31,17 +57,33 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let (cursor_row, cursor_col) =
         cursor_visual_position(&line_ranges, text, cursor_byte, prompt_width);
 
-    let scroll = if visible_rows > 0 {
-        usize::from(cursor_row).saturating_sub(visible_rows - 1)
+    let scroll = if text_visible_rows > 0 {
+        usize::from(cursor_row).saturating_sub(text_visible_rows - 1)
     } else {
         0
     };
 
     let total_rows = line_ranges.len();
     let has_above = scroll > 0;
-    let has_below = scroll + visible_rows < total_rows;
+    let has_below = scroll + text_visible_rows < total_rows;
 
-    let mut ratatui_lines: Vec<Line<'static>> = Vec::with_capacity(total_rows);
+    let mut ratatui_lines: Vec<Line<'static>> = Vec::with_capacity(total_rows + attachment_rows);
+
+    // Image attachment summaries
+    for (i, img) in app.interaction.input.image_attachments.iter().enumerate() {
+        let size_kb = img.data.len() / 1024;
+        ratatui_lines.push(Line::from(vec![Span::styled(
+            format!(
+                "  📎 image #{} ({}×{}, {}kb) ",
+                i + 1,
+                img.width,
+                img.height,
+                size_kb
+            ),
+            theme.style_dim(),
+        )]));
+    }
+
     for (i, &(start, end)) in line_ranges.iter().enumerate() {
         let line_text = text.get(start..end).unwrap_or("").to_string();
         if i == 0 {
@@ -60,7 +102,7 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
             (true, false) => " ↑",
             _ => " ↓",
         };
-        let last_visible = (scroll + visible_rows - 1).min(total_rows - 1);
+        let last_visible = (scroll + text_visible_rows - 1).min(total_rows - 1) + attachment_rows;
         if let Some(line) = ratatui_lines.get_mut(last_visible) {
             line.spans.push(Span::styled(indicator, theme.style_dim()));
         }
@@ -75,7 +117,7 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         .scroll((u16::try_from(scroll).unwrap_or(u16::MAX), 0));
     frame.render_widget(paragraph, area);
 
-    let visible_row = usize::from(cursor_row).saturating_sub(scroll);
+    let visible_row = usize::from(cursor_row).saturating_sub(scroll) + attachment_rows;
     let cursor_y = area.y + 1 + u16::try_from(visible_row).unwrap_or(u16::MAX);
     let cursor_x = area.x + cursor_col;
     frame.set_cursor_position((cursor_x, cursor_y));

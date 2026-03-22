@@ -130,6 +130,11 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) ->
         render_streaming(app, &mut lines, inner_width, theme, agent_name_lower);
     }
 
+    // Queued messages: shown below streaming with dimmed "queued" badge
+    if !app.interaction.queued_messages.is_empty() {
+        render_queued_messages(app, &mut lines, theme);
+    }
+
     // Bottom alignment: when total content is shorter than the pane, push it to
     // the bottom by prepending empty lines.  Only applies when not scrolled
     // (content fits in the viewport).
@@ -591,6 +596,33 @@ fn render_decision_fact_cards(
         ]));
         lines.push(Line::raw(""));
     }
+}
+
+fn render_queued_messages(app: &App, lines: &mut Vec<Line<'static>>, theme: &Theme) {
+    for (i, queued) in app.interaction.queued_messages.iter().enumerate() {
+        let badge = format!(" queued #{} ", i + 1);
+        let preview = if queued.text.len() > 60 {
+            format!("{}…", queued.text.get(..60).unwrap_or(&queued.text))
+        } else {
+            queued.text.clone()
+        };
+        lines.push(Line::from(vec![
+            Span::raw(" "),
+            Span::styled(
+                badge,
+                Style::default()
+                    .fg(theme.status.warning)
+                    .add_modifier(Modifier::DIM),
+            ),
+            Span::styled(preview, theme.style_dim()),
+        ]));
+    }
+    // Hint for canceling
+    lines.push(Line::from(vec![
+        Span::raw("  "),
+        Span::styled("Esc to cancel last queued", theme.style_muted()),
+    ]));
+    lines.push(Line::raw(""));
 }
 
 fn render_streaming(

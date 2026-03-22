@@ -131,6 +131,8 @@ pub struct InteractionState {
     pub(crate) keymap: KeyMap,
     /// Tool names that bypass the approval dialog for the lifetime of this TUI session.
     pub(crate) always_allowed_tools: HashSet<String>,
+    /// Messages queued while the agent is streaming; auto-sent when the turn completes.
+    pub queued_messages: Vec<crate::state::QueuedMessage>,
 }
 
 /// Sidebar, overlay, view stack, ops, tabs, memory inspector, and notification log.
@@ -252,6 +254,7 @@ impl App {
                 filter: FilterState::default(),
                 keymap,
                 always_allowed_tools: HashSet::new(),
+                queued_messages: Vec::new(),
             },
             layout: LayoutState {
                 sidebar_visible: true,

@@ -19,7 +19,9 @@ pub(crate) use chat::{ArcVec, MarkdownCache, SavedScrollState};
 pub use chat::{ChatMessage, ToolCallInfo};
 pub use command::{CommandPaletteState, SelectionContext, SlashCompleteState, SlashSuggestion};
 pub use filter::{FilterScope, FilterState};
-pub use input::{InputState, TabCompletion};
+pub use input::{
+    HistorySearchState, ImageAttachment, InputState, QueuedMessage, TabCompletion, YankSpan,
+};
 pub use memory::MemoryInspectorState;
 pub(crate) use metrics::MetricsState;
 pub use notification::{ErrorBanner, NotificationStore, Toast};

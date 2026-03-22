@@ -28,6 +28,12 @@ pub(crate) enum Action {
     ScrollDown,
     ScrollLineUp,
     ScrollLineDown,
+    Yank,
+    YankCycle,
+    WordForward,
+    WordBackward,
+    ClearScreen,
+    NewlineInsert,
 }
 
 impl Action {
@@ -55,6 +61,12 @@ impl Action {
             Self::ScrollDown => Msg::ScrollDown,
             Self::ScrollLineUp => Msg::ScrollLineUp,
             Self::ScrollLineDown => Msg::ScrollLineDown,
+            Self::Yank => Msg::Yank,
+            Self::YankCycle => Msg::YankCycle,
+            Self::WordForward => Msg::WordForward,
+            Self::WordBackward => Msg::WordBackward,
+            Self::ClearScreen => Msg::ClearScreen,
+            Self::NewlineInsert => Msg::NewlineInsert,
         }
     }
 
@@ -81,6 +93,12 @@ impl Action {
             Self::ScrollDown => "scroll_down",
             Self::ScrollLineUp => "scroll_line_up",
             Self::ScrollLineDown => "scroll_line_down",
+            Self::Yank => "yank",
+            Self::YankCycle => "yank_cycle",
+            Self::WordForward => "word_forward",
+            Self::WordBackward => "word_backward",
+            Self::ClearScreen => "clear_screen",
+            Self::NewlineInsert => "newline_insert",
         }
     }
 
@@ -107,6 +125,12 @@ impl Action {
             Self::ScrollDown,
             Self::ScrollLineUp,
             Self::ScrollLineDown,
+            Self::Yank,
+            Self::YankCycle,
+            Self::WordForward,
+            Self::WordBackward,
+            Self::ClearScreen,
+            Self::NewlineInsert,
         ]
     }
 }
@@ -144,11 +168,23 @@ impl KeyMap {
             }
         }
 
-        // Build reverse lookup.
+        // WHY: build reverse lookup in two passes — defaults first, then overrides.
+        // This ensures user overrides win when they claim a key already used by a default.
         let mut dispatch = HashMap::new();
         for (action, keys) in &action_to_keys {
-            for key in keys {
-                dispatch.insert(*key, *action);
+            if !overrides.contains_key(action.config_key()) {
+                for key in keys {
+                    dispatch.insert(*key, *action);
+                }
+            }
+        }
+        for action in Action::all() {
+            if overrides.contains_key(action.config_key())
+                && let Some(keys) = action_to_keys.get(action)
+            {
+                for key in keys {
+                    dispatch.insert(*key, *action);
+                }
             }
         }
 
@@ -206,13 +242,15 @@ impl KeyMap {
                 Action::OpenSessionPicker,
                 vec![(KeyModifiers::CONTROL, KeyCode::Char('s'))],
             ),
-            (
-                Action::CopyLastResponse,
-                vec![(KeyModifiers::CONTROL, KeyCode::Char('y'))],
-            ),
+            // WHY: Ctrl+Y reassigned to Yank (kill ring paste); CopyLastResponse
+            // is available via the command palette (:copy-response).
+            (Action::CopyLastResponse, vec![]),
             (
                 Action::ComposeInEditor,
-                vec![(KeyModifiers::CONTROL, KeyCode::Char('e'))],
+                vec![
+                    (KeyModifiers::CONTROL, KeyCode::Char('e')),
+                    (KeyModifiers::CONTROL, KeyCode::Char('g')),
+                ],
             ),
             (
                 Action::ClearLine,
@@ -237,6 +275,30 @@ impl KeyMap {
             (
                 Action::ScrollLineDown,
                 vec![(KeyModifiers::SHIFT, KeyCode::Down)],
+            ),
+            (
+                Action::Yank,
+                vec![(KeyModifiers::CONTROL, KeyCode::Char('y'))],
+            ),
+            (
+                Action::YankCycle,
+                vec![(KeyModifiers::ALT, KeyCode::Char('y'))],
+            ),
+            (
+                Action::WordForward,
+                vec![(KeyModifiers::ALT, KeyCode::Char('f'))],
+            ),
+            (
+                Action::WordBackward,
+                vec![(KeyModifiers::ALT, KeyCode::Char('b'))],
+            ),
+            (
+                Action::ClearScreen,
+                vec![(KeyModifiers::CONTROL, KeyCode::Char('l'))],
+            ),
+            (
+                Action::NewlineInsert,
+                vec![(KeyModifiers::CONTROL, KeyCode::Char('j'))],
             ),
         ]
     }
