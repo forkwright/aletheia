@@ -40,6 +40,8 @@ pub fn test_app() -> App {
             daily_cost_cents: 0,
             session_cost_cents: 0,
             context_usage_pct: None,
+            context_tokens_used: None,
+            context_tokens_total: None,
             saved_sessions: HashMap::new(),
         },
         connection: ConnectionState {
@@ -127,6 +129,7 @@ pub fn test_agent(id: &str, name: &str) -> AgentState {
         sessions: Vec::new(),
         model: Some("test-model".to_string()),
         compaction_stage: None,
+        distill_completed_at: None,
         unread_count: 0,
         tools: Vec::new(),
     }

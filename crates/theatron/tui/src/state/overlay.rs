@@ -12,6 +12,7 @@ pub enum Overlay {
     },
     SessionPicker(SessionPickerOverlay),
     SystemStatus,
+    ContextBudget,
     Settings(SettingsOverlay),
     ToolApproval(ToolApprovalOverlay),
     PlanApproval(PlanApprovalOverlay),

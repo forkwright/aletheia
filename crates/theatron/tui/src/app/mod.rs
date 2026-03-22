@@ -55,6 +55,10 @@ pub struct DashboardState {
     pub daily_cost_cents: u32,
     pub session_cost_cents: u32,
     pub context_usage_pct: Option<u8>,
+    /// Raw token count currently in the context window (input + cache-read).
+    pub context_tokens_used: Option<u32>,
+    /// Total context window capacity for the current model.
+    pub context_tokens_total: Option<u32>,
     /// Last-active session per agent, loaded from disk on startup and saved on exit.
     pub(crate) saved_sessions: HashMap<NousId, SessionId>,
 }
@@ -175,6 +179,8 @@ impl App {
                 daily_cost_cents: 0,
                 session_cost_cents: 0,
                 context_usage_pct: None,
+                context_tokens_used: None,
+                context_tokens_total: None,
                 saved_sessions,
             },
             connection: ConnectionState {
@@ -299,6 +305,7 @@ impl App {
                     sessions: Vec::new(),
                     model: a.model.map(|m| sanitize_for_display(&m).into_owned()),
                     compaction_stage: None,
+                    distill_completed_at: None,
                     unread_count: 0,
                     tools: Vec::new(),
                 }

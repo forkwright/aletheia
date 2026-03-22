@@ -46,6 +46,7 @@ pub(crate) async fn handle_sse_connected(app: &mut App) {
                         sessions: Vec::new(),
                         model: a.model.map(|m| sanitize_for_display(&m).into_owned()),
                         compaction_stage: None,
+                        distill_completed_at: None,
                         unread_count: count,
                         tools: Vec::new(),
                     }
@@ -207,10 +208,25 @@ pub(crate) fn handle_sse_distill_stage(app: &mut App, nous_id: NousId, stage: St
 pub(crate) async fn handle_sse_distill_after(app: &mut App, nous_id: NousId) {
     if let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == nous_id) {
         agent.status = AgentStatus::Idle;
-        agent.compaction_stage = None;
+        agent.compaction_stage = Some("done".to_string());
+        agent.distill_completed_at = Some(std::time::Instant::now());
     }
     if app.dashboard.focused_agent.as_ref() == Some(&nous_id) {
         app.load_focused_session().await;
+    }
+}
+
+/// Auto-dismiss distillation stage indicator after 3 seconds.
+pub(crate) fn check_distill_auto_dismiss(app: &mut App) {
+    const DISMISS_DELAY: std::time::Duration = std::time::Duration::from_secs(3);
+    for agent in &mut app.dashboard.agents {
+        if agent
+            .distill_completed_at
+            .is_some_and(|t| t.elapsed() >= DISMISS_DELAY)
+        {
+            agent.compaction_stage = None;
+            agent.distill_completed_at = None;
+        }
     }
 }
 

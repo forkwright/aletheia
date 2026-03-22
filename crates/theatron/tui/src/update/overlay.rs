@@ -22,6 +22,7 @@ pub(crate) async fn handle_open_overlay(app: &mut App, kind: OverlayKind) {
                     show_archived: true,
                 }),
                 OverlayKind::SystemStatus => Overlay::SystemStatus,
+                OverlayKind::ContextBudget => Overlay::ContextBudget,
                 OverlayKind::Settings => unreachable!(),
             });
         }

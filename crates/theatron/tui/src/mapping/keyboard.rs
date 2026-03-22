@@ -123,6 +123,12 @@ impl crate::app::App {
             (_, KeyCode::Up) => Some(Msg::HistoryUp),
             (_, KeyCode::Down) => Some(Msg::HistoryDown),
 
+            (KeyModifiers::CONTROL, KeyCode::Char('b'))
+                if self.interaction.input.text.is_empty() =>
+            {
+                Some(Msg::OpenOverlay(OverlayKind::ContextBudget))
+            }
+
             (KeyModifiers::NONE, KeyCode::Char('?')) if self.interaction.input.text.is_empty() => {
                 Some(Msg::OpenOverlay(OverlayKind::Help))
             }

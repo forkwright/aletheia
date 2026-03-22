@@ -23,6 +23,7 @@ pub(crate) fn handle_agents_loaded(app: &mut App, agents: Vec<Agent>) {
                 sessions: sanitize_sessions(Vec::new()),
                 model: a.model.map(|m| sanitize_for_display(&m).into_owned()),
                 compaction_stage: None,
+                distill_completed_at: None,
                 unread_count: 0,
                 tools: Vec::new(),
             }
@@ -178,6 +179,7 @@ pub(crate) fn handle_tick(app: &mut App) {
         app.viewport.success_toast = None;
     }
     super::sse::check_sse_reconnect_timeout(app);
+    super::sse::check_distill_auto_dismiss(app);
 }
 
 /// Sanitize session fields that may contain external data.

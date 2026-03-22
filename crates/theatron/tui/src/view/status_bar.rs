@@ -58,7 +58,19 @@ fn render_info_bar(app: &App, width: u16, theme: &Theme) -> Line<'static> {
     right_spans.extend(scroll_position_spans(app, theme));
     right_spans.extend(cost_spans(app, theme));
     right_spans.push(Span::styled(" │ ", theme.style_dim()));
-    right_spans.extend(context_gauge_spans(app, theme));
+    let focused_agent = app
+        .dashboard
+        .focused_agent
+        .as_ref()
+        .and_then(|id| app.dashboard.agents.iter().find(|a| a.id == *id));
+    let is_distilling = focused_agent.is_some_and(|a| {
+        a.status == crate::state::AgentStatus::Compacting || a.distill_completed_at.is_some()
+    });
+    if is_distilling {
+        right_spans.extend(distillation_stage_spans(app, theme));
+    } else {
+        right_spans.extend(context_gauge_spans(app, theme));
+    }
     right_spans.push(Span::raw(" "));
     let right_width: usize = right_spans.iter().map(|s| s.content.width()).sum();
 
@@ -393,34 +405,104 @@ fn tool_indicator_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
     ]
 }
 
-fn context_gauge_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
-    const GAUGE_WIDTH: usize = 6;
-    const CONTEXT_WARN_THRESHOLD: u8 = 60;
-    const CONTEXT_CRITICAL_THRESHOLD: u8 = 80;
+const DISTILL_STAGES: &[&str] = &["sanitize", "extract", "summarize", "flush", "verify"];
 
-    match app.dashboard.context_usage_pct {
-        Some(pct) => {
-            let filled = (usize::from(pct) * GAUGE_WIDTH) / 100;
-            let empty = GAUGE_WIDTH.saturating_sub(filled);
+fn distillation_stage_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
+    let agent = app
+        .dashboard
+        .focused_agent
+        .as_ref()
+        .and_then(|id| app.dashboard.agents.iter().find(|a| a.id == *id));
 
-            let color = if pct <= CONTEXT_WARN_THRESHOLD {
-                theme.status.success
-            } else if pct <= CONTEXT_CRITICAL_THRESHOLD {
-                theme.status.warning
-            } else {
-                theme.status.error
-            };
+    let stage = agent
+        .and_then(|a| a.compaction_stage.as_deref())
+        .unwrap_or("starting");
 
-            vec![
-                Span::styled("█".repeat(filled), Style::default().fg(color)),
-                Span::styled("░".repeat(empty), theme.style_dim()),
-                Span::styled(format!(" {pct}%"), Style::default().fg(color)),
-            ]
+    if stage == "done" {
+        return vec![
+            Span::styled("✓ ", theme.style_success()),
+            Span::styled("distilled", theme.style_muted()),
+        ];
+    }
+
+    let mut spans = vec![Span::styled("distilling: ", theme.style_muted())];
+    for (i, &s) in DISTILL_STAGES.iter().enumerate() {
+        if i > 0 {
+            spans.push(Span::styled(" ▸ ", theme.style_dim()));
         }
-        None => vec![
-            Span::styled("░".repeat(GAUGE_WIDTH), theme.style_dim()),
-            Span::styled(" —%", theme.style_dim()),
-        ],
+        if s == stage {
+            spans.push(Span::styled(s.to_owned(), theme.style_accent_bold()));
+        } else {
+            spans.push(Span::styled(s.to_owned(), theme.style_dim()));
+        }
+    }
+    spans
+}
+
+fn context_gauge_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
+    const GAUGE_WIDTH: usize = 20;
+    const CONTEXT_WARN_THRESHOLD: u8 = 70;
+    const CONTEXT_CRITICAL_THRESHOLD: u8 = 90;
+
+    let pct = match app.dashboard.context_usage_pct {
+        Some(p) => p,
+        None => {
+            return vec![
+                Span::styled("ctx: ", theme.style_dim()),
+                Span::styled(
+                    "[".to_owned() + &".".repeat(GAUGE_WIDTH) + "]",
+                    theme.style_dim(),
+                ),
+                Span::styled(" —%", theme.style_dim()),
+            ];
+        }
+    };
+
+    let filled = (usize::from(pct) * GAUGE_WIDTH) / 100;
+    let empty = GAUGE_WIDTH.saturating_sub(filled);
+    let color = if pct <= CONTEXT_WARN_THRESHOLD {
+        theme.status.success
+    } else if pct <= CONTEXT_CRITICAL_THRESHOLD {
+        theme.status.warning
+    } else {
+        theme.status.error
+    };
+
+    let bar = format!("[{}{}]", "=".repeat(filled), ".".repeat(empty));
+    let mut spans = vec![
+        Span::styled("ctx: ", theme.style_muted()),
+        Span::styled(format!("{pct}% "), Style::default().fg(color)),
+        Span::styled(bar, Style::default().fg(color)),
+    ];
+
+    if let (Some(used), Some(total)) = (
+        app.dashboard.context_tokens_used,
+        app.dashboard.context_tokens_total,
+    ) {
+        spans.push(Span::styled(
+            format!(
+                "  ({} / {})",
+                format_token_count(used),
+                format_token_count(total)
+            ),
+            theme.style_muted(),
+        ));
+    }
+
+    if pct > CONTEXT_CRITICAL_THRESHOLD {
+        spans.push(Span::styled("  distilling soon", theme.style_warning()));
+    }
+
+    spans
+}
+
+fn format_token_count(n: u32) -> String {
+    if n >= 1_000_000 {
+        format!("{}M", n / 1_000_000)
+    } else if n >= 1_000 {
+        format!("{}K", n / 1_000)
+    } else {
+        format!("{n}")
     }
 }
 

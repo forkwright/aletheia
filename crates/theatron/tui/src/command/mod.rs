@@ -355,6 +355,7 @@ mod tests {
             sessions: Vec::new(),
             model: Some("claude-opus-4-6".into()),
             compaction_stage: None,
+            distill_completed_at: None,
             unread_count: 0,
             tools: Vec::new(),
         }];
