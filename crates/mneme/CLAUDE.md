@@ -1,47 +1,46 @@
 # mneme
 
-Session store (SQLite) and knowledge engine (CozoDB Datalog + HNSW vectors). 110K lines. The memory layer.
+Thin facade re-exporting from four decomposed sub-crates. 110 lines of glue code.
 
-## Read first
+## Architecture
 
-1. `src/types.rs`: Session, Message, UsageRecord (core domain)
-2. `src/knowledge.rs`: Fact, Entity, Relationship, EpistemicTier
-3. `src/store/mod.rs`: SessionStore (SQLite WAL)
-4. `src/knowledge_store/mod.rs`: KnowledgeStore (CozoDB, feature-gated)
-5. `src/recall.rs`: 6-factor recall scoring engine
+Mneme was decomposed into eidos, graphe, episteme, and krites. This crate re-exports their public APIs so downstream consumers (nous, pylon, melete) depend on `mneme` without knowing about the decomposition.
 
-## Key types
+## Re-exports
 
-| Type | Path | Purpose |
-|------|------|---------|
-| `SessionStore` | `store/mod.rs` | SQLite session/message persistence |
-| `KnowledgeStore` | `knowledge_store/mod.rs` | CozoDB Datalog + HNSW (feature: `mneme-engine`) |
-| `Fact` | `knowledge.rs` | Bi-temporal memory with confidence, tier, decay |
-| `Entity` | `knowledge.rs` | Named entity with aliases and type |
-| `RecallEngine` | `recall.rs` | Weighted 6-factor scoring for memory retrieval |
-| `ExtractionEngine` | `extract/mod.rs` | LLM-driven fact/entity extraction from conversations |
-| `SkillExtractor` | `skills/mod.rs` | Auto-capture of recurring tool patterns as skills |
+| Source crate | Re-exported modules | Feature gate |
+|--------------|---------------------|--------------|
+| `eidos` | `id`, `knowledge` | always |
+| `graphe` | `backup`, `error`, `export`, `import`, `migration`, `portability`, `recovery`, `retention`, `schema`, `store`, `types` | `sqlite` (default) for most |
+| `episteme` | `conflict`, `consolidation`, `embedding`, `extract`, `hnsw_index`, `instinct`, `knowledge_portability`, `knowledge_store`, `query`, `recall`, `skill`, `skills`, `vocab` | `hnsw_rs` for hnsw_index, `mneme-engine` for query |
+| `krites` | `engine` | `mneme-engine` |
 
-## Patterns
+## Feature flags
 
-- **Bi-temporal facts**: `valid_from`/`valid_to` windows. Supersession chains via `superseded_by`.
-- **Epistemic tiers**: Verified > Inferred > Assumed. Tier affects decay rate and consolidation eligibility.
-- **FSRS decay**: `stability_hours` + `access_count` drive spaced-repetition-style recall scoring.
-- **Datalog queries**: typed builder in `query/builders.rs` or raw via `KnowledgeStore::run_query()`.
-- **SQLite recovery**: integrity check on open, auto-repair (backup + re-init), read-only fallback.
-- **Feature flags**: `mneme-engine` (knowledge store), `storage-fjall` (persistent), `embed-candle` (local embeddings).
+| Feature | Default | Purpose |
+|---------|---------|---------|
+| `sqlite` | yes | SQLite session store (graphe backend) |
+| `graph-algo` | yes | Graph algorithms in episteme + krites |
+| `mneme-engine` | no | Datalog engine (krites) + typed query builder |
+| `storage-fjall` | no | Fjall LSM-tree backend (requires mneme-engine) |
+| `embed-candle` | no | Local ML embeddings via candle |
+| `hnsw_rs` | no | Alternative HNSW vector index backend |
+| `test-support` | no | MockEmbeddingProvider and test helpers |
 
-## Common tasks
+## Where to make changes
 
-| Task | Where |
-|------|-------|
-| Add session field | `src/types.rs` (struct) + `src/schema.rs` (DDL) + `src/migration.rs` + `src/store/session.rs` |
-| Add knowledge query | `src/query/builders.rs` (typed) or `src/knowledge_store/mod.rs` (raw Datalog) |
-| Add recall signal | `src/recall.rs` (new field in FactorScores + weight in RecallWeights) |
-| Add extraction type | `src/extract/types.rs` + `src/extract/engine.rs` |
-| Add skill heuristic | `src/skills/heuristics.rs` (scoring function) |
+Mneme itself has no logic. All changes go to the sub-crates:
+
+| Task | Sub-crate |
+|------|-----------|
+| Add session/message field | `graphe` (types, schema, migration, store) |
+| Add knowledge type | `eidos` (knowledge module) |
+| Add extraction/recall logic | `episteme` |
+| Add Datalog query builder | `episteme` (query module, requires mneme-engine) |
+| Modify Datalog engine | `krites` |
+| Add embedding provider | `episteme` (embedding module) |
 
 ## Dependencies
 
-Uses: koina, serde, jiff, ulid, rusqlite, snafu, tracing, candle-*, fjall
+Uses: eidos, graphe, episteme, krites
 Used by: nous, pylon, melete, aletheia (binary)

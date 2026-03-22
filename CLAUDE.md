@@ -111,6 +111,8 @@ Register in `crates/organon/src/builtins/mod.rs` via `register_all()`.
 | `migrate-memory [--qdrant-url URL] [--collection NAME] [--knowledge-path PATH] [--review-file PATH] [--dry-run]` | Migrate memories from Qdrant into embedded knowledge store |
 | `add-nous <name> [--provider PROVIDER] [--model MODEL]` | Scaffold a new nous agent directory |
 | `init [--instance-root\|--instance-path PATH] [-y] [--non-interactive] [--auth-mode MODE] [--api-provider PROVIDER] [--model MODEL] [--api-key KEY]` | Initialize a new instance |
+| `config init-key` | Initialize encryption key for config secrets |
+| `config encrypt` | Encrypt a config value |
 | `check-config` | Validate configuration without starting services |
 | `completions <bash\|zsh\|fish>` | Generate shell completions |
 

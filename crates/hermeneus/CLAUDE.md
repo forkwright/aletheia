@@ -1,6 +1,6 @@
 # hermeneus
 
-Anthropic LLM client with streaming, retries, fallback, health tracking, and cost estimation. 7K lines.
+Anthropic LLM client with streaming, retries, fallback, health tracking, and cost estimation. 10.5K lines.
 
 ## Read first
 
@@ -19,7 +19,7 @@ Anthropic LLM client with streaming, retries, fallback, health tracking, and cos
 | `AnthropicProvider` | `anthropic/client.rs` | Concrete Anthropic Messages API implementation |
 | `CompletionRequest` | `types.rs` | LLM request (model, messages, tools, thinking, cache config) |
 | `CompletionResponse` | `types.rs` | LLM response (content blocks, usage, stop reason) |
-| `StreamEvent` | `anthropic/mod.rs` | SSE events: TextDelta, ThinkingDelta, ToolUse, etc. |
+| `StreamEvent` | `anthropic/stream/mod.rs` | SSE events: TextDelta, ThinkingDelta, ToolUse, etc. |
 | `FallbackConfig` | `fallback.rs` | Model fallback chain on transient failures |
 
 ## Patterns
@@ -37,7 +37,7 @@ Anthropic LLM client with streaming, retries, fallback, health tracking, and cos
 |------|-------|
 | Add LLM provider | New module (e.g., `src/openai/`), implement `LlmProvider` trait |
 | Modify retry logic | `src/models.rs` (constants) + `src/anthropic/client.rs` (retry loop) |
-| Add streaming event | `anthropic/mod.rs` (StreamEvent enum) + `anthropic/stream.rs` (accumulator) |
+| Add streaming event | `anthropic/stream/mod.rs` (StreamEvent enum) + `anthropic/stream/accumulator.rs` (accumulator) |
 | Update model pricing | `src/models.rs` (PRICING constant) |
 | Add metric | `src/metrics.rs` (LazyLock static, record function) |
 
