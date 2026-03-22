@@ -64,6 +64,9 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
             render_diff_view(diff_state, frame, diff_area, theme);
         }
         Overlay::DecisionCard(card) => render_decision_card(frame, popup_area, card, theme),
+        Overlay::NotificationHistory { scroll } => {
+            super::notification::render_history(app, frame, area, *scroll, theme);
+        }
     }
 }
 
@@ -919,6 +922,10 @@ fn render_decision_card(
     frame.render_widget(para, inner);
 }
 /// Create a centered rect within the given area.
+pub(crate) fn centered_rect_pub(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
+    centered_rect(percent_x, percent_y, area)
+}
+
 #[expect(
     clippy::indexing_slicing,
     reason = "Layout.split() returns exactly as many Rects as constraints; [1] is valid for both 3-element constraint arrays"

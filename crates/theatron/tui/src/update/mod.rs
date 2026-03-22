@@ -9,6 +9,7 @@ mod overlay;
 mod search;
 pub(crate) mod selection;
 pub(crate) mod settings;
+mod slash;
 mod sse;
 mod streaming;
 pub(crate) mod tabs;
@@ -293,6 +294,34 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::MemoryActionResult(msg) => memory::handle_action_result(app, msg),
 
         Msg::ExportConversation => command::execute_export_from_msg(app),
+
+        Msg::SlashCompleteOpen => slash::handle_open(app),
+        Msg::SlashCompleteClose => slash::handle_close(app),
+        Msg::SlashCompleteInput(c) => slash::handle_input(app, c),
+        Msg::SlashCompleteBackspace => slash::handle_backspace(app),
+        Msg::SlashCompleteUp => slash::handle_up(app),
+        Msg::SlashCompleteDown => slash::handle_down(app),
+        Msg::SlashCompleteSelect => slash::handle_select(app).await,
+
+        Msg::ToastPush {
+            message,
+            kind,
+            duration_secs,
+        } => {
+            use crate::state::notification::Toast;
+            let toast = Toast::with_duration(message.clone(), kind, duration_secs);
+            app.viewport.toasts.push(toast);
+            app.layout
+                .notifications
+                .push(app.dashboard.focused_agent.clone(), message, kind);
+        }
+        Msg::ErrorBannerSet(msg) => {
+            use crate::state::notification::ErrorBanner;
+            app.viewport.error_banner = Some(ErrorBanner { message: msg });
+        }
+        Msg::ErrorBannerDismiss => {
+            app.viewport.error_banner = None;
+        }
 
         Msg::SessionSearchOpen => search::handle_open(app),
         Msg::SessionSearchClose => search::handle_close(app),
