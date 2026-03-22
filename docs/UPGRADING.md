@@ -7,16 +7,24 @@
    ```bash
    aletheia backup
    ```
-3. Download the new binary from [GitHub Releases](https://github.com/forkwright/aletheia/releases)
-4. Verify checksum: `sha256sum -c aletheia-linux-amd64.sha256`
+3. Download the tarball from [GitHub Releases](https://github.com/forkwright/aletheia/releases):
+   ```bash
+   VERSION=v0.13.0
+   curl -L "https://github.com/forkwright/aletheia/releases/download/${VERSION}/aletheia-linux-x86_64-${VERSION}.tar.gz" \
+     -o aletheia.tar.gz
+   ```
+4. Verify the checksum:
+   ```bash
+   sha256sum -c "aletheia-linux-x86_64-${VERSION}.tar.gz.sha256"
+   ```
 5. Stop the service:
    ```bash
    systemctl --user stop aletheia
    ```
-6. Replace the binary:
+6. Extract and replace the binary:
    ```bash
-   sudo mv aletheia-linux-amd64 /usr/local/bin/aletheia
-   chmod +x /usr/local/bin/aletheia
+   tar xzf aletheia.tar.gz
+   sudo cp "aletheia-${VERSION}/aletheia" /usr/local/bin/aletheia
    ```
 7. Start the service:
    ```bash
@@ -72,9 +80,9 @@ Before any upgrade:
    ```bash
    systemctl --user stop aletheia
    ```
-2. Restore previous binary:
+2. Restore the previous binary:
    ```bash
-   sudo mv /usr/local/bin/aletheia.prev /usr/local/bin/aletheia
+   sudo cp /usr/local/bin/aletheia.prev /usr/local/bin/aletheia
    ```
 3. If the new version ran and modified the database schema, restore from backup:
    ```bash
