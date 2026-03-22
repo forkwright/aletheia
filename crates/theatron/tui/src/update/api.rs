@@ -222,6 +222,11 @@ pub(crate) fn extract_text_content(content: &Option<serde_json::Value>) -> Optio
         {
             return extract_texts_from_array(&parsed);
         }
+        // WHY: tool_use inputs are sometimes stored as JSON object strings;
+        // skip them rather than rendering raw JSON in the chat pane.
+        if s.starts_with('{') && serde_json::from_str::<serde_json::Value>(s).is_ok() {
+            return None;
+        }
         return Some(s.to_string());
     }
 
@@ -310,6 +315,25 @@ mod tests {
     fn extract_text_content_empty_array() {
         let content = Some(serde_json::json!([]));
         assert!(extract_text_content(&content).is_none());
+    }
+
+    #[test]
+    fn extract_text_content_json_object_string_skipped() {
+        // Tool use inputs stored as JSON object strings must not render as raw JSON.
+        let content = Some(serde_json::Value::String(
+            r#"{"command":"head -30 /path"}"#.to_string(),
+        ));
+        assert!(extract_text_content(&content).is_none());
+    }
+
+    #[test]
+    fn extract_text_content_non_json_brace_string_kept() {
+        // Plain text that happens to start with '{' but is not valid JSON is kept.
+        let content = Some(serde_json::Value::String("{not json}".to_string()));
+        assert_eq!(
+            extract_text_content(&content).as_deref(),
+            Some("{not json}")
+        );
     }
 
     #[test]

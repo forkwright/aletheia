@@ -1,6 +1,7 @@
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
+use unicode_width::UnicodeWidthStr;
 
 /// Fixed column width for command labels in the suggestion list.
 const COMMAND_LABEL_DISPLAY_WIDTH: usize = 12;
@@ -93,7 +94,12 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let paragraph = Paragraph::new(lines).block(block);
     frame.render_widget(paragraph, area);
 
-    let cursor_x = area.x + 1 + u16::try_from(palette.cursor).unwrap_or(u16::MAX);
+    let input_before_cursor = palette
+        .input
+        .get(..palette.cursor)
+        .unwrap_or(&palette.input);
+    let input_display_width = UnicodeWidthStr::width(input_before_cursor);
+    let cursor_x = area.x + 1 + u16::try_from(input_display_width).unwrap_or(u16::MAX);
     let cursor_y = area.y + 1;
     frame.set_cursor_position((cursor_x, cursor_y));
 }

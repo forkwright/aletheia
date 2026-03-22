@@ -18,8 +18,7 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         theme.colors.accent
     };
 
-    // NOTE: ASCII-only prompt: bytes equal display columns
-    let prompt_width = prompt_str.len();
+    let prompt_width = UnicodeWidthStr::width(prompt_str);
     let content_width = usize::from(area.width.max(1));
     let visible_rows = usize::from(area.height.saturating_sub(1));
 

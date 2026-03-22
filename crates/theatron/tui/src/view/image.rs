@@ -180,10 +180,6 @@ fn render_halfblock_cached(path: &Path, max_width: usize) -> Vec<Line<'static>> 
 /// Each text row represents two pixel rows, doubling effective vertical resolution.
 /// Images are scaled to fit within `max_width` columns and [`MAX_IMAGE_HEIGHT`] rows,
 /// maintaining aspect ratio. Never upscales.
-#[expect(
-    clippy::indexing_slicing,
-    reason = "Rgba<u8> is [u8; 4], indices 0..3 always valid"
-)]
 fn load_and_render_halfblocks(path: &Path, max_width: usize) -> Vec<Line<'static>> {
     let img = match image::open(path) {
         Ok(img) => img,

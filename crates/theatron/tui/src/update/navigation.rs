@@ -152,10 +152,6 @@ fn clamp_scroll_offset(app: &mut App) {
         return;
     }
     let total = app.viewport.render.virtual_scroll.total_height();
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "viewport height derived from u16, always fits in u64"
-    )]
     let vh = chat_viewport_height(app) as u64;
     #[expect(
         clippy::cast_possible_truncation,
@@ -379,10 +375,6 @@ mod tests {
         app.rebuild_virtual_scroll();
         app.viewport.render.auto_scroll = false;
         let total = app.viewport.render.virtual_scroll.total_height();
-        #[expect(
-            clippy::cast_possible_truncation,
-            reason = "viewport height derived from u16, always fits in u64"
-        )]
         let vh = chat_viewport_height(&app) as u64;
         // Offset within valid range: no clamping expected.
         if total > vh {

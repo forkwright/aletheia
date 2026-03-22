@@ -5,14 +5,18 @@ mod state_impl;
 mod summary;
 mod types;
 
-pub(crate) use helpers::categorize_tool;
 pub use state_impl::OpsState;
-pub(crate) use summary::{CategoryStats, OpsSummary};
-pub use types::{FocusedPane, OpsAutoShow, OpsToolStatus};
+pub use types::{FocusedPane, OpsToolStatus};
 pub(crate) use types::{OpsDiffEntry, OpsThinkingBlock, OpsToolCall, ToolCategory};
 
 #[cfg(test)]
-pub(crate) use helpers::{extract_primary_arg, parse_diff_from_output, truncate_error};
+pub(crate) use helpers::{
+    categorize_tool, extract_primary_arg, parse_diff_from_output, truncate_error,
+};
+#[cfg(test)]
+pub(crate) use summary::{CategoryStats, OpsSummary};
+#[cfg(test)]
+pub(crate) use types::OpsAutoShow;
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]

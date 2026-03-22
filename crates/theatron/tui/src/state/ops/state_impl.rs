@@ -5,9 +5,7 @@ use super::helpers::{
     categorize_tool, extract_primary_arg, parse_diff_from_output, truncate_error,
 };
 use super::summary::OpsSummary;
-use super::types::{
-    FocusedPane, OpsAutoShow, OpsThinkingBlock, OpsToolCall, OpsToolStatus, ToolCategory,
-};
+use super::types::{FocusedPane, OpsAutoShow, OpsThinkingBlock, OpsToolCall, OpsToolStatus};
 
 /// Full state for the operations pane.
 #[derive(Debug, Clone)]

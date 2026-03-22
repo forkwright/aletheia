@@ -98,8 +98,10 @@ async fn run_tui_inner(
             context: "enable mouse capture",
         },
     )?;
+    let _ = crossterm::execute!(std::io::stderr(), cursor::SetCursorStyle::SteadyBlock);
     let result = run_loop(terminal, &mut app).await;
     let _ = crossterm::execute!(std::io::stderr(), crossterm::event::DisableMouseCapture);
+    let _ = crossterm::execute!(std::io::stderr(), cursor::SetCursorStyle::DefaultUserShape);
     ratatui::restore();
     // Persist last-active sessions so the TUI resumes at the same place on relaunch.
     crate::app::save_session_state(&app.config, &app.dashboard.saved_sessions);
