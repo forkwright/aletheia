@@ -311,7 +311,7 @@ mod tests {
     fn diff_detects_hot_reloadable_change() {
         let old = AletheiaConfig::default();
         let mut new = old.clone();
-        new.agents.defaults.thinking_budget = 20_000;
+        new.agents.defaults.model_defaults.thinking_budget = 20_000;
 
         let diff = diff_configs(&old, &new);
         assert!(!diff.is_empty(), "changed config should have diff");
@@ -347,7 +347,7 @@ mod tests {
     fn diff_detects_multiple_changes() {
         let old = AletheiaConfig::default();
         let mut new = old.clone();
-        new.agents.defaults.thinking_budget = 20_000;
+        new.agents.defaults.model_defaults.thinking_budget = 20_000;
         new.gateway.port = 9999;
         new.maintenance.trace_rotation.max_age_days = 7;
 
@@ -407,7 +407,13 @@ mod tests {
                 "thinkingBudget change should produce a diff"
             );
             assert_eq!(
-                outcome.new_config.agents.defaults.thinking_budget, 20_000,
+                outcome
+                    .new_config
+                    .agents
+                    .defaults
+                    .model_defaults
+                    .thinking_budget,
+                20_000,
                 "new config should have updated value"
             );
             assert!(
@@ -448,12 +454,12 @@ mod tests {
 
             let oikos = Oikos::from_root(jail.directory());
             let current = AletheiaConfig::default();
-            let original_budget = current.agents.defaults.thinking_budget;
+            let original_budget = current.agents.defaults.model_defaults.thinking_budget;
 
             let _ = prepare_reload(&oikos, &current);
 
             assert_eq!(
-                current.agents.defaults.thinking_budget, original_budget,
+                current.agents.defaults.model_defaults.thinking_budget, original_budget,
                 "current config must not be modified on rejection"
             );
             Ok(())

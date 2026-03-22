@@ -325,10 +325,10 @@ pub async fn assemble_context_with_extra(
     extra_sections: Vec<BootstrapSection>,
 ) -> crate::error::Result<()> {
     let mut budget = TokenBudget::new(
-        u64::from(nous_config.context_window),
+        u64::from(nous_config.generation.context_window),
         pipeline_config.history_budget_ratio,
-        u64::from(nous_config.max_output_tokens),
-        u64::from(nous_config.bootstrap_max_tokens),
+        u64::from(nous_config.generation.max_output_tokens),
+        u64::from(nous_config.generation.bootstrap_max_tokens),
     );
 
     let assembler = BootstrapAssembler::new(oikos);
@@ -353,14 +353,16 @@ pub async fn assemble_context_with_extra(
 /// Guard stage: check rate limits, loop detection, safety.
 ///
 /// Enforces the per-session token spending cap from
-/// [`NousConfig::session_token_cap`]. A cap of `0` disables the check.
+/// `NousConfig::session_token_cap`. A cap of `0` disables the check.
 #[must_use]
 pub fn check_guard(session: &SessionState, config: &NousConfig) -> GuardResult {
-    if config.session_token_cap > 0 && session.cumulative_tokens >= config.session_token_cap {
+    if config.limits.session_token_cap > 0
+        && session.cumulative_tokens >= config.limits.session_token_cap
+    {
         return GuardResult::Rejected {
             reason: format!(
                 "session token budget exhausted: {} of {} tokens used",
-                session.cumulative_tokens, config.session_token_cap
+                session.cumulative_tokens, config.limits.session_token_cap
             ),
         };
     }
@@ -415,7 +417,7 @@ pub(crate) async fn run_pipeline(
         pipeline.total_duration_ms = tracing::field::Empty,
         pipeline.stages_completed = tracing::field::Empty,
         pipeline.tool_calls = tracing::field::Empty,
-        pipeline.model = %config.model,
+        pipeline.model = %config.generation.model,
     );
     let _pipeline_guard = pipeline_span.enter();
     let mut stages_completed: u32 = 0;
@@ -503,7 +505,7 @@ pub(crate) async fn run_pipeline(
     let tool_calls_count = result.tool_calls.len() as u64; // kanon:ignore RUST/as-cast
     emitter.emit(&events::TurnCompleted {
         nous_id: config.id.clone(),
-        model: config.model.clone(),
+        model: config.generation.model.clone(),
         duration_ms,
         input_tokens: result.usage.input_tokens,
         output_tokens: result.usage.output_tokens,

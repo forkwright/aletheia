@@ -99,7 +99,10 @@ pub(super) async fn test_state_with_provider(
 
     let nous_config = NousConfig {
         id: "syn".to_owned(),
-        model: "mock-model".to_owned(),
+        generation: aletheia_nous::config::NousGenerationConfig {
+            model: "mock-model".to_owned(),
+            ..Default::default()
+        },
         ..NousConfig::default()
     };
     nous_manager

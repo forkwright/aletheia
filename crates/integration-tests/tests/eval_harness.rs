@@ -76,7 +76,10 @@ async fn start_test_server() -> (String, String, tempfile::TempDir) {
 
     let nous_config = NousConfig {
         id: "test-nous".to_owned(),
-        model: "mock-model".to_owned(),
+        generation: aletheia_nous::config::NousGenerationConfig {
+            model: "mock-model".to_owned(),
+            ..Default::default()
+        },
         ..NousConfig::default()
     };
     nous_manager

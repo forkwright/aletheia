@@ -55,7 +55,10 @@ impl ToolExecutor for ErrorExecutor {
 fn test_config() -> NousConfig {
     NousConfig {
         id: "test-agent".to_owned(),
-        model: "test-model".to_owned(),
+        generation: crate::config::NousGenerationConfig {
+            model: "test-model".to_owned(),
+            ..crate::config::NousGenerationConfig::default()
+        },
         ..NousConfig::default()
     }
 }

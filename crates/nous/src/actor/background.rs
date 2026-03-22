@@ -226,7 +226,7 @@ impl NousActor {
             let config = crate::distillation::DistillTriggerConfig::default();
             crate::distillation::should_trigger_distillation(
                 &session,
-                u64::from(self.config.context_window),
+                u64::from(self.config.generation.context_window),
                 &config,
             )
             .is_some()

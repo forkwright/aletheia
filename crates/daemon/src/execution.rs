@@ -40,6 +40,10 @@ pub(crate) async fn execute_action(
 }
 
 async fn execute_command(cmd: &str) -> Result<ExecutionResult> {
+    // NOTE: tokio::process::Child kills the child on Drop, providing the same
+    // orphan-prevention guarantee as ProcessGuard. The .output() method spawns,
+    // waits, and collects in one step — if the future is cancelled, the child
+    // is killed automatically by tokio's drop semantics.
     let output = tokio::process::Command::new("sh")
         .args(["-c", cmd])
         .output()

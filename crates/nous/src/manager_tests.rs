@@ -52,7 +52,10 @@ fn make_manager(oikos: Arc<Oikos>) -> NousManager {
 fn syn_config() -> NousConfig {
     NousConfig {
         id: "syn".to_owned(),
-        model: "test-model".to_owned(),
+        generation: crate::config::NousGenerationConfig {
+            model: "test-model".to_owned(),
+            ..crate::config::NousGenerationConfig::default()
+        },
         ..NousConfig::default()
     }
 }
@@ -60,7 +63,10 @@ fn syn_config() -> NousConfig {
 fn demiurge_config() -> NousConfig {
     NousConfig {
         id: "demiurge".to_owned(),
-        model: "test-model".to_owned(),
+        generation: crate::config::NousGenerationConfig {
+            model: "test-model".to_owned(),
+            ..crate::config::NousGenerationConfig::default()
+        },
         ..NousConfig::default()
     }
 }
@@ -109,7 +115,10 @@ async fn get_config_returns_stored_config() {
 
     let config = mgr.get_config("syn").expect("config");
     assert_eq!(config.id, "syn", "config id should match");
-    assert_eq!(config.model, "test-model", "config model should match");
+    assert_eq!(
+        config.generation.model, "test-model",
+        "config model should match"
+    );
 
     mgr.shutdown_all().await;
 }

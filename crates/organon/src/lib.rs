@@ -14,7 +14,7 @@ pub mod error;
 /// Prometheus metrics for tool execution counts, latency, and error rates.
 pub mod metrics;
 /// RAII guard for subprocess lifecycle: kills and reaps on drop.
-pub(crate) mod process_guard;
+pub mod process_guard;
 /// Central tool registry for runtime discovery and dispatch.
 pub mod registry;
 /// Landlock + seccomp sandbox for tool execution.

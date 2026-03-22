@@ -14,27 +14,27 @@ use super::*;
 fn defaults_are_sensible() {
     let config = AletheiaConfig::default();
     assert_eq!(
-        config.agents.defaults.context_tokens, 200_000,
+        config.agents.defaults.model_defaults.context_tokens, 200_000,
         "default context tokens should be 200k"
     );
     assert_eq!(
-        config.agents.defaults.max_output_tokens, 16_384,
+        config.agents.defaults.model_defaults.max_output_tokens, 16_384,
         "default max output tokens should be 16384"
     );
     assert_eq!(
-        config.agents.defaults.bootstrap_max_tokens, 40_000,
+        config.agents.defaults.model_defaults.bootstrap_max_tokens, 40_000,
         "default bootstrap max tokens should be 40k"
     );
     assert_eq!(
-        config.agents.defaults.model.primary, "claude-sonnet-4-6",
+        config.agents.defaults.model_defaults.model.primary, "claude-sonnet-4-6",
         "default primary model should be sonnet"
     );
     assert!(
-        !config.agents.defaults.thinking_enabled,
+        !config.agents.defaults.model_defaults.thinking_enabled,
         "thinking should be disabled by default"
     );
     assert_eq!(
-        config.agents.defaults.thinking_budget, 10_000,
+        config.agents.defaults.model_defaults.thinking_budget, 10_000,
         "default thinking budget should be 10k"
     );
     assert_eq!(
@@ -165,7 +165,7 @@ fn serde_roundtrip() {
     let json = serde_json::to_string(&config).expect("serialize");
     let back: AletheiaConfig = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(
-        back.agents.defaults.context_tokens, 200_000,
+        back.agents.defaults.model_defaults.context_tokens, 200_000,
         "context tokens should survive serde roundtrip"
     );
     assert_eq!(
@@ -191,7 +191,7 @@ fn minimal_yaml_parses() {
     let yaml = r#"{"agents": {"list": []}}"#;
     let config: AletheiaConfig = serde_json::from_str(yaml).expect("parse minimal");
     assert_eq!(
-        config.agents.defaults.context_tokens, 200_000,
+        config.agents.defaults.model_defaults.context_tokens, 200_000,
         "minimal yaml should use default context tokens"
     );
     assert!(
@@ -218,15 +218,15 @@ fn camel_case_compat() {
     }"#;
     let config: AletheiaConfig = serde_json::from_str(yaml).expect("parse camelCase");
     assert_eq!(
-        config.agents.defaults.context_tokens, 100_000,
+        config.agents.defaults.model_defaults.context_tokens, 100_000,
         "camelCase contextTokens should be accepted"
     );
     assert_eq!(
-        config.agents.defaults.max_output_tokens, 8192,
+        config.agents.defaults.model_defaults.max_output_tokens, 8192,
         "camelCase maxOutputTokens should be accepted"
     );
     assert_eq!(
-        config.agents.defaults.bootstrap_max_tokens, 20_000,
+        config.agents.defaults.model_defaults.bootstrap_max_tokens, 20_000,
         "camelCase bootstrapMaxTokens should be accepted"
     );
 }

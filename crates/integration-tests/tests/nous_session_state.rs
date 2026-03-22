@@ -22,7 +22,7 @@ fn session_state_tracks_tokens_with_store() {
     let mut state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &config);
 
     store
-        .create_session("ses-1", "syn", "main", None, Some(&config.model))
+        .create_session("ses-1", "syn", "main", None, Some(&config.generation.model))
         .unwrap();
 
     store

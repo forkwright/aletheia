@@ -235,7 +235,7 @@ mod tests {
             let config = load_config(&oikos).map_err(|e| e.to_string())?;
 
             assert_eq!(
-                config.agents.defaults.context_tokens, 200_000,
+                config.agents.defaults.model_defaults.context_tokens, 200_000,
                 "no-config default context tokens should be 200k"
             );
             assert_eq!(
@@ -243,7 +243,7 @@ mod tests {
                 "no-config default port should be 18789"
             );
             assert_eq!(
-                config.agents.defaults.model.primary, "claude-sonnet-4-6",
+                config.agents.defaults.model_defaults.model.primary, "claude-sonnet-4-6",
                 "no-config default model should be sonnet"
             );
             Ok(())
@@ -267,11 +267,11 @@ mod tests {
                 "toml port override should take effect"
             );
             assert_eq!(
-                config.agents.defaults.context_tokens, 100_000,
+                config.agents.defaults.model_defaults.context_tokens, 100_000,
                 "toml context tokens override should take effect"
             );
             assert_eq!(
-                config.agents.defaults.model.primary, "claude-sonnet-4-6",
+                config.agents.defaults.model_defaults.model.primary, "claude-sonnet-4-6",
                 "unset model should use default"
             );
             Ok(())
@@ -307,7 +307,7 @@ mod tests {
                 "missing dir should fall back to default port"
             );
             assert_eq!(
-                config.agents.defaults.context_tokens, 200_000,
+                config.agents.defaults.model_defaults.context_tokens, 200_000,
                 "missing dir should fall back to default context tokens"
             );
             Ok(())
@@ -332,7 +332,7 @@ mod tests {
                 "written port should survive roundtrip"
             );
             assert_eq!(
-                loaded.agents.defaults.context_tokens, 200_000,
+                loaded.agents.defaults.model_defaults.context_tokens, 200_000,
                 "default context tokens should survive roundtrip"
             );
             Ok(())
@@ -375,7 +375,7 @@ mod tests {
                 "empty filesystem should use default port"
             );
             assert_eq!(
-                config.agents.defaults.context_tokens, 200_000,
+                config.agents.defaults.model_defaults.context_tokens, 200_000,
                 "empty filesystem should use default context tokens"
             );
             Ok(())

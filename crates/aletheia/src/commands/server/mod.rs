@@ -343,22 +343,26 @@ pub(crate) async fn run(args: Args) -> Result<()> {
             let nous_config = NousConfig {
                 id: resolved.id,
                 name: resolved.name,
-                model: resolved.model.primary,
-                context_window: resolved.limits.context_tokens,
-                max_output_tokens: resolved.limits.max_output_tokens,
-                bootstrap_max_tokens: resolved.limits.bootstrap_max_tokens,
-                thinking_enabled: resolved.capabilities.thinking_enabled,
-                thinking_budget: resolved.limits.thinking_budget,
-                max_tool_iterations: resolved.capabilities.max_tool_iterations,
-                loop_detection_threshold: 3,
+                generation: aletheia_nous::config::NousGenerationConfig {
+                    model: resolved.model.primary,
+                    context_window: resolved.limits.context_tokens,
+                    max_output_tokens: resolved.limits.max_output_tokens,
+                    bootstrap_max_tokens: resolved.limits.bootstrap_max_tokens,
+                    thinking_enabled: resolved.capabilities.thinking_enabled,
+                    thinking_budget: resolved.limits.thinking_budget,
+                    chars_per_token: resolved.limits.chars_per_token,
+                    prosoche_model: resolved.prosoche_model,
+                },
+                limits: aletheia_nous::config::NousLimits {
+                    max_tool_iterations: resolved.capabilities.max_tool_iterations,
+                    loop_detection_threshold: 3,
+                    session_token_cap: 500_000,
+                    max_tool_result_bytes: resolved.limits.max_tool_result_bytes,
+                },
                 domains,
                 server_tools: Vec::new(),
                 cache_enabled: resolved.capabilities.cache_enabled,
-                session_token_cap: 500_000,
                 recall: resolved.recall.into(),
-                chars_per_token: resolved.limits.chars_per_token,
-                prosoche_model: resolved.prosoche_model,
-                max_tool_result_bytes: resolved.limits.max_tool_result_bytes,
             };
             nous_manager
                 .spawn(

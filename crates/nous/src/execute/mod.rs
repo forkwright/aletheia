@@ -155,27 +155,30 @@ pub async fn execute(
     tools: &ToolRegistry,
     tool_ctx: &ToolContext,
 ) -> error::Result<TurnResult> {
-    let provider = resolve_provider_checked(providers, &config.model)?;
+    let provider = resolve_provider_checked(providers, &config.generation.model)?;
 
     let mut messages = build_messages(&ctx.messages);
     let mut all_tool_calls: Vec<ToolCall> = Vec::new();
     let mut total_usage = TurnUsage::default();
-    let mut loop_detector = LoopDetector::new(config.loop_detection_threshold);
+    let mut loop_detector = LoopDetector::new(config.limits.loop_detection_threshold);
     let mut iterations: u32 = 0;
     let mut final_content = String::new();
     let mut final_stop_reason = String::new();
     let mut used_server_web_search = false;
     let mut used_server_code_execution = false;
 
-    let thinking = config.thinking_enabled.then_some(ThinkingConfig {
-        enabled: true,
-        budget_tokens: config.thinking_budget,
-    });
+    let thinking = config
+        .generation
+        .thinking_enabled
+        .then_some(ThinkingConfig {
+            enabled: true,
+            budget_tokens: config.generation.thinking_budget,
+        });
 
     loop {
         iterations += 1;
 
-        if iterations > config.max_tool_iterations {
+        if iterations > config.limits.max_tool_iterations {
             warn!(iterations, "max tool iterations reached");
             break;
         }
@@ -184,10 +187,10 @@ pub async fn execute(
         let tool_defs = tools.to_hermeneus_tools_filtered(&active);
 
         let request = CompletionRequest {
-            model: config.model.clone(),
+            model: config.generation.model.clone(),
             system: ctx.system_prompt.clone(),
             messages: messages.clone(),
-            max_tokens: config.max_output_tokens,
+            max_tokens: config.generation.max_output_tokens,
             tools: tool_defs,
             server_tools,
             temperature: None,
@@ -247,7 +250,7 @@ pub async fn execute(
             &mut loop_detector,
             &mut all_tool_calls,
             iterations,
-            config.max_tool_result_bytes,
+            config.limits.max_tool_result_bytes,
         )
         .await?;
 
@@ -299,34 +302,38 @@ pub async fn execute_streaming(
     tool_ctx: &ToolContext,
     stream_tx: &mpsc::Sender<TurnStreamEvent>,
 ) -> error::Result<TurnResult> {
-    let Some(streaming_provider) = providers.find_streaming_provider(&config.model) else {
+    let Some(streaming_provider) = providers.find_streaming_provider(&config.generation.model)
+    else {
         // NOTE: fall back to non-streaming execute if no streaming provider is registered
         return execute(ctx, session, config, providers, tools, tool_ctx).await;
     };
 
-    let provider = resolve_provider_checked(providers, &config.model)?;
+    let provider = resolve_provider_checked(providers, &config.generation.model)?;
 
     let mut messages = build_messages(&ctx.messages);
     let mut all_tool_calls: Vec<ToolCall> = Vec::new();
     let mut total_usage = TurnUsage::default();
-    let mut loop_detector = LoopDetector::new(config.loop_detection_threshold);
+    let mut loop_detector = LoopDetector::new(config.limits.loop_detection_threshold);
     let mut iterations: u32 = 0;
     let mut final_content = String::new();
     let mut final_stop_reason = String::new();
     let mut used_server_web_search = false;
     let mut used_server_code_execution = false;
 
-    let thinking = config.thinking_enabled.then_some(ThinkingConfig {
-        enabled: true,
-        budget_tokens: config.thinking_budget,
-    });
+    let thinking = config
+        .generation
+        .thinking_enabled
+        .then_some(ThinkingConfig {
+            enabled: true,
+            budget_tokens: config.generation.thinking_budget,
+        });
 
     let tool_defs = tools.to_hermeneus_tools();
 
     loop {
         iterations += 1;
 
-        if iterations > config.max_tool_iterations {
+        if iterations > config.limits.max_tool_iterations {
             warn!(iterations, "max tool iterations reached");
             break;
         }
@@ -342,10 +349,10 @@ pub async fn execute_streaming(
         let (_active, server_tools) = resolve_active_server_tools(tool_ctx, config);
 
         let request = CompletionRequest {
-            model: config.model.clone(),
+            model: config.generation.model.clone(),
             system: ctx.system_prompt.clone(),
             messages: messages.clone(),
-            max_tokens: config.max_output_tokens,
+            max_tokens: config.generation.max_output_tokens,
             tools: tool_defs.clone(),
             server_tools,
             temperature: None,
@@ -411,7 +418,7 @@ pub async fn execute_streaming(
             &mut all_tool_calls,
             iterations,
             stream_tx,
-            config.max_tool_result_bytes,
+            config.limits.max_tool_result_bytes,
         )
         .await?;
 
