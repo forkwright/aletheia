@@ -19,6 +19,8 @@ pub use aletheia_graphe::error;
 pub mod conflict;
 /// LLM-driven fact consolidation for knowledge maintenance.
 pub mod consolidation;
+/// Multi-factor temporal decay with lifecycle stages and graduated pruning.
+pub mod decay;
 /// Entity deduplication pipeline for merging semantically identical entities.
 pub(crate) mod dedup;
 /// Embedding provider trait and implementations (candle, mock).
@@ -43,6 +45,8 @@ pub mod query;
 pub(crate) mod query_rewrite;
 /// 6-factor recall scoring engine for knowledge retrieval ranking.
 pub mod recall;
+/// Serendipity engine: cross-domain discovery, surprise scoring, and context injection.
+pub mod serendipity;
 /// Skill storage helpers and SKILL.md parser.
 pub mod skill;
 /// Skill auto-capture: heuristic filter, signature hashing, and candidate tracking.
