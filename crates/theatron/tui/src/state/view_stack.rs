@@ -22,6 +22,8 @@ pub enum View {
     MemoryInspector,
     /// Fact detail within the memory inspector.
     FactDetail { fact_id: String },
+    /// Entity detail within the graph view (node card).
+    EntityDetail { entity_id: String },
     /// Metrics dashboard: token usage, cost, service health, per-agent stats.
     Metrics,
     /// Built-in file editor with syntax highlighting and tabs.
@@ -38,6 +40,7 @@ impl View {
             Self::MessageDetail { .. } => "Message",
             Self::MemoryInspector => "Memory",
             Self::FactDetail { .. } => "Fact",
+            Self::EntityDetail { .. } => "Entity",
             Self::Metrics => "Metrics",
             Self::FileEditor => "Editor",
         }

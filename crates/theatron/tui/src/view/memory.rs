@@ -10,8 +10,6 @@ const CONTENT_MIN_HEIGHT: u16 = 3;
 const STATUS_BAR_HEIGHT: u16 = 1;
 /// Column width reserved for confidence, tier, and type columns in the facts table.
 const RESERVED_COLUMN_WIDTH: u16 = 28;
-/// Maximum number of relationships shown in the graph view before truncating.
-const RELATIONSHIP_DISPLAY_LIMIT: usize = 20;
 /// Maximum content length for similar-fact snippets shown in the detail view.
 const SIMILAR_FACT_TRUNCATE_LEN: usize = 60;
 /// Column width for the fact type field in the facts table.
@@ -49,6 +47,7 @@ pub(crate) fn render_inspector(app: &App, frame: &mut Frame, area: Rect, theme: 
     match app.layout.memory.tab {
         MemoryTab::Facts => render_facts_table(app, frame, layout[1], theme),
         MemoryTab::Graph => render_graph_view(app, frame, layout[1], theme),
+        MemoryTab::Drift => render_drift_view(app, frame, layout[1], theme),
         MemoryTab::Timeline => render_timeline_view(app, frame, layout[1], theme),
     }
 
@@ -232,7 +231,12 @@ pub(crate) fn render_fact_detail(app: &App, frame: &mut Frame, area: Rect, theme
 }
 
 fn render_tab_bar(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
-    let tabs = [MemoryTab::Facts, MemoryTab::Graph, MemoryTab::Timeline];
+    let tabs = [
+        MemoryTab::Facts,
+        MemoryTab::Graph,
+        MemoryTab::Drift,
+        MemoryTab::Timeline,
+    ];
     let mut spans: Vec<Span> = vec![Span::raw(" ")];
 
     for (i, tab) in tabs.iter().enumerate() {
@@ -401,97 +405,423 @@ fn render_facts_table(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     frame.render_widget(paragraph, area);
 }
 
-fn render_graph_view(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
-    let mut lines: Vec<Line> = Vec::new();
-    lines.push(Line::raw(""));
+/// Height of the health bar in the graph view.
+const HEALTH_BAR_HEIGHT: u16 = 2;
 
-    if app.layout.memory.graph.entities.is_empty() {
-        lines.push(Line::from(vec![
-            Span::raw("  "),
-            Span::styled(
-                "Entity Graph",
-                theme.style_accent().add_modifier(Modifier::BOLD),
-            ),
-        ]));
-        lines.push(Line::raw(""));
+#[expect(
+    clippy::indexing_slicing,
+    reason = "Layout.split() returns exactly as many Rects as constraints; indices match"
+)]
+fn render_graph_view(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(HEALTH_BAR_HEIGHT), Constraint::Min(3)])
+        .split(area);
+
+    render_health_bar(app, frame, layout[0], theme);
+    render_entity_list(app, frame, layout[1], theme);
+}
+
+fn render_health_bar(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
+    let h = &app.layout.memory.graph.health;
+    let spans = vec![
+        Span::raw(" "),
+        Span::styled(format!("{}", h.total_entities), theme.style_accent()),
+        Span::styled(" entities  ", theme.style_dim()),
+        Span::styled(format!("{}", h.total_relationships), theme.style_accent()),
+        Span::styled(" rels  ", theme.style_dim()),
+        Span::styled(
+            format!("{}", h.orphan_count),
+            if h.orphan_count > 0 {
+                theme.style_warning()
+            } else {
+                theme.style_success()
+            },
+        ),
+        Span::styled(" orphans  ", theme.style_dim()),
+        Span::styled(
+            format!("{}", h.stale_count),
+            if h.stale_count > 0 {
+                theme.style_warning()
+            } else {
+                theme.style_success()
+            },
+        ),
+        Span::styled(" stale  ", theme.style_dim()),
+        Span::styled(format!("{:.1}", h.avg_cluster_size), theme.style_accent()),
+        Span::styled(" avg/cluster  ", theme.style_dim()),
+        Span::styled(format!("{}", h.community_count), theme.style_accent()),
+        Span::styled(" communities  ", theme.style_dim()),
+        Span::styled(
+            format!("{}", h.isolated_cluster_count),
+            if h.isolated_cluster_count > 0 {
+                theme.style_warning()
+            } else {
+                theme.style_success()
+            },
+        ),
+        Span::styled(" isolated", theme.style_dim()),
+    ];
+    let line = Line::from(spans);
+    let paragraph = Paragraph::new(vec![line, Line::raw("")]);
+    frame.render_widget(paragraph, area);
+}
+
+#[expect(
+    clippy::indexing_slicing,
+    reason = "end = min(start + height, len) ensures valid slice range"
+)]
+fn render_entity_list(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
+    let mut lines: Vec<Line> = Vec::new();
+
+    if app.layout.memory.graph.entity_stats.is_empty() {
         lines.push(Line::from(vec![
             Span::raw("  "),
             Span::styled("No entities loaded.", theme.style_dim()),
         ]));
-        lines.push(Line::from(vec![
-            Span::raw("  "),
-            Span::styled(
-                "Entities are loaded from the knowledge API.",
-                theme.style_dim(),
-            ),
-        ]));
     } else {
+        let header_style = theme.style_dim().add_modifier(Modifier::BOLD);
         lines.push(Line::from(vec![
-            Span::raw("  "),
+            Span::styled("  ", Style::default()),
+            Span::styled("Name              ", header_style),
+            Span::styled("Type       ", header_style),
+            Span::styled("Rels  ", header_style),
+            Span::styled("PR     ", header_style),
+            Span::styled("Community", header_style),
+        ]));
+
+        let visible_height = usize::from(area.height.saturating_sub(1));
+        let start = app.layout.memory.graph.entity_scroll_offset;
+        let end = (start + visible_height).min(app.layout.memory.graph.entity_stats.len());
+
+        for (offset, stat) in app.layout.memory.graph.entity_stats[start..end]
+            .iter()
+            .enumerate()
+        {
+            let idx = start + offset;
+            let is_selected = idx == app.layout.memory.graph.selected_entity;
+            let marker = if is_selected { "▸ " } else { "  " };
+            let marker_style = if is_selected {
+                Style::default().fg(theme.borders.selected)
+            } else {
+                Style::default()
+            };
+
+            let name = truncate(&stat.entity.name, 16);
+            let name_style = if is_selected {
+                theme.style_accent().add_modifier(Modifier::BOLD)
+            } else {
+                theme.style_accent()
+            };
+
+            let entity_type = truncate(&stat.entity.entity_type, 9);
+            let community_label = stat
+                .community_id
+                .map(|c| format!("#{c}"))
+                .unwrap_or_else(|| "---".into());
+
+            let rel_style = if stat.relationship_count == 0 {
+                theme.style_error()
+            } else {
+                theme.style_fg()
+            };
+
+            lines.push(Line::from(vec![
+                Span::styled(marker, marker_style),
+                Span::styled(format!("{name:<16}  "), name_style),
+                Span::styled(format!("{entity_type:<9}  "), theme.style_dim()),
+                Span::styled(format!("{:<4}  ", stat.relationship_count), rel_style),
+                Span::styled(format!("{:<5.2}  ", stat.pagerank), theme.style_fg()),
+                Span::styled(community_label, theme.style_muted()),
+            ]));
+        }
+    }
+
+    let block = Block::default().borders(Borders::NONE);
+    let paragraph = Paragraph::new(lines).block(block);
+    frame.render_widget(paragraph, area);
+}
+
+fn render_drift_view(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
+    let mut lines: Vec<Line> = Vec::new();
+
+    // WHY: drift sub-tab bar
+    let drift_tabs = [
+        crate::state::memory::DriftTab::Suggestions,
+        crate::state::memory::DriftTab::Orphans,
+        crate::state::memory::DriftTab::Stale,
+        crate::state::memory::DriftTab::Isolated,
+    ];
+    let mut tab_spans: Vec<Span> = vec![Span::raw(" ")];
+    for (i, tab) in drift_tabs.iter().enumerate() {
+        if i > 0 {
+            tab_spans.push(Span::styled(" │ ", theme.style_dim()));
+        }
+        let style = if *tab == app.layout.memory.graph.drift_tab {
+            theme.style_accent().add_modifier(Modifier::BOLD)
+        } else {
+            theme.style_dim()
+        };
+        tab_spans.push(Span::styled(tab.label(), style));
+    }
+    tab_spans.push(Span::styled("   [/] cycle", theme.style_muted()));
+    lines.push(Line::from(tab_spans));
+    lines.push(Line::raw(""));
+
+    match app.layout.memory.graph.drift_tab {
+        crate::state::memory::DriftTab::Suggestions => {
+            if app.layout.memory.graph.drift_suggestions.is_empty() {
+                lines.push(Line::from(vec![
+                    Span::raw("  "),
+                    Span::styled("No drift suggestions.", theme.style_dim()),
+                ]));
+            } else {
+                for (i, s) in app.layout.memory.graph.drift_suggestions.iter().enumerate() {
+                    let is_selected = i == app.layout.memory.graph.drift_selected;
+                    let marker = if is_selected { "▸ " } else { "  " };
+                    let action_style = match s.action.as_str() {
+                        "delete" => theme.style_error(),
+                        "merge" => theme.style_warning(),
+                        _ => theme.style_accent(),
+                    };
+                    lines.push(Line::from(vec![
+                        Span::styled(
+                            marker,
+                            if is_selected {
+                                Style::default().fg(theme.borders.selected)
+                            } else {
+                                Style::default()
+                            },
+                        ),
+                        Span::styled(format!("{:<7}", s.action), action_style),
+                        Span::styled(&s.entity_name, theme.style_fg()),
+                        Span::styled(format!(" — {}", s.reason), theme.style_dim()),
+                    ]));
+                }
+            }
+        }
+        crate::state::memory::DriftTab::Orphans => {
+            if app.layout.memory.graph.orphaned_entities.is_empty() {
+                lines.push(Line::from(vec![
+                    Span::raw("  "),
+                    Span::styled("No orphaned entities.", theme.style_success()),
+                ]));
+            } else {
+                for (i, name) in app.layout.memory.graph.orphaned_entities.iter().enumerate() {
+                    let is_selected = i == app.layout.memory.graph.drift_selected;
+                    let marker = if is_selected { "▸ " } else { "  " };
+                    lines.push(Line::from(vec![
+                        Span::styled(
+                            marker,
+                            if is_selected {
+                                Style::default().fg(theme.borders.selected)
+                            } else {
+                                Style::default()
+                            },
+                        ),
+                        Span::styled(name.as_str(), theme.style_warning()),
+                        Span::styled("  0 rels", theme.style_dim()),
+                    ]));
+                }
+            }
+        }
+        crate::state::memory::DriftTab::Stale => {
+            if app.layout.memory.graph.stale_entities.is_empty() {
+                lines.push(Line::from(vec![
+                    Span::raw("  "),
+                    Span::styled("No stale entities.", theme.style_success()),
+                ]));
+            } else {
+                for (i, name) in app.layout.memory.graph.stale_entities.iter().enumerate() {
+                    let is_selected = i == app.layout.memory.graph.drift_selected;
+                    let marker = if is_selected { "▸ " } else { "  " };
+                    lines.push(Line::from(vec![
+                        Span::styled(
+                            marker,
+                            if is_selected {
+                                Style::default().fg(theme.borders.selected)
+                            } else {
+                                Style::default()
+                            },
+                        ),
+                        Span::styled(name.as_str(), theme.style_warning()),
+                        Span::styled("  >30d since update", theme.style_dim()),
+                    ]));
+                }
+            }
+        }
+        crate::state::memory::DriftTab::Isolated => {
+            if app.layout.memory.graph.isolated_clusters.is_empty() {
+                lines.push(Line::from(vec![
+                    Span::raw("  "),
+                    Span::styled("No isolated clusters.", theme.style_success()),
+                ]));
+            } else {
+                for (i, cluster) in app.layout.memory.graph.isolated_clusters.iter().enumerate() {
+                    let is_selected = i == app.layout.memory.graph.drift_selected;
+                    let marker = if is_selected { "▸ " } else { "  " };
+                    let members = cluster.entity_names.join(", ");
+                    lines.push(Line::from(vec![
+                        Span::styled(
+                            marker,
+                            if is_selected {
+                                Style::default().fg(theme.borders.selected)
+                            } else {
+                                Style::default()
+                            },
+                        ),
+                        Span::styled(format!("{{{members}}}"), theme.style_warning()),
+                        Span::styled(format!("  {} entities", cluster.size), theme.style_dim()),
+                    ]));
+                }
+            }
+        }
+    }
+
+    let block = Block::default().borders(Borders::NONE);
+    let paragraph = Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false });
+    frame.render_widget(paragraph, area);
+}
+
+/// Render the entity detail view (node card).
+pub(crate) fn render_entity_detail(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
+    let mut lines: Vec<Line> = Vec::new();
+    lines.push(Line::raw(""));
+
+    if let Some(ref card) = app.layout.memory.graph.node_card {
+        lines.push(Line::from(vec![
+            Span::raw(" "),
             Span::styled(
-                format!(
-                    "Entity Graph ({} entities)",
-                    app.layout.memory.graph.entities.len()
-                ),
+                "Entity Detail",
                 theme.style_accent().add_modifier(Modifier::BOLD),
             ),
         ]));
         lines.push(Line::raw(""));
 
-        for (i, entity) in app.layout.memory.graph.entities.iter().enumerate() {
-            let is_selected = i == app.layout.memory.fact_list.selected;
-            let marker = if is_selected { "▸ " } else { "  " };
+        lines.push(meta_line(theme, "Name", &card.entity.name));
+        lines.push(meta_line(theme, "Type", &card.entity.entity_type));
+        if !card.entity.aliases.is_empty() {
+            lines.push(meta_line(theme, "Aliases", &card.entity.aliases.join(", ")));
+        }
+        lines.push(meta_line(
+            theme,
+            "Created",
+            &MemoryInspectorState::relative_time(&card.entity.created_at),
+        ));
+        lines.push(meta_line(
+            theme,
+            "Updated",
+            &MemoryInspectorState::relative_time(&card.entity.updated_at),
+        ));
+        lines.push(meta_line(
+            theme,
+            "PageRank",
+            &format!("{:.4}", card.pagerank),
+        ));
+        lines.push(meta_line(
+            theme,
+            "Community",
+            &card
+                .community_id
+                .map(|c| format!("#{c}"))
+                .unwrap_or_else(|| "none".into()),
+        ));
 
-            let rel_count = app
-                .layout
-                .memory
-                .graph
-                .relationships
+        if !card.relationships_grouped.is_empty() {
+            lines.push(Line::raw(""));
+            let total_rels: usize = card
+                .relationships_grouped
                 .iter()
-                .filter(|r| r.src == entity.id || r.dst == entity.id)
-                .count();
-
+                .map(|(_, v)| v.len())
+                .sum();
             lines.push(Line::from(vec![
+                Span::raw("  "),
                 Span::styled(
-                    marker,
-                    if is_selected {
-                        Style::default().fg(theme.borders.selected)
-                    } else {
-                        Style::default()
-                    },
+                    format!("Relationships ({total_rels}):"),
+                    theme.style_fg().add_modifier(Modifier::BOLD),
                 ),
-                Span::styled(&entity.name, theme.style_accent()),
-                Span::styled(format!(" ({})", entity.entity_type), theme.style_dim()),
-                Span::styled(format!("  {rel_count} rels"), theme.style_muted()),
             ]));
+
+            for (rel_type, rels) in &card.relationships_grouped {
+                lines.push(Line::from(vec![
+                    Span::raw("    "),
+                    Span::styled(rel_type.as_str(), theme.style_accent()),
+                    Span::styled(format!(" ({})", rels.len()), theme.style_dim()),
+                ]));
+                for rel in rels.iter().take(5) {
+                    let other = if rel.src == card.entity.id {
+                        &rel.dst
+                    } else {
+                        &rel.src
+                    };
+                    let direction = if rel.src == card.entity.id {
+                        " ─▸ "
+                    } else {
+                        " ◂─ "
+                    };
+                    lines.push(Line::from(vec![
+                        Span::raw("      "),
+                        Span::styled(direction, theme.style_dim()),
+                        Span::styled(other.as_str(), theme.style_fg()),
+                    ]));
+                }
+                if rels.len() > 5 {
+                    lines.push(Line::from(vec![
+                        Span::raw("      "),
+                        Span::styled(
+                            format!("  ... and {} more", rels.len() - 5),
+                            theme.style_muted(),
+                        ),
+                    ]));
+                }
+            }
         }
 
-        if !app.layout.memory.graph.relationships.is_empty() {
+        if !card.related_facts.is_empty() {
             lines.push(Line::raw(""));
             lines.push(Line::from(vec![
                 Span::raw("  "),
                 Span::styled(
-                    "Relationships:",
+                    format!("Related Facts ({}):", card.related_facts.len()),
                     theme.style_fg().add_modifier(Modifier::BOLD),
                 ),
             ]));
-            for rel in app
-                .layout
-                .memory
-                .graph
-                .relationships
-                .iter()
-                .take(RELATIONSHIP_DISPLAY_LIMIT)
-            {
+            for fact in &card.related_facts {
+                let tier_abbr = MemoryInspectorState::tier_abbrev(&fact.tier);
+                let content = truncate(&fact.content.replace('\n', " "), SIMILAR_FACT_TRUNCATE_LEN);
                 lines.push(Line::from(vec![
                     Span::raw("    "),
-                    Span::styled(&rel.src, theme.style_accent()),
-                    Span::styled(format!(" ─{}─▸ ", rel.relation), theme.style_dim()),
-                    Span::styled(&rel.dst, theme.style_accent()),
+                    Span::styled(
+                        format!("{:.0}%", fact.confidence * 100.0),
+                        confidence_style(theme, fact.confidence),
+                    ),
+                    Span::raw("  "),
+                    Span::styled(tier_abbr, tier_style(theme, &fact.tier)),
+                    Span::raw("  "),
+                    Span::styled(content, theme.style_fg()),
                 ]));
             }
         }
+    } else if app.layout.memory.loading {
+        lines.push(Line::from(vec![
+            Span::raw("  "),
+            Span::styled("Loading entity detail...", theme.style_dim()),
+        ]));
+    } else {
+        lines.push(Line::from(vec![
+            Span::raw("  "),
+            Span::styled("No entity data available.", theme.style_dim()),
+        ]));
     }
+
+    lines.push(Line::raw(""));
+    lines.push(Line::from(vec![
+        Span::raw("  "),
+        Span::styled("Esc", theme.style_accent()),
+        Span::styled(" back", theme.style_dim()),
+    ]));
 
     let block = Block::default().borders(Borders::NONE);
     let paragraph = Paragraph::new(lines)

@@ -309,6 +309,8 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::MemorySearchClose => memory::handle_search_close(app),
         Msg::MemoryPageDown => memory::handle_page_down(app),
         Msg::MemoryPageUp => memory::handle_page_up(app),
+        Msg::MemoryDriftTabNext => memory::handle_drift_tab_next(app),
+        Msg::MemoryDriftTabPrev => memory::handle_drift_tab_prev(app),
         Msg::MemoryFactsLoaded { facts, total } => memory::handle_facts_loaded(app, facts, total),
         Msg::MemoryDetailLoaded(detail) => memory::handle_detail_loaded(app, *detail),
         // NOTE: memory data variants handled in memory inspector view
