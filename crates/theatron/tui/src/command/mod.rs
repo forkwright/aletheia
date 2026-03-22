@@ -201,6 +201,13 @@ pub static COMMANDS: &[Command] = &[
         category: CommandCategory::Navigation,
         shortcut: None,
     },
+    Command {
+        name: "editor",
+        aliases: &["edit", "e"],
+        description: "Open file editor",
+        category: CommandCategory::Navigation,
+        shortcut: None,
+    },
 ];
 
 const MAX_SUGGESTIONS: usize = 8;

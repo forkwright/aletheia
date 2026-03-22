@@ -1,6 +1,7 @@
 mod api;
 mod command;
 mod diff;
+mod editor;
 mod filter;
 mod input;
 pub(crate) mod memory;
@@ -381,6 +382,39 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
                 crate::state::DecisionCardOverlay::new(question, opts),
             ));
         }
+
+        Msg::EditorOpen => editor::handle_open(app),
+        Msg::EditorClose => editor::handle_close(app),
+        Msg::EditorCharInput(c) => editor::handle_char_input(app, c),
+        Msg::EditorNewline => editor::handle_newline(app),
+        Msg::EditorBackspace => editor::handle_backspace(app),
+        Msg::EditorDelete => editor::handle_delete(app),
+        Msg::EditorCursorUp => editor::handle_cursor_up(app),
+        Msg::EditorCursorDown => editor::handle_cursor_down(app),
+        Msg::EditorCursorLeft => editor::handle_cursor_left(app),
+        Msg::EditorCursorRight => editor::handle_cursor_right(app),
+        Msg::EditorCursorHome => editor::handle_cursor_home(app),
+        Msg::EditorCursorEnd => editor::handle_cursor_end(app),
+        Msg::EditorPageUp => editor::handle_page_up(app),
+        Msg::EditorPageDown => editor::handle_page_down(app),
+        Msg::EditorSave => editor::handle_save(app),
+        Msg::EditorTabNext => editor::handle_tab_next(app),
+        Msg::EditorTabPrev => editor::handle_tab_prev(app),
+        Msg::EditorTabClose => editor::handle_tab_close(app),
+        Msg::EditorTreeToggle => editor::handle_tree_toggle(app),
+        Msg::EditorFocusToggle => editor::handle_focus_toggle(app),
+        Msg::EditorTreeExpand => editor::handle_tree_expand(app),
+        Msg::EditorCut => editor::handle_cut(app),
+        Msg::EditorCopy => editor::handle_copy(app),
+        Msg::EditorPaste => editor::handle_paste(app),
+        Msg::EditorNewFileStart => editor::handle_new_file_start(app),
+        Msg::EditorRenameStart => editor::handle_rename_start(app),
+        Msg::EditorDeleteStart => editor::handle_delete_start(app),
+        Msg::EditorConfirmDelete(confirmed) => editor::handle_confirm_delete(app, confirmed),
+        Msg::EditorModalCancel => editor::handle_modal_cancel(app),
+        Msg::EditorRefreshTree => editor::handle_refresh_tree(app),
+        Msg::EditorAutosaveTick => editor::handle_autosave_tick(app),
+        Msg::EditorScrollTree(h) => editor::handle_scroll_tree(app, h),
 
         Msg::Quit => app.should_quit = true,
         Msg::Tick => api::handle_tick(app),

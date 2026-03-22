@@ -26,6 +26,7 @@ pub(crate) enum KeyContext {
     Operations,
     MemoryInspector,
     FactDetail,
+    FileEditor,
 }
 
 impl KeyContext {
@@ -45,6 +46,7 @@ impl KeyContext {
             Self::Operations => "Operations",
             Self::MemoryInspector => "Memory Inspector",
             Self::FactDetail => "Fact Detail",
+            Self::FileEditor => "File Editor",
         }
     }
 
@@ -59,7 +61,8 @@ impl KeyContext {
             | Self::Settings
             | Self::Operations
             | Self::MemoryInspector
-            | Self::FactDetail => 0,
+            | Self::FactDetail
+            | Self::FileEditor => 0,
             Self::Chat => 1,
             Self::Input => 2,
             Self::Overlay => 3,
@@ -566,6 +569,78 @@ pub(crate) fn all_keybindings() -> &'static [Keybinding] {
             keys: "Esc",
             description: "Back",
             contexts: &[KeyContext::FactDetail],
+            show_in_status_bar: true,
+        },
+        Keybinding {
+            keys: "Ctrl+S",
+            description: "Save file",
+            contexts: &[KeyContext::FileEditor],
+            show_in_status_bar: true,
+        },
+        Keybinding {
+            keys: "Tab",
+            description: "Switch focus",
+            contexts: &[KeyContext::FileEditor],
+            show_in_status_bar: true,
+        },
+        Keybinding {
+            keys: "Ctrl+T",
+            description: "Toggle tree",
+            contexts: &[KeyContext::FileEditor],
+            show_in_status_bar: true,
+        },
+        Keybinding {
+            keys: "Alt+\u{2190}/\u{2192}",
+            description: "Prev/next tab",
+            contexts: &[KeyContext::FileEditor],
+            show_in_status_bar: true,
+        },
+        Keybinding {
+            keys: "Ctrl+W",
+            description: "Close tab",
+            contexts: &[KeyContext::FileEditor],
+            show_in_status_bar: true,
+        },
+        Keybinding {
+            keys: "Ctrl+X",
+            description: "Cut line",
+            contexts: &[KeyContext::FileEditor],
+            show_in_status_bar: false,
+        },
+        Keybinding {
+            keys: "Ctrl+K",
+            description: "Copy line",
+            contexts: &[KeyContext::FileEditor],
+            show_in_status_bar: false,
+        },
+        Keybinding {
+            keys: "Ctrl+U",
+            description: "Paste",
+            contexts: &[KeyContext::FileEditor],
+            show_in_status_bar: false,
+        },
+        Keybinding {
+            keys: "Ctrl+N",
+            description: "New file",
+            contexts: &[KeyContext::FileEditor],
+            show_in_status_bar: false,
+        },
+        Keybinding {
+            keys: "F2",
+            description: "Rename",
+            contexts: &[KeyContext::FileEditor],
+            show_in_status_bar: false,
+        },
+        Keybinding {
+            keys: "F8",
+            description: "Delete file",
+            contexts: &[KeyContext::FileEditor],
+            show_in_status_bar: false,
+        },
+        Keybinding {
+            keys: "Esc",
+            description: "Close editor",
+            contexts: &[KeyContext::FileEditor],
             show_in_status_bar: true,
         },
     ]
