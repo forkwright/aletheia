@@ -4,10 +4,11 @@ mod maintenance;
 mod resolved;
 
 pub use maintenance::{
-    CircuitBreakerSettings, CredentialConfig, DbMonitoringSettings, DiskSpaceSettings,
-    DriftDetectionSettings, LoggingSettings, MaintenanceSettings, McpConfig, McpRateLimitConfig,
-    RedactionSettings, RetentionConfig, RetentionSettings, SandboxSettings, SqliteRecoverySettings,
-    TraceRotationSettings,
+    CircuitBreakerSettings, CredentialConfig, CronTaskEntry, CronTaskSettings,
+    DbMonitoringSettings, DiskSpaceSettings, DriftDetectionSettings, LoggingSettings,
+    MaintenanceSettings, McpConfig, McpRateLimitConfig, RedactionSettings, RetentionConfig,
+    RetentionSettings, SandboxSettings, SqliteRecoverySettings, TraceRotationSettings,
+    WatchdogSettings,
 };
 pub use resolved::{
     AgentCapabilities, ResolvedModelConfig, ResolvedNousConfig, TokenLimits, resolve_nous,

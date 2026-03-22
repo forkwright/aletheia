@@ -31,6 +31,10 @@ pub struct MaintenanceSettings {
     /// Whether background knowledge graph maintenance tasks are enabled.
     #[serde(default)]
     pub knowledge_maintenance_enabled: bool,
+    /// Watchdog process monitor settings.
+    pub watchdog: WatchdogSettings,
+    /// Periodic cron task settings (evolution, reflection, graph cleanup).
+    pub cron_tasks: CronTaskSettings,
 }
 
 /// Trace file rotation settings.
@@ -397,6 +401,90 @@ impl Default for RedactionSettings {
                 "output".to_owned(),
             ],
             truncate_length: 200,
+        }
+    }
+}
+
+/// Watchdog process monitor settings.
+///
+/// Monitors agent processes for health via heartbeat and auto-restarts
+/// hung or failed components with exponential backoff.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct WatchdogSettings {
+    /// Whether the watchdog monitor is enabled.
+    pub enabled: bool,
+    /// Seconds without a heartbeat before a process is declared hung.
+    pub heartbeat_timeout_secs: u64,
+    /// Seconds between watchdog health check sweeps.
+    pub check_interval_secs: u64,
+    /// Maximum restart attempts before abandoning a process.
+    pub max_restarts: u32,
+}
+
+impl Default for WatchdogSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            heartbeat_timeout_secs: 60,
+            check_interval_secs: 10,
+            max_restarts: 5,
+        }
+    }
+}
+
+/// Periodic cron task settings.
+///
+/// All cron tasks are disabled by default. Each task runs on a configurable
+/// interval and is dispatched via the daemon bridge or knowledge executor.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct CronTaskSettings {
+    /// Evolution: periodic configuration variant search.
+    pub evolution: CronTaskEntry,
+    /// Reflection: periodic self-reflection prompt.
+    pub reflection: CronTaskEntry,
+    /// Graph cleanup: periodic knowledge graph orphan removal.
+    pub graph_cleanup: CronTaskEntry,
+}
+
+impl Default for CronTaskSettings {
+    fn default() -> Self {
+        Self {
+            evolution: CronTaskEntry {
+                enabled: false,
+                interval_secs: 24 * 3600,
+            },
+            reflection: CronTaskEntry {
+                enabled: false,
+                interval_secs: 24 * 3600,
+            },
+            graph_cleanup: CronTaskEntry {
+                enabled: false,
+                interval_secs: 7 * 24 * 3600,
+            },
+        }
+    }
+}
+
+/// Configuration for a single cron task.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct CronTaskEntry {
+    /// Whether this cron task is enabled.
+    pub enabled: bool,
+    /// Interval between runs in seconds.
+    pub interval_secs: u64,
+}
+
+impl Default for CronTaskEntry {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            interval_secs: 24 * 3600,
         }
     }
 }

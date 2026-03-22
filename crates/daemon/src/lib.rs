@@ -7,6 +7,8 @@
 
 /// Bridge trait for daemon-to-nous communication without direct dependency coupling.
 pub mod bridge;
+/// Periodic cron tasks: evolution, reflection, and graph cleanup.
+pub mod cron;
 /// Error types for task execution, scheduling, and maintenance operations.
 pub mod error;
 /// Task action execution: commands, builtins, prompts, and knowledge maintenance.
@@ -21,6 +23,8 @@ pub mod runner;
 pub mod schedule;
 /// SQLite-backed persistence for daemon task execution state.
 pub(crate) mod state;
+/// Watchdog process monitor with heartbeat tracking and auto-recovery.
+pub mod watchdog;
 
 #[cfg(test)]
 mod assertions {
@@ -32,4 +36,6 @@ mod assertions {
     assert_impl_all!(super::maintenance::TraceRotator: Send, Sync);
     assert_impl_all!(super::maintenance::DriftDetector: Send, Sync);
     assert_impl_all!(super::maintenance::DbMonitor: Send, Sync);
+    assert_impl_all!(super::watchdog::Watchdog: Send);
+    assert_impl_all!(super::watchdog::WatchdogConfig: Send, Sync);
 }

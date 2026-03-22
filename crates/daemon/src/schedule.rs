@@ -105,6 +105,12 @@ pub enum BuiltinTask {
     SkillDecay,
     /// Run Chiron self-audit checks and store results in the knowledge graph.
     ChironAudit,
+    /// Periodic configuration variant search: mutate and benchmark agent pipeline configs.
+    EvolutionSearch,
+    /// Periodic self-reflection: agent evaluates recent performance.
+    SelfReflection,
+    /// Periodic knowledge graph cleanup: orphan removal and stale entity pruning.
+    GraphCleanup,
 }
 
 impl Schedule {
