@@ -322,6 +322,16 @@ pub enum Msg {
         new_content: String,
     },
 
+    #[expect(dead_code, reason = "planned TUI feature: key bindings not yet wired")]
+    DecisionCardNextField,
+    #[expect(dead_code, reason = "planned TUI feature: key bindings not yet wired")]
+    DecisionCardPrevField,
+    #[expect(dead_code, reason = "planned TUI feature")]
+    StreamDecisionRequired {
+        question: String,
+        options: Vec<(String, Option<String>, bool)>,
+    },
+
     Tick,
 }
 

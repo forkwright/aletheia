@@ -125,6 +125,22 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
                         }
                     }
                 }
+            } else if let Some(crate::state::Overlay::DecisionCard(ref mut card)) =
+                app.layout.overlay
+            {
+                match card.focused_field {
+                    crate::state::DecisionField::CustomAnswer => {
+                        card.custom_answer.push(c);
+                        card.custom_cursor = card.custom_answer.len();
+                    }
+                    crate::state::DecisionField::Notes => {
+                        card.notes.push(c);
+                        card.notes_cursor = card.notes.len();
+                    }
+                    crate::state::DecisionField::Options => {
+                        // NOTE: char input in options field has no effect
+                    }
+                }
             }
         }
         Msg::OverlayFilterBackspace => {
@@ -133,6 +149,20 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
                 Some(crate::state::Overlay::Settings(_))
             ) {
                 settings::handle_edit_backspace(app);
+            } else if let Some(crate::state::Overlay::DecisionCard(ref mut card)) =
+                app.layout.overlay
+            {
+                match card.focused_field {
+                    crate::state::DecisionField::CustomAnswer => {
+                        card.custom_answer.pop();
+                        card.custom_cursor = card.custom_answer.len();
+                    }
+                    crate::state::DecisionField::Notes => {
+                        card.notes.pop();
+                        card.notes_cursor = card.notes.len();
+                    }
+                    crate::state::DecisionField::Options => {}
+                }
             }
         }
 
@@ -287,6 +317,32 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
             old_content,
             new_content,
         } => diff::handle_diff_from_tool_result(app, &path, &old_content, &new_content),
+
+        Msg::DecisionCardNextField => {
+            if let Some(crate::state::Overlay::DecisionCard(ref mut card)) = app.layout.overlay {
+                card.next_field();
+            }
+        }
+        Msg::DecisionCardPrevField => {
+            if let Some(crate::state::Overlay::DecisionCard(ref mut card)) = app.layout.overlay {
+                card.prev_field();
+            }
+        }
+        Msg::StreamDecisionRequired { question, options } => {
+            let opts: Vec<crate::state::DecisionOption> = options
+                .into_iter()
+                .map(
+                    |(label, description, is_recommendation)| crate::state::DecisionOption {
+                        label,
+                        description,
+                        is_recommendation,
+                    },
+                )
+                .collect();
+            app.layout.overlay = Some(crate::state::Overlay::DecisionCard(
+                crate::state::DecisionCardOverlay::new(question, opts),
+            ));
+        }
 
         Msg::Quit => app.should_quit = true,
         Msg::Tick => api::handle_tick(app),

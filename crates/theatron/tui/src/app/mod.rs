@@ -31,9 +31,10 @@ use crate::state::virtual_scroll::VirtualScroll;
 )]
 pub use crate::state::{
     ActiveTool, AgentState, AgentStatus, ChatMessage, CommandPaletteState, ContextAction,
-    ContextActionsOverlay, FilterState, FocusedPane, InputState, MemoryInspectorState, OpsState,
-    Overlay, PlanApprovalOverlay, PlanStepApproval, SelectionContext, SessionPickerOverlay,
-    TabCompletion, ToolApprovalOverlay, ToolCallInfo, ToolSummary, View, ViewStack,
+    ContextActionsOverlay, DecisionCardOverlay, DecisionField, DecisionOption, FilterState,
+    FocusedPane, InputState, MemoryInspectorState, OpsState, Overlay, PlanApprovalOverlay,
+    PlanStepApproval, SelectionContext, SessionPickerOverlay, SubmittedDecision, TabCompletion,
+    ToolApprovalOverlay, ToolCallInfo, ToolSummary, View, ViewStack,
 };
 
 /// Default terminal width used before the first resize event arrives.
@@ -61,6 +62,7 @@ pub struct DashboardState {
     pub context_tokens_total: Option<u32>,
     /// Last-active session per agent, loaded from disk on startup and saved on exit.
     pub(crate) saved_sessions: HashMap<NousId, SessionId>,
+    pub submitted_decisions: Vec<crate::state::SubmittedDecision>,
 }
 
 /// SSE link, stream receiver, and reconnect bookkeeping.
@@ -184,6 +186,7 @@ impl App {
                 context_tokens_used: None,
                 context_tokens_total: None,
                 saved_sessions,
+                submitted_decisions: Vec::new(),
             },
             connection: ConnectionState {
                 sse: None,
