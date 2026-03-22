@@ -4,6 +4,7 @@ mod filter_bar;
 pub(crate) mod image;
 mod input;
 mod memory;
+pub(crate) mod metrics;
 pub(crate) mod notification;
 pub(crate) mod ops;
 mod overlay;

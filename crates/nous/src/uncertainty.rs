@@ -1,5 +1,9 @@
 //! Uncertainty quantification: calibration of agent confidence estimates.
 
+#[expect(
+    clippy::disallowed_types,
+    reason = "uncertainty tracker owns its own isolated SQLite file; not part of the shared SessionStore pipeline"
+)]
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt as _;
@@ -59,6 +63,10 @@ pub struct CalibrationSummary {
 }
 
 /// Tracks agent confidence predictions vs actual outcomes.
+#[expect(
+    clippy::disallowed_types,
+    reason = "uncertainty tracker owns its own isolated SQLite file; not part of the shared SessionStore pipeline"
+)]
 pub struct UncertaintyTracker {
     conn: Connection,
 }
@@ -69,6 +77,10 @@ impl UncertaintyTracker {
     /// # Errors
     ///
     /// Returns `UncertaintyStore` if the database cannot be opened or initialized.
+    #[expect(
+        clippy::disallowed_types,
+        reason = "uncertainty tracker owns its own isolated SQLite file; not part of the shared SessionStore pipeline"
+    )]
     pub fn open(path: &std::path::Path) -> error::Result<Self> {
         let conn = Connection::open(path).context(error::UncertaintyStoreSnafu {
             message: "failed to open uncertainty database",
@@ -81,6 +93,10 @@ impl UncertaintyTracker {
     /// # Errors
     ///
     /// Returns `UncertaintyStore` if the schema cannot be created.
+    #[expect(
+        clippy::disallowed_types,
+        reason = "uncertainty tracker owns its own isolated SQLite file; not part of the shared SessionStore pipeline"
+    )]
     pub fn open_in_memory() -> error::Result<Self> {
         let conn = Connection::open_in_memory().context(error::UncertaintyStoreSnafu {
             message: "failed to open in-memory uncertainty database",
@@ -88,6 +104,10 @@ impl UncertaintyTracker {
         Self::init(conn)
     }
 
+    #[expect(
+        clippy::disallowed_types,
+        reason = "uncertainty tracker owns its own isolated SQLite file; not part of the shared SessionStore pipeline"
+    )]
     fn init(conn: Connection) -> error::Result<Self> {
         conn.execute_batch(
             "PRAGMA journal_mode = WAL;
@@ -137,7 +157,7 @@ impl UncertaintyTracker {
                 "INSERT INTO calibration_points
                      (nous_id, domain, stated_confidence, was_correct, recorded_at)
                  VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![nous_id, domain, clamped, was_correct as i32, now],
+                params![nous_id, domain, clamped, i32::from(was_correct), now],
             )
             .context(error::UncertaintyStoreSnafu {
                 message: "failed to insert calibration point",
@@ -268,56 +288,53 @@ impl UncertaintyTracker {
     }
 
     fn load_points(&self, nous_id: Option<&str>) -> error::Result<Vec<(f64, bool)>> {
-        match nous_id {
-            Some(id) => {
-                let mut stmt = self
-                    .conn
-                    .prepare_cached(
-                        "SELECT stated_confidence, was_correct
-                         FROM calibration_points
-                         WHERE nous_id = ?1
-                         ORDER BY recorded_at DESC
-                         LIMIT ?2",
-                    )
-                    .context(error::UncertaintyStoreSnafu {
-                        message: "failed to prepare points query",
-                    })?;
+        if let Some(id) = nous_id {
+            let mut stmt = self
+                .conn
+                .prepare_cached(
+                    "SELECT stated_confidence, was_correct
+                     FROM calibration_points
+                     WHERE nous_id = ?1
+                     ORDER BY recorded_at DESC
+                     LIMIT ?2",
+                )
+                .context(error::UncertaintyStoreSnafu {
+                    message: "failed to prepare points query",
+                })?;
 
-                stmt.query_map(params![id, MAX_CALIBRATION_POINTS], |row| {
-                    Ok((row.get::<_, f64>(0)?, row.get::<_, bool>(1)?))
-                })
+            stmt.query_map(params![id, MAX_CALIBRATION_POINTS], |row| {
+                Ok((row.get::<_, f64>(0)?, row.get::<_, bool>(1)?))
+            })
+            .context(error::UncertaintyStoreSnafu {
+                message: "failed to query calibration points",
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .context(error::UncertaintyStoreSnafu {
+                message: "failed to collect calibration points",
+            })
+        } else {
+            let mut stmt = self
+                .conn
+                .prepare_cached(
+                    "SELECT stated_confidence, was_correct
+                     FROM calibration_points
+                     ORDER BY recorded_at DESC
+                     LIMIT ?1",
+                )
                 .context(error::UncertaintyStoreSnafu {
-                    message: "failed to query calibration points",
-                })?
-                .collect::<std::result::Result<Vec<_>, _>>()
-                .context(error::UncertaintyStoreSnafu {
-                    message: "failed to collect calibration points",
-                })
-            }
-            None => {
-                let mut stmt = self
-                    .conn
-                    .prepare_cached(
-                        "SELECT stated_confidence, was_correct
-                         FROM calibration_points
-                         ORDER BY recorded_at DESC
-                         LIMIT ?1",
-                    )
-                    .context(error::UncertaintyStoreSnafu {
-                        message: "failed to prepare global points query",
-                    })?;
+                    message: "failed to prepare global points query",
+                })?;
 
-                stmt.query_map(params![MAX_CALIBRATION_POINTS], |row| {
-                    Ok((row.get::<_, f64>(0)?, row.get::<_, bool>(1)?))
-                })
-                .context(error::UncertaintyStoreSnafu {
-                    message: "failed to query global calibration points",
-                })?
-                .collect::<std::result::Result<Vec<_>, _>>()
-                .context(error::UncertaintyStoreSnafu {
-                    message: "failed to collect global calibration points",
-                })
-            }
+            stmt.query_map(params![MAX_CALIBRATION_POINTS], |row| {
+                Ok((row.get::<_, f64>(0)?, row.get::<_, bool>(1)?))
+            })
+            .context(error::UncertaintyStoreSnafu {
+                message: "failed to query global calibration points",
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .context(error::UncertaintyStoreSnafu {
+                message: "failed to collect global calibration points",
+            })
         }
     }
 
@@ -345,6 +362,14 @@ fn compute_calibration_curve(points: &[(f64, bool)]) -> Vec<CalibrationBin> {
     let mut bins = Vec::with_capacity(NUM_BINS);
 
     for i in 0..NUM_BINS {
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "NUM_BINS is 10; usize-to-f64 cast is exact"
+        )]
+        #[expect(
+            clippy::as_conversions,
+            reason = "usize-to-f64 for bin index; value is bounded by NUM_BINS=10"
+        )]
         let low = i as f64 * BIN_WIDTH;
         let high = low + BIN_WIDTH;
         let low_rounded = (low * 100.0).round() / 100.0;
@@ -391,7 +416,16 @@ fn compute_brier_score(points: &[(f64, bool)]) -> f64 {
         })
         .sum();
 
-    sum / points.len() as f64
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "calibration point count is bounded by MAX_CALIBRATION_POINTS=1000; precision loss is not a concern"
+    )]
+    #[expect(
+        clippy::as_conversions,
+        reason = "usize-to-f64 for averaging; value is bounded and safe"
+    )]
+    let count = points.len() as f64;
+    sum / count
 }
 
 fn compute_ece(curve: &[CalibrationBin]) -> f64 {
@@ -402,7 +436,7 @@ fn compute_ece(curve: &[CalibrationBin]) -> f64 {
         if bin.total == 0 {
             continue;
         }
-        let midpoint = (bin.range.0 + bin.range.1) / 2.0;
+        let midpoint = f64::midpoint(bin.range.0, bin.range.1);
         weighted_error += f64::from(bin.total) * (bin.accuracy - midpoint).abs();
         total_points += bin.total;
     }
@@ -489,6 +523,22 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "test data generation; NUM_BINS=10 and midpoint values are small, precision loss is acceptable"
+    )]
+    #[expect(
+        clippy::as_conversions,
+        reason = "test data: usize-to-f64 and f64-to-usize for bin midpoint arithmetic; values are bounded"
+    )]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "test data: midpoint*10.0 is always a whole number by construction"
+    )]
+    #[expect(
+        clippy::cast_sign_loss,
+        reason = "test data: midpoint is always non-negative"
+    )]
     fn ece_zero_for_perfectly_calibrated() {
         let points: Vec<(f64, bool)> = (0..NUM_BINS)
             .flat_map(|i| {
@@ -596,6 +646,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::as_conversions,
+        reason = "MAX_CALIBRATION_POINTS is u32; cast to usize for comparison with Vec::len() is safe"
+    )]
     fn pruning_keeps_most_recent_points() {
         let t = tracker();
         for i in 0..1010u32 {

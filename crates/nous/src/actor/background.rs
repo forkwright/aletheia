@@ -338,6 +338,10 @@ async fn run_extraction(
 
 // NOTE(#940): 113 lines: extract → persist → handle lifecycle for skill extraction.
 // Single cohesive async operation, splitting would obscure the three-phase flow.
+#[expect(
+    clippy::too_many_lines,
+    reason = "three-phase skill extraction pipeline: extract, persist, lifecycle; splitting would obscure the sequential flow"
+)]
 /// Run LLM skill extraction as a background task. Logs results, never panics.
 async fn run_skill_extraction(
     model: &str,
@@ -395,6 +399,9 @@ async fn run_skill_extraction(
                 let pending = aletheia_mneme::skills::PendingSkill::new(&extracted, candidate_id);
                 match pending.to_json() {
                     Ok(content) => {
+                        use aletheia_mneme::knowledge::{
+                            FactAccess, FactLifecycle, FactProvenance, FactTemporal,
+                        };
                         let fact_id =
                             match aletheia_mneme::id::FactId::new(ulid::Ulid::new().to_string()) {
                                 Ok(id) => id,
@@ -404,9 +411,6 @@ async fn run_skill_extraction(
                                 }
                             };
                         let now = jiff::Timestamp::now();
-                        use aletheia_mneme::knowledge::{
-                            FactAccess, FactLifecycle, FactProvenance, FactTemporal,
-                        };
                         let fact = aletheia_mneme::knowledge::Fact {
                             id: fact_id.clone(),
                             nous_id: nous_id.to_owned(),

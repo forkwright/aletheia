@@ -22,6 +22,7 @@ use crate::view;
 
 use crate::state::ArcVec;
 use crate::state::MarkdownCache;
+use crate::state::MetricsState;
 use crate::state::SavedScrollState;
 use crate::state::TabBar;
 use crate::state::virtual_scroll::VirtualScroll;
@@ -142,6 +143,7 @@ pub struct LayoutState {
     pub ops: OpsState,
     pub(crate) tab_bar: TabBar,
     pub memory: MemoryInspectorState,
+    pub(crate) metrics: MetricsState,
     pub(crate) pending_g: bool,
     pub(crate) bell_enabled: bool,
     /// Cross-agent notification log with read/unread tracking.
@@ -259,6 +261,7 @@ impl App {
                 ops: OpsState::default(),
                 tab_bar: TabBar::new(),
                 memory: MemoryInspectorState::new(),
+                metrics: MetricsState::new(),
                 pending_g: false,
                 bell_enabled,
                 notifications: NotificationStore::default(),

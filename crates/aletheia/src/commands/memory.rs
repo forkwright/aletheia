@@ -217,7 +217,7 @@ fn count_relation(
         .rows
         .first()
         .and_then(|r| r.first())
-        .and_then(|v| v.get_int())
+        .and_then(aletheia_mneme::engine::DataValue::get_int)
         .unwrap_or(0);
     Ok(usize::try_from(count).unwrap_or(0))
 }
@@ -264,11 +264,11 @@ fn find_dangling_edges(
     Ok(result
         .rows
         .iter()
-        .filter_map(|r| {
+        .map(|r| {
             let src = r.first().and_then(|v| v.get_str()).unwrap_or("?");
             let dst = r.get(1).and_then(|v| v.get_str()).unwrap_or("?");
             let rel = r.get(2).and_then(|v| v.get_str()).unwrap_or("?");
-            Some(format!("{src} --[{rel}]--> {dst}"))
+            format!("{src} --[{rel}]--> {dst}")
         })
         .collect())
 }
@@ -387,7 +387,9 @@ fn run_sample(
         }
         let content = &fact.content;
         let display = if content.len() > 200 {
-            format!("{}...", &content[..197])
+            // WHY: byte length checked above ensures ASCII prefix is safe; UTF-8 boundary handled by get
+            let truncated = content.get(..197).unwrap_or(content);
+            format!("{truncated}...")
         } else {
             content.clone()
         };
@@ -517,10 +519,13 @@ fn find_content_hash_duplicates(
     let mut dupes = Vec::new();
     for (_hash, entries) in hash_map {
         if entries.len() > 1 {
-            let prefix = if entries[0].1.len() > 60 {
-                format!("{}...", &entries[0].1[..57])
+            // WHY: len > 1 guarantees first() is Some
+            let first_content = entries.first().map_or("", |(_, c)| c.as_str());
+            let prefix = if first_content.len() > 60 {
+                let truncated = first_content.get(..57).unwrap_or(first_content);
+                format!("{truncated}...")
             } else {
-                entries[0].1.clone()
+                first_content.to_owned()
             };
             let ids: Vec<String> = entries.into_iter().map(|(id, _)| id).collect();
             dupes.push((prefix, ids));
@@ -610,7 +615,9 @@ fn find_entity_cooccurrence(
         .filter_map(|r| {
             let a = r.first().and_then(|v| v.get_str())?.to_owned();
             let b = r.get(1).and_then(|v| v.get_str())?.to_owned();
-            let cnt = r.get(2).and_then(|v| v.get_int())?;
+            let cnt = r
+                .get(2)
+                .and_then(aletheia_mneme::engine::DataValue::get_int)?;
             Some((a, b, cnt))
         })
         .collect())
@@ -639,7 +646,9 @@ fn find_relationship_chains(
         .iter()
         .filter_map(|r| {
             let rel = r.first().and_then(|v| v.get_str())?.to_owned();
-            let cnt = r.get(1).and_then(|v| v.get_int())?;
+            let cnt = r
+                .get(1)
+                .and_then(aletheia_mneme::engine::DataValue::get_int)?;
             Some((rel, cnt))
         })
         .collect())
@@ -675,13 +684,20 @@ fn find_hub_entities(
         .iter()
         .filter_map(|r| {
             let name = r.first().and_then(|v| v.get_str())?.to_owned();
-            let total = r.get(1).and_then(|v| v.get_int())?;
+            let total = r
+                .get(1)
+                .and_then(aletheia_mneme::engine::DataValue::get_int)?;
             Some((name, total))
         })
         .collect())
 }
 
 #[cfg(all(test, feature = "recall"))]
+#[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions on known-length slices"
+)]
 mod tests {
     use std::sync::Arc;
 

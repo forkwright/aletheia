@@ -449,10 +449,7 @@ fn context_gauge_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
         None => {
             return vec![
                 Span::styled("ctx: ", theme.style_dim()),
-                Span::styled(
-                    "[".to_owned() + &".".repeat(GAUGE_WIDTH) + "]",
-                    theme.style_dim(),
-                ),
+                Span::styled(format!("[{}]", ".".repeat(GAUGE_WIDTH)), theme.style_dim()),
                 Span::styled(" —%", theme.style_dim()),
             ];
         }

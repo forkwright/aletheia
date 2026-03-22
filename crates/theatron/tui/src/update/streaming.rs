@@ -270,16 +270,24 @@ pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutc
         let ctx_total = model_context_window(&outcome.model);
         app.dashboard.context_tokens_used = Some(ctx_used);
         app.dashboard.context_tokens_total = Some(ctx_total);
-        #[expect(
-            clippy::cast_possible_truncation,
-            reason = "percentage is always 0–100, fits in u8"
-        )]
+        // WHY: clamped to [0, 100] by .min(100); u64 → u8 is safe here.
+        #[allow(clippy::cast_possible_truncation)]
         let pct = ((u64::from(ctx_used) * 100) / u64::from(ctx_total)).min(100) as u8;
         app.dashboard.context_usage_pct = Some(pct);
     }
     if let Ok(cents) = app.client.today_cost_cents().await {
         app.dashboard.daily_cost_cents = cents;
     }
+
+    // WHY: Record token usage after every completed turn so the metrics dashboard
+    // reflects cumulative spend without requiring a separate API poll.
+    app.layout.metrics.record_turn(
+        &outcome.nous_id,
+        outcome.input_tokens,
+        outcome.output_tokens,
+        outcome.cache_read_tokens,
+        outcome.cache_write_tokens,
+    );
 }
 
 #[tracing::instrument(skip_all)]

@@ -12,6 +12,9 @@ pub(crate) enum SseEvent {
     #[serde(rename = "text_delta")]
     TextDelta { text: String },
 
+    // WHY: ThinkingDelta is part of the SSE API surface for extended-thinking
+    // model support; not yet emitted but must be present in the schema.
+    #[allow(dead_code)]
     /// Incremental extended-thinking output.
     #[serde(rename = "thinking_delta")]
     ThinkingDelta { thinking: String },
