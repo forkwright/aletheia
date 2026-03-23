@@ -7,6 +7,8 @@
 pub mod agents;
 pub mod app;
 pub(crate) mod chat;
+/// Credential management state for the ops view.
+pub(crate) mod credentials;
 /// Checkpoint approval gate state for the planning project detail view.
 pub(crate) mod checkpoints;
 pub mod collections;

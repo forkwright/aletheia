@@ -122,7 +122,11 @@ pub async fn import_facts(
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test assertions — panics are acceptable in test context"
+)]
 mod tests {
     use super::*;
 

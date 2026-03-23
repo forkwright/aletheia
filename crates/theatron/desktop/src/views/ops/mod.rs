@@ -1,10 +1,18 @@
-//! Operations view: tool call history and active tool monitoring.
+//! Operations view: tool call history, active tool monitoring, and credential management.
+
+pub(crate) mod credentials;
 
 use dioxus::prelude::*;
 
 use crate::api::client::authenticated_client;
 use crate::state::connection::ConnectionConfig;
 use crate::state::fetch::FetchState;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OpsTab {
+    Tools,
+    Credentials,
+}
 
 #[derive(Debug, Clone, Default)]
 struct ToolStats {
@@ -134,9 +142,30 @@ const REFRESH_BTN: &str = "\
     cursor: pointer;\
 ";
 
+const TAB_ACTIVE: &str = "\
+    background: #2a2a4a; \
+    color: #e0e0e0; \
+    border: 1px solid #4a4aff; \
+    border-radius: 6px; \
+    padding: 4px 14px; \
+    font-size: 13px; \
+    cursor: pointer;\
+";
+
+const TAB_INACTIVE: &str = "\
+    background: transparent; \
+    color: #888; \
+    border: 1px solid #333; \
+    border-radius: 6px; \
+    padding: 4px 14px; \
+    font-size: 13px; \
+    cursor: pointer;\
+";
+
 #[component]
 pub(crate) fn Ops() -> Element {
     let config: Signal<ConnectionConfig> = use_context();
+    let mut active_tab = use_signal(|| OpsTab::Tools);
     let mut stats = use_signal(ToolStats::default);
     let mut fetch_state = use_signal(|| FetchState::<()>::Loading);
 
@@ -195,6 +224,7 @@ pub(crate) fn Ops() -> Element {
         do_refresh();
     });
 
+    let tab = *active_tab.read();
     let current_stats = stats.read();
 
     rsx! {
@@ -203,74 +233,93 @@ pub(crate) fn Ops() -> Element {
             div {
                 style: "display: flex; align-items: center; justify-content: space-between;",
                 h2 { style: "font-size: 20px; margin: 0;", "Operations" }
-                button {
-                    style: "{REFRESH_BTN}",
-                    onclick: move |_| do_refresh(),
-                    "Refresh"
-                }
-            }
-
-            if let FetchState::Error(err) = &*fetch_state.read() {
-                div { style: "color: #ef4444; font-size: 13px;", "Error: {err}" }
-            }
-
-            div {
-                style: "{CARDS_STYLE}",
                 div {
-                    style: "{CARD_STYLE}",
-                    div { style: "{CARD_VALUE}", "{current_stats.total}" }
-                    div { style: "{CARD_LABEL}", "Total Calls" }
-                }
-                div {
-                    style: "{CARD_STYLE}",
-                    div { style: "{CARD_VALUE} color: #22c55e;", "{current_stats.succeeded}" }
-                    div { style: "{CARD_LABEL}", "Succeeded" }
-                }
-                div {
-                    style: "{CARD_STYLE}",
-                    div { style: "{CARD_VALUE} color: #ef4444;", "{current_stats.failed}" }
-                    div { style: "{CARD_LABEL}", "Failed" }
-                }
-                div {
-                    style: "{CARD_STYLE}",
-                    div { style: "{CARD_VALUE} color: #4a4aff;",
-                        "{current_stats.active.len()}"
+                    style: "display: flex; align-items: center; gap: 8px;",
+                    button {
+                        style: if tab == OpsTab::Tools { TAB_ACTIVE } else { TAB_INACTIVE },
+                        onclick: move |_| active_tab.set(OpsTab::Tools),
+                        "Tools"
                     }
-                    div { style: "{CARD_LABEL}", "Active" }
+                    button {
+                        style: if tab == OpsTab::Credentials { TAB_ACTIVE } else { TAB_INACTIVE },
+                        onclick: move |_| active_tab.set(OpsTab::Credentials),
+                        "Credentials"
+                    }
+                    if tab == OpsTab::Tools {
+                        button {
+                            style: "{REFRESH_BTN}",
+                            onclick: move |_| do_refresh(),
+                            "Refresh"
+                        }
+                    }
                 }
             }
 
-            if !current_stats.active.is_empty() {
+            if tab == OpsTab::Credentials {
+                credentials::CredentialsView {}
+            } else {
+                if let FetchState::Error(err) = &*fetch_state.read() {
+                    div { style: "color: #ef4444; font-size: 13px;", "Error: {err}" }
+                }
+
+                div {
+                    style: "{CARDS_STYLE}",
+                    div {
+                        style: "{CARD_STYLE}",
+                        div { style: "{CARD_VALUE}", "{current_stats.total}" }
+                        div { style: "{CARD_LABEL}", "Total Calls" }
+                    }
+                    div {
+                        style: "{CARD_STYLE}",
+                        div { style: "{CARD_VALUE} color: #22c55e;", "{current_stats.succeeded}" }
+                        div { style: "{CARD_LABEL}", "Succeeded" }
+                    }
+                    div {
+                        style: "{CARD_STYLE}",
+                        div { style: "{CARD_VALUE} color: #ef4444;", "{current_stats.failed}" }
+                        div { style: "{CARD_LABEL}", "Failed" }
+                    }
+                    div {
+                        style: "{CARD_STYLE}",
+                        div { style: "{CARD_VALUE} color: #4a4aff;",
+                            "{current_stats.active.len()}"
+                        }
+                        div { style: "{CARD_LABEL}", "Active" }
+                    }
+                }
+
+                if !current_stats.active.is_empty() {
+                    div {
+                        style: "{SECTION_STYLE}",
+                        div { style: "{SECTION_TITLE}", "Active Tools" }
+                        for tool in &current_stats.active {
+                            div {
+                                style: "{ENTRY_STYLE}",
+                                span { style: "{ACTIVE_DOT}" }
+                                span { style: "color: #e0e0e0;", "{tool.name}" }
+                                span { style: "color: #555; font-size: 11px;", "{tool.id}" }
+                            }
+                        }
+                    }
+                }
+
                 div {
                     style: "{SECTION_STYLE}",
-                    div { style: "{SECTION_TITLE}", "Active Tools" }
-                    for tool in &current_stats.active {
-                        div {
-                            style: "{ENTRY_STYLE}",
-                            span { style: "{ACTIVE_DOT}" }
-                            span { style: "color: #e0e0e0;", "{tool.name}" }
-                            span { style: "color: #555; font-size: 11px;", "{tool.id}" }
-                        }
+                    div { style: "{SECTION_TITLE}", "Tool History" }
+                    if current_stats.history.is_empty() {
+                        div { style: "color: #555; font-size: 13px;", "No tool calls recorded" }
                     }
-                }
-            }
-
-            div {
-                style: "{SECTION_STYLE}",
-                div { style: "{SECTION_TITLE}", "Tool History" }
-                if current_stats.history.is_empty() {
-                    div { style: "color: #555; font-size: 13px;", "No tool calls recorded" }
-                }
-                for (i , entry) in current_stats.history.iter().enumerate() {
-                    div {
-                        key: "{i}",
-                        style: "{ENTRY_STYLE}",
-                        span { style: "color: {status_color(entry.is_error)};",
-                            if entry.is_error { "[x]" } else { "[v]" } // kanon:ignore RUST/indexing-slicing
-                        }
-                        span { style: "color: #e0e0e0; flex: 1;", "{entry.name}" }
-                        span { style: "color: #666; font-size: 11px;",
-                            "{entry.duration_ms}ms"
+                    for (i , entry) in current_stats.history.iter().enumerate() {
+                        div {
+                            key: "{i}",
+                            style: "{ENTRY_STYLE}",
+                            span { style: "color: {status_color(entry.is_error)};",
+                                if entry.is_error { "[x]" } else { "[v]" } // kanon:ignore RUST/indexing-slicing
+                            }
+                            span { style: "color: #e0e0e0; flex: 1;", "{entry.name}" }
+                            span { style: "color: #666; font-size: 11px;",
+                                "{entry.duration_ms}ms"
+                            }
                         }
                     }
                 }
