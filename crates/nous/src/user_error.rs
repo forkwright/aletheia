@@ -2,9 +2,7 @@
 
 use std::fmt;
 
-// WHY: UserFacingError and to_user_facing are not yet wired into the API response
-// layer; they exist as the planned user-facing error presentation surface.
-#[allow(dead_code)]
+#[cfg_attr(not(test), expect(dead_code, reason = "planned user-facing error surface, not yet wired into API response layer"))]
 /// Presentation errors for end users.
 ///
 /// The full technical error is logged via tracing at the call site.
@@ -75,7 +73,7 @@ impl fmt::Display for UserFacingError {
     }
 }
 
-#[allow(dead_code)]
+#[cfg_attr(not(test), expect(dead_code, reason = "planned user-facing error surface, not yet wired into API response layer"))]
 /// Convert a pipeline error into a user-facing error, if applicable.
 ///
 /// Returns `None` for internal errors that should not be shown to users.

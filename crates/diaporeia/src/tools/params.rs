@@ -49,9 +49,7 @@ pub(crate) struct NousIdParam {
 }
 
 /// Parameters for knowledge search.
-// WHY: #[allow] — fields are used by JsonSchema/Deserialize derives and schema introspection,
-// but never accessed directly in handler code (passed as `_params`).
-#[allow(dead_code)]
+#[cfg_attr(not(test), expect(dead_code, reason = "fields consumed by JsonSchema/Deserialize derives, not accessed directly"))]
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct KnowledgeSearchParams {
     /// The search query text.

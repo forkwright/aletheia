@@ -24,7 +24,7 @@ use snafu::ResultExt;
 ///
 /// Caches `PageRank` scores, community (cluster) assignments, and the `PageRank` max
 /// meta-entry. Updated by background recomputation.
-#[allow(dead_code)]
+#[cfg_attr(not(feature = "mneme-engine"), expect(dead_code, reason = "DDL used by mneme-engine schema setup"))]
 pub(crate) const GRAPH_SCORES_DDL: &str = r":create graph_scores {
     entity_id: String, score_type: String =>
     score: Float default 0.0, cluster_id: Int default -1, updated_at: String
@@ -129,7 +129,7 @@ pub(crate) fn score_access_with_evolution(base_access_score: f64, chain_length: 
 /// and stores results into `graph_scores`.
 ///
 /// Parameters: `$now` (ISO 8601 timestamp string).
-#[allow(dead_code)]
+#[cfg_attr(not(feature = "mneme-engine"), expect(dead_code, reason = "Datalog query used by mneme-engine graph pipeline"))]
 pub(crate) const RECOMPUTE_GRAPH_SCORES: &str = r"
 edges[src, dst] := *relationships{src, dst}
 edges_w[src, dst, weight] := *relationships{src, dst, weight}
@@ -156,7 +156,7 @@ comm[labels, entity_id] <~ CommunityDetectionLouvain(edges_w[])
 ";
 
 /// Datalog script to load all graph scores into memory.
-#[allow(dead_code)]
+#[cfg_attr(not(feature = "mneme-engine"), expect(dead_code, reason = "Datalog query used by mneme-engine graph pipeline"))]
 pub(crate) const LOAD_GRAPH_SCORES: &str = r"
 ?[entity_id, score_type, score, cluster_id] :=
     *graph_scores{entity_id, score_type, score, cluster_id}
@@ -168,7 +168,7 @@ pub(crate) const LOAD_GRAPH_SCORES: &str = r"
 /// Parameters: `$seeds` (list of entity IDs).
 ///
 /// Returns rows of `[entity_id, hops]`.
-#[allow(dead_code)]
+#[cfg_attr(not(feature = "mneme-engine"), expect(dead_code, reason = "Datalog query used by mneme-engine graph pipeline"))]
 pub(crate) const BFS_PROXIMITY_4HOP: &str = r"
 seed[id] := id in $seeds
 
@@ -188,7 +188,7 @@ hop4[dst, h] := hop3[src, _], *relationships{src, dst}, not hop0[dst, _], not ho
 /// Datalog script for computing supersession chain lengths.
 ///
 /// Counts how many predecessors each fact has in its supersession chain.
-#[allow(dead_code)]
+#[cfg_attr(not(feature = "mneme-engine"), expect(dead_code, reason = "Datalog query used by mneme-engine graph pipeline"))]
 pub(crate) const SUPERSESSION_CHAIN_LENGTHS: &str = r"
 chain[id, d] := *facts{id, superseded_by}, is_null(superseded_by), d = 0
 chain[id, n] := *facts{id, superseded_by}, superseded_by = next_id, not is_null(next_id),
@@ -279,9 +279,7 @@ fn parse_hop_rows(
 
 #[cfg(feature = "mneme-engine")]
 impl crate::knowledge_store::KnowledgeStore {
-    // WHY: only called from schema setup code outside the test target; dead_code
-    // fires in lib test build because graph_scores is not wired into test harness.
-    #[allow(dead_code)]
+    #[expect(dead_code, reason = "called from schema setup, dead in lib test build")]
     /// Initialize the `graph_scores` relation. Called during schema setup.
     pub(crate) fn init_graph_scores(&self) -> crate::error::Result<()> {
         self.run_mut_query(GRAPH_SCORES_DDL, std::collections::BTreeMap::new())?;

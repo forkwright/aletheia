@@ -33,9 +33,7 @@ pub(crate) struct ToolExpanded {
     pub parameters: Vec<(String, String)>,
 }
 
-// WHY: summarize_tools and extract_one_liner are not yet wired into the bootstrap
-// pipeline; they exist as building blocks for future tool-summary injection.
-#[allow(dead_code)]
+#[cfg_attr(not(test), expect(dead_code, reason = "tool-summary injection not yet wired into bootstrap pipeline"))]
 /// Generate compact summaries for all registered tools.
 #[must_use]
 pub(crate) fn summarize_tools(registry: &ToolRegistry) -> Vec<ToolSummary> {
@@ -96,7 +94,6 @@ pub(crate) fn format_tool_summary_section(summaries: &[ToolSummary]) -> String {
     lines.join("\n")
 }
 
-#[allow(dead_code)]
 /// Extract a one-line summary from a description string.
 ///
 /// Takes the first sentence (up to first `. ` or newline), capped at 80 characters.

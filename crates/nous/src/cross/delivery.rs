@@ -6,9 +6,7 @@ use ulid::Ulid;
 
 use super::DeliveryState;
 
-// WHY: DeliveryEntry fields are structural audit data; they exist for future
-// inspection/display tooling and cross-nous diagnostics, not yet consumed.
-#[allow(dead_code)]
+#[expect(dead_code, reason = "audit fields for future cross-nous diagnostic tooling")]
 /// A single delivery audit record.
 #[derive(Debug, Clone)]
 pub(crate) struct DeliveryEntry {
@@ -48,16 +46,14 @@ impl DeliveryLog {
         self.entries.push_back(entry);
     }
 
-    // WHY: recent and for_nous are query APIs for future diagnostic tooling;
-    // not yet called from production code paths.
-    #[allow(dead_code)]
+    #[cfg_attr(not(test), expect(dead_code, reason = "query API for future cross-nous diagnostic tooling"))]
     /// Most recent entries, newest first, up to `limit`.
     #[must_use]
     pub(crate) fn recent(&self, limit: usize) -> Vec<&DeliveryEntry> {
         self.entries.iter().rev().take(limit).collect()
     }
 
-    #[allow(dead_code)]
+    #[cfg_attr(not(test), expect(dead_code, reason = "query API for future cross-nous diagnostic tooling"))]
     /// Recent entries involving the given nous (as sender or receiver), newest first.
     #[must_use]
     pub(crate) fn for_nous(&self, nous_id: &str, limit: usize) -> Vec<&DeliveryEntry> {
