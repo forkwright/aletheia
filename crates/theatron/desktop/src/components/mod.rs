@@ -1,6 +1,8 @@
 //! Dioxus components for the streaming chat interface.
 
 pub mod agent_sidebar;
+pub(crate) mod checkpoint_card;
+pub(crate) mod coverage_bar;
 pub mod chat;
 pub(crate) mod code_block;
 pub mod command_palette;
