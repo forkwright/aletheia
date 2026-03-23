@@ -18,10 +18,16 @@ pub(crate) enum AdversarialCategory {
     /// Attempt to inject false facts into memory.
     MemoryPoisoning,
     /// Verify consistent answers to equivalent questions.
-    #[expect(dead_code, reason = "used only as metadata tag; scenarios select probes directly")]
+    #[expect(
+        dead_code,
+        reason = "used only as metadata tag; scenarios select probes directly"
+    )]
     ConsistencyAttack,
     /// Test behavior with extreme or malformed inputs.
-    #[expect(dead_code, reason = "used only as metadata tag; scenarios select probes directly")]
+    #[expect(
+        dead_code,
+        reason = "used only as metadata tag; scenarios select probes directly"
+    )]
     BoundaryTest,
 }
 

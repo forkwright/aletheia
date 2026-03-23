@@ -85,6 +85,7 @@ pub(crate) fn handle_drill_in(app: &mut App) {
         | View::MemoryInspector
         | View::FactDetail { .. }
         | View::EntityDetail { .. }
+        | View::FileEditor
         | View::Metrics => {}
     }
 }

@@ -8,14 +8,28 @@ permissions:
   contents: read
 
 jobs:
-  verify:
+  verify-gate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
-      # NOTE: Placeholder until kanon gate ships trailer verification.
-      # Currently passes unconditionally. Will be updated to check
-      # Gate-Passed trailer once kanon gate is deployed.
-      - name: Gate check (placeholder)
-        run: echo "Gate verification will be enforced once kanon gate is deployed"
+
+      - name: Verify Gate-Passed trailer
+        run: |
+          commits=$(git log --format='%H' origin/main..HEAD)
+          found=false
+          for sha in $commits; do
+            if git log -1 --format='%b' "$sha" | grep -q '^Gate-Passed: kanon'; then
+              version=$(git log -1 --format='%b' "$sha" | grep '^Gate-Passed:' | head -1)
+              echo "Found gate attestation: $version"
+              found=true
+              break
+            fi
+          done
+
+          if [ "$found" = false ]; then
+            echo "::error::No Gate-Passed trailer found in PR commits."
+            echo "Run 'kanon gate' locally before pushing."
+            exit 1
+          fi
