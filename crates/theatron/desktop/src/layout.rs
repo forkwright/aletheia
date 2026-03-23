@@ -1,8 +1,9 @@
-//! Layout shell with sidebar navigation and content area.
+//! Layout shell with sidebar navigation, connection indicator, and content area.
 
 use dioxus::prelude::*;
 
 use crate::app::Route;
+use crate::components::connection_indicator::ConnectionIndicatorView;
 
 const SIDEBAR_STYLE: &str = "\
     width: 220px; \
@@ -57,6 +58,8 @@ pub(crate) fn Layout() -> Element {
                 NavItem { to: Route::Metrics {}, icon: "[X]", label: "Metrics" }
                 NavItem { to: Route::Ops {}, icon: "[O]", label: "Ops" }
                 NavItem { to: Route::Settings {}, icon: "[S]", label: "Settings" }
+                div { style: "flex: 1;" }
+                ConnectionIndicatorView {}
             }
             main {
                 style: "{CONTENT_STYLE}",

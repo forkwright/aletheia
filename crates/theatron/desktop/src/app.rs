@@ -8,6 +8,7 @@ use dioxus::prelude::*;
 
 use crate::layout::Layout;
 use crate::services::config;
+use crate::services::toast::provide_toast_context;
 use crate::state::connection::ConnectionState;
 use crate::theme::ThemeProvider;
 use crate::views::chat::Chat;
@@ -41,8 +42,9 @@ pub(crate) enum Route {
 
 /// Root component.
 ///
-/// Provides connection state and config as context signals, then renders
-/// either the connect view or the main content based on connection state.
+/// Provides connection state, config, and toast store as context signals,
+/// then renders either the connect view or the main content based on
+/// connection state.
 #[component]
 pub(crate) fn App() -> Element {
     let loaded_config = use_hook(config::load_or_default);
@@ -52,6 +54,7 @@ pub(crate) fn App() -> Element {
     // NOTE: Provide signals as context so all views can access them.
     use_context_provider(|| connection_state);
     use_context_provider(|| connection_config);
+    provide_toast_context();
 
     let needs_connect = connection_state.read().needs_connect_view();
 
@@ -63,8 +66,25 @@ pub(crate) fn App() -> Element {
                     connection_config,
                 }
             } else {
-                Router::<Route> {}
+                ConnectedApp {}
             }
         }
+    }
+}
+
+/// Inner component rendered when connected.
+///
+/// Starts the SSE coroutine and renders the router with toast overlay.
+#[component]
+fn ConnectedApp() -> Element {
+    let config = use_context::<Signal<crate::state::connection::ConnectionConfig>>();
+
+    // WHY: Start SSE coroutine here (not in App) so it only runs when connected
+    // and has access to the finalized connection config.
+    crate::services::sse_coroutine::start_sse_coroutine(&config.read());
+
+    rsx! {
+        crate::components::toast_container::ToastContainer {}
+        Router::<Route> {}
     }
 }

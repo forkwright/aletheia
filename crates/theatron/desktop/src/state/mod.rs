@@ -9,3 +9,4 @@ pub mod collections;
 pub mod connection;
 pub mod events;
 pub(crate) mod fetch;
+pub mod toasts;

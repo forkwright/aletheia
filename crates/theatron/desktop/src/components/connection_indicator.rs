@@ -1,14 +1,16 @@
-//! Connection indicator component state.
+//! Connection indicator component.
 //!
-//! Provides the data model for a small UI indicator showing SSE stream
-//! health. In Dioxus, this becomes a component reading a
-//! `Signal<SseConnectionState>` and rendering a colored dot with label.
+//! Small UI indicator showing SSE stream health. Reads
+//! `Signal<SseConnectionState>` from context and renders a colored dot
+//! with label.
 //!
 //! ```text
 //! ● Connected          (green)
 //! ● Reconnecting (2)   (yellow)
 //! ● Disconnected       (red)
 //! ```
+
+use dioxus::prelude::*;
 
 use crate::state::events::SseConnectionState;
 
@@ -69,6 +71,37 @@ impl ConnectionIndicator {
                 label: "Disconnected".to_string(),
                 tooltip: "Not connected to the event stream".to_string(),
             },
+        }
+    }
+}
+
+const INDICATOR_STYLE: &str = "\
+    display: flex; \
+    align-items: center; \
+    gap: 6px; \
+    padding: 6px 12px; \
+    font-size: 12px; \
+    opacity: 0.85;\
+";
+
+/// Render the SSE connection indicator.
+///
+/// Reads `Signal<SseConnectionState>` from context (provided in app root).
+#[component]
+pub(crate) fn ConnectionIndicatorView() -> Element {
+    let sse_state = use_context::<Signal<SseConnectionState>>();
+    let indicator = ConnectionIndicator::from_state(&sse_state.read());
+    let color = indicator.color.css();
+
+    rsx! {
+        div {
+            style: "{INDICATOR_STYLE}",
+            title: "{indicator.tooltip}",
+            span {
+                style: "color: {color}; font-size: 10px;",
+                "●"
+            }
+            span { "{indicator.label}" }
         }
     }
 }
