@@ -115,6 +115,7 @@ impl<'a> BackupManager<'a> {
     /// `validate_backup_path` (a private helper in this module).
     #[instrument(skip(self))]
     pub fn create_backup(&self) -> Result<Option<BackupResult>> {
+        let backup_start = std::time::Instant::now();
         if let Some(ref monitor) = self.disk_monitor
             && !monitor.allow_non_essential_write()
         {
@@ -157,6 +158,8 @@ impl<'a> BackupManager<'a> {
             messages = messages_count,
             "backup created"
         );
+
+        crate::metrics::record_backup_duration(backup_start.elapsed().as_secs_f64(), true);
 
         Ok(Some(BackupResult {
             path: backup_path,

@@ -19,6 +19,7 @@ aletheia-koina = { path = "../koina" }
 argon2 = { version = "0.5", features = ["std"] }
 base64 = { workspace = true }
 blake3 = "1"
+prometheus = { workspace = true }
 rand = { workspace = true }
 ring = { workspace = true }
 reqwest = { workspace = true }

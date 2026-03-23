@@ -252,6 +252,7 @@ impl Watchdog {
         let now = Instant::now();
         let timeout = self.config.heartbeat_timeout;
         let max_restarts = self.config.max_restarts;
+        let mut hung_count: i64 = 0;
 
         let ids: Vec<String> = self.processes.keys().cloned().collect();
 
@@ -286,6 +287,7 @@ impl Watchdog {
                 if let Some(proc) = self.processes.get_mut(&id) {
                     proc.state = ProcessState::Hung;
                 }
+                hung_count += 1;
             }
 
             let Some(proc) = self.processes.get(&id) else {
@@ -311,6 +313,8 @@ impl Watchdog {
 
             self.restart_process(&id, elapsed).await;
         }
+
+        crate::metrics::set_hung_processes(hung_count);
     }
 
     /// Kill and restart a hung process.
@@ -369,6 +373,8 @@ impl Watchdog {
                 }
             }
         }
+
+        crate::metrics::record_watchdog_restart(id);
 
         self.restart_log.push(RestartEvent {
             process_id: id.to_owned(),

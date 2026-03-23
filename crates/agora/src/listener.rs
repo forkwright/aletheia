@@ -61,6 +61,8 @@ impl ChannelListener {
             let abort = handle.abort_handle();
             cleanup.register(move || abort.abort());
         }
+        // WHY: handle count is small (single-digit), fits in i64
+        crate::metrics::set_active_subscriptions(i64::try_from(handles.len()).unwrap_or(0));
         Self {
             rx: Some(rx),
             handles,

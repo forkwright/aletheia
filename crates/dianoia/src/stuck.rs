@@ -137,7 +137,11 @@ impl StuckDetector {
         while self.history.len() > self.config.history_window {
             self.history.pop_front();
         }
-        self.check()
+        let signal = self.check();
+        if let Some(ref s) = signal {
+            crate::metrics::record_stuck_detection(stuck_pattern_label(&s.pattern));
+        }
+        signal
     }
 
     /// Check current history for stuck patterns without recording a new invocation.
@@ -380,6 +384,16 @@ impl StuckDetector {
         } else {
             None
         }
+    }
+}
+
+/// Convert a stuck pattern to a short label for metrics.
+fn stuck_pattern_label(pattern: &StuckPattern) -> &'static str {
+    match pattern {
+        StuckPattern::RepeatedError { .. } => "repeated_error",
+        StuckPattern::SameToolSameArgs { .. } => "same_tool_same_args",
+        StuckPattern::AlternatingFailure { .. } => "alternating_failure",
+        StuckPattern::EscalatingRetry { .. } => "escalating_retry",
     }
 }
 

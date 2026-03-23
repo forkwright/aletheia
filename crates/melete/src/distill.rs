@@ -346,6 +346,7 @@ impl DistillEngine {
         provider: &dyn LlmProvider,
         distillation_number: u32,
     ) -> Result<DistillResult> {
+        let distill_start = std::time::Instant::now();
         if messages.is_empty() {
             return NoMessagesSnafu.fail();
         }
@@ -423,6 +424,7 @@ impl DistillEngine {
             }
             Err(e) => {
                 self.lock_retry_state().record_failure();
+                crate::metrics::record_distillation(nous_id, distill_start.elapsed().as_secs_f64(), false);
                 return Err(e);
             }
         };
@@ -430,12 +432,18 @@ impl DistillEngine {
         let summary = extract_summary_text(&response.content);
         if summary.is_empty() {
             self.lock_retry_state().record_failure();
+            crate::metrics::record_distillation(nous_id, distill_start.elapsed().as_secs_f64(), false);
             return EmptySummarySnafu.fail();
         }
 
         let tokens_after = response.usage.output_tokens;
         let timestamp = jiff::Timestamp::now().to_string();
         let memory_flush = parse_summary_to_flush(&summary, &timestamp);
+
+        crate::metrics::record_distillation(nous_id, distill_start.elapsed().as_secs_f64(), true);
+        if tokens_before > tokens_after {
+            crate::metrics::record_tokens_saved(nous_id, tokens_before - tokens_after);
+        }
 
         Ok(DistillResult {
             summary,

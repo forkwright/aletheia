@@ -15,6 +15,8 @@ pub mod error;
 mod execution;
 /// Instance maintenance services: trace rotation, drift detection, DB monitoring, retention.
 pub mod maintenance;
+/// Prometheus metric definitions for daemon task execution and watchdog monitoring.
+pub mod metrics;
 /// Prosoche (directed attention) periodic check-in for calendar, tasks, and system health.
 pub mod prosoche;
 /// Per-nous background task runner with cron scheduling, failure tracking, and graceful shutdown.

@@ -66,7 +66,9 @@ impl ChannelRegistry {
             }
             .build()
         })?;
-        Ok(provider.send(params).await)
+        let result = provider.send(params).await;
+        crate::metrics::record_channel_message(channel_id, result.sent);
+        Ok(result)
     }
 
     /// Probe all registered channels for health status.

@@ -512,6 +512,8 @@ impl TaskRunner {
         task.backoff_until = None;
         task.next_run = task.def.schedule.next_run().unwrap_or(None);
 
+        crate::metrics::record_cron_execution(&task.def.name, duration.as_secs_f64(), true);
+
         tracing::info!(
             task_id = %task.def.id,
             task_name = %task.def.name,
@@ -540,6 +542,7 @@ impl TaskRunner {
             return;
         };
 
+        crate::metrics::record_cron_execution(&task.def.name, 0.0, false);
         task.consecutive_failures += 1;
         task.last_run = Some(jiff::Timestamp::now());
 
