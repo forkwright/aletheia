@@ -31,11 +31,20 @@ static TOKEN_REFRESHES_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
     .expect("metric registration")
 });
 
+static CREDENTIAL_WRITE_FAILURES_TOTAL: LazyLock<prometheus::IntCounter> = LazyLock::new(|| {
+    prometheus::register_int_counter!(
+        "aletheia_credential_write_failures_total",
+        "Total credential file write failures"
+    )
+    .expect("metric registration")
+});
+
 /// Force-initialize all lazy metric statics.
 pub fn init() {
     // kanon:ignore RUST/pub-visibility
     LazyLock::force(&AUTH_ATTEMPTS_TOTAL);
     LazyLock::force(&TOKEN_REFRESHES_TOTAL);
+    LazyLock::force(&CREDENTIAL_WRITE_FAILURES_TOTAL);
 }
 
 /// Record an authentication attempt.
@@ -50,6 +59,11 @@ pub(crate) fn record_auth_attempt(method: &str, success: bool) {
 pub(crate) fn record_token_refresh(success: bool) {
     let status = if success { "ok" } else { "error" };
     TOKEN_REFRESHES_TOTAL.with_label_values(&[status]).inc();
+}
+
+/// Record a credential file write failure.
+pub(crate) fn record_credential_write_failure() {
+    CREDENTIAL_WRITE_FAILURES_TOTAL.inc();
 }
 
 #[cfg(test)]
@@ -71,5 +85,10 @@ mod tests {
     fn record_token_refresh_does_not_panic() {
         record_token_refresh(true);
         record_token_refresh(false);
+    }
+
+    #[test]
+    fn record_credential_write_failure_does_not_panic() {
+        record_credential_write_failure();
     }
 }
