@@ -299,5 +299,13 @@ pub(crate) fn render_for_view(
             super::editor::render(app, frame, area, theme);
             Vec::new()
         }
+        View::Planning => {
+            super::planning::render(app, frame, area, theme);
+            Vec::new()
+        }
+        View::Retrospective => {
+            super::retrospective::render(app, frame, area, theme);
+            Vec::new()
+        }
     }
 }

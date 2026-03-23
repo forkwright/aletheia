@@ -444,6 +444,15 @@ fn render_message(
         _ => ("system", theme.style_muted()),
     };
 
+    // WHY: Subtle background tint on assistant messages creates visual distinction
+    // between human and nous/agent messages without being distracting.
+    let is_assistant = msg.role == "assistant";
+    let msg_bg = if is_assistant {
+        Some(theme.colors.surface)
+    } else {
+        None
+    };
+
     // Selection indicator prefix
     let marker = if ctx.selected { "▸" } else { " " };
     let marker_style = if ctx.selected {
@@ -475,7 +484,11 @@ fn render_message(
         header_spans.push(Span::styled(format!("  {}", time_str), theme.style_dim()));
     }
 
-    lines.push(Line::from(header_spans));
+    let mut header_line = Line::from(header_spans);
+    if let Some(bg) = msg_bg {
+        header_line = header_line.style(Style::default().bg(bg));
+    }
+    lines.push(header_line);
 
     // Tool calls as collapsible cards
     if !msg.tool_calls.is_empty() {
@@ -513,7 +526,11 @@ fn render_message(
             padded_spans.extend(line.spans);
         }
 
-        lines.push(Line::from(padded_spans));
+        let mut content_line = Line::from(padded_spans);
+        if let Some(bg) = msg_bg {
+            content_line = content_line.style(Style::default().bg(bg));
+        }
+        lines.push(content_line);
     }
 
     // Convert markdown-relative MdLink positions to paragraph-relative para_links.
@@ -532,7 +549,11 @@ fn render_message(
         for line in preview_lines {
             let mut padded = vec![Span::styled(content_prefix, prefix_style)];
             padded.extend(line.spans);
-            lines.push(Line::from(padded));
+            let mut img_line = Line::from(padded);
+            if let Some(bg) = msg_bg {
+                img_line = img_line.style(Style::default().bg(bg));
+            }
+            lines.push(img_line);
         }
     }
 
