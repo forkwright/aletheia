@@ -875,6 +875,13 @@ fn render_streaming(
 
         // Render the partial line buffer (not yet flushed to streaming_text)
         if !app.connection.streaming_line_buffer.is_empty() {
+            // WHY: markdown strips trailing blank lines, so a \n\n paragraph break at
+            // the end of streaming_text is invisible in the rendered output.  Re-insert
+            // the blank line here so the gap is visible while the next paragraph is
+            // still being typed into the buffer.
+            if app.connection.streaming_text.ends_with("\n\n") {
+                lines.push(Line::raw(""));
+            }
             lines.push(Line::from(vec![
                 Span::raw(" "),
                 Span::styled(

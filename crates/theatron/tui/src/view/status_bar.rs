@@ -272,6 +272,15 @@ fn agent_identity_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
     spans
 }
 
+/// How long the SSE connection must be down before "Reconnecting…" is shown.
+///
+/// WHY: Normal server-side SSE resets (keepalive gaps, load balancer timeouts)
+/// trigger a disconnect/reconnect cycle that typically completes in under 1s.
+/// Showing "Reconnecting…" immediately causes a brief flicker on every normal
+/// reconnect.  A 2s debounce hides transient blips while still surfacing genuine
+/// outages in a timely way.
+const RECONNECT_LABEL_DEBOUNCE: std::time::Duration = std::time::Duration::from_secs(2);
+
 fn connection_indicator_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
     if app.connection.sse_connected {
         // WHY: The SSE layer triggers a reconnect after 30s of silence (READ_TIMEOUT).
@@ -290,7 +299,12 @@ fn connection_indicator_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
         } else {
             vec![Span::styled("●", theme.style_success())]
         }
-    } else if app.connection.sse_disconnected_at.is_some() {
+    } else if app
+        .connection
+        .sse_disconnected_at
+        .is_some_and(|t| t.elapsed() >= RECONNECT_LABEL_DEBOUNCE)
+    {
+        // WHY: only label after the debounce window to avoid flicker on transient reconnects
         vec![
             Span::styled("○", theme.style_error()),
             Span::styled(" Reconnecting…", theme.style_dim()),
