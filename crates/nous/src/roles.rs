@@ -391,8 +391,6 @@ End your response with a JSON block:
 
 #[cfg(test)]
 mod tests {
-    #![expect(clippy::expect_used, reason = "test assertions")]
-
     use super::*;
 
     #[test]
@@ -549,8 +547,10 @@ mod tests {
         assert!(policy.is_allowed("grep"));
         assert!(!policy.is_allowed("write"));
         assert!(!policy.is_allowed("exec"));
-        let list = policy.to_allowlist().expect("should produce allowlist");
-        assert_eq!(list.len(), 2);
+        match policy.to_allowlist() {
+            Some(list) => assert_eq!(list.len(), 2),
+            None => panic!("AllowOnly policy should produce an allowlist"),
+        }
     }
 
     #[test]
