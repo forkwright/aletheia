@@ -24,6 +24,8 @@ pub(crate) mod plan_card;
 pub(crate) mod planning_card;
 /// Quick input overlay for the global hotkey launcher.
 pub(crate) mod quick_input;
+/// Reusable drag-to-resize panel divider.
+pub(crate) mod resize_handle;
 pub mod session_tabs;
 pub(crate) mod table;
 pub(crate) mod theme_toggle;
@@ -37,4 +39,6 @@ pub(crate) mod toast_container;
 pub(crate) mod tool_approval;
 pub(crate) mod tool_panel;
 pub(crate) mod tool_status;
+/// Virtual scrolling utilities for large lists.
+pub(crate) mod virtual_list;
 pub(crate) mod wave_band;
