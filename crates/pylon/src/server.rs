@@ -347,6 +347,42 @@ fn spawn_sighup_handler(state: Arc<AppState>) -> tokio::task::JoinHandle<()> {
     )
 }
 
+#[expect(
+    clippy::expect_used,
+    reason = "signal handler installation is infallible on supported platforms"
+)]
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install ctrl+c handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        // SAFETY: cancel-safe. The `ctrl_c` future wraps `tokio::signal::ctrl_c()`,
+        // which is cancel-safe: dropping it before it resolves simply re-arms the
+        // handler; Ctrl+C will be caught by the next call.
+        () = ctrl_c => info!("received ctrl+c"),
+        // SAFETY: cancel-safe. The `terminate` future wraps `Signal::recv()`,
+        // which is cancel-safe: if dropped before SIGTERM arrives, the signal
+        // remains pending in the OS and will be delivered on the next recv() call.
+        // On non-Unix platforms `terminate` is `pending::<()>()`, which is trivially
+        // cancel-safe and never resolves.
+        () = terminate => info!("received SIGTERM"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use snafu::IntoError as _;
@@ -391,41 +427,5 @@ mod tests {
     fn server_error_tls_not_compiled_display() {
         let err: ServerError = TlsNotCompiledSnafu.build();
         assert!(err.to_string().contains("TLS"));
-    }
-}
-
-#[expect(
-    clippy::expect_used,
-    reason = "signal handler installation is infallible on supported platforms"
-)]
-async fn shutdown_signal() {
-    let ctrl_c = async {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("failed to install ctrl+c handler");
-    };
-
-    #[cfg(unix)]
-    let terminate = async {
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .expect("failed to install SIGTERM handler")
-            .recv()
-            .await;
-    };
-
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-
-    tokio::select! {
-        // SAFETY: cancel-safe. The `ctrl_c` future wraps `tokio::signal::ctrl_c()`,
-        // which is cancel-safe: dropping it before it resolves simply re-arms the
-        // handler; Ctrl+C will be caught by the next call.
-        () = ctrl_c => info!("received ctrl+c"),
-        // SAFETY: cancel-safe. The `terminate` future wraps `Signal::recv()`,
-        // which is cancel-safe: if dropped before SIGTERM arrives, the signal
-        // remains pending in the OS and will be delivered on the next recv() call.
-        // On non-Unix platforms `terminate` is `pending::<()>()`, which is trivially
-        // cancel-safe and never resolves.
-        () = terminate => info!("received SIGTERM"),
     }
 }

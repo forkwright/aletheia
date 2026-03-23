@@ -323,7 +323,6 @@ pub(crate) fn rank_skills(candidates: Vec<Fact>) -> Vec<Fact> {
 mod tests {
     #![expect(
         clippy::indexing_slicing,
-        clippy::unwrap_used,
         clippy::expect_used,
         reason = "test assertions may panic on failure"
     )]

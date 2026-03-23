@@ -390,13 +390,9 @@ mod tests {
             domains: vec![ResearchDomain::Stack],
         };
 
-        let _ = run_research(
-            &(svc.clone() as Arc<dyn SpawnService>),
-            "test-parent",
-            "test",
-            &config,
-        )
-        .await;
+        #[expect(clippy::as_conversions, reason = "concrete-to-trait-object upcast")]
+        let spawner = svc.clone() as Arc<dyn SpawnService>;
+        let _ = run_research(&spawner, "test-parent", "test", &config).await;
 
         assert_eq!(svc.captured_timeout.load(Ordering::Relaxed), 180);
     }
