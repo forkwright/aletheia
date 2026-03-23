@@ -1,4 +1,9 @@
-//! Planning view: display active plans or a placeholder.
+//! Planning view: project list and project detail with checkpoints and verification.
+
+pub(crate) mod checkpoints;
+pub(crate) mod gap_analysis;
+pub(crate) mod project_detail;
+pub(crate) mod verification;
 
 use dioxus::prelude::*;
 
