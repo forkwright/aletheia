@@ -13,13 +13,16 @@ use qdrant_client::qdrant::{
     ScrollPointsBuilder, value, with_payload_selector, with_vectors_selector,
 };
 
-use aletheia_mneme::embedding::{EmbeddingConfig, EmbeddingProvider, create_provider};
+use aletheia_mneme::embedding::{
+    DegradedEmbeddingProvider, EmbeddingConfig, EmbeddingProvider, create_provider,
+};
 use aletheia_mneme::id::{EmbeddingId, FactId};
 use aletheia_mneme::knowledge::{
     EmbeddedChunk, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
     far_future, parse_timestamp,
 };
 use aletheia_mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
+use aletheia_taxis::loader::load_config;
 use aletheia_taxis::oikos::Oikos;
 
 struct MemoryRecord {
@@ -58,17 +61,43 @@ pub(crate) async fn run(
 
     info!(qdrant_url, collection, dry_run, "starting memory migration");
 
+    // WHY: default 5s timeout causes h2 protocol errors on large scroll pages;
+    // keep_alive_while_idle prevents the connection from being severed mid-scroll.
     let client = Qdrant::from_url(qdrant_url)
+        .timeout(std::time::Duration::from_secs(120))
+        .keep_alive_while_idle()
         .build()
         .context("failed to connect to Qdrant")?;
 
-    let embedder: Arc<dyn EmbeddingProvider> = Arc::from(
-        create_provider(&EmbeddingConfig::default()).context("failed to create embedder")?,
-    );
+    let config = load_config(&oikos).context("failed to load instance config")?;
+    let embedding_config = EmbeddingConfig {
+        provider: config.embedding.provider.clone(),
+        model: config.embedding.model.clone(),
+        dimension: Some(config.embedding.dimension),
+        api_key: None,
+    };
+    let embedder: Arc<dyn EmbeddingProvider> = match create_provider(&embedding_config) {
+        Ok(p) => {
+            info!(
+                provider = %config.embedding.provider,
+                dim = config.embedding.dimension,
+                "embedding provider created"
+            );
+            Arc::from(p)
+        }
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                provider = %config.embedding.provider,
+                "embedding provider failed — embeddings will be skipped"
+            );
+            Arc::new(DegradedEmbeddingProvider::new(config.embedding.dimension))
+        }
+    };
 
-    let config = KnowledgeConfig::default();
+    let knowledge_config = KnowledgeConfig::default();
     let knowledgedb = if dry_run {
-        KnowledgeStore::open_mem_with_config(config)
+        KnowledgeStore::open_mem_with_config(knowledge_config)
             .context("failed to open in-memory knowledge store")?
     } else {
         let path = knowledge_path
@@ -79,7 +108,7 @@ pub(crate) async fn run(
                 .context("failed to create knowledge store directory")?;
         }
         info!(path = %path.display(), "opening persistent knowledge store");
-        KnowledgeStore::open_fjall(&path, config)
+        KnowledgeStore::open_fjall(&path, knowledge_config)
             .context("failed to open persistent knowledge store")?
     };
 
