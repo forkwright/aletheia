@@ -260,7 +260,12 @@ mod tests {
 
     #[test]
     fn severity_colors_are_valid() {
-        for severity in [Severity::Info, Severity::Success, Severity::Warning, Severity::Error] {
+        for severity in [
+            Severity::Info,
+            Severity::Success,
+            Severity::Warning,
+            Severity::Error,
+        ] {
             assert!(severity.css_color().starts_with('#'));
             assert!(severity.css_bg().starts_with('#'));
         }

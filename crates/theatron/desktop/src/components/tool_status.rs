@@ -6,7 +6,7 @@ use crate::state::tools::ToolStatus;
 
 const ICON_PENDING: &str = "\u{25CB}"; // ○
 const ICON_SUCCESS: &str = "\u{2713}"; // ✓
-const ICON_ERROR: &str = "\u{2717}";   // ✗
+const ICON_ERROR: &str = "\u{2717}"; // ✗
 
 const PENDING_STYLE: &str = "\
     color: #666; \

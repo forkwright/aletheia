@@ -197,7 +197,10 @@ mod tests {
         let val = serde_json::json!({"key": "value"});
         let formatted = format_json(&val);
         assert!(formatted.contains("key"), "should contain the key");
-        assert!(formatted.contains('\n'), "pretty print should have newlines");
+        assert!(
+            formatted.contains('\n'),
+            "pretty print should have newlines"
+        );
     }
 
     #[test]

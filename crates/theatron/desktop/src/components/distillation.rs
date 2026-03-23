@@ -65,11 +65,8 @@ fn stage_pct(label: &str) -> u8 {
 pub(crate) fn DistillationIndicatorView(nous_id: NousId) -> Element {
     let event_state = use_context::<Signal<EventState>>();
 
-    let progress: Option<DistillationProgress> = event_state
-        .read()
-        .distillation
-        .get(&nous_id)
-        .cloned();
+    let progress: Option<DistillationProgress> =
+        event_state.read().distillation.get(&nous_id).cloned();
 
     let Some(progress) = progress else {
         return rsx! { div {} };
