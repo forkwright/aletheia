@@ -241,6 +241,11 @@ pub struct SandboxSettings {
     pub egress: EgressPolicy,
     /// CIDR ranges or addresses permitted when `egress = "allowlist"`.
     pub egress_allowlist: Vec<String>,
+    /// Maximum number of processes (`RLIMIT_NPROC`) for exec child processes.
+    ///
+    /// WHY: `RLIMIT_NPROC` counts ALL processes for the user, not just sandbox
+    /// children. Default: 256. Closes #1984.
+    pub nproc_limit: u32,
 }
 
 impl Default for SandboxSettings {
@@ -254,6 +259,7 @@ impl Default for SandboxSettings {
             extra_exec_paths: Vec::new(),
             egress: EgressPolicy::default(),
             egress_allowlist: Vec::new(),
+            nproc_limit: 256,
         }
     }
 }

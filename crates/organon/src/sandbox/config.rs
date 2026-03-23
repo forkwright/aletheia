@@ -86,6 +86,13 @@ pub struct SandboxConfig {
     /// destinations can be enforced without root privileges; non-loopback
     /// entries log a warning.
     pub egress_allowlist: Vec<String>,
+    /// Maximum number of processes (`RLIMIT_NPROC`) for exec child processes.
+    ///
+    /// WHY: `RLIMIT_NPROC` counts ALL processes for the user, not just sandbox
+    /// children. The previous default of 64 caused EAGAIN failures on systems
+    /// running dispatch agents or other background processes. Default: 256.
+    /// Closes #1984.
+    pub nproc_limit: u32,
 }
 
 impl Default for SandboxConfig {
@@ -99,6 +106,7 @@ impl Default for SandboxConfig {
             extra_exec_paths: Vec::new(),
             egress: EgressPolicy::default(),
             egress_allowlist: Vec::new(),
+            nproc_limit: 256,
         }
     }
 }
@@ -312,5 +320,21 @@ mod tests {
     #[test]
     fn egress_policy_default_is_allow() {
         assert_eq!(EgressPolicy::default(), EgressPolicy::Allow);
+    }
+
+    #[test]
+    fn nproc_limit_default_is_256() {
+        let config = SandboxConfig::default();
+        assert_eq!(
+            config.nproc_limit, 256,
+            "nproc_limit should default to 256 to accommodate background processes"
+        );
+    }
+
+    #[test]
+    fn nproc_limit_configurable_via_serde() {
+        let json = r#"{"enabled":true,"nprocLimit":512}"#;
+        let config: SandboxConfig = serde_json::from_str(json).expect("parse");
+        assert_eq!(config.nproc_limit, 512);
     }
 }

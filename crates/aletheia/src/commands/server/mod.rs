@@ -360,6 +360,7 @@ pub(crate) async fn run(args: Args) -> Result<()> {
                     loop_max_warnings: 2,
                     session_token_cap: 500_000,
                     max_tool_result_bytes: resolved.limits.max_tool_result_bytes,
+                    max_consecutive_tool_only_iterations: 3,
                 },
                 domains,
                 server_tools: Vec::new(),

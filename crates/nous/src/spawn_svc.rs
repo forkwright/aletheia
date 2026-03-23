@@ -99,6 +99,7 @@ impl SpawnService for SpawnServiceImpl {
                 loop_max_warnings: 2,
                 session_token_cap: 500_000,
                 max_tool_result_bytes: 32_768,
+                max_consecutive_tool_only_iterations: 3,
             },
             domains: Vec::new(),
             server_tools: Vec::new(),

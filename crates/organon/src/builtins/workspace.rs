@@ -78,20 +78,6 @@ pub(crate) fn validate_path(raw: &str, ctx: &ToolContext, tool_name: &ToolName) 
 
     let normalized = normalize(&resolved);
 
-    // PERF: First check the normalized path (fast path, catches obvious traversals)
-    let allowed = ctx
-        .allowed_roots
-        .iter()
-        .any(|root| normalized.starts_with(root));
-
-    if !allowed {
-        return Err(error::InvalidInputSnafu {
-            name: tool_name.clone(),
-            reason: format!("path outside allowed roots: {raw}"),
-        }
-        .build());
-    }
-
     // NOTE: Resolve symlinks to prevent symlink-based escapes.
     // If the file exists, canonicalize it directly.
     // If not (e.g. write to new file), canonicalize the parent directory.
@@ -117,13 +103,17 @@ pub(crate) fn validate_path(raw: &str, ctx: &ToolContext, tool_name: &ToolName) 
 
     let canonical = canonical.unwrap_or_else(|_| normalized.clone());
 
-    // NOTE: Re-check canonical path against allowed roots
-    let canonical_allowed = ctx.allowed_roots.iter().any(|root| {
-        let canon_root = root.canonicalize().unwrap_or_else(|_| root.clone());
-        canonical.starts_with(&canon_root)
+    // WHY: Single-phase check using canonical paths for both the input and
+    // the allowed roots. The previous two-phase approach hard-rejected in the
+    // normalized check before reaching the canonical check, which broke when
+    // oikos canonicalized roots at startup (resolving symlinks) but the input
+    // path used the non-canonical form. Closes #1981.
+    let allowed = ctx.allowed_roots.iter().any(|root| {
+        let canon_root = root.canonicalize().unwrap_or_else(|_| normalize(root));
+        canonical.starts_with(&canon_root) || normalized.starts_with(&canon_root)
     });
 
-    if !canonical_allowed {
+    if !allowed {
         return Err(error::InvalidInputSnafu {
             name: tool_name.clone(),
             reason: format!("path outside allowed roots: {raw}"),
@@ -494,6 +484,8 @@ impl ToolExecutor for ExecExecutor {
             // RLIMIT_CPU caps CPU seconds. Closes #1717.
             #[cfg(target_os = "linux")]
             {
+                let nproc_cap = u64::from(self.sandbox.nproc_limit);
+
                 // SAFETY: setrlimit is async-signal-safe and only modifies the
                 // calling process's resource limits. Runs between fork and exec.
                 #[expect(
@@ -501,13 +493,16 @@ impl ToolExecutor for ExecExecutor {
                     reason = "pre_exec requires unsafe; setrlimit is async-signal-safe"
                 )]
                 unsafe {
-                    cmd.pre_exec(|| {
+                    cmd.pre_exec(move || {
                         use rustix::process::{Resource, Rlimit, setrlimit};
 
-                        // Cap subprocess count to prevent fork bombs
+                        // WHY: Cap subprocess count to prevent fork bombs.
+                        // RLIMIT_NPROC counts ALL user processes, not just sandbox
+                        // children, so the limit must be high enough to accommodate
+                        // existing background processes. Closes #1984.
                         let nproc_limit = Rlimit {
-                            current: Some(64),
-                            maximum: Some(64),
+                            current: Some(nproc_cap),
+                            maximum: Some(nproc_cap),
                         };
                         let _ = setrlimit(Resource::Nproc, nproc_limit);
 

@@ -162,6 +162,7 @@ pub(super) fn build_tool_registry(
             _ => aletheia_organon::sandbox::EgressPolicy::Allow,
         },
         egress_allowlist: sandbox_settings.egress_allowlist.clone(),
+        nproc_limit: sandbox_settings.nproc_limit,
     };
     builtins::register_all_with_sandbox(&mut registry, sandbox)
         .context("failed to register builtin tools")?;
