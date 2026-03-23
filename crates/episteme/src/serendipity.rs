@@ -166,8 +166,6 @@ impl GraphSnapshot {
     }
 
     /// Normalized `PageRank` denominator (avoids division by zero).
-    // WHY: allow not expect — dead in lib target, live in test target
-    #[allow(dead_code)]
     fn max_pagerank_or_one(&self) -> f64 {
         if self.max_pagerank > 0.0 {
             self.max_pagerank
@@ -232,8 +230,7 @@ pub fn random_walk(
 /// 1. Haven't been accessed recently (high recency surprise)
 /// 2. Are connected to the current context (relevance floor)
 /// 3. Are in a different community from the query context (cross-community bonus)
-// WHY: allow not expect — dead in lib target, live in test target
-#[allow(dead_code)]
+#[cfg_attr(not(test), expect(dead_code, reason = "test-only scoring function for serendipity engine"))]
 #[must_use]
 pub(crate) fn surprise_scores(
     graph: &GraphSnapshot,
@@ -274,8 +271,7 @@ pub(crate) fn surprise_scores(
 ///
 /// Relevance: inverse graph distance from seed entities.
 /// Novelty: cross-community score + obscurity (low `PageRank`).
-// WHY: allow not expect — dead in lib target, live in test target
-#[allow(dead_code)]
+#[cfg_attr(not(test), expect(dead_code, reason = "test-only scoring function for serendipity engine"))]
 #[must_use]
 pub(crate) fn score_discoveries(
     graph: &GraphSnapshot,
@@ -463,8 +459,6 @@ pub fn select_injection<S: ::std::hash::BuildHasher>(
 }
 
 /// Community novelty score: 1.0 if in a different community, 0.3 if same.
-// WHY: allow not expect — dead in lib target, live in test target
-#[allow(dead_code)]
 fn community_novelty(community: i64, home_communities: &HashSet<i64>) -> f64 {
     if community >= 0 && !home_communities.contains(&community) {
         1.0

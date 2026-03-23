@@ -339,14 +339,11 @@ pub enum Msg {
     #[expect(dead_code, reason = "triggered by render, not keyboard")]
     EditorScrollTree(usize),
 
-    // WHY: #[allow] over #[expect] — constructed only in test code so dead_code fires for
-    // the lib target but not the test target; #[expect] would cause unfulfilled-expectation
-    // errors in the test compilation unit.
-    #[allow(dead_code)]
+    #[cfg_attr(not(test), expect(dead_code, reason = "constructed by API event bridge, tested only"))]
     ShowError(String),
-    #[allow(dead_code)]
+    #[cfg_attr(not(test), expect(dead_code, reason = "constructed by API event bridge, tested only"))]
     ShowSuccess(String),
-    #[allow(dead_code)]
+    #[cfg_attr(not(test), expect(dead_code, reason = "constructed by API event bridge, tested only"))]
     DismissError,
 
     #[expect(dead_code, reason = "planned TUI feature")]
@@ -388,17 +385,16 @@ pub enum Msg {
     SessionSearchDown,
     SessionSearchSelect,
 
-    // WHY: #[allow] over #[expect] — constructed in tests only; see ShowError note above.
-    #[allow(dead_code)]
+    #[expect(dead_code, reason = "metrics overlay entry point, keybinding not yet wired")]
     MetricsOpen,
-    #[allow(dead_code)]
+    #[cfg_attr(not(test), expect(dead_code, reason = "metrics overlay message, constructed in tests only"))]
     MetricsClose,
-    #[allow(dead_code)]
+    #[cfg_attr(not(test), expect(dead_code, reason = "metrics overlay message, constructed in tests only"))]
     MetricsSelectUp,
-    #[allow(dead_code)]
+    #[cfg_attr(not(test), expect(dead_code, reason = "metrics overlay message, constructed in tests only"))]
     MetricsSelectDown,
     /// Loaded result from async health check triggered on open.
-    #[allow(dead_code)]
+    #[cfg_attr(not(test), expect(dead_code, reason = "metrics overlay message, constructed in tests only"))]
     MetricsHealthLoaded(bool),
 
     #[expect(dead_code, reason = "planned TUI feature")]
@@ -439,14 +435,11 @@ pub enum MessageActionKind {
     Delete,
     OpenLinks,
     Inspect,
-    // WHY: #[allow] over #[expect] — constructed only in test code so dead_code fires for
-    // the lib target but not the test target; #[expect] would cause unfulfilled-expectation
-    // errors in the test compilation unit.
-    #[allow(dead_code)]
+    #[cfg_attr(not(test), expect(dead_code, reason = "context action variant, constructed in tests only"))]
     QuoteInReply,
-    #[allow(dead_code)]
+    #[cfg_attr(not(test), expect(dead_code, reason = "context action variant, constructed in tests only"))]
     RateResponse,
-    #[allow(dead_code)]
+    #[cfg_attr(not(test), expect(dead_code, reason = "context action variant, constructed in tests only"))]
     FlagForReview,
 }
 

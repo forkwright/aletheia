@@ -233,9 +233,7 @@ impl DistillEngine {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    // WHY: these methods are only called from unit tests; the main distillation
-    // loop uses the engine opaquely. Dead-code lint fires in non-test builds.
-    #[allow(dead_code)]
+    #[cfg_attr(not(test), expect(dead_code, reason = "test-only query API for distillation engine"))]
     /// Advance the backoff counter by one conversation turn.
     ///
     /// Call once at the start of each conversation turn, before calling
@@ -250,7 +248,7 @@ impl DistillEngine {
         false
     }
 
-    #[allow(dead_code)]
+    #[cfg_attr(not(test), expect(dead_code, reason = "test-only query API for distillation engine"))]
     /// Returns `true` if the engine is in an active backoff period.
     ///
     /// Does not advance state. Use `tick_turn` to advance.
@@ -258,7 +256,7 @@ impl DistillEngine {
         self.lock_retry_state().turns_to_skip > 0
     }
 
-    #[allow(dead_code)]
+    #[cfg_attr(not(test), expect(dead_code, reason = "test-only query API for distillation engine"))]
     /// Check if the given messages warrant distillation.
     ///
     /// Returns true when message count meets the minimum (accounting for
@@ -444,7 +442,7 @@ impl DistillEngine {
         })
     }
 
-    #[allow(dead_code)]
+    #[cfg_attr(not(test), expect(dead_code, reason = "test-only query API for distillation engine"))]
     /// Access the engine configuration.
     pub(crate) fn config(&self) -> &DistillConfig {
         &self.config
