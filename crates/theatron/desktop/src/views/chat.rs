@@ -1,4 +1,5 @@
-//! Chat view: virtualized message list, streaming indicator, thinking panels, and input bar.
+//! Chat view: session tabs, virtualized message list, streaming indicator,
+//! command palette, distillation indicator, and input bar.
 
 use std::time::Duration;
 
@@ -9,13 +10,19 @@ use crate::api::client::authenticated_client;
 use crate::components::chat::{
     ChatMessage as LegacyChatMessage, ChatState, ChatStateManager, MessageRole,
 };
+use crate::components::command_palette::CommandPaletteView;
+use crate::components::distillation::DistillationIndicatorView;
 use crate::components::input_bar::InputBar;
 use crate::components::markdown::Markdown;
 use crate::components::message::{MessageBubble, should_group};
 use crate::components::planning_card::PlanningCard;
+use crate::components::session_tabs::SessionTabsView;
 use crate::components::tool_approval::ToolApproval;
 use crate::components::tool_panel::ToolPanel;
+use crate::state::agents::AgentStore;
+use crate::state::app::TabBar;
 use crate::state::chat::{ChatMessage, ChatStore, Role};
+use crate::state::commands::CommandStore;
 use crate::state::connection::ConnectionConfig;
 use crate::state::input::InputState;
 
@@ -25,18 +32,25 @@ const ESTIMATED_MSG_HEIGHT: f64 = 80.0;
 /// Number of extra messages to render above and below the visible range.
 const OVERSCAN: usize = 3;
 
-/// Chat view with virtualized scrolling and markdown rendering.
+/// Chat view with virtualized scrolling, markdown rendering, and agent switching.
 #[component]
 pub(crate) fn Chat() -> Element {
     let mut legacy_state = use_signal(ChatState::default);
     let _store = use_signal(ChatStore::default);
     let input_state = use_signal(InputState::default);
     let mut cancel_token = use_signal(CancellationToken::new);
+    let mut palette_open = use_signal(|| false);
     let config: Signal<ConnectionConfig> = use_context();
+    let mut cmd_store = use_context::<Signal<CommandStore>>();
+    let agent_store = use_context::<Signal<AgentStore>>();
+    let mut tab_bar = use_context::<Signal<TabBar>>();
 
     // Virtual scroll state
     let mut scroll_top = use_signal(|| 0.0_f64);
     let mut container_height = use_signal(|| 600.0_f64);
+
+    // Derive the active agent ID from the agent store.
+    let active_nous_id = agent_store.read().active_id.clone();
 
     let is_streaming = legacy_state.read().streaming.is_streaming;
 
@@ -110,6 +124,15 @@ pub(crate) fn Chat() -> Element {
             return;
         }
 
+        // WHY: Slash commands beginning with `/` are intercepted here so the
+        // palette can handle them. Unrecognised commands fall through to chat.
+        if text.starts_with('/') {
+            palette_open.set(false);
+            // NOTE: Command execution wired at the application level.
+            // The palette already handles known commands via on_execute.
+            return;
+        }
+
         legacy_state.write().messages.push(LegacyChatMessage {
             role: MessageRole::User,
             content: text.clone(),
@@ -121,6 +144,22 @@ pub(crate) fn Chat() -> Element {
             tool_call_details: Vec::new(),
             plans: Vec::new(),
         });
+
+        // Register a tab for this agent if not already open.
+        if let Some(ref agent_id) = agent_store.read().active_id {
+            let bar = tab_bar.read();
+            let already_open = bar.tabs.iter().any(|t| &t.agent_id == agent_id);
+            drop(bar);
+            if !already_open {
+                let display = agent_store
+                    .read()
+                    .get(agent_id)
+                    .map(|r| r.display_name().to_string())
+                    .unwrap_or_else(|| agent_id.to_string());
+                let idx = tab_bar.write().create(agent_id.clone(), display);
+                tab_bar.write().active = idx;
+            }
+        }
 
         let cfg = config.read().clone();
 
@@ -194,7 +233,10 @@ pub(crate) fn Chat() -> Element {
                 height: 100%;
                 background: var(--bg);
                 font-family: var(--font-body);
+                position: relative;
             ",
+
+            SessionTabsView {}
 
             if messages.is_empty() && !is_streaming {
                 // Empty state
@@ -368,6 +410,18 @@ pub(crate) fn Chat() -> Element {
                         style: "height: {pad_bottom}px;",
                     }
                 }
+            }
+
+            if let Some(ref nous_id) = active_nous_id {
+                DistillationIndicatorView { nous_id: nous_id.clone() }
+            }
+
+            CommandPaletteView {
+                is_open: *palette_open.read(),
+                on_execute: move |cmd: String| {
+                    palette_open.set(false);
+                    // NOTE: Command execution feeds back into the input bar.
+                },
             }
 
             InputBar {

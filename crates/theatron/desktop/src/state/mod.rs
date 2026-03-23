@@ -4,9 +4,11 @@
 //! and enums, suitable for wrapping in `Signal<T>` or `Store<T>` at the
 //! component layer.
 
+pub mod agents;
 pub mod app;
 pub(crate) mod chat;
 pub mod collections;
+pub mod commands;
 pub mod connection;
 pub mod events;
 pub(crate) mod fetch;
