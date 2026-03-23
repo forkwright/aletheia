@@ -3,6 +3,7 @@
 use dioxus::prelude::*;
 
 use crate::services::toast::use_toast;
+use crate::state::navigation::{self, NavAction};
 use crate::state::toasts::{Toast, ToastId};
 
 const TOAST_STYLE: &str = "\
@@ -84,14 +85,23 @@ pub(crate) fn ToastItem(toast: Toast) -> Element {
                 div { style: "{BODY_STYLE}", "{body}" }
             }
             if let Some(ref action) = toast.action {
-                button {
-                    style: "{ACTION_STYLE}",
-                    onclick: move |_| {
-                        // NOTE: Action handling is dispatched via toast dismissal.
-                        // Specific action routing can be added as needed.
-                        toasts.dismiss(toast_id);
-                    },
-                    "{action.label}"
+                {
+                    let action_id = action.action_id.clone();
+                    rsx! {
+                        button {
+                            style: "{ACTION_STYLE}",
+                            onclick: move |_| {
+                                // NOTE: Dispatch navigation actions before dismissing.
+                                if let Some(nav) = navigation::parse_action_id(&action_id) {
+                                    if let Some(mut signal) = try_consume_context::<Signal<Option<NavAction>>>() {
+                                        signal.set(Some(nav));
+                                    }
+                                }
+                                toasts.dismiss(toast_id);
+                            },
+                            "{action.label}"
+                        }
+                    }
                 }
             }
         }

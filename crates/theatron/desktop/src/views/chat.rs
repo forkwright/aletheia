@@ -19,12 +19,14 @@ use crate::components::planning_card::PlanningCard;
 use crate::components::session_tabs::SessionTabsView;
 use crate::components::tool_approval::ToolApproval;
 use crate::components::tool_panel::ToolPanel;
+use crate::services::file_watcher::{self, FileChangeTracker};
 use crate::state::agents::AgentStore;
 use crate::state::app::TabBar;
 use crate::state::chat::{ChatMessage, ChatStore, Role};
 use crate::state::commands::CommandStore;
 use crate::state::connection::ConnectionConfig;
 use crate::state::input::InputState;
+use crate::state::toasts::{Severity, ToastStore};
 
 /// Estimated message height in pixels for virtual scroll calculations.
 const ESTIMATED_MSG_HEIGHT: f64 = 80.0;
@@ -192,6 +194,7 @@ pub(crate) fn Chat() -> Element {
             );
 
             let mut manager = ChatStateManager::new();
+            let mut file_tracker = FileChangeTracker::new();
             let timeout = tokio::time::sleep(Duration::from_secs(600));
             tokio::pin!(timeout);
 
@@ -215,6 +218,25 @@ pub(crate) fn Chat() -> Element {
                 };
 
                 let Some(event) = event else { break };
+
+                // NOTE: Check for file change events and emit toast notifications.
+                if let Some(change) = file_tracker.process(&event) {
+                    if let Some(mut store) = try_consume_context::<Signal<ToastStore>>() {
+                        let title = file_watcher::toast_title(&change.kind);
+                        let body = file_watcher::truncate_path(&change.path, 60);
+                        let action_id = format!("open_diff:{}", change.path);
+                        store.write().push_full(
+                            Severity::Info,
+                            title.to_string(),
+                            Some(body),
+                            Some(crate::state::toasts::ToastAction {
+                                label: "Open".to_string(),
+                                action_id,
+                            }),
+                        );
+                    }
+                }
+
                 let mut state = legacy_state.write();
                 let _ = manager.apply(event, &mut state);
             }
