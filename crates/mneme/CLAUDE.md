@@ -1,6 +1,6 @@
 # mneme
 
-Thin facade re-exporting from four decomposed sub-crates. 110 lines of glue code.
+Thin facade re-exporting from four decomposed sub-crates. 264 lines of glue code.
 
 ## Architecture
 

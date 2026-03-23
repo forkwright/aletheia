@@ -338,7 +338,7 @@ fn score_dimensions(input: &ComplexityInput<'_>) -> (i32, Vec<&'static str>) {
         factors.push("judgment");
     }
 
-    // Philosophical / nuanced
+    // Philosophical / subtle
     if PHILOSOPHICAL.is_match(text) {
         score += 20;
         factors.push("philosophical");

@@ -22,7 +22,7 @@ Shell: [standards/SHELL.md](standards/SHELL.md)
 ```bash
 cargo build                            # Debug build
 cargo build --release                  # Release (LTO, stripped)
-cargo test --workspace                 # Default tests (~4,800)
+cargo test --workspace                 # Default tests (~5,600)
 cargo test --workspace --features test-core  # + storage/engine tests
 cargo test --workspace --features test-full  # + ML embedding tests
 cargo test -p aletheia-hermeneus       # Single crate
@@ -118,6 +118,7 @@ Register in `crates/organon/src/builtins/mod.rs` via `register_all()`.
 | `config init-key` | Initialize encryption key for config secrets |
 | `config encrypt` | Encrypt a config value |
 | `check-config` | Validate configuration without starting services |
+| `memory check\|consolidate\|sample\|dedup\|patterns` | Memory maintenance operations |
 | `completions <bash\|zsh\|fish>` | Generate shell completions |
 
 ## API endpoints

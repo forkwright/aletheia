@@ -1,6 +1,6 @@
 # nous
 
-Agent session pipeline: bootstrap, recall, execute, finalize. 17K lines. The agent runtime.
+Agent session pipeline: bootstrap, recall, execute, finalize. 22K lines. The agent runtime.
 
 ## Read first
 

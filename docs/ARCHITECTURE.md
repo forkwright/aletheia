@@ -26,7 +26,7 @@ aletheia
 │   ├── episteme   -  knowledge pipeline: extraction, recall, consolidation, embeddings
 │   └── krites     -  embedded Datalog engine + HNSW vectors (mneme-engine feature gate)
 ├── hermeneus      -  Anthropic client, model routing, credentials, provider trait
-├── organon        -  tool registry + 36 built-in tools
+├── organon        -  tool registry + 39 built-in tools
 ├── nous           -  agent pipeline, bootstrap, recall, finalize, actor model
 ├── dianoia        -  planning / project orchestration
 ├── pylon          -  Axum HTTP gateway, SSE streaming
