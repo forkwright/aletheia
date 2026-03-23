@@ -63,7 +63,7 @@ mod tests {
     #[test]
     fn streamable_http_router_signature_is_correct() {
         // Compile-time verification that the function has the expected signature.
-        let _fn: fn(std::sync::Arc<crate::state::DiaporeiaState>) -> axum::Router =
+        let _: fn(std::sync::Arc<crate::state::DiaporeiaState>) -> axum::Router =
             streamable_http_router;
     }
 }

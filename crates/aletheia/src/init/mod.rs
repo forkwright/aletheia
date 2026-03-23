@@ -110,6 +110,50 @@ impl Default for Answers {
     }
 }
 
+fn build_non_interactive_answers(
+    root: PathBuf,
+    api_key: Option<SecretString>,
+    api_provider: Option<String>,
+    model: Option<String>,
+    auth_mode: Option<String>,
+) -> Answers {
+    // WHY: explicit API key was provided; pin source to "api-key" so the
+    // server loads the written credential file rather than falling through
+    // the "auto" chain which may pick up a different credential.
+    let credential_source = if api_key.is_some() {
+        "api-key".to_owned()
+    } else {
+        tracing::warn!(
+            "no API key provided — set --api-key or ANTHROPIC_API_KEY; server will start in degraded mode"
+        );
+        "auto".to_owned()
+    };
+
+    Answers {
+        root,
+        api_key,
+        api_provider: api_provider.unwrap_or_else(|| "anthropic".to_owned()),
+        model: model.unwrap_or_else(|| "claude-sonnet-4-6".to_owned()),
+        auth_mode: auth_mode.unwrap_or_else(|| "none".to_owned()),
+        credential_source,
+        ..Answers::default()
+    }
+}
+
+fn print_success_outro(root: &std::path::Path) -> Result<(), InitError> {
+    cliclack::outro(format!(
+        "Done! Start the server:\n\
+         \n\
+         \x1b[36m  aletheia -r {}\x1b[0m\n\
+         \n\
+         Then connect in another terminal:\n\
+         \n\
+         \x1b[36m  aletheia tui\x1b[0m",
+        root.display()
+    ))
+    .context(PromptSnafu)
+}
+
 pub(crate) fn run(args: RunArgs) -> Result<(), InitError> {
     let RunArgs {
         root,
@@ -131,53 +175,11 @@ pub(crate) fn run(args: RunArgs) -> Result<(), InitError> {
             }
             .build()
         })?;
-
-        let credential_source = if api_key.is_some() {
-            // WHY: explicit API key was provided; pin source to "api-key" so the
-            // server loads the written credential file rather than falling through
-            // the "auto" chain which may pick up a different credential.
-            "api-key".to_owned()
-        } else {
-            tracing::warn!(
-                "no API key provided — set --api-key or ANTHROPIC_API_KEY; server will start in degraded mode"
-            );
-            "auto".to_owned()
-        };
-
-        Answers {
-            root,
-            api_key,
-            api_provider: api_provider.unwrap_or_else(|| "anthropic".to_owned()),
-            model: model.unwrap_or_else(|| "claude-sonnet-4-6".to_owned()),
-            auth_mode: auth_mode.unwrap_or_else(|| "none".to_owned()),
-            credential_source,
-            ..Answers::default()
-        }
+        build_non_interactive_answers(root, api_key, api_provider, model, auth_mode)
     } else if yes {
         // NOTE: lenient non-interactive: skip prompts, apply defaults for missing values
         let root = root.unwrap_or_else(|| PathBuf::from("./instance"));
-
-        let credential_source = if api_key.is_some() {
-            // WHY: explicit API key was provided; pin source to "api-key" so the
-            // server loads the written credential file rather than falling through
-            // the "auto" chain which may pick up a different credential.
-            "api-key".to_owned()
-        } else {
-            tracing::warn!(
-                "no API key provided — set --api-key or ANTHROPIC_API_KEY; server will start in degraded mode"
-            );
-            "auto".to_owned()
-        };
-
-        Answers {
-            root,
-            api_key,
-            api_provider: api_provider.unwrap_or_else(|| "anthropic".to_owned()),
-            model: model.unwrap_or_else(|| "claude-sonnet-4-6".to_owned()),
-            auth_mode: auth_mode.unwrap_or_else(|| "none".to_owned()),
-            credential_source,
-            ..Answers::default()
-        }
+        build_non_interactive_answers(root, api_key, api_provider, model, auth_mode)
     } else {
         let root = root.unwrap_or_else(|| PathBuf::from("./instance"));
 
@@ -205,17 +207,7 @@ pub(crate) fn run(args: RunArgs) -> Result<(), InitError> {
             let answers = wizard_answers_to_answers(&wa);
             scaffold(&answers)?;
             write_user_profile_from_wizard(&wa)?;
-            cliclack::outro(format!(
-                "Done! Start the server:\n\
-                 \n\
-                 \x1b[36m  aletheia -r {}\x1b[0m\n\
-                 \n\
-                 Then connect in another terminal:\n\
-                 \n\
-                 \x1b[36m  aletheia tui\x1b[0m",
-                root_path.display()
-            ))
-            .context(PromptSnafu)?;
+            print_success_outro(&root_path)?;
             return Ok(());
         }
 
@@ -250,17 +242,7 @@ pub(crate) fn run(args: RunArgs) -> Result<(), InitError> {
     if is_non_interactive {
         tracing::info!(path = %answers.root.display(), "instance created");
     } else {
-        cliclack::outro(format!(
-            "Done! Start the server:\n\
-             \n\
-             \x1b[36m  aletheia -r {}\x1b[0m\n\
-             \n\
-             Then connect in another terminal:\n\
-             \n\
-             \x1b[36m  aletheia tui\x1b[0m",
-            answers.root.display()
-        ))
-        .context(PromptSnafu)?;
+        print_success_outro(&answers.root)?;
     }
 
     Ok(())
@@ -392,6 +374,10 @@ fn wizard_answers_to_answers(wa: &theatron_tui::wizard::WizardAnswers) -> Answer
 /// Replaces placeholder lines in the template with actual name, role, and
 /// timezone so the agent has real context from first run.
 #[cfg(feature = "tui")]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "sync init wizard; no async runtime"
+)]
 fn write_user_profile_from_wizard(
     wa: &theatron_tui::wizard::WizardAnswers,
 ) -> Result<(), InitError> {

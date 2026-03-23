@@ -391,6 +391,8 @@ End your response with a JSON block:
 
 #[cfg(test)]
 mod tests {
+    #![expect(clippy::expect_used, reason = "test assertions")]
+
     use super::*;
 
     #[test]
