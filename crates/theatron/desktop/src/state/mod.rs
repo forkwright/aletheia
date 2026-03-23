@@ -23,6 +23,8 @@ pub(crate) mod execution;
 pub(crate) mod fetch;
 /// Workspace file tree explorer state.
 pub(crate) mod files;
+/// Knowledge graph, force simulation, viewport, community filter, and drift state.
+pub(crate) mod graph;
 pub(crate) mod input;
 pub(crate) mod navigation;
 /// Planning project, requirements, and roadmap state.
