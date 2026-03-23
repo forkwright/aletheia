@@ -21,7 +21,7 @@ storage-fjall = ["mneme-engine", "aletheia-krites/storage-fjall"]
 embed-candle = ["dep:candle-core", "dep:candle-nn", "dep:candle-transformers", "dep:tokenizers", "dep:hf-hub"]
 hnsw_rs = ["dep:hnsw_rs", "aletheia-graphe/hnsw_rs"]
 # Test tiers (see docs/test-tiers.md)
-test-core = ["mneme-engine"]
+test-core = ["mneme-engine", "hnsw_rs"]
 test-full = ["test-core", "embed-candle"]
 
 [dependencies]

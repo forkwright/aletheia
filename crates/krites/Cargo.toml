@@ -14,7 +14,7 @@ workspace = true
 default = ["graph-algo"]
 graph-algo = []
 storage-fjall = ["dep:fjall"]
-test-core = []
+test-core = ["storage-fjall"]
 test-full = []
 
 [dependencies]
