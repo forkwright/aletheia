@@ -412,9 +412,11 @@ pub async fn entity_relationships(
     Ok(Json(RelationshipsResponse { relationships }))
 }
 
+mod bulk_import;
 mod mutation;
 mod search;
 
+pub use bulk_import::{__path_import_facts, import_facts};
 pub use mutation::{
     __path_forget_fact, __path_restore_fact, __path_update_confidence, forget_fact, restore_fact,
     update_confidence,
