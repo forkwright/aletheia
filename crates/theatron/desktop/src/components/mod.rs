@@ -16,6 +16,8 @@ pub(crate) mod message;
 pub(crate) mod option_card;
 pub(crate) mod plan_card;
 pub(crate) mod planning_card;
+/// Quick input overlay for the global hotkey launcher.
+pub(crate) mod quick_input;
 pub mod session_tabs;
 pub(crate) mod table;
 pub(crate) mod theme_toggle;

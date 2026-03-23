@@ -27,6 +27,8 @@ pub(crate) mod input;
 pub(crate) mod navigation;
 /// Planning project, requirements, and roadmap state.
 pub(crate) mod planning;
+/// System tray, global hotkeys, window persistence, and quick input state.
+pub mod platform;
 /// Session list, detail, and selection state.
 pub(crate) mod sessions;
 pub(crate) mod streaming;
