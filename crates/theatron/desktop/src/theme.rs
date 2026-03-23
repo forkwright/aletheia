@@ -109,8 +109,8 @@ fn detect_system_preference() -> ResolvedTheme {
 /// in `themes.css` activate. Provides `Signal<ThemeMode>` as context for
 /// descendant components (including `ThemeToggle`).
 #[component]
-pub(crate) fn ThemeProvider(children: Element) -> Element {
-    let mode = use_signal(|| ThemeMode::System);
+pub(crate) fn ThemeProvider(children: Element, initial_mode: Option<ThemeMode>) -> Element {
+    let mode = use_signal(|| initial_mode.unwrap_or(ThemeMode::System));
     use_context_provider(|| mode);
     let resolved = use_memo(move || mode().resolve());
 

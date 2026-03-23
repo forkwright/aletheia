@@ -38,3 +38,5 @@ pub(crate) mod verification;
 
 /// Ops dashboard state: agent status cards, service health, toggle controls.
 pub(crate) mod ops;
+/// Settings state: server configs, appearance, keybindings, wizard flow.
+pub(crate) mod settings;
