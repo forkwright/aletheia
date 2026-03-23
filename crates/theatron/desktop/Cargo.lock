@@ -19,7 +19,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-koina"
-version = "0.13.1"
+version = "0.13.0"
 dependencies = [
  "compact_str",
  "jiff",
@@ -4147,7 +4147,7 @@ dependencies = [
 
 [[package]]
 name = "theatron-core"
-version = "0.13.1"
+version = "0.13.0"
 dependencies = [
  "aletheia-koina",
  "bytes",
@@ -4165,7 +4165,7 @@ dependencies = [
 
 [[package]]
 name = "theatron-desktop"
-version = "0.13.1"
+version = "0.13.0"
 dependencies = [
  "dioxus",
  "dirs",
