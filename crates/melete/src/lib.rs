@@ -7,10 +7,10 @@ pub mod contradiction;
 pub mod distill;
 /// Melete-specific error types for distillation failures.
 pub mod error;
-/// Prometheus metric definitions for distillation operations.
-pub mod metrics;
 /// Memory flush types for persisting critical context before distillation boundaries.
 pub mod flush;
+/// Prometheus metric definitions for distillation operations.
+pub mod metrics;
 /// System prompt construction and message formatting for the distillation LLM.
 pub mod prompt;
 /// Jaccard similarity pruning to remove near-duplicate content before distillation.

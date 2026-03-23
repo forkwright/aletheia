@@ -69,13 +69,10 @@ impl AuthService {
     /// Authenticate via username + password. Returns a JWT pair.
     #[instrument(skip(self, password))]
     pub(crate) fn login(&self, username: &str, password: &SecretString) -> Result<TokenPair> {
-        let user = self
-            .store
-            .find_user_by_username(username)?
-            .ok_or_else(|| {
-                crate::metrics::record_auth_attempt("password", false);
-                error::InvalidCredentialsSnafu.build()
-            })?;
+        let user = self.store.find_user_by_username(username)?.ok_or_else(|| {
+            crate::metrics::record_auth_attempt("password", false);
+            error::InvalidCredentialsSnafu.build()
+        })?;
 
         let valid = password::verify_password(password, &user.password_hash)?;
         if !valid {

@@ -7,9 +7,7 @@
 
 use std::sync::LazyLock;
 
-use prometheus::{
-    IntCounterVec, IntGauge, Opts, register_int_counter_vec, register_int_gauge,
-};
+use prometheus::{IntCounterVec, IntGauge, Opts, register_int_counter_vec, register_int_gauge};
 
 static PROJECTS_ACTIVE: LazyLock<IntGauge> = LazyLock::new(|| {
     register_int_gauge!(
@@ -58,17 +56,13 @@ pub fn set_projects_active(count: i64) {
 /// Record a project state transition.
 pub fn record_phase_transition(from: &str, to: &str) {
     // kanon:ignore RUST/pub-visibility
-    PHASE_TRANSITIONS_TOTAL
-        .with_label_values(&[from, to])
-        .inc();
+    PHASE_TRANSITIONS_TOTAL.with_label_values(&[from, to]).inc();
 }
 
 /// Record a stuck pattern detection.
 pub fn record_stuck_detection(pattern: &str) {
     // kanon:ignore RUST/pub-visibility
-    STUCK_DETECTIONS_TOTAL
-        .with_label_values(&[pattern])
-        .inc();
+    STUCK_DETECTIONS_TOTAL.with_label_values(&[pattern]).inc();
 }
 
 #[cfg(test)]
