@@ -22,7 +22,7 @@ pub enum ThemeMode {
 
 /// Background and accent colors.
 #[derive(Debug, Clone)]
-#[expect(
+#[allow(
     dead_code,
     reason = "complete semantic color set; not all fields used by every view"
 )]
@@ -61,7 +61,7 @@ pub struct Borders {
 
 /// Semantic feedback and animation-state colors.
 #[derive(Debug, Clone)]
-#[expect(
+#[allow(
     dead_code,
     reason = "complete semantic color set; not all fields used by every view"
 )]

@@ -9,6 +9,8 @@ pub(crate) mod metrics;
 pub(crate) mod notification;
 pub(crate) mod ops;
 mod overlay;
+mod planning;
+mod retrospective;
 pub(crate) mod settings;
 mod sidebar;
 mod slash;

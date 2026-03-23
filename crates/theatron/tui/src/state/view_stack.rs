@@ -28,6 +28,10 @@ pub enum View {
     Metrics,
     /// Built-in file editor with syntax highlighting and tabs.
     FileEditor,
+    /// Planning dashboard: active phases, progress, and pending checkpoint approvals.
+    Planning,
+    /// Retrospective view: completed project phases with outcomes and key metrics.
+    Retrospective,
 }
 
 impl View {
@@ -43,6 +47,8 @@ impl View {
             Self::EntityDetail { .. } => "Entity",
             Self::Metrics => "Metrics",
             Self::FileEditor => "Editor",
+            Self::Planning => "Planning",
+            Self::Retrospective => "Retrospective",
         }
     }
 }
@@ -308,5 +314,31 @@ mod tests {
         assert_eq!(stack.breadcrumbs(), vec!["Home", "Message"]);
         stack.pop();
         assert!(stack.is_home());
+    }
+
+    #[test]
+    fn planning_view_push_pop() {
+        let mut stack = ViewStack::new();
+        stack.push(View::Planning);
+        assert_eq!(stack.current(), &View::Planning);
+        assert_eq!(stack.breadcrumbs(), vec!["Home", "Planning"]);
+        stack.pop();
+        assert!(stack.is_home());
+    }
+
+    #[test]
+    fn retrospective_view_push_pop() {
+        let mut stack = ViewStack::new();
+        stack.push(View::Retrospective);
+        assert_eq!(stack.current(), &View::Retrospective);
+        assert_eq!(stack.breadcrumbs(), vec!["Home", "Retrospective"]);
+        stack.pop();
+        assert!(stack.is_home());
+    }
+
+    #[test]
+    fn planning_retrospective_labels() {
+        assert_eq!(View::Planning.label(), "Planning");
+        assert_eq!(View::Retrospective.label(), "Retrospective");
     }
 }

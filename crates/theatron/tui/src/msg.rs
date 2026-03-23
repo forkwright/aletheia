@@ -433,6 +433,31 @@ pub enum Msg {
     )]
     MetricsHealthLoaded(bool),
 
+    #[expect(
+        dead_code,
+        reason = "planning view entry point, keybinding not yet wired"
+    )]
+    PlanningOpen,
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "planning view message, constructed in tests only")
+    )]
+    PlanningClose,
+
+    #[expect(
+        dead_code,
+        reason = "retrospective view entry point, keybinding not yet wired"
+    )]
+    RetrospectiveOpen,
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "retrospective view message, constructed in tests only"
+        )
+    )]
+    RetrospectiveClose,
+
     #[expect(dead_code, reason = "planned TUI feature")]
     DiffOpen,
     DiffClose,

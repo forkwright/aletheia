@@ -326,6 +326,23 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::MetricsSelectDown => metrics::handle_select_down(app),
         Msg::MetricsHealthLoaded(healthy) => metrics::handle_health_loaded(app, healthy),
 
+        Msg::PlanningOpen => {
+            app.layout
+                .view_stack
+                .push(crate::state::view_stack::View::Planning);
+        }
+        Msg::PlanningClose => {
+            app.layout.view_stack.pop();
+        }
+        Msg::RetrospectiveOpen => {
+            app.layout
+                .view_stack
+                .push(crate::state::view_stack::View::Retrospective);
+        }
+        Msg::RetrospectiveClose => {
+            app.layout.view_stack.pop();
+        }
+
         Msg::ExportConversation => command::execute_export_from_msg(app),
 
         Msg::SlashCompleteOpen => slash::handle_open(app),

@@ -86,7 +86,9 @@ pub(crate) fn handle_drill_in(app: &mut App) {
         | View::FactDetail { .. }
         | View::EntityDetail { .. }
         | View::FileEditor
-        | View::Metrics => {}
+        | View::Metrics
+        | View::Planning
+        | View::Retrospective => {}
     }
 }
 
