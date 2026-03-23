@@ -89,6 +89,7 @@ pub async fn check(State(state): State<HealthState>) -> impl IntoResponse {
             version: env!("CARGO_PKG_VERSION"),
             uptime_seconds: uptime,
             checks,
+            data_dir: state.oikos.data().to_string_lossy().into_owned(),
         }),
     )
 }
@@ -106,6 +107,8 @@ pub struct HealthResponse {
     pub uptime_seconds: u64,
     /// Individual subsystem check results.
     pub checks: Vec<HealthCheck>,
+    /// Absolute path to the instance data directory.
+    pub data_dir: String,
 }
 
 /// Result of a single subsystem health check.
@@ -145,6 +148,7 @@ mod tests {
             version: "1.0.0",
             uptime_seconds: 300,
             checks: vec![],
+            data_dir: "/tmp/instance/data".to_owned(),
         };
         let json = serde_json::to_value(&resp).unwrap();
         assert_eq!(json["status"], "healthy");

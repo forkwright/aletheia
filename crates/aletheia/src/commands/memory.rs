@@ -51,7 +51,24 @@ pub(crate) enum Action {
     },
 }
 
-pub(crate) fn run(action: Action, instance_root: Option<&PathBuf>) -> Result<()> {
+pub(crate) async fn run(action: Action, url: &str, instance_root: Option<&PathBuf>) -> Result<()> {
+    // WHY: the knowledge store uses an exclusive fjall lock; opening it while the
+    // server holds the lock causes a confusing error. Detect a running server and
+    // route 'check' through the HTTP API instead of direct store access.
+    if let Ok(true) = is_server_running(url).await {
+        match action {
+            Action::Check { json } => return run_check_via_api(url, json).await,
+            _ => {
+                anyhow::bail!(
+                    "The server at {url} is running and holds an exclusive lock on the knowledge store.\n  \
+                     Stop the server first to use this subcommand, or use the REST API:\n  \
+                     GET {url}/api/v1/knowledge/facts\n  \
+                     GET {url}/api/v1/knowledge/entities"
+                );
+            }
+        }
+    }
+
     #[cfg(feature = "recall")]
     {
         let oikos = super::resolve_oikos(instance_root)?;
@@ -86,6 +103,60 @@ pub(crate) fn run(action: Action, instance_root: Option<&PathBuf>) -> Result<()>
              Build with: cargo build --features recall"
         );
     }
+}
+
+/// Check if a server is running at `url` by hitting the health endpoint.
+async fn is_server_running(url: &str) -> Result<bool> {
+    let endpoint = format!("{url}/api/health");
+    match reqwest::get(&endpoint).await {
+        Ok(resp) => Ok(resp.status().is_success() || resp.status().as_u16() == 503),
+        Err(_) => Ok(false),
+    }
+}
+
+/// Run the graph health check via the server's HTTP API.
+async fn run_check_via_api(url: &str, json: bool) -> Result<()> {
+    let endpoint = format!("{url}/api/v1/knowledge/check");
+    let resp = reqwest::get(&endpoint).await
+        .map_err(|e| anyhow::anyhow!("failed to connect to {endpoint}: {e}"))?;
+
+    if resp.status() == reqwest::StatusCode::SERVICE_UNAVAILABLE {
+        anyhow::bail!("knowledge store is not enabled on the running server");
+    }
+
+    let body: serde_json::Value = resp.json().await
+        .map_err(|e| anyhow::anyhow!("failed to parse response: {e}"))?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&body)?);
+    } else {
+        println!("=== Memory Graph Health Check (via server API) ===\n");
+        if let Some(fc) = body.get("fact_count").and_then(serde_json::Value::as_u64) {
+            println!("Facts:         {fc}");
+        }
+        if let Some(ec) = body.get("entity_count").and_then(serde_json::Value::as_u64) {
+            println!("Entities:      {ec}");
+        }
+        if let Some(rc) = body.get("relationship_count").and_then(serde_json::Value::as_u64) {
+            println!("Relationships: {rc}");
+        }
+        let orphaned = body.get("orphaned_entity_count").and_then(serde_json::Value::as_u64).unwrap_or(0);
+        let dangling = body.get("dangling_edge_count").and_then(serde_json::Value::as_u64).unwrap_or(0);
+        if orphaned > 0 {
+            println!("\nOrphaned entities: {orphaned}");
+        } else {
+            println!("Orphaned entities: 0");
+        }
+        if dangling > 0 {
+            println!("Dangling edges: {dangling}");
+        } else {
+            println!("Dangling edges: 0");
+        }
+        let status = body.get("status").and_then(|v| v.as_str()).unwrap_or("unknown");
+        println!("\nStatus: {status}");
+    }
+
+    Ok(())
 }
 
 // --- check ---
