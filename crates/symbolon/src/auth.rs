@@ -72,16 +72,21 @@ impl AuthService {
         let user = self
             .store
             .find_user_by_username(username)?
-            .ok_or_else(|| error::InvalidCredentialsSnafu.build())?;
+            .ok_or_else(|| {
+                crate::metrics::record_auth_attempt("password", false);
+                error::InvalidCredentialsSnafu.build()
+            })?;
 
         let valid = password::verify_password(password, &user.password_hash)?;
         if !valid {
+            crate::metrics::record_auth_attempt("password", false);
             return Err(error::InvalidCredentialsSnafu.build());
         }
 
         let access = self.jwt.issue_access(&user.id, user.role, None)?;
         let refresh = self.jwt.issue_refresh(&user.id, user.role)?;
 
+        crate::metrics::record_auth_attempt("password", true);
         Ok(TokenPair {
             access_token: SecretString::from(access),
             refresh_token: SecretString::from(refresh),
@@ -90,7 +95,9 @@ impl AuthService {
 
     /// Authenticate via API key. Returns claims.
     pub(crate) fn authenticate_api_key(&self, raw_key: &str) -> Result<Claims> {
-        api_key::validate(&self.store, raw_key)
+        let result = api_key::validate(&self.store, raw_key);
+        crate::metrics::record_auth_attempt("api_key", result.is_ok());
+        result
     }
 
     /// Validate a JWT token. Checks signature, expiry, and revocation.

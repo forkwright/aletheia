@@ -66,6 +66,7 @@ impl SessionStore {
             )
             .context(error::DatabaseSnafu)?;
 
+        crate::metrics::record_session_created(nous_id, session_type.as_str());
         info!(id, nous_id, session_key, %session_type, "created session");
 
         self.find_session_by_id(id)?.ok_or_else(|| {

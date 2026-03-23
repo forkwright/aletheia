@@ -267,6 +267,7 @@ impl RecallEngine {
     #[must_use]
     #[instrument(skip(self, candidates), fields(count = candidates.len()))]
     pub fn rank(&self, mut candidates: Vec<ScoredResult>) -> Vec<ScoredResult> {
+        let start = std::time::Instant::now();
         for candidate in &mut candidates {
             candidate.score = self.compute_score(&candidate.factors);
         }
@@ -275,6 +276,7 @@ impl RecallEngine {
                 .partial_cmp(&a.score)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
+        crate::metrics::record_recall_duration("_all", start.elapsed().as_secs_f64());
         candidates
     }
 

@@ -23,7 +23,11 @@ impl KnowledgeStore {
             }
         );
         let params = fact_to_params(fact);
-        self.run_mut(&queries::upsert_fact(), params)
+        let result = self.run_mut(&queries::upsert_fact(), params);
+        if result.is_ok() {
+            crate::metrics::record_fact_inserted(&fact.nous_id);
+        }
+        result
     }
 
     /// Supersede an existing fact with a new one.

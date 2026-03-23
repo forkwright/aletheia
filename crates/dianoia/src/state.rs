@@ -77,7 +77,8 @@ impl ProjectState {
     /// Attempt a state transition. Returns the new state or an error
     /// if the transition is invalid from the current state.
     pub fn transition(self, t: Transition) -> Result<Self> {
-        match (&self, &t) {
+        let from_label = state_label(&self);
+        let result = match (&self, &t) {
             (Self::Created, Transition::StartQuestioning) => Ok(Self::Questioning),
             (Self::Questioning, Transition::StartResearch) => Ok(Self::Researching),
             (Self::Scoping, Transition::StartPlanning) => Ok(Self::Planning),
@@ -134,7 +135,13 @@ impl ProjectState {
                 );
                 unreachable!()
             }
+        };
+
+        if let Ok(ref new_state) = result {
+            crate::metrics::record_phase_transition(&from_label, &state_label(new_state));
         }
+
+        result
     }
 
     /// List valid transitions from this state.
@@ -193,6 +200,23 @@ impl ProjectState {
     #[must_use]
     pub fn is_active(&self) -> bool {
         !self.is_terminal() && !matches!(self, Self::Paused { .. })
+    }
+}
+
+/// Convert a project state to a short lowercase label for metrics.
+fn state_label(state: &ProjectState) -> String {
+    match state {
+        ProjectState::Created => "created".to_owned(),
+        ProjectState::Questioning => "questioning".to_owned(),
+        ProjectState::Researching => "researching".to_owned(),
+        ProjectState::Scoping => "scoping".to_owned(),
+        ProjectState::Planning => "planning".to_owned(),
+        ProjectState::Discussing => "discussing".to_owned(),
+        ProjectState::Executing => "executing".to_owned(),
+        ProjectState::Verifying => "verifying".to_owned(),
+        ProjectState::Complete => "complete".to_owned(),
+        ProjectState::Abandoned => "abandoned".to_owned(),
+        ProjectState::Paused { .. } => "paused".to_owned(),
     }
 }
 
