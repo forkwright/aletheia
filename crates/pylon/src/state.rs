@@ -79,6 +79,8 @@ pub struct HealthState {
     pub nous_manager: Arc<NousManager>,
     /// Server start instant for uptime calculation.
     pub start_time: std::time::Instant,
+    /// Instance directory layout for path reporting.
+    pub oikos: Arc<Oikos>,
 }
 
 impl FromRef<Arc<AppState>> for HealthState {
@@ -88,6 +90,7 @@ impl FromRef<Arc<AppState>> for HealthState {
             provider_registry: Arc::clone(&state.provider_registry),
             nous_manager: Arc::clone(&state.nous_manager),
             start_time: state.start_time,
+            oikos: Arc::clone(&state.oikos),
         }
     }
 }
