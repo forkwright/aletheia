@@ -7,10 +7,7 @@
 use super::*;
 
 #[test]
-#[expect(
-    clippy::too_many_lines,
-    reason = "comprehensive config default validation"
-)]
+#[expect(clippy::too_many_lines, reason = "full config default validation")]
 fn defaults_are_sensible() {
     let config = AletheiaConfig::default();
     assert_eq!(

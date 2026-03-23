@@ -1,6 +1,6 @@
 # organon
 
-Tool registry, executors, and sandbox. 16K lines. 36 built-in tools.
+Tool registry, executors, and sandbox. 16K lines. 39 built-in tools.
 
 ## Read first
 
@@ -22,7 +22,7 @@ Tool registry, executors, and sandbox. 16K lines. 36 built-in tools.
 | `SandboxConfig` | `sandbox/mod.rs` | Landlock + seccomp + egress policy |
 | `ProcessGuard` | `process_guard.rs` | RAII child process wrapper, `pub(crate)` (prevents orphans/zombies) |
 
-## Built-in tools (36)
+## Built-in tools (39)
 
 | Category | Tools |
 |----------|-------|

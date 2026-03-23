@@ -146,10 +146,7 @@ fn test_order_and_limit() {
 }
 
 #[test]
-#[expect(
-    clippy::too_many_lines,
-    reason = "comprehensive schema field validation"
-)]
+#[expect(clippy::too_many_lines, reason = "full schema field validation")]
 fn test_field_names_match_schema() {
     let facts_ddl_fields = [
         "id",
