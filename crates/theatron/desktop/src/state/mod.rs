@@ -7,13 +7,13 @@
 pub mod agents;
 pub mod app;
 pub(crate) mod chat;
-/// Credential management state for the ops view.
-pub(crate) mod credentials;
 /// Checkpoint approval gate state for the planning project detail view.
 pub(crate) mod checkpoints;
 pub mod collections;
 pub mod commands;
 pub mod connection;
+/// Credential management state for the ops view.
+pub(crate) mod credentials;
 pub(crate) mod diff;
 /// Discussion state for planning gray-area questions.
 pub(crate) mod discussion;
@@ -35,3 +35,6 @@ pub mod toasts;
 pub mod tools;
 /// Goal-backward verification state for the planning project detail view.
 pub(crate) mod verification;
+
+/// Ops dashboard state: agent status cards, service health, toggle controls.
+pub(crate) mod ops;
