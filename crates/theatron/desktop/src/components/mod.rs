@@ -5,6 +5,8 @@ pub mod chat;
 pub(crate) mod checkpoint_card;
 pub(crate) mod code_block;
 pub mod command_palette;
+/// Confidence bar with color-coded thresholds (green/amber/red).
+pub(crate) mod confidence_bar;
 pub mod connection_indicator;
 pub(crate) mod coverage_bar;
 pub(crate) mod diff_hunk;

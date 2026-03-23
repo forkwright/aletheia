@@ -26,6 +26,8 @@ pub(crate) mod files;
 /// Knowledge graph, force simulation, viewport, community filter, and drift state.
 pub(crate) mod graph;
 pub(crate) mod input;
+/// Entity list, detail, and navigation state for the memory explorer.
+pub(crate) mod memory;
 pub(crate) mod navigation;
 /// Planning project, requirements, and roadmap state.
 pub(crate) mod planning;
