@@ -13,3 +13,5 @@ pub(crate) mod fetch;
 pub(crate) mod input;
 pub(crate) mod streaming;
 pub mod toasts;
+/// Enhanced tool call, approval, and planning state for desktop UI.
+pub mod tools;
