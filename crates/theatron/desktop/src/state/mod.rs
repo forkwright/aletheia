@@ -17,3 +17,7 @@ pub(crate) mod streaming;
 pub mod toasts;
 /// Enhanced tool call, approval, and planning state for desktop UI.
 pub mod tools;
+/// Checkpoint approval gate state for the planning project detail view.
+pub(crate) mod checkpoints;
+/// Goal-backward verification state for the planning project detail view.
+pub(crate) mod verification;
