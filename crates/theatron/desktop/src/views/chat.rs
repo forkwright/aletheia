@@ -12,6 +12,9 @@ use crate::components::chat::{
 use crate::components::input_bar::InputBar;
 use crate::components::markdown::Markdown;
 use crate::components::message::{MessageBubble, should_group};
+use crate::components::planning_card::PlanningCard;
+use crate::components::tool_approval::ToolApproval;
+use crate::components::tool_panel::ToolPanel;
 use crate::state::chat::{ChatMessage, ChatStore, Role};
 use crate::state::connection::ConnectionConfig;
 use crate::state::input::InputState;
@@ -115,6 +118,8 @@ pub(crate) fn Chat() -> Element {
             input_tokens: 0,
             output_tokens: 0,
             thinking: None,
+            tool_call_details: Vec::new(),
+            plans: Vec::new(),
         });
 
         let cfg = config.read().clone();
@@ -314,7 +319,21 @@ pub(crate) fn Chat() -> Element {
                                             "Thinking..."
                                         }
                                     }
-                                    // Active tool calls
+                                    // Rich tool call panels (expandable)
+                                    for detail in legacy_state.read().streaming.tool_call_details.iter() {
+                                        ToolPanel { tool: detail.clone() }
+                                    }
+                                    // Tool approval dialogs
+                                    for approval in legacy_state.read().streaming.approvals.iter() {
+                                        if !approval.resolved {
+                                            {render_approval(approval.clone(), legacy_state)}
+                                        }
+                                    }
+                                    // Planning cards
+                                    for plan in legacy_state.read().streaming.plans.iter() {
+                                        PlanningCard { plan: plan.clone() }
+                                    }
+                                    // Active tool calls (compact)
                                     for tc in legacy_state.read().streaming.tool_calls.iter() {
                                         div {
                                             style: "
@@ -361,6 +380,53 @@ pub(crate) fn Chat() -> Element {
     }
 }
 
+fn render_approval(
+    approval: crate::state::tools::ToolApprovalState,
+    _chat_signal: Signal<ChatState>,
+) -> Element {
+    let turn_id = approval.turn_id.to_string();
+    let tool_id = approval.tool_id.to_string();
+    let turn_id_deny = turn_id.clone();
+    let tool_id_deny = tool_id.clone();
+
+    // WHY: capture IDs by value for the async approval/deny calls.
+    let config: Signal<ConnectionConfig> = use_context();
+
+    rsx! {
+        ToolApproval {
+            approval: approval,
+            on_approve: move |_| {
+                let turn_id = turn_id.clone();
+                let tool_id = tool_id.clone();
+                let cfg = config.read().clone();
+                spawn(async move {
+                    let client = theatron_core::api::client::ApiClient::new(
+                        &cfg.server_url,
+                        cfg.auth_token.clone(),
+                    );
+                    if let Ok(client) = client {
+                        let _ = client.approve_tool(&turn_id, &tool_id).await;
+                    }
+                });
+            },
+            on_deny: move |_| {
+                let turn_id = turn_id_deny.clone();
+                let tool_id = tool_id_deny.clone();
+                let cfg = config.read().clone();
+                spawn(async move {
+                    let client = theatron_core::api::client::ApiClient::new(
+                        &cfg.server_url,
+                        cfg.auth_token.clone(),
+                    );
+                    if let Ok(client) = client {
+                        let _ = client.deny_tool(&turn_id, &tool_id).await;
+                    }
+                });
+            },
+        }
+    }
+}
+
 fn format_tool_call(tc: &crate::state::events::ToolCallInfo) -> String {
     if tc.completed {
         let marker = if tc.is_error { "[x]" } else { "[v]" };
@@ -375,7 +441,7 @@ fn format_tool_call(tc: &crate::state::events::ToolCallInfo) -> String {
 
 /// Compute the visible range for virtual scrolling.
 ///
-/// Returns `(range_start, range_end)` — the slice indices of messages
+/// Returns `(range_start, range_end)` -- the slice indices of messages
 /// to render from the full list.
 #[must_use]
 pub(crate) fn visible_range(

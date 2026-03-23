@@ -40,7 +40,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 
 use theatron_core::events::StreamEvent;
-use theatron_core::id::{NousId, SessionId, ToolId, TurnId};
+use theatron_core::id::{NousId, PlanId, SessionId, ToolId, TurnId};
 
 /// Start streaming a turn response.
 ///
@@ -164,6 +164,16 @@ fn str_field<'a>(json: &'a serde_json::Value, field: &str, event_type: &str) -> 
     })
 }
 
+fn u32_field(json: &serde_json::Value, field: &str, event_type: &str) -> Option<u32> {
+    json.get(field)
+        .and_then(|v| v.as_u64())
+        .and_then(|v| u32::try_from(v).ok())
+        .or_else(|| {
+            tracing::warn!(event_type, field, "missing or invalid u32 field in stream event");
+            None
+        })
+}
+
 fn parse_stream_event(event_type: &str, data: &str) -> Option<StreamEvent> {
     let json: serde_json::Value = match serde_json::from_str(data) {
         Ok(v) => v,
@@ -254,11 +264,29 @@ fn parse_stream_event(event_type: &str, data: &str) -> Option<StreamEvent> {
         "error" => Some(StreamEvent::Error(
             str_field(&json, "message", event_type)?.to_string(),
         )),
-        // Plan events: logged but not yet surfaced in the desktop UI.
-        "plan_proposed" | "plan_step_start" | "plan_step_complete" | "plan_complete" => {
-            tracing::debug!(event_type, "plan event (not yet rendered in desktop)");
-            None
+        "plan_proposed" => {
+            let plan = json
+                .get("plan")
+                .and_then(|v| serde_json::from_value(v.clone()).ok())
+                .or_else(|| {
+                    tracing::warn!(event_type, "missing or invalid plan in stream event");
+                    None
+                })?;
+            Some(StreamEvent::PlanProposed { plan })
         }
+        "plan_step_start" => Some(StreamEvent::PlanStepStart {
+            plan_id: PlanId::from(str_field(&json, "planId", event_type)?.to_string()),
+            step_id: u32_field(&json, "stepId", event_type)?,
+        }),
+        "plan_step_complete" => Some(StreamEvent::PlanStepComplete {
+            plan_id: PlanId::from(str_field(&json, "planId", event_type)?.to_string()),
+            step_id: u32_field(&json, "stepId", event_type)?,
+            status: str_field(&json, "status", event_type)?.to_string(),
+        }),
+        "plan_complete" => Some(StreamEvent::PlanComplete {
+            plan_id: PlanId::from(str_field(&json, "planId", event_type)?.to_string()),
+            status: str_field(&json, "status", event_type)?.to_string(),
+        }),
         "queue_drained" => {
             tracing::debug!("queue drained: {json}");
             None
