@@ -1,6 +1,6 @@
 [package]
 name = "theatron-desktop"
-version = "0.13.0"
+version = "0.13.1"
 edition = "2024"
 license = "AGPL-3.0-or-later"
 rust-version = "1.94"
@@ -46,9 +46,8 @@ toml = "1.0"
 [dev-dependencies]
 tempfile = "3"
 
-# theatron-desktop uses inline lints for the same reason as theatron-tui:
-# Cargo does not allow combining workspace lint inheritance with
-# package-level overrides.
+# WHY: theatron-desktop is excluded from the workspace (GTK3/webkit2gtk
+# system library requirement). Inline lints replace workspace inheritance.
 [lints.rust]
 future_incompatible = { level = "warn", priority = -1 }
 nonstandard_style = { level = "warn", priority = -1 }

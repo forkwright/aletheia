@@ -1,4 +1,4 @@
-//! Chat view: message list, streaming indicator, and input box.
+//! Chat view: message list, streaming indicator, thinking panels, and input bar.
 
 use std::time::Duration;
 
@@ -7,7 +7,10 @@ use tokio_util::sync::CancellationToken;
 
 use crate::api::client::authenticated_client;
 use crate::components::chat::{ChatMessage, ChatState, ChatStateManager, MessageRole};
+use crate::components::input_bar::InputBar;
+use crate::components::thinking::ThinkingPanel;
 use crate::state::connection::ConnectionConfig;
+use crate::state::input::InputState;
 
 const CONTAINER_STYLE: &str = "\
     display: flex; \
@@ -46,45 +49,6 @@ const ASSISTANT_MSG_STYLE: &str = "\
     white-space: pre-wrap; \
     word-wrap: break-word; \
     border: 1px solid #333;\
-";
-
-const INPUT_BAR_STYLE: &str = "\
-    display: flex; \
-    gap: 8px; \
-    padding: 12px 16px; \
-    background: #1a1a2e; \
-    border-top: 1px solid #333;\
-";
-
-const INPUT_STYLE: &str = "\
-    flex: 1; \
-    background: #0f0f1a; \
-    border: 1px solid #333; \
-    border-radius: 8px; \
-    padding: 10px 14px; \
-    color: #e0e0e0; \
-    font-size: 14px; \
-    font-family: inherit;\
-";
-
-const SEND_BTN_STYLE: &str = "\
-    background: #4a4aff; \
-    color: white; \
-    border: none; \
-    border-radius: 8px; \
-    padding: 10px 20px; \
-    font-size: 14px; \
-    cursor: pointer;\
-";
-
-const SEND_BTN_DISABLED: &str = "\
-    background: #333; \
-    color: #666; \
-    border: none; \
-    border-radius: 8px; \
-    padding: 10px 20px; \
-    font-size: 14px; \
-    cursor: not-allowed;\
 ";
 
 const STREAMING_STYLE: &str = "\
@@ -126,14 +90,13 @@ const EMPTY_STYLE: &str = "\
 #[component]
 pub(crate) fn Chat() -> Element {
     let mut chat_state = use_signal(ChatState::default);
-    let mut input_text = use_signal(String::new);
+    let input_state = use_signal(InputState::default);
     let mut cancel_token = use_signal(CancellationToken::new);
     let config: Signal<ConnectionConfig> = use_context();
 
     let is_streaming = chat_state.read().streaming.is_streaming;
 
-    let mut do_submit = move || {
-        let text = input_text.read().trim().to_string();
+    let on_submit = move |text: String| {
         if text.is_empty() || is_streaming {
             return;
         }
@@ -145,8 +108,8 @@ pub(crate) fn Chat() -> Element {
             tool_calls: 0,
             input_tokens: 0,
             output_tokens: 0,
+            thinking: None,
         });
-        input_text.set(String::new());
 
         let cfg = config.read().clone();
 
@@ -181,11 +144,20 @@ pub(crate) fn Chat() -> Element {
             );
 
             let mut manager = ChatStateManager::new();
+            let timeout = tokio::time::sleep(Duration::from_secs(600));
+            tokio::pin!(timeout);
 
             loop {
                 let event = tokio::select! {
                     biased;
                     _ = new_token.cancelled() => break,
+                    _ = &mut timeout => {
+                        let mut state = chat_state.write();
+                        state.streaming.error =
+                            Some("stream timed out after 10 minutes".to_string());
+                        state.streaming.is_streaming = false;
+                        break;
+                    }
                     event = rx.recv() => event,
                     _ = tokio::time::sleep(Duration::from_millis(100)) => {
                         let mut state = chat_state.write();
@@ -199,6 +171,10 @@ pub(crate) fn Chat() -> Element {
                 let _ = manager.apply(event, &mut state);
             }
         });
+    };
+
+    let on_abort = move |()| {
+        cancel_token.read().cancel();
     };
 
     rsx! {
@@ -222,29 +198,11 @@ pub(crate) fn Chat() -> Element {
                 }
             }
 
-            div {
-                style: "{INPUT_BAR_STYLE}",
-                input {
-                    style: "{INPUT_STYLE}",
-                    r#type: "text",
-                    placeholder: "Type a message...",
-                    value: "{input_text}",
-                    disabled: is_streaming,
-                    oninput: move |evt: Event<FormData>| {
-                        input_text.set(evt.value().clone());
-                    },
-                    onkeypress: move |evt: Event<KeyboardData>| {
-                        if evt.key() == Key::Enter {
-                            do_submit();
-                        }
-                    },
-                }
-                button {
-                    style: if is_streaming { "{SEND_BTN_DISABLED}" } else { "{SEND_BTN_STYLE}" },
-                    disabled: is_streaming,
-                    onclick: move |_| do_submit(),
-                    if is_streaming { "..." } else { "Send" }
-                }
+            InputBar {
+                input: input_state,
+                is_streaming: is_streaming,
+                on_submit: on_submit,
+                on_abort: on_abort,
             }
         }
     }
@@ -268,11 +226,19 @@ fn render_message(msg: &ChatMessage, key: usize) -> Element {
         None
     };
 
+    let thinking_content = msg.thinking.clone().unwrap_or_default();
+
     rsx! {
         div {
             key: "{key}",
             style: "{style}",
             "{msg.content}"
+            if !thinking_content.is_empty() {
+                ThinkingPanel {
+                    content: thinking_content,
+                    is_streaming: false,
+                }
+            }
             if let Some(meta_text) = meta {
                 div { style: "{META_STYLE}", "{meta_text}" }
             }
@@ -281,13 +247,21 @@ fn render_message(msg: &ChatMessage, key: usize) -> Element {
 }
 
 fn render_streaming(state: &ChatState) -> Element {
+    let has_thinking = !state.streaming.thinking.is_empty();
+
     rsx! {
         div {
             style: "{STREAMING_STYLE}",
             if !state.streaming.text.is_empty() {
                 "{state.streaming.text}"
-            } else {
+            } else if !has_thinking {
                 span { style: "color: #4a4aff;", "Thinking..." }
+            }
+            if has_thinking {
+                ThinkingPanel {
+                    content: state.streaming.thinking.clone(),
+                    is_streaming: true,
+                }
             }
             for tc in &state.streaming.tool_calls {
                 div {
@@ -304,12 +278,12 @@ fn render_streaming(state: &ChatState) -> Element {
 
 fn format_tool_call(tc: &crate::state::events::ToolCallInfo) -> String {
     if tc.completed {
-        let marker = if tc.is_error { "[x]" } else { "[v]" }; // kanon:ignore RUST/indexing-slicing
+        let marker = if tc.is_error { "[x]" } else { "[v]" };
         match tc.duration_ms {
             Some(ms) => format!("{marker} {} ({ms}ms)", tc.tool_name),
             None => format!("{marker} {}", tc.tool_name),
         }
     } else {
-        format!("[...] {}", tc.tool_name) // kanon:ignore RUST/string-slice
+        format!("[...] {}", tc.tool_name)
     }
 }
