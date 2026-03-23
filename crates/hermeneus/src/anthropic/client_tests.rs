@@ -86,12 +86,14 @@ fn from_config_empty_api_key() {
 #[test]
 fn from_config_valid() {
     let config = ProviderConfig {
+        // NOTE: test-only fixture value, not a real credential
         api_key: Some(SecretString::from("sk-test-123")),
         base_url: Some("https://custom.api.example.com".to_owned()),
         ..ProviderConfig::default()
     };
     let provider = AnthropicProvider::from_config(&config).expect("valid config");
     let debug = format!("{provider:?}");
+    // codequality:ignore — debug output of provider struct contains base_url, not credential values
     assert!(
         debug.contains("custom.api.example.com"),
         "debug should show base_url: {debug}"

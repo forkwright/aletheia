@@ -154,6 +154,7 @@ async fn main() -> Result<()> {
                 root: a.instance_root,
                 yes: a.yes,
                 non_interactive: a.non_interactive,
+                // codequality:ignore — raw CLI string immediately wrapped in SecretString
                 api_key: a.api_key.map(aletheia_koina::secret::SecretString::from),
                 auth_mode: a.auth_mode,
                 api_provider: a.api_provider,
