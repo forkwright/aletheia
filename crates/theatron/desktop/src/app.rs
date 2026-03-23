@@ -17,7 +17,7 @@ use crate::views::files::Files;
 use crate::views::memory::Memory;
 use crate::views::metrics::Metrics;
 use crate::views::ops::Ops;
-use crate::views::planning::Planning;
+use crate::views::planning::{Planning, PlanningProject};
 use crate::views::settings::Settings;
 
 #[derive(Routable, Clone, PartialEq, Debug)]
@@ -30,6 +30,8 @@ pub(crate) enum Route {
         Files {},
         #[route("/planning")]
         Planning {},
+        #[route("/planning/:project_id")]
+        PlanningProject { project_id: String },
         #[route("/memory")]
         Memory {},
         #[route("/metrics")]
