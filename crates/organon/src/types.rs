@@ -640,22 +640,18 @@ pub struct ServerToolConfig {
 impl ServerToolConfig {
     /// Generate catalog entries for server tools available via `enable_tool`.
     #[must_use]
-    #[expect(
-        clippy::expect_used,
-        reason = "ToolName::new() with known-valid static string literals is infallible"
-    )]
     pub fn catalog_entries(&self) -> Vec<(ToolName, String)> {
         // kanon:ignore RUST/pub-visibility
         let mut entries = Vec::new();
         if self.web_search {
             entries.push((
-                ToolName::new("web_search").expect("valid tool name"), // kanon:ignore RUST/expect
+                ToolName::from_static("web_search"), // kanon:ignore RUST/expect
                 "Search the web using Anthropic's server-side web search".to_owned(),
             ));
         }
         if self.code_execution {
             entries.push((
-                ToolName::new("code_execution").expect("valid tool name"), // kanon:ignore RUST/expect
+                ToolName::from_static("code_execution"), // kanon:ignore RUST/expect
                 "Execute Python code in a sandboxed server-side environment".to_owned(),
             ));
         }
@@ -664,18 +660,14 @@ impl ServerToolConfig {
 
     /// Produce server tool definitions for tools that are currently active.
     #[must_use]
-    #[expect(
-        clippy::expect_used,
-        reason = "ToolName::new() with known-valid static string literals is infallible"
-    )]
     pub fn active_definitions(
         // kanon:ignore RUST/pub-visibility
         &self,
         active: &HashSet<ToolName>,
     ) -> Vec<aletheia_hermeneus::types::ServerToolDefinition> {
         let mut defs = Vec::new();
-        let web_search_name = ToolName::new("web_search").expect("valid tool name"); // kanon:ignore RUST/expect
-        let code_exec_name = ToolName::new("code_execution").expect("valid tool name"); // kanon:ignore RUST/expect
+        let web_search_name = ToolName::from_static("web_search"); // kanon:ignore RUST/expect
+        let code_exec_name = ToolName::from_static("code_execution"); // kanon:ignore RUST/expect
 
         if self.web_search && active.contains(&web_search_name) {
             defs.push(aletheia_hermeneus::types::ServerToolDefinition {

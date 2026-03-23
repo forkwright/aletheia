@@ -1,10 +1,6 @@
 #![expect(
-    clippy::as_conversions,
-    clippy::cast_precision_loss,
-    clippy::cast_sign_loss,
-    clippy::cast_possible_truncation,
     clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+    reason = "knowledge engine: ported codebase with direct indexing throughout"
 )]
 use snafu::ResultExt;
 #[cfg(feature = "mneme-engine")]
@@ -187,6 +183,7 @@ pub(super) fn embedding_to_params(
 /// Returns 1.0 for identical sets, 0.0 for disjoint.
 #[cfg(feature = "mneme-engine")]
 #[expect(
+    clippy::as_conversions,
     clippy::cast_precision_loss,
     reason = "tool set sizes are small; precision loss is impossible in practice"
 )]
@@ -208,6 +205,11 @@ pub(super) fn compute_tool_overlap(a: &[String], b: &[String]) -> f64 {
 ///
 /// Returns 1.0 for identical names, 0.0 for completely different.
 #[cfg(feature = "mneme-engine")]
+#[expect(
+    clippy::as_conversions,
+    clippy::cast_precision_loss,
+    reason = "string lengths are small; precision loss is impossible in practice"
+)]
 pub(super) fn compute_name_similarity(a: &str, b: &str) -> f64 {
     if a == b {
         return 1.0;
@@ -318,7 +320,8 @@ pub(super) fn rows_to_facts(
 
         let tier = parse_epistemic_tier(&tier_str);
 
-        let access_count = row.get(10).and_then(|v| extract_int(v).ok()).unwrap_or(0) as u32; // SAFETY: access count fits u32
+        let access_count =
+            u32::try_from(row.get(10).and_then(|v| extract_int(v).ok()).unwrap_or(0)).unwrap_or(0);
         let last_accessed_at = row
             .get(11)
             .and_then(|v| extract_str(v).ok())
@@ -460,7 +463,8 @@ pub(super) fn rows_to_raw_facts(
             .build()
         })?)?;
         let tier = parse_epistemic_tier(&tier_str);
-        let access_count = row.get(10).and_then(|v| extract_int(v).ok()).unwrap_or(0) as u32; // SAFETY: access count fits u32
+        let access_count =
+            u32::try_from(row.get(10).and_then(|v| extract_int(v).ok()).unwrap_or(0)).unwrap_or(0);
         let last_accessed_at = row
             .get(11)
             .and_then(|v| extract_str(v).ok())

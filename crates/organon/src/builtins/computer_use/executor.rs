@@ -143,7 +143,7 @@ impl ToolExecutor for ComputerUseExecutor {
 )]
 fn computer_use_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("computer_use").expect("valid tool name"), // kanon:ignore RUST/expect
+        name: ToolName::from_static("computer_use"), // kanon:ignore RUST/expect
         description: "Interact with the computer screen: capture screenshots, click, type text, \
                       press keys, and scroll. Actions run in a Landlock-sandboxed environment."
             .to_owned(),
