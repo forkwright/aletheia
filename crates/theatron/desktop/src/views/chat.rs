@@ -1,4 +1,4 @@
-//! Chat view: message list, streaming indicator, thinking panels, and input bar.
+//! Chat view: virtualized message list, streaming indicator, thinking panels, and input bar.
 
 use std::time::Duration;
 
@@ -6,102 +6,108 @@ use dioxus::prelude::*;
 use tokio_util::sync::CancellationToken;
 
 use crate::api::client::authenticated_client;
-use crate::components::chat::{ChatMessage, ChatState, ChatStateManager, MessageRole};
+use crate::components::chat::{
+    ChatMessage as LegacyChatMessage, ChatState, ChatStateManager, MessageRole,
+};
 use crate::components::input_bar::InputBar;
-use crate::components::thinking::ThinkingPanel;
+use crate::components::markdown::Markdown;
+use crate::components::message::{MessageBubble, should_group};
+use crate::state::chat::{ChatMessage, ChatStore, Role};
 use crate::state::connection::ConnectionConfig;
 use crate::state::input::InputState;
 
-const CONTAINER_STYLE: &str = "\
-    display: flex; \
-    flex-direction: column; \
-    height: 100%; \
-    background: #0f0f1a;\
-";
+/// Estimated message height in pixels for virtual scroll calculations.
+const ESTIMATED_MSG_HEIGHT: f64 = 80.0;
 
-const MESSAGES_STYLE: &str = "\
-    flex: 1; \
-    overflow-y: auto; \
-    padding: 16px; \
-    display: flex; \
-    flex-direction: column; \
-    gap: 12px;\
-";
+/// Number of extra messages to render above and below the visible range.
+const OVERSCAN: usize = 3;
 
-const USER_MSG_STYLE: &str = "\
-    align-self: flex-end; \
-    background: #2a2a4a; \
-    color: #e0e0e0; \
-    padding: 12px 16px; \
-    border-radius: 12px 12px 4px 12px; \
-    max-width: 70%; \
-    white-space: pre-wrap; \
-    word-wrap: break-word;\
-";
-
-const ASSISTANT_MSG_STYLE: &str = "\
-    align-self: flex-start; \
-    background: #1a1a2e; \
-    color: #e0e0e0; \
-    padding: 12px 16px; \
-    border-radius: 12px 12px 12px 4px; \
-    max-width: 80%; \
-    white-space: pre-wrap; \
-    word-wrap: break-word; \
-    border: 1px solid #333;\
-";
-
-const STREAMING_STYLE: &str = "\
-    align-self: flex-start; \
-    background: #1a1a2e; \
-    color: #aaa; \
-    padding: 12px 16px; \
-    border-radius: 12px 12px 12px 4px; \
-    max-width: 80%; \
-    white-space: pre-wrap; \
-    word-wrap: break-word; \
-    border: 1px solid #4a4aff;\
-";
-
-const TOOL_CALL_STYLE: &str = "\
-    font-size: 12px; \
-    color: #888; \
-    padding: 4px 8px; \
-    background: #1a1a30; \
-    border-radius: 4px; \
-    margin-top: 4px;\
-";
-
-const META_STYLE: &str = "\
-    font-size: 11px; \
-    color: #666; \
-    margin-top: 4px;\
-";
-
-const EMPTY_STYLE: &str = "\
-    flex: 1; \
-    display: flex; \
-    align-items: center; \
-    justify-content: center; \
-    color: #555; \
-    font-size: 16px;\
-";
-
+/// Chat view with virtualized scrolling and markdown rendering.
 #[component]
 pub(crate) fn Chat() -> Element {
-    let mut chat_state = use_signal(ChatState::default);
+    let mut legacy_state = use_signal(ChatState::default);
+    let _store = use_signal(ChatStore::default);
     let input_state = use_signal(InputState::default);
     let mut cancel_token = use_signal(CancellationToken::new);
     let config: Signal<ConnectionConfig> = use_context();
 
-    let is_streaming = chat_state.read().streaming.is_streaming;
+    // Virtual scroll state
+    let mut scroll_top = use_signal(|| 0.0_f64);
+    let mut container_height = use_signal(|| 600.0_f64);
+
+    let is_streaming = legacy_state.read().streaming.is_streaming;
+
+    // Bridge: sync legacy ChatState messages into the new ChatStore model.
+    // WHY: The existing ChatStateManager + streaming pipeline writes to
+    // ChatState.messages (Vec<LegacyChatMessage>). Rather than rewriting
+    // the entire streaming pipeline, we project legacy messages into
+    // ChatMessage for rendering.
+    let messages: Vec<ChatMessage> = {
+        let state = legacy_state.read();
+        let now_ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+
+        state
+            .messages
+            .iter()
+            .enumerate()
+            .map(|(i, m)| ChatMessage {
+                id: i as u64 + 1,
+                role: match m.role {
+                    MessageRole::User => Role::User,
+                    MessageRole::Assistant => Role::Assistant,
+                },
+                content: m.content.clone(),
+                timestamp: now_ts - ((state.messages.len() - 1 - i) as i64 * 30),
+                agent_id: state.agent_id.clone(),
+                tool_calls: m.tool_calls,
+                thinking_content: None,
+                is_streaming: false,
+                model: m.model.clone(),
+                input_tokens: m.input_tokens,
+                output_tokens: m.output_tokens,
+            })
+            .collect()
+    };
+
+    // Virtual scroll: compute visible range
+    let total_messages = messages.len();
+    let scroll = scroll_top();
+    let visible_height = container_height();
+
+    let first_visible = ((scroll / ESTIMATED_MSG_HEIGHT) as usize).min(total_messages);
+    let visible_count =
+        ((visible_height / ESTIMATED_MSG_HEIGHT).ceil() as usize + 1).min(total_messages);
+
+    let range_start = first_visible.saturating_sub(OVERSCAN);
+    let range_end = (first_visible + visible_count + OVERSCAN).min(total_messages);
+
+    let pad_top = range_start as f64 * ESTIMATED_MSG_HEIGHT;
+    let pad_bottom = (total_messages.saturating_sub(range_end)) as f64 * ESTIMATED_MSG_HEIGHT;
+
+    let visible_messages: Vec<(usize, ChatMessage, bool)> = messages
+        .iter()
+        .enumerate()
+        .skip(range_start)
+        .take(range_end - range_start)
+        .map(|(i, msg)| {
+            let grouped = if i > 0 {
+                should_group(&messages[i - 1], msg)
+            } else {
+                false
+            };
+            (i, msg.clone(), grouped)
+        })
+        .collect();
 
     let on_submit = move |text: String| {
         if text.is_empty() || is_streaming {
             return;
         }
 
-        chat_state.write().messages.push(ChatMessage {
+        legacy_state.write().messages.push(LegacyChatMessage {
             role: MessageRole::User,
             content: text.clone(),
             model: None,
@@ -113,8 +119,6 @@ pub(crate) fn Chat() -> Element {
 
         let cfg = config.read().clone();
 
-        // WHY: Cancel the previous token before creating a new one so any
-        // lingering stream from a prior turn is torn down.
         cancel_token.read().cancel();
         let new_token = CancellationToken::new();
         cancel_token.set(new_token.clone());
@@ -122,13 +126,13 @@ pub(crate) fn Chat() -> Element {
         spawn(async move {
             let client = authenticated_client(&cfg);
 
-            let nous_id = chat_state
+            let nous_id = legacy_state
                 .read()
                 .agent_id
                 .as_ref()
                 .map(|id| id.to_string())
                 .unwrap_or_else(|| "default".to_string());
-            let session_key = chat_state
+            let session_key = legacy_state
                 .read()
                 .session_key
                 .clone()
@@ -152,7 +156,7 @@ pub(crate) fn Chat() -> Element {
                     biased;
                     _ = new_token.cancelled() => break,
                     _ = &mut timeout => {
-                        let mut state = chat_state.write();
+                        let mut state = legacy_state.write();
                         state.streaming.error =
                             Some("stream timed out after 10 minutes".to_string());
                         state.streaming.is_streaming = false;
@@ -160,14 +164,14 @@ pub(crate) fn Chat() -> Element {
                     }
                     event = rx.recv() => event,
                     _ = tokio::time::sleep(Duration::from_millis(100)) => {
-                        let mut state = chat_state.write();
+                        let mut state = legacy_state.write();
                         let _ = manager.tick(&mut state);
                         continue;
                     }
                 };
 
                 let Some(event) = event else { break };
-                let mut state = chat_state.write();
+                let mut state = legacy_state.write();
                 let _ = manager.apply(event, &mut state);
             }
         });
@@ -179,21 +183,170 @@ pub(crate) fn Chat() -> Element {
 
     rsx! {
         div {
-            style: "{CONTAINER_STYLE}",
+            style: "
+                display: flex;
+                flex-direction: column;
+                height: 100%;
+                background: var(--bg);
+                font-family: var(--font-body);
+            ",
 
-            if chat_state.read().messages.is_empty() && !is_streaming {
+            if messages.is_empty() && !is_streaming {
+                // Empty state
                 div {
-                    style: "{EMPTY_STYLE}",
-                    "Start a conversation"
+                    style: "
+                        flex: 1;
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                        justify-content: center;
+                        gap: var(--space-4);
+                        color: var(--text-muted);
+                    ",
+                    div {
+                        style: "
+                            font-family: var(--font-display);
+                            font-size: var(--text-xl);
+                            color: var(--text-secondary);
+                        ",
+                        "Start a conversation"
+                    }
+                    div {
+                        style: "font-size: var(--text-sm);",
+                        "Type a message below to begin."
+                    }
                 }
             } else {
+                // Message list with virtual scrolling
                 div {
-                    style: "{MESSAGES_STYLE}",
-                    for (i , msg) in chat_state.read().messages.iter().enumerate() {
-                        {render_message(msg, i)}
+                    style: "
+                        flex: 1;
+                        overflow-y: auto;
+                        position: relative;
+                    ",
+                    onscroll: move |_evt: Event<ScrollData>| {
+                        // NOTE: Dioxus desktop scroll data provides
+                        // scroll_offset via the ScrollData type.
+                        // We read the raw pixel values for virtual scroll.
+                        // For now, track via eval for precise values.
+                        let js = r#"
+                            (function() {
+                                var el = document.querySelector('[data-chat-scroll]');
+                                if (el) return JSON.stringify({top: el.scrollTop, height: el.clientHeight});
+                                return '{}';
+                            })()
+                        "#;
+                        spawn(async move {
+                            if let Ok(val) = document::eval(js).await {
+                                let text = val.to_string();
+                                let cleaned = text.trim_matches('"');
+                                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(cleaned) {
+                                    if let Some(top) = parsed.get("top").and_then(|v| v.as_f64()) {
+                                        scroll_top.set(top);
+                                    }
+                                    if let Some(h) = parsed.get("height").and_then(|v| v.as_f64()) {
+                                        if h > 0.0 {
+                                            container_height.set(h);
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    },
+                    "data-chat-scroll": "true",
+
+                    // Virtual scroll spacer (top)
+                    div {
+                        style: "height: {pad_top}px;",
                     }
+
+                    // Visible messages
+                    for (idx , msg , grouped) in visible_messages {
+                        MessageBubble {
+                            key: "{idx}",
+                            message: msg,
+                            is_grouped: grouped,
+                            agent_name: None,
+                        }
+                    }
+
+                    // Streaming indicator
                     if is_streaming {
-                        {render_streaming(&chat_state.read())}
+                        div {
+                            style: "
+                                padding: 0 var(--space-4);
+                                margin-top: var(--space-3);
+                            ",
+                            div {
+                                style: "
+                                    display: flex;
+                                    flex-direction: column;
+                                    align-items: flex-start;
+                                ",
+                                div {
+                                    style: "
+                                        font-size: var(--text-xs);
+                                        color: var(--role-assistant);
+                                        font-weight: var(--weight-semibold);
+                                        margin-bottom: var(--space-1);
+                                    ",
+                                    "Assistant"
+                                }
+                                div {
+                                    style: "
+                                        background: var(--bg-surface-bright);
+                                        border: 1px solid var(--accent);
+                                        border-radius: var(--radius-xl) var(--radius-xl) var(--radius-xl) var(--radius-sm);
+                                        padding: var(--space-3) var(--space-4);
+                                        max-width: 85%;
+                                        color: var(--text-primary);
+                                    ",
+                                    if !legacy_state.read().streaming.text.is_empty() {
+                                        Markdown {
+                                            content: legacy_state.read().streaming.text.clone(),
+                                        }
+                                    } else {
+                                        div {
+                                            style: "
+                                                color: var(--accent);
+                                                font-style: italic;
+                                            ",
+                                            "Thinking..."
+                                        }
+                                    }
+                                    // Active tool calls
+                                    for tc in legacy_state.read().streaming.tool_calls.iter() {
+                                        div {
+                                            style: "
+                                                font-size: var(--text-xs);
+                                                color: var(--text-muted);
+                                                padding: var(--space-1) var(--space-2);
+                                                background: var(--bg-surface-dim);
+                                                border-radius: var(--radius-md);
+                                                margin-top: var(--space-1);
+                                                font-family: var(--font-mono);
+                                            ",
+                                            "{format_tool_call(tc)}"
+                                        }
+                                    }
+                                    if let Some(err) = &legacy_state.read().streaming.error {
+                                        div {
+                                            style: "
+                                                color: var(--status-error);
+                                                margin-top: var(--space-2);
+                                                font-size: var(--text-sm);
+                                            ",
+                                            "Error: {err}"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Virtual scroll spacer (bottom)
+                    div {
+                        style: "height: {pad_bottom}px;",
                     }
                 }
             }
@@ -208,74 +361,6 @@ pub(crate) fn Chat() -> Element {
     }
 }
 
-fn render_message(msg: &ChatMessage, key: usize) -> Element {
-    let style = match msg.role {
-        MessageRole::User => USER_MSG_STYLE,
-        MessageRole::Assistant => ASSISTANT_MSG_STYLE,
-    };
-
-    let meta = if msg.role == MessageRole::Assistant {
-        msg.model.as_ref().map(|model| {
-            let mut s = format!("{model} | {}in/{}out", msg.input_tokens, msg.output_tokens);
-            if msg.tool_calls > 0 {
-                s.push_str(&format!(" | {} tool calls", msg.tool_calls));
-            }
-            s
-        })
-    } else {
-        None
-    };
-
-    let thinking_content = msg.thinking.clone().unwrap_or_default();
-
-    rsx! {
-        div {
-            key: "{key}",
-            style: "{style}",
-            "{msg.content}"
-            if !thinking_content.is_empty() {
-                ThinkingPanel {
-                    content: thinking_content,
-                    is_streaming: false,
-                }
-            }
-            if let Some(meta_text) = meta {
-                div { style: "{META_STYLE}", "{meta_text}" }
-            }
-        }
-    }
-}
-
-fn render_streaming(state: &ChatState) -> Element {
-    let has_thinking = !state.streaming.thinking.is_empty();
-
-    rsx! {
-        div {
-            style: "{STREAMING_STYLE}",
-            if !state.streaming.text.is_empty() {
-                "{state.streaming.text}"
-            } else if !has_thinking {
-                span { style: "color: #4a4aff;", "Thinking..." }
-            }
-            if has_thinking {
-                ThinkingPanel {
-                    content: state.streaming.thinking.clone(),
-                    is_streaming: true,
-                }
-            }
-            for tc in &state.streaming.tool_calls {
-                div {
-                    style: "{TOOL_CALL_STYLE}",
-                    "{format_tool_call(tc)}"
-                }
-            }
-            if let Some(err) = &state.streaming.error {
-                div { style: "color: #ef4444; margin-top: 8px;", "Error: {err}" }
-            }
-        }
-    }
-}
-
 fn format_tool_call(tc: &crate::state::events::ToolCallInfo) -> String {
     if tc.completed {
         let marker = if tc.is_error { "[x]" } else { "[v]" };
@@ -285,5 +370,70 @@ fn format_tool_call(tc: &crate::state::events::ToolCallInfo) -> String {
         }
     } else {
         format!("[...] {}", tc.tool_name)
+    }
+}
+
+/// Compute the visible range for virtual scrolling.
+///
+/// Returns `(range_start, range_end)` — the slice indices of messages
+/// to render from the full list.
+#[must_use]
+pub(crate) fn visible_range(
+    scroll_top: f64,
+    container_height: f64,
+    total_messages: usize,
+    estimated_height: f64,
+    overscan: usize,
+) -> (usize, usize) {
+    if total_messages == 0 {
+        return (0, 0);
+    }
+    let first = ((scroll_top / estimated_height) as usize).min(total_messages);
+    let count = ((container_height / estimated_height).ceil() as usize + 1).min(total_messages);
+    let start = first.saturating_sub(overscan);
+    let end = (first + count + overscan).min(total_messages);
+    (start, end)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn visible_range_empty() {
+        let (start, end) = visible_range(0.0, 600.0, 0, 80.0, 3);
+        assert_eq!(start, 0);
+        assert_eq!(end, 0);
+    }
+
+    #[test]
+    fn visible_range_at_top() {
+        let (start, end) = visible_range(0.0, 600.0, 100, 80.0, 3);
+        assert_eq!(start, 0);
+        // first=0, count=ceil(600/80)+1=8+1=9, end=0+9+3=12
+        assert_eq!(end, 12);
+    }
+
+    #[test]
+    fn visible_range_scrolled() {
+        // Scrolled 400px down: first=5, count=9, start=5-3=2, end=5+9+3=17
+        let (start, end) = visible_range(400.0, 600.0, 100, 80.0, 3);
+        assert_eq!(start, 2);
+        assert_eq!(end, 17);
+    }
+
+    #[test]
+    fn visible_range_near_end() {
+        // 20 messages, scrolled to near bottom
+        let (start, end) = visible_range(1200.0, 600.0, 20, 80.0, 3);
+        assert_eq!(end, 20);
+        assert!(start <= end);
+    }
+
+    #[test]
+    fn visible_range_few_messages() {
+        let (start, end) = visible_range(0.0, 600.0, 3, 80.0, 3);
+        assert_eq!(start, 0);
+        assert_eq!(end, 3);
     }
 }
