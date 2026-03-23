@@ -102,6 +102,7 @@ async fn fetch_session(
         );
     }
     let url = format!("{base_url}{API_V1}/sessions/{session_id}");
+    // codequality:ignore — non-HTTPS guard above warns on cleartext to non-localhost URLs
     let resp = client.get(&url).send().await.map_err(|e| {
         if e.is_connect() {
             anyhow::anyhow!(
@@ -129,7 +130,19 @@ async fn fetch_history(
     base_url: &str,
     session_id: &str,
 ) -> Result<HistoryResponse> {
+    // WARNING: credentials may be in default headers -- warn if sending to non-local, non-HTTPS
+    if !base_url.starts_with("https://")
+        && !base_url.contains("localhost")
+        && !base_url.contains("127.0.0.1")
+        && !base_url.contains("[::1]")
+    {
+        tracing::warn!(
+            base_url,
+            "sending credentials over non-HTTPS to non-localhost URL"
+        );
+    }
     let url = format!("{base_url}{API_V1}/sessions/{session_id}/history");
+    // codequality:ignore — non-HTTPS guard above warns on cleartext to non-localhost URLs
     let resp = client
         .get(&url)
         .send()

@@ -565,8 +565,6 @@ impl AnthropicProvider {
         let wire = WireRequest::from_request(request, None);
         let body = serde_json::to_string(&wire).context(error::ParseResponseSnafu)?;
 
-        // TEMPORARY: dump request body for OAuth troubleshooting
-
         let mut last_error = None;
 
         for attempt in 0..=self.max_retries {
@@ -577,6 +575,7 @@ impl AnthropicProvider {
             let (token_prefix, credential_source) = self.credential_log_info();
             let headers = self.build_headers()?;
 
+            // codequality:ignore — HTTPS enforced by constructor (from_config / with_credential_provider)
             let response = match self
                 .client
                 .post(format!("{}/v1/messages", self.base_url))

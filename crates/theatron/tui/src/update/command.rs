@@ -546,6 +546,7 @@ fn execute_export(app: &mut App) {
         .dashboard
         .focused_session_id
         .as_ref()
+        // codequality:ignore — session IDs are opaque identifiers, not credentials
         .map(|id| id.to_string())
         .unwrap_or_else(|| "none".to_string());
 
