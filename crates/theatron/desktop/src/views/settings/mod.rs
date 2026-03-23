@@ -1,11 +1,14 @@
-//! Settings views: server connections, appearance, keybindings, and setup wizard.
+//! Settings views: server connections, appearance, keybindings, notifications, and setup wizard.
 
 pub(crate) mod appearance;
 pub(crate) mod keybindings;
+pub(crate) mod notifications;
 pub(crate) mod servers;
 pub(crate) mod wizard;
 
 use dioxus::prelude::*;
+
+use crate::views::settings::notifications::NotificationSettings;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum SettingsTab {
@@ -13,6 +16,7 @@ enum SettingsTab {
     Servers,
     Appearance,
     Keybindings,
+    Notifications,
 }
 
 impl SettingsTab {
@@ -21,6 +25,7 @@ impl SettingsTab {
             Self::Servers => "Connections",
             Self::Appearance => "Appearance",
             Self::Keybindings => "Keybindings",
+            Self::Notifications => "Notifications",
         }
     }
 }
@@ -36,7 +41,7 @@ pub(crate) fn Settings() -> Element {
 
             div {
                 style: "display: flex; gap: 0; padding: 0 20px; border-bottom: 1px solid #333; background: #111;",
-                for tab in [SettingsTab::Servers, SettingsTab::Appearance, SettingsTab::Keybindings] {
+                for tab in [SettingsTab::Servers, SettingsTab::Appearance, SettingsTab::Keybindings, SettingsTab::Notifications] {
                     {
                         let is_active = active_tab() == tab;
                         let border = if is_active { "2px solid #5b6af0" } else { "2px solid transparent" };
@@ -63,6 +68,7 @@ pub(crate) fn Settings() -> Element {
                     SettingsTab::Servers => rsx! { servers::ServersPanel {} },
                     SettingsTab::Appearance => rsx! { appearance::AppearancePanel {} },
                     SettingsTab::Keybindings => rsx! { keybindings::KeybindingsPanel {} },
+                    SettingsTab::Notifications => rsx! { NotificationSettings {} },
                 } }
             }
         }

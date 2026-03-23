@@ -7,6 +7,7 @@ pub mod config;
 pub mod connection;
 pub(crate) mod file_watcher;
 pub mod sse;
+pub(crate) mod notification_dispatch;
 pub(crate) mod sse_coroutine;
 pub(crate) mod streaming;
 pub(crate) mod toast;

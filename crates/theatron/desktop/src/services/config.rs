@@ -12,6 +12,7 @@ use std::path::PathBuf;
 use snafu::{ResultExt, Snafu};
 
 use crate::state::connection::ConnectionConfig;
+use crate::state::notifications::NotificationPreferences;
 
 /// Errors that can occur when loading or saving desktop config.
 #[derive(Debug, Snafu)]
@@ -63,11 +64,13 @@ pub enum ConfigError {
     },
 }
 
-/// TOML file envelope: the `[connection]` table within `desktop.toml`.
+/// TOML file envelope for `~/.config/aletheia/desktop.toml`.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 struct DesktopConfig {
     #[serde(default)]
     connection: ConnectionConfig,
+    #[serde(default)]
+    notifications: NotificationPreferences,
 }
 
 /// Resolve the config file path: `~/.config/aletheia/desktop.toml`.
@@ -114,8 +117,19 @@ pub(crate) fn save(config: &ConnectionConfig) -> Result<(), ConfigError> {
         })?;
     }
 
+    // NOTE: Preserve existing notification preferences when saving connection config.
+    let existing_notifications = if path.exists() {
+        std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|c| toml::from_str::<DesktopConfig>(&c).ok())
+            .map(|d| d.notifications)
+            .unwrap_or_default()
+    } else {
+        NotificationPreferences::default()
+    };
     let desktop = DesktopConfig {
         connection: config.clone(),
+        notifications: existing_notifications,
     };
     let content = toml::to_string_pretty(&desktop).context(SerializeSnafu)?;
     // SAFETY: Config may contain auth tokens; restrict to owner-only access.
@@ -150,6 +164,74 @@ pub(crate) fn load_or_default() -> ConnectionConfig {
     }
 }
 
+/// Load notification preferences from the config file.
+///
+/// Returns defaults if the file does not exist or the section is absent.
+#[must_use]
+pub(crate) fn load_notification_prefs() -> NotificationPreferences {
+    let Ok(path) = config_path() else {
+        return NotificationPreferences::default();
+    };
+    if !path.exists() {
+        return NotificationPreferences::default();
+    }
+    let content = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return NotificationPreferences::default(),
+    };
+    toml::from_str::<DesktopConfig>(&content)
+        .map(|c| c.notifications)
+        .unwrap_or_default()
+}
+
+/// Save notification preferences to the config file.
+///
+/// Reads the current file, updates only the `[notifications]` section, and
+/// writes back — preserving the `[connection]` section.
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be read, parsed, or written.
+pub(crate) fn save_notification_prefs(prefs: &NotificationPreferences) -> Result<(), ConfigError> {
+    let path = config_path()?;
+
+    // Read existing config to preserve the connection section.
+    let existing = if path.exists() {
+        let content = std::fs::read_to_string(&path).context(ReadFileSnafu { path: &path })?;
+        toml::from_str::<DesktopConfig>(&content).context(ParseSnafu)?
+    } else {
+        DesktopConfig::default()
+    };
+
+    let updated = DesktopConfig {
+        connection: existing.connection,
+        notifications: prefs.clone(),
+    };
+    let content = toml::to_string_pretty(&updated).context(SerializeSnafu)?;
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).context(CreateDirSnafu {
+            path: parent.to_path_buf(),
+        })?;
+    }
+
+    // SAFETY: Config may contain auth tokens; restrict to owner-only access.
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&path)
+            .context(WriteFileSnafu { path: &path })?;
+        file.write_all(content.as_bytes())
+            .context(WriteFileSnafu { path: &path })?;
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 mod tests {
@@ -165,6 +247,7 @@ mod tests {
 
         let desktop = DesktopConfig {
             connection: config.clone(),
+            notifications: NotificationPreferences::default(),
         };
         let serialized = toml::to_string_pretty(&desktop).unwrap();
         let deserialized: DesktopConfig = toml::from_str(&serialized).unwrap();
@@ -191,6 +274,7 @@ mod tests {
 
         let desktop = DesktopConfig {
             connection: config.clone(),
+            notifications: NotificationPreferences::default(),
         };
         let content = toml::to_string_pretty(&desktop).unwrap();
         std::fs::write(&path, &content).unwrap();

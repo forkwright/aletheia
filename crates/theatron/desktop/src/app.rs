@@ -12,6 +12,7 @@ use crate::services::{config, settings_config};
 use crate::services::toast::provide_toast_context;
 use crate::state::agents::AgentStore;
 use crate::state::connection::ConnectionState;
+use crate::state::notifications::{DndState, NotificationHistory};
 use crate::state::platform::{CloseBehavior, HotkeyState, QuickInputState, TrayState, WindowState};
 use crate::theme::ThemeProvider;
 use crate::views::chat::Chat;
@@ -112,6 +113,12 @@ pub(crate) fn App() -> Element {
 #[component]
 fn ConnectedApp() -> Element {
     let config = use_context::<Signal<crate::state::connection::ConnectionConfig>>();
+
+    // Provide notification signals. Preferences are loaded from disk; DND and
+    // history are ephemeral and reset on each app launch.
+    use_context_provider(|| Signal::new(config::load_notification_prefs()));
+    use_context_provider(|| Signal::new(NotificationHistory::default()));
+    use_context_provider(|| Signal::new(DndState::default()));
 
     // WHY: Start SSE coroutine here (not in App) so it only runs when connected
     // and has access to the finalized connection config.
