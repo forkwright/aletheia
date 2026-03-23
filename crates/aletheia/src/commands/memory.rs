@@ -117,14 +117,17 @@ async fn is_server_running(url: &str) -> Result<bool> {
 /// Run the graph health check via the server's HTTP API.
 async fn run_check_via_api(url: &str, json: bool) -> Result<()> {
     let endpoint = format!("{url}/api/v1/knowledge/check");
-    let resp = reqwest::get(&endpoint).await
+    let resp = reqwest::get(&endpoint)
+        .await
         .map_err(|e| anyhow::anyhow!("failed to connect to {endpoint}: {e}"))?;
 
     if resp.status() == reqwest::StatusCode::SERVICE_UNAVAILABLE {
         anyhow::bail!("knowledge store is not enabled on the running server");
     }
 
-    let body: serde_json::Value = resp.json().await
+    let body: serde_json::Value = resp
+        .json()
+        .await
         .map_err(|e| anyhow::anyhow!("failed to parse response: {e}"))?;
 
     if json {
@@ -137,11 +140,20 @@ async fn run_check_via_api(url: &str, json: bool) -> Result<()> {
         if let Some(ec) = body.get("entity_count").and_then(serde_json::Value::as_u64) {
             println!("Entities:      {ec}");
         }
-        if let Some(rc) = body.get("relationship_count").and_then(serde_json::Value::as_u64) {
+        if let Some(rc) = body
+            .get("relationship_count")
+            .and_then(serde_json::Value::as_u64)
+        {
             println!("Relationships: {rc}");
         }
-        let orphaned = body.get("orphaned_entity_count").and_then(serde_json::Value::as_u64).unwrap_or(0);
-        let dangling = body.get("dangling_edge_count").and_then(serde_json::Value::as_u64).unwrap_or(0);
+        let orphaned = body
+            .get("orphaned_entity_count")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0);
+        let dangling = body
+            .get("dangling_edge_count")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0);
         if orphaned > 0 {
             println!("\nOrphaned entities: {orphaned}");
         } else {
@@ -152,7 +164,10 @@ async fn run_check_via_api(url: &str, json: bool) -> Result<()> {
         } else {
             println!("Dangling edges: 0");
         }
-        let status = body.get("status").and_then(|v| v.as_str()).unwrap_or("unknown");
+        let status = body
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
         println!("\nStatus: {status}");
     }
 

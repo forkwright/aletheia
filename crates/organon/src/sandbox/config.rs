@@ -332,6 +332,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::expect_used, reason = "test context — parse failure is a test bug")]
     fn nproc_limit_configurable_via_serde() {
         let json = r#"{"enabled":true,"nprocLimit":512}"#;
         let config: SandboxConfig = serde_json::from_str(json).expect("parse");

@@ -272,7 +272,10 @@ async fn do_daemon() -> Result<()> {
         .await
         .with_context(|| format!("failed to write PID file at {}", pid_path.display()))?;
 
-    println!("aletheia started in background (PID: {pid}, PID file: {})", pid_path.display());
+    println!(
+        "aletheia started in background (PID: {pid}, PID file: {})",
+        pid_path.display()
+    );
     Ok(())
 }
 
@@ -288,8 +291,7 @@ fn daemon_instance_root() -> PathBuf {
             return PathBuf::from(path);
         }
     }
-    std::env::var("ALETHEIA_ROOT")
-        .map_or_else(|_| PathBuf::from("instance"), PathBuf::from)
+    std::env::var("ALETHEIA_ROOT").map_or_else(|_| PathBuf::from("instance"), PathBuf::from)
 }
 
 #[cfg(test)]

@@ -234,11 +234,7 @@ fn print_nous(list: &[NousInfo], color: bool) {
     println!();
 }
 
-fn print_storage(
-    oikos: &aletheia_taxis::oikos::Oikos,
-    server_data_dir: Option<&str>,
-    color: bool,
-) {
+fn print_storage(oikos: &aletheia_taxis::oikos::Oikos, server_data_dir: Option<&str>, color: bool) {
     if color {
         println!("  {}:", "Storage".bold());
     } else {
