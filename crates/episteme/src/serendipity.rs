@@ -230,7 +230,13 @@ pub fn random_walk(
 /// 1. Haven't been accessed recently (high recency surprise)
 /// 2. Are connected to the current context (relevance floor)
 /// 3. Are in a different community from the query context (cross-community bonus)
-#[cfg_attr(not(test), expect(dead_code, reason = "test-only scoring function for serendipity engine"))]
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "test-only scoring function for serendipity engine"
+    )
+)]
 #[must_use]
 pub(crate) fn surprise_scores(
     graph: &GraphSnapshot,
@@ -271,7 +277,13 @@ pub(crate) fn surprise_scores(
 ///
 /// Relevance: inverse graph distance from seed entities.
 /// Novelty: cross-community score + obscurity (low `PageRank`).
-#[cfg_attr(not(test), expect(dead_code, reason = "test-only scoring function for serendipity engine"))]
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "test-only scoring function for serendipity engine"
+    )
+)]
 #[must_use]
 pub(crate) fn score_discoveries(
     graph: &GraphSnapshot,

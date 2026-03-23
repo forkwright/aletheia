@@ -54,7 +54,10 @@ pub struct AppState {
 }
 
 impl AppState {
-    #[expect(dead_code, reason = "hot-reload subscriber API, not yet wired into actor lifecycle")]
+    #[expect(
+        dead_code,
+        reason = "hot-reload subscriber API, not yet wired into actor lifecycle"
+    )]
     /// Subscribe to config change notifications.
     ///
     /// Returns a `watch::Receiver` that yields the latest config after each

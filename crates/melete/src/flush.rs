@@ -51,7 +51,13 @@ impl FlushSource {
 impl MemoryFlush {
     /// Create an empty flush.
     #[must_use]
-    #[cfg_attr(not(test), expect(dead_code, reason = "test-only constructor, production path not yet wired"))]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "test-only constructor, production path not yet wired"
+        )
+    )]
     pub(crate) fn empty() -> Self {
         Self {
             decisions: vec![],
@@ -63,7 +69,10 @@ impl MemoryFlush {
 
     /// Check if there's anything to flush.
     #[must_use]
-    #[cfg_attr(not(test), expect(dead_code, reason = "test-only query, production path not yet wired"))]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "test-only query, production path not yet wired")
+    )]
     pub(crate) fn is_empty(&self) -> bool {
         self.decisions.is_empty()
             && self.corrections.is_empty()
@@ -73,7 +82,13 @@ impl MemoryFlush {
 
     /// Render as markdown for writing to a memory file.
     #[must_use]
-    #[cfg_attr(not(test), expect(dead_code, reason = "test-only renderer, production path not yet wired"))]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "test-only renderer, production path not yet wired"
+        )
+    )]
     pub(crate) fn to_markdown(&self) -> String {
         let mut out = String::new();
 

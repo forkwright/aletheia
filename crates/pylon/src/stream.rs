@@ -12,7 +12,13 @@ pub(crate) enum SseEvent {
     #[serde(rename = "text_delta")]
     TextDelta { text: String },
 
-    #[cfg_attr(not(test), expect(dead_code, reason = "SSE schema variant for extended-thinking, not yet emitted"))]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "SSE schema variant for extended-thinking, not yet emitted"
+        )
+    )]
     /// Incremental extended-thinking output.
     #[serde(rename = "thinking_delta")]
     ThinkingDelta { thinking: String },
