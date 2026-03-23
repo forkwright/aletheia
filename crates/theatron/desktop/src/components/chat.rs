@@ -45,6 +45,10 @@ use theatron_core::events::StreamEvent;
 use theatron_core::id::NousId;
 
 use crate::state::events::{ConnectionState, StreamingState, ToolCallInfo};
+use crate::state::tools::{
+    PlanCardState, PlanStatus, PlanStepState, RiskLevel, StepStatus, ToolApprovalState,
+    ToolCallState, ToolStatus,
+};
 
 /// How long to buffer text deltas before flushing to the signal.
 const TEXT_DEBOUNCE: Duration = Duration::from_millis(100);
@@ -66,6 +70,10 @@ pub struct ChatMessage {
     pub output_tokens: u32,
     /// Thinking/reasoning content captured during the turn.
     pub thinking: Option<String>,
+    /// Rich tool call details for panel display in committed messages.
+    pub tool_call_details: Vec<ToolCallState>,
+    /// Planning cards associated with this message.
+    pub plans: Vec<PlanCardState>,
 }
 
 /// Who produced a chat message.
@@ -164,6 +172,9 @@ impl ChatStateManager {
                     text: String::new(),
                     thinking: String::new(),
                     tool_calls: Vec::new(),
+                    tool_call_details: Vec::new(),
+                    approvals: Vec::new(),
+                    plans: Vec::new(),
                     is_streaming: true,
                     turn_id: Some(turn_id),
                     error: None,
@@ -186,17 +197,29 @@ impl ChatStateManager {
             StreamEvent::ToolStart {
                 tool_name,
                 tool_id,
-                input: _,
+                input,
             } => {
                 // Flush any pending text before recording tool start.
                 self.flush_text(state);
                 self.flush_thinking(state);
                 state.streaming.tool_calls.push(ToolCallInfo {
-                    tool_name,
-                    tool_id,
+                    tool_name: tool_name.clone(),
+                    tool_id: tool_id.clone(),
                     is_error: false,
                     duration_ms: None,
                     completed: false,
+                    input: input.clone(),
+                    output: None,
+                    error_message: None,
+                });
+                state.streaming.tool_call_details.push(ToolCallState {
+                    tool_id,
+                    tool_name,
+                    status: ToolStatus::Running,
+                    input,
+                    output: None,
+                    error_message: None,
+                    duration_ms: None,
                 });
                 true
             }
@@ -205,7 +228,7 @@ impl ChatStateManager {
                 is_error,
                 duration_ms,
                 tool_name: _,
-                result: _,
+                result,
             } => {
                 if let Some(tc) = state
                     .streaming
@@ -216,6 +239,28 @@ impl ChatStateManager {
                     tc.is_error = is_error;
                     tc.duration_ms = Some(duration_ms);
                     tc.completed = true;
+                    tc.output = result.clone();
+                    if is_error {
+                        tc.error_message = result.clone();
+                    }
+                }
+                if let Some(detail) = state
+                    .streaming
+                    .tool_call_details
+                    .iter_mut()
+                    .find(|d| d.tool_id == tool_id)
+                {
+                    detail.status = if is_error {
+                        ToolStatus::Error
+                    } else {
+                        ToolStatus::Success
+                    };
+                    detail.duration_ms = Some(duration_ms);
+                    if is_error {
+                        detail.error_message = result;
+                    } else {
+                        detail.output = result;
+                    }
                 }
                 true
             }
@@ -237,6 +282,8 @@ impl ChatStateManager {
                     input_tokens: outcome.input_tokens,
                     output_tokens: outcome.output_tokens,
                     thinking,
+                    tool_call_details: std::mem::take(&mut state.streaming.tool_call_details),
+                    plans: std::mem::take(&mut state.streaming.plans),
                 };
                 state.messages.push(message);
                 state.streaming = StreamingState::default();
@@ -261,6 +308,8 @@ impl ChatStateManager {
                         input_tokens: 0,
                         output_tokens: 0,
                         thinking,
+                        tool_call_details: std::mem::take(&mut state.streaming.tool_call_details),
+                        plans: std::mem::take(&mut state.streaming.plans),
                     };
                     state.messages.push(message);
                 }
@@ -273,11 +322,97 @@ impl ChatStateManager {
                 state.streaming.is_streaming = false;
                 true
             }
-            StreamEvent::ToolApprovalRequired { .. } | StreamEvent::ToolApprovalResolved { .. } => {
-                // These would drive overlay/dialog signals in the full implementation.
+            StreamEvent::ToolApprovalRequired {
+                turn_id,
+                tool_name,
+                tool_id,
+                input,
+                risk,
+                reason,
+            } => {
+                state.streaming.approvals.push(ToolApprovalState {
+                    turn_id,
+                    tool_id,
+                    tool_name,
+                    input,
+                    risk: RiskLevel::from_str_lossy(&risk),
+                    reason,
+                    resolved: false,
+                });
                 true
             }
-            // Plan events and future non-exhaustive variants: no state change yet.
+            StreamEvent::ToolApprovalResolved { tool_id, .. } => {
+                if let Some(approval) = state
+                    .streaming
+                    .approvals
+                    .iter_mut()
+                    .find(|a| a.tool_id == tool_id)
+                {
+                    approval.resolved = true;
+                }
+                true
+            }
+            StreamEvent::PlanProposed { plan } => {
+                let steps = plan
+                    .steps
+                    .iter()
+                    .map(|s| PlanStepState {
+                        id: s.id,
+                        label: s.label.clone(),
+                        status: parse_step_status(&s.status),
+                        result: s.result.clone(),
+                    })
+                    .collect();
+                state.streaming.plans.push(PlanCardState {
+                    plan_id: plan.id,
+                    steps,
+                    status: PlanStatus::Proposed,
+                });
+                true
+            }
+            StreamEvent::PlanStepStart { plan_id, step_id } => {
+                if let Some(plan) = state
+                    .streaming
+                    .plans
+                    .iter_mut()
+                    .find(|p| p.plan_id == plan_id)
+                {
+                    plan.status = PlanStatus::InProgress;
+                    if let Some(step) = plan.steps.iter_mut().find(|s| s.id == step_id) {
+                        step.status = StepStatus::InProgress;
+                    }
+                }
+                true
+            }
+            StreamEvent::PlanStepComplete {
+                plan_id,
+                step_id,
+                status,
+            } => {
+                if let Some(plan) = state
+                    .streaming
+                    .plans
+                    .iter_mut()
+                    .find(|p| p.plan_id == plan_id)
+                {
+                    if let Some(step) = plan.steps.iter_mut().find(|s| s.id == step_id) {
+                        step.status = parse_step_status(&status);
+                    }
+                }
+                true
+            }
+            StreamEvent::PlanComplete { plan_id, status } => {
+                if let Some(plan) = state
+                    .streaming
+                    .plans
+                    .iter_mut()
+                    .find(|p| p.plan_id == plan_id)
+                {
+                    plan.status = PlanStatus::Complete { status };
+                }
+                true
+            }
+            // Future non-exhaustive variants: no state change.
             _ => false,
         }
     }
@@ -335,6 +470,16 @@ impl ChatStateManager {
             changed = true;
         }
         changed
+    }
+}
+
+/// Map a server step-status string to a [`StepStatus`] enum value.
+fn parse_step_status(s: &str) -> StepStatus {
+    match s.to_ascii_lowercase().as_str() {
+        "complete" | "completed" | "success" => StepStatus::Complete,
+        "in_progress" | "running" | "active" => StepStatus::InProgress,
+        "failed" | "error" => StepStatus::Failed,
+        _ => StepStatus::Pending,
     }
 }
 
@@ -719,6 +864,8 @@ mod tests {
             input_tokens: 0,
             output_tokens: 0,
             thinking: None,
+            tool_call_details: Vec::new(),
+            plans: Vec::new(),
         });
 
         // Turn starts.

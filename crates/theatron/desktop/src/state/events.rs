@@ -10,6 +10,8 @@ use std::collections::HashMap;
 use theatron_core::api::types::ActiveTurn;
 use theatron_core::id::{NousId, ToolId, TurnId};
 
+use super::tools::{PlanCardState, ToolApprovalState, ToolCallState};
+
 /// Aggregate state derived from global SSE events.
 ///
 /// In Dioxus, each field maps to a signal:
@@ -117,8 +119,14 @@ pub struct StreamingState {
     pub text: String,
     /// Accumulated extended thinking output.
     pub thinking: String,
-    /// Active tool calls in progress.
+    /// Active tool calls in progress (minimal tracking).
     pub tool_calls: Vec<ToolCallInfo>,
+    /// Rich tool call state for panel display (input/output/error details).
+    pub tool_call_details: Vec<ToolCallState>,
+    /// Tool calls awaiting user approval.
+    pub approvals: Vec<ToolApprovalState>,
+    /// Active planning cards for this turn.
+    pub plans: Vec<PlanCardState>,
     /// Whether the stream is actively receiving deltas.
     pub is_streaming: bool,
     /// Turn ID if a turn is in progress.
@@ -140,6 +148,12 @@ pub struct ToolCallInfo {
     pub duration_ms: Option<u64>,
     /// Whether the tool call has completed.
     pub completed: bool,
+    /// Tool input parameters as JSON (for panel display).
+    pub input: Option<serde_json::Value>,
+    /// Tool output text (for panel display).
+    pub output: Option<String>,
+    /// Error detail message distinct from `is_error` flag.
+    pub error_message: Option<String>,
 }
 
 /// Distillation (memory compaction) progress for a single agent.
