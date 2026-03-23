@@ -30,7 +30,7 @@ migrate-qdrant = ["dep:qdrant-client", "aletheia-mneme/mneme-engine", "aletheia-
 tls = ["aletheia-pylon/tls"]
 tui = ["dep:theatron-tui"]
 # Test tiers (see docs/test-tiers.md)
-test-core = ["aletheia-mneme/test-core", "aletheia-nous/test-core"]
+test-core = ["aletheia-mneme/test-core", "aletheia-nous/test-core", "aletheia-pylon/test-core"]
 test-full = ["test-core", "aletheia-mneme/test-full"]
 
 [dependencies]

@@ -14,7 +14,7 @@ workspace = true
 default = []
 tls = ["dep:axum-server"]
 knowledge-store = ["aletheia-nous/knowledge-store"]
-test-core = []
+test-core = ["knowledge-store"]
 test-full = []
 
 [dependencies]
