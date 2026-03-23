@@ -63,10 +63,10 @@ const VALID_SORT_FIELDS: &[&str] = &[
 const VALID_ORDER_VALUES: &[&str] = &["asc", "desc"];
 
 /// Hard upper bound on the `limit` query parameter for all knowledge endpoints.
-const MAX_LIMIT: usize = 1000;
+const MAX_FACTS_LIMIT: usize = 1000;
 
 fn default_limit() -> usize {
-    50
+    100
 }
 
 /// Response wrapper for fact listing.
@@ -258,7 +258,7 @@ fn validate_sort_order(sort: &str, order: &str) -> Result<(), ApiError> {
         ("filter" = Option<String>, Query, description = "Text filter"),
         ("fact_type" = Option<String>, Query, description = "Fact type filter: knowledge, preference, skill, observation, etc."),
         ("tier" = Option<String>, Query, description = "Epistemic tier: verified, inferred, assumed"),
-        ("limit" = Option<usize>, Query, description = "Maximum results (default: 100)"),
+        ("limit" = Option<usize>, Query, description = "Maximum results (default: 100, max: 1000)"),
         ("offset" = Option<usize>, Query, description = "Pagination offset"),
         ("include_forgotten" = Option<bool>, Query, description = "Include forgotten facts (default: false)"),
     ),
@@ -275,7 +275,7 @@ pub async fn list_facts(
 ) -> Result<Json<FactsResponse>, ApiError> {
     use aletheia_mneme::knowledge::EpistemicTier;
 
-    query.limit = query.limit.min(MAX_LIMIT);
+    query.limit = query.limit.min(MAX_FACTS_LIMIT);
     validate_sort_order(&query.sort, &query.order)?;
     query.order = query.order.to_ascii_lowercase();
 
@@ -503,8 +503,8 @@ mod tests {
     }
 
     #[test]
-    fn default_limit_returns_50() {
-        assert_eq!(default_limit(), 50);
+    fn default_limit_returns_100() {
+        assert_eq!(default_limit(), 100);
     }
 
     #[test]
@@ -552,15 +552,15 @@ mod tests {
         let q: FactsQuery = serde_json::from_str("{}").unwrap();
         assert_eq!(q.sort, "confidence");
         assert_eq!(q.order, "desc");
-        assert_eq!(q.limit, 50);
+        assert_eq!(q.limit, 100);
         assert!(!q.include_forgotten);
     }
 
     #[test]
     fn limit_is_capped_at_max() {
-        // NOTE: list_facts clamps query.limit to MAX_LIMIT (1000) before use.
-        const { assert!(MAX_LIMIT <= 1000) };
-        assert_eq!(MAX_LIMIT, 1000);
+        // NOTE: list_facts clamps query.limit to MAX_FACTS_LIMIT (1000) before use.
+        const { assert!(MAX_FACTS_LIMIT <= 1000) };
+        assert_eq!(MAX_FACTS_LIMIT, 1000);
     }
 
     #[test]

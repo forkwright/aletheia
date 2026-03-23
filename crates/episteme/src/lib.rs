@@ -20,6 +20,10 @@ pub mod conflict;
 /// LLM-driven fact consolidation for knowledge maintenance.
 pub mod consolidation;
 /// Multi-factor temporal decay with lifecycle stages and graduated pruning.
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "pub(crate) items used only in tests")
+)]
 pub mod decay;
 /// Entity deduplication pipeline for merging semantically identical entities.
 pub(crate) mod dedup;
@@ -48,6 +52,10 @@ pub(crate) mod query_rewrite;
 /// 6-factor recall scoring engine for knowledge retrieval ranking.
 pub mod recall;
 /// Serendipity engine: cross-domain discovery, surprise scoring, and context injection.
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "pub(crate) items used only in tests")
+)]
 pub mod serendipity;
 /// Skill storage helpers and SKILL.md parser.
 pub mod skill;

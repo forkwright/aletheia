@@ -14,7 +14,7 @@ use crate::id::EntityId;
 
 /// Configuration for the serendipity engine.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SerendipityConfig {
+pub(crate) struct SerendipityConfig {
     /// Maximum steps in a random walk. Default: 6
     pub max_walk_length: u32,
     /// Number of random walks per exploration. Default: 10
@@ -45,7 +45,7 @@ impl Default for SerendipityConfig {
 
 /// A node in the knowledge graph for serendipity exploration.
 #[derive(Debug, Clone)]
-pub struct GraphNode {
+pub(crate) struct GraphNode {
     /// Entity identifier.
     pub entity_id: EntityId,
     /// Display name.
@@ -60,7 +60,7 @@ pub struct GraphNode {
 
 /// A scored discovery from the serendipity engine.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Discovery {
+pub(crate) struct Discovery {
     /// The discovered entity.
     pub entity_id: EntityId,
     /// Display name.
@@ -81,7 +81,7 @@ pub struct Discovery {
 
 /// A path between two entities in the knowledge graph.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExploredPath {
+pub(crate) struct ExploredPath {
     /// Ordered list of entity IDs along the path.
     pub nodes: Vec<EntityId>,
     /// Relationship labels along each edge.
@@ -96,7 +96,7 @@ pub struct ExploredPath {
 
 /// A fact selected for serendipity injection into context.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SerendipityInjection {
+pub(crate) struct SerendipityInjection {
     /// The fact content to inject.
     pub content: String,
     /// Source fact ID.
@@ -112,7 +112,7 @@ pub struct SerendipityInjection {
 /// Loaded once per exploration session. All graph traversal operates
 /// on this in-memory snapshot rather than hitting the store repeatedly.
 #[derive(Debug, Clone, Default)]
-pub struct GraphSnapshot {
+pub(crate) struct GraphSnapshot {
     /// All nodes keyed by entity ID string.
     pub nodes: HashMap<String, GraphNode>,
     /// Adjacency list keyed by entity ID.
@@ -125,7 +125,7 @@ pub struct GraphSnapshot {
 
 impl GraphSnapshot {
     /// Add a node to the snapshot.
-    pub fn add_node(&mut self, node: GraphNode) {
+    pub(crate) fn add_node(&mut self, node: GraphNode) {
         let id = node.entity_id.as_str().to_owned();
         if node.pagerank > self.max_pagerank {
             self.max_pagerank = node.pagerank;
@@ -135,7 +135,7 @@ impl GraphSnapshot {
     }
 
     /// Add an edge to the snapshot.
-    pub fn add_edge(&mut self, src: &str, dst: &str, relation: &str) {
+    pub(crate) fn add_edge(&mut self, src: &str, dst: &str, relation: &str) {
         self.adjacency
             .entry(src.to_owned())
             .or_default()
@@ -152,7 +152,7 @@ impl GraphSnapshot {
 
     /// Get neighbors of an entity.
     #[must_use]
-    pub fn neighbors(&self, entity_id: &str) -> Vec<&str> {
+    pub(crate) fn neighbors(&self, entity_id: &str) -> Vec<&str> {
         self.adjacency
             .get(entity_id)
             .map(|set| set.iter().map(String::as_str).collect())
@@ -161,7 +161,7 @@ impl GraphSnapshot {
 
     /// Total number of nodes.
     #[must_use]
-    pub fn node_count(&self) -> usize {
+    pub(crate) fn node_count(&self) -> usize {
         self.nodes.len()
     }
 
@@ -181,7 +181,7 @@ impl GraphSnapshot {
 /// Returns visit frequencies that indicate how "reachable" each entity is
 /// from the seeds through random traversal.
 #[must_use]
-pub fn random_walk(
+pub(crate) fn random_walk(
     graph: &GraphSnapshot,
     seeds: &[String],
     config: &SerendipityConfig,
@@ -230,13 +230,6 @@ pub fn random_walk(
 /// 1. Haven't been accessed recently (high recency surprise)
 /// 2. Are connected to the current context (relevance floor)
 /// 3. Are in a different community from the query context (cross-community bonus)
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "test-only scoring function for serendipity engine"
-    )
-)]
 #[must_use]
 pub(crate) fn surprise_scores(
     graph: &GraphSnapshot,
@@ -277,13 +270,6 @@ pub(crate) fn surprise_scores(
 ///
 /// Relevance: inverse graph distance from seed entities.
 /// Novelty: cross-community score + obscurity (low `PageRank`).
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "test-only scoring function for serendipity engine"
-    )
-)]
 #[must_use]
 pub(crate) fn score_discoveries(
     graph: &GraphSnapshot,
@@ -350,7 +336,7 @@ pub(crate) fn score_discoveries(
 ///
 /// Returns `None` if no path exists within `max_depth` hops.
 #[must_use]
-pub fn find_path(
+pub(crate) fn find_path(
     graph: &GraphSnapshot,
     source: &str,
     target: &str,
@@ -396,7 +382,7 @@ pub fn find_path(
 /// Returns paths to the most "interesting" reachable entities, ranked
 /// by cross-community traversal and distance.
 #[must_use]
-pub fn explore_from(
+pub(crate) fn explore_from(
     graph: &GraphSnapshot,
     source: &str,
     config: &SerendipityConfig,
@@ -444,7 +430,7 @@ pub fn explore_from(
 /// Picks the most surprising fact from the scored discoveries that
 /// exceeds the surprise threshold.
 #[must_use]
-pub fn select_injection<S: ::std::hash::BuildHasher>(
+pub(crate) fn select_injection<S: ::std::hash::BuildHasher>(
     discoveries: &[Discovery],
     fact_contents: &HashMap<String, (String, String), S>,
     config: &SerendipityConfig,
