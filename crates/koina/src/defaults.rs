@@ -11,6 +11,9 @@ pub const BOOTSTRAP_MAX_TOKENS: u32 = 40_000;
 /// Default context window budget (tokens).
 pub const CONTEXT_TOKENS: u32 = 200_000;
 
+/// Default context window budget for Opus models (1M token context window).
+pub const OPUS_CONTEXT_TOKENS: u32 = 1_000_000;
+
 /// Default maximum consecutive tool use iterations per turn.
 pub const MAX_TOOL_ITERATIONS: u32 = 200;
 

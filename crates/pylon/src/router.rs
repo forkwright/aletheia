@@ -82,11 +82,13 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
             get(knowledge::entity_relationships),
         )
         .route("/knowledge/search", get(knowledge::search))
-        .route("/knowledge/timeline", get(knowledge::timeline));
+        .route("/knowledge/timeline", get(knowledge::timeline))
+        .route("/knowledge/check", get(knowledge::check_graph_health));
 
     let mut router = Router::new()
         .nest(API_V1, v1)
         .route(API_HEALTH, get(health::check))
+        .route("/health", get(health::check))
         .route("/api/docs/openapi.json", get(openapi::openapi_json))
         .route("/metrics", get(metrics::expose));
 

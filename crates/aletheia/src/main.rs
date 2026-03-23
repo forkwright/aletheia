@@ -15,7 +15,7 @@ mod status;
 
 use std::path::PathBuf;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{CommandFactory, Parser, Subcommand};
 
 use commands::add_nous::AddNousArgs;
@@ -56,6 +56,10 @@ struct Cli {
     #[arg(long)]
     json_logs: bool,
 
+    /// Fork to background and write PID file at instance/aletheia.pid
+    #[arg(long)]
+    daemon: bool,
+
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -73,6 +77,9 @@ enum Command {
     },
     /// Knowledge graph inspection and maintenance
     Memory {
+        /// Server URL for API routing when server is running
+        #[arg(long, default_value = "http://127.0.0.1:18789")]
+        url: String,
         #[command(subcommand)]
         action: memory::Action,
     },
@@ -167,8 +174,8 @@ async fn main() -> Result<()> {
         Some(Command::Maintenance { action }) => {
             return commands::maintenance::run(action, instance_root);
         }
-        Some(Command::Memory { action }) => {
-            return commands::memory::run(action, instance_root);
+        Some(Command::Memory { url, action }) => {
+            return commands::memory::run(action, &url, instance_root).await;
         }
         Some(Command::Tls { action }) => return commands::tls::run(&action),
         Some(Command::Status { url }) => {
@@ -217,6 +224,10 @@ async fn main() -> Result<()> {
         None => {}
     }
 
+    if cli.daemon && std::env::var("_ALETHEIA_DAEMON").is_err() {
+        return do_daemon().await;
+    }
+
     commands::server::run(commands::server::Args {
         instance_root: cli.instance_root,
         bind: cli.bind,
@@ -225,6 +236,60 @@ async fn main() -> Result<()> {
         json_logs: cli.json_logs,
     })
     .await
+}
+
+/// Fork the server to background by re-executing the binary without `--daemon`.
+///
+/// WHY: `fork()` is unsafe inside a running tokio multi-thread runtime. Re-executing
+/// the binary avoids that hazard while still detaching from the terminal.
+async fn do_daemon() -> Result<()> {
+    let exe = std::env::current_exe().context("failed to locate executable")?;
+
+    // Strip --daemon from the child args
+    let child_args: Vec<String> = std::env::args()
+        .skip(1)
+        .filter(|a| a != "--daemon")
+        .collect();
+
+    let child = std::process::Command::new(&exe)
+        .args(&child_args)
+        .env("_ALETHEIA_DAEMON", "1")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .context("failed to spawn background process")?;
+
+    let pid = child.id();
+
+    // Determine instance root to write PID file
+    let instance_root = daemon_instance_root();
+    tokio::fs::create_dir_all(&instance_root)
+        .await
+        .with_context(|| format!("failed to create {}", instance_root.display()))?;
+    let pid_path = instance_root.join("aletheia.pid");
+    tokio::fs::write(&pid_path, pid.to_string())
+        .await
+        .with_context(|| format!("failed to write PID file at {}", pid_path.display()))?;
+
+    println!("aletheia started in background (PID: {pid}, PID file: {})", pid_path.display());
+    Ok(())
+}
+
+/// Resolve the instance root from CLI args or environment for PID file placement.
+fn daemon_instance_root() -> PathBuf {
+    let args: Vec<String> = std::env::args().collect();
+    for (i, arg) in args.iter().enumerate() {
+        if arg == "-r" || arg == "--instance-root" {
+            if let Some(path) = args.get(i + 1) {
+                return PathBuf::from(path);
+            }
+        } else if let Some(path) = arg.strip_prefix("--instance-root=") {
+            return PathBuf::from(path);
+        }
+    }
+    std::env::var("ALETHEIA_ROOT")
+        .map_or_else(|_| PathBuf::from("instance"), PathBuf::from)
 }
 
 #[cfg(test)]

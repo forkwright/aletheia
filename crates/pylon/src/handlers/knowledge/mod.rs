@@ -426,6 +426,139 @@ use search::{get_entity_relationships, get_stored_entities, get_stored_facts, so
 #[cfg(feature = "knowledge-store")]
 use search::{get_fact_relationships, get_similar_facts};
 
+/// Response type for graph health check.
+#[derive(Debug, serde::Serialize)]
+pub struct GraphCheckReport {
+    /// Total number of facts stored.
+    pub fact_count: usize,
+    /// Total number of entities stored.
+    pub entity_count: usize,
+    /// Total number of relationships stored.
+    pub relationship_count: usize,
+    /// Entities with no facts or relationships (potential orphans).
+    pub orphaned_entity_count: usize,
+    /// Edges that reference missing endpoint entities.
+    pub dangling_edge_count: usize,
+    /// Overall health: `"healthy"` or `"issues_found"`.
+    pub status: &'static str,
+}
+
+/// GET /api/v1/knowledge/check — run graph consistency checks.
+///
+/// Runs server-side; avoids the fjall exclusive-lock conflict that occurs when
+/// `aletheia memory check` tries to open the store while the server holds it.
+pub async fn check_graph_health(
+    State(state): State<KnowledgeState>,
+) -> impl axum::response::IntoResponse {
+    use axum::http::StatusCode;
+    use axum::response::IntoResponse as _;
+
+    #[cfg(feature = "knowledge-store")]
+    {
+        if let Some(ref store) = state.knowledge_store {
+            let report = build_graph_check_report(store);
+            return match report {
+                Ok(r) => (StatusCode::OK, Json(r)).into_response(),
+                Err(e) => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": e })),
+                )
+                    .into_response(),
+            };
+        }
+    }
+
+    let _ = &state;
+    (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(serde_json::json!({
+            "error": "knowledge store not enabled on this server"
+        })),
+    )
+        .into_response()
+}
+
+#[cfg(feature = "knowledge-store")]
+fn build_graph_check_report(
+    store: &std::sync::Arc<aletheia_mneme::knowledge_store::KnowledgeStore>,
+) -> Result<GraphCheckReport, String> {
+    use std::collections::BTreeMap;
+
+    fn count_relation(
+        store: &std::sync::Arc<aletheia_mneme::knowledge_store::KnowledgeStore>,
+        relation: &str,
+    ) -> Result<usize, String> {
+        let key_field = match relation {
+            "relationships" => "src",
+            "fact_entities" => "fact_id",
+            _ => "id",
+        };
+        let script =
+            format!("row[{key_field}] := *{relation}{{{key_field}}} \n?[count(k)] := row[k]");
+        let result = store
+            .run_query(&script, BTreeMap::new())
+            .map_err(|e| format!("query failed: {e}"))?;
+        let count = result
+            .rows
+            .first()
+            .and_then(|r| r.first())
+            .and_then(aletheia_mneme::engine::DataValue::get_int)
+            .unwrap_or(0);
+        Ok(usize::try_from(count).unwrap_or(0))
+    }
+
+    fn count_orphaned_entities(
+        store: &std::sync::Arc<aletheia_mneme::knowledge_store::KnowledgeStore>,
+    ) -> Result<usize, String> {
+        let script = r"
+            ?[id] :=
+                *entities{id},
+                not *relationships{src: id},
+                not *relationships{dst: id},
+                not *fact_entities{entity_id: id}
+        ";
+        let result = store
+            .run_query(script, BTreeMap::new())
+            .map_err(|e| format!("orphan query failed: {e}"))?;
+        Ok(result.rows.len())
+    }
+
+    fn count_dangling_edges(
+        store: &std::sync::Arc<aletheia_mneme::knowledge_store::KnowledgeStore>,
+    ) -> Result<usize, String> {
+        let script = r"
+            ?[src, dst, relation] :=
+                *relationships{src, dst, relation},
+                not *entities{id: src}
+
+            ?[src, dst, relation] :=
+                *relationships{src, dst, relation},
+                not *entities{id: dst}
+        ";
+        let result = store
+            .run_query(script, BTreeMap::new())
+            .map_err(|e| format!("dangling edge query failed: {e}"))?;
+        Ok(result.rows.len())
+    }
+
+    let fact_count = count_relation(store, "facts")?;
+    let entity_count = count_relation(store, "entities")?;
+    let relationship_count = count_relation(store, "relationships")?;
+    let orphaned_entity_count = count_orphaned_entities(store)?;
+    let dangling_edge_count = count_dangling_edges(store)?;
+
+    let healthy = orphaned_entity_count == 0 && dangling_edge_count == 0;
+
+    Ok(GraphCheckReport {
+        fact_count,
+        entity_count,
+        relationship_count,
+        orphaned_entity_count,
+        dangling_edge_count,
+        status: if healthy { "healthy" } else { "issues_found" },
+    })
+}
+
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 #[expect(

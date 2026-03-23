@@ -128,6 +128,18 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
         .and_then(|a| a.recall.clone())
         .unwrap_or_else(|| defaults.recall.clone());
 
+    // WHY: Opus models have a 1M token context window; apply model-aware default
+    // when the config still holds the global default (200K). Computed before
+    // `model` is moved into `ResolvedModelConfig`.
+    let context_tokens = {
+        let configured = defaults.model_defaults.context_tokens;
+        if configured == aletheia_koina::defaults::CONTEXT_TOKENS && model.contains("opus") {
+            aletheia_koina::defaults::OPUS_CONTEXT_TOKENS
+        } else {
+            configured
+        }
+    };
+
     ResolvedNousConfig {
         id: nous_id.to_owned(),
         name,
@@ -137,7 +149,7 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
             retries_before_fallback,
         },
         limits: TokenLimits {
-            context_tokens: defaults.model_defaults.context_tokens,
+            context_tokens,
             max_output_tokens: defaults.model_defaults.max_output_tokens,
             bootstrap_max_tokens: defaults.model_defaults.bootstrap_max_tokens,
             thinking_budget: defaults.model_defaults.thinking_budget,

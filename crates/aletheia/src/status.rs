@@ -67,7 +67,8 @@ pub(crate) async fn run(
         Some(root) => aletheia_taxis::oikos::Oikos::from_root(root),
         None => aletheia_taxis::oikos::Oikos::discover(),
     };
-    print_storage(&oikos, use_color);
+    let server_data_dir = health.as_ref().ok().and_then(|h| h.data_dir.as_deref());
+    print_storage(&oikos, server_data_dir, use_color);
 
     Ok(())
 }
@@ -78,6 +79,9 @@ struct HealthResponse {
     version: String,
     uptime_seconds: u64,
     checks: Vec<HealthCheck>,
+    /// Server's absolute data directory path (used when local discovery fails).
+    #[serde(default)]
+    data_dir: Option<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -230,7 +234,11 @@ fn print_nous(list: &[NousInfo], color: bool) {
     println!();
 }
 
-fn print_storage(oikos: &aletheia_taxis::oikos::Oikos, color: bool) {
+fn print_storage(
+    oikos: &aletheia_taxis::oikos::Oikos,
+    server_data_dir: Option<&str>,
+    color: bool,
+) {
     if color {
         println!("  {}:", "Storage".bold());
     } else {
@@ -242,8 +250,18 @@ fn print_storage(oikos: &aletheia_taxis::oikos::Oikos, color: bool) {
         print_file_size("sessions.db", &oikos.sessions_db());
         let plans_db = data_dir.join("plans.db");
         print_file_size("plans.db", &plans_db);
+    } else if let Some(dir_str) = server_data_dir {
+        // WHY: server reports its own data dir path; use it when local oikos
+        // discovery failed (e.g. aletheia status run from a different directory).
+        let server_data = std::path::Path::new(dir_str);
+        if server_data.exists() {
+            print_file_size("sessions.db", &server_data.join("sessions.db"));
+            print_file_size("plans.db", &server_data.join("plans.db"));
+        } else {
+            println!("    (data directory: {dir_str})");
+        }
     } else {
-        println!("    (data directory not found)");
+        println!("    (data directory not found — use -r /path/to/instance)");
     }
     println!();
 }
