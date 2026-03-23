@@ -8,6 +8,7 @@ use crate::components::connection_indicator::ConnectionIndicatorView;
 use crate::state::agents::AgentStore;
 use crate::state::app::TabBar;
 use crate::state::commands::CommandStore;
+use crate::state::navigation::NavAction;
 
 const SIDEBAR_STYLE: &str = "\
     width: 220px; \
@@ -66,6 +67,7 @@ pub(crate) fn Layout() -> Element {
     use_context_provider(|| Signal::new(AgentStore::new()));
     use_context_provider(|| Signal::new(CommandStore::new()));
     use_context_provider(|| Signal::new(TabBar::new()));
+    use_context_provider(|| Signal::new(Option::<NavAction>::None));
 
     rsx! {
         div {

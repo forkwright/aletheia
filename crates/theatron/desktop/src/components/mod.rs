@@ -7,6 +7,8 @@ pub(crate) mod code_block;
 pub mod command_palette;
 pub mod connection_indicator;
 pub(crate) mod coverage_bar;
+pub(crate) mod diff_hunk;
+pub(crate) mod diff_line;
 pub mod distillation;
 pub(crate) mod input_bar;
 pub(crate) mod markdown;
