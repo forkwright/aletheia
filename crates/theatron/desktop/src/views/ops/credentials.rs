@@ -296,19 +296,16 @@ pub(crate) fn CredentialsView() -> Element {
                             fetch_state.set(FetchState::Loaded(CredentialStore { entries }));
                         }
                         Err(e) => {
-                            fetch_state
-                                .set(FetchState::Error(format!("parse error: {e}")));
+                            fetch_state.set(FetchState::Error(format!("parse error: {e}")));
                         }
                     }
                 }
                 Ok(resp) => {
                     let status = resp.status();
-                    fetch_state
-                        .set(FetchState::Error(format!("server returned {status}")));
+                    fetch_state.set(FetchState::Error(format!("server returned {status}")));
                 }
                 Err(e) => {
-                    fetch_state
-                        .set(FetchState::Error(format!("connection error: {e}")));
+                    fetch_state.set(FetchState::Error(format!("connection error: {e}")));
                 }
             }
         });
@@ -563,8 +560,7 @@ fn CredentialCard(
 
             spawn(async move {
                 let client = authenticated_client(&cfg);
-                let encoded =
-                    form_urlencoded::byte_serialize(prov.as_bytes()).collect::<String>();
+                let encoded = form_urlencoded::byte_serialize(prov.as_bytes()).collect::<String>();
                 let url = format!(
                     "{}/api/system/credentials/rotate?provider={}",
                     cfg.server_url.trim_end_matches('/'),
