@@ -64,6 +64,8 @@ pub struct ChatMessage {
     pub input_tokens: u32,
     /// Output tokens produced by this turn.
     pub output_tokens: u32,
+    /// Thinking/reasoning content captured during the turn.
+    pub thinking: Option<String>,
 }
 
 /// Who produced a chat message.
@@ -222,6 +224,11 @@ impl ChatStateManager {
                 self.flush_text(state);
                 self.flush_thinking(state);
 
+                let thinking = if state.streaming.thinking.is_empty() {
+                    None
+                } else {
+                    Some(std::mem::take(&mut state.streaming.thinking))
+                };
                 let message = ChatMessage {
                     role: MessageRole::Assistant,
                     content: std::mem::take(&mut state.streaming.text),
@@ -229,6 +236,7 @@ impl ChatStateManager {
                     tool_calls: outcome.tool_calls,
                     input_tokens: outcome.input_tokens,
                     output_tokens: outcome.output_tokens,
+                    thinking,
                 };
                 state.messages.push(message);
                 state.streaming = StreamingState::default();
@@ -236,9 +244,15 @@ impl ChatStateManager {
             }
             StreamEvent::TurnAbort { reason } => {
                 self.flush_text(state);
+                self.flush_thinking(state);
                 tracing::info!(reason, "turn aborted");
                 // Preserve partial text in history if any was generated.
                 if !state.streaming.text.is_empty() {
+                    let thinking = if state.streaming.thinking.is_empty() {
+                        None
+                    } else {
+                        Some(std::mem::take(&mut state.streaming.thinking))
+                    };
                     let message = ChatMessage {
                         role: MessageRole::Assistant,
                         content: std::mem::take(&mut state.streaming.text),
@@ -246,6 +260,7 @@ impl ChatStateManager {
                         tool_calls: 0,
                         input_tokens: 0,
                         output_tokens: 0,
+                        thinking,
                     };
                     state.messages.push(message);
                 }
@@ -703,6 +718,7 @@ mod tests {
             tool_calls: 0,
             input_tokens: 0,
             output_tokens: 0,
+            thinking: None,
         });
 
         // Turn starts.

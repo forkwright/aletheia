@@ -7,4 +7,6 @@
 
 pub mod chat;
 pub mod connection_indicator;
+pub(crate) mod input_bar;
 pub(crate) mod theme_toggle;
+pub(crate) mod thinking;

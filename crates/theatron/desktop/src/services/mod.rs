@@ -7,4 +7,5 @@ pub mod config;
 pub mod connection;
 pub mod sse;
 pub(crate) mod sse_coroutine;
+pub(crate) mod streaming;
 pub(crate) mod toast;
