@@ -44,6 +44,8 @@ pub mod tools;
 /// Goal-backward verification state for the planning project detail view.
 pub(crate) mod verification;
 
+/// Meta-insights state: agent performance, quality, knowledge, health, reflection.
+pub(crate) mod meta;
 /// Ops dashboard state: agent status cards, service health, toggle controls.
 pub(crate) mod ops;
 /// Settings state: server configs, appearance, keybindings, wizard flow.

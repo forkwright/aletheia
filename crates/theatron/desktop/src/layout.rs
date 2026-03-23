@@ -97,6 +97,7 @@ pub(crate) fn Layout() -> Element {
                 NavItem { to: Route::Metrics {}, icon: "[X]", label: "Metrics", shortcut: "Ctrl+5" }
                 NavItem { to: Route::Ops {}, icon: "[O]", label: "Ops", shortcut: "Ctrl+6" }
                 NavItem { to: Route::Sessions {}, icon: "[T]", label: "Sessions", shortcut: "Ctrl+7" }
+                NavItem { to: Route::Meta {}, icon: "[I]", label: "Insights", shortcut: "" }
                 NavItem { to: Route::Settings {}, icon: "[S]", label: "Settings", shortcut: "" }
                 div { style: "{NAV_DIVIDER_STYLE}", role: "separator" }
                 AgentSidebarView {}

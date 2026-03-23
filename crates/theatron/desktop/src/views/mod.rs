@@ -8,4 +8,5 @@ pub(crate) mod metrics;
 pub(crate) mod ops;
 pub(crate) mod planning;
 pub(crate) mod sessions;
+pub(crate) mod meta;
 pub(crate) mod settings;
