@@ -16,7 +16,13 @@ pub enum Overlay {
     Settings(SettingsOverlay),
     ToolApproval(ToolApprovalOverlay),
     PlanApproval(PlanApprovalOverlay),
-    #[cfg_attr(not(test), expect(dead_code, reason = "context action overlay, constructed in tests only"))]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "context action overlay, constructed in tests only"
+        )
+    )]
     ContextActions(ContextActionsOverlay),
     DiffView(crate::diff::DiffViewState),
     SessionSearch(SessionSearchOverlay),

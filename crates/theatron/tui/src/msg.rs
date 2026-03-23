@@ -339,11 +339,20 @@ pub enum Msg {
     #[expect(dead_code, reason = "triggered by render, not keyboard")]
     EditorScrollTree(usize),
 
-    #[cfg_attr(not(test), expect(dead_code, reason = "constructed by API event bridge, tested only"))]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "constructed by API event bridge, tested only")
+    )]
     ShowError(String),
-    #[cfg_attr(not(test), expect(dead_code, reason = "constructed by API event bridge, tested only"))]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "constructed by API event bridge, tested only")
+    )]
     ShowSuccess(String),
-    #[cfg_attr(not(test), expect(dead_code, reason = "constructed by API event bridge, tested only"))]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "constructed by API event bridge, tested only")
+    )]
     DismissError,
 
     #[expect(dead_code, reason = "planned TUI feature")]
@@ -385,16 +394,43 @@ pub enum Msg {
     SessionSearchDown,
     SessionSearchSelect,
 
-    #[expect(dead_code, reason = "metrics overlay entry point, keybinding not yet wired")]
+    #[expect(
+        dead_code,
+        reason = "metrics overlay entry point, keybinding not yet wired"
+    )]
     MetricsOpen,
-    #[cfg_attr(not(test), expect(dead_code, reason = "metrics overlay message, constructed in tests only"))]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "metrics overlay message, constructed in tests only"
+        )
+    )]
     MetricsClose,
-    #[cfg_attr(not(test), expect(dead_code, reason = "metrics overlay message, constructed in tests only"))]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "metrics overlay message, constructed in tests only"
+        )
+    )]
     MetricsSelectUp,
-    #[cfg_attr(not(test), expect(dead_code, reason = "metrics overlay message, constructed in tests only"))]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "metrics overlay message, constructed in tests only"
+        )
+    )]
     MetricsSelectDown,
     /// Loaded result from async health check triggered on open.
-    #[cfg_attr(not(test), expect(dead_code, reason = "metrics overlay message, constructed in tests only"))]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "metrics overlay message, constructed in tests only"
+        )
+    )]
     MetricsHealthLoaded(bool),
 
     #[expect(dead_code, reason = "planned TUI feature")]
@@ -435,11 +471,29 @@ pub enum MessageActionKind {
     Delete,
     OpenLinks,
     Inspect,
-    #[cfg_attr(not(test), expect(dead_code, reason = "context action variant, constructed in tests only"))]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "context action variant, constructed in tests only"
+        )
+    )]
     QuoteInReply,
-    #[cfg_attr(not(test), expect(dead_code, reason = "context action variant, constructed in tests only"))]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "context action variant, constructed in tests only"
+        )
+    )]
     RateResponse,
-    #[cfg_attr(not(test), expect(dead_code, reason = "context action variant, constructed in tests only"))]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "context action variant, constructed in tests only"
+        )
+    )]
     FlagForReview,
 }
 

@@ -33,7 +33,13 @@ pub(crate) struct ToolExpanded {
     pub parameters: Vec<(String, String)>,
 }
 
-#[cfg_attr(not(test), expect(dead_code, reason = "tool-summary injection not yet wired into bootstrap pipeline"))]
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "tool-summary injection not yet wired into bootstrap pipeline"
+    )
+)]
 /// Generate compact summaries for all registered tools.
 #[must_use]
 pub(crate) fn summarize_tools(registry: &ToolRegistry) -> Vec<ToolSummary> {

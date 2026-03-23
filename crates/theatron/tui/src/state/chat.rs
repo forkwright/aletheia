@@ -20,7 +20,13 @@ pub enum StreamPhase {
     /// Model is in an extended thinking block.
     Thinking,
     /// Context window compaction in progress.
-    #[cfg_attr(not(test), expect(dead_code, reason = "constructed when server emits compaction SSE events"))]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "constructed when server emits compaction SSE events"
+        )
+    )]
     Compacting,
     /// Waiting for tool approval or external input.
     Waiting,
@@ -53,16 +59,28 @@ pub enum MessageKind {
     #[default]
     Standard,
     /// Compact one-line tool status summary (not full JSON).
-    #[expect(dead_code, reason = "SSE mapper variant, not yet constructed in TUI crate")]
+    #[expect(
+        dead_code,
+        reason = "SSE mapper variant, not yet constructed in TUI crate"
+    )]
     ToolStatusLine,
     /// Compact thinking indicator line.
-    #[expect(dead_code, reason = "SSE mapper variant, not yet constructed in TUI crate")]
+    #[expect(
+        dead_code,
+        reason = "SSE mapper variant, not yet constructed in TUI crate"
+    )]
     ThinkingStatusLine,
     /// Distillation summary boundary marker.
-    #[expect(dead_code, reason = "SSE mapper variant, not yet constructed in TUI crate")]
+    #[expect(
+        dead_code,
+        reason = "SSE mapper variant, not yet constructed in TUI crate"
+    )]
     DistillationMarker,
     /// Visual separator between conversation topics.
-    #[expect(dead_code, reason = "SSE mapper variant, not yet constructed in TUI crate")]
+    #[expect(
+        dead_code,
+        reason = "SSE mapper variant, not yet constructed in TUI crate"
+    )]
     TopicBoundary,
 }
 
