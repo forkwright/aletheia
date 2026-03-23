@@ -1,12 +1,13 @@
-//! Dioxus component prototypes for the streaming chat interface.
-//!
-//! These modules define the signal-based state management patterns and
-//! component architecture for a Dioxus desktop chat UI. The actual Dioxus
-//! dependency is deferred until the framework is added; these modules
-//! define the state machines and update logic that components will use.
+//! Dioxus components for the streaming chat interface.
 
 pub mod chat;
+pub(crate) mod code_block;
 pub mod connection_indicator;
 pub(crate) mod input_bar;
+pub(crate) mod markdown;
+pub(crate) mod message;
+pub(crate) mod table;
 pub(crate) mod theme_toggle;
 pub(crate) mod thinking;
+pub(crate) mod toast;
+pub(crate) mod toast_container;
