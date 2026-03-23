@@ -41,6 +41,7 @@ use aletheia_koina::http::CONTENT_TYPE_JSON;
         crate::handlers::config::get_section,
         crate::handlers::config::update_section,
         crate::handlers::knowledge::list_facts,
+        crate::handlers::knowledge::import_facts,
         crate::handlers::knowledge::get_fact,
         crate::handlers::knowledge::forget_fact,
         crate::handlers::knowledge::restore_fact,

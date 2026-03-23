@@ -66,6 +66,10 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
             get(config::get_section).put(config::update_section),
         )
         .route("/knowledge/facts", get(knowledge::list_facts))
+        .route(
+            "/knowledge/facts/import",
+            post(knowledge::import_facts),
+        )
         .route("/knowledge/facts/{id}", get(knowledge::get_fact))
         .route("/knowledge/facts/{id}/forget", post(knowledge::forget_fact))
         .route(
