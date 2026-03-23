@@ -1,8 +1,4 @@
 //! Datalog query tool executor for read-only knowledge graph queries.
-#![expect(
-    clippy::expect_used,
-    reason = "ToolName::new() with static string literals is infallible — name validation would only fail on invalid chars which these names don't contain"
-)]
 
 use std::future::Future;
 use std::pin::Pin;
@@ -135,7 +131,7 @@ pub(super) fn format_as_markdown_table(result: &crate::types::DatalogResult) -> 
 
 fn datalog_query_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("datalog_query").expect("valid tool name"), // kanon:ignore RUST/expect
+        name: ToolName::from_static("datalog_query"), // kanon:ignore RUST/expect
         description: "Execute a read-only Datalog query against the knowledge graph. \
             Returns tabular results. Use for advanced knowledge exploration, debugging \
             recall quality, or querying graph structure. Cannot modify data."

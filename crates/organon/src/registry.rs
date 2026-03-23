@@ -279,7 +279,7 @@ mod tests {
 
     fn make_def(name: &str, category: ToolCategory) -> ToolDef {
         ToolDef {
-            name: ToolName::new(name).expect("valid"),
+            name: ToolName::new(name).expect("valid test tool name"),
             description: format!("Test tool: {name}"),
             extended_description: None,
             input_schema: InputSchema {
@@ -308,7 +308,7 @@ mod tests {
         reg.register(make_def("read", ToolCategory::Workspace), exec)
             .expect("register");
 
-        let name = ToolName::new("read").expect("valid");
+        let name = ToolName::from_static("read");
         let def = reg.get_def(&name).expect("found");
         assert_eq!(
             def.name.as_str(),
@@ -336,7 +336,7 @@ mod tests {
     #[test]
     fn lookup_missing() {
         let reg = ToolRegistry::new();
-        let name = ToolName::new("nonexistent").expect("valid");
+        let name = ToolName::from_static("nonexistent");
         assert!(
             reg.get_def(&name).is_none(),
             "expected reg.get_def(&name).is_none() to be true"
@@ -351,7 +351,7 @@ mod tests {
             .expect("register");
 
         let input = ToolInput {
-            name: ToolName::new("greet").expect("valid"),
+            name: ToolName::from_static("greet"),
             tool_use_id: "toolu_1".to_owned(),
             arguments: serde_json::json!({}),
         };
@@ -374,7 +374,7 @@ mod tests {
     async fn execute_not_found() {
         let reg = ToolRegistry::new();
         let input = ToolInput {
-            name: ToolName::new("missing").expect("valid"),
+            name: ToolName::from_static("missing"),
             tool_use_id: "toolu_1".to_owned(),
             arguments: serde_json::json!({}),
         };
@@ -427,7 +427,7 @@ mod tests {
         let mut reg = ToolRegistry::new();
         let (exec, _) = mock_executor("ok");
         let def = ToolDef {
-            name: ToolName::new("read").expect("valid"),
+            name: ToolName::from_static("read"),
             description: "Read a file".to_owned(),
             extended_description: None,
             input_schema: InputSchema {
@@ -504,7 +504,7 @@ mod tests {
             .expect("register");
 
         let input = ToolInput {
-            name: ToolName::new("ctx-test").expect("valid"),
+            name: ToolName::from_static("ctx-test"),
             tool_use_id: "toolu_1".to_owned(),
             arguments: serde_json::json!({}),
         };
@@ -524,7 +524,7 @@ mod tests {
 
     fn make_def_with_activate(name: &str, category: ToolCategory, auto_activate: bool) -> ToolDef {
         ToolDef {
-            name: ToolName::new(name).expect("valid"),
+            name: ToolName::new(name).expect("valid test tool name"),
             description: format!("Test tool: {name}"),
             extended_description: None,
             input_schema: InputSchema {
@@ -593,7 +593,7 @@ mod tests {
         .expect("register");
 
         let mut active = HashSet::new();
-        active.insert(ToolName::new("web_search").expect("valid"));
+        active.insert(ToolName::from_static("web_search"));
         let tools = reg.to_hermeneus_tools_filtered(&active);
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert!(
@@ -671,7 +671,7 @@ mod tests {
         let mut reg = ToolRegistry::new();
         let (exec, _) = mock_executor("ok");
         let def = ToolDef {
-            name: ToolName::new("read").expect("valid"),
+            name: ToolName::from_static("read"),
             description: "Read a file".to_owned(),
             extended_description: None,
             input_schema: InputSchema {
@@ -704,7 +704,7 @@ mod tests {
         let mut reg = ToolRegistry::new();
         let (exec, _) = mock_executor("ok");
         let def = ToolDef {
-            name: ToolName::new("find").expect("valid"),
+            name: ToolName::from_static("find"),
             description: "Find files".to_owned(),
             extended_description: None,
             input_schema: InputSchema {
@@ -736,7 +736,7 @@ mod tests {
         let mut reg = ToolRegistry::new();
         let (exec, _) = mock_executor("ok");
         let def = ToolDef {
-            name: ToolName::new("grep").expect("valid"),
+            name: ToolName::from_static("grep"),
             description: "Grep".to_owned(),
             extended_description: None,
             input_schema: InputSchema {
@@ -770,7 +770,7 @@ mod tests {
         let (exec, _) = mock_executor("ok");
         reg.register(
             ToolDef {
-                name: ToolName::new("web_search").expect("valid"),
+                name: ToolName::from_static("web_search"),
                 description: "Search the web".to_owned(),
                 extended_description: None,
                 input_schema: InputSchema {
@@ -810,7 +810,7 @@ mod tests {
     async fn execute_returns_tool_not_found_for_unknown_name() {
         let reg = ToolRegistry::new();
         let input = ToolInput {
-            name: ToolName::new("ghost").expect("valid"),
+            name: ToolName::from_static("ghost"),
             tool_use_id: "toolu_x".to_owned(),
             arguments: serde_json::json!({}),
         };

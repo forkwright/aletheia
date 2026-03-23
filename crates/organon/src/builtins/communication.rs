@@ -1,8 +1,4 @@
 //! Communication tool executors: message, sessions_ask, sessions_send.
-#![expect(
-    clippy::expect_used,
-    reason = "ToolName::new() with static string literals is infallible — name validation would only fail on invalid chars which these names don't contain"
-)]
 
 use std::future::Future;
 use std::pin::Pin;
@@ -167,7 +163,7 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
 
 fn message_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("message").expect("valid tool name"), // kanon:ignore RUST/expect
+        name: ToolName::from_static("message"), // kanon:ignore RUST/expect
         description: "Send a message to a user or group via Signal".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -201,7 +197,7 @@ fn message_def() -> ToolDef {
 
 fn sessions_ask_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("sessions_ask").expect("valid tool name"), // kanon:ignore RUST/expect
+        name: ToolName::from_static("sessions_ask"), // kanon:ignore RUST/expect
         description: "Ask another agent a question and wait for their response".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -253,7 +249,7 @@ fn sessions_ask_def() -> ToolDef {
 
 fn sessions_send_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("sessions_send").expect("valid tool name"), // kanon:ignore RUST/expect
+        name: ToolName::from_static("sessions_send"), // kanon:ignore RUST/expect
         description: "Send a message to another agent without waiting for a response".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -422,7 +418,7 @@ mod tests {
         install_crypto_provider();
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
-        let name = ToolName::new("message").expect("valid");
+        let name = ToolName::from_static("message");
         let def = reg.get_def(&name).expect("found");
         assert_eq!(
             def.input_schema.required,
@@ -436,7 +432,7 @@ mod tests {
         install_crypto_provider();
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
-        let name = ToolName::new("sessions_ask").expect("valid");
+        let name = ToolName::from_static("sessions_ask");
         let def = reg.get_def(&name).expect("found");
         assert_eq!(
             def.input_schema.required,
@@ -450,7 +446,7 @@ mod tests {
         install_crypto_provider();
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
-        let name = ToolName::new("sessions_send").expect("valid");
+        let name = ToolName::from_static("sessions_send");
         let def = reg.get_def(&name).expect("found");
         assert_eq!(
             def.input_schema.required,
@@ -465,7 +461,7 @@ mod tests {
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
         let input = ToolInput {
-            name: ToolName::new("message").expect("valid"),
+            name: ToolName::from_static("message"),
             tool_use_id: "tu_1".to_owned(),
             arguments: serde_json::json!({"to": "+1234567890", "text": "hello"}),
         };
@@ -483,7 +479,7 @@ mod tests {
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
         let input = ToolInput {
-            name: ToolName::new("sessions_send").expect("valid"),
+            name: ToolName::from_static("sessions_send"),
             tool_use_id: "tu_1".to_owned(),
             arguments: serde_json::json!({"agentId": "syn", "message": "hello"}),
         };
@@ -501,7 +497,7 @@ mod tests {
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
         let input = ToolInput {
-            name: ToolName::new("sessions_ask").expect("valid"),
+            name: ToolName::from_static("sessions_ask"),
             tool_use_id: "tu_1".to_owned(),
             arguments: serde_json::json!({"agentId": "syn", "message": "hello"}),
         };
@@ -532,7 +528,7 @@ mod tests {
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
         let input = ToolInput {
-            name: ToolName::new("message").expect("valid"),
+            name: ToolName::from_static("message"),
             tool_use_id: "tu_1".to_owned(),
             arguments: serde_json::json!({"to": "+1234567890", "text": "x".repeat(4001)}),
         };
@@ -564,7 +560,7 @@ mod tests {
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
         let input = ToolInput {
-            name: ToolName::new("message").expect("valid"),
+            name: ToolName::from_static("message"),
             tool_use_id: "tu_1".to_owned(),
             arguments: serde_json::json!({"to": "+1234567890", "text": "hello world"}),
         };
@@ -611,7 +607,7 @@ mod tests {
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
         let input = ToolInput {
-            name: ToolName::new("sessions_send").expect("valid"),
+            name: ToolName::from_static("sessions_send"),
             tool_use_id: "tu_1".to_owned(),
             arguments: serde_json::json!({"agentId": "syn", "message": "do the thing"}),
         };
@@ -656,7 +652,7 @@ mod tests {
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
         let input = ToolInput {
-            name: ToolName::new("sessions_send").expect("valid"),
+            name: ToolName::from_static("sessions_send"),
             tool_use_id: "tu_1".to_owned(),
             arguments: serde_json::json!({"agentId": "syn", "message": "hi", "sessionKey": "custom"}),
         };
@@ -690,7 +686,7 @@ mod tests {
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
         let input = ToolInput {
-            name: ToolName::new("sessions_ask").expect("valid"),
+            name: ToolName::from_static("sessions_ask"),
             tool_use_id: "tu_1".to_owned(),
             arguments: serde_json::json!({"agentId": "syn", "message": "what is the answer?"}),
         };
@@ -723,7 +719,7 @@ mod tests {
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
         let input = ToolInput {
-            name: ToolName::new("sessions_ask").expect("valid"),
+            name: ToolName::from_static("sessions_ask"),
             tool_use_id: "tu_1".to_owned(),
             arguments: serde_json::json!({"agentId": "syn", "message": "hello?"}),
         };

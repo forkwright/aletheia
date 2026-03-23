@@ -1,8 +1,4 @@
 //! Shared blackboard tool executor.
-#![expect(
-    clippy::expect_used,
-    reason = "ToolName::new() with static string literals is infallible — name validation would only fail on invalid chars which these names don't contain"
-)]
 
 use std::future::Future;
 use std::pin::Pin;
@@ -103,7 +99,7 @@ impl ToolExecutor for BlackboardExecutor {
 
 fn blackboard_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("blackboard").expect("valid tool name"), // kanon:ignore RUST/expect
+        name: ToolName::from_static("blackboard"), // kanon:ignore RUST/expect
         description: "Read and write shared state visible to all agents".to_owned(),
         extended_description: None,
         input_schema: InputSchema {

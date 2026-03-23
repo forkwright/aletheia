@@ -1,8 +1,4 @@
 //! Workspace tool executors: read, write, edit, exec.
-#![expect(
-    clippy::expect_used,
-    reason = "ToolName::new() with static string literals is infallible — name validation would only fail on invalid chars which these names don't contain"
-)]
 
 use std::future::Future;
 use std::io::Read as _;
@@ -609,7 +605,7 @@ pub(crate) fn register(
 
 fn read_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("read").expect("valid tool name"), // kanon:ignore RUST/expect
+        name: ToolName::from_static("read"), // kanon:ignore RUST/expect
         description: "Read a file's contents as text".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -643,7 +639,7 @@ fn read_def() -> ToolDef {
 
 fn write_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("write").expect("valid tool name"), // kanon:ignore RUST/expect
+        name: ToolName::from_static("write"), // kanon:ignore RUST/expect
         description: "Write content to a file, creating parent directories as needed".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -686,7 +682,7 @@ fn write_def() -> ToolDef {
 
 fn edit_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("edit").expect("valid tool name"), // kanon:ignore RUST/expect
+        name: ToolName::from_static("edit"), // kanon:ignore RUST/expect
         description: "Replace exact text in a file with new text".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -733,7 +729,7 @@ fn edit_def() -> ToolDef {
 
 fn exec_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("exec").expect("valid tool name"), // kanon:ignore RUST/expect
+        name: ToolName::from_static("exec"), // kanon:ignore RUST/expect
         description: "Execute a shell command in your workspace and return stdout/stderr"
             .to_owned(),
         extended_description: None,
