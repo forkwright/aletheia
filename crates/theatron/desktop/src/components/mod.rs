@@ -10,6 +10,8 @@ pub(crate) mod coverage_bar;
 pub(crate) mod diff_hunk;
 pub(crate) mod diff_line;
 pub mod distillation;
+/// SVG-based knowledge graph canvas with zoom, pan, and node interaction.
+pub(crate) mod graph;
 pub(crate) mod input_bar;
 pub(crate) mod markdown;
 pub(crate) mod message;
@@ -24,6 +26,8 @@ pub(crate) mod theme_toggle;
 pub(crate) mod thinking;
 /// Reusable horizontal timeline with zoom, pan, and dependency arrows.
 pub(crate) mod timeline;
+/// Dual-handle timeline scrubber for selecting a date range.
+pub(crate) mod timeline_scrubber;
 pub(crate) mod toast;
 pub(crate) mod toast_container;
 pub(crate) mod tool_approval;
