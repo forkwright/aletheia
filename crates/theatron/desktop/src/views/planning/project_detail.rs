@@ -1,14 +1,18 @@
-//! Project detail view: tab container with Checkpoints and Verification tabs.
+//! Project detail view: tab container for planning sub-views.
 
 use dioxus::prelude::*;
 
 use crate::views::planning::checkpoints::CheckpointsView;
+use crate::views::planning::discussion::DiscussionView;
+use crate::views::planning::execution::ExecutionView;
 use crate::views::planning::verification::VerificationView;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ActiveTab {
     Checkpoints,
     Verification,
+    Discussion,
+    Execution,
 }
 
 const CONTAINER_STYLE: &str = "\
@@ -54,13 +58,15 @@ const TAB_CONTENT_STYLE: &str = "\
     overflow: hidden;\
 ";
 
-/// Project detail view with Checkpoints and Verification tabs.
+/// Project detail view with Checkpoints, Verification, Discussion, and Execution tabs.
 #[component]
 pub(crate) fn ProjectDetail(project_id: String) -> Element {
     let mut active_tab = use_signal(|| ActiveTab::Checkpoints);
 
     let project_id_ck = project_id.clone();
     let project_id_vf = project_id.clone();
+    let project_id_dc = project_id.clone();
+    let project_id_ex = project_id.clone();
 
     rsx! {
         div {
@@ -79,6 +85,16 @@ pub(crate) fn ProjectDetail(project_id: String) -> Element {
                     onclick: move |_| active_tab.set(ActiveTab::Verification),
                     "Verification"
                 }
+                button {
+                    style: if *active_tab.read() == ActiveTab::Discussion { "{TAB_ACTIVE}" } else { "{TAB_INACTIVE}" },
+                    onclick: move |_| active_tab.set(ActiveTab::Discussion),
+                    "Discussion"
+                }
+                button {
+                    style: if *active_tab.read() == ActiveTab::Execution { "{TAB_ACTIVE}" } else { "{TAB_INACTIVE}" },
+                    onclick: move |_| active_tab.set(ActiveTab::Execution),
+                    "Execution"
+                }
             }
 
             // Tab content
@@ -90,6 +106,12 @@ pub(crate) fn ProjectDetail(project_id: String) -> Element {
                     },
                     ActiveTab::Verification => rsx! {
                         VerificationView { project_id: project_id_vf.clone() }
+                    },
+                    ActiveTab::Discussion => rsx! {
+                        DiscussionView { project_id: project_id_dc.clone() }
+                    },
+                    ActiveTab::Execution => rsx! {
+                        ExecutionView { project_id: project_id_ex.clone() }
                     },
                 }
             }

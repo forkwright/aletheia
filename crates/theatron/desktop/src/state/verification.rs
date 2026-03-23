@@ -188,10 +188,30 @@ mod tests {
     #[test]
     fn overall_coverage_calculates_verified_fraction() {
         let store = store_with(vec![
-            req("r1", "v1", RequirementPriority::P0, VerificationStatus::Verified),
-            req("r2", "v1", RequirementPriority::P1, VerificationStatus::Unverified),
-            req("r3", "v1", RequirementPriority::P1, VerificationStatus::Verified),
-            req("r4", "v1", RequirementPriority::P2, VerificationStatus::Failed),
+            req(
+                "r1",
+                "v1",
+                RequirementPriority::P0,
+                VerificationStatus::Verified,
+            ),
+            req(
+                "r2",
+                "v1",
+                RequirementPriority::P1,
+                VerificationStatus::Unverified,
+            ),
+            req(
+                "r3",
+                "v1",
+                RequirementPriority::P1,
+                VerificationStatus::Verified,
+            ),
+            req(
+                "r4",
+                "v1",
+                RequirementPriority::P2,
+                VerificationStatus::Failed,
+            ),
         ]);
         // 2 verified out of 4 = 50%
         assert_eq!(store.overall_coverage(), Some(50));
@@ -199,35 +219,85 @@ mod tests {
 
     #[test]
     fn tier_coverage_none_for_missing_tier() {
-        let store = store_with(vec![
-            req("r1", "v1", RequirementPriority::P0, VerificationStatus::Verified),
-        ]);
+        let store = store_with(vec![req(
+            "r1",
+            "v1",
+            RequirementPriority::P0,
+            VerificationStatus::Verified,
+        )]);
         assert_eq!(store.tier_coverage("v2"), None);
     }
 
     #[test]
     fn gaps_excludes_verified() {
         let store = store_with(vec![
-            req("r1", "v1", RequirementPriority::P0, VerificationStatus::Verified),
-            req("r2", "v1", RequirementPriority::P1, VerificationStatus::Unverified),
-            req("r3", "v2", RequirementPriority::P0, VerificationStatus::Failed),
-            req("r4", "v2", RequirementPriority::P2, VerificationStatus::PartiallyVerified),
+            req(
+                "r1",
+                "v1",
+                RequirementPriority::P0,
+                VerificationStatus::Verified,
+            ),
+            req(
+                "r2",
+                "v1",
+                RequirementPriority::P1,
+                VerificationStatus::Unverified,
+            ),
+            req(
+                "r3",
+                "v2",
+                RequirementPriority::P0,
+                VerificationStatus::Failed,
+            ),
+            req(
+                "r4",
+                "v2",
+                RequirementPriority::P2,
+                VerificationStatus::PartiallyVerified,
+            ),
         ]);
         let gaps = store.gaps();
         assert_eq!(gaps.len(), 3, "unverified + failed + partially_verified");
-        assert!(gaps.iter().all(|r| r.status != VerificationStatus::Verified));
+        assert!(
+            gaps.iter()
+                .all(|r| r.status != VerificationStatus::Verified)
+        );
     }
 
     #[test]
     fn blocking_gaps_returns_only_p0() {
         let store = store_with(vec![
-            req("r1", "v1", RequirementPriority::P0, VerificationStatus::Unverified),
-            req("r2", "v1", RequirementPriority::P1, VerificationStatus::Unverified),
-            req("r3", "v1", RequirementPriority::P0, VerificationStatus::Failed),
-            req("r4", "v1", RequirementPriority::P0, VerificationStatus::Verified),
+            req(
+                "r1",
+                "v1",
+                RequirementPriority::P0,
+                VerificationStatus::Unverified,
+            ),
+            req(
+                "r2",
+                "v1",
+                RequirementPriority::P1,
+                VerificationStatus::Unverified,
+            ),
+            req(
+                "r3",
+                "v1",
+                RequirementPriority::P0,
+                VerificationStatus::Failed,
+            ),
+            req(
+                "r4",
+                "v1",
+                RequirementPriority::P0,
+                VerificationStatus::Verified,
+            ),
         ]);
         let blocking = store.blocking_gaps();
         assert_eq!(blocking.len(), 2, "P0 unverified + P0 failed only");
-        assert!(blocking.iter().all(|r| r.priority == RequirementPriority::P0));
+        assert!(
+            blocking
+                .iter()
+                .all(|r| r.priority == RequirementPriority::P0)
+        );
     }
 }

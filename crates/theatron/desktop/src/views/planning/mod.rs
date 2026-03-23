@@ -1,6 +1,9 @@
 //! Planning view: project list and project detail with checkpoints and verification.
 
 pub(crate) mod checkpoints;
+pub(crate) mod discussion;
+pub(crate) mod discussion_detail;
+pub(crate) mod execution;
 pub(crate) mod gap_analysis;
 pub(crate) mod project_detail;
 pub(crate) mod verification;

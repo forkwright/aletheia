@@ -2,7 +2,9 @@
 
 use dioxus::prelude::*;
 
-use crate::state::verification::{RequirementPriority, RequirementVerification, VerificationStatus};
+use crate::state::verification::{
+    RequirementPriority, RequirementVerification, VerificationStatus,
+};
 
 const PANEL_STYLE: &str = "\
     display: flex; \
