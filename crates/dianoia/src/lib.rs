@@ -12,6 +12,8 @@
 pub(crate) mod error;
 /// Context handoff protocol: continuity across distillation, shutdown, and crash recovery.
 pub mod handoff;
+/// Prometheus metric definitions for planning and project orchestration.
+pub mod metrics;
 /// Phase types within a project: groupings of related plans with lifecycle state.
 pub mod phase;
 /// Executable plans within a phase: dependency tracking, iteration limits, and blocker management.

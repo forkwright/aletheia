@@ -18,6 +18,8 @@ pub(crate) mod encrypt;
 pub(crate) mod error;
 /// JWT token issuance, validation, and refresh.
 pub mod jwt;
+/// Prometheus metric definitions for authentication and authorization.
+pub mod metrics;
 /// Argon2id password hashing and verification.
 pub(crate) mod password;
 /// `SQLite`-backed credential and token storage.

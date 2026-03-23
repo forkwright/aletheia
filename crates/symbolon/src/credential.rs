@@ -593,9 +593,11 @@ async fn refresh_loop(
                 warn!(error = %e, "failed to write refreshed credential file");
             }
 
+            crate::metrics::record_token_refresh(true);
             info!(expires_in_secs = resp.expires_in, "OAuth token refreshed");
         } else {
             circuit_breaker.record_failure();
+            crate::metrics::record_token_refresh(false);
             warn!("OAuth token refresh failed, will retry next cycle");
         }
     }

@@ -9,6 +9,8 @@
 pub(crate) mod error;
 /// Unified channel listener that merges inbound messages from all providers into a single stream.
 pub mod listener;
+/// Prometheus metric definitions for channel messaging.
+pub mod metrics;
 /// Channel registry: the single source of truth for available channel providers.
 pub mod registry;
 /// Message routing: resolves inbound messages to the appropriate nous agent.
