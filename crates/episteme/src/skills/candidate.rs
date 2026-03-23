@@ -15,10 +15,6 @@
 //!
 //! Two signatures are considered the *same pattern* when
 //! [`crate::skills::signature_similarity`] ≥ 0.8.
-#![expect(
-    clippy::expect_used,
-    reason = "Mutex::lock() panics only on poisoning (another thread panicked while holding the lock), which is a fatal programming error"
-)]
 #![cfg_attr(
     test,
     expect(
@@ -109,6 +105,7 @@ pub struct CandidateTracker {
 }
 
 impl std::fmt::Debug for CandidateTracker {
+    #[expect(clippy::expect_used, reason = "mutex poisoning is unrecoverable")]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let guard = self.candidates.lock().expect("lock not poisoned");
         f.debug_struct("CandidateTracker")
@@ -137,6 +134,7 @@ impl CandidateTracker {
     /// Returns [`TrackResult::Rejected`] when the heuristic gates fail.
     /// Returns [`TrackResult::Promoted`] when the candidate's recurrence
     /// count reaches [`PROMOTION_THRESHOLD`].
+    #[expect(clippy::expect_used, reason = "mutex poisoning is unrecoverable")]
     pub fn track_sequence(
         &self,
         tool_calls: &[ToolCallRecord],
@@ -188,6 +186,7 @@ impl CandidateTracker {
     }
 
     /// Return all current candidates for a given nous.
+    #[expect(clippy::expect_used, reason = "mutex poisoning is unrecoverable")]
     pub fn candidates_for(&self, nous_id: &str) -> Vec<SkillCandidate> {
         let guard = self.candidates.lock().expect("lock not poisoned");
         guard
@@ -198,6 +197,7 @@ impl CandidateTracker {
     }
 
     /// Return all promoted candidates (`recurrence_count` ≥ threshold) for a nous.
+    #[expect(clippy::expect_used, reason = "mutex poisoning is unrecoverable")]
     pub fn promoted_for(&self, nous_id: &str) -> Vec<SkillCandidate> {
         let guard = self.candidates.lock().expect("lock not poisoned");
         guard
@@ -208,6 +208,7 @@ impl CandidateTracker {
     }
 
     /// Total number of tracked candidates (all nous IDs).
+    #[expect(clippy::expect_used, reason = "mutex poisoning is unrecoverable")]
     pub fn len(&self) -> usize {
         self.candidates.lock().expect("lock not poisoned").len()
     }

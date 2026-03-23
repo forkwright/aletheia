@@ -273,6 +273,19 @@ impl fmt::Display for TurnId {
 pub struct ToolName(CompactString);
 
 impl ToolName {
+    /// Construct a `ToolName` from a string literal known to be valid at compile time.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the name fails validation. Only use with known-valid string literals.
+    #[must_use]
+    pub fn from_static(name: &'static str) -> Self {
+        match Self::new(name) {
+            Ok(t) => t,
+            Err(e) => panic!("invalid tool name literal: {e}"),
+        }
+    }
+
     /// Create a new tool name.
     ///
     /// # Errors

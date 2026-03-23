@@ -1,7 +1,3 @@
-#![expect(
-    clippy::as_conversions,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use snafu::ResultExt;
 
 use super::marshal::{
@@ -279,6 +275,7 @@ impl KnowledgeStore {
     /// Takes the top entity IDs from existing results, queries their neighborhoods,
     /// and returns related facts as additional results.
     #[expect(
+        clippy::as_conversions,
         clippy::cast_precision_loss,
         reason = "rank indices fit in f64 mantissa"
     )]

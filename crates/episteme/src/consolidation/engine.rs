@@ -2,11 +2,6 @@
 //!
 //! Implements consolidation operations on `KnowledgeStore`: candidate
 //! identification, LLM-driven consolidation execution, and audit trail.
-#![expect(
-    clippy::as_conversions,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
-
 use std::collections::BTreeMap;
 use tracing::instrument;
 
@@ -515,6 +510,7 @@ impl KnowledgeStore {
             if let Ok(span) = now.since(last_ts) {
                 let total_minutes = i64::from(span.get_hours()) * 60 + span.get_minutes();
                 #[expect(
+                    clippy::as_conversions,
                     clippy::cast_precision_loss,
                     reason = "total_minutes is an elapsed time value; precision loss is acceptable for rate-limit comparison"
                 )]

@@ -8,11 +8,6 @@
 //! - `issue_scan`: Fetch and filter open GitHub issues
 //! - `issue_triage`: Score issues, generate prompts, write to staging
 //! - `issue_approve`: Move staged prompts from staging to queue (human gate)
-#![expect(
-    clippy::expect_used,
-    reason = "ToolName::new() with static string literals is infallible"
-)]
-
 mod prompt_gen;
 mod scoring;
 
@@ -497,7 +492,8 @@ async fn find_staged_prompt(
 
     match candidates.len() {
         0 => Err(format!("no staged prompt found matching '{prompt_id}'")),
-        1 => Ok(candidates.into_iter().next().expect("length checked above")), // kanon:ignore RUST/expect
+        // SAFETY: len() == 1 guarantees next() returns Some
+        1 => Ok(candidates.into_iter().next().unwrap_or_default()),
         n => Err(format!(
             "ambiguous prompt_id '{prompt_id}': matched {n} files"
         )),
@@ -608,7 +604,7 @@ fn format_triage_summary(staged: &[StagedPrompt], scored: &[RelevanceResult]) ->
 
 fn issue_scan_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("issue_scan").expect("valid tool name"), // kanon:ignore RUST/expect
+        name: ToolName::from_static("issue_scan"), // kanon:ignore RUST/expect
         description: "Fetch open GitHub issues filtered by labels or milestone. Returns issue metadata for triage.".to_owned(),
         extended_description: Some(
             "Fetches open issues from a GitHub repository via the REST API. \
@@ -653,7 +649,7 @@ fn issue_scan_def() -> ToolDef {
 
 fn issue_triage_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("issue_triage").expect("valid tool name"), // kanon:ignore RUST/expect
+        name: ToolName::from_static("issue_triage"), // kanon:ignore RUST/expect
         description: "Score GitHub issues for relevance, generate kanon-format prompts, and stage them for human approval.".to_owned(),
         extended_description: Some(
             "Fetches open issues, scores each for relevance (0.0-1.0) against provided \
@@ -716,7 +712,7 @@ fn issue_triage_def() -> ToolDef {
 
 fn issue_approve_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("issue_approve").expect("valid tool name"), // kanon:ignore RUST/expect
+        name: ToolName::from_static("issue_approve"), // kanon:ignore RUST/expect
         description:
             "Move a staged prompt from staging to the dispatch queue. Human approval gate."
                 .to_owned(),

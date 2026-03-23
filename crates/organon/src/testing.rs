@@ -63,14 +63,10 @@ enum MockMode {
 impl MockToolExecutor {
     /// Create a mock that always returns the given text as a success result.
     #[must_use]
-    #[expect(
-        clippy::expect_used,
-        reason = "test-support: 'mock' is a known-valid tool name"
-    )]
     pub fn text(text: impl Into<String>) -> Self {
         // kanon:ignore RUST/pub-visibility
         Self {
-            name: ToolName::new("mock").expect("valid tool name"), // kanon:ignore RUST/expect
+            name: ToolName::from_static("mock"), // kanon:ignore RUST/expect
             inner: Mutex::new(MockInner {
                 mode: MockMode::Text(text.into()),
             }),
@@ -80,14 +76,10 @@ impl MockToolExecutor {
 
     /// Create a mock that returns an error result (not a Rust `Err`).
     #[must_use]
-    #[expect(
-        clippy::expect_used,
-        reason = "test-support: 'mock' is a known-valid tool name"
-    )]
     pub fn tool_error(message: impl Into<String>) -> Self {
         // kanon:ignore RUST/pub-visibility
         Self {
-            name: ToolName::new("mock").expect("valid tool name"), // kanon:ignore RUST/expect
+            name: ToolName::from_static("mock"), // kanon:ignore RUST/expect
             inner: Mutex::new(MockInner {
                 mode: MockMode::Error(message.into()),
             }),
@@ -97,14 +89,10 @@ impl MockToolExecutor {
 
     /// Create a mock that returns results from a sequence (repeats last when exhausted).
     #[must_use]
-    #[expect(
-        clippy::expect_used,
-        reason = "test-support: 'mock' is a known-valid tool name"
-    )]
     pub fn sequence(results: Vec<ToolResult>) -> Self {
         // kanon:ignore RUST/pub-visibility
         Self {
-            name: ToolName::new("mock").expect("valid tool name"), // kanon:ignore RUST/expect
+            name: ToolName::from_static("mock"), // kanon:ignore RUST/expect
             inner: Mutex::new(MockInner {
                 mode: MockMode::Sequence(results),
             }),
@@ -371,8 +359,7 @@ mod tests {
 
     #[test]
     fn make_tool_input_uses_given_name() {
-        #[expect(clippy::expect_used, reason = "test: known-valid tool name")]
-        let name = ToolName::new("my_tool").expect("valid name");
+        let name = ToolName::from_static("my_tool");
         let input = make_tool_input(&name);
         assert_eq!(
             input.name.as_str(),

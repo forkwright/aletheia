@@ -1,8 +1,4 @@
 //! view_file tool: images, PDFs, and text with multimodal support.
-#![expect(
-    clippy::expect_used,
-    reason = "ToolName::new() with static string literals is infallible — name validation would only fail on invalid chars which these names don't contain"
-)]
 
 use std::future::Future;
 use std::path::Path;
@@ -198,7 +194,7 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
 fn view_file_def() -> crate::types::ToolDef {
     use aletheia_koina::id::ToolName;
     ToolDef {
-        name: ToolName::new("view_file").expect("valid tool name"), // kanon:ignore RUST/expect
+        name: ToolName::from_static("view_file"), // kanon:ignore RUST/expect
         description: "View a file — images, PDFs, and text. For images and PDFs, the content is sent directly to the model for visual analysis.".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -258,7 +254,7 @@ mod tests {
 
     fn tool_input(args: serde_json::Value) -> ToolInput {
         ToolInput {
-            name: ToolName::new("view_file").expect("valid"),
+            name: ToolName::from_static("view_file"),
             tool_use_id: "toolu_test".to_owned(),
             arguments: args,
         }
@@ -401,7 +397,7 @@ mod tests {
     async fn view_file_registered() {
         let mut reg = crate::registry::ToolRegistry::new();
         register(&mut reg).expect("register");
-        let name = ToolName::new("view_file").expect("valid");
+        let name = ToolName::from_static("view_file");
         assert!(
             reg.get_def(&name).is_some(),
             "expected reg.get_def(&name).is_some() to be true"

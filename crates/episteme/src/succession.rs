@@ -15,13 +15,7 @@
 //! - Stable domain (volatility ≈ 0) → 1.5× base stability
 //! - Neutral (volatility = 0.5) → 1.0× (unchanged)
 //! - Volatile domain (volatility ≈ 1) → 0.5× base stability
-#![cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "module internals; only exercised by crate-level tests"
-    )
-)]
+#![cfg_attr(not(test), allow(dead_code))]
 
 use serde::{Deserialize, Serialize};
 
@@ -125,7 +119,7 @@ pub(crate) fn adaptive_stability(
 /// `[entity_id, total_facts, superseded_facts, avg_chain_length]`
 ///
 /// Run after `SUPERSESSION_CHAIN_LENGTHS`: uses the same `chain[]` recursion inline.
-#[expect(dead_code, reason = "reserved for future graph intelligence queries")]
+#[allow(dead_code)]
 pub(crate) const ENTITY_VOLATILITY_METRICS: &str = r"
 chain[id, d] := *facts{id, superseded_by}, is_null(superseded_by), d = 0
 chain[id, n] := *facts{id, superseded_by}, superseded_by = next_id, not is_null(next_id),
@@ -173,7 +167,7 @@ avg_cl[eid, mean(cl)] := entity_facts[eid, _, cl]
 /// Datalog script to store volatility scores in `graph_scores`.
 ///
 /// Parameters: `$entity_id`, `$volatility`, `$now` (ISO 8601 string).
-#[expect(dead_code, reason = "reserved for future graph intelligence queries")]
+#[allow(dead_code)]
 pub(crate) const STORE_VOLATILITY_SCORE: &str = r"
 ?[entity_id, score_type, score, cluster_id, updated_at] :=
     entity_id = $entity_id,
@@ -191,7 +185,7 @@ pub(crate) const STORE_VOLATILITY_SCORE: &str = r"
 /// entities associated with a given nous.
 ///
 /// Parameters: `$nous_id`.
-#[expect(dead_code, reason = "reserved for future graph intelligence queries")]
+#[allow(dead_code)]
 pub(crate) const NOUS_KNOWLEDGE_PROFILE: &str = r"
 active_facts[fid, eid] :=
     *fact_entities{fact_id: fid, entity_id: eid},
@@ -216,7 +210,7 @@ entity_stats[eid, count(fid), mean(stab)] :=
 /// Datalog script for counting total active facts per nous.
 ///
 /// Parameters: `$nous_id`.
-#[expect(dead_code, reason = "reserved for future graph intelligence queries")]
+#[allow(dead_code)]
 pub(crate) const NOUS_ACTIVE_FACT_STATS: &str = r"
 active[fid, stab] :=
     *facts{id: fid, nous_id, is_forgotten, superseded_by, stability_hours: stab},
@@ -228,11 +222,7 @@ active[fid, stab] :=
 ";
 
 #[cfg(test)]
-#[expect(
-    clippy::expect_used,
-    clippy::indexing_slicing,
-    reason = "test assertions"
-)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 
@@ -377,6 +367,7 @@ mod tests {
     }
 
     #[cfg(feature = "mneme-engine")]
+    #[expect(clippy::indexing_slicing, reason = "test assertions")]
     mod engine_tests {
         use super::*;
         use crate::knowledge::{

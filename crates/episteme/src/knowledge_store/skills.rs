@@ -1,8 +1,3 @@
-#![expect(
-    clippy::as_conversions,
-    clippy::cast_precision_loss,
-    reason = "knowledge engine: numeric casts for elapsed-time and count calculations; values fit f64"
-)]
 use snafu::ResultExt;
 use tracing::instrument;
 
@@ -274,7 +269,12 @@ impl KnowledgeStore {
                 .last_accessed_at
                 .unwrap_or(fact.temporal.valid_from)
                 .as_second();
-            let days = ((now_secs - reference_secs).max(0) as f64) / 86_400.0; // SAFETY: seconds fit f64
+            #[expect(
+                clippy::as_conversions,
+                clippy::cast_precision_loss,
+                reason = "elapsed seconds fit f64"
+            )]
+            let days = ((now_secs - reference_secs).max(0) as f64) / 86_400.0;
 
             let score = crate::skill::skill_decay_score(
                 days,
@@ -322,7 +322,12 @@ impl KnowledgeStore {
                 .last_accessed_at
                 .unwrap_or(fact.temporal.valid_from)
                 .as_second();
-            let days = ((now_secs - ref_secs).max(0) as f64) / 86_400.0; // SAFETY: seconds fit f64
+            #[expect(
+                clippy::as_conversions,
+                clippy::cast_precision_loss,
+                reason = "elapsed seconds fit f64"
+            )]
+            let days = ((now_secs - ref_secs).max(0) as f64) / 86_400.0;
             days_since_use.push(days);
 
             let score = crate::skill::skill_decay_score(
@@ -342,7 +347,14 @@ impl KnowledgeStore {
         }
 
         let avg_usage_count = if total_active > 0 {
-            usage_counts.iter().map(|&c| f64::from(c)).sum::<f64>() / total_active as f64 // SAFETY: skill count fits f64
+            #[expect(
+                clippy::as_conversions,
+                clippy::cast_precision_loss,
+                reason = "skill count fits f64"
+            )]
+            {
+                usage_counts.iter().map(|&c| f64::from(c)).sum::<f64>() / total_active as f64
+            }
         } else {
             0.0
         };

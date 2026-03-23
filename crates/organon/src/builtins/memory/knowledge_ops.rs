@@ -1,8 +1,4 @@
 //! Knowledge graph memory operations: search, correct, retract, forget, audit.
-#![expect(
-    clippy::expect_used,
-    reason = "ToolName::new() with static string literals is infallible — name validation would only fail on invalid chars which these names don't contain"
-)]
 
 use std::future::Future;
 use std::pin::Pin;
@@ -220,7 +216,7 @@ impl ToolExecutor for MemoryAuditExecutor {
 
 fn memory_search_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("memory_search").expect("valid tool name"), // kanon:ignore RUST/expect
+        name: ToolName::from_static("memory_search"), // kanon:ignore RUST/expect
         description: "Search long-term memory for facts, preferences, and relationships".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -254,7 +250,7 @@ fn memory_search_def() -> ToolDef {
 
 fn memory_correct_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("memory_correct").expect("valid tool name"), // kanon:ignore RUST/expect
+        name: ToolName::from_static("memory_correct"), // kanon:ignore RUST/expect
         description: "Correct a stored fact by superseding it with updated content".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -288,7 +284,7 @@ fn memory_correct_def() -> ToolDef {
 
 fn memory_retract_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("memory_retract").expect("valid tool name"), // kanon:ignore RUST/expect
+        name: ToolName::from_static("memory_retract"), // kanon:ignore RUST/expect
         description: "Retract a stored fact (mark as no longer valid without deleting)".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -322,7 +318,7 @@ fn memory_retract_def() -> ToolDef {
 
 fn memory_forget_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("memory_forget").expect("valid tool name"), // kanon:ignore RUST/expect
+        name: ToolName::from_static("memory_forget"), // kanon:ignore RUST/expect
         description: "Soft-delete a fact from memory (reversible, preserves audit trail)"
             .to_owned(),
         extended_description: None,
@@ -362,7 +358,7 @@ fn memory_forget_def() -> ToolDef {
 
 fn memory_audit_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("memory_audit").expect("valid tool name"), // kanon:ignore RUST/expect
+        name: ToolName::from_static("memory_audit"), // kanon:ignore RUST/expect
         description: "List recent fact extractions with confidence scores for review".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -439,7 +435,7 @@ mod tests {
 
     fn tool_input(name: &str, args: serde_json::Value) -> ToolInput {
         ToolInput {
-            name: ToolName::new(name).expect("valid"),
+            name: ToolName::new(name).expect("valid test tool name"),
             tool_use_id: "toolu_test".to_owned(),
             arguments: args,
         }
@@ -487,7 +483,7 @@ mod tests {
     fn memory_search_def_requires_query_field() {
         let mut reg = crate::registry::ToolRegistry::new();
         super::register(&mut reg).expect("register");
-        let name = ToolName::new("memory_search").expect("valid");
+        let name = ToolName::from_static("memory_search");
         let def = reg.get_def(&name).expect("found");
         assert!(
             def.input_schema.required.contains(&"query".to_owned()),
@@ -499,7 +495,7 @@ mod tests {
     fn memory_search_def_is_auto_activate() {
         let mut reg = crate::registry::ToolRegistry::new();
         super::register(&mut reg).expect("register");
-        let name = ToolName::new("memory_search").expect("valid");
+        let name = ToolName::from_static("memory_search");
         let def = reg.get_def(&name).expect("found");
         assert!(def.auto_activate, "memory_search must be auto-activated");
     }

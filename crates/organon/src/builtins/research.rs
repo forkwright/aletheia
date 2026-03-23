@@ -3,10 +3,6 @@
 //! Web search is now handled by Anthropic's server-side `web_search` tool,
 //! configured via `NousConfig.server_tools`. This module only provides
 //! `web_fetch` for direct URL retrieval.
-#![expect(
-    clippy::expect_used,
-    reason = "ToolName::new() with static string literals is infallible — name validation would only fail on invalid chars which these names don't contain"
-)]
 
 use std::future::Future;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -329,7 +325,7 @@ fn strip_html_tags(html: &str) -> String {
 
 fn web_fetch_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("web_fetch").expect("valid tool name"), // kanon:ignore RUST/expect
+        name: ToolName::from_static("web_fetch"), // kanon:ignore RUST/expect
         description:
             "Fetch a URL and return its content as text. HTML pages are converted to readable text."
                 .to_owned(),
@@ -465,7 +461,7 @@ mod tests {
         let ctx = mock_ctx();
         let executor = WebFetchExecutor;
         let input = ToolInput {
-            name: ToolName::new("web_fetch").expect("valid"),
+            name: ToolName::from_static("web_fetch"),
             tool_use_id: "toolu_1".to_owned(),
             arguments: serde_json::json!({"url": "not-a-url"}),
         };

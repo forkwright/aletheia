@@ -4,11 +4,6 @@
 //! Persistence is handled via `hnsw_rs` built-in `file_dump()` / `HnswIo::load_hnsw()`.
 //!
 //! This module is feature-gated behind `hnsw_rs`.
-#![expect(
-    clippy::expect_used,
-    reason = "RwLock::read panics only on poison — unrecoverable"
-)]
-
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::RwLock;

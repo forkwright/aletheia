@@ -1,8 +1,4 @@
 //! Meta-tool for dynamically activating lazy tools per session.
-#![expect(
-    clippy::expect_used,
-    reason = "ToolName::new() with static string literals is infallible — name validation would only fail on invalid chars which these names don't contain"
-)]
 
 use std::future::Future;
 use std::pin::Pin;
@@ -84,7 +80,7 @@ impl ToolExecutor for EnableToolExecutor {
 
 fn enable_tool_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("enable_tool").expect("valid tool name"), // kanon:ignore RUST/expect
+        name: ToolName::from_static("enable_tool"), // kanon:ignore RUST/expect
         description: "Activate a tool for this session. Some tools are not loaded by default \
                       and must be enabled first. Call with the tool name to activate it."
             .to_owned(),
@@ -154,7 +150,7 @@ mod tests {
 
     fn make_input(tool_name: &str) -> ToolInput {
         ToolInput {
-            name: ToolName::new("enable_tool").expect("valid"),
+            name: ToolName::from_static("enable_tool"),
             tool_use_id: "toolu_1".to_owned(),
             arguments: serde_json::json!({"name": tool_name}),
         }
@@ -163,7 +159,7 @@ mod tests {
     #[tokio::test]
     async fn activate_known_tool() {
         let ctx = mock_ctx_with_catalog(vec![(
-            ToolName::new("web_search").expect("valid"),
+            ToolName::from_static("web_search"),
             "Search the web".to_owned(),
         )]);
 
@@ -187,8 +183,8 @@ mod tests {
         )]
         let active = ctx.active_tools.read().expect("lock poisoned");
         assert!(
-            active.contains(&ToolName::new("web_search").expect("valid")),
-            "expected active.contains(&ToolName::new(\"web_search\").expect(\"valid\")) to be true"
+            active.contains(&ToolName::from_static("web_search")),
+            "expected active.contains(&ToolName::from_static(\"web_search\")) to be true"
         );
     }
 
@@ -196,13 +192,10 @@ mod tests {
     async fn unknown_tool_lists_available() {
         let ctx = mock_ctx_with_catalog(vec![
             (
-                ToolName::new("web_search").expect("valid"),
+                ToolName::from_static("web_search"),
                 "Search the web".to_owned(),
             ),
-            (
-                ToolName::new("web_fetch").expect("valid"),
-                "Fetch a URL".to_owned(),
-            ),
+            (ToolName::from_static("web_fetch"), "Fetch a URL".to_owned()),
         ]);
 
         let executor = EnableToolExecutor;
@@ -226,7 +219,7 @@ mod tests {
     #[tokio::test]
     async fn double_activate_is_idempotent() {
         let ctx = mock_ctx_with_catalog(vec![(
-            ToolName::new("web_search").expect("valid"),
+            ToolName::from_static("web_search"),
             "Search the web".to_owned(),
         )]);
 
@@ -299,8 +292,8 @@ mod tests {
         )]
         let active = ctx.active_tools.read().expect("lock poisoned");
         assert!(
-            active.contains(&ToolName::new("web_search").expect("valid")),
-            "expected active.contains(&ToolName::new(\"web_search\").expect(\"valid\")) to be true"
+            active.contains(&ToolName::from_static("web_search")),
+            "expected active.contains(&ToolName::from_static(\"web_search\")) to be true"
         );
     }
 

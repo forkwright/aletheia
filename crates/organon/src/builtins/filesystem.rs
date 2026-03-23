@@ -1,8 +1,4 @@
 //! Filesystem navigation tools: grep, find, ls.
-#![expect(
-    clippy::expect_used,
-    reason = "ToolName::new() with static string literals is infallible — name validation would only fail on invalid chars which these names don't contain"
-)]
 
 use std::fmt::Write as _;
 use std::future::Future;
@@ -374,7 +370,7 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
 
 fn grep_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("grep").expect("valid tool name"), // kanon:ignore RUST/expect
+        name: ToolName::from_static("grep"), // kanon:ignore RUST/expect
         description: "Search file contents for a pattern using ripgrep".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -436,7 +432,7 @@ fn grep_def() -> ToolDef {
 
 fn find_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("find").expect("valid tool name"), // kanon:ignore RUST/expect
+        name: ToolName::from_static("find"), // kanon:ignore RUST/expect
         description: "Find files by name pattern using fd".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -497,7 +493,7 @@ fn find_def() -> ToolDef {
 
 fn ls_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("ls").expect("valid tool name"), // kanon:ignore RUST/expect
+        name: ToolName::from_static("ls"), // kanon:ignore RUST/expect
         description: "List directory contents with file sizes and modification times".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
