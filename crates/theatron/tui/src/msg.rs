@@ -438,10 +438,7 @@ pub enum Msg {
         reason = "planning view entry point, keybinding not yet wired"
     )]
     PlanningOpen,
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "planning view message, constructed in tests only")
-    )]
+    #[expect(dead_code, reason = "planning view close, wired in keybinding handler")]
     PlanningClose,
 
     #[expect(
@@ -449,12 +446,9 @@ pub enum Msg {
         reason = "retrospective view entry point, keybinding not yet wired"
     )]
     RetrospectiveOpen,
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "retrospective view message, constructed in tests only"
-        )
+    #[expect(
+        dead_code,
+        reason = "retrospective view close, wired in keybinding handler"
     )]
     RetrospectiveClose,
 

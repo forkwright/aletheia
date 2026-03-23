@@ -33,8 +33,6 @@ pub mod embedding;
 pub mod extract;
 /// Graph-enhanced recall scoring: PageRank boost, community proximity, supersession chains.
 pub(crate) mod graph_intelligence;
-/// Prometheus metric definitions for the knowledge pipeline.
-pub mod metrics;
 /// In-memory HNSW vector index backed by `hnsw_rs`.
 #[cfg(feature = "hnsw_rs")]
 pub mod hnsw_index;
@@ -44,6 +42,8 @@ pub mod instinct;
 pub mod knowledge_portability;
 /// `CozoDB`-backed knowledge store for graph traversal and vector search.
 pub mod knowledge_store;
+/// Prometheus metric definitions for the knowledge pipeline.
+pub mod metrics;
 /// Typed Datalog query builder for compile-time schema validation.
 #[cfg(feature = "mneme-engine")]
 pub mod query;

@@ -424,7 +424,7 @@ impl DistillEngine {
             }
             Err(e) => {
                 self.lock_retry_state().record_failure();
-                crate::metrics::record_distillation(nous_id, distill_start.elapsed().as_secs_f64(), false);
+                record_outcome(nous_id, &distill_start, false, 0, 0);
                 return Err(e);
             }
         };
@@ -432,7 +432,7 @@ impl DistillEngine {
         let summary = extract_summary_text(&response.content);
         if summary.is_empty() {
             self.lock_retry_state().record_failure();
-            crate::metrics::record_distillation(nous_id, distill_start.elapsed().as_secs_f64(), false);
+            record_outcome(nous_id, &distill_start, false, 0, 0);
             return EmptySummarySnafu.fail();
         }
 
@@ -440,10 +440,7 @@ impl DistillEngine {
         let timestamp = jiff::Timestamp::now().to_string();
         let memory_flush = parse_summary_to_flush(&summary, &timestamp);
 
-        crate::metrics::record_distillation(nous_id, distill_start.elapsed().as_secs_f64(), true);
-        if tokens_before > tokens_after {
-            crate::metrics::record_tokens_saved(nous_id, tokens_before - tokens_after);
-        }
+        record_outcome(nous_id, &distill_start, true, tokens_before, tokens_after);
 
         Ok(DistillResult {
             summary,
@@ -466,6 +463,20 @@ impl DistillEngine {
     /// Access the engine configuration.
     pub(crate) fn config(&self) -> &DistillConfig {
         &self.config
+    }
+}
+
+/// Record distillation metrics (duration, success/failure, token savings).
+fn record_outcome(
+    nous_id: &str,
+    start: &std::time::Instant,
+    success: bool,
+    tokens_before: u64,
+    tokens_after: u64,
+) {
+    crate::metrics::record_distillation(nous_id, start.elapsed().as_secs_f64(), success);
+    if success && tokens_before > tokens_after {
+        crate::metrics::record_tokens_saved(nous_id, tokens_before - tokens_after);
     }
 }
 

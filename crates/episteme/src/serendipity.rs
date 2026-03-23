@@ -54,8 +54,6 @@ pub(crate) struct GraphNode {
     pub pagerank: f64,
     /// Louvain community/cluster assignment.
     pub community: i64,
-    /// Neighbor entity IDs.
-    pub neighbors: Vec<EntityId>,
 }
 
 /// A scored discovery from the serendipity engine.
@@ -580,7 +578,6 @@ mod tests {
                 name: (*name).to_owned(),
                 pagerank: *pagerank,
                 community: *community,
-                neighbors: vec![],
             });
         }
 
@@ -742,7 +739,6 @@ mod tests {
             name: "Isolated Node".to_owned(),
             pagerank: 0.0,
             community: 99,
-            neighbors: vec![],
         });
 
         let path = find_path(&graph, "rust", "isolated", 6);
@@ -861,14 +857,12 @@ mod tests {
             name: "A".to_owned(),
             pagerank: 0.5,
             community: 0,
-            neighbors: vec![],
         });
         graph.add_node(GraphNode {
             entity_id: EntityId::new("b").expect("valid test id"),
             name: "B".to_owned(),
             pagerank: 0.3,
             community: 1,
-            neighbors: vec![],
         });
         graph.add_edge("a", "b", "knows");
 
