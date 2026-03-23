@@ -18,6 +18,7 @@ use crate::views::memory::Memory;
 use crate::views::metrics::Metrics;
 use crate::views::ops::Ops;
 use crate::views::planning::{Planning, PlanningProject};
+use crate::views::sessions::Sessions;
 use crate::views::settings::Settings;
 
 #[derive(Routable, Clone, PartialEq, Debug)]
@@ -38,6 +39,8 @@ pub(crate) enum Route {
         Metrics {},
         #[route("/ops")]
         Ops {},
+        #[route("/sessions")]
+        Sessions {},
         #[route("/settings")]
         Settings {},
 }

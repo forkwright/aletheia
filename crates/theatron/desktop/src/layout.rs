@@ -81,6 +81,7 @@ pub(crate) fn Layout() -> Element {
                 NavItem { to: Route::Memory {}, icon: "[M]", label: "Memory" }
                 NavItem { to: Route::Metrics {}, icon: "[X]", label: "Metrics" }
                 NavItem { to: Route::Ops {}, icon: "[O]", label: "Ops" }
+                NavItem { to: Route::Sessions {}, icon: "[T]", label: "Sessions" }
                 NavItem { to: Route::Settings {}, icon: "[S]", label: "Settings" }
                 div { style: "{NAV_DIVIDER_STYLE}" }
                 AgentSidebarView {}
