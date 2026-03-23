@@ -88,6 +88,70 @@ pub(crate) fn load_or_create_key(credential_path: &Path) -> std::io::Result<[u8;
     Ok(key)
 }
 
+/// Load an existing key or generate one without persisting.
+///
+/// Returns `(key, needs_persist)` — the caller must call [`write_key_file_atomic`]
+/// after both the key and credential temp files are ready.
+pub(crate) fn load_or_generate_key(
+    credential_path: &Path,
+) -> std::io::Result<([u8; KEY_LEN], bool)> {
+    let key_path = key_file_path(credential_path);
+    if key_path.exists() {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "symbolon credential storage writes configuration files; synchronous I/O is required in CLI/init contexts"
+        )]
+        let bytes = std::fs::read(&key_path)?;
+        let key: [u8; KEY_LEN] = bytes.try_into().map_err(|_ignored| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "encryption key file has wrong length (expected 32 bytes)",
+            )
+        })?;
+        Ok((key, false))
+    } else {
+        let key = generate_key()?;
+        Ok((key, true))
+    }
+}
+
+/// Write a key to a temp file, fsync, and return the temp path for later rename.
+///
+/// # Errors
+///
+/// Returns an `io::Error` if temp file creation or write fails.
+pub(crate) fn prepare_key_file(
+    credential_path: &Path,
+    key: &[u8; KEY_LEN],
+) -> std::io::Result<PathBuf> {
+    let key_path = key_file_path(credential_path);
+    let tmp = key_path.with_extension("key.tmp");
+    if let Some(parent) = key_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut f = std::fs::File::create(&tmp)?;
+    f.write_all(key)?;
+    f.flush()?;
+    f.sync_all()?;
+    Ok(tmp)
+}
+
+/// Rename a prepared key temp file to its final path with mode 0600.
+///
+/// # Errors
+///
+/// Returns an `io::Error` if the rename or permission set fails.
+pub(crate) fn commit_key_file(credential_path: &Path, tmp: &Path) -> std::io::Result<()> {
+    let key_path = key_file_path(credential_path);
+    std::fs::rename(tmp, &key_path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o600))?;
+    }
+    Ok(())
+}
+
 /// Encrypt `plaintext` using AES-256-GCM with a fresh random nonce.
 ///
 /// Returns base64-encoded `nonce || ciphertext_with_tag`.

@@ -234,6 +234,30 @@ impl CircuitBreaker {
         }
     }
 
+    /// Reset the circuit breaker to the Closed state.
+    ///
+    /// WHY: when an external process (e.g. Claude Code) writes fresh credentials,
+    /// the circuit should reset so the next refresh attempt proceeds immediately.
+    pub(crate) fn reset(&self) {
+        let mut inner = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let prev = inner.state.clone();
+        inner.state = CircuitState::Closed;
+        inner.failures.clear();
+        inner.consecutive_trips = 0;
+        inner.current_cooldown = self.config.cooldown;
+        inner.opened_at = None;
+        if prev != CircuitState::Closed {
+            tracing::info!(
+                from = %prev,
+                to = %inner.state,
+                "circuit breaker reset (external credential update)"
+            );
+        }
+    }
+
     fn compute_cooldown(config: &CircuitBreakerConfig, consecutive_trips: u32) -> Duration {
         let multiplier = 2u64.saturating_pow(consecutive_trips);
         let cooldown_secs = config.cooldown.as_secs().saturating_mul(multiplier);
