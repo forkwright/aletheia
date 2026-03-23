@@ -7,5 +7,4 @@
 
 pub mod chat;
 pub mod connection_indicator;
-pub(crate) mod toast;
-pub(crate) mod toast_container;
+pub(crate) mod theme_toggle;
