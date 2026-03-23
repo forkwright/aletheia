@@ -12,6 +12,8 @@ pub mod commands;
 pub mod connection;
 pub mod events;
 pub(crate) mod fetch;
+/// Workspace file tree explorer state.
+pub(crate) mod files;
 pub(crate) mod input;
 pub(crate) mod streaming;
 pub mod toasts;

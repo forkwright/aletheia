@@ -72,9 +72,9 @@ const STATUS_LABEL_STYLE: &str = "\
     text-align: right;\
 ";
 
-const STEP_ICON_PENDING: &str = "\u{25CB}";     // ○
-const STEP_ICON_COMPLETE: &str = "\u{2713}";    // ✓
-const STEP_ICON_FAILED: &str = "\u{2717}";      // ✗
+const STEP_ICON_PENDING: &str = "\u{25CB}"; // ○
+const STEP_ICON_COMPLETE: &str = "\u{2713}"; // ✓
+const STEP_ICON_FAILED: &str = "\u{2717}"; // ✗
 const STEP_ICON_IN_PROGRESS: &str = "\u{25CF}"; // ●
 
 /// Inline planning card with step list and progress bar.
@@ -84,7 +84,11 @@ pub(crate) fn PlanningCard(plan: PlanCardState) -> Element {
     let total = plan.total_steps();
     let is_finished = plan.is_finished();
 
-    let card_style = if is_finished { CARD_COMPLETE_STYLE } else { CARD_STYLE };
+    let card_style = if is_finished {
+        CARD_COMPLETE_STYLE
+    } else {
+        CARD_STYLE
+    };
     let progress_pct = if total > 0 {
         // SAFETY(numeric): step counts are small; truncation is acceptable.
         #[expect(
@@ -96,7 +100,11 @@ pub(crate) fn PlanningCard(plan: PlanCardState) -> Element {
     } else {
         0.0
     };
-    let bar_inner = if is_finished { PROGRESS_BAR_COMPLETE } else { PROGRESS_BAR_INNER };
+    let bar_inner = if is_finished {
+        PROGRESS_BAR_COMPLETE
+    } else {
+        PROGRESS_BAR_INNER
+    };
 
     let status_text = match &plan.status {
         PlanStatus::Proposed => "Proposed".to_string(),
@@ -167,7 +175,10 @@ mod tests {
         let active = step_label_style(StepStatus::InProgress);
         let done = step_label_style(StepStatus::Complete);
         let fail = step_label_style(StepStatus::Failed);
-        assert_ne!(pending, active, "pending and in-progress styles must differ");
+        assert_ne!(
+            pending, active,
+            "pending and in-progress styles must differ"
+        );
         assert_ne!(done, fail, "complete and failed styles must differ");
     }
 

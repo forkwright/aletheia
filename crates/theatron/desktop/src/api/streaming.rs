@@ -169,7 +169,11 @@ fn u32_field(json: &serde_json::Value, field: &str, event_type: &str) -> Option<
         .and_then(|v| v.as_u64())
         .and_then(|v| u32::try_from(v).ok())
         .or_else(|| {
-            tracing::warn!(event_type, field, "missing or invalid u32 field in stream event");
+            tracing::warn!(
+                event_type,
+                field,
+                "missing or invalid u32 field in stream event"
+            );
             None
         })
 }

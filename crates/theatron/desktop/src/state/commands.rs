@@ -148,7 +148,10 @@ impl Default for CommandStore {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
-#[expect(clippy::indexing_slicing, reason = "test assertions use direct indexing")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions use direct indexing"
+)]
 mod tests {
     use super::*;
 
@@ -166,7 +169,12 @@ mod tests {
     fn command_store_has_client_commands() {
         let store = CommandStore::new();
         assert!(!store.is_empty());
-        assert!(store.filtered.iter().all(|c| c.source == CommandSource::Client));
+        assert!(
+            store
+                .filtered
+                .iter()
+                .all(|c| c.source == CommandSource::Client)
+        );
     }
 
     #[test]

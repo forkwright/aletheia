@@ -66,12 +66,16 @@ fn emit_connection_toasts(was_connected: bool, is_connected: bool) {
         (true, false) => {
             // NOTE: We need a mutable signal write, access via context.
             if let Some(mut store) = try_consume_context::<Signal<ToastStore>>() {
-                store.write().push(Severity::Warning, "Server connection lost");
+                store
+                    .write()
+                    .push(Severity::Warning, "Server connection lost");
             }
         }
         (false, true) => {
             if let Some(mut store) = try_consume_context::<Signal<ToastStore>>() {
-                store.write().push(Severity::Success, "Server connection restored");
+                store
+                    .write()
+                    .push(Severity::Success, "Server connection restored");
             }
         }
         _ => {}
