@@ -1,8 +1,4 @@
 //! Agent coordination tool executors: sessions_spawn, sessions_dispatch.
-#![expect(
-    clippy::expect_used,
-    reason = "ToolName::new() with static string literals is infallible — name validation would only fail on invalid chars which these names don't contain"
-)]
 
 use std::future::Future;
 use std::pin::Pin;
@@ -183,7 +179,7 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
 
 fn sessions_spawn_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("sessions_spawn").expect("valid tool name"), // kanon:ignore RUST/expect
+        name: ToolName::from_static("sessions_spawn"), // kanon:ignore RUST/expect
         description: "Spawn an ephemeral sub-agent to execute a single task".to_owned(),
         extended_description: Some(
             "Creates a temporary agent with a role-appropriate model and tool set. \
@@ -247,7 +243,7 @@ fn sessions_spawn_def() -> ToolDef {
 
 fn sessions_dispatch_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("sessions_dispatch").expect("valid tool name"), // kanon:ignore RUST/expect
+        name: ToolName::from_static("sessions_dispatch"), // kanon:ignore RUST/expect
         description: "Spawn multiple sub-agents in parallel and collect their results".to_owned(),
         extended_description: Some(
             "Dispatches an array of tasks to ephemeral sub-agents running concurrently. \
@@ -379,7 +375,7 @@ mod tests {
     async fn spawn_def_requires_role_and_task() {
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
-        let name = ToolName::new("sessions_spawn").expect("valid");
+        let name = ToolName::from_static("sessions_spawn");
         let def = reg.get_def(&name).expect("found");
         assert_eq!(
             def.input_schema.required,
@@ -397,7 +393,7 @@ mod tests {
     async fn dispatch_def_requires_tasks() {
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
-        let name = ToolName::new("sessions_dispatch").expect("valid");
+        let name = ToolName::from_static("sessions_dispatch");
         let def = reg.get_def(&name).expect("found");
         assert_eq!(
             def.input_schema.required,
@@ -411,7 +407,7 @@ mod tests {
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
         let input = ToolInput {
-            name: ToolName::new("sessions_spawn").expect("valid"),
+            name: ToolName::from_static("sessions_spawn"),
             tool_use_id: "tu_1".to_owned(),
             arguments: serde_json::json!({"role": "coder", "task": "write code"}),
         };
@@ -431,7 +427,7 @@ mod tests {
         super::register(&mut reg).expect("register");
 
         let input = ToolInput {
-            name: ToolName::new("sessions_spawn").expect("valid"),
+            name: ToolName::from_static("sessions_spawn"),
             tool_use_id: "tu_1".to_owned(),
             arguments: serde_json::json!({"role": "coder", "task": "write code"}),
         };
@@ -459,7 +455,7 @@ mod tests {
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
         let input = ToolInput {
-            name: ToolName::new("sessions_dispatch").expect("valid"),
+            name: ToolName::from_static("sessions_dispatch"),
             tool_use_id: "tu_1".to_owned(),
             arguments: serde_json::json!({"tasks": [{"role": "coder", "task": "write code"}]}),
         };
@@ -478,7 +474,7 @@ mod tests {
             .map(|i| serde_json::json!({"role": "coder", "task": format!("task {i}")}))
             .collect();
         let input = ToolInput {
-            name: ToolName::new("sessions_dispatch").expect("valid"),
+            name: ToolName::from_static("sessions_dispatch"),
             tool_use_id: "tu_1".to_owned(),
             arguments: serde_json::json!({"tasks": tasks}),
         };
@@ -498,7 +494,7 @@ mod tests {
         super::register(&mut reg).expect("register");
 
         let input = ToolInput {
-            name: ToolName::new("sessions_dispatch").expect("valid"),
+            name: ToolName::from_static("sessions_dispatch"),
             tool_use_id: "tu_1".to_owned(),
             arguments: serde_json::json!({
                 "tasks": [
