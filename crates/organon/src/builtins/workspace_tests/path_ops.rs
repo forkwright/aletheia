@@ -779,3 +779,92 @@ fn test_normalize_removes_current_dir_component() {
         "current directory components should be removed"
     );
 }
+
+#[test]
+fn test_validate_path_accepts_canonical_root_with_symlinked_input() {
+    // WHY: oikos canonicalizes roots at startup, so the allowed_roots contain
+    // the canonical (symlink-resolved) path. Input paths using the non-canonical
+    // form (through a symlink) must still be accepted. Closes #1981.
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let real_dir = dir.path().join("real");
+    std::fs::create_dir(&real_dir).expect("create real dir");
+    std::fs::create_dir(real_dir.join("sub")).expect("create sub dir");
+
+    // NOTE: Create a symlink pointing to the real directory
+    #[cfg(unix)]
+    {
+        let link_dir = dir.path().join("link");
+        std::os::unix::fs::symlink(&real_dir, &link_dir).expect("create symlink");
+
+        // Set allowed_roots to the CANONICAL (real) path
+        let canonical_root = real_dir.canonicalize().expect("canonicalize real");
+        let ctx = ToolContext {
+            nous_id: NousId::new("test-agent").expect("valid"),
+            session_id: SessionId::new(),
+            workspace: canonical_root.clone(),
+            allowed_roots: vec![canonical_root],
+            services: None,
+            active_tools: Arc::new(RwLock::new(HashSet::new())),
+        };
+        let name = aletheia_koina::id::ToolName::new("ls").expect("valid");
+
+        // Validate a path using the SYMLINK form — should pass
+        let link_sub = link_dir.join("sub");
+        let result = validate_path(link_sub.to_str().expect("utf8"), &ctx, &name);
+        assert!(
+            result.is_ok(),
+            "path through symlink should be accepted when canonical root matches: {result:?}"
+        );
+    }
+}
+
+#[test]
+fn test_validate_path_trailing_slash_in_root() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let name = aletheia_koina::id::ToolName::new("read").expect("valid");
+
+    // WHY: Trailing slashes in allowed roots must not break the prefix check.
+    let root_with_slash = PathBuf::from(format!("{}/", dir.path().display()));
+    let ctx = ToolContext {
+        nous_id: NousId::new("test-agent").expect("valid"),
+        session_id: SessionId::new(),
+        workspace: dir.path().to_path_buf(),
+        allowed_roots: vec![root_with_slash],
+        services: None,
+        active_tools: Arc::new(RwLock::new(HashSet::new())),
+    };
+
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
+    std::fs::write(dir.path().join("file.txt"), "data").expect("write");
+
+    let result = validate_path("file.txt", &ctx, &name);
+    assert!(
+        result.is_ok(),
+        "path within root with trailing slash should be accepted: {result:?}"
+    );
+}
+
+#[test]
+fn test_validate_path_root_exact_match() {
+    // WHY: `ls` on the root itself should be allowed.
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let name = aletheia_koina::id::ToolName::new("ls").expect("valid");
+    let canonical = dir.path().canonicalize().expect("canonicalize");
+    let ctx = ToolContext {
+        nous_id: NousId::new("test-agent").expect("valid"),
+        session_id: SessionId::new(),
+        workspace: canonical.clone(),
+        allowed_roots: vec![canonical.clone()],
+        services: None,
+        active_tools: Arc::new(RwLock::new(HashSet::new())),
+    };
+
+    let result = validate_path(canonical.to_str().expect("utf8"), &ctx, &name);
+    assert!(
+        result.is_ok(),
+        "path that exactly matches an allowed root should be accepted: {result:?}"
+    );
+}

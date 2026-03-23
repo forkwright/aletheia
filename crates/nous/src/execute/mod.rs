@@ -168,6 +168,7 @@ pub async fn execute(
         config.limits.loop_max_warnings,
     );
     let mut iterations: u32 = 0;
+    let mut consecutive_tool_only: u32 = 0;
     let mut final_content = String::new();
     let mut final_stop_reason = String::new();
     let mut used_server_web_search = false;
@@ -247,6 +248,19 @@ pub async fn execute(
             break;
         }
 
+        // WHY: Track consecutive iterations that produce tool calls without any
+        // reasoning text. When the limit is hit, inject a system message asking
+        // the agent to explain its reasoning before continuing. Closes #1980.
+        let has_reasoning = extracted
+            .text_parts
+            .iter()
+            .any(|t| t.chars().any(|c| !c.is_whitespace()));
+        if has_reasoning {
+            consecutive_tool_only = 0;
+        } else {
+            consecutive_tool_only += 1;
+        }
+
         messages.push(Message {
             role: Role::Assistant,
             content: Content::Blocks(response_content),
@@ -300,6 +314,23 @@ pub async fn execute(
                 text: format!("[System: {warning}]"),
                 citations: None,
             });
+        }
+
+        let tool_only_limit = config.limits.max_consecutive_tool_only_iterations;
+        if tool_only_limit > 0 && consecutive_tool_only >= tool_only_limit {
+            debug!(
+                consecutive_tool_only,
+                limit = tool_only_limit,
+                "tool-only iteration limit reached, injecting reasoning prompt"
+            );
+            blocks.push(ContentBlock::Text {
+                text: "[System: You have made several consecutive tool calls without explaining \
+                       your reasoning. Before making more tool calls, briefly explain what you \
+                       are trying to accomplish and why these tool calls are needed.]"
+                    .to_owned(),
+                citations: None,
+            });
+            consecutive_tool_only = 0;
         }
 
         messages.push(Message {
@@ -367,6 +398,7 @@ pub async fn execute_streaming(
         config.limits.loop_max_warnings,
     );
     let mut iterations: u32 = 0;
+    let mut consecutive_tool_only: u32 = 0;
     let mut final_content = String::new();
     let mut final_stop_reason = String::new();
     let mut used_server_web_search = false;
@@ -459,6 +491,16 @@ pub async fn execute_streaming(
             break;
         }
 
+        let has_reasoning = extracted
+            .text_parts
+            .iter()
+            .any(|t| t.chars().any(|c| !c.is_whitespace()));
+        if has_reasoning {
+            consecutive_tool_only = 0;
+        } else {
+            consecutive_tool_only += 1;
+        }
+
         messages.push(Message {
             role: Role::Assistant,
             content: Content::Blocks(response_content),
@@ -511,6 +553,23 @@ pub async fn execute_streaming(
                 text: format!("[System: {warning}]"),
                 citations: None,
             });
+        }
+
+        let tool_only_limit = config.limits.max_consecutive_tool_only_iterations;
+        if tool_only_limit > 0 && consecutive_tool_only >= tool_only_limit {
+            debug!(
+                consecutive_tool_only,
+                limit = tool_only_limit,
+                "tool-only iteration limit reached, injecting reasoning prompt"
+            );
+            blocks.push(ContentBlock::Text {
+                text: "[System: You have made several consecutive tool calls without explaining \
+                       your reasoning. Before making more tool calls, briefly explain what you \
+                       are trying to accomplish and why these tool calls are needed.]"
+                    .to_owned(),
+                citations: None,
+            });
+            consecutive_tool_only = 0;
         }
 
         messages.push(Message {

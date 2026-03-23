@@ -66,6 +66,15 @@ pub struct NousLimits {
     /// the original and truncated sizes. Set to `0` to disable. Default:
     /// 32 768 bytes (32 KB).
     pub max_tool_result_bytes: u32,
+    /// Maximum consecutive LLM iterations that produce only tool calls
+    /// without any reasoning text before a think-first prompt is injected.
+    ///
+    /// WHY: Without this limit, agents can fire long bursts of tool calls
+    /// before producing any reasoning, wasting tokens and obscuring intent.
+    /// When the limit is hit, a system message is injected asking the agent
+    /// to explain its reasoning before making more tool calls. Set to `0` to
+    /// disable. Default: 3. Closes #1980.
+    pub max_consecutive_tool_only_iterations: u32,
 }
 
 impl Default for NousLimits {
@@ -78,6 +87,7 @@ impl Default for NousLimits {
             loop_max_warnings: 2,
             session_token_cap: default_session_token_cap(),
             max_tool_result_bytes: default_max_tool_result_bytes(),
+            max_consecutive_tool_only_iterations: 3,
         }
     }
 }
@@ -233,6 +243,10 @@ mod tests {
             "default should match koina::defaults"
         );
         assert!(!config.generation.thinking_enabled);
+        assert_eq!(
+            config.limits.max_consecutive_tool_only_iterations, 3,
+            "default tool-only iteration limit should be 3"
+        );
     }
 
     #[test]
@@ -291,6 +305,7 @@ mod tests {
                 loop_max_warnings: 2,
                 session_token_cap: 250_000,
                 max_tool_result_bytes: 32_768,
+                max_consecutive_tool_only_iterations: 3,
             },
             domains: vec!["medical".to_owned()],
             server_tools: Vec::new(),

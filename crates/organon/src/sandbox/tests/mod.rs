@@ -68,6 +68,7 @@ fn config_serde_roundtrip() {
         extra_exec_paths: vec![PathBuf::from("/opt/scripts")],
         egress: EgressPolicy::Allow,
         egress_allowlist: Vec::new(),
+        nproc_limit: 256,
     };
     let json = serde_json::to_string(&config).expect("serialize");
     let back: SandboxConfig = serde_json::from_str(&json).expect("deserialize");
