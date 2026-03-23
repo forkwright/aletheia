@@ -49,9 +49,7 @@ pub(crate) fn record_auth_attempt(method: &str, success: bool) {
 /// Record a token refresh operation.
 pub(crate) fn record_token_refresh(success: bool) {
     let status = if success { "ok" } else { "error" };
-    TOKEN_REFRESHES_TOTAL
-        .with_label_values(&[status])
-        .inc();
+    TOKEN_REFRESHES_TOTAL.with_label_values(&[status]).inc();
 }
 
 #[cfg(test)]

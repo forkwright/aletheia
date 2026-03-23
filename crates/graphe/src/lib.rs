@@ -14,14 +14,14 @@ pub use aletheia_eidos::knowledge;
 pub mod backup;
 /// Graphe-specific error types and result alias.
 pub mod error;
-/// Prometheus metric definitions for session persistence.
-pub mod metrics;
 /// Agent export: build an `AgentFile` from session store and workspace.
 #[cfg(feature = "sqlite")]
 pub mod export;
 /// Agent import: restore an agent from a portable `AgentFile`.
 #[cfg(feature = "sqlite")]
 pub mod import;
+/// Prometheus metric definitions for session persistence.
+pub mod metrics;
 /// Versioned `SQLite` schema migration runner.
 #[cfg(feature = "sqlite")]
 pub mod migration;

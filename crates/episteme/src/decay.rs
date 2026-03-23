@@ -26,32 +26,29 @@ const MAX_CROSS_AGENT_MULTIPLIER: f64 = 1.75;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct DecayConfig {
     /// Weight for recency factor (hours since last access). Default: 0.35
-    pub recency_weight: f64,
+    pub recency: f64,
     /// Weight for access frequency factor. Default: 0.25
-    pub frequency_weight: f64,
+    pub frequency: f64,
     /// Weight for confidence/tier factor. Default: 0.20
-    pub confidence_weight: f64,
+    pub confidence: f64,
     /// Weight for reinforcement signal factor. Default: 0.20
-    pub reinforcement_weight: f64,
+    pub reinforcement: f64,
 }
 
 impl Default for DecayConfig {
     fn default() -> Self {
         Self {
-            recency_weight: 0.35,
-            frequency_weight: 0.25,
-            confidence_weight: 0.20,
-            reinforcement_weight: 0.20,
+            recency: 0.35,
+            frequency: 0.25,
+            confidence: 0.20,
+            reinforcement: 0.20,
         }
     }
 }
 
 impl DecayConfig {
     fn total_weight(&self) -> f64 {
-        self.recency_weight
-            + self.frequency_weight
-            + self.confidence_weight
-            + self.reinforcement_weight
+        self.recency + self.frequency + self.confidence + self.reinforcement
     }
 }
 
@@ -79,27 +76,8 @@ pub(crate) struct DecayFactors {
 pub(crate) struct DecayResult {
     /// Combined decay score in [0.0, 1.0]. Higher = better retained.
     pub score: f64,
-    /// Individual factor scores for diagnostics.
-    pub factors: DecayFactorScores,
     /// Computed lifecycle stage based on the decay score.
     pub stage: KnowledgeStage,
-    /// Effective stability used in FSRS computation (hours).
-    pub effective_stability_hours: f64,
-}
-
-/// Individual factor contributions to the decay score.
-#[derive(Debug, Clone)]
-pub(crate) struct DecayFactorScores {
-    /// FSRS power-law recency score [0.0, 1.0].
-    pub recency: f64,
-    /// Logarithmic access frequency score [0.0, 1.0].
-    pub frequency: f64,
-    /// Confidence score from epistemic tier [0.0, 1.0].
-    pub confidence: f64,
-    /// Reinforcement signal score [0.0, 1.0].
-    pub reinforcement: f64,
-    /// Cross-agent multiplier applied to the final score.
-    pub cross_agent_multiplier: f64,
 }
 
 /// Compute the multi-factor decay score for a single fact.
@@ -129,10 +107,10 @@ pub(crate) fn compute_decay(config: &DecayConfig, factors: &DecayFactors) -> Dec
 
     let total_weight = config.total_weight();
     let weighted = if total_weight > 0.0 {
-        (recency * config.recency_weight
-            + frequency * config.frequency_weight
-            + confidence * config.confidence_weight
-            + reinforcement * config.reinforcement_weight)
+        (recency * config.recency
+            + frequency * config.frequency
+            + confidence * config.confidence
+            + reinforcement * config.reinforcement)
             / total_weight
     } else {
         recency
@@ -143,15 +121,7 @@ pub(crate) fn compute_decay(config: &DecayConfig, factors: &DecayFactors) -> Dec
 
     DecayResult {
         score,
-        factors: DecayFactorScores {
-            recency,
-            frequency,
-            confidence,
-            reinforcement,
-            cross_agent_multiplier: cross_agent_mult,
-        },
         stage: KnowledgeStage::from_decay_score(score),
-        effective_stability_hours: effective_stability,
     }
 }
 

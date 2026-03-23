@@ -70,9 +70,7 @@ pub fn init() {
 /// Record a fact insertion.
 pub fn record_fact_inserted(nous_id: &str) {
     // kanon:ignore RUST/pub-visibility
-    KNOWLEDGE_FACTS_TOTAL
-        .with_label_values(&[nous_id])
-        .inc();
+    KNOWLEDGE_FACTS_TOTAL.with_label_values(&[nous_id]).inc();
 }
 
 /// Record a knowledge extraction operation.
