@@ -24,7 +24,7 @@ const MAX_CROSS_AGENT_MULTIPLIER: f64 = 1.75;
 
 /// Configuration for multi-factor decay computation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DecayConfig {
+pub(crate) struct DecayConfig {
     /// Weight for recency factor (hours since last access). Default: 0.35
     pub recency_weight: f64,
     /// Weight for access frequency factor. Default: 0.25
@@ -57,7 +57,7 @@ impl DecayConfig {
 
 /// Input factors for computing the multi-factor decay score of a single fact.
 #[derive(Debug, Clone)]
-pub struct DecayFactors {
+pub(crate) struct DecayFactors {
     /// Hours since the fact was last accessed (or created if never accessed).
     pub age_hours: f64,
     /// Classified fact type.
@@ -76,7 +76,7 @@ pub struct DecayFactors {
 
 /// Result of multi-factor decay computation.
 #[derive(Debug, Clone)]
-pub struct DecayResult {
+pub(crate) struct DecayResult {
     /// Combined decay score in [0.0, 1.0]. Higher = better retained.
     pub score: f64,
     /// Individual factor scores for diagnostics.
@@ -89,7 +89,7 @@ pub struct DecayResult {
 
 /// Individual factor contributions to the decay score.
 #[derive(Debug, Clone)]
-pub struct DecayFactorScores {
+pub(crate) struct DecayFactorScores {
     /// FSRS power-law recency score [0.0, 1.0].
     pub recency: f64,
     /// Logarithmic access frequency score [0.0, 1.0].
@@ -113,7 +113,7 @@ pub struct DecayFactorScores {
 /// The combined score is then multiplied by a cross-agent bonus
 /// for facts accessed by multiple distinct agents.
 #[must_use]
-pub fn compute_decay(config: &DecayConfig, factors: &DecayFactors) -> DecayResult {
+pub(crate) fn compute_decay(config: &DecayConfig, factors: &DecayFactors) -> DecayResult {
     let effective_stability = compute_effective_stability_with_reinforcement(
         factors.fact_type,
         factors.tier,
@@ -208,7 +208,7 @@ fn score_reinforcement(reinforcement_count: u32) -> f64 {
 /// relevant and decay slower. Each additional agent beyond the first adds
 /// a bonus multiplier.
 #[must_use]
-pub fn cross_agent_multiplier(distinct_agent_count: u32) -> f64 {
+pub(crate) fn cross_agent_multiplier(distinct_agent_count: u32) -> f64 {
     if distinct_agent_count <= 1 {
         return 1.0;
     }
@@ -222,7 +222,7 @@ pub fn cross_agent_multiplier(distinct_agent_count: u32) -> f64 {
 /// - Reinforcement bonus: `1 + reinforcement_count × REINFORCEMENT_BOOST`
 /// - Volatility adjustment from succession module
 #[must_use]
-pub fn compute_effective_stability_with_reinforcement(
+pub(crate) fn compute_effective_stability_with_reinforcement(
     fact_type: FactType,
     tier: EpistemicTier,
     access_count: u32,
@@ -242,7 +242,7 @@ pub fn compute_effective_stability_with_reinforcement(
 /// the decay score. Returns transitions that represent stage changes
 /// (graduated pruning).
 #[must_use]
-pub fn evaluate_transitions(
+pub(crate) fn evaluate_transitions(
     facts: &[(crate::id::FactId, KnowledgeStage, f64)],
 ) -> Vec<StageTransition> {
     let now = jiff::Timestamp::now();
@@ -270,7 +270,7 @@ pub fn evaluate_transitions(
 /// for at least `min_archived_hours` hours. Only archived facts
 /// may be permanently removed.
 #[must_use]
-pub fn pruning_candidates(
+pub(crate) fn pruning_candidates(
     archived_facts: &[(crate::id::FactId, f64, f64)],
     min_archived_hours: f64,
 ) -> Vec<crate::id::FactId> {
