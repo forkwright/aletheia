@@ -23,6 +23,8 @@ pub(crate) mod fetch;
 pub(crate) mod files;
 pub(crate) mod input;
 pub(crate) mod navigation;
+/// Planning project, requirements, and roadmap state.
+pub(crate) mod planning;
 pub(crate) mod streaming;
 pub mod toasts;
 /// Enhanced tool call, approval, and planning state for desktop UI.

@@ -20,6 +20,8 @@ pub mod session_tabs;
 pub(crate) mod table;
 pub(crate) mod theme_toggle;
 pub(crate) mod thinking;
+/// Reusable horizontal timeline with zoom, pan, and dependency arrows.
+pub(crate) mod timeline;
 pub(crate) mod toast;
 pub(crate) mod toast_container;
 pub(crate) mod tool_approval;
