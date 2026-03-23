@@ -8,18 +8,20 @@ use dioxus::prelude::*;
 
 use crate::layout::Layout;
 use crate::platform;
-use crate::services::{config, settings_config};
 use crate::services::toast::provide_toast_context;
+use crate::services::{config, settings_config};
 use crate::state::agents::AgentStore;
 use crate::state::connection::ConnectionState;
 use crate::state::notifications::{DndState, NotificationHistory};
 use crate::state::platform::{CloseBehavior, HotkeyState, QuickInputState, TrayState, WindowState};
+use crate::state::tool_metrics::DateRange;
 use crate::theme::ThemeProvider;
 use crate::views::chat::Chat;
 use crate::views::connect::ConnectView;
 use crate::views::files::Files;
 use crate::views::memory::Memory;
 use crate::views::metrics::Metrics;
+use crate::views::metrics::tool_detail::ToolDetailView;
 use crate::views::ops::Ops;
 use crate::views::planning::{Planning, PlanningProject};
 use crate::views::sessions::Sessions;
@@ -42,12 +44,35 @@ pub(crate) enum Route {
         Memory {},
         #[route("/metrics")]
         Metrics {},
+        #[route("/metrics/tools/:tool_name")]
+        MetricsToolDetail { tool_name: String },
         #[route("/ops")]
         Ops {},
         #[route("/sessions")]
         Sessions {},
         #[route("/settings")]
         Settings {},
+}
+
+/// Route component for `/metrics/tools/:tool_name`.
+///
+/// Wraps `ToolDetailView` so the tool drill-down is accessible via URL.
+#[component]
+fn MetricsToolDetail(tool_name: String) -> Element {
+    let nav = use_navigator();
+    rsx! {
+        div {
+            style: "\
+                display: flex; flex-direction: column; \
+                height: 100%; padding: 24px; gap: 16px; \
+                overflow-y: auto;",
+            ToolDetailView {
+                tool_name,
+                date_range: DateRange::default(),
+                on_back: move |_| { nav.push(Route::Metrics {}); },
+            }
+        }
+    }
 }
 
 /// Root component.

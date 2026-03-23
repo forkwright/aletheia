@@ -1,10 +1,30 @@
-//! Metrics dashboard: session counts, token usage, cost, and uptime.
+//! Metrics dashboard: server health, token usage, costs, and tool statistics.
+//!
+//! Tabs: Tokens (server health + token counts), Costs (cost breakdown), Tools (usage stats).
+
+pub(crate) mod tool_detail;
+pub(crate) mod tool_duration;
+pub(crate) mod tool_frequency;
+pub(crate) mod tool_results;
+pub(crate) mod tools;
 
 use dioxus::prelude::*;
 
 use crate::api::client::authenticated_client;
 use crate::state::connection::ConnectionConfig;
 use crate::state::fetch::FetchState;
+use crate::state::tool_metrics::DateRange;
+
+// -- Tab enum -----------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MetricsTab {
+    Tokens,
+    Costs,
+    Tools,
+}
+
+// -- API response types -------------------------------------------------------
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 struct HealthResponse {
@@ -37,6 +57,8 @@ struct DashboardData {
     health: HealthResponse,
     metrics: MetricsResponse,
 }
+
+// -- Style constants ----------------------------------------------------------
 
 const CONTAINER_STYLE: &str = "\
     display: flex; \
@@ -98,9 +120,32 @@ const REFRESH_BTN: &str = "\
     cursor: pointer;\
 ";
 
+const TAB_ACTIVE: &str = "\
+    background: #2a2a4a; \
+    color: #e0e0e0; \
+    border: 1px solid #4a4aff; \
+    border-radius: 6px; \
+    padding: 4px 14px; \
+    font-size: 13px; \
+    cursor: pointer;\
+";
+
+const TAB_INACTIVE: &str = "\
+    background: transparent; \
+    color: #888; \
+    border: 1px solid #333; \
+    border-radius: 6px; \
+    padding: 4px 14px; \
+    font-size: 13px; \
+    cursor: pointer;\
+";
+
+// -- Main component -----------------------------------------------------------
+
 #[component]
 pub(crate) fn Metrics() -> Element {
     let config: Signal<ConnectionConfig> = use_context();
+    let mut active_tab = use_signal(|| MetricsTab::Tokens);
     let mut fetch_state = use_signal(|| FetchState::<DashboardData>::Loading);
 
     let mut do_refresh = move || {
@@ -155,38 +200,75 @@ pub(crate) fn Metrics() -> Element {
     rsx! {
         div {
             style: "{CONTAINER_STYLE}",
+
+            // Header with title, tabs, and refresh
             div {
-                style: "display: flex; align-items: center; justify-content: space-between;",
+                style: "display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;",
                 h2 { style: "font-size: 20px; margin: 0;", "Metrics" }
-                button {
-                    style: "{REFRESH_BTN}",
-                    onclick: move |_| do_refresh(),
-                    "Refresh"
+
+                div {
+                    style: "display: flex; gap: 6px; align-items: center;",
+
+                    button {
+                        style: if *active_tab.read() == MetricsTab::Tokens { TAB_ACTIVE } else { TAB_INACTIVE },
+                        onclick: move |_| active_tab.set(MetricsTab::Tokens),
+                        "Tokens"
+                    }
+                    button {
+                        style: if *active_tab.read() == MetricsTab::Costs { TAB_ACTIVE } else { TAB_INACTIVE },
+                        onclick: move |_| active_tab.set(MetricsTab::Costs),
+                        "Costs"
+                    }
+                    button {
+                        style: if *active_tab.read() == MetricsTab::Tools { TAB_ACTIVE } else { TAB_INACTIVE },
+                        onclick: move |_| active_tab.set(MetricsTab::Tools),
+                        "Tools"
+                    }
+
+                    if *active_tab.read() != MetricsTab::Tools {
+                        button {
+                            style: "{REFRESH_BTN}",
+                            onclick: move |_| do_refresh(),
+                            "Refresh"
+                        }
+                    }
                 }
             }
 
-            match &*fetch_state.read() {
-                FetchState::Loading => rsx! {
-                    div {
-                        style: "display: flex; align-items: center; justify-content: center; flex: 1; color: #888;",
-                        "Loading metrics..."
-                    }
-                },
-                FetchState::Error(err) => rsx! {
-                    div {
-                        style: "display: flex; align-items: center; justify-content: center; flex: 1; color: #ef4444;",
-                        "Error: {err}"
-                    }
-                },
-                FetchState::Loaded(data) => rsx! {
-                    {render_dashboard(data)}
+            match *active_tab.read() {
+                MetricsTab::Tokens => rsx! { {render_tokens_tab(&fetch_state)} },
+                MetricsTab::Costs => rsx! { {render_costs_tab(&fetch_state)} },
+                MetricsTab::Tools => rsx! {
+                    tools::ToolsOverview { date_range: DateRange::default() }
                 },
             }
         }
     }
 }
 
-fn render_dashboard(data: &DashboardData) -> Element {
+// -- Tokens tab ---------------------------------------------------------------
+
+fn render_tokens_tab(fetch_state: &Signal<FetchState<DashboardData>>) -> Element {
+    match &*fetch_state.read() {
+        FetchState::Loading => rsx! {
+            div {
+                style: "display: flex; align-items: center; justify-content: center; flex: 1; color: #888;",
+                "Loading metrics..."
+            }
+        },
+        FetchState::Error(err) => rsx! {
+            div {
+                style: "display: flex; align-items: center; justify-content: center; flex: 1; color: #ef4444;",
+                "Error: {err}"
+            }
+        },
+        FetchState::Loaded(data) => rsx! {
+            {render_tokens_content(data)}
+        },
+    }
+}
+
+fn render_tokens_content(data: &DashboardData) -> Element {
     let uptime = format_uptime(data.health.uptime_seconds);
     let status_color = if data.health.status == "ok" {
         "background: #1a3a1a; color: #22c55e;"
@@ -220,9 +302,7 @@ fn render_dashboard(data: &DashboardData) -> Element {
                 style: "{CARD_STYLE}",
                 div { style: "{CARD_VALUE}", "{data.metrics.total_sessions}" }
                 div { style: "{CARD_LABEL}", "Total Sessions" }
-                div { style: "{CARD_SUB}",
-                    "{data.metrics.active_sessions} active"
-                }
+                div { style: "{CARD_SUB}", "{data.metrics.active_sessions} active" }
             }
 
             div {
@@ -237,30 +317,62 @@ fn render_dashboard(data: &DashboardData) -> Element {
 
             div {
                 style: "{CARD_STYLE}",
-                div { style: "{CARD_VALUE}",
-                    "{format_tokens(data.metrics.total_input_tokens)}"
-                }
+                div { style: "{CARD_VALUE}", "{format_tokens(data.metrics.total_input_tokens)}" }
                 div { style: "{CARD_LABEL}", "Input Tokens" }
             }
 
             div {
                 style: "{CARD_STYLE}",
-                div { style: "{CARD_VALUE}",
-                    "{format_tokens(data.metrics.total_output_tokens)}"
-                }
+                div { style: "{CARD_VALUE}", "{format_tokens(data.metrics.total_output_tokens)}" }
                 div { style: "{CARD_LABEL}", "Output Tokens" }
-            }
-
-            div {
-                style: "{CARD_STYLE}",
-                div { style: "{CARD_VALUE} color: #eab308;",
-                    "{format_cost(data.metrics.total_cost_usd)}"
-                }
-                div { style: "{CARD_LABEL}", "Total Cost" }
             }
         }
     }
 }
+
+// -- Costs tab ----------------------------------------------------------------
+
+fn render_costs_tab(fetch_state: &Signal<FetchState<DashboardData>>) -> Element {
+    match &*fetch_state.read() {
+        FetchState::Loading => rsx! {
+            div {
+                style: "color: #888; padding: 8px;",
+                "Loading cost data..."
+            }
+        },
+        FetchState::Error(err) => rsx! {
+            div {
+                style: "color: #ef4444; padding: 8px;",
+                "Error: {err}"
+            }
+        },
+        FetchState::Loaded(data) => rsx! {
+            div {
+                style: "{GRID_STYLE}",
+
+                div {
+                    style: "{CARD_STYLE}",
+                    div {
+                        style: "{CARD_VALUE} color: #eab308;",
+                        "{format_cost(data.metrics.total_cost_usd)}"
+                    }
+                    div { style: "{CARD_LABEL}", "Total Cost" }
+                }
+
+                div {
+                    style: "{CARD_STYLE}",
+                    div {
+                        style: "{CARD_VALUE}",
+                        "{format_cost_per_turn(data.metrics.total_cost_usd, data.metrics.total_turns)}"
+                    }
+                    div { style: "{CARD_LABEL}", "Cost / Turn" }
+                }
+            }
+        },
+    }
+}
+
+// -- Formatting helpers -------------------------------------------------------
 
 fn format_uptime(seconds: u64) -> String {
     let days = seconds / 86400;
@@ -278,6 +390,18 @@ fn format_uptime(seconds: u64) -> String {
 
 fn format_cost(value: f64) -> String {
     format!("${value:.2}")
+}
+
+fn format_cost_per_turn(total_cost: f64, total_turns: u64) -> String {
+    if total_turns == 0 {
+        return "—".to_string();
+    }
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "display-only: turn count fits in f64"
+    )]
+    let per_turn = total_cost / total_turns as f64;
+    format!("${per_turn:.4}")
 }
 
 #[expect(
