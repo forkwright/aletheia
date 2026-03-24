@@ -6,6 +6,7 @@ use crate::api::client::authenticated_client;
 use crate::components::checkpoint_card::CheckpointCard;
 use crate::state::checkpoints::{Checkpoint, CheckpointStore};
 use crate::state::connection::ConnectionConfig;
+use crate::state::events::EventState;
 
 #[derive(Debug, Clone)]
 enum FetchState {
@@ -62,17 +63,35 @@ const PLACEHOLDER_STYLE: &str = "\
 /// Checkpoint approval list for a planning project.
 ///
 /// Fetches from `GET /api/planning/projects/{project_id}/checkpoints`.
-/// Pending gates appear at the top of the list.
-///
-/// # TODO(#2033)
-/// Wire SSE checkpoint events (when added to `theatron_core::events::StreamEvent`)
-/// for real-time notification when new checkpoints arrive.
+/// Pending gates appear at the top of the list. Subscribes to SSE
+/// `checkpoint:created` and `checkpoint:updated` events for real-time
+/// refresh via [`EventState::checkpoint_revisions`].
 #[component]
 pub(crate) fn CheckpointsView(project_id: String) -> Element {
     let config: Signal<ConnectionConfig> = use_context();
+    let event_state: Signal<EventState> = use_context();
     let mut fetch_state = use_signal(|| FetchState::Loading);
     // WHY: incrementing this signal causes the fetch effect to re-run.
     let mut fetch_trigger = use_signal(|| 0u32);
+    // WHY: tracks the last-seen SSE revision so the effect only fires
+    // on genuinely new checkpoint events, not on every EventState update.
+    let mut last_seen_revision = use_signal(|| 0u64);
+
+    // WHY: Re-fetch when an SSE checkpoint event arrives for this project.
+    let project_id_sse = project_id.clone();
+    use_effect(move || {
+        let state = event_state.read();
+        let current_rev = state
+            .checkpoint_revisions
+            .get(&project_id_sse)
+            .copied()
+            .unwrap_or(0);
+        if current_rev > *last_seen_revision.peek() {
+            last_seen_revision.set(current_rev);
+            let next = *fetch_trigger.peek() + 1;
+            fetch_trigger.set(next);
+        }
+    });
 
     let project_id_effect = project_id.clone();
 

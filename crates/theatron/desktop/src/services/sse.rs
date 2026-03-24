@@ -85,6 +85,12 @@ impl SseEventRouter {
             SseEvent::DistillBefore { nous_id } => self.on_distill_before(nous_id),
             SseEvent::DistillStage { nous_id, stage } => self.on_distill_stage(nous_id, stage),
             SseEvent::DistillAfter { nous_id } => self.on_distill_after(nous_id),
+            SseEvent::CheckpointCreated { project_id, .. } => {
+                self.on_checkpoint_changed(project_id)
+            }
+            SseEvent::CheckpointUpdated { project_id, .. } => {
+                self.on_checkpoint_changed(project_id)
+            }
             SseEvent::Ping => false,
             _ => {
                 tracing::debug!(?event, "unhandled SSE event variant");
@@ -212,6 +218,18 @@ impl SseEventRouter {
         self.state
             .distillation
             .insert(nous_id.clone(), DistillationProgress::Complete);
+        true
+    }
+
+    // -- Checkpoint events ---------------------------------------------------
+
+    fn on_checkpoint_changed(&mut self, project_id: &str) -> bool {
+        let counter = self
+            .state
+            .checkpoint_revisions
+            .entry(project_id.to_string())
+            .or_insert(0);
+        *counter += 1;
         true
     }
 }
@@ -492,6 +510,74 @@ mod tests {
     fn ping_returns_no_change() {
         let mut router = SseEventRouter::new();
         assert!(!router.apply(&SseEvent::Ping));
+    }
+
+    // -- Checkpoint events ---------------------------------------------------
+
+    #[test]
+    fn checkpoint_created_increments_revision() {
+        let mut router = SseEventRouter::new();
+
+        let changed = router.apply(&SseEvent::CheckpointCreated {
+            project_id: "proj-1".to_string(),
+            checkpoint_id: "cp-1".to_string(),
+        });
+
+        assert!(changed);
+        assert_eq!(
+            router.state().checkpoint_revisions.get("proj-1"),
+            Some(&1),
+        );
+    }
+
+    #[test]
+    fn checkpoint_updated_increments_revision() {
+        let mut router = SseEventRouter::new();
+
+        router.apply(&SseEvent::CheckpointCreated {
+            project_id: "proj-1".to_string(),
+            checkpoint_id: "cp-1".to_string(),
+        });
+
+        let changed = router.apply(&SseEvent::CheckpointUpdated {
+            project_id: "proj-1".to_string(),
+            checkpoint_id: "cp-1".to_string(),
+            status: "approved".to_string(),
+        });
+
+        assert!(changed);
+        assert_eq!(
+            router.state().checkpoint_revisions.get("proj-1"),
+            Some(&2),
+        );
+    }
+
+    #[test]
+    fn checkpoint_events_track_per_project() {
+        let mut router = SseEventRouter::new();
+
+        router.apply(&SseEvent::CheckpointCreated {
+            project_id: "proj-1".to_string(),
+            checkpoint_id: "cp-1".to_string(),
+        });
+        router.apply(&SseEvent::CheckpointCreated {
+            project_id: "proj-2".to_string(),
+            checkpoint_id: "cp-2".to_string(),
+        });
+        router.apply(&SseEvent::CheckpointUpdated {
+            project_id: "proj-1".to_string(),
+            checkpoint_id: "cp-1".to_string(),
+            status: "skipped".to_string(),
+        });
+
+        assert_eq!(
+            router.state().checkpoint_revisions.get("proj-1"),
+            Some(&2),
+        );
+        assert_eq!(
+            router.state().checkpoint_revisions.get("proj-2"),
+            Some(&1),
+        );
     }
 
     // -- Session events (no state change) ------------------------------------
