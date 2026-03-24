@@ -87,10 +87,6 @@ skip = [
     # Blocked until tokenizers releases a version using base64 0.22+.
     { name = "base64", version = "=0.13.1" },
 
-    # WHY: system-configuration (macOS system settings) pins core-foundation 0.9.
-    # Blocked until system-configuration migrates to core-foundation 0.10.
-    { name = "core-foundation", version = "=0.9.4" },
-
     # WHY: older crypto crates (aes/sha family) pin cpufeatures 0.2.
     # Blocked until those crates release versions using cpufeatures 0.3.
     { name = "cpufeatures", version = "=0.2.17" },
@@ -133,10 +129,6 @@ skip = [
     { name = "rand_core", version = "=0.6.4" },
     { name = "rand_core", version = "=0.9.5" },
 
-    # WHY: hf-hub (HuggingFace model cache, via aletheia-episteme) pins reqwest 0.12.
-    # Blocked until hf-hub releases a version using reqwest 0.13.
-    { name = "reqwest", version = "=0.12.28" },
-
     # WHY: procfs (prometheus metrics client) pins rustix 0.38.
     # Blocked until prometheus/procfs upgrades to rustix 1.x.
     # (See also windows-sys 0.59 skip above — same dep chain.)
@@ -155,10 +147,6 @@ skip = [
     # Workspace and taxis proper use toml 1.x. Blocked until figment uses toml 1.0+.
     { name = "toml", version = "=0.8.23" },
     { name = "toml_datetime", version = "=0.6.11" },
-
-    # WHY: reqwest 0.12 (hf-hub chain) uses wasm-streams 0.4; reqwest 0.13 uses 0.5.
-    # Eliminated once the reqwest 0.12 skip entry above takes effect.
-    { name = "wasm-streams", version = "=0.4.2" },
 
     # WHY: cron crate pins winnow 0.6; toml_edit pins winnow 0.7.
     # Canonical: winnow 1.0 (toml 1.x). Blocked until cron and toml_edit update.
