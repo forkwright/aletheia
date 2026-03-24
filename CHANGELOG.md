@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.13.9](https://github.com/forkwright/aletheia/compare/v0.13.8...v0.13.9) (2026-03-24)
+
+
+### Bug Fixes
+
+* **scripts:** replace hardcoded /tmp path with XDG_STATE_HOME in health-monitor.sh ([#2088](https://github.com/forkwright/aletheia/issues/2088)) ([502e8c2](https://github.com/forkwright/aletheia/commit/502e8c266ab1d14806f46cdd4587bdf5fd63a9c7))
+* **theatron-desktop:** replace direct indexing with safe accessors in charts ([#2064](https://github.com/forkwright/aletheia/issues/2064)) ([cb67438](https://github.com/forkwright/aletheia/commit/cb674381fb9719be41f34006371314242c91009a))
+
+
+### Documentation
+
+* **fuzz:** add .gitignore, README.md, CLAUDE.md, and clippy.toml ([#2087](https://github.com/forkwright/aletheia/issues/2087)) ([b6b28f2](https://github.com/forkwright/aletheia/commit/b6b28f2ceeaa231878548f38a456b1eff2421161))
+* **prostheke:** replace minimizer word with precise language ([#2086](https://github.com/forkwright/aletheia/issues/2086)) ([6a13a50](https://github.com/forkwright/aletheia/commit/6a13a503a7b0923dc345516df4b9aeead28da143))
+
 ## [0.13.8](https://github.com/forkwright/aletheia/compare/v0.13.7...v0.13.8) (2026-03-24)
 
 
