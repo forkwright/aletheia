@@ -73,6 +73,15 @@ impl ProjectWorkspace {
         std::fs::write(&layout.project_file, json).context(error::WorkspaceIoSnafu {
             path: &layout.project_file,
         })?;
+        // WHY: restrict project JSON to owner-only (0600) — may contain config secrets
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&layout.project_file, std::fs::Permissions::from_mode(0o600))
+                .context(error::WorkspaceIoSnafu {
+                    path: &layout.project_file,
+                })?;
+        }
         Ok(())
     }
 
@@ -112,7 +121,14 @@ impl ProjectWorkspace {
             clippy::disallowed_methods,
             reason = "dianoia workspace writes are CLI-invoked blocking operations; tokio::fs would require an async context not available here"
         )]
-        std::fs::write(&path, content).context(error::WorkspaceIoSnafu { path })?;
+        std::fs::write(&path, content).context(error::WorkspaceIoSnafu { path: &path })?;
+        // WHY: restrict blocker files to owner-only (0600) — project-internal data
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+                .context(error::WorkspaceIoSnafu { path })?;
+        }
         Ok(())
     }
 

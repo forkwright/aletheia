@@ -584,6 +584,18 @@ fn execute_export(app: &mut App) {
     )]
     match std::fs::write(&path, &md) {
         Ok(()) => {
+            // WHY: restrict export files to owner-only (0600) — contain conversation data
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                if let Err(e) =
+                    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+                {
+                    app.viewport.error_toast =
+                        Some(ErrorToast::new(format!("Failed to set permissions: {e}")));
+                    return;
+                }
+            }
             app.viewport.success_toast =
                 Some(ErrorToast::new(format!("Exported to {}", path.display())));
         }

@@ -376,6 +376,18 @@ fn execute_new_file(app: &mut App, name: &str) {
 
     match std::fs::write(&new_path, "") {
         Ok(()) => {
+            // WHY: restrict new files to owner-only (0600) — default secure permissions
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                if let Err(e) =
+                    std::fs::set_permissions(&new_path, std::fs::Permissions::from_mode(0o600))
+                {
+                    app.viewport.error_toast =
+                        Some(ErrorToast::new(format!("Failed to set permissions: {e}")));
+                    return;
+                }
+            }
             app.layout.editor.tree.refresh();
             app.layout.editor.open_file(&new_path);
             app.viewport.success_toast = Some(ErrorToast::new(format!("Created {name}")));
