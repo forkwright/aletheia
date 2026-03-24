@@ -253,8 +253,8 @@ mod tests {
         assert_eq!(json["project_id"], "proj-456");
     }
 
-    #[tokio::test]
-    async fn verification_result_matches_desktop_shape() {
+    #[test]
+    fn verification_result_matches_desktop_shape() {
         // WHY: ensures the serialized JSON matches what the desktop
         // VerificationView component expects to deserialize.
         let result = VerificationResult {
@@ -283,8 +283,8 @@ mod tests {
         assert_eq!(json["requirements"][0]["evidence"][0]["label"], "CI run");
     }
 
-    #[tokio::test]
-    async fn all_status_variants_serialize_snake_case() {
+    #[test]
+    fn all_status_variants_serialize_snake_case() {
         let statuses = [
             (VerificationStatus::Verified, "verified"),
             (VerificationStatus::PartiallyVerified, "partially_verified"),
@@ -297,8 +297,8 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn all_priority_variants_serialize_snake_case() {
+    #[test]
+    fn all_priority_variants_serialize_snake_case() {
         let priorities = [
             (RequirementPriority::P0, "p0"),
             (RequirementPriority::P1, "p1"),
