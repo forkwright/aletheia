@@ -26,7 +26,7 @@ aletheia
 │   ├── episteme   -  knowledge pipeline: extraction, recall, consolidation, embeddings
 │   └── krites     -  embedded Datalog engine + HNSW vectors (mneme-engine feature gate)
 ├── hermeneus      -  Anthropic client, model routing, credentials, provider trait
-├── organon        -  tool registry + 39 built-in tools
+├── organon        -  tool registry + 38 built-in tools
 ├── nous           -  agent pipeline, bootstrap, recall, finalize, actor model
 ├── dianoia        -  planning / project orchestration
 ├── pylon          -  Axum HTTP gateway, SSE streaming
@@ -119,7 +119,7 @@ The oikos hierarchy is described in [CONFIGURATION.md](CONFIGURATION.md).
 | `krites` | `crates/krites` | Embedded Datalog engine with HNSW and graph support | eidos |
 | `mneme` | `crates/mneme` | Thin facade re-exporting eidos, graphe, episteme, krites | eidos, graphe, episteme, krites |
 | `hermeneus` | `crates/hermeneus` | Anthropic client, model routing, credential management, provider trait | koina, taxis |
-| `organon` | `crates/organon` | Tool registry, tool definitions, 36 built-in tools, sandbox | koina, hermeneus |
+| `organon` | `crates/organon` | Tool registry, tool definitions, 38 built-in tools, sandbox | koina, hermeneus |
 | `symbolon` | `crates/symbolon` | JWT tokens, password hashing, RBAC policies | koina |
 | `melete` | `crates/melete` | Context distillation, compression strategies, token budget management | hermeneus |
 | `agora` | `crates/agora` | Channel registry, ChannelProvider trait, Signal JSON-RPC client | koina, taxis |

@@ -33,7 +33,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia"
-version = "0.13.7"
+version = "0.13.10"
 dependencies = [
  "aletheia-agora",
  "aletheia-dianoia",
@@ -83,7 +83,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-agora"
-version = "0.13.7"
+version = "0.13.10"
 dependencies = [
  "aletheia-koina",
  "aletheia-taxis",
@@ -104,7 +104,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-dianoia"
-version = "0.13.7"
+version = "0.13.10"
 dependencies = [
  "jiff",
  "prometheus",
@@ -118,7 +118,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-diaporeia"
-version = "0.13.7"
+version = "0.13.10"
 dependencies = [
  "aletheia-koina",
  "aletheia-mneme",
@@ -141,7 +141,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-dokimion"
-version = "0.13.7"
+version = "0.13.10"
 dependencies = [
  "aletheia-koina",
  "owo-colors",
@@ -160,7 +160,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-eidos"
-version = "0.13.7"
+version = "0.13.10"
 dependencies = [
  "jiff",
  "serde",
@@ -169,7 +169,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-episteme"
-version = "0.13.7"
+version = "0.13.10"
 dependencies = [
  "aletheia-eidos",
  "aletheia-graphe",
@@ -199,7 +199,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-graphe"
-version = "0.13.7"
+version = "0.13.10"
 dependencies = [
  "aletheia-eidos",
  "aletheia-koina",
@@ -220,7 +220,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-hermeneus"
-version = "0.13.7"
+version = "0.13.10"
 dependencies = [
  "aletheia-koina",
  "jiff",
@@ -242,7 +242,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-integration-tests"
-version = "0.13.7"
+version = "0.13.10"
 dependencies = [
  "aletheia-dokimion",
  "aletheia-hermeneus",
@@ -268,7 +268,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-koina"
-version = "0.13.7"
+version = "0.13.10"
 dependencies = [
  "compact_str",
  "jiff",
@@ -288,7 +288,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-krites"
-version = "0.13.7"
+version = "0.13.10"
 dependencies = [
  "aho-corasick",
  "aletheia-eidos",
@@ -332,7 +332,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-melete"
-version = "0.13.7"
+version = "0.13.10"
 dependencies = [
  "aletheia-hermeneus",
  "jiff",
@@ -347,7 +347,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-mneme"
-version = "0.13.7"
+version = "0.13.10"
 dependencies = [
  "aletheia-eidos",
  "aletheia-episteme",
@@ -362,7 +362,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-nous"
-version = "0.13.7"
+version = "0.13.10"
 dependencies = [
  "aletheia-dianoia",
  "aletheia-hermeneus",
@@ -390,7 +390,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-oikonomos"
-version = "0.13.7"
+version = "0.13.10"
 dependencies = [
  "aletheia-koina",
  "chrono",
@@ -411,7 +411,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-organon"
-version = "0.13.7"
+version = "0.13.10"
 dependencies = [
  "aletheia-hermeneus",
  "aletheia-koina",
@@ -438,7 +438,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-pylon"
-version = "0.13.7"
+version = "0.13.10"
 dependencies = [
  "aletheia-hermeneus",
  "aletheia-koina",
@@ -472,7 +472,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-symbolon"
-version = "0.13.7"
+version = "0.13.10"
 dependencies = [
  "aletheia-koina",
  "argon2",
@@ -497,7 +497,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-taxis"
-version = "0.13.7"
+version = "0.13.10"
 dependencies = [
  "aletheia-koina",
  "base64 0.22.1",
@@ -515,7 +515,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-thesauros"
-version = "0.13.7"
+version = "0.13.10"
 dependencies = [
  "aletheia-koina",
  "aletheia-organon",
@@ -5875,7 +5875,7 @@ dependencies = [
 
 [[package]]
 name = "theatron-core"
-version = "0.13.7"
+version = "0.13.10"
 dependencies = [
  "aletheia-koina",
  "bytes",
@@ -5894,7 +5894,7 @@ dependencies = [
 
 [[package]]
 name = "theatron-tui"
-version = "0.13.7"
+version = "0.13.10"
 dependencies = [
  "aletheia-koina",
  "arboard",
