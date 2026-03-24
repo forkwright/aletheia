@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.6](https://github.com/forkwright/aletheia/compare/v0.13.5...v0.13.6) (2026-03-24)
+
+
+### Bug Fixes
+
+* **theatron-desktop:** add 8 missing module declarations in views ([#2058](https://github.com/forkwright/aletheia/issues/2058)) ([bc27899](https://github.com/forkwright/aletheia/commit/bc2789944eecdcc0b46212942ac63427fdd5bdce))
+
 ## [0.13.5](https://github.com/forkwright/aletheia/compare/v0.13.4...v0.13.5) (2026-03-24)
 
 
