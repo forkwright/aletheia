@@ -1,4 +1,4 @@
-//! Rendering for the memory inspector panel views.
+// Rendering for the memory inspector panel views.
 
 use ratatui::Frame;
 
