@@ -1,0 +1,7 @@
+# Fuzz targets are standalone binaries — lighter constraints than library crates.
+# Inherits rustfmt.toml and deny.toml from parent workspace via symlinks.
+
+disallowed-methods = [
+    { path = "std::process::exit", reason = "fuzz harnesses must not call exit; libfuzzer manages the process" },
+    { path = "std::process::abort", reason = "fuzz harnesses must not abort; libfuzzer catches signals" },
+]
