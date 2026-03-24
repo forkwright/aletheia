@@ -17,7 +17,7 @@ use tracing::info_span;
 use aletheia_koina::http::{API_HEALTH, API_V1};
 
 use crate::error::ApiError;
-use crate::handlers::{config, health, knowledge, metrics, nous, sessions};
+use crate::handlers::{config, health, knowledge, metrics, nous, planning, sessions};
 use crate::middleware::{
     CsrfState, RateLimiter, RequestId, UserRateLimiter, enrich_error_response, inject_request_id,
     per_user_rate_limit, rate_limit, record_http_metrics, require_csrf_header, spawn_stale_cleanup,
@@ -91,7 +91,17 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
         .route(API_HEALTH, get(health::check))
         .route("/health", get(health::check))
         .route("/api/docs/openapi.json", get(openapi::openapi_json))
-        .route("/metrics", get(metrics::expose));
+        .route("/metrics", get(metrics::expose))
+        // NOTE: planning routes live outside /api/v1 to match the desktop
+        // VerificationView URL scheme (`/api/planning/projects/{id}/...`).
+        .route(
+            "/api/planning/projects/{project_id}/verification",
+            get(planning::get_verification),
+        )
+        .route(
+            "/api/planning/projects/{project_id}/verification/refresh",
+            post(planning::refresh_verification),
+        );
 
     router = router.fallback(fallback_handler);
 
