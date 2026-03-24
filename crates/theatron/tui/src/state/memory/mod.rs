@@ -1,4 +1,4 @@
-//! State for the memory inspector panel.
+// State for the memory inspector panel.
 
 use serde::{Deserialize, Serialize};
 
