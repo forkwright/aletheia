@@ -25,6 +25,7 @@ use crate::views::metrics::tool_detail::ToolDetailView;
 use crate::views::ops::Ops;
 use crate::views::planning::{Planning, PlanningProject};
 use crate::views::sessions::Sessions;
+use crate::views::meta::Meta;
 use crate::views::settings::Settings;
 use crate::views::settings::wizard::SetupWizard;
 
@@ -50,6 +51,8 @@ pub(crate) enum Route {
         Ops {},
         #[route("/sessions")]
         Sessions {},
+        #[route("/meta")]
+        Meta {},
         #[route("/settings")]
         Settings {},
 }
