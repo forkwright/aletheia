@@ -27,14 +27,20 @@ fuzz_target!(|data: &[u8]| {
     if let Ok(value) = serde_json::from_slice::<serde_json::Value>(data) {
         // Replicates the simple_hash code path: Value -> String -> hash.
         let s = value.to_string();
-        assert!(!s.is_empty());
+        assert!(
+            !s.is_empty(),
+            "JSON Value stringification must produce non-empty output"
+        );
     }
 
     // 5. LoopDetector: feed arbitrary tool_name:input_hash sequences.
     //    Tests cycle detection with varied pattern lengths and thresholds.
+    // WHY: .get() instead of indexing to avoid false-positive fuzzer crash reports.
     if data.len() >= 4 {
-        if let Ok(s) = std::str::from_utf8(&data[1..]) {
-            let threshold = (data[0] % 5).saturating_add(2); // 2..=6
+        let Some(&b0) = data.get(0) else { return };
+        let Some(rest) = data.get(1..) else { return };
+        if let Ok(s) = std::str::from_utf8(rest) {
+            let threshold = (b0 % 5).saturating_add(2); // 2..=6
             let mut detector = aletheia_nous::pipeline::LoopDetector::new(u32::from(threshold));
             for chunk in s.as_bytes().chunks(8) {
                 if let Ok(part) = std::str::from_utf8(chunk) {
