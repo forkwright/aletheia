@@ -18,18 +18,12 @@ pub(crate) mod diff;
 /// Discussion state for planning gray-area questions.
 pub(crate) mod discussion;
 pub mod events;
-/// Notification preferences, history, and Do Not Disturb state.
-pub(crate) mod notifications;
 /// Execution state for wave-based plan progress.
 pub(crate) mod execution;
 pub(crate) mod fetch;
 /// Workspace file tree explorer state.
 pub(crate) mod files;
-/// Knowledge graph, force simulation, viewport, community filter, and drift state.
-pub(crate) mod graph;
 pub(crate) mod input;
-/// Entity list, detail, and navigation state for the memory explorer.
-pub(crate) mod memory;
 pub(crate) mod navigation;
 /// Planning project, requirements, and roadmap state.
 pub(crate) mod planning;
@@ -44,11 +38,9 @@ pub mod tools;
 /// Goal-backward verification state for the planning project detail view.
 pub(crate) mod verification;
 
-/// Meta-insights state: agent performance, quality, knowledge, health, reflection.
-pub(crate) mod meta;
 /// Ops dashboard state: agent status cards, service health, toggle controls.
 pub(crate) mod ops;
 /// Settings state: server configs, appearance, keybindings, wizard flow.
 pub(crate) mod settings;
-/// Tool usage metrics: aggregated stats, stores, and helpers.
-pub(crate) mod tool_metrics;
+/// Token usage, cost tracking, budget, and metrics display helpers.
+pub(crate) mod metrics;

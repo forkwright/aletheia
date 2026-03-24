@@ -115,3 +115,4 @@ __pycache__/
 !crates/*/dist/
 .claude/
 crates/aletheia/instance/
+crates/theatron/desktop/target/
