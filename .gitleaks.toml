@@ -40,6 +40,10 @@ paths = [
   '''SECURITY\.md''',
   '''docs/DEPLOYMENT\.md''',
   '''docs/CONFIGURATION\.md''',
+  # WHY: build artifacts contain hash-like strings in LTO bytecode and compiled
+  # metadata (e.g. struct field names, OpenSSL constants) that trigger
+  # generic-api-key and private-key rules. Gitignored but visible to --no-git.
+  '''target/''',
   # WHY: redact.rs files contain intentional fake credentials for PII-scrubbing tests.
   '''crates/[^/]+/src/redact\.rs''',
   # WHY: runbook and checklist contain example CLI commands with synthetic values.
