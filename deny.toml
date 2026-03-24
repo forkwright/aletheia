@@ -27,9 +27,7 @@ allow = [
     "0BSD",
     "MPL-2.0",              # option-ext, smartstring
     "LGPL-3.0-or-later",    # priority-queue
-    "NCSA",                 # libfuzzer-sys (transitive via rav1e)
     "CDLA-Permissive-2.0",  # webpki-roots, webpki-root-certs
-    "OpenSSL",              # ring (rustls crypto backend) includes OpenSSL-licensed code
 ]
 confidence-threshold = 0.8
 
