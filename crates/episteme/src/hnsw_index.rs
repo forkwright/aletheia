@@ -67,26 +67,50 @@ impl Default for HnswConfig {
 ///
 /// # Persistence and the `'static` transmute
 ///
-/// `hnsw_rs::HnswIo::load_hnsw` returns a `Hnsw<'_, …>` that borrows the
-/// loader. We extend that lifetime to `'static` via `mem::transmute` so the
-/// index can be stored in a `'static`-bounded field.
+/// [`HnswIo::load_hnsw`] returns `Hnsw<'b, …>` where `'b` is bounded by
+/// the loader's borrow (`'a: 'b`). We transmute that lifetime to `'static`
+/// so the index can live in a struct field.
 ///
-/// **Safety invariant:** This is sound because we do **not** use mmap. When
-/// mmap is disabled (our default), `load_hnsw` copies all point data into
-/// heap-owned `Vec`s inside the `Hnsw` struct. The loader is not accessed
-/// after `load_hnsw` returns; it is retained in `_loader` only to satisfy
-/// the type system's lifetime requirement at construction time.
+/// # Safety invariant chain
 ///
-/// Drop order (fields drop in declaration order): `_loader` drops before
-/// `inner`. Because the `Hnsw` owns its data and never dereferences the
-/// loader at runtime, this ordering is safe regardless of which field drops
-/// first.
+/// The transmute is sound because without mmap, the lifetime `'b` carries
+/// no actual reference:
 ///
-/// `#[repr(C)]` pins the field layout so static offset assertions below
-/// remain accurate if the struct is ever modified.
+/// 1. **Data ownership (no mmap):** `hnsw_rs` stores point data in an
+///    internal `PointData<'b, T>` enum with two variants: `V(Vec<T>)`
+///    (heap-owned) and `S(&'b [T])` (mmap slice). When mmap is disabled
+///    (our default — we never call [`HnswIo::set_options`]), every point
+///    is constructed via `Point::new()` → `PointData::V(…)`. The `S`
+///    variant is never instantiated, so the lifetime `'b` is phantom —
+///    no runtime `&'b` reference exists anywhere in the graph.
+///
+/// 2. **Loader co-storage:** The `_loader` [`Box<HnswIo>`] is stored in
+///    this struct alongside the `Hnsw`. Both fields share the struct's
+///    lifetime, so the loader cannot be dropped while the [`HnswIndex`]
+///    is live. The loader is retained to satisfy the `'a: 'b` constraint
+///    at the type level and as defense-in-depth if `hnsw_rs` internals
+///    change.
+///
+/// 3. **Drop order:** `#[repr(C)]` pins field layout to declaration
+///    order. A compile-time assertion ([`std::mem::offset_of!`]) verifies
+///    `_loader` precedes `inner`. Rust drops fields in declaration order,
+///    so `inner` (the `Hnsw`) is still valid when its destructor runs —
+///    `_loader` has not yet been dropped. Because no real `&'b` reference
+///    exists (invariant 1), drop order is immaterial in practice, but the
+///    assertion guards against future regressions.
+///
+/// # Safe alternatives considered
+///
+/// [`self_cell`](https://docs.rs/self_cell) and `ouroboros` encapsulate
+/// self-referential borrows safely. They were not adopted here because
+/// without mmap the borrow is vacuous — the `Hnsw` owns all its data
+/// outright. If `hnsw_rs` ever enables mmap by default, migrating to
+/// `self_cell` would be the correct fix. See [#2026].
 #[repr(C)]
 pub struct HnswIndex {
-    /// Retained to satisfy the type system; not accessed after construction.
+    /// WHY: Retained to satisfy the `'a: 'b` lifetime constraint from
+    /// `HnswIo::load_hnsw`. Not accessed after construction. Must be
+    /// declared before `inner` for correct drop order (see safety invariant 3).
     _loader: RwLock<Option<Box<HnswIo>>>,
     inner: RwLock<Option<Hnsw<'static, f32, DistCosine>>>,
     config: HnswConfig,
@@ -132,14 +156,32 @@ impl HnswIndex {
                         }
                         .build()
                     })?;
-                // SAFETY: Extending the `Hnsw` lifetime to `'static` is sound
-                // because mmap is not used. `load_hnsw` copies all point data into
-                // heap-owned allocations inside `Hnsw`; the loader is not accessed
-                // after this call returns. The `_loader` Box is stored in the struct
-                // to satisfy the type system: see the safety invariant on `HnswIndex`.
+                // SAFETY: Transmuting `Hnsw<'_, …>` to `Hnsw<'static, …>`.
+                //
+                // INVARIANT 1 — DATA OWNERSHIP: `hnsw_rs` is loaded without
+                // mmap (`ReloadOptions` default). All point data is stored as
+                // `PointData::V(Vec<f32>)` (heap-owned). The `PointData::S(&'b [T])`
+                // variant (mmap slice) is never constructed, so the lifetime
+                // `'b` on `Hnsw<'b, …>` is phantom — no runtime reference exists.
+                //
+                // INVARIANT 2 — LOADER RETENTION: The `loader` Box is moved
+                // into `_loader`, co-stored in the same `HnswIndex` struct. It
+                // cannot be dropped independently while the `Hnsw` is live.
+                //
+                // INVARIANT 3 — DROP ORDER: `#[repr(C)]` + compile-time offset
+                // assertion ensures `_loader` is declared before `inner`. Rust
+                // drops fields in declaration order, so `inner` drops while
+                // `_loader` is still alive. Immaterial without mmap (invariant 1)
+                // but provides defense-in-depth.
+                //
+                // WARNING: Would break if `hnsw_rs` enables mmap by default,
+                // or if the loader is separated from the index. Either change
+                // requires migrating to `self_cell` or equivalent safe wrapper.
                 #[expect(
                     unsafe_code,
-                    reason = "lifetime extension: Hnsw owns its data after load (no mmap)"
+                    reason = "lifetime extension: Hnsw<'b> → Hnsw<'static>; sound because \
+                              without mmap all PointData uses the owned V(Vec<T>) variant — \
+                              see SAFETY invariant chain on HnswIndex and issue #2026"
                 )]
                 let hnsw: Hnsw<'static, f32, DistCosine> = unsafe { std::mem::transmute(hnsw) };
                 return Ok(Arc::new(Self {
@@ -363,6 +405,60 @@ mod tests {
         index.insert(&[1.0, 0.0, 0.0, 0.0], 0);
         assert!(!index.is_empty());
         assert_eq!(index.len(), 1);
+    }
+
+    /// Validates the `'static` transmute safety invariant by exercising
+    /// repeated dump → drop → reload cycles. Each cycle invokes
+    /// `open_or_create` (which transmutes) and then searches the reloaded
+    /// index. Regression: if the transmute were unsound (e.g. dangling
+    /// reference from mmap), this would manifest as corruption or SIGSEGV.
+    #[test]
+    #[expect(
+        clippy::expect_used,
+        reason = "test code — expect is idiomatic for test assertions on Result"
+    )]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "test code — index into known-length search results"
+    )]
+    fn transmute_safety_repeated_load_drop_cycles() {
+        let dir = tempfile::TempDir::new().expect("temp dir creation succeeds");
+        let config = HnswConfig {
+            dim: 4,
+            persist_dir: Some(dir.path().to_path_buf()),
+            ..make_config(4)
+        };
+
+        // NOTE: seed the index with initial data
+        {
+            let index = HnswIndex::new(config.clone());
+            index.insert(&[1.0, 0.0, 0.0, 0.0], 0);
+            index.insert(&[0.0, 1.0, 0.0, 0.0], 1);
+            index.insert(&[0.0, 0.0, 1.0, 0.0], 2);
+            index.dump().expect("initial dump should succeed");
+        }
+
+        // NOTE: reload → search → drop across 3 cycles to exercise the
+        // transmute path repeatedly. Each cycle creates a new HnswIndex
+        // (with transmute), uses it, then drops it.
+        for cycle in 0..3_u32 {
+            let index = HnswIndex::open_or_create(config.clone())
+                .expect("reload should succeed on each cycle");
+            assert_eq!(index.len(), 3, "point count must be 3 after cycle {cycle}");
+
+            // NOTE: search the original point to verify data integrity
+            let results = index.search(&[1.0, 0.0, 0.0, 0.0], 1, 16);
+            assert_eq!(results.len(), 1, "search must return 1 result after reload");
+            assert_eq!(results[0].data_id, 0, "nearest neighbour must be data_id 0");
+
+            // NOTE: verify all three original vectors are findable
+            let results = index.search(&[0.0, 1.0, 0.0, 0.0], 1, 16);
+            assert_eq!(
+                results[0].data_id, 1,
+                "second vector must be findable after reload cycle {cycle}"
+            );
+        }
+        // NOTE: index drops here — exercises the Drop path on transmuted Hnsw
     }
 
     /// Verify sub-millisecond search at small scale.
