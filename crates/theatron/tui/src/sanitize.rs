@@ -76,13 +76,13 @@ pub(crate) fn sanitize_for_display(s: &str) -> Cow<'_, str> {
             }
         }
 
-        // NOTE: 8-bit C1 control characters (0x80–0x9F)
+        // NOTE: 8-bit C1 control characters (0x80--0x9F)
         if (0x80..=0x9F).contains(&b) {
             i += 1;
             continue;
         }
 
-        // NOTE: C0 control characters (0x00–0x1F)
+        // NOTE: C0 control characters (0x00--0x1F)
         if b < 0x20 {
             match b {
                 b'\n' | b'\r' | b'\t' => {
@@ -104,7 +104,7 @@ pub(crate) fn sanitize_for_display(s: &str) -> Cow<'_, str> {
         }
 
         if let Some((ch, char_len)) = decode_utf8_char(bytes, i) {
-            // NOTE: Unicode C1 control characters (U+0080–U+009F): handle as named sequences
+            // NOTE: Unicode C1 control characters (U+0080--U+009F): handle as named sequences
             if ('\u{0080}'..='\u{009F}').contains(&ch) {
                 match ch {
                     // NOTE: 8-bit CSI: U+009B
@@ -595,7 +595,7 @@ mod tests {
 
     #[test]
     fn safe_whitespace_only_string_is_borrowed() {
-        // \t, \n, \r do not trigger sanitization — result must be Cow::Borrowed
+        // \t, \n, \r do not trigger sanitization -- result must be Cow::Borrowed
         let input = "\thello\nworld\r";
         let result = sanitize_for_display(input);
         assert!(
@@ -634,7 +634,7 @@ mod tests {
 
     #[test]
     fn csi_hide_cursor_does_not_appear_in_output() {
-        // ESC [ ? 2 5 h: show cursor — only "text" should survive
+        // ESC [ ? 2 5 h: show cursor -- only "text" should survive
         let result = sanitize_for_display("before\x1b[?25hafter");
         assert_eq!(result, "beforeafter", "cursor-show CSI must be stripped");
     }

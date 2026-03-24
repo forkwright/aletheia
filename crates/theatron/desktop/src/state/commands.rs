@@ -1,4 +1,4 @@
-//! Slash command state — client commands and server-provided agent commands.
+//! Slash command state -- client commands and server-provided agent commands.
 
 /// Where a command originates.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -111,7 +111,7 @@ impl RequirementStatus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[non_exhaustive]
 pub(crate) enum RequirementPriority {
-    /// Blocking — highest priority.
+    /// Blocking -- highest priority.
     P0,
     /// High priority.
     P1,

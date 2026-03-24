@@ -267,7 +267,7 @@ fn spawn_debounced_search(query: String, on_search: EventHandler<String>, delay_
     id
 }
 
-/// No-op on desktop — timer cancellation is handled by re-spawning.
+/// No-op on desktop -- timer cancellation is handled by re-spawning.
 fn web_sys_clear_timeout(_id: i64) {
     // WHY: on desktop (tokio), we cannot cancel a spawned future by ID.
     // The debounce works because the search handler will use the latest

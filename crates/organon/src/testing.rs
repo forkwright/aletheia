@@ -44,7 +44,7 @@ use crate::types::{ToolContext, ToolInput, ToolResult};
 pub struct MockToolExecutor {
     // kanon:ignore RUST/pub-visibility
     name: ToolName,
-    // WHY: std::sync::Mutex — lock never held across .await
+    // WHY: std::sync::Mutex -- lock never held across .await
     inner: Mutex<MockInner>,
     call_count: AtomicU64,
 }

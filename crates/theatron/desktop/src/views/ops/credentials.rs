@@ -75,7 +75,7 @@ impl CredentialApiEntry {
 #[derive(Debug, Clone, serde::Serialize)]
 struct AddCredentialRequest {
     provider: String,
-    /// Raw key — cleared from reactive state immediately after spawn.
+    /// Raw key -- cleared from reactive state immediately after spawn.
     key: String,
     role: String,
 }

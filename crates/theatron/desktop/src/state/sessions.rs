@@ -233,7 +233,7 @@ pub(crate) struct DistillationEvent {
 }
 
 impl DistillationEvent {
-    /// Compression ratio (0.0–1.0, lower = more compressed).
+    /// Compression ratio (0.0--1.0, lower = more compressed).
     #[must_use]
     pub(crate) fn compression_ratio(&self) -> f64 {
         if self.tokens_before == 0 {

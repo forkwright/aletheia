@@ -17,7 +17,7 @@ pub(crate) struct TimelineBlock {
     pub(crate) color: &'static str,
     /// Border/accent color.
     pub(crate) border_color: &'static str,
-    /// Completion percentage 0–100.
+    /// Completion percentage 0--100.
     pub(crate) progress: u8,
     /// Whether this is the currently active block.
     pub(crate) active: bool,

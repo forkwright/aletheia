@@ -105,7 +105,7 @@ pub(crate) fn EntitySearchBar(
                         list_store.write().search_query = query.clone();
 
                         // WHY: 300ms debounce avoids firing a search on every keystroke.
-                        // Each spawn replaces the previous timer conceptually — the last
+                        // Each spawn replaces the previous timer conceptually -- the last
                         // one to fire wins since it reads the latest query from the store.
                         spawn(async move {
                             tokio::time::sleep(std::time::Duration::from_millis(300)).await;

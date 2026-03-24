@@ -90,7 +90,7 @@ impl CredentialFile {
     ///
     /// Accepts three on-disk layouts:
     ///
-    /// * **Encrypted**: prefixed with `ALETHEIA_ENC_V1:` — decrypted using the
+    /// * **Encrypted**: prefixed with `ALETHEIA_ENC_V1:` -- decrypted using the
     ///   sidecar key file (`<path>.key`) before parsing.
     /// * **Flat**: `{"token": "...", "refreshToken": "..."}` (native) or with the
     ///   `"accessToken"` alias produced by older Claude Code versions.
@@ -625,7 +625,7 @@ impl CredentialProvider for RefreshingCredentialProvider {
     }
 }
 
-// NOTE: No Drop impl — cleanup is registered at setup time via CleanupRegistry.
+// NOTE: No Drop impl -- cleanup is registered at setup time via CleanupRegistry.
 // The registry fires its callbacks (cancel token + abort task) on drop.
 
 /// Track last-observed mtime for file change detection.

@@ -602,7 +602,7 @@ mod tests {
         };
         let mut detector = StuckDetector::new(config);
 
-        // Three consecutive identical errors — no gap, so escalating retry should not trigger
+        // Three consecutive identical errors -- no gap, so escalating retry should not trigger
         detector.record(make_invocation("deploy", "prod", error_outcome("timeout")));
         detector.record(make_invocation("deploy", "prod", error_outcome("timeout")));
         let result = detector.record(make_invocation("deploy", "prod", error_outcome("timeout")));

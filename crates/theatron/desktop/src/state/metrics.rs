@@ -387,7 +387,7 @@ pub(crate) fn compute_delta_f64(current: f64, previous: f64) -> SummaryDelta {
     }
 }
 
-/// Budget progress as a clamped percentage (0–100).
+/// Budget progress as a clamped percentage (0--100).
 pub(crate) fn budget_progress_pct(spent: f64, limit: f64) -> f64 {
     if limit <= 0.0 {
         0.0

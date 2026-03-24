@@ -575,7 +575,7 @@ impl AnthropicProvider {
             let (token_prefix, credential_source) = self.credential_log_info();
             let headers = self.build_headers()?;
 
-            // codequality:ignore — HTTPS enforced by constructor (from_config / with_credential_provider)
+            // codequality:ignore -- HTTPS enforced by constructor (from_config / with_credential_provider)
             let response = match self
                 .client
                 .post(format!("{}/v1/messages", self.base_url))

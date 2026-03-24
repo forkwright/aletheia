@@ -1,4 +1,4 @@
-//! Agent registry state — status tracking and active-agent selection.
+//! Agent registry state -- status tracking and active-agent selection.
 
 use std::collections::HashMap;
 

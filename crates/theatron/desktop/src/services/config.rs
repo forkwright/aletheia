@@ -187,7 +187,7 @@ pub(crate) fn load_notification_prefs() -> NotificationPreferences {
 /// Save notification preferences to the config file.
 ///
 /// Reads the current file, updates only the `[notifications]` section, and
-/// writes back — preserving the `[connection]` section.
+/// writes back -- preserving the `[connection]` section.
 ///
 /// # Errors
 ///

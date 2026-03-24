@@ -2,7 +2,7 @@
 //!
 //! Wires the daemon's maintenance trait to the concrete `KnowledgeStore`.
 //! Three tasks are fully implemented; the remaining five log `NOT_IMPLEMENTED`
-//! in their `detail` field pending future implementation (F.1–F.8).
+//! in their `detail` field pending future implementation (F.1--F.8).
 
 use std::sync::Arc;
 

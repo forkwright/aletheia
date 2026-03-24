@@ -60,7 +60,7 @@ pub(crate) struct AgentScorecard {
 
 impl AgentScorecard {
     /// Normalized radar axes: response quality, tool efficiency, context management,
-    /// productivity, reliability. Each value is 0.0–1.0.
+    /// productivity, reliability. Each value is 0.0--1.0.
     #[must_use]
     pub(crate) fn radar_axes(&self) -> [f64; 5] {
         [
@@ -305,7 +305,7 @@ pub(crate) fn compute_acceleration(values: &[f64]) -> TrendDirection {
     }
 
     let n = values.len();
-    // WHY: Second derivative approximation — compare recent growth rate to prior.
+    // WHY: Second derivative approximation -- compare recent growth rate to prior.
     let recent_growth = values[n - 1] - values[n - 2];
     let prior_growth = values[n - 2] - values[n - 3];
 
@@ -371,7 +371,7 @@ pub(crate) fn compute_health_score(
     orphan_ratio: f64,
     staleness_ratio: f64,
 ) -> f64 {
-    // INVARIANT: All inputs should be 0.0–1.0; clamp defensively.
+    // INVARIANT: All inputs should be 0.0--1.0; clamp defensively.
     let c = avg_confidence.clamp(0.0, 1.0);
     let o = orphan_ratio.clamp(0.0, 1.0);
     let s = staleness_ratio.clamp(0.0, 1.0);
@@ -379,7 +379,7 @@ pub(crate) fn compute_health_score(
     c * 0.4 + (1.0 - o) * 0.3 + (1.0 - s) * 0.3
 }
 
-/// Color for a health score (0.0–1.0).
+/// Color for a health score (0.0--1.0).
 #[must_use]
 pub(crate) fn health_score_color(score: f64) -> &'static str {
     if score >= 0.7 {

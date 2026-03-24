@@ -72,7 +72,7 @@ pub(crate) fn start_sse_coroutine(config: &ConnectionConfig) {
             // Dispatch desktop notifications for relevant events.
             // NOTE: Window focus state defaults to false (always notify).
             // Full focus integration requires wiring Dioxus desktop window
-            // events — tracked separately.
+            // events -- tracked separately.
             let prefs = prefs_signal.peek().clone();
             let dnd = dnd_signal.peek().clone();
             dispatch.process_event(

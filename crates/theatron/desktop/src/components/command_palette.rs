@@ -1,4 +1,4 @@
-//! Slash command palette — triggered by `/` in the chat input.
+//! Slash command palette -- triggered by `/` in the chat input.
 //!
 //! Reads `Signal<CommandStore>` from context. Floats above the input bar,
 //! showing a filtered list of commands as the user types after `/`.

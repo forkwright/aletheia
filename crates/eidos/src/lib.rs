@@ -2,7 +2,7 @@
 //! aletheia-eidos: shared knowledge types for the Aletheia memory layer
 //!
 //! Eidos (εἶδος): "form, essence." Pure data types with zero internal
-//! dependencies — the foundational shapes that the rest of the knowledge
+//! dependencies -- the foundational shapes that the rest of the knowledge
 //! pipeline builds upon.
 
 /// Newtype wrappers for knowledge-domain identifiers.

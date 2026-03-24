@@ -278,7 +278,7 @@ mod tests {
     #[test]
     fn fresh_fact_has_high_decay_score() {
         let result = compute_decay(&DecayConfig::default(), &default_factors());
-        // WHY: 0.47 — recency is perfect but frequency/reinforcement are zero
+        // WHY: 0.47 -- recency is perfect but frequency/reinforcement are zero
         assert!(
             result.score > 0.4,
             "fresh fact should have moderate-high decay score, got {}",

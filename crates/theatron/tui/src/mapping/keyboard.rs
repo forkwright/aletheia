@@ -9,7 +9,7 @@ impl crate::app::App {
     pub(super) fn map_key(&self, key: KeyEvent) -> Option<Msg> {
         // WHY: Ctrl+C during an active turn cancels it immediately rather than quitting.
         // This is the highest-priority check so overlays and selection mode cannot
-        // intercept it — the user's intent is unambiguous when a turn is running.
+        // intercept it -- the user's intent is unambiguous when a turn is running.
         if self.connection.active_turn_id.is_some()
             && key.modifiers == KeyModifiers::CONTROL
             && key.code == KeyCode::Char('c')
@@ -21,7 +21,7 @@ impl crate::app::App {
             return self.map_overlay_key(key);
         }
 
-        // WHY: history search intercepts all keys while active — typed chars refine the
+        // WHY: history search intercepts all keys while active -- typed chars refine the
         // search query, Ctrl+R finds the next match, Enter accepts, Esc cancels.
         if self.interaction.input.history_search.is_some() {
             return self.map_history_search_key(key);

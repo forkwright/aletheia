@@ -22,7 +22,7 @@ pub(crate) enum DiscussionPriority {
 pub(crate) enum DiscussionStatus {
     /// Awaiting a human answer.
     Open,
-    /// Answered — option selected or free-text provided.
+    /// Answered -- option selected or free-text provided.
     Answered,
     /// Deferred for later.
     Deferred,
@@ -53,7 +53,7 @@ pub(crate) struct DiscussionHistoryEntry {
     pub(crate) detail: String,
 }
 
-/// A single discussion item — a gray-area question needing human input.
+/// A single discussion item -- a gray-area question needing human input.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub(crate) struct Discussion {
     pub(crate) id: String,

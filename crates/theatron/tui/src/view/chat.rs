@@ -188,7 +188,7 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) ->
 
     // WHY: When the virtual scroll cache is stale (width mismatch or item count mismatch),
     // render_virtual_messages falls back to rendering ALL messages.  In that case the
-    // virtual-scroll `line_offset` is meaningless — it was computed for a partial slice
+    // virtual-scroll `line_offset` is meaningless -- it was computed for a partial slice
     // that was never rendered.  Detect the same stale condition here and use the same
     // total-minus-offset formula that the filter path uses.
     let needs_fallback = !filter_active

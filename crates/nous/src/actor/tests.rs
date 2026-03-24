@@ -427,7 +427,7 @@ async fn send_timeout_fires_when_inbox_full() {
     let (tx, _rx) = mpsc::channel(1);
     let handle = NousHandle::new("test-agent".to_owned(), tx.clone());
 
-    // WHY: don't drop _rx — dropping closes the channel and the send below would fail.
+    // WHY: don't drop _rx -- dropping closes the channel and the send below would fail.
     let (reply_tx, _reply_rx) = tokio::sync::oneshot::channel();
     tx.send(NousMessage::Turn {
         session_key: "main".to_owned(),

@@ -174,15 +174,15 @@ pub struct AgentsConfig {
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct RecallWeights {
-    /// Temporal decay weight (0.0–1.0).
+    /// Temporal decay weight (0.0--1.0).
     pub decay: f64,
-    /// Content relevance weight (0.0–1.0).
+    /// Content relevance weight (0.0--1.0).
     pub relevance: f64,
-    /// Epistemic tier weight (0.0–1.0).
+    /// Epistemic tier weight (0.0--1.0).
     pub epistemic_tier: f64,
-    /// Knowledge-graph relationship proximity weight (0.0–1.0).
+    /// Knowledge-graph relationship proximity weight (0.0--1.0).
     pub relationship_proximity: f64,
-    /// Access frequency weight (0.0–1.0).
+    /// Access frequency weight (0.0--1.0).
     pub access_frequency: f64,
 }
 
@@ -249,7 +249,7 @@ pub struct RecallSettings {
     pub enabled: bool,
     /// Maximum number of recalled facts to inject per turn.
     pub max_results: usize,
-    /// Minimum relevance score (0.0–1.0) to include a recalled fact.
+    /// Minimum relevance score (0.0--1.0) to include a recalled fact.
     pub min_score: f64,
     /// Maximum tokens to allocate for recalled knowledge.
     pub max_recall_tokens: u64,

@@ -98,7 +98,7 @@ pub enum Error {
         location: snafu::Location,
     },
 
-    /// Pack name fails validation (must be 1–64 alphanumeric/hyphen characters).
+    /// Pack name fails validation (must be 1--64 alphanumeric/hyphen characters).
     #[snafu(display(
         "invalid pack name '{name}': must be 1-64 characters, alphanumeric and hyphens only"
     ))]
