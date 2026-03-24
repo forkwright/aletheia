@@ -50,8 +50,16 @@ use crate::state::tools::{
     ToolCallState, ToolStatus,
 };
 
-/// How long to buffer text deltas before flushing to the signal.
-const TEXT_DEBOUNCE: Duration = Duration::from_millis(100);
+/// Debounce interval when the stream is delivering tokens rapidly.
+const TEXT_DEBOUNCE_FAST: Duration = Duration::from_millis(100);
+/// Debounce interval when the stream is slow (>500 ms between deltas).
+///
+/// WHY: Reducing to 50 ms when the stream pauses improves perceived
+/// responsiveness — partial words appear sooner instead of waiting a full
+/// 100 ms after a long inter-token gap.
+const TEXT_DEBOUNCE_SLOW: Duration = Duration::from_millis(50);
+/// Inter-delta gap above which the stream is classified as "slow".
+const SLOW_STREAM_THRESHOLD: Duration = Duration::from_millis(500);
 
 /// A committed chat message in the conversation history.
 #[derive(Debug, Clone)]
@@ -136,6 +144,8 @@ pub(crate) struct ChatStateManager {
     thinking_buffer: String,
     /// Last time the text buffer was flushed.
     last_flush: Instant,
+    /// Time of the most recent delta arrival — used for adaptive debounce.
+    last_delta: Instant,
 }
 
 impl Default for ChatStateManager {
@@ -148,10 +158,21 @@ impl ChatStateManager {
     /// Create a new manager with empty buffers.
     #[must_use]
     pub(crate) fn new() -> Self {
+        let now = Instant::now();
         Self {
             text_buffer: String::new(),
             thinking_buffer: String::new(),
-            last_flush: Instant::now(),
+            last_flush: now,
+            last_delta: now,
+        }
+    }
+
+    /// Effective debounce interval based on observed inter-delta gap.
+    fn effective_debounce(&self) -> Duration {
+        if self.last_delta.elapsed() >= SLOW_STREAM_THRESHOLD {
+            TEXT_DEBOUNCE_SLOW
+        } else {
+            TEXT_DEBOUNCE_FAST
         }
     }
 
@@ -187,12 +208,19 @@ impl ChatStateManager {
             StreamEvent::TextDelta(delta) => {
                 let has_newline = delta.contains('\n');
                 self.text_buffer.push_str(&delta);
-                self.maybe_flush_text(state, has_newline)
+                // WHY: Measure the effective debounce using the gap from the
+                // PREVIOUS delta before resetting last_delta. Updating first
+                // would always show a ~0ms gap and defeat the slow-stream detection.
+                let flushed = self.maybe_flush_text(state, has_newline);
+                self.last_delta = Instant::now();
+                flushed
             }
             StreamEvent::ThinkingDelta(delta) => {
                 let has_newline = delta.contains('\n');
                 self.thinking_buffer.push_str(&delta);
-                self.maybe_flush_thinking(state, has_newline)
+                let flushed = self.maybe_flush_thinking(state, has_newline);
+                self.last_delta = Instant::now();
+                flushed
             }
             StreamEvent::ToolStart {
                 tool_name,
@@ -421,7 +449,7 @@ impl ChatStateManager {
     /// newline was received.
     #[must_use]
     fn maybe_flush_text(&mut self, state: &mut ChatState, has_newline: bool) -> bool {
-        if has_newline || self.last_flush.elapsed() >= TEXT_DEBOUNCE {
+        if has_newline || self.last_flush.elapsed() >= self.effective_debounce() {
             self.flush_text(state);
             return true;
         }
@@ -431,7 +459,7 @@ impl ChatStateManager {
     /// Flush buffered thinking text with the same debounce logic.
     #[must_use]
     fn maybe_flush_thinking(&mut self, state: &mut ChatState, has_newline: bool) -> bool {
-        if has_newline || self.last_flush.elapsed() >= TEXT_DEBOUNCE {
+        if has_newline || self.last_flush.elapsed() >= self.effective_debounce() {
             self.flush_thinking(state);
             return true;
         }
@@ -565,8 +593,10 @@ mod tests {
             &mut state,
         );
 
-        // Force the last_flush to be recent so debounce holds.
-        mgr.last_flush = Instant::now();
+        // Force the last_flush AND last_delta to be recent so debounce holds.
+        let now = Instant::now();
+        mgr.last_flush = now;
+        mgr.last_delta = now;
 
         let changed = mgr.apply(StreamEvent::TextDelta("he".to_string()), &mut state);
         // Debounce not elapsed and no newline: should buffer.
@@ -593,12 +623,65 @@ mod tests {
             &mut state,
         );
 
-        // Set last_flush to 200ms ago so debounce has passed.
+        // Set last_flush to 200ms ago AND last_delta also old → slow stream
+        // → effective debounce is 50ms, so 200ms > 50ms → flushes.
         mgr.last_flush = Instant::now() - Duration::from_millis(200);
+        mgr.last_delta = Instant::now() - Duration::from_millis(600);
 
         let changed = mgr.apply(StreamEvent::TextDelta("world".to_string()), &mut state);
         assert!(changed);
         assert_eq!(state.streaming.text, "world");
+    }
+
+    #[test]
+    fn adaptive_debounce_slow_stream_uses_shorter_interval() {
+        let mut state = make_state();
+        let mut mgr = make_manager();
+
+        let _ = mgr.apply(
+            StreamEvent::TurnStart {
+                session_id: "s1".into(),
+                nous_id: "syn".into(),
+                turn_id: "t1".into(),
+            },
+            &mut state,
+        );
+
+        // Simulate a slow stream: last_delta was >500ms ago → debounce is 50ms.
+        // last_flush also >50ms ago → should flush immediately on next delta.
+        mgr.last_flush = Instant::now() - Duration::from_millis(70);
+        mgr.last_delta = Instant::now() - Duration::from_millis(600);
+
+        let changed = mgr.apply(StreamEvent::TextDelta("slow token".to_string()), &mut state);
+        // 70ms elapsed > 50ms slow debounce → should flush.
+        assert!(changed);
+        assert_eq!(state.streaming.text, "slow token");
+    }
+
+    #[test]
+    fn adaptive_debounce_fast_stream_uses_longer_interval() {
+        let mut state = make_state();
+        let mut mgr = make_manager();
+
+        let _ = mgr.apply(
+            StreamEvent::TurnStart {
+                session_id: "s1".into(),
+                nous_id: "syn".into(),
+                turn_id: "t1".into(),
+            },
+            &mut state,
+        );
+
+        // Simulate a fast stream: last_delta was <500ms ago → debounce is 100ms.
+        // last_flush was only 70ms ago → should NOT flush (70ms < 100ms).
+        let now = Instant::now();
+        mgr.last_flush = now - Duration::from_millis(70);
+        mgr.last_delta = now - Duration::from_millis(50);
+
+        let changed = mgr.apply(StreamEvent::TextDelta("fast token".to_string()), &mut state);
+        // 70ms elapsed < 100ms fast debounce → should buffer.
+        assert!(!changed);
+        assert!(state.streaming.text.is_empty());
     }
 
     #[test]
@@ -615,8 +698,11 @@ mod tests {
             &mut state,
         );
 
-        // Buffer some text (force recent flush so it doesn't auto-flush).
-        mgr.last_flush = Instant::now();
+        // Buffer some text (force recent flush AND recent delta → fast debounce,
+        // 0ms elapsed < 100ms → should buffer).
+        let now = Instant::now();
+        mgr.last_flush = now;
+        mgr.last_delta = now;
         let _ = mgr.apply(StreamEvent::TextDelta("partial".to_string()), &mut state);
         assert!(state.streaming.text.is_empty());
 
