@@ -8,7 +8,11 @@ set -euo pipefail
 #   scripts/health-monitor.sh --notify     # check, log, and send Signal on failure
 #
 # Cron example (every 5 minutes):
-#   */5 * * * * /path/to/scripts/health-monitor.sh --notify >> /tmp/aletheia-health.log 2>&1
+#   */5 * * * * /path/to/scripts/health-monitor.sh --notify >> "${XDG_STATE_HOME:-$HOME/.local/state}"/aletheia/health-monitor.log 2>&1
+
+# WARNING: Do not log to /tmp — world-writable paths are subject to symlink attacks.
+LOG_DIR="${ALETHEIA_LOG_DIR:-${XDG_STATE_HOME:-${HOME}/.local/state}/aletheia}"
+mkdir -p "$LOG_DIR"
 
 HEALTH_URL="${ALETHEIA_HEALTH_URL:-http://localhost:18789/api/health}"
 METRICS_URL="${ALETHEIA_METRICS_URL:-http://localhost:18789/metrics}"
