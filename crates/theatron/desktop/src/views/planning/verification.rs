@@ -114,7 +114,7 @@ const PLACEHOLDER_STYLE: &str = "\
 /// Displays overall and per-tier coverage bars, a requirement table,
 /// and the gap analysis panel.
 ///
-/// # TODO
+/// # TODO(#2034)
 /// `POST /api/planning/projects/{project_id}/verification/refresh` endpoint
 /// is assumed but may not exist yet; the Re-verify button is wired to it.
 #[component]
