@@ -42,5 +42,3 @@ pub(crate) mod tool_status;
 /// Virtual scrolling utilities for large lists.
 pub(crate) mod virtual_list;
 pub(crate) mod wave_band;
-/// Reusable div-based chart components for the metrics views.
-pub(crate) mod chart;
