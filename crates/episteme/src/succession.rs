@@ -63,7 +63,7 @@ pub(crate) struct EntityProfile {
     pub fact_count: u32,
     /// Average stability of those facts (hours).
     pub avg_stability_hours: f64,
-    /// Domain volatility score (0.0–1.0), if available.
+    /// Domain volatility score (0.0--1.0), if available.
     pub volatility_score: Option<f64>,
 }
 

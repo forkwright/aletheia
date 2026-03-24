@@ -111,7 +111,7 @@ async fn spec_detects_always_error_executor() {
     let spec = ToolExecutorSpec::new(ToolName::new("mock").expect("valid name"));
 
     let report = spec.validate_async(&executor, &ctx).await;
-    // The executor returns Ok(ToolResult { is_error: true }) — the spec must flag this.
+    // The executor returns Ok(ToolResult { is_error: true }) -- the spec must flag this.
     let failure_names: Vec<&str> = report
         .failures()
         .iter()

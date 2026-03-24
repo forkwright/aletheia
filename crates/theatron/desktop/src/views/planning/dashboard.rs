@@ -103,7 +103,7 @@ const PLACEHOLDER_STYLE: &str = "\
     color: #555;\
 ";
 
-/// Project dashboard — the default `/planning` view.
+/// Project dashboard -- the default `/planning` view.
 ///
 /// Fetches projects from `GET /api/planning/projects` and displays a card grid.
 /// Clicking a card navigates to the project detail view.

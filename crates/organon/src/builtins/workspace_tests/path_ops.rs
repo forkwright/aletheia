@@ -808,7 +808,7 @@ fn test_validate_path_accepts_canonical_root_with_symlinked_input() {
         };
         let name = aletheia_koina::id::ToolName::new("ls").expect("valid");
 
-        // Validate a path using the SYMLINK form — should pass
+        // Validate a path using the SYMLINK form -- should pass
         let link_sub = link_dir.join("sub");
         let result = validate_path(link_sub.to_str().expect("utf8"), &ctx, &name);
         assert!(

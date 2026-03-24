@@ -175,7 +175,7 @@ pub(crate) fn CodeBlock(code: String, language: String) -> Element {
                     onclick: {
                         let code_clone = code.clone();
                         move |_| {
-                            // WHY: clipboard API via eval — Dioxus desktop uses webview
+                            // WHY: clipboard API via eval -- Dioxus desktop uses webview
                             let escaped = code_clone.replace('\\', "\\\\")
                                 .replace('`', "\\`")
                                 .replace('$', "\\$");

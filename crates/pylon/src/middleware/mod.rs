@@ -347,7 +347,7 @@ mod tests {
             "should track 2 users before cleanup"
         );
 
-        // WHY: real sleep required — sync test with std::time::Instant; tokio time
+        // WHY: real sleep required -- sync test with std::time::Instant; tokio time
         // control is unavailable. Ensures entries are strictly in the past for stale_after_secs=0.
         std::thread::sleep(Duration::from_millis(10));
         let evicted = limiter.cleanup_stale();

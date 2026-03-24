@@ -8,7 +8,7 @@
 //! this release. The notification daemon will display the system default
 //! close button only. Full action-click integration requires a thread waiting
 //! on `NotificationHandle::wait_for_action` and a channel to the Dioxus event
-//! loop — tracked separately.
+//! loop -- tracked separately.
 
 use tracing::warn;
 

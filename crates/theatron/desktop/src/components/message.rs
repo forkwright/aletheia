@@ -66,7 +66,7 @@ pub(crate) fn MessageBubble(
             font-size: var(--text-sm); \
         "
     } else {
-        // NOTE: assistant — shaded elevated surface per design spec
+        // NOTE: assistant -- shaded elevated surface per design spec
         "\
             background: var(--bg-surface-bright); \
             border: 1px solid var(--border); \

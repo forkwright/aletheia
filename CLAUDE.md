@@ -15,7 +15,7 @@ Shell: [standards/SHELL.md](standards/SHELL.md)
 
 ### Config
 
-- **Rust crates:** `instance/config/aletheia.toml` (figment cascade: defaults → TOML → env vars)
+- **Rust crates:** `instance.example/config/aletheia.toml` (figment cascade: defaults → TOML → env vars)
 
 ## Commands
 

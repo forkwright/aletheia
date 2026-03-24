@@ -297,7 +297,7 @@ pub(crate) fn handle_history_search_accept(app: &mut App) {
 /// Ctrl+J or backslash+Enter: insert a newline character at cursor position.
 /// If the text ends with a backslash (from backslash+Enter), removes it first.
 pub(crate) fn handle_newline_insert(app: &mut App) {
-    // WHY: backslash+Enter sends NewlineInsert with a trailing '\' — strip it
+    // WHY: backslash+Enter sends NewlineInsert with a trailing '\' -- strip it
     if app.interaction.input.text.ends_with('\\') {
         app.interaction.input.text.pop();
         if app.interaction.input.cursor > app.interaction.input.text.len() {

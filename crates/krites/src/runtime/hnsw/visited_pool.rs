@@ -74,7 +74,7 @@ impl VisitedPool {
     /// full the set is simply dropped.
     pub(crate) fn release(&self, mut set: FxHashSet<CompoundKey>) {
         set.clear();
-        // If the pool is full, the set is dropped — no error.
+        // If the pool is full, the set is dropped -- no error.
         let _ = self.pool.push(set);
     }
 
@@ -112,7 +112,7 @@ mod tests {
         pool.release(set);
         assert_eq!(pool.available(), 2, "set returned to pool");
 
-        // Re-acquire — should be empty.
+        // Re-acquire -- should be empty.
         let reused = pool.acquire();
         assert!(reused.is_empty(), "released set must be cleared");
     }
@@ -134,7 +134,7 @@ mod tests {
         // Pool is full (1/1).
         let extra = FxHashSet::default();
         pool.release(extra);
-        // Pool is still 1 — the extra set was dropped, not enqueued.
+        // Pool is still 1 -- the extra set was dropped, not enqueued.
         assert_eq!(pool.available(), 1, "pool should not exceed capacity");
     }
 }

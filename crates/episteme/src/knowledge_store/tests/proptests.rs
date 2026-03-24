@@ -291,7 +291,7 @@ mod merge {
 
         /// Entity merge maintains structural invariants across random entity graphs.
         ///
-        /// For any graph of N entities (2–20) with up to 30 directed edges,
+        /// For any graph of N entities (2--20) with up to 30 directed edges,
         /// merging a randomly selected pair must:
         /// - reduce entity count to N-1
         /// - remove the merged-from entity

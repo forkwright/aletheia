@@ -176,7 +176,7 @@ const ERROR_STYLE: &str = "color: #ef4444; font-size: 12px; margin-top: 8px;";
 
 /// Checkpoint approval card with gate context, requirements, artifacts, and actions.
 ///
-/// Approve, Skip, and Override are gated on the API response — no optimistic update.
+/// Approve, Skip, and Override are gated on the API response -- no optimistic update.
 /// Skip and Override require a notes entry of at least 10 characters before submit.
 #[component]
 pub(crate) fn CheckpointCard(

@@ -6,12 +6,12 @@
 
 use dioxus::prelude::*;
 
-/// Default overscan — extra items rendered above and below the visible window.
+/// Default overscan -- extra items rendered above and below the visible window.
 pub(crate) const DEFAULT_OVERSCAN: usize = 10;
 
 /// Compute which item indices are visible given scroll position and item height.
 ///
-/// Returns `(range_start, range_end)` — a half-open slice into the item list.
+/// Returns `(range_start, range_end)` -- a half-open slice into the item list.
 /// Both ends are clamped to `[0, total_items]`.
 #[must_use]
 pub(crate) fn visible_range(
@@ -94,7 +94,7 @@ pub(crate) fn VirtualScrollContainer(
                 });
             },
 
-            // Top spacer — represents off-screen items above viewport
+            // Top spacer -- represents off-screen items above viewport
             div {
                 style: "height: {pad_top}px; flex-shrink: 0;",
                 "aria-hidden": "true",
@@ -102,7 +102,7 @@ pub(crate) fn VirtualScrollContainer(
 
             {children}
 
-            // Bottom spacer — represents off-screen items below viewport
+            // Bottom spacer -- represents off-screen items below viewport
             div {
                 style: "height: {pad_bottom}px; flex-shrink: 0;",
                 "aria-hidden": "true",

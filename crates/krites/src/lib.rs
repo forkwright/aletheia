@@ -131,7 +131,7 @@ fn convert_internal(e: crate::error::InternalError) -> Error {
     }
 }
 
-/// Internal dispatch enum — one variant per storage backend.
+/// Internal dispatch enum -- one variant per storage backend.
 enum DbInner {
     /// In-memory storage backend.
     Mem(crate::runtime::db::Db<MemStorage>),
@@ -502,7 +502,7 @@ mod db_cache_tests {
             BTreeMap::new(),
             ScriptMutability::Immutable,
         );
-        // Same query with extra whitespace — should hit.
+        // Same query with extra whitespace -- should hit.
         let _ = db.run(
             "  ?[x]   :=  x  =  1  ",
             BTreeMap::new(),

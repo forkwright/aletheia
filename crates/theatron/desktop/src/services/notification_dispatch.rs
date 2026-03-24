@@ -162,7 +162,7 @@ impl NotificationDispatch {
             return;
         }
         // WHY: Completion notifications are irrelevant when the user is actively
-        // watching — suppress when focused (regardless of only_when_backgrounded).
+        // watching -- suppress when focused (regardless of only_when_backgrounded).
         if focused {
             return;
         }
@@ -301,7 +301,7 @@ impl NotificationDispatch {
 
         if let Some(group) = self.pending_groups.get_mut(&category) {
             if now.duration_since(group.started_at) < GROUP_WINDOW {
-                // Still within the grouping window — coalesce.
+                // Still within the grouping window -- coalesce.
                 group.count += 1;
                 return;
             }
@@ -553,7 +553,7 @@ mod tests {
         let mut dispatch = NotificationDispatch::new();
         let mut history = NotificationHistory::default();
 
-        // Two rapid turn_after events — first fires, second coalesces.
+        // Two rapid turn_after events -- first fires, second coalesces.
         for _ in 0..2 {
             dispatch.process_event(
                 &SseEvent::TurnAfter {

@@ -21,7 +21,7 @@ pub(crate) enum NotificationCategory {
     /// Tool approval required.
     ///
     /// NOTE: Awaiting `ToolApprovalNeeded` global SSE event type. Currently
-    /// not fired from the dispatch layer — placeholder for future wiring.
+    /// not fired from the dispatch layer -- placeholder for future wiring.
     ToolApproval,
     /// Agent error or tool failure (triggered by `ToolFailed` SSE event).
     Error,
@@ -64,7 +64,7 @@ impl DndDuration {
     }
 }
 
-/// Ephemeral Do Not Disturb state — resets on app restart (not persisted).
+/// Ephemeral Do Not Disturb state -- resets on app restart (not persisted).
 ///
 /// Activation time and expiry are [`Instant`]-based so they cannot be
 /// serialized. Store this in a separate signal from [`NotificationPreferences`].

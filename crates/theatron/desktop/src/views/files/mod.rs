@@ -74,7 +74,7 @@ pub(crate) fn Files() -> Element {
     let is_searching = use_signal(|| false);
     let mut view = use_signal(|| FilesView::Browser);
 
-    // Resize state — replaces the inline is_resizing/resize_start_x/resize_start_width signals.
+    // Resize state -- replaces the inline is_resizing/resize_start_x/resize_start_width signals.
     let resize = use_resize_state(DEFAULT_TREE_WIDTH, MIN_TREE_WIDTH, MAX_TREE_WIDTH);
 
     // NOTE: Consume navigation actions from toast buttons to open diff viewer.
@@ -167,7 +167,7 @@ pub(crate) fn Files() -> Element {
                                     }
                                 }
                             }
-                            // Resize handle — replaces inline div
+                            // Resize handle -- replaces inline div
                             ResizeHandle {
                                 dir: ResizeDir::Horizontal,
                                 state: resize,

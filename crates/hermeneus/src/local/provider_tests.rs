@@ -210,7 +210,7 @@ async fn tool_call_completion() {
 
 #[tokio::test]
 async fn connection_error_returns_api_request_error() {
-    // NOTE: No server started — connection will be refused.
+    // NOTE: No server started -- connection will be refused.
     let config = LocalProviderConfig {
         base_url: "http://127.0.0.1:1/v1".to_owned(),
         default_model: "test-model".to_owned(),

@@ -586,7 +586,7 @@ pub(crate) async fn run(args: Args) -> Result<()> {
 
     let shutdown_timeout = std::time::Duration::from_secs(10);
 
-    // Step 2–3: daemon runners have already observed token cancel via child tokens.
+    // Step 2--3: daemon runners have already observed token cancel via child tokens.
     // Await system daemon handle to confirm it has exited.
     match tokio::time::timeout(shutdown_timeout, daemon_handle).await {
         // NOTE: daemon exited cleanly, nothing to do

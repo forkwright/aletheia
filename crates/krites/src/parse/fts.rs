@@ -142,7 +142,7 @@ fn build_phrase(pair: Pair<'_>) -> Result<FtsLiteral> {
                             })?;
                         booster = f;
                     }
-                    Rule::int => {
+                    Rule::int | Rule::pos_int => {
                         let i = boosted
                             .as_str()
                             .replace('_', "")

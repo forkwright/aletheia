@@ -120,7 +120,7 @@ impl ToolExecutor for ShellToolExecutor {
                     stderr: stderr_buf,
                 });
                 let _ = tx.send(result);
-                // NOTE: guard drops here — kills and reaps child if still alive
+                // NOTE: guard drops here -- kills and reaps child if still alive
                 // (no-op if already exited). This handles the panic path too.
             });
 

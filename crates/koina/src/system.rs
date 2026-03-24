@@ -7,9 +7,9 @@
 //!
 //! Three orthogonal traits cover the most common system interactions:
 //!
-//! - [`FileSystem`](crate::system::FileSystem) — read, write, query, and enumerate files and directories.
-//! - [`Clock`](crate::system::Clock) — obtain the current time and measure elapsed duration.
-//! - [`Environment`](crate::system::Environment) — read process environment variables and the working directory.
+//! - [`FileSystem`](crate::system::FileSystem) -- read, write, query, and enumerate files and directories.
+//! - [`Clock`](crate::system::Clock) -- obtain the current time and measure elapsed duration.
+//! - [`Environment`](crate::system::Environment) -- read process environment variables and the working directory.
 //!
 //! [`RealSystem`](crate::system::RealSystem) implements all three using the standard library and OS syscalls.
 //! [`TestSystem`](crate::system::TestSystem) implements all three in memory, giving tests full deterministic
@@ -382,7 +382,7 @@ impl FileSystem for TestSystem {
     }
 
     fn create_dir(&self, path: &Path) -> io::Result<()> {
-        // WHY: create_dir_all semantics — register the full ancestor chain.
+        // WHY: create_dir_all semantics -- register the full ancestor chain.
         let path = path.to_path_buf();
         let mut dirs = self.dirs_guard();
         let mut current = path.clone();

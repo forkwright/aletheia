@@ -241,7 +241,7 @@ impl StreamAccumulator {
                 });
             }
             WireStreamEvent::MessageStop {} | WireStreamEvent::Ping {} => {
-                // NOTE: Final event or keepalive — nothing to accumulate.
+                // NOTE: Final event or keepalive -- nothing to accumulate.
             }
             WireStreamEvent::Error { error } => {
                 return Err(super::super::error::map_sse_error(error));

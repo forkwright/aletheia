@@ -93,7 +93,7 @@ fn from_config_valid() {
     };
     let provider = AnthropicProvider::from_config(&config).expect("valid config");
     let debug = format!("{provider:?}");
-    // codequality:ignore — debug output of provider struct contains base_url, not credential values
+    // codequality:ignore -- debug output of provider struct contains base_url, not credential values
     assert!(
         debug.contains("custom.api.example.com"),
         "debug should show base_url: {debug}"

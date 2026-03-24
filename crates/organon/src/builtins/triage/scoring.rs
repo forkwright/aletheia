@@ -1,11 +1,11 @@
 //! Relevance and priority scoring for GitHub issues.
 //!
-//! Produces a 0.0–1.0 relevance score with traceable rationale,
+//! Produces a 0.0--1.0 relevance score with traceable rationale,
 //! and a combined priority score for ranking.
 
 use super::{GitHubIssue, RelevanceResult};
 
-/// Score an issue's relevance to the agent's context (0.0–1.0).
+/// Score an issue's relevance to the agent's context (0.0--1.0).
 ///
 /// Returns `(score, rationale)` where rationale explains the scoring.
 ///
@@ -143,7 +143,7 @@ pub(crate) fn compute_priority_score(result: &RelevanceResult) -> f64 {
     result.relevance * priority_weight * impact
 }
 
-/// Estimate the impact factor of an issue (0.5–2.0).
+/// Estimate the impact factor of an issue (0.5--2.0).
 fn estimate_impact(issue: &GitHubIssue) -> f64 {
     let label_lower: Vec<String> = issue.labels.iter().map(|l| l.to_lowercase()).collect();
 

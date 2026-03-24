@@ -168,7 +168,7 @@ impl KeyMap {
             }
         }
 
-        // WHY: build reverse lookup in two passes — defaults first, then overrides.
+        // WHY: build reverse lookup in two passes -- defaults first, then overrides.
         // This ensures user overrides win when they claim a key already used by a default.
         let mut dispatch = HashMap::new();
         for (action, keys) in &action_to_keys {

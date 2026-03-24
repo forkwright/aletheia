@@ -454,7 +454,7 @@ pub struct CompletionRequest {
     pub tools: Vec<ToolDefinition>,
     /// Server-side tools (e.g., web search) that execute on the provider's infrastructure.
     pub server_tools: Vec<ServerToolDefinition>,
-    /// Temperature (0.0–1.0).
+    /// Temperature (0.0--1.0).
     pub temperature: Option<f32>,
     /// Whether to enable extended thinking.
     pub thinking: Option<ThinkingConfig>,

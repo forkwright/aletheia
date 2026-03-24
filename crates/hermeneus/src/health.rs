@@ -5,7 +5,7 @@
 //! and fatal errors (auth failure). Cooldown timers allow automatic recovery
 //! from transient failures; auth failures require manual intervention.
 
-// WHY: std::sync::Mutex is correct here — lock is held only during brief state reads/writes, never across .await
+// WHY: std::sync::Mutex is correct here -- lock is held only during brief state reads/writes, never across .await
 use std::sync::Mutex; // kanon:ignore RUST/std-mutex-in-async
 
 use jiff::Timestamp;

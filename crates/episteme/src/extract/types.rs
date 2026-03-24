@@ -33,7 +33,7 @@ pub struct ExtractedRelationship {
     pub relation: String,
     /// Entity name (target).
     pub target: String,
-    /// 0.0–1.0.
+    /// 0.0--1.0.
     pub confidence: f64,
 }
 
@@ -46,7 +46,7 @@ pub struct ExtractedFact {
     pub predicate: String,
     /// The object of the claim.
     pub object: String,
-    /// Confidence score (0.0–1.0).
+    /// Confidence score (0.0--1.0).
     pub confidence: f64,
     /// Whether this fact is a correction of prior information.
     ///

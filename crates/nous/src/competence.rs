@@ -60,7 +60,7 @@ impl TaskOutcome {
 pub struct DomainScore {
     /// Domain name (e.g., "coding", "research").
     pub domain: String,
-    /// Competence score (0.0–1.0), starts at 0.5.
+    /// Competence score (0.0--1.0), starts at 0.5.
     pub score: f64,
     /// Total successes recorded.
     pub successes: u32,

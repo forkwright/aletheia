@@ -55,7 +55,7 @@ const TEXT_DEBOUNCE_FAST: Duration = Duration::from_millis(100);
 /// Debounce interval when the stream is slow (>500 ms between deltas).
 ///
 /// WHY: Reducing to 50 ms when the stream pauses improves perceived
-/// responsiveness — partial words appear sooner instead of waiting a full
+/// responsiveness -- partial words appear sooner instead of waiting a full
 /// 100 ms after a long inter-token gap.
 const TEXT_DEBOUNCE_SLOW: Duration = Duration::from_millis(50);
 /// Inter-delta gap above which the stream is classified as "slow".
@@ -144,7 +144,7 @@ pub(crate) struct ChatStateManager {
     thinking_buffer: String,
     /// Last time the text buffer was flushed.
     last_flush: Instant,
-    /// Time of the most recent delta arrival — used for adaptive debounce.
+    /// Time of the most recent delta arrival -- used for adaptive debounce.
     last_delta: Instant,
 }
 

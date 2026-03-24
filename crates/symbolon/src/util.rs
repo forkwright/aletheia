@@ -70,7 +70,7 @@ pub(crate) fn base64url_decode(s: &str) -> Option<Vec<u8>> {
 /// Returns `None` when the token has no recognisable payload segment or no `exp`
 /// field; the caller must treat `None` as "expiry unknown" (do not fall through).
 pub(crate) fn decode_jwt_exp_secs(token: &str) -> Option<u64> {
-    // NOTE: dot-segmented format — first segment is vendor prefix or JWT header,
+    // NOTE: dot-segmented format -- first segment is vendor prefix or JWT header,
     // second segment is the JSON payload containing the exp claim.
     let mut segs = token.splitn(4, '.');
     let _first = segs.next()?;

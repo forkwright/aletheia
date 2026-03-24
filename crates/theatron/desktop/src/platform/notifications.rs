@@ -10,7 +10,7 @@ pub(crate) enum NotificationUrgency {
     Low,
     /// Normal urgency: connection status changes.
     Normal,
-    /// Critical urgency: tool approval requests and errors — persistent.
+    /// Critical urgency: tool approval requests and errors -- persistent.
     Critical,
 }
 

@@ -445,7 +445,7 @@ pub struct GraphCheckReport {
     pub status: &'static str,
 }
 
-/// GET /api/v1/knowledge/check — run graph consistency checks.
+/// GET /api/v1/knowledge/check -- run graph consistency checks.
 ///
 /// Runs server-side; avoids the fjall exclusive-lock conflict that occurs when
 /// `aletheia memory check` tries to open the store while the server holds it.

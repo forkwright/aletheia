@@ -35,7 +35,7 @@ pub(crate) enum ClipboardContent {
 pub(crate) fn read_from_clipboard() -> ClipboardContent {
     match arboard::Clipboard::new() {
         Ok(mut clipboard) => {
-            // WHY: try image first — if the clipboard holds an image and we ask for text,
+            // WHY: try image first -- if the clipboard holds an image and we ask for text,
             // some platforms return the file path instead of the actual image data.
             if let Ok(img) = clipboard.get_image() {
                 #[expect(

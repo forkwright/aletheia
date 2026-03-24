@@ -116,7 +116,7 @@ impl<'a> WireRequest<'a> {
         });
 
         // WHY: Anthropic caching requires system as an array with cache_control on the last block.
-        // codequality:ignore — system_text is the LLM system prompt, not a credential
+        // codequality:ignore -- system_text is the LLM system prompt, not a credential
         let system = system_text.map(|text| {
             if req.cache_system {
                 serde_json::json!([{

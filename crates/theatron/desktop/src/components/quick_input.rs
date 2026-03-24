@@ -1,4 +1,4 @@
-//! Quick input overlay — a floating input for sending messages to agents.
+//! Quick input overlay -- a floating input for sending messages to agents.
 //!
 //! Opened via global hotkey (`Ctrl+Shift+Space`) or the tray context menu.
 //! Provides a minimal input field with agent selector that sends a message

@@ -13,7 +13,7 @@ pub(crate) enum GitStatus {
 }
 
 impl GitStatus {
-    /// Severity rank for propagation — higher means more severe.
+    /// Severity rank for propagation -- higher means more severe.
     fn severity(self) -> u8 {
         match self {
             Self::Clean => 0,

@@ -18,9 +18,9 @@ const WRAPPER_STYLE: &str = "\
     gap: 8px;\
 ";
 
-/// Horizontal confidence bar filled proportionally to a 0.0–1.0 value.
+/// Horizontal confidence bar filled proportionally to a 0.0--1.0 value.
 ///
-/// Color: green (>0.7), amber (0.4–0.7), red (<0.4).
+/// Color: green (>0.7), amber (0.4--0.7), red (<0.4).
 /// Shows numeric percentage alongside the bar.
 #[component]
 pub(crate) fn ConfidenceBar(

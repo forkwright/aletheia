@@ -118,7 +118,7 @@ fn ActivityHeatmap(cells: Vec<crate::state::meta::HeatmapCell>) -> Element {
 
     let max_count = cells.iter().map(|c| c.count).max().unwrap_or(0);
 
-    // WHY: Grid layout — 7 rows (days) x 24 columns (hours).
+    // WHY: Grid layout -- 7 rows (days) x 24 columns (hours).
     let grid_width = 24.0 * (CELL_SIZE + CELL_GAP) + 40.0;
     let grid_height = 7.0 * (CELL_SIZE + CELL_GAP) + 30.0;
     let viewbox = format!("0 0 {grid_width} {grid_height}");

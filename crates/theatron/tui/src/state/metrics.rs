@@ -101,7 +101,7 @@ impl MetricsState {
         self.turn_history.push(entry);
     }
 
-    /// Cache hit rate as a value in 0.0–1.0.
+    /// Cache hit rate as a value in 0.0--1.0.
     pub(crate) fn cache_hit_rate(&self) -> f64 {
         let total = self.total_input_tokens + self.total_cache_read_tokens;
         if total == 0 {

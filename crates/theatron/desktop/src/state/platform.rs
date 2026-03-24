@@ -578,7 +578,7 @@ mod tests {
 
     #[test]
     fn close_behavior_round_trip_toml() {
-        // WHY: TOML requires table structure — bare enums can't be top-level.
+        // WHY: TOML requires table structure -- bare enums can't be top-level.
         #[derive(Serialize, Deserialize)]
         struct Wrapper {
             close: CloseBehavior,

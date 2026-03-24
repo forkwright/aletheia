@@ -373,7 +373,7 @@ fn wizard_answers_to_answers(wa: &theatron_tui::wizard::WizardAnswers) -> Answer
 ///
 /// Replaces placeholder lines in the template with actual name, role, and
 /// timezone so the agent has real context from first run.
-// codequality:ignore — this function handles name/role/timezone only, not credentials
+// codequality:ignore -- this function handles name/role/timezone only, not credentials
 #[cfg(feature = "tui")]
 #[expect(
     clippy::disallowed_methods,

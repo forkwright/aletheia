@@ -1,7 +1,7 @@
 //! Global keyboard navigation handler.
 //!
 //! Wired into the layout root div (`onkeydown`). Dispatches view-switching
-//! shortcuts (Ctrl+1–7), command-palette toggle (Ctrl+K), and exposes the
+//! shortcuts (Ctrl+1--7), command-palette toggle (Ctrl+K), and exposes the
 //! key-dispatch enum consumed by views that need further key handling.
 //!
 //! # Shortcuts

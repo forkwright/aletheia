@@ -102,7 +102,7 @@ async fn fetch_session(
         );
     }
     let url = format!("{base_url}{API_V1}/sessions/{session_id}");
-    // codequality:ignore — non-HTTPS guard above warns on cleartext to non-localhost URLs
+    // codequality:ignore -- non-HTTPS guard above warns on cleartext to non-localhost URLs
     let resp = client.get(&url).send().await.map_err(|e| {
         if e.is_connect() {
             anyhow::anyhow!(
@@ -142,7 +142,7 @@ async fn fetch_history(
         );
     }
     let url = format!("{base_url}{API_V1}/sessions/{session_id}/history");
-    // codequality:ignore — non-HTTPS guard above warns on cleartext to non-localhost URLs
+    // codequality:ignore -- non-HTTPS guard above warns on cleartext to non-localhost URLs
     let resp = client
         .get(&url)
         .send()
