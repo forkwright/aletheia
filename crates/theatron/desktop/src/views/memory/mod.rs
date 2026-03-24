@@ -2,6 +2,9 @@
 
 pub(crate) mod actions;
 pub(crate) mod detail;
+pub(crate) mod drift;
+pub(crate) mod graph;
+pub(crate) mod graph_timeline;
 pub(crate) mod list;
 pub(crate) mod search;
 
