@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.3](https://github.com/forkwright/aletheia/compare/v0.13.2...v0.13.3) (2026-03-24)
+
+
+### Bug Fixes
+
+* **theatron-desktop:** add missing module declarations in state and components ([#2044](https://github.com/forkwright/aletheia/issues/2044)) ([6c9cc1c](https://github.com/forkwright/aletheia/commit/6c9cc1c342aedfbc119093a0db2663f665f6c526))
+
 ## [0.13.2](https://github.com/forkwright/aletheia/compare/v0.13.1...v0.13.2) (2026-03-24)
 
 
