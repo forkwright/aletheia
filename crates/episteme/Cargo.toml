@@ -46,7 +46,10 @@ candle-core = { version = "=0.9.2", optional = true }
 candle-nn = { version = "=0.9.2", optional = true }
 candle-transformers = { version = "=0.9.2", optional = true }
 tokenizers = { version = "0.22", optional = true, default-features = false, features = ["fancy-regex"] }
-hf-hub = { version = "0.5", optional = true, default-features = false, features = ["ureq", "rustls-tls", "tokio"] }
+# WHY: only "ureq" needed — code uses hf_hub::api::sync::Api (blocking).
+# The "tokio" feature pulled in reqwest 0.12 alongside workspace reqwest 0.13,
+# compiling two full HTTP client stacks. ureq handles TLS via its own rustls.
+hf-hub = { version = "0.5", optional = true, default-features = false, features = ["ureq"] }
 
 [dev-dependencies]
 proptest = { workspace = true }
