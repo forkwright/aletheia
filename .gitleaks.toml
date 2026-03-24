@@ -38,6 +38,22 @@ paths = [
   '''\.gitleaks\.toml''',
   '''docs/SECURITY\.md''',
   '''SECURITY\.md''',
-  'docs/DEPLOYMENT.md',
-  'docs/CONFIGURATION.md',
+  '''docs/DEPLOYMENT\.md''',
+  '''docs/CONFIGURATION\.md''',
+  # WHY: redact.rs files contain intentional fake credentials for PII-scrubbing tests.
+  '''crates/[^/]+/src/redact\.rs''',
+  # WHY: runbook and checklist contain example CLI commands with synthetic values.
+  '''docs/RUNBOOK\.md''',
+  '''docs/CUTOVER_CHECKLIST\.md''',
+  # WHY: spec documents use example phone numbers and tokens for illustration.
+  '''docs/specs/''',
+  # WHY: infrastructure/runtime contains docs, i18n translation files, and test
+  # fixtures for the runtime sub-project. None hold real secrets.
+  '''infrastructure/runtime/''',
+  # WHY: prosoche config examples demonstrate operator configuration with fake values.
+  '''infrastructure/prosoche/''',
+  # WHY: shared/ contains personal operational scripts and local-dev config files
+  # (API tokens set as env-var defaults, MCP server configs). Not part of the
+  # distributed codebase — operator-specific, equivalent to instance/.
+  '''shared/''',
 ]

@@ -10,7 +10,6 @@ ignore = [
     { id = "RUSTSEC-2024-0320", reason = "yaml-rust unmaintained — transitive via syntect/aletheia-tui, no safe upgrade" },
     { id = "RUSTSEC-2025-0141", reason = "bincode unmaintained — transitive via syntect/aletheia-tui, no safe upgrade" },
     { id = "RUSTSEC-2024-0436", reason = "paste unmaintained, transitive via tokenizers; no safe upgrade" },
-    { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile unmaintained, transitive via reqwest/rustls; awaiting upstream migration" },
 ]
 
 [licenses]
@@ -83,6 +82,88 @@ skip = [
     { name = "windows_x86_64_gnullvm", version = "=0.52.6" },
     { name = "windows_x86_64_msvc", version = "=0.42.2" },
     { name = "windows_x86_64_msvc", version = "=0.52.6" },
+
+    # WHY: spm_precompiled (via tokenizers/aletheia-episteme) pins base64 0.13.
+    # Blocked until tokenizers releases a version using base64 0.22+.
+    { name = "base64", version = "=0.13.1" },
+
+    # WHY: system-configuration (macOS system settings) pins core-foundation 0.9.
+    # Blocked until system-configuration migrates to core-foundation 0.10.
+    { name = "core-foundation", version = "=0.9.4" },
+
+    # WHY: older crypto crates (aes/sha family) pin cpufeatures 0.2.
+    # Blocked until those crates release versions using cpufeatures 0.3.
+    { name = "cpufeatures", version = "=0.2.17" },
+
+    # WHY: derive_builder_core pins the darling 0.20 proc-macro suite.
+    # Blocked until derive_builder migrates to darling 0.23.
+    { name = "darling", version = "=0.20.11" },
+    { name = "darling_core", version = "=0.20.11" },
+    { name = "darling_macro", version = "=0.20.11" },
+
+    # WHY: tokenizers pins fancy-regex 0.14; syntect pins 0.16.
+    # Canonical: 0.17 (candle-transformers). Blocked on upstream migrations.
+    { name = "fancy-regex", version = "=0.14.0" },
+    { name = "fancy-regex", version = "=0.16.2" },
+
+    # WHY: rand 0.8/0.9 ecosystem chains pull in getrandom 0.2/0.3 respectively.
+    # Canonical: getrandom 0.4 (rand 0.10). Blocked on full rand ecosystem upgrade.
+    { name = "getrandom", version = "=0.2.17" },
+    { name = "getrandom", version = "=0.3.4" },
+
+    # WHY: dashmap (via fjall/aletheia-krites storage engine) pins hashbrown 0.14.
+    # Blocked until dashmap migrates to hashbrown 0.16.
+    { name = "hashbrown", version = "=0.14.5" },
+
+    # WHY: rustix 0.38 (via procfs/prometheus client) pins linux-raw-sys 0.4.
+    # Canonical: linux-raw-sys 0.12 (rustix 1.x). Same blocker as rustix skip below.
+    { name = "linux-raw-sys", version = "=0.4.15" },
+
+    # WHY: getrandom 0.3 chain uses r-efi 5.x; getrandom 0.4 uses r-efi 6.x.
+    # Eliminated once getrandom 0.3 skip entry above takes effect.
+    { name = "r-efi", version = "=5.3.0" },
+
+    # WHY: some deps have not yet migrated to rand 0.10 (e.g., rmcp uses 0.10,
+    # while older audio/crypto crates still pull rand 0.9).
+    # Blocked until all transitive deps migrate to rand 0.10.
+    { name = "rand", version = "=0.9.2" },
+
+    # WHY: password-hash pins rand_core 0.6; rand 0.9 chain uses rand_core 0.9.
+    # Canonical: rand_core 0.10 (rand 0.10). Blocked on rand ecosystem upgrade.
+    { name = "rand_core", version = "=0.6.4" },
+    { name = "rand_core", version = "=0.9.5" },
+
+    # WHY: hf-hub (HuggingFace model cache, via aletheia-episteme) pins reqwest 0.12.
+    # Blocked until hf-hub releases a version using reqwest 0.13.
+    { name = "reqwest", version = "=0.12.28" },
+
+    # WHY: procfs (prometheus metrics client) pins rustix 0.38.
+    # Blocked until prometheus/procfs upgrades to rustix 1.x.
+    # (See also windows-sys 0.59 skip above — same dep chain.)
+    { name = "rustix", version = "=0.38.44" },
+
+    # WHY: toml 0.8 (figment dependency) uses serde_spanned 0.6; toml 1.x uses 1.x.
+    # Same root cause as the toml/toml_datetime skips below.
+    { name = "serde_spanned", version = "=0.6.9" },
+
+    # WHY: various transitive deps have not yet migrated to thiserror v2.
+    # Blocked until upstream crates release versions using thiserror 2.x.
+    { name = "thiserror", version = "=1.0.69" },
+    { name = "thiserror-impl", version = "=1.0.69" },
+
+    # WHY: figment 0.10 (config cascade library in taxis) pins toml 0.8.
+    # Workspace and taxis proper use toml 1.x. Blocked until figment uses toml 1.0+.
+    { name = "toml", version = "=0.8.23" },
+    { name = "toml_datetime", version = "=0.6.11" },
+
+    # WHY: reqwest 0.12 (hf-hub chain) uses wasm-streams 0.4; reqwest 0.13 uses 0.5.
+    # Eliminated once the reqwest 0.12 skip entry above takes effect.
+    { name = "wasm-streams", version = "=0.4.2" },
+
+    # WHY: cron crate pins winnow 0.6; toml_edit pins winnow 0.7.
+    # Canonical: winnow 1.0 (toml 1.x). Blocked until cron and toml_edit update.
+    { name = "winnow", version = "=0.6.26" },
+    { name = "winnow", version = "=0.7.15" },
 ]
 
 [sources]
