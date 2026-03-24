@@ -7,8 +7,9 @@
 
 #![no_main]
 
-use libfuzzer_sys::fuzz_target;
 use std::sync::LazyLock;
+
+use libfuzzer_sys::fuzz_target;
 
 use aletheia_mneme::knowledge::{
     EpistemicTier, Fact, FactType, ForgetReason, far_future, format_timestamp, parse_timestamp,
@@ -54,77 +55,85 @@ fuzz_target!(|data: &[u8]| {
 
     // 6. Knowledge store write/read round-trip.
     //    Construct a Fact from fuzzer-derived bytes and attempt insert + read.
-    if data.len() >= 8 {
-        let counter = FACT_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let fact_id = format!("fuzz-{counter}");
+    // WHY: .get() instead of indexing to avoid false-positive fuzzer crash reports.
+    let Some(&b0) = data.get(0) else { return };
+    let Some(&b1) = data.get(1) else { return };
+    let Some(&b2) = data.get(2) else { return };
+    let Some(content_bytes) = data.get(8..) else {
+        return;
+    };
 
-        // Derive content from fuzzer input (skip first 8 bytes used for other fields).
-        let content_bytes = &data[8..];
-        let content = String::from_utf8_lossy(content_bytes);
+    let counter = FACT_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let fact_id = format!("fuzz-{counter}");
 
-        // Skip empty content (insert_fact rejects it).
-        if content.is_empty() {
-            return;
-        }
+    // Derive content from fuzzer input (skip first 8 bytes used for other fields).
+    let content = String::from_utf8_lossy(content_bytes);
 
-        // Clamp content to MAX_CONTENT_LENGTH to focus on store logic, not validation.
-        let content = if content.len() > aletheia_mneme::knowledge::MAX_CONTENT_LENGTH {
-            &content[..aletheia_mneme::knowledge::MAX_CONTENT_LENGTH]
-        } else {
-            &content
-        };
+    // Skip empty content (insert_fact rejects it).
+    if content.is_empty() {
+        return;
+    }
 
-        // Derive confidence from first byte: clamp to [0.0, 1.0].
-        let confidence = f64::from(data[0]) / 255.0;
+    // Clamp content to MAX_CONTENT_LENGTH to focus on store logic, not validation.
+    // WHY: floor_char_boundary + .get() avoids panics on UTF-8 boundaries in fuzz input.
+    let max_len = aletheia_mneme::knowledge::MAX_CONTENT_LENGTH;
+    let content: &str = if content.len() > max_len {
+        let end = content.floor_char_boundary(max_len);
+        content.get(..end).unwrap_or(&content)
+    } else {
+        &content
+    };
 
-        // Derive tier from second byte.
-        let tier = match data[1] % 3 {
-            0 => EpistemicTier::Verified,
-            1 => EpistemicTier::Inferred,
-            _ => EpistemicTier::Assumed,
-        };
+    // Derive confidence from first byte: clamp to [0.0, 1.0].
+    let confidence = f64::from(b0) / 255.0;
 
-        // Derive fact_type from third byte.
-        let fact_type = match data[2] % 7 {
-            0 => FactType::Identity,
-            1 => FactType::Preference,
-            2 => FactType::Skill,
-            3 => FactType::Relationship,
-            4 => FactType::Event,
-            5 => FactType::Task,
-            _ => FactType::Observation,
-        };
+    // Derive tier from second byte.
+    let tier = match b1 % 3 {
+        0 => EpistemicTier::Verified,
+        1 => EpistemicTier::Inferred,
+        _ => EpistemicTier::Assumed,
+    };
 
-        let now = jiff::Timestamp::now();
-        let fact = Fact {
-            id: fact_id.as_str().into(),
-            nous_id: "fuzz-agent".to_owned(),
-            content: content.to_string(),
-            confidence,
-            tier,
-            valid_from: now,
-            valid_to: far_future(),
-            superseded_by: None,
-            source_session_id: None,
-            recorded_at: now,
-            access_count: 0,
-            last_accessed_at: None,
-            stability_hours: fact_type.base_stability_hours(),
-            fact_type: fact_type.as_str().to_owned(),
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        };
+    // Derive fact_type from third byte.
+    let fact_type = match b2 % 7 {
+        0 => FactType::Identity,
+        1 => FactType::Preference,
+        2 => FactType::Skill,
+        3 => FactType::Relationship,
+        4 => FactType::Event,
+        5 => FactType::Task,
+        _ => FactType::Observation,
+    };
 
-        // Insert and read back.
-        if STORE.insert_fact(&fact).is_ok() {
-            let now_str = format_timestamp(&now);
-            if let Ok(facts) = STORE.query_facts("fuzz-agent", &now_str, 1000) {
-                // The fact we just inserted should be retrievable (unless the store
-                // hit an internal limit). We don't assert exact count because other
-                // fuzz iterations may have inserted facts concurrently.
-                let _ = facts.len();
-            }
+    let now = jiff::Timestamp::now();
+    let fact = Fact {
+        id: fact_id.as_str().into(),
+        nous_id: "fuzz-agent".to_owned(),
+        content: content.to_string(),
+        confidence,
+        tier,
+        valid_from: now,
+        valid_to: far_future(),
+        superseded_by: None,
+        source_session_id: None,
+        recorded_at: now,
+        access_count: 0,
+        last_accessed_at: None,
+        stability_hours: fact_type.base_stability_hours(),
+        fact_type: fact_type.as_str().to_owned(),
+        is_forgotten: false,
+        forgotten_at: None,
+        forget_reason: None,
+    };
+
+    // Insert and read back.
+    if STORE.insert_fact(&fact).is_ok() {
+        let now_str = format_timestamp(&now);
+        if let Ok(facts) = STORE.query_facts("fuzz-agent", &now_str, 1000) {
+            // The fact we just inserted should be retrievable (unless the store
+            // hit an internal limit). We don't assert exact count because other
+            // fuzz iterations may have inserted facts concurrently.
+            let _ = facts.len();
         }
     }
 });
