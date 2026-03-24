@@ -14,7 +14,7 @@ use aletheia_organon::registry::ToolRegistry;
 use aletheia_organon::types::ToolContext;
 use aletheia_taxis::oikos::Oikos;
 
-use crate::bootstrap::BootstrapSection;
+use crate::bootstrap::{BootstrapSection, TaskHint};
 use crate::config::{NousConfig, PipelineConfig};
 use crate::error;
 use crate::history::{self, HistoryConfig};
@@ -24,7 +24,7 @@ use crate::stream::TurnStreamEvent;
 use super::events::{StageCompleted, StageError, StageSkipped, StageTimeout};
 use super::{
     GuardResult, PipelineContext, PipelineInput, PipelineMessage, TurnResult,
-    assemble_context_with_extra, check_guard,
+    assemble_context_conditional, check_guard,
 };
 
 pub(super) async fn run_context_stage(
@@ -33,6 +33,7 @@ pub(super) async fn run_context_stage(
     pipeline_config: &PipelineConfig,
     ctx: &mut PipelineContext,
     extra_bootstrap: Vec<BootstrapSection>,
+    task_hint: TaskHint,
     emitter: &EventEmitter,
 ) -> error::Result<()> {
     let span = info_span!(
@@ -43,16 +44,23 @@ pub(super) async fn run_context_stage(
     );
     let _guard = span.enter();
     let start = Instant::now();
-    assemble_context_with_extra(oikos, config, pipeline_config, ctx, extra_bootstrap)
-        .await
-        .inspect_err(|_| {
-            crate::metrics::record_error(&config.id, "context", "assembly_failed");
-            emitter.emit(&StageError {
-                nous_id: config.id.clone(),
-                stage: "context",
-                error_type: "assembly_failed".to_owned(),
-            });
-        })?;
+    assemble_context_conditional(
+        oikos,
+        config,
+        pipeline_config,
+        ctx,
+        extra_bootstrap,
+        task_hint,
+    )
+    .await
+    .inspect_err(|_| {
+        crate::metrics::record_error(&config.id, "context", "assembly_failed");
+        emitter.emit(&StageError {
+            nous_id: config.id.clone(),
+            stage: "context",
+            error_type: "assembly_failed".to_owned(),
+        });
+    })?;
     let duration_secs = start.elapsed().as_secs_f64();
     record_stage_duration(&span, &start);
     span.record("status", "ok");
