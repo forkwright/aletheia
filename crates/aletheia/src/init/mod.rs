@@ -409,5 +409,9 @@ fn write_user_profile_from_wizard(
             &format!("- **Timezone:** {}", wa.timezone),
         );
 
-    std::fs::write(&user_md_path, updated).context(WriteFileSnafu { path: user_md_path })
+    std::fs::write(&user_md_path, &updated).context(WriteFileSnafu {
+        path: user_md_path.clone(),
+    })?;
+    helpers::set_permissions(&user_md_path, 0o600)?;
+    Ok(())
 }

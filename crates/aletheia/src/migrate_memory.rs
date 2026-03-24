@@ -351,5 +351,12 @@ fn write_review_file(path: &Path, flagged: &[String]) -> Result<()> {
     for item in flagged {
         writeln!(f, "- {item}")?;
     }
+    drop(f);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+            .context("failed to set permissions on review file")?;
+    }
     Ok(())
 }

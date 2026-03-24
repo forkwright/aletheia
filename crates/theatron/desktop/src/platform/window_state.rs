@@ -11,6 +11,7 @@ use std::time::Duration;
 
 use snafu::{ResultExt, Snafu};
 use tokio::sync::Notify;
+use tracing::Instrument;
 
 use crate::state::platform::WindowState;
 
@@ -163,27 +164,31 @@ impl DebouncedWriter {
 
         // WHY: Spawn a tokio task (not Dioxus coroutine) so it runs independently
         // of component lifecycle and can flush on app shutdown.
-        tokio::spawn({
-            let state = Arc::clone(&state);
-            let dirty = Arc::clone(&dirty);
-            let has_pending = Arc::clone(&has_pending);
-            async move {
-                loop {
-                    dirty.notified().await;
-                    tokio::time::sleep(DEBOUNCE_INTERVAL).await;
+        let span = tracing::info_span!("window_state_writer");
+        tokio::spawn(
+            {
+                let state = Arc::clone(&state);
+                let dirty = Arc::clone(&dirty);
+                let has_pending = Arc::clone(&has_pending);
+                async move {
+                    loop {
+                        dirty.notified().await;
+                        tokio::time::sleep(DEBOUNCE_INTERVAL).await;
 
-                    if has_pending.swap(false, std::sync::atomic::Ordering::SeqCst) {
-                        let snapshot = {
-                            let guard = state.lock().unwrap_or_else(|e| e.into_inner());
-                            guard.clone()
-                        };
-                        if let Err(e) = save_sync(&snapshot) {
-                            tracing::warn!("failed to save window state: {e}");
+                        if has_pending.swap(false, std::sync::atomic::Ordering::SeqCst) {
+                            let snapshot = {
+                                let guard = state.lock().unwrap_or_else(|e| e.into_inner());
+                                guard.clone()
+                            };
+                            if let Err(e) = save_sync(&snapshot) {
+                                tracing::warn!("failed to save window state: {e}");
+                            }
                         }
                     }
                 }
             }
-        });
+            .instrument(span),
+        );
 
         writer
     }

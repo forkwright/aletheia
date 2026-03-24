@@ -231,6 +231,12 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
     )]
     std::fs::write(&output_path, &json)
         .with_context(|| format!("failed to write {}", output_path.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&output_path, std::fs::Permissions::from_mode(0o600))
+            .with_context(|| format!("failed to set permissions on {}", output_path.display()))?;
+    }
 
     println!("Exported to: {}", output_path.display());
     println!("Size: {} bytes", json.len());

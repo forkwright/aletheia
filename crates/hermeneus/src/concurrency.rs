@@ -479,6 +479,8 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
+    use tracing::Instrument;
+
     use super::*;
 
     fn limiter(initial: u32, min: u32, max: u32) -> Arc<AdaptiveConcurrencyLimiter> {
@@ -581,7 +583,10 @@ mod tests {
         assert_eq!(l.in_flight(), 1);
 
         let l2 = Arc::clone(&l);
-        let waiter = tokio::spawn(async move { l2.acquire().await });
+        let waiter = tokio::spawn(
+            async move { l2.acquire().await }
+                .instrument(tracing::info_span!("test_acquire_blocked")),
+        );
 
         // WHY: tokio::time::sleep used because tokio test-util feature is not enabled for this crate. // kanon:ignore TESTING/sleep-in-test
         tokio::time::sleep(Duration::from_millis(10)).await; // kanon:ignore TESTING/sleep-in-test

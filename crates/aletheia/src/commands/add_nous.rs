@@ -253,6 +253,12 @@ fn update_config(oikos: &Oikos, args: &AddNousArgs) -> Result<()> {
     )]
     std::fs::write(&tmp, doc.to_string())
         .with_context(|| format!("failed to write {}", tmp.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600))
+            .with_context(|| format!("failed to set permissions on {}", tmp.display()))?;
+    }
     std::fs::rename(&tmp, &config_path)
         .with_context(|| format!("failed to rename {}", tmp.display()))?;
 

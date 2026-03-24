@@ -54,7 +54,6 @@ pub fn stream_message(
         session.key = session_key
     );
     tokio::spawn(
-        // kanon:ignore RUST/spawn-no-instrument
         async move {
             let resp = match builder.send().await {
                 Ok(resp) => resp,

@@ -39,7 +39,6 @@ impl SseConnection {
 
         let span = tracing::info_span!("sse_connection", %url);
         let handle = tokio::spawn(
-            // kanon:ignore RUST/spawn-no-instrument
             async move {
                 let mut backoff_secs: u64 = 1;
 

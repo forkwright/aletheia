@@ -86,11 +86,13 @@ fn generate_certs(output_dir: &Path, days: u32, sans: &[String], force: bool) ->
     std::fs::write(&key_path, key_pair.serialize_pem())
         .with_context(|| format!("failed to write {}", key_path.display()))?;
 
-    // WHY: restrict private key to owner-read-only (0600): security requirement
+    // WHY: restrict certificate and private key to owner-read-only (0600): security requirement
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         let perms = std::fs::Permissions::from_mode(0o600);
+        std::fs::set_permissions(&cert_path, perms.clone())
+            .with_context(|| format!("failed to set permissions on {}", cert_path.display()))?;
         std::fs::set_permissions(&key_path, perms)
             .with_context(|| format!("failed to set permissions on {}", key_path.display()))?;
     }

@@ -132,11 +132,24 @@ impl HnswIndex {
                         }
                         .build()
                     })?;
-                // SAFETY: Extending the `Hnsw` lifetime to `'static` is sound
-                // because mmap is not used. `load_hnsw` copies all point data into
-                // heap-owned allocations inside `Hnsw`; the loader is not accessed
-                // after this call returns. The `_loader` Box is stored in the struct
-                // to satisfy the type system: see the safety invariant on `HnswIndex`.
+                // SAFETY: Transmuting `Hnsw<'_, f32, DistCosine>` to `Hnsw<'static, f32, DistCosine>`.
+                //
+                // Layout compatibility: Both types are identical structs differing only in a
+                // lifetime parameter. Lifetime erasure does not change size, alignment, or
+                // field layout — the compiler represents both identically at the machine level.
+                //
+                // Validity invariants preserved: `load_hnsw` with mmap disabled (our default)
+                // copies all point data into heap-owned `Vec`s inside `Hnsw`. The returned
+                // struct owns all its data outright — no references into the loader remain
+                // live. Extending the lifetime to `'static` cannot create a dangling reference
+                // because there are no borrowed references to dangle.
+                //
+                // Caller invariants: (1) mmap must NOT be enabled — mmap mode would create
+                // true borrows into the loader's mapped memory, making this transmute unsound.
+                // (2) The `_loader` Box must be retained in `HnswIndex` to satisfy the type
+                // system at construction time; it is never dereferenced after `load_hnsw`
+                // returns. (3) Drop order is pinned by `#[repr(C)]` and the compile-time
+                // assertion on field offsets (see `const _:` above).
                 #[expect(
                     unsafe_code,
                     reason = "lifetime extension: Hnsw owns its data after load (no mmap)"
