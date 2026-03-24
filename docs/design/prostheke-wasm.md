@@ -165,7 +165,8 @@ against the current host version. Version mismatch is a load error with a clear 
 
 The original design implies plugins reloaded on file change (common in JS plugin hosts).
 WASM components instantiate from compiled artifacts. A `watch` mode that recompiles and
-reloads during development is not trivial.
+reloads during development requires a file watcher, a recompilation step, and runtime
+re-instantiation of the component.
 
 Minimum viable answer: reload on config reload (`SIGHUP` or `aletheia reload`), not on
 file change. Document the compile-test cycle for plugin authors.
