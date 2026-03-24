@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.13.4](https://github.com/forkwright/aletheia/compare/v0.13.3...v0.13.4) (2026-03-24)
+
+
+### Features
+
+* **nous:** conditional workspace file loading based on task context ([#2049](https://github.com/forkwright/aletheia/issues/2049)) ([0e13075](https://github.com/forkwright/aletheia/commit/0e130757e7619d0f848ff0b45ef0c66c96b0b3f7))
+* **pylon:** add POST /verification/refresh endpoint for re-verify button ([#2048](https://github.com/forkwright/aletheia/issues/2048)) ([989261a](https://github.com/forkwright/aletheia/commit/989261ae84570b04edbab99f04d812012c480c8a))
+* **theatron:** wire SSE checkpoint events in CheckpointsView ([#2050](https://github.com/forkwright/aletheia/issues/2050)) ([eed8234](https://github.com/forkwright/aletheia/commit/eed82344cc4f1a34747fd5fe01076dbad1322907))
+
+
+### Bug Fixes
+
+* **episteme:** strengthen SAFETY justification for transmute in hnsw_index ([#2052](https://github.com/forkwright/aletheia/issues/2052)) ([a600b62](https://github.com/forkwright/aletheia/commit/a600b628624259569ec1bf54c845a3eac78f1ab1))
+* **workspace:** resolve duplicate module paths from file split ([#2046](https://github.com/forkwright/aletheia/issues/2046)) ([6465a11](https://github.com/forkwright/aletheia/commit/6465a11a0c5961deb61a689b452c070c3bc53186))
+
 ## [0.13.3](https://github.com/forkwright/aletheia/compare/v0.13.2...v0.13.3) (2026-03-24)
 
 
