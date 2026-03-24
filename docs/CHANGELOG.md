@@ -216,7 +216,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 #### Pipeline
 - Dianoia v1: persistent multi-phase planning runtime
 - Dianoia v2: file-backed state and context packet
-- Dianoia: enhanced execution engine and planning UI
+- Dianoia: extended execution engine and planning UI
 - Dianoia: collaborative API, task system, and planning workspace
 - Sub-agent infrastructure with session continuity
 - Parallel tool dispatch with convergence

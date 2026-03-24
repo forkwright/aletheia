@@ -2,10 +2,10 @@
 //!
 //! Verifies that required resources are available before any service starts:
 //!
-//! 1. **Disk space** — the data directory filesystem must have at least
+//! 1. **Disk space** -- the data directory filesystem must have at least
 //!    `MIN_REQUIRED_MB` megabytes free.
-//! 2. **Port bindability** — the configured gateway TCP port must be available.
-//! 3. **Directory permissions** — `config/` must be readable and `data/` must
+//! 2. **Port bindability** -- the configured gateway TCP port must be available.
+//! 3. **Directory permissions** -- `config/` must be readable and `data/` must
 //!    be writable.
 //!
 //! All checks are collected so that a single startup attempt reports every
@@ -85,7 +85,7 @@ fn check_disk_space(data_dir: &Path, failures: &mut Vec<String>) {
             ));
         }
         Ok(_) => {
-            // NOTE: sufficient space — no failure recorded
+            // NOTE: sufficient space -- no failure recorded
         }
         Err(e) => {
             failures.push(format!(
@@ -107,7 +107,7 @@ fn check_port(port: u16, failures: &mut Vec<String>) {
     // does not require CAP_NET_BIND_SERVICE for ports < 1024.
     match TcpListener::bind(("127.0.0.1", port)) {
         Ok(_) => {
-            // NOTE: listener dropped immediately — just checking bindability
+            // NOTE: listener dropped immediately -- just checking bindability
         }
         Err(e) => {
             failures.push(format!(
@@ -123,7 +123,7 @@ fn check_port(port: u16, failures: &mut Vec<String>) {
 fn check_config_readable(config_dir: &Path, failures: &mut Vec<String>) {
     match std::fs::read_dir(config_dir) {
         Ok(_) => {
-            // NOTE: readable — no failure recorded
+            // NOTE: readable -- no failure recorded
         }
         Err(e) => {
             failures.push(format!(

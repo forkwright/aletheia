@@ -376,7 +376,7 @@ pub(crate) fn Chat() -> Element {
                                         Markdown {
                                             content: legacy_state.read().streaming.text.clone(),
                                         }
-                                        // Typing cursor — blinks via CSS animation while streaming.
+                                        // Typing cursor -- blinks via CSS animation while streaming.
                                         span {
                                             class: "streaming-cursor",
                                             "aria-hidden": "true",

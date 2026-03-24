@@ -100,7 +100,7 @@ pub struct Relationship {
     pub dst: EntityId,
     /// Relationship type (e.g. `works_on`, `knows`, `depends_on`).
     pub relation: String,
-    /// Relationship weight/strength (0.0–1.0).
+    /// Relationship weight/strength (0.0--1.0).
     pub weight: f64,
     /// When first observed.
     pub created_at: jiff::Timestamp,
@@ -592,7 +592,7 @@ pub struct CausalEdge {
     pub effect: FactId,
     /// Temporal ordering between cause and effect.
     pub ordering: TemporalOrdering,
-    /// Confidence that this causal relationship holds (0.0–1.0).
+    /// Confidence that this causal relationship holds (0.0--1.0).
     pub confidence: f64,
     /// When this edge was recorded.
     pub created_at: jiff::Timestamp,

@@ -102,10 +102,10 @@ pub(crate) fn DiffLineView(line: DiffLine, language: String) -> Element {
             div {
                 style: "{CONTENT_STYLE}",
                 if line.word_spans.is_empty() {
-                    // NOTE: No word-level diff — render with syntax highlighting.
+                    // NOTE: No word-level diff -- render with syntax highlighting.
                     {render_highlighted_content(&line.content, &language)}
                 } else {
-                    // NOTE: Word-level diff present — render spans with change markers.
+                    // NOTE: Word-level diff present -- render spans with change markers.
                     {render_word_spans(&line.word_spans, line.change_type)}
                 }
             }

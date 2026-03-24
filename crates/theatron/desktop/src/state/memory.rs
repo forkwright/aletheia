@@ -148,7 +148,7 @@ pub(crate) struct Entity {
     /// Entity classification.
     #[serde(default = "default_entity_type")]
     pub entity_type: EntityType,
-    /// Confidence score (0.0–1.0).
+    /// Confidence score (0.0--1.0).
     #[serde(default)]
     pub confidence: f64,
     /// PageRank importance score.
@@ -648,7 +648,7 @@ mod tests {
         let _ = nav.back();
         assert_eq!(nav.current(), Some("e1"));
 
-        // Push new — should truncate e2 and e3
+        // Push new -- should truncate e2 and e3
         nav.push("e4".to_string());
         assert_eq!(nav.current(), Some("e4"));
         assert_eq!(nav.len(), 2);

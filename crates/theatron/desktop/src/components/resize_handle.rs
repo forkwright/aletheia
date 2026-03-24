@@ -13,9 +13,9 @@ use dioxus::prelude::*;
 /// Direction of the resize axis.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum ResizeDir {
-    /// Horizontal split — left/right panels.  Cursor: `col-resize`.
+    /// Horizontal split -- left/right panels.  Cursor: `col-resize`.
     Horizontal,
-    /// Vertical split — top/bottom panels.  Cursor: `row-resize`.
+    /// Vertical split -- top/bottom panels.  Cursor: `row-resize`.
     Vertical,
 }
 
@@ -37,7 +37,7 @@ pub(crate) struct ResizeState {
     pub min_size: f64,
     /// Maximum allowed size.
     pub max_size: f64,
-    /// Default size — restored on double-click.
+    /// Default size -- restored on double-click.
     pub default_size: f64,
 }
 
@@ -90,7 +90,7 @@ pub(crate) fn use_resize_state(
 pub(crate) fn ResizeHandle(
     /// Which axis to resize along.
     dir: ResizeDir,
-    /// Resize state — created by [`use_resize_state`] in the parent.
+    /// Resize state -- created by [`use_resize_state`] in the parent.
     state: ResizeState,
 ) -> Element {
     let cursor = match dir {

@@ -149,7 +149,7 @@ pub trait ConflictClassifier: Send + Sync {
 pub struct FactForConflictCheck {
     /// The content of the fact (subject + predicate + object).
     pub content: String,
-    /// Confidence score (0.0–1.0).
+    /// Confidence score (0.0--1.0).
     pub confidence: f64,
     /// Epistemic tier.
     pub tier: EpistemicTier,

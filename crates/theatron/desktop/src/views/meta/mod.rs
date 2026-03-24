@@ -930,7 +930,7 @@ fn assemble_meta_data(
 
 /// Extract (day_of_week, hour) from an ISO 8601 timestamp string.
 ///
-/// Uses a basic parser — no external date library dependency needed.
+/// Uses a basic parser -- no external date library dependency needed.
 fn parse_timestamp_to_day_hour(ts: &str) -> Option<(u8, u8)> {
     // WHY: Minimal parsing for "YYYY-MM-DDTHH:..." format.
     if ts.len() < 13 {

@@ -5,7 +5,7 @@
 //!
 //! 1. **Must-pass gates**: hard rejections (too short, too narrow, anti-patterns).
 //! 2. **Scored signals**: coherence, diversity, and completion contribute to
-//!    the total score (0.0–1.0).
+//!    the total score (0.0--1.0).
 
 use serde::{Deserialize, Serialize};
 
@@ -14,7 +14,7 @@ use crate::skills::ToolCallRecord;
 /// Scoring result for a tool call sequence.
 #[derive(Debug, Clone, Default)]
 pub struct HeuristicScore {
-    /// Overall quality score (0.0–1.0). Meaningful only when `passed_gates` is true.
+    /// Overall quality score (0.0--1.0). Meaningful only when `passed_gates` is true.
     pub total: f64,
     /// Whether all must-pass gates were cleared.
     pub passed_gates: bool,
@@ -216,7 +216,7 @@ fn is_config_specific(tool_calls: &[ToolCallRecord]) -> bool {
         && (read_count + exec_count) == tool_calls.len()
 }
 
-/// Coherence score (0.0–0.30): rewards tool sequences that follow logical order.
+/// Coherence score (0.0--0.30): rewards tool sequences that follow logical order.
 ///
 /// Good transitions: Search→Read, Read→Write, Write→Bash, Grep→Read
 fn coherence_score(tool_calls: &[ToolCallRecord]) -> f64 {
@@ -261,7 +261,7 @@ fn coherence_score(tool_calls: &[ToolCallRecord]) -> f64 {
     (ratio * 0.30).min(0.30)
 }
 
-/// Diversity score (0.0–0.40): rewards a healthy mix of tool categories.
+/// Diversity score (0.0--0.40): rewards a healthy mix of tool categories.
 fn diversity_score(tool_calls: &[ToolCallRecord]) -> f64 {
     let mut categories = std::collections::HashSet::new();
     for tc in tool_calls {
@@ -289,7 +289,7 @@ fn diversity_score(tool_calls: &[ToolCallRecord]) -> f64 {
     }
 }
 
-/// Completion score (0.0–0.30): rewards sequences ending with verification.
+/// Completion score (0.0--0.30): rewards sequences ending with verification.
 fn completion_score(tool_calls: &[ToolCallRecord]) -> f64 {
     let last_few = tool_calls.iter().rev().take(3);
     for tc in last_few {

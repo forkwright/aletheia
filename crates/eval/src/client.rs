@@ -184,7 +184,7 @@ impl EvalClient {
     }
 
     /// Send a POST request without any auth header.
-    // codequality:ignore — no credential attached; eval client is localhost-only (checked in constructor)
+    // codequality:ignore -- no credential attached; eval client is localhost-only (checked in constructor)
     #[instrument(skip(self, body))]
     pub async fn raw_post(
         &self,
@@ -203,7 +203,7 @@ impl EvalClient {
     }
 
     /// Send a GET request with an arbitrary Bearer token.
-    // codequality:ignore — eval client is localhost-only (non-HTTPS check in constructor)
+    // codequality:ignore -- eval client is localhost-only (non-HTTPS check in constructor)
     #[instrument(skip(self, token))]
     pub async fn raw_get_with_token(&self, path: &str, token: &str) -> Result<reqwest::Response> {
         let url = format!("{}{path}", self.base_url);

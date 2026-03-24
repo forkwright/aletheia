@@ -232,7 +232,7 @@ pub(crate) async fn parse_openai_stream(
         }
     }
 
-    // EOF without [DONE] — build response from what we have.
+    // EOF without [DONE] -- build response from what we have.
     let stop_reason = acc.stop_reason();
     let usage = acc.final_usage();
     on_event(StreamEvent::MessageStop { stop_reason, usage });

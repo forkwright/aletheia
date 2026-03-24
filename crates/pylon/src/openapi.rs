@@ -12,7 +12,7 @@ use utoipa::OpenApi;
 
 use aletheia_koina::http::CONTENT_TYPE_JSON;
 
-/// Utoipa `OpenAPI` spec root — aggregates all API paths and schemas.
+/// Utoipa `OpenAPI` spec root -- aggregates all API paths and schemas.
 #[derive(OpenApi)]
 #[openapi(
     info(

@@ -27,7 +27,7 @@ const NO_REQS_STYLE: &str = "font-size: 12px; color: #555; font-style: italic;";
 /// which renders a "No requirements defined" placeholder instead of a 0% bar.
 #[component]
 pub(crate) fn CoverageBar(
-    /// Coverage percentage 0–100. `None` = no requirements defined.
+    /// Coverage percentage 0--100. `None` = no requirements defined.
     coverage: Option<u8>,
     /// Display label for this bar (e.g., `"Overall"`, `"v1"`, `"v2"`).
     label: String,
@@ -73,7 +73,7 @@ pub(crate) fn CoverageBar(
 /// Color for a coverage percentage.
 ///
 /// - `>80%` → green
-/// - `50–80%` → amber
+/// - `50--80%` → amber
 /// - `<50%` → red
 #[must_use]
 pub(crate) fn coverage_color(pct: u8) -> &'static str {

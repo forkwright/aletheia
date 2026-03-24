@@ -735,7 +735,7 @@ impl<'a> SessionTx<'a> {
     ///
     /// Scans the "self-entry" nodes at level 0 (entries where the source and destination
     /// tuple key are identical) and verifies each exists in `orig_table`.  Returns the
-    /// number of orphaned HNSW entries detected — entries whose base row has been deleted
+    /// number of orphaned HNSW entries detected -- entries whose base row has been deleted
     /// without a matching HNSW removal (#1719).
     ///
     /// Orphans are logged at `warn` level for each occurrence.

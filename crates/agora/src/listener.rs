@@ -135,7 +135,7 @@ impl ChannelListener {
     }
 }
 
-// NOTE: No Drop impl — cleanup is registered at setup time via CleanupRegistry.
+// NOTE: No Drop impl -- cleanup is registered at setup time via CleanupRegistry.
 // The registry fires abort callbacks (LIFO) on drop. `into_receiver` disarms
 // the registry so the caller can manage the handles directly.
 

@@ -461,7 +461,7 @@ mod tests {
     #[test]
     fn text_delta_appends() {
         let mut app = test_app();
-        // PERF: line buffering — partial lines stay in streaming_line_buffer
+        // PERF: line buffering -- partial lines stay in streaming_line_buffer
         // until a newline flushes them to streaming_text.
         handle_stream_text_delta(&mut app, "hello ".to_string());
         handle_stream_text_delta(&mut app, "world\n".to_string());

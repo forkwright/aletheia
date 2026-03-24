@@ -49,9 +49,9 @@ fn borrow_fd(file: &File) -> rustix::fd::BorrowedFd<'_> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub(crate) enum AccessHint {
-    /// Sequential access — best for full-scan indexing passes.
+    /// Sequential access -- best for full-scan indexing passes.
     Sequential = 0,
-    /// Random access — best for search queries.
+    /// Random access -- best for search queries.
     Random = 1,
 }
 
@@ -68,7 +68,7 @@ pub(crate) struct MmapVectorStorage {
     hint: AtomicU8,
     /// Backing file handle (kept open for appends and remaps).
     file: File,
-    /// The storage backend — mmap on Unix, heap buffer elsewhere.
+    /// The storage backend -- mmap on Unix, heap buffer elsewhere.
     inner: StorageInner,
 }
 

@@ -283,7 +283,7 @@ fn toggle_directory(
 
     expanded.write().insert(path.to_string(), true);
 
-    // WHY: Lazy load — only fetch children on first expand.
+    // WHY: Lazy load -- only fetch children on first expand.
     if children_cache.read().contains_key(path) {
         return;
     }

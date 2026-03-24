@@ -470,7 +470,7 @@ pub(crate) fn Sessions() -> Element {
                         },
                     }
                 }
-                // Resize handle — replaces inline div
+                // Resize handle -- replaces inline div
                 ResizeHandle {
                     dir: ResizeDir::Horizontal,
                     state: resize,

@@ -90,7 +90,7 @@ pub(crate) fn load_or_create_key(credential_path: &Path) -> std::io::Result<[u8;
 
 /// Load an existing key or generate one without persisting.
 ///
-/// Returns `(key, needs_persist)` — the caller must call [`write_key_file_atomic`]
+/// Returns `(key, needs_persist)` -- the caller must call [`write_key_file_atomic`]
 /// after both the key and credential temp files are ready.
 pub(crate) fn load_or_generate_key(
     credential_path: &Path,

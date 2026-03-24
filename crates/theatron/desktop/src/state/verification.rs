@@ -22,7 +22,7 @@ pub(crate) enum VerificationStatus {
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub(crate) enum RequirementPriority {
-    /// Blocking — must be verified before release.
+    /// Blocking -- must be verified before release.
     P0,
     /// High priority.
     P1,
@@ -55,7 +55,7 @@ pub(crate) struct RequirementVerification {
     pub(crate) tier: String,
     pub(crate) priority: RequirementPriority,
     pub(crate) status: VerificationStatus,
-    /// Coverage percentage 0–100.
+    /// Coverage percentage 0--100.
     pub(crate) coverage_pct: u8,
     pub(crate) evidence: Vec<VerificationEvidence>,
     pub(crate) gaps: Vec<VerificationGap>,

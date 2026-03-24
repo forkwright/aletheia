@@ -61,7 +61,7 @@ const NAV_DIVIDER_STYLE: &str = "\
 /// as context so child views can access them. The agent sidebar is rendered
 /// here so it persists across route changes.
 ///
-/// Global keyboard shortcuts (Ctrl+1–7, Ctrl+K, Escape) are handled here
+/// Global keyboard shortcuts (Ctrl+1--7, Ctrl+K, Escape) are handled here
 /// via `onkeydown` on the root layout div.
 #[component]
 pub(crate) fn Layout() -> Element {
@@ -72,7 +72,7 @@ pub(crate) fn Layout() -> Element {
     use_context_provider(|| Signal::new(TabBar::new()));
     use_context_provider(|| Signal::new(Option::<NavAction>::None));
 
-    // Command palette open state — shared with the keyboard handler.
+    // Command palette open state -- shared with the keyboard handler.
     let palette_open = use_signal(|| false);
 
     let keyboard_handler = crate::services::keybindings::use_global_keyboard(palette_open);

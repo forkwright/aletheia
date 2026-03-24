@@ -86,7 +86,7 @@ impl ExecutionPlan {
             .count()
     }
 
-    /// Overall step progress as a percentage (0–100).
+    /// Overall step progress as a percentage (0--100).
     #[must_use]
     pub(crate) fn progress_pct(&self) -> u8 {
         if self.steps.is_empty() {
