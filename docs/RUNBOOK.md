@@ -524,12 +524,12 @@ journalctl --user -u aletheia --since "1 hour ago" | grep watchdog
 | Level | Message | Meaning |
 |-------|---------|---------|
 | INFO | `watchdog: registered process` | Process enrolled |
-| WARN | `watchdog: hung process detected — no heartbeat` | Timeout exceeded (includes `elapsed_secs`, `timeout_secs`) |
+| WARN | `watchdog: hung process detected - no heartbeat` | Timeout exceeded (includes `elapsed_secs`, `timeout_secs`) |
 | WARN | `watchdog: restarting process` | Restart initiated (includes `cause`, `attempt`) |
 | INFO | `watchdog: process restarted successfully` | Recovery succeeded |
-| INFO | `watchdog: process recovered — heartbeat received` | Process self-recovered before restart |
-| ERROR | `watchdog: restart failed — applying backoff` | Restart failed (includes `attempt`, `error`) |
-| ERROR | `watchdog: max restarts exceeded — abandoning process` | Process abandoned (includes `restart_count`, `max_restarts`) |
+| INFO | `watchdog: process recovered - heartbeat received` | Process self-recovered before restart |
+| ERROR | `watchdog: restart failed - applying backoff` | Restart failed (includes `attempt`, `error`) |
+| ERROR | `watchdog: max restarts exceeded - abandoning process` | Process abandoned (includes `restart_count`, `max_restarts`) |
 
 ### Restart backoff
 
