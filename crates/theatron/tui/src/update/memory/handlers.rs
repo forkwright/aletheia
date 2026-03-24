@@ -2,7 +2,7 @@
 
 use crate::app::App;
 use crate::msg::ErrorToast;
-use crate::state::memory::{FactDetail, MemorySearchResult, MemoryTab};
+use crate::state::memory::{MemorySearchResult, MemoryTab};
 use crate::state::view_stack::View;
 
 use super::data_loading;

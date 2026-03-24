@@ -1,4 +1,8 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
+use std::path::{Path, PathBuf};
+use std::time::Instant;
+
+use aletheia_koina::credential::{Credential, CredentialProvider, CredentialSource};
 use aletheia_koina::secret::SecretString;
 
 use super::*;
