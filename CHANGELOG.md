@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.13.5](https://github.com/forkwright/aletheia/compare/v0.13.4...v0.13.5) (2026-03-24)
+
+
+### Bug Fixes
+
+* remove duplicate module files and fix inner doc comments ([70eb84a](https://github.com/forkwright/aletheia/commit/70eb84ad1d9f0ab3d36364792ec009a82a0ddfcd))
+* **security:** add explicit 0600 permissions to config/credential writes ([#2056](https://github.com/forkwright/aletheia/issues/2056)) ([5c4bf4d](https://github.com/forkwright/aletheia/commit/5c4bf4d6c42b3f5d878372e001744201c435fe60))
+* **theatron:** instrument all tokio::spawn calls with tracing spans ([#2054](https://github.com/forkwright/aletheia/issues/2054)) ([c3d065a](https://github.com/forkwright/aletheia/commit/c3d065a568d8c15eff4e44fa3129b4f58d1434d4))
+
 ## [0.13.4](https://github.com/forkwright/aletheia/compare/v0.13.3...v0.13.4) (2026-03-24)
 
 
