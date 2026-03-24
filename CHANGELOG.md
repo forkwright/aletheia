@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.11](https://github.com/forkwright/aletheia/compare/v0.13.10...v0.13.11) (2026-03-24)
+
+
+### Documentation
+
+* replace em-dash characters with spaced hyphens ([#2092](https://github.com/forkwright/aletheia/issues/2092)) ([56e4c5f](https://github.com/forkwright/aletheia/commit/56e4c5f1d510c515a9e90104d49cc104124c4d4f))
+
 ## [0.13.10](https://github.com/forkwright/aletheia/compare/v0.13.9...v0.13.10) (2026-03-24)
 
 
