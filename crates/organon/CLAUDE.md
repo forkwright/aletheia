@@ -1,6 +1,6 @@
 # organon
 
-Tool registry, executors, and sandbox. 16K lines. 39 built-in tools.
+Tool registry, executors, and sandbox. 16K lines. 38 built-in tools.
 
 ## Read first
 
@@ -22,7 +22,7 @@ Tool registry, executors, and sandbox. 16K lines. 39 built-in tools.
 | `SandboxConfig` | `sandbox/mod.rs` | Landlock + seccomp + egress policy |
 | `ProcessGuard` | `process_guard.rs` | RAII child process wrapper, `pub(crate)` (prevents orphans/zombies) |
 
-## Built-in tools (39)
+## Built-in tools (38)
 
 | Category | Tools |
 |----------|-------|
@@ -33,9 +33,10 @@ Tool registry, executors, and sandbox. 16K lines. 39 built-in tools.
 | Communication | message, sessions_send, sessions_ask |
 | Agent | sessions_spawn, sessions_dispatch |
 | Enable Tool | enable_tool |
-| Planning | plan_create, plan_research, plan_requirements, plan_roadmap, plan_discuss, plan_execute, plan_verify, plan_status, plan_step_complete, plan_step_fail |
+| Planning | plan_create, plan_research, plan_requirements, plan_roadmap, plan_discuss, plan_execute, plan_verify, plan_status, plan_step_complete, plan_step_fail, plan_verify_criteria |
 | Research | web_fetch |
 | Triage | issue_scan, issue_triage, issue_approve |
+| Computer Use | computer_use (feature-gated: `computer-use`) |
 
 ## Patterns
 
