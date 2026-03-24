@@ -34,7 +34,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.13.6"
+version = "0.13.7"
 edition = "2024"
 license = "AGPL-3.0-or-later"
 repository = "https://github.com/forkwright/aletheia"
