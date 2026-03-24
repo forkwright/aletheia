@@ -16,7 +16,7 @@ use aletheia_organon::registry::ToolRegistry;
 use aletheia_organon::types::ToolContext;
 use aletheia_taxis::oikos::Oikos;
 
-use crate::bootstrap::{BootstrapAssembler, BootstrapSection};
+use crate::bootstrap::{BootstrapAssembler, BootstrapSection, TaskHint, classify_task_hint};
 use crate::budget::TokenBudget;
 use crate::config::{NousConfig, PipelineConfig};
 use crate::error;
@@ -537,10 +537,21 @@ pub async fn assemble_context(
     pipeline_config: &PipelineConfig,
     ctx: &mut PipelineContext,
 ) -> crate::error::Result<()> {
-    assemble_context_with_extra(oikos, nous_config, pipeline_config, ctx, Vec::new()).await
+    assemble_context_conditional(
+        oikos,
+        nous_config,
+        pipeline_config,
+        ctx,
+        Vec::new(),
+        TaskHint::General,
+    )
+    .await
 }
 
 /// Assemble bootstrap context with extra sections from domain packs.
+///
+/// Uses [`TaskHint::General`] which loads all workspace files. Use
+/// [`assemble_context_conditional`] for task-aware loading.
 #[instrument(skip_all, fields(nous_id = %nous_config.id))]
 pub async fn assemble_context_with_extra(
     oikos: &Oikos,
@@ -548,6 +559,30 @@ pub async fn assemble_context_with_extra(
     pipeline_config: &PipelineConfig,
     ctx: &mut PipelineContext,
     extra_sections: Vec<BootstrapSection>,
+) -> crate::error::Result<()> {
+    assemble_context_conditional(
+        oikos,
+        nous_config,
+        pipeline_config,
+        ctx,
+        extra_sections,
+        TaskHint::General,
+    )
+    .await
+}
+
+/// Assemble bootstrap context with conditional file loading.
+///
+/// Only workspace files relevant to the given [`TaskHint`] are loaded.
+/// Identity-tier files always load; operational files load based on the hint.
+#[instrument(skip_all, fields(nous_id = %nous_config.id, ?task_hint))]
+pub async fn assemble_context_conditional(
+    oikos: &Oikos,
+    nous_config: &NousConfig,
+    pipeline_config: &PipelineConfig,
+    ctx: &mut PipelineContext,
+    extra_sections: Vec<BootstrapSection>,
+    task_hint: TaskHint,
 ) -> crate::error::Result<()> {
     let mut budget = TokenBudget::new(
         u64::from(nous_config.generation.context_window),
@@ -558,7 +593,7 @@ pub async fn assemble_context_with_extra(
 
     let assembler = BootstrapAssembler::new(oikos);
     let result = assembler
-        .assemble_with_extra(&nous_config.id, &mut budget, extra_sections)
+        .assemble_conditional(&nous_config.id, &mut budget, extra_sections, task_hint)
         .await?;
 
     ctx.system_prompt = Some(result.system_prompt);
@@ -648,6 +683,7 @@ pub(crate) async fn run_pipeline(
     let mut stages_completed: u32 = 0;
 
     let mut ctx = PipelineContext::default();
+    let task_hint = classify_task_hint(&input.content);
 
     run_context_stage(
         oikos,
@@ -655,6 +691,7 @@ pub(crate) async fn run_pipeline(
         pipeline_config,
         &mut ctx,
         extra_bootstrap,
+        task_hint,
         emitter,
     )
     .await?;
