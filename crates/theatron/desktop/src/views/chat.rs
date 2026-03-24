@@ -1,5 +1,9 @@
 //! Chat view: session tabs, virtualized message list, streaming indicator,
 //! command palette, distillation indicator, and input bar.
+//!
+//! Virtual scrolling uses the shared [`crate::components::virtual_list`] utilities.
+//! The streaming typing cursor blinks via the `cursor-blink` CSS animation defined
+//! in `assets/styles/base.css`.
 
 use std::time::Duration;
 
@@ -30,9 +34,6 @@ use crate::state::toasts::{Severity, ToastStore};
 
 /// Estimated message height in pixels for virtual scroll calculations.
 const ESTIMATED_MSG_HEIGHT: f64 = 80.0;
-
-/// Number of extra messages to render above and below the visible range.
-const OVERSCAN: usize = 3;
 
 /// Chat view with virtualized scrolling, markdown rendering, and agent switching.
 #[component]
@@ -91,20 +92,21 @@ pub(crate) fn Chat() -> Element {
             .collect()
     };
 
-    // Virtual scroll: compute visible range
+    // Virtual scroll: compute visible range using shared utility.
     let total_messages = messages.len();
-    let scroll = scroll_top();
-    let visible_height = container_height();
-
-    let first_visible = ((scroll / ESTIMATED_MSG_HEIGHT) as usize).min(total_messages);
-    let visible_count =
-        ((visible_height / ESTIMATED_MSG_HEIGHT).ceil() as usize + 1).min(total_messages);
-
-    let range_start = first_visible.saturating_sub(OVERSCAN);
-    let range_end = (first_visible + visible_count + OVERSCAN).min(total_messages);
-
-    let pad_top = range_start as f64 * ESTIMATED_MSG_HEIGHT;
-    let pad_bottom = (total_messages.saturating_sub(range_end)) as f64 * ESTIMATED_MSG_HEIGHT;
+    let (range_start, range_end) = visible_range(
+        scroll_top(),
+        container_height(),
+        total_messages,
+        ESTIMATED_MSG_HEIGHT,
+        crate::components::virtual_list::DEFAULT_OVERSCAN,
+    );
+    let (pad_top, pad_bottom) = crate::components::virtual_list::spacer_heights(
+        range_start,
+        range_end,
+        total_messages,
+        ESTIMATED_MSG_HEIGHT,
+    );
 
     let visible_messages: Vec<(usize, ChatMessage, bool)> = messages
         .iter()
@@ -374,6 +376,20 @@ pub(crate) fn Chat() -> Element {
                                         Markdown {
                                             content: legacy_state.read().streaming.text.clone(),
                                         }
+                                        // Typing cursor — blinks via CSS animation while streaming.
+                                        span {
+                                            class: "streaming-cursor",
+                                            "aria-hidden": "true",
+                                            style: "
+                                                display: inline-block;
+                                                width: 2px;
+                                                height: 1.1em;
+                                                background: var(--accent);
+                                                vertical-align: text-bottom;
+                                                animation: cursor-blink 1s step-end infinite;
+                                                margin-left: 1px;
+                                            ",
+                                        }
                                     } else {
                                         div {
                                             style: "
@@ -515,67 +531,5 @@ fn format_tool_call(tc: &crate::state::events::ToolCallInfo) -> String {
     }
 }
 
-/// Compute the visible range for virtual scrolling.
-///
-/// Returns `(range_start, range_end)` -- the slice indices of messages
-/// to render from the full list.
-#[must_use]
-pub(crate) fn visible_range(
-    scroll_top: f64,
-    container_height: f64,
-    total_messages: usize,
-    estimated_height: f64,
-    overscan: usize,
-) -> (usize, usize) {
-    if total_messages == 0 {
-        return (0, 0);
-    }
-    let first = ((scroll_top / estimated_height) as usize).min(total_messages);
-    let count = ((container_height / estimated_height).ceil() as usize + 1).min(total_messages);
-    let start = first.saturating_sub(overscan);
-    let end = (first + count + overscan).min(total_messages);
-    (start, end)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn visible_range_empty() {
-        let (start, end) = visible_range(0.0, 600.0, 0, 80.0, 3);
-        assert_eq!(start, 0);
-        assert_eq!(end, 0);
-    }
-
-    #[test]
-    fn visible_range_at_top() {
-        let (start, end) = visible_range(0.0, 600.0, 100, 80.0, 3);
-        assert_eq!(start, 0);
-        // first=0, count=ceil(600/80)+1=8+1=9, end=0+9+3=12
-        assert_eq!(end, 12);
-    }
-
-    #[test]
-    fn visible_range_scrolled() {
-        // Scrolled 400px down: first=5, count=9, start=5-3=2, end=5+9+3=17
-        let (start, end) = visible_range(400.0, 600.0, 100, 80.0, 3);
-        assert_eq!(start, 2);
-        assert_eq!(end, 17);
-    }
-
-    #[test]
-    fn visible_range_near_end() {
-        // 20 messages, scrolled to near bottom
-        let (start, end) = visible_range(1200.0, 600.0, 20, 80.0, 3);
-        assert_eq!(end, 20);
-        assert!(start <= end);
-    }
-
-    #[test]
-    fn visible_range_few_messages() {
-        let (start, end) = visible_range(0.0, 600.0, 3, 80.0, 3);
-        assert_eq!(start, 0);
-        assert_eq!(end, 3);
-    }
-}
+// NOTE: visible_range tests have moved to components::virtual_list.
+pub(crate) use crate::components::virtual_list::visible_range;

@@ -10,6 +10,7 @@ use theatron_core::api::types::{HistoryResponse, Session, SessionsResponse};
 use theatron_core::id::SessionId;
 
 use crate::api::client::authenticated_client;
+use crate::components::resize_handle::{use_resize_state, ResizeDir, ResizeHandle};
 use crate::state::agents::AgentStore;
 use crate::state::connection::ConnectionConfig;
 use crate::state::fetch::FetchState;
@@ -41,14 +42,6 @@ const LIST_PANEL_STYLE: &str = "\
     flex-direction: column; \
     overflow: hidden; \
     flex-shrink: 0;\
-";
-
-const RESIZE_HANDLE_STYLE: &str = "\
-    width: 4px; \
-    cursor: col-resize; \
-    background: transparent; \
-    flex-shrink: 0; \
-    transition: background 0.15s;\
 ";
 
 const DETAIL_PANEL_STYLE: &str = "\
@@ -88,10 +81,7 @@ pub(crate) fn Sessions() -> Element {
         use_signal(|| FetchState::<SessionDetailStore>::Loaded(SessionDetailStore::default()));
     let mut selected_session_id: Signal<Option<SessionId>> = use_signal(|| None);
 
-    let mut list_width = use_signal(|| DEFAULT_LIST_WIDTH);
-    let mut is_resizing = use_signal(|| false);
-    let mut resize_start_x = use_signal(|| 0.0f64);
-    let mut resize_start_width = use_signal(|| 0.0f64);
+    let resize = use_resize_state(DEFAULT_LIST_WIDTH, MIN_LIST_WIDTH, MAX_LIST_WIDTH);
 
     // Fetch sessions on mount.
     let fetch_sessions = {
@@ -363,7 +353,7 @@ pub(crate) fn Sessions() -> Element {
         .map(|r| r.agent.id.to_string())
         .collect();
 
-    let width = *list_width.read();
+    let width = *resize.size.read();
 
     rsx! {
         div {
@@ -372,11 +362,12 @@ pub(crate) fn Sessions() -> Element {
             div {
                 style: "{HEADER_STYLE}",
                 h2 {
-                    style: "font-size: 18px; margin: 0; color: #e0e0e0;",
+                    style: "font-size: 18px; margin: 0; color: var(--text-primary, #e0e0e0);",
                     "Sessions"
                 }
                 button {
                     style: "{REFRESH_BTN}",
+                    "aria-label": "Refresh sessions",
                     onclick: move |_| {
                         list_store.write().page = 0;
                         fetch_sessions();
@@ -414,20 +405,20 @@ pub(crate) fn Sessions() -> Element {
             // Two-panel layout
             div {
                 style: "{PANELS_STYLE}",
+                role: "region",
+                "aria-label": "Sessions workspace",
                 onmousemove: move |evt: Event<MouseData>| {
-                    if *is_resizing.read() {
-                        let delta = evt.client_coordinates().x - *resize_start_x.read();
-                        let new_width = (*resize_start_width.read() + delta)
-                            .clamp(MIN_LIST_WIDTH, MAX_LIST_WIDTH);
-                        list_width.set(new_width);
-                    }
+                    let c = evt.client_coordinates();
+                    resize.on_move(c.x, c.y, ResizeDir::Horizontal);
                 },
                 onmouseup: move |_| {
-                    is_resizing.set(false);
+                    resize.on_up();
                 },
                 // List panel
                 div {
                     style: "{LIST_PANEL_STYLE} width: {width}px;",
+                    role: "region",
+                    "aria-label": "Session list",
                     SessionList {
                         list_store,
                         selection_store,
@@ -479,18 +470,16 @@ pub(crate) fn Sessions() -> Element {
                         },
                     }
                 }
-                // Resize handle
-                div {
-                    style: "{RESIZE_HANDLE_STYLE}",
-                    onmousedown: move |evt: Event<MouseData>| {
-                        is_resizing.set(true);
-                        resize_start_x.set(evt.client_coordinates().x);
-                        resize_start_width.set(*list_width.read());
-                    },
+                // Resize handle — replaces inline div
+                ResizeHandle {
+                    dir: ResizeDir::Horizontal,
+                    state: resize,
                 }
                 // Detail panel
                 div {
                     style: "{DETAIL_PANEL_STYLE}",
+                    role: "region",
+                    "aria-label": "Session detail",
                     if selected_session_id.read().is_some() {
                         SessionDetail {
                             detail_state,

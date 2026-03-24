@@ -8,6 +8,7 @@ mod viewer;
 
 use dioxus::prelude::*;
 
+use crate::components::resize_handle::{use_resize_state, ResizeDir, ResizeHandle};
 use crate::state::navigation::NavAction;
 use crate::views::files::diff::DiffViewer;
 use crate::views::files::search::FileSearch;
@@ -45,14 +46,6 @@ const TREE_PANEL_STYLE: &str = "\
     flex-shrink: 0;\
 ";
 
-const RESIZE_HANDLE_STYLE: &str = "\
-    width: 4px; \
-    cursor: col-resize; \
-    background: transparent; \
-    flex-shrink: 0; \
-    transition: background var(--transition-quick, 0.15s);\
-";
-
 const COLLAPSE_BTN_STYLE: &str = "\
     background: none; \
     border: 1px solid var(--border, #2e2b27); \
@@ -78,12 +71,11 @@ const MAX_TREE_WIDTH: f64 = 600.0;
 pub(crate) fn Files() -> Element {
     let mut selected_path: Signal<Option<String>> = use_signal(|| None);
     let mut tree_collapsed = use_signal(|| false);
-    let mut tree_width = use_signal(|| DEFAULT_TREE_WIDTH);
     let is_searching = use_signal(|| false);
-    let mut is_resizing = use_signal(|| false);
-    let mut resize_start_x = use_signal(|| 0.0f64);
-    let mut resize_start_width = use_signal(|| 0.0f64);
     let mut view = use_signal(|| FilesView::Browser);
+
+    // Resize state — replaces the inline is_resizing/resize_start_x/resize_start_width signals.
+    let resize = use_resize_state(DEFAULT_TREE_WIDTH, MIN_TREE_WIDTH, MAX_TREE_WIDTH);
 
     // NOTE: Consume navigation actions from toast buttons to open diff viewer.
     if let Some(mut nav_signal) = try_consume_context::<Signal<Option<NavAction>>>() {
@@ -114,7 +106,7 @@ pub(crate) fn Files() -> Element {
         }
         FilesView::Browser => {
             let collapsed = *tree_collapsed.read();
-            let width = *tree_width.read();
+            let width = *resize.size.read();
             let panel_width = if collapsed {
                 "0px".to_string()
             } else {
@@ -133,6 +125,9 @@ pub(crate) fn Files() -> Element {
                         }
                         button {
                             style: "{COLLAPSE_BTN_STYLE}",
+                            "aria-label": if collapsed { "Show file tree" } else { "Hide file tree" },
+                            "aria-expanded": if collapsed { "false" } else { "true" },
+                            "aria-controls": "files-tree-panel",
                             onclick: move |_| {
                                 let current = *tree_collapsed.read();
                                 tree_collapsed.set(!current);
@@ -143,23 +138,24 @@ pub(crate) fn Files() -> Element {
                     // Two-panel layout
                     div {
                         style: "{PANELS_STYLE}",
+                        role: "region",
+                        "aria-label": "File workspace",
                         // WHY: mousemove on the outer container so dragging past the handle
                         // still updates the width.
                         onmousemove: move |evt: Event<MouseData>| {
-                            if *is_resizing.read() {
-                                let delta = evt.client_coordinates().x - *resize_start_x.read();
-                                let new_width = (*resize_start_width.read() + delta)
-                                    .clamp(MIN_TREE_WIDTH, MAX_TREE_WIDTH);
-                                tree_width.set(new_width);
-                            }
+                            let c = evt.client_coordinates();
+                            resize.on_move(c.x, c.y, ResizeDir::Horizontal);
                         },
                         onmouseup: move |_| {
-                            is_resizing.set(false);
+                            resize.on_up();
                         },
                         // Tree panel
                         if !collapsed {
                             div {
+                                id: "files-tree-panel",
                                 style: "{TREE_PANEL_STYLE} width: {panel_width};",
+                                role: "region",
+                                "aria-label": "File tree",
                                 FileSearch {
                                     on_select_file: on_select_file,
                                     is_searching,
@@ -171,20 +167,20 @@ pub(crate) fn Files() -> Element {
                                     }
                                 }
                             }
-                            // Resize handle
-                            div {
-                                style: "{RESIZE_HANDLE_STYLE}",
-                                onmousedown: move |evt: Event<MouseData>| {
-                                    is_resizing.set(true);
-                                    resize_start_x.set(evt.client_coordinates().x);
-                                    resize_start_width.set(*tree_width.read());
-                                },
-                                onmouseenter: move |_| {},
+                            // Resize handle — replaces inline div
+                            ResizeHandle {
+                                dir: ResizeDir::Horizontal,
+                                state: resize,
                             }
                         }
                         // Viewer panel
-                        FileViewer {
-                            selected_path,
+                        div {
+                            role: "region",
+                            "aria-label": "File viewer",
+                            style: "flex: 1; overflow: hidden;",
+                            FileViewer {
+                                selected_path,
+                            }
                         }
                     }
                 }
