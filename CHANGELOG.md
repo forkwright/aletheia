@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.7](https://github.com/forkwright/aletheia/compare/v0.13.6...v0.13.7) (2026-03-24)
+
+
+### Bug Fixes
+
+* **pylon:** convert sync-only planning tests from async to sync ([#2060](https://github.com/forkwright/aletheia/issues/2060)) ([8410e34](https://github.com/forkwright/aletheia/commit/8410e34c72df491ed722a737b48dd56fedcea5f8))
+
 ## [0.13.6](https://github.com/forkwright/aletheia/compare/v0.13.5...v0.13.6) (2026-03-24)
 
 
