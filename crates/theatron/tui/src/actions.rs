@@ -36,7 +36,6 @@ impl App {
                 let text = text.to_string();
                 let span = tracing::info_span!("queue_message", %session_id);
                 tokio::spawn(
-                    // kanon:ignore RUST/spawn-no-instrument
                     async move {
                         if let Err(e) = client.queue_message(&session_id, &text).await {
                             tracing::error!("failed to queue message: {e}");

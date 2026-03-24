@@ -43,7 +43,6 @@ pub(crate) fn handle_tool_approval_always_allow(app: &mut App) {
     let client = app.client.clone();
     let span = tracing::info_span!("approve_tool_always", %turn_id, %tool_id, %tool_name);
     tokio::spawn(
-        // kanon:ignore RUST/spawn-no-instrument
         async move {
             if let Err(e) = client.approve_tool(&turn_id, &tool_id).await {
                 tracing::error!("failed to approve tool: {e}");
@@ -69,7 +68,6 @@ pub(crate) fn handle_close_overlay(app: &mut App) {
         let client = app.client.clone();
         let span = tracing::info_span!("deny_tool", %turn_id, %tool_id);
         tokio::spawn(
-            // kanon:ignore RUST/spawn-no-instrument
             async move {
                 if let Err(e) = client.deny_tool(&turn_id, &tool_id).await {
                     tracing::error!("failed to deny tool: {e}");
@@ -83,7 +81,6 @@ pub(crate) fn handle_close_overlay(app: &mut App) {
         let client = app.client.clone();
         let span = tracing::info_span!("cancel_plan", %plan_id);
         tokio::spawn(
-            // kanon:ignore RUST/spawn-no-instrument
             async move {
                 if let Err(e) = client.cancel_plan(&plan_id).await {
                     tracing::error!("failed to cancel plan: {e}");
@@ -227,7 +224,6 @@ pub(crate) async fn handle_overlay_select(app: &mut App) {
             let client = app.client.clone();
             let span = tracing::info_span!("approve_tool", %turn_id, %tool_id);
             tokio::spawn(
-                // kanon:ignore RUST/spawn-no-instrument
                 async move {
                     if let Err(e) = client.approve_tool(&turn_id, &tool_id).await {
                         tracing::error!("failed to approve tool: {e}");
@@ -242,7 +238,6 @@ pub(crate) async fn handle_overlay_select(app: &mut App) {
             let client = app.client.clone();
             let span = tracing::info_span!("approve_plan", %plan_id);
             tokio::spawn(
-                // kanon:ignore RUST/spawn-no-instrument
                 async move {
                     if let Err(e) = client.approve_plan(&plan_id).await {
                         tracing::error!("failed to approve plan: {e}");
