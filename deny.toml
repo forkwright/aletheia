@@ -34,6 +34,10 @@ confidence-threshold = 0.8
 [bans]
 multiple-versions = "warn"
 wildcards = "allow"
+# WHY: "pure Rust, no C++" — rustls replaces openssl across the workspace.
+deny = [
+    { crate = "openssl-sys", wrappers = [] },
+]
 
 # Skip entries for duplicates caused by upstream constraints we cannot resolve.
 # Each entry exempts the named version from the multiple-versions check.
@@ -81,8 +85,10 @@ skip = [
     { name = "windows_x86_64_msvc", version = "=0.42.2" },
     { name = "windows_x86_64_msvc", version = "=0.52.6" },
 
-    # WHY: spm_precompiled (via tokenizers/aletheia-episteme) pins base64 0.13.
-    # Blocked until tokenizers releases a version using base64 0.22+.
+    # WHY: spm_precompiled 0.1.4 (via tokenizers/aletheia-episteme) pins base64 0.13.
+    # spm_precompiled is unmaintained (last release 2022-05-30). Blocked until
+    # tokenizers replaces or forks spm_precompiled with a base64 0.22+ compatible
+    # version. Tracked in #2079.
     { name = "base64", version = "=0.13.1" },
 
     # WHY: older crypto crates (aes/sha family) pin cpufeatures 0.2.
