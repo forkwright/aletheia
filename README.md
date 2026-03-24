@@ -32,7 +32,7 @@ The tarball contains `instance.example/` with the reference config layout. See [
 
 - **Persistent memory.** Conversations carry forward. The agent builds a knowledge graph of facts, entities, and relationships that persists across sessions and grows over time.
 - **Multiple agents.** Each agent has its own character (SOUL.md), goals, memory, and workspace. They can coordinate, delegate, and specialize.
-- **Tools.** 39 built-in tools: file I/O, shell execution, web search, memory search, planning, agent coordination. Extend with domain packs or custom tools.
+- **Tools.** 38 built-in tools: file I/O, shell execution, web search, memory search, planning, agent coordination. Extend with domain packs or custom tools.
 - **Terminal dashboard.** Rich TUI with markdown rendering, session management, and real-time streaming.
 - **Signal messaging.** Talk to your agents over Signal with 15 built-in commands.
 - **Privacy.** No telemetry, no analytics, no phone-home. Only outbound connections are to services you configure.
