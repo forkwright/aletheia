@@ -20,7 +20,10 @@ fn detect_language_typescript() {
 
 #[test]
 fn detect_language_no_extension() {
-    assert_eq!(tab::detect_language_pub(Path::new("Makefile")), "plain text");
+    assert_eq!(
+        tab::detect_language_pub(Path::new("Makefile")),
+        "plain text"
+    );
 }
 
 #[test]

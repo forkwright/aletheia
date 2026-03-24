@@ -88,16 +88,18 @@ impl CredentialProvider for EnvCredentialProvider {
     }
 }
 
-struct CachedFile {
-    token: SecretString,
-    mtime: SystemTime,
-    checked_at: Instant,
+// NOTE: pub(crate) for test access after credential.rs → credential/mod.rs split
+pub(crate) struct CachedFile {
+    pub(crate) token: SecretString,
+    pub(crate) mtime: SystemTime,
+    pub(crate) checked_at: Instant,
 }
 
 /// Reads a credential from a JSON file on disk.
 pub struct FileCredentialProvider {
     path: PathBuf,
-    cached: RwLock<Option<CachedFile>>,
+    // NOTE: pub(crate) for test access after credential.rs → credential/mod.rs split
+    pub(crate) cached: RwLock<Option<CachedFile>>,
 }
 
 impl FileCredentialProvider {

@@ -396,5 +396,8 @@ fn compute_communities_groups_connected_entities() {
 #[test]
 fn days_between_approx_calculates() {
     assert!(graph_analysis::days_between_approx("2026-01-01", "2026-03-22") > 30);
-    assert_eq!(graph_analysis::days_between_approx("invalid", "2026-03-22"), 0);
+    assert_eq!(
+        graph_analysis::days_between_approx("invalid", "2026-03-22"),
+        0
+    );
 }

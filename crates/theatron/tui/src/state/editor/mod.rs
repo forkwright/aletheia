@@ -10,8 +10,10 @@ mod tree;
 )]
 mod tests;
 
-pub(crate) use tab::{EditorTab, char_to_byte_pos, detect_language_pub};
-pub(crate) use tree::{FileEntry, FileTreeState, GitFileStatus};
+pub(crate) use tab::{EditorTab, detect_language_pub};
+#[cfg(test)]
+pub(crate) use tree::FileEntry;
+pub(crate) use tree::{FileTreeState, GitFileStatus};
 
 use std::path::PathBuf;
 
