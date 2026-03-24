@@ -96,6 +96,7 @@ RUST/string-slice:tui/src/view/ops.rs
 # .instrument() calls chained on the async block.
 RUST/spawn-no-instrument:tui/src/actions.rs
 RUST/spawn-no-instrument:tui/src/update/overlay.rs
+RUST/spawn-no-instrument:tui/src/update/streaming/mod.rs
 
 # WHY: test helper functions (test_theme, test_agent_id, test_session, etc.)
 # use test_ prefix as constructor convention, not as test function naming.

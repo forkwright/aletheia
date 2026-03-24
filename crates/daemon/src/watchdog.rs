@@ -415,6 +415,8 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
+    use tracing::Instrument;
+
     use super::*;
 
     struct MockProcess {
@@ -650,9 +652,12 @@ mod tests {
         let token = CancellationToken::new();
         let mut wd = Watchdog::new(WatchdogConfig::default(), token.clone());
 
-        let handle = tokio::spawn(async move {
-            wd.run().await;
-        });
+        let handle = tokio::spawn(
+            async move {
+                wd.run().await;
+            }
+            .instrument(tracing::info_span!("test_watchdog_shutdown")),
+        );
 
         token.cancel();
 

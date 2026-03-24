@@ -152,7 +152,6 @@ pub(crate) fn handle_stream_tool_approval_required(
         let client = app.client.clone();
         let span = tracing::info_span!("auto_approve_tool", %turn_id, %tool_id, %tool_name);
         tokio::spawn(
-            // kanon:ignore RUST/spawn-no-instrument
             async move {
                 if let Err(e) = client.approve_tool(&turn_id, &tool_id).await {
                     tracing::error!("failed to auto-approve tool: {e}");
@@ -376,11 +375,15 @@ pub(crate) async fn handle_cancel_turn(app: &mut App) {
     // stream receiver being dropped is sufficient to stop local processing.
     let client = app.client.clone();
     let id = turn_id.to_string();
-    tokio::spawn(async move {
-        if let Err(e) = client.abort_turn(&id).await {
-            tracing::warn!(error = %e, "abort_turn request failed");
+    let span = tracing::info_span!("abort_turn", turn_id = %id);
+    tokio::spawn(
+        async move {
+            if let Err(e) = client.abort_turn(&id).await {
+                tracing::warn!(error = %e, "abort_turn request failed");
+            }
         }
-    });
+        .instrument(span),
+    );
 
     app.connection.stream_phase = crate::state::StreamPhase::Idle;
     // Flush line buffer into streaming text before committing.
