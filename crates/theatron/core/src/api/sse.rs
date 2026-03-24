@@ -205,6 +205,15 @@ fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
         "distill:after" => Some(SseEvent::DistillAfter {
             nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
         }),
+        "checkpoint:created" => Some(SseEvent::CheckpointCreated {
+            project_id: str_field(&json, "projectId", event_type)?.to_string(),
+            checkpoint_id: str_field(&json, "checkpointId", event_type)?.to_string(),
+        }),
+        "checkpoint:updated" => Some(SseEvent::CheckpointUpdated {
+            project_id: str_field(&json, "projectId", event_type)?.to_string(),
+            checkpoint_id: str_field(&json, "checkpointId", event_type)?.to_string(),
+            status: str_field(&json, "status", event_type)?.to_string(),
+        }),
         "ping" => Some(SseEvent::Ping),
         other => {
             tracing::debug!("unknown SSE event type: {other}");
@@ -257,6 +266,56 @@ mod tests {
     fn parse_unknown_event_returns_none() {
         let data = r#"{"foo":"bar"}"#;
         let result = parse_sse_event("custom:unknown", data);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn parse_checkpoint_created_valid() {
+        let data = r#"{"projectId":"p1","checkpointId":"cp-1"}"#;
+        let result = parse_sse_event("checkpoint:created", data);
+        assert!(result.is_some());
+        if let Some(SseEvent::CheckpointCreated {
+            project_id,
+            checkpoint_id,
+        }) = result
+        {
+            assert_eq!(project_id, "p1");
+            assert_eq!(checkpoint_id, "cp-1");
+        } else {
+            panic!("expected CheckpointCreated");
+        }
+    }
+
+    #[test]
+    fn parse_checkpoint_updated_valid() {
+        let data = r#"{"projectId":"p1","checkpointId":"cp-2","status":"approved"}"#;
+        let result = parse_sse_event("checkpoint:updated", data);
+        assert!(result.is_some());
+        if let Some(SseEvent::CheckpointUpdated {
+            project_id,
+            checkpoint_id,
+            status,
+        }) = result
+        {
+            assert_eq!(project_id, "p1");
+            assert_eq!(checkpoint_id, "cp-2");
+            assert_eq!(status, "approved");
+        } else {
+            panic!("expected CheckpointUpdated");
+        }
+    }
+
+    #[test]
+    fn parse_checkpoint_created_missing_field_returns_none() {
+        let data = r#"{"projectId":"p1"}"#;
+        let result = parse_sse_event("checkpoint:created", data);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn parse_checkpoint_updated_missing_status_returns_none() {
+        let data = r#"{"projectId":"p1","checkpointId":"cp-1"}"#;
+        let result = parse_sse_event("checkpoint:updated", data);
         assert!(result.is_none());
     }
 

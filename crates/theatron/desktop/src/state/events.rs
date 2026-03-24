@@ -35,6 +35,12 @@ pub struct EventState {
     /// Per-agent distillation progress from `Distill*` events.
     pub distillation: HashMap<NousId, DistillationProgress>,
 
+    /// Per-project checkpoint revision counter. Incremented by
+    /// `CheckpointCreated` and `CheckpointUpdated` SSE events.
+    /// Views compare their last-seen revision to detect when a
+    /// re-fetch is needed.
+    pub checkpoint_revisions: HashMap<String, u64>,
+
     /// SSE connection lifecycle state.
     pub connection: SseConnectionState,
 }
@@ -47,6 +53,7 @@ impl EventState {
             active_turns: Vec::new(),
             agent_statuses: HashMap::new(),
             distillation: HashMap::new(),
+            checkpoint_revisions: HashMap::new(),
             connection: SseConnectionState::Disconnected,
         }
     }
@@ -199,6 +206,7 @@ mod tests {
         assert!(state.active_turns.is_empty());
         assert!(state.agent_statuses.is_empty());
         assert!(state.distillation.is_empty());
+        assert!(state.checkpoint_revisions.is_empty());
         assert_eq!(state.connection, SseConnectionState::Disconnected);
     }
 

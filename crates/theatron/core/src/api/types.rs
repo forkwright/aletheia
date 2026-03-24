@@ -270,6 +270,22 @@ pub enum SseEvent {
         /// Agent that completed distillation.
         nous_id: NousId,
     },
+    /// A new checkpoint was created in a planning project.
+    CheckpointCreated {
+        /// Project the checkpoint belongs to.
+        project_id: String,
+        /// Identifier of the created checkpoint.
+        checkpoint_id: String,
+    },
+    /// A checkpoint's status changed (approved, skipped, overridden).
+    CheckpointUpdated {
+        /// Project the checkpoint belongs to.
+        project_id: String,
+        /// Identifier of the updated checkpoint.
+        checkpoint_id: String,
+        /// New status value (e.g. "approved", "skipped", "overridden").
+        status: String,
+    },
     /// Server heartbeat.
     Ping,
 }
