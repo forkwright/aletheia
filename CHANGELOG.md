@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.8](https://github.com/forkwright/aletheia/compare/v0.13.7...v0.13.8) (2026-03-24)
+
+
+### Bug Fixes
+
+* sync Cargo.lock with workspace version 0.13.7 ([#2062](https://github.com/forkwright/aletheia/issues/2062)) ([d8635da](https://github.com/forkwright/aletheia/commit/d8635dac3b18886173437f8826d2928fb9fed5bf))
+
 ## [0.13.7](https://github.com/forkwright/aletheia/compare/v0.13.6...v0.13.7) (2026-03-24)
 
 
