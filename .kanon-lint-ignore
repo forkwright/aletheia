@@ -212,3 +212,8 @@ RUST/indexing-slicing:crates/nous/src/recall.rs
 # logic — all cohesive recall functionality. Splitting would fragment the
 # abstraction.
 RUST/file-too-long:crates/nous/src/recall.rs
+
+# WHY: SOUL.md line 57 uses "great question" as a negative example of what the
+# agent should NOT say. The linter detects the phrase as performative language
+# but cannot distinguish mention from use.
+WRITING/performative-language:instance.example/nous/_default/SOUL.md
