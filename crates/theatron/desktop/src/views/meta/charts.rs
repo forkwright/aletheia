@@ -100,34 +100,28 @@ pub(crate) fn LineChart(
 
             if show_labels {
                 // NOTE: Show first and last labels only to avoid clutter.
-                if let Some(first) = data.first() {
-                    {
-                        let (x, _) = points[0];
+                if let Some((first, &(x, _))) = data.first().zip(points.first()) {
+                    rsx! {
+                        text {
+                            x: "{x:.1}",
+                            y: "{height - 4.0:.1}",
+                            fill: "#666",
+                            font_size: "10",
+                            text_anchor: "start",
+                            "{first.label}"
+                        }
+                    }
+                }
+                if data.len() > 1 {
+                    if let Some((last, &(x, _))) = data.last().zip(points.last()) {
                         rsx! {
                             text {
                                 x: "{x:.1}",
                                 y: "{height - 4.0:.1}",
                                 fill: "#666",
                                 font_size: "10",
-                                text_anchor: "start",
-                                "{first.label}"
-                            }
-                        }
-                    }
-                }
-                if data.len() > 1 {
-                    if let Some(last) = data.last() {
-                        {
-                            let (x, _) = points[points.len() - 1];
-                            rsx! {
-                                text {
-                                    x: "{x:.1}",
-                                    y: "{height - 4.0:.1}",
-                                    fill: "#666",
-                                    font_size: "10",
-                                    text_anchor: "end",
-                                    "{last.label}"
-                                }
+                                text_anchor: "end",
+                                "{last.label}"
                             }
                         }
                     }
