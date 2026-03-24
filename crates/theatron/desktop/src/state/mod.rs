@@ -23,8 +23,16 @@ pub(crate) mod execution;
 pub(crate) mod fetch;
 /// Workspace file tree explorer state.
 pub(crate) mod files;
+/// Knowledge graph state: nodes, edges, force simulation, viewport, community filters, drift.
+pub(crate) mod graph;
 pub(crate) mod input;
+/// Entity list, detail, and navigation state for the memory explorer.
+pub(crate) mod memory;
+/// Meta-insights state: agent performance, quality, knowledge growth, memory health.
+pub(crate) mod meta;
 pub(crate) mod navigation;
+/// Notification preferences, history, and Do Not Disturb state.
+pub(crate) mod notifications;
 /// Planning project, requirements, and roadmap state.
 pub(crate) mod planning;
 /// System tray, global hotkeys, window persistence, and quick input state.
@@ -44,3 +52,5 @@ pub(crate) mod ops;
 pub(crate) mod settings;
 /// Token usage, cost tracking, budget, and metrics display helpers.
 pub(crate) mod metrics;
+/// Tool usage metrics: aggregated stats, date range filtering, stores.
+pub(crate) mod tool_metrics;
