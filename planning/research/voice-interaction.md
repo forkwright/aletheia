@@ -181,7 +181,7 @@ No production-ready TTS model exists in candle today. SpeechT5 and VITS implemen
 
 #### TTS recommendation
 
-**Phase 1:** No TTS. Text responses only. Voice is input-only. This is the fastest path and delivers the core value (hands-free interaction).
+**Phase 1:** No TTS. Text responses only. Voice is input-only. Skipping TTS halves the integration surface and still delivers hands-free interaction.
 
 **Phase 2:** Cloud TTS (ElevenLabs or Google) behind `voice-tts-cloud` feature gate. Best quality, least integration work.
 
