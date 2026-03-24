@@ -48,3 +48,5 @@ pub(crate) mod verification;
 pub(crate) mod ops;
 /// Settings state: server configs, appearance, keybindings, wizard flow.
 pub(crate) mod settings;
+/// Tool usage metrics: aggregated stats, stores, and helpers.
+pub(crate) mod tool_metrics;
