@@ -41,7 +41,6 @@ use crate::types::{ToolContext, ToolInput, ToolResult};
 /// assert!(!result.is_error, "result should not be an error");
 /// assert_eq!(ex.call_count(), 1, "call count should be 1 after one execution");
 /// ```
-#[allow(clippy::module_name_repetitions)] // kanon:ignore RUST/allow-not-expect
 pub struct MockToolExecutor {
     // kanon:ignore RUST/pub-visibility
     name: ToolName,

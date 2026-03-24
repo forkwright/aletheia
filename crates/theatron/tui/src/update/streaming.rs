@@ -298,7 +298,6 @@ pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutc
         app.dashboard.context_tokens_used = Some(ctx_used);
         app.dashboard.context_tokens_total = Some(ctx_total);
         // WHY: clamped to [0, 100] by .min(100); u64 → u8 is safe here.
-        #[allow(clippy::cast_possible_truncation)]
         let pct = ((u64::from(ctx_used) * 100) / u64::from(ctx_total)).min(100) as u8;
         app.dashboard.context_usage_pct = Some(pct);
     }

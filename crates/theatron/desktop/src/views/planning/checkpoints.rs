@@ -64,7 +64,7 @@ const PLACEHOLDER_STYLE: &str = "\
 /// Fetches from `GET /api/planning/projects/{project_id}/checkpoints`.
 /// Pending gates appear at the top of the list.
 ///
-/// # TODO
+/// # TODO(#2033)
 /// Wire SSE checkpoint events (when added to `theatron_core::events::StreamEvent`)
 /// for real-time notification when new checkpoints arrive.
 #[component]
