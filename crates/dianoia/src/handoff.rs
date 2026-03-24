@@ -158,6 +158,15 @@ impl HandoffFile {
             std::fs::write(&json_path, json).context(error::HandoffIoSnafu { path: &json_path })?;
             std::fs::write(&md_path, markdown).context(error::HandoffIoSnafu { path: &md_path })?;
         }
+        // WHY: restrict handoff files to owner-only (0600) — contain session context
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&json_path, std::fs::Permissions::from_mode(0o600))
+                .context(error::HandoffIoSnafu { path: &json_path })?;
+            std::fs::set_permissions(&md_path, std::fs::Permissions::from_mode(0o600))
+                .context(error::HandoffIoSnafu { path: &md_path })?;
+        }
 
         Ok(())
     }

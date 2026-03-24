@@ -64,6 +64,13 @@ impl EditorTab {
             content.push('\n');
         }
         std::fs::write(&self.path, &content).map_err(|e| format!("Save failed: {e}"))?;
+        // WHY: restrict saved files to owner-only (0600) — may contain sensitive content
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&self.path, std::fs::Permissions::from_mode(0o600))
+                .map_err(|e| format!("Failed to set permissions: {e}"))?;
+        }
         self.dirty = false;
         self.last_saved_at = Some(std::time::Instant::now());
         Ok(())
