@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.10](https://github.com/forkwright/aletheia/compare/v0.13.9...v0.13.10) (2026-03-24)
+
+
+### Documentation
+
+* **general:** fix performative language in voice-interaction research doc ([#2090](https://github.com/forkwright/aletheia/issues/2090)) ([2672ed3](https://github.com/forkwright/aletheia/commit/2672ed338c95aef0b11f4faa0783993929a6de24)), closes [#2076](https://github.com/forkwright/aletheia/issues/2076)
+
 ## [0.13.9](https://github.com/forkwright/aletheia/compare/v0.13.8...v0.13.9) (2026-03-24)
 
 
