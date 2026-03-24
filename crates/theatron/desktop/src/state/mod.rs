@@ -18,6 +18,8 @@ pub(crate) mod diff;
 /// Discussion state for planning gray-area questions.
 pub(crate) mod discussion;
 pub mod events;
+/// Notification preferences, history, and Do Not Disturb state.
+pub(crate) mod notifications;
 /// Execution state for wave-based plan progress.
 pub(crate) mod execution;
 pub(crate) mod fetch;

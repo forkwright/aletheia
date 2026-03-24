@@ -10,7 +10,7 @@
 pub mod api;
 /// Dioxus UI components for the desktop app.
 pub mod components;
-/// Platform integration: system tray, global hotkeys, native menus, window state.
+/// Platform integration: system tray, global hotkeys, native menus, window state, notifications.
 pub(crate) mod platform;
 /// Background services: SSE connection, stream management, and state sync.
 pub mod services;
