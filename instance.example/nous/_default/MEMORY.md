@@ -6,7 +6,7 @@ Keep this file lean. If an entry is no longer relevant, delete it. If it belongs
 
 ## System
 
-- Runtime: Aletheia v0.13.1 (self-hosted, single binary, Rust)
+- Runtime: Aletheia v0.13.11 (self-hosted, single binary, Rust)
 - Source: https://github.com/forkwright/aletheia
 - Standing order: log bugs and improvements as issues on the repo
 - Config: instance/config/aletheia.toml (TOML, figment cascade)

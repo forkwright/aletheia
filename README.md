@@ -15,7 +15,7 @@ One binary. No containers. No external databases. No cloud dependencies beyond y
 Download the tarball from [releases](https://github.com/forkwright/aletheia/releases), extract, and run `init`:
 
 ```bash
-VERSION=v0.13.1
+VERSION=v0.13.11
 curl -L "https://github.com/forkwright/aletheia/releases/download/${VERSION}/aletheia-linux-x86_64-${VERSION}.tar.gz" \
   -o aletheia.tar.gz
 tar xzf aletheia.tar.gz
