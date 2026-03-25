@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
+use snafu::prelude::*;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
@@ -26,6 +26,7 @@ use aletheia_symbolon::credential::{
 use aletheia_taxis::oikos::Oikos;
 
 use crate::dispatch;
+use crate::error::Result;
 
 /// Build a provider registry using the credential resolution chain.
 ///
@@ -165,7 +166,7 @@ pub(super) fn build_tool_registry(
         nproc_limit: sandbox_settings.nproc_limit,
     };
     builtins::register_all_with_sandbox(&mut registry, sandbox)
-        .context("failed to register builtin tools")?;
+        .whatever_context("failed to register builtin tools")?;
     info!(count = registry.definitions().len(), "tools registered");
     Ok(registry)
 }

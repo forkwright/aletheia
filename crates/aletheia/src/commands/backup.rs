@@ -2,8 +2,10 @@
 
 use std::path::PathBuf;
 
-use anyhow::{Context, Result};
 use clap::Args;
+use snafu::prelude::*;
+
+use crate::error::Result;
 
 use aletheia_mneme::store::SessionStore;
 
@@ -45,77 +47,24 @@ pub(crate) fn run(instance_root: Option<&PathBuf>, args: &BackupArgs) -> Result<
     let oikos = super::resolve_oikos(instance_root)?;
 
     let db_path = oikos.sessions_db();
-    let store = SessionStore::open(&db_path)
-        .with_context(|| format!("failed to open session store at {}", db_path.display()))?;
+    let store = SessionStore::open(&db_path).with_whatever_context(|_| {
+        format!("failed to open session store at {}", db_path.display())
+    })?;
 
     let backup_dir = oikos.backups();
     let manager = aletheia_mneme::backup::BackupManager::new(store.conn(), &backup_dir);
 
     if list {
-        let backups = manager.list_backups().context("failed to list backups")?;
-        if json {
-            let items: Vec<serde_json::Value> = backups
-                .iter()
-                .map(|b| {
-                    serde_json::json!({
-                        "filename": b.filename,
-                        "size_bytes": b.size_bytes,
-                    })
-                })
-                .collect();
-            println!("{}", serde_json::to_string_pretty(&items)?);
-        } else if backups.is_empty() {
-            println!("No backups found.");
-        } else {
-            for b in &backups {
-                println!("{} ({} bytes)", b.filename, b.size_bytes);
-            }
-        }
-        return Ok(());
+        return run_list(&manager, json);
     }
-
     if prune {
-        let backups = manager.list_backups().context("failed to list backups")?;
-        let to_remove: Vec<_> = backups.iter().skip(keep).collect();
-
-        if to_remove.is_empty() {
-            println!(
-                "Nothing to prune: {} backup(s) found, keeping {keep}.",
-                backups.len()
-            );
-            return Ok(());
-        }
-
-        if !yes {
-            println!("The following backup(s) will be deleted:");
-            for b in &to_remove {
-                println!("  {} ({} bytes)", b.filename, b.size_bytes);
-            }
-            print!("Proceed? [y/N] ");
-            std::io::Write::flush(&mut std::io::stdout()).context("failed to flush stdout")?;
-
-            let mut input = String::new();
-            std::io::BufRead::read_line(&mut std::io::stdin().lock(), &mut input)
-                .context("failed to read confirmation")?;
-
-            if !input.trim().eq_ignore_ascii_case("y") {
-                println!("Aborted.");
-                return Ok(());
-            }
-        }
-
-        let removed = manager
-            .prune_backups(keep)
-            .context("failed to prune backups")?;
-        println!("Pruned {removed} backup(s), kept {keep}.");
-        return Ok(());
+        return run_prune(&manager, keep, yes);
     }
-
     if export_json {
         let export_dir = oikos.archive().join("sessions");
         match manager
             .export_sessions_json(&export_dir)
-            .context("failed to export sessions")?
+            .whatever_context("failed to export sessions")?
         {
             Some(result) => println!(
                 "Exported {} session(s) to {}",
@@ -127,7 +76,10 @@ pub(crate) fn run(instance_root: Option<&PathBuf>, args: &BackupArgs) -> Result<
         return Ok(());
     }
 
-    match manager.create_backup().context("failed to create backup")? {
+    match manager
+        .create_backup()
+        .whatever_context("failed to create backup")?
+    {
         Some(result) => println!(
             "Backup created: {} ({} bytes, {} sessions, {} messages)",
             result.path.display(),
@@ -138,5 +90,76 @@ pub(crate) fn run(instance_root: Option<&PathBuf>, args: &BackupArgs) -> Result<
         None => println!("Backup skipped: disk space critical."),
     }
 
+    Ok(())
+}
+
+fn run_list(manager: &aletheia_mneme::backup::BackupManager<'_>, json: bool) -> Result<()> {
+    let backups = manager
+        .list_backups()
+        .whatever_context("failed to list backups")?;
+    if json {
+        let items: Vec<serde_json::Value> = backups
+            .iter()
+            .map(|b| {
+                serde_json::json!({
+                    "filename": b.filename,
+                    "size_bytes": b.size_bytes,
+                })
+            })
+            .collect();
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&items).whatever_context("failed to serialize backups")?
+        );
+    } else if backups.is_empty() {
+        println!("No backups found.");
+    } else {
+        for b in &backups {
+            println!("{} ({} bytes)", b.filename, b.size_bytes);
+        }
+    }
+    Ok(())
+}
+
+fn run_prune(
+    manager: &aletheia_mneme::backup::BackupManager<'_>,
+    keep: usize,
+    yes: bool,
+) -> Result<()> {
+    let backups = manager
+        .list_backups()
+        .whatever_context("failed to list backups")?;
+    let to_remove: Vec<_> = backups.iter().skip(keep).collect();
+
+    if to_remove.is_empty() {
+        println!(
+            "Nothing to prune: {} backup(s) found, keeping {keep}.",
+            backups.len()
+        );
+        return Ok(());
+    }
+
+    if !yes {
+        println!("The following backup(s) will be deleted:");
+        for b in &to_remove {
+            println!("  {} ({} bytes)", b.filename, b.size_bytes);
+        }
+        print!("Proceed? [y/N] ");
+        std::io::Write::flush(&mut std::io::stdout()).whatever_context("failed to flush stdout")?;
+
+        let mut input = String::new();
+        std::io::BufRead::read_line(&mut std::io::stdin().lock(), &mut input)
+            .whatever_context("failed to read confirmation")?;
+
+        if !input.trim().eq_ignore_ascii_case("y") {
+            println!("Aborted.");
+            return Ok(());
+        }
+    }
+
+    let removed = manager
+        .prune_backups(keep)
+        .whatever_context("failed to prune backups")?;
+    println!("Pruned {removed} backup(s), kept {keep}.");
     Ok(())
 }

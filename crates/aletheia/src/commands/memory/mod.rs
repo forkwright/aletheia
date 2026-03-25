@@ -2,8 +2,10 @@
 
 use std::path::PathBuf;
 
-use anyhow::Result;
 use clap::Subcommand;
+use snafu::prelude::*;
+
+use crate::error::Result;
 
 #[derive(Debug, Clone, Subcommand)]
 pub(crate) enum Action {
@@ -59,7 +61,7 @@ pub(crate) async fn run(action: Action, url: &str, instance_root: Option<&PathBu
         match action {
             Action::Check { json } => return run_check_via_api(url, json).await,
             _ => {
-                anyhow::bail!(
+                whatever!(
                     "The server at {url} is running and holds an exclusive lock on the knowledge store.\n  \
                      Stop the server first to use this subcommand, or use the REST API:\n  \
                      GET {url}/api/v1/knowledge/facts\n  \
@@ -74,7 +76,7 @@ pub(crate) async fn run(action: Action, url: &str, instance_root: Option<&PathBu
         let oikos = super::resolve_oikos(instance_root)?;
         let knowledge_path = oikos.knowledge_db();
         if !knowledge_path.exists() {
-            anyhow::bail!(
+            whatever!(
                 "knowledge store not found at {}\n  \
                  Has this instance been initialized with recall enabled?",
                 knowledge_path.display()
@@ -84,7 +86,7 @@ pub(crate) async fn run(action: Action, url: &str, instance_root: Option<&PathBu
         let config = aletheia_mneme::knowledge_store::KnowledgeConfig::default();
         let store =
             aletheia_mneme::knowledge_store::KnowledgeStore::open_fjall(&knowledge_path, config)
-                .map_err(|e| anyhow::anyhow!("failed to open knowledge store: {e}"))?;
+                .whatever_context("failed to open knowledge store")?;
 
         match action {
             Action::Check { json } => run_check(&store, json),
@@ -98,7 +100,7 @@ pub(crate) async fn run(action: Action, url: &str, instance_root: Option<&PathBu
     #[cfg(not(feature = "recall"))]
     {
         let _ = (action, instance_root);
-        anyhow::bail!(
+        whatever!(
             "memory subcommands require the 'recall' feature.\n  \
              Build with: cargo build --features recall"
         );
@@ -119,19 +121,22 @@ async fn run_check_via_api(url: &str, json: bool) -> Result<()> {
     let endpoint = format!("{url}/api/v1/knowledge/check");
     let resp = reqwest::get(&endpoint)
         .await
-        .map_err(|e| anyhow::anyhow!("failed to connect to {endpoint}: {e}"))?;
+        .whatever_context("failed to connect to server")?;
 
     if resp.status() == reqwest::StatusCode::SERVICE_UNAVAILABLE {
-        anyhow::bail!("knowledge store is not enabled on the running server");
+        whatever!("knowledge store is not enabled on the running server");
     }
 
     let body: serde_json::Value = resp
         .json()
         .await
-        .map_err(|e| anyhow::anyhow!("failed to parse response: {e}"))?;
+        .whatever_context("failed to parse response")?;
 
     if json {
-        println!("{}", serde_json::to_string_pretty(&body)?);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&body).whatever_context("failed to serialize JSON")?
+        );
     } else {
         println!("=== Memory Graph Health Check (via server API) ===\n");
         if let Some(fc) = body.get("fact_count").and_then(serde_json::Value::as_u64) {
@@ -184,7 +189,10 @@ fn run_check(
     let report = build_check_report(store)?;
 
     if json {
-        println!("{}", serde_json::to_string_pretty(&report)?);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&report).whatever_context("failed to serialize report")?
+        );
     } else {
         println!("=== Memory Graph Sanity Check ===\n");
         println!("Facts:         {}", report.fact_count);
@@ -298,7 +306,7 @@ fn count_relation(
     let script = format!("row[{key_field}] := *{relation}{{{key_field}}} \n?[count(k)] := row[k]");
     let result = store
         .run_query(&script, BTreeMap::new())
-        .map_err(|e| anyhow::anyhow!("query failed: {e}"))?;
+        .whatever_context("query failed")?;
     let count = result
         .rows
         .first()
@@ -322,7 +330,7 @@ fn find_orphaned_entities(
     ";
     let result = store
         .run_query(script, BTreeMap::new())
-        .map_err(|e| anyhow::anyhow!("orphan query failed: {e}"))?;
+        .whatever_context("orphan query failed")?;
     Ok(result
         .rows
         .iter()
@@ -346,7 +354,7 @@ fn find_dangling_edges(
     ";
     let result = store
         .run_query(script, BTreeMap::new())
-        .map_err(|e| anyhow::anyhow!("dangling edge query failed: {e}"))?;
+        .whatever_context("dangling edge query failed")?;
     Ok(result
         .rows
         .iter()
@@ -372,7 +380,7 @@ fn find_orphaned_embeddings(
     ";
     let result = store
         .run_query(script, BTreeMap::new())
-        .map_err(|e| anyhow::anyhow!("orphaned embedding query failed: {e}"))?;
+        .whatever_context("orphaned embedding query failed")?;
     Ok(result
         .rows
         .iter()
@@ -396,10 +404,10 @@ fn run_consolidate(
 
     let entity_candidates = store
         .find_entity_overflow_candidates(nous_id, &config)
-        .map_err(|e| anyhow::anyhow!("entity overflow scan failed: {e}"))?;
+        .whatever_context("entity overflow scan failed")?;
     let community_candidates = store
         .find_community_overflow_candidates(nous_id, &config)
-        .map_err(|e| anyhow::anyhow!("community overflow scan failed: {e}"))?;
+        .whatever_context("community overflow scan failed")?;
 
     let total = entity_candidates.len() + community_candidates.len();
     if total == 0 {
@@ -442,11 +450,11 @@ fn run_sample(
             let now = aletheia_mneme::knowledge::format_timestamp(&jiff::Timestamp::now());
             store
                 .query_facts(id, &now, limit)
-                .map_err(|e| anyhow::anyhow!("query failed: {e}"))?
+                .whatever_context("query failed")?
         }
         None => store
             .list_all_facts(limit)
-            .map_err(|e| anyhow::anyhow!("query failed: {e}"))?,
+            .whatever_context("query failed")?,
     };
 
     if facts.is_empty() {
@@ -509,11 +517,11 @@ fn run_dedup(
 
     let candidates = store
         .find_duplicate_entities(nous_id)
-        .map_err(|e| anyhow::anyhow!("duplicate scan failed: {e}"))?;
+        .whatever_context("duplicate scan failed")?;
 
     let pending = store
         .get_pending_merges(nous_id)
-        .map_err(|e| anyhow::anyhow!("pending merge query failed: {e}"))?;
+        .whatever_context("pending merge query failed")?;
 
     let hash_dupes = find_content_hash_duplicates(store, nous_id)?;
 
@@ -558,7 +566,7 @@ fn run_dedup(
     } else {
         let records = store
             .run_entity_dedup(nous_id)
-            .map_err(|e| anyhow::anyhow!("dedup execution failed: {e}"))?;
+            .whatever_context("dedup execution failed")?;
         if records.is_empty() {
             println!("\nNo auto-merges met the threshold. Candidates stored for review.");
         } else {
@@ -591,7 +599,7 @@ fn find_content_hash_duplicates(
     let now = aletheia_mneme::knowledge::format_timestamp(&jiff::Timestamp::now());
     let facts = store
         .query_facts(nous_id, &now, 10_000)
-        .map_err(|e| anyhow::anyhow!("fact query failed: {e}"))?;
+        .whatever_context("fact query failed")?;
 
     let mut hash_map: HashMap<[u8; 32], Vec<(String, String)>> = HashMap::new();
     for fact in &facts {
@@ -694,7 +702,7 @@ fn find_entity_cooccurrence(
     );
     let result = store
         .run_query(&script, BTreeMap::new())
-        .map_err(|e| anyhow::anyhow!("co-occurrence query failed: {e}"))?;
+        .whatever_context("co-occurrence query failed")?;
     Ok(result
         .rows
         .iter()
@@ -726,7 +734,7 @@ fn find_relationship_chains(
     );
     let result = store
         .run_query(&script, BTreeMap::new())
-        .map_err(|e| anyhow::anyhow!("relationship chain query failed: {e}"))?;
+        .whatever_context("relationship chain query failed")?;
     Ok(result
         .rows
         .iter()
@@ -764,7 +772,7 @@ fn find_hub_entities(
     );
     let result = store
         .run_query(&script, BTreeMap::new())
-        .map_err(|e| anyhow::anyhow!("hub entity query failed: {e}"))?;
+        .whatever_context("hub entity query failed")?;
     Ok(result
         .rows
         .iter()

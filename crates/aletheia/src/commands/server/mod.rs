@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use tokio::sync::Mutex;
 
-use anyhow::{Context, Result};
+use snafu::prelude::*;
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, info, warn};
 
@@ -31,6 +31,7 @@ use aletheia_taxis::validate::validate_section;
 
 use crate::commands::maintenance;
 use crate::daemon_bridge;
+use crate::error::Result;
 use crate::planning_adapter;
 
 /// Arguments forwarded from the top-level CLI to the server startup.
@@ -54,12 +55,12 @@ pub(crate) async fn run(args: Args) -> Result<()> {
     };
 
     // Load config early to get [logging] settings before tracing is initialised.
-    // Errors here surface via anyhow to stderr before the subscriber is up.
-    let config = load_config(&oikos).context("failed to load config")?;
+    // Errors here surface to stderr before the subscriber is up.
+    let config = load_config(&oikos).whatever_context("failed to load config")?;
 
     // Resolve and create the log directory.
     let log_dir = resolve_log_dir(&oikos, config.logging.log_dir.as_deref());
-    std::fs::create_dir_all(&log_dir).context("failed to create log directory")?;
+    std::fs::create_dir_all(&log_dir).whatever_context("failed to create log directory")?;
 
     // Initialise tracing: console at the CLI-specified level, JSON file at
     // the configured level (default WARN+). The returned guard must live for
@@ -71,7 +72,7 @@ pub(crate) async fn run(args: Args) -> Result<()> {
         &config.logging.level,
         &config.logging.redaction,
     )
-    .context("failed to initialise file logging")?;
+    .whatever_context("failed to initialise file logging")?;
 
     info!("aletheia starting");
 
@@ -82,7 +83,9 @@ pub(crate) async fn run(args: Args) -> Result<()> {
     info!(root = %oikos.root().display(), "instance discovered");
 
     // Startup validation: fail fast before any actors or stores initialise
-    oikos.validate().context("instance layout invalid")?;
+    oikos
+        .validate()
+        .whatever_context("instance layout invalid")?;
 
     info!(
         port = config.gateway.port,
@@ -91,8 +94,8 @@ pub(crate) async fn run(args: Args) -> Result<()> {
     );
 
     // Validate all config sections: fail fast before any actors or stores initialise.
-    let config_value =
-        serde_json::to_value(&config).context("failed to serialize config for validation")?;
+    let config_value = serde_json::to_value(&config)
+        .whatever_context("failed to serialize config for validation")?;
     for section in &[
         "agents",
         "gateway",
@@ -105,7 +108,7 @@ pub(crate) async fn run(args: Args) -> Result<()> {
     ] {
         if let Some(section_value) = config_value.get(section) {
             validate_section(section, section_value)
-                .with_context(|| format!("invalid config section '{section}'"))?;
+                .with_whatever_context(|_| format!("invalid config section '{section}'"))?;
         }
     }
     info!("config validated");
@@ -125,11 +128,11 @@ pub(crate) async fn run(args: Args) -> Result<()> {
     };
     jwt_config
         .validate_for_auth_mode(config.gateway.auth.mode.as_str())
-        .context("JWT key security check failed")?;
+        .whatever_context("JWT key security check failed")?;
 
     // Validate per-agent workspace paths: fatal if any agent workspace is invalid.
     for agent in &config.agents.list {
-        oikos.validate_workspace_path(&agent.workspace).with_context(|| {
+        oikos.validate_workspace_path(&agent.workspace).with_whatever_context(|_| {
             format!(
                 "agent '{}' workspace path '{}' is invalid — create the directory or fix the config",
                 agent.id, agent.workspace
@@ -145,11 +148,12 @@ pub(crate) async fn run(args: Args) -> Result<()> {
     let db_path = oikos.sessions_db();
     if let Some(parent) = db_path.parent() {
         std::fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create data dir {}", parent.display()))?;
+            .with_whatever_context(|_| format!("failed to create data dir {}", parent.display()))?;
     }
     let session_store = Arc::new(Mutex::new(
-        SessionStore::open(&db_path)
-            .with_context(|| format!("failed to open session store at {}", db_path.display()))?,
+        SessionStore::open(&db_path).with_whatever_context(|_| {
+            format!("failed to open session store at {}", db_path.display())
+        })?,
     ));
     info!(path = %db_path.display(), "session store opened");
 
@@ -251,13 +255,14 @@ pub(crate) async fn run(args: Args) -> Result<()> {
     let knowledge_store = {
         let kb_path = oikos_arc.knowledge_db();
         if let Some(parent) = kb_path.parent() {
-            std::fs::create_dir_all(parent)?;
+            std::fs::create_dir_all(parent)
+                .whatever_context("failed to create knowledge store directory")?;
         }
         let store = aletheia_mneme::knowledge_store::KnowledgeStore::open_fjall(
             &kb_path,
             aletheia_mneme::knowledge_store::KnowledgeConfig::default(),
         )
-        .context("failed to open knowledge store")?;
+        .whatever_context("failed to open knowledge store")?;
         info!(path = %kb_path.display(), dim = 384, "knowledge store opened (fjall)");
         Some(store)
     };
@@ -550,12 +555,12 @@ pub(crate) async fn run(args: Args) -> Result<()> {
         .await
         .map_err(|e| {
             if e.kind() == std::io::ErrorKind::AddrInUse {
-                anyhow::anyhow!(
+                crate::error::Error::msg(format!(
                     "Port {port} is already in use.\n  \
                      Use --port to choose another port, or stop the process using port {port}."
-                )
+                ))
             } else {
-                anyhow::anyhow!("failed to bind to {bind_addr}: {e}")
+                crate::error::Error::msg(format!("failed to bind to {bind_addr}: {e}"))
             }
         })?;
 
@@ -571,7 +576,7 @@ pub(crate) async fn run(args: Args) -> Result<()> {
             token_for_signal.cancel();
         })
         .await
-        .context("server error")?;
+        .whatever_context("server error")?;
 
     // ── Drain ordering ──────────────────────────────────────────────────────
     // 1. HTTP server has stopped accepting new requests (axum graceful_shutdown).
