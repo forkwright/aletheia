@@ -22,13 +22,13 @@ use aletheia_taxis::oikos::Oikos;
 ///
 /// Returns a clear error message directing the user to `aletheia init` or `-r`
 /// instead of letting downstream code fail with opaque SQLite/config errors.
-pub(crate) fn resolve_oikos(instance_root: Option<&PathBuf>) -> anyhow::Result<Oikos> {
+pub(crate) fn resolve_oikos(instance_root: Option<&PathBuf>) -> crate::error::Result<Oikos> {
     let oikos = match instance_root {
         Some(root) => Oikos::from_root(root),
         None => Oikos::discover(),
     };
     if !oikos.root().exists() {
-        anyhow::bail!(
+        snafu::whatever!(
             "instance not found at {}\n  \
              Use -r /path/to/instance or set ALETHEIA_ROOT.\n  \
              To create a new instance: aletheia init",

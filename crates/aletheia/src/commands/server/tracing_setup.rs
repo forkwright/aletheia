@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use snafu::prelude::*;
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, info};
 use tracing_appender::non_blocking::WorkerGuard;
@@ -13,6 +13,8 @@ use tracing_subscriber::{EnvFilter, fmt};
 
 use aletheia_koina::redacting_layer::RedactingLayer;
 use aletheia_taxis::oikos::Oikos;
+
+use crate::error::Result;
 
 /// Spawn a background task that prunes log files older than `retention_days`.
 ///
@@ -98,7 +100,7 @@ pub(super) fn init_tracing(
 
     // File filter: configured level, default "warn": captures WARN+ even
     // when the console is set to INFO.
-    let file_filter = EnvFilter::try_new(file_level).with_context(|| {
+    let file_filter = EnvFilter::try_new(file_level).with_whatever_context(|_| {
         format!("invalid logging.level '{file_level}' — use a tracing directive such as 'warn'")
     })?;
 
@@ -142,7 +144,7 @@ pub(super) fn init_tracing(
             .with(text_console)
             .with(redacting)
             .try_init()
-            .context("failed to set global tracing subscriber")?;
+            .whatever_context("failed to set global tracing subscriber")?;
     } else {
         let file_layer = fmt::layer()
             .json()
@@ -156,7 +158,7 @@ pub(super) fn init_tracing(
             .with(text_console)
             .with(file_layer)
             .try_init()
-            .context("failed to set global tracing subscriber")?;
+            .whatever_context("failed to set global tracing subscriber")?;
     }
 
     Ok(guard)

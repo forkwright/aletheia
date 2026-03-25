@@ -2,7 +2,9 @@
 
 use std::path::PathBuf;
 
-use anyhow::Result;
+use snafu::prelude::*;
+
+use crate::error::Result;
 
 use aletheia_taxis::loader::load_config;
 use aletheia_taxis::oikos::Oikos;
@@ -29,7 +31,7 @@ pub(crate) fn run(instance_root: Option<&PathBuf>) -> Result<()> {
              help: set ALETHEIA_ROOT or run `aletheia init`",
             oikos.root().display()
         );
-        anyhow::bail!("Cannot validate: instance root does not exist");
+        whatever!("Cannot validate: instance root does not exist");
     }
 
     match oikos.validate() {
@@ -47,7 +49,7 @@ pub(crate) fn run(instance_root: Option<&PathBuf>) -> Result<()> {
         }
         Err(e) => {
             println!("  [FAIL] config load: {e}");
-            anyhow::bail!("config validation aborted: could not load config");
+            whatever!("config validation aborted: could not load config");
         }
     };
 
@@ -55,7 +57,7 @@ pub(crate) fn run(instance_root: Option<&PathBuf>) -> Result<()> {
         Ok(v) => v,
         Err(e) => {
             println!("  [FAIL] config serialization: {e}");
-            anyhow::bail!("config validation aborted: could not serialize config");
+            whatever!("config validation aborted: could not serialize config");
         }
     };
 
@@ -121,6 +123,6 @@ pub(crate) fn run(instance_root: Option<&PathBuf>) -> Result<()> {
         println!("Configuration OK");
         Ok(())
     } else {
-        anyhow::bail!("Configuration has errors — see above");
+        whatever!("Configuration has errors — see above");
     }
 }
