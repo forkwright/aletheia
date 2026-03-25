@@ -11,3 +11,8 @@ Cargo.lock
 /coverage/
 *.profraw
 *.profdata
+
+# WHY: libFuzzer generates hash-named corpus entries during runs.
+# Seed files (corpus/*/seed_*) are hand-crafted and tracked in git.
+# Generated entries match [0-9a-f]{40} — this pattern catches them.
+/corpus/*/[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]*
