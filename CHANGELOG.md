@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.13.13](https://github.com/forkwright/aletheia/compare/v0.13.12...v0.13.13) (2026-03-25)
+
+
+### Bug Fixes
+
+* **aletheia:** set 0600 permissions on config and export writes ([#2106](https://github.com/forkwright/aletheia/issues/2106)) ([6c1c7de](https://github.com/forkwright/aletheia/commit/6c1c7dea043b3224bd4e70af225fb4e3c0b8a63f))
+
+
+### Documentation
+
+* **crates:** fix 3 module path inaccuracies in per-crate CLAUDE.md ([#2104](https://github.com/forkwright/aletheia/issues/2104)) ([10ed5a3](https://github.com/forkwright/aletheia/commit/10ed5a33da00d7c3ccf8e39c4f4e8ef6af87f5f6))
+
 ## [0.13.12](https://github.com/forkwright/aletheia/compare/v0.13.11...v0.13.12) (2026-03-25)
 
 
