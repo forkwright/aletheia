@@ -712,5 +712,5 @@ pub fn pack_sections_to_bootstrap<E: TokenEstimator>(
 }
 
 #[cfg(test)]
-#[path = "bootstrap_tests.rs"]
+#[path = "bootstrap_tests/mod.rs"]
 mod tests;
