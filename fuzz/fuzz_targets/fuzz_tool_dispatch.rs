@@ -49,7 +49,9 @@ fuzz_target!(|data: &[u8]| {
                     let mid = part.floor_char_boundary((part.len() / 2).max(1));
                     if mid > 0 && mid < part.len() {
                         let (name, hash) = part.split_at(mid);
-                        let _ = detector.record(name, hash);
+                        // WHY: is_error derived from byte to exercise both paths.
+                        let is_error = mid % 2 == 0;
+                        let _ = detector.record(name, hash, is_error);
                     }
                 }
             }
