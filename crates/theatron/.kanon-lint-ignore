@@ -1,3 +1,10 @@
+# WHY: theatron umbrella totals 86K lines across three sub-crates, but no
+# individual sub-crate exceeds the 50K budget. core: 3K, tui: 37K,
+# desktop: 45K. The umbrella is already decomposed along clean boundaries
+# (shared infra / terminal / desktop). Desktop is closest at 45K — monitor
+# for further growth. See #2072.
+ARCH/crate-too-large:theatron
+
 # WHY: theatron-core is a library crate. These items are public API consumed
 # by theatron-tui and theatron-desktop.
 RUST/pub-visibility:core/src/api/client.rs
