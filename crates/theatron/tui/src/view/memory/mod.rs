@@ -11,7 +11,7 @@ const STATUS_BAR_HEIGHT: u16 = 1;
 /// Column width reserved for confidence, tier, and type columns in the facts table.
 const RESERVED_COLUMN_WIDTH: u16 = 28;
 /// Maximum content length for similar-fact snippets shown in the detail view.
-const SIMILAR_FACT_TRUNCATE_LEN: usize = 60;
+pub(super) const SIMILAR_FACT_TRUNCATE_LEN: usize = 60;
 /// Column width for the fact type field in the facts table.
 const FACT_TYPE_COLUMN_WIDTH: usize = 10;
 /// Confidence threshold above which a fact is considered high-confidence.
@@ -22,6 +22,9 @@ use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+
+mod detail;
+pub(crate) use detail::{render_entity_detail, render_fact_detail};
 
 use crate::app::App;
 use crate::state::memory::{MemoryInspectorState, MemoryTab};
@@ -52,182 +55,6 @@ pub(crate) fn render_inspector(app: &App, frame: &mut Frame, area: Rect, theme: 
     }
 
     render_memory_status(app, frame, layout[2], theme);
-}
-
-/// Render the fact detail view.
-pub(crate) fn render_fact_detail(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
-    let mut lines: Vec<Line> = Vec::new();
-    lines.push(Line::raw(""));
-
-    if let Some(ref detail) = app.layout.memory.fact_list.detail {
-        let f = &detail.fact;
-
-        lines.push(Line::from(vec![
-            Span::raw(" "),
-            Span::styled(
-                "Fact Detail",
-                theme.style_accent().add_modifier(Modifier::BOLD),
-            ),
-        ]));
-        lines.push(Line::raw(""));
-
-        let tier_label = MemoryInspectorState::tier_abbrev(&f.tier);
-        lines.push(meta_line(theme, "ID", &f.id));
-        lines.push(meta_line(
-            theme,
-            "Tier",
-            &format!("{tier_label} ({})", f.tier),
-        ));
-        lines.push(meta_line(
-            theme,
-            "Confidence",
-            &format!("{:.0}%", f.confidence * 100.0),
-        ));
-        lines.push(meta_line(theme, "Type", &f.fact_type));
-        lines.push(meta_line(
-            theme,
-            "Created",
-            &MemoryInspectorState::relative_time(&f.temporal.recorded_at),
-        ));
-        lines.push(meta_line(
-            theme,
-            "Last Seen",
-            &MemoryInspectorState::relative_time(&f.temporal.last_accessed_at),
-        ));
-        lines.push(meta_line(
-            theme,
-            "Accesses",
-            &f.temporal.access_count.to_string(),
-        ));
-        lines.push(meta_line(
-            theme,
-            "Stability",
-            &format!("{:.0}h", f.temporal.stability_hours),
-        ));
-        if !f.temporal.valid_from.is_empty() {
-            lines.push(meta_line(theme, "Valid From", &f.temporal.valid_from));
-        }
-        if !f.temporal.valid_to.is_empty() && f.temporal.valid_to != "9999-12-31" {
-            lines.push(meta_line(theme, "Valid To", &f.temporal.valid_to));
-        }
-        if f.lifecycle.is_forgotten {
-            lines.push(Line::from(vec![
-                Span::raw("  "),
-                Span::styled("Status: ", theme.style_dim()),
-                Span::styled("FORGOTTEN", theme.style_error()),
-            ]));
-        }
-
-        lines.push(Line::raw(""));
-
-        lines.push(Line::from(vec![
-            Span::raw("  "),
-            Span::styled("Content:", theme.style_fg().add_modifier(Modifier::BOLD)),
-        ]));
-        for content_line in f.content.lines() {
-            lines.push(Line::from(vec![
-                Span::raw("    "),
-                Span::styled(content_line.to_string(), theme.style_fg()),
-            ]));
-        }
-
-        if !detail.relationships.is_empty() {
-            lines.push(Line::raw(""));
-            lines.push(Line::from(vec![
-                Span::raw("  "),
-                Span::styled(
-                    format!("Relationships ({}):", detail.relationships.len()),
-                    theme.style_fg().add_modifier(Modifier::BOLD),
-                ),
-            ]));
-            for rel in &detail.relationships {
-                lines.push(Line::from(vec![
-                    Span::raw("    "),
-                    Span::styled(&rel.src, theme.style_accent()),
-                    Span::styled(format!(" ─{}─▸ ", rel.relation), theme.style_dim()),
-                    Span::styled(&rel.dst, theme.style_accent()),
-                ]));
-            }
-        }
-
-        if !detail.similar.is_empty() {
-            lines.push(Line::raw(""));
-            lines.push(Line::from(vec![
-                Span::raw("  "),
-                Span::styled(
-                    format!("Similar Facts ({}):", detail.similar.len()),
-                    theme.style_fg().add_modifier(Modifier::BOLD),
-                ),
-            ]));
-            for sim in &detail.similar {
-                let truncated = truncate(&sim.content, SIMILAR_FACT_TRUNCATE_LEN);
-                lines.push(Line::from(vec![
-                    Span::raw("    "),
-                    Span::styled(
-                        format!("{:.0}% ", sim.similarity * 100.0),
-                        theme.style_warning(),
-                    ),
-                    Span::styled(truncated, theme.style_fg()),
-                ]));
-            }
-        }
-    } else if app.layout.memory.loading {
-        lines.push(Line::from(vec![
-            Span::raw("  "),
-            Span::styled("Loading fact detail...", theme.style_dim()),
-        ]));
-    } else {
-        lines.push(Line::from(vec![
-            Span::raw("  "),
-            Span::styled("No fact data available.", theme.style_dim()),
-        ]));
-    }
-
-    if app.layout.memory.fact_list.editing_confidence {
-        lines.push(Line::raw(""));
-        lines.push(Line::from(vec![
-            Span::raw("  "),
-            Span::styled(
-                "Set confidence (0.0–1.0): ",
-                theme.style_accent().add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                &app.layout.memory.fact_list.confidence_buffer,
-                theme.style_fg().add_modifier(Modifier::UNDERLINED),
-            ),
-            Span::styled("▌", theme.style_accent()),
-        ]));
-    }
-
-    lines.push(Line::raw(""));
-    let mut help = vec![
-        Span::raw("  "),
-        Span::styled("Esc", theme.style_accent()),
-        Span::styled(" back  ", theme.style_dim()),
-        Span::styled("e", theme.style_accent()),
-        Span::styled(" edit confidence  ", theme.style_dim()),
-    ];
-    if app
-        .layout
-        .memory
-        .fact_list
-        .detail
-        .as_ref()
-        .is_some_and(|d| d.fact.lifecycle.is_forgotten)
-    {
-        help.push(Span::styled("r", theme.style_accent()));
-        help.push(Span::styled(" restore", theme.style_dim()));
-    } else {
-        help.push(Span::styled("d", theme.style_accent()));
-        help.push(Span::styled(" forget", theme.style_dim()));
-    }
-    lines.push(Line::from(help));
-
-    let block = Block::default().borders(Borders::NONE);
-    let paragraph = Paragraph::new(lines)
-        .block(block)
-        .wrap(Wrap { trim: false });
-    frame.render_widget(paragraph, area);
 }
 
 fn render_tab_bar(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
@@ -685,151 +512,6 @@ fn render_drift_view(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     frame.render_widget(paragraph, area);
 }
 
-/// Render the entity detail view (node card).
-pub(crate) fn render_entity_detail(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
-    let mut lines: Vec<Line> = Vec::new();
-    lines.push(Line::raw(""));
-
-    if let Some(ref card) = app.layout.memory.graph.node_card {
-        lines.push(Line::from(vec![
-            Span::raw(" "),
-            Span::styled(
-                "Entity Detail",
-                theme.style_accent().add_modifier(Modifier::BOLD),
-            ),
-        ]));
-        lines.push(Line::raw(""));
-
-        lines.push(meta_line(theme, "Name", &card.entity.name));
-        lines.push(meta_line(theme, "Type", &card.entity.entity_type));
-        if !card.entity.aliases.is_empty() {
-            lines.push(meta_line(theme, "Aliases", &card.entity.aliases.join(", ")));
-        }
-        lines.push(meta_line(
-            theme,
-            "Created",
-            &MemoryInspectorState::relative_time(&card.entity.created_at),
-        ));
-        lines.push(meta_line(
-            theme,
-            "Updated",
-            &MemoryInspectorState::relative_time(&card.entity.updated_at),
-        ));
-        lines.push(meta_line(
-            theme,
-            "PageRank",
-            &format!("{:.4}", card.pagerank),
-        ));
-        lines.push(meta_line(
-            theme,
-            "Community",
-            &card
-                .community_id
-                .map(|c| format!("#{c}"))
-                .unwrap_or_else(|| "none".into()),
-        ));
-
-        if !card.relationships_grouped.is_empty() {
-            lines.push(Line::raw(""));
-            let total_rels: usize = card
-                .relationships_grouped
-                .iter()
-                .map(|(_, v)| v.len())
-                .sum();
-            lines.push(Line::from(vec![
-                Span::raw("  "),
-                Span::styled(
-                    format!("Relationships ({total_rels}):"),
-                    theme.style_fg().add_modifier(Modifier::BOLD),
-                ),
-            ]));
-
-            for (rel_type, rels) in &card.relationships_grouped {
-                lines.push(Line::from(vec![
-                    Span::raw("    "),
-                    Span::styled(rel_type.as_str(), theme.style_accent()),
-                    Span::styled(format!(" ({})", rels.len()), theme.style_dim()),
-                ]));
-                for rel in rels.iter().take(5) {
-                    let other = if rel.src == card.entity.id {
-                        &rel.dst
-                    } else {
-                        &rel.src
-                    };
-                    let direction = if rel.src == card.entity.id {
-                        " ─▸ "
-                    } else {
-                        " ◂─ "
-                    };
-                    lines.push(Line::from(vec![
-                        Span::raw("      "),
-                        Span::styled(direction, theme.style_dim()),
-                        Span::styled(other.as_str(), theme.style_fg()),
-                    ]));
-                }
-                if rels.len() > 5 {
-                    lines.push(Line::from(vec![
-                        Span::raw("      "),
-                        Span::styled(
-                            format!("  ... and {} more", rels.len() - 5),
-                            theme.style_muted(),
-                        ),
-                    ]));
-                }
-            }
-        }
-
-        if !card.related_facts.is_empty() {
-            lines.push(Line::raw(""));
-            lines.push(Line::from(vec![
-                Span::raw("  "),
-                Span::styled(
-                    format!("Related Facts ({}):", card.related_facts.len()),
-                    theme.style_fg().add_modifier(Modifier::BOLD),
-                ),
-            ]));
-            for fact in &card.related_facts {
-                let tier_abbr = MemoryInspectorState::tier_abbrev(&fact.tier);
-                let content = truncate(&fact.content.replace('\n', " "), SIMILAR_FACT_TRUNCATE_LEN);
-                lines.push(Line::from(vec![
-                    Span::raw("    "),
-                    Span::styled(
-                        format!("{:.0}%", fact.confidence * 100.0),
-                        confidence_style(theme, fact.confidence),
-                    ),
-                    Span::raw("  "),
-                    Span::styled(tier_abbr, tier_style(theme, &fact.tier)),
-                    Span::raw("  "),
-                    Span::styled(content, theme.style_fg()),
-                ]));
-            }
-        }
-    } else if app.layout.memory.loading {
-        lines.push(Line::from(vec![
-            Span::raw("  "),
-            Span::styled("Loading entity detail...", theme.style_dim()),
-        ]));
-    } else {
-        lines.push(Line::from(vec![
-            Span::raw("  "),
-            Span::styled("No entity data available.", theme.style_dim()),
-        ]));
-    }
-
-    lines.push(Line::raw(""));
-    lines.push(Line::from(vec![
-        Span::raw("  "),
-        Span::styled("Esc", theme.style_accent()),
-        Span::styled(" back", theme.style_dim()),
-    ]));
-
-    let block = Block::default().borders(Borders::NONE);
-    let paragraph = Paragraph::new(lines)
-        .block(block)
-        .wrap(Wrap { trim: false });
-    frame.render_widget(paragraph, area);
-}
-
 fn render_timeline_view(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let mut lines: Vec<Line> = Vec::new();
     lines.push(Line::raw(""));
@@ -927,7 +609,7 @@ fn render_memory_status(app: &App, frame: &mut Frame, area: Rect, theme: &Theme)
     frame.render_widget(paragraph, area);
 }
 
-fn meta_line<'a>(theme: &'a Theme, label: &'a str, value: &str) -> Line<'a> {
+pub(super) fn meta_line<'a>(theme: &'a Theme, label: &'a str, value: &str) -> Line<'a> {
     Line::from(vec![
         Span::raw("  "),
         Span::styled(format!("{label}: "), theme.style_dim()),
@@ -935,7 +617,7 @@ fn meta_line<'a>(theme: &'a Theme, label: &'a str, value: &str) -> Line<'a> {
     ])
 }
 
-fn confidence_style(theme: &Theme, conf: f64) -> Style {
+pub(super) fn confidence_style(theme: &Theme, conf: f64) -> Style {
     if conf >= CONFIDENCE_HIGH_THRESHOLD {
         theme.style_success()
     } else if conf >= CONFIDENCE_MED_THRESHOLD {
@@ -945,7 +627,7 @@ fn confidence_style(theme: &Theme, conf: f64) -> Style {
     }
 }
 
-fn tier_style(theme: &Theme, tier: &str) -> Style {
+pub(super) fn tier_style(theme: &Theme, tier: &str) -> Style {
     match tier {
         "verified" => theme.style_success(),
         "inferred" => theme.style_warning(),
@@ -964,7 +646,7 @@ fn event_type_style(theme: &Theme, event_type: &str) -> Style {
     }
 }
 
-fn truncate(s: &str, max_len: usize) -> String {
+pub(super) fn truncate(s: &str, max_len: usize) -> String {
     if s.len() <= max_len {
         s.to_string()
     } else {
