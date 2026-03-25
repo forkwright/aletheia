@@ -11,8 +11,10 @@ use std::sync::LazyLock;
 
 use libfuzzer_sys::fuzz_target;
 
+use aletheia_mneme::id::FactId;
 use aletheia_mneme::knowledge::{
-    EpistemicTier, Fact, FactType, ForgetReason, far_future, format_timestamp, parse_timestamp,
+    EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal, FactType,
+    ForgetReason, far_future, format_timestamp, parse_timestamp,
 };
 use aletheia_mneme::knowledge_store::KnowledgeStore;
 
@@ -106,24 +108,34 @@ fuzz_target!(|data: &[u8]| {
     };
 
     let now = jiff::Timestamp::now();
+    // WHY: FactId::new returns Result; skip iteration if ID is somehow invalid.
+    let Ok(id) = FactId::new(fact_id) else { return };
     let fact = Fact {
-        id: fact_id.as_str().into(),
+        id,
         nous_id: "fuzz-agent".to_owned(),
-        content: content.to_string(),
-        confidence,
-        tier,
-        valid_from: now,
-        valid_to: far_future(),
-        superseded_by: None,
-        source_session_id: None,
-        recorded_at: now,
-        access_count: 0,
-        last_accessed_at: None,
-        stability_hours: fact_type.base_stability_hours(),
         fact_type: fact_type.as_str().to_owned(),
-        is_forgotten: false,
-        forgotten_at: None,
-        forget_reason: None,
+        content: content.to_string(),
+        temporal: FactTemporal {
+            valid_from: now,
+            valid_to: far_future(),
+            recorded_at: now,
+        },
+        provenance: FactProvenance {
+            confidence,
+            tier,
+            source_session_id: None,
+            stability_hours: fact_type.base_stability_hours(),
+        },
+        lifecycle: FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
     };
 
     // Insert and read back.
