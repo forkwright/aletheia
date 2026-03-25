@@ -81,6 +81,15 @@ fn generate_certs(output_dir: &Path, days: u32, sans: &[String], force: bool) ->
     )]
     std::fs::write(&cert_path, cert.pem())
         .with_whatever_context(|_| format!("failed to write {}", cert_path.display()))?;
+    // WHY: restrict TLS certificate to owner-only (0600) — TLS files should not be world-readable
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&cert_path, std::fs::Permissions::from_mode(0o600))
+            .with_whatever_context(|_| {
+                format!("failed to set permissions on {}", cert_path.display())
+            })?;
+    }
     #[expect(
         clippy::disallowed_methods,
         reason = "aletheia CLI commands use synchronous filesystem operations for config and certificate generation"
