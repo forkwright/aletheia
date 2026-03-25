@@ -41,7 +41,7 @@ Knowledge pipeline: extraction, recall, conflict detection, consolidation, embed
 - **6-factor recall**: recency, relevance, confidence, access frequency, knowledge tier, graph intelligence. Weighted sum produces final score.
 - **Conflict pipeline**: new facts checked against existing via embedding similarity. Classified as contradiction, supersession, elaboration, or independent.
 - **Extraction refinement**: turn classification, correction detection, quality filters, and fact type classification in `extract/refinement`.
-- **Serendipity engine**: cross-domain discovery and surprise scoring in `serendipity.rs`.
+- **Serendipity engine**: cross-domain discovery and surprise scoring in `serendipity/mod.rs`.
 - **Ecological succession**: domain volatility tracking and adaptive decay rates in `succession.rs`.
 
 ## Common tasks
