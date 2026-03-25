@@ -207,8 +207,20 @@ fn write_output(content: &str, path: Option<&std::path::Path>) -> Result<()> {
             clippy::disallowed_methods,
             reason = "aletheia CLI commands use synchronous filesystem operations for config and certificate generation"
         )]
-        Some(p) => std::fs::write(p, content)
-            .with_whatever_context(|_| format!("failed to write to {}", p.display())),
+        Some(p) => {
+            std::fs::write(p, content)
+                .with_whatever_context(|_| format!("failed to write to {}", p.display()))?;
+            // WHY: restrict session export to owner-only (0600) — contains private conversation history
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o600))
+                    .with_whatever_context(|_| {
+                        format!("failed to set permissions on {}", p.display())
+                    })?;
+            }
+            Ok(())
+        }
         None => std::io::stdout()
             .write_all(content.as_bytes())
             .whatever_context("failed to write to stdout"),
