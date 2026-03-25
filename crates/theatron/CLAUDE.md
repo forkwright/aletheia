@@ -1,14 +1,14 @@
 # theatron
 
-Presentation umbrella grouping the three UI crates: core (shared infrastructure), tui (terminal), desktop (Dioxus). 86K lines total.
+Presentation umbrella grouping the three UI crates: core (shared infrastructure), tui (terminal), desktop (Dioxus). 86K lines total across sub-crates; no individual sub-crate exceeds the 50K budget.
 
 ## Sub-crates
 
-| Crate | Path | Lines | Purpose |
-|-------|------|-------|---------|
-| `theatron-core` | `core/` | 3K | Shared API client, types, SSE parser, streaming infrastructure |
-| `theatron-tui` | `tui/` | 37K | Ratatui terminal dashboard (Elm architecture, feature-gated in workspace) |
-| `theatron-desktop` | `desktop/` | 45K | Dioxus desktop app (excluded from workspace, GTK deps) |
+| Crate | Path | Lines | Budget | Purpose |
+|-------|------|-------|--------|---------|
+| `theatron-core` | `core/` | 3K | ✓ | Shared API client, types, SSE parser, streaming infrastructure |
+| `theatron-tui` | `tui/` | 37K | ✓ | Ratatui terminal dashboard (Elm architecture, feature-gated in workspace) |
+| `theatron-desktop` | `desktop/` | 45K | ✓ | Dioxus desktop app (excluded from workspace, GTK deps) |
 
 ## Dependency graph
 
