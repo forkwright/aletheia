@@ -5,7 +5,7 @@ Shared API client, types, SSE parser, and streaming infrastructure for Aletheia 
 ## Read first
 
 1. `src/api/client.rs`: ApiClient (HTTP client for gateway REST API)
-2. `src/api/types.rs`: Agent, Session, HistoryMessage, SseEvent, TurnOutcome, CostSummary
+2. `src/api/types/mod.rs`: Agent, Session, HistoryMessage, SseEvent, TurnOutcome, CostSummary
 3. `src/events.rs`: StreamEvent enum (per-turn streaming: text deltas, tool calls, plan steps)
 4. `src/sse.rs`: SseEvent, SseStream (wire protocol parser for reqwest byte streams)
 5. `src/id.rs`: NousId, SessionId, TurnId, ToolId, PlanId (domain identifier newtypes)
@@ -21,9 +21,9 @@ Shared API client, types, SSE parser, and streaming infrastructure for Aletheia 
 | `NousId` | `id.rs` | Agent identifier newtype |
 | `SessionId` | `id.rs` | Session identifier newtype |
 | `TurnId` | `id.rs` | Turn identifier newtype |
-| `Agent` | `api/types.rs` | Agent info: id, name, model, status |
-| `Session` | `api/types.rs` | Session info: id, name, agent, message count, timestamps |
-| `SseEvent` (api) | `api/types.rs` | Deserialized dashboard SSE events (agent status, session updates, costs) |
+| `Agent` | `api/types/mod.rs` | Agent info: id, name, model, status |
+| `Session` | `api/types/mod.rs` | Session info: id, name, agent, message count, timestamps |
+| `SseEvent` (api) | `api/types/mod.rs` | Deserialized dashboard SSE events (agent status, session updates, costs) |
 | `ApiError` | `api/error.rs` | Error type for all API operations |
 
 ## Patterns
@@ -37,10 +37,10 @@ Shared API client, types, SSE parser, and streaming infrastructure for Aletheia 
 
 | Task | Where |
 |------|-------|
-| Add API endpoint | `src/api/client.rs` (method on ApiClient) + `src/api/types.rs` (request/response types) |
+| Add API endpoint | `src/api/client.rs` (method on ApiClient) + `src/api/types/mod.rs` (request/response types) |
 | Add stream event | `src/events.rs` (StreamEvent enum) + `src/api/streaming.rs` (parser) |
 | Add domain ID type | `src/id.rs` |
-| Add SSE dashboard event | `src/api/types.rs` (SseEvent enum) + `src/api/sse.rs` (parser) |
+| Add SSE dashboard event | `src/api/types/mod.rs` (SseEvent enum) + `src/api/sse.rs` (parser) |
 
 ## Dependencies
 

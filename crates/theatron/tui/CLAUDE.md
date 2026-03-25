@@ -7,7 +7,7 @@ Ratatui terminal dashboard for Aletheia: chat, planning, memory, metrics, ops vi
 1. `src/lib.rs`: Entry point, run_tui, event loop (tokio::select! over terminal, SSE, stream, tick)
 2. `src/app/mod.rs`: App struct, DashboardState, ConnectionState, sub-state groups
 3. `src/msg.rs`: Msg enum (all application messages), OverlayKind, NotificationKind
-4. `src/update.rs`: Message handler (Msg -> state mutations + side effects)
+4. `src/update/mod.rs`: Message handler (Msg -> state mutations + side effects)
 5. `src/state/mod.rs`: State modules (agent, chat, command, editor, filter, input, memory, metrics, ops, overlay)
 
 ## Key types
