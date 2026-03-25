@@ -2,8 +2,10 @@
 
 use std::path::PathBuf;
 
-use anyhow::{Context, Result};
 use clap::Subcommand;
+use snafu::prelude::*;
+
+use crate::error::Result;
 
 use tokio_util::sync::CancellationToken;
 
@@ -38,7 +40,7 @@ pub(crate) fn run(action: Action, instance_root: Option<&PathBuf>) -> Result<()>
         Some(root) => Oikos::from_root(root),
         None => Oikos::discover(),
     };
-    let config = load_config(&oikos).context("failed to load config")?;
+    let config = load_config(&oikos).whatever_context("failed to load config")?;
     let maint = build_config(&oikos, &config.maintenance);
 
     match action {
@@ -48,7 +50,11 @@ pub(crate) fn run(action: Action, instance_root: Option<&PathBuf>) -> Result<()>
             runner.register_maintenance_tasks();
             let statuses = runner.status();
             if json {
-                println!("{}", serde_json::to_string_pretty(&statuses)?);
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&statuses)
+                        .whatever_context("failed to serialize status")?
+                );
             } else {
                 println!("{:<24} {:<8} {:<6} Last Run", "Task", "Enabled", "Runs");
                 println!("{}", "-".repeat(60));
@@ -79,7 +85,7 @@ fn run_task(name: &str, maint: &MaintenanceConfig, verbose: bool) -> Result<()> 
         "trace-rotation" => {
             let report = TraceRotator::new(maint.trace_rotation.clone())
                 .rotate()
-                .context("trace rotation failed")?;
+                .whatever_context("trace rotation failed")?;
             println!(
                 "trace-rotation: {} rotated, {} pruned, {} bytes freed",
                 report.files_rotated, report.files_pruned, report.bytes_freed
@@ -88,7 +94,7 @@ fn run_task(name: &str, maint: &MaintenanceConfig, verbose: bool) -> Result<()> 
         "drift-detection" => {
             let report = DriftDetector::new(maint.drift_detection.clone())
                 .check()
-                .context("drift detection failed")?;
+                .whatever_context("drift detection failed")?;
             let missing = report.missing_files.len();
             let extra = report.extra_files.len();
             if missing == 0 && extra == 0 {
@@ -111,7 +117,7 @@ fn run_task(name: &str, maint: &MaintenanceConfig, verbose: bool) -> Result<()> 
         "db-monitor" => {
             let report = DbMonitor::new(maint.db_monitoring.clone())
                 .check()
-                .context("db monitor failed")?;
+                .whatever_context("db monitor failed")?;
             for db in &report.databases {
                 println!(
                     "db-monitor: {} {}MB ({})",
@@ -140,7 +146,7 @@ fn run_task(name: &str, maint: &MaintenanceConfig, verbose: bool) -> Result<()> 
                 }
             }
         }
-        other => anyhow::bail!(
+        other => whatever!(
             "unknown task: {other}. Valid: trace-rotation, drift-detection, db-monitor, chiron-audit, all"
         ),
     }

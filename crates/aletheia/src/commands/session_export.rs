@@ -4,9 +4,11 @@ use std::fmt::Write as _;
 use std::io::Write as _;
 use std::path::PathBuf;
 
-use anyhow::{Context, Result};
 use clap::Args;
 use serde::Deserialize;
+use snafu::prelude::*;
+
+use crate::error::Result;
 
 use aletheia_koina::http::{API_V1, BEARER_PREFIX};
 
@@ -76,13 +78,13 @@ fn build_client(token: Option<&str>) -> Result<reqwest::Client> {
     let mut headers = reqwest::header::HeaderMap::new();
     if let Some(tok) = token {
         let value = reqwest::header::HeaderValue::from_str(&format!("{BEARER_PREFIX}{tok}"))
-            .context("invalid token value")?;
+            .whatever_context("invalid token value")?;
         headers.insert(reqwest::header::AUTHORIZATION, value);
     }
     reqwest::Client::builder()
         .default_headers(headers)
         .build()
-        .context("failed to build HTTP client")
+        .whatever_context("failed to build HTTP client")
 }
 
 async fn fetch_session(
@@ -105,24 +107,24 @@ async fn fetch_session(
     // codequality:ignore -- non-HTTPS guard above warns on cleartext to non-localhost URLs
     let resp = client.get(&url).send().await.map_err(|e| {
         if e.is_connect() {
-            anyhow::anyhow!(
+            crate::error::Error::msg(format!(
                 "cannot connect to {base_url}\n  Is the server running? Start it with: aletheia"
-            )
+            ))
         } else {
-            anyhow::anyhow!("request failed: {e}")
+            crate::error::Error::msg(format!("request failed: {e}"))
         }
     })?;
 
     if resp.status() == reqwest::StatusCode::NOT_FOUND {
-        anyhow::bail!("session not found: {session_id}");
+        whatever!("session not found: {session_id}");
     }
     if !resp.status().is_success() {
-        anyhow::bail!("server returned HTTP {}", resp.status());
+        whatever!("server returned HTTP {}", resp.status());
     }
 
     resp.json::<SessionResponse>()
         .await
-        .context("failed to parse session response")
+        .whatever_context("failed to parse session response")
 }
 
 async fn fetch_history(
@@ -147,15 +149,15 @@ async fn fetch_history(
         .get(&url)
         .send()
         .await
-        .context("failed to fetch session history")?;
+        .whatever_context("failed to fetch session history")?;
 
     if !resp.status().is_success() {
-        anyhow::bail!("history endpoint returned HTTP {}", resp.status());
+        whatever!("history endpoint returned HTTP {}", resp.status());
     }
 
     resp.json::<HistoryResponse>()
         .await
-        .context("failed to parse history response")
+        .whatever_context("failed to parse history response")
 }
 
 fn render_markdown(session: &SessionResponse, history: &HistoryResponse) -> String {
@@ -196,7 +198,7 @@ fn render_json(session: &SessionResponse, history: &HistoryResponse) -> Result<S
             "created_at": m.created_at,
         })).collect::<Vec<_>>(),
     });
-    serde_json::to_string_pretty(&payload).context("failed to serialize session to JSON")
+    serde_json::to_string_pretty(&payload).whatever_context("failed to serialize session to JSON")
 }
 
 fn write_output(content: &str, path: Option<&std::path::Path>) -> Result<()> {
@@ -206,10 +208,10 @@ fn write_output(content: &str, path: Option<&std::path::Path>) -> Result<()> {
             reason = "aletheia CLI commands use synchronous filesystem operations for config and certificate generation"
         )]
         Some(p) => std::fs::write(p, content)
-            .with_context(|| format!("failed to write to {}", p.display())),
+            .with_whatever_context(|_| format!("failed to write to {}", p.display())),
         None => std::io::stdout()
             .write_all(content.as_bytes())
-            .context("failed to write to stdout"),
+            .whatever_context("failed to write to stdout"),
     }
 }
 

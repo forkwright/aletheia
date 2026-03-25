@@ -4,8 +4,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
 use sha2::{Digest, Sha256};
+use snafu::prelude::*;
 use tracing::info;
 
 use qdrant_client::Qdrant;
@@ -24,6 +24,8 @@ use aletheia_mneme::knowledge::{
 use aletheia_mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
 use aletheia_taxis::loader::load_config;
 use aletheia_taxis::oikos::Oikos;
+
+use crate::error::Result;
 
 struct MemoryRecord {
     content: String,
@@ -67,9 +69,9 @@ pub(crate) async fn run(
         .timeout(std::time::Duration::from_secs(120))
         .keep_alive_while_idle()
         .build()
-        .context("failed to connect to Qdrant")?;
+        .whatever_context("failed to connect to Qdrant")?;
 
-    let config = load_config(&oikos).context("failed to load instance config")?;
+    let config = load_config(&oikos).whatever_context("failed to load instance config")?;
     let embedding_config = EmbeddingConfig {
         provider: config.embedding.provider.clone(),
         model: config.embedding.model.clone(),
@@ -98,18 +100,18 @@ pub(crate) async fn run(
     let knowledge_config = KnowledgeConfig::default();
     let knowledgedb = if dry_run {
         KnowledgeStore::open_mem_with_config(knowledge_config)
-            .context("failed to open in-memory knowledge store")?
+            .whatever_context("failed to open in-memory knowledge store")?
     } else {
         let path = knowledge_path
             .cloned()
             .unwrap_or_else(|| oikos.knowledge_db());
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
-                .context("failed to create knowledge store directory")?;
+                .whatever_context("failed to create knowledge store directory")?;
         }
         info!(path = %path.display(), "opening persistent knowledge store");
         KnowledgeStore::open_fjall(&path, knowledge_config)
-            .context("failed to open persistent knowledge store")?
+            .whatever_context("failed to open persistent knowledge store")?
     };
 
     let all_records = fetch_from_qdrant(&client, collection).await?;
@@ -174,7 +176,7 @@ async fn fetch_from_qdrant(client: &Qdrant, collection: &str) -> Result<Vec<Memo
         let response = client
             .scroll(builder)
             .await
-            .context("failed to scroll Qdrant points")?;
+            .whatever_context("failed to scroll Qdrant points")?;
 
         for point in &response.result {
             let payload = &point.payload;
@@ -313,7 +315,7 @@ fn import_fact(
     };
     knowledgedb
         .insert_fact(&fact)
-        .context("failed to insert fact")?;
+        .whatever_context("failed to insert fact")?;
 
     if let Ok(embedding) = embedder.embed(&record.content) {
         let chunk = EmbeddedChunk {
@@ -328,7 +330,7 @@ fn import_fact(
         };
         knowledgedb
             .insert_embedding(&chunk)
-            .context("failed to insert embedding")?;
+            .whatever_context("failed to insert embedding")?;
     }
 
     Ok(())
@@ -343,13 +345,14 @@ fn content_hash(content: &str) -> String {
 
 fn write_review_file(path: &Path, flagged: &[String]) -> Result<()> {
     use std::io::Write;
-    let mut f = std::fs::File::create(path).context("failed to create review file")?;
-    writeln!(f, "# Memory Migration Review")?;
-    writeln!(f)?;
-    writeln!(f, "The following facts were flagged during migration:")?;
-    writeln!(f)?;
+    let mut f = std::fs::File::create(path).whatever_context("failed to create review file")?;
+    writeln!(f, "# Memory Migration Review").whatever_context("failed to write review file")?;
+    writeln!(f).whatever_context("failed to write review file")?;
+    writeln!(f, "The following facts were flagged during migration:")
+        .whatever_context("failed to write review file")?;
+    writeln!(f).whatever_context("failed to write review file")?;
     for item in flagged {
-        writeln!(f, "- {item}")?;
+        writeln!(f, "- {item}").whatever_context("failed to write review file")?;
     }
     Ok(())
 }

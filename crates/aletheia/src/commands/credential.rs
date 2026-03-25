@@ -2,11 +2,14 @@
 
 use std::path::PathBuf;
 
-use anyhow::Result;
+use snafu::prelude::*;
+
 use clap::Subcommand;
 
 use aletheia_symbolon::credential::CredentialFile;
 use aletheia_taxis::oikos::Oikos;
+
+use crate::error::Result;
 
 #[derive(Debug, Clone, Subcommand)]
 pub(crate) enum Action {
@@ -112,7 +115,7 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
                         println!("Token refreshed");
                     }
                 }
-                Err(e) => anyhow::bail!("refresh failed: {e}"),
+                Err(e) => whatever!("refresh failed: {e}"),
             }
         }
     }

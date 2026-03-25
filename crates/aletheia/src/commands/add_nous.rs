@@ -2,8 +2,10 @@
 
 use std::path::PathBuf;
 
-use anyhow::{Context, Result, bail};
 use clap::Args;
+use snafu::prelude::*;
+
+use crate::error::Result;
 
 use aletheia_taxis::oikos::Oikos;
 
@@ -32,7 +34,7 @@ pub(crate) async fn run(instance_root: Option<&PathBuf>, args: &AddNousArgs) -> 
 
     let nous_dir = oikos.nous_dir(&args.name);
     if nous_dir.exists() {
-        bail!(
+        whatever!(
             "nous directory already exists: {}\nRemove it first if you want to recreate this agent.",
             nous_dir.display()
         );
@@ -50,13 +52,13 @@ pub(crate) async fn run(instance_root: Option<&PathBuf>, args: &AddNousArgs) -> 
 
 fn validate_name(name: &str) -> Result<()> {
     if name.is_empty() {
-        bail!("agent name cannot be empty");
+        whatever!("agent name cannot be empty");
     }
     if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
-        bail!("agent name must contain only alphanumeric characters and hyphens");
+        whatever!("agent name must contain only alphanumeric characters and hyphens");
     }
     if name.starts_with('-') || name.ends_with('-') {
-        bail!("agent name cannot start or end with a hyphen");
+        whatever!("agent name cannot start or end with a hyphen");
     }
     Ok(())
 }
@@ -64,7 +66,7 @@ fn validate_name(name: &str) -> Result<()> {
 fn validate_provider(provider: &str) -> Result<()> {
     match provider {
         "anthropic" | "openai" => Ok(()),
-        other => bail!("unsupported provider: {other}\nSupported providers: anthropic, openai"),
+        other => whatever!("unsupported provider: {other}\nSupported providers: anthropic, openai"),
     }
 }
 
@@ -110,7 +112,7 @@ fn scaffold_directory(oikos: &Oikos, args: &AddNousArgs) -> Result<()> {
 
     for dir in &subdirs {
         std::fs::create_dir_all(dir)
-            .with_context(|| format!("failed to create directory: {}", dir.display()))?;
+            .with_whatever_context(|_| format!("failed to create directory: {}", dir.display()))?;
     }
 
     write_file(
@@ -171,14 +173,14 @@ fn update_config(oikos: &Oikos, args: &AddNousArgs) -> Result<()> {
 
     let existing = if config_path.exists() {
         std::fs::read_to_string(&config_path)
-            .with_context(|| format!("failed to read {}", config_path.display()))?
+            .with_whatever_context(|_| format!("failed to read {}", config_path.display()))?
     } else {
         String::new()
     };
 
     let mut doc: toml_edit::DocumentMut = existing
         .parse()
-        .with_context(|| format!("failed to parse {}", config_path.display()))?;
+        .with_whatever_context(|_| format!("failed to parse {}", config_path.display()))?;
 
     let already_listed = doc
         .get("agents")
@@ -191,7 +193,7 @@ fn update_config(oikos: &Oikos, args: &AddNousArgs) -> Result<()> {
         });
 
     if already_listed {
-        bail!(
+        whatever!(
             "agent '{}' already exists in the configuration file.\n\
              Remove the existing entry first, or choose a different name.",
             args.name
@@ -224,7 +226,7 @@ fn update_config(oikos: &Oikos, args: &AddNousArgs) -> Result<()> {
     )]
     let agents = doc["agents"]
         .as_table_mut()
-        .ok_or_else(|| anyhow::anyhow!("[agents] in config is not a table"))?;
+        .ok_or_else(|| crate::error::Error::msg("[agents] in config is not a table"))?;
 
     if agents
         .get("list")
@@ -237,24 +239,24 @@ fn update_config(oikos: &Oikos, args: &AddNousArgs) -> Result<()> {
         );
     }
 
-    let list = agents["list"]
-        .as_array_of_tables_mut()
-        .ok_or_else(|| anyhow::anyhow!("agents.list in config is not an array of tables"))?;
+    let list = agents["list"].as_array_of_tables_mut().ok_or_else(|| {
+        crate::error::Error::msg("agents.list in config is not an array of tables")
+    })?;
 
     list.push(entry);
 
     // WHY: atomic write: write to .tmp then rename, preserving existing comments in the file
     std::fs::create_dir_all(&config_dir)
-        .with_context(|| format!("failed to create {}", config_dir.display()))?;
+        .with_whatever_context(|_| format!("failed to create {}", config_dir.display()))?;
     let tmp = config_dir.join("aletheia.toml.tmp");
     #[expect(
         clippy::disallowed_methods,
         reason = "aletheia CLI commands use synchronous filesystem operations for config and certificate generation"
     )]
     std::fs::write(&tmp, doc.to_string())
-        .with_context(|| format!("failed to write {}", tmp.display()))?;
+        .with_whatever_context(|_| format!("failed to write {}", tmp.display()))?;
     std::fs::rename(&tmp, &config_path)
-        .with_context(|| format!("failed to rename {}", tmp.display()))?;
+        .with_whatever_context(|_| format!("failed to rename {}", tmp.display()))?;
 
     Ok(())
 }
@@ -299,7 +301,8 @@ fn write_file(path: &std::path::Path, content: &str) -> Result<()> {
         clippy::disallowed_methods,
         reason = "aletheia CLI commands use synchronous filesystem operations for config and certificate generation"
     )]
-    std::fs::write(path, content).with_context(|| format!("failed to write: {}", path.display()))
+    std::fs::write(path, content)
+        .with_whatever_context(|_| format!("failed to write: {}", path.display()))
 }
 
 fn capitalize(s: &str) -> String {

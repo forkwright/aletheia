@@ -2,8 +2,10 @@
 
 use std::path::PathBuf;
 
-use anyhow::{Context, Result};
 use clap::Args;
+use snafu::prelude::*;
+
+use crate::error::Result;
 
 #[derive(Debug, Clone, Args)]
 pub(crate) struct ExportArgs {
@@ -172,12 +174,13 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
         Some(root) => Oikos::from_root(root),
         None => Oikos::discover(),
     };
-    let config = load_config(&oikos).context("failed to load config")?;
+    let config = load_config(&oikos).whatever_context("failed to load config")?;
     let resolved = resolve_nous(&config, nous_id);
 
     let db_path = oikos.sessions_db();
-    let store = SessionStore::open(&db_path)
-        .with_context(|| format!("failed to open session store at {}", db_path.display()))?;
+    let store = SessionStore::open(&db_path).with_whatever_context(|_| {
+        format!("failed to open session store at {}", db_path.display())
+    })?;
 
     let workspace_path = oikos.nous_dir(nous_id);
 
@@ -206,7 +209,7 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
         &workspace_path,
         &opts,
     )
-    .context("export failed")?;
+    .whatever_context("export failed")?;
 
     let output_path = args.output.clone().unwrap_or_else(|| {
         let date = jiff::Timestamp::now().strftime("%Y-%m-%d").to_string();
@@ -214,23 +217,23 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
     });
 
     if output_path.exists() && !args.force {
-        anyhow::bail!(
+        whatever!(
             "output file already exists: {}\nUse --force to overwrite.",
             output_path.display()
         );
     }
 
     let json = if args.compact {
-        serde_json::to_string(&agent_file)?
+        serde_json::to_string(&agent_file).whatever_context("failed to serialize agent")?
     } else {
-        serde_json::to_string_pretty(&agent_file)?
+        serde_json::to_string_pretty(&agent_file).whatever_context("failed to serialize agent")?
     };
     #[expect(
         clippy::disallowed_methods,
         reason = "aletheia CLI commands use synchronous filesystem operations for config and certificate generation"
     )]
     std::fs::write(&output_path, &json)
-        .with_context(|| format!("failed to write {}", output_path.display()))?;
+        .with_whatever_context(|_| format!("failed to write {}", output_path.display()))?;
 
     println!("Exported to: {}", output_path.display());
     println!("Size: {} bytes", json.len());
@@ -246,9 +249,9 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
 
 pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -> Result<()> {
     let json = std::fs::read_to_string(&args.file)
-        .with_context(|| format!("failed to read {}", args.file.display()))?;
+        .with_whatever_context(|_| format!("failed to read {}", args.file.display()))?;
     let agent_file: aletheia_mneme::portability::AgentFile =
-        serde_json::from_str(&json).context("failed to parse agent file")?;
+        serde_json::from_str(&json).whatever_context("failed to parse agent file")?;
 
     let nous_id = args.target_id.as_deref().unwrap_or(&agent_file.nous.id);
 
@@ -287,14 +290,16 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
     let db_path = oikos.sessions_db();
     if let Some(parent) = db_path.parent() {
         std::fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create data dir {}", parent.display()))?;
+            .with_whatever_context(|_| format!("failed to create data dir {}", parent.display()))?;
     }
-    let store = SessionStore::open(&db_path)
-        .with_context(|| format!("failed to open session store at {}", db_path.display()))?;
+    let store = SessionStore::open(&db_path).with_whatever_context(|_| {
+        format!("failed to open session store at {}", db_path.display())
+    })?;
 
     let workspace_path = oikos.nous_dir(nous_id);
-    std::fs::create_dir_all(&workspace_path)
-        .with_context(|| format!("failed to create workspace {}", workspace_path.display()))?;
+    std::fs::create_dir_all(&workspace_path).with_whatever_context(|_| {
+        format!("failed to create workspace {}", workspace_path.display())
+    })?;
 
     let opts = aletheia_mneme::import::ImportOptions {
         skip_sessions: args.skip_sessions,
@@ -305,7 +310,7 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
     let id_gen = || ulid::Ulid::new().to_string();
     let result =
         aletheia_mneme::import::import_agent(&agent_file, &store, &workspace_path, &id_gen, &opts)
-            .context("import failed")?;
+            .whatever_context("import failed")?;
 
     println!("Imported agent: {}", result.nous_id);
     println!("Files restored: {}", result.files_restored);
@@ -326,7 +331,7 @@ pub(crate) fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
     let dir = &args.dir;
     let nous_id = &args.nous_id;
     let entries = scan_skill_dir(dir)
-        .with_context(|| format!("failed to scan skill directory: {}", dir.display()))?;
+        .with_whatever_context(|_| format!("failed to scan skill directory: {}", dir.display()))?;
 
     if entries.is_empty() {
         println!("No SKILL.md files found in {}", dir.display());
@@ -374,8 +379,8 @@ pub(crate) fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
         };
         use aletheia_mneme::knowledge_store::KnowledgeStore;
 
-        let store = KnowledgeStore::open_mem()
-            .map_err(|e| anyhow::anyhow!("failed to open knowledge store: {e}"))?;
+        let store =
+            KnowledgeStore::open_mem().whatever_context("failed to open knowledge store")?;
 
         let now = jiff::Timestamp::now();
         let mut seeded = 0u32;
@@ -385,12 +390,13 @@ pub(crate) fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
         for (slug, skill) in &parsed {
             let existing = store
                 .find_skill_by_name(nous_id, &skill.name)
-                .map_err(|e| anyhow::anyhow!("failed to query existing skills: {e}"))?;
+                .whatever_context("failed to query existing skills")?;
 
             if let Some(existing_id) = existing {
                 if args.force {
                     if let Err(e) = store.forget_fact(
-                        &aletheia_mneme::id::FactId::new(existing_id)?,
+                        &aletheia_mneme::id::FactId::new(existing_id)
+                            .whatever_context("invalid fact id")?,
                         aletheia_mneme::knowledge::ForgetReason::Outdated,
                     ) {
                         eprintln!("  WARN: failed to supersede {slug}: {e}");
@@ -404,11 +410,12 @@ pub(crate) fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
             }
 
             let content_json = serde_json::to_string(skill)
-                .with_context(|| format!("failed to serialize skill: {slug}"))?;
+                .with_whatever_context(|_| format!("failed to serialize skill: {slug}"))?;
 
             let fact_id = ulid::Ulid::new().to_string();
             let fact = Fact {
-                id: aletheia_mneme::id::FactId::new(fact_id.clone())?,
+                id: aletheia_mneme::id::FactId::new(fact_id.clone())
+                    .whatever_context("invalid fact id")?,
                 nous_id: nous_id.to_owned(),
                 content: content_json.clone(),
                 fact_type: "skill".to_owned(),
@@ -437,12 +444,13 @@ pub(crate) fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
 
             store
                 .insert_fact(&fact)
-                .map_err(|e| anyhow::anyhow!("failed to insert skill {slug}: {e}"))?;
+                .with_whatever_context(|_| format!("failed to insert skill {slug}"))?;
 
             let embedding_text = format!("{}: {}", skill.name, skill.description);
             let emb_id = ulid::Ulid::new().to_string();
             let chunk = aletheia_mneme::knowledge::EmbeddedChunk {
-                id: aletheia_mneme::id::EmbeddingId::new(emb_id)?,
+                id: aletheia_mneme::id::EmbeddingId::new(emb_id)
+                    .whatever_context("invalid embedding id")?,
                 content: embedding_text,
                 source_type: "fact".to_owned(),
                 source_id: fact_id,
@@ -468,7 +476,7 @@ pub(crate) fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
     #[cfg(not(feature = "recall"))]
     {
         let _ = (args, nous_id, parsed, parse_errors);
-        anyhow::bail!(
+        whatever!(
             "seed-skills requires the 'recall' feature (KnowledgeStore). \
              Build with: cargo build --features recall"
         );
@@ -495,17 +503,18 @@ pub(crate) fn export_skills(
         let knowledge_path = oikos.knowledge_db();
 
         let config = aletheia_mneme::knowledge_store::KnowledgeConfig::default();
-        let store = KnowledgeStore::open_fjall(&knowledge_path, config).map_err(|e| {
-            anyhow::anyhow!(
-                "failed to open knowledge store at {}: {e}",
-                knowledge_path.display()
-            )
-        })?;
+        let store =
+            KnowledgeStore::open_fjall(&knowledge_path, config).with_whatever_context(|_| {
+                format!(
+                    "failed to open knowledge store at {}",
+                    knowledge_path.display()
+                )
+            })?;
 
         let nous_id = &args.nous_id;
         let facts = store
             .find_skills_for_nous(nous_id, 500)
-            .map_err(|e| anyhow::anyhow!("failed to query skills: {e}"))?;
+            .whatever_context("failed to query skills")?;
 
         if facts.is_empty() {
             println!("No skills found for nous '{nous_id}'");
@@ -536,8 +545,10 @@ pub(crate) fn export_skills(
         };
 
         let output = &args.output;
-        let exported = export_skills_to_cc(&skills, output, filter)
-            .with_context(|| format!("failed to export skills to {}", output.display()))?;
+        let exported =
+            export_skills_to_cc(&skills, output, filter).with_whatever_context(|_| {
+                format!("failed to export skills to {}", output.display())
+            })?;
 
         println!(
             "Exported {} skill(s) to {}",
@@ -557,7 +568,7 @@ pub(crate) fn export_skills(
     #[cfg(not(feature = "recall"))]
     {
         let _ = (instance_root, args);
-        anyhow::bail!(
+        whatever!(
             "export-skills requires the 'recall' feature (KnowledgeStore). \
              Build with: cargo build --features recall"
         );
@@ -580,19 +591,20 @@ pub(crate) fn review_skills(
         let knowledge_path = oikos.knowledge_db();
 
         let config = aletheia_mneme::knowledge_store::KnowledgeConfig::default();
-        let store = KnowledgeStore::open_fjall(&knowledge_path, config).map_err(|e| {
-            anyhow::anyhow!(
-                "failed to open knowledge store at {}: {e}",
-                knowledge_path.display()
-            )
-        })?;
+        let store =
+            KnowledgeStore::open_fjall(&knowledge_path, config).with_whatever_context(|_| {
+                format!(
+                    "failed to open knowledge store at {}",
+                    knowledge_path.display()
+                )
+            })?;
 
         let nous_id = &args.nous_id;
         match args.action.as_str() {
             "list" => {
                 let pending = store
                     .find_pending_skills(nous_id)
-                    .map_err(|e| anyhow::anyhow!("failed to query pending skills: {e}"))?;
+                    .whatever_context("failed to query pending skills")?;
 
                 if pending.is_empty() {
                     println!("No pending skills for nous '{nous_id}'");
@@ -627,29 +639,29 @@ pub(crate) fn review_skills(
                 }
             }
             "approve" => {
-                let fid = args
-                    .fact_id
-                    .as_deref()
-                    .ok_or_else(|| anyhow::anyhow!("--fact-id required for approve action"))?;
-                let fact_id = aletheia_mneme::id::FactId::new(fid)?;
+                let fid = args.fact_id.as_deref().ok_or_else(|| {
+                    crate::error::Error::msg("--fact-id required for approve action")
+                })?;
+                let fact_id =
+                    aletheia_mneme::id::FactId::new(fid).whatever_context("invalid fact id")?;
                 let new_id = store
                     .approve_pending_skill(&fact_id, nous_id)
-                    .map_err(|e| anyhow::anyhow!("failed to approve skill: {e}"))?;
+                    .whatever_context("failed to approve skill")?;
                 println!("Approved: {fid} → new skill fact: {new_id}");
             }
             "reject" => {
-                let fid = args
-                    .fact_id
-                    .as_deref()
-                    .ok_or_else(|| anyhow::anyhow!("--fact-id required for reject action"))?;
-                let fact_id = aletheia_mneme::id::FactId::new(fid)?;
+                let fid = args.fact_id.as_deref().ok_or_else(|| {
+                    crate::error::Error::msg("--fact-id required for reject action")
+                })?;
+                let fact_id =
+                    aletheia_mneme::id::FactId::new(fid).whatever_context("invalid fact id")?;
                 store
                     .reject_pending_skill(&fact_id)
-                    .map_err(|e| anyhow::anyhow!("failed to reject skill: {e}"))?;
+                    .whatever_context("failed to reject skill")?;
                 println!("Rejected: {fid}");
             }
             other => {
-                anyhow::bail!("unknown action '{other}'. Use: list, approve, reject");
+                whatever!("unknown action '{other}'. Use: list, approve, reject");
             }
         }
 
@@ -659,7 +671,7 @@ pub(crate) fn review_skills(
     #[cfg(not(feature = "recall"))]
     {
         let _ = (instance_root, args);
-        anyhow::bail!(
+        whatever!(
             "review-skills requires the 'recall' feature (KnowledgeStore). \
              Build with: cargo build --features recall"
         );
@@ -689,7 +701,7 @@ pub(crate) async fn migrate_memory(
     #[cfg(not(feature = "migrate-qdrant"))]
     {
         let _ = (instance_root, args);
-        anyhow::bail!(
+        whatever!(
             "migrate-memory requires the `migrate-qdrant` feature.\n\
              Rebuild with: cargo build --features migrate-qdrant"
         );

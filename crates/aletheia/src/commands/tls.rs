@@ -2,8 +2,10 @@
 
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
 use clap::Subcommand;
+use snafu::prelude::*;
+
+use crate::error::Result;
 
 #[derive(Debug, Clone, Subcommand)]
 pub(crate) enum Action {
@@ -37,7 +39,7 @@ pub(crate) fn run(action: &Action) -> Result<()> {
 
 fn generate_certs(output_dir: &Path, days: u32, sans: &[String], force: bool) -> Result<()> {
     std::fs::create_dir_all(output_dir)
-        .with_context(|| format!("failed to create {}", output_dir.display()))?;
+        .with_whatever_context(|_| format!("failed to create {}", output_dir.display()))?;
 
     let cert_path = output_dir.join("cert.pem");
     let key_path = output_dir.join("key.pem");
@@ -45,7 +47,7 @@ fn generate_certs(output_dir: &Path, days: u32, sans: &[String], force: bool) ->
     if !force {
         for path in [&cert_path, &key_path] {
             if path.exists() {
-                anyhow::bail!(
+                whatever!(
                     "file already exists: {}\nUse --force to overwrite.",
                     path.display()
                 );
@@ -54,9 +56,9 @@ fn generate_certs(output_dir: &Path, days: u32, sans: &[String], force: bool) ->
     }
 
     let subject_alt_names: Vec<String> = sans.to_vec();
-    let key_pair = rcgen::KeyPair::generate().context("failed to generate key pair")?;
+    let key_pair = rcgen::KeyPair::generate().whatever_context("failed to generate key pair")?;
     let mut params = rcgen::CertificateParams::new(subject_alt_names)
-        .context("failed to build certificate params")?;
+        .whatever_context("failed to build certificate params")?;
     params
         .distinguished_name
         .push(rcgen::DnType::CommonName, "Aletheia Dev");
@@ -71,28 +73,29 @@ fn generate_certs(output_dir: &Path, days: u32, sans: &[String], force: bool) ->
 
     let cert = params
         .self_signed(&key_pair)
-        .context("failed to generate self-signed certificate")?;
+        .whatever_context("failed to generate self-signed certificate")?;
 
     #[expect(
         clippy::disallowed_methods,
         reason = "aletheia CLI commands use synchronous filesystem operations for config and certificate generation"
     )]
     std::fs::write(&cert_path, cert.pem())
-        .with_context(|| format!("failed to write {}", cert_path.display()))?;
+        .with_whatever_context(|_| format!("failed to write {}", cert_path.display()))?;
     #[expect(
         clippy::disallowed_methods,
         reason = "aletheia CLI commands use synchronous filesystem operations for config and certificate generation"
     )]
     std::fs::write(&key_path, key_pair.serialize_pem())
-        .with_context(|| format!("failed to write {}", key_path.display()))?;
+        .with_whatever_context(|_| format!("failed to write {}", key_path.display()))?;
 
     // WHY: restrict private key to owner-read-only (0600): security requirement
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         let perms = std::fs::Permissions::from_mode(0o600);
-        std::fs::set_permissions(&key_path, perms)
-            .with_context(|| format!("failed to set permissions on {}", key_path.display()))?;
+        std::fs::set_permissions(&key_path, perms).with_whatever_context(|_| {
+            format!("failed to set permissions on {}", key_path.display())
+        })?;
     }
 
     // WHY: print absolute paths so the user knows where files were written,

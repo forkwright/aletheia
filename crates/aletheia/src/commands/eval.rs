@@ -2,8 +2,10 @@
 
 use std::path::Path;
 
-use anyhow::Result;
 use clap::Args;
+use snafu::prelude::*;
+
+use crate::error::Result;
 
 #[derive(Debug, Clone, Args)]
 pub(crate) struct EvalArgs {
@@ -43,7 +45,8 @@ pub(crate) async fn run(args: EvalArgs) -> Result<()> {
 
     if show_triggers {
         let config = aletheia_dokimion::triggers::TriggerConfig::default_config();
-        let json = serde_json::to_string_pretty(&config)?;
+        let json = serde_json::to_string_pretty(&config)
+            .whatever_context("failed to serialize trigger config")?;
         println!("{json}");
         return Ok(());
     }
@@ -82,7 +85,8 @@ pub(crate) async fn run(args: EvalArgs) -> Result<()> {
 
     if let Some(ref path) = jsonl_output {
         let records = aletheia_dokimion::persistence::records_from_report(&report);
-        aletheia_dokimion::persistence::append_jsonl(Path::new(path), &records)?;
+        aletheia_dokimion::persistence::append_jsonl(Path::new(path), &records)
+            .whatever_context("failed to write JSONL output")?;
         tracing::info!(
             path = path,
             records = records.len(),
@@ -92,13 +96,13 @@ pub(crate) async fn run(args: EvalArgs) -> Result<()> {
 
     let total = report.passed + report.failed + report.skipped;
     if total == 0 || (report.passed == 0 && report.failed == 0) {
-        anyhow::bail!(
+        whatever!(
             "no scenarios passed — is the server running at {url}?\n  \
              Check with: aletheia health --url {url}"
         );
     }
     if report.failed > 0 {
-        anyhow::bail!("{} scenario(s) failed", report.failed);
+        whatever!("{} scenario(s) failed", report.failed);
     }
     Ok(())
 }
