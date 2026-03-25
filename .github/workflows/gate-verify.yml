@@ -14,6 +14,9 @@ concurrency:
 jobs:
   verify-gate:
     runs-on: ubuntu-latest
+    # WHY: release-please and dependabot PRs are automated version/dep bumps
+    # with no code changes — they don't go through kanon gate.
+    if: ${{ !startsWith(github.head_ref, 'release-please') && !startsWith(github.head_ref, 'dependabot/') }}
     steps:
       - uses: actions/checkout@v4
         with:
