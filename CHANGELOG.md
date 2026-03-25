@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.13.12](https://github.com/forkwright/aletheia/compare/v0.13.11...v0.13.12) (2026-03-25)
+
+
+### Bug Fixes
+
+* **fuzz:** repair broken fuzz targets and add weekly CI workflow ([#2099](https://github.com/forkwright/aletheia/issues/2099)) ([41dbc97](https://github.com/forkwright/aletheia/commit/41dbc97f0ae42cbd063d9f4ac75c96b1fa594511))
+* **fuzz:** replace indexing/slicing and bare assert in fuzz targets ([#2097](https://github.com/forkwright/aletheia/issues/2097)) ([3e8acfa](https://github.com/forkwright/aletheia/commit/3e8acfa1665f7849a06df41c868c2310d005241f))
+
+
+### Documentation
+
+* **organon:** fix inconsistent built-in tool count across docs ([#2094](https://github.com/forkwright/aletheia/issues/2094)) ([3c022ca](https://github.com/forkwright/aletheia/commit/3c022ca852d8e5c29886d235f8ac4562bb8bdb31))
+* **theatron:** add umbrella CLAUDE.md for presentation crate group ([#2100](https://github.com/forkwright/aletheia/issues/2100)) ([7f4b979](https://github.com/forkwright/aletheia/commit/7f4b9793766754b9690f238a1557c753f035b6b8))
+* update hardcoded install version from v0.13.1 to v0.13.11 ([#2096](https://github.com/forkwright/aletheia/issues/2096)) ([7725345](https://github.com/forkwright/aletheia/commit/77253455445695e024f6322b06d0a760a8b91e84))
+
 ## [0.13.11](https://github.com/forkwright/aletheia/compare/v0.13.10...v0.13.11) (2026-03-24)
 
 
