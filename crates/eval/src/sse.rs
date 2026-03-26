@@ -16,7 +16,6 @@ pub struct ParsedSseEvent {
 
 /// Consume an entire SSE response body and parse it into discrete events.
 #[tracing::instrument(skip(response))]
-#[must_use]
 pub async fn parse_sse_stream(response: reqwest::Response) -> Result<Vec<ParsedSseEvent>> {
     let text = response.text().await.context(error::HttpSnafu)?;
     parse_sse_text(&text)

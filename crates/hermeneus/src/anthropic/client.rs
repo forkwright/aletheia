@@ -535,10 +535,10 @@ impl AnthropicProvider {
         }
         headers.insert(
             "anthropic-version",
-            HeaderValue::from_str(&self.api_version).map_err(|_| {
+            HeaderValue::from_str(&self.api_version).map_err(|e| {
                 error::ProviderInitSnafu {
                     message: format!(
-                        "api_version {:?} contains invalid HTTP header characters",
+                        "api_version {:?} contains invalid HTTP header characters: {e}",
                         self.api_version
                     ),
                 }

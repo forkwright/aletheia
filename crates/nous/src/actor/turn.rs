@@ -192,6 +192,10 @@ impl NousActor {
     /// in-memory `SessionState` instead of generating a new ULID. This
     /// ensures the actor's session ID matches the database row created by
     /// pylon, preventing FK constraint failures in finalize and tools.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "pipeline setup is sequential and cohesive; splitting adds indirection"
+    )]
     async fn spawn_pipeline_task(
         &mut self,
         session_key: &str,

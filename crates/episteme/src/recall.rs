@@ -227,6 +227,10 @@ impl RecallEngine {
     /// No connection = 0.0.
     #[must_use]
     #[instrument(skip(self))]
+    #[expect(
+        clippy::unused_self,
+        reason = "method signature kept for future scorer extensibility"
+    )]
     pub(crate) fn score_relationship_proximity(&self, hops: Option<u32>) -> f64 {
         match hops {
             Some(0 | 1) => 1.0,

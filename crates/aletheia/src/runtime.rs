@@ -1,4 +1,4 @@
-//! RuntimeBuilder: single-site construction of all server subsystems.
+//! [`RuntimeBuilder`]: single-site construction of all server subsystems.
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -46,6 +46,10 @@ use crate::dispatch;
 use crate::error::Result;
 use crate::planning_adapter;
 
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "builder flags are independent capability toggles; a bitfield would obscure semantics"
+)]
 pub(crate) struct RuntimeBuilder {
     oikos: Arc<Oikos>,
     config: AletheiaConfig,

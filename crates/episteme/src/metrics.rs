@@ -68,6 +68,7 @@ pub(crate) fn init() {
 }
 
 /// Record a fact insertion.
+#[cfg(any(feature = "mneme-engine", test))]
 pub(crate) fn record_fact_inserted(nous_id: &str) {
     KNOWLEDGE_FACTS_TOTAL.with_label_values(&[nous_id]).inc();
 }

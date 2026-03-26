@@ -21,7 +21,8 @@
 //! that needs I/O, then pass `&RealSystem` in production and a pre-configured
 //! `TestSystem` in tests.
 //!
-//! ```
+//! ```ignore
+//! // NOTE: TestSystem requires test or test-support feature; run via cargo test
 //! use std::path::Path;
 //! use aletheia_koina::system::{FileSystem, TestSystem};
 //!
@@ -37,6 +38,11 @@
 
 use std::io;
 use std::path::{Path, PathBuf};
+
+#[cfg(any(test, feature = "test-support"))]
+use std::collections::{HashMap, HashSet};
+#[cfg(any(test, feature = "test-support"))]
+use std::sync::{Arc, Mutex};
 
 use jiff::{SignedDuration, Timestamp};
 

@@ -106,6 +106,10 @@ pub fn load_config_with(oikos: &Oikos, fs: &impl FileSystem) -> Result<AletheiaC
 /// Returns an error if encrypted values are found but the decryption key is
 /// missing. This prevents the server from silently starting with undecrypted
 /// `enc:` values in place of real secrets.
+#[expect(
+    clippy::result_large_err,
+    reason = "figment::Error is inherently large; boxing would require unsafe snafu workaround"
+)]
 fn decrypt_toml_content(content: &str) -> Result<String> {
     let mut value: toml::Value = match toml::from_str(content) {
         Ok(v) => v,

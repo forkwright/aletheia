@@ -65,7 +65,6 @@ impl ToolRegistry {
     /// # Errors
     ///
     /// Returns an error if a tool with the same name is already registered.
-    #[must_use]
     pub fn register(&mut self, def: ToolDef, executor: Box<dyn ToolExecutor>) -> Result<()> {
         // kanon:ignore RUST/pub-visibility
 
@@ -93,7 +92,6 @@ impl ToolRegistry {
     ///
     /// Returns an error if no tool with the given name is registered.
     /// Returns the tool executor's error if execution fails.
-    #[must_use]
     pub async fn execute(&self, input: &ToolInput, ctx: &ToolContext) -> Result<ToolResult> {
         let tool = self.tools.get(&input.name).ok_or_else(|| {
             error::ToolNotFoundSnafu {

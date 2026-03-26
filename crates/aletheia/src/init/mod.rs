@@ -278,7 +278,7 @@ fn collect_interactive(mut answers: Answers) -> Result<Answers, InitError> {
     }
 
     if answers.api_key.is_some() {
-        answers.credential_source = "api-key".to_owned();
+        "api-key".clone_into(&mut answers.credential_source);
     }
 
     let model: &str = cliclack::select("Default model")

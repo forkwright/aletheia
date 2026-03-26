@@ -16,9 +16,11 @@ pub enum RelationType {
 
 /// Relationship types that must never enter the knowledge graph.
 /// INVARIANT: `RELATES_TO` eliminated in vocab redesign: see `semantic-invariants.md`
+#[cfg(any(feature = "mneme-engine", test))]
 const REJECTED_TYPES: &[&str] = &["RELATES_TO", "IS"];
 
 /// Controlled vocabulary: mirrors Python `vocab.py` `_HARDCODED_VOCAB`.
+#[cfg(any(feature = "mneme-engine", test))]
 const CONTROLLED_VOCAB: &[&str] = &[
     "COMMUNICATES_VIA",
     "COMPATIBLE_WITH",
@@ -58,6 +60,7 @@ const CONTROLLED_VOCAB: &[&str] = &[
 /// 4. Check controlled vocabulary → `Known`.
 /// 5. Check alias map → `Known` (mapped canonical form).
 /// 6. Validate `UPPER_SNAKE_CASE` format → `Novel` if valid, `Malformed` if not.
+#[cfg(any(feature = "mneme-engine", test))]
 #[expect(
     clippy::expect_used,
     reason = "find() after contains() is guaranteed to succeed — both operate on the same CONTROLLED_VOCAB static"
@@ -108,6 +111,7 @@ pub(crate) fn normalize_relation(raw: &str) -> RelationType {
 /// Check that a string is valid `UPPER_SNAKE_CASE`: starts with an ASCII uppercase letter,
 /// contains only uppercase ASCII letters, digits, and underscores, with no leading/trailing
 /// or consecutive underscores.
+#[cfg(any(feature = "mneme-engine", test))]
 fn is_valid_upper_snake_case(s: &str) -> bool {
     if s.is_empty() {
         return false;
@@ -149,6 +153,7 @@ fn is_valid_upper_snake_case(s: &str) -> bool {
 }
 
 /// Alias map mirroring Python `vocab.py` `TYPE_MAP`.
+#[cfg(any(feature = "mneme-engine", test))]
 fn lookup_alias(key: &str) -> Option<&'static str> {
     match key {
         "has" | "HAS" | "has_a" | "HAS_A" => Some("OWNS"),
@@ -196,6 +201,7 @@ fn lookup_alias(key: &str) -> Option<&'static str> {
 }
 
 /// Return a `&'static str` from `CONTROLLED_VOCAB` for a known key.
+#[cfg(any(feature = "mneme-engine", test))]
 #[expect(
     clippy::expect_used,
     reason = "callers only pass keys that exist in CONTROLLED_VOCAB — a panic here is a programming error in the alias table"

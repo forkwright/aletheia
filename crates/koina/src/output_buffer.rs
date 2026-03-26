@@ -7,7 +7,8 @@
 //!
 //! # Usage
 //!
-//! ```
+//! ```ignore
+//! // NOTE: OutputBuffer methods are pub(crate); use within aletheia-koina only
 //! use aletheia_koina::output_buffer::OutputBuffer;
 //!
 //! let mut buf: OutputBuffer<String> = OutputBuffer::new();

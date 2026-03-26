@@ -7,7 +7,8 @@
 //!
 //! # Example
 //!
-//! ```
+//! ```ignore
+//! // NOTE: CleanupGuard is pub(crate); use it directly within aletheia-koina
 //! use aletheia_koina::cleanup::CleanupGuard;
 //!
 //! let temp_file = "/tmp/example.lock";
