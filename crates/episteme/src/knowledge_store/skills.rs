@@ -11,6 +11,7 @@ impl KnowledgeStore {
     /// Filters facts where `fact_type = "skill"` and whose JSON content
     /// contains at least one of the given `domain_tags`.
     #[instrument(skip(self))]
+    #[expect(dead_code, reason = "skill operations for knowledge store")]
     pub(crate) fn find_skills_by_domain(
         &self,
         nous_id: &str,
@@ -298,6 +299,7 @@ impl KnowledgeStore {
 
     /// Gather skill health metrics for a nous.
     #[instrument(skip(self))]
+    #[expect(dead_code, reason = "skill operations for knowledge store")]
     pub(crate) fn skill_quality_metrics(
         &self,
         nous_id: &str,

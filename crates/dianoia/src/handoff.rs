@@ -140,6 +140,7 @@ impl HandoffFile {
     ///
     /// Creates both `.continue-here.json` (machine-readable) and
     /// `.continue-here.md` (human-readable) in the configured directory.
+    #[expect(dead_code, reason = "WIP: context handoff for nous distillation")]
     pub(crate) fn write(&self, context: &HandoffContext) -> Result<()> {
         let json_path = self.json_path();
         let md_path = self.md_path();
@@ -193,11 +194,13 @@ impl HandoffFile {
     /// An existing handoff file at startup indicates either a planned handoff
     /// or a crash recovery scenario. The caller decides based on session context.
     #[must_use]
+    #[expect(dead_code, reason = "WIP: context handoff for nous distillation")]
     pub(crate) fn exists(&self) -> bool {
         self.json_path().exists()
     }
 
     /// Remove handoff files after a successful resume.
+    #[expect(dead_code, reason = "WIP: planning orchestration")]
     pub(crate) fn clear(&self) -> Result<()> {
         let json_path = self.json_path();
         let md_path = self.md_path();
@@ -237,6 +240,7 @@ impl std::fmt::Debug for HandoffFile {
 ///
 /// Returns `Ok(Some(context))` if a handoff file exists (indicating a crash or
 /// incomplete resume from a prior session). Returns `Ok(None)` if no handoff exists.
+#[expect(dead_code, reason = "WIP: context handoff for nous distillation")]
 pub(crate) fn detect_orphaned(dir: &Path) -> Result<Option<HandoffContext>> {
     HandoffFile::new(dir).read()
 }

@@ -54,12 +54,14 @@ impl QueryBuilder {
     }
 
     /// Append a raw Datalog line (escape hatch for complex queries).
+    #[expect(dead_code, reason = "Datalog query builder for knowledge store")]
     pub(crate) fn raw(mut self, line: &str) -> Self {
         self.lines.push(line.to_owned());
         self
     }
 
     /// Bind a named parameter.
+    #[expect(dead_code, reason = "Datalog query builder for knowledge store")]
     pub(crate) fn param(mut self, name: &str, value: DataValue) -> Self {
         self.params.insert(name.to_owned(), value);
         self
@@ -67,6 +69,7 @@ impl QueryBuilder {
 
     /// Consume the builder, producing `(script, params)`.
     #[must_use]
+    #[expect(dead_code, reason = "Datalog query builder for knowledge store")]
     pub(crate) fn build(self) -> (String, BTreeMap<String, DataValue>) {
         (self.lines.join("\n"), self.params)
     }
@@ -200,6 +203,7 @@ impl ScanBuilder {
     }
 
     /// Bind a field to an expression: `field: expr` in `*relation{...}`.
+    #[expect(dead_code, reason = "scan builder expression binding for Datalog queries")]
     pub(crate) fn bind_to(mut self, field: impl Field, expr: &str) -> Self {
         self.bindings.push(format!("{}: {expr}", field.name()));
         self

@@ -67,6 +67,7 @@ impl RetentionPolicy {
         clippy::expect_used,
         reason = "timestamp arithmetic uses bounded durations well within i64 range"
     )]
+    #[expect(dead_code, reason = "retention policy execution, awaiting daemon integration")]
     pub(crate) fn apply(&self, conn: &Connection, archive_dir: &Path) -> Result<RetentionResult> {
         let page_size = get_page_size(conn);
         let free_before = get_free_pages(conn);

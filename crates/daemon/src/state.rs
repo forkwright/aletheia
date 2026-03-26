@@ -30,6 +30,7 @@ pub(crate) struct TaskStateStore {
 
 impl TaskStateStore {
     /// Open (or create) the task state database at `path`.
+    #[expect(dead_code, reason = "daemon task state persistence")]
     pub(crate) fn open(path: &Path) -> Result<Self> {
         let conn = rusqlite::Connection::open(path).map_err(|e| {
             crate::error::TaskFailedSnafu {

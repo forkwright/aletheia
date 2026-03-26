@@ -75,9 +75,6 @@ pub enum Error {
     },
 }
 
-/// Convenience alias for `Result<T, Error>`.
-pub(crate) type Result<T> = std::result::Result<T, Error>;
-
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
@@ -87,7 +84,7 @@ mod tests {
 
     #[test]
     fn error_display_includes_path() {
-        let err: Result<Vec<u8>> = std::fs::read("/nonexistent/path").context(ReadFileSnafu {
+        let err: std::result::Result<Vec<u8>, Error> = std::fs::read("/nonexistent/path").context(ReadFileSnafu {
             path: PathBuf::from("/nonexistent/path"),
         });
         let msg = err.unwrap_err().to_string();
@@ -96,7 +93,7 @@ mod tests {
 
     #[test]
     fn error_source_chain() {
-        let err: Result<Vec<u8>> = std::fs::read("/nonexistent/path").context(ReadFileSnafu {
+        let err: std::result::Result<Vec<u8>, Error> = std::fs::read("/nonexistent/path").context(ReadFileSnafu {
             path: PathBuf::from("/nonexistent/path"),
         });
         let err = err.unwrap_err();
@@ -106,7 +103,7 @@ mod tests {
 
     #[test]
     fn json_deserialize_error() {
-        let err: Result<serde_json::Value> =
+        let err: std::result::Result<serde_json::Value, Error> =
             serde_json::from_str("not json").context(JsonDeserializeSnafu);
         assert!(err.is_err());
         assert!(err.unwrap_err().to_string().contains("JSON"));
@@ -114,7 +111,7 @@ mod tests {
 
     #[test]
     fn write_file_error_display() {
-        let err: Result<()> =
+        let err: std::result::Result<(), Error> =
             std::fs::write("/nonexistent/dir/file.txt", "data").context(WriteFileSnafu {
                 path: PathBuf::from("/nonexistent/dir/file.txt"),
             });
@@ -124,7 +121,7 @@ mod tests {
 
     #[test]
     fn create_dir_error_display() {
-        let err: Result<()> =
+        let err: std::result::Result<(), Error> =
             std::fs::create_dir("/nonexistent/parent/child").context(CreateDirSnafu {
                 path: PathBuf::from("/nonexistent/parent/child"),
             });

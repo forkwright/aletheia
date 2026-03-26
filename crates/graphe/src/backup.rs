@@ -126,6 +126,7 @@ impl<'a> BackupManager<'a> {
 
     /// Attach a disk space monitor. Backups are non-essential and will be
     /// skipped when disk space reaches the critical threshold.
+    #[expect(dead_code, reason = "daemon disk monitor integration pending")]
     pub(crate) fn set_disk_monitor(&mut self, monitor: DiskSpaceMonitor) {
         self.disk_monitor = Some(monitor);
     }

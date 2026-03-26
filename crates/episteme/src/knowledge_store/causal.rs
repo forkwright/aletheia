@@ -61,6 +61,7 @@ impl KnowledgeStore {
     ///
     /// Returns [`EngineQuery`](crate::error::Error::EngineQuery) if the deletion fails.
     #[instrument(skip(self))]
+    #[expect(dead_code, reason = "causal graph operations for knowledge store")]
     pub(crate) fn remove_causal_edge(
         &self,
         cause: &crate::id::FactId,
@@ -105,6 +106,7 @@ impl KnowledgeStore {
     ///
     /// Returns [`EngineQuery`](crate::error::Error::EngineQuery) if the query fails.
     #[instrument(skip(self))]
+    #[expect(dead_code, reason = "causal graph operations for knowledge store")]
     pub(crate) fn query_causes(
         &self,
         effect_id: &crate::id::FactId,
@@ -132,6 +134,7 @@ impl KnowledgeStore {
     ///
     /// Returns [`EngineQuery`](crate::error::Error::EngineQuery) if the query fails.
     #[instrument(skip(self))]
+    #[expect(dead_code, reason = "knowledge pipeline infrastructure")]
     pub(crate) fn list_causal_edges(
         &self,
     ) -> crate::error::Result<Vec<crate::knowledge::CausalEdge>> {
@@ -157,6 +160,7 @@ impl KnowledgeStore {
     ///
     /// Returns [`EngineQuery`](crate::error::Error::EngineQuery) if any query fails.
     #[instrument(skip(self))]
+    #[expect(dead_code, reason = "knowledge pipeline infrastructure")]
     pub(crate) fn propagate_confidence(
         &self,
         start: &crate::id::FactId,

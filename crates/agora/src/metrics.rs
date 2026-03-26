@@ -28,6 +28,7 @@ static ACTIVE_SUBSCRIPTIONS: LazyLock<IntGauge> = LazyLock::new(|| {
     .expect("metric registration")
 });
 
+#[expect(dead_code, reason = "metric init called from server startup")]
 /// Force-initialize all lazy metric statics.
 pub(crate) fn init() {
     LazyLock::force(&CHANNEL_MESSAGES_TOTAL);

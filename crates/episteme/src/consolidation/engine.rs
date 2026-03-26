@@ -25,6 +25,7 @@ fn i64_as_usize(v: i64) -> usize {
 
 impl KnowledgeStore {
     /// Initialize the `consolidation_audit` relation. Called during schema setup.
+    #[expect(dead_code, reason = "knowledge consolidation engine, feature-gated behind mneme-engine")]
     pub(crate) fn init_consolidation_audit(&self) -> crate::error::Result<()> {
         self.run_mut_query(CONSOLIDATION_AUDIT_DDL, BTreeMap::new())?;
         Ok(())
@@ -471,6 +472,7 @@ impl KnowledgeStore {
     /// If `dry_run` is true, reports candidates and proposed consolidations
     /// without executing mutations.
     #[instrument(skip(self, provider))]
+    #[expect(dead_code, reason = "knowledge pipeline infrastructure")]
     pub(crate) fn consolidate_knowledge(
         &self,
         provider: &dyn ConsolidationProvider,

@@ -232,6 +232,7 @@ fn detect_conflicts(db: &Project, fs: &Project, conflicts: &mut Vec<ConflictEntr
 ///
 /// Matches projects by ID across both sets and produces a summary.
 #[must_use]
+#[expect(dead_code, reason = "WIP: database-filesystem state reconciliation")]
 pub(crate) fn reconcile_all(
     db_snapshots: &[ProjectSnapshot],
     fs_snapshots: &[ProjectSnapshot],

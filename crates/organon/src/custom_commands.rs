@@ -44,6 +44,7 @@ impl CustomCommandDef {
     /// If explicitly set, uses the override. Otherwise derives from the
     /// most dangerous step: a command with any irreversible step is irreversible.
     #[must_use]
+    #[expect(dead_code, reason = "custom command reversibility derivation for approval pipeline")]
     pub(crate) fn effective_reversibility(
         &self,
         lookup: impl Fn(&str) -> Option<Reversibility>,
@@ -115,6 +116,7 @@ pub(crate) fn parse_command_yaml(content: &str) -> Result<CustomCommandDef, Stri
 /// Reads all `.yaml` and `.yml` files in the directory. Malformed files
 /// are logged and skipped.
 #[must_use]
+#[expect(dead_code, reason = "custom YAML command loading from oikos cascade")]
 pub(crate) fn load_commands_from_dir(dir: &Path) -> Vec<CustomCommandDef> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
@@ -145,6 +147,7 @@ pub(crate) fn load_commands_from_dir(dir: &Path) -> Vec<CustomCommandDef> {
 /// Searches the three-tier hierarchy (nous → shared → theke) in the
 /// `commands/` subdirectory. Most-specific definition wins on name collision.
 #[must_use]
+#[expect(dead_code, reason = "custom YAML command loading from oikos cascade")]
 pub(crate) fn load_commands_cascade(oikos: &Oikos, nous_id: &str) -> Vec<CustomCommandDef> {
     let mut seen = std::collections::HashSet::new();
     let mut commands = Vec::new();
@@ -186,6 +189,7 @@ pub(crate) fn load_commands_cascade(oikos: &Oikos, nous_id: &str) -> Vec<CustomC
 ///
 /// Returns a list of invalid tool references. An empty list means all are valid.
 #[must_use]
+#[expect(dead_code, reason = "custom YAML command validation during loading")]
 pub(crate) fn validate_step_tools(def: &CustomCommandDef) -> Vec<String> {
     let mut invalid = Vec::new();
     for step in &def.steps {

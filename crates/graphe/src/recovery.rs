@@ -64,6 +64,7 @@ pub(crate) fn check_integrity(conn: &Connection) -> Result<bool> {
 /// transient I/O condition, not structural database damage. Use
 /// [`is_disk_full_error`] to detect that case separately (#1720).
 #[must_use]
+#[expect(dead_code, reason = "recovery diagnostics for auto-repair pipeline")]
 pub(crate) fn is_corruption_error(err: &rusqlite::Error) -> bool {
     match err {
         rusqlite::Error::SqliteFailure(ffi_err, _) => matches!(
@@ -80,6 +81,7 @@ pub(crate) fn is_corruption_error(err: &rusqlite::Error) -> bool {
 /// database damage and should be handled as a recoverable I/O error rather
 /// than triggering the corruption recovery workflow (#1720).
 #[must_use]
+#[expect(dead_code, reason = "recovery diagnostics for disk-full detection (#1720)")]
 pub(crate) fn is_disk_full_error(err: &rusqlite::Error) -> bool {
     match err {
         rusqlite::Error::SqliteFailure(ffi_err, _) => ffi_err.code == rusqlite::ErrorCode::DiskFull,

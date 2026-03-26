@@ -116,12 +116,14 @@ pub(crate) fn is_complete(events: &[ParsedSseEvent]) -> bool {
 
 /// Check whether the stream contains an error event.
 #[tracing::instrument(skip_all, fields(event_count = events.len()))]
+#[expect(dead_code, reason = "SSE stream error detection for eval scenarios")]
 pub(crate) fn has_error(events: &[ParsedSseEvent]) -> bool {
     events.iter().any(|e| e.event_type == "error")
 }
 
 /// Count `tool_use` events in the stream.
 #[tracing::instrument(skip_all, fields(event_count = events.len()))]
+#[expect(dead_code, reason = "SSE tool call counting for eval scenario assertions")]
 pub(crate) fn tool_call_count(events: &[ParsedSseEvent]) -> usize {
     events.iter().filter(|e| e.event_type == "tool_use").count()
 }
@@ -137,6 +139,7 @@ pub struct UsageData {
 
 /// Extract usage data from the `message_complete` event, if present.
 #[tracing::instrument(skip_all, fields(event_count = events.len()))]
+#[expect(dead_code, reason = "SSE usage extraction for eval cost tracking")]
 pub(crate) fn extract_usage(events: &[ParsedSseEvent]) -> Option<UsageData> {
     events
         .iter()

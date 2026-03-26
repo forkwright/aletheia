@@ -147,6 +147,7 @@ impl ProjectState {
 
     /// List valid transitions from this state.
     #[must_use]
+    #[expect(dead_code, reason = "WIP: project state machine")]
     pub(crate) fn valid_transitions(&self) -> Vec<Transition> {
         match self {
             Self::Created => vec![
@@ -199,6 +200,7 @@ impl ProjectState {
 
     /// Whether work can happen in this state.
     #[must_use]
+    #[expect(dead_code, reason = "WIP: planning orchestration")]
     pub(crate) fn is_active(&self) -> bool {
         !self.is_terminal() && !matches!(self, Self::Paused { .. })
     }

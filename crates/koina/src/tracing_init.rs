@@ -9,6 +9,7 @@ use tracing_subscriber::{EnvFilter, fmt};
 ///
 /// # Panics
 /// Panics if the subscriber cannot be set (should only happen if called twice).
+#[expect(dead_code, reason = "tracing setup called from binary crate startup")]
 pub(crate) fn init() {
     let filter =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("aletheia=info,warn"));
@@ -26,6 +27,7 @@ pub(crate) fn init() {
 ///
 /// # Panics
 /// Panics if the subscriber cannot be set.
+#[expect(dead_code, reason = "JSON tracing output for structured log collection")]
 pub(crate) fn init_json() {
     let filter =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("aletheia=info,warn"));

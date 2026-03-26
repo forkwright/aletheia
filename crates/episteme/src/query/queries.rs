@@ -43,6 +43,7 @@ pub(crate) fn upsert_fact() -> String {
 /// Query current facts for a nous (not superseded, currently valid).
 /// Params: `$nous_id`, `$now`, `$limit`.
 #[must_use]
+#[expect(dead_code, reason = "Datalog query for current (non-superseded) facts")]
 pub(crate) fn current_facts() -> String {
     use FactsField::*;
     QueryBuilder::new()
@@ -297,6 +298,7 @@ pub(crate) const SEMANTIC_SEARCH: &str = r"
             query: $query_vec, k: $k, ef: $ef, bind_distance: dist}
 ";
 
+#[expect(dead_code, reason = "Datalog query for entity prefix search")]
 /// Entity search by name or alias (prefix match). Params: `$prefix`, `$limit`.
 pub(crate) const SEARCH_ENTITIES: &str = r"
     ?[id, name, entity_type] :=

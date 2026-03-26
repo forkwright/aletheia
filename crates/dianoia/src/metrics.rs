@@ -39,6 +39,7 @@ static STUCK_DETECTIONS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
     .expect("metric registration")
 });
 
+#[expect(dead_code, reason = "WIP: planning orchestration metrics")]
 /// Force-initialize all lazy metric statics.
 pub(crate) fn init() {
     LazyLock::force(&PROJECTS_ACTIVE);
@@ -47,6 +48,7 @@ pub(crate) fn init() {
 }
 
 /// Set the number of currently active projects.
+#[expect(dead_code, reason = "WIP: planning orchestration metrics")]
 pub(crate) fn set_projects_active(count: i64) {
     PROJECTS_ACTIVE.set(count);
 }

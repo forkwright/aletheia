@@ -66,6 +66,7 @@ pub enum Urgency {
 impl AttentionItem {
     /// Short label for this item's category (used in prompt formatting).
     #[must_use]
+    #[expect(dead_code, reason = "attention item label for prosoche prompt formatting")]
     pub(crate) fn category_label(&self) -> &str {
         match &self.category {
             AttentionCategory::Calendar => "calendar",
@@ -78,6 +79,7 @@ impl AttentionItem {
 
 impl ProsocheCheck {
     /// Create a prosoche check for the given nous.
+    #[expect(dead_code, reason = "prosoche attention check builder")]
     pub(crate) fn new(nous_id: impl Into<String>) -> Self {
         Self {
             nous_id: nous_id.into(),
@@ -88,6 +90,7 @@ impl ProsocheCheck {
 
     /// Set the instance data directory for disk space checks.
     #[must_use]
+    #[expect(dead_code, reason = "prosoche attention check builder")]
     pub(crate) fn with_data_dir(mut self, path: impl Into<PathBuf>) -> Self {
         self.data_dir = Some(path.into());
         self
@@ -95,6 +98,7 @@ impl ProsocheCheck {
 
     /// Add database file paths to check sizes.
     #[must_use]
+    #[expect(dead_code, reason = "prosoche attention check builder")]
     pub(crate) fn with_db_paths(mut self, paths: Vec<PathBuf>) -> Self {
         self.db_paths = paths;
         self

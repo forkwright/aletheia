@@ -232,18 +232,21 @@ pub struct TurnId(u64);
 impl TurnId {
     /// Create a new turn ID.
     #[must_use]
+    #[expect(dead_code, reason = "TurnId methods for conversation tracking")]
     pub(crate) fn new(n: u64) -> Self {
         Self(n)
     }
 
     /// The underlying numeric value.
     #[must_use]
+    #[expect(dead_code, reason = "TurnId methods for conversation tracking")]
     pub(crate) fn as_u64(self) -> u64 {
         self.0
     }
 
     /// Increment to next turn.
     #[must_use]
+    #[expect(dead_code, reason = "TurnId methods for conversation tracking")]
     pub(crate) fn next(self) -> Self {
         Self(self.0 + 1)
     }

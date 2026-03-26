@@ -39,6 +39,7 @@ impl KnowledgeStore {
         reason = "sequential param mapping, splitting adds indirection"
     )]
     #[instrument(skip(self, old_fact, new_fact), fields(old_id = %old_fact.id, new_id = %new_fact.id))]
+    #[expect(dead_code, reason = "fact temporal operations for knowledge store")]
     pub(crate) fn supersede_fact(
         &self,
         old_fact: &crate::knowledge::Fact,
@@ -184,6 +185,7 @@ impl KnowledgeStore {
 
     /// Point-in-time fact query.
     #[instrument(skip(self))]
+    #[expect(dead_code, reason = "fact temporal operations for knowledge store")]
     pub(crate) fn query_facts_at(
         &self,
         time: &str,

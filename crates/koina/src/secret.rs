@@ -89,6 +89,7 @@ impl<'de> Deserialize<'de> for SecretString {
     }
 }
 
+#[expect(dead_code, reason = "serde helper for config fields with optional secrets")]
 /// Deserialize an `Option<SecretString>` that treats empty strings as `None`.
 ///
 /// Useful for config fields where an empty value means "not set."
@@ -106,6 +107,7 @@ where
 /// (serialize the field as `[REDACTED]` if Some, skip if None when combined
 /// with `#[serde(skip_serializing_if = "Option::is_none")]`).
 ///
+#[expect(dead_code, reason = "serde helper for config fields with optional secrets")]
 /// This exists for symmetry with [`deserialize_option_secret_non_empty`].
 pub(crate) fn serialize_option_secret_redacted<S>(
     value: &Option<SecretString>,

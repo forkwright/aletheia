@@ -58,6 +58,7 @@ static EMBEDDING_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
     .expect("metric registration")
 });
 
+#[expect(dead_code, reason = "metric init called from server startup")]
 /// Force-initialize all lazy metric statics.
 pub(crate) fn init() {
     LazyLock::force(&KNOWLEDGE_FACTS_TOTAL);
@@ -72,6 +73,7 @@ pub(crate) fn record_fact_inserted(nous_id: &str) {
 }
 
 /// Record a knowledge extraction operation.
+#[expect(dead_code, reason = "metric recording called from extraction pipeline")]
 pub(crate) fn record_extraction(nous_id: &str, success: bool) {
     let status = if success { "ok" } else { "error" };
     KNOWLEDGE_EXTRACTIONS_TOTAL
@@ -87,6 +89,7 @@ pub(crate) fn record_recall_duration(nous_id: &str, duration_secs: f64) {
 }
 
 /// Record embedding computation duration.
+#[expect(dead_code, reason = "metric recording called from embedding pipeline")]
 pub(crate) fn record_embedding_duration(provider: &str, duration_secs: f64) {
     EMBEDDING_DURATION_SECONDS
         .with_label_values(&[provider])

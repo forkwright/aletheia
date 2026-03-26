@@ -164,6 +164,7 @@ impl SessionStore {
     /// Returns the number of rows deleted. Called by the retention runner to
     /// reclaim space from entries whose TTL has elapsed.
     #[instrument(skip(self))]
+    #[expect(dead_code, reason = "blackboard cleanup called by retention runner")]
     pub(crate) fn cleanup_expired_entries(&self) -> Result<u64> {
         self.require_writable()?;
         let deleted = self

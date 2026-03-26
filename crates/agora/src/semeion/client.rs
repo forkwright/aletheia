@@ -245,6 +245,7 @@ impl SignalClient {
 
     /// The base RPC URL this client targets.
     #[must_use]
+    #[expect(dead_code, reason = "Signal client RPC URL accessor for diagnostics")]
     pub(crate) fn rpc_url(&self) -> &str {
         &self.rpc_url
     }

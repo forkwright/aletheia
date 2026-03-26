@@ -127,6 +127,7 @@ impl EventEmitter {
 
     /// Create an emitter with a metric sink callback.
     #[must_use]
+    #[expect(dead_code, reason = "event emitter infrastructure for metric + log dual-dispatch")]
     pub(crate) fn with_metric_sink(
         sink: impl Fn(&str, &[(&str, String)], f64) + Send + Sync + 'static,
     ) -> Self {
@@ -140,6 +141,7 @@ impl EventEmitter {
     /// Register a listener that receives all emitted events.
     ///
     /// Useful for testing and event composition.
+    #[expect(dead_code, reason = "event emitter infrastructure for metric + log dual-dispatch")]
     pub(crate) fn add_listener(
         &self,
         listener: impl Fn(&dyn InternalEvent) + Send + Sync + 'static,
@@ -186,11 +188,13 @@ impl EventEmitter {
 
     /// Total number of events emitted since creation.
     #[must_use]
+    #[expect(dead_code, reason = "event emitter infrastructure for metric + log dual-dispatch")]
     pub(crate) fn event_count(&self) -> u64 {
         self.counter.load(Ordering::Relaxed)
     }
 
     /// Reset the event counter to zero.
+    #[expect(dead_code, reason = "planned infrastructure")]
     pub(crate) fn reset_count(&self) {
         self.counter.store(0, Ordering::Relaxed);
     }

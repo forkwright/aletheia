@@ -46,12 +46,14 @@ pub enum ScenarioOutcome {
 impl ScenarioOutcome {
     /// Returns `true` if the scenario passed.
     #[must_use]
+    #[expect(dead_code, reason = "eval scenario outcome query methods")]
     pub(crate) fn is_passed(&self) -> bool {
         matches!(self, Self::Passed { .. })
     }
 
     /// Returns `true` if the scenario failed.
     #[must_use]
+    #[expect(dead_code, reason = "eval scenario outcome query methods")]
     pub(crate) fn is_failed(&self) -> bool {
         matches!(self, Self::Failed { .. })
     }

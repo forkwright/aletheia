@@ -21,6 +21,7 @@ use crate::error::Result;
 /// Returns `None` if the store is empty or the query fails.
 #[cfg(feature = "mneme-engine")]
 #[instrument(skip(store))]
+#[expect(dead_code, reason = "knowledge export for agent portability")]
 pub(crate) fn export_knowledge(
     nous_id: &str,
     store: &crate::knowledge_store::KnowledgeStore,
@@ -140,6 +141,7 @@ fn query_all_relationships(
 /// Returns errors if fact/entity/relationship insertion fails.
 #[cfg(feature = "mneme-engine")]
 #[instrument(skip(knowledge, store))]
+#[expect(dead_code, reason = "knowledge import for agent portability")]
 pub(crate) fn import_knowledge(
     knowledge: &aletheia_graphe::portability::KnowledgeExport,
     store: &crate::knowledge_store::KnowledgeStore,

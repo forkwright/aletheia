@@ -22,6 +22,7 @@ pub trait DaemonBridge: Send + Sync {
 }
 
 /// No-op bridge for tests and configurations without nous integration.
+#[expect(dead_code, reason = "no-op bridge for tests and configurations without nous")]
 pub(crate) struct NoopBridge;
 
 impl DaemonBridge for NoopBridge {
