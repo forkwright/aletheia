@@ -5,9 +5,9 @@ use std::path::PathBuf;
 use clap::Args;
 use snafu::prelude::*;
 
-use crate::error::Result;
-
 use aletheia_mneme::store::SessionStore;
+
+use crate::error::Result;
 
 #[expect(
     clippy::struct_excessive_bools,

@@ -66,7 +66,9 @@ pub(crate) fn load_history(
         reason = "usize→i64: message length fits in i64"
     )]
     let current_tokens = (current_message.len() as i64 + 3) / 4; // kanon:ignore RUST/as-cast
-    let available = budget - config.reserve_for_current - current_tokens;
+    let available = budget
+        .saturating_sub(config.reserve_for_current)
+        .saturating_sub(current_tokens);
 
     if available <= 0 {
         let messages = vec![PipelineMessage {
@@ -119,7 +121,10 @@ pub(crate) fn load_history(
 
         let role = match msg.role {
             Role::Assistant => "assistant",
-            Role::System => unreachable!(),
+            // WHY: System messages are filtered by `continue` above, but if one
+            // slips through (e.g., non_exhaustive variant change), skip it rather
+            // than panicking the pipeline.
+            Role::System => continue,
             // WHY: non_exhaustive fallback -- unknown roles mapped to user
             Role::User | Role::ToolResult | _ => "user",
         };

@@ -432,6 +432,7 @@ impl PendingSkill {
     /// # Errors
     ///
     /// Returns a [`serde_json::Error`] if serialization fails.
+    #[must_use]
     pub fn to_json(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string(self)
     }
@@ -441,19 +442,20 @@ impl PendingSkill {
     /// # Errors
     ///
     /// Returns a [`serde_json::Error`] if the JSON is malformed.
+    #[must_use]
     pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(json)
     }
 
     /// Returns `true` if the skill is pending review.
     #[must_use]
-    pub fn is_pending(&self) -> bool {
+    pub(crate) fn is_pending(&self) -> bool {
         self.status == "pending_review"
     }
 
     /// Returns `true` if the skill has been approved.
     #[must_use]
-    pub fn is_approved(&self) -> bool {
+    pub(crate) fn is_approved(&self) -> bool {
         self.status == "approved"
     }
 }

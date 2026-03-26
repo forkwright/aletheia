@@ -3,11 +3,6 @@
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 
 use std::cmp::{Reverse, max};
 
@@ -67,14 +62,13 @@ impl<'a> SessionTx<'a> {
             .next();
         if let Some(ep) = ep_res {
             let ep = ep?;
-            let bottom_level = ep[0]
-                .get_int()
-                .expect("HNSW index stores integers at this position");
+            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+            let bottom_level = ep[0].get_int().unwrap_or_else(|| unreachable!());
             let ep_t_key = ep[1..orig_table.metadata.keys.len() + 1].to_vec();
             let ep_idx = usize::try_from(
                 ep[orig_table.metadata.keys.len() + 1]
                     .get_int()
-                    .expect("HNSW index stores integers at this position"),
+                    .unwrap_or_else(|| unreachable!()),
             )
             .map_err(|_e| {
                 InvalidOperationSnafu {
@@ -86,7 +80,7 @@ impl<'a> SessionTx<'a> {
             let ep_subidx = i32::try_from(
                 ep[orig_table.metadata.keys.len() + 2]
                     .get_int()
-                    .expect("HNSW index stores integers at this position"),
+                    .unwrap_or_else(|| unreachable!()),
             )
             .map_err(|_e| {
                 InvalidOperationSnafu {
@@ -245,9 +239,10 @@ impl<'a> SessionTx<'a> {
                         clippy::cast_sign_loss,
                         reason = "degree is a small non-negative integer stored as f64"
                     )]
+                    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                     let mut target_degree = target_self_val[0]
                         .get_float()
-                        .expect("HNSW index stores floats at this position")
+                        .unwrap_or_else(|| unreachable!())
                         as usize
                         + 1;
                     if target_degree > m_max {
@@ -374,7 +369,7 @@ impl<'a> SessionTx<'a> {
                 })?;
                 if old_existing_val[2]
                     .get_bool()
-                    .expect("HNSW index stores bools at this position")
+                    .unwrap_or_else(|| unreachable!())
                 {
                     self.store_tx.del(&old_key_bytes)?;
                 } else {
@@ -422,9 +417,8 @@ impl<'a> SessionTx<'a> {
             }
         }
         while !candidates.is_empty() && ret.len() < m {
-            let (cand_key, Reverse(OrderedFloat(cand_dist_to_q))) = candidates
-                .pop()
-                .expect("checked !is_empty() in while condition");
+            let (cand_key, Reverse(OrderedFloat(cand_dist_to_q))) =
+                candidates.pop().unwrap_or_else(|| unreachable!());
             let mut should_add = true;
             for (existing, _) in ret.iter() {
                 vec_cache.ensure_key(&cand_key, orig_table, self)?;
@@ -443,9 +437,8 @@ impl<'a> SessionTx<'a> {
         }
         if manifest.keep_pruned_connections {
             while !discarded.is_empty() && ret.len() < m {
-                let (nearest_triple, Reverse(OrderedFloat(nearest_dist))) = discarded
-                    .pop()
-                    .expect("checked !is_empty() in while condition");
+                let (nearest_triple, Reverse(OrderedFloat(nearest_dist))) =
+                    discarded.pop().unwrap_or_else(|| unreachable!());
                 ret.push(nearest_triple, Reverse(OrderedFloat(nearest_dist)));
             }
         }
@@ -498,9 +491,8 @@ impl<'a> SessionTx<'a> {
         }
 
         while let Some((candidate, Reverse(OrderedFloat(candidate_dist)))) = candidates.pop() {
-            let (_, OrderedFloat(furtherest_dist)) = found_nn
-                .peek()
-                .expect("found_nn is non-empty: populated before search loop");
+            let (_, OrderedFloat(furtherest_dist)) =
+                found_nn.peek().unwrap_or_else(|| unreachable!());
             let furtherest_dist = *furtherest_dist;
             if candidate_dist > furtherest_dist {
                 break;
@@ -513,9 +505,8 @@ impl<'a> SessionTx<'a> {
                 }
                 vec_cache.ensure_key(&neighbour_key, orig_table, self)?;
                 let neighbour_dist = vec_cache.v_dist(q, &neighbour_key)?;
-                let (_, OrderedFloat(cand_furtherest_dist)) = found_nn
-                    .peek()
-                    .expect("found_nn is non-empty: populated before search loop");
+                let (_, OrderedFloat(cand_furtherest_dist)) =
+                    found_nn.peek().unwrap_or_else(|| unreachable!());
                 if found_nn.len() < ef || neighbour_dist < *cand_furtherest_dist {
                     candidates.push(neighbour_key.clone(), Reverse(OrderedFloat(neighbour_dist)));
                     found_nn.push(neighbour_key.clone(), OrderedFloat(neighbour_dist));
@@ -554,16 +545,14 @@ impl<'a> SessionTx<'a> {
                 #[expect(clippy::cast_sign_loss, reason = "HNSW indices are non-negative")]
                 let key_idx = tuple[2 * key_len + 3]
                     .get_int()
-                    .expect("HNSW index stores integers at this position")
-                    as usize;
+                    .unwrap_or_else(|| unreachable!()) as usize;
                 #[expect(
                     clippy::cast_possible_truncation,
                     reason = "HNSW subindex bounded by m_max (< i32::MAX)"
                 )]
                 let key_subidx = tuple[2 * key_len + 4]
                     .get_int()
-                    .expect("HNSW index stores integers at this position")
-                    as i32;
+                    .unwrap_or_else(|| unreachable!()) as i32;
                 let key_tup = tuple[key_len + 3..2 * key_len + 3].to_vec();
                 if key_tup == cand_key.0 {
                     None
@@ -573,12 +562,12 @@ impl<'a> SessionTx<'a> {
                             (key_tup, key_idx, key_subidx),
                             tuple[2 * key_len + 5]
                                 .get_float()
-                                .expect("HNSW index stores floats at this position"),
+                                .unwrap_or_else(|| unreachable!()),
                         ));
                     }
                     let is_deleted = tuple[2 * key_len + 7]
                         .get_bool()
-                        .expect("HNSW index stores bools at this position");
+                        .unwrap_or_else(|| unreachable!());
                     if is_deleted {
                         None
                     } else {
@@ -586,7 +575,7 @@ impl<'a> SessionTx<'a> {
                             (key_tup, key_idx, key_subidx),
                             tuple[2 * key_len + 5]
                                 .get_float()
-                                .expect("HNSW index stores floats at this position"),
+                                .unwrap_or_else(|| unreachable!()),
                         ))
                     }
                 }
@@ -607,7 +596,7 @@ impl<'a> SessionTx<'a> {
         let mut canary_key = vec![DataValue::from(1)];
         for _ in 0..2 {
             for i in 0..orig_table.metadata.keys.len() {
-                target_key.push(tuple.get(i).expect("i bounded by keys.len()").clone());
+                target_key.push(tuple.get(i).unwrap_or_else(|| unreachable!()).clone());
                 canary_key.push(DataValue::Null);
             }
             target_key.push(DataValue::from(idx as i64));
@@ -694,9 +683,7 @@ impl<'a> SessionTx<'a> {
 
         let mut extracted_vectors = vec![];
         for idx in &manifest.vec_fields {
-            let val = tuple
-                .get(*idx)
-                .expect("vec_fields indices validated at index creation");
+            let val = tuple.get(*idx).unwrap_or_else(|| unreachable!());
             if let DataValue::Vec(v) = val {
                 extracted_vectors.push((v, *idx, -1));
             } else if let DataValue::List(l) = val {

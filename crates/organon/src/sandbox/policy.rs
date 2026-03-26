@@ -30,8 +30,7 @@ impl SandboxPolicy {
     /// Designed to run in a child process via `pre_exec`. Returns `io::Error`
     /// on failure; on unsupported kernels, logs and continues based on
     /// enforcement mode.
-    pub fn apply(&self) -> std::io::Result<()> {
-        // kanon:ignore RUST/pub-visibility
+    pub(crate) fn apply(&self) -> std::io::Result<()> {
         self.apply_egress()?;
         self.apply_landlock()?;
         self.apply_seccomp()?;

@@ -1,6 +1,7 @@
 //! Background tasks: extraction, skill analysis, distillation, and task reaping.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use tokio::sync::Mutex;
 use tracing::{Instrument, debug, info, warn};
@@ -12,6 +13,16 @@ use aletheia_mneme::store::SessionStore;
 use aletheia_hermeneus::provider::ProviderRegistry;
 
 use super::{MAX_SPAWNED_TASKS, NousActor};
+
+/// Drop guard that clears the distillation-in-progress flag on drop.
+/// Prevents the flag from being stuck if the background task panics.
+struct DistillationFlagGuard(Arc<AtomicBool>);
+
+impl Drop for DistillationFlagGuard {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
+    }
+}
 
 impl NousActor {
     /// Reap completed background tasks, log failures, and count panics.
@@ -62,7 +73,7 @@ impl NousActor {
         let knowledge_store = self.stores.knowledge_store.clone();
 
         if self.runtime.background_tasks.len() >= MAX_SPAWNED_TASKS {
-            warn!(nous_id = %self.id, limit = MAX_SPAWNED_TASKS, "background task limit reached, skipping extraction");
+            warn!(nous_id = %self.id, limit = MAX_SPAWNED_TASKS, current = self.runtime.background_tasks.len(), task_type = "extraction", "background task limit reached, skipping");
             return;
         }
 
@@ -158,7 +169,7 @@ impl NousActor {
         let span = tracing::info_span!("skill_extraction", nous.id = %nous_id, candidate.id = %candidate_id);
 
         if self.runtime.background_tasks.len() >= MAX_SPAWNED_TASKS {
-            warn!(nous_id = %self.id, limit = MAX_SPAWNED_TASKS, "background task limit reached, skipping skill extraction");
+            warn!(nous_id = %self.id, limit = MAX_SPAWNED_TASKS, current = self.runtime.background_tasks.len(), task_type = "skill_extraction", "background task limit reached, skipping");
             return;
         }
 
@@ -181,8 +192,6 @@ impl NousActor {
     }
 
     pub(super) async fn maybe_spawn_distillation(&mut self, session_key: &str) {
-        use std::sync::atomic::Ordering;
-
         // WHY: two turns finishing close together can both observe the distillation trigger before
         // either task commits: the atomic flag ensures only one distillation task runs at a time (#1035)
         if self
@@ -207,8 +216,6 @@ impl NousActor {
 
     /// Attempt to spawn a distillation task. Returns `true` if a task was spawned.
     async fn try_spawn_distillation(&mut self, session_key: &str) -> bool {
-        use std::sync::atomic::Ordering;
-
         let Some(ref store_arc) = self.stores.session_store else {
             return false;
         };
@@ -254,15 +261,18 @@ impl NousActor {
             tracing::info_span!("distillation", nous.id = %nous_id, session.id = %session_id);
 
         if self.runtime.background_tasks.len() >= MAX_SPAWNED_TASKS {
-            warn!(nous_id = %self.id, limit = MAX_SPAWNED_TASKS, "background task limit reached, skipping distillation");
+            warn!(nous_id = %self.id, limit = MAX_SPAWNED_TASKS, current = self.runtime.background_tasks.len(), task_type = "distillation", "background task limit reached, skipping");
             return false;
         }
 
         let flag = Arc::clone(&self.runtime.distillation_in_progress);
         self.runtime.background_tasks.spawn(
             async move {
+                // WHY: drop guard ensures the flag is cleared even if the task panics,
+                // preventing distillation from being permanently blocked (#2155)
+                let _guard = DistillationFlagGuard(Arc::clone(&flag));
                 run_background_distillation(store, providers, session_id, nous_id, config).await;
-                flag.store(false, Ordering::Release);
+                // NOTE: guard Drop handles flag.store(false) for both normal and panic paths
             }
             .instrument(span),
         );

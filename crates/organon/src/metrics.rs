@@ -38,15 +38,13 @@ static TOOL_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
 });
 
 /// Force-initialize all lazy metric statics.
-pub fn init() {
-    // kanon:ignore RUST/pub-visibility
+pub(crate) fn init() {
     LazyLock::force(&TOOL_INVOCATIONS_TOTAL);
     LazyLock::force(&TOOL_DURATION_SECONDS);
 }
 
 /// Record a tool invocation.
-pub fn record_invocation(tool_name: &str, duration_secs: f64, success: bool) {
-    // kanon:ignore RUST/pub-visibility
+pub(crate) fn record_invocation(tool_name: &str, duration_secs: f64, success: bool) {
     let status = if success { "ok" } else { "error" };
     TOOL_INVOCATIONS_TOTAL
         .with_label_values(&[tool_name, status])

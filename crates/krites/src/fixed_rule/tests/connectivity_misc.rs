@@ -1,10 +1,6 @@
 //! Connectivity and misc tests: SCC, CC, TopSort, Clustering, KSP, Louvain, KCore.
 #![cfg(test)]
 #![expect(clippy::expect_used, reason = "test assertions")]
-#![expect(
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use crate::DbInstance;
 use crate::data::value::DataValue;
 
@@ -55,6 +51,7 @@ edges[src, dst] <- [[0, 1], [1, 2], [2, 3]]
         .rows;
 
     assert_eq!(res.len(), 4, "4 nodes in DAG");
+    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
     let comps: Vec<_> = res.iter().map(|r| r[1].clone()).collect();
     let unique: std::collections::BTreeSet<_> = comps.iter().cloned().collect();
     assert_eq!(unique.len(), 4, "Each DAG node is its own SCC");
@@ -141,6 +138,7 @@ edges[src, dst] <- [[0, 1], [1, 2], [2, 3], [3, 4]]
         .expect("ConnectedComponents single-chain query should execute successfully")
         .rows;
 
+    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
     let comps: Vec<_> = res.iter().map(|r| r[1].clone()).collect();
     let unique: std::collections::BTreeSet<_> = comps.iter().cloned().collect();
     assert_eq!(unique.len(), 1, "All nodes in one component");
@@ -160,6 +158,7 @@ edges[src, dst] <- [[0, 1], [0, 2], [0, 3]]
         .expect("ConnectedComponents directed-star query should execute successfully")
         .rows;
 
+    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
     let comps: Vec<_> = res.iter().map(|r| r[1].clone()).collect();
     let unique: std::collections::BTreeSet<_> = comps.iter().cloned().collect();
     assert_eq!(unique.len(), 1, "Undirected view merges all star nodes");
@@ -184,9 +183,12 @@ edges[src, dst] <- [[0, 1], [0, 2], [1, 3], [2, 3], [3, 4]]
 
     let mut pos = [0usize; 5];
     for row in &res {
+        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let idx = row[0]
             .get_int()
             .expect("topological index should be an int") as usize;
+        #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
+        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let node = row[1].get_int().expect("node id should be an int") as usize;
         pos[node] = idx;
     }
@@ -295,8 +297,10 @@ edges[src, dst] <- [[0,1],[0,2],[0,3],[1,2],[1,3],[2,3]]
 
     assert_eq!(res.len(), 4, "K4 has 4 nodes");
     for row in &res {
+        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let tri = row[2].get_int().expect("triangle count should be an int");
         assert_eq!(tri, 3, "Every K4 node is in 3 triangles; got {tri}");
+        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let cc = row[1]
             .get_float()
             .expect("clustering coefficient should be a float");
@@ -350,9 +354,11 @@ goal[] <- [[3]]
         .rows;
 
     assert_eq!(res.len(), 2, "k=2 → 2 shortest paths");
+    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
     let c1 = res[0][2]
         .get_float()
         .expect("first path cost should be a float");
+    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
     let c2 = res[1][2]
         .get_float()
         .expect("second path cost should be a float");
@@ -538,6 +544,7 @@ edges[src, dst] <- [[0, 1], [1, 2], [2, 3], [3, 4]]
 
     assert_eq!(res.len(), 5, "5-node path");
     for row in &res {
+        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let k = row[1].get_int().expect("k-core value should be an int");
         assert_eq!(k, 1, "All path nodes are in exactly the 1-core, got k={k}");
     }

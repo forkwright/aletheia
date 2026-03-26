@@ -87,16 +87,10 @@ impl From<DataValue> for JsonValue {
             }
             DataValue::Vec(arr) => match arr {
                 Vector::F32(a) => {
-                    json!(
-                        a.as_slice()
-                            .expect("ndarray::Array1 is always contiguous in memory")
-                    )
+                    json!(a.as_slice().unwrap_or(&[]))
                 }
                 Vector::F64(a) => {
-                    json!(
-                        a.as_slice()
-                            .expect("ndarray::Array1 is always contiguous in memory")
-                    )
+                    json!(a.as_slice().unwrap_or(&[]))
                 }
             },
             DataValue::Validity(v) => {

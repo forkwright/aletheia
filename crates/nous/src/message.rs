@@ -43,6 +43,8 @@ pub(crate) enum NousMessage {
     Sleep,
     /// Wake from dormant.
     Wake,
+    /// Reset degraded state: clears panic counter and restores lifecycle to Idle.
+    Recover { reply: oneshot::Sender<bool> },
     /// Graceful shutdown.
     Shutdown,
 }

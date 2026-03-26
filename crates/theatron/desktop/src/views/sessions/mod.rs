@@ -233,7 +233,7 @@ pub(crate) fn Sessions() -> Element {
                                         model = msg.model.clone();
                                     }
                                 }
-                                _ => {}
+                                _ => {} // NOTE: non-assistant messages have no model to extract
                             }
 
                             if let Some(ref ts) = msg.created_at {

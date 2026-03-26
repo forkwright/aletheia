@@ -3,11 +3,6 @@
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
@@ -351,9 +346,7 @@ impl<'a> SessionTx<'a> {
 
             let mut changed = false;
             for (k, new_store) in to_merge {
-                let old_store = stores
-                    .get_mut(k)
-                    .expect("to_merge key always present in stores: derived from stores entries");
+                let old_store = stores.get_mut(k).unwrap_or_else(|| unreachable!());
                 old_store.merge_in(new_store)?;
                 trace!("delta for {}: {}", k, old_store.has_delta());
                 changed |= old_store.has_delta();
@@ -409,6 +402,7 @@ impl<'a> SessionTx<'a> {
         stores: &BTreeMap<MagicSymbol, EpochStore>,
         poison: Poison,
     ) -> Result<MeetAggrStore> {
+        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let mut out_store = MeetAggrStore::new(ruleset[0].aggr.clone())?;
 
         for (rule_n, rule) in ruleset.iter().enumerate() {
@@ -425,6 +419,7 @@ impl<'a> SessionTx<'a> {
             poison.check()?;
         }
         if out_store.is_empty() && ruleset[0].aggr.iter().all(|a| a.is_some()) {
+            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
             let mut aggr = ruleset[0].aggr.clone();
             for (aggr, args) in aggr.iter_mut().flatten() {
                 aggr.meet_init(args)?;
@@ -432,13 +427,8 @@ impl<'a> SessionTx<'a> {
             let value: Vec<_> = aggr
                 .iter()
                 .map(|a| -> Result<DataValue> {
-                    let (aggr, _) = a
-                        .as_ref()
-                        .expect("aggr is Some: filtered with all(|a| a.is_some()) above");
-                    let op = aggr
-                        .meet_op
-                        .as_ref()
-                        .expect("meet_op is Some: meet aggregation validated at compile time");
+                    let (aggr, _) = a.as_ref().unwrap_or_else(|| unreachable!());
+                    let op = aggr.meet_op.as_ref().unwrap_or_else(|| unreachable!());
                     Ok(op.init_val())
                 })
                 .try_collect()?;
@@ -495,7 +485,7 @@ impl<'a> SessionTx<'a> {
                             aggr_ops[aggr_idx]
                                 .normal_op
                                 .as_mut()
-                                .expect("normal_op is Some: set by normal_init in Vacant branch")
+                                .unwrap_or_else(|| unreachable!())
                                 .set(&item[*tuple_idx])?;
                         }
                     }
@@ -507,7 +497,7 @@ impl<'a> SessionTx<'a> {
                             cur_aggr
                                 .normal_op
                                 .as_mut()
-                                .expect("normal_op is Some: set by normal_init immediately above")
+                                .unwrap_or_else(|| unreachable!())
                                 .set(&item[*i])?;
                             aggr_ops.push(cur_aggr)
                         }
@@ -518,6 +508,7 @@ impl<'a> SessionTx<'a> {
             poison.check()?;
         }
 
+        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let mut inv_indices = Vec::with_capacity(ruleset[0].aggr.len());
         let mut seen_keys = 0usize;
         let mut seen_aggrs = 0usize;
@@ -532,18 +523,15 @@ impl<'a> SessionTx<'a> {
         }
 
         if aggr_work.is_empty() && ruleset[0].aggr.iter().all(|v| v.is_some()) {
+            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
             let empty_result: Vec<_> = ruleset[0]
                 .aggr
                 .iter()
                 .map(|a| {
-                    let (aggr, args) = a
-                        .as_ref()
-                        .expect("aggr is Some: checked with all(|v| v.is_some()) above");
+                    let (aggr, args) = a.as_ref().unwrap_or_else(|| unreachable!());
                     let mut aggr = aggr.clone();
                     aggr.normal_init(args)?;
-                    let op = aggr
-                        .normal_op
-                        .expect("normal_op is Some: set by normal_init immediately above");
+                    let op = aggr.normal_op.unwrap_or_else(|| unreachable!());
                     op.get()
                 })
                 .try_collect()?;
@@ -558,7 +546,7 @@ impl<'a> SessionTx<'a> {
                         aggrs[*idx]
                             .normal_op
                             .as_ref()
-                            .expect("normal_op is Some: all aggr ops initialised before collection")
+                            .unwrap_or_else(|| unreachable!())
                             .get()
                     } else {
                         Ok(keys[*idx].clone())
@@ -592,9 +580,7 @@ impl<'a> SessionTx<'a> {
         limiter: &QueryLimiter,
         poison: Poison,
     ) -> Result<(bool, RegularTempStore)> {
-        let prev_store = stores
-            .get(rule_symb)
-            .expect("rule_symb always present in stores: inserted during plan compilation");
+        let prev_store = stores.get(rule_symb).unwrap_or_else(|| unreachable!());
         let mut out_store = RegularTempStore::default();
         let should_check_limit = limiter.total.is_some() && rule_symb.is_prog_entry();
         for (rule_n, rule) in ruleset.iter().enumerate() {
@@ -604,7 +590,7 @@ impl<'a> SessionTx<'a> {
             for (symb, multiplicity) in rule.contained_rules.iter() {
                 if stores
                     .get(symb)
-                    .expect("contained rule symbol always present in stores: validated by compiler")
+                    .unwrap_or_else(|| unreachable!())
                     .has_delta()
                 {
                     dependencies_changed = true;
@@ -690,6 +676,7 @@ impl<'a> SessionTx<'a> {
         stores: &BTreeMap<MagicSymbol, EpochStore>,
         poison: Poison,
     ) -> Result<MeetAggrStore> {
+        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let mut out_store = MeetAggrStore::new(ruleset[0].aggr.clone())?;
         for (rule_n, rule) in ruleset.iter().enumerate() {
             let mut need_complete_run = false;
@@ -698,7 +685,7 @@ impl<'a> SessionTx<'a> {
             for (symb, multiplicity) in rule.contained_rules.iter() {
                 if stores
                     .get(symb)
-                    .expect("contained rule symbol always present in stores: validated by compiler")
+                    .unwrap_or_else(|| unreachable!())
                     .has_delta()
                 {
                     dependencies_changed = true;

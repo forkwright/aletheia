@@ -74,4 +74,4 @@ pub enum Error {
 }
 
 /// Convenience alias for `Result` with eval's [`Error`] type.
-pub type Result<T> = std::result::Result<T, Error>;
+pub(crate) type Result<T> = std::result::Result<T, Error>;

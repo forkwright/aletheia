@@ -119,7 +119,7 @@ impl DndState {
 /// DND state is in a separate ephemeral signal.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct NotificationPreferences {
-    /// Master on/off switch for all desktop notifications.
+    /// Global on/off switch for all desktop notifications.
     pub enabled: bool,
     /// Agent turn-completion notifications.
     pub agent_completion: bool,
@@ -154,7 +154,7 @@ impl Default for NotificationPreferences {
 }
 
 impl NotificationPreferences {
-    /// Whether a given category is enabled, respecting the master toggle.
+    /// Whether a given category is enabled, respecting the global toggle.
     #[must_use]
     pub(crate) fn category_enabled(&self, category: NotificationCategory) -> bool {
         if !self.enabled {

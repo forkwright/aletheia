@@ -1,9 +1,5 @@
 //! Basic query tests: limits, aggregation, conditions, classical logic.
 #![expect(clippy::expect_used, reason = "test assertions")]
-#![expect(
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use serde_json::json;
 use tracing::debug;
 

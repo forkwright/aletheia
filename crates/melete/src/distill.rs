@@ -1,5 +1,8 @@
 //! Context distillation engine.
 
+use std::panic::AssertUnwindSafe;
+
+use futures::FutureExt;
 use snafu::ResultExt;
 use tracing::instrument;
 
@@ -7,7 +10,7 @@ use aletheia_hermeneus::provider::LlmProvider;
 use aletheia_hermeneus::types::{CompletionRequest, Content, ContentBlock, Message, Role};
 
 use crate::contradiction::{self, ContradictionLog};
-use crate::error::{EmptySummarySnafu, LlmCallSnafu, NoMessagesSnafu, Result};
+use crate::error::{EmptySummarySnafu, LlmCallSnafu, LlmPanicSnafu, NoMessagesSnafu, Result};
 use crate::flush::{FlushItem, FlushSource, MemoryFlush};
 use crate::prompt;
 use crate::similarity::{self, DEFAULT_SIMILARITY_THRESHOLD, PruningStats};
@@ -417,15 +420,34 @@ impl DistillEngine {
 
         let request = self.build_prompt(&pruned_messages, nous_id);
 
-        let response = match provider.complete(&request).await.context(LlmCallSnafu) {
-            Ok(r) => {
+        // WHY(#2216): wrap LLM call in catch_unwind so a panic in the provider
+        // does not poison the retry_state mutex or leave the engine in a bad state.
+        let llm_result = AssertUnwindSafe(provider.complete(&request))
+            .catch_unwind()
+            .await;
+
+        let response = match llm_result {
+            Ok(Ok(r)) => {
                 self.lock_retry_state().record_success();
                 r
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 self.lock_retry_state().record_failure();
                 record_outcome(nous_id, &distill_start, false, 0, 0);
-                return Err(e);
+                return Err(e).context(LlmCallSnafu);
+            }
+            Err(panic_payload) => {
+                let msg = if let Some(s) = panic_payload.downcast_ref::<&str>() {
+                    (*s).to_owned()
+                } else if let Some(s) = panic_payload.downcast_ref::<String>() {
+                    s.clone()
+                } else {
+                    "unknown panic".to_owned()
+                };
+                tracing::error!(nous_id, panic_message = %msg, "LLM provider panicked during distillation");
+                self.lock_retry_state().record_failure();
+                record_outcome(nous_id, &distill_start, false, 0, 0);
+                return LlmPanicSnafu { message: msg }.fail();
             }
         };
 

@@ -1,4 +1,4 @@
-//! Memory explorer: master-detail entity browser with search, filtering, and actions.
+//! Memory explorer: list-detail entity browser with search, filtering, and actions.
 
 pub(crate) mod actions;
 pub(crate) mod detail;

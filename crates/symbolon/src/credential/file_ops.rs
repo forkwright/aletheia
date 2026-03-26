@@ -98,10 +98,6 @@ impl CredentialFile {
     pub(crate) fn save(&self, path: &Path) -> std::io::Result<()> {
         use std::io::Write as _;
 
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-
         let json = serde_json::to_string_pretty(self).map_err(std::io::Error::other)?;
 
         // WHY: load_or_generate_key tells us whether the key needs persisting so we
@@ -110,6 +106,12 @@ impl CredentialFile {
         let encoded = encrypt(&key, json.as_bytes())?;
 
         let _lock = CredentialFileLock::exclusive(path)?;
+
+        // WHY: create parent dirs inside the lock scope to prevent race conditions
+        // where two concurrent writers both create the directory
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
 
         // Phase 1: write all temp files and fsync
         let key_tmp = if key_needs_persist {

@@ -275,6 +275,8 @@ impl crate::query_rewrite::HasRrfScore for HybridResult {
 pub struct KnowledgeStore {
     db: std::sync::Arc<crate::engine::Db>,
     dim: usize,
+    /// Serializes read-modify-write access counter increments to prevent races.
+    access_lock: std::sync::Mutex<()>,
 }
 
 #[cfg(feature = "mneme-engine")]
@@ -301,6 +303,7 @@ impl KnowledgeStore {
         let store = Self {
             db: std::sync::Arc::new(db),
             dim: config.dim,
+            access_lock: std::sync::Mutex::new(()),
         };
         store.init_schema()?;
         Ok(std::sync::Arc::new(store))
@@ -325,6 +328,7 @@ impl KnowledgeStore {
         let store = Self {
             db: std::sync::Arc::new(db),
             dim: config.dim,
+            access_lock: std::sync::Mutex::new(()),
         };
         store.init_schema()?;
         Ok(std::sync::Arc::new(store))

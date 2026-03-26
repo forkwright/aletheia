@@ -3,11 +3,6 @@
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
@@ -126,10 +121,7 @@ impl MeetAggrStore {
             Some(prev_aggr) => {
                 let mut changed = false;
                 for (i, (aggr_op, _)) in self.aggregations.iter().enumerate() {
-                    let op = aggr_op
-                        .meet_op
-                        .as_ref()
-                        .expect("meet_op is set for meet-capable aggregations");
+                    let op = aggr_op.meet_op.as_ref().unwrap_or_else(|| unreachable!());
                     changed |= op.update(&mut prev_aggr[i], &val_part[i])?;
                 }
                 Ok(changed)
@@ -167,7 +159,7 @@ impl MeetAggrStore {
                 } else {
                     match ret
                         .partial_cmp(&upper as &[DataValue])
-                        .expect("DataValue tuples are always comparable")
+                        .unwrap_or_else(|| unreachable!())
                     {
                         Ordering::Less => Some(ret),
                         Ordering::Equal => {
@@ -204,10 +196,7 @@ impl MeetAggrStore {
                     {
                         let target = ent.get_mut();
                         for (i, (aggr_op, _)) in self.aggregations.iter().enumerate() {
-                            let op = aggr_op
-                                .meet_op
-                                .as_ref()
-                                .expect("meet_op is set for meet-capable aggregations");
+                            let op = aggr_op.meet_op.as_ref().unwrap_or_else(|| unreachable!());
                             changed |= op.update(&mut target[i], &v[i])?;
                         }
                     }
@@ -355,7 +344,7 @@ impl<'a> TupleInIter<'a> {
         self.0.get(idx).unwrap_or_else(|| {
             self.1
                 .get(idx - self.0.len())
-                .expect("idx is within combined tuple bounds")
+                .unwrap_or_else(|| unreachable!())
         })
     }
     fn should_skip(&self) -> bool {

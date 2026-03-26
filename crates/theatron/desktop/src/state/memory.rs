@@ -414,7 +414,7 @@ impl EntityNavigationHistory {
         self.cursor = self.stack.len().saturating_sub(1);
     }
 
-    /// Go back one step. Returns the entity ID to navigate to, if available.
+    /// Go back one step. Returns the entity ID to move to, if available.
     #[must_use]
     pub(crate) fn back(&mut self) -> Option<&str> {
         if self.cursor > 0 {
@@ -425,7 +425,7 @@ impl EntityNavigationHistory {
         }
     }
 
-    /// Go forward one step. Returns the entity ID to navigate to, if available.
+    /// Go forward one step. Returns the entity ID to move to, if available.
     #[must_use]
     pub(crate) fn forward(&mut self) -> Option<&str> {
         if self.cursor + 1 < self.stack.len() {

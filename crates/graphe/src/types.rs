@@ -49,7 +49,7 @@ pub enum SessionType {
 impl SessionType {
     /// Return the wire-format string for this type.
     #[must_use]
-    pub fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::Primary => "primary",
             Self::Background => "background",
@@ -59,7 +59,7 @@ impl SessionType {
 
     /// Classify session type from key pattern.
     #[must_use]
-    pub fn from_key(key: &str) -> Self {
+    pub(crate) fn from_key(key: &str) -> Self {
         if key.contains("prosoche") {
             Self::Background
         } else if key.starts_with("ask:")

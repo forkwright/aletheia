@@ -177,7 +177,7 @@ impl Debug for RelAlgebra {
                 } else if r.data.len() == 1 {
                     f.debug_tuple("Singlet")
                         .field(&bindings)
-                        .field(r.data.first().expect("data.len() == 1 checked above"))
+                        .field(r.data.first().unwrap_or_else(|| unreachable!()))
                         .finish()
                 } else {
                     f.debug_tuple("Fixed")
@@ -720,7 +720,7 @@ mod tests {
         ?[x] := a = 3, data[x, a]
         "#,
             )
-            .expect("RA query must succeed in test")
+            .unwrap_or_else(|_| unreachable!())
             .rows;
         assert_eq!(
             res,

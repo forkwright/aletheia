@@ -10,7 +10,6 @@ use super::types::{FocusedPane, OpsAutoShow, OpsThinkingBlock, OpsToolCall, OpsT
 /// Full state for the operations pane.
 #[derive(Debug, Clone)]
 pub struct OpsState {
-    // kanon:ignore RUST/pub-visibility
     /// Whether the pane is currently visible
     pub(crate) visible: bool,
     /// Width as percentage of terminal (0-100), default 40

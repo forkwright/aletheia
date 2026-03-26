@@ -254,7 +254,7 @@ fn render_status_line(editor: &EditorState, frame: &mut Frame, area: Rect, theme
 
         spans.push(Span::styled("\u{2502} ", theme.style_dim()));
         spans.push(Span::styled(
-            format!("{}", tab.path.display()),
+            format!("{path}", path = tab.path.display()),
             theme.style_dim(),
         ));
     } else {

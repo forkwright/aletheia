@@ -28,7 +28,7 @@ pub enum TurnType {
 impl TurnType {
     /// Returns the confidence boost applied to facts extracted from this turn type.
     #[must_use]
-    pub fn confidence_boost(self) -> f64 {
+    pub(crate) fn confidence_boost(self) -> f64 {
         match self {
             Self::Planning => 0.1,
             Self::Correction => 0.2,
@@ -38,7 +38,7 @@ impl TurnType {
 
     /// Returns the prompt appendix for this turn type's extraction behavior.
     #[must_use]
-    pub fn prompt_appendix(self) -> &'static str {
+    pub(crate) fn prompt_appendix(self) -> &'static str {
         match self {
             Self::Discussion => DISCUSSION_APPENDIX,
             Self::ToolHeavy => TOOL_HEAVY_APPENDIX,
@@ -73,7 +73,7 @@ impl std::fmt::Display for TurnType {
 /// 5. Procedural patterns → `Procedural`
 /// 6. Default → `Discussion`
 #[must_use]
-pub fn classify_turn(content: &str) -> TurnType {
+pub(crate) fn classify_turn(content: &str) -> TurnType {
     let lower = content.to_lowercase();
 
     if has_correction_patterns(&lower) {
@@ -258,7 +258,7 @@ pub enum FactType {
 impl FactType {
     /// Returns the fact type string matching `knowledge::default_stability_hours`.
     #[must_use]
-    pub fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::Identity => "identity",
             Self::Preference => "preference",
@@ -279,7 +279,7 @@ impl std::fmt::Display for FactType {
 
 /// Classify a fact's type from its content using keyword heuristics.
 #[must_use]
-pub fn classify_fact(content: &str) -> FactType {
+pub(crate) fn classify_fact(content: &str) -> FactType {
     let lower = content.to_lowercase();
 
     if has_identity_patterns(&lower) {
@@ -411,7 +411,7 @@ pub struct CorrectionSignal {
 
 /// Detect whether content contains an explicit correction.
 #[must_use]
-pub fn detect_correction(content: &str) -> CorrectionSignal {
+pub(crate) fn detect_correction(content: &str) -> CorrectionSignal {
     let lower = content.to_lowercase();
     let is_correction = has_correction_patterns(&lower);
     CorrectionSignal {
@@ -449,11 +449,11 @@ impl std::fmt::Display for FilterReason {
 }
 
 /// Minimum confidence for a fact to be kept.
-pub const CONFIDENCE_THRESHOLD: f64 = 0.3;
+pub(crate) const CONFIDENCE_THRESHOLD: f64 = 0.3;
 /// Minimum fact content length (chars).
-pub const MIN_FACT_LENGTH: usize = 10;
+pub(crate) const MIN_FACT_LENGTH: usize = 10;
 /// Maximum fact content length (chars).
-pub const MAX_FACT_LENGTH: usize = 500;
+pub(crate) const MAX_FACT_LENGTH: usize = 500;
 
 /// Result of applying quality filters to a fact.
 #[derive(Debug, Clone)]
@@ -468,7 +468,7 @@ pub struct FilterResult {
 ///
 /// Checks confidence threshold, length bounds, and triviality.
 #[must_use]
-pub fn filter_fact(content: &str, confidence: f64) -> FilterResult {
+pub(crate) fn filter_fact(content: &str, confidence: f64) -> FilterResult {
     if confidence < CONFIDENCE_THRESHOLD {
         return FilterResult {
             passed: false,
@@ -546,7 +546,7 @@ pub struct BatchFilterResult {
 
 /// Apply quality filters to a batch of extracted facts, including deduplication.
 #[must_use]
-pub fn filter_batch(facts: &[(String, f64)]) -> BatchFilterResult {
+pub(crate) fn filter_batch(facts: &[(String, f64)]) -> BatchFilterResult {
     let mut passed = Vec::new();
     let mut rejected = Vec::new();
     let mut seen = std::collections::HashSet::new();
@@ -580,7 +580,7 @@ pub fn filter_batch(facts: &[(String, f64)]) -> BatchFilterResult {
 
 /// Apply a confidence boost, capped at 1.0.
 #[must_use]
-pub fn boosted_confidence(base: f64, boost: f64) -> f64 {
+pub(crate) fn boosted_confidence(base: f64, boost: f64) -> f64 {
     (base + boost).min(1.0)
 }
 

@@ -19,11 +19,13 @@ use tracing::{info, instrument};
 
 use aletheia_mneme::types::SessionStatus;
 
+use aletheia_symbolon::types::Role;
+
 use crate::error::{
     ApiError, BadRequestSnafu, ConflictSnafu, ErrorResponse, NousNotFoundSnafu,
     SessionNotFoundSnafu,
 };
-use crate::extract::Claims;
+use crate::extract::{Claims, require_nous_access, require_role};
 use crate::state::SessionsState;
 
 /// POST /api/v1/sessions: create a new session.
@@ -39,12 +41,14 @@ use crate::state::SessionsState;
     ),
     security(("bearer_auth" = []))
 )]
-#[instrument(skip(state, _claims, body))]
+#[instrument(skip(state, claims, body))]
 pub async fn create(
     State(state): State<SessionsState>,
-    _claims: Claims,
+    claims: Claims,
     Json(body): Json<CreateSessionRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
+    require_role(&claims, Role::Operator)?;
+    require_nous_access(&claims, &body.nous_id)?;
     let nous_id = body.nous_id;
     let session_key = body.session_key;
 
@@ -196,12 +200,15 @@ pub async fn get_session(
     ),
     security(("bearer_auth" = []))
 )]
-#[instrument(skip(state, _claims))]
+#[instrument(skip(state, claims))]
 pub async fn close(
     State(state): State<SessionsState>,
-    _claims: Claims,
+    claims: Claims,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
+    require_role(&claims, Role::Operator)?;
+    let session = find_session(&state, &id).await?;
+    require_nous_access(&claims, &session.nous_id)?;
     archive_session_by_id(&state, &id).await
 }
 
@@ -217,13 +224,15 @@ pub async fn close(
     ),
     security(("bearer_auth" = []))
 )]
-#[instrument(skip(state, _claims))]
+#[instrument(skip(state, claims))]
 pub async fn purge(
     State(state): State<SessionsState>,
-    _claims: Claims,
+    claims: Claims,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    let _ = find_session(&state, &id).await?;
+    require_role(&claims, Role::Operator)?;
+    let session = find_session(&state, &id).await?;
+    require_nous_access(&claims, &session.nous_id)?;
 
     let state_clone = state.clone();
     let id_clone = id.clone();
@@ -251,12 +260,15 @@ pub async fn purge(
     ),
     security(("bearer_auth" = []))
 )]
-#[instrument(skip(state, _claims))]
+#[instrument(skip(state, claims))]
 pub async fn archive(
     State(state): State<SessionsState>,
-    _claims: Claims,
+    claims: Claims,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
+    require_role(&claims, Role::Operator)?;
+    let session = find_session(&state, &id).await?;
+    require_nous_access(&claims, &session.nous_id)?;
     archive_session_by_id(&state, &id).await
 }
 
@@ -290,13 +302,15 @@ async fn archive_session_by_id(state: &SessionsState, id: &str) -> Result<Status
     ),
     security(("bearer_auth" = []))
 )]
-#[instrument(skip(state, _claims))]
+#[instrument(skip(state, claims))]
 pub async fn unarchive(
     State(state): State<SessionsState>,
-    _claims: Claims,
+    claims: Claims,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    let _ = find_session(&state, &id).await?;
+    require_role(&claims, Role::Operator)?;
+    let session = find_session(&state, &id).await?;
+    require_nous_access(&claims, &session.nous_id)?;
 
     let state_clone = state.clone();
     let id_clone = id.clone();
@@ -326,14 +340,16 @@ pub async fn unarchive(
     ),
     security(("bearer_auth" = []))
 )]
-#[instrument(skip(state, _claims, body))]
+#[instrument(skip(state, claims, body))]
 pub async fn rename(
     State(state): State<SessionsState>,
-    _claims: Claims,
+    claims: Claims,
     Path(id): Path<String>,
     Json(body): Json<RenameSessionRequest>,
 ) -> Result<StatusCode, ApiError> {
-    let _ = find_session(&state, &id).await?;
+    require_role(&claims, Role::Operator)?;
+    let session = find_session(&state, &id).await?;
+    require_nous_access(&claims, &session.nous_id)?;
 
     if body.name.is_empty() {
         return Err(BadRequestSnafu {

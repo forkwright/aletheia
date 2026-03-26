@@ -55,7 +55,10 @@ impl ChannelListener {
     /// independently (e.g., merging Signal + future Slack receivers).
     /// Abort callbacks are registered at construction time for each handle.
     #[must_use]
-    pub fn from_parts(rx: mpsc::Receiver<InboundMessage>, handles: Vec<JoinHandle<()>>) -> Self {
+    pub(crate) fn from_parts(
+        rx: mpsc::Receiver<InboundMessage>,
+        handles: Vec<JoinHandle<()>>,
+    ) -> Self {
         let mut cleanup = aletheia_koina::cleanup::CleanupRegistry::new();
         for handle in &handles {
             let abort = handle.abort_handle();
@@ -70,10 +73,15 @@ impl ChannelListener {
         }
     }
 
+    /// Maximum number of concurrent handler tasks per listener.
+    const MAX_CONCURRENT_HANDLERS: usize = 64;
+
     /// Run the listener loop, dispatching each message to the handler concurrently.
     ///
     /// Each inbound message is dispatched to `handler` in a separate spawned task,
     /// so a slow handler does not block delivery of subsequent messages.
+    /// Concurrency is capped at [`MAX_CONCURRENT_HANDLERS`](Self::MAX_CONCURRENT_HANDLERS)
+    /// to prevent unbounded task growth under load.
     ///
     /// Returns after all senders are dropped (all polling tasks have stopped) and
     /// all in-flight handler tasks have completed.
@@ -88,6 +96,16 @@ impl ChannelListener {
 
         if let Some(ref mut rx) = self.rx {
             while let Some(msg) = rx.recv().await {
+                // WHY: cap concurrent handler tasks to prevent unbounded growth
+                // when messages arrive faster than handlers complete.
+                while set.len() >= Self::MAX_CONCURRENT_HANDLERS {
+                    if let Some(result) = set.join_next().await
+                        && let Err(e) = result
+                    {
+                        tracing::warn!(error = %e, "handler task panicked");
+                    }
+                }
+
                 let span = info_span!(
                     "inbound_message",
                     msg.channel = %msg.channel,
@@ -130,7 +148,7 @@ impl ChannelListener {
     }
 
     /// Stop all polling tasks.
-    pub fn stop(self) {
+    pub(crate) fn stop(self) {
         drop(self);
     }
 }
@@ -142,8 +160,9 @@ impl ChannelListener {
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
-    use super::*;
     use tracing::Instrument;
+
+    use super::*;
 
     #[test]
     fn redact_phone_long_number() {

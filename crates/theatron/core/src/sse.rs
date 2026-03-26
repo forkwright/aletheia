@@ -24,8 +24,7 @@ pub struct SseEvent {
 /// Handles the full SSE wire protocol: `data:`, `event:`, `id:`, `retry:`,
 /// comment lines (`:` prefix), multi-line `data:` fields (concatenated with
 /// newlines), and blank-line event delimiters.
-pub struct SseStream<S> {
-    // kanon:ignore RUST/pub-visibility
+pub(crate) struct SseStream<S> {
     stream: S,
     buf: String,
     done: bool,
@@ -43,8 +42,7 @@ where
     E: std::fmt::Display,
 {
     /// Create a new SSE stream parser wrapping the given byte stream.
-    pub fn new(stream: S) -> Self {
-        // kanon:ignore RUST/pub-visibility
+    pub(crate) fn new(stream: S) -> Self {
         Self {
             stream,
             buf: String::new(),

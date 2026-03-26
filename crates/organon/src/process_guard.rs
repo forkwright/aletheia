@@ -67,7 +67,7 @@ impl ProcessGuard {
         clippy::expect_used,
         reason = "panics intentionally when called twice — documented invariant"
     )]
-    pub fn detach(mut self) -> std::process::Child {
+    pub(crate) fn detach(mut self) -> std::process::Child {
         self.child.take().expect("ProcessGuard already consumed") // kanon:ignore RUST/expect
     }
 }

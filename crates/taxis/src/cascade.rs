@@ -86,7 +86,7 @@ pub fn discover(
 /// * `subdir`: Subdirectory name (e.g. "tools", "hooks", "templates")
 /// * `ext`: Optional extension filter (e.g. "md", "yaml"). Without the dot.
 #[must_use]
-pub fn discover_with(
+pub(crate) fn discover_with(
     fs: &impl FileSystem,
     oikos: &Oikos,
     nous_id: &str,
@@ -170,7 +170,7 @@ pub fn resolve(
 ///
 /// Returns the most-specific path (nous > shared > theke), or `None`.
 #[must_use]
-pub fn resolve_with(
+pub(crate) fn resolve_with(
     fs: &impl FileSystem,
     oikos: &Oikos,
     nous_id: &str,
@@ -207,7 +207,7 @@ pub fn resolve_with(
 /// where all tiers contribute. Call [`resolve_all_with`] to supply a custom
 /// [`FileSystem`].
 #[must_use]
-pub fn resolve_all(
+pub(crate) fn resolve_all(
     oikos: &Oikos,
     nous_id: &str,
     filename: &str,
@@ -220,7 +220,7 @@ pub fn resolve_all(
 ///
 /// Returns matches ordered most-specific first (nous > shared > theke).
 #[must_use]
-pub fn resolve_all_with(
+pub(crate) fn resolve_all_with(
     fs: &impl FileSystem,
     oikos: &Oikos,
     nous_id: &str,

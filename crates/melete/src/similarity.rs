@@ -22,7 +22,7 @@ pub struct PruningStats {
 impl PruningStats {
     /// Percentage of chunks pruned (0.0 to 100.0).
     #[must_use]
-    pub fn reduction_percent(&self) -> f64 {
+    pub(crate) fn reduction_percent(&self) -> f64 {
         if self.total_chunks == 0 {
             return 0.0;
         }
@@ -56,12 +56,12 @@ pub(crate) fn extract_text(message: &Message) -> String {
                         }
                         text.push_str(thinking);
                     }
-                    _ => {}
+                    _ => {} // NOTE: Image, ToolUse, ToolResult blocks contain no extractable text
                 }
             }
             text
         }
-        // WHY: Content is #[non_exhaustive]; future variants default to empty.
+        // NOTE: Content is #[non_exhaustive]; future variants default to empty.
         _ => String::new(),
     }
 }

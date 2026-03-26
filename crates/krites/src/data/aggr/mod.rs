@@ -1,9 +1,4 @@
 //! Aggregation operators for Datalog queries.
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use std::fmt::{Debug, Formatter};
 
 use super::error::*;
@@ -185,6 +180,7 @@ impl Aggregation {
                 if args.is_empty() {
                     AggrCollect::default()
                 } else {
+                    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                     let arg = args[0].get_int().ok_or_else(|| {
                         TypeMismatchSnafu {
                             op: "collect",

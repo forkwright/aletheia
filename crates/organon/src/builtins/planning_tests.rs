@@ -11,11 +11,11 @@ use std::sync::Arc;
 
 use aletheia_koina::id::ToolName;
 
+use mock::{MockPlanning, test_ctx, test_ctx_with_planning};
+
 use crate::error::SaveProjectSnafu;
 use crate::registry::ToolRegistry;
 use crate::types::{ToolCategory, ToolInput};
-
-use mock::{MockPlanning, test_ctx, test_ctx_with_planning};
 
 #[tokio::test]
 async fn register_planning_tools() {

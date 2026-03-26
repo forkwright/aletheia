@@ -73,7 +73,7 @@ impl TraceRotator {
 
     /// Attach a disk space monitor. Rotation (a non-essential write) is
     /// skipped when disk space reaches the critical threshold.
-    pub fn set_disk_monitor(&mut self, monitor: DiskSpaceMonitor) {
+    pub(crate) fn set_disk_monitor(&mut self, monitor: DiskSpaceMonitor) {
         self.disk_monitor = Some(monitor);
     }
 

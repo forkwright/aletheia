@@ -1,9 +1,5 @@
 //! Tests for triggers, callbacks, updates, indexes, and multi-transaction behavior.
 #![expect(clippy::expect_used, reason = "test assertions")]
-#![expect(
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use std::collections::BTreeMap;
 use std::time::Duration;
 

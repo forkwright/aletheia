@@ -5,8 +5,10 @@ use axum::extract::{Path, State};
 use serde::Serialize;
 use utoipa::ToSchema;
 
+use aletheia_symbolon::types::Role;
+
 use crate::error::{ApiError, ErrorResponse, NousNotFoundSnafu};
-use crate::extract::Claims;
+use crate::extract::{Claims, require_role};
 use crate::state::NousState;
 
 /// GET /api/v1/nous: list registered nous agents.
@@ -109,6 +111,48 @@ pub async fn tools(
         .collect();
 
     Ok(Json(ToolsResponse { tools }))
+}
+
+/// POST /api/v1/nous/{id}/recover: reset degraded actor to idle.
+#[utoipa::path(
+    post,
+    path = "/api/v1/nous/{id}/recover",
+    params(("id" = String, Path, description = "Nous agent ID")),
+    responses(
+        (status = 200, description = "Recovery result", body = RecoverResponse),
+        (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 404, description = "Nous not found", body = ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn recover(
+    State(state): State<NousState>,
+    claims: Claims,
+    Path(id): Path<String>,
+) -> Result<Json<RecoverResponse>, ApiError> {
+    require_role(&claims, Role::Operator)?;
+    let handle = state
+        .nous_manager
+        .get(&id)
+        .ok_or_else(|| NousNotFoundSnafu { id: id.clone() }.build())?;
+
+    let recovered = handle.recover().await.map_err(|e| {
+        crate::error::InternalSnafu {
+            message: format!("recover failed: {e}"),
+        }
+        .build()
+    })?;
+
+    Ok(Json(RecoverResponse { id, recovered }))
+}
+
+/// Response from a recovery attempt.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct RecoverResponse {
+    /// Agent identifier.
+    pub id: String,
+    /// Whether recovery was performed (false if agent was not degraded).
+    pub recovered: bool,
 }
 
 /// Response listing all registered nous agents.

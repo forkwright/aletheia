@@ -1,8 +1,4 @@
 //! Breadth-first search traversal.
-#![expect(
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use compact_str::CompactString;
@@ -36,6 +32,7 @@ impl FixedRule for Bfs {
         let condition_bytecode = condition.compile()?;
         let condition_span = condition.span();
         let binding_indices = condition.binding_indices()?;
+        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let skip_query_nodes = binding_indices.is_subset(&BTreeSet::from([0]));
 
         let mut visited: BTreeSet<DataValue> = Default::default();
@@ -45,6 +42,7 @@ impl FixedRule for Bfs {
 
         'outer: for node_tuple in starting_nodes.iter()? {
             let node_tuple = node_tuple?;
+            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
             let starting_node = &node_tuple[0];
             if visited.contains(starting_node) {
                 continue;
@@ -57,6 +55,7 @@ impl FixedRule for Bfs {
             while let Some(candidate) = queue.pop_back() {
                 for edge in edges.prefix_iter(&candidate)? {
                     let edge = edge?;
+                    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                     let to_node = &edge[1];
                     if visited.contains(to_node) {
                         continue;

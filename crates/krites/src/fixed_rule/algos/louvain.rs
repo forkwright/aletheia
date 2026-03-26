@@ -1,9 +1,4 @@
 //! Louvain community detection.
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use std::collections::{BTreeMap, BTreeSet};
 
 use compact_str::CompactString;
@@ -36,8 +31,12 @@ impl FixedRule for CommunityDetectionLouvain {
             clippy::cast_possible_truncation,
             reason = "delta is a unit interval [0,1], fits in f32"
         )]
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "intentional f64 to f32 reduction"
+        )]
         let delta = payload.unit_interval_option("delta", Some(0.0001))? as f32;
-        let keep_depth = payload.non_neg_integer_option("keep_depth", None).ok();
+        let keep_depth = payload.non_neg_integer_option("keep_depth", None).ok(); // WHY: optional parameter; absence means no depth limit
 
         let (graph, indices, _inv_indices) = edges.as_directed_weighted_graph(undirected, false)?;
         let result = louvain(&graph, delta, max_iter, poison)?;
@@ -47,8 +46,10 @@ impl FixedRule for CommunityDetectionLouvain {
                 clippy::cast_possible_truncation,
                 reason = "graph node count bounded by u32"
             )]
+            #[expect(clippy::cast_possible_truncation, reason = "value fits u32")]
             let mut cur_idx = idx as u32;
             for hierarchy in &result {
+                #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
                 let nxt_idx = hierarchy[cur_idx as usize];
                 labels.push(DataValue::from(i64::from(nxt_idx)));
                 cur_idx = nxt_idx;
@@ -96,10 +97,7 @@ fn louvain(
             break;
         }
         collected.push((node2comm, new_graph));
-        current = &collected
-            .last()
-            .expect("collected is non-empty after push")
-            .1;
+        current = &collected.last().unwrap_or_else(|| unreachable!()).1;
     }
     Ok(collected.into_iter().map(|(a, _)| a).collect_vec())
 }
@@ -116,6 +114,7 @@ fn calculate_delta(
     let mut sigma_out_total = 0.;
     let mut sigma_in_total = 0.;
     let mut d2comm = 0.;
+    #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
     let target_community_members = &comm2nodes[target_community as usize];
     for member in target_community_members.iter() {
         if *member == node {
@@ -150,7 +149,9 @@ fn louvain_step(
 ) -> Result<(Vec<u32>, DirectedCsrGraph<f32>)> {
     let n_nodes = graph.node_count();
     let mut total_weight = 0.;
+    #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
     let mut out_weights = vec![0.; n_nodes as usize];
+    #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
     let mut in_weights = vec![0.; n_nodes as usize];
 
     for from in 0..n_nodes {
@@ -165,6 +166,7 @@ fn louvain_step(
     }
 
     let mut node2comm = (0..n_nodes).collect_vec();
+    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
     let mut comm2nodes = (0..n_nodes).map(|i| BTreeSet::from([i])).collect_vec();
 
     let mut last_modurality = f32::NEG_INFINITY;
@@ -195,6 +197,7 @@ fn louvain_step(
 
         let mut moved = false;
         for node in 0..n_nodes {
+            #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
             let community_for_node = node2comm[node as usize];
 
             let original_delta_q = calculate_delta(
@@ -209,10 +212,12 @@ fn louvain_step(
             let mut candidate_community = community_for_node;
             let mut best_improvement = 0.;
 
+            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
             let mut considered_communities = BTreeSet::from([community_for_node]);
             for target in graph.out_neighbors_with_values(node) {
                 let to_node = target.target;
 
+                #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
                 let target_community = node2comm[to_node as usize];
                 if target_community == community_for_node
                     || considered_communities.contains(&target_community)
@@ -263,15 +268,18 @@ fn louvain_step(
     let mut new_graph_list: Vec<BTreeMap<u32, f32>> =
         vec![BTreeMap::new(); new_comm_count as usize];
     for (node, comm) in node2comm.iter().enumerate() {
+        #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
         let target = &mut new_graph_list[*comm as usize];
         #[expect(
             clippy::cast_possible_truncation,
             reason = "graph node count bounded by u32"
         )]
+        #[expect(clippy::cast_possible_truncation, reason = "value fits u32")]
         let node_u32 = node as u32;
         for t in graph.out_neighbors_with_values(node_u32) {
             let to_node = t.target;
             let weight = t.value;
+            #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
             let to_comm = node2comm[to_node as usize];
             *target.entry(to_comm).or_default() += weight;
         }
@@ -289,6 +297,7 @@ fn louvain_step(
                             clippy::cast_possible_truncation,
                             reason = "graph node count bounded by u32"
                         )]
+                        #[expect(clippy::cast_possible_truncation, reason = "value fits u32")]
                         let fr_u32 = fr as u32;
                         (fr_u32, to, weight)
                     })
@@ -335,6 +344,7 @@ mod tests {
                         clippy::cast_possible_truncation,
                         reason = "test graph index fits in u32"
                     )]
+                    #[expect(clippy::cast_possible_truncation, reason = "value fits u32")]
                     let fr_u32 = fr as u32;
                     (fr_u32, to, 1.)
                 })

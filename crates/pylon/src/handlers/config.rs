@@ -8,8 +8,10 @@ use serde_json::Value;
 use tracing::instrument;
 use utoipa::ToSchema;
 
+use aletheia_symbolon::types::Role;
+
 use crate::error::ApiError;
-use crate::extract::Claims;
+use crate::extract::{Claims, require_role};
 use crate::state::ConfigState;
 
 const VALID_SECTIONS: &[&str] = &[
@@ -119,11 +121,12 @@ pub async fn get_section(
     ),
     security(("bearer_auth" = []))
 )]
-#[instrument(skip(state, _claims))]
+#[instrument(skip(state, claims))]
 pub async fn reload_config(
     State(state): State<ConfigState>,
-    _claims: Claims,
+    claims: Claims,
 ) -> Result<impl IntoResponse, ApiError> {
+    require_role(&claims, Role::Operator)?;
     let current = state.config.read().await.clone();
     let outcome = aletheia_taxis::reload::prepare_reload(&state.oikos, &current).map_err(|e| {
         tracing::error!(error = %e, "config reload failed");
@@ -180,13 +183,14 @@ pub async fn reload_config(
     ),
     security(("bearer_auth" = []))
 )]
-#[instrument(skip(state, _claims, body))]
+#[instrument(skip(state, claims, body))]
 pub async fn update_section(
     State(state): State<ConfigState>,
-    _claims: Claims,
+    claims: Claims,
     Path(section): Path<String>,
     Json(body): Json<Value>,
 ) -> Result<impl IntoResponse, ApiError> {
+    require_role(&claims, Role::Operator)?;
     if !VALID_SECTIONS.contains(&section.as_str()) {
         return Err(ApiError::NotFound {
             path: format!("/api/v1/config/{section}"),

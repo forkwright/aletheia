@@ -209,7 +209,7 @@ impl KnowledgeStage {
 
     /// Return the `snake_case` string representation.
     #[must_use]
-    pub fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::Active => "active",
             Self::Fading => "fading",
@@ -228,7 +228,7 @@ impl KnowledgeStage {
 
     /// Whether facts in this stage should appear in default recall results.
     #[must_use]
-    pub fn in_default_recall(self) -> bool {
+    pub(crate) fn in_default_recall(self) -> bool {
         matches!(self, Self::Active | Self::Fading)
     }
 }
@@ -489,7 +489,7 @@ pub fn far_future() -> jiff::Timestamp {
 /// Returns `true` for any timestamp in year 9999, accommodating both the new
 /// `9999-01-01` sentinel and legacy `9999-12-31` strings.
 #[must_use]
-pub fn is_far_future(ts: &jiff::Timestamp) -> bool {
+pub(crate) fn is_far_future(ts: &jiff::Timestamp) -> bool {
     let s = format_timestamp(ts);
     s.starts_with("9999-")
 }

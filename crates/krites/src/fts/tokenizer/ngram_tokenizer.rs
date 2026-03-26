@@ -1,9 +1,4 @@
 //! N-gram tokenizer.
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use super::{Token, TokenStream, Tokenizer};
 use crate::fts::tokenizer::BoxTokenStream;
 
@@ -195,7 +190,7 @@ where
         min_gram: usize,
         max_gram: usize,
     ) -> StutteringIterator<T> {
-        assert!(min_gram > 0);
+        assert!(min_gram > 0, "min_gram must be greater than 0");
         let memory: Vec<usize> = (&mut underlying).take(max_gram + 1).collect();
         if memory.len() <= min_gram {
             StutteringIterator {
@@ -274,6 +269,7 @@ impl<'a> Iterator for CodepointFrontiers<'a> {
             if self.s.is_empty() {
                 self.next_el = None;
             } else {
+                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                 let first_codepoint_width = utf8_codepoint_width(self.s.as_bytes()[0]);
                 self.s = self.s.get(first_codepoint_width..).unwrap_or("");
                 self.next_el = Some(offset + first_codepoint_width);
@@ -289,6 +285,7 @@ const CODEPOINT_UTF8_WIDTH: [u8; 16] = [1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2
 //
 // To do that we count the number of higher significant bits set to `1`.
 fn utf8_codepoint_width(b: u8) -> usize {
+    #[expect(clippy::cast_sign_loss, reason = "value known non-negative")]
     let higher_4_bits = (b as usize) >> 4;
     CODEPOINT_UTF8_WIDTH[higher_4_bits] as usize
 }
@@ -329,6 +326,7 @@ mod tests {
 
     #[test]
     fn stuttering_iterator_yields_none_for_single_element() {
+        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let rg: Vec<usize> = vec![0];
         let mut it = StutteringIterator::new(rg.into_iter(), 1, 2);
         assert_eq!(it.next(), None);

@@ -1,8 +1,4 @@
 //! Transcendental and utility math operators.
-#![expect(
-    clippy::as_conversions,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use std::ops::Rem;
 
 use super::arg;
@@ -12,7 +8,14 @@ use crate::data::value::{DataValue, Num, Vector};
 
 pub(crate) fn op_sqrt(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
-        DataValue::Num(Num::Int(i)) => *i as f64,
+        DataValue::Num(Num::Int(i)) => {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "i64 to f64: precision loss acceptable for numeric ops"
+            )]
+            let v = *i as f64;
+            v
+        }
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
             return Ok(DataValue::Vec(Vector::F32(v.mapv(|x| x.sqrt()))));
@@ -33,7 +36,14 @@ pub(crate) fn op_sqrt(args: &[DataValue]) -> Result<DataValue> {
 
 pub(crate) fn op_exp(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
-        DataValue::Num(Num::Int(i)) => *i as f64,
+        DataValue::Num(Num::Int(i)) => {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "i64 to f64: precision loss acceptable for numeric ops"
+            )]
+            let v = *i as f64;
+            v
+        }
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
             return Ok(DataValue::Vec(Vector::F32(v.mapv(|x| x.exp()))));
@@ -54,7 +64,14 @@ pub(crate) fn op_exp(args: &[DataValue]) -> Result<DataValue> {
 
 pub(crate) fn op_exp2(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
-        DataValue::Num(Num::Int(i)) => *i as f64,
+        DataValue::Num(Num::Int(i)) => {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "i64 to f64: precision loss acceptable for numeric ops"
+            )]
+            let v = *i as f64;
+            v
+        }
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
             return Ok(DataValue::Vec(Vector::F32(v.mapv(|x| x.exp2()))));
@@ -75,7 +92,14 @@ pub(crate) fn op_exp2(args: &[DataValue]) -> Result<DataValue> {
 
 pub(crate) fn op_ln(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
-        DataValue::Num(Num::Int(i)) => *i as f64,
+        DataValue::Num(Num::Int(i)) => {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "i64 to f64: precision loss acceptable for numeric ops"
+            )]
+            let v = *i as f64;
+            v
+        }
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
             return Ok(DataValue::Vec(Vector::F32(v.mapv(|x| x.ln()))));
@@ -96,7 +120,14 @@ pub(crate) fn op_ln(args: &[DataValue]) -> Result<DataValue> {
 
 pub(crate) fn op_log2(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
-        DataValue::Num(Num::Int(i)) => *i as f64,
+        DataValue::Num(Num::Int(i)) => {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "i64 to f64: precision loss acceptable for numeric ops"
+            )]
+            let v = *i as f64;
+            v
+        }
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
             return Ok(DataValue::Vec(Vector::F32(v.mapv(|x| x.log2()))));
@@ -117,7 +148,14 @@ pub(crate) fn op_log2(args: &[DataValue]) -> Result<DataValue> {
 
 pub(crate) fn op_log10(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
-        DataValue::Num(Num::Int(i)) => *i as f64,
+        DataValue::Num(Num::Int(i)) => {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "i64 to f64: precision loss acceptable for numeric ops"
+            )]
+            let v = *i as f64;
+            v
+        }
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
             return Ok(DataValue::Vec(Vector::F32(v.mapv(|x| x.log10()))));
@@ -138,7 +176,14 @@ pub(crate) fn op_log10(args: &[DataValue]) -> Result<DataValue> {
 
 pub(crate) fn op_pow(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
-        DataValue::Num(Num::Int(i)) => *i as f64,
+        DataValue::Num(Num::Int(i)) => {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "i64 to f64: precision loss acceptable for numeric ops"
+            )]
+            let v = *i as f64;
+            v
+        }
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
             let b = arg(args, 1)?.get_float().ok_or_else(|| {
@@ -151,6 +196,10 @@ pub(crate) fn op_pow(args: &[DataValue]) -> Result<DataValue> {
             #[expect(
                 clippy::cast_possible_truncation,
                 reason = "intentional F64→F32 reduction for mixed-precision vector arithmetic"
+            )]
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "f64 to f32: intentional precision reduction"
             )]
             let b = b as f32;
             return Ok(DataValue::Vec(Vector::F32(v.mapv(|x| x.powf(b)))));
@@ -174,7 +223,14 @@ pub(crate) fn op_pow(args: &[DataValue]) -> Result<DataValue> {
         }
     };
     let b = match arg(args, 1)? {
-        DataValue::Num(Num::Int(i)) => *i as f64,
+        DataValue::Num(Num::Int(i)) => {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "i64 to f64: precision loss acceptable for numeric ops"
+            )]
+            let v = *i as f64;
+            v
+        }
         DataValue::Num(Num::Float(f)) => *f,
         _ => {
             return TypeMismatchSnafu {

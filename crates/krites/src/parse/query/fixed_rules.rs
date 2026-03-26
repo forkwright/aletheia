@@ -4,10 +4,6 @@
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
-#![expect(
-    clippy::as_conversions,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
@@ -37,10 +33,8 @@ pub(crate) fn parse_fixed_rule(
     cur_vld: ValidityTs,
 ) -> Result<(Symbol, FixedRuleApply)> {
     let mut src = src.into_inner();
-    let (out_symbol, head, aggr) = parse_rule_head(
-        src.next().expect("pest guarantees fixed rule head"),
-        param_pool,
-    )?;
+    let (out_symbol, head, aggr) =
+        parse_rule_head(src.next().unwrap_or_else(|| unreachable!()), param_pool)?;
 
     for (a, _v) in aggr.iter().zip(head.iter()) {
         if a.is_some() {
@@ -55,9 +49,9 @@ pub(crate) fn parse_fixed_rule(
     let mut seen_bindings = BTreeSet::new();
     let mut binding_gen_id = 0;
 
-    let name_pair = src.next().expect("pest guarantees fixed rule name");
+    let name_pair = src.next().unwrap_or_else(|| unreachable!());
     let fixed_name = &name_pair.as_str();
-    let args_list = src.next().expect("pest guarantees fixed rule args list");
+    let args_list = src.next().unwrap_or_else(|| unreachable!());
     let args_list_span = args_list.extract_span();
 
     let (rule_args, mut options) = collect_fixed_rule_args(
@@ -113,10 +107,7 @@ fn collect_fixed_rule_args<'i>(
     for nxt in args_list.into_inner() {
         match nxt.as_rule() {
             Rule::fixed_rel => {
-                let inner = nxt
-                    .into_inner()
-                    .next()
-                    .expect("pest guarantees fixed_rel inner");
+                let inner = nxt.into_inner().next().unwrap_or_else(|| unreachable!());
                 let arg = match inner.as_rule() {
                     Rule::fixed_rule_rel => {
                         parse_fixed_rule_rel_arg(inner, seen_bindings, binding_gen_id)?
@@ -140,8 +131,8 @@ fn collect_fixed_rule_args<'i>(
             }
             Rule::fixed_opt_pair => {
                 let mut inner = nxt.into_inner();
-                let name = inner.next().expect("pest guarantees option name").as_str();
-                let val = inner.next().expect("pest guarantees option value");
+                let name = inner.next().unwrap_or_else(|| unreachable!()).as_str();
+                let val = inner.next().unwrap_or_else(|| unreachable!());
                 let val = build_expr(val, param_pool)?;
                 options.insert(CompactString::from(name), val);
             }
@@ -158,7 +149,7 @@ fn parse_fixed_rule_rel_arg<'i>(
 ) -> Result<FixedRuleArg> {
     let span = inner.extract_span();
     let mut els = inner.into_inner();
-    let name = els.next().expect("pest guarantees fixed_rule_rel name");
+    let name = els.next().unwrap_or_else(|| unreachable!());
     let mut bindings = Vec::with_capacity(els.size_hint().1.unwrap_or(4));
     for v in els {
         let s = v.as_str();
@@ -193,7 +184,7 @@ fn parse_fixed_relation_rel_arg<'i>(
 ) -> Result<FixedRuleArg> {
     let span = inner.extract_span();
     let mut els = inner.into_inner();
-    let name = els.next().expect("pest guarantees fixed_relation_rel name");
+    let name = els.next().unwrap_or_else(|| unreachable!());
     let mut bindings = vec![];
     let mut valid_at = None;
     for v in els {
@@ -216,10 +207,7 @@ fn parse_fixed_relation_rel_arg<'i>(
                 }
             }
             Rule::validity_clause => {
-                let vld_inner = v
-                    .into_inner()
-                    .next()
-                    .expect("pest guarantees validity expr");
+                let vld_inner = v.into_inner().next().unwrap_or_else(|| unreachable!());
                 let vld_expr = build_expr(vld_inner, param_pool)?;
                 valid_at = Some(expr2vld_spec(vld_expr, cur_vld)?)
             }
@@ -230,7 +218,7 @@ fn parse_fixed_relation_rel_arg<'i>(
         name: Symbol::new(
             name.as_str()
                 .strip_prefix('*')
-                .expect("pest guarantees * prefix on stored relation"),
+                .unwrap_or_else(|| unreachable!()),
             name.extract_span(),
         ),
         bindings,
@@ -247,16 +235,14 @@ fn parse_fixed_named_relation_rel_arg<'i>(
 ) -> Result<FixedRuleArg> {
     let span = inner.extract_span();
     let mut els = inner.into_inner();
-    let name = els
-        .next()
-        .expect("pest guarantees fixed_named_relation_rel name");
+    let name = els.next().unwrap_or_else(|| unreachable!());
     let mut bindings = BTreeMap::new();
     let mut valid_at = None;
     for p in els {
         match p.as_rule() {
             Rule::fixed_named_relation_arg_pair => {
                 let mut vs = p.into_inner();
-                let kp = vs.next().expect("pest guarantees named arg key");
+                let kp = vs.next().unwrap_or_else(|| unreachable!());
                 let k = CompactString::from(kp.as_str());
                 let v = match vs.next() {
                     Some(vp) => {
@@ -283,10 +269,7 @@ fn parse_fixed_named_relation_rel_arg<'i>(
                 bindings.insert(k, v);
             }
             Rule::validity_clause => {
-                let vld_inner = p
-                    .into_inner()
-                    .next()
-                    .expect("pest guarantees validity expr");
+                let vld_inner = p.into_inner().next().unwrap_or_else(|| unreachable!());
                 let vld_expr = build_expr(vld_inner, param_pool)?;
                 valid_at = Some(expr2vld_spec(vld_expr, cur_vld)?)
             }
@@ -297,7 +280,7 @@ fn parse_fixed_named_relation_rel_arg<'i>(
         name: Symbol::new(
             name.as_str()
                 .strip_prefix(':')
-                .expect("pest guarantees : prefix on named stored relation"),
+                .unwrap_or_else(|| unreachable!()),
             name.extract_span(),
         ),
         bindings,

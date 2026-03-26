@@ -224,7 +224,7 @@ mode = "{auth_mode}"
 
 # --- Agents ---
 [agents.defaults]
-context_tokens = 200000
+context_tokens = 200000  # auto-upgraded to 1M for Opus models
 max_output_tokens = 16384
 user_timezone = "{timezone}"
 timeout_seconds = 300

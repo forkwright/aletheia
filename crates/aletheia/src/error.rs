@@ -9,7 +9,7 @@ use snafu::prelude::*;
 
 #[derive(Debug, Snafu)]
 #[snafu(whatever, display("{message}"))]
-pub(crate) struct Error {
+pub struct Error {
     message: String,
     #[snafu(source(from(Box<dyn std::error::Error + Send + Sync>, Some)))]
     source: Option<Box<dyn std::error::Error + Send + Sync>>,

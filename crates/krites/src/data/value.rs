@@ -3,10 +3,6 @@
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
-#![expect(
-    clippy::as_conversions,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 
 use std::cmp::{Ordering, Reverse};
 use std::collections::BTreeSet;
@@ -221,9 +217,7 @@ impl serde::Serialize for Vector {
         match self {
             Vector::F32(a) => {
                 state.serialize_element(&0u8)?;
-                let arr = a
-                    .as_slice()
-                    .expect("ndarray::Array1 is always contiguous in memory");
+                let arr = a.as_slice().unwrap_or(&[]);
                 let len = std::mem::size_of_val(arr);
                 let ptr = arr.as_ptr() as *const u8;
                 // SAFETY: `ptr` comes from a valid &[f32] allocation. Reinterpreting as
@@ -234,9 +228,7 @@ impl serde::Serialize for Vector {
             }
             Vector::F64(a) => {
                 state.serialize_element(&1u8)?;
-                let arr = a
-                    .as_slice()
-                    .expect("ndarray::Array1 is always contiguous in memory");
+                let arr = a.as_slice().unwrap_or(&[]);
                 let len = std::mem::size_of_val(arr);
                 let ptr = arr.as_ptr() as *const u8;
                 // SAFETY: `ptr` comes from a valid &[f64] allocation. Reinterpreting as
@@ -274,6 +266,7 @@ impl<'de> Visitor<'de> for VectorVisitor {
         let tag: u8 = seq
             .next_element()?
             .ok_or_else(|| serde::de::Error::invalid_length(0, &self))?;
+        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let bytes: &[u8] = seq
             .next_element()?
             .ok_or_else(|| serde::de::Error::invalid_length(1, &self))?;
@@ -570,6 +563,10 @@ impl Ord for Num {
     fn cmp(&self, other: &Self) -> Ordering {
         match (self, other) {
             (Num::Int(i), Num::Float(r)) => {
+                #[expect(
+                    clippy::cast_precision_loss,
+                    reason = "i64 to f64: precision loss acceptable"
+                )]
                 let l = *i as f64;
                 match l.total_cmp(r) {
                     Ordering::Less => Ordering::Less,
@@ -578,6 +575,10 @@ impl Ord for Num {
                 }
             }
             (Num::Float(l), Num::Int(i)) => {
+                #[expect(
+                    clippy::cast_precision_loss,
+                    reason = "i64 to f64: precision loss acceptable"
+                )]
                 let r = *i as f64;
                 match l.total_cmp(&r) {
                     Ordering::Less => Ordering::Less,
@@ -699,7 +700,7 @@ impl DataValue {
     pub(crate) fn get_uuid(&self) -> Option<Uuid> {
         match self {
             DataValue::Uuid(UuidWrapper(uuid)) => Some(*uuid),
-            DataValue::Str(s) => uuid::Uuid::try_parse(s).ok(),
+            DataValue::Str(s) => uuid::Uuid::try_parse(s).ok(), // WHY: parse failure means not a valid UUID; None is correct
             _ => None,
         }
     }

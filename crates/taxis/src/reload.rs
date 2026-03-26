@@ -23,7 +23,7 @@ const RESTART_PREFIXES: &[&str] = &[
 
 /// Returns true if changing the given dotted field path requires a restart.
 #[must_use]
-pub fn requires_restart(field_path: &str) -> bool {
+pub(crate) fn requires_restart(field_path: &str) -> bool {
     RESTART_PREFIXES
         .iter()
         .any(|prefix| field_path.starts_with(prefix))
@@ -79,7 +79,7 @@ impl ConfigDiff {
 /// Serializes both configs to JSON and walks the tree to find leaf differences.
 /// Each changed path is classified as hot-reloadable or cold (restart required).
 #[must_use]
-pub fn diff_configs(old: &AletheiaConfig, new: &AletheiaConfig) -> ConfigDiff {
+pub(crate) fn diff_configs(old: &AletheiaConfig, new: &AletheiaConfig) -> ConfigDiff {
     let old_value = serde_json::to_value(old).unwrap_or(Value::Null);
     let new_value = serde_json::to_value(new).unwrap_or(Value::Null);
 

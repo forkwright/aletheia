@@ -2,7 +2,7 @@
 //!
 //! Reads `Signal<CommandStore>` from context. Floats above the input bar,
 //! showing a filtered list of commands as the user types after `/`.
-//! Keyboard: up/down to navigate, Enter to select, Escape to dismiss.
+//! Keyboard: up/down to browse, Enter to select, Escape to dismiss.
 
 use dioxus::prelude::*;
 

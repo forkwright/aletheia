@@ -40,8 +40,7 @@ static CREDENTIAL_WRITE_FAILURES_TOTAL: LazyLock<prometheus::IntCounter> = LazyL
 });
 
 /// Force-initialize all lazy metric statics.
-pub fn init() {
-    // kanon:ignore RUST/pub-visibility
+pub(crate) fn init() {
     LazyLock::force(&AUTH_ATTEMPTS_TOTAL);
     LazyLock::force(&TOKEN_REFRESHES_TOTAL);
     LazyLock::force(&CREDENTIAL_WRITE_FAILURES_TOTAL);

@@ -47,16 +47,14 @@ static TOKENS_SAVED_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
 });
 
 /// Force-initialize all lazy metric statics.
-pub fn init() {
-    // kanon:ignore RUST/pub-visibility
+pub(crate) fn init() {
     LazyLock::force(&DISTILLATION_TOTAL);
     LazyLock::force(&DISTILLATION_DURATION_SECONDS);
     LazyLock::force(&TOKENS_SAVED_TOTAL);
 }
 
 /// Record a completed distillation operation.
-pub fn record_distillation(nous_id: &str, duration_secs: f64, success: bool) {
-    // kanon:ignore RUST/pub-visibility
+pub(crate) fn record_distillation(nous_id: &str, duration_secs: f64, success: bool) {
     let status = if success { "ok" } else { "error" };
     DISTILLATION_TOTAL
         .with_label_values(&[nous_id, status])
@@ -67,8 +65,7 @@ pub fn record_distillation(nous_id: &str, duration_secs: f64, success: bool) {
 }
 
 /// Record tokens saved by a distillation pass.
-pub fn record_tokens_saved(nous_id: &str, tokens: u64) {
-    // kanon:ignore RUST/pub-visibility
+pub(crate) fn record_tokens_saved(nous_id: &str, tokens: u64) {
     TOKENS_SAVED_TOTAL
         .with_label_values(&[nous_id])
         .inc_by(tokens);

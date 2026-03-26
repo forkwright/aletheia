@@ -15,7 +15,7 @@ use tracing::instrument;
 ///
 /// Keeps mneme independent of hermeneus. The nous layer bridges this trait
 /// to the full `LlmProvider` + `CompletionRequest` API.
-pub trait RewriteProvider: Send + Sync {
+pub(crate) trait RewriteProvider: Send + Sync {
     /// Generate a completion from a system prompt and user message.
     fn complete(&self, system: &str, user_message: &str) -> Result<String, RewriteError>;
 }
@@ -69,7 +69,7 @@ pub(crate) struct RewriteResult {
 }
 
 /// LLM-powered query rewriter for the recall pipeline.
-pub struct QueryRewriter {
+pub(crate) struct QueryRewriter {
     config: RewriteConfig,
 }
 
@@ -267,12 +267,24 @@ pub struct TieredSearchResult<T> {
 /// Merge multiple sets of hybrid results using reciprocal rank fusion.
 ///
 /// Deduplicates by ID, combining RRF scores from all query variants.
-/// Results from multiple queries for the same document get boosted.
+/// Each variant's contribution is normalized by its max possible score
+/// (1/(k+1)), so the fused score is comparable regardless of how many
+/// variants produced the result.
 pub(crate) fn rrf_merge<T: HasId + HasRrfScore + Clone>(
     results_per_query: &[Vec<T>],
     k: f64,
 ) -> Vec<T> {
     use std::collections::HashMap;
+
+    let num_variants = results_per_query.len();
+    if num_variants == 0 {
+        return Vec::new();
+    }
+
+    // WHY: The max RRF score for a single variant is 1/(k+1) (rank 0).
+    // Dividing each contribution by this normalizes per-variant scores to [0, 1],
+    // then averaging across variants removes bias from variant count.
+    let max_single_rrf = 1.0 / (k + 1.0);
 
     let mut score_map: HashMap<String, (f64, T)> = HashMap::new();
 
@@ -284,14 +296,27 @@ pub(crate) fn rrf_merge<T: HasId + HasRrfScore + Clone>(
                 reason = "usize→f64: rank index fits in f64"
             )]
             let rrf_contribution = 1.0 / (k + rank as f64 + 1.0);
+            let normalized = rrf_contribution / max_single_rrf;
             let entry = score_map
                 .entry(result.id().to_owned())
                 .or_insert_with(|| (0.0, result.clone()));
-            entry.0 += rrf_contribution;
+            entry.0 += normalized;
         }
     }
 
+    // WHY: Average across total variant count so a document found in 1 of 4
+    // variants is not penalized compared to one found in all 4.
+    #[expect(
+        clippy::cast_precision_loss,
+        clippy::as_conversions,
+        reason = "usize→f64: variant count fits in f64"
+    )]
+    let divisor = num_variants as f64;
+
     let mut merged: Vec<(f64, T)> = score_map.into_values().collect();
+    for entry in &mut merged {
+        entry.0 /= divisor;
+    }
     merged.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
 
     merged

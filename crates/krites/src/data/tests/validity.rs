@@ -1,9 +1,5 @@
 //! Tests for temporal validity ranges.
 #![expect(clippy::expect_used, reason = "test assertions")]
-#![expect(
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use std::env;
 
 use serde_json::json;

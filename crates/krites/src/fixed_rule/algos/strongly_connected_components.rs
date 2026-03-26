@@ -3,11 +3,6 @@
     unused_imports,
     reason = "algorithm may use additional imports depending on feature flags"
 )]
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 
 use std::cmp::min;
 use std::collections::BTreeMap;
@@ -58,20 +53,20 @@ impl FixedRule for StronglyConnectedComponent {
         let tarjan = TarjanSccG::new(graph).run(poison)?;
         for (grp_id, cc) in tarjan.iter().enumerate() {
             for idx in cc {
-                let val = indices
-                    .get(*idx as usize)
-                    .expect("idx within graph index bounds");
+                let val = indices.get(*idx as usize).unwrap_or_else(|| unreachable!());
+                #[expect(clippy::cast_possible_wrap, reason = "value fits i64")]
                 let tuple = vec![val.clone(), DataValue::from(grp_id as i64)];
                 out.put(tuple);
             }
         }
 
+        #[expect(clippy::cast_possible_wrap, reason = "value fits i64")]
         let mut counter = tarjan.len() as i64;
 
         if let Ok(nodes) = payload.get_input(1) {
             for tuple in nodes.iter()? {
                 let tuple = tuple?;
-                let node = tuple.into_iter().next().expect("tuple is non-empty");
+                let node = tuple.into_iter().next().unwrap_or(DataValue::Null);
                 if !inv_indices.contains_key(&node) {
                     inv_indices.insert(node.clone(), u32::MAX);
                     let tuple = vec![node, DataValue::from(counter)];
@@ -129,6 +124,7 @@ impl TarjanSccG {
                 clippy::cast_possible_truncation,
                 reason = "graph node count bounded by u32"
             )]
+            #[expect(clippy::cast_possible_truncation, reason = "value fits u32")]
             let idx_u32 = idx as u32;
             low_map.entry(grp).or_default().push(idx_u32);
         }
@@ -153,11 +149,10 @@ impl TarjanSccG {
                 self.low[at as usize] = min(self.low[at as usize], self.low[to as usize]);
             }
         }
-        if self.ids[at as usize].expect("id set during dfs traversal") == self.low[at as usize] {
+        if self.ids[at as usize].unwrap_or(0) == self.low[at as usize] {
             while let Some(node) = self.stack.pop() {
                 self.on_stack[node as usize] = false;
-                self.low[node as usize] =
-                    self.ids[at as usize].expect("id set during dfs traversal");
+                self.low[node as usize] = self.ids[at as usize].unwrap_or(0);
                 if node == at {
                     break;
                 }

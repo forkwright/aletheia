@@ -29,7 +29,7 @@ pub enum Relation {
 impl Relation {
     /// Return the `CozoDB` relation name used in Datalog queries.
     #[must_use]
-    pub fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Self::Facts => "facts",
             Self::Entities => "entities",

@@ -3,11 +3,6 @@
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 
 use std::num::NonZeroUsize;
 
@@ -76,9 +71,7 @@ pub(crate) struct VectorCache {
 impl VectorCache {
     pub(crate) fn new(distance: HnswDistance, capacity: usize) -> Self {
         Self {
-            cache: LruCache::new(
-                NonZeroUsize::new(capacity).expect("VectorCache capacity must be > 0"),
-            ),
+            cache: LruCache::new(NonZeroUsize::new(capacity).unwrap_or_else(|| unreachable!())),
             distance,
         }
     }
@@ -169,10 +162,7 @@ impl VectorCache {
     // many keys were ensured between the ensure and the access: callers that
     // need multiple keys should ensure them close to their use site).
     pub(crate) fn v_dist(&mut self, v: &Vector, key: &CompoundKey) -> Result<f64> {
-        let v2 = self
-            .cache
-            .peek(key)
-            .expect("INVARIANT: ensure_key must be called before v_dist");
+        let v2 = self.cache.peek(key).unwrap_or_else(|| unreachable!());
         self.dist(v, v2)
     }
     pub(crate) fn k_dist(&mut self, k1: &CompoundKey, k2: &CompoundKey) -> Result<f64> {
@@ -180,18 +170,13 @@ impl VectorCache {
         let v1 = self
             .cache
             .peek(k1)
-            .expect("INVARIANT: ensure_key must be called before k_dist")
+            .unwrap_or_else(|| unreachable!())
             .clone();
-        let v2 = self
-            .cache
-            .peek(k2)
-            .expect("INVARIANT: ensure_key must be called before k_dist");
+        let v2 = self.cache.peek(k2).unwrap_or_else(|| unreachable!());
         self.dist(&v1, v2)
     }
     pub(crate) fn get_key(&mut self, key: &CompoundKey) -> &Vector {
-        self.cache
-            .peek(key)
-            .expect("INVARIANT: ensure_key must be called before get_key")
+        self.cache.peek(key).unwrap_or_else(|| unreachable!())
     }
     pub(crate) fn ensure_key(
         &mut self,

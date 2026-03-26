@@ -264,8 +264,9 @@ fn recent_orphan_messages_not_deleted() {
 }
 
 mod proptests {
-    use super::*;
     use proptest::prelude::*;
+
+    use super::*;
 
     proptest! {
         #[test]

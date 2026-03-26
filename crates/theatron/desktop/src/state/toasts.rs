@@ -64,7 +64,7 @@ impl Severity {
 }
 
 /// Unique identifier for a toast, monotonically increasing.
-pub type ToastId = u64;
+pub(crate) type ToastId = u64;
 
 /// Optional action button on a toast.
 #[derive(Debug, Clone, PartialEq)]

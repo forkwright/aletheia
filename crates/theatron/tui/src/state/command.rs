@@ -1,7 +1,6 @@
 /// Inline slash-command autocomplete triggered by `/`.
 #[derive(Debug, Default, Clone)]
 pub struct SlashCompleteState {
-    // kanon:ignore RUST/pub-visibility
     pub(crate) active: bool,
     pub(crate) query: String,
     pub(crate) suggestions: Vec<SlashSuggestion>,
@@ -19,7 +18,6 @@ pub struct SlashSuggestion {
 /// Command palette state.
 #[derive(Debug, Default)]
 pub struct CommandPaletteState {
-    // kanon:ignore RUST/pub-visibility
     pub(crate) input: String,
     pub(crate) cursor: usize,
     pub(crate) suggestions: Vec<crate::command::Suggestion>,

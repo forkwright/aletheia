@@ -48,7 +48,7 @@ pub struct HandoffContext {
 impl HandoffContext {
     /// Render the handoff context as a human-readable markdown string.
     #[must_use]
-    pub fn to_markdown(&self) -> String {
+    pub(crate) fn to_markdown(&self) -> String {
         let mut md = String::from("# Continue Here\n\n");
 
         md.push_str("## Task\n\n");
@@ -97,14 +97,14 @@ impl HandoffContext {
 
         md.push_str("## Metadata\n\n");
         if let Some(project_id) = &self.project_id {
-            md.push_str("- Project: ");
+            md.push_str("- Project: `");
             md.push_str(project_id);
-            md.push('\n');
+            md.push_str("`\n");
         }
         if let Some(session_id) = &self.session_id {
-            md.push_str("- Session: ");
+            md.push_str("- Session: `");
             md.push_str(session_id);
-            md.push('\n');
+            md.push_str("`\n");
         }
         md.push_str("- Reason: ");
         md.push_str(match self.reason {
@@ -125,14 +125,14 @@ impl HandoffContext {
 ///
 /// Writes both a machine-readable JSON file (`.continue-here.json`) and a
 /// human-readable markdown file (`.continue-here.md`) at the given directory.
-pub struct HandoffFile {
+pub(crate) struct HandoffFile {
     dir: PathBuf,
 }
 
 impl HandoffFile {
     /// Create a handoff file manager for the given directory.
     #[must_use]
-    pub fn new(dir: impl Into<PathBuf>) -> Self {
+    pub(crate) fn new(dir: impl Into<PathBuf>) -> Self {
         Self { dir: dir.into() }
     }
 
@@ -140,7 +140,7 @@ impl HandoffFile {
     ///
     /// Creates both `.continue-here.json` (machine-readable) and
     /// `.continue-here.md` (human-readable) in the configured directory.
-    pub fn write(&self, context: &HandoffContext) -> Result<()> {
+    pub(crate) fn write(&self, context: &HandoffContext) -> Result<()> {
         let json_path = self.json_path();
         let md_path = self.md_path();
 
@@ -174,7 +174,7 @@ impl HandoffFile {
     /// Read a handoff file on resume, returning the preserved context.
     ///
     /// Returns `Ok(None)` if no handoff file exists.
-    pub fn read(&self) -> Result<Option<HandoffContext>> {
+    pub(crate) fn read(&self) -> Result<Option<HandoffContext>> {
         let json_path = self.json_path();
         if !json_path.exists() {
             return Ok(None);
@@ -193,12 +193,12 @@ impl HandoffFile {
     /// An existing handoff file at startup indicates either a planned handoff
     /// or a crash recovery scenario. The caller decides based on session context.
     #[must_use]
-    pub fn exists(&self) -> bool {
+    pub(crate) fn exists(&self) -> bool {
         self.json_path().exists()
     }
 
     /// Remove handoff files after a successful resume.
-    pub fn clear(&self) -> Result<()> {
+    pub(crate) fn clear(&self) -> Result<()> {
         let json_path = self.json_path();
         let md_path = self.md_path();
 
@@ -214,13 +214,13 @@ impl HandoffFile {
 
     /// Path to the JSON handoff file.
     #[must_use]
-    pub fn json_path(&self) -> PathBuf {
+    pub(crate) fn json_path(&self) -> PathBuf {
         self.dir.join(HANDOFF_JSON_FILENAME)
     }
 
     /// Path to the markdown handoff file.
     #[must_use]
-    pub fn md_path(&self) -> PathBuf {
+    pub(crate) fn md_path(&self) -> PathBuf {
         self.dir.join(HANDOFF_MD_FILENAME)
     }
 }
@@ -237,7 +237,7 @@ impl std::fmt::Debug for HandoffFile {
 ///
 /// Returns `Ok(Some(context))` if a handoff file exists (indicating a crash or
 /// incomplete resume from a prior session). Returns `Ok(None)` if no handoff exists.
-pub fn detect_orphaned(dir: &Path) -> Result<Option<HandoffContext>> {
+pub(crate) fn detect_orphaned(dir: &Path) -> Result<Option<HandoffContext>> {
     HandoffFile::new(dir).read()
 }
 

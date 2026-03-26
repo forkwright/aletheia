@@ -16,7 +16,7 @@ pub(crate) enum Tier {
 }
 
 /// Per-session rate limiter with separate buckets for expensive and cheap operations.
-pub(crate) struct RateLimiter {
+pub struct RateLimiter {
     expensive: TokenBucket,
     cheap: TokenBucket,
     enabled: bool,

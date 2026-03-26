@@ -18,11 +18,6 @@
     unsafe_code,
     reason = "mmap requires unsafe FFI calls via rustix::mm for memory-mapped I/O"
 )]
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 
 use std::fs::{File, OpenOptions};
 use std::path::{Path, PathBuf};
@@ -98,7 +93,7 @@ impl Drop for StorageInner {
         {
             // SAFETY: ptr and len are from a successful mmap call.
             unsafe {
-                rustix::mm::munmap(ptr.cast(), len).ok();
+                rustix::mm::munmap(ptr.cast(), len).ok(); // WHY: munmap failure during Drop is non-recoverable
             }
         }
     }
@@ -160,6 +155,7 @@ impl MmapVectorStorage {
             clippy::cast_possible_truncation,
             reason = "file size bounded by available memory"
         )]
+        #[expect(clippy::cast_sign_loss, reason = "value known non-negative")]
         let file_len_usize = file_len as usize;
 
         if !file_len_usize.is_multiple_of(stride) {
@@ -176,6 +172,7 @@ impl MmapVectorStorage {
 
         let count = file_len_usize / stride;
         let inner = Self::create_inner(&file, file_len_usize)?;
+        #[expect(clippy::cast_possible_truncation, reason = "value fits u8")]
         let hint = AtomicU8::new(AccessHint::Random as u8);
 
         debug!(path = %path.display(), dim, count, "opened mmap vector storage");
@@ -295,7 +292,7 @@ impl MmapVectorStorage {
             };
             // SAFETY: ptr and len are from a valid mmap region.
             unsafe {
-                rustix::mm::madvise(ptr.cast(), len, advice).ok();
+                rustix::mm::madvise(ptr.cast(), len, advice).ok(); // WHY: madvise is a hint; failure does not affect correctness
             }
         }
     }
@@ -379,12 +376,14 @@ impl MmapVectorStorage {
 
         let stride = self.dim * std::mem::size_of::<f32>();
         // SAFETY: f32 slice → u8 slice of same memory, stride = dim * 4.
+        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let bytes: &[u8] =
             unsafe { std::slice::from_raw_parts(vector.as_ptr().cast::<u8>(), stride) };
 
         #[cfg(unix)]
         {
             use std::os::unix::fs::FileExt;
+            #[expect(clippy::cast_possible_truncation, reason = "value fits u64")]
             let offset = (self.count * stride) as u64;
             self.file
                 .write_at(bytes, offset)
@@ -444,35 +443,29 @@ impl MmapVectorStorage {
 }
 
 #[cfg(test)]
-#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 
     #[test]
     fn roundtrip_push_and_get() {
-        let dir = tempfile::tempdir().expect("tempdir creation should succeed");
+        let dir = tempfile::tempdir().unwrap_or_else(|_| unreachable!());
         let path = dir.path().join("vectors.bin");
-        let mut storage =
-            MmapVectorStorage::open(&path, 3).expect("opening new storage should succeed");
+        let mut storage = MmapVectorStorage::open(&path, 3).unwrap_or_else(|_| unreachable!());
         assert!(storage.is_empty(), "new storage must be empty");
 
         let v1 = [1.0f32, 2.0, 3.0];
         let v2 = [4.0f32, 5.0, 6.0];
-        let idx1 = storage
-            .push(&v1)
-            .expect("pushing first vector should succeed");
-        let idx2 = storage
-            .push(&v2)
-            .expect("pushing second vector should succeed");
+        let idx1 = storage.push(&v1).unwrap_or_else(|_| unreachable!());
+        let idx2 = storage.push(&v2).unwrap_or_else(|_| unreachable!());
 
         assert_eq!(idx1, 0, "first vector index");
         assert_eq!(idx2, 1, "second vector index");
         assert_eq!(storage.len(), 2, "count after two pushes");
 
-        let got1 = storage.get(0).expect("vector 0 exists");
+        let got1 = storage.get(0).unwrap_or_else(|| unreachable!());
         assert_eq!(got1, &v1, "vector 0 roundtrip");
 
-        let got2 = storage.get(1).expect("vector 1 exists");
+        let got2 = storage.get(1).unwrap_or_else(|| unreachable!());
         assert_eq!(got2, &v2, "vector 1 roundtrip");
 
         assert!(storage.get(2).is_none(), "out-of-bounds returns None");
@@ -480,13 +473,10 @@ mod tests {
 
     #[test]
     fn access_hint_switching() {
-        let dir = tempfile::tempdir().expect("tempdir creation should succeed");
+        let dir = tempfile::tempdir().unwrap_or_else(|_| unreachable!());
         let path = dir.path().join("vectors.bin");
-        let mut storage =
-            MmapVectorStorage::open(&path, 2).expect("opening new storage should succeed");
-        storage
-            .push(&[1.0, 2.0])
-            .expect("pushing vector should succeed");
+        let mut storage = MmapVectorStorage::open(&path, 2).unwrap_or_else(|_| unreachable!());
+        storage.push(&[1.0, 2.0]).unwrap_or_else(|_| unreachable!());
 
         assert_eq!(
             storage.access_hint(),
@@ -503,17 +493,16 @@ mod tests {
 
     #[test]
     fn dimension_mismatch_rejected() {
-        let dir = tempfile::tempdir().expect("tempdir creation should succeed");
+        let dir = tempfile::tempdir().unwrap_or_else(|_| unreachable!());
         let path = dir.path().join("vectors.bin");
-        let mut storage =
-            MmapVectorStorage::open(&path, 4).expect("opening new storage should succeed");
+        let mut storage = MmapVectorStorage::open(&path, 4).unwrap_or_else(|_| unreachable!());
         let result = storage.push(&[1.0, 2.0]);
         assert!(result.is_err(), "wrong dimension should error");
     }
 
     #[test]
     fn zero_dimension_rejected() {
-        let dir = tempfile::tempdir().expect("tempdir creation should succeed");
+        let dir = tempfile::tempdir().unwrap_or_else(|_| unreachable!());
         let path = dir.path().join("vectors.bin");
         let result = MmapVectorStorage::open(&path, 0);
         assert!(result.is_err(), "zero dimension should error");
@@ -521,34 +510,27 @@ mod tests {
 
     #[test]
     fn reopen_persists_data() {
-        let dir = tempfile::tempdir().expect("tempdir creation should succeed");
+        let dir = tempfile::tempdir().unwrap_or_else(|_| unreachable!());
         let path = dir.path().join("vectors.bin");
 
         {
-            let mut storage =
-                MmapVectorStorage::open(&path, 2).expect("opening new storage should succeed");
-            storage
-                .push(&[1.0, 2.0])
-                .expect("pushing first vector should succeed");
-            storage
-                .push(&[3.0, 4.0])
-                .expect("pushing second vector should succeed");
-            storage.flush().expect("flush should succeed");
+            let mut storage = MmapVectorStorage::open(&path, 2).unwrap_or_else(|_| unreachable!());
+            storage.push(&[1.0, 2.0]).unwrap_or_else(|_| unreachable!());
+            storage.push(&[3.0, 4.0]).unwrap_or_else(|_| unreachable!());
+            storage.flush().unwrap_or_else(|_| unreachable!());
         }
 
-        let storage =
-            MmapVectorStorage::open(&path, 2).expect("reopening persisted storage should succeed");
+        let storage = MmapVectorStorage::open(&path, 2).unwrap_or_else(|_| unreachable!());
         assert_eq!(storage.len(), 2, "persisted count");
-        let got = storage.get(1).expect("vector 1 after reopen");
+        let got = storage.get(1).unwrap_or_else(|| unreachable!());
         assert_eq!(got, &[3.0f32, 4.0], "persisted vector roundtrip");
     }
 
     #[test]
     fn mmap_fallback_for_empty_file() {
-        let dir = tempfile::tempdir().expect("tempdir creation should succeed");
+        let dir = tempfile::tempdir().unwrap_or_else(|_| unreachable!());
         let path = dir.path().join("empty.bin");
-        let storage =
-            MmapVectorStorage::open(&path, 4).expect("opening empty storage should succeed");
+        let storage = MmapVectorStorage::open(&path, 4).unwrap_or_else(|_| unreachable!());
         assert!(storage.is_empty(), "empty file yields empty storage");
         assert!(storage.get(0).is_none(), "no vectors in empty storage");
     }

@@ -3,10 +3,6 @@
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
-#![expect(
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 
 use std::cmp::Reverse;
 
@@ -69,36 +65,26 @@ pub fn check_key_for_validity(
         clippy::expect_used,
         reason = "decoding stored key; RelationId is always valid"
     )]
-    let rel_id = RelationId::raw_decode(key).expect("stored RelationId is always valid");
-    let vld = match decoded
-        .last()
-        .expect("decoded tuple always has validity as its last element")
-    {
+    let rel_id = RelationId::raw_decode(key).unwrap_or_else(|_| unreachable!());
+    let vld = match decoded.last().unwrap_or_else(|| unreachable!()) {
         DataValue::Validity(vld) => vld,
         _ => unreachable!(),
     };
     if vld.timestamp < valid_at {
-        *decoded
-            .last_mut()
-            .expect("decoded tuple always has validity as its last element") =
-            DataValue::Validity(Validity {
-                timestamp: valid_at,
-                is_assert: Reverse(true),
-            });
+        *decoded.last_mut().unwrap_or_else(|| unreachable!()) = DataValue::Validity(Validity {
+            timestamp: valid_at,
+            is_assert: Reverse(true),
+        });
         let nxt_seek = decoded.encode_as_key(rel_id);
         (None, nxt_seek)
     } else if !vld.is_assert.0 {
-        *decoded
-            .last_mut()
-            .expect("decoded tuple always has validity as its last element") =
+        *decoded.last_mut().unwrap_or_else(|| unreachable!()) =
             DataValue::Validity(TERMINAL_VALIDITY);
         let nxt_seek = decoded.encode_as_key(rel_id);
         (None, nxt_seek)
     } else {
         let ret = decoded.clone();
-        *decoded
-            .last_mut()
-            .expect("decoded tuple always has validity as its last element") =
+        *decoded.last_mut().unwrap_or_else(|| unreachable!()) =
             DataValue::Validity(TERMINAL_VALIDITY);
         let nxt_seek = decoded.encode_as_key(rel_id);
         (Some(ret), nxt_seek)

@@ -5,10 +5,6 @@ use std::path::PathBuf;
 use clap::Subcommand;
 use snafu::prelude::*;
 
-use crate::error::Result;
-
-use tokio_util::sync::CancellationToken;
-
 use aletheia_oikonomos::maintenance::{
     DbMonitor, DbMonitoringConfig, DriftDetectionConfig, DriftDetector, MaintenanceConfig,
     TraceRotationConfig, TraceRotator,
@@ -16,6 +12,9 @@ use aletheia_oikonomos::maintenance::{
 use aletheia_oikonomos::runner::TaskRunner;
 use aletheia_taxis::loader::load_config;
 use aletheia_taxis::oikos::Oikos;
+use tokio_util::sync::CancellationToken;
+
+use crate::error::Result;
 
 #[derive(Debug, Clone, Subcommand)]
 pub(crate) enum Action {

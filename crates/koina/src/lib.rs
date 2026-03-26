@@ -17,6 +17,8 @@ pub mod disk_space;
 pub mod error;
 /// Internal event system coupling metrics and structured logs.
 pub mod event;
+/// Restricted filesystem helpers for writing sensitive files.
+pub mod fs;
 /// Shared HTTP constants (content types, auth prefix, API paths).
 pub mod http;
 /// Newtype wrappers for domain identifiers ([`id::NousId`], [`id::SessionId`], [`id::TurnId`], [`id::ToolName`]).

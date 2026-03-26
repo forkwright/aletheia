@@ -254,12 +254,41 @@ impl SessionStore {
     /// Called during graceful shutdown so the WAL is explicitly flushed rather than
     /// relying on the implicit checkpoint that occurs when the connection is dropped (#1723).
     ///
+    /// Retries up to 3 times with 100ms delays when `SQLITE_BUSY` prevents the
+    /// checkpoint. Data is safe regardless: the WAL will be checkpointed on next
+    /// open or by `SQLite`'s automatic checkpointing.
+    ///
     /// # Errors
-    /// Returns an error if the checkpoint query fails (e.g., in read-only mode).
+    /// Returns an error if the checkpoint fails for a reason other than `SQLITE_BUSY`.
     pub fn checkpoint_wal(&self) -> Result<()> {
-        self.conn
-            .execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
-            .context(error::DatabaseSnafu)?;
+        const MAX_RETRIES: u32 = 3;
+        const RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(100);
+
+        for attempt in 1..=MAX_RETRIES {
+            match self.conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);") {
+                Ok(()) => {
+                    info!("WAL checkpoint completed successfully");
+                    return Ok(());
+                }
+                Err(ref e) if is_busy_error(e) && attempt < MAX_RETRIES => {
+                    warn!(
+                        attempt,
+                        max_retries = MAX_RETRIES,
+                        "WAL checkpoint returned SQLITE_BUSY, retrying"
+                    );
+                    std::thread::sleep(RETRY_DELAY);
+                }
+                Err(ref e) if is_busy_error(e) => {
+                    warn!(
+                        "WAL checkpoint failed after {MAX_RETRIES} retries (SQLITE_BUSY), \
+                         data is safe and will be checkpointed on next open"
+                    );
+                    return Ok(());
+                }
+                Err(e) => return Err(e).context(error::DatabaseSnafu),
+            }
+        }
+
         Ok(())
     }
 
@@ -353,6 +382,20 @@ pub(super) fn map_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<Message> 
         is_distilled: distilled != 0,
         created_at: row.get("created_at")?,
     })
+}
+
+/// Check whether a `rusqlite::Error` indicates `SQLITE_BUSY`.
+fn is_busy_error(err: &rusqlite::Error) -> bool {
+    matches!(
+        err,
+        rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error {
+                code: rusqlite::ErrorCode::DatabaseBusy,
+                ..
+            },
+            _
+        )
+    )
 }
 
 /// Extension trait for optional query results.

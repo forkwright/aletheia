@@ -6,7 +6,7 @@ Download the prebuilt tarball for your platform. Replace `VERSION` with the late
 
 ```bash
 # Linux x86_64
-VERSION=v0.13.0
+VERSION=v0.13.13
 curl -L "https://github.com/forkwright/aletheia/releases/download/${VERSION}/aletheia-linux-x86_64-${VERSION}.tar.gz" \
   -o aletheia.tar.gz
 sha256sum -c "aletheia-linux-x86_64-${VERSION}.tar.gz.sha256"
@@ -15,7 +15,7 @@ cd "aletheia-${VERSION}"
 sudo cp aletheia /usr/local/bin/
 
 # macOS Apple Silicon
-VERSION=v0.13.0
+VERSION=v0.13.13
 curl -L "https://github.com/forkwright/aletheia/releases/download/${VERSION}/aletheia-macos-aarch64-${VERSION}.tar.gz" \
   -o aletheia.tar.gz
 shasum -a 256 -c "aletheia-macos-aarch64-${VERSION}.tar.gz.sha256"
@@ -81,7 +81,7 @@ To upgrade an existing installation, replace the binary. Your instance directory
 
 ```bash
 aletheia backup          # create a pre-upgrade backup
-VERSION=v0.13.0
+VERSION=v0.13.13
 curl -L "https://github.com/forkwright/aletheia/releases/download/${VERSION}/aletheia-linux-x86_64-${VERSION}.tar.gz" \
   -o aletheia.tar.gz
 tar xzf aletheia.tar.gz

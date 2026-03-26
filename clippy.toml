@@ -1,0 +1,7 @@
+# Workspace-wide clippy configuration.
+
+too-many-arguments-threshold = 10
+
+disallowed-methods = [
+    { path = "std::process::exit", reason = "use snafu errors and propagate; exit() bypasses destructors" },
+]

@@ -15,6 +15,7 @@ test-core = []
 test-full = []
 
 [dependencies]
+aletheia-koina = { path = "../koina" }
 jiff = { workspace = true, features = ["serde"] }
 prometheus = { workspace = true }
 serde = { workspace = true }

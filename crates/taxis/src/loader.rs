@@ -68,7 +68,7 @@ pub fn load_config(oikos: &Oikos) -> Result<AletheiaConfig> {
     clippy::double_must_use,
     reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
 )]
-pub fn load_config_with(oikos: &Oikos, fs: &impl FileSystem) -> Result<AletheiaConfig> {
+pub(crate) fn load_config_with(oikos: &Oikos, fs: &impl FileSystem) -> Result<AletheiaConfig> {
     let toml_path = oikos.config().join("aletheia.toml");
     let yaml_path = oikos.config().join("aletheia.yaml");
 
@@ -82,7 +82,7 @@ pub fn load_config_with(oikos: &Oikos, fs: &impl FileSystem) -> Result<AletheiaC
             })?;
         let toml_content = String::from_utf8_lossy(&bytes);
         let interpolated = interpolate::interpolate_env_vars(toml_content.as_ref())?;
-        let decrypted_content = decrypt_toml_content(&interpolated);
+        let decrypted_content = decrypt_toml_content(&interpolated)?;
         figment = figment.merge(Toml::string(&decrypted_content));
     } else if fs.exists(&yaml_path) {
         warn!(
@@ -103,28 +103,72 @@ pub fn load_config_with(oikos: &Oikos, fs: &impl FileSystem) -> Result<AletheiaC
 
 /// Parse TOML content, decrypt any `enc:` values, and serialize back.
 ///
-/// If the primary key is unavailable or the TOML is unparseable, returns the
-/// original content unchanged.
-fn decrypt_toml_content(content: &str) -> String {
+/// Returns an error if encrypted values are found but the decryption key is
+/// missing. This prevents the server from silently starting with undecrypted
+/// `enc:` values in place of real secrets.
+fn decrypt_toml_content(content: &str) -> Result<String> {
     let mut value: toml::Value = match toml::from_str(content) {
         Ok(v) => v,
-        Err(_) => return content.to_owned(),
+        Err(_) => return Ok(content.to_owned()),
     };
 
     let primary_key = match encrypt::primary_key_path() {
         Some(path) => match encrypt::load_primary_key(&path) {
             Ok(key) => key,
             Err(e) => {
-                warn!(error = %e, "failed to load primary key, encrypted values will not be decrypted");
+                warn!(error = %e, "failed to load primary key");
                 None
             }
         },
         None => None,
     };
 
+    // WHY: collect all encrypted field paths up front so we can return a single
+    // actionable error listing every affected field instead of warning per-value
+    if primary_key.is_none() {
+        let mut enc_paths = Vec::new();
+        collect_encrypted_paths(&value, String::new(), &mut enc_paths);
+        if !enc_paths.is_empty() {
+            return Err(crate::error::ConfigDecryptSnafu {
+                fields: enc_paths.join(", "),
+            }
+            .build());
+        }
+    }
+
     encrypt::decrypt_toml_values(&mut value, primary_key.as_ref());
 
-    toml::to_string(&value).unwrap_or_else(|_| content.to_owned())
+    Ok(toml::to_string(&value).unwrap_or_else(|_| content.to_owned()))
+}
+
+/// Walk a TOML value tree and collect dotted paths of all `enc:`-prefixed strings.
+fn collect_encrypted_paths(value: &toml::Value, prefix: String, out: &mut Vec<String>) {
+    match value {
+        toml::Value::String(s) if encrypt::is_encrypted(s) => {
+            out.push(if prefix.is_empty() {
+                "<root>".to_owned()
+            } else {
+                prefix
+            });
+        }
+        toml::Value::Table(table) => {
+            for (key, val) in table {
+                let path = if prefix.is_empty() {
+                    key.clone()
+                } else {
+                    format!("{prefix}.{key}")
+                };
+                collect_encrypted_paths(val, path, out);
+            }
+        }
+        toml::Value::Array(arr) => {
+            for (i, item) in arr.iter().enumerate() {
+                let path = format!("{prefix}[{i}]");
+                collect_encrypted_paths(item, path, out);
+            }
+        }
+        _ => {} // NOTE: scalar TOML values contain no nested encrypted paths
+    }
 }
 
 /// Write configuration to the instance TOML file.
@@ -158,7 +202,7 @@ pub fn write_config(oikos: &Oikos, config: &AletheiaConfig) -> Result<()> {
     clippy::result_large_err,
     reason = "figment::Error is inherently large"
 )]
-pub fn write_config_checked(
+pub(crate) fn write_config_checked(
     oikos: &Oikos,
     config: &AletheiaConfig,
     disk_monitor: Option<&DiskSpaceMonitor>,

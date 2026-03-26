@@ -1,10 +1,6 @@
 //! Path and traversal algorithm tests: Dijkstra, BFS, DFS, A*, centrality.
 #![cfg(test)]
 #![expect(clippy::expect_used, reason = "test assertions")]
-#![expect(
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use crate::DbInstance;
 use crate::data::value::DataValue;
 
@@ -30,6 +26,7 @@ start[] <- [[0]]
         .iter()
         .find(|r| r[1] == DataValue::from(4i64))
         .expect("row for destination node 4 should exist");
+    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
     let cost = row[2].get_float().expect("cost field should be a float");
     assert!(
         (cost - 5.0).abs() < 1e-9,
@@ -92,6 +89,7 @@ end[]   <- [[0]]
         1,
         "self-loop query should return exactly one row"
     );
+    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
     let cost = res[0][2].get_float().expect("cost field should be a float");
     assert!(
         cost.abs() < 1e-9,
@@ -230,6 +228,7 @@ edges[src, dst, cost] <- [[0, 1, 1.0], [0, 2, 4.0], [1, 2, 1.0],
 
     assert_eq!(res.len(), 5, "5 nodes → 5 closeness rows");
     for row in &res {
+        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let cc = row[1]
             .get_float()
             .expect("closeness score should be a float");
@@ -282,6 +281,7 @@ goal[] <- [[4]]
         .rows;
 
     assert_eq!(res.len(), 1, "One start-goal pair → one result");
+    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
     let cost = res[0][2]
         .get_float()
         .expect("A* cost field should be a float");
@@ -318,6 +318,7 @@ goal[] <- [[2]]
         1,
         "A* should return one row even when no path exists"
     );
+    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
     let cost = res[0][2]
         .get_float()
         .expect("A* cost field should be a float");
@@ -426,6 +427,7 @@ start[] <- [[0]]
 
     assert_eq!(res.len(), 1, "DFS finds exactly one matching node");
     assert_eq!(res[0][1], DataValue::from(4i64), "DFS target is node 4");
+    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
     let path = res[0][2]
         .get_slice()
         .expect("DFS path field should be a slice");

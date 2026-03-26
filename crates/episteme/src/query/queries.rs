@@ -14,7 +14,7 @@ use super::*;
 /// `$nous_id`, `$confidence`, `$tier`, `$valid_to`, `$superseded_by`,
 /// `$source_session_id`, `$recorded_at`.
 #[must_use]
-pub fn upsert_fact() -> String {
+pub(crate) fn upsert_fact() -> String {
     use FactsField::*;
     QueryBuilder::new()
         .put(Relation::Facts)
@@ -43,7 +43,7 @@ pub fn upsert_fact() -> String {
 /// Query current facts for a nous (not superseded, currently valid).
 /// Params: `$nous_id`, `$now`, `$limit`.
 #[must_use]
-pub fn current_facts() -> String {
+pub(crate) fn current_facts() -> String {
     use FactsField::*;
     QueryBuilder::new()
         .scan(Relation::Facts)
@@ -78,7 +78,7 @@ pub fn current_facts() -> String {
 /// Extended query returning all `Fact` fields.
 /// Params: `$nous_id`, `$now`, `$limit`.
 #[must_use]
-pub fn full_current_facts() -> String {
+pub(crate) fn full_current_facts() -> String {
     use FactsField::*;
     QueryBuilder::new()
         .scan(Relation::Facts)
@@ -131,7 +131,7 @@ pub fn full_current_facts() -> String {
 
 /// Point-in-time fact query. Params: `$time`.
 #[must_use]
-pub fn facts_at_time() -> String {
+pub(crate) fn facts_at_time() -> String {
     use FactsField::*;
     QueryBuilder::new()
         .scan(Relation::Facts)
@@ -156,7 +156,7 @@ pub fn facts_at_time() -> String {
 /// `$old_recorded`, `$new_content`, `$new_confidence`, `$new_tier`,
 /// `$source_session_id`.
 #[must_use]
-pub fn supersede_fact() -> String {
+pub(crate) fn supersede_fact() -> String {
     use FactsField::*;
     QueryBuilder::new()
         .put(Relation::Facts)
@@ -223,7 +223,7 @@ pub fn supersede_fact() -> String {
 /// Insert or update an entity.
 /// Params: `$id`, `$name`, `$entity_type`, `$aliases`, `$created_at`, `$updated_at`.
 #[must_use]
-pub fn upsert_entity() -> String {
+pub(crate) fn upsert_entity() -> String {
     use EntitiesField::*;
     QueryBuilder::new()
         .put(Relation::Entities)
@@ -236,7 +236,7 @@ pub fn upsert_entity() -> String {
 /// Insert a relationship.
 /// Params: `$src`, `$dst`, `$relation`, `$weight`, `$created_at`.
 #[must_use]
-pub fn upsert_relationship() -> String {
+pub(crate) fn upsert_relationship() -> String {
     use RelationshipsField::{CreatedAt, Dst, Relation as Rel, Src, Weight};
     QueryBuilder::new()
         .put(super::Relation::Relationships)
@@ -250,7 +250,7 @@ pub fn upsert_relationship() -> String {
 /// Params: `$id`, `$content`, `$source_type`, `$source_id`, `$nous_id`,
 /// `$embedding`, `$created_at`.
 #[must_use]
-pub fn upsert_embedding() -> String {
+pub(crate) fn upsert_embedding() -> String {
     use EmbeddingsField::*;
     QueryBuilder::new()
         .put(Relation::Embeddings)
@@ -261,7 +261,7 @@ pub fn upsert_embedding() -> String {
 }
 
 /// 2-hop entity neighborhood. Params: `$entity_id`.
-pub const ENTITY_NEIGHBORHOOD: &str = r"
+pub(crate) const ENTITY_NEIGHBORHOOD: &str = r"
     hop1[dst, rel] := *relationships{src: $entity_id, dst, relation: rel}
     hop2[dst, rel] := hop1[mid, _], *relationships{src: mid, dst, relation: rel}
     ?[id, name, entity_type, relation, hop] :=
@@ -275,7 +275,7 @@ pub const ENTITY_NEIGHBORHOOD: &str = r"
 /// Returns rows in the same format as `SEMANTIC_SEARCH` (id, content, `source_type`, `source_id`, dist)
 /// with synthetic distance derived from BM25 score.
 /// Params: `$query_text`, `$k`.
-pub const BM25_RECALL: &str = r"
+pub(crate) const BM25_RECALL: &str = r"
     bm25[id, score] := ~facts:content_fts{id | query: $query_text, k: $k, score_kind: 'bm25', bind_score: score}
 
     ?[id, content, source_type, source_id, dist] :=
@@ -291,14 +291,14 @@ pub const BM25_RECALL: &str = r"
 ";
 
 /// KNN vector search. Params: `$query_vec`, `$k`, `$ef`.
-pub const SEMANTIC_SEARCH: &str = r"
+pub(crate) const SEMANTIC_SEARCH: &str = r"
     ?[id, content, source_type, source_id, dist] :=
         ~embeddings:semantic_idx {id, content, source_type, source_id |
             query: $query_vec, k: $k, ef: $ef, bind_distance: dist}
 ";
 
 /// Entity search by name or alias (prefix match). Params: `$prefix`, `$limit`.
-pub const SEARCH_ENTITIES: &str = r"
+pub(crate) const SEARCH_ENTITIES: &str = r"
     ?[id, name, entity_type] :=
         *entities{id, name, entity_type},
         starts_with(name, $prefix)
@@ -311,7 +311,7 @@ pub const SEARCH_ENTITIES: &str = r"
 /// Hybrid search: BM25 + HNSW vector + graph neighborhood fused via RRF.
 /// Graph sub-rules are injected dynamically by `build_hybrid_query`.
 /// Params: `$query_text`, `$query_vec`, `$k`, `$ef`, `$limit`.
-pub const HYBRID_SEARCH_BASE: &str = r"
+pub(crate) const HYBRID_SEARCH_BASE: &str = r"
     bm25[id, score] := ~facts:content_fts{id | query: $query_text, k: $k, score_kind: 'bm25', bind_score: score}
 
     vec[id, score] :=
@@ -330,7 +330,7 @@ pub const HYBRID_SEARCH_BASE: &str = r"
 /// Bi-temporal point-in-time query with all fields. Params: `$nous_id`, `$at_time`.
 /// Returns facts where `valid_from <= at_time` AND `valid_to > at_time` AND not forgotten.
 #[must_use]
-pub fn temporal_facts() -> String {
+pub(crate) fn temporal_facts() -> String {
     use FactsField::*;
     QueryBuilder::new()
         .scan(Relation::Facts)
@@ -381,7 +381,7 @@ pub fn temporal_facts() -> String {
 
 /// Bi-temporal point-in-time query with optional content filter. Params: `$nous_id`, `$at_time`.
 /// Same as `temporal_facts` but uses a raw script to support an optional `contains()` filter.
-pub const TEMPORAL_FACTS_FILTERED: &str = r"
+pub(crate) const TEMPORAL_FACTS_FILTERED: &str = r"
     ?[id, content, confidence, tier, recorded_at, nous_id, valid_from, valid_to,
       superseded_by, source_session_id,
       access_count, last_accessed_at, stability_hours, fact_type,
@@ -402,7 +402,7 @@ pub const TEMPORAL_FACTS_FILTERED: &str = r"
 /// Params: `$nous_id`, `$from_time`, `$to_time`.
 /// Returns all facts where `valid_from` is in `(from_time, to_time]` OR
 /// `valid_to` is in `(from_time, to_time]`.
-pub const TEMPORAL_DIFF_ADDED: &str = r"
+pub(crate) const TEMPORAL_DIFF_ADDED: &str = r"
     ?[id, content, confidence, tier, recorded_at, nous_id, valid_from, valid_to,
       superseded_by, source_session_id,
       access_count, last_accessed_at, stability_hours, fact_type,
@@ -419,7 +419,7 @@ pub const TEMPORAL_DIFF_ADDED: &str = r"
 
 /// Facts that expired (`valid_to` fell) in an interval.
 /// Params: `$nous_id`, `$from_time`, `$to_time`.
-pub const TEMPORAL_DIFF_REMOVED: &str = r"
+pub(crate) const TEMPORAL_DIFF_REMOVED: &str = r"
     ?[id, content, confidence, tier, recorded_at, nous_id, valid_from, valid_to,
       superseded_by, source_session_id,
       access_count, last_accessed_at, stability_hours, fact_type,
@@ -437,7 +437,7 @@ pub const TEMPORAL_DIFF_REMOVED: &str = r"
 
 /// Query returning only forgotten facts. Params: `$nous_id`, `$limit`.
 #[must_use]
-pub fn forgotten_facts() -> String {
+pub(crate) fn forgotten_facts() -> String {
     use FactsField::*;
     QueryBuilder::new()
         .scan(Relation::Facts)
@@ -488,7 +488,7 @@ pub fn forgotten_facts() -> String {
 /// Audit query returning all facts regardless of forgotten/superseded/temporal state.
 /// Params: `$nous_id`, `$limit`.
 #[must_use]
-pub fn audit_all_facts() -> String {
+pub(crate) fn audit_all_facts() -> String {
     use FactsField::*;
     QueryBuilder::new()
         .scan(Relation::Facts)
@@ -538,7 +538,7 @@ pub fn audit_all_facts() -> String {
 /// Remove a fact-entity mapping.
 /// Params: `$fact_id`, `$entity_id`.
 #[must_use]
-pub fn rm_fact_entity() -> String {
+pub(crate) fn rm_fact_entity() -> String {
     use FactEntitiesField::{EntityId, FactId};
     QueryBuilder::new()
         .rm(Relation::FactEntities)
@@ -550,7 +550,7 @@ pub fn rm_fact_entity() -> String {
 /// Insert or update a fact-entity mapping.
 /// Params: `$fact_id`, `$entity_id`, `$created_at`.
 #[must_use]
-pub fn upsert_fact_entity() -> String {
+pub(crate) fn upsert_fact_entity() -> String {
     use FactEntitiesField::*;
     QueryBuilder::new()
         .put(Relation::FactEntities)
@@ -563,7 +563,7 @@ pub fn upsert_fact_entity() -> String {
 /// Remove an entity.
 /// Params: `$id`.
 #[must_use]
-pub fn rm_entity() -> String {
+pub(crate) fn rm_entity() -> String {
     use EntitiesField::Id;
     QueryBuilder::new()
         .rm(Relation::Entities)
@@ -575,7 +575,7 @@ pub fn rm_entity() -> String {
 /// Remove a relationship edge.
 /// Params: `$src`, `$dst`.
 #[must_use]
-pub fn rm_relationship() -> String {
+pub(crate) fn rm_relationship() -> String {
     use RelationshipsField::{Dst, Src};
     QueryBuilder::new()
         .rm(Relation::Relationships)
@@ -587,7 +587,7 @@ pub fn rm_relationship() -> String {
 /// Remove a pending-merge entry.
 /// Params: `$entity_a`, `$entity_b`.
 #[must_use]
-pub fn rm_pending_merges() -> String {
+pub(crate) fn rm_pending_merges() -> String {
     use PendingMergesField::{EntityA, EntityB};
     QueryBuilder::new()
         .rm(Relation::PendingMerges)
@@ -600,7 +600,7 @@ pub fn rm_pending_merges() -> String {
 /// Params: `$canonical_id`, `$merged_id`, `$merged_name`, `$merge_score`,
 /// `$facts_transferred`, `$relationships_redirected`, `$merged_at`.
 #[must_use]
-pub fn put_merge_audit() -> String {
+pub(crate) fn put_merge_audit() -> String {
     use MergeAuditField::*;
     QueryBuilder::new()
         .put(Relation::MergeAudit)
@@ -620,7 +620,7 @@ pub fn put_merge_audit() -> String {
 /// Params: `$entity_a`, `$entity_b`, `$name_a`, `$name_b`, `$name_similarity`,
 /// `$embed_similarity`, `$type_match`, `$alias_overlap`, `$merge_score`, `$created_at`.
 #[must_use]
-pub fn put_pending_merge() -> String {
+pub(crate) fn put_pending_merge() -> String {
     use PendingMergesField::*;
     QueryBuilder::new()
         .put(Relation::PendingMerges)
@@ -642,7 +642,7 @@ pub fn put_pending_merge() -> String {
 /// Insert or update a causal edge.
 /// Params: `$cause`, `$effect`, `$ordering`, `$confidence`, `$created_at`.
 #[must_use]
-pub fn upsert_causal_edge() -> String {
+pub(crate) fn upsert_causal_edge() -> String {
     use CausalEdgesField::*;
     QueryBuilder::new()
         .put(Relation::CausalEdges)
@@ -655,7 +655,7 @@ pub fn upsert_causal_edge() -> String {
 /// Remove a causal edge.
 /// Params: `$cause`, `$effect`.
 #[must_use]
-pub fn rm_causal_edge() -> String {
+pub(crate) fn rm_causal_edge() -> String {
     use CausalEdgesField::{Cause, Effect};
     QueryBuilder::new()
         .rm(Relation::CausalEdges)

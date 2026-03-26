@@ -2,13 +2,14 @@ mod persistence;
 pub(crate) use persistence::{
     MAX_COMMAND_HISTORY, exports_dir, save_command_history, save_session_state,
 };
-use persistence::{load_command_history, load_session_state};
 
 use std::collections::{HashMap, HashSet};
 
 use ratatui::Frame;
 use ratatui::buffer::Buffer;
 use tokio::sync::mpsc;
+
+use persistence::{load_command_history, load_session_state};
 
 use crate::api::client::ApiClient;
 use crate::api::sse::SseConnection;
@@ -20,12 +21,6 @@ use crate::id::{NousId, SessionId, TurnId};
 use crate::keybindings::KeyMap;
 use crate::msg::{ErrorToast, Msg};
 use crate::sanitize::sanitize_for_display;
-#[cfg(test)]
-use crate::theme::THEME;
-use crate::theme::Theme;
-use crate::update::extract_text_content;
-use crate::view;
-
 use crate::state::ArcVec;
 use crate::state::MarkdownCache;
 use crate::state::MetricsState;
@@ -44,6 +39,11 @@ pub use crate::state::{
     SessionPickerOverlay, SlashCompleteState, StreamPhase, SubmittedDecision, TabCompletion, Toast,
     ToolApprovalOverlay, ToolCallInfo, ToolSummary, View, ViewStack,
 };
+#[cfg(test)]
+use crate::theme::THEME;
+use crate::theme::Theme;
+use crate::update::extract_text_content;
+use crate::view;
 
 /// Default terminal width used before the first resize event arrives.
 const DEFAULT_TERMINAL_WIDTH: u16 = 120;
@@ -103,6 +103,25 @@ pub struct ConnectionState {
     pub(crate) stall_warned: bool,
     /// Non-dismissing status message shown during stall conditions.
     pub(crate) stall_message: Option<String>,
+    /// Monotonic counter incremented on every stream lifecycle boundary
+    /// (TurnStart, TurnComplete, TurnAbort, Error, CancelTurn).
+    /// SSE handlers snapshot this before an async history reload and compare
+    /// afterward: if it changed, a concurrent stream event mutated state and
+    /// the reload result must be discarded to prevent stale UI.
+    pub(crate) state_epoch: u64,
+}
+
+impl ConnectionState {
+    /// Returns true when a stream is active, pending, or just completed and
+    /// state should not be clobbered by an SSE-triggered history reload.
+    pub(crate) fn is_stream_busy(&self) -> bool {
+        self.stream_rx.is_some()
+            || self.active_turn_id.is_some()
+            || !matches!(
+                self.stream_phase,
+                crate::state::StreamPhase::Idle | crate::state::StreamPhase::Error
+            )
+    }
 }
 
 /// Scroll position, virtual scroll index, and markdown render cache.
@@ -247,6 +266,7 @@ impl App {
                 stream_last_event_at: None,
                 stall_warned: false,
                 stall_message: None,
+                state_epoch: 0,
             },
             viewport: ViewportState {
                 terminal_width: DEFAULT_TERMINAL_WIDTH,
@@ -437,6 +457,11 @@ impl App {
             None => return,
         };
 
+        // Snapshot the epoch before any async work. If a stream event mutates
+        // state while we await the HTTP response, the epoch will differ and we
+        // discard the now-stale history to prevent clobbering live state.
+        let epoch_before = self.connection.state_epoch;
+
         {
             let needs_load = self
                 .dashboard
@@ -452,6 +477,12 @@ impl App {
             {
                 agent.sessions = sessions;
             }
+        }
+
+        // Epoch check: a stream event arrived while we awaited the sessions fetch.
+        if self.connection.state_epoch != epoch_before {
+            tracing::info!("epoch changed during session load, discarding stale result");
+            return;
         }
 
         let agent = match self.dashboard.agents.iter().find(|a| a.id == agent_id) {
@@ -500,6 +531,13 @@ impl App {
 
             match self.client.history(&session_id).await {
                 Ok(history) => {
+                    // Epoch check: a stream event arrived while we awaited the history fetch.
+                    if self.connection.state_epoch != epoch_before {
+                        tracing::info!(
+                            "epoch changed during history fetch, discarding stale result"
+                        );
+                        return;
+                    }
                     // SAFETY: sanitized at ingestion: all message fields from API.
                     self.dashboard.messages = history
                         .into_iter()

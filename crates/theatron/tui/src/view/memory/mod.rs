@@ -253,12 +253,15 @@ fn render_health_bar(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let h = &app.layout.memory.graph.health;
     let spans = vec![
         Span::raw(" "),
-        Span::styled(format!("{}", h.total_entities), theme.style_accent()),
+        Span::styled(format!("{v}", v = h.total_entities), theme.style_accent()),
         Span::styled(" entities  ", theme.style_dim()),
-        Span::styled(format!("{}", h.total_relationships), theme.style_accent()),
+        Span::styled(
+            format!("{v}", v = h.total_relationships),
+            theme.style_accent(),
+        ),
         Span::styled(" rels  ", theme.style_dim()),
         Span::styled(
-            format!("{}", h.orphan_count),
+            format!("{v}", v = h.orphan_count),
             if h.orphan_count > 0 {
                 theme.style_warning()
             } else {
@@ -267,7 +270,7 @@ fn render_health_bar(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         ),
         Span::styled(" orphans  ", theme.style_dim()),
         Span::styled(
-            format!("{}", h.stale_count),
+            format!("{v}", v = h.stale_count),
             if h.stale_count > 0 {
                 theme.style_warning()
             } else {
@@ -277,10 +280,10 @@ fn render_health_bar(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         Span::styled(" stale  ", theme.style_dim()),
         Span::styled(format!("{:.1}", h.avg_cluster_size), theme.style_accent()),
         Span::styled(" avg/cluster  ", theme.style_dim()),
-        Span::styled(format!("{}", h.community_count), theme.style_accent()),
+        Span::styled(format!("{v}", v = h.community_count), theme.style_accent()),
         Span::styled(" communities  ", theme.style_dim()),
         Span::styled(
-            format!("{}", h.isolated_cluster_count),
+            format!("{v}", v = h.isolated_cluster_count),
             if h.isolated_cluster_count > 0 {
                 theme.style_warning()
             } else {

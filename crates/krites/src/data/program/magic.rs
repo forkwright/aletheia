@@ -55,11 +55,9 @@ impl Default for MagicRulesOrFixed {
 impl MagicRulesOrFixed {
     pub(crate) fn arity(&self) -> Result<usize> {
         Ok(match self {
-            MagicRulesOrFixed::Rules { rules } => rules
-                .first()
-                .expect("rules vec always has at least one rule")
-                .head
-                .len(),
+            MagicRulesOrFixed::Rules { rules } => {
+                rules.first().unwrap_or_else(|| unreachable!()).head.len()
+            }
             MagicRulesOrFixed::Fixed { fixed } => fixed.arity,
         })
     }

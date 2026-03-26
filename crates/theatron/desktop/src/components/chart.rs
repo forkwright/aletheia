@@ -403,7 +403,8 @@ pub(crate) fn format_chart_value(v: f64) -> String {
     } else if v >= 1_000.0 {
         format!("{:.1}K", v / 1_000.0)
     } else if v == v.trunc() {
-        format!("{}", v as u64)
+        let n = v as u64;
+        format!("{n}")
     } else {
         format!("{v:.2}")
     }

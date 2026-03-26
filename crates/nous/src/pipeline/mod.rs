@@ -408,7 +408,10 @@ impl LoopDetector {
         for cycle_len in 2..=CYCLE_DETECTION_MAX_LEN {
             let needed = cycle_len * t;
             if n < needed {
-                continue;
+                // WHY: cycle_len increases each iteration; if n is too small for this
+                // cycle_len, it is too small for all larger lengths. Breaking avoids
+                // unnecessary iterations.
+                break;
             }
             let pattern_start = n - cycle_len;
             let all_match = (1..t).all(|rep| {

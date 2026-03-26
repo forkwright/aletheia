@@ -1,4 +1,4 @@
-//! `aletheia credential`: credential status and OAuth refresh.
+//! `aletheia credential`: credential status, OAuth refresh, and keyring storage.
 
 use std::path::PathBuf;
 
@@ -17,13 +17,23 @@ pub(crate) enum Action {
     Status,
     /// Force-refresh OAuth token now
     Refresh,
+    /// Store an API token in the OS keyring
+    #[cfg(feature = "keyring")]
+    Store {
+        /// Token value (reads from stdin if omitted)
+        #[arg(long)]
+        token: Option<String>,
+    },
+    /// Remove the stored credential from the OS keyring
+    #[cfg(feature = "keyring")]
+    Delete,
 }
 
 fn token_preview(s: &str) -> String {
-    if s.len() > 10 {
+    if s.len() > 7 {
         format!(
             "{}...{}",
-            s.get(..10).unwrap_or(s),
+            s.get(..4).unwrap_or(s),
             s.get(s.len() - 3..).unwrap_or("")
         )
     } else {
@@ -73,6 +83,24 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
                 );
             }
 
+            #[cfg(feature = "keyring")]
+            {
+                use aletheia_koina::credential::CredentialProvider;
+                let keyring = aletheia_symbolon::credential::KeyringCredentialProvider::new();
+                if let Some(cred) = keyring.get_credential() {
+                    if found_any {
+                        println!();
+                    }
+                    found_any = true;
+                    println!("Source:        keyring (OS)");
+                    println!("Type:          static API key");
+                    println!(
+                        "Token:         {}",
+                        token_preview(cred.secret.expose_secret())
+                    );
+                }
+            }
+
             // WHY: always check provider env vars, regardless of credential file presence
             let env_vars: &[(&str, &str)] = &[
                 ("ANTHROPIC_AUTH_TOKEN", "OAuth token"),
@@ -96,6 +124,8 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
             if !found_any {
                 println!("No credential found.");
                 println!("Checked: {} (not found)", cred_path.display());
+                #[cfg(feature = "keyring")]
+                println!("Checked: OS keyring (empty)");
                 println!("Checked: ANTHROPIC_AUTH_TOKEN (not set)");
                 println!("Checked: ANTHROPIC_API_KEY (not set)");
                 println!("Checked: OPENAI_API_KEY (not set)");
@@ -115,8 +145,50 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
                         println!("Token refreshed");
                     }
                 }
-                Err(e) => whatever!("refresh failed: {e}"),
+                Err(e) => whatever!(
+                    "refresh failed for credential file at {}: {e}\n\n\
+                     Troubleshooting:\n  \
+                     1. Verify the file exists: ls -la {}\n  \
+                     2. Check it contains a refresh_token: aletheia credential status\n  \
+                     3. Ensure network access to console.anthropic.com",
+                    cred_path.display(),
+                    cred_path.display()
+                ),
             }
+        }
+        #[cfg(feature = "keyring")]
+        Action::Store { token } => {
+            let token_value = match token {
+                Some(t) => t,
+                None => {
+                    use std::io::Read;
+                    let mut buf = String::new();
+                    std::io::stdin().read_to_string(&mut buf).map_err(|e| {
+                        crate::error::Error::msg(format!("failed to read token from stdin: {e}"))
+                    })?;
+                    buf.trim().to_owned()
+                }
+            };
+
+            if token_value.is_empty() {
+                whatever!("token is empty, nothing to store");
+            }
+
+            let keyring = aletheia_symbolon::credential::KeyringCredentialProvider::new();
+            keyring.store(&token_value).map_err(|e| {
+                crate::error::Error::msg(format!("failed to store credential in OS keyring: {e}"))
+            })?;
+            println!("Token stored in OS keyring (service=aletheia, user=api-token)");
+        }
+        #[cfg(feature = "keyring")]
+        Action::Delete => {
+            let keyring = aletheia_symbolon::credential::KeyringCredentialProvider::new();
+            keyring.delete().map_err(|e| {
+                crate::error::Error::msg(format!(
+                    "failed to delete credential from OS keyring: {e}"
+                ))
+            })?;
+            println!("Credential removed from OS keyring");
         }
     }
     Ok(())

@@ -95,30 +95,28 @@ backup_binary() {
         die "Backup failed: $backup_path not created"
     fi
 
-    log "Backed up binary to $backup_path ($(stat -c%s "$backup_path") bytes)"
+    log "Backed up binary to $backup_path ($(wc -c < "$backup_path" | tr -d ' ') bytes)"
 
     # Prune old backups, keep the newest MAX_BACKUPS
-    local -a backups
-    mapfile -t backups < <(find "$BACKUP_DIR" -maxdepth 1 -name 'aletheia.backup.*' -type f -printf '%T@\t%p\n' 2>/dev/null \
-        | sort -rn | cut -f2-)
-    local count=${#backups[@]}
-    if (( count > MAX_BACKUPS )); then
-        local i
-        for (( i = MAX_BACKUPS; i < count; i++ )); do
-            log "Pruning old backup: ${backups[$i]}"
-            rm -f -- "${backups[$i]}"
-        done
-    fi
+    local prune_target
+    while IFS= read -r prune_target; do
+        [[ -n "$prune_target" ]] || continue
+        log "Pruning old backup: ${prune_target}"
+        rm -f -- "$prune_target"
+    done < <(find "$BACKUP_DIR" -maxdepth 1 -name 'aletheia.backup.*' -type f -exec ls -1t {} + 2>/dev/null \
+        | tail -n +$((MAX_BACKUPS + 1)))
 }
 
 get_latest_backup() {
-    find "$BACKUP_DIR" -maxdepth 1 -name 'aletheia.backup.*' -type f -printf '%T@\t%p\n' 2>/dev/null \
-        | sort -rn | head -1 | cut -f2-
+    find "$BACKUP_DIR" -maxdepth 1 -name 'aletheia.backup.*' -type f -exec ls -1t {} + 2>/dev/null \
+        | head -1
 }
 
 # --- Health check ---
 
 check_health() {
+    # $1: if "allow_degraded", accept "degraded" as passing (used by rollback)
+    local allow_degraded="${1:-}"
     local elapsed=0
     local interval=3
 
@@ -131,8 +129,14 @@ check_health() {
             local version
             version=$(echo "$health_response" | jq -r '.version // empty' 2>/dev/null) || true  # NOTE: intentional - failure is non-fatal here
 
-            if [[ "$status" == "healthy" || "$status" == "degraded" ]]; then
+            # Post-deploy requires "healthy". Rollback passes "allow_degraded"
+            # because partial recovery is better than a crash loop.
+            if [[ "$status" == "healthy" ]]; then
                 log "Health check passed: $status v${version:-unknown}"
+                return 0
+            fi
+            if [[ "$allow_degraded" == "allow_degraded" && "$status" == "degraded" ]]; then
+                log "Health check passed (degraded accepted): $status v${version:-unknown}"
                 return 0
             fi
             log "Health status: $status (waiting...)"
@@ -191,8 +195,8 @@ do_rollback() {
     systemctl --user start "$SERVICE"
     log "Service restarted"
 
-    # Verify health
-    if check_health; then
+    # Verify health (degraded is acceptable after rollback)
+    if check_health allow_degraded; then
         log "Rollback complete"
     else
         die "Service unhealthy after rollback. Manual intervention required."
@@ -202,6 +206,11 @@ do_rollback() {
 # --- Refresh OAuth token ---
 
 refresh_token() {
+    # WARNING: credential source mismatch. This reads from Claude Code's
+    # credential store (~/.claude/.credentials.json) but writes to aletheia's
+    # env file. If Claude Code changes its credential format or path, this
+    # will silently stop refreshing. The canonical source for aletheia is
+    # INSTANCE_ROOT/config/env; Claude Code's file is a convenience bridge.
     local cred_file="$HOME/.claude/.credentials.json"
     if [[ -f "$cred_file" ]]; then
         local token
@@ -210,9 +219,20 @@ refresh_token() {
             local env_file="${INSTANCE_ROOT}/config/env"
             mkdir -p "${INSTANCE_ROOT}/config"
             if [[ -f "$env_file" ]] && grep -q "^ANTHROPIC_AUTH_TOKEN=" "$env_file"; then
-                sed -i "s|^ANTHROPIC_AUTH_TOKEN=.*|ANTHROPIC_AUTH_TOKEN=$token|" "$env_file"
+                # Rewrite the full file to avoid delimiter collisions in sed.
+                # Tokens can contain arbitrary characters (base64, pipes, etc.).
+                local tmp_env
+                tmp_env="$(mktemp)" || return 1
+                while IFS= read -r line; do
+                    if [[ "$line" == ANTHROPIC_AUTH_TOKEN=* ]]; then
+                        printf '%s\n' "ANTHROPIC_AUTH_TOKEN=$token"
+                    else
+                        printf '%s\n' "$line"
+                    fi
+                done < "$env_file" > "$tmp_env"
+                mv -- "$tmp_env" "$env_file"
             else
-                echo "ANTHROPIC_AUTH_TOKEN=$token" >> "$env_file"
+                printf '%s\n' "ANTHROPIC_AUTH_TOKEN=$token" >> "$env_file"
             fi
             chmod 600 "$env_file"
             log "Token written to ${env_file}"
@@ -224,7 +244,8 @@ refresh_token() {
 
 download_binary() {
     local version="$1"
-    local repo="${GITHUB_REPO:-forkwright/aletheia}"
+    local repo="${GITHUB_REPO:-$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null | sed 's|.*github.com[:/]||;s|\.git$||')}"
+    repo="${repo:-forkwright/aletheia}"
     local asset_name
     asset_name="aletheia-$(uname -m)-unknown-linux-gnu"
     local tmp_bin

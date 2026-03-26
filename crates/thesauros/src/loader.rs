@@ -42,7 +42,7 @@ impl LoadedPack {
     /// Returns sections where the agent filter is empty (all agents)
     /// or contains the given agent id.
     #[must_use]
-    pub fn sections_for_agent(&self, agent_id: &str) -> Vec<&PackSection> {
+    pub(crate) fn sections_for_agent(&self, agent_id: &str) -> Vec<&PackSection> {
         self.sections
             .iter()
             .filter(|s| s.agents.is_empty() || s.agents.iter().any(|a| a == agent_id))

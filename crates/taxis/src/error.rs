@@ -156,6 +156,16 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Encrypted config fields found but decryption key is missing.
+    #[snafu(display(
+        "encrypted config fields cannot be decrypted (key not found): {fields}. Run 'aletheia config init-key'."
+    ))]
+    ConfigDecrypt {
+        fields: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// A `${VAR:?message}` expression in the config resolved to an unset variable.
     ///
     /// Emitted when the TOML config contains `${VAR:?some message}` and `VAR`
@@ -180,4 +190,4 @@ pub enum Error {
 }
 
 /// Convenience alias for `Result<T, Error>`.
-pub type Result<T> = std::result::Result<T, Error>;
+pub(crate) type Result<T> = std::result::Result<T, Error>;

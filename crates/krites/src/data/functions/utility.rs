@@ -3,11 +3,6 @@
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 
 use std::str::FromStr;
 
@@ -110,8 +105,7 @@ pub(crate) fn get_json_path<'a>(
                     arr.resize_with(key + 1, || JsonValue::Null);
                 }
 
-                let val = arr.get_mut(key).expect("arr resized to key+1 above");
-                pointer = val;
+                pointer = &mut arr[key];
             }
             _ => {
                 return JsonPathSnafu {
@@ -389,7 +383,9 @@ pub(crate) fn op_json_object(args: &[DataValue]) -> Result<DataValue> {
     );
     let mut obj = serde_json::Map::with_capacity(args.len() / 2);
     for pair in args.chunks_exact(2) {
+        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let key = val2str(&pair[0]);
+        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let value = to_json(&pair[1]);
         obj.insert(key.to_string(), value);
     }

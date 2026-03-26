@@ -32,6 +32,14 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// LLM provider panicked during distillation. (#2216)
+    #[snafu(display("LLM call panicked during distillation: {message}"))]
+    LlmPanic {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Convenience alias for `Result` with melete's [`Error`] type.

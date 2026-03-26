@@ -41,8 +41,7 @@ use crate::types::{ToolContext, ToolInput, ToolResult};
 /// assert!(!result.is_error, "result should not be an error");
 /// assert_eq!(ex.call_count(), 1, "call count should be 1 after one execution");
 /// ```
-pub struct MockToolExecutor {
-    // kanon:ignore RUST/pub-visibility
+pub(crate) struct MockToolExecutor {
     name: ToolName,
     // WHY: std::sync::Mutex -- lock never held across .await
     inner: Mutex<MockInner>,
@@ -62,8 +61,7 @@ enum MockMode {
 impl MockToolExecutor {
     /// Create a mock that always returns the given text as a success result.
     #[must_use]
-    pub fn text(text: impl Into<String>) -> Self {
-        // kanon:ignore RUST/pub-visibility
+    pub(crate) fn text(text: impl Into<String>) -> Self {
         Self {
             name: ToolName::from_static("mock"), // kanon:ignore RUST/expect
             inner: Mutex::new(MockInner {
@@ -75,8 +73,7 @@ impl MockToolExecutor {
 
     /// Create a mock that returns an error result (not a Rust `Err`).
     #[must_use]
-    pub fn tool_error(message: impl Into<String>) -> Self {
-        // kanon:ignore RUST/pub-visibility
+    pub(crate) fn tool_error(message: impl Into<String>) -> Self {
         Self {
             name: ToolName::from_static("mock"), // kanon:ignore RUST/expect
             inner: Mutex::new(MockInner {
@@ -88,8 +85,7 @@ impl MockToolExecutor {
 
     /// Create a mock that returns results from a sequence (repeats last when exhausted).
     #[must_use]
-    pub fn sequence(results: Vec<ToolResult>) -> Self {
-        // kanon:ignore RUST/pub-visibility
+    pub(crate) fn sequence(results: Vec<ToolResult>) -> Self {
         Self {
             name: ToolName::from_static("mock"), // kanon:ignore RUST/expect
             inner: Mutex::new(MockInner {
@@ -101,23 +97,20 @@ impl MockToolExecutor {
 
     /// Override the tool name reported to the executor.
     #[must_use]
-    pub fn named(mut self, name: ToolName) -> Self {
-        // kanon:ignore RUST/pub-visibility
+    pub(crate) fn named(mut self, name: ToolName) -> Self {
         self.name = name;
         self
     }
 
     /// The tool name this mock is registered under.
     #[must_use]
-    pub fn name(&self) -> ToolName {
-        // kanon:ignore RUST/pub-visibility
+    pub(crate) fn name(&self) -> ToolName {
         self.name.clone()
     }
 
     /// Number of times `execute` has been called.
     #[must_use]
-    pub fn call_count(&self) -> u64 {
-        // kanon:ignore RUST/pub-visibility
+    pub(crate) fn call_count(&self) -> u64 {
         self.call_count.load(Ordering::SeqCst)
     }
 }
@@ -161,16 +154,14 @@ impl ToolExecutor for MockToolExecutor {
 /// Use [`ToolExecutorSpec::validate_async`] inside a `#[tokio::test]` to assert
 /// the contract. The report separates passed checks from failed ones so test
 /// output is easy to diagnose.
-pub struct ToolExecutorSpec {
-    // kanon:ignore RUST/pub-visibility
+pub(crate) struct ToolExecutorSpec {
     tool_name: ToolName,
 }
 
 impl ToolExecutorSpec {
     /// Declare a spec for the executor registered under `tool_name`.
     #[must_use]
-    pub fn new(tool_name: ToolName) -> Self {
-        // kanon:ignore RUST/pub-visibility
+    pub(crate) fn new(tool_name: ToolName) -> Self {
         Self { tool_name }
     }
 
@@ -261,22 +252,19 @@ impl SpecReport {
 
     /// `true` if all checks passed (no failures).
     #[must_use]
-    pub fn is_passing(&self) -> bool {
-        // kanon:ignore RUST/pub-visibility
+    pub(crate) fn is_passing(&self) -> bool {
         self.failed.is_empty()
     }
 
     /// Names of checks that passed.
     #[must_use]
-    pub fn passes(&self) -> &[String] {
-        // kanon:ignore RUST/pub-visibility
+    pub(crate) fn passes(&self) -> &[String] {
         &self.passed
     }
 
     /// Checks that failed, paired with a diagnostic reason.
     #[must_use]
-    pub fn failures(&self) -> &[(String, String)] {
-        // kanon:ignore RUST/pub-visibility
+    pub(crate) fn failures(&self) -> &[(String, String)] {
         &self.failed
     }
 }
@@ -292,8 +280,7 @@ impl SpecReport {
     clippy::expect_used,
     reason = "test-support: 'alice' is a known-valid NousId in synthetic test data"
 )]
-pub fn make_test_context() -> ToolContext {
-    // kanon:ignore RUST/pub-visibility
+pub(crate) fn make_test_context() -> ToolContext {
     ToolContext {
         nous_id: NousId::new("alice").expect("valid nous id"), // kanon:ignore RUST/expect
         session_id: SessionId::new(),
@@ -306,8 +293,7 @@ pub fn make_test_context() -> ToolContext {
 
 /// Build a [`ToolInput`] for the given tool name with an empty arguments object.
 #[must_use]
-pub fn make_tool_input(name: &ToolName) -> ToolInput {
-    // kanon:ignore RUST/pub-visibility
+pub(crate) fn make_tool_input(name: &ToolName) -> ToolInput {
     ToolInput {
         name: name.clone(),
         tool_use_id: "tu_test_00000".to_owned(),

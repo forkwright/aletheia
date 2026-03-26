@@ -67,11 +67,14 @@ pub(crate) fn truncate_tool_result(
             ToolResultContent::Text(format!("{truncated}{indicator}"))
         }
         ToolResultContent::Blocks(blocks) => {
+            // WHY: estimate total serialized size across ALL block types, not just text.
+            // Non-text blocks (images, documents) contribute their JSON-serialized length
+            // so the truncation limit applies to the full payload.
             let total: usize = blocks
                 .iter()
                 .map(|b| match b {
                     ToolResultBlock::Text { text } => text.len(),
-                    _ => 0,
+                    other => serde_json::to_string(other).map_or(0, |s| s.len()),
                 })
                 .sum();
 
@@ -104,7 +107,17 @@ pub(crate) fn truncate_tool_result(
                             });
                         }
                     }
-                    other => out.push(other),
+                    other => {
+                        let block_size = serde_json::to_string(&other).map_or(0, |s| s.len());
+                        if block_size <= remaining {
+                            remaining -= block_size;
+                            out.push(other);
+                        } else {
+                            // WHY: non-text blocks cannot be meaningfully split, so skip
+                            // when they would exceed the remaining budget.
+                            remaining = 0;
+                        }
+                    }
                 }
             }
             let indicator = format!("\n[truncated: {total} -> {limit} bytes]");
@@ -501,41 +514,84 @@ mod tests {
     }
 
     #[test]
-    fn blocks_over_limit_truncates_text_preserves_images() {
+    fn blocks_over_limit_truncates_text_and_accounts_for_non_text_size() {
+        let image_block = ToolResultBlock::Image {
+            source: aletheia_hermeneus::types::ImageSource {
+                source_type: "base64".to_owned(),
+                media_type: "image/png".to_owned(),
+                data: "base64data".to_owned(),
+            },
+        };
+        let image_size = serde_json::to_string(&image_block)
+            .expect("serialize")
+            .len();
+
         let blocks = vec![
             ToolResultBlock::Text {
                 text: "a".repeat(80),
             },
-            ToolResultBlock::Image {
-                source: aletheia_hermeneus::types::ImageSource {
-                    source_type: "base64".to_owned(),
-                    media_type: "image/png".to_owned(),
-                    data: "base64data".to_owned(),
-                },
-            },
+            image_block,
             ToolResultBlock::Text {
                 text: "b".repeat(40),
             },
         ];
+        let total_size = 80 + image_size + 40;
+
+        // WHY: limit high enough to fit text but the image block pushes total over
+        let limit = 80 + image_size + 10;
         let content = ToolResultContent::Blocks(blocks);
-        let result = truncate_tool_result(content, 50);
+        #[expect(clippy::as_conversions, reason = "usize→u32: test value fits")]
+        let result = truncate_tool_result(content, limit as u32); // kanon:ignore RUST/as-cast
         match result {
             ToolResultContent::Blocks(bs) => {
                 let has_image = bs
                     .iter()
                     .any(|b| matches!(b, ToolResultBlock::Image { .. }));
-                assert!(has_image, "image blocks should be preserved");
+                assert!(
+                    has_image,
+                    "image block should be preserved when within budget"
+                );
 
                 let indicator_block = bs.last().expect("should have indicator block");
                 match indicator_block {
                     ToolResultBlock::Text { text } => {
+                        let expected = format!("[truncated: {total_size} -> {limit} bytes]");
                         assert!(
-                            text.contains("[truncated: 120 -> 50 bytes]"),
-                            "indicator should show total text sizes: {text}"
+                            text.contains(&expected),
+                            "indicator should show total including non-text sizes: {text}"
                         );
                     }
                     _ => panic!("last block should be text indicator"),
                 }
+            }
+            _ => panic!("expected Blocks variant"),
+        }
+    }
+
+    #[test]
+    fn blocks_over_limit_skips_non_text_blocks_exceeding_budget() {
+        let image_block = ToolResultBlock::Image {
+            source: aletheia_hermeneus::types::ImageSource {
+                source_type: "base64".to_owned(),
+                media_type: "image/png".to_owned(),
+                data: "base64data".to_owned(),
+            },
+        };
+        let blocks = vec![
+            ToolResultBlock::Text {
+                text: "a".repeat(30),
+            },
+            image_block,
+        ];
+        // WHY: limit too small for the image block's serialized size
+        let content = ToolResultContent::Blocks(blocks);
+        let result = truncate_tool_result(content, 40);
+        match result {
+            ToolResultContent::Blocks(bs) => {
+                let has_image = bs
+                    .iter()
+                    .any(|b| matches!(b, ToolResultBlock::Image { .. }));
+                assert!(!has_image, "image block should be skipped when over budget");
             }
             _ => panic!("expected Blocks variant"),
         }

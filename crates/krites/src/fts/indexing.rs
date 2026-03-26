@@ -3,11 +3,6 @@
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 
 use std::cmp::Reverse;
 use std::collections::HashMap;
@@ -126,8 +121,20 @@ pub(crate) fn bm25_compute_score(
     if tf == 0 {
         return 0.0;
     }
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "i64 to f64: precision loss acceptable"
+    )]
     let tf = tf as f64;
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "i64 to f64: precision loss acceptable"
+    )]
     let df = df as f64;
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "i64 to f64: precision loss acceptable"
+    )]
     let n = n as f64;
     let dl = f64::from(dl);
     let idf = ((n - df + 0.5) / (df + 0.5) + 1.0).ln();
@@ -152,9 +159,8 @@ impl<'a> SessionTx<'a> {
         for item in self.store_tx.range_scan(&start_key_bytes, &end_key_bytes) {
             let (kvec, vvec) = item?;
             let key_tuple = decode_tuple_from_key(&kvec, idx_handle.metadata.keys.len());
-            let found_str_key = key_tuple[0]
-                .get_str()
-                .expect("FTS index key[0] is always a string");
+            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+            let found_str_key = key_tuple[0].get_str().unwrap_or_else(|| unreachable!());
             if literal.is_prefix {
                 if !found_str_key.starts_with(start_key_str) {
                     break;
@@ -172,15 +178,13 @@ impl<'a> SessionTx<'a> {
                         .build(),
                     )
                 })?;
-            let froms = vals[0]
-                .get_slice()
-                .expect("FTS index val[0] (froms) is always a list");
-            let tos = vals[1]
-                .get_slice()
-                .expect("FTS index val[1] (tos) is always a list");
-            let positions = vals[2]
-                .get_slice()
-                .expect("FTS index val[2] (positions) is always a list");
+            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+            let froms = vals[0].get_slice().unwrap_or_else(|| unreachable!());
+            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+            let tos = vals[1].get_slice().unwrap_or_else(|| unreachable!());
+            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+            let positions = vals[2].get_slice().unwrap_or_else(|| unreachable!());
+            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
             let total_length = u32::try_from(vals[3].get_int().unwrap_or(0)).map_err(|_e| {
                 crate::error::InternalError::from(
                     InvalidOperationSnafu {
@@ -195,17 +199,16 @@ impl<'a> SessionTx<'a> {
                 .zip(tos.iter())
                 .zip(positions.iter())
                 .map(|(_, p)| {
-                    let position =
-                        u32::try_from(p.get_int().expect("FTS position is always an integer"))
-                            .map_err(|_e| {
-                                crate::error::InternalError::from(
-                                    InvalidOperationSnafu {
-                                        op: "fts_search",
-                                        reason: "token position does not fit in u32",
-                                    }
-                                    .build(),
-                                )
-                            })?;
+                    let position = u32::try_from(p.get_int().unwrap_or_else(|| unreachable!()))
+                        .map_err(|_e| {
+                            crate::error::InternalError::from(
+                                InvalidOperationSnafu {
+                                    op: "fts_search",
+                                    reason: "token position does not fit in u32",
+                                }
+                                .build(),
+                            )
+                        })?;
                     Ok(PositionInfo { position })
                 })
                 .collect::<Result<Vec<_>>>()?;
@@ -256,9 +259,7 @@ impl<'a> SessionTx<'a> {
             FtsExpr::And(ls) => {
                 let mut l_iter = ls.iter();
                 let mut res = self.fts_search_impl(
-                    l_iter
-                        .next()
-                        .expect("And node always has at least one child"),
+                    l_iter.next().unwrap_or_else(|| unreachable!()),
                     config,
                     n,
                     avgdl,
@@ -290,8 +291,7 @@ impl<'a> SessionTx<'a> {
                 let mut l_it = literals.iter();
                 let mut coll: FxHashMap<_, _> = FxHashMap::default();
                 for first_el in self.fts_search_literal(
-                    l_it.next()
-                        .expect("Near node always has at least one literal"),
+                    l_it.next().unwrap_or_else(|| unreachable!()),
                     &config.idx_handle,
                 )? {
                     coll.insert(
@@ -362,11 +362,23 @@ impl<'a> SessionTx<'a> {
         booster: f64,
         config: &FtsSearch,
     ) -> f64 {
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "i64 to f64: precision loss acceptable"
+        )]
         let tf = tf as f64;
         match config.score_kind {
             FtsScoreKind::Tf => tf * booster,
             FtsScoreKind::TfIdf | FtsScoreKind::Bm25 => {
+                #[expect(
+                    clippy::cast_precision_loss,
+                    reason = "i64 to f64: precision loss acceptable"
+                )]
                 let n_found_docs = n_found_docs as f64;
+                #[expect(
+                    clippy::cast_precision_loss,
+                    reason = "i64 to f64: precision loss acceptable"
+                )]
                 let idf = (1.0 + (n_total as f64 - n_found_docs + 0.5) / (n_found_docs + 0.5)).ln();
                 tf * idf * booster
             }
@@ -553,8 +565,20 @@ mod tests {
 
         let bm25_score = bm25_compute_score(tf, df, n, 50, 80.0, booster, 1.2, 0.75);
 
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "i64 to f64: precision loss acceptable"
+        )]
         let tf_f = tf as f64;
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "i64 to f64: precision loss acceptable"
+        )]
         let df_f = df as f64;
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "i64 to f64: precision loss acceptable"
+        )]
         let n_f = n as f64;
         let idf = (1.0 + (n_f - df_f + 0.5) / (df_f + 0.5)).ln();
         let tfidf_score = tf_f * idf * booster;

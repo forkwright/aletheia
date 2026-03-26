@@ -6,6 +6,7 @@ pub(crate) mod backup;
 pub(crate) mod check_config;
 pub(crate) mod config;
 pub(crate) mod credential;
+pub(crate) mod daemon;
 pub(crate) mod eval;
 pub(crate) mod health;
 pub(crate) mod maintenance;

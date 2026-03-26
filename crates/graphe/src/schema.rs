@@ -4,10 +4,11 @@
 //! This matches the TS schema exactly for wire-compatible databases.
 
 /// Valid agent note categories. Single source of truth: used by DDL CHECK constraint and import validation.
-pub const VALID_CATEGORIES: &[&str] = &["task", "decision", "preference", "correction", "context"];
+pub(crate) const VALID_CATEGORIES: &[&str] =
+    &["task", "decision", "preference", "correction", "context"];
 
 /// Base DDL: creates all tables for a fresh database (migration v1).
-pub const DDL: &str = r"
+pub(crate) const DDL: &str = r"
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
   nous_id TEXT NOT NULL,
@@ -111,7 +112,7 @@ mod tests {
     fn fresh_database_initializes_via_migration() {
         let conn = Connection::open_in_memory().expect("in-memory SQLite opens");
         let result = migration::run_migrations(&conn).expect("initial migration succeeds");
-        assert_eq!(result.current_version, 4);
+        assert_eq!(result.current_version, 5);
     }
 
     #[test]
@@ -121,7 +122,7 @@ mod tests {
         migration::run_migrations(&conn).expect("idempotent second migration succeeds");
 
         let version = migration::get_schema_version(&conn);
-        assert_eq!(version, 4);
+        assert_eq!(version, 5);
     }
 
     #[test]

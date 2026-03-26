@@ -76,6 +76,7 @@ pub fn records_from_report(report: &RunReport) -> Vec<EvalRecord> {
 ///
 /// Returns `Io` if the file cannot be opened or written to.
 /// Returns `Json` if a record cannot be serialized.
+#[must_use]
 pub fn append_jsonl(path: &Path, records: &[EvalRecord]) -> Result<()> {
     let mut file = std::fs::OpenOptions::new()
         .create(true)

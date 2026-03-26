@@ -30,7 +30,7 @@ pub struct DiffFile {
 impl DiffFile {
     /// Return the effective file path (prefers `new_path` unless deleted).
     #[must_use]
-    pub fn effective_path(&self) -> &str {
+    pub(crate) fn effective_path(&self) -> &str {
         if self.is_deleted {
             &self.old_path
         } else {
@@ -68,7 +68,7 @@ pub struct DiffHunk {
 /// Returns `None` lines or sections gracefully (empty files/hunks).
 /// Does not fail on malformed input; skips unrecognized lines.
 #[must_use]
-pub fn parse_unified_diff(diff: &str) -> ParsedDiff {
+pub(crate) fn parse_unified_diff(diff: &str) -> ParsedDiff {
     let mut files = Vec::new();
     let mut current_file: Option<DiffFile> = None;
     let mut current_hunk: Option<DiffHunk> = None;

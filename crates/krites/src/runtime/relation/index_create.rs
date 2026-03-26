@@ -1,9 +1,4 @@
 //! SessionTx methods for FTS, HNSW, and MinHash-LSH index creation.
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use compact_str::CompactString;
 use pest::Parser;
 use rmp_serde::Serializer;
@@ -119,7 +114,7 @@ impl<'a> SessionTx<'a> {
                 .build(),
             })?
             .next()
-            .expect("pest parse succeeded but produced no pairs");
+            .unwrap_or_else(|| unreachable!());
         let mut code_expr = build_expr(parsed, &Default::default())?;
         let binding_map = rel_handle.raw_binding_map();
         code_expr.fill_binding_indices(&binding_map)?;
@@ -265,7 +260,7 @@ impl<'a> SessionTx<'a> {
                 .build(),
             })?
             .next()
-            .expect("pest parse succeeded but produced no pairs");
+            .unwrap_or_else(|| unreachable!());
         let mut code_expr = build_expr(parsed, &Default::default())?;
         let binding_map = rel_handle.raw_binding_map();
         code_expr.fill_binding_indices(&binding_map)?;
@@ -497,7 +492,7 @@ impl<'a> SessionTx<'a> {
                     .build(),
                 })?
                 .next()
-                .expect("pest parse succeeded but produced no pairs");
+                .unwrap_or_else(|| unreachable!());
             let mut code_expr = build_expr(parsed, &Default::default())?;
             let binding_map = rel_handle.raw_binding_map();
             code_expr.fill_binding_indices(&binding_map)?;

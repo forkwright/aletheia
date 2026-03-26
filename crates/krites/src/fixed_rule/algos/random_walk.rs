@@ -1,8 +1,4 @@
 //! Random walk over graphs.
-#![expect(
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use std::collections::BTreeMap;
 
 use compact_str::CompactString;
@@ -39,7 +35,7 @@ impl FixedRule for RandomWalk {
         let iterations = payload.pos_integer_option("iterations", Some(1))?;
         let steps = payload.pos_integer_option("steps", None)?;
 
-        let mut maybe_weight = payload.expr_option("weight", None).ok();
+        let mut maybe_weight = payload.expr_option("weight", None).ok(); // WHY: optional; absence means unweighted random walk
         let mut maybe_weight_bytecode = None;
         if let Some(weight) = &mut maybe_weight {
             let mut nodes_binding = nodes.get_binding_map(0);
@@ -56,6 +52,7 @@ impl FixedRule for RandomWalk {
         let mut rng = rand::rng();
         for start_node in starting.iter()? {
             let start_node = start_node?;
+            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
             let start_node_key = &start_node[0];
             let starting_tuple = nodes.prefix_iter(start_node_key)?.next().ok_or_else(
                 || -> crate::error::InternalError {
@@ -71,6 +68,7 @@ impl FixedRule for RandomWalk {
                 let mut current_tuple = starting_tuple.clone();
                 let mut path = vec![start_node_key.clone()];
                 for _ in 0..steps {
+                    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                     let cur_node_key = &current_tuple[0];
                     let candidate_steps: Vec<_> = edges.prefix_iter(cur_node_key)?.try_collect()?;
                     if candidate_steps.is_empty() {
@@ -117,8 +115,9 @@ impl FixedRule for RandomWalk {
                     } else {
                         candidate_steps
                             .choose(&mut rng)
-                            .expect("candidate_steps checked non-empty above")
+                            .unwrap_or_else(|| unreachable!())
                     };
+                    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                     let next_node = &next_step[1];
                     path.push(next_node.clone());
                     current_tuple = nodes.prefix_iter(next_node)?.next().ok_or_else(

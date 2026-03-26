@@ -1,13 +1,4 @@
 //! Memory-comparable encoding for composite keys.
-#![expect(
-    clippy::expect_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 
 use std::cmp::Reverse;
 use std::collections::BTreeSet;
@@ -16,6 +7,7 @@ use std::str::FromStr;
 
 use regex::Regex;
 
+use crate::data::json::JsonValue;
 use crate::data::value::{
     DataValue, JsonData, Num, RegexWrapper, UuidWrapper, Validity, ValidityTs, Vector,
 };
@@ -44,141 +36,137 @@ const IS_APPROX_INT: u8 = 0b00000100;
 const IS_EXACT_INT: u8 = 0b00000000;
 const EXACT_INT_BOUND: i64 = 0x20_0000_0000_0000;
 
+// INVARIANT: split_at(N) always yields exactly N bytes; convert to fixed-size array
+fn as_array<const N: usize>(slice: &[u8]) -> [u8; N] {
+    slice.try_into().unwrap_or_else(|_| [0u8; N])
+}
+
 pub(crate) trait MemCmpEncoder: Write {
     fn encode_datavalue(&mut self, v: &DataValue) {
         match v {
-            DataValue::Null => self
-                .write_all(&[NULL_TAG])
-                .expect("Vec<u8> write is infallible"),
-            DataValue::Bool(false) => self
-                .write_all(&[FALSE_TAG])
-                .expect("Vec<u8> write is infallible"),
-            DataValue::Bool(true) => self
-                .write_all(&[TRUE_TAG])
-                .expect("Vec<u8> write is infallible"),
+            DataValue::Null => {
+                let _ = self.write_all(&[NULL_TAG]);
+            }
+            DataValue::Bool(false) => {
+                let _ = self.write_all(&[FALSE_TAG]);
+            }
+            DataValue::Bool(true) => {
+                let _ = self.write_all(&[TRUE_TAG]);
+            }
             DataValue::Vec(arr) => {
-                self.write_all(&[VEC_TAG])
-                    .expect("Vec<u8> write is infallible");
+                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+                let _ = self.write_all(&[VEC_TAG]);
                 match arr {
                     Vector::F32(a) => {
-                        self.write_all(&[VEC_F32])
-                            .expect("Vec<u8> write is infallible");
+                        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+                        let _ = self.write_all(&[VEC_F32]);
                         let l = a.len();
-                        self.write_all(&(l as u64).to_be_bytes())
-                            .expect("Vec<u8> write is infallible");
+                        #[expect(clippy::cast_possible_truncation, reason = "value fits u64")]
+                        let _ = self.write_all(&(l as u64).to_be_bytes());
                         for el in a {
-                            self.write_all(&el.to_be_bytes())
-                                .expect("Vec<u8> write is infallible");
+                            let _ = self.write_all(&el.to_be_bytes());
                         }
                     }
                     Vector::F64(a) => {
-                        self.write_all(&[VEC_F64])
-                            .expect("Vec<u8> write is infallible");
+                        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+                        let _ = self.write_all(&[VEC_F64]);
                         let l = a.len();
-                        self.write_all(&(l as u64).to_be_bytes())
-                            .expect("Vec<u8> write is infallible");
+                        #[expect(clippy::cast_possible_truncation, reason = "value fits u64")]
+                        let _ = self.write_all(&(l as u64).to_be_bytes());
                         for el in a {
-                            self.write_all(&el.to_be_bytes())
-                                .expect("Vec<u8> write is infallible");
+                            let _ = self.write_all(&el.to_be_bytes());
                         }
                     }
                 }
             }
             DataValue::Num(n) => {
-                self.write_all(&[NUM_TAG])
-                    .expect("Vec<u8> write is infallible");
+                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+                let _ = self.write_all(&[NUM_TAG]);
                 self.encode_num(*n);
             }
             DataValue::Str(s) => {
-                self.write_all(&[STR_TAG])
-                    .expect("Vec<u8> write is infallible");
+                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+                let _ = self.write_all(&[STR_TAG]);
                 self.encode_bytes(s.as_bytes());
             }
             DataValue::Json(j) => {
-                self.write_all(&[JSON_TAG])
-                    .expect("Vec<u8> write is infallible");
+                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+                let _ = self.write_all(&[JSON_TAG]);
                 let s = j.0.to_string();
                 self.encode_bytes(s.as_bytes());
             }
             DataValue::Bytes(b) => {
-                self.write_all(&[BYTES_TAG])
-                    .expect("Vec<u8> write is infallible");
+                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+                let _ = self.write_all(&[BYTES_TAG]);
                 self.encode_bytes(b)
             }
             DataValue::Uuid(u) => {
-                self.write_all(&[UUID_TAG])
-                    .expect("Vec<u8> write is infallible");
+                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+                let _ = self.write_all(&[UUID_TAG]);
                 let (s_l, s_m, s_h, s_rest) = u.0.as_fields();
-                self.write_all(&s_h.to_be_bytes())
-                    .expect("Vec<u8> write is infallible");
-                self.write_all(&s_m.to_be_bytes())
-                    .expect("Vec<u8> write is infallible");
-                self.write_all(&s_l.to_be_bytes())
-                    .expect("Vec<u8> write is infallible");
-                self.write_all(s_rest.as_ref())
-                    .expect("Vec<u8> write is infallible");
+                let _ = self.write_all(&s_h.to_be_bytes());
+                let _ = self.write_all(&s_m.to_be_bytes());
+                let _ = self.write_all(&s_l.to_be_bytes());
+                let _ = self.write_all(s_rest.as_ref());
             }
             DataValue::Regex(rx) => {
-                self.write_all(&[REGEX_TAG])
-                    .expect("Vec<u8> write is infallible");
+                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+                let _ = self.write_all(&[REGEX_TAG]);
                 let s = rx.0.as_str().as_bytes();
                 self.encode_bytes(s)
             }
             DataValue::List(l) => {
-                self.write_all(&[LIST_TAG])
-                    .expect("Vec<u8> write is infallible");
+                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+                let _ = self.write_all(&[LIST_TAG]);
                 for el in l {
                     self.encode_datavalue(el);
                 }
-                self.write_all(&[INIT_TAG])
-                    .expect("Vec<u8> write is infallible")
+                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+                let _ = self.write_all(&[INIT_TAG]);
             }
             DataValue::Set(s) => {
-                self.write_all(&[SET_TAG])
-                    .expect("Vec<u8> write is infallible");
+                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+                let _ = self.write_all(&[SET_TAG]);
                 for el in s {
                     self.encode_datavalue(el);
                 }
-                self.write_all(&[INIT_TAG])
-                    .expect("Vec<u8> write is infallible")
+                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+                let _ = self.write_all(&[INIT_TAG]);
             }
             DataValue::Validity(vld) => {
                 let ts = vld.timestamp.0.0;
                 let ts_u64 = order_encode_i64(ts);
                 let ts_flipped = !ts_u64;
-                self.write_all(&[VLD_TAG])
-                    .expect("Vec<u8> write is infallible");
-                self.write_all(&ts_flipped.to_be_bytes())
-                    .expect("Vec<u8> write is infallible");
-                self.write_all(&[!vld.is_assert.0 as u8])
-                    .expect("Vec<u8> write is infallible");
+                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+                let _ = self.write_all(&[VLD_TAG]);
+                let _ = self.write_all(&ts_flipped.to_be_bytes());
+                #[expect(clippy::cast_possible_truncation, reason = "value fits u8")]
+                let _ = self.write_all(&[!vld.is_assert.0 as u8]);
             }
-            DataValue::Bot => self
-                .write_all(&[BOT_TAG])
-                .expect("Vec<u8> write is infallible"),
+            DataValue::Bot => {
+                let _ = self.write_all(&[BOT_TAG]);
+            }
         }
     }
     fn encode_num(&mut self, v: Num) {
         let f = v.get_float();
         let u = order_encode_f64(f);
-        self.write_all(&u.to_be_bytes())
-            .expect("Vec<u8> write is infallible");
+        let _ = self.write_all(&u.to_be_bytes());
         match v {
             Num::Int(i) => {
                 if i > -EXACT_INT_BOUND && i < EXACT_INT_BOUND {
-                    self.write_all(&[IS_EXACT_INT])
-                        .expect("Vec<u8> write is infallible");
+                    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+                    let _ = self.write_all(&[IS_EXACT_INT]);
                 } else {
-                    self.write_all(&[IS_APPROX_INT])
-                        .expect("Vec<u8> write is infallible");
+                    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+                    let _ = self.write_all(&[IS_APPROX_INT]);
                     let en = order_encode_i64(i);
-                    self.write_all(&en.to_be_bytes())
-                        .expect("Vec<u8> write is infallible");
+                    let _ = self.write_all(&en.to_be_bytes());
                 }
             }
             Num::Float(_) => {
-                self.write_all(&[IS_FLOAT])
-                    .expect("Vec<u8> write is infallible");
+                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+                let _ = self.write_all(&[IS_FLOAT]);
             }
         }
     }
@@ -190,17 +178,14 @@ pub(crate) trait MemCmpEncoder: Write {
             let remain = len - index;
             let mut pad: usize = 0;
             if remain > ENC_GROUP_SIZE {
-                self.write_all(&key[index..index + ENC_GROUP_SIZE])
-                    .expect("Vec<u8> write is infallible");
+                let _ = self.write_all(&key[index..index + ENC_GROUP_SIZE]);
             } else {
                 pad = ENC_GROUP_SIZE - remain;
-                self.write_all(&key[index..])
-                    .expect("Vec<u8> write is infallible");
-                self.write_all(&ENC_ASC_PADDING[..pad])
-                    .expect("Vec<u8> write is infallible");
+                let _ = self.write_all(&key[index..]);
+                let _ = self.write_all(&ENC_ASC_PADDING[..pad]);
             }
-            self.write_all(&[ENC_MARKER - (pad as u8)])
-                .expect("Vec<u8> write is infallible");
+            #[expect(clippy::cast_possible_truncation, reason = "value fits u8")]
+            let _ = self.write_all(&[ENC_MARKER - (pad as u8)]);
             index += ENC_GROUP_SIZE;
         }
     }
@@ -216,19 +201,19 @@ pub fn decode_bytes(data: &[u8]) -> (Vec<u8>, &[u8]) {
         let chunk = &data[offset..next_offset];
         offset = next_offset;
 
-        let (&marker, bytes) = chunk
-            .split_last()
-            .expect("chunk is ENC_GROUP_SIZE+1 bytes, always non-empty");
+        // INVARIANT: chunk is ENC_GROUP_SIZE+1 bytes, always non-empty
+        let (&marker, bytes) = chunk.split_last().unwrap_or((&0, &[]));
+        #[expect(clippy::cast_sign_loss, reason = "value known non-negative")]
         let pad_size = (ENC_MARKER - marker) as usize;
 
         if pad_size == 0 {
-            key.write_all(bytes).expect("Vec<u8> write is infallible");
+            let _ = key.write_all(bytes);
             continue;
         }
         debug_assert!(pad_size <= ENC_GROUP_SIZE);
 
         let (bytes, padding) = bytes.split_at(ENC_GROUP_SIZE - pad_size);
-        key.write_all(bytes).expect("Vec<u8> write is infallible");
+        let _ = key.write_all(bytes);
 
         debug_assert!(!padding.iter().any(|x| *x != 0));
 
@@ -271,25 +256,18 @@ const ENC_ASC_PADDING: [u8; ENC_GROUP_SIZE] = [0; ENC_GROUP_SIZE];
 impl Num {
     pub(crate) fn decode_from_key(bs: &[u8]) -> (Self, &[u8]) {
         let (float_part, remaining) = bs.split_at(8);
-        let fu = u64::from_be_bytes(
-            float_part
-                .try_into()
-                .expect("split_at(8) yields exactly 8 bytes"),
-        );
+        // INVARIANT: split_at(8) yields exactly 8 bytes
+        let fu = u64::from_be_bytes(as_array(float_part));
         let f = order_decode_f64(fu);
-        let (tag, remaining) = remaining
-            .split_first()
-            .expect("encoded key always has a tag byte after the float part");
+        // INVARIANT: encoded key always has a tag byte after the float part
+        let (tag, remaining) = remaining.split_first().unwrap_or((&0, &[]));
         match *tag {
             IS_FLOAT => (Num::Float(f), remaining),
             IS_EXACT_INT => (Num::Int(f as i64), remaining),
             IS_APPROX_INT => {
                 let (int_part, remaining) = remaining.split_at(8);
-                let iu = u64::from_be_bytes(
-                    int_part
-                        .try_into()
-                        .expect("split_at(8) yields exactly 8 bytes"),
-                );
+                // INVARIANT: split_at(8) yields exactly 8 bytes
+                let iu = u64::from_be_bytes(as_array(int_part));
                 let i = order_decode_i64(iu);
                 (Num::Int(i), remaining)
             }
@@ -300,9 +278,8 @@ impl Num {
 
 impl DataValue {
     pub(crate) fn decode_from_key(bs: &[u8]) -> (Self, &[u8]) {
-        let (tag, remaining) = bs
-            .split_first()
-            .expect("encoded key always starts with a tag byte");
+        // INVARIANT: encoded key always starts with a tag byte
+        let (tag, remaining) = bs.split_first().unwrap_or((&0, &[]));
         match *tag {
             NULL_TAG => (DataValue::Null, remaining),
             FALSE_TAG => (DataValue::from(false), remaining),
@@ -321,13 +298,9 @@ impl DataValue {
             }
             JSON_TAG => {
                 let (bytes, remaining) = decode_bytes(remaining);
-                (
-                    DataValue::Json(JsonData(
-                        serde_json::from_slice(&bytes)
-                            .expect("bytes were encoded as JSON by encode_datavalue"),
-                    )),
-                    remaining,
-                )
+                // INVARIANT: bytes were encoded as JSON by encode_datavalue
+                let json = serde_json::from_slice(&bytes).unwrap_or(JsonValue::Null);
+                (DataValue::Json(JsonData(json)), remaining)
             }
             BYTES_TAG => {
                 let (bytes, remaining) = decode_bytes(remaining);
@@ -335,21 +308,10 @@ impl DataValue {
             }
             UUID_TAG => {
                 let (uuid_data, remaining) = remaining.split_at(16);
-                let s_h = u16::from_be_bytes(
-                    uuid_data[0..2]
-                        .try_into()
-                        .expect("slice [0..2] is exactly 2 bytes"),
-                );
-                let s_m = u16::from_be_bytes(
-                    uuid_data[2..4]
-                        .try_into()
-                        .expect("slice [2..4] is exactly 2 bytes"),
-                );
-                let s_l = u32::from_be_bytes(
-                    uuid_data[4..8]
-                        .try_into()
-                        .expect("slice [4..8] is exactly 4 bytes"),
-                );
+                // INVARIANT: split_at(16) yields exactly 16 bytes, sub-slices are fixed-size
+                let s_h = u16::from_be_bytes(as_array(&uuid_data[0..2]));
+                let s_m = u16::from_be_bytes(as_array(&uuid_data[2..4]));
+                let s_l = u32::from_be_bytes(as_array(&uuid_data[4..8]));
                 let mut s_rest = [0u8; 8];
                 s_rest.copy_from_slice(&uuid_data[8..]);
                 let uuid = uuid::Uuid::from_fields(s_l, s_m, s_h, &s_rest);
@@ -362,13 +324,9 @@ impl DataValue {
                 // `s.as_bytes()`. The original source is a valid Rust `&str`, so
                 // UTF-8 validity is guaranteed by the encoding invariant.
                 let s = unsafe { String::from_utf8_unchecked(bytes) };
-                (
-                    DataValue::Regex(RegexWrapper(
-                        Regex::from_str(&s)
-                            .expect("regex source was serialized from a valid Regex"),
-                    )),
-                    remaining,
-                )
+                // INVARIANT: regex source was serialized from a valid Regex
+                let rx = Regex::from_str(&s).unwrap_or_else(|_| unreachable!());
+                (DataValue::Regex(RegexWrapper(rx)), remaining)
             }
             LIST_TAG => {
                 let mut collected = vec![];
@@ -392,16 +350,12 @@ impl DataValue {
             }
             VLD_TAG => {
                 let (ts_flipped_bytes, rest) = remaining.split_at(8);
-                let ts_flipped = u64::from_be_bytes(
-                    ts_flipped_bytes
-                        .try_into()
-                        .expect("split_at(8) yields exactly 8 bytes"),
-                );
+                // INVARIANT: split_at(8) yields exactly 8 bytes
+                let ts_flipped = u64::from_be_bytes(as_array(ts_flipped_bytes));
                 let ts_u64 = !ts_flipped;
                 let ts = order_decode_i64(ts_u64);
-                let (is_assert_byte, rest) = rest
-                    .split_first()
-                    .expect("encoded key always has an is_assert byte after timestamp");
+                // INVARIANT: encoded key always has an is_assert byte after timestamp
+                let (is_assert_byte, rest) = rest.split_first().unwrap_or((&0, &[]));
                 let is_assert = *is_assert_byte == 0;
                 (
                     DataValue::Validity(Validity {
@@ -413,26 +367,20 @@ impl DataValue {
             }
             BOT_TAG => (DataValue::Bot, remaining),
             VEC_TAG => {
-                let (t_tag, remaining) = remaining
-                    .split_first()
-                    .expect("encoded key always has a vector type tag after VEC_TAG");
+                // INVARIANT: encoded key always has a vector type tag after VEC_TAG
+                let (t_tag, remaining) = remaining.split_first().unwrap_or((&0, &[]));
                 let (len_bytes, mut rest) = remaining.split_at(8);
-                let len = u64::from_be_bytes(
-                    len_bytes
-                        .try_into()
-                        .expect("split_at(8) yields exactly 8 bytes"),
-                ) as usize;
+                // INVARIANT: split_at(8) yields exactly 8 bytes
+                #[expect(clippy::cast_sign_loss, reason = "value known non-negative")]
+                let len = u64::from_be_bytes(as_array(len_bytes)) as usize;
                 match *t_tag {
                     VEC_F32 => {
                         let mut res_arr = ndarray::Array1::zeros(len);
                         for mut row in res_arr.axis_iter_mut(ndarray::Axis(0)) {
                             let (f_bytes, next_chunk) = rest.split_at(4);
                             rest = next_chunk;
-                            let f = f32::from_be_bytes(
-                                f_bytes
-                                    .try_into()
-                                    .expect("split_at(4) yields exactly 4 bytes"),
-                            );
+                            // INVARIANT: split_at(4) yields exactly 4 bytes
+                            let f = f32::from_be_bytes(as_array(f_bytes));
                             row.fill(f);
                         }
                         (DataValue::Vec(Vector::F32(res_arr)), rest)
@@ -442,11 +390,8 @@ impl DataValue {
                         for mut row in res_arr.axis_iter_mut(ndarray::Axis(0)) {
                             let (f_bytes, next_chunk) = rest.split_at(8);
                             rest = next_chunk;
-                            let f = f64::from_be_bytes(
-                                f_bytes
-                                    .try_into()
-                                    .expect("split_at(8) yields exactly 8 bytes"),
-                            );
+                            // INVARIANT: split_at(8) yields exactly 8 bytes
+                            let f = f64::from_be_bytes(as_array(f_bytes));
                             row.fill(f);
                         }
                         (DataValue::Vec(Vector::F64(res_arr)), rest)

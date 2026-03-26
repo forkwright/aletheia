@@ -28,6 +28,7 @@ storage-fjall = ["aletheia-mneme/storage-fjall"]
 embed-candle = ["aletheia-mneme/embed-candle"]
 migrate-qdrant = ["dep:qdrant-client", "aletheia-mneme/mneme-engine", "aletheia-mneme/storage-fjall"]
 tls = ["aletheia-pylon/tls"]
+keyring = ["aletheia-symbolon/keyring"]
 tui = ["dep:theatron-tui"]
 # Test tiers (see docs/test-tiers.md)
 test-core = ["aletheia-mneme/test-core", "aletheia-nous/test-core", "aletheia-pylon/test-core"]

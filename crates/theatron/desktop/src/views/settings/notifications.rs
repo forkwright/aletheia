@@ -98,7 +98,7 @@ pub(crate) fn NotificationSettings() -> Element {
             style: "{SECTION_STYLE}",
             div { style: "{SECTION_TITLE}", "Notifications" }
 
-            // Master toggle
+            // Global toggle
             div {
                 style: "{ROW_STYLE}",
                 span { style: "{LABEL_STYLE}", "Desktop notifications" }

@@ -1,8 +1,4 @@
 //! List, collection, set operations, and range functions.
-#![expect(
-    clippy::as_conversions,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use std::collections::BTreeSet;
 
 use itertools::Itertools;
@@ -34,7 +30,9 @@ pub(crate) fn deep_merge_json(value1: JsonValue, value2: JsonValue) -> JsonValue
 
 pub(crate) fn get_index(mut i: i64, total: usize, is_upper: bool) -> Result<usize> {
     if i < 0 {
-        i += total as i64;
+        #[expect(clippy::cast_possible_wrap, reason = "length fits i64")]
+        let total_i64 = total as i64;
+        i += total_i64;
     }
     Ok(if i >= 0 {
         let i = usize::try_from(i).map_err(|_e| IndexOutOfBoundsSnafu { index: i }.build())?;
@@ -378,11 +376,31 @@ pub(crate) fn op_intersection(args: &[DataValue]) -> Result<DataValue> {
 
 pub(crate) fn op_length(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::from(match arg(args, 0)? {
-        DataValue::Set(s) => s.len() as i64,
-        DataValue::List(l) => l.len() as i64,
-        DataValue::Str(s) => s.chars().count() as i64,
-        DataValue::Bytes(b) => b.len() as i64,
-        DataValue::Vec(v) => v.len() as i64,
+        DataValue::Set(s) => {
+            #[expect(clippy::cast_possible_wrap, reason = "length fits i64")]
+            let len = s.len() as i64;
+            len
+        }
+        DataValue::List(l) => {
+            #[expect(clippy::cast_possible_wrap, reason = "length fits i64")]
+            let len = l.len() as i64;
+            len
+        }
+        DataValue::Str(s) => {
+            #[expect(clippy::cast_possible_wrap, reason = "length fits i64")]
+            let len = s.chars().count() as i64;
+            len
+        }
+        DataValue::Bytes(b) => {
+            #[expect(clippy::cast_possible_wrap, reason = "length fits i64")]
+            let len = b.len() as i64;
+            len
+        }
+        DataValue::Vec(v) => {
+            #[expect(clippy::cast_possible_wrap, reason = "length fits i64")]
+            let len = v.len() as i64;
+            len
+        }
         _ => {
             return TypeMismatchSnafu {
                 op: "length",

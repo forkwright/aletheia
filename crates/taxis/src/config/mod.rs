@@ -483,6 +483,9 @@ impl Default for GatewayConfig {
 pub struct GatewayAuthConfig {
     /// Auth mode: `"token"` (bearer token), `"none"` (disabled), `"jwt"` (explicit JWT).
     pub mode: String,
+    /// Role assigned to anonymous requests when auth mode is `"none"`.
+    /// Valid values: `"readonly"`, `"operator"`. Defaults to `"readonly"`.
+    pub none_role: String,
     /// JWT signing key. If `None`, falls back to `ALETHEIA_JWT_SECRET` env var.
     /// Startup fails when auth mode requires JWT and this is still the default placeholder.
     ///
@@ -494,6 +497,7 @@ impl Default for GatewayAuthConfig {
     fn default() -> Self {
         Self {
             mode: "token".to_owned(),
+            none_role: "readonly".to_owned(),
             signing_key: None,
         }
     }

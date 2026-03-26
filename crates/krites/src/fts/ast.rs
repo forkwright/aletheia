@@ -81,7 +81,7 @@ impl FtsExpr {
                     flattened
                         .into_iter()
                         .next()
-                        .expect("len == 1 checked above")
+                        .unwrap_or_else(|| unreachable!())
                 } else {
                     FtsExpr::And(flattened)
                 }
@@ -102,7 +102,7 @@ impl FtsExpr {
                     flattened
                         .into_iter()
                         .next()
-                        .expect("len == 1 checked above")
+                        .unwrap_or_else(|| unreachable!())
                 } else {
                     FtsExpr::Or(flattened)
                 }
@@ -127,7 +127,7 @@ impl FtsExpr {
                 let mut tokens = vec![];
                 l.tokenize(tokenizer, &mut tokens);
                 if tokens.len() == 1 {
-                    FtsExpr::Literal(tokens.into_iter().next().expect("len == 1 checked above"))
+                    FtsExpr::Literal(tokens.into_iter().next().unwrap_or_else(|| unreachable!()))
                 } else {
                     FtsExpr::And(tokens.into_iter().map(FtsExpr::Literal).collect())
                 }

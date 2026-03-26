@@ -32,6 +32,19 @@ pub async fn search(
     State(state): State<KnowledgeState>,
     Query(mut query): Query<SearchQuery>,
 ) -> Result<Json<SearchResponse>, ApiError> {
+    if query.q.trim().is_empty() {
+        return Err(crate::error::BadRequestSnafu {
+            message: "search query 'q' must not be empty",
+        }
+        .build());
+    }
+
+    if query.limit > MAX_SEARCH_LIMIT {
+        return Err(crate::error::BadRequestSnafu {
+            message: format!("limit must not exceed {MAX_SEARCH_LIMIT}"),
+        }
+        .build());
+    }
     query.limit = query.limit.min(MAX_SEARCH_LIMIT);
 
     // WHY: Pass the caller-supplied nous_id so get_stored_facts can query the store.

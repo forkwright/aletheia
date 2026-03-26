@@ -184,13 +184,20 @@ This displays the current token or a way to generate one. Tokens are managed by 
 
 ### POST/PUT/DELETE CSRF protection
 
-CSRF protection is **enabled by default**. All state-changing requests (POST, PUT, DELETE, PATCH) to `/api/v1/` must include the header:
+CSRF protection is **disabled by default**. To enable it, add to `aletheia.toml`:
+
+```toml
+[gateway.csrf]
+enabled = true
+```
+
+When enabled, all state-changing requests (POST, PUT, DELETE, PATCH) to `/api/v1/` must include the header:
 
 ```
 X-Requested-With: aletheia
 ```
 
-Include this header on every mutating curl call:
+Include this header on every mutating curl call when CSRF is enabled:
 
 ```bash
 curl -X POST \
@@ -201,18 +208,7 @@ curl -X POST \
   http://127.0.0.1:18789/api/v1/sessions
 ```
 
-Missing the CSRF header returns `403 Forbidden`. No config change is needed to enable this; it is on by default.
-
-#### Disable CSRF for development
-
-To turn off CSRF checks in a local development instance, add to `aletheia.toml`:
-
-```toml
-[gateway.csrf]
-enabled = false
-```
-
-With CSRF disabled, the `X-Requested-With` header is no longer required. Do not disable CSRF on any instance exposed to a network.
+Missing the CSRF header returns `403 Forbidden` when CSRF is enabled. Enable CSRF on any instance exposed to a network.
 
 ### No authentication mode
 

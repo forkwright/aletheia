@@ -17,7 +17,7 @@ with requests.Session() as sess, open("stopwords.rs", "w") as mod:
         mod.write(f"pub(crate) const {lang.upper()}: &[&str] = &[\n")
 
         for word in data:
-            mod.write(f'    r#"{word}"#,\n')
+            mod.write('    r#"{}\"#,\n'.format(word))
 
         mod.write("];\n\n")
-        print(f'"{lang}" => stopwords::{lang.upper()},')
+        print('"{}" => stopwords::{},'.format(lang, lang.upper()))

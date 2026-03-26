@@ -1,7 +1,3 @@
-#![expect(
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use std::collections::BTreeMap;
 
 use itertools::Itertools;
@@ -39,11 +35,7 @@ impl ReorderRA {
         let reorder_indices = self
             .new_order
             .iter()
-            .map(|k| {
-                *old_order_indices
-                    .get(k)
-                    .expect("program logic error: reorder indices mismatch")
-            })
+            .map(|k| *old_order_indices.get(k).unwrap_or_else(|| unreachable!()))
             .collect_vec();
         Ok(Box::new(
             self.relation

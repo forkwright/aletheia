@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
@@ -38,11 +38,21 @@ pub const DEFAULT_INBOX_CAPACITY: usize = 32;
 /// Maximum number of concurrent background tasks (extraction, distillation, skills).
 pub(crate) const MAX_SPAWNED_TASKS: usize = 8;
 
+/// Maximum number of sessions tracked in the actor's in-memory HashMap.
+/// When exceeded, the oldest session (by last activity) is evicted.
+pub(crate) const MAX_SESSIONS: usize = 1000;
+
 /// Number of panics within `DEGRADED_WINDOW` that triggers degraded mode.
 const DEGRADED_PANIC_THRESHOLD: u32 = 5;
 
 /// Time window for panic counting (10 minutes).
-const DEGRADED_WINDOW: std::time::Duration = std::time::Duration::from_secs(600);
+const DEGRADED_WINDOW: Duration = Duration::from_secs(600);
+
+/// Inbox recv timeout: detects stuck actors during idle periods. (#2159)
+const INBOX_RECV_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Consecutive timeouts before warning when the actor is Active. (#2159)
+const CONSECUTIVE_TIMEOUT_WARN_THRESHOLD: u32 = 3;
 
 /// Messaging and lifecycle channels for the actor.
 pub(crate) struct ActorChannel {
@@ -99,6 +109,10 @@ pub(crate) struct ActorRuntime {
     panic_timestamps: Vec<Instant>,
     /// When the actor started running.
     started_at: Instant,
+    /// Timestamp of the most recent panic, used for auto-recovery from degraded mode.
+    last_panic_at: Option<Instant>,
+    /// Consecutive inbox recv timeouts without a successful message. (#2159)
+    consecutive_timeouts: u32,
 }
 
 /// A single nous agent running as a Tokio actor.
@@ -194,6 +208,8 @@ impl NousActor {
                 panic_count: 0,
                 panic_timestamps: Vec::new(),
                 started_at: Instant::now(),
+                last_panic_at: None,
+                consecutive_timeouts: 0,
             },
         }
     }
@@ -220,13 +236,38 @@ impl NousActor {
 
         loop {
             self.reap_background_tasks();
+            self.maybe_auto_recover();
 
             tokio::select! {
                 // SAFETY: cancel-safe. `mpsc::Receiver::recv()` is cancel-safe:
                 // if this branch is dropped before it fires, the message remains
                 // in the inbox and will be delivered on the next poll.
-                msg = self.channel.inbox.recv() => {
-                    let Some(msg) = msg else { break };
+                // WHY(#2159): wrapped in timeout to detect stuck actors during idle periods.
+                recv_result = tokio::time::timeout(INBOX_RECV_TIMEOUT, self.channel.inbox.recv()) => {
+                    let msg = match recv_result {
+                        Ok(Some(msg)) => {
+                            self.runtime.consecutive_timeouts = 0;
+                            msg
+                        }
+                        Ok(None) => break,
+                        Err(_elapsed) => {
+                            self.runtime.consecutive_timeouts += 1;
+                            debug!(
+                                consecutive_timeouts = self.runtime.consecutive_timeouts,
+                                "inbox recv timed out (idle)"
+                            );
+                            if self.runtime.consecutive_timeouts >= CONSECUTIVE_TIMEOUT_WARN_THRESHOLD
+                                && self.channel.status == NousLifecycle::Active
+                            {
+                                warn!(
+                                    nous_id = %self.id,
+                                    consecutive_timeouts = self.runtime.consecutive_timeouts,
+                                    "inbox starved while Active — possible stuck state"
+                                );
+                            }
+                            continue;
+                        }
+                    };
                     match msg {
                         NousMessage::Turn {
                             session_key,
@@ -273,6 +314,10 @@ impl NousActor {
                         }
                         NousMessage::Wake => {
                             self.handle_wake();
+                        }
+                        NousMessage::Recover { reply } => {
+                            let recovered = self.recover();
+                            let _ = reply.send(recovered);
                         }
                         NousMessage::Shutdown => {
                             info!("shutdown requested");
@@ -377,6 +422,70 @@ impl NousActor {
             NousLifecycle::Degraded => {
                 debug!("cannot wake from degraded — requires restart");
             }
+        }
+    }
+
+    /// Attempt auto-recovery from degraded mode if the last panic was more than
+    /// `DEGRADED_WINDOW` (10 minutes) ago.
+    fn maybe_auto_recover(&mut self) {
+        if self.channel.status != NousLifecycle::Degraded {
+            return;
+        }
+        let Some(last_panic) = self.runtime.last_panic_at else {
+            return;
+        };
+        if last_panic.elapsed() >= DEGRADED_WINDOW {
+            info!(
+                nous_id = %self.id,
+                panic_count = self.runtime.panic_count,
+                elapsed_secs = last_panic.elapsed().as_secs(),
+                "auto-recovering from degraded mode: no panics in recovery window"
+            );
+            self.runtime.panic_count = 0;
+            self.runtime.panic_timestamps.clear();
+            self.runtime.last_panic_at = None;
+            self.channel.status = NousLifecycle::Idle;
+        }
+    }
+
+    /// Manually recover from degraded mode. Returns `true` if recovery occurred.
+    fn recover(&mut self) -> bool {
+        if self.channel.status != NousLifecycle::Degraded {
+            debug!(nous_id = %self.id, lifecycle = %self.channel.status, "recover called but not degraded");
+            return false;
+        }
+        info!(
+            nous_id = %self.id,
+            panic_count = self.runtime.panic_count,
+            "manual recovery from degraded mode"
+        );
+        self.runtime.panic_count = 0;
+        self.runtime.panic_timestamps.clear();
+        self.runtime.last_panic_at = None;
+        self.channel.status = NousLifecycle::Idle;
+        true
+    }
+
+    /// Evict the oldest session (by turn_id, which is a ULID encoding creation time)
+    /// when the session count reaches `MAX_SESSIONS`. Prevents unbounded memory growth.
+    fn evict_oldest_session_if_needed(&mut self) {
+        if self.sessions.len() < MAX_SESSIONS {
+            return;
+        }
+        // WHY: turn_id is a ULID (time-ordered); the smallest ULID is the oldest session.
+        let oldest_key = self
+            .sessions
+            .iter()
+            .min_by_key(|(_, state)| state.turn_id)
+            .map(|(key, _)| key.clone());
+        if let Some(key) = oldest_key {
+            warn!(
+                nous_id = %self.id,
+                evicted_session = %key,
+                session_count = self.sessions.len(),
+                "session limit reached, evicting oldest session"
+            );
+            self.sessions.remove(&key);
         }
     }
 

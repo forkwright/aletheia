@@ -11,11 +11,13 @@ rust-version.workspace = true
 workspace = true
 
 [features]
+keyring = ["dep:keyring"]
 test-core = []
 test-full = []
 
 [dependencies]
 aletheia-koina = { path = "../koina" }
+keyring = { version = "3", optional = true }
 argon2 = { version = "0.5", features = ["std"] }
 base64 = { workspace = true }
 blake3 = "1"
@@ -32,6 +34,7 @@ tokio = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
 ulid = { workspace = true }
+zeroize = { workspace = true }
 
 [dev-dependencies]
 static_assertions = { workspace = true }

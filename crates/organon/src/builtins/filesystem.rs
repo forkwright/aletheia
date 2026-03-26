@@ -3,10 +3,10 @@
 use std::fmt::Write as _;
 use std::future::Future;
 use std::io::Read as _;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::process::{Command, Stdio};
-use std::time::SystemTime;
+use std::time::{Duration, Instant, SystemTime};
 
 use indexmap::IndexMap;
 
@@ -23,6 +23,31 @@ use crate::types::{
 
 use super::workspace::{extract_opt_bool, extract_opt_u64, extract_str, validate_path};
 
+/// WHY: Close TOCTOU window between validate_path and actual filesystem access.
+/// A symlink could be swapped after validation to point outside allowed roots.
+/// Canonicalize resolves symlinks; if the canonical path differs, re-validate.
+/// Closes #2162.
+fn canonicalize_and_revalidate(
+    validated_path: PathBuf,
+    ctx: &ToolContext,
+    tool_name: &ToolName,
+) -> crate::error::Result<PathBuf> {
+    if validated_path.exists() {
+        if let Ok(canonical) = std::fs::canonicalize(&validated_path) {
+            if canonical != validated_path {
+                validate_path(&canonical.to_string_lossy(), ctx, tool_name)?;
+                return Ok(canonical);
+            }
+        }
+    }
+    Ok(validated_path)
+}
+
+/// WHY: Unbounded patterns can trigger catastrophic backtracking in the regex
+/// engine (ReDoS). Cap at 1000 chars which covers all legitimate search
+/// patterns. Closes #2167.
+const MAX_PATTERN_LENGTH: usize = 1000;
+
 fn extract_opt_str<'a>(args: &'a serde_json::Value, field: &str) -> Option<&'a str> {
     args.get(field).and_then(serde_json::Value::as_str)
 }
@@ -35,10 +60,37 @@ fn truncate_output(mut output: String) -> String {
     output
 }
 
+/// WHY: Subprocess commands (grep, find, ls) must not run indefinitely.
+/// A 60-second wall-clock timeout prevents hung processes from consuming
+/// resources. On timeout the ProcessGuard kills and reaps the child.
+/// Closes #2168, #2133.
+const SUBPROCESS_TIMEOUT: Duration = Duration::from_secs(60);
+
 fn run_command(cmd: &mut Command) -> std::io::Result<std::process::Output> {
     // NOTE: Wrap in ProcessGuard so the child is killed and reaped on any early
-    // return (I/O error, panic, etc.) before we reach wait().
+    // return (I/O error, panic, timeout, etc.) before we reach wait().
     let mut guard = ProcessGuard::new(cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?);
+
+    let deadline = Instant::now() + SUBPROCESS_TIMEOUT;
+
+    // WHY: Poll for completion to enforce the wall-clock timeout. If the child
+    // exceeds the deadline, the guard's drop kills it and we return a timeout error.
+    let status = loop {
+        match guard.get_mut().try_wait() {
+            Ok(Some(s)) => break s,
+            Ok(None) => {
+                if Instant::now() >= deadline {
+                    // Guard drop handles kill + reap
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        "subprocess timed out after 60s",
+                    ));
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Err(e) => return Err(e),
+        }
+    };
 
     let mut stdout = String::new();
     if let Some(ref mut pipe) = guard.get_mut().stdout {
@@ -49,7 +101,8 @@ fn run_command(cmd: &mut Command) -> std::io::Result<std::process::Output> {
         let _ = pipe.read_to_string(&mut stderr);
     }
 
-    let status = guard.detach().wait()?;
+    // NOTE: Process already exited via try_wait; detach to avoid kill on drop.
+    let _ = guard.detach();
     Ok(std::process::Output {
         status,
         stdout: stdout.into_bytes(),
@@ -67,6 +120,14 @@ impl ToolExecutor for GrepExecutor {
     ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
         Box::pin(async {
             let pattern = extract_str(&input.arguments, "pattern", &input.name)?;
+
+            if pattern.len() > MAX_PATTERN_LENGTH {
+                return Ok(ToolResult::error(format!(
+                    "pattern too long: {} chars (max {MAX_PATTERN_LENGTH})",
+                    pattern.len()
+                )));
+            }
+
             let max_results = extract_opt_u64(&input.arguments, "maxResults").unwrap_or(50);
             let case_sensitive =
                 extract_opt_bool(&input.arguments, "caseSensitive").unwrap_or(true);
@@ -76,6 +137,11 @@ impl ToolExecutor for GrepExecutor {
                 Some(p) => validate_path(p, ctx, &input.name)?,
                 None => ctx.workspace.clone(),
             };
+
+            // WHY: Close TOCTOU window: a symlink validated above could be
+            // swapped before the subprocess reads it. Canonicalize and
+            // re-validate the resolved target. Closes #2162.
+            let path = canonicalize_and_revalidate(path, ctx, &input.name)?;
 
             let output = try_rg(pattern, &path, max_results, case_sensitive, glob_filter)
                 .or_else(|_| try_grep_fallback(pattern, &path, case_sensitive, glob_filter));
@@ -102,6 +168,9 @@ impl ToolExecutor for GrepExecutor {
                     });
                     Ok(ToolResult::text(text))
                 }
+                Err(e) if e.kind() == std::io::ErrorKind::TimedOut => Ok(ToolResult::error(
+                    "grep timed out after 60s: try a narrower path or pattern".to_owned(),
+                )),
                 Err(e) => Ok(ToolResult::error(format!("grep failed: {e}"))),
             }
         })
@@ -160,6 +229,14 @@ impl ToolExecutor for FindExecutor {
     ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
         Box::pin(async {
             let pattern = extract_str(&input.arguments, "pattern", &input.name)?;
+
+            if pattern.len() > MAX_PATTERN_LENGTH {
+                return Ok(ToolResult::error(format!(
+                    "pattern too long: {} chars (max {MAX_PATTERN_LENGTH})",
+                    pattern.len()
+                )));
+            }
+
             let max_results = extract_opt_u64(&input.arguments, "maxResults").unwrap_or(100);
             let type_filter = extract_opt_str(&input.arguments, "type");
             let max_depth = extract_opt_u64(&input.arguments, "maxDepth");
@@ -168,6 +245,8 @@ impl ToolExecutor for FindExecutor {
                 Some(p) => validate_path(p, ctx, &input.name)?,
                 None => ctx.workspace.clone(),
             };
+
+            let path = canonicalize_and_revalidate(path, ctx, &input.name)?;
 
             let output = try_fd(pattern, &path, max_results, type_filter, max_depth)
                 .or_else(|_| try_find_fallback(pattern, &path, type_filter, max_depth));
@@ -191,6 +270,9 @@ impl ToolExecutor for FindExecutor {
                     });
                     Ok(ToolResult::text(text))
                 }
+                Err(e) if e.kind() == std::io::ErrorKind::TimedOut => Ok(ToolResult::error(
+                    "find timed out after 60s: try a narrower path or pattern".to_owned(),
+                )),
                 Err(e) => Ok(ToolResult::error(format!("find failed: {e}"))),
             }
         })
@@ -276,6 +358,8 @@ impl ToolExecutor for LsExecutor {
                 Some(p) => validate_path(p, ctx, &input.name)?,
                 None => ctx.workspace.clone(),
             };
+
+            let path = canonicalize_and_revalidate(path, ctx, &input.name)?;
 
             let entries = match std::fs::read_dir(&path) {
                 Ok(rd) => rd,

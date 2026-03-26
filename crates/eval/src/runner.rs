@@ -72,7 +72,7 @@ impl ScenarioRunner {
             None => all_scenarios,
         };
 
-        let health = self.client.health().await.ok();
+        let health = self.client.health().await.ok(); // WHY: best-effort; scenarios self-skip when server is unreachable
         let has_token = self.client.has_token();
 
         let has_nous = if has_token {
@@ -139,25 +139,37 @@ impl ScenarioRunner {
             let scenario_start = Instant::now();
             let timeout = Duration::from_secs(self.config.timeout_secs);
 
-            let outcome = match tokio::time::timeout(timeout, scenario.run(&self.client)).await {
-                Ok(Ok(())) => {
-                    let duration = scenario_start.elapsed();
-                    info!(id = meta.id, ?duration, "scenario passed");
-                    passed += 1;
-                    ScenarioOutcome::Passed { duration }
+            // WHY: tokio::select! drops the losing branch's future, cancelling
+            // in-flight work (HTTP requests, retries) immediately on timeout
+            // rather than letting them run to completion in the background.
+            let scenario_fut = scenario.run(&self.client);
+            tokio::pin!(scenario_fut);
+
+            let outcome = tokio::select! {
+                result = &mut scenario_fut => {
+                    match result {
+                        Ok(()) => {
+                            let duration = scenario_start.elapsed();
+                            info!(id = meta.id, ?duration, "scenario passed");
+                            passed += 1;
+                            ScenarioOutcome::Passed { duration }
+                        }
+                        Err(error) => {
+                            let duration = scenario_start.elapsed();
+                            warn!(id = meta.id, %error, "scenario failed");
+                            failed += 1;
+                            ScenarioOutcome::Failed { duration, error }
+                        }
+                    }
                 }
-                Ok(Err(error)) => {
-                    let duration = scenario_start.elapsed();
-                    warn!(id = meta.id, %error, "scenario failed");
-                    failed += 1;
-                    ScenarioOutcome::Failed { duration, error }
-                }
-                Err(_) => {
+                () = tokio::time::sleep(timeout) => {
+                    // scenario_fut is dropped here, cancelling any in-flight work
+                    drop(scenario_fut);
                     let duration = scenario_start.elapsed();
                     warn!(
                         id = meta.id,
                         timeout_secs = self.config.timeout_secs,
-                        "scenario timed out"
+                        "scenario timed out, task cancelled"
                     );
                     failed += 1;
                     ScenarioOutcome::Failed {

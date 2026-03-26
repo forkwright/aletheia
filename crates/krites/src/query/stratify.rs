@@ -179,9 +179,7 @@ fn make_scc_reduced_graph(
         .collect::<BTreeMap<_, _>>();
     let mut ret: BTreeMap<usize, BTreeMap<usize, bool>> = Default::default();
     for (from, tos) in graph {
-        let from_idx = *indices
-            .get(from)
-            .expect("'from' always in indices: built from same graph structure as sccs");
+        let from_idx = *indices.get(from).unwrap_or_else(|| unreachable!());
         let cur_entry = ret.entry(from_idx).or_default();
         for (to, poisoned) in tos {
             let to_idx = match indices.get(to) {
@@ -277,7 +275,7 @@ impl NormalFormProgram {
             {
                 let target = ret
                     .get_mut(*rev_stratum_idx)
-                    .expect("stratum index always valid: rev_stratum_idx derived from ret's range");
+                    .unwrap_or_else(|| unreachable!());
                 target.prog.insert(name, ruleset);
             }
         }
@@ -307,7 +305,7 @@ mod tests {
         ?[a] := w[a]
         "#,
             )
-            .expect("stratification query must succeed in test")
+            .unwrap_or_else(|_| unreachable!())
             .rows;
     }
 }

@@ -73,7 +73,7 @@ pub struct Attachment {
 /// Returns `None` for sync messages, receipt messages, typing indicators,
 /// data messages with no text, and messages with no identifiable sender.
 #[must_use]
-pub fn extract_message(envelope: &SignalEnvelope) -> Option<InboundMessage> {
+pub(crate) fn extract_message(envelope: &SignalEnvelope) -> Option<InboundMessage> {
     let data = envelope.data_message.as_ref()?;
 
     let text = data.message.as_deref()?;
@@ -98,7 +98,7 @@ pub fn extract_message(envelope: &SignalEnvelope) -> Option<InboundMessage> {
         })
         .unwrap_or_default();
 
-    let raw_value = serde_json::to_value(envelope).ok();
+    let raw_value = serde_json::to_value(envelope).ok(); // WHY: optional diagnostic data; serialization failure is non-fatal
 
     Some(InboundMessage {
         channel: "signal".to_owned(),

@@ -61,19 +61,19 @@ impl Phase {
     }
 
     /// Add an executable plan to this phase.
-    pub fn add_plan(&mut self, plan: Plan) {
+    pub(crate) fn add_plan(&mut self, plan: Plan) {
         self.plans.push(plan);
     }
 
     /// Whether this phase has reached the `Complete` state.
     #[must_use]
-    pub fn is_complete(&self) -> bool {
+    pub(crate) fn is_complete(&self) -> bool {
         self.state == PhaseState::Complete
     }
 
     /// Percentage of plans in a terminal state (complete, skipped, failed, stuck).
     #[must_use]
-    pub fn completion_percentage(&self) -> f64 {
+    pub(crate) fn completion_percentage(&self) -> f64 {
         if self.plans.is_empty() {
             return 0.0;
         }

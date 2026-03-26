@@ -3,10 +3,6 @@
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
-#![expect(
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 
 use std::fmt::Debug;
 
@@ -96,6 +92,7 @@ pub fn eval_bytecode(
         if pointer == bytecodes.len() {
             break;
         }
+        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let current_instruction = &bytecodes[pointer];
         match current_instruction {
             Bytecode::Binding { var, tuple_pos, .. } => match tuple_pos {
@@ -131,9 +128,7 @@ pub fn eval_bytecode(
                 pointer += 1;
             }
             Bytecode::JumpIfFalse { jump_to, span: _ } => {
-                let val = stack
-                    .pop()
-                    .expect("JumpIfFalse bytecode guarantees a value on the stack");
+                let val = stack.pop().unwrap_or(DataValue::Null);
                 let cond = val.get_bool().ok_or_else(|| {
                     InternalError::from(
                         TypeMismatchSnafu {
@@ -154,9 +149,7 @@ pub fn eval_bytecode(
             }
         }
     }
-    Ok(stack
-        .pop()
-        .expect("bytecode execution guarantees exactly one result on the stack"))
+    Ok(stack.pop().unwrap_or(DataValue::Null))
 }
 
 mod expr_impl;

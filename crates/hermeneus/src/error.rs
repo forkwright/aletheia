@@ -107,19 +107,24 @@ pub enum Error {
 
 impl Error {
     /// Whether this error indicates a transient failure worth retrying
-    /// with a different model (429, 503, 529, timeout).
+    /// with a different model (429, 503, 529, timeout, connection reset).
     #[must_use]
     pub fn is_retryable(&self) -> bool {
         // kanon:ignore RUST/pub-visibility
-        matches!(
-            self,
+        match self {
             Error::RateLimited { .. }
-                | Error::ApiRequest { .. }
-                | Error::ApiError {
-                    status: 500..=599,
-                    ..
-                }
-        )
+            | Error::ApiError {
+                status: 500..=599, ..
+            } => true,
+            Error::ApiRequest { message, .. } => {
+                let msg = message.to_lowercase();
+                msg.contains("timeout")
+                    || msg.contains("connection")
+                    || msg.contains("reset")
+                    || msg.contains("broken pipe")
+            }
+            _ => false,
+        }
     }
 }
 
@@ -193,5 +198,17 @@ mod tests {
         }
         .build();
         assert!(!err.is_retryable());
+    }
+
+    #[test]
+    fn api_request_non_transient_is_not_retryable() {
+        let err = ApiRequestSnafu {
+            message: "invalid request body".to_owned(),
+        }
+        .build();
+        assert!(
+            !err.is_retryable(),
+            "non-transient ApiRequest should not be retryable"
+        );
     }
 }

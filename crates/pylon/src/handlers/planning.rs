@@ -14,6 +14,8 @@ use axum::extract::Path;
 use axum::http::StatusCode;
 use serde::Serialize;
 
+use crate::error::{ErrorBody, ErrorResponse};
+
 /// Verification status for a single requirement.
 // NOTE: variants are constructed in tests and will be used in production once
 // the dianoia verification engine is wired into pylon (#2034).
@@ -102,6 +104,13 @@ pub(crate) struct RequirementVerification {
 /// Full verification result for a project, matching the desktop
 /// `VerificationResult` deserialization target.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "API contract types: used in tests, production use pending #2034"
+    )
+)]
 pub(crate) struct VerificationResult {
     /// Project identifier.
     pub(crate) project_id: String,
@@ -113,6 +122,7 @@ pub(crate) struct VerificationResult {
 
 /// Response for `POST .../verification/refresh`.
 #[derive(Debug, Serialize)]
+#[expect(dead_code, reason = "API contract type: production use pending #2034")]
 pub(crate) struct RefreshResponse {
     /// Refresh status: `"accepted"`.
     pub(crate) status: &'static str,
@@ -122,9 +132,8 @@ pub(crate) struct RefreshResponse {
 
 /// `GET /api/planning/projects/{project_id}/verification`
 ///
-/// Returns the current verification state for a project. Until the
-/// verification engine is wired into pylon, returns an empty result
-/// so the desktop `VerificationView` renders correctly.
+/// Returns the current verification state for a project. Returns 501
+/// until the dianoia verification engine is wired into pylon (#2034).
 #[utoipa::path(
     get,
     path = "/api/planning/projects/{project_id}/verification",
@@ -132,28 +141,31 @@ pub(crate) struct RefreshResponse {
         ("project_id" = String, Path, description = "Project identifier"),
     ),
     responses(
-        (status = 200, description = "Verification result"),
+        (status = 501, description = "Verification engine not yet available"),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
-pub(crate) async fn get_verification(Path(project_id): Path<String>) -> Json<VerificationResult> {
-    // TODO(#2034): read actual verification data from the project workspace
-    // once a PlanningService is part of pylon's AppState.
-    Json(VerificationResult {
-        project_id,
-        requirements: Vec::new(),
-        last_verified_at: "pending".to_owned(),
-    })
+pub(crate) async fn get_verification(
+    Path(_project_id): Path<String>,
+) -> (StatusCode, Json<ErrorResponse>) {
+    (
+        StatusCode::NOT_IMPLEMENTED,
+        Json(ErrorResponse {
+            error: ErrorBody {
+                code: "not_implemented".to_owned(),
+                message: "verification engine not yet wired (tracking #2034)".to_owned(),
+                request_id: None,
+                details: None,
+            },
+        }),
+    )
 }
 
 /// `POST /api/planning/projects/{project_id}/verification/refresh`
 ///
-/// Triggers a re-verification of the project. The desktop Re-verify button
-/// calls this endpoint and, on success, re-fetches verification data via GET.
-///
-/// Until the verification engine is wired in, this acknowledges the request
-/// and returns 200 so the UI flow completes.
+/// Triggers a re-verification of the project. Returns 501 until the
+/// dianoia verification engine is wired into pylon (#2034).
 #[utoipa::path(
     post,
     path = "/api/planning/projects/{project_id}/verification/refresh",
@@ -161,21 +173,23 @@ pub(crate) async fn get_verification(Path(project_id): Path<String>) -> Json<Ver
         ("project_id" = String, Path, description = "Project identifier"),
     ),
     responses(
-        (status = 200, description = "Refresh accepted"),
+        (status = 501, description = "Verification engine not yet available"),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
 pub(crate) async fn refresh_verification(
-    Path(project_id): Path<String>,
-) -> (StatusCode, Json<RefreshResponse>) {
-    tracing::info!(project_id = %project_id, "verification refresh requested");
-    // TODO(#2034): invoke dianoia verification engine and persist result.
+    Path(_project_id): Path<String>,
+) -> (StatusCode, Json<ErrorResponse>) {
     (
-        StatusCode::OK,
-        Json(RefreshResponse {
-            status: "accepted",
-            project_id,
+        StatusCode::NOT_IMPLEMENTED,
+        Json(ErrorResponse {
+            error: ErrorBody {
+                code: "not_implemented".to_owned(),
+                message: "verification engine not yet wired (tracking #2034)".to_owned(),
+                request_id: None,
+                details: None,
+            },
         }),
     )
 }
@@ -208,7 +222,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_verification_returns_empty_result() {
+    async fn get_verification_returns_not_implemented() {
         let app = planning_router();
         let response = app
             .oneshot(
@@ -220,18 +234,17 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
         let bytes = body::to_bytes(response.into_body(), 64 * 1024)
             .await
             .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(json["project_id"], "proj-123");
-        assert!(json["requirements"].as_array().unwrap().is_empty());
-        assert_eq!(json["last_verified_at"], "pending");
+        assert_eq!(json["error"]["code"], "not_implemented");
+        assert!(json["error"]["message"].as_str().unwrap().contains("#2034"));
     }
 
     #[tokio::test]
-    async fn refresh_verification_returns_accepted() {
+    async fn refresh_verification_returns_not_implemented() {
         let app = planning_router();
         let response = app
             .oneshot(
@@ -244,13 +257,13 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
         let bytes = body::to_bytes(response.into_body(), 64 * 1024)
             .await
             .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(json["status"], "accepted");
-        assert_eq!(json["project_id"], "proj-456");
+        assert_eq!(json["error"]["code"], "not_implemented");
+        assert!(json["error"]["message"].as_str().unwrap().contains("#2034"));
     }
 
     #[test]

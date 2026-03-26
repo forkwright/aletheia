@@ -1,12 +1,16 @@
 #![expect(
     clippy::unwrap_used,
-    reason = "test helper; ApiClient construction failure indicates a bug in test setup"
+    reason = "test helper; infallible test setup for localhost URLs"
+)]
+#![expect(
+    clippy::expect_used,
+    reason = "test helper; panics with context on impossible failures"
 )]
 use std::collections::{HashMap, HashSet};
 
 use super::*;
 
-pub fn test_app() -> App {
+pub(crate) fn test_app() -> App {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let config = Config {
         url: "http://localhost:18789".to_string(),
@@ -23,7 +27,7 @@ pub fn test_app() -> App {
         &config.url,
         config.token.as_ref().map(|t| t.expose_secret().to_owned()),
     )
-    .unwrap();
+    .expect("ApiClient::new with localhost URL should not fail");
     let theme = THEME.clone();
 
     App {
@@ -61,6 +65,7 @@ pub fn test_app() -> App {
             stall_message: None,
             stream_phase: crate::state::StreamPhase::Idle,
             streaming_line_buffer: String::new(),
+            state_epoch: 0,
         },
         viewport: ViewportState {
             terminal_width: DEFAULT_TERMINAL_WIDTH,
@@ -117,7 +122,7 @@ pub fn test_app() -> App {
     }
 }
 
-pub fn test_app_with_messages(msgs: Vec<(&str, &str)>) -> App {
+pub(crate) fn test_app_with_messages(msgs: Vec<(&str, &str)>) -> App {
     let mut app = test_app();
     for (role, text) in msgs {
         let text = text.to_string();
@@ -135,7 +140,7 @@ pub fn test_app_with_messages(msgs: Vec<(&str, &str)>) -> App {
     app
 }
 
-pub fn test_agent(id: &str, name: &str) -> AgentState {
+pub(crate) fn test_agent(id: &str, name: &str) -> AgentState {
     let name = name.to_string();
     let name_lower = name.to_lowercase();
     AgentState {

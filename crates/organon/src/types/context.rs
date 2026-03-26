@@ -32,8 +32,7 @@ pub struct ServerToolConfig {
 impl ServerToolConfig {
     /// Generate catalog entries for server tools available via `enable_tool`.
     #[must_use]
-    pub fn catalog_entries(&self) -> Vec<(ToolName, String)> {
-        // kanon:ignore RUST/pub-visibility
+    pub(crate) fn catalog_entries(&self) -> Vec<(ToolName, String)> {
         let mut entries = Vec::new();
         if self.web_search {
             entries.push((
@@ -91,7 +90,6 @@ impl ServerToolConfig {
     reason = "service locator fields are self-documenting by name"
 )]
 pub struct ToolServices {
-    // kanon:ignore RUST/pub-visibility
     pub cross_nous: Option<Arc<dyn CrossNousService>>,
     pub messenger: Option<Arc<dyn MessageService>>,
     pub note_store: Option<Arc<dyn NoteStore>>,

@@ -1,8 +1,4 @@
 //! Fixed (built-in) rules for the Datalog engine.
-#![expect(
-    clippy::as_conversions,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::sync::LazyLock;
@@ -182,6 +178,7 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
                 let from_idx = if let Some(idx) = inv_indices.get(&from) {
                     *idx
                 } else {
+                    #[expect(clippy::cast_possible_truncation, reason = "value fits u32")]
                     let idx = indices.len() as u32;
                     inv_indices.insert(from.clone(), idx);
                     indices.push(from.clone());
@@ -190,6 +187,7 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
                 let to_idx = if let Some(idx) = inv_indices.get(&to) {
                     *idx
                 } else {
+                    #[expect(clippy::cast_possible_truncation, reason = "value fits u32")]
                     let idx = indices.len() as u32;
                     inv_indices.insert(to.clone(), idx);
                     indices.push(to.clone());
@@ -268,6 +266,7 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
                 let from_idx = if let Some(idx) = inv_indices.get(&from) {
                     *idx
                 } else {
+                    #[expect(clippy::cast_possible_truncation, reason = "value fits u32")]
                     let idx = indices.len() as u32;
                     inv_indices.insert(from.clone(), idx);
                     indices.push(from.clone());
@@ -276,6 +275,7 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
                 let to_idx = if let Some(idx) = inv_indices.get(&to) {
                     *idx
                 } else {
+                    #[expect(clippy::cast_possible_truncation, reason = "value fits u32")]
                     let idx = indices.len() as u32;
                     inv_indices.insert(to.clone(), idx);
                     indices.push(to.clone());
@@ -468,6 +468,7 @@ impl<'a, 'b> FixedRulePayload<'a, 'b> {
     }
     /// Extract a positive integer option
     pub fn pos_integer_option(&self, name: &str, default: Option<usize>) -> Result<usize> {
+        #[expect(clippy::cast_possible_wrap, reason = "value fits i64")]
         let i = self.integer_option(name, default.map(|i| i as i64))?;
         if i <= 0 {
             return Err(WrongFixedRuleOptionError {
@@ -482,6 +483,7 @@ impl<'a, 'b> FixedRulePayload<'a, 'b> {
     }
     /// Extract a non-negative integer option
     pub fn non_neg_integer_option(&self, name: &str, default: Option<usize>) -> Result<usize> {
+        #[expect(clippy::cast_possible_wrap, reason = "value fits i64")]
         let i = self.integer_option(name, default.map(|i| i as i64))?;
         if i < 0 {
             return Err(WrongFixedRuleOptionError {

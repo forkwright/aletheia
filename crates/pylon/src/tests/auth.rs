@@ -131,6 +131,7 @@ async fn app_auth_disabled() -> (axum::Router, tempfile::TempDir) {
     let (config_tx, _config_rx) = tokio::sync::watch::channel(default_config);
     let state = Arc::new(AppState {
         auth_mode: "none".to_owned(),
+        none_role: "readonly".to_owned(),
         session_store: Arc::clone(&state.session_store),
         nous_manager: Arc::clone(&state.nous_manager),
         provider_registry: Arc::clone(&state.provider_registry),

@@ -11,7 +11,7 @@ impl KnowledgeStore {
     /// Filters facts where `fact_type = "skill"` and whose JSON content
     /// contains at least one of the given `domain_tags`.
     #[instrument(skip(self))]
-    pub fn find_skills_by_domain(
+    pub(crate) fn find_skills_by_domain(
         &self,
         nous_id: &str,
         domain_tags: &[&str],
@@ -298,7 +298,7 @@ impl KnowledgeStore {
 
     /// Gather skill health metrics for a nous.
     #[instrument(skip(self))]
-    pub fn skill_quality_metrics(
+    pub(crate) fn skill_quality_metrics(
         &self,
         nous_id: &str,
     ) -> crate::error::Result<crate::skill::SkillHealthMetrics> {

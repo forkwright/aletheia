@@ -1,12 +1,16 @@
 //! Credential provider implementations for LLM API key resolution.
 
 mod file_ops;
+#[cfg(feature = "keyring")]
+mod keyring_provider;
 mod providers;
 mod refresh;
 
 use std::time::{Duration, SystemTime};
 
 pub use file_ops::CredentialFile;
+#[cfg(feature = "keyring")]
+pub use keyring_provider::KeyringCredentialProvider;
 pub use providers::{CredentialChain, EnvCredentialProvider, FileCredentialProvider};
 pub use refresh::{
     RefreshingCredentialProvider, claude_code_default_path, claude_code_provider,

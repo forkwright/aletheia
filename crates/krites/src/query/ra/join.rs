@@ -1,8 +1,3 @@
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Formatter};
 use std::iter;
@@ -70,12 +65,8 @@ impl Joiner {
         let mut ret_l = Vec::with_capacity(self.left_keys.len());
         let mut ret_r = Vec::with_capacity(self.left_keys.len());
         for (l, r) in self.left_keys.iter().zip(self.right_keys.iter()) {
-            let l_pos = left_binding_map
-                .get(l)
-                .expect("left join key always present in left bindings: validated by compiler");
-            let r_pos = right_binding_map
-                .get(r)
-                .expect("right join key always present in right bindings: validated by compiler");
+            let l_pos = left_binding_map.get(l).unwrap_or_else(|| unreachable!());
+            let r_pos = right_binding_map.get(r).unwrap_or_else(|| unreachable!());
             ret_l.push(*l_pos);
             ret_r.push(*r_pos)
         }
@@ -114,7 +105,7 @@ impl NegJoin {
                         &self.left.bindings_after_eliminate(),
                         &self.right.bindings_after_eliminate(),
                     )
-                    .expect("join_indices always succeeds for validated plan");
+                    .unwrap_or_else(|_| unreachable!());
                 if join_is_prefix(&join_indices.1) {
                     "mem_neg_prefix_join"
                 } else {
@@ -128,7 +119,7 @@ impl NegJoin {
                         &self.left.bindings_after_eliminate(),
                         &self.right.bindings_after_eliminate(),
                     )
-                    .expect("join_indices always succeeds for validated plan");
+                    .unwrap_or_else(|_| unreachable!());
                 if join_is_prefix(&join_indices.1) {
                     "stored_neg_prefix_join"
                 } else {
@@ -230,7 +221,7 @@ impl InnerJoin {
                         &self.left.bindings_after_eliminate(),
                         &self.right.bindings_after_eliminate(),
                     )
-                    .expect("join_indices always succeeds for validated plan");
+                    .unwrap_or_else(|_| unreachable!());
                 if join_is_prefix(&join_indices.1) {
                     "mem_prefix_join"
                 } else {
@@ -244,7 +235,7 @@ impl InnerJoin {
                         &self.left.bindings_after_eliminate(),
                         &self.right.bindings_after_eliminate(),
                     )
-                    .expect("join_indices always succeeds for validated plan");
+                    .unwrap_or_else(|_| unreachable!());
                 if join_is_prefix(&join_indices.1) {
                     "stored_prefix_join"
                 } else {
@@ -261,7 +252,7 @@ impl InnerJoin {
                         &self.left.bindings_after_eliminate(),
                         &self.right.bindings_after_eliminate(),
                     )
-                    .expect("join_indices always succeeds for validated plan");
+                    .unwrap_or_else(|_| unreachable!());
                 if join_is_prefix(&join_indices.1) {
                     "stored_prefix_join"
                 } else {

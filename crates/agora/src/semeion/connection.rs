@@ -32,7 +32,7 @@ pub(crate) struct BufferedMessage {
 ///
 /// Tracks connection health and queues outbound messages during
 /// disconnection, draining them automatically when the connection restores.
-pub struct AccountState {
+pub(crate) struct AccountState {
     /// Current connection state.
     pub state: ConnectionState,
     /// Messages waiting to be sent when connection is restored.
@@ -46,7 +46,7 @@ pub struct AccountState {
 impl AccountState {
     /// Create a new account state starting as `Connected`.
     #[must_use]
-    pub fn new(capacity: usize) -> Self {
+    pub(crate) fn new(capacity: usize) -> Self {
         Self {
             state: ConnectionState::Connected,
             buffer: VecDeque::new(),
@@ -56,7 +56,7 @@ impl AccountState {
     }
 
     /// Queue an outbound message. Drops the oldest if at capacity.
-    pub fn enqueue(&mut self, params: client::SendParams) {
+    pub(crate) fn enqueue(&mut self, params: client::SendParams) {
         if self.buffer.len() >= self.capacity {
             self.buffer.pop_front();
             self.dropped_count += 1;
@@ -72,13 +72,13 @@ impl AccountState {
     }
 
     /// Drain all buffered messages in FIFO order.
-    pub fn drain_all(&mut self) -> Vec<client::SendParams> {
+    pub(crate) fn drain_all(&mut self) -> Vec<client::SendParams> {
         self.buffer.drain(..).map(|bm| bm.params).collect()
     }
 
     /// Number of messages currently buffered.
     #[must_use]
-    pub fn buffered_count(&self) -> usize {
+    pub(crate) fn buffered_count(&self) -> usize {
         self.buffer.len()
     }
 }
@@ -98,7 +98,7 @@ pub struct ConnectionHealthReport {
 ///
 /// 1s, 2s, 4s, 8s, 16s, 32s, 60s (capped).
 #[must_use]
-pub fn reconnect_delay(attempt: u32) -> Duration {
+pub(crate) fn reconnect_delay(attempt: u32) -> Duration {
     let secs = 1u64.checked_shl(attempt.min(6)).unwrap_or(64);
     Duration::from_secs(secs.min(60))
 }

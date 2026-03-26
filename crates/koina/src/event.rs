@@ -127,7 +127,7 @@ impl EventEmitter {
 
     /// Create an emitter with a metric sink callback.
     #[must_use]
-    pub fn with_metric_sink(
+    pub(crate) fn with_metric_sink(
         sink: impl Fn(&str, &[(&str, String)], f64) + Send + Sync + 'static,
     ) -> Self {
         Self {
@@ -140,7 +140,10 @@ impl EventEmitter {
     /// Register a listener that receives all emitted events.
     ///
     /// Useful for testing and event composition.
-    pub fn add_listener(&self, listener: impl Fn(&dyn InternalEvent) + Send + Sync + 'static) {
+    pub(crate) fn add_listener(
+        &self,
+        listener: impl Fn(&dyn InternalEvent) + Send + Sync + 'static,
+    ) {
         // WHY: lock held only during Vec::push, no await
         if let Ok(mut listeners) = self.listeners.lock() {
             listeners.push(Box::new(listener));
@@ -183,12 +186,12 @@ impl EventEmitter {
 
     /// Total number of events emitted since creation.
     #[must_use]
-    pub fn event_count(&self) -> u64 {
+    pub(crate) fn event_count(&self) -> u64 {
         self.counter.load(Ordering::Relaxed)
     }
 
     /// Reset the event counter to zero.
-    pub fn reset_count(&self) {
+    pub(crate) fn reset_count(&self) {
         self.counter.store(0, Ordering::Relaxed);
     }
 }

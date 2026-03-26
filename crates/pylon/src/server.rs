@@ -93,6 +93,7 @@ pub enum ServerError {
 /// until the OS delivers a shutdown signal; dropping it at that point skips the
 /// SIGHUP-handler drain and `shutdown_readonly` call, which may leave actor tasks
 /// running until the runtime exits.
+#[must_use]
 pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
     let oikos = Oikos::from_root(&config.instance_path);
     oikos.validate().context(ValidationSnafu)?;
@@ -142,6 +143,7 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         jwt_manager,
         start_time: Instant::now(),
         auth_mode: aletheia_config.gateway.auth.mode.clone(),
+        none_role: aletheia_config.gateway.auth.none_role.clone(),
         config: Arc::new(tokio::sync::RwLock::new(aletheia_config)),
         config_tx,
         idempotency_cache: Arc::new(crate::idempotency::IdempotencyCache::new()),

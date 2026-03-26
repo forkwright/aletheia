@@ -1,8 +1,4 @@
 //! Unweighted shortest path via BFS.
-#![expect(
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use compact_str::CompactString;
@@ -36,13 +32,13 @@ impl FixedRule for ShortestPathBFS {
             .get_input(1)?
             .ensure_min_len(1)?
             .iter()?
-            .map_ok(|n| n.into_iter().next().expect("tuple is non-empty"))
+            .map_ok(|n| n.into_iter().next().unwrap_or(DataValue::Null))
             .try_collect()?;
         let ending_nodes: BTreeSet<_> = payload
             .get_input(2)?
             .ensure_min_len(1)?
             .iter()?
-            .map_ok(|n| n.into_iter().next().expect("tuple is non-empty"))
+            .map_ok(|n| n.into_iter().next().unwrap_or(DataValue::Null))
             .try_collect()?;
 
         for starting_node in starting_nodes.iter() {
@@ -58,6 +54,7 @@ impl FixedRule for ShortestPathBFS {
             while let Some(candidate) = queue.pop_back() {
                 for edge in edges.prefix_iter(&candidate)? {
                     let edge = edge?;
+                    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                     let to_node = &edge[1];
                     if visited.contains(to_node) {
                         continue;

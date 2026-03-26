@@ -13,7 +13,6 @@ use aletheia_koina::id::ToolName;
     reason = "snafu error variant fields (name, source, location, reason, message, path) are self-documenting via display format"
 )]
 pub enum Error {
-    // kanon:ignore RUST/pub-visibility
     /// Requested tool does not exist in the registry.
     #[snafu(display("tool not found: {name}"))]
     ToolNotFound {

@@ -1,8 +1,3 @@
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::fmt::{Display, Formatter};
@@ -136,11 +131,9 @@ impl InputProgram {
     pub(crate) fn get_entry_arity(&self) -> Result<usize> {
         if let Some(entry) = self.prog.get(&Symbol::new(PROG_ENTRY, SourceSpan(0, 0))) {
             return match entry {
-                InputInlineRulesOrFixed::Rules { rules } => Ok(rules
-                    .last()
-                    .expect("rules vec always has at least one rule")
-                    .head
-                    .len()),
+                InputInlineRulesOrFixed::Rules { rules } => {
+                    Ok(rules.last().unwrap_or_else(|| unreachable!()).head.len())
+                }
                 InputInlineRulesOrFixed::Fixed { fixed } => fixed.arity(),
             };
         }
@@ -162,9 +155,7 @@ impl InputProgram {
         if let Some(entry) = self.prog.get(&Symbol::new(PROG_ENTRY, SourceSpan(0, 0))) {
             return match entry {
                 InputInlineRulesOrFixed::Rules { rules } => {
-                    let last_rule = rules
-                        .last()
-                        .expect("rules vec always has at least one rule");
+                    let last_rule = rules.last().unwrap_or_else(|| unreachable!());
                     let head = &last_rule.head;
                     let mut ret = Vec::with_capacity(head.len());
                     let aggrs = &last_rule.aggr;
@@ -175,7 +166,7 @@ impl InputProgram {
                                     "{}({})",
                                     aggr.name
                                         .strip_prefix("AGGR_")
-                                        .expect("all aggregator names are prefixed with AGGR_")
+                                        .unwrap_or(aggr.name)
                                         .to_ascii_lowercase(),
                                     symb
                                 ),

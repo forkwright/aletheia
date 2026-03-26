@@ -47,6 +47,8 @@ pub(crate) async fn map_error_response(
 
     match status {
         401 => error::AuthFailedSnafu { message }.build(),
+        // TODO(#2183): fallback 1000ms when no retry-after header present.
+        // Most 429s include the header; this covers edge cases where it's absent.
         429 => error::RateLimitedSnafu {
             retry_after_ms: retry_after_ms.unwrap_or(1000),
         }
@@ -86,7 +88,10 @@ fn extract_retry_after(response: &Response) -> Option<u64> {
         .map(|secs| secs * 1000)
 }
 
-/// Default backoff for SSE overload/rate-limit errors (no retry-after header available).
+// TODO(#2183): SSE error events carry no retry-after header. This hardcoded
+// value is used when the stream reports overload/rate-limit inside a 200
+// response body. Consider parsing a retry delay from the SSE event payload
+// if Anthropic adds one, or deriving from the exponential backoff schedule.
 const SSE_DEFAULT_RETRY_MS: u64 = 1000;
 
 /// Map an SSE stream error event to a hermeneus error.

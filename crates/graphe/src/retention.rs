@@ -40,6 +40,10 @@ pub struct RetentionResult {
     pub sessions_deleted: u32,
     /// Number of orphan messages removed during this pass.
     pub messages_deleted: u32,
+    /// Number of orphan rows removed from related tables during this pass.
+    pub orphan_rows_deleted: u32,
+    /// Number of expired blackboard entries removed during this pass.
+    pub expired_blackboard_deleted: u32,
     /// Estimated bytes freed (based on `SQLite` freelist page delta).
     pub bytes_freed: u64,
 }
@@ -63,7 +67,7 @@ impl RetentionPolicy {
         clippy::expect_used,
         reason = "timestamp arithmetic uses bounded durations well within i64 range"
     )]
-    pub fn apply(&self, conn: &Connection, archive_dir: &Path) -> Result<RetentionResult> {
+    pub(crate) fn apply(&self, conn: &Connection, archive_dir: &Path) -> Result<RetentionResult> {
         let page_size = get_page_size(conn);
         let free_before = get_free_pages(conn);
 
@@ -103,6 +107,8 @@ impl RetentionPolicy {
             .expect("orphan cutoff overflow");
         let orphan_cutoff_str = orphan_cutoff.strftime("%Y-%m-%dT%H:%M:%SZ").to_string();
         result.messages_deleted = delete_orphan_messages(conn, &orphan_cutoff_str)?;
+        result.orphan_rows_deleted = delete_orphan_related_rows(conn)?;
+        result.expired_blackboard_deleted = delete_expired_blackboard(conn)?;
 
         let free_after = get_free_pages(conn);
         let freed_pages = free_after.saturating_sub(free_before);
@@ -111,6 +117,8 @@ impl RetentionPolicy {
         info!(
             sessions = result.sessions_deleted,
             messages = result.messages_deleted,
+            orphan_rows = result.orphan_rows_deleted,
+            expired_blackboard = result.expired_blackboard_deleted,
             bytes_freed = result.bytes_freed,
             "retention pass complete"
         );
@@ -305,6 +313,32 @@ fn delete_orphan_messages(conn: &Connection, cutoff: &str) -> Result<u32> {
         .execute(
             "DELETE FROM messages WHERE session_id NOT IN (SELECT id FROM sessions) AND created_at < ?1",
             [cutoff],
+        )
+        .context(error::DatabaseSnafu)?;
+    Ok(u32::try_from(rows).unwrap_or(0))
+}
+
+fn delete_orphan_related_rows(conn: &Connection) -> Result<u32> {
+    let mut total = 0u32;
+
+    for table in &["usage", "distillations", "agent_notes"] {
+        let sql = format!("DELETE FROM {table} WHERE session_id NOT IN (SELECT id FROM sessions)");
+        let rows = conn.execute(&sql, []).context(error::DatabaseSnafu)?;
+        let count = u32::try_from(rows).unwrap_or(0);
+        if count > 0 {
+            debug!(table, rows = count, "deleted orphan rows");
+        }
+        total += count;
+    }
+
+    Ok(total)
+}
+
+fn delete_expired_blackboard(conn: &Connection) -> Result<u32> {
+    let rows = conn
+        .execute(
+            "DELETE FROM blackboard WHERE expires_at IS NOT NULL AND expires_at <= datetime('now')",
+            [],
         )
         .context(error::DatabaseSnafu)?;
     Ok(u32::try_from(rows).unwrap_or(0))

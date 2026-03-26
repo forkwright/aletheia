@@ -7,6 +7,7 @@ use std::time::{Duration, SystemTime};
 use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, debug, error, info, warn};
+use zeroize::Zeroize;
 
 use aletheia_koina::credential::{Credential, CredentialProvider, CredentialSource};
 use aletheia_koina::secret::SecretString;
@@ -104,7 +105,10 @@ impl RefreshingCredentialProvider {
     ///
     /// Reads the credential file immediately and spawns a background refresh
     /// task. Requires a tokio runtime to be active.
-    pub fn with_circuit_breaker(path: PathBuf, cb_config: CircuitBreakerConfig) -> Option<Self> {
+    pub(crate) fn with_circuit_breaker(
+        path: PathBuf,
+        cb_config: CircuitBreakerConfig,
+    ) -> Option<Self> {
         let cred = CredentialFile::load(&path)?;
         let refresh_token = cred.refresh_token.clone().filter(|t| !t.is_empty())?;
 
@@ -309,7 +313,7 @@ async fn refresh_loop(
             continue;
         }
 
-        let (refresh_token_value, subscription_type, expires_at_ms, needs_refresh) = {
+        let (mut refresh_token_value, subscription_type, expires_at_ms, needs_refresh) = {
             let Ok(guard) = state.read() else {
                 continue;
             };
@@ -339,7 +343,11 @@ async fn refresh_loop(
             "credential refresh needed"
         );
 
-        if let Some(resp) = do_refresh(&client, &refresh_token_value).await {
+        let refresh_result = do_refresh(&client, &refresh_token_value).await;
+        // WHY: zeroize the plaintext refresh token from memory immediately
+        // after use to limit the window for memory disclosure attacks.
+        refresh_token_value.zeroize();
+        if let Some(resp) = refresh_result {
             circuit_breaker.record_success();
             let expires_in = clamp_expires_in(resp.expires_in);
             let new_expires_at_ms = unix_epoch_ms() + expires_in * 1000;

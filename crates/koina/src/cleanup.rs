@@ -28,7 +28,7 @@
 /// The callback fires exactly once: on drop if not disarmed, or never if
 /// [`disarm`](CleanupGuard::disarm) was called. The guard is `Send` when
 /// the callback is `Send`, making it safe to hold across `.await` points.
-pub struct CleanupGuard<F: FnOnce()> {
+pub(crate) struct CleanupGuard<F: FnOnce()> {
     callback: Option<F>,
 }
 
@@ -38,7 +38,7 @@ impl<F: FnOnce()> CleanupGuard<F> {
     /// Register the guard at the point of resource acquisition so cleanup
     /// is guaranteed even on early return or panic.
     #[must_use]
-    pub fn new(callback: F) -> Self {
+    pub(crate) fn new(callback: F) -> Self {
         Self {
             callback: Some(callback),
         }

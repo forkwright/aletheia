@@ -45,6 +45,8 @@ struct RegisteredTask {
     consecutive_failures: u32,
     /// If set, the task is in backoff and should not run before this instant.
     backoff_until: Option<Instant>,
+    /// Most recent error message, if the last execution failed. (#2212)
+    last_error: Option<String>,
 }
 
 /// Outcome of executing a single task action.
@@ -100,7 +102,7 @@ impl TaskRunner {
 
     /// Attach a retention executor for data cleanup.
     #[must_use]
-    pub fn with_retention(mut self, executor: Arc<dyn RetentionExecutor>) -> Self {
+    pub(crate) fn with_retention(mut self, executor: Arc<dyn RetentionExecutor>) -> Self {
         self.retention_executor = Some(executor);
         self
     }
@@ -120,7 +122,7 @@ impl TaskRunner {
     /// State is loaded on the first call to [`Self::run`] (before catch-up),
     /// and saved after every task completion or failure.
     #[must_use]
-    pub fn with_state_store(mut self, store: crate::state::TaskStateStore) -> Self {
+    pub(crate) fn with_state_store(mut self, store: crate::state::TaskStateStore) -> Self {
         self.state_store = Some(store);
         self
     }
@@ -326,6 +328,7 @@ impl TaskRunner {
             run_count: 0,
             consecutive_failures: 0,
             backoff_until: None,
+            last_error: None,
         });
     }
 
@@ -368,7 +371,7 @@ impl TaskRunner {
     }
 
     /// Set the `last_run` timestamp for a task by ID (for catch-up testing/persistence).
-    pub fn set_last_run(&mut self, task_id: &str, last_run: jiff::Timestamp) {
+    pub(crate) fn set_last_run(&mut self, task_id: &str, last_run: jiff::Timestamp) {
         if let Some(task) = self.tasks.iter_mut().find(|t| t.def.id == task_id) {
             task.last_run = Some(last_run);
         }
@@ -412,6 +415,22 @@ impl TaskRunner {
                 }
             }
         }
+
+        // WHY: abort all in-flight tasks on shutdown to prevent leaked work
+        // after the runner exits. Without this, spawned tasks continue running
+        // on the Tokio executor with no observer to collect their results.
+        let in_flight_count = self.in_flight.len();
+        for (task_id, in_flight) in self.in_flight.drain() {
+            tracing::debug!(task_id = %task_id, "aborting in-flight task on shutdown");
+            in_flight.handle.abort();
+        }
+        if in_flight_count > 0 {
+            tracing::info!(
+                nous_id = %self.nous_id,
+                cancelled = in_flight_count,
+                "in-flight tasks cancelled on shutdown"
+            );
+        }
     }
 
     /// Get status of all registered tasks.
@@ -427,6 +446,7 @@ impl TaskRunner {
                 run_count: t.run_count,
                 consecutive_failures: t.consecutive_failures,
                 in_flight: self.in_flight.contains_key(&t.def.id),
+                last_error: t.last_error.clone(),
             })
             .collect()
     }
@@ -510,6 +530,7 @@ impl TaskRunner {
         task.run_count += 1;
         task.consecutive_failures = 0;
         task.backoff_until = None;
+        task.last_error = None;
         task.next_run = task.def.schedule.next_run().unwrap_or(None);
 
         crate::metrics::record_cron_execution(&task.def.name, duration.as_secs_f64(), true);
@@ -545,6 +566,7 @@ impl TaskRunner {
         crate::metrics::record_cron_execution(&task.def.name, 0.0, false);
         task.consecutive_failures += 1;
         task.last_run = Some(jiff::Timestamp::now());
+        task.last_error = Some(reason.to_owned());
 
         // WHY: GraphHealthCheck is a diagnostic: failures don't count toward auto-disable.
         let exempt = matches!(
@@ -693,6 +715,11 @@ impl TaskRunner {
                 );
                 continue;
             }
+
+            // WHY(#2212): record last_run BEFORE spawning the task so that a crash
+            // during execution does not leave last_run stale, which would cause
+            // the scheduler to re-execute the task immediately on recovery.
+            self.tasks[i].last_run = Some(jiff::Timestamp::now());
 
             let action = self.tasks[i].def.action.clone();
             let nous_id = self.tasks[i].def.nous_id.clone();

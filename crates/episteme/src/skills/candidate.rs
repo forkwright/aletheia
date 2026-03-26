@@ -32,10 +32,10 @@ use crate::skills::{
 };
 
 /// Minimum recurrence count to promote a candidate to a skill.
-pub const PROMOTION_THRESHOLD: u32 = 3;
+pub(crate) const PROMOTION_THRESHOLD: u32 = 3;
 
 /// Similarity threshold for merging two sequences into the same candidate.
-pub const SIMILARITY_THRESHOLD: f64 = 0.8;
+pub(crate) const SIMILARITY_THRESHOLD: f64 = 0.8;
 
 /// A tracked pattern that has been seen at least once and may be promoted.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,7 +66,7 @@ impl SkillCandidate {
     /// # Errors
     ///
     /// Returns a [`serde_json::Error`] if serialisation fails.
-    pub fn to_json(&self) -> Result<String, serde_json::Error> {
+    pub(crate) fn to_json(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string(self)
     }
 
@@ -75,7 +75,7 @@ impl SkillCandidate {
     /// # Errors
     ///
     /// Returns a [`serde_json::Error`] if the JSON is malformed or the schema changed.
-    pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
+    pub(crate) fn from_json(json: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(json)
     }
 }
@@ -198,7 +198,7 @@ impl CandidateTracker {
 
     /// Return all promoted candidates (`recurrence_count` ≥ threshold) for a nous.
     #[expect(clippy::expect_used, reason = "mutex poisoning is unrecoverable")]
-    pub fn promoted_for(&self, nous_id: &str) -> Vec<SkillCandidate> {
+    pub(crate) fn promoted_for(&self, nous_id: &str) -> Vec<SkillCandidate> {
         let guard = self.candidates.lock().expect("lock not poisoned");
         guard
             .iter()
@@ -209,12 +209,12 @@ impl CandidateTracker {
 
     /// Total number of tracked candidates (all nous IDs).
     #[expect(clippy::expect_used, reason = "mutex poisoning is unrecoverable")]
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.candidates.lock().expect("lock not poisoned").len()
     }
 
     /// Returns `true` if no candidates are tracked.
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.len() == 0
     }
 }

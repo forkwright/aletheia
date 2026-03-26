@@ -3,11 +3,6 @@
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 
 use std::ops::Div;
 
@@ -167,6 +162,10 @@ pub(crate) fn op_unpack_bits(args: &[DataValue]) -> Result<DataValue> {
 
 pub(crate) fn op_pack_bits(args: &[DataValue]) -> Result<DataValue> {
     if let DataValue::List(v) = arg(args, 0)? {
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "i64 to f64: precision loss acceptable"
+        )]
         let l = (v.len() as f64 / 8.).ceil() as usize;
         let mut res = vec![0u8; l];
         for (i, b) in v.iter().enumerate() {
@@ -175,9 +174,7 @@ pub(crate) fn op_pack_bits(args: &[DataValue]) -> Result<DataValue> {
                     if *b {
                         let chunk = i.div(&8);
                         let idx = i % 8;
-                        let target = res
-                            .get_mut(chunk)
-                            .expect("chunk index bounded by ceil(v.len()/8) == res.len()");
+                        let target = res.get_mut(chunk).unwrap_or_else(|| unreachable!());
                         match idx {
                             0 => *target |= 0b10000000,
                             1 => *target |= 0b01000000,

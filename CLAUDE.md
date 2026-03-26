@@ -168,6 +168,7 @@ Register in `crates/organon/src/builtins/mod.rs` via `register_all()`.
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/api/v1/knowledge/facts` | List facts (query: `nous_id`, `sort`, `order`, `filter`, `fact_type`, `tier`, `limit`, `offset`, `include_forgotten`) |
+| POST | `/api/v1/knowledge/facts/import` | Bulk-import facts (max 1000 per request) |
 | GET | `/api/v1/knowledge/facts/{id}` | Fact detail with relationships and similar facts |
 | POST | `/api/v1/knowledge/facts/{id}/forget` | Forget a fact |
 | POST | `/api/v1/knowledge/facts/{id}/restore` | Restore a forgotten fact |
@@ -176,6 +177,8 @@ Register in `crates/organon/src/builtins/mod.rs` via `register_all()`.
 | GET | `/api/v1/knowledge/entities/{id}/relationships` | Entity relationships |
 | GET | `/api/v1/knowledge/search` | Full-text search (query: `q`, `nous_id`, `limit`) |
 | GET | `/api/v1/knowledge/timeline` | Fact activity timeline |
+
+> **Note:** The OpenAPI spec version at `/api/docs/openapi.json` is fixed at `"1.0.0"` and does not track the release version.
 
 ## Scripts
 

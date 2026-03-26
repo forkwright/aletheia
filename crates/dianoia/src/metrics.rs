@@ -40,28 +40,24 @@ static STUCK_DETECTIONS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
 });
 
 /// Force-initialize all lazy metric statics.
-pub fn init() {
-    // kanon:ignore RUST/pub-visibility
+pub(crate) fn init() {
     LazyLock::force(&PROJECTS_ACTIVE);
     LazyLock::force(&PHASE_TRANSITIONS_TOTAL);
     LazyLock::force(&STUCK_DETECTIONS_TOTAL);
 }
 
 /// Set the number of currently active projects.
-pub fn set_projects_active(count: i64) {
-    // kanon:ignore RUST/pub-visibility
+pub(crate) fn set_projects_active(count: i64) {
     PROJECTS_ACTIVE.set(count);
 }
 
 /// Record a project state transition.
-pub fn record_phase_transition(from: &str, to: &str) {
-    // kanon:ignore RUST/pub-visibility
+pub(crate) fn record_phase_transition(from: &str, to: &str) {
     PHASE_TRANSITIONS_TOTAL.with_label_values(&[from, to]).inc();
 }
 
 /// Record a stuck pattern detection.
-pub fn record_stuck_detection(pattern: &str) {
-    // kanon:ignore RUST/pub-visibility
+pub(crate) fn record_stuck_detection(pattern: &str) {
     STUCK_DETECTIONS_TOTAL.with_label_values(&[pattern]).inc();
 }
 

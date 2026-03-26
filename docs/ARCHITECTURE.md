@@ -105,7 +105,7 @@ The oikos hierarchy is described in [CONFIGURATION.md](CONFIGURATION.md).
 
 ## Rust crate workspace
 
-23 workspace members in `crates/`, plus `theatron-desktop` excluded from workspace (GTK3 CI deps).
+24 crates (23 in default workspace build, theatron-desktop excluded) in `crates/`.
 
 ### Crates
 

@@ -44,7 +44,7 @@ impl CustomCommandDef {
     /// If explicitly set, uses the override. Otherwise derives from the
     /// most dangerous step: a command with any irreversible step is irreversible.
     #[must_use]
-    pub fn effective_reversibility(
+    pub(crate) fn effective_reversibility(
         &self,
         lookup: impl Fn(&str) -> Option<Reversibility>,
     ) -> Reversibility {
@@ -80,7 +80,7 @@ fn max_reversibility(a: Reversibility, b: Reversibility) -> Reversibility {
 /// # Errors
 ///
 /// Returns an error string if the file cannot be read or parsed.
-pub fn parse_command_file(path: &Path) -> Result<CustomCommandDef, String> {
+pub(crate) fn parse_command_file(path: &Path) -> Result<CustomCommandDef, String> {
     let content = std::fs::read_to_string(path)
         .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
     parse_command_yaml(&content)
@@ -91,7 +91,7 @@ pub fn parse_command_file(path: &Path) -> Result<CustomCommandDef, String> {
 /// # Errors
 ///
 /// Returns an error string if the YAML is malformed or missing required fields.
-pub fn parse_command_yaml(content: &str) -> Result<CustomCommandDef, String> {
+pub(crate) fn parse_command_yaml(content: &str) -> Result<CustomCommandDef, String> {
     let def: CustomCommandDef =
         serde_yaml::from_str(content).map_err(|e| format!("invalid command YAML: {e}"))?;
 
@@ -115,7 +115,7 @@ pub fn parse_command_yaml(content: &str) -> Result<CustomCommandDef, String> {
 /// Reads all `.yaml` and `.yml` files in the directory. Malformed files
 /// are logged and skipped.
 #[must_use]
-pub fn load_commands_from_dir(dir: &Path) -> Vec<CustomCommandDef> {
+pub(crate) fn load_commands_from_dir(dir: &Path) -> Vec<CustomCommandDef> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
     };
@@ -145,7 +145,7 @@ pub fn load_commands_from_dir(dir: &Path) -> Vec<CustomCommandDef> {
 /// Searches the three-tier hierarchy (nous → shared → theke) in the
 /// `commands/` subdirectory. Most-specific definition wins on name collision.
 #[must_use]
-pub fn load_commands_cascade(oikos: &Oikos, nous_id: &str) -> Vec<CustomCommandDef> {
+pub(crate) fn load_commands_cascade(oikos: &Oikos, nous_id: &str) -> Vec<CustomCommandDef> {
     let mut seen = std::collections::HashSet::new();
     let mut commands = Vec::new();
 
@@ -186,7 +186,7 @@ pub fn load_commands_cascade(oikos: &Oikos, nous_id: &str) -> Vec<CustomCommandD
 ///
 /// Returns a list of invalid tool references. An empty list means all are valid.
 #[must_use]
-pub fn validate_step_tools(def: &CustomCommandDef) -> Vec<String> {
+pub(crate) fn validate_step_tools(def: &CustomCommandDef) -> Vec<String> {
     let mut invalid = Vec::new();
     for step in &def.steps {
         if ToolName::new(&step.tool).is_err() {

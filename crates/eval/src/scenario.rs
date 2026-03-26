@@ -10,7 +10,7 @@ use crate::client::EvalClient;
 use crate::error::{self, Error, Result};
 
 /// Boxed future returned by scenario `run` methods.
-pub type ScenarioFuture<'a> = Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>>;
+pub(crate) type ScenarioFuture<'a> = Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>>;
 
 /// Metadata describing a scenario for display and filtering.
 #[derive(Debug, Clone)]
@@ -46,13 +46,13 @@ pub enum ScenarioOutcome {
 impl ScenarioOutcome {
     /// Returns `true` if the scenario passed.
     #[must_use]
-    pub fn is_passed(&self) -> bool {
+    pub(crate) fn is_passed(&self) -> bool {
         matches!(self, Self::Passed { .. })
     }
 
     /// Returns `true` if the scenario failed.
     #[must_use]
-    pub fn is_failed(&self) -> bool {
+    pub(crate) fn is_failed(&self) -> bool {
         matches!(self, Self::Failed { .. })
     }
 }
@@ -77,7 +77,7 @@ pub trait Scenario: Send + Sync {
 
 /// Assert a condition, returning an assertion error if it fails.
 #[tracing::instrument(skip_all)]
-pub fn assert_eval(condition: bool, message: impl Into<String>) -> Result<()> {
+pub(crate) fn assert_eval(condition: bool, message: impl Into<String>) -> Result<()> {
     if condition {
         Ok(())
     } else {
@@ -90,7 +90,7 @@ pub fn assert_eval(condition: bool, message: impl Into<String>) -> Result<()> {
 
 /// Assert two values are equal.
 #[tracing::instrument(skip_all)]
-pub fn assert_eq_eval<T: PartialEq + std::fmt::Debug>(
+pub(crate) fn assert_eq_eval<T: PartialEq + std::fmt::Debug>(
     left: &T,
     right: &T,
     context: &str,
@@ -110,7 +110,7 @@ pub fn assert_eq_eval<T: PartialEq + std::fmt::Debug>(
 /// When neither `expected_contains` nor `expected_pattern` is set, accepts any
 /// non-empty response and logs a warning about missing validation criteria.
 #[tracing::instrument(skip(text), fields(scenario_id = meta.id, text_len = text.len()))]
-pub fn validate_response(meta: &ScenarioMeta, text: &str) -> Result<()> {
+pub(crate) fn validate_response(meta: &ScenarioMeta, text: &str) -> Result<()> {
     if meta.expected_contains.is_none() && meta.expected_pattern.is_none() {
         tracing::warn!(
             scenario_id = meta.id,

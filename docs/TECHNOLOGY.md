@@ -19,7 +19,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for module boundaries, [PROJECT.md](PROJE
 | Embeddings | candle + `EmbeddingProvider` trait | fastembed-rs (ONNX) | Pure Rust, no C++ deps. Default: BAAI/bge-small-en-v1.5 (384 dims). Feature-gated behind `embed-candle`. |
 | Memory | Direct (no abstraction) | KnowledgeStore (embedded engine) | ~50 LOC replaces the library |
 | Sessions | rusqlite + bundled | better-sqlite3 | WAL mode, no native addon |
-| Encryption | XChaCha20Poly1305 | None (plaintext) | Per-message encryption at rest, ~700ns overhead, zero plaintext on disk |
+| Encryption | XChaCha20Poly1305 | None (plaintext) | Planned: per-message encryption at rest. Not yet implemented. |
 | Config | figment + serde + validator | Zod | figment handles oikos cascade natively (TOML + env + CLI, hierarchical merge). By Rocket author. |
 | IDs | ulid + uuid | uuid | ulid for time-sorted data (sessions, messages, memories) - lexicographic sort = natural ordering. uuid v4 for non-temporal. |
 | Errors | snafu + anyhow | AletheiaError hierarchy | snafu for library/mid-level enums (context wrapping, Location-based virtual stack traces, multiple variants from same source type - GreptimeDB pattern). anyhow for application entry. |

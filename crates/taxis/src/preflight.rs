@@ -22,7 +22,7 @@ use crate::config::AletheiaConfig;
 use crate::oikos::Oikos;
 
 /// Minimum free disk space required on the data directory filesystem (megabytes).
-pub const MIN_REQUIRED_MB: u64 = 50;
+pub(crate) const MIN_REQUIRED_MB: u64 = 50;
 
 const BYTES_PER_MB: u64 = 1024 * 1024;
 
@@ -52,7 +52,7 @@ pub struct PreconditionError {
 ///
 /// Returns [`PreconditionError`] with all collected failures when any check
 /// does not pass. The error message is human-readable and actionable.
-pub fn check_preconditions(
+pub(crate) fn check_preconditions(
     config: &AletheiaConfig,
     oikos: &Oikos,
 ) -> Result<(), PreconditionError> {

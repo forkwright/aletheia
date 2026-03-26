@@ -284,6 +284,32 @@ impl NousHandle {
             })
     }
 
+    /// Recover from degraded mode by resetting the panic counter.
+    ///
+    /// Returns `true` if the actor was degraded and is now recovered, `false` otherwise.
+    ///
+    /// # Cancel safety
+    ///
+    /// Cancel-safe. Both `mpsc::send` and `oneshot::recv` are cancel-safe.
+    pub async fn recover(&self) -> error::Result<bool> {
+        let (tx, rx) = oneshot::channel();
+        self.sender
+            .send(NousMessage::Recover { reply: tx })
+            .await
+            .map_err(|_send_err| {
+                ActorSendSnafu {
+                    message: format!("actor '{}' inbox closed", self.id),
+                }
+                .build()
+            })?;
+        rx.await.map_err(|_send_err| {
+            ActorRecvSnafu {
+                message: format!("actor '{}' dropped reply", self.id),
+            }
+            .build()
+        })
+    }
+
     /// Request graceful shutdown.
     ///
     /// # Cancel safety

@@ -8,6 +8,10 @@ use utoipa::ToSchema;
 #[serde(tag = "type")]
 #[non_exhaustive]
 pub(crate) enum SseEvent {
+    /// Acknowledgment that the message was accepted and a turn is starting.
+    #[serde(rename = "message_start")]
+    MessageStart { status: String },
+
     /// Incremental text output from the assistant.
     #[serde(rename = "text_delta")]
     TextDelta { text: String },
@@ -65,6 +69,7 @@ impl SseEvent {
     #[must_use]
     pub(crate) fn event_type(&self) -> &'static str {
         match self {
+            Self::MessageStart { .. } => "message_start",
             Self::TextDelta { .. } => "text_delta",
             Self::ThinkingDelta { .. } => "thinking_delta",
             Self::ToolUse { .. } => "tool_use",
