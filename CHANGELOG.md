@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.13.17](https://github.com/forkwright/aletheia/compare/v0.13.16...v0.13.17) (2026-03-26)
+
+
+### Bug Fixes
+
+* **aletheia:** make init test env-independent via run_inner parameter ([#2241](https://github.com/forkwright/aletheia/issues/2241)) ([2673813](https://github.com/forkwright/aletheia/commit/26738134f8dffc81afd75a63ebbd92a2acee12ee))
+* **dianoia:** update handoff test assertions to match backtick-wrapped IDs ([1d18942](https://github.com/forkwright/aletheia/commit/1d18942a74699cc96a9c1b263dbb759a951da7c9))
+* **taxis:** resolve broken intra-doc links to cfg-gated TestSystem ([#2239](https://github.com/forkwright/aletheia/issues/2239)) ([ca59357](https://github.com/forkwright/aletheia/commit/ca593578721e51aae2dfc6a26b9c734a65b7393f))
+
 ## [0.13.16](https://github.com/forkwright/aletheia/compare/v0.13.15...v0.13.16) (2026-03-26)
 
 
