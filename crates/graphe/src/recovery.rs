@@ -330,10 +330,7 @@ fn copy_table(
             Ok(changes) if changes > 0 => {
                 copied = copied.saturating_add(1);
             }
-            Ok(_) => {
-                skipped = skipped.saturating_add(1);
-            }
-            Err(_) => {
+            Ok(_) | Err(_) => {
                 skipped = skipped.saturating_add(1);
             }
         }

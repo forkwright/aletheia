@@ -23,7 +23,7 @@ use crate::types::{
 
 use super::workspace::{extract_opt_bool, extract_opt_u64, extract_str, validate_path};
 
-/// WHY: Close TOCTOU window between validate_path and actual filesystem access.
+/// WHY: Close TOCTOU window between `validate_path` and actual filesystem access.
 /// A symlink could be swapped after validation to point outside allowed roots.
 /// Canonicalize resolves symlinks; if the canonical path differs, re-validate.
 /// Closes #2162.
@@ -32,19 +32,18 @@ fn canonicalize_and_revalidate(
     ctx: &ToolContext,
     tool_name: &ToolName,
 ) -> crate::error::Result<PathBuf> {
-    if validated_path.exists() {
-        if let Ok(canonical) = std::fs::canonicalize(&validated_path) {
-            if canonical != validated_path {
-                validate_path(&canonical.to_string_lossy(), ctx, tool_name)?;
-                return Ok(canonical);
-            }
-        }
+    if validated_path.exists()
+        && let Ok(canonical) = std::fs::canonicalize(&validated_path)
+        && canonical != validated_path
+    {
+        validate_path(&canonical.to_string_lossy(), ctx, tool_name)?;
+        return Ok(canonical);
     }
     Ok(validated_path)
 }
 
 /// WHY: Unbounded patterns can trigger catastrophic backtracking in the regex
-/// engine (ReDoS). Cap at 1000 chars which covers all legitimate search
+/// engine (`ReDoS`). Cap at 1000 chars which covers all legitimate search
 /// patterns. Closes #2167.
 const MAX_PATTERN_LENGTH: usize = 1000;
 
@@ -62,7 +61,7 @@ fn truncate_output(mut output: String) -> String {
 
 /// WHY: Subprocess commands (grep, find, ls) must not run indefinitely.
 /// A 60-second wall-clock timeout prevents hung processes from consuming
-/// resources. On timeout the ProcessGuard kills and reaps the child.
+/// resources. On timeout the [`ProcessGuard`] kills and reaps the child.
 /// Closes #2168, #2133.
 const SUBPROCESS_TIMEOUT: Duration = Duration::from_secs(60);
 
@@ -102,6 +101,10 @@ fn run_command(cmd: &mut Command) -> std::io::Result<std::process::Output> {
     }
 
     // NOTE: Process already exited via try_wait; detach to avoid kill on drop.
+    #[expect(
+        clippy::zombie_processes,
+        reason = "process already reaped via try_wait in poll loop above"
+    )]
     let _ = guard.detach();
     Ok(std::process::Output {
         status,

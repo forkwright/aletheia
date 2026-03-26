@@ -128,6 +128,7 @@ pub enum ConflictAction {
 ///
 /// Keeps mneme independent of hermeneus. The nous layer bridges this trait
 /// to the configured LLM provider.
+#[cfg(any(feature = "mneme-engine", test))]
 pub(crate) trait ConflictClassifier: Send + Sync {
     /// Classify the relationship between an existing fact and a new fact.
     ///
@@ -493,6 +494,7 @@ pub(crate) fn resolve_action(
 /// Phase 3: LLM classification
 /// Phase 4: Action resolution
 #[cfg(feature = "mneme-engine")]
+#[expect(dead_code, reason = "used when mneme-engine feature is enabled")]
 pub(crate) fn detect_conflicts(
     facts: Vec<FactForConflictCheck>,
     store: &crate::knowledge_store::KnowledgeStore,

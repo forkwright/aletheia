@@ -78,6 +78,7 @@ impl KnowledgeStore {
         #[expect(
             clippy::cast_sign_loss,
             clippy::as_conversions,
+            clippy::cast_possible_truncation,
             reason = "k is a user-supplied positive limit; truncating to usize is safe"
         )]
         results.truncate(k as usize);
