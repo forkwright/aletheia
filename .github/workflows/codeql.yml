@@ -6,12 +6,9 @@ on:
   schedule:
     - cron: "0 14 * * 3" # Wednesday 08:00 CST
 
+# PROJECT: explicit top-level default deny; job-level permissions grant only what's needed
 permissions:
   contents: read
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   analyze-actions:
@@ -23,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
-          persist-credentials: false
+          persist-credentials: false # PROJECT: security hardening — never expose token to steps
       - name: Initialize CodeQL
         uses: github/codeql-action/init@dd677812177e0c29f9c970a6c58d8607ae1bfefd # v4
         with:
@@ -45,7 +42,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
-          persist-credentials: false
+          persist-credentials: false # PROJECT: security hardening — never expose token to steps
       - name: Set up Rust toolchain
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
       - name: Initialize CodeQL
