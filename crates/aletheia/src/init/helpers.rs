@@ -51,7 +51,7 @@ mod tests {
 
     use super::super::scaffold::render_config;
     use super::super::scaffold::scaffold;
-    use super::super::{Answers, RunArgs, run};
+    use super::super::{Answers, RunArgs, run, run_inner};
     use super::*;
 
     #[test]
@@ -252,20 +252,21 @@ mod tests {
 
     #[test]
     fn non_interactive_without_instance_path_returns_error() {
-        // WHY: skip when ALETHEIA_ROOT is set -- the env fallback provides a root,
-        // masking the missing-flag error this test asserts on
-        if std::env::var("ALETHEIA_ROOT").is_ok() {
-            return;
-        }
-        let result = run(RunArgs {
-            root: None,
-            yes: false,
-            non_interactive: true,
-            api_key: None,
-            auth_mode: None,
-            api_provider: None,
-            model: None,
-        });
+        // WHY: call run_inner with env_root=None so ALETHEIA_ROOT in the ambient
+        // environment cannot mask the missing-flag error this test asserts on;
+        // avoids unsafe set_var (denied by crate policy) and temp_env dependency
+        let result = run_inner(
+            RunArgs {
+                root: None,
+                yes: false,
+                non_interactive: true,
+                api_key: None,
+                auth_mode: None,
+                api_provider: None,
+                model: None,
+            },
+            None,
+        );
         assert!(
             result.is_err(),
             "missing --instance-path should be an error"
