@@ -493,7 +493,7 @@ pub(crate) fn resolve_action(
 /// Phase 3: LLM classification
 /// Phase 4: Action resolution
 #[cfg(feature = "mneme-engine")]
-pub fn detect_conflicts(
+pub(crate) fn detect_conflicts(
     facts: Vec<FactForConflictCheck>,
     store: &crate::knowledge_store::KnowledgeStore,
     nous_id: &str,
