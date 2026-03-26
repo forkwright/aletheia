@@ -2,10 +2,58 @@
 
 ## [0.13.14](https://github.com/forkwright/aletheia/compare/v0.13.13...v0.13.14) (2026-03-26)
 
+Full QA audit of v0.13.13 followed by systematic fix campaign. 119 issues resolved across 20+ crates. Zero kanon lint violations. ([#2225](https://github.com/forkwright/aletheia/issues/2225))
+
+### Features
+
+* **pylon:** RBAC enforcement with configurable `auth.none_role` ([#2142](https://github.com/forkwright/aletheia/issues/2142), [#2201](https://github.com/forkwright/aletheia/issues/2201), [#2199](https://github.com/forkwright/aletheia/issues/2199))
+* **graphe,symbolon:** encryption at rest for sessions (ChaCha20-Poly1305) and credentials (AES-256-GCM) ([#2143](https://github.com/forkwright/aletheia/issues/2143), [#2144](https://github.com/forkwright/aletheia/issues/2144))
+* **symbolon:** OS keyring integration behind `keyring` feature flag ([#2213](https://github.com/forkwright/aletheia/issues/2213))
+* **nous:** degraded mode auto-recovery (10 min) + manual `POST /nous/{id}/recover` endpoint ([#2153](https://github.com/forkwright/aletheia/issues/2153))
+* **aletheia:** RuntimeBuilder collapses duplicated startup into single path with production/minimal/validation presets ([#2224](https://github.com/forkwright/aletheia/issues/2224))
+* **docs:** feature flag reference, desktop build guide, CONFIGURATION.md TOC completion ([#2141](https://github.com/forkwright/aletheia/issues/2141), [#2140](https://github.com/forkwright/aletheia/issues/2140), [#2139](https://github.com/forkwright/aletheia/issues/2139))
 
 ### Bug Fixes
 
-* v0.13.13 full audit - 118 issues resolved ([#2225](https://github.com/forkwright/aletheia/issues/2225)) ([961433b](https://github.com/forkwright/aletheia/commit/961433b72769aabad04be411439ae45d8377cef6))
+* **pylon:** idempotency cache mutex poison recovery, search validation, user-scoped cache keys, message acknowledgment ([#2117](https://github.com/forkwright/aletheia/issues/2117), [#2119](https://github.com/forkwright/aletheia/issues/2119), [#2200](https://github.com/forkwright/aletheia/issues/2200), [#2113](https://github.com/forkwright/aletheia/issues/2113))
+* **pylon:** rate limiter validates JWT before keying, verification endpoints return 501 ([#2223](https://github.com/forkwright/aletheia/issues/2223), [#2222](https://github.com/forkwright/aletheia/issues/2222))
+* **hermeneus:** backoff overflow, version header validation, HTTPS enforcement, retryable classification, SSE spec compliance, cache token costing, configurable streaming timeout, idempotency keys ([#2194](https://github.com/forkwright/aletheia/issues/2194), [#2195](https://github.com/forkwright/aletheia/issues/2195), [#2178](https://github.com/forkwright/aletheia/issues/2178), [#2136](https://github.com/forkwright/aletheia/issues/2136), [#2192](https://github.com/forkwright/aletheia/issues/2192), [#2182](https://github.com/forkwright/aletheia/issues/2182), [#2181](https://github.com/forkwright/aletheia/issues/2181), [#2179](https://github.com/forkwright/aletheia/issues/2179))
+* **nous:** tool iteration off-by-one, loop detection blind spot, distillation flag reset, session eviction, streaming channel cleanup, token arithmetic overflow, unreachable panic, silent fallback, inbox timeout, session persistence before spawn ([#2135](https://github.com/forkwright/aletheia/issues/2135), [#2137](https://github.com/forkwright/aletheia/issues/2137), [#2155](https://github.com/forkwright/aletheia/issues/2155), [#2154](https://github.com/forkwright/aletheia/issues/2154), [#2157](https://github.com/forkwright/aletheia/issues/2157), [#2193](https://github.com/forkwright/aletheia/issues/2193), [#2156](https://github.com/forkwright/aletheia/issues/2156), [#2161](https://github.com/forkwright/aletheia/issues/2161), [#2159](https://github.com/forkwright/aletheia/issues/2159), [#2160](https://github.com/forkwright/aletheia/issues/2160))
+* **organon:** subprocess timeout (60s), pattern length limit (ReDoS), null-byte rejection, symlink validation, protected files expansion, TOCTOU canonicalize, path sanitization ([#2168](https://github.com/forkwright/aletheia/issues/2168), [#2133](https://github.com/forkwright/aletheia/issues/2133), [#2167](https://github.com/forkwright/aletheia/issues/2167), [#2163](https://github.com/forkwright/aletheia/issues/2163), [#2169](https://github.com/forkwright/aletheia/issues/2169), [#2165](https://github.com/forkwright/aletheia/issues/2165), [#2162](https://github.com/forkwright/aletheia/issues/2162), [#2166](https://github.com/forkwright/aletheia/issues/2166), [#2164](https://github.com/forkwright/aletheia/issues/2164))
+* **graphe:** WAL checkpoint retry, schema version reconciliation, orphan cascade, blackboard TTL cleanup, recovery reporting, backup path traversal, missing index ([#2189](https://github.com/forkwright/aletheia/issues/2189), [#2188](https://github.com/forkwright/aletheia/issues/2188), [#2185](https://github.com/forkwright/aletheia/issues/2185), [#2186](https://github.com/forkwright/aletheia/issues/2186), [#2184](https://github.com/forkwright/aletheia/issues/2184), [#2190](https://github.com/forkwright/aletheia/issues/2190), [#2187](https://github.com/forkwright/aletheia/issues/2187))
+* **episteme:** embedding dimension validation, HNSW lock recovery, atomic access counter, search overfetch for forgotten-fact filtering, RRF normalization, similarity clamp warning, HNSW capacity enforcement, embedding checksums ([#2134](https://github.com/forkwright/aletheia/issues/2134), [#2171](https://github.com/forkwright/aletheia/issues/2171), [#2170](https://github.com/forkwright/aletheia/issues/2170), [#2172](https://github.com/forkwright/aletheia/issues/2172), [#2175](https://github.com/forkwright/aletheia/issues/2175), [#2196](https://github.com/forkwright/aletheia/issues/2196), [#2173](https://github.com/forkwright/aletheia/issues/2173), [#2174](https://github.com/forkwright/aletheia/issues/2174))
+* **krites:** HNSW cache LRU correctness (`peek` to `get`), deserialization panic removal (DecodeError enum), vector cache byte-budget tracking, mmap remap fd validation, fjall explicit fsync, as-cast and indexing safety, expect-to-error propagation across 66 files ([#2203](https://github.com/forkwright/aletheia/issues/2203), [#2204](https://github.com/forkwright/aletheia/issues/2204), [#2208](https://github.com/forkwright/aletheia/issues/2208), [#2220](https://github.com/forkwright/aletheia/issues/2220), [#2207](https://github.com/forkwright/aletheia/issues/2207))
+* **taxis:** config fail-fast on load error, required field validation, encrypted field detection, sandbox validation warning ([#2114](https://github.com/forkwright/aletheia/issues/2114), [#2121](https://github.com/forkwright/aletheia/issues/2121), [#2120](https://github.com/forkwright/aletheia/issues/2120), [#2126](https://github.com/forkwright/aletheia/issues/2126))
+* **symbolon:** credential write race condition, env token decode warning, refresh token zeroization ([#2118](https://github.com/forkwright/aletheia/issues/2118), [#2125](https://github.com/forkwright/aletheia/issues/2125), [#2209](https://github.com/forkwright/aletheia/issues/2209))
+* **aletheia:** rustls provider panic, configurable shutdown timeout, credential error context, token preview reduced to 7 chars ([#2217](https://github.com/forkwright/aletheia/issues/2217), [#2218](https://github.com/forkwright/aletheia/issues/2218), [#2128](https://github.com/forkwright/aletheia/issues/2128), [#2122](https://github.com/forkwright/aletheia/issues/2122))
+* **security:** 8 config/credential writes hardened with 0600 perms via `koina::fs::write_restricted` ([#2150](https://github.com/forkwright/aletheia/issues/2150))
+* **init:** success message, --api-key wiring, env var alignment, context_tokens comment, credential source help, health URL from config ([#2108](https://github.com/forkwright/aletheia/issues/2108), [#2109](https://github.com/forkwright/aletheia/issues/2109), [#2110](https://github.com/forkwright/aletheia/issues/2110), [#2111](https://github.com/forkwright/aletheia/issues/2111), [#2112](https://github.com/forkwright/aletheia/issues/2112), [#2116](https://github.com/forkwright/aletheia/issues/2116), [#2115](https://github.com/forkwright/aletheia/issues/2115))
+* **deploy:** POSIX portability (stat, find), fork detection, health check strictness, rollback verification, token refresh path ([#2124](https://github.com/forkwright/aletheia/issues/2124), [#2130](https://github.com/forkwright/aletheia/issues/2130), [#2129](https://github.com/forkwright/aletheia/issues/2129), [#2131](https://github.com/forkwright/aletheia/issues/2131), [#2123](https://github.com/forkwright/aletheia/issues/2123), [#2132](https://github.com/forkwright/aletheia/issues/2132))
+* **daemon:** shutdown task cancellation, cron state persistence before execution ([#2211](https://github.com/forkwright/aletheia/issues/2211), [#2212](https://github.com/forkwright/aletheia/issues/2212))
+* **melete:** panic boundary around distillation LLM call ([#2216](https://github.com/forkwright/aletheia/issues/2216))
+* **theatron:** state epoch sequencing to prevent stale UI from concurrent SSE updates ([#2214](https://github.com/forkwright/aletheia/issues/2214))
+* **agora:** bounded task spawning in message listener ([#2215](https://github.com/forkwright/aletheia/issues/2215))
+* **dianoia:** markdown escaping in handoff context IDs ([#2221](https://github.com/forkwright/aletheia/issues/2221))
+* **eval:** scenario timeout cancels spawned task ([#2219](https://github.com/forkwright/aletheia/issues/2219))
+* **taxis:** binding channel type validation ([#2210](https://github.com/forkwright/aletheia/issues/2210))
+
+### Documentation
+
+* version numbers updated to v0.13.13, CSRF default corrected, crate count fixed, bulk import endpoint added, TECHNOLOGY.md encryption claim corrected, auth mode behavior documented ([#2197](https://github.com/forkwright/aletheia/issues/2197), [#2176](https://github.com/forkwright/aletheia/issues/2176), [#2198](https://github.com/forkwright/aletheia/issues/2198), [#2147](https://github.com/forkwright/aletheia/issues/2147), [#2145](https://github.com/forkwright/aletheia/issues/2145), [#2127](https://github.com/forkwright/aletheia/issues/2127))
+
+### Performance
+
+* **graphe:** index on `sessions.updated_at` for retention queries ([#2187](https://github.com/forkwright/aletheia/issues/2187))
+
+### Code Quality
+
+* zero kanon lint violations (3,734 to 0)
+* 450 `pub` to `pub(crate)` visibility tightenings
+* 108 `#[must_use]` annotations on Result-returning functions
+* 28 import reorderings and format arg inlinings
+* `clippy.toml` added to workspace root
+* deprecated terms replaced (master, sanity check)
+* em-dashes removed from CLAUDE.md files
 
 ## [0.13.13](https://github.com/forkwright/aletheia/compare/v0.13.12...v0.13.13) (2026-03-25)
 
