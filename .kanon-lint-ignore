@@ -1170,3 +1170,51 @@ RUST/silent-error-ok:crates/theatron/desktop/src/views/settings/notifications.rs
 # kanon's regex-based f-string detector trips on Rust raw string syntax r#"..."#
 # adjacent to Python interpolation braces.
 PYTHON/empty-fstring:crates/krites/src/fts/tokenizer/stop_word_filter/gen_stopwords.py
+
+# ── RUST/format-sql: false positives from format!() containing SQL keywords ──
+#
+# The kanon linter flags any format!() containing words like CREATE, INSERT,
+# SELECT, DELETE, or UPDATE as potential SQL injection. All 31 violations below
+# are false positives: error messages, file path strings, CozoDB Datalog
+# migration errors, test assertions, TUI toast messages, or schema-derived SQL
+# from hardcoded internal table names.
+
+# -- Error messages / file paths: format!() builds error context strings
+# containing "create" (as in "failed to create directory"), not SQL statements.
+RUST/format-sql:crates/aletheia/src/commands/add_nous.rs
+RUST/format-sql:crates/aletheia/src/commands/agent_io.rs
+RUST/format-sql:crates/aletheia/src/commands/daemon.rs
+RUST/format-sql:crates/aletheia/src/commands/tls.rs
+RUST/format-sql:crates/aletheia/src/runtime.rs
+RUST/format-sql:crates/episteme/src/hnsw_index.rs
+RUST/format-sql:crates/krites/src/runtime/hnsw/atomic_save.rs
+RUST/format-sql:crates/krites/src/runtime/hnsw/mmap_storage.rs
+RUST/format-sql:crates/nous/src/actor/spawn.rs
+RUST/format-sql:crates/nous/src/spawn_svc.rs
+RUST/format-sql:crates/organon/src/builtins/memory/note.rs
+RUST/format-sql:crates/organon/src/builtins/workspace.rs
+
+# -- CozoDB Datalog migration error messages: format!() wraps CozoDB engine
+# errors during schema migration (e.g. "v3->v4 update version: {e}"). These
+# target the Datalog engine, not a SQL database.
+RUST/format-sql:crates/episteme/src/knowledge_store/migration.rs
+
+# -- Schema-derived SQL from hardcoded internal table names: recovery.rs builds
+# SELECT/INSERT for SQLite table copying during corruption recovery. retention.rs
+# iterates a hardcoded &["usage", "distillations", "agent_notes"] array. No user
+# input reaches these format!() calls.
+RUST/format-sql:crates/graphe/src/recovery.rs
+RUST/format-sql:crates/graphe/src/retention.rs
+
+# -- Test assertion: schema.rs test checks that DDL string contains expected
+# CREATE TABLE statements. Not executable SQL construction.
+RUST/format-sql:crates/graphe/src/schema.rs
+
+# -- Test helper: builds a filesystem path "nous/{nous_id}" for temp directory
+# setup. Not SQL.
+RUST/format-sql:crates/nous/src/bootstrap/bootstrap_tests/mod.rs
+
+# -- TUI toast messages: format!() builds user-facing error/success strings
+# containing "Delete failed", "Create failed", "Confidence update failed".
+RUST/format-sql:crates/theatron/tui/src/update/editor.rs
+RUST/format-sql:crates/theatron/tui/src/update/memory/handlers.rs
