@@ -116,12 +116,7 @@ impl JwtManager {
     /// Returns an error if the JWT claims cannot be encoded or signed.
     #[must_use = "issued token must be delivered to the caller"]
     #[instrument(skip(self), fields(kind = "access"))]
-    pub fn issue_access(
-        &self,
-        sub: &str,
-        role: Role,
-        nous_id: Option<&str>,
-    ) -> Result<String> {
+    pub fn issue_access(&self, sub: &str, role: Role, nous_id: Option<&str>) -> Result<String> {
         self.issue(
             sub,
             role,

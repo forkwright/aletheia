@@ -42,7 +42,10 @@ impl LoadedPack {
     /// Returns sections where the agent filter is empty (all agents)
     /// or contains the given agent id.
     #[must_use]
-    #[expect(dead_code, reason = "agent-filtered pack sections, superseded by sections_for_agent_or_domains")]
+    #[expect(
+        dead_code,
+        reason = "agent-filtered pack sections, superseded by sections_for_agent_or_domains"
+    )]
     pub(crate) fn sections_for_agent(&self, agent_id: &str) -> Vec<&PackSection> {
         self.sections
             .iter()

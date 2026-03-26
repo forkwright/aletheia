@@ -81,7 +81,10 @@ impl UncertaintyTracker {
         clippy::disallowed_types,
         reason = "uncertainty tracker owns its own isolated SQLite file; not part of the shared SessionStore pipeline"
     )]
-    #[expect(dead_code, reason = "WIP: uncertainty calibration for agent confidence tracking")]
+    #[expect(
+        dead_code,
+        reason = "WIP: uncertainty calibration for agent confidence tracking"
+    )]
     pub(crate) fn open(path: &std::path::Path) -> error::Result<Self> {
         let conn = Connection::open(path).context(error::UncertaintyStoreSnafu {
             message: "failed to open uncertainty database",
@@ -98,7 +101,10 @@ impl UncertaintyTracker {
         clippy::disallowed_types,
         reason = "uncertainty tracker owns its own isolated SQLite file; not part of the shared SessionStore pipeline"
     )]
-    #[expect(dead_code, reason = "WIP: uncertainty calibration for agent confidence tracking")]
+    #[expect(
+        dead_code,
+        reason = "WIP: uncertainty calibration for agent confidence tracking"
+    )]
     pub(crate) fn open_in_memory() -> error::Result<Self> {
         let conn = Connection::open_in_memory().context(error::UncertaintyStoreSnafu {
             message: "failed to open in-memory uncertainty database",
@@ -144,7 +150,10 @@ impl UncertaintyTracker {
     /// # Errors
     ///
     /// Returns `UncertaintyStore` on database write failure.
-    #[expect(dead_code, reason = "WIP: uncertainty calibration for agent confidence tracking")]
+    #[expect(
+        dead_code,
+        reason = "WIP: uncertainty calibration for agent confidence tracking"
+    )]
     pub(crate) fn record(
         &self,
         nous_id: &str,
@@ -280,7 +289,10 @@ impl UncertaintyTracker {
     /// # Errors
     ///
     /// Returns `UncertaintyStore` on database read failure.
-    #[expect(dead_code, reason = "WIP: uncertainty calibration for agent confidence tracking")]
+    #[expect(
+        dead_code,
+        reason = "WIP: uncertainty calibration for agent confidence tracking"
+    )]
     pub(crate) fn summary(&self, nous_id: &str) -> error::Result<CalibrationSummary> {
         let points = self.load_points(Some(nous_id))?;
         let curve = compute_calibration_curve(&points);

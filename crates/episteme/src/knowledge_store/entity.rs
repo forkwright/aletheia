@@ -14,10 +14,7 @@ use super::{KnowledgeStore, QueryResult, queries};
 impl KnowledgeStore {
     /// Insert or update an entity.
     #[instrument(skip(self, entity), fields(entity_id = %entity.id))]
-    pub fn insert_entity(
-        &self,
-        entity: &crate::knowledge::Entity,
-    ) -> crate::error::Result<()> {
+    pub fn insert_entity(&self, entity: &crate::knowledge::Entity) -> crate::error::Result<()> {
         use snafu::ensure;
         ensure!(!entity.name.is_empty(), crate::error::EmptyEntityNameSnafu);
         let params = entity_to_params(entity);

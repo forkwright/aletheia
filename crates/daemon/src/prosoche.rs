@@ -66,7 +66,10 @@ pub enum Urgency {
 impl AttentionItem {
     /// Short label for this item's category (used in prompt formatting).
     #[must_use]
-    #[expect(dead_code, reason = "attention item label for prosoche prompt formatting")]
+    #[expect(
+        dead_code,
+        reason = "attention item label for prosoche prompt formatting"
+    )]
     pub(crate) fn category_label(&self) -> &str {
         match &self.category {
             AttentionCategory::Calendar => "calendar",

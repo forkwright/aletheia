@@ -149,7 +149,10 @@ pub(crate) struct Watchdog {
 
 impl Watchdog {
     /// Create a new watchdog with the given configuration.
-    #[expect(dead_code, reason = "watchdog process monitor, tested and awaiting integration")]
+    #[expect(
+        dead_code,
+        reason = "watchdog process monitor, tested and awaiting integration"
+    )]
     pub(crate) fn new(config: WatchdogConfig, shutdown: CancellationToken) -> Self {
         Self {
             processes: HashMap::new(),
@@ -160,7 +163,10 @@ impl Watchdog {
     }
 
     /// Register a process for monitoring.
-    #[expect(dead_code, reason = "watchdog process monitor, tested and awaiting integration")]
+    #[expect(
+        dead_code,
+        reason = "watchdog process monitor, tested and awaiting integration"
+    )]
     pub(crate) fn register(&mut self, handle: std::sync::Arc<dyn ProcessHandle>) {
         let id = handle.id().to_owned();
         tracing::info!(process_id = %id, "watchdog: registered process");
@@ -177,7 +183,10 @@ impl Watchdog {
     }
 
     /// Record a heartbeat from a process.
-    #[expect(dead_code, reason = "watchdog process monitor, tested and awaiting integration")]
+    #[expect(
+        dead_code,
+        reason = "watchdog process monitor, tested and awaiting integration"
+    )]
     pub(crate) fn heartbeat(&mut self, process_id: &str) {
         if let Some(proc) = self.processes.get_mut(process_id) {
             proc.last_heartbeat = Instant::now();
@@ -230,7 +239,10 @@ impl Watchdog {
     ///
     /// Cancel-safe at the loop boundary. `interval.tick()` is cancel-safe,
     /// and `CancellationToken::cancelled()` is cancel-safe.
-    #[expect(dead_code, reason = "watchdog process monitor, tested and awaiting integration")]
+    #[expect(
+        dead_code,
+        reason = "watchdog process monitor, tested and awaiting integration"
+    )]
     pub async fn run(&mut self) {
         tracing::info!(
             processes = self.processes.len(),

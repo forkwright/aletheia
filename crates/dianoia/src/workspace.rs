@@ -16,7 +16,10 @@ pub struct ProjectWorkspace {
 /// Standard directories in a project workspace.
 pub(crate) struct WorkspaceLayout {
     /// Root directory of the project workspace.
-    #[expect(dead_code, reason = "WIP: workspace layout root needed for future relative path resolution")]
+    #[expect(
+        dead_code,
+        reason = "WIP: workspace layout root needed for future relative path resolution"
+    )]
     pub root: PathBuf,
     /// Path to the main `PROJECT.json` file.
     pub project_file: PathBuf,

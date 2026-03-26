@@ -123,7 +123,10 @@ pub(crate) fn has_error(events: &[ParsedSseEvent]) -> bool {
 
 /// Count `tool_use` events in the stream.
 #[tracing::instrument(skip_all, fields(event_count = events.len()))]
-#[expect(dead_code, reason = "SSE tool call counting for eval scenario assertions")]
+#[expect(
+    dead_code,
+    reason = "SSE tool call counting for eval scenario assertions"
+)]
 pub(crate) fn tool_call_count(events: &[ParsedSseEvent]) -> usize {
     events.iter().filter(|e| e.event_type == "tool_use").count()
 }

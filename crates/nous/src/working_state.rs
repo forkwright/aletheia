@@ -262,7 +262,10 @@ impl WorkingState {
     }
 }
 
-#[expect(dead_code, reason = "blackboard TTL for working state entry expiration")]
+#[expect(
+    dead_code,
+    reason = "blackboard TTL for working state entry expiration"
+)]
 /// Blackboard TTL for working state entries (7 days).
 pub(crate) const WORKING_STATE_TTL_SECS: i64 = 604_800;
 

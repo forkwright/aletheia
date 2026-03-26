@@ -203,7 +203,10 @@ impl ScanBuilder {
     }
 
     /// Bind a field to an expression: `field: expr` in `*relation{...}`.
-    #[expect(dead_code, reason = "scan builder expression binding for Datalog queries")]
+    #[expect(
+        dead_code,
+        reason = "scan builder expression binding for Datalog queries"
+    )]
     pub(crate) fn bind_to(mut self, field: impl Field, expr: &str) -> Self {
         self.bindings.push(format!("{}: {expr}", field.name()));
         self

@@ -34,7 +34,10 @@ impl SequenceSignature {
 
     /// Returns `true` if the normalized sequence is empty.
     #[must_use]
-    #[expect(dead_code, reason = "sequence signature emptiness check for skill matching")]
+    #[expect(
+        dead_code,
+        reason = "sequence signature emptiness check for skill matching"
+    )]
     pub(crate) fn is_empty(&self) -> bool {
         self.normalized.is_empty()
     }

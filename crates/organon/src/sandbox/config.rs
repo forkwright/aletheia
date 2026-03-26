@@ -136,7 +136,10 @@ pub struct SandboxPolicy {
 impl SandboxConfig {
     /// Create a disabled sandbox config (no restrictions applied).
     #[must_use]
-    #[expect(dead_code, reason = "sandbox bypass for test and no-restriction configurations")]
+    #[expect(
+        dead_code,
+        reason = "sandbox bypass for test and no-restriction configurations"
+    )]
     pub(crate) fn disabled() -> Self {
         Self {
             enabled: false,
@@ -146,11 +149,7 @@ impl SandboxConfig {
 
     /// Build a resolved [`SandboxPolicy`] from this config for the given workspace.
     #[must_use]
-    pub fn build_policy(
-        &self,
-        workspace: &Path,
-        allowed_roots: &[PathBuf],
-    ) -> SandboxPolicy {
+    pub fn build_policy(&self, workspace: &Path, allowed_roots: &[PathBuf]) -> SandboxPolicy {
         if !self.enabled {
             return SandboxPolicy {
                 enabled: false,

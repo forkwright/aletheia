@@ -90,7 +90,10 @@ pub enum ToolPolicy {
 impl ToolPolicy {
     /// Check whether a tool name is permitted under this policy.
     #[must_use]
-    #[expect(dead_code, reason = "tool access policy check for role-based sub-agent dispatch")]
+    #[expect(
+        dead_code,
+        reason = "tool access policy check for role-based sub-agent dispatch"
+    )]
     pub(crate) fn is_allowed(&self, tool_name: &str) -> bool {
         match self {
             Self::Unrestricted => true,
