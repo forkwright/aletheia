@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.13.18](https://github.com/forkwright/aletheia/compare/v0.13.17...v0.13.18) (2026-03-26)
+
+
+### Bug Fixes
+
+* **episteme:** narrow detect_conflicts to pub(crate) ([#2244](https://github.com/forkwright/aletheia/issues/2244)) ([640da1d](https://github.com/forkwright/aletheia/commit/640da1d7dd3ae1f816dfe902ee3048321f60125b))
+* **koina,krites:** remove unused imports, suppress ref_option, remove stale expect ([c8a297e](https://github.com/forkwright/aletheia/commit/c8a297e7d8d29ee3032a1cf3ef532a25fc5963c8))
+* **krites:** resolve all 947 clippy warnings ([#2243](https://github.com/forkwright/aletheia/issues/2243)) ([c1c8f85](https://github.com/forkwright/aletheia/commit/c1c8f8585c1bc06dcf54e398c62ed24248f4b80b))
+
 ## [0.13.17](https://github.com/forkwright/aletheia/compare/v0.13.16...v0.13.17) (2026-03-26)
 
 
