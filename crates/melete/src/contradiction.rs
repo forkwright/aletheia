@@ -69,7 +69,7 @@ pub struct ContradictionLog {
 impl ContradictionLog {
     /// An empty log with no contradictions.
     #[must_use]
-    pub fn empty() -> Self {
+    pub(crate) fn empty() -> Self {
         Self {
             contradictions: vec![],
             timestamp: String::new(),
@@ -79,7 +79,7 @@ impl ContradictionLog {
 
     /// Whether any contradictions were detected.
     #[must_use]
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.contradictions.is_empty()
     }
 }

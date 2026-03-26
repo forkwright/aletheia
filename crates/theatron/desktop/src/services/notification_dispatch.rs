@@ -3,7 +3,7 @@
 //! [`NotificationDispatch`] is instantiated once before the SSE event loop
 //! and called on each event. It applies:
 //!
-//! - **Preferences**: per-category and master enable/disable.
+//! - **Preferences**: per-category and global enable/disable.
 //! - **Focus rules**: completion notifications are suppressed when the window
 //!   is in the foreground (tool approval always fires regardless).
 //! - **DND**: all non-approval notifications are suppressed during Do Not

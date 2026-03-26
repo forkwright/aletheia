@@ -113,7 +113,7 @@ const TIMESTAMP_TOLERANCE_SECS: i64 = 5;
 /// in only one source. When both exist, the newest-wins strategy applies
 /// and conflicts are logged.
 #[must_use]
-pub fn reconcile(
+pub(crate) fn reconcile(
     db_snapshot: Option<&ProjectSnapshot>,
     fs_snapshot: Option<&ProjectSnapshot>,
 ) -> ReconciliationResult {
@@ -232,7 +232,7 @@ fn detect_conflicts(db: &Project, fs: &Project, conflicts: &mut Vec<ConflictEntr
 ///
 /// Matches projects by ID across both sets and produces a summary.
 #[must_use]
-pub fn reconcile_all(
+pub(crate) fn reconcile_all(
     db_snapshots: &[ProjectSnapshot],
     fs_snapshots: &[ProjectSnapshot],
 ) -> ReconciliationSummary {

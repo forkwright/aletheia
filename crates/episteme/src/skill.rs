@@ -9,17 +9,17 @@
 use serde::{Deserialize, Serialize};
 
 /// Decay score thresholds for skill lifecycle management.
-pub mod decay {
+pub(crate) mod decay {
     /// Skills below this score are flagged for review.
-    pub const NEEDS_REVIEW_THRESHOLD: f64 = 0.3;
+    pub(crate) const NEEDS_REVIEW_THRESHOLD: f64 = 0.3;
     /// Skills below this score are auto-retired.
-    pub const RETIRE_THRESHOLD: f64 = 0.08;
+    pub(crate) const RETIRE_THRESHOLD: f64 = 0.08;
     /// Default days of inactivity before decay reaches review threshold for low-usage skills.
-    pub const DEFAULT_STALE_DAYS: u32 = 28;
+    pub(crate) const DEFAULT_STALE_DAYS: u32 = 28;
     /// Usage count above which a skill is considered "high-usage" and decays 3× slower.
-    pub const HIGH_USAGE_THRESHOLD: u32 = 10;
+    pub(crate) const HIGH_USAGE_THRESHOLD: u32 = 10;
     /// Multiplier applied to decay half-life for high-usage skills.
-    pub const HIGH_USAGE_DECAY_FACTOR: f64 = 3.0;
+    pub(crate) const HIGH_USAGE_DECAY_FACTOR: f64 = 3.0;
 }
 
 /// Compute a decay score for a skill fact.
@@ -34,7 +34,11 @@ pub mod decay {
 /// The half-life for low-usage skills is `stale_days` (default 28). For
 /// high-usage skills (>10 uses), it's `stale_days × 3`.
 #[must_use]
-pub fn skill_decay_score(days_since_last_use: f64, usage_count: u32, confidence: f64) -> f64 {
+pub(crate) fn skill_decay_score(
+    days_since_last_use: f64,
+    usage_count: u32,
+    confidence: f64,
+) -> f64 {
     let half_life = if usage_count > decay::HIGH_USAGE_THRESHOLD {
         f64::from(decay::DEFAULT_STALE_DAYS) * decay::HIGH_USAGE_DECAY_FACTOR
     } else {
@@ -106,6 +110,7 @@ impl std::fmt::Display for SkillParseError {
 ///
 /// Supports optional YAML frontmatter (delimited by `---`) with `tools` and
 /// `domains` fields. Falls back to extracting from markdown sections.
+#[must_use]
 pub fn parse_skill_md(source: &str, slug: &str) -> Result<SkillContent, SkillParseError> {
     let err = |reason: &str| SkillParseError {
         path: slug.to_owned(),
@@ -286,6 +291,7 @@ fn derive_domain_tags(slug: &str) -> Vec<String> {
 /// Scan a directory for subdirectories containing SKILL.md files.
 ///
 /// Returns `(slug, content_string)` pairs for each found skill.
+#[must_use]
 pub fn scan_skill_dir(dir: &std::path::Path) -> Result<Vec<(String, String)>, std::io::Error> {
     let mut skills = Vec::new();
 
@@ -316,7 +322,7 @@ pub fn scan_skill_dir(dir: &std::path::Path) -> Result<Vec<(String, String)>, st
 /// Lowercases, replaces whitespace/non-alphanumeric runs with `-`, and trims
 /// leading/trailing dashes.
 #[must_use]
-pub fn slugify(name: &str) -> String {
+pub(crate) fn slugify(name: &str) -> String {
     let slug: String = name
         .chars()
         .map(|c| {
@@ -367,7 +373,7 @@ pub fn slugify(name: &str) -> String {
 /// - <tool>
 /// ```
 #[must_use]
-pub fn format_skill_md(skill: &SkillContent) -> String {
+pub(crate) fn format_skill_md(skill: &SkillContent) -> String {
     use std::fmt::Write as _;
     let mut md = String::with_capacity(512);
 

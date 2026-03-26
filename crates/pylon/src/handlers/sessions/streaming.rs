@@ -18,8 +18,10 @@ use aletheia_nous::stream::TurnStreamEvent;
 
 use aletheia_mneme::types::SessionStatus;
 
+use aletheia_symbolon::types::Role;
+
 use crate::error::{ApiError, BadRequestSnafu, ConflictSnafu, InternalSnafu, NousNotFoundSnafu};
-use crate::extract::Claims;
+use crate::extract::{Claims, require_nous_access, require_role};
 use crate::idempotency::{LookupResult, MAX_KEY_LENGTH};
 use crate::middleware::RequestId;
 use crate::state::SessionsState;
@@ -99,13 +101,15 @@ impl<S: tokio_stream::Stream + Unpin> tokio_stream::Stream for GuardedStream<S> 
 )]
 pub async fn send_message(
     State(state): State<SessionsState>,
-    _claims: Claims,
+    claims: Claims,
     headers: axum::http::HeaderMap,
     axum::extract::Extension(request_id): axum::extract::Extension<RequestId>,
     axum::extract::Path(session_id): axum::extract::Path<String>,
     Json(body): Json<SendMessageRequest>,
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, ApiError> {
-    let idempotency_key = extract_idempotency_key(&headers)?;
+    require_role(&claims, Role::Operator)?;
+
+    let idempotency_key = extract_idempotency_key(&headers)?.map(|k| format!("{}:{k}", claims.sub));
 
     if let Some(ref key) = idempotency_key {
         match state.idempotency_cache.check_or_insert(key) {
@@ -167,6 +171,7 @@ pub async fn send_message(
     }
 
     let session = find_session(&state, &session_id).await?;
+    require_nous_access(&claims, &session.nous_id)?;
 
     // WHY: archived sessions must not accept new messages (#1250).
     if session.status != SessionStatus::Active {
@@ -235,6 +240,14 @@ pub async fn send_message(
     let shutdown_token = state.shutdown.child_token();
     let turn_handle = tokio::spawn(
         async move {
+            // WHY(#2113): Emit an immediate acknowledgment so the client never sees an empty
+            // body, even if the turn fails before producing any content events.
+            let _ = tx
+                .send(SseEvent::MessageStart {
+                    status: "accepted".to_owned(),
+                })
+                .await;
+
             // WHY: cancel the in-flight turn when the server shuts down so Axum's graceful
             // shutdown can drain open SSE connections rather than hanging indefinitely (#1723).
             let turn_fut = handle.send_turn_with_session_id(
@@ -341,13 +354,15 @@ pub async fn send_message(
     clippy::too_many_lines,
     reason = "streaming bridge setup is inherently sequential"
 )]
-#[instrument(skip(state, _claims, body), fields(agent_id = %body.agent_id))]
+#[instrument(skip(state, claims, body), fields(agent_id = %body.agent_id))]
 pub async fn stream_turn(
     State(state): State<SessionsState>,
-    _claims: Claims,
+    claims: Claims,
     axum::extract::Extension(request_id): axum::extract::Extension<RequestId>,
     Json(body): Json<StreamTurnRequest>,
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, ApiError> {
+    require_role(&claims, Role::Operator)?;
+    require_nous_access(&claims, &body.agent_id)?;
     let agent_id = body.agent_id;
     let message = body.message;
     let session_key = body.session_key;
@@ -656,10 +671,14 @@ fn classify_llm_error(err: &aletheia_hermeneus::error::Error) -> (&'static str, 
     match err {
         Error::RateLimited { .. } => ("rate_limited", "rate limit exceeded"),
         Error::ApiError { status, .. } if *status == 429 => ("rate_limited", "rate limit exceeded"),
-        Error::AuthFailed { .. } => ("provider_unavailable", "provider temporarily unavailable"),
-        Error::ApiError { status, .. } if *status == 503 => {
-            ("provider_unavailable", "provider temporarily unavailable")
-        }
+        Error::AuthFailed { .. } => (
+            "provider_unavailable",
+            "provider authentication failed. Run 'aletheia credential status' to diagnose",
+        ),
+        Error::ApiError { status, .. } if *status == 503 => (
+            "provider_unavailable",
+            "provider temporarily unavailable. Run 'aletheia credential status' to diagnose",
+        ),
         _ => ("turn_failed", "An internal error occurred"),
     }
 }

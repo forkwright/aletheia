@@ -51,7 +51,7 @@ impl RecallWeights {
     /// Sum of all weights (for normalization).
     #[must_use]
     #[instrument(skip(self))]
-    pub fn total(&self) -> f64 {
+    pub(crate) fn total(&self) -> f64 {
         self.vector_similarity
             + self.decay
             + self.relevance
@@ -67,7 +67,7 @@ impl RecallWeights {
     /// discarded. Callers should skip expensive graph operations (BFS,
     /// `PageRank`, Louvain) when this returns `false`.
     #[must_use]
-    pub fn graph_recall_active(&self) -> bool {
+    pub(crate) fn graph_recall_active(&self) -> bool {
         self.relationship_proximity >= f64::EPSILON
     }
 }
@@ -138,7 +138,7 @@ impl RecallEngine {
     /// Set the max access count for frequency normalization.
     #[must_use]
     #[instrument(skip(self))]
-    pub fn with_max_access_count(mut self, count: f64) -> Self {
+    pub(crate) fn with_max_access_count(mut self, count: f64) -> Self {
         self.max_access_count = count;
         self
     }
@@ -150,7 +150,15 @@ impl RecallEngine {
     #[must_use]
     #[instrument(skip(self))]
     pub fn score_vector_similarity(&self, cosine_distance: f64) -> f64 {
-        (1.0 - cosine_distance / 2.0).clamp(0.0, 1.0)
+        let raw_similarity = 1.0 - cosine_distance / 2.0;
+        if !(-1.0..=1.0).contains(&raw_similarity) {
+            tracing::warn!(
+                raw_similarity = raw_similarity,
+                cosine_distance = cosine_distance,
+                "vector may not be normalized: raw_similarity={raw_similarity}"
+            );
+        }
+        raw_similarity.clamp(0.0, 1.0)
     }
 
     /// Compute the FSRS power-law decay score.
@@ -190,7 +198,7 @@ impl RecallEngine {
     /// 1.0 if the memory belongs to the querying nous, 0.5 for shared, 0.3 for other.
     #[must_use]
     #[instrument(skip(self))]
-    pub fn score_relevance(&self, memory_nous_id: &str, query_nous_id: &str) -> f64 {
+    pub(crate) fn score_relevance(&self, memory_nous_id: &str, query_nous_id: &str) -> f64 {
         if memory_nous_id == query_nous_id {
             1.0
         } else if memory_nous_id.is_empty() {
@@ -203,7 +211,7 @@ impl RecallEngine {
     /// Compute the epistemic tier score.
     #[must_use]
     #[instrument(skip(self))]
-    pub fn score_epistemic_tier(&self, tier: &str) -> f64 {
+    pub(crate) fn score_epistemic_tier(&self, tier: &str) -> f64 {
         match tier {
             "verified" => 1.0,
             "inferred" => 0.6,
@@ -218,7 +226,7 @@ impl RecallEngine {
     /// No connection = 0.0.
     #[must_use]
     #[instrument(skip(self))]
-    pub fn score_relationship_proximity(&self, hops: Option<u32>) -> f64 {
+    pub(crate) fn score_relationship_proximity(&self, hops: Option<u32>) -> f64 {
         match hops {
             Some(0 | 1) => 1.0,
             Some(2) => 0.5,
@@ -233,7 +241,7 @@ impl RecallEngine {
     /// Logarithmic scaling: `score = ln(1 + count) / ln(1 + max_count)`
     #[must_use]
     #[instrument(skip(self))]
-    pub fn score_access_frequency(&self, access_count: u64) -> f64 {
+    pub(crate) fn score_access_frequency(&self, access_count: u64) -> f64 {
         #[expect(
             clippy::cast_precision_loss,
             clippy::as_conversions,
@@ -246,7 +254,7 @@ impl RecallEngine {
     /// Compute the weighted final score from factor scores.
     #[instrument(skip(self, factors))]
     #[must_use]
-    pub fn compute_score(&self, factors: &FactorScores) -> f64 {
+    pub(crate) fn compute_score(&self, factors: &FactorScores) -> f64 {
         let w = &self.weights;
         let total_weight = w.total();
         if total_weight == 0.0 {
@@ -283,7 +291,7 @@ impl RecallEngine {
     /// Access the current weights.
     #[must_use]
     #[instrument(skip(self))]
-    pub fn weights(&self) -> &RecallWeights {
+    pub(crate) fn weights(&self) -> &RecallWeights {
         &self.weights
     }
 
@@ -295,7 +303,7 @@ impl RecallEngine {
     /// Returns the base tier score directly when graph recall weight is zero.
     #[must_use]
     #[instrument(skip(self))]
-    pub fn score_epistemic_tier_with_importance(&self, tier: &str, importance: f64) -> f64 {
+    pub(crate) fn score_epistemic_tier_with_importance(&self, tier: &str, importance: f64) -> f64 {
         let base = self.score_epistemic_tier(tier);
         // PERF: skip graph-enhanced scoring when relationship proximity weight is zero.
         if !self.weights.graph_recall_active() {
@@ -312,7 +320,7 @@ impl RecallEngine {
     /// Returns the base hop score directly when graph recall weight is zero.
     #[must_use]
     #[instrument(skip(self))]
-    pub fn score_relationship_proximity_with_cluster(
+    pub(crate) fn score_relationship_proximity_with_cluster(
         &self,
         hops: Option<u32>,
         same_cluster: bool,
@@ -333,7 +341,7 @@ impl RecallEngine {
     /// Returns the base access score directly when graph recall weight is zero.
     #[must_use]
     #[instrument(skip(self))]
-    pub fn score_access_with_evolution(&self, access_count: u64, chain_length: u32) -> f64 {
+    pub(crate) fn score_access_with_evolution(&self, access_count: u64, chain_length: u32) -> f64 {
         let base = self.score_access_frequency(access_count);
         // PERF: skip graph-enhanced scoring when relationship proximity weight is zero.
         if !self.weights.graph_recall_active() {
@@ -356,7 +364,7 @@ impl Default for RecallEngine {
 /// Access growth is logarithmic: `1 + 0.1 × ln(1 + access_count)`.
 /// This ensures frequently accessed facts decay slower, but growth is bounded.
 #[must_use]
-pub fn compute_effective_stability(
+pub(crate) fn compute_effective_stability(
     fact_type: FactType,
     tier: EpistemicTier,
     access_count: u32,
@@ -375,7 +383,7 @@ pub fn compute_effective_stability(
 /// The stored value is for diagnostics/reporting: actual `R(t)` is computed
 /// on-the-fly at query time via [`RecallEngine::score_decay`].
 #[must_use]
-pub fn refresh_stability_hours(fact_type: &str, tier: &str, access_count: u32) -> f64 {
+pub(crate) fn refresh_stability_hours(fact_type: &str, tier: &str, access_count: u32) -> f64 {
     let ft = FactType::from_str_lossy(fact_type);
     let et = match tier {
         "verified" => EpistemicTier::Verified,

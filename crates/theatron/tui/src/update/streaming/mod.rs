@@ -19,6 +19,7 @@ fn model_context_window(_model: &str) -> u32 {
 
 #[tracing::instrument(skip_all, fields(%turn_id, %nous_id))]
 pub(crate) fn handle_stream_turn_start(app: &mut App, turn_id: TurnId, nous_id: NousId) {
+    app.connection.state_epoch = app.connection.state_epoch.wrapping_add(1);
     app.connection.active_turn_id = Some(turn_id);
     app.connection.stream_phase = crate::state::StreamPhase::Requesting;
     app.connection.streaming_text.clear();
@@ -317,11 +318,13 @@ pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutc
     // WHY: auto-send the next queued message now that the turn is complete
     crate::update::input::send_next_queued(app);
     app.connection.stream_phase = crate::state::StreamPhase::Idle;
+    app.connection.state_epoch = app.connection.state_epoch.wrapping_add(1);
 }
 
 #[tracing::instrument(skip_all)]
 pub(crate) fn handle_stream_turn_abort(app: &mut App, reason: String) {
     tracing::info!("turn aborted: {reason}");
+    app.connection.state_epoch = app.connection.state_epoch.wrapping_add(1);
     app.connection.stream_phase = crate::state::StreamPhase::Idle;
     app.connection.streaming_text.clear();
     app.connection.streaming_line_buffer.clear();
@@ -344,6 +347,7 @@ pub(crate) fn handle_stream_turn_abort(app: &mut App, reason: String) {
 // SAFETY: sanitized at ingestion: error messages may contain external data.
 pub(crate) fn handle_stream_error(app: &mut App, msg: String) {
     tracing::error!("stream error: {msg}");
+    app.connection.state_epoch = app.connection.state_epoch.wrapping_add(1);
     app.connection.stream_phase = crate::state::StreamPhase::Error;
     app.connection.streaming_line_buffer.clear();
     app.viewport.error_toast = Some(ErrorToast::new(sanitize_for_display(&msg).into_owned()));
@@ -370,6 +374,7 @@ pub(crate) async fn handle_cancel_turn(app: &mut App) {
         Some(id) => id,
         None => return,
     };
+    app.connection.state_epoch = app.connection.state_epoch.wrapping_add(1);
 
     // Fire-and-forget: tell the server to abort. Errors are non-fatal; the
     // stream receiver being dropped is sufficient to stop local processing.

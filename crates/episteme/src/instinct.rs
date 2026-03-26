@@ -92,7 +92,7 @@ impl ToolOutcome {
 
     /// Parse from a stored string.
     #[must_use]
-    pub fn from_stored_string(s: &str) -> Self {
+    pub(crate) fn from_stored_string(s: &str) -> Self {
         if s == "success" {
             Self::Success
         } else if let Some(error) = s.strip_prefix("failure:") {
@@ -135,13 +135,13 @@ pub(crate) struct BehavioralPattern {
 impl BehavioralPattern {
     /// Whether this pattern meets the thresholds for instinct fact creation.
     #[must_use]
-    pub fn meets_thresholds(&self) -> bool {
+    pub(crate) fn meets_thresholds(&self) -> bool {
         self.success_count >= MIN_OBSERVATIONS && self.success_rate >= MIN_SUCCESS_RATE
     }
 
     /// Generate the fact content string for this pattern.
     #[must_use]
-    pub fn to_fact_content(&self) -> String {
+    pub(crate) fn to_fact_content(&self) -> String {
         #[expect(
             clippy::cast_possible_truncation,
             clippy::cast_sign_loss,
@@ -178,7 +178,7 @@ pub(crate) enum ContextCategory {
 impl ContextCategory {
     /// Classify a tool name and context summary into a context category.
     #[must_use]
-    pub fn classify(tool_name: &str, context_summary: &str) -> Self {
+    pub(crate) fn classify(tool_name: &str, context_summary: &str) -> Self {
         let tool_lower = tool_name.to_lowercase();
         let ctx_lower = context_summary.to_lowercase();
 
@@ -219,7 +219,7 @@ impl ContextCategory {
 
     /// String representation for storage.
     #[must_use]
-    pub fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::Code => "code",
             Self::Research => "research",
@@ -239,7 +239,7 @@ impl ContextCategory {
         )
     )]
     #[must_use]
-    pub fn from_str_lossy(s: &str) -> Self {
+    pub(crate) fn from_str_lossy(s: &str) -> Self {
         match s {
             "code" => Self::Code,
             "research" => Self::Research,

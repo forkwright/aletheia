@@ -126,6 +126,12 @@ pub enum ApiError {
     },
 }
 
+impl ApiError {
+    pub(crate) fn forbidden(message: &str) -> Self {
+        ForbiddenSnafu { message }.build()
+    }
+}
+
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, code, details) = match &self {

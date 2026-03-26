@@ -1,9 +1,4 @@
 //! Weighted shortest path (Dijkstra).
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
 use std::iter;
@@ -49,6 +44,7 @@ impl FixedRule for ShortestPathDijkstra {
         let mut starting_nodes = BTreeSet::new();
         for tuple in starting.iter()? {
             let tuple = tuple?;
+            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
             let node = &tuple[0];
             if let Some(idx) = inv_indices.get(node) {
                 starting_nodes.insert(*idx);
@@ -60,6 +56,7 @@ impl FixedRule for ShortestPathDijkstra {
                 let mut tn = BTreeSet::new();
                 for tuple in t.iter()? {
                     let tuple = tuple?;
+                    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                     let node = &tuple[0];
                     if let Some(idx) = inv_indices.get(node) {
                         tn.insert(*idx);
@@ -73,7 +70,7 @@ impl FixedRule for ShortestPathDijkstra {
             for start in starting_nodes {
                 let res = if let Some(tn) = &termination_nodes {
                     if tn.len() == 1 {
-                        let single = Some(*tn.iter().next().expect("termination set is non-empty"));
+                        let single = Some(*tn.iter().next().unwrap_or_else(|| unreachable!()));
                         if keep_ties {
                             dijkstra_keep_ties(&graph, start, &single, &(), &(), poison.clone())?
                         } else {
@@ -111,7 +108,7 @@ impl FixedRule for ShortestPathDijkstra {
                         if let Some(tn) = &termination_nodes {
                             if tn.len() == 1 {
                                 let single =
-                                    Some(*tn.iter().next().expect("termination set is non-empty"));
+                                    Some(*tn.iter().next().unwrap_or_else(|| unreachable!()));
                                 if keep_ties {
                                     dijkstra_keep_ties(
                                         &graph,
@@ -259,8 +256,10 @@ pub(crate) fn dijkstra<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal + Clone>(
     forbidden_nodes: &FN,
 ) -> Vec<(u32, f32, Vec<u32>)> {
     let graph_size = edges.node_count();
+    #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
     let mut distance = vec![f32::INFINITY; graph_size as usize];
     let mut pq = PriorityQueue::new();
+    #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
     let mut back_pointers = vec![u32::MAX; graph_size as usize];
     distance[start as usize] = 0.;
     pq.push(start, Reverse(OrderedFloat(0.)));
@@ -298,6 +297,7 @@ pub(crate) fn dijkstra<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal + Clone>(
     goals
         .iter(edges.node_count())
         .map(|target| {
+            #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
             let cost = distance[target as usize];
             if !cost.is_finite() {
                 (target, cost, vec![])
@@ -324,8 +324,10 @@ pub(crate) fn dijkstra_keep_ties<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal +
     forbidden_nodes: &FN,
     poison: Poison,
 ) -> Result<Vec<(u32, f32, Vec<u32>)>> {
+    #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
     let mut distance = vec![f32::INFINITY; edges.node_count() as usize];
     let mut pq = PriorityQueue::new();
+    #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
     let mut back_pointers: Vec<SmallVec<[u32; 1]>> = vec![smallvec![]; edges.node_count() as usize];
     distance[start as usize] = 0.;
     pq.push(start, Reverse(OrderedFloat(0.)));
@@ -368,6 +370,7 @@ pub(crate) fn dijkstra_keep_ties<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal +
     let ret = goals
         .iter(edges.node_count())
         .flat_map(|target| {
+            #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
             let cost = distance[target as usize];
             if !cost.is_finite() {
                 vec![(target, cost, vec![])]
@@ -389,7 +392,8 @@ pub(crate) fn dijkstra_keep_ties<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal +
                         cost: f32,
                         back_pointers: &[SmallVec<[u32; 1]>],
                     ) {
-                        let last = chain.last().expect("chain is non-empty");
+                        let last = chain.last().unwrap_or_else(|| unreachable!());
+                        #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
                         let prevs = &back_pointers[*last as usize];
                         for nxt in prevs {
                             let mut ret = chain.to_vec();

@@ -63,7 +63,7 @@ impl Oikos {
     /// `aletheia status`) are cwd-independent and work with non-default paths
     /// and symlinks: closes #1829.
     #[must_use]
-    pub fn discover_with(env: &impl Environment) -> Self {
+    pub(crate) fn discover_with(env: &impl Environment) -> Self {
         let root = env
             .var("ALETHEIA_ROOT")
             .map_or_else(|| PathBuf::from("instance"), PathBuf::from);
@@ -78,13 +78,13 @@ impl Oikos {
 
     /// The theke directory (human + nous collaborative space).
     #[must_use]
-    pub fn theke(&self) -> PathBuf {
+    pub(crate) fn theke(&self) -> PathBuf {
         self.root.join("theke")
     }
 
     /// The shared directory (nous-only shared resources).
     #[must_use]
-    pub fn shared(&self) -> PathBuf {
+    pub(crate) fn shared(&self) -> PathBuf {
         self.root.join("shared")
     }
 

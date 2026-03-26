@@ -44,6 +44,8 @@ pub struct AppState {
     pub config_tx: tokio::sync::watch::Sender<AletheiaConfig>,
     /// Auth mode from gateway config (`"token"`, `"none"`, etc.).
     pub auth_mode: String,
+    /// Role assigned to anonymous requests when auth mode is `"none"`.
+    pub none_role: String,
     /// Root shutdown token. Cancel to initiate graceful shutdown of all subsystems.
     pub shutdown: CancellationToken,
     /// Idempotency-key cache for deduplicating `POST /sessions/{id}/messages`.

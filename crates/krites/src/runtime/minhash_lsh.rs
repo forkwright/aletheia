@@ -1,9 +1,4 @@
 //! MinHash locality-sensitive hashing.
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 
 use std::cmp::min;
 use std::hash::{Hash, Hasher};
@@ -308,9 +303,17 @@ pub(crate) struct Weights(pub(crate) f64, pub(crate) f64);
 /// Simpson's rule numerical integration over [a, b] with n subdivisions.
 fn integrate_simpson(f: impl Fn(f64) -> f64, a: f64, b: f64, n: usize) -> f64 {
     let n = if n.is_multiple_of(2) { n } else { n + 1 };
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "i64 to f64: precision loss acceptable"
+    )]
     let h = (b - a) / n as f64;
     let mut sum = f(a) + f(b);
     for i in 1..n {
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "i64 to f64: precision loss acceptable"
+        )]
         let x = a + i as f64 * h;
         sum += if i % 2 == 0 { 2.0 } else { 4.0 } * f(x);
     }
@@ -342,6 +345,10 @@ impl LshParams {
             clippy::cast_possible_truncation,
             reason = "r is bounded by num_perm which fits in i32 for practical hash sizes"
         )]
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "i64 to f64: precision loss acceptable"
+        )]
         let probability = |s| -> f64 { 1. - f64::powf(1. - f64::powi(s, r as i32), b as f64) };
         integrate_simpson(probability, 0.0, threshold, 100)
     }
@@ -370,6 +377,7 @@ impl HashPermutations {
         bytemuck::cast_slice(&self.0)
     }
     pub(crate) fn from_bytes(bytes: &[u8]) -> Result<Self> {
+        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let perms: &[u32] =
             bytemuck::try_cast_slice(bytes).map_err(|e| crate::error::InternalError::Runtime {
                 source: InvalidOperationSnafu {
@@ -404,6 +412,7 @@ impl HashValues {
                     clippy::cast_possible_truncation,
                     reason = "intentional hash truncation to u32"
                 )]
+                #[expect(clippy::cast_possible_truncation, reason = "value fits u32")]
                 let hash = hasher.finish() as u32;
                 self.0[i] = min(self.0[i], hash);
             }

@@ -251,6 +251,8 @@ pub struct TaskStatus {
     pub consecutive_failures: u32,
     /// Whether the task is currently in flight.
     pub in_flight: bool,
+    /// Most recent error message, if the last execution failed. (#2212)
+    pub last_error: Option<String>,
 }
 
 #[cfg(test)]
@@ -396,6 +398,7 @@ mod tests {
             run_count: 42,
             consecutive_failures: 0,
             in_flight: false,
+            last_error: None,
         };
         assert_eq!(status.id, "test-id");
         assert_eq!(status.name, "Test Task");

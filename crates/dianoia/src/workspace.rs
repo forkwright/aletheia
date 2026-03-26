@@ -14,7 +14,7 @@ pub struct ProjectWorkspace {
 }
 
 /// Standard directories in a project workspace.
-pub struct WorkspaceLayout {
+pub(crate) struct WorkspaceLayout {
     /// Root directory of the project workspace.
     pub root: PathBuf,
     /// Path to the main `PROJECT.json` file.
@@ -33,6 +33,7 @@ impl ProjectWorkspace {
     /// # Errors
     ///
     /// Returns a workspace I/O error if the workspace directories cannot be created.
+    #[must_use]
     pub fn create(root: impl Into<PathBuf>) -> Result<Self> {
         let root = root.into();
         let layout = Self::build_layout(&root);
@@ -49,6 +50,7 @@ impl ProjectWorkspace {
     }
 
     /// Open an existing workspace.
+    #[must_use]
     pub fn open(root: impl Into<PathBuf>) -> Result<Self> {
         let root = root.into();
         if !root.exists() {
@@ -63,29 +65,20 @@ impl ProjectWorkspace {
     ///
     /// Returns a serialization error if the project cannot be serialized to JSON.
     /// Returns a workspace I/O error if the project file cannot be written.
+    #[must_use]
     pub fn save_project(&self, project: &Project) -> Result<()> {
         let layout = self.layout();
         let json = serde_json::to_string_pretty(project).context(error::WorkspaceSerializeSnafu)?;
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "dianoia workspace writes are CLI-invoked blocking operations; tokio::fs would require an async context not available here"
-        )]
-        std::fs::write(&layout.project_file, json).context(error::WorkspaceIoSnafu {
-            path: &layout.project_file,
-        })?;
-        // WHY: restrict project JSON to owner-only (0600) — may contain config secrets
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&layout.project_file, std::fs::Permissions::from_mode(0o600))
-                .context(error::WorkspaceIoSnafu {
-                    path: &layout.project_file,
-                })?;
-        }
+        aletheia_koina::fs::write_restricted(&layout.project_file, json.as_bytes()).context(
+            error::WorkspaceIoSnafu {
+                path: &layout.project_file,
+            },
+        )?;
         Ok(())
     }
 
     /// Load project state from disk.
+    #[must_use]
     pub fn load_project(&self) -> Result<Project> {
         let layout = self.layout();
         if !layout.project_file.exists() {
@@ -104,7 +97,7 @@ impl ProjectWorkspace {
     }
 
     /// Write a blocker file for stuck detection integration.
-    pub fn write_blocker(&self, phase_id: &str, blocker: &Blocker) -> Result<()> {
+    pub(crate) fn write_blocker(&self, phase_id: &str, blocker: &Blocker) -> Result<()> {
         let layout = self.layout();
         let phase_blockers = layout.blockers_dir.join(phase_id);
         std::fs::create_dir_all(&phase_blockers).context(error::WorkspaceIoSnafu {
@@ -114,26 +107,16 @@ impl ProjectWorkspace {
         let filename = format!("{}.md", blocker.plan_id);
         let path = phase_blockers.join(&filename);
         let content = format!(
-            "# Blocker: {}\n\nPlan: {}\nDetected: {}\n\n{}\n",
+            "# Blocker: `{}`\n\nPlan: `{}`\nDetected: {}\n\n{}\n",
             blocker.plan_id, blocker.plan_id, blocker.detected_at, blocker.description
         );
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "dianoia workspace writes are CLI-invoked blocking operations; tokio::fs would require an async context not available here"
-        )]
-        std::fs::write(&path, content).context(error::WorkspaceIoSnafu { path: &path })?;
-        // WHY: restrict blocker files to owner-only (0600) — project-internal data
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
-                .context(error::WorkspaceIoSnafu { path })?;
-        }
+        aletheia_koina::fs::write_restricted(&path, content.as_bytes())
+            .context(error::WorkspaceIoSnafu { path: &path })?;
         Ok(())
     }
 
     /// Read all blockers for a phase.
-    pub fn read_blockers(&self, phase_id: &str) -> Result<Vec<Blocker>> {
+    pub(crate) fn read_blockers(&self, phase_id: &str) -> Result<Vec<Blocker>> {
         let layout = self.layout();
         let phase_blockers = layout.blockers_dir.join(phase_id);
 
@@ -171,7 +154,7 @@ impl ProjectWorkspace {
 
     /// Get the workspace directory layout.
     #[must_use]
-    pub fn layout(&self) -> WorkspaceLayout {
+    pub(crate) fn layout(&self) -> WorkspaceLayout {
         Self::build_layout(&self.root)
     }
 

@@ -101,7 +101,11 @@ pub(crate) fn parse_sse_stream(
         if let Some(event_type) = line.strip_prefix("event: ") {
             event_type.clone_into(&mut current_event_type);
         } else if let Some(data) = line.strip_prefix("data: ") {
-            data.clone_into(&mut current_data);
+            // WHY: SSE spec requires multiple data: lines to be concatenated with newlines.
+            if !current_data.is_empty() {
+                current_data.push('\n');
+            }
+            current_data.push_str(data);
         }
         // NOTE: Ignore other SSE lines (comments, etc.).
     }
@@ -160,7 +164,11 @@ pub(crate) async fn parse_sse_response(
                 } else if let Some(et) = line.strip_prefix("event: ") {
                     et.clone_into(&mut current_event_type);
                 } else if let Some(data) = line.strip_prefix("data: ") {
-                    data.clone_into(&mut current_data);
+                    // WHY: SSE spec requires multiple data: lines to be concatenated with newlines.
+                    if !current_data.is_empty() {
+                        current_data.push('\n');
+                    }
+                    current_data.push_str(data);
                 }
                 // NOTE: Ignore other SSE lines (id:, retry:, comments).
                 line_buf.clear();

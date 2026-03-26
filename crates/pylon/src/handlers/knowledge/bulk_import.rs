@@ -4,7 +4,10 @@ use axum::Json;
 use axum::extract::State;
 use serde::{Deserialize, Serialize};
 
+use aletheia_symbolon::types::Role;
+
 use crate::error::ApiError;
+use crate::extract::{Claims, require_role};
 use crate::state::KnowledgeState;
 
 /// Hard cap on facts per import request.
@@ -55,8 +58,10 @@ pub struct ImportFactError {
 )]
 pub async fn import_facts(
     State(state): State<KnowledgeState>,
+    claims: Claims,
     Json(body): Json<BulkImportRequest>,
 ) -> Result<Json<BulkImportResponse>, ApiError> {
+    require_role(&claims, Role::Operator)?;
     if body.facts.len() > MAX_IMPORT_BATCH_SIZE {
         return Err(ApiError::BadRequest {
             message: format!(

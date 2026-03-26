@@ -53,10 +53,10 @@ pub(crate) async fn handle_sse_connected(app: &mut App) {
                 })
                 .collect();
         }
-        // WHY: skip reload when a stream is pending or active: the optimistic
-        // user message and streaming state must not be clobbered by a full
-        // history fetch triggered by SSE reconnection.
-        if app.connection.stream_rx.is_none() && app.connection.active_turn_id.is_none() {
+        // WHY: skip reload when a stream is pending, active, or just completed:
+        // the optimistic user message and streaming state must not be clobbered
+        // by a full history fetch triggered by SSE reconnection.
+        if !app.connection.is_stream_busy() {
             app.load_focused_session().await;
         }
     }
@@ -131,10 +131,10 @@ pub(crate) async fn handle_sse_turn_after(app: &mut App, nous_id: NousId, sessio
     // WHY: stream_rx is set by send_message before active_turn_id is set by
     // StreamTurnStart. Without this guard, a turn:after arriving in that gap
     // triggers load_focused_session which replaces the optimistic user message.
+    // is_stream_busy also catches the Done phase window after TurnComplete.
     if is_focused
         && app.dashboard.focused_session_id.as_ref() == Some(&session_id)
-        && app.connection.active_turn_id.is_none()
-        && app.connection.stream_rx.is_none()
+        && !app.connection.is_stream_busy()
     {
         app.load_focused_session().await;
     }
@@ -211,7 +211,9 @@ pub(crate) async fn handle_sse_distill_after(app: &mut App, nous_id: NousId) {
         agent.compaction_stage = Some("done".to_string());
         agent.distill_completed_at = Some(std::time::Instant::now());
     }
-    if app.dashboard.focused_agent.as_ref() == Some(&nous_id) {
+    // WHY: skip reload when a stream is busy to avoid clobbering streaming state.
+    // The history will be refreshed on the next idle reload opportunity.
+    if app.dashboard.focused_agent.as_ref() == Some(&nous_id) && !app.connection.is_stream_busy() {
         app.load_focused_session().await;
         app.dashboard.messages.push(ChatMessage {
             role: "system".to_string(),

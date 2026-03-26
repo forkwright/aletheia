@@ -25,7 +25,7 @@ fn i64_as_usize(v: i64) -> usize {
 
 impl KnowledgeStore {
     /// Initialize the `consolidation_audit` relation. Called during schema setup.
-    pub fn init_consolidation_audit(&self) -> crate::error::Result<()> {
+    pub(crate) fn init_consolidation_audit(&self) -> crate::error::Result<()> {
         self.run_mut_query(CONSOLIDATION_AUDIT_DDL, BTreeMap::new())?;
         Ok(())
     }
@@ -185,7 +185,7 @@ impl KnowledgeStore {
     ///
     /// If `dry_run` is true, returns the proposed result without mutations.
     #[instrument(skip(self, provider, candidate))]
-    pub fn execute_consolidation(
+    pub(crate) fn execute_consolidation(
         &self,
         provider: &dyn ConsolidationProvider,
         candidate: &ConsolidationCandidate,
@@ -434,7 +434,7 @@ impl KnowledgeStore {
     }
 
     /// Query the last consolidation timestamp from the audit trail.
-    pub fn last_consolidation_time(
+    pub(crate) fn last_consolidation_time(
         &self,
         _nous_id: &str,
     ) -> Result<Option<String>, ConsolidationError> {
@@ -471,7 +471,7 @@ impl KnowledgeStore {
     /// If `dry_run` is true, reports candidates and proposed consolidations
     /// without executing mutations.
     #[instrument(skip(self, provider))]
-    pub fn consolidate_knowledge(
+    pub(crate) fn consolidate_knowledge(
         &self,
         provider: &dyn ConsolidationProvider,
         nous_id: &str,

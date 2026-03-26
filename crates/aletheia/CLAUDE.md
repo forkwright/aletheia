@@ -26,7 +26,7 @@ Binary entrypoint: CLI, server startup, service wiring, and adapter glue. 8.9K l
 
 - **Adapter glue**: binary crate implements bridge traits (DaemonBridge, PlanningService, KnowledgeSearchAdapter) that connect library crates without circular dependencies.
 - **Daemon fork**: re-executes the binary with `_ALETHEIA_DAEMON=1` env var to avoid unsafe `fork()` inside tokio runtime.
-- **Server startup**: sequential init in `commands/server/mod.rs` — config load, tracing, DB, embedding, session store, nous manager, tool registry, daemon runners, HTTP server.
+- **Server startup**: sequential init in `commands/server/mod.rs` - config load, tracing, DB, embedding, session store, nous manager, tool registry, daemon runners, HTTP server.
 - **Feature gates**: `recall` for knowledge pipeline, `mcp` for diaporeia, `tui` for terminal dashboard, `embed-candle` for local ML.
 
 ## Common tasks

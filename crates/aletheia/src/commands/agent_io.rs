@@ -135,7 +135,8 @@ pub(crate) struct TuiArgs {
 
 #[derive(Debug, Clone, Args)]
 pub(crate) struct InitArgs {
-    /// Instance root directory (default in interactive/-y mode: ./instance)
+    /// Instance root directory (default in interactive/-y mode: ./instance).
+    /// Also reads ALETHEIA_ROOT as a fallback env var
     #[arg(
         short = 'r',
         long,
@@ -149,7 +150,8 @@ pub(crate) struct InitArgs {
     /// Run without interactive prompts; --instance-path is required
     #[arg(long)]
     pub non_interactive: bool,
-    /// Anthropic API key
+    /// Anthropic API key. Sets credential source to 'api-key'.
+    /// Omit to use 'auto' resolution (api-key -> env -> claude-code)
     #[arg(long, env = "ANTHROPIC_API_KEY")]
     pub api_key: Option<String>,
     /// Authentication mode: none, token (default: none)

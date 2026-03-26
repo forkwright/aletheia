@@ -24,13 +24,13 @@ pub struct TaskState {
 ///
 /// One `task_state.db` file holds state for all tasks in a runner.
 /// Single-writer: no WAL needed.
-pub struct TaskStateStore {
+pub(crate) struct TaskStateStore {
     conn: rusqlite::Connection,
 }
 
 impl TaskStateStore {
     /// Open (or create) the task state database at `path`.
-    pub fn open(path: &Path) -> Result<Self> {
+    pub(crate) fn open(path: &Path) -> Result<Self> {
         let conn = rusqlite::Connection::open(path).map_err(|e| {
             crate::error::TaskFailedSnafu {
                 task_id: "state-db-open".to_owned(),
@@ -70,7 +70,7 @@ impl TaskStateStore {
     }
 
     /// Load all persisted task states.
-    pub fn load_all(&self) -> Result<Vec<TaskState>> {
+    pub(crate) fn load_all(&self) -> Result<Vec<TaskState>> {
         let mut stmt = self
             .conn
             .prepare(
@@ -116,7 +116,7 @@ impl TaskStateStore {
     }
 
     /// Persist (upsert) the state for a task.
-    pub fn save(&self, state: &TaskState) -> Result<()> {
+    pub(crate) fn save(&self, state: &TaskState) -> Result<()> {
         self.conn
             .execute(
                 "INSERT OR REPLACE INTO task_state

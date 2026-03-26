@@ -194,7 +194,7 @@ fn run_check(
             serde_json::to_string_pretty(&report).whatever_context("failed to serialize report")?
         );
     } else {
-        println!("=== Memory Graph Sanity Check ===\n");
+        println!("=== Memory Graph Validation Check ===\n");
         println!("Facts:         {}", report.fact_count);
         println!("Entities:      {}", report.entity_count);
         println!("Relationships: {}", report.relationship_count);

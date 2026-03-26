@@ -26,6 +26,8 @@ Later layers override earlier ones. All field names use `snake_case` in TOML; `c
 - [pricing](#pricing)
 - [packs](#packs)
 - [sandbox](#sandbox)
+- [Environment variables](#environment-variables)
+- [Minimal config](#minimal-config)
 
 ---
 

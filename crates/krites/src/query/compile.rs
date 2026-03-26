@@ -3,11 +3,6 @@
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -285,6 +280,10 @@ impl<'a> SessionTx<'a> {
                                 let mut left_keys = vec![];
                                 let mut right_keys = vec![];
                                 for &orig_idx in mapper.iter() {
+                                    #[expect(
+                                        clippy::indexing_slicing,
+                                        reason = "index bounds validated"
+                                    )]
                                     let tv = gen_symb(right_vars[orig_idx].span);
                                     if let Some(join_idx) = right_joiner_vars_pos_rev[orig_idx] {
                                         not_bound[join_idx] = false;
@@ -604,7 +603,7 @@ impl<'a> SessionTx<'a> {
             let unbound = ret_vars_set
                 .difference(&cur_ret_set)
                 .next()
-                .expect("difference is non-empty: cur_ret_set != ret_vars_set checked above");
+                .unwrap_or_else(|| unreachable!());
             return Err(UnboundVariableSnafu {
                 message: format!("symbol '{unbound}' in rule head is unbound"),
             }

@@ -70,7 +70,12 @@ pub(crate) fn atomic_write(target_path: &Path, data: &[u8]) -> Result<()> {
     }
 
     // Step 4: fsync the parent directory to make the rename durable.
-    fsync_dir(parent).ok();
+    if let Err(e) = fsync_dir(parent) {
+        // WHY: propagate directory fsync errors instead of silently ignoring
+        // them. A failed dir fsync means the rename may not survive a crash.
+        let _ = std::fs::remove_file(target_path);
+        return Err(e);
+    }
 
     debug!(
         path = %target_path.display(),

@@ -11,13 +11,13 @@ use rusqlite::Connection;
 use rusqlite::OptionalExtension;
 use sha2::{Digest, Sha256};
 use snafu::ResultExt;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::error::{self, Result};
 use crate::schema::DDL;
 
 /// A single versioned migration.
-pub struct Migration {
+pub(crate) struct Migration {
     /// Monotonically increasing version number.
     pub version: u32,
     /// Human-readable summary of what this migration does.
@@ -29,7 +29,7 @@ pub struct Migration {
 }
 
 /// All registered migrations, in version order.
-pub static MIGRATIONS: &[Migration] = &[
+pub(crate) static MIGRATIONS: &[Migration] = &[
     Migration {
         version: 1,
         description: "base schema — sessions, messages, usage, distillations, agent_notes",
@@ -149,6 +149,12 @@ CREATE INDEX IF NOT EXISTS idx_notes_nous ON agent_notes(nous_id);",
         down: "DROP INDEX IF EXISTS idx_messages_distilled;
 DROP INDEX IF EXISTS idx_distillations_session;",
     },
+    Migration {
+        version: 5,
+        description: "index sessions.updated_at for hot-path ordering queries",
+        up: "CREATE INDEX IF NOT EXISTS idx_sessions_updated_at ON sessions(updated_at);",
+        down: "DROP INDEX IF EXISTS idx_sessions_updated_at;",
+    },
 ];
 
 /// Outcome of a migration run.
@@ -188,7 +194,7 @@ pub struct PendingMigration {
 /// Returns [`error::Error::Migration`] if a migration's SQL fails.
 /// Returns [`error::Error::ChecksumMismatch`] if a recorded checksum does not
 /// match the current migration SQL.
-pub fn run_migrations(conn: &Connection) -> Result<MigrationResult> {
+pub(crate) fn run_migrations(conn: &Connection) -> Result<MigrationResult> {
     let was_fresh = !schema_version_table_exists(conn);
 
     bootstrap_version_table(conn)?;
@@ -256,6 +262,8 @@ pub fn run_migrations(conn: &Connection) -> Result<MigrationResult> {
         );
     }
 
+    reconcile_user_version(conn, current_version)?;
+
     Ok(MigrationResult {
         applied,
         current_version,
@@ -268,7 +276,7 @@ pub fn run_migrations(conn: &Connection) -> Result<MigrationResult> {
 /// # Errors
 ///
 /// Returns [`error::Error::Database`] if `SQLite` operations fail.
-pub fn check_migrations(conn: &Connection) -> Result<Vec<PendingMigration>> {
+pub(crate) fn check_migrations(conn: &Connection) -> Result<Vec<PendingMigration>> {
     bootstrap_version_table(conn)?;
     let current = get_schema_version(conn);
 
@@ -293,7 +301,7 @@ pub fn check_migrations(conn: &Connection) -> Result<Vec<PendingMigration>> {
 /// Returns [`error::Error::Database`] if a `SQLite` query fails.
 /// Returns [`error::Error::ChecksumMismatch`] if a stored checksum does not
 /// match the checksum computed from the current migration SQL.
-pub fn verify_migration_checksums(conn: &Connection, current_version: u32) -> Result<()> {
+pub(crate) fn verify_migration_checksums(conn: &Connection, current_version: u32) -> Result<()> {
     for migration in MIGRATIONS {
         if migration.version > current_version {
             break;
@@ -390,13 +398,35 @@ fn has_checksum_column(conn: &Connection) -> bool {
 }
 
 /// Get the current schema version, or 0 if no migrations have been applied.
-pub fn get_schema_version(conn: &Connection) -> u32 {
+pub(crate) fn get_schema_version(conn: &Connection) -> u32 {
     conn.query_row(
         "SELECT version FROM schema_version ORDER BY version DESC LIMIT 1",
         [],
         |row| row.get(0),
     )
     .unwrap_or(0)
+}
+
+/// Ensure `PRAGMA user_version` matches the `schema_version` table.
+///
+/// The `schema_version` table is the source of truth. If PRAGMA `user_version`
+/// has drifted (e.g. manual editing, partial recovery), reconcile by setting
+/// the pragma to match the table.
+fn reconcile_user_version(conn: &Connection, table_version: u32) -> Result<()> {
+    let pragma_version: u32 = conn
+        .pragma_query_value(None, "user_version", |row| row.get(0))
+        .context(error::DatabaseSnafu)?;
+
+    if pragma_version != table_version {
+        warn!(
+            pragma_version,
+            table_version, "PRAGMA user_version diverged from schema_version table, reconciling"
+        );
+        conn.pragma_update(None, "user_version", table_version)
+            .context(error::DatabaseSnafu)?;
+    }
+
+    Ok(())
 }
 
 /// Compute the SHA-256 checksum of the given SQL string, returned as a hex string.
@@ -427,12 +457,12 @@ mod tests {
         );
         assert_eq!(
             result.applied,
-            vec![1, 2, 3, 4],
-            "all four migrations should be applied to a fresh database"
+            vec![1, 2, 3, 4, 5],
+            "all five migrations should be applied to a fresh database"
         );
         assert_eq!(
-            result.current_version, 4,
-            "current version should be 4 after all migrations"
+            result.current_version, 5,
+            "current version should be 5 after all migrations"
         );
     }
 
@@ -451,8 +481,8 @@ mod tests {
             "second run should apply no migrations"
         );
         assert_eq!(
-            result.current_version, 4,
-            "version should still be 4 after idempotent run"
+            result.current_version, 5,
+            "version should still be 5 after idempotent run"
         );
     }
 
@@ -482,8 +512,8 @@ mod tests {
             .expect("check_migrations should return pending list without applying");
         assert_eq!(
             pending.len(),
-            4,
-            "all 4 migrations should be pending on a fresh database"
+            5,
+            "all 5 migrations should be pending on a fresh database"
         );
         assert_eq!(
             pending[0].version, 1,
@@ -548,13 +578,13 @@ mod tests {
         let conn = fresh_conn();
         let result = run_migrations(&conn).expect("migrations should apply to fresh DB");
         assert_eq!(
-            result.current_version, 4,
-            "current_version should be 4 after full migration"
+            result.current_version, 5,
+            "current_version should be 5 after full migration"
         );
         let version = get_schema_version(&conn);
         assert_eq!(
-            version, 4,
-            "get_schema_version should return 4 after full migration"
+            version, 5,
+            "get_schema_version should return 5 after full migration"
         );
     }
 
@@ -607,7 +637,7 @@ mod tests {
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("PRAGMA user_version should be readable");
         assert_eq!(
-            pragma_version, 4,
+            pragma_version, 5,
             "PRAGMA user_version should match latest migration version"
         );
     }
@@ -647,12 +677,12 @@ mod tests {
         assert!(!result.was_fresh, "upgraded database should not be fresh");
         assert_eq!(
             result.applied,
-            vec![2, 3, 4],
-            "only migrations 2, 3, 4 should be applied to v1 database"
+            vec![2, 3, 4, 5],
+            "only migrations 2, 3, 4, 5 should be applied to v1 database"
         );
         assert_eq!(
-            result.current_version, 4,
-            "current version should be 4 after upgrade"
+            result.current_version, 5,
+            "current version should be 5 after upgrade"
         );
 
         assert!(

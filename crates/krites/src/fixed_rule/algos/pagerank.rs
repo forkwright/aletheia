@@ -1,9 +1,4 @@
 //! PageRank fixed rule.
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use std::collections::BTreeMap;
 
 use compact_str::CompactString;
@@ -33,7 +28,15 @@ impl FixedRule for PageRank {
     ) -> Result<()> {
         let edges = payload.get_input(0)?;
         let undirected = payload.bool_option("undirected", Some(false))?;
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "intentional f64 to f32 reduction"
+        )]
         let theta = payload.unit_interval_option("theta", Some(0.85))? as f32;
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "intentional f64 to f32 reduction"
+        )]
         let epsilon = payload.unit_interval_option("epsilon", Some(0.0001))? as f32;
         let iterations = payload.pos_integer_option("iterations", Some(10))?;
 

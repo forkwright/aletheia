@@ -160,7 +160,7 @@ impl Default for ChatStore {
 
 /// Format a Unix timestamp as a relative time string.
 #[must_use]
-pub fn relative_time(timestamp: i64) -> String {
+pub(crate) fn relative_time(timestamp: i64) -> String {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)

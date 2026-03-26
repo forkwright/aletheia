@@ -1,8 +1,4 @@
 //! A* shortest path search.
-#![expect(
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 
@@ -77,7 +73,9 @@ fn astar(
     heuristic: &Expr,
     poison: Poison,
 ) -> Result<(f64, Vec<DataValue>)> {
+    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
     let start_node = &starting[0];
+    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
     let goal_node = &goal[0];
     let heuristic_bytecode = heuristic.compile()?;
     let mut stack = vec![];
@@ -129,6 +127,7 @@ fn astar(
 
         for edge in edges.prefix_iter(&node)? {
             let edge = edge?;
+            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
             let edge_dst = &edge[1];
             let edge_cost = match edge.get(2) {
                 None => 1.,

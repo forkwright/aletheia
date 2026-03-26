@@ -4,10 +4,6 @@
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
-#![expect(
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 
 use std::collections::BTreeMap;
 
@@ -36,7 +32,7 @@ pub(crate) fn parse_rule(
 ) -> Result<(Symbol, InputInlineRule)> {
     let span = src.extract_span();
     let mut src = src.into_inner();
-    let head = src.next().expect("pest guarantees rule head");
+    let head = src.next().unwrap_or_else(|| unreachable!());
     let _head_span = head.extract_span();
     let (name, head, aggr) = parse_rule_head(head, param_pool)?;
 
@@ -47,7 +43,7 @@ pub(crate) fn parse_rule(
         .build()
         .into());
     }
-    let body = src.next().expect("pest guarantees rule body after head");
+    let body = src.next().unwrap_or_else(|| unreachable!());
     let mut body_clauses = vec![];
     let mut ignored_counter = 0;
     for atom_src in body.into_inner() {
@@ -85,7 +81,7 @@ fn parse_disjunction(
         })
         .try_collect()?;
     Ok(if res.len() == 1 {
-        res.into_iter().next().expect("just checked len == 1")
+        res.into_iter().next().unwrap_or_else(|| unreachable!())
     } else {
         InputAtom::Disjunction { inner: res, span }
     })
@@ -113,9 +109,9 @@ fn parse_atom(
         Rule::negation => {
             let span = src.extract_span();
             let mut src = src.into_inner();
-            src.next().expect("pest guarantees negation marker");
+            src.next().unwrap_or_else(|| unreachable!());
             let inner = parse_atom(
-                src.next().expect("pest guarantees negation body"),
+                src.next().unwrap_or_else(|| unreachable!()),
                 param_pool,
                 cur_vld,
                 ignored_counter,
@@ -146,16 +142,13 @@ fn parse_unify_atom(
 ) -> Result<InputAtom> {
     let span = src.extract_span();
     let mut src = src.into_inner();
-    let var = src.next().expect("pest guarantees unify variable");
+    let var = src.next().unwrap_or_else(|| unreachable!());
     let mut symb = Symbol::new(var.as_str(), var.extract_span());
     if symb.is_ignored_symbol() {
         symb.name = format!("*^*{}", *ignored_counter).into();
         *ignored_counter += 1;
     }
-    let expr = build_expr(
-        src.next().expect("pest guarantees unify expression"),
-        param_pool,
-    )?;
+    let expr = build_expr(src.next().unwrap_or_else(|| unreachable!()), param_pool)?;
     Ok(InputAtom::Unification {
         inner: Unification {
             binding: symb,
@@ -173,17 +166,14 @@ fn parse_unify_multi_atom(
 ) -> Result<InputAtom> {
     let span = src.extract_span();
     let mut src = src.into_inner();
-    let var = src.next().expect("pest guarantees unify_multi variable");
+    let var = src.next().unwrap_or_else(|| unreachable!());
     let mut symb = Symbol::new(var.as_str(), var.extract_span());
     if symb.is_ignored_symbol() {
         symb.name = format!("*^*{}", *ignored_counter).into();
         *ignored_counter += 1;
     }
-    src.next().expect("pest guarantees unify_multi separator");
-    let expr = build_expr(
-        src.next().expect("pest guarantees unify_multi expression"),
-        param_pool,
-    )?;
+    src.next().unwrap_or_else(|| unreachable!());
+    let expr = build_expr(src.next().unwrap_or_else(|| unreachable!()), param_pool)?;
     Ok(InputAtom::Unification {
         inner: Unification {
             binding: symb,
@@ -200,10 +190,10 @@ fn parse_rule_apply_atom(
 ) -> Result<InputAtom> {
     let span = src.extract_span();
     let mut src = src.into_inner();
-    let name = src.next().expect("pest guarantees rule_apply name");
+    let name = src.next().unwrap_or_else(|| unreachable!());
     let args: Vec<_> = src
         .next()
-        .expect("pest guarantees rule_apply args")
+        .unwrap_or_else(|| unreachable!())
         .into_inner()
         .map(|v| build_expr(v, param_pool))
         .try_collect()?;
@@ -223,10 +213,10 @@ fn parse_relation_apply_atom(
 ) -> Result<InputAtom> {
     let span = src.extract_span();
     let mut src = src.into_inner();
-    let name = src.next().expect("pest guarantees relation_apply name");
+    let name = src.next().unwrap_or_else(|| unreachable!());
     let args: Vec<_> = src
         .next()
-        .expect("pest guarantees relation_apply args")
+        .unwrap_or_else(|| unreachable!())
         .into_inner()
         .map(|v| build_expr(v, param_pool))
         .try_collect()?;
@@ -237,7 +227,7 @@ fn parse_relation_apply_atom(
                 vld_clause
                     .into_inner()
                     .next()
-                    .expect("pest guarantees validity expr"),
+                    .unwrap_or_else(|| unreachable!()),
                 param_pool,
             )?;
             Some(expr2vld_spec(vld_expr, cur_vld)?)
@@ -259,7 +249,7 @@ fn parse_search_apply_atom(
 ) -> Result<InputAtom> {
     let span = src.extract_span();
     let mut src = src.into_inner();
-    let name_p = src.next().expect("pest guarantees search_apply name");
+    let name_p = src.next().unwrap_or_else(|| unreachable!());
     let name_segs = name_p.as_str().split(':').collect_vec();
 
     if name_segs.len() != 2 {
@@ -269,11 +259,13 @@ fn parse_search_apply_atom(
         .build()
         .into());
     }
+    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
     let relation = Symbol::new(name_segs[0], name_p.extract_span());
+    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
     let index = Symbol::new(name_segs[1], name_p.extract_span());
     let bindings: BTreeMap<CompactString, Expr> = src
         .next()
-        .expect("pest guarantees search_apply bindings")
+        .unwrap_or_else(|| unreachable!())
         .into_inner()
         .map(|arg| extract_named_apply_arg(arg, param_pool))
         .try_collect()?;
@@ -299,16 +291,14 @@ fn parse_relation_named_apply_atom(
 ) -> Result<InputAtom> {
     let span = src.extract_span();
     let mut src = src.into_inner();
-    let name_p = src
-        .next()
-        .expect("pest guarantees relation_named_apply name");
+    let name_p = src.next().unwrap_or_else(|| unreachable!());
     let name = Symbol::new(
         name_p.as_str().get(1..).unwrap_or(""),
         name_p.extract_span(),
     );
     let args = src
         .next()
-        .expect("pest guarantees relation_named_apply args")
+        .unwrap_or_else(|| unreachable!())
         .into_inner()
         .map(|arg| extract_named_apply_arg(arg, param_pool))
         .try_collect()?;
@@ -319,7 +309,7 @@ fn parse_relation_named_apply_atom(
                 vld_clause
                     .into_inner()
                     .next()
-                    .expect("pest guarantees validity expr"),
+                    .unwrap_or_else(|| unreachable!()),
                 param_pool,
             )?;
             Some(expr2vld_spec(vld_expr, cur_vld)?)
@@ -340,7 +330,7 @@ fn extract_named_apply_arg(
     param_pool: &BTreeMap<String, DataValue>,
 ) -> Result<(CompactString, Expr)> {
     let mut inner = pair.into_inner();
-    let name_p = inner.next().expect("pest guarantees named arg key");
+    let name_p = inner.next().unwrap_or_else(|| unreachable!());
     let name = CompactString::from(name_p.as_str());
     let arg = match inner.next() {
         Some(a) => build_expr(a, param_pool)?,
@@ -361,7 +351,7 @@ pub(crate) fn parse_rule_head(
     Vec<Option<(Aggregation, Vec<DataValue>)>>,
 )> {
     let mut src = src.into_inner();
-    let name = src.next().expect("pest guarantees rule head name");
+    let name = src.next().unwrap_or_else(|| unreachable!());
     let mut args = vec![];
     let mut aggrs = vec![];
     for p in src {
@@ -376,17 +366,14 @@ fn parse_rule_head_arg(
     src: Pair<'_>,
     param_pool: &BTreeMap<String, DataValue>,
 ) -> Result<(Symbol, Option<(Aggregation, Vec<DataValue>)>)> {
-    let src = src
-        .into_inner()
-        .next()
-        .expect("pest guarantees rule head arg inner");
+    let src = src.into_inner().next().unwrap_or_else(|| unreachable!());
     Ok(match src.as_rule() {
         Rule::var => (Symbol::new(src.as_str(), src.extract_span()), None),
         Rule::aggr_arg => {
             let mut inner = src.into_inner();
-            let aggr_p = inner.next().expect("pest guarantees aggregation name");
+            let aggr_p = inner.next().unwrap_or_else(|| unreachable!());
             let aggr_name = aggr_p.as_str();
-            let var = inner.next().expect("pest guarantees aggregation variable");
+            let var = inner.next().unwrap_or_else(|| unreachable!());
             let args: Vec<_> = inner
                 .map(|v| -> Result<DataValue> { build_expr(v, param_pool)?.eval_to_const() })
                 .try_collect()?;

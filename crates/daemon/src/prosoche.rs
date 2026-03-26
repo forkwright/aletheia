@@ -66,7 +66,7 @@ pub enum Urgency {
 impl AttentionItem {
     /// Short label for this item's category (used in prompt formatting).
     #[must_use]
-    pub fn category_label(&self) -> &str {
+    pub(crate) fn category_label(&self) -> &str {
         match &self.category {
             AttentionCategory::Calendar => "calendar",
             AttentionCategory::Task => "task",
@@ -78,7 +78,7 @@ impl AttentionItem {
 
 impl ProsocheCheck {
     /// Create a prosoche check for the given nous.
-    pub fn new(nous_id: impl Into<String>) -> Self {
+    pub(crate) fn new(nous_id: impl Into<String>) -> Self {
         Self {
             nous_id: nous_id.into(),
             data_dir: None,
@@ -88,14 +88,14 @@ impl ProsocheCheck {
 
     /// Set the instance data directory for disk space checks.
     #[must_use]
-    pub fn with_data_dir(mut self, path: impl Into<PathBuf>) -> Self {
+    pub(crate) fn with_data_dir(mut self, path: impl Into<PathBuf>) -> Self {
         self.data_dir = Some(path.into());
         self
     }
 
     /// Add database file paths to check sizes.
     #[must_use]
-    pub fn with_db_paths(mut self, paths: Vec<PathBuf>) -> Self {
+    pub(crate) fn with_db_paths(mut self, paths: Vec<PathBuf>) -> Self {
         self.db_paths = paths;
         self
     }

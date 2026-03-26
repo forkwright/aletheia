@@ -3,14 +3,9 @@
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
-#![expect(
-    clippy::as_conversions,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 #![cfg_attr(
     test,
     expect(
-        clippy::indexing_slicing,
         reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
     )
 )]
@@ -201,9 +196,7 @@ fn magic_rewrite_ruleset(
                             .entry(sup_kw.clone())
                             .or_default()
                             .mut_rules()
-                            .expect(
-                                "entry is Rules variant: Default creates MagicRulesOrFixed::Rules",
-                            );
+                            .unwrap_or_else(|| unreachable!());
                         let mut sup_rule_atoms = vec![];
                         mem::swap(&mut sup_rule_atoms, &mut collected_atoms);
 
@@ -229,9 +222,7 @@ fn magic_rewrite_ruleset(
                             .entry(inp_kw.clone())
                             .or_default()
                             .mut_rules()
-                            .expect(
-                                "entry is Rules variant: Default creates MagicRulesOrFixed::Rules",
-                            );
+                            .unwrap_or_else(|| unreachable!());
                         let inp_args = r_app
                             .args
                             .iter()
@@ -260,7 +251,7 @@ fn magic_rewrite_ruleset(
             .entry(rule_head.clone())
             .or_default()
             .mut_rules()
-            .expect("entry is Rules variant: Default creates MagicRulesOrFixed::Rules");
+            .unwrap_or_else(|| unreachable!());
         entry.push(MagicInlineRule {
             head: rule.head,
             aggr: rule.aggr,
@@ -494,10 +485,7 @@ impl NormalFormProgram {
             let original_rules = self
                 .prog
                 .get(head.as_plain_symbol())
-                .expect(
-                    "adorned head always has a corresponding entry in prog: \
-                         pending_adornment is seeded from prog keys",
-                )
+                .unwrap_or_else(|| unreachable!())
                 .rules()
                 .ok_or_else(|| {
                     crate::error::InternalError::from(
@@ -679,7 +667,7 @@ mod tests {
 
         let res = db
             .run_default(query)
-            .expect("magic rewrite query must succeed")
+            .unwrap_or_else(|_| unreachable!())
             .into_json();
         assert_eq!(res["rows"], json!([[0], [1]]));
     }

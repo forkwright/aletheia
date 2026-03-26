@@ -52,7 +52,9 @@ impl KnowledgeStore {
             "query_vec".to_owned(),
             DataValue::Vec(Vector::F32(Array1::from(query_vec))),
         );
-        params.insert("k".to_owned(), DataValue::from(k));
+        // WHY: Over-fetch from HNSW so that post-filtering forgotten facts still
+        // yields k results for the caller. Truncated to k after filtering.
+        params.insert("k".to_owned(), DataValue::from(k.saturating_mul(2)));
         params.insert("ef".to_owned(), DataValue::from(ef));
 
         let rows = self.run_read(queries::SEMANTIC_SEARCH, params)?;
@@ -72,6 +74,13 @@ impl KnowledgeStore {
                 r.source_type != "fact" || !forgotten_ids.contains(r.source_id.as_str())
             });
         }
+
+        #[expect(
+            clippy::cast_sign_loss,
+            clippy::as_conversions,
+            reason = "k is a user-supplied positive limit; truncating to usize is safe"
+        )]
+        results.truncate(k as usize);
 
         let source_ids: Vec<crate::id::FactId> = results
             .iter()
@@ -126,7 +135,7 @@ impl KnowledgeStore {
     /// Runs a single Datalog query combining all three signals in the engine.
     /// When `seed_entities` is empty, the graph signal contributes zero to RRF.
     #[instrument(skip(self, q), fields(limit = q.limit, ef = q.ef))]
-    pub fn search_hybrid(&self, q: &HybridQuery) -> crate::error::Result<Vec<HybridResult>> {
+    pub(crate) fn search_hybrid(&self, q: &HybridQuery) -> crate::error::Result<Vec<HybridResult>> {
         use std::collections::BTreeMap;
 
         use crate::engine::{Array1, DataValue, Vector};
@@ -142,16 +151,22 @@ impl KnowledgeStore {
         // NOTE: usize -> i64 cast; limit/ef are user-controlled small values, truncated at i64::MAX.
         let limit_i64 = i64::try_from(q.limit).unwrap_or(i64::MAX);
         let ef_i64 = i64::try_from(q.ef).unwrap_or(i64::MAX);
-        params.insert("k".to_owned(), DataValue::from(limit_i64));
+        // WHY: Over-fetch so that post-filtering forgotten facts still yields
+        // limit results for the caller. Truncated after filtering.
+        params.insert("k".to_owned(), DataValue::from(limit_i64.saturating_mul(2)));
         params.insert("ef".to_owned(), DataValue::from(ef_i64));
-        params.insert("limit".to_owned(), DataValue::from(limit_i64));
+        params.insert(
+            "limit".to_owned(),
+            DataValue::from(limit_i64.saturating_mul(2)),
+        );
 
         let script = build_hybrid_query(q);
         let rows = self.run_read(&script, params)?;
         let results = rows_to_hybrid_results(rows)?;
 
         // WHY: Filter out forgotten facts; search indices do not carry is_forgotten.
-        let results = self.filter_forgotten_results(results)?;
+        let mut results = self.filter_forgotten_results(results)?;
+        results.truncate(q.limit);
 
         let fact_ids: Vec<crate::id::FactId> = results.iter().map(|r| r.id.clone()).collect();
         if let Err(e) = self.increment_access(&fact_ids) {
@@ -179,7 +194,7 @@ impl KnowledgeStore {
     ///
     /// The `base_query` provides the embedding and search parameters. Each variant
     /// replaces the `text` field for BM25 scoring while reusing the same embedding.
-    pub fn search_enhanced(
+    pub(crate) fn search_enhanced(
         &self,
         base_query: &HybridQuery,
         query_variants: &[String],
@@ -213,7 +228,7 @@ impl KnowledgeStore {
     ///
     /// Escalates through tiers until sufficient results are found.
     /// Requires a `QueryRewriter` and `RewriteProvider` for tier 2+.
-    pub fn search_tiered(
+    pub(crate) fn search_tiered(
         &self,
         base_query: &HybridQuery,
         rewriter: &crate::query_rewrite::QueryRewriter,
@@ -373,7 +388,7 @@ impl KnowledgeStore {
 
     /// Search for facts relevant to a query, as they existed at a specific time.
     /// Filters hybrid search results through the temporal lens.
-    pub fn search_temporal(
+    pub(crate) fn search_temporal(
         &self,
         q: &HybridQuery,
         at_time: &str,

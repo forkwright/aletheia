@@ -32,7 +32,7 @@ use crate::knowledge::EpistemicTier;
     missing_docs,
     reason = "snafu error variant fields (message, location) are self-documenting via display format"
 )]
-pub enum ConflictError {
+pub(crate) enum ConflictError {
     /// The LLM classification call failed.
     #[snafu(display("conflict classification failed: {message}"))]
     Classification {
@@ -128,7 +128,7 @@ pub enum ConflictAction {
 ///
 /// Keeps mneme independent of hermeneus. The nous layer bridges this trait
 /// to the configured LLM provider.
-pub trait ConflictClassifier: Send + Sync {
+pub(crate) trait ConflictClassifier: Send + Sync {
     /// Classify the relationship between an existing fact and a new fact.
     ///
     /// Returns a raw string that will be parsed into a [`ConflictClassification`].

@@ -3,10 +3,6 @@
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
-#![expect(
-    clippy::as_conversions,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 
 use std::collections::BTreeSet;
 
@@ -32,11 +28,7 @@ pub(crate) fn parse_schema(
     let mut dep_bindings = vec![];
     let mut seen_names = BTreeSet::new();
 
-    for p in src
-        .next()
-        .expect("pest guarantees schema keys section")
-        .into_inner()
-    {
+    for p in src.next().unwrap_or_else(|| unreachable!()).into_inner() {
         let _span = p.extract_span();
         let (col, ident) = parse_col(p)?;
         if !seen_names.insert(col.name.clone()) {
@@ -77,7 +69,7 @@ pub(crate) fn parse_schema(
 
 fn parse_col(pair: Pair<'_>) -> Result<(ColumnDef, Symbol)> {
     let mut src = pair.into_inner();
-    let name_p = src.next().expect("pest guarantees column name");
+    let name_p = src.next().unwrap_or_else(|| unreachable!());
     let name = CompactString::from(name_p.as_str());
     let mut typing = NullableColType {
         coltype: ColType::Any,
@@ -109,11 +101,7 @@ fn parse_col(pair: Pair<'_>) -> Result<(ColumnDef, Symbol)> {
 
 pub(crate) fn parse_nullable_type(pair: Pair<'_>) -> Result<NullableColType> {
     let nullable = pair.as_str().ends_with('?');
-    let coltype = parse_type_inner(
-        pair.into_inner()
-            .next()
-            .expect("pest guarantees col type inner"),
-    )?;
+    let coltype = parse_type_inner(pair.into_inner().next().unwrap_or_else(|| unreachable!()))?;
     Ok(NullableColType { coltype, nullable })
 }
 
@@ -130,8 +118,7 @@ fn parse_type_inner(pair: Pair<'_>) -> Result<ColType> {
         Rule::validity_type => ColType::Validity,
         Rule::list_type => {
             let mut inner = pair.into_inner();
-            let eltype =
-                parse_nullable_type(inner.next().expect("pest guarantees list element type"))?;
+            let eltype = parse_nullable_type(inner.next().unwrap_or_else(|| unreachable!()))?;
             let len = match inner.next() {
                 None => None,
                 Some(len_p) => {
@@ -163,16 +150,12 @@ fn parse_type_inner(pair: Pair<'_>) -> Result<ColType> {
         }
         Rule::vec_type => {
             let mut inner = pair.into_inner();
-            let eltype = match inner
-                .next()
-                .expect("pest guarantees vec element type")
-                .as_str()
-            {
+            let eltype = match inner.next().unwrap_or_else(|| unreachable!()).as_str() {
                 "F32" | "Float" => VecElementType::F32,
                 "F64" | "Double" => VecElementType::F64,
                 _ => unreachable!(),
             };
-            let len = inner.next().expect("pest guarantees vec length");
+            let len = inner.next().unwrap_or_else(|| unreachable!());
             let len = len
                 .as_str()
                 .replace('_', "")

@@ -5,10 +5,6 @@
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
-#![expect(
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -84,9 +80,7 @@ impl<'a> crate::runtime::transact::SessionTx<'a> {
                     let program = parse_script(
                         trigger,
                         &Default::default(),
-                        &db.fixed_rules
-                            .read()
-                            .expect("fixed_rules lock is not poisoned"),
+                        &db.fixed_rules.read().unwrap_or_else(|e| e.into_inner()),
                         cur_vld,
                     )?
                     .get_single_program()?;
@@ -371,9 +365,7 @@ impl<'a> crate::runtime::transact::SessionTx<'a> {
         new_kv: &[DataValue],
     ) -> Result<()> {
         for (k, (idx_handle, _)) in rel_handle.fts_indices.iter() {
-            let (tokenizer, extractor) = processors
-                .get(k)
-                .expect("FTS processor always present: built from same fts_indices keys");
+            let (tokenizer, extractor) = processors.get(k).unwrap_or_else(|| unreachable!());
             self.put_fts_index_item(new_kv, extractor, stack, tokenizer, rel_handle, idx_handle)?;
         }
         Ok(())
@@ -387,9 +379,7 @@ impl<'a> crate::runtime::transact::SessionTx<'a> {
         old_kv: &[DataValue],
     ) -> Result<()> {
         for (k, (idx_handle, _)) in rel_handle.fts_indices.iter() {
-            let (tokenizer, extractor) = processors
-                .get(k)
-                .expect("FTS processor always present: built from same fts_indices keys");
+            let (tokenizer, extractor) = processors.get(k).unwrap_or_else(|| unreachable!());
             self.del_fts_index_item(old_kv, extractor, stack, tokenizer, rel_handle, idx_handle)?;
         }
         Ok(())
@@ -404,9 +394,7 @@ impl<'a> crate::runtime::transact::SessionTx<'a> {
         hash_perms_map: &BTreeMap<CompactString, HashPermutations>,
     ) -> Result<()> {
         for (k, (idx_handle, inv_idx_handle, manifest)) in rel_handle.lsh_indices.iter() {
-            let (tokenizer, extractor) = processors
-                .get(k)
-                .expect("LSH processor always present: built from same lsh_indices keys");
+            let (tokenizer, extractor) = processors.get(k).unwrap_or_else(|| unreachable!());
             self.put_lsh_index_item(
                 new_kv,
                 extractor,
@@ -416,9 +404,7 @@ impl<'a> crate::runtime::transact::SessionTx<'a> {
                 idx_handle,
                 inv_idx_handle,
                 manifest,
-                hash_perms_map
-                    .get(k)
-                    .expect("hash_perms always present: built from same lsh_indices keys"),
+                hash_perms_map.get(k).unwrap_or_else(|| unreachable!()),
             )?;
         }
         Ok(())

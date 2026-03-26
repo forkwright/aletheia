@@ -29,8 +29,7 @@ static ACTIVE_SUBSCRIPTIONS: LazyLock<IntGauge> = LazyLock::new(|| {
 });
 
 /// Force-initialize all lazy metric statics.
-pub fn init() {
-    // kanon:ignore RUST/pub-visibility
+pub(crate) fn init() {
     LazyLock::force(&CHANNEL_MESSAGES_TOTAL);
     LazyLock::force(&ACTIVE_SUBSCRIPTIONS);
 }

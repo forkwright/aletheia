@@ -1,10 +1,5 @@
 //! Numeric aggregation operators.
 #![expect(clippy::expect_used, reason = "engine invariant")]
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 
 use super::super::error::*;
 
@@ -58,6 +53,10 @@ impl NormalAggrObj for AggrVariance {
     }
 
     fn get(&self) -> Result<DataValue> {
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "i64 to f64: precision loss acceptable"
+        )]
         let ct = self.count as f64;
         Ok(DataValue::from(
             (self.sum_sq - self.sum * self.sum / ct) / (ct - 1.),
@@ -93,6 +92,10 @@ impl NormalAggrObj for AggrStdDev {
     }
 
     fn get(&self) -> Result<DataValue> {
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "i64 to f64: precision loss acceptable"
+        )]
         let ct = self.count as f64;
         let var = (self.sum_sq - self.sum * self.sum / ct) / (ct - 1.);
         Ok(DataValue::from(var.sqrt()))
@@ -381,6 +384,7 @@ impl NormalAggrObj for AggrLatestBy {
                         message: "'latest_by' requires a list of exactly two items as argument"
                     }
                 );
+                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                 let c = &l[1];
                 if *c > self.cost {
                     self.cost = c.clone();
@@ -425,6 +429,7 @@ impl NormalAggrObj for AggrSmallestBy {
                         message: "'smallest_by' requires a list of exactly two items as argument"
                     }
                 );
+                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                 let c = &l[1];
                 if self.cost == DataValue::Null || *c < self.cost {
                     self.cost = c.clone();
@@ -469,6 +474,7 @@ impl NormalAggrObj for AggrMinCost {
                         message: "'min_cost' requires a list of exactly two items as argument"
                     }
                 );
+                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                 let c = &l[1];
                 let cost = c.get_float().ok_or_else(|| {
                     TypeMismatchSnafu {
@@ -517,9 +523,8 @@ impl MeetAggrObj for MeetAggrMinCost {
                         )
                     }
                 );
-                let cur_cost = l
-                    .get(1)
-                    .expect("length validated as 2 by the ensure! above");
+                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+                let cur_cost = &l[1];
                 let cur_cost = cur_cost.get_float().ok_or_else(|| {
                     TypeMismatchSnafu {
                         op: "min_cost",
@@ -527,9 +532,8 @@ impl MeetAggrObj for MeetAggrMinCost {
                     }
                     .build()
                 })?;
-                let prev_cost = prev
-                    .get(1)
-                    .expect("length validated as 2 by the ensure! above");
+                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+                let prev_cost = &prev[1];
                 let prev_cost = prev_cost.get_float().ok_or_else(|| {
                     TypeMismatchSnafu {
                         op: "min_cost",

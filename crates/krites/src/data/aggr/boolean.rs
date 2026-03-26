@@ -1,8 +1,4 @@
 //! Boolean and collection aggregation operators.
-#![expect(
-    clippy::as_conversions,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use std::collections::{BTreeMap, BTreeSet};
 
 use rand::prelude::*;
@@ -376,6 +372,10 @@ impl Default for AggrChoiceRand {
 impl NormalAggrObj for AggrChoiceRand {
     fn set(&mut self, value: &DataValue) -> Result<()> {
         self.count += 1;
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "i64 to f64: precision loss acceptable"
+        )]
         let prob = 1. / (self.count as f64);
         let rd = rand::rng().random::<f64>();
         if rd < prob {

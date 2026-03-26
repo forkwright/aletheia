@@ -371,9 +371,12 @@ fn routing_decision_display_routed() {
 
 #[test]
 fn model_tier_display() {
-    assert_eq!(format!("{}", ModelTier::Haiku), "haiku");
-    assert_eq!(format!("{}", ModelTier::Sonnet), "sonnet");
-    assert_eq!(format!("{}", ModelTier::Opus), "opus");
+    let haiku = ModelTier::Haiku;
+    let sonnet = ModelTier::Sonnet;
+    let opus = ModelTier::Opus;
+    assert_eq!(format!("{haiku}"), "haiku");
+    assert_eq!(format!("{sonnet}"), "sonnet");
+    assert_eq!(format!("{opus}"), "opus");
 }
 
 // --- Routing outcome for competence feedback ---

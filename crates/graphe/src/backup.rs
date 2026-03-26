@@ -38,6 +38,37 @@ fn validate_backup_path(path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Verify the resolved backup path stays within the expected backup directory.
+///
+/// Canonicalizes the backup directory (which must exist), then resolves the
+/// backup path's parent to check containment. Works for paths that do not
+/// yet exist on disk by canonicalizing the parent directory and re-appending
+/// the filename.
+fn validate_backup_path_traversal(path: &Path, backup_dir: &Path) -> Result<()> {
+    let canonical_dir = std::fs::canonicalize(backup_dir).context(error::IoSnafu {
+        path: backup_dir.to_path_buf(),
+    })?;
+
+    let parent = path.parent().unwrap_or(path);
+    let canonical_parent = std::fs::canonicalize(parent).context(error::IoSnafu {
+        path: parent.to_path_buf(),
+    })?;
+    let canonical_path = match path.file_name() {
+        Some(name) => canonical_parent.join(name),
+        None => canonical_parent.clone(),
+    };
+
+    snafu::ensure!(
+        canonical_path.starts_with(&canonical_dir),
+        error::BackupPathTraversalSnafu {
+            path: canonical_path,
+            allowed_dir: canonical_dir,
+        }
+    );
+
+    Ok(())
+}
+
 /// Manages database backups and exports.
 pub struct BackupManager<'a> {
     conn: &'a Connection,
@@ -95,7 +126,7 @@ impl<'a> BackupManager<'a> {
 
     /// Attach a disk space monitor. Backups are non-essential and will be
     /// skipped when disk space reaches the critical threshold.
-    pub fn set_disk_monitor(&mut self, monitor: DiskSpaceMonitor) {
+    pub(crate) fn set_disk_monitor(&mut self, monitor: DiskSpaceMonitor) {
         self.disk_monitor = Some(monitor);
     }
 
@@ -114,6 +145,7 @@ impl<'a> BackupManager<'a> {
     /// sequences. Any future changes to path construction MUST go through
     /// `validate_backup_path` (a private helper in this module).
     #[instrument(skip(self))]
+    #[must_use]
     pub fn create_backup(&self) -> Result<Option<BackupResult>> {
         let backup_start = std::time::Instant::now();
         if let Some(ref monitor) = self.disk_monitor
@@ -132,6 +164,7 @@ impl<'a> BackupManager<'a> {
         let filename = format!("sessions_{timestamp}.db");
         let backup_path = self.backup_dir.join(&filename);
         validate_backup_path(&backup_path)?;
+        validate_backup_path_traversal(&backup_path, &self.backup_dir)?;
 
         self.conn
             .execute(&format!("VACUUM INTO '{}'", backup_path.display()), [])
@@ -174,6 +207,7 @@ impl<'a> BackupManager<'a> {
     /// Exports are non-essential writes. When disk space is critical, this
     /// method returns `Ok(None)` instead of writing.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn export_sessions_json(&self, output_dir: &Path) -> Result<Option<ExportResult>> {
         if let Some(ref monitor) = self.disk_monitor
             && !monitor.allow_non_essential_write()
@@ -227,6 +261,7 @@ impl<'a> BackupManager<'a> {
 
     /// List available backup files.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn list_backups(&self) -> Result<Vec<BackupInfo>> {
         if !self.backup_dir.exists() {
             return Ok(Vec::new());
@@ -264,6 +299,7 @@ impl<'a> BackupManager<'a> {
 
     /// Prune old backups, keeping the N most recent.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn prune_backups(&self, keep: usize) -> Result<u32> {
         let backups = self.list_backups()?;
         let mut removed = 0u32;

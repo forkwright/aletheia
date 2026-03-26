@@ -19,7 +19,7 @@ impl KnowledgeStore {
     /// confidence is outside `[0.0, 1.0]`.
     /// Returns [`EngineQuery`](crate::error::Error::EngineQuery) if the write fails.
     #[instrument(skip(self, edge), fields(cause = %edge.cause, effect = %edge.effect))]
-    pub fn insert_causal_edge(
+    pub(crate) fn insert_causal_edge(
         &self,
         edge: &crate::knowledge::CausalEdge,
     ) -> crate::error::Result<()> {
@@ -61,7 +61,7 @@ impl KnowledgeStore {
     ///
     /// Returns [`EngineQuery`](crate::error::Error::EngineQuery) if the deletion fails.
     #[instrument(skip(self))]
-    pub fn remove_causal_edge(
+    pub(crate) fn remove_causal_edge(
         &self,
         cause: &crate::id::FactId,
         effect: &crate::id::FactId,
@@ -81,7 +81,7 @@ impl KnowledgeStore {
     ///
     /// Returns [`EngineQuery`](crate::error::Error::EngineQuery) if the query fails.
     #[instrument(skip(self))]
-    pub fn query_effects(
+    pub(crate) fn query_effects(
         &self,
         cause_id: &crate::id::FactId,
     ) -> crate::error::Result<Vec<crate::knowledge::CausalEdge>> {
@@ -105,7 +105,7 @@ impl KnowledgeStore {
     ///
     /// Returns [`EngineQuery`](crate::error::Error::EngineQuery) if the query fails.
     #[instrument(skip(self))]
-    pub fn query_causes(
+    pub(crate) fn query_causes(
         &self,
         effect_id: &crate::id::FactId,
     ) -> crate::error::Result<Vec<crate::knowledge::CausalEdge>> {
@@ -132,7 +132,9 @@ impl KnowledgeStore {
     ///
     /// Returns [`EngineQuery`](crate::error::Error::EngineQuery) if the query fails.
     #[instrument(skip(self))]
-    pub fn list_causal_edges(&self) -> crate::error::Result<Vec<crate::knowledge::CausalEdge>> {
+    pub(crate) fn list_causal_edges(
+        &self,
+    ) -> crate::error::Result<Vec<crate::knowledge::CausalEdge>> {
         use std::collections::BTreeMap;
 
         let script = r"
@@ -155,7 +157,7 @@ impl KnowledgeStore {
     ///
     /// Returns [`EngineQuery`](crate::error::Error::EngineQuery) if any query fails.
     #[instrument(skip(self))]
-    pub fn propagate_confidence(
+    pub(crate) fn propagate_confidence(
         &self,
         start: &crate::id::FactId,
         end: &crate::id::FactId,

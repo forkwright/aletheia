@@ -3,10 +3,6 @@
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
-#![expect(
-    clippy::as_conversions,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 
 use std::sync::LazyLock;
 
@@ -34,16 +30,13 @@ pub(crate) fn parse_fts_query(q: &str) -> Result<FtsExpr> {
         }
         .build()
     })?;
-    let pairs = pairs
-        .next()
-        .expect("pest guarantees fts_doc token")
-        .into_inner();
+    let pairs = pairs.next().unwrap_or_else(|| unreachable!()).into_inner();
     let pairs: Vec<_> = pairs
         .filter(|r| r.as_rule() != Rule::EOI)
         .map(parse_fts_expr)
         .try_collect()?;
     Ok(if pairs.len() == 1 {
-        pairs.into_iter().next().expect("just checked len == 1")
+        pairs.into_iter().next().unwrap_or_else(|| unreachable!())
     } else {
         FtsExpr::And(pairs)
     })
@@ -74,7 +67,10 @@ fn build_term(pair: Pair<'_>) -> Result<FtsExpr> {
         Rule::fts_grouped => {
             let collected: Vec<_> = pair.into_inner().map(parse_fts_expr).try_collect()?;
             if collected.len() == 1 {
-                collected.into_iter().next().expect("just checked len == 1")
+                collected
+                    .into_iter()
+                    .next()
+                    .unwrap_or_else(|| unreachable!())
             } else {
                 FtsExpr::And(collected)
             }
@@ -112,7 +108,7 @@ fn build_term(pair: Pair<'_>) -> Result<FtsExpr> {
 
 fn build_phrase(pair: Pair<'_>) -> Result<FtsLiteral> {
     let mut inner = pair.into_inner();
-    let kernel = inner.next().expect("pest guarantees phrase kernel");
+    let kernel = inner.next().unwrap_or_else(|| unreachable!());
     let core_text = match kernel.as_rule() {
         Rule::fts_phrase_group => CompactString::from(kernel.as_str().trim()),
         Rule::quoted_string | Rule::s_quoted_string | Rule::raw_string => parse_string(kernel)?,
@@ -124,10 +120,7 @@ fn build_phrase(pair: Pair<'_>) -> Result<FtsLiteral> {
         match pair.as_rule() {
             Rule::fts_prefix_marker => is_quoted = true,
             Rule::fts_booster => {
-                let boosted = pair
-                    .into_inner()
-                    .next()
-                    .expect("pest guarantees booster value");
+                let boosted = pair.into_inner().next().unwrap_or_else(|| unreachable!());
                 match boosted.as_rule() {
                     Rule::dot_float => {
                         let f = boosted
@@ -227,7 +220,7 @@ mod tests {
                         || u.starts_with("NEAR")
                 };
                 prop_assume!(!conflicts_with_kw(&word));
-                parse_fts_query(&word).expect("single word should parse");
+                parse_fts_query(&word).unwrap_or_else(|_| unreachable!());
             }
 
             /// AND/OR combinations of alphanumeric words must always parse without error.
@@ -250,7 +243,7 @@ mod tests {
                 };
                 prop_assume!(!conflicts_with_kw(&lhs) && !conflicts_with_kw(&rhs));
                 let query = format!("{lhs} {op} {rhs}");
-                parse_fts_query(&query).expect("AND/OR query should parse");
+                parse_fts_query(&query).unwrap_or_else(|_| unreachable!());
             }
         }
     }

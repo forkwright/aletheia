@@ -8,10 +8,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 const BYTES_PER_MB: u64 = 1024 * 1024;
 
 /// Default warning threshold: 1 GB.
-pub const DEFAULT_WARNING_BYTES: u64 = 1024 * BYTES_PER_MB;
+pub(crate) const DEFAULT_WARNING_BYTES: u64 = 1024 * BYTES_PER_MB;
 
 /// Default critical threshold: 100 MB.
-pub const DEFAULT_CRITICAL_BYTES: u64 = 100 * BYTES_PER_MB;
+pub(crate) const DEFAULT_CRITICAL_BYTES: u64 = 100 * BYTES_PER_MB;
 
 /// Disk space status relative to configured thresholds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,7 +47,7 @@ impl DiskStatus {
 
     /// Returns `true` when space is at the critical level.
     #[must_use]
-    pub fn is_critical(self) -> bool {
+    pub(crate) fn is_critical(self) -> bool {
         matches!(self, Self::Critical { .. })
     }
 }
@@ -89,7 +89,7 @@ pub fn available_space(path: &Path) -> std::io::Result<u64> {
 }
 
 /// Check disk space and classify against thresholds.
-pub fn check_disk_space(
+pub(crate) fn check_disk_space(
     path: &Path,
     warning_bytes: u64,
     critical_bytes: u64,
@@ -127,7 +127,7 @@ impl DiskSpaceMonitor {
     /// The initial cached value is `u64::MAX` (assumes space is available
     /// until the first [`refresh`](Self::refresh) completes).
     #[must_use]
-    pub fn new(warning_bytes: u64, critical_bytes: u64) -> Self {
+    pub(crate) fn new(warning_bytes: u64, critical_bytes: u64) -> Self {
         Self {
             cached_available: Arc::new(AtomicU64::new(u64::MAX)),
             warn_threshold: warning_bytes,
@@ -142,7 +142,7 @@ impl DiskSpaceMonitor {
     /// # Errors
     ///
     /// Returns an I/O error if `statvfs` fails.
-    pub fn refresh(&self, path: &Path) -> std::io::Result<DiskStatus> {
+    pub(crate) fn refresh(&self, path: &Path) -> std::io::Result<DiskStatus> {
         let avail = available_space(path)?;
         self.cached_available.store(avail, Ordering::Relaxed);
         Ok(classify(
@@ -168,13 +168,13 @@ impl DiskSpaceMonitor {
 
     /// Warning threshold in bytes.
     #[must_use]
-    pub fn warning_bytes(&self) -> u64 {
+    pub(crate) fn warning_bytes(&self) -> u64 {
         self.warn_threshold
     }
 
     /// Critical threshold in bytes.
     #[must_use]
-    pub fn critical_bytes(&self) -> u64 {
+    pub(crate) fn critical_bytes(&self) -> u64 {
         self.critical_threshold
     }
 }

@@ -5,10 +5,10 @@ use std::path::PathBuf;
 use clap::Subcommand;
 use snafu::prelude::*;
 
-use crate::error::Result;
-
 use aletheia_taxis::encrypt;
 use aletheia_taxis::oikos::Oikos;
+
+use crate::error::Result;
 
 #[derive(Debug, Clone, Subcommand)]
 pub(crate) enum Action {

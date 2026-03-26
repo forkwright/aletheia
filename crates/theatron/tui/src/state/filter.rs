@@ -15,7 +15,6 @@ pub enum FilterScope {
 
 #[derive(Debug, Default, Clone)]
 pub struct FilterState {
-    // kanon:ignore RUST/pub-visibility
     /// Whether filter mode is active (editing or applied)
     pub(crate) active: bool,
     /// Whether the user is currently typing in the filter bar

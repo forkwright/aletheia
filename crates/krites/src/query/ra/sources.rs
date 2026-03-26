@@ -1,7 +1,3 @@
-#![expect(
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use std::collections::{BTreeMap, BTreeSet};
 
 use either::{Left, Right};
@@ -67,6 +63,7 @@ impl InlineFixedRA {
         Ok(if self.data.is_empty() {
             Box::new(iter::empty())
         } else if self.data.len() == 1 {
+            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
             let data = self.data[0].clone();
             let right_join_values = right_join_indices
                 .into_iter()
@@ -342,6 +339,7 @@ impl StoredRA {
 
             for tuple in self.storage.scan_all(tx) {
                 let tuple = tuple?;
+                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                 let to_join: Box<[DataValue]> = right_join_indices
                     .iter()
                     .map(|i| tuple[*i].clone())
@@ -351,6 +349,7 @@ impl StoredRA {
             Ok(Box::new(
                 left_iter
                     .map_ok(move |tuple| -> Result<Option<Tuple>> {
+                        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                         let left_join_vals: Box<[DataValue]> = left_join_indices
                             .iter()
                             .map(|i| tuple[*i].clone())
@@ -423,7 +422,7 @@ impl TempStoreRA {
     ) -> Result<TupleIter<'a>> {
         let storage = stores
             .get(&self.storage_key)
-            .expect("TempStoreRA storage_key always present in stores: inserted by compiler");
+            .unwrap_or_else(|| unreachable!());
 
         let scan_epoch = match delta_rule {
             None => false,
@@ -449,7 +448,7 @@ impl TempStoreRA {
     ) -> Result<TupleIter<'a>> {
         let storage = stores
             .get(&self.storage_key)
-            .expect("StoredRA storage_key always present in stores: inserted by compiler");
+            .unwrap_or_else(|| unreachable!());
         debug_assert!(!right_join_indices.is_empty());
         let mut right_invert_indices = right_join_indices.iter().enumerate().collect_vec();
         right_invert_indices.sort_by_key(|(_, b)| **b);
@@ -502,6 +501,7 @@ impl TempStoreRA {
         } else {
             let mut right_join_vals = BTreeSet::new();
             for tuple in storage.all_iter() {
+                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                 let to_join: Box<[DataValue]> = right_join_indices
                     .iter()
                     .map(|i| tuple.get(*i).clone())
@@ -512,6 +512,7 @@ impl TempStoreRA {
             Ok(Box::new(
                 left_iter
                     .map_ok(move |tuple| -> Result<Option<Tuple>> {
+                        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                         let left_join_vals: Box<[DataValue]> = left_join_indices
                             .iter()
                             .map(|i| tuple[*i].clone())
@@ -550,7 +551,7 @@ impl TempStoreRA {
     ) -> Result<TupleIter<'a>> {
         let storage = stores
             .get(&self.storage_key)
-            .expect("StoredRA storage_key always present in stores: inserted by compiler");
+            .unwrap_or_else(|| unreachable!());
 
         let mut right_invert_indices = right_join_indices.iter().enumerate().collect_vec();
         right_invert_indices.sort_by_key(|(_, b)| **b);

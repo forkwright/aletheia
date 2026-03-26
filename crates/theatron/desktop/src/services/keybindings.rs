@@ -111,7 +111,7 @@ pub(crate) fn use_global_keyboard(
                     palette_open.set(false);
                 }
             }
-            _ => {}
+            _ => {} // NOTE: unbound key combinations are intentionally ignored
         }
     }
 }

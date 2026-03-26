@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use reqwest::Client;
 use reqwest::header::{HeaderMap, HeaderValue};
 use snafu::ResultExt;
-use tracing::{Instrument as _, info, info_span, warn};
+use tracing::{Instrument as _, info, info_span};
 
 use aletheia_koina::credential::{CredentialProvider, CredentialSource};
 use aletheia_koina::secret::SecretString;
@@ -24,7 +24,7 @@ use super::wire::WireRequest;
 
 use crate::models::{DEFAULT_API_VERSION, DEFAULT_BASE_URL, DEFAULT_MAX_RETRIES, SUPPORTED_MODELS};
 
-use super::pricing::{backoff_delay, estimate_cost};
+use super::pricing::{backoff_delay, estimate_cost_with_cache};
 
 /// Anthropic Messages API provider.
 pub struct AnthropicProvider {
@@ -60,14 +60,28 @@ impl CredentialProvider for StaticCredentialProvider {
     }
 }
 
+/// Per-request timeout for non-streaming completions.
+const NON_STREAMING_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// Returns true when the URL is safe to use without TLS.
+///
+/// Localhost addresses never leave the machine, so cleartext is acceptable
+/// for local dev servers and test mocks.
+fn is_loopback_url(url: &str) -> bool {
+    url.starts_with("http://localhost") || url.starts_with("http://127.0.0.1")
+}
+
 fn build_http_client() -> Result<Client> {
     // WHY: reqwest 0.13 with rustls-no-provider requires an explicit crypto provider.
     // install_default() is idempotent: subsequent calls return Err and are ignored.
     let _ = rustls::crypto::ring::default_provider().install_default();
 
+    // TODO(#2181): separate streaming timeout. The client-level timeout applies
+    // to the full response lifecycle. Streaming requests set no per-request
+    // timeout (relying on the SSE parser's idle detection instead); non-streaming
+    // requests override with NON_STREAMING_TIMEOUT.
     Client::builder()
         .connect_timeout(Duration::from_secs(10))
-        .timeout(Duration::from_secs(120))
         .build()
         .map_err(|e| {
             error::ProviderInitSnafu {
@@ -122,9 +136,15 @@ impl AnthropicProvider {
             pricing: Self::merge_pricing(config),
             health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
         };
-        // WARNING: credentials sent in HTTP headers -- non-HTTPS base URLs expose them in transit
-        if !provider.base_url.starts_with("https://") {
-            warn!(base_url = %provider.base_url, "API base URL is not HTTPS -- credentials may be transmitted in cleartext");
+        // TODO(#2178): add allow_insecure config field
+        if !provider.base_url.starts_with("https://") && !is_loopback_url(&provider.base_url) {
+            return Err(error::ProviderInitSnafu {
+                message: format!(
+                    "API base URL must use HTTPS (got {:?}). Credentials are sent in HTTP headers and would be exposed in cleartext.",
+                    provider.base_url
+                ),
+            }
+            .build());
         }
         Ok(provider)
     }
@@ -150,9 +170,15 @@ impl AnthropicProvider {
             pricing: Self::merge_pricing(config),
             health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
         };
-        // WARNING: credentials sent in HTTP headers -- non-HTTPS base URLs expose them in transit
-        if !provider.base_url.starts_with("https://") {
-            warn!(base_url = %provider.base_url, "API base URL is not HTTPS -- credentials may be transmitted in cleartext");
+        // TODO(#2178): add allow_insecure config field
+        if !provider.base_url.starts_with("https://") && !is_loopback_url(&provider.base_url) {
+            return Err(error::ProviderInitSnafu {
+                message: format!(
+                    "API base URL must use HTTPS (got {:?}). Credentials are sent in HTTP headers and would be exposed in cleartext.",
+                    provider.base_url
+                ),
+            }
+            .build());
         }
         Ok(provider)
     }
@@ -311,23 +337,19 @@ impl AnthropicProvider {
                     tracing::Span::current().record("llm.tokens_out", resp.usage.output_tokens);
                     tracing::Span::current().record("llm.status", "ok");
                     tracing::Span::current().record("llm.retries", attempt);
+                    let cost = estimate_cost_with_cache(&self.pricing, &request.model, &resp.usage);
                     info!(
                         model = %request.model,
                         tokens_in = resp.usage.input_tokens,
                         tokens_out = resp.usage.output_tokens,
-                        cost = %format!("~${:.4}", estimate_cost(&self.pricing, &request.model, resp.usage.input_tokens, resp.usage.output_tokens)),
+                        cost = %format!("~${:.4}", cost),
                         "LLM call complete"
                     );
                     crate::metrics::record_completion(
                         "anthropic",
                         resp.usage.input_tokens,
                         resp.usage.output_tokens,
-                        estimate_cost(
-                            &self.pricing,
-                            &request.model,
-                            resp.usage.input_tokens,
-                            resp.usage.output_tokens,
-                        ),
+                        cost,
                         true,
                     );
                     crate::metrics::record_cache_tokens(
@@ -416,14 +438,14 @@ impl AnthropicProvider {
 
     /// Return `(token_prefix, credential_source)` strings for diagnostic logging.
     ///
-    /// The token prefix is the first 15 characters of the current secret value;
+    /// The token prefix is the first 4 characters of the current secret value;
     /// the credential source is the [`CredentialSource`] display string.
     /// Returns empty strings when no credential is available.
     fn credential_log_info(&self) -> (String, String) {
         match self.credential_provider.get_credential() {
             Some(cred) => {
                 let s = cred.secret.expose_secret();
-                let prefix = s.get(..15).unwrap_or(s).to_owned();
+                let prefix = s.get(..4.min(s.len())).unwrap_or("").to_owned();
                 let source = cred.source.to_string();
                 (prefix, source)
             }
@@ -513,8 +535,15 @@ impl AnthropicProvider {
         }
         headers.insert(
             "anthropic-version",
-            HeaderValue::from_str(&self.api_version)
-                .unwrap_or_else(|_| HeaderValue::from_static(DEFAULT_API_VERSION)),
+            HeaderValue::from_str(&self.api_version).map_err(|_| {
+                error::ProviderInitSnafu {
+                    message: format!(
+                        "api_version {:?} contains invalid HTTP header characters",
+                        self.api_version
+                    ),
+                }
+                .build()
+            })?,
         );
         headers.insert("content-type", HeaderValue::from_static("application/json"));
         Ok(headers)
@@ -567,13 +596,20 @@ impl AnthropicProvider {
 
         let mut last_error = None;
 
+        // WHY: Reuse the same idempotency key across retries so the server
+        // deduplicates if our first request actually succeeded but we timed out.
+        let idempotency_key = uuid::Uuid::new_v4().to_string();
+
         for attempt in 0..=self.max_retries {
             if attempt > 0 {
                 tokio::time::sleep(backoff_delay(attempt, last_error.as_ref())).await;
             }
 
             let (token_prefix, credential_source) = self.credential_log_info();
-            let headers = self.build_headers()?;
+            let mut headers = self.build_headers()?;
+            if let Ok(val) = HeaderValue::from_str(&idempotency_key) {
+                headers.insert("idempotency-key", val);
+            }
 
             // codequality:ignore -- HTTPS enforced by constructor (from_config / with_credential_provider)
             let response = match self
@@ -581,6 +617,7 @@ impl AnthropicProvider {
                 .post(format!("{}/v1/messages", self.base_url))
                 .headers(headers)
                 .body(body.clone())
+                .timeout(NON_STREAMING_TIMEOUT)
                 .send()
                 .await
             {
@@ -622,23 +659,19 @@ impl AnthropicProvider {
                     tracing::Span::current().record("llm.tokens_out", resp.usage.output_tokens);
                     tracing::Span::current().record("llm.status", "ok");
                     tracing::Span::current().record("llm.retries", attempt);
+                    let cost = estimate_cost_with_cache(&self.pricing, &request.model, &resp.usage);
                     info!(
                         model = %request.model,
                         tokens_in = resp.usage.input_tokens,
                         tokens_out = resp.usage.output_tokens,
-                        cost = %format!("~${:.4}", estimate_cost(&self.pricing, &request.model, resp.usage.input_tokens, resp.usage.output_tokens)),
+                        cost = %format!("~${:.4}", cost),
                         "LLM call complete"
                     );
                     crate::metrics::record_completion(
                         "anthropic",
                         resp.usage.input_tokens,
                         resp.usage.output_tokens,
-                        estimate_cost(
-                            &self.pricing,
-                            &request.model,
-                            resp.usage.input_tokens,
-                            resp.usage.output_tokens,
-                        ),
+                        cost,
                         true,
                     );
                     crate::metrics::record_cache_tokens(

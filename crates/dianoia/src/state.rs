@@ -76,6 +76,7 @@ pub enum Transition {
 impl ProjectState {
     /// Attempt a state transition. Returns the new state or an error
     /// if the transition is invalid from the current state.
+    #[must_use]
     pub fn transition(self, t: Transition) -> Result<Self> {
         let from_label = state_label(&self);
         let result = match (&self, &t) {
@@ -146,7 +147,7 @@ impl ProjectState {
 
     /// List valid transitions from this state.
     #[must_use]
-    pub fn valid_transitions(&self) -> Vec<Transition> {
+    pub(crate) fn valid_transitions(&self) -> Vec<Transition> {
         match self {
             Self::Created => vec![
                 Transition::StartQuestioning,
@@ -192,13 +193,13 @@ impl ProjectState {
 
     /// Whether this state represents a terminal condition.
     #[must_use]
-    pub fn is_terminal(&self) -> bool {
+    pub(crate) fn is_terminal(&self) -> bool {
         matches!(self, Self::Complete | Self::Abandoned)
     }
 
     /// Whether work can happen in this state.
     #[must_use]
-    pub fn is_active(&self) -> bool {
+    pub(crate) fn is_active(&self) -> bool {
         !self.is_terminal() && !matches!(self, Self::Paused { .. })
     }
 }

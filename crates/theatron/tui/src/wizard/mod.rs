@@ -145,7 +145,7 @@ fn handle_edit_keys(state: &mut WizardState, code: KeyCode, _modifiers: KeyModif
                 edit.insert(c);
             }
         }
-        _ => {}
+        _ => {} // NOTE: non-character keys are handled by handle_nav_keys
     }
 }
 
@@ -230,7 +230,7 @@ fn handle_nav_keys(state: &mut WizardState, code: KeyCode, modifiers: KeyModifie
             state.should_quit = true;
         }
 
-        _ => {}
+        _ => {} // NOTE: other key codes have no wizard action
     }
 }
 

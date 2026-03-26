@@ -59,8 +59,7 @@ static EMBEDDING_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
 });
 
 /// Force-initialize all lazy metric statics.
-pub fn init() {
-    // kanon:ignore RUST/pub-visibility
+pub(crate) fn init() {
     LazyLock::force(&KNOWLEDGE_FACTS_TOTAL);
     LazyLock::force(&KNOWLEDGE_EXTRACTIONS_TOTAL);
     LazyLock::force(&RECALL_DURATION_SECONDS);
@@ -68,14 +67,12 @@ pub fn init() {
 }
 
 /// Record a fact insertion.
-pub fn record_fact_inserted(nous_id: &str) {
-    // kanon:ignore RUST/pub-visibility
+pub(crate) fn record_fact_inserted(nous_id: &str) {
     KNOWLEDGE_FACTS_TOTAL.with_label_values(&[nous_id]).inc();
 }
 
 /// Record a knowledge extraction operation.
-pub fn record_extraction(nous_id: &str, success: bool) {
-    // kanon:ignore RUST/pub-visibility
+pub(crate) fn record_extraction(nous_id: &str, success: bool) {
     let status = if success { "ok" } else { "error" };
     KNOWLEDGE_EXTRACTIONS_TOTAL
         .with_label_values(&[nous_id, status])
@@ -83,16 +80,14 @@ pub fn record_extraction(nous_id: &str, success: bool) {
 }
 
 /// Record recall duration.
-pub fn record_recall_duration(nous_id: &str, duration_secs: f64) {
-    // kanon:ignore RUST/pub-visibility
+pub(crate) fn record_recall_duration(nous_id: &str, duration_secs: f64) {
     RECALL_DURATION_SECONDS
         .with_label_values(&[nous_id])
         .observe(duration_secs);
 }
 
 /// Record embedding computation duration.
-pub fn record_embedding_duration(provider: &str, duration_secs: f64) {
-    // kanon:ignore RUST/pub-visibility
+pub(crate) fn record_embedding_duration(provider: &str, duration_secs: f64) {
     EMBEDDING_DURATION_SECONDS
         .with_label_values(&[provider])
         .observe(duration_secs);

@@ -14,7 +14,10 @@ use super::{KnowledgeStore, QueryResult, queries};
 impl KnowledgeStore {
     /// Insert or update an entity.
     #[instrument(skip(self, entity), fields(entity_id = %entity.id))]
-    pub fn insert_entity(&self, entity: &crate::knowledge::Entity) -> crate::error::Result<()> {
+    pub(crate) fn insert_entity(
+        &self,
+        entity: &crate::knowledge::Entity,
+    ) -> crate::error::Result<()> {
         use snafu::ensure;
         ensure!(!entity.name.is_empty(), crate::error::EmptyEntityNameSnafu);
         let params = entity_to_params(entity);
@@ -23,7 +26,7 @@ impl KnowledgeStore {
 
     /// Insert a relationship.
     #[instrument(skip(self, rel))]
-    pub fn insert_relationship(
+    pub(crate) fn insert_relationship(
         &self,
         rel: &crate::knowledge::Relationship,
     ) -> crate::error::Result<()> {
@@ -41,7 +44,7 @@ impl KnowledgeStore {
     /// Returns a [`QueryResult`] whose rows correspond to the Datalog output of
     /// `ENTITY_NEIGHBORHOOD`. Columns: `id`, `score`, `hops`.
     #[instrument(skip(self))]
-    pub fn entity_neighborhood(
+    pub(crate) fn entity_neighborhood(
         &self,
         entity_id: &crate::id::EntityId,
     ) -> crate::error::Result<QueryResult> {
@@ -59,7 +62,7 @@ impl KnowledgeStore {
 
     /// Insert a fact-entity mapping.
     #[instrument(skip(self))]
-    pub fn insert_fact_entity(
+    pub(crate) fn insert_fact_entity(
         &self,
         fact_id: &crate::id::FactId,
         entity_id: &crate::id::EntityId,
@@ -142,7 +145,7 @@ impl KnowledgeStore {
     ///
     /// The entity with `canonical_id` survives; `merged_id` is removed.
     #[instrument(skip(self))]
-    pub fn execute_merge(
+    pub(crate) fn execute_merge(
         &self,
         canonical_id: &crate::id::EntityId,
         merged_id: &crate::id::EntityId,
@@ -275,7 +278,7 @@ impl KnowledgeStore {
 
     /// Approve a pending merge: execute it.
     #[instrument(skip(self))]
-    pub fn approve_merge(
+    pub(crate) fn approve_merge(
         &self,
         canonical_id: &crate::id::EntityId,
         merged_id: &crate::id::EntityId,
@@ -289,7 +292,7 @@ impl KnowledgeStore {
         clippy::used_underscore_binding,
         reason = "nous_id reserved for future filtering"
     )]
-    pub fn get_merge_history(
+    pub(crate) fn get_merge_history(
         &self,
         _nous_id: &str,
     ) -> crate::error::Result<Vec<crate::dedup::MergeRecord>> {

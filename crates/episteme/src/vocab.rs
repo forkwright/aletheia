@@ -63,7 +63,7 @@ const CONTROLLED_VOCAB: &[&str] = &[
     reason = "find() after contains() is guaranteed to succeed — both operate on the same CONTROLLED_VOCAB static"
 )]
 #[must_use]
-pub fn normalize_relation(raw: &str) -> RelationType {
+pub(crate) fn normalize_relation(raw: &str) -> RelationType {
     let normalized: String = raw
         .trim()
         .to_uppercase()

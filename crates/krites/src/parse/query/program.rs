@@ -4,10 +4,6 @@
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
-#![expect(
-    clippy::as_conversions,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
@@ -128,9 +124,7 @@ fn add_rule_to_program(
             let key = e.key().to_string();
             match e.get_mut() {
                 InputInlineRulesOrFixed::Rules { rules: rs } => {
-                    let prev = rs
-                        .first()
-                        .expect("rules vec always has at least one element");
+                    let prev = rs.first().unwrap_or_else(|| unreachable!());
                     if prev.aggr != rule.aggr {
                         return Err(InvalidQuerySnafu {
                             message: format!(
@@ -192,7 +186,7 @@ fn add_const_rule_to_program(
     let span = pair.extract_span();
     let mut src = pair.into_inner();
     let (name, head, aggr) =
-        parse_rule_head(src.next().expect("pest guarantees rule head"), param_pool)?;
+        parse_rule_head(src.next().unwrap_or_else(|| unreachable!()), param_pool)?;
 
     if progs.contains_key(&name) {
         return Err(InvalidQuerySnafu {
@@ -215,9 +209,7 @@ fn add_const_rule_to_program(
         }
     }
 
-    let data_part = src
-        .next()
-        .expect("pest guarantees data part after rule head");
+    let data_part = src.next().unwrap_or_else(|| unreachable!());
     build_and_insert_const_rule(name, head, data_part, param_pool, progs, span)
 }
 
@@ -259,10 +251,7 @@ fn build_and_insert_const_rule(
         && name.is_prog_entry()
         && let Ok(mut datalist) = DatalogParser::parse(Rule::param_list, data_part_str)
     {
-        extend_head_from_params(
-            &mut head,
-            datalist.next().expect("pest guarantees param_list token"),
-        );
+        extend_head_from_params(&mut head, datalist.next().unwrap_or_else(|| unreachable!()));
     }
 
     progs.insert(
@@ -288,7 +277,7 @@ fn extend_head_from_params(head: &mut Vec<Symbol>, param_list: Pair<'_>) {
             head.push(Symbol::new(
                 s.as_str()
                     .strip_prefix('$')
-                    .expect("pest guarantees $ prefix on param"),
+                    .unwrap_or_else(|| unreachable!()),
                 Default::default(),
             ));
         }
@@ -299,10 +288,7 @@ fn parse_query_option_float(
     pair: Pair<'_>,
     param_pool: &BTreeMap<String, DataValue>,
 ) -> Result<f64> {
-    let inner = pair
-        .into_inner()
-        .next()
-        .expect("pest guarantees option value");
+    let inner = pair.into_inner().next().unwrap_or_else(|| unreachable!());
     build_expr(inner, param_pool)?
         .eval_to_const()
         .map_err(|_err| {
@@ -347,10 +333,7 @@ fn parse_query_option_usize(
     pair: Pair<'_>,
     param_pool: &BTreeMap<String, DataValue>,
 ) -> Result<usize> {
-    let inner = pair
-        .into_inner()
-        .next()
-        .expect("pest guarantees option value");
+    let inner = pair.into_inner().next().unwrap_or_else(|| unreachable!());
     let n = build_expr(inner, param_pool)?
         .eval_to_const()
         .map_err(|_err| {
@@ -373,10 +356,7 @@ fn parse_query_option_bool(
     pair: Pair<'_>,
     param_pool: &BTreeMap<String, DataValue>,
 ) -> Result<bool> {
-    let inner = pair
-        .into_inner()
-        .next()
-        .expect("pest guarantees option value");
+    let inner = pair.into_inner().next().unwrap_or_else(|| unreachable!());
     build_expr(inner, param_pool)?
         .eval_to_const()
         .map_err(|_err| {
@@ -436,7 +416,7 @@ fn parse_relation_stored_option(
 ) -> Result<StoredRelationSpec> {
     let span = pair.extract_span();
     let mut args = pair.into_inner();
-    let op = match args.next().expect("pest guarantees relation op").as_rule() {
+    let op = match args.next().unwrap_or_else(|| unreachable!()).as_rule() {
         Rule::relation_create => RelationOp::Create,
         Rule::relation_replace => RelationOp::Replace,
         Rule::relation_put => RelationOp::Put,
@@ -448,7 +428,7 @@ fn parse_relation_stored_option(
         Rule::relation_ensure_not => RelationOp::EnsureNot,
         _ => unreachable!(),
     };
-    let name_p = args.next().expect("pest guarantees relation name");
+    let name_p = args.next().unwrap_or_else(|| unreachable!());
     let name = Symbol::new(name_p.as_str(), name_p.extract_span());
     match args.next() {
         None => Ok(Left((name, span, op))),

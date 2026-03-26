@@ -17,7 +17,7 @@ use tracing::warn;
 use crate::error::{self, Result};
 
 /// Prefix marking an encrypted config value.
-pub const ENCRYPTED_PREFIX: &str = "enc:";
+pub(crate) const ENCRYPTED_PREFIX: &str = "enc:";
 
 /// Length of the ChaCha20-Poly1305 key in bytes.
 const KEY_LEN: usize = 32;
@@ -173,12 +173,6 @@ pub fn generate_primary_key(path: &Path) -> Result<()> {
         .build());
     }
 
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).context(error::WriteConfigSnafu {
-            path: parent.to_path_buf(),
-        })?;
-    }
-
     let rng = SystemRandom::new();
     let mut key = [0u8; KEY_LEN];
     // WHY: ring::error::Unspecified has no useful fields to propagate
@@ -190,30 +184,18 @@ pub fn generate_primary_key(path: &Path) -> Result<()> {
     })?;
 
     let hex = to_hex(&key);
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "taxis config operations are CLI-invoked and require synchronous filesystem access"
-    )]
-    std::fs::write(path, hex.as_bytes()).context(error::WriteConfigSnafu {
-        path: path.to_path_buf(),
-    })?;
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).context(
-            error::WriteConfigSnafu {
-                path: path.to_path_buf(),
-            },
-        )?;
-    }
+    aletheia_koina::fs::write_restricted(path, hex.as_bytes()).context(
+        error::WriteConfigSnafu {
+            path: path.to_path_buf(),
+        },
+    )?;
 
     Ok(())
 }
 
 /// Whether a string value is encrypted (starts with `enc:`).
 #[must_use]
-pub fn is_encrypted(value: &str) -> bool {
+pub(crate) fn is_encrypted(value: &str) -> bool {
     value.starts_with(ENCRYPTED_PREFIX)
 }
 
@@ -233,7 +215,7 @@ pub fn is_encrypted(value: &str) -> bool {
     clippy::double_must_use,
     reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
 )]
-pub fn encrypt_value(plaintext: &str, primary_key: &[u8; KEY_LEN]) -> Result<String> {
+pub(crate) fn encrypt_value(plaintext: &str, primary_key: &[u8; KEY_LEN]) -> Result<String> {
     // WHY: ring::error::Unspecified has no useful fields to propagate
     let unbound = UnboundKey::new(&CHACHA20_POLY1305, primary_key)
         .map_err(|_unspecified| build_encrypt_error())?;
@@ -273,7 +255,7 @@ pub fn encrypt_value(plaintext: &str, primary_key: &[u8; KEY_LEN]) -> Result<Str
     clippy::double_must_use,
     reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
 )]
-pub fn decrypt_value(encrypted: &str, primary_key: &[u8; KEY_LEN]) -> Result<String> {
+pub(crate) fn decrypt_value(encrypted: &str, primary_key: &[u8; KEY_LEN]) -> Result<String> {
     let encoded = encrypted
         .strip_prefix(ENCRYPTED_PREFIX)
         .ok_or_else(|| build_decrypt_error("missing enc: prefix"))?;
@@ -359,26 +341,11 @@ pub fn encrypt_config_file(toml_path: &Path, primary_key: &[u8; KEY_LEN]) -> Res
             .build()
         })?;
 
-        let tmp_path = toml_path.with_extension("toml.tmp");
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "taxis config operations are CLI-invoked and require synchronous filesystem access"
-        )]
-        std::fs::write(&tmp_path, &encrypted_toml).context(error::WriteConfigSnafu {
-            path: tmp_path.clone(),
-        })?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o600)).context(
-                error::WriteConfigSnafu {
-                    path: tmp_path.clone(),
-                },
-            )?;
-        }
-        std::fs::rename(&tmp_path, toml_path).context(error::WriteConfigSnafu {
-            path: toml_path.to_path_buf(),
-        })?;
+        aletheia_koina::fs::write_restricted(toml_path, encrypted_toml.as_bytes()).context(
+            error::WriteConfigSnafu {
+                path: toml_path.to_path_buf(),
+            },
+        )?;
     }
 
     Ok(count)
@@ -400,7 +367,7 @@ const SENSITIVE_TOML_KEYS: &[&str] = &[
 ///
 /// If `primary_key` is `None`, logs a warning for each encrypted value found
 /// and leaves it unchanged (plaintext fallback).
-pub fn decrypt_toml_values(value: &mut toml::Value, primary_key: Option<&[u8; KEY_LEN]>) {
+pub(crate) fn decrypt_toml_values(value: &mut toml::Value, primary_key: Option<&[u8; KEY_LEN]>) {
     match value {
         toml::Value::String(s) if is_encrypted(s) => {
             if let Some(key) = primary_key {
@@ -444,7 +411,7 @@ pub fn decrypt_toml_values(value: &mut toml::Value, primary_key: Option<&[u8; KE
     clippy::result_large_err,
     reason = "taxis Error is inherently large due to PathBuf fields"
 )]
-pub fn encrypt_sensitive_values(
+pub(crate) fn encrypt_sensitive_values(
     value: &mut toml::Value,
     primary_key: &[u8; KEY_LEN],
 ) -> Result<usize> {

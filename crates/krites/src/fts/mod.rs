@@ -3,10 +3,6 @@
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
-#![expect(
-    clippy::as_conversions,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -338,40 +334,25 @@ impl TokenizerCache {
         filters: &[TokenizerConfig],
     ) -> Result<Arc<TextAnalyzer>> {
         {
-            let idx_cache = self
-                .named_cache
-                .read()
-                .expect("tokenizer named_cache RwLock poisoned");
+            let idx_cache = self.named_cache.read().unwrap_or_else(|e| e.into_inner());
             if let Some(analyzer) = idx_cache.get(tokenizer_name) {
                 return Ok(analyzer.clone());
             }
         }
         let hash = tokenizer.config_hash(filters);
         {
-            let hashed_cache = self
-                .hashed_cache
-                .read()
-                .expect("tokenizer hashed_cache RwLock poisoned");
+            let hashed_cache = self.hashed_cache.read().unwrap_or_else(|e| e.into_inner());
             if let Some(analyzer) = hashed_cache.get(hash.as_ref()) {
-                let mut idx_cache = self
-                    .named_cache
-                    .write()
-                    .expect("tokenizer named_cache RwLock poisoned");
+                let mut idx_cache = self.named_cache.write().unwrap_or_else(|e| e.into_inner());
                 idx_cache.insert(tokenizer_name.into(), analyzer.clone());
                 return Ok(analyzer.clone());
             }
         }
         {
             let analyzer = Arc::new(tokenizer.build(filters)?);
-            let mut hashed_cache = self
-                .hashed_cache
-                .write()
-                .expect("tokenizer hashed_cache RwLock poisoned");
+            let mut hashed_cache = self.hashed_cache.write().unwrap_or_else(|e| e.into_inner());
             hashed_cache.insert(hash.as_ref().to_vec(), analyzer.clone());
-            let mut idx_cache = self
-                .named_cache
-                .write()
-                .expect("tokenizer named_cache RwLock poisoned");
+            let mut idx_cache = self.named_cache.write().unwrap_or_else(|e| e.into_inner());
             idx_cache.insert(tokenizer_name.into(), analyzer.clone());
             Ok(analyzer)
         }

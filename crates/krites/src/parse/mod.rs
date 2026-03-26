@@ -268,7 +268,7 @@ pub fn parse_script(
             .build()
         })?
         .next()
-        .expect("pest guarantees a script token after successful parse");
+        .unwrap_or_else(|| unreachable!());
     Ok(match parsed.as_rule() {
         Rule::query_script => {
             let q = parse_query(parsed.into_inner(), param_pool, fixed_rules, cur_vld)?;

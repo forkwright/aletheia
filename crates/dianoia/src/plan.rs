@@ -83,12 +83,12 @@ impl Plan {
 
     /// Check if all dependencies are satisfied given completed plan IDs.
     #[must_use]
-    pub fn is_ready(&self, completed: &[Ulid]) -> bool {
+    pub(crate) fn is_ready(&self, completed: &[Ulid]) -> bool {
         self.depends_on.iter().all(|dep| completed.contains(dep))
     }
 
     /// Record an iteration. Returns `Err` if `max_iterations` exceeded.
-    pub fn record_iteration(&mut self) -> Result<()> {
+    pub(crate) fn record_iteration(&mut self) -> Result<()> {
         self.iterations += 1;
         if self.iterations > self.max_iterations {
             self.state = PlanState::Stuck;
@@ -102,7 +102,7 @@ impl Plan {
     }
 
     /// Mark as stuck with a blocker.
-    pub fn mark_stuck(&mut self, blocker: Blocker) {
+    pub(crate) fn mark_stuck(&mut self, blocker: Blocker) {
         self.state = PlanState::Stuck;
         self.blockers.push(blocker);
     }

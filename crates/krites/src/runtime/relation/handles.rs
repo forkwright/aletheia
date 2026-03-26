@@ -1,8 +1,4 @@
 //! Relation type definitions: RelationId, RelationHandle, InputRelationHandle.
-#![expect(
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use std::collections::BTreeMap;
 use std::fmt::{Debug, Display, Formatter};
 
@@ -188,7 +184,7 @@ impl RelationHandle {
         if self.indices.is_empty() {
             return None;
         }
-        if *arg_uses.first().expect("arg_uses is non-empty") == IndexPositionUse::Join {
+        if *arg_uses.first().unwrap_or_else(|| unreachable!()) == IndexPositionUse::Join {
             return None;
         }
         let mut max_prefix_len = 0;
@@ -206,7 +202,7 @@ impl RelationHandle {
         let mut chosen = None;
         for (manifest, mapper) in self.indices.values() {
             if validity_query
-                && *mapper.last().expect("mapper is non-empty") != self.metadata.keys.len() - 1
+                && *mapper.last().unwrap_or_else(|| unreachable!()) != self.metadata.keys.len() - 1
             {
                 continue;
             }
@@ -364,7 +360,7 @@ impl RelationHandle {
             reason = "RelationId from store is always < 2^48; next() cannot overflow"
         )]
         let upper =
-            Tuple::default().encode_as_key(self.id.next().expect("stored RelationId overflow"));
+            Tuple::default().encode_as_key(self.id.next().unwrap_or_else(|_| unreachable!()));
         if self.is_temp {
             tx.temp_store_tx.range_scan_tuple(&lower, &upper)
         } else {
@@ -383,7 +379,7 @@ impl RelationHandle {
             reason = "RelationId from store is always < 2^48; next() cannot overflow"
         )]
         let upper =
-            Tuple::default().encode_as_key(self.id.next().expect("stored RelationId overflow"));
+            Tuple::default().encode_as_key(self.id.next().unwrap_or_else(|_| unreachable!()));
         if self.is_temp {
             tx.temp_store_tx
                 .range_skip_scan_tuple(&lower, &upper, valid_at)
@@ -560,8 +556,8 @@ pub fn decode_tuple_from_kv(key: &[u8], val: &[u8], size_hint: Option<usize>) ->
 pub fn extend_tuple_from_v(key: &mut Tuple, val: &[u8]) {
     if !val.is_empty() {
         // INVARIANT: storage layer writes well-formed msgpack tuples; deserialization only fails on data corruption
-        let vals: Vec<DataValue> = rmp_serde::from_slice(&val[ENCODED_KEY_MIN_LEN..])
-            .expect("INVARIANT: storage layer writes well-formed msgpack tuples");
+        let vals: Vec<DataValue> =
+            rmp_serde::from_slice(&val[ENCODED_KEY_MIN_LEN..]).unwrap_or_else(|_| unreachable!());
         key.extend(vals);
     }
 }

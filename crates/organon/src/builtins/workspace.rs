@@ -54,11 +54,32 @@ fn expand_tilde_str(raw: &str) -> std::borrow::Cow<'_, str> {
     std::borrow::Cow::Borrowed(raw)
 }
 
+/// WHY: Shell metacharacters in path arguments could escape to a shell if any
+/// downstream code ever passes them unsanitized. Null bytes truncate C-strings
+/// causing path confusion. Reject both upfront. Closes #2163.
+const SHELL_METACHARACTERS: &[char] = &[';', '|', '&', '$', '`', '(', ')'];
+
 pub(crate) fn validate_path(raw: &str, ctx: &ToolContext, tool_name: &ToolName) -> Result<PathBuf> {
     if raw.is_empty() {
         return Err(error::InvalidInputSnafu {
             name: tool_name.clone(),
             reason: "path must not be empty".to_owned(),
+        }
+        .build());
+    }
+
+    if raw.contains('\0') {
+        return Err(error::InvalidInputSnafu {
+            name: tool_name.clone(),
+            reason: "path contains null byte".to_owned(),
+        }
+        .build());
+    }
+
+    if raw.contains(SHELL_METACHARACTERS) {
+        return Err(error::InvalidInputSnafu {
+            name: tool_name.clone(),
+            reason: "path contains shell metacharacter".to_owned(),
         }
         .build());
     }
@@ -178,17 +199,65 @@ const PROTECTED_FILES: &[&str] = &[
     "MEMORY.md",
     ".claude/settings.json",
     "standards",
+    ".git/config",
+    "known_hosts",
 ];
+
+/// WHY: Sensitive file extensions that must never be written by the LLM.
+/// Checked case-insensitively so `.PEM` and `.pem` are both blocked.
+/// Closes #2165.
+const PROTECTED_EXTENSIONS: &[&str] = &["key", "pem", "p12", "pfx"];
+
+/// Filename prefixes (case-sensitive) that identify credential files.
+const PROTECTED_PREFIXES: &[&str] = &["id_rsa", "id_ed25519"];
+
+/// Filename patterns matched with `starts_with` (case-insensitive).
+const PROTECTED_DOT_PREFIXES: &[&str] = &[".env"];
+
+/// Substring patterns for credential files (case-insensitive).
+const PROTECTED_SUBSTRINGS: &[&str] = &[".credentials"];
 
 /// Check if a resolved path matches a protected file pattern.
 fn is_protected_file(path: &Path, workspace: &Path) -> Option<&'static str> {
     let relative = path.strip_prefix(workspace).unwrap_or(path);
     let rel_str = relative.to_string_lossy();
+
     for &protected in PROTECTED_FILES {
         if rel_str == protected || rel_str.starts_with(&format!("{protected}/")) {
             return Some(protected);
         }
     }
+
+    let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    let filename_lower = filename.to_ascii_lowercase();
+
+    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+        let ext_lower = ext.to_ascii_lowercase();
+        for &protected_ext in PROTECTED_EXTENSIONS {
+            if ext_lower == protected_ext {
+                return Some(protected_ext);
+            }
+        }
+    }
+
+    for &prefix in PROTECTED_PREFIXES {
+        if filename.starts_with(prefix) {
+            return Some(prefix);
+        }
+    }
+
+    for &dot_prefix in PROTECTED_DOT_PREFIXES {
+        if filename_lower.starts_with(dot_prefix) {
+            return Some(dot_prefix);
+        }
+    }
+
+    for &substring in PROTECTED_SUBSTRINGS {
+        if filename_lower.contains(substring) {
+            return Some(substring);
+        }
+    }
+
     None
 }
 
@@ -208,6 +277,17 @@ impl ToolExecutor for ReadExecutor {
             let path_str = extract_str(&input.arguments, "path", &input.name)?;
             let max_lines = extract_opt_u64(&input.arguments, "maxLines");
             let path = validate_path(path_str, ctx, &input.name)?;
+
+            // WHY: Close TOCTOU window for symlink-based attacks. A validated
+            // path could be swapped to a symlink pointing outside allowed roots
+            // between validate_path and the actual read. Closes #2162.
+            if path.exists() {
+                if let Ok(canonical) = std::fs::canonicalize(&path) {
+                    if canonical != path {
+                        validate_path(&canonical.to_string_lossy(), ctx, &input.name)?;
+                    }
+                }
+            }
 
             match std::fs::metadata(&path) {
                 Ok(meta) if meta.len() > MAX_READ_BYTES => {

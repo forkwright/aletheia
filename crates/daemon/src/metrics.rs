@@ -55,8 +55,7 @@ static CRON_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
 });
 
 /// Force-initialize all lazy metric statics.
-pub fn init() {
-    // kanon:ignore RUST/pub-visibility
+pub(crate) fn init() {
     LazyLock::force(&WATCHDOG_RESTARTS_TOTAL);
     LazyLock::force(&WATCHDOG_HUNG_PROCESSES);
     LazyLock::force(&CRON_EXECUTIONS_TOTAL);

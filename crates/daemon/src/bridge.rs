@@ -22,7 +22,7 @@ pub trait DaemonBridge: Send + Sync {
 }
 
 /// No-op bridge for tests and configurations without nous integration.
-pub struct NoopBridge;
+pub(crate) struct NoopBridge;
 
 impl DaemonBridge for NoopBridge {
     fn send_prompt(

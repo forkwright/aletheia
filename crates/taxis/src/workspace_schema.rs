@@ -12,7 +12,9 @@
 //! use aletheia_taxis::workspace_schema::{WorkspaceSchema, WorkspaceRequirement, RequirementKind};
 //!
 //! let schema = WorkspaceSchema::standard();
-//! schema.validate(Path::new("/srv/aletheia/instance/nous/main")).unwrap();
+//! if let Err(e) = schema.validate(Path::new("/srv/aletheia/instance/nous/main")) {
+//!     eprintln!("{e}");
+//! }
 //! ```
 
 use std::path::{Path, PathBuf};
@@ -66,7 +68,7 @@ pub struct WorkspaceRequirement {
     workspace.display(),
     failures.join("\n  - ")
 ))]
-pub struct WorkspaceSchemaError {
+pub(crate) struct WorkspaceSchemaError {
     /// Path to the workspace root that failed validation.
     pub workspace: PathBuf,
     /// Human-readable description of each missing entry.
@@ -98,7 +100,7 @@ impl WorkspaceSchema {
     /// prompt.  This is the minimum that [`crate::oikos::Oikos`] expects to
     /// find when loading an agent.
     #[must_use]
-    pub fn standard() -> Self {
+    pub(crate) fn standard() -> Self {
         Self::new().require(WorkspaceRequirement {
             path: "SOUL.md",
             kind: RequirementKind::File,
@@ -107,7 +109,7 @@ impl WorkspaceSchema {
 
     /// Add a requirement to the schema (builder-style).
     #[must_use]
-    pub fn require(mut self, req: WorkspaceRequirement) -> Self {
+    pub(crate) fn require(mut self, req: WorkspaceRequirement) -> Self {
         self.requirements.push(req);
         self
     }
@@ -123,7 +125,7 @@ impl WorkspaceSchema {
         clippy::double_must_use,
         reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
     )]
-    pub fn validate(&self, workspace: &Path) -> Result<(), WorkspaceSchemaError> {
+    pub(crate) fn validate(&self, workspace: &Path) -> Result<(), WorkspaceSchemaError> {
         let mut failures: Vec<String> = Vec::new();
 
         for req in &self.requirements {
@@ -165,7 +167,7 @@ impl WorkspaceSchema {
 /// Returns [`WorkspaceSchemaError`] when any agent workspace fails validation.
 /// The `workspace` field in the error is set to the instance root; individual
 /// agent failures appear in `failures`.
-pub fn validate_agent_workspaces(
+pub(crate) fn validate_agent_workspaces(
     config: &AletheiaConfig,
     oikos: &Oikos,
 ) -> Result<(), WorkspaceSchemaError> {

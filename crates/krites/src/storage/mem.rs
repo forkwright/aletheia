@@ -49,10 +49,10 @@ impl<'s> Storage<'s> for MemStorage {
 
     fn transact(&'s self, write: bool) -> Result<Self::Tx> {
         Ok(if write {
-            let wtr = self.store.write().expect("lock not poisoned");
+            let wtr = self.store.write().unwrap_or_else(|e| e.into_inner());
             MemTx::Writer(wtr, Default::default())
         } else {
-            let rdr = self.store.read().expect("lock not poisoned");
+            let rdr = self.store.read().unwrap_or_else(|e| e.into_inner());
             MemTx::Reader(rdr)
         })
     }
@@ -65,7 +65,7 @@ impl<'s> Storage<'s> for MemStorage {
         &'a self,
         data: Box<dyn Iterator<Item = Result<(Vec<u8>, Vec<u8>)>> + 'a>,
     ) -> Result<()> {
-        let mut store = self.store.write().expect("lock not poisoned");
+        let mut store = self.store.write().unwrap_or_else(|e| e.into_inner());
         for pair in data {
             let (k, v) = pair?;
             store.insert(k, v);
@@ -300,38 +300,26 @@ where
             match (&self.change_cache, &self.db_cache) {
                 (None, None) => return Ok(None),
                 (Some(_), None) => {
-                    let (k, cv) = self
-                        .change_cache
-                        .take()
-                        .expect("change_cache present: matched Some(_) arm");
+                    let (k, cv) = self.change_cache.take().unwrap_or_else(|| unreachable!());
                     match cv {
                         None => continue,
                         Some(v) => return Ok(Some((k.clone(), v.clone()))),
                     }
                 }
                 (None, Some(_)) => {
-                    let (k, v) = self
-                        .db_cache
-                        .take()
-                        .expect("db_cache present: matched Some(_) arm");
+                    let (k, v) = self.db_cache.take().unwrap_or_else(|| unreachable!());
                     return Ok(Some((k.clone(), v.clone())));
                 }
                 (Some((ck, _)), Some((dk, _))) => match ck.cmp(dk) {
                     Ordering::Less => {
-                        let (k, sv) = self
-                            .change_cache
-                            .take()
-                            .expect("change_cache present: matched Some(_) arm");
+                        let (k, sv) = self.change_cache.take().unwrap_or_else(|| unreachable!());
                         match sv {
                             None => continue,
                             Some(v) => return Ok(Some((k.clone(), v.clone()))),
                         }
                     }
                     Ordering::Greater => {
-                        let (k, v) = self
-                            .db_cache
-                            .take()
-                            .expect("db_cache present: matched Some(_) arm");
+                        let (k, v) = self.db_cache.take().unwrap_or_else(|| unreachable!());
                         return Ok(Some((k.clone(), v.clone())));
                     }
                     Ordering::Equal => {
@@ -389,38 +377,26 @@ impl CacheIter<'_> {
             match (&self.change_cache, &self.db_cache) {
                 (None, None) => return Ok(None),
                 (Some(_), None) => {
-                    let (k, cv) = self
-                        .change_cache
-                        .take()
-                        .expect("change_cache present: matched Some(_) arm");
+                    let (k, cv) = self.change_cache.take().unwrap_or_else(|| unreachable!());
                     match cv {
                         None => continue,
                         Some(v) => return Ok(Some(decode_tuple_from_kv(k, v, None))),
                     }
                 }
                 (None, Some(_)) => {
-                    let (k, v) = self
-                        .db_cache
-                        .take()
-                        .expect("db_cache present: matched Some(_) arm");
+                    let (k, v) = self.db_cache.take().unwrap_or_else(|| unreachable!());
                     return Ok(Some(decode_tuple_from_kv(k, v, None)));
                 }
                 (Some((ck, _)), Some((dk, _))) => match ck.cmp(dk) {
                     Ordering::Less => {
-                        let (k, sv) = self
-                            .change_cache
-                            .take()
-                            .expect("change_cache present: matched Some(_) arm");
+                        let (k, sv) = self.change_cache.take().unwrap_or_else(|| unreachable!());
                         match sv {
                             None => continue,
                             Some(v) => return Ok(Some(decode_tuple_from_kv(k, v, None))),
                         }
                     }
                     Ordering::Greater => {
-                        let (k, v) = self
-                            .db_cache
-                            .take()
-                            .expect("db_cache present: matched Some(_) arm");
+                        let (k, v) = self.db_cache.take().unwrap_or_else(|| unreachable!());
                         return Ok(Some(decode_tuple_from_kv(k, v, None)));
                     }
                     Ordering::Equal => {

@@ -33,14 +33,11 @@ impl FromRequestParts<Arc<AppState>> for Claims {
         parts: &mut Parts,
         state: &Arc<AppState>,
     ) -> Result<Self, Self::Rejection> {
-        // WHY: Granting Operator role bypasses all access controls and lets
-        // any network caller manage agents, modify config, and access all
-        // sessions. Auth-disabled deployments should receive the least
-        // privilege needed for basic use: Readonly restricts mutations.
         if state.auth_mode == "none" {
+            let role = state.none_role.parse::<Role>().unwrap_or(Role::Readonly);
             return Ok(Self {
                 sub: "anonymous".to_owned(),
-                role: Role::Readonly,
+                role,
                 nous_id: None,
             });
         }
@@ -72,4 +69,22 @@ impl FromRequestParts<Arc<AppState>> for Claims {
             nous_id: claims.nous_id,
         })
     }
+}
+
+/// Reject the request if the caller's role is below `minimum`.
+pub(crate) fn require_role(claims: &Claims, minimum: Role) -> Result<(), ApiError> {
+    if claims.role < minimum {
+        return Err(ApiError::forbidden("insufficient permissions"));
+    }
+    Ok(())
+}
+
+/// Reject the request if the caller has a scoped `nous_id` that does not match `target_nous_id`.
+pub(crate) fn require_nous_access(claims: &Claims, target_nous_id: &str) -> Result<(), ApiError> {
+    if let Some(ref scoped) = claims.nous_id {
+        if scoped != target_nous_id {
+            return Err(ApiError::forbidden("access denied for this agent"));
+        }
+    }
+    Ok(())
 }

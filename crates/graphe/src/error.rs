@@ -126,6 +126,16 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Backup path escapes the expected backup directory via traversal.
+    #[cfg(feature = "sqlite")]
+    #[snafu(display("backup path traversal: {} is outside {}", path.display(), allowed_dir.display()))]
+    BackupPathTraversal {
+        path: std::path::PathBuf,
+        allowed_dir: std::path::PathBuf,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Engine initialization failed.
     #[cfg(feature = "mneme-engine")]
     #[snafu(display("engine initialization failed: {message}"))]

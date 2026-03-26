@@ -31,6 +31,7 @@ impl SessionStore {
 
     /// Get notes for a session.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn get_notes(&self, session_id: &str) -> Result<Vec<AgentNote>> {
         let mut stmt = self
             .conn
@@ -61,6 +62,7 @@ impl SessionStore {
 
     /// Delete a note by ID.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn delete_note(&self, note_id: i64) -> Result<bool> {
         self.require_writable()?;
         let rows = self
@@ -98,6 +100,7 @@ impl SessionStore {
 
     /// Read a blackboard entry by key, filtering expired entries.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn blackboard_read(&self, key: &str) -> Result<Option<BlackboardRow>> {
         let result = self
             .conn
@@ -124,6 +127,7 @@ impl SessionStore {
 
     /// List all non-expired blackboard entries.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn blackboard_list(&self) -> Result<Vec<BlackboardRow>> {
         let mut stmt = self
             .conn
@@ -155,8 +159,26 @@ impl SessionStore {
         Ok(entries)
     }
 
+    /// Remove all expired blackboard entries.
+    ///
+    /// Returns the number of rows deleted. Called by the retention runner to
+    /// reclaim space from entries whose TTL has elapsed.
+    #[instrument(skip(self))]
+    pub(crate) fn cleanup_expired_entries(&self) -> Result<u64> {
+        self.require_writable()?;
+        let deleted = self
+            .conn
+            .execute(
+                "DELETE FROM blackboard WHERE expires_at IS NOT NULL AND expires_at <= datetime('now')",
+                [],
+            )
+            .context(error::DatabaseSnafu)?;
+        Ok(deleted as u64)
+    }
+
     /// Delete a blackboard entry. Only the original author can delete.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn blackboard_delete(&self, key: &str, author: &str) -> Result<bool> {
         self.require_writable()?;
         let rows = self

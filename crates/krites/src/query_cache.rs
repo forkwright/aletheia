@@ -74,10 +74,7 @@ impl QueryCache {
     pub fn check(&self, query: &str) -> bool {
         let normalized = Self::normalize(query);
         // WHY: lock held only for the duration of the LRU lookup -- no await points.
-        let mut guard = self
-            .inner
-            .lock()
-            .expect("query cache lock must not be poisoned");
+        let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         if guard.get(normalized.as_str()).is_some() {
             drop(guard);
             self.hits.fetch_add(1, Ordering::Relaxed);
@@ -93,10 +90,7 @@ impl QueryCache {
     /// Return a snapshot of current cache statistics.
     #[must_use]
     pub fn stats(&self) -> QueryCacheStats {
-        let guard = self
-            .inner
-            .lock()
-            .expect("query cache lock must not be poisoned");
+        let guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         QueryCacheStats {
             hits: self.hits.load(Ordering::Relaxed),
             misses: self.misses.load(Ordering::Relaxed),
@@ -107,17 +101,17 @@ impl QueryCache {
 }
 
 #[cfg(test)]
-#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 
     fn cache(cap: usize) -> QueryCache {
-        QueryCache::new(NonZeroUsize::new(cap).expect("capacity must be non-zero"))
+        QueryCache::new(NonZeroUsize::new(cap).unwrap_or_else(|| unreachable!()))
     }
 
     #[test]
     fn first_call_is_a_miss() {
         let c = cache(8);
+        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let hit = c.check("?[x] := *facts{x}");
         assert!(!hit, "first check for a new query should be a cache miss");
     }
@@ -126,6 +120,7 @@ mod tests {
     fn second_call_is_a_hit() {
         let c = cache(8);
         c.check("?[x] := *facts{x}");
+        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let hit = c.check("?[x] := *facts{x}");
         assert!(hit, "repeated identical query should be a cache hit");
     }
@@ -135,6 +130,7 @@ mod tests {
         let c = cache(8);
         c.check("?[x] := *facts{x}");
         // Extra whitespace and leading/trailing space should normalize to the same key.
+        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let hit = c.check("  ?[x]   :=  *facts{x}  ");
         assert!(
             hit,

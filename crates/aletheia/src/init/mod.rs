@@ -165,6 +165,10 @@ pub(crate) fn run(args: RunArgs) -> Result<(), InitError> {
         model,
     } = args;
 
+    // WHY: ALETHEIA_ROOT is the legacy env var used by deploy scripts; accept it
+    // as a fallback when ALETHEIA_INSTANCE_PATH (the clap env) was not set.
+    let root = root.or_else(|| std::env::var("ALETHEIA_ROOT").ok().map(PathBuf::from));
+
     let is_non_interactive = non_interactive || yes;
 
     let answers = if non_interactive {
@@ -241,6 +245,11 @@ pub(crate) fn run(args: RunArgs) -> Result<(), InitError> {
 
     if is_non_interactive {
         tracing::info!(path = %answers.root.display(), "instance created");
+        println!(
+            "Instance created at {}\nRun 'aletheia -r {}' to start the server.",
+            answers.root.display(),
+            answers.root.display()
+        );
     } else {
         print_success_outro(&answers.root)?;
     }
@@ -257,7 +266,14 @@ fn collect_interactive(mut answers: Answers) -> Result<Answers, InitError> {
         .context(PromptSnafu)?;
     answers.root = PathBuf::from(root);
 
-    answers.api_key = collect_credential()?;
+    // WHY: honour --api-key flag if provided; only prompt when absent
+    if answers.api_key.is_none() {
+        answers.api_key = collect_credential()?;
+    }
+
+    if answers.api_key.is_some() {
+        answers.credential_source = "api-key".to_owned();
+    }
 
     let model: &str = cliclack::select("Default model")
         .item("claude-sonnet-4-6", "claude-sonnet-4-6 (recommended)", "")

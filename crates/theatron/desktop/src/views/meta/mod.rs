@@ -483,4 +483,3 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
     let data = assemble_meta_data(health, metrics, facts, entities, timeline, sessions, agents);
     FetchState::Loaded(data)
 }
-

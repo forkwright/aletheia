@@ -9,7 +9,6 @@ use crate::error::{KnowledgeAdapterError, PlanningAdapterError};
 
 /// Cross-nous message routing for tool executors.
 pub trait CrossNousService: Send + Sync {
-    // kanon:ignore RUST/pub-visibility
     /// Fire-and-forget send to another agent.
     fn send(
         &self,
@@ -32,7 +31,6 @@ pub trait CrossNousService: Send + Sync {
 
 /// Outbound message delivery (Signal, etc.) for tool executors.
 pub trait MessageService: Send + Sync {
-    // kanon:ignore RUST/pub-visibility
     /// Send a text message to a recipient.
     fn send_message(
         &self,
@@ -44,7 +42,6 @@ pub trait MessageService: Send + Sync {
 
 /// Planning project management for tool executors.
 pub trait PlanningService: Send + Sync {
-    // kanon:ignore RUST/pub-visibility
     /// Create a new project. Returns JSON representation of the created project.
     fn create_project(
         &self,
@@ -129,7 +126,6 @@ pub trait PlanningService: Send + Sync {
     reason = "result struct fields are self-documenting by name"
 )]
 pub struct MemoryResult {
-    // kanon:ignore RUST/pub-visibility
     pub id: String,
     pub content: String,
     pub score: f64,
@@ -142,7 +138,6 @@ pub struct MemoryResult {
     reason = "summary struct fields are self-documenting by name"
 )]
 pub struct FactSummary {
-    // kanon:ignore RUST/pub-visibility
     pub id: String,
     pub content: String,
     pub confidence: f64,
@@ -157,7 +152,6 @@ pub struct FactSummary {
 ///
 /// Implemented by an adapter in the binary crate wrapping `KnowledgeStore` + `EmbeddingProvider`.
 pub trait KnowledgeSearchService: Send + Sync {
-    // kanon:ignore RUST/pub-visibility
     /// Semantic search over the knowledge store.
     fn search(
         &self,
@@ -218,7 +212,6 @@ pub trait KnowledgeSearchService: Send + Sync {
     reason = "result struct fields are self-documenting by name"
 )]
 pub struct DatalogResult {
-    // kanon:ignore RUST/pub-visibility
     pub columns: Vec<String>,
     pub rows: Vec<Vec<serde_json::Value>>,
     pub truncated: bool,
@@ -226,7 +219,6 @@ pub struct DatalogResult {
 
 /// Persistent session notes storage.
 pub trait NoteStore: Send + Sync {
-    // kanon:ignore RUST/pub-visibility
     /// Add a note to a session.
     fn add_note(
         &self,
@@ -248,7 +240,6 @@ pub trait NoteStore: Send + Sync {
 
 /// Shared blackboard state with TTL.
 pub trait BlackboardStore: Send + Sync {
-    // kanon:ignore RUST/pub-visibility
     /// Write a key-value entry with an author and TTL.
     fn write(
         &self,
@@ -333,7 +324,6 @@ pub struct SpawnResult {
 
 /// Ephemeral sub-agent spawning for tool executors.
 pub trait SpawnService: Send + Sync {
-    // kanon:ignore RUST/pub-visibility
     /// Spawn an ephemeral actor, run one turn, collect the result, shut down.
     fn spawn_and_run(
         &self,

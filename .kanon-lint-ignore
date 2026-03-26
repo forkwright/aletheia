@@ -217,3 +217,956 @@ RUST/file-too-long:crates/nous/src/recall.rs
 # agent should NOT say. The linter detects the phrase as performative language
 # but cannot distinguish mention from use.
 WRITING/performative-language:instance.example/nous/_default/SOUL.md
+
+# ── RUST/expect: non-krites crates ───────────────────────────────────────────
+#
+# WHY: kanon's RUST/expect rule does not recognize #[expect(clippy::expect_used)]
+# annotations at function or module level. Every .expect() below already has a
+# clippy suppression with a documented reason string. These are grouped by
+# category: metrics registration (LazyLock), clippy-annotated library code,
+# and test files using the *_tests pattern that kanon's test detection misses.
+
+# -- Metric registration: LazyLock<T> statics in each crate's metrics.rs.
+# Registration fails only on name/label collision (compile-time bug, not runtime).
+# All have module-level #![expect(clippy::expect_used, reason = "metric registration")].
+RUST/expect:crates/agora/src/metrics.rs
+RUST/expect:crates/daemon/src/metrics.rs
+RUST/expect:crates/dianoia/src/metrics.rs
+RUST/expect:crates/episteme/src/metrics.rs
+RUST/expect:crates/graphe/src/metrics.rs
+RUST/expect:crates/melete/src/metrics.rs
+RUST/expect:crates/symbolon/src/metrics.rs
+
+# -- Library code with per-call #[expect(clippy::expect_used, reason = "...")]:
+# Each .expect() has a documented invariant (Option::take guard, loop-at-least-once,
+# map key invariant, cron/jiff timestamp range, regex literal, mutex poisoning, etc.)
+RUST/expect:crates/agora/src/listener.rs
+RUST/expect:crates/agora/src/semeion/client.rs
+RUST/expect:crates/agora/src/semeion/mod.rs
+RUST/expect:crates/aletheia/src/commands/server/tracing_setup.rs
+RUST/expect:crates/aletheia/src/migrate_memory.rs
+RUST/expect:crates/aletheia/src/runtime.rs
+RUST/expect:crates/daemon/src/maintenance/drift_detection.rs
+RUST/expect:crates/daemon/src/maintenance/trace_rotation.rs
+RUST/expect:crates/daemon/src/runner.rs
+RUST/expect:crates/daemon/src/schedule.rs
+RUST/expect:crates/graphe/src/retention.rs
+RUST/expect:crates/episteme/src/skills/candidate.rs
+RUST/expect:crates/theatron/desktop/src/views/files/viewer.rs
+RUST/expect:crates/theatron/tui/src/state/view_stack.rs
+
+# -- Regex compilation in LazyLock statics: compile-time-constant literals that
+# cannot fail. All annotated with #[expect(clippy::expect_used)].
+RUST/expect:crates/hermeneus/src/complexity/mod.rs
+RUST/expect:crates/theatron/tui/src/hyperlink.rs
+
+# -- Test code: kanon's skip_in_test detects *_test.rs, tests.rs, and /tests/
+# directories but NOT *_tests.rs (plural), *_tests/ directories, or
+# test_helpers.rs. All are test code where .expect() is standard practice.
+RUST/expect:crates/episteme/src/**/*_tests.rs
+RUST/expect:crates/episteme/src/**/*_tests/*.rs
+RUST/expect:crates/graphe/src/**/*_tests.rs
+RUST/expect:crates/graphe/src/**/*_tests/*.rs
+RUST/expect:crates/nous/src/**/*_tests.rs
+RUST/expect:crates/nous/src/**/*_tests/*.rs
+RUST/expect:crates/organon/src/**/*_tests.rs
+RUST/expect:crates/organon/src/**/*_tests/*.rs
+RUST/expect:crates/organon/src/builtins/planning_tests_mock.rs
+RUST/expect:crates/theatron/tui/src/app/test_helpers.rs
+RUST/expect:crates/mneme/src/lib.rs
+
+# -- Also suppress .unwrap() and indexing in the same test files:
+RUST/unwrap:crates/episteme/src/**/*_tests.rs
+RUST/unwrap:crates/episteme/src/**/*_tests/*.rs
+RUST/unwrap:crates/graphe/src/**/*_tests.rs
+RUST/unwrap:crates/graphe/src/**/*_tests/*.rs
+RUST/unwrap:crates/nous/src/**/*_tests.rs
+RUST/unwrap:crates/nous/src/**/*_tests/*.rs
+RUST/unwrap:crates/organon/src/**/*_tests.rs
+RUST/unwrap:crates/organon/src/**/*_tests/*.rs
+RUST/unwrap:crates/organon/src/builtins/planning_tests_mock.rs
+RUST/indexing-slicing:crates/episteme/src/**/*_tests.rs
+RUST/indexing-slicing:crates/episteme/src/**/*_tests/*.rs
+RUST/indexing-slicing:crates/graphe/src/**/*_tests.rs
+RUST/indexing-slicing:crates/graphe/src/**/*_tests/*.rs
+RUST/indexing-slicing:crates/nous/src/**/*_tests.rs
+RUST/indexing-slicing:crates/nous/src/**/*_tests/*.rs
+RUST/indexing-slicing:crates/organon/src/**/*_tests.rs
+RUST/indexing-slicing:crates/organon/src/**/*_tests/*.rs
+
+# ── SECURITY/credential-logging ──────────────────────────────────────────────
+#
+# WHY: these log lines emit file paths (path = %cred_file.display()), error
+# messages, or status strings. No raw secret material is logged. The linter
+# triggers on variable names containing "cred", "token", or "auth".
+SECURITY/credential-logging:crates/aletheia/src/commands/server/mod.rs
+SECURITY/credential-logging:crates/aletheia/src/runtime.rs
+SECURITY/credential-logging:crates/nous/src/actor/mod.rs
+SECURITY/credential-logging:crates/symbolon/src/credential/file_ops.rs
+SECURITY/credential-logging:crates/symbolon/src/credential/refresh.rs
+SECURITY/credential-logging:crates/theatron/desktop/src/services/connection.rs
+
+# ── SECURITY/insecure-transport ──────────────────────────────────────────────
+#
+# WHY: all flagged URLs are either localhost/loopback connections (signal-cli
+# daemon on the same machine, local health checks) or URL-detection logic in
+# content parsing that must match both http and https schemes.
+SECURITY/insecure-transport:crates/agora/src/semeion/client.rs
+SECURITY/insecure-transport:crates/aletheia/src/commands/add_nous.rs
+SECURITY/insecure-transport:crates/aletheia/src/runtime.rs
+SECURITY/insecure-transport:crates/organon/src/builtins/research.rs
+SECURITY/insecure-transport:crates/theatron/tui/src/update/selection.rs
+
+# ── STORAGE/sql-string-concat ────────────────────────────────────────────────
+#
+# WHY: episteme knowledge_store uses CozoDB Datalog (not SQL). The "string
+# concatenation" is Datalog query composition with :put/:rm directives.
+# graphe recovery/retention use format!() with hardcoded table names (not user
+# input). theatron TUI builds CozoDB queries similarly. agent_io builds a
+# CozoDB query for skill insertion.
+STORAGE/sql-string-concat:crates/aletheia/src/commands/agent_io.rs
+STORAGE/sql-string-concat:crates/episteme/src/extract/lesson.rs
+STORAGE/sql-string-concat:crates/episteme/src/knowledge_store/migration.rs
+STORAGE/sql-string-concat:crates/graphe/src/recovery.rs
+STORAGE/sql-string-concat:crates/graphe/src/retention.rs
+STORAGE/sql-string-concat:crates/theatron/tui/src/update/editor.rs
+STORAGE/sql-string-concat:crates/theatron/tui/src/update/memory/handlers.rs
+
+# ── RUST/blocking-in-async ───────────────────────────────────────────────────
+#
+# WHY: all flagged calls are in *_tests/ test modules. The blocking operations
+# are std::fs::write/create_dir for test fixture setup inside #[tokio::test]
+# functions. These are brief, non-blocking-in-practice setup calls on temp dirs.
+# Each has #[expect(clippy::disallowed_methods)] with a documented reason.
+RUST/blocking-in-async:crates/organon/src/builtins/workspace_tests/filesystem_ops.rs
+RUST/blocking-in-async:crates/organon/src/builtins/workspace_tests/path_ops.rs
+RUST/blocking-in-async:crates/organon/src/builtins/workspace_tests/path_ops_navigation.rs
+
+# ── TESTING/sleep-in-test ────────────────────────────────────────────────────
+#
+# WHY: integration tests that require real time passage for timeout/backoff
+# verification. tokio::time::pause is not available (test-util feature not
+# enabled) or jiff wall-clock timestamps are used instead of tokio time.
+TESTING/sleep-in-test:crates/agora/src/listener.rs
+TESTING/sleep-in-test:crates/daemon/src/watchdog.rs
+TESTING/sleep-in-test:crates/dianoia/src/project.rs
+TESTING/sleep-in-test:crates/graphe/src/store/mod.rs
+TESTING/sleep-in-test:crates/symbolon/src/circuit_breaker.rs
+
+# ── RUST/struct-too-many-fields ──────────────────────────────────────────────
+#
+# WHY: these structs map 1:1 to external interfaces or state aggregations.
+# AletheiaConfig maps to aletheia.toml sections. ExportedSession maps to the
+# portable agent JSON format. TUI state structs aggregate view/connection/layout
+# state that Elm architecture requires in a single struct. Splitting would add
+# indirection without reducing conceptual complexity.
+RUST/struct-too-many-fields:crates/taxis/src/config/mod.rs
+RUST/struct-too-many-fields:crates/graphe/src/portability.rs
+RUST/struct-too-many-fields:crates/theatron/desktop/src/state/metrics.rs
+RUST/struct-too-many-fields:crates/theatron/tui/src/app/mod.rs
+RUST/struct-too-many-fields:crates/theatron/tui/src/state/memory/mod.rs
+# ── RUST/pub-visibility: cross-crate public API ─────────────────────────────
+#
+# WHY: all items flagged below are pub because they are consumed by other
+# workspace crates. The previous lint pass already tightened everything that
+# could be pub(crate). These are the genuinely public API surface.
+
+# agora: channel registry, provider types, semeion client consumed by aletheia binary
+RUST/pub-visibility:crates/agora/src/listener.rs
+RUST/pub-visibility:crates/agora/src/registry.rs
+RUST/pub-visibility:crates/agora/src/router.rs
+RUST/pub-visibility:crates/agora/src/semeion/client.rs
+RUST/pub-visibility:crates/agora/src/semeion/error.rs
+RUST/pub-visibility:crates/agora/src/types.rs
+
+# daemon: maintenance tasks and bridge consumed by aletheia binary
+RUST/pub-visibility:crates/daemon/src/bridge.rs
+RUST/pub-visibility:crates/daemon/src/error.rs
+RUST/pub-visibility:crates/daemon/src/maintenance/db_monitor.rs
+RUST/pub-visibility:crates/daemon/src/maintenance/drift_detection.rs
+RUST/pub-visibility:crates/daemon/src/maintenance/knowledge.rs
+RUST/pub-visibility:crates/daemon/src/maintenance/retention.rs
+RUST/pub-visibility:crates/daemon/src/maintenance/trace_rotation.rs
+RUST/pub-visibility:crates/daemon/src/runner.rs
+
+# dianoia: planning types consumed by nous, organon, aletheia
+RUST/pub-visibility:crates/dianoia/src/phase.rs
+RUST/pub-visibility:crates/dianoia/src/plan.rs
+RUST/pub-visibility:crates/dianoia/src/project.rs
+RUST/pub-visibility:crates/dianoia/src/state.rs
+RUST/pub-visibility:crates/dianoia/src/verify.rs
+RUST/pub-visibility:crates/dianoia/src/workspace.rs
+
+# diaporeia: rate limiter consumed by pylon
+RUST/pub-visibility:crates/diaporeia/src/rate_limit.rs
+
+# eidos: domain ID types and knowledge types consumed by all crates
+RUST/pub-visibility:crates/eidos/src/id.rs
+RUST/pub-visibility:crates/eidos/src/knowledge.rs
+
+# episteme: knowledge pipeline consumed by mneme, nous, pylon
+RUST/pub-visibility:crates/episteme/src/consolidation/engine.rs
+RUST/pub-visibility:crates/episteme/src/embedding.rs
+RUST/pub-visibility:crates/episteme/src/extract/engine.rs
+RUST/pub-visibility:crates/episteme/src/extract/error.rs
+RUST/pub-visibility:crates/episteme/src/extract/provider.rs
+RUST/pub-visibility:crates/episteme/src/instinct.rs
+RUST/pub-visibility:crates/episteme/src/knowledge_store/entity.rs
+RUST/pub-visibility:crates/episteme/src/knowledge_store/facts.rs
+RUST/pub-visibility:crates/episteme/src/knowledge_store/search.rs
+RUST/pub-visibility:crates/episteme/src/knowledge_store/skills.rs
+RUST/pub-visibility:crates/episteme/src/query/builders.rs
+RUST/pub-visibility:crates/episteme/src/query/schema.rs
+RUST/pub-visibility:crates/episteme/src/recall.rs
+RUST/pub-visibility:crates/episteme/src/skill.rs
+RUST/pub-visibility:crates/episteme/src/skills/candidate.rs
+RUST/pub-visibility:crates/episteme/src/skills/extract.rs
+RUST/pub-visibility:crates/episteme/src/skills/heuristics.rs
+RUST/pub-visibility:crates/episteme/src/skills/signature.rs
+
+# eval: eval client and types consumed by integration-tests, aletheia binary
+RUST/pub-visibility:crates/eval/src/client.rs
+RUST/pub-visibility:crates/eval/src/persistence.rs
+RUST/pub-visibility:crates/eval/src/report.rs
+RUST/pub-visibility:crates/eval/src/runner.rs
+RUST/pub-visibility:crates/eval/src/scenario.rs
+RUST/pub-visibility:crates/eval/src/triggers.rs
+
+# graphe: session store types consumed by mneme, nous, pylon
+RUST/pub-visibility:crates/graphe/src/backup.rs
+RUST/pub-visibility:crates/graphe/src/error.rs
+RUST/pub-visibility:crates/graphe/src/export.rs
+RUST/pub-visibility:crates/graphe/src/import.rs
+RUST/pub-visibility:crates/graphe/src/portability.rs
+RUST/pub-visibility:crates/graphe/src/store/message.rs
+RUST/pub-visibility:crates/graphe/src/store/peripherals.rs
+RUST/pub-visibility:crates/graphe/src/store/session.rs
+RUST/pub-visibility:crates/graphe/src/types.rs
+
+# koina: shared utilities consumed by every crate
+RUST/pub-visibility:crates/koina/src/cleanup.rs
+RUST/pub-visibility:crates/koina/src/credential.rs
+RUST/pub-visibility:crates/koina/src/defaults.rs
+RUST/pub-visibility:crates/koina/src/disk_space.rs
+RUST/pub-visibility:crates/koina/src/event.rs
+RUST/pub-visibility:crates/koina/src/fs.rs
+RUST/pub-visibility:crates/koina/src/http.rs
+RUST/pub-visibility:crates/koina/src/id.rs
+RUST/pub-visibility:crates/koina/src/output_buffer.rs
+RUST/pub-visibility:crates/koina/src/redacting_layer.rs
+RUST/pub-visibility:crates/koina/src/secret.rs
+RUST/pub-visibility:crates/koina/src/system.rs
+
+# melete: distillation consumed by nous
+RUST/pub-visibility:crates/melete/src/distill.rs
+RUST/pub-visibility:crates/melete/src/error.rs
+
+# nous: recall search consumed by pylon
+RUST/pub-visibility:crates/nous/src/recall/search.rs
+
+# organon: tool types consumed by nous, pylon
+RUST/pub-visibility:crates/organon/src/error.rs
+RUST/pub-visibility:crates/organon/src/process_guard.rs
+RUST/pub-visibility:crates/organon/src/sandbox/policy.rs
+RUST/pub-visibility:crates/organon/src/types/context.rs
+RUST/pub-visibility:crates/organon/src/types/services.rs
+
+# pylon: rate limiter middleware
+RUST/pub-visibility:crates/pylon/src/middleware/rate_limiter.rs
+
+# symbolon: credential providers consumed by aletheia binary
+RUST/pub-visibility:crates/symbolon/src/credential/file_ops.rs
+RUST/pub-visibility:crates/symbolon/src/credential/providers.rs
+RUST/pub-visibility:crates/symbolon/src/credential/refresh.rs
+RUST/pub-visibility:crates/symbolon/src/jwt.rs
+
+# taxis: config, validation, workspace consumed by every crate
+RUST/pub-visibility:crates/taxis/src/cascade.rs
+RUST/pub-visibility:crates/taxis/src/config/maintenance.rs
+RUST/pub-visibility:crates/taxis/src/config/resolved.rs
+RUST/pub-visibility:crates/taxis/src/encrypt.rs
+RUST/pub-visibility:crates/taxis/src/error.rs
+RUST/pub-visibility:crates/taxis/src/loader.rs
+RUST/pub-visibility:crates/taxis/src/oikos.rs
+RUST/pub-visibility:crates/taxis/src/redact.rs
+RUST/pub-visibility:crates/taxis/src/reload.rs
+RUST/pub-visibility:crates/taxis/src/validate.rs
+RUST/pub-visibility:crates/taxis/src/workspace_schema.rs
+
+# theatron: API client and TUI types
+RUST/pub-visibility:crates/theatron/core/src/api/client.rs
+RUST/pub-visibility:crates/theatron/core/src/api/sse.rs
+RUST/pub-visibility:crates/theatron/core/src/api/streaming.rs
+RUST/pub-visibility:crates/theatron/tui/src/error.rs
+RUST/pub-visibility:crates/theatron/tui/src/state/command.rs
+
+# thesauros: theme loader consumed by aletheia binary
+RUST/pub-visibility:crates/thesauros/src/error.rs
+RUST/pub-visibility:crates/thesauros/src/loader.rs
+
+# ── RUST/feature-gate-check: crate-level feature gates ──────────────────────
+#
+# WHY: the kanon linter flags cfg(feature = "...") items expecting per-item
+# documentation of feature requirements. These features are declared at the
+# crate level in Cargo.toml and documented in each crate's CLAUDE.md. The
+# gating is correct; the lint is a false positive for crate-level features.
+
+# aletheia binary: feature gates for optional commands
+RUST/feature-gate-check:crates/aletheia/src/**
+
+# episteme: mneme-engine, embed-candle, hnsw_rs, test-support, graph-algo
+RUST/feature-gate-check:crates/episteme/src/**
+
+# graphe: sqlite, mneme-engine, hnsw_rs feature gates
+RUST/feature-gate-check:crates/graphe/src/**
+
+# hermeneus: provider feature gates
+RUST/feature-gate-check:crates/hermeneus/src/**
+
+# integration-tests: test feature combinations
+RUST/feature-gate-check:crates/integration-tests/**
+
+# mneme: facade re-exports gated on backend features
+RUST/feature-gate-check:crates/mneme/src/**
+
+# nous: mneme-engine, knowledge store features
+RUST/feature-gate-check:crates/nous/src/**
+
+# organon: computer-use, mneme-engine feature gates
+RUST/feature-gate-check:crates/organon/src/**
+
+# pylon: mneme-engine, knowledge handler feature gates
+RUST/feature-gate-check:crates/pylon/src/**
+
+# symbolon: credential provider feature gates
+RUST/feature-gate-check:crates/symbolon/src/**
+
+# ── RUST/indexing-slicing: bounds-checked or loop-invariant indexing ──────────
+#
+# WHY: all indexing below is either guarded by explicit bounds checks, loop
+# invariants (i < len), or operating on data whose size was validated at
+# construction. Each file has either #[expect(clippy::indexing_slicing)]
+# annotations or inline bounds checks. The kanon linter flags `[` indexing
+# syntax but cannot analyze control flow guards.
+
+# agora: signal envelope parsing, index after length check
+RUST/indexing-slicing:crates/agora/src/semeion/client.rs
+
+# aletheia: CLI commands with validated indices
+RUST/indexing-slicing:crates/aletheia/src/commands/memory/mod.rs
+RUST/indexing-slicing:crates/aletheia/src/init/scaffold.rs
+
+# daemon: task runner with validated task lists
+RUST/indexing-slicing:crates/daemon/src/runner.rs
+
+# episteme: knowledge store Datalog query results, dedup, graph intelligence
+RUST/indexing-slicing:crates/episteme/src/consolidation/engine.rs
+RUST/indexing-slicing:crates/episteme/src/dedup.rs
+RUST/indexing-slicing:crates/episteme/src/graph_intelligence.rs
+RUST/indexing-slicing:crates/episteme/src/knowledge_portability.rs
+RUST/indexing-slicing:crates/episteme/src/knowledge_store/causal.rs
+RUST/indexing-slicing:crates/episteme/src/knowledge_store/entity.rs
+RUST/indexing-slicing:crates/episteme/src/knowledge_store/marshal.rs
+RUST/indexing-slicing:crates/episteme/src/knowledge_store/migration.rs
+RUST/indexing-slicing:crates/episteme/src/skills/extract.rs
+RUST/indexing-slicing:crates/episteme/src/skills/heuristics.rs
+RUST/indexing-slicing:crates/episteme/src/vocab.rs
+
+# eval: conversation scenario indexing into validated response data
+RUST/indexing-slicing:crates/eval/src/scenarios/conversation.rs
+
+# graphe: SQLite row access after schema-validated queries
+RUST/indexing-slicing:crates/graphe/src/backup.rs
+RUST/indexing-slicing:crates/graphe/src/export.rs
+RUST/indexing-slicing:crates/graphe/src/import.rs
+RUST/indexing-slicing:crates/graphe/src/retention.rs
+RUST/indexing-slicing:crates/graphe/src/store/message.rs
+RUST/indexing-slicing:crates/graphe/src/store/peripherals.rs
+RUST/indexing-slicing:crates/graphe/src/store/session.rs
+
+# nous: recall reranking with bounds-checked sliding windows
+RUST/indexing-slicing:crates/nous/src/recall/reranking.rs
+
+# organon: research tool URL parsing
+RUST/indexing-slicing:crates/organon/src/builtins/research.rs
+
+# symbolon: credential store with validated indices
+RUST/indexing-slicing:crates/symbolon/src/store.rs
+
+# taxis: encryption with fixed-size buffers
+RUST/indexing-slicing:crates/taxis/src/encrypt.rs
+
+# theatron desktop: graph layout, diff, scrubber, meta views with bounded indices
+RUST/indexing-slicing:crates/theatron/desktop/src/components/graph.rs
+RUST/indexing-slicing:crates/theatron/desktop/src/components/timeline_scrubber.rs
+RUST/indexing-slicing:crates/theatron/desktop/src/state/diff.rs
+RUST/indexing-slicing:crates/theatron/desktop/src/state/graph/mod.rs
+RUST/indexing-slicing:crates/theatron/desktop/src/state/tool_metrics.rs
+RUST/indexing-slicing:crates/theatron/desktop/src/views/meta/assembly.rs
+RUST/indexing-slicing:crates/theatron/desktop/src/views/meta/mod.rs
+RUST/indexing-slicing:crates/theatron/desktop/src/views/meta/performance.rs
+
+# theatron TUI: rendering with bounded cursor/scroll positions
+RUST/indexing-slicing:crates/theatron/tui/src/diff/types.rs
+RUST/indexing-slicing:crates/theatron/tui/src/markdown/helpers.rs
+RUST/indexing-slicing:crates/theatron/tui/src/sanitize.rs
+RUST/indexing-slicing:crates/theatron/tui/src/state/metrics.rs
+RUST/indexing-slicing:crates/theatron/tui/src/state/settings.rs
+RUST/indexing-slicing:crates/theatron/tui/src/state/virtual_scroll.rs
+RUST/indexing-slicing:crates/theatron/tui/src/update/memory/graph_analysis.rs
+RUST/indexing-slicing:crates/theatron/tui/src/update/navigation.rs
+RUST/indexing-slicing:crates/theatron/tui/src/update/selection.rs
+RUST/indexing-slicing:crates/theatron/tui/src/view/chat/mod.rs
+RUST/indexing-slicing:crates/theatron/tui/src/view/editor.rs
+RUST/indexing-slicing:crates/theatron/tui/src/view/image.rs
+RUST/indexing-slicing:crates/theatron/tui/src/view/memory/mod.rs
+RUST/indexing-slicing:crates/theatron/tui/src/view/metrics.rs
+RUST/indexing-slicing:crates/theatron/tui/src/view/mod.rs
+RUST/indexing-slicing:crates/theatron/tui/src/view/overlay/mod.rs
+RUST/indexing-slicing:crates/theatron/tui/src/view/planning.rs
+RUST/indexing-slicing:crates/theatron/tui/src/view/retrospective.rs
+RUST/indexing-slicing:crates/theatron/tui/src/view/settings.rs
+RUST/indexing-slicing:crates/theatron/tui/src/wizard/view.rs
+
+# ── RUST/as-cast: annotated numeric conversions ─────────────────────────────
+#
+# WHY: all as-casts below are either small-constant conversions (u32->usize,
+# u16->f64), bounded arithmetic (percentages, ratios, durations that cannot
+# overflow), or carry #[expect(clippy::as_conversions)] annotations with
+# documented reasoning. The kanon linter flags `as` keyword but cannot
+# analyze value ranges.
+
+# aletheia: agent_io, knowledge_maintenance, planning_adapter, status display
+RUST/as-cast:crates/aletheia/src/commands/agent_io.rs
+RUST/as-cast:crates/aletheia/src/knowledge_maintenance.rs
+RUST/as-cast:crates/aletheia/src/planning_adapter.rs
+RUST/as-cast:crates/aletheia/src/status.rs
+
+# daemon: prosoche attention check timing
+RUST/as-cast:crates/daemon/src/prosoche.rs
+
+# dianoia: phase progress, stuck detector scoring
+RUST/as-cast:crates/dianoia/src/phase.rs
+RUST/as-cast:crates/dianoia/src/stuck.rs
+
+# episteme: scoring, dedup, embedding, graph intelligence, recall, skills
+RUST/as-cast:crates/episteme/src/consolidation/engine.rs
+RUST/as-cast:crates/episteme/src/dedup.rs
+RUST/as-cast:crates/episteme/src/embedding.rs
+RUST/as-cast:crates/episteme/src/graph_intelligence.rs
+RUST/as-cast:crates/episteme/src/instinct.rs
+RUST/as-cast:crates/episteme/src/knowledge_store/search.rs
+RUST/as-cast:crates/episteme/src/knowledge_store/skills.rs
+RUST/as-cast:crates/episteme/src/query_rewrite.rs
+RUST/as-cast:crates/episteme/src/recall.rs
+RUST/as-cast:crates/episteme/src/skills/extract.rs
+RUST/as-cast:crates/episteme/src/skills/heuristics.rs
+RUST/as-cast:crates/episteme/src/skills/signature.rs
+
+# eval: cognitive eval scoring
+RUST/as-cast:crates/eval/src/cognitive/recall.rs
+RUST/as-cast:crates/eval/src/cognitive/sycophancy.rs
+
+# graphe: export/import/store size calculations
+RUST/as-cast:crates/graphe/src/export.rs
+RUST/as-cast:crates/graphe/src/import_tests/validation.rs
+RUST/as-cast:crates/graphe/src/store/message.rs
+RUST/as-cast:crates/graphe/src/store/peripherals.rs
+
+# hermeneus: complexity scoring
+RUST/as-cast:crates/hermeneus/src/complexity/mod.rs
+
+# melete: similarity scoring
+RUST/as-cast:crates/melete/src/similarity.rs
+
+# nous: competence scoring, uncertainty estimation
+RUST/as-cast:crates/nous/src/competence/mod.rs
+RUST/as-cast:crates/nous/src/uncertainty.rs
+
+# theatron core: API client pagination
+RUST/as-cast:crates/theatron/core/src/api/client.rs
+
+# theatron desktop: chart rendering, graph layout, metrics display
+RUST/as-cast:crates/theatron/desktop/src/components/chart.rs
+RUST/as-cast:crates/theatron/desktop/src/components/confidence_bar.rs
+RUST/as-cast:crates/theatron/desktop/src/components/graph.rs
+RUST/as-cast:crates/theatron/desktop/src/components/planning_card.rs
+RUST/as-cast:crates/theatron/desktop/src/components/timeline.rs
+RUST/as-cast:crates/theatron/desktop/src/components/timeline_scrubber.rs
+RUST/as-cast:crates/theatron/desktop/src/components/toast.rs
+RUST/as-cast:crates/theatron/desktop/src/components/virtual_list.rs
+RUST/as-cast:crates/theatron/desktop/src/lib.rs
+RUST/as-cast:crates/theatron/desktop/src/state/chat.rs
+RUST/as-cast:crates/theatron/desktop/src/state/execution.rs
+RUST/as-cast:crates/theatron/desktop/src/state/graph/mod.rs
+RUST/as-cast:crates/theatron/desktop/src/state/meta/mod.rs
+RUST/as-cast:crates/theatron/desktop/src/state/metrics.rs
+RUST/as-cast:crates/theatron/desktop/src/state/planning.rs
+RUST/as-cast:crates/theatron/desktop/src/state/sessions.rs
+RUST/as-cast:crates/theatron/desktop/src/state/tool_metrics.rs
+RUST/as-cast:crates/theatron/desktop/src/state/tools.rs
+RUST/as-cast:crates/theatron/desktop/src/state/verification.rs
+RUST/as-cast:crates/theatron/desktop/src/views/chat.rs
+RUST/as-cast:crates/theatron/desktop/src/views/memory/search.rs
+RUST/as-cast:crates/theatron/desktop/src/views/meta/assembly.rs
+RUST/as-cast:crates/theatron/desktop/src/views/meta/charts.rs
+RUST/as-cast:crates/theatron/desktop/src/views/meta/performance.rs
+RUST/as-cast:crates/theatron/desktop/src/views/meta/reflection.rs
+RUST/as-cast:crates/theatron/desktop/src/views/metrics/agent_breakdown.rs
+RUST/as-cast:crates/theatron/desktop/src/views/metrics/model_breakdown.rs
+RUST/as-cast:crates/theatron/desktop/src/views/metrics/tokens.rs
+RUST/as-cast:crates/theatron/desktop/src/views/metrics/tool_duration.rs
+RUST/as-cast:crates/theatron/desktop/src/views/metrics/tool_frequency.rs
+RUST/as-cast:crates/theatron/desktop/src/views/metrics/tool_results.rs
+RUST/as-cast:crates/theatron/desktop/src/views/metrics/tools.rs
+
+# theatron TUI: rendering calculations, metrics display
+RUST/as-cast:crates/theatron/tui/src/clipboard.rs
+RUST/as-cast:crates/theatron/tui/src/state/metrics.rs
+RUST/as-cast:crates/theatron/tui/src/state/virtual_scroll.rs
+RUST/as-cast:crates/theatron/tui/src/update/memory/graph_analysis.rs
+RUST/as-cast:crates/theatron/tui/src/update/navigation.rs
+RUST/as-cast:crates/theatron/tui/src/update/streaming/mod.rs
+RUST/as-cast:crates/theatron/tui/src/view/chat/mod.rs
+RUST/as-cast:crates/theatron/tui/src/view/image.rs
+RUST/as-cast:crates/theatron/tui/src/view/ops.rs
+RUST/as-cast:crates/theatron/tui/src/view/status_bar.rs
+
+# ── RUST/bare-assert: test assertions ────────────────────────────────────────
+#
+# WHY: all bare assert!() calls below are in test files using the *_tests
+# naming pattern that kanon's skip_in_test does not recognize. assert!() is
+# standard practice in test code. Production lib code uses error returns.
+RUST/bare-assert:crates/graphe/src/retention_tests/**
+RUST/bare-assert:crates/episteme/src/**/*_tests.rs
+RUST/bare-assert:crates/episteme/src/knowledge_portability.rs
+RUST/bare-assert:crates/nous/src/pipeline/pipeline_tests/**
+RUST/bare-assert:crates/hermeneus/src/**/*_tests.rs
+RUST/bare-assert:crates/hermeneus/src/**/*_tests/*.rs
+
+# ── RUST/string-slice: byte-position string slicing ──────────────────────────
+#
+# WHY: all string slicing below operates on ASCII content (SQL, Datalog
+# queries, TOML keys, hex strings, markdown syntax) or is guarded by
+# char_indices() iteration ensuring valid UTF-8 boundaries. The kanon
+# linter flags all &str[range] syntax but cannot analyze the content.
+RUST/string-slice:crates/episteme/src/extract/engine.rs
+RUST/string-slice:crates/episteme/src/skill.rs
+RUST/string-slice:crates/graphe/src/export.rs
+RUST/string-slice:crates/taxis/src/interpolate.rs
+RUST/string-slice:crates/theatron/desktop/src/services/notification_dispatch.rs
+RUST/string-slice:crates/theatron/desktop/src/state/diff.rs
+RUST/string-slice:crates/theatron/desktop/src/state/memory.rs
+RUST/string-slice:crates/theatron/desktop/src/views/chat.rs
+RUST/string-slice:crates/theatron/desktop/src/views/memory/detail.rs
+RUST/string-slice:crates/theatron/tui/src/update/memory/graph_analysis.rs
+RUST/string-slice:crates/theatron/tui/src/update/streaming/mod.rs
+RUST/string-slice:crates/theatron/tui/src/view/ops.rs
+RUST/string-slice:crates/theatron/tui/src/wizard/state.rs
+RUST/string-slice:crates/theatron/tui/src/wizard/view.rs
+
+# ── RUST/plain-string-secret: non-secret fields with "key"/"token" in name ──
+#
+# WHY: the kanon linter flags any field containing "key", "token", "secret",
+# "password", or "credential" as a potential plain-text secret. The fields
+# below are either: session identifiers (session_key), API keys that must be
+# plain String for serialization/config, routing keys, or credential file
+# paths. Actual cryptographic secrets use SecretString from koina.
+RUST/plain-string-secret:crates/agora/src/router.rs
+RUST/plain-string-secret:crates/aletheia/src/commands/session_export.rs
+RUST/plain-string-secret:crates/aletheia/src/init/mod.rs
+RUST/plain-string-secret:crates/eval/src/client.rs
+RUST/plain-string-secret:crates/graphe/src/portability.rs
+RUST/plain-string-secret:crates/graphe/src/types.rs
+RUST/plain-string-secret:crates/symbolon/src/credential/file_ops.rs
+RUST/plain-string-secret:crates/symbolon/src/credential/refresh.rs
+RUST/plain-string-secret:crates/symbolon/src/types.rs
+RUST/plain-string-secret:crates/taxis/src/config/mod.rs
+RUST/plain-string-secret:crates/theatron/core/src/api/client.rs
+RUST/plain-string-secret:crates/theatron/desktop/src/services/settings_config.rs
+RUST/plain-string-secret:crates/theatron/desktop/src/state/credentials.rs
+RUST/plain-string-secret:crates/theatron/desktop/src/state/memory.rs
+RUST/plain-string-secret:crates/theatron/desktop/src/state/ops.rs
+RUST/plain-string-secret:crates/theatron/desktop/src/state/settings.rs
+RUST/plain-string-secret:crates/theatron/desktop/src/views/ops/credentials.rs
+RUST/plain-string-secret:crates/theatron/desktop/src/views/ops/mod.rs
+RUST/plain-string-secret:crates/theatron/desktop/src/views/ops/toggles.rs
+RUST/plain-string-secret:crates/theatron/tui/src/state/settings.rs
+
+# ── RUST/lock-expect-panics: mutex lock with expect ──────────────────────────
+#
+# WHY: all .expect() calls on Mutex::lock() below already carry
+# #[expect(clippy::expect_used)] annotations with documented reasoning.
+# Poisoned mutex indicates a prior thread panic; these functions return
+# non-Result types and cannot propagate lock errors. The kanon linter
+# detects the pattern separately from clippy.
+RUST/lock-expect-panics:crates/diaporeia/src/rate_limit.rs
+RUST/lock-expect-panics:crates/episteme/src/skills/candidate.rs
+RUST/lock-expect-panics:crates/hermeneus/src/circuit_breaker.rs
+RUST/lock-expect-panics:crates/hermeneus/src/health.rs
+RUST/lock-expect-panics:crates/hermeneus/src/test_utils.rs
+RUST/lock-expect-panics:crates/nous/src/manager.rs
+RUST/lock-expect-panics:crates/organon/src/testing.rs
+
+# ── TESTING/test-naming: helper functions in test modules ────────────────────
+#
+# WHY: these are test helper functions (test_params, etc.) that construct
+# test fixtures, not test functions. The kanon linter flags any function
+# starting with test_ inside test modules.
+TESTING/test-naming:crates/agora/src/registry.rs
+TESTING/test-naming:crates/agora/src/semeion/connection.rs
+
+# ── STORAGE/no-migration-checksum ────────────────────────────────────────────
+#
+# WHY: these files contain database schema initialization or migration logic
+# but use application-level versioning (schema_version tables, CozoDB schema
+# declarations) rather than file-level checksums. The pattern is intentional
+# for the CozoDB and SQLite embedded stores.
+STORAGE/no-migration-checksum:crates/aletheia/src/migrate_memory.rs
+STORAGE/no-migration-checksum:crates/dianoia/src/research/mod.rs
+STORAGE/no-migration-checksum:crates/graphe/src/lib.rs
+STORAGE/no-migration-checksum:crates/graphe/src/portability.rs
+STORAGE/no-migration-checksum:crates/graphe/src/retention_tests/mod.rs
+STORAGE/no-migration-checksum:crates/graphe/src/store/mod.rs
+STORAGE/no-migration-checksum:crates/melete/src/similarity.rs
+STORAGE/no-migration-checksum:crates/mneme/src/lib.rs
+STORAGE/no-migration-checksum:crates/taxis/src/loader.rs
+
+# ── STORAGE/no-query-timeout ─────────────────────────────────────────────────
+#
+# WHY: Connection::open calls are for SQLite databases where busy_timeout
+# is set at the store layer (GrapheStore, SessionStore) not at individual
+# open sites. Test code uses in-memory databases where timeouts are irrelevant.
+STORAGE/no-query-timeout:crates/graphe/src/retention_tests/mod.rs
+STORAGE/no-query-timeout:crates/nous/src/competence/mod.rs
+STORAGE/no-query-timeout:crates/nous/src/uncertainty.rs
+
+# ── DATALOG/raw-mutation ─────────────────────────────────────────────────────
+#
+# WHY: episteme knowledge_store uses CozoDB Datalog which requires :put/:rm
+# directives for mutations. There is no separate "transaction API" for CozoDB;
+# the Datalog syntax IS the mutation interface. query/builders.rs wraps these
+# in typed builder methods.
+DATALOG/raw-mutation:crates/episteme/src/knowledge_store/migration.rs
+DATALOG/raw-mutation:crates/episteme/src/query/builders.rs
+
+# ── API/unused-auth-param ────────────────────────────────────────────────────
+#
+# WHY: _claims parameters are accepted to enforce authentication at the
+# extractor level (axum rejects unauthenticated requests before the handler
+# runs). The parameter name is prefixed with _ to indicate intentional
+# non-use. RBAC enforcement is planned but not yet implemented.
+API/unused-auth-param:crates/pylon/src/handlers/config.rs
+API/unused-auth-param:crates/pylon/src/handlers/nous.rs
+API/unused-auth-param:crates/pylon/src/handlers/sessions/mod.rs
+API/unused-auth-param:crates/pylon/src/handlers/sessions/streaming.rs
+
+# ── RUST/box-dyn-error ───────────────────────────────────────────────────────
+#
+# WHY: Box<dyn Error> in these files is used at integration boundaries where
+# the error source is truly polymorphic (figment config errors, toml parsing
+# errors, interpolation failures from multiple sources). Converting to snafu
+# would require wrapping 4+ foreign error types with no added diagnostic value.
+RUST/box-dyn-error:crates/aletheia/src/error.rs
+RUST/box-dyn-error:crates/taxis/src/interpolate.rs
+RUST/box-dyn-error:crates/taxis/src/loader.rs
+RUST/box-dyn-error:crates/taxis/src/reload.rs
+RUST/box-dyn-error:crates/theatron/tui/src/main.rs
+
+# ── RUST/anyhow-in-lib ───────────────────────────────────────────────────────
+#
+# WHY: daemon.rs is in the binary crate (aletheia), not a library crate.
+# anyhow is used for the daemon fork path which is a thin process-level
+# wrapper, not reusable library code.
+RUST/anyhow-in-lib:crates/aletheia/src/commands/daemon.rs
+
+# ── RUST/missing-http-timeout ────────────────────────────────────────────────
+#
+# WHY: session_export.rs builds a one-shot client for local health checks.
+# hermeneus client.rs sets per-request timeouts via tokio::time::timeout
+# around the actual HTTP calls rather than on the client builder.
+# desktop API client sets timeouts at the request level.
+RUST/missing-http-timeout:crates/aletheia/src/commands/session_export.rs
+RUST/missing-http-timeout:crates/hermeneus/src/anthropic/client.rs
+RUST/missing-http-timeout:crates/theatron/desktop/src/api/client.rs
+
+# ── RUST/non-exhaustive-enum ─────────────────────────────────────────────────
+#
+# WHY: ResearchLevel in dianoia is internal to the workspace and matched
+# exhaustively. Adding #[non_exhaustive] would force wildcard arms in all
+# match sites. Role enum in nous is similarly workspace-internal.
+RUST/non-exhaustive-enum:crates/dianoia/src/research/mod.rs
+RUST/non-exhaustive-enum:crates/nous/src/roles.rs
+
+# ── RUST/barrel-reexport ─────────────────────────────────────────────────────
+#
+# WHY: organon types/mod.rs re-exports context and services submodules as
+# pub use to provide a flat types::* import path for downstream crates.
+# theatron core types/mod.rs similarly re-exports API type submodules.
+RUST/barrel-reexport:crates/organon/src/types/mod.rs
+RUST/barrel-reexport:crates/theatron/core/src/api/types/mod.rs
+
+# ── RUST/spawn-no-instrument: theatron spawn calls ───────────────────────────
+#
+# WHY: theatron desktop and core spawn tasks for SSE event loops and
+# streaming connections. These are UI-layer spawns where tracing spans
+# are not required (no server-side observability).
+RUST/spawn-no-instrument:crates/theatron/core/src/api/sse.rs
+RUST/spawn-no-instrument:crates/theatron/desktop/src/api/sse.rs
+RUST/spawn-no-instrument:crates/theatron/desktop/src/api/streaming.rs
+RUST/spawn-no-instrument:crates/theatron/desktop/src/platform/window_state.rs
+RUST/spawn-no-instrument:crates/theatron/desktop/src/services/connection.rs
+
+# ── RUST/file-too-long ───────────────────────────────────────────────────────
+#
+# WHY: these files are slightly over the 800-line limit. Each contains
+# cohesive functionality that would fragment if split. runtime.rs is the
+# server wiring entrypoint. facts.rs is the knowledge store query surface.
+# workspace.rs is the tool executor. client.rs is the API client.
+# app/mod.rs is the TUI root state.
+RUST/file-too-long:crates/aletheia/src/runtime.rs
+RUST/file-too-long:crates/episteme/src/knowledge_store/facts.rs
+RUST/file-too-long:crates/organon/src/builtins/workspace.rs
+RUST/file-too-long:crates/theatron/core/src/api/client.rs
+RUST/file-too-long:crates/theatron/tui/src/app/mod.rs
+
+# ── RUST/unreachable-in-match ────────────────────────────────────────────────
+#
+# WHY: Settings case is already handled in the outer match arm; the inner
+# match can never reach it. The unreachable!() documents the invariant.
+RUST/unreachable-in-match:crates/theatron/tui/src/update/overlay.rs
+
+# ── ARCHITECTURE/thick-binary ────────────────────────────────────────────────
+#
+# WHY: main.rs at 252 lines (limit 200) contains clap CLI definition with
+# 20+ subcommands. The subcommand dispatch is inherently in main.rs and
+# the individual handlers are already in separate command modules.
+ARCHITECTURE/thick-binary:crates/aletheia/src/main.rs
+
+# ── TESTING/no-tests ─────────────────────────────────────────────────────────
+#
+# WHY: graphe lib.rs delegates all tests to submodules (store/, retention_tests/,
+# import_tests/, etc.) and inline #[cfg(test)] mod tests blocks.
+TESTING/no-tests:crates/graphe/src/lib.rs
+
+# ── RELEASES/independent-crate-version ───────────────────────────────────────
+#
+# WHY: theatron-desktop is excluded from the cargo workspace (GTK system deps)
+# and manages its own version independently.
+RELEASES/independent-crate-version:crates/theatron/desktop/Cargo.toml
+
+# ── RUST/as-cast + RUST/indexing-slicing: krites (vendored CozoDB engine) ────
+#
+# WHY: krites is a vendored Datalog/graph query engine (CozoDB fork). 55K lines
+# of ported code with pervasive numeric casts and direct indexing throughout.
+# All as-casts carry localized #[expect(clippy::cast_*)] annotations with
+# documented reasoning. Indexing operations carry
+# #[expect(clippy::indexing_slicing)] with invariant documentation.
+#
+# Categories of as-casts present:
+# - i64 -> f64 (precision loss): statistical aggregation (count, mean, variance)
+# - u32 -> usize: graph node ID indexing (hot path, u32 always fits usize on 64-bit)
+# - usize -> i64: length-to-signed conversions for DataValue interop
+# - f64 -> f32: intentional precision reduction for mixed-precision vector math
+# - f64 -> i64: float truncation in numeric conversion functions
+#
+# Categories of direct indexing:
+# - Graph algorithm node arrays: index validated by CSR graph bounds
+# - Tuple access after length validation (snafu::ensure! checks)
+# - Expression evaluation: index validated by compilation phase
+# - HNSW vector search: layer/neighbor indices bounded by construction
+
+# -- as-cast: data layer
+RUST/as-cast:crates/krites/src/data/aggr/boolean.rs
+RUST/as-cast:crates/krites/src/data/aggr/mod.rs
+RUST/as-cast:crates/krites/src/data/aggr/numeric.rs
+RUST/as-cast:crates/krites/src/data/functions/aggregate.rs
+RUST/as-cast:crates/krites/src/data/functions/bits.rs
+RUST/as-cast:crates/krites/src/data/functions/math/arithmetic.rs
+RUST/as-cast:crates/krites/src/data/functions/math/mod.rs
+RUST/as-cast:crates/krites/src/data/functions/math/transcendental.rs
+RUST/as-cast:crates/krites/src/data/functions/string.rs
+RUST/as-cast:crates/krites/src/data/functions/temporal.rs
+RUST/as-cast:crates/krites/src/data/functions/trig.rs
+RUST/as-cast:crates/krites/src/data/functions/utility.rs
+RUST/as-cast:crates/krites/src/data/functions/vector.rs
+RUST/as-cast:crates/krites/src/data/memcmp.rs
+RUST/as-cast:crates/krites/src/data/program/search/hnsw_normalize.rs
+RUST/as-cast:crates/krites/src/data/program/search/lsh_fts.rs
+RUST/as-cast:crates/krites/src/data/relation.rs
+RUST/as-cast:crates/krites/src/data/value.rs
+
+# -- as-cast: graph algorithms
+RUST/as-cast:crates/krites/src/fixed_rule/algos/all_pairs_shortest_path.rs
+RUST/as-cast:crates/krites/src/fixed_rule/algos/degree_centrality.rs
+RUST/as-cast:crates/krites/src/fixed_rule/algos/kcore.rs
+RUST/as-cast:crates/krites/src/fixed_rule/algos/kruskal.rs
+RUST/as-cast:crates/krites/src/fixed_rule/algos/label_propagation.rs
+RUST/as-cast:crates/krites/src/fixed_rule/algos/louvain.rs
+RUST/as-cast:crates/krites/src/fixed_rule/algos/pagerank.rs
+RUST/as-cast:crates/krites/src/fixed_rule/algos/prim.rs
+RUST/as-cast:crates/krites/src/fixed_rule/algos/shortest_path_dijkstra.rs
+RUST/as-cast:crates/krites/src/fixed_rule/algos/strongly_connected_components.rs
+RUST/as-cast:crates/krites/src/fixed_rule/algos/top_sort.rs
+RUST/as-cast:crates/krites/src/fixed_rule/algos/triangles.rs
+RUST/as-cast:crates/krites/src/fixed_rule/algos/yen.rs
+RUST/as-cast:crates/krites/src/fixed_rule/csr/mod.rs
+RUST/as-cast:crates/krites/src/fixed_rule/csr/page_rank.rs
+RUST/as-cast:crates/krites/src/fixed_rule/utilities/reorder_sort.rs
+RUST/as-cast:crates/krites/src/fixed_rule/utilities/rrf.rs
+RUST/as-cast:crates/krites/src/fixed_rule/mod.rs
+
+# -- as-cast: FTS, parse, query, runtime
+RUST/as-cast:crates/krites/src/fts/indexing.rs
+RUST/as-cast:crates/krites/src/fts/mod.rs
+RUST/as-cast:crates/krites/src/fts/tokenizer/ngram_tokenizer.rs
+RUST/as-cast:crates/krites/src/parse/expr.rs
+RUST/as-cast:crates/krites/src/parse/fts.rs
+RUST/as-cast:crates/krites/src/parse/query/program.rs
+RUST/as-cast:crates/krites/src/parse/schema.rs
+RUST/as-cast:crates/krites/src/parse/sys/parse.rs
+RUST/as-cast:crates/krites/src/query/magic.rs
+RUST/as-cast:crates/krites/src/runtime/db.rs
+RUST/as-cast:crates/krites/src/runtime/exec.rs
+RUST/as-cast:crates/krites/src/runtime/hnsw/mmap_storage.rs
+RUST/as-cast:crates/krites/src/runtime/hnsw/put.rs
+RUST/as-cast:crates/krites/src/runtime/hnsw/remove.rs
+RUST/as-cast:crates/krites/src/runtime/hnsw/search.rs
+RUST/as-cast:crates/krites/src/runtime/hnsw/types.rs
+RUST/as-cast:crates/krites/src/runtime/minhash_lsh.rs
+RUST/as-cast:crates/krites/src/runtime/relation/index_create.rs
+RUST/as-cast:crates/krites/src/runtime/relation/relation_crud.rs
+RUST/as-cast:crates/krites/src/runtime/sys.rs
+
+# -- indexing-slicing: data layer
+RUST/indexing-slicing:crates/krites/src/data/aggr/mod.rs
+RUST/indexing-slicing:crates/krites/src/data/aggr/numeric.rs
+RUST/indexing-slicing:crates/krites/src/data/expr/expr_impl.rs
+RUST/indexing-slicing:crates/krites/src/data/expr/mod.rs
+RUST/indexing-slicing:crates/krites/src/data/expr/op.rs
+RUST/indexing-slicing:crates/krites/src/data/functions/utility.rs
+RUST/indexing-slicing:crates/krites/src/data/functions/vector.rs
+RUST/indexing-slicing:crates/krites/src/data/memcmp.rs
+RUST/indexing-slicing:crates/krites/src/data/relation.rs
+RUST/indexing-slicing:crates/krites/src/data/value.rs
+
+# -- indexing-slicing: graph algorithms
+RUST/indexing-slicing:crates/krites/src/fixed_rule/algos/all_pairs_shortest_path.rs
+RUST/indexing-slicing:crates/krites/src/fixed_rule/algos/astar.rs
+RUST/indexing-slicing:crates/krites/src/fixed_rule/algos/bfs.rs
+RUST/indexing-slicing:crates/krites/src/fixed_rule/algos/degree_centrality.rs
+RUST/indexing-slicing:crates/krites/src/fixed_rule/algos/dfs.rs
+RUST/indexing-slicing:crates/krites/src/fixed_rule/algos/kcore.rs
+RUST/indexing-slicing:crates/krites/src/fixed_rule/algos/kruskal.rs
+RUST/indexing-slicing:crates/krites/src/fixed_rule/algos/label_propagation.rs
+RUST/indexing-slicing:crates/krites/src/fixed_rule/algos/louvain.rs
+RUST/indexing-slicing:crates/krites/src/fixed_rule/algos/prim.rs
+RUST/indexing-slicing:crates/krites/src/fixed_rule/algos/random_walk.rs
+RUST/indexing-slicing:crates/krites/src/fixed_rule/algos/shortest_path_bfs.rs
+RUST/indexing-slicing:crates/krites/src/fixed_rule/algos/shortest_path_dijkstra.rs
+RUST/indexing-slicing:crates/krites/src/fixed_rule/algos/triangles.rs
+RUST/indexing-slicing:crates/krites/src/fixed_rule/algos/yen.rs
+RUST/indexing-slicing:crates/krites/src/fixed_rule/csr/mod.rs
+RUST/indexing-slicing:crates/krites/src/fixed_rule/csr/page_rank.rs
+
+# -- indexing-slicing: FTS, parse, query, runtime
+RUST/indexing-slicing:crates/krites/src/fts/indexing.rs
+RUST/indexing-slicing:crates/krites/src/fts/tokenizer/ngram_tokenizer.rs
+RUST/indexing-slicing:crates/krites/src/fts/tokenizer/split_compound_words.rs
+RUST/indexing-slicing:crates/krites/src/parse/expr.rs
+RUST/indexing-slicing:crates/krites/src/parse/query/atoms.rs
+RUST/indexing-slicing:crates/krites/src/query/compile.rs
+RUST/indexing-slicing:crates/krites/src/query/eval.rs
+RUST/indexing-slicing:crates/krites/src/query/graph.rs
+RUST/indexing-slicing:crates/krites/src/query/ra/search.rs
+RUST/indexing-slicing:crates/krites/src/query/ra/sources.rs
+RUST/indexing-slicing:crates/krites/src/query/sort.rs
+RUST/indexing-slicing:crates/krites/src/query/stored/mutation.rs
+RUST/indexing-slicing:crates/krites/src/runtime/exec.rs
+RUST/indexing-slicing:crates/krites/src/runtime/hnsw/put.rs
+RUST/indexing-slicing:crates/krites/src/runtime/hnsw/remove.rs
+RUST/indexing-slicing:crates/krites/src/runtime/hnsw/search.rs
+RUST/indexing-slicing:crates/krites/src/runtime/hnsw/types.rs
+RUST/indexing-slicing:crates/krites/src/runtime/minhash_lsh.rs
+RUST/indexing-slicing:crates/krites/src/runtime/relation/handles.rs
+RUST/indexing-slicing:crates/krites/src/runtime/temp_store.rs
+
+# -- unreachable-in-match: krites (vendored CozoDB)
+# WHY: krites is a vendored Datalog engine. unreachable!() in match arms is
+# correct when the pest grammar or type system guarantees the variant.
+RUST/unreachable-in-match:crates/krites/src/data/**
+RUST/unreachable-in-match:crates/krites/src/fixed_rule/**
+RUST/unreachable-in-match:crates/krites/src/fts/**
+RUST/unreachable-in-match:crates/krites/src/parse/**
+RUST/unreachable-in-match:crates/krites/src/query/**
+RUST/unreachable-in-match:crates/krites/src/runtime/**
+RUST/unreachable-in-match:crates/krites/src/storage/**
+
+# WHY: daemon dispatches built-in tasks by enum variant. The wildcard arm
+# catches programming errors if a non-knowledge task is routed incorrectly.
+RUST/unreachable-in-match:crates/daemon/src/execution.rs
+
+# WHY: dianoia state machine uses ensure!(false, ...) + unreachable!() to
+# produce typed errors for invalid transitions; unreachable is dead code.
+RUST/unreachable-in-match:crates/dianoia/src/state.rs
+
+# -- pub-visibility: krites public API
+# WHY: krites exposes pub items consumed by mneme and other workspace crates.
+# The crate boundary requires pub, not pub(crate).
+RUST/pub-visibility:crates/krites/src/data/**
+RUST/pub-visibility:crates/krites/src/error.rs
+RUST/pub-visibility:crates/krites/src/fixed_rule/**
+RUST/pub-visibility:crates/krites/src/query_cache.rs
+RUST/pub-visibility:crates/krites/src/runtime/**
+RUST/pub-visibility:crates/krites/src/storage/**
+
+# -- feature-gate-check: krites feature flags
+# WHY: krites feature gates (graph-algo, storage-fjall) are declared in
+# Cargo.toml and verified by CI. kanon cannot resolve Cargo.toml features.
+RUST/feature-gate-check:crates/krites/src/lib.rs
+RUST/feature-gate-check:crates/krites/src/fixed_rule/**
+RUST/feature-gate-check:crates/krites/src/storage/**
+RUST/feature-gate-check:crates/krites/src/runtime/tests/**
+
+# -- string-slice: krites vendored code
+# WHY: krites string slicing operates on validated ASCII relation names and
+# internal key formats where multi-byte chars cannot occur.
+RUST/string-slice:crates/krites/src/data/**
+RUST/string-slice:crates/krites/src/fixed_rule/**
+RUST/string-slice:crates/krites/src/fts/**
+RUST/string-slice:crates/krites/src/query/**
+RUST/string-slice:crates/krites/src/runtime/**
+
+# -- bare-assert: doc comment examples
+# WHY: assert_eq! calls inside a ```text doc comment block are example output,
+# not production code. kanon cannot distinguish doc comment code from real code.
+RUST/bare-assert:crates/krites/src/fts/tokenizer/ngram_tokenizer.rs
+
+# -- struct-too-many-fields: config/manifest structs
+# WHY: HnswSearch, HnswIndexManifest, and RelationHandle are data-carrying
+# structs where the field count reflects the domain model, not poor design.
+RUST/struct-too-many-fields:crates/krites/src/data/program/search/mod.rs
+RUST/struct-too-many-fields:crates/krites/src/runtime/hnsw/types.rs
+RUST/struct-too-many-fields:crates/krites/src/runtime/relation/handles.rs
+
+# -- std-mutex-in-async: QueryCache
+# WHY: QueryCache uses std::sync::Mutex intentionally. Lock guard is held only
+# for O(1) LRU lookup/insert with no await points. Already documented inline.
+RUST/std-mutex-in-async:crates/krites/src/query_cache.rs
+
+# -- DATALOG/raw-mutation: NamedRows::into_payload
+# WHY: into_payload constructs mutation queries programmatically for the
+# import/export API. This is the transaction API implementation itself.
+DATALOG/raw-mutation:crates/krites/src/runtime/db.rs
+
+# -- silent-error-ok: Dioxus notification toggle handlers
+# WHY: config::save_notification_prefs is fire-and-forget in UI event handlers.
+# Dioxus onclick closures have no error channel; save failure is non-critical
+# since the in-memory signal already reflects the toggled state.
+RUST/silent-error-ok:crates/theatron/desktop/src/views/settings/notifications.rs
+
+# -- PYTHON/empty-fstring: false positive from mixed Rust/Python syntax
+# WHY: gen_stopwords.py uses f-strings with {word} and {lang} interpolation.
+# kanon's regex-based f-string detector trips on Rust raw string syntax r#"..."#
+# adjacent to Python interpolation braces.
+PYTHON/empty-fstring:crates/krites/src/fts/tokenizer/stop_word_filter/gen_stopwords.py

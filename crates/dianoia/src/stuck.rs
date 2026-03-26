@@ -121,7 +121,7 @@ pub struct StuckDetector {
 impl StuckDetector {
     /// Create a new detector with the given configuration.
     #[must_use]
-    pub fn new(config: StuckConfig) -> Self {
+    pub(crate) fn new(config: StuckConfig) -> Self {
         let capacity = config.history_window;
         Self {
             config,
@@ -132,7 +132,7 @@ impl StuckDetector {
     /// Record a tool invocation and check for stuck patterns.
     ///
     /// Returns `Some(StuckSignal)` if a stuck pattern is detected.
-    pub fn record(&mut self, invocation: ToolInvocation) -> Option<StuckSignal> {
+    pub(crate) fn record(&mut self, invocation: ToolInvocation) -> Option<StuckSignal> {
         self.history.push_back(invocation);
         while self.history.len() > self.config.history_window {
             self.history.pop_front();
@@ -146,7 +146,7 @@ impl StuckDetector {
 
     /// Check current history for stuck patterns without recording a new invocation.
     #[must_use]
-    pub fn check(&self) -> Option<StuckSignal> {
+    pub(crate) fn check(&self) -> Option<StuckSignal> {
         self.check_same_tool_same_args()
             .or_else(|| self.check_repeated_error())
             .or_else(|| self.check_alternating_failure())
@@ -154,19 +154,19 @@ impl StuckDetector {
     }
 
     /// Reset the detector, clearing all recorded history.
-    pub fn reset(&mut self) {
+    pub(crate) fn reset(&mut self) {
         self.history.clear();
     }
 
     /// Number of invocations currently in the history window.
     #[must_use]
-    pub fn history_len(&self) -> usize {
+    pub(crate) fn history_len(&self) -> usize {
         self.history.len()
     }
 
     /// The active configuration.
     #[must_use]
-    pub fn config(&self) -> &StuckConfig {
+    pub(crate) fn config(&self) -> &StuckConfig {
         &self.config
     }
 

@@ -60,7 +60,7 @@ impl Default for JwtConfig {
 impl JwtConfig {
     /// Returns `true` if the signing key is the insecure placeholder.
     #[must_use]
-    pub fn has_insecure_key(&self) -> bool {
+    pub(crate) fn has_insecure_key(&self) -> bool {
         self.signing_key.expose_secret() == INSECURE_DEFAULT_KEY
     }
 
@@ -116,7 +116,12 @@ impl JwtManager {
     /// Returns an error if the JWT claims cannot be encoded or signed.
     #[must_use = "issued token must be delivered to the caller"]
     #[instrument(skip(self), fields(kind = "access"))]
-    pub fn issue_access(&self, sub: &str, role: Role, nous_id: Option<&str>) -> Result<String> {
+    pub(crate) fn issue_access(
+        &self,
+        sub: &str,
+        role: Role,
+        nous_id: Option<&str>,
+    ) -> Result<String> {
         self.issue(
             sub,
             role,
@@ -243,7 +248,7 @@ impl JwtManager {
     /// Production code should use [`issue_access`](Self::issue_access) or
     /// `issue_refresh`.
     #[must_use = "encoded token must be delivered to the caller"]
-    pub fn encode_claims(&self, claims: &Claims) -> Result<String> {
+    pub(crate) fn encode_claims(&self, claims: &Claims) -> Result<String> {
         let payload_json = serde_json::to_vec(claims).map_err(|e| {
             error::TokenEncodeSnafu {
                 message: format!("failed to serialize claims: {e}"),

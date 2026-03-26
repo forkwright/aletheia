@@ -5,11 +5,6 @@
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 
 use std::collections::BTreeSet;
 
@@ -62,9 +57,7 @@ impl<'a> crate::runtime::transact::SessionTx<'a> {
                 let mut program = parse_script(
                     trigger,
                     &Default::default(),
-                    &db.fixed_rules
-                        .read()
-                        .expect("fixed_rules lock is not poisoned"),
+                    &db.fixed_rules.read().unwrap_or_else(|e| e.into_inner()),
                     cur_vld,
                 )?
                 .get_single_program()?;
@@ -409,9 +402,7 @@ impl<'a> crate::runtime::transact::SessionTx<'a> {
                     let mut program = parse_script(
                         trigger,
                         &Default::default(),
-                        &db.fixed_rules
-                            .read()
-                            .expect("fixed_rules lock is not poisoned"),
+                        &db.fixed_rules.read().unwrap_or_else(|e| e.into_inner()),
                         cur_vld,
                     )?
                     .get_single_program()?;

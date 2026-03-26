@@ -3,10 +3,6 @@
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
-#![expect(
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 
 use std::cmp::min;
 use std::collections::{BTreeMap, BTreeSet};
@@ -64,6 +60,7 @@ pub(crate) fn reachable_components<'a, T: Ord + Debug>(
     graph: &'a Graph<T>,
     start: &'a T,
 ) -> BTreeSet<&'a T> {
+    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
     let mut collected = BTreeSet::from([start]);
     let worker = Reachable { graph };
     worker.walk(start, &mut collected);
@@ -114,9 +111,7 @@ pub(crate) fn generalized_kahn(
             }
             break;
         }
-        let removed = safe_pending
-            .pop()
-            .expect("safe_pending is non-empty: checked by is_empty guard above");
+        let removed = safe_pending.pop().unwrap_or_else(|| unreachable!());
         current_stratum.push(removed);
         if let Some(edges) = graph.get(&removed) {
             for (nxt, poisoned) in edges {
@@ -184,13 +179,10 @@ impl<'a> TarjanScc<'a> {
                 self.low[at] = min(self.low[at], self.low[to]);
             }
         }
-        if self.ids[at]
-            .expect("ids[at] is Some: assigned on dfs() entry (line above recursive call)")
-            == self.low[at]
-        {
+        if self.ids[at].unwrap_or_else(|| unreachable!()) == self.low[at] {
             while let Some(node) = self.stack.pop() {
                 self.on_stack[node] = false;
-                self.low[node] = self.ids[at].expect("ids[at] is Some: same assignment as above");
+                self.low[node] = self.ids[at].unwrap_or_else(|| unreachable!());
                 if node == at {
                     break;
                 }

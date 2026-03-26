@@ -107,7 +107,7 @@ impl Default for HnswConfig {
 /// outright. If `hnsw_rs` ever enables mmap by default, migrating to
 /// `self_cell` would be the correct fix. See [#2026].
 #[repr(C)]
-pub struct HnswIndex {
+pub(crate) struct HnswIndex {
     /// WHY: Retained to satisfy the `'a: 'b` lifetime constraint from
     /// `HnswIo::load_hnsw`. Not accessed after construction. Must be
     /// declared before `inner` for correct drop order (see safety invariant 3).
@@ -124,7 +124,7 @@ const _: () = assert!(
 impl HnswIndex {
     /// Create a new empty HNSW index.
     #[instrument(skip_all, fields(dim = config.dim, max_conn = config.max_nb_connection))]
-    pub fn new(config: HnswConfig) -> Arc<Self> {
+    pub(crate) fn new(config: HnswConfig) -> Arc<Self> {
         let hnsw = Hnsw::<f32, DistCosine>::new(
             config.max_nb_connection,
             config.max_elements,
@@ -141,7 +141,7 @@ impl HnswIndex {
 
     /// Try to load an existing index from disk, or create a new one.
     #[instrument(skip_all, fields(dir = ?config.persist_dir))]
-    pub fn open_or_create(config: HnswConfig) -> crate::error::Result<Arc<Self>> {
+    pub(crate) fn open_or_create(config: HnswConfig) -> crate::error::Result<Arc<Self>> {
         if let Some(ref dir) = config.persist_dir {
             let graph_path = dir.join(format!("{}.hnsw.graph", &config.persist_basename));
             let data_path = dir.join(format!("{}.hnsw.data", &config.persist_basename));
@@ -198,43 +198,85 @@ impl HnswIndex {
     /// Insert a vector with an external ID.
     ///
     /// The `data_id` is caller-assigned and returned in search results.
+    /// Returns an error if the vector dimension does not match the configured dimension.
     #[instrument(skip(self, vector), fields(data_id))]
-    #[expect(
-        clippy::expect_used,
-        reason = "RwLock poisoning is unrecoverable; propagating would just defer the panic"
-    )]
-    pub fn insert(&self, vector: &[f32], data_id: usize) {
-        let guard = self.inner.read().expect("hnsw lock poisoned"); // INVARIANT: lock poison is unrecoverable
+    pub(crate) fn insert(&self, vector: &[f32], data_id: usize) -> crate::error::Result<()> {
+        if vector.len() != self.config.dim {
+            return Err(HnswIndexSnafu {
+                message: format!(
+                    "dimension mismatch: expected {}, got {}",
+                    self.config.dim,
+                    vector.len()
+                ),
+            }
+            .build());
+        }
+        // WHY: enforce max_elements as a hard cap to prevent unbounded memory growth.
+        // The HNSW library uses max_elements as a pre-allocation hint but does not
+        // reject inserts beyond it. We enforce it here.
+        let current_len = self.len();
+        if current_len >= self.config.max_elements {
+            tracing::warn!(
+                current = current_len,
+                max = self.config.max_elements,
+                "HNSW index at capacity, skipping insert"
+            );
+            return Err(HnswIndexSnafu {
+                message: format!(
+                    "index at capacity: {} of {} elements",
+                    current_len, self.config.max_elements
+                ),
+            }
+            .build());
+        }
+        let guard = self.inner.read().unwrap_or_else(|e| {
+            tracing::warn!("HNSW read lock was poisoned, recovering");
+            e.into_inner()
+        });
         if let Some(ref hnsw) = *guard {
             hnsw.insert((vector, data_id));
         }
+        Ok(())
     }
 
     /// Insert multiple vectors in parallel.
+    ///
+    /// Returns an error if any vector dimension does not match the configured dimension.
     #[instrument(skip(self, vectors))]
-    #[expect(
-        clippy::expect_used,
-        reason = "RwLock poisoning is unrecoverable; propagating would just defer the panic"
-    )]
-    pub fn insert_batch(&self, vectors: &[(&Vec<f32>, usize)]) {
-        let guard = self.inner.read().expect("hnsw lock poisoned"); // INVARIANT: lock poison is unrecoverable
+    pub(crate) fn insert_batch(&self, vectors: &[(&Vec<f32>, usize)]) -> crate::error::Result<()> {
+        for (vec, _) in vectors {
+            if vec.len() != self.config.dim {
+                return Err(HnswIndexSnafu {
+                    message: format!(
+                        "dimension mismatch: expected {}, got {}",
+                        self.config.dim,
+                        vec.len()
+                    ),
+                }
+                .build());
+            }
+        }
+        let guard = self.inner.read().unwrap_or_else(|e| {
+            tracing::warn!("HNSW read lock was poisoned, recovering");
+            e.into_inner()
+        });
         if let Some(ref hnsw) = *guard {
             for (vec, id) in vectors {
                 hnsw.insert((vec.as_slice(), *id));
             }
         }
+        Ok(())
     }
 
     /// Search for the `k` nearest neighbours to the query vector.
     ///
     /// `ef` controls search width (must be >= `k`). Higher = better recall, slower.
     #[instrument(skip(self, query), fields(k, ef))]
-    #[expect(
-        clippy::expect_used,
-        reason = "RwLock poisoning is unrecoverable; propagating would just defer the panic"
-    )]
-    pub fn search(&self, query: &[f32], k: usize, ef: usize) -> Vec<SearchResult> {
-        let guard = self.inner.read().expect("hnsw lock poisoned"); // INVARIANT: lock poison is unrecoverable
+    pub(crate) fn search(&self, query: &[f32], k: usize, ef: usize) -> Vec<SearchResult> {
+        let guard = self.inner.read().unwrap_or_else(|e| {
+            tracing::warn!("HNSW read lock was poisoned, recovering");
+            e.into_inner()
+        });
         match *guard {
             Some(ref hnsw) => {
                 let neighbours: Vec<Neighbour> = hnsw.search(query, k, ef);
@@ -254,7 +296,7 @@ impl HnswIndex {
     ///
     /// Writes two files: `{basename}.hnsw.graph` and `{basename}.hnsw.data`.
     #[instrument(skip(self))]
-    pub fn dump(&self) -> crate::error::Result<()> {
+    pub(crate) fn dump(&self) -> crate::error::Result<()> {
         let dir = self.config.persist_dir.as_ref().context(HnswIndexSnafu {
             message: "no persist_dir configured for HNSW dump",
         })?;
@@ -266,11 +308,10 @@ impl HnswIndex {
             .build()
         })?;
 
-        #[expect(
-            clippy::expect_used,
-            reason = "RwLock poisoning is unrecoverable; propagating would just defer the panic"
-        )]
-        let guard = self.inner.read().expect("hnsw lock poisoned"); // INVARIANT: lock poison is unrecoverable
+        let guard = self.inner.read().unwrap_or_else(|e| {
+            tracing::warn!("HNSW read lock was poisoned, recovering");
+            e.into_inner()
+        });
         if let Some(ref hnsw) = *guard {
             use hnsw_rs::api::AnnT;
             hnsw.file_dump(dir, &self.config.persist_basename)
@@ -285,12 +326,11 @@ impl HnswIndex {
     }
 
     /// Returns the number of points currently in the index.
-    #[expect(
-        clippy::expect_used,
-        reason = "RwLock poisoning is unrecoverable; propagating would just defer the panic"
-    )]
-    pub fn len(&self) -> usize {
-        let guard = self.inner.read().expect("hnsw lock poisoned"); // INVARIANT: lock poison is unrecoverable
+    pub(crate) fn len(&self) -> usize {
+        let guard = self.inner.read().unwrap_or_else(|e| {
+            tracing::warn!("HNSW read lock was poisoned, recovering");
+            e.into_inner()
+        });
         match *guard {
             Some(ref hnsw) => hnsw.get_nb_point(),
             None => 0,
@@ -298,17 +338,18 @@ impl HnswIndex {
     }
 
     /// Returns true if the index contains no points.
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
     /// Returns the configured dimension.
-    pub fn dim(&self) -> usize {
+    pub(crate) fn dim(&self) -> usize {
         self.config.dim
     }
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 
@@ -332,9 +373,9 @@ mod tests {
         let v2 = vec![0.0, 1.0, 0.0, 0.0];
         let v3 = vec![0.9, 0.1, 0.0, 0.0];
 
-        index.insert(&v1, 0);
-        index.insert(&v2, 1);
-        index.insert(&v3, 2);
+        index.insert(&v1, 0).expect("insert v1");
+        index.insert(&v2, 1).expect("insert v2");
+        index.insert(&v3, 2).expect("insert v3");
 
         let query = vec![0.95, 0.05, 0.0, 0.0];
         let results = index.search(&query, 2, 16);
@@ -358,14 +399,22 @@ mod tests {
         for i in 0..20_usize {
             #[expect(
                 clippy::cast_precision_loss,
-                reason = "test data — small indices fit in f32"
+                reason = "test data: small indices fit in f32"
             )]
             let v = vec![i as f32, 0.0, 0.0, 0.0];
-            index.insert(&v, i);
+            index.insert(&v, i).expect("insert test vector");
         }
 
         let results = index.search(&[10.0, 0.0, 0.0, 0.0], 5, 20);
         assert_eq!(results.len(), 5);
+    }
+
+    #[test]
+    fn insert_rejects_wrong_dimension() {
+        let index = HnswIndex::new(make_config(4));
+        let wrong_dim = vec![1.0, 0.0]; // dim 2, expected 4
+        let result = index.insert(&wrong_dim, 0);
+        assert!(result.is_err(), "inserting wrong dimension should fail");
     }
 
     #[test]
@@ -379,9 +428,9 @@ mod tests {
 
         {
             let index = HnswIndex::new(config.clone());
-            index.insert(&[1.0, 0.0, 0.0, 0.0], 0);
-            index.insert(&[0.0, 1.0, 0.0, 0.0], 1);
-            index.insert(&[0.0, 0.0, 1.0, 0.0], 2);
+            index.insert(&[1.0, 0.0, 0.0, 0.0], 0).expect("insert v1");
+            index.insert(&[0.0, 1.0, 0.0, 0.0], 1).expect("insert v2");
+            index.insert(&[0.0, 0.0, 1.0, 0.0], 2).expect("insert v3");
             assert_eq!(index.len(), 3);
             index.dump().expect("dump should succeed");
         }
@@ -402,24 +451,20 @@ mod tests {
         assert!(index.is_empty());
         assert_eq!(index.len(), 0);
 
-        index.insert(&[1.0, 0.0, 0.0, 0.0], 0);
+        index.insert(&[1.0, 0.0, 0.0, 0.0], 0).expect("insert");
         assert!(!index.is_empty());
         assert_eq!(index.len(), 1);
     }
 
     /// Validates the `'static` transmute safety invariant by exercising
-    /// repeated dump → drop → reload cycles. Each cycle invokes
+    /// repeated dump -> drop -> reload cycles. Each cycle invokes
     /// `open_or_create` (which transmutes) and then searches the reloaded
     /// index. Regression: if the transmute were unsound (e.g. dangling
     /// reference from mmap), this would manifest as corruption or SIGSEGV.
     #[test]
     #[expect(
-        clippy::expect_used,
-        reason = "test code — expect is idiomatic for test assertions on Result"
-    )]
-    #[expect(
         clippy::indexing_slicing,
-        reason = "test code — index into known-length search results"
+        reason = "test code: index into known-length search results"
     )]
     fn transmute_safety_repeated_load_drop_cycles() {
         let dir = tempfile::TempDir::new().expect("temp dir creation succeeds");
@@ -432,13 +477,13 @@ mod tests {
         // NOTE: seed the index with initial data
         {
             let index = HnswIndex::new(config.clone());
-            index.insert(&[1.0, 0.0, 0.0, 0.0], 0);
-            index.insert(&[0.0, 1.0, 0.0, 0.0], 1);
-            index.insert(&[0.0, 0.0, 1.0, 0.0], 2);
+            index.insert(&[1.0, 0.0, 0.0, 0.0], 0).expect("insert v1");
+            index.insert(&[0.0, 1.0, 0.0, 0.0], 1).expect("insert v2");
+            index.insert(&[0.0, 0.0, 1.0, 0.0], 2).expect("insert v3");
             index.dump().expect("initial dump should succeed");
         }
 
-        // NOTE: reload → search → drop across 3 cycles to exercise the
+        // NOTE: reload -> search -> drop across 3 cycles to exercise the
         // transmute path repeatedly. Each cycle creates a new HnswIndex
         // (with transmute), uses it, then drops it.
         for cycle in 0..3_u32 {
@@ -458,7 +503,7 @@ mod tests {
                 "second vector must be findable after reload cycle {cycle}"
             );
         }
-        // NOTE: index drops here — exercises the Drop path on transmuted Hnsw
+        // NOTE: index drops here: exercises the Drop path on transmuted Hnsw
     }
 
     /// Verify sub-millisecond search at small scale.
@@ -470,7 +515,7 @@ mod tests {
             let mut v = vec![0.0f32; 384];
             v[i % 384] = 1.0;
             v[(i * 7) % 384] += 0.5;
-            index.insert(&v, i);
+            index.insert(&v, i).expect("insert test vector");
         }
 
         let query = vec![0.5f32; 384];

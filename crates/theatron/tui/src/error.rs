@@ -63,4 +63,5 @@ pub enum Error {
     WizardAborted,
 }
 
-pub(crate) type Result<T, E = Error> = std::result::Result<T, E>;
+/// Convenience alias for `Result` with the TUI [`Error`] type.
+pub type Result<T, E = Error> = std::result::Result<T, E>;

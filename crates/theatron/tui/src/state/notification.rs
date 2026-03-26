@@ -17,11 +17,15 @@ impl Toast {
         not(test),
         expect(dead_code, reason = "convenience ctor for non-test callers")
     )]
-    pub fn new(message: String, kind: NotificationKind) -> Self {
+    pub(crate) fn new(message: String, kind: NotificationKind) -> Self {
         Self::with_duration(message, kind, 5)
     }
 
-    pub fn with_duration(message: String, kind: NotificationKind, duration_secs: u64) -> Self {
+    pub(crate) fn with_duration(
+        message: String,
+        kind: NotificationKind,
+        duration_secs: u64,
+    ) -> Self {
         Self {
             message,
             kind,
@@ -30,7 +34,7 @@ impl Toast {
         }
     }
 
-    pub fn is_expired(&self) -> bool {
+    pub(crate) fn is_expired(&self) -> bool {
         self.created_at.elapsed() > Duration::from_secs(self.duration_secs)
     }
 }
@@ -68,7 +72,12 @@ pub struct NotificationStore {
 }
 
 impl NotificationStore {
-    pub fn push(&mut self, nous_id: Option<NousId>, message: String, kind: NotificationKind) {
+    pub(crate) fn push(
+        &mut self,
+        nous_id: Option<NousId>,
+        message: String,
+        kind: NotificationKind,
+    ) {
         self.items.push(Notification {
             id: self.next_id,
             nous_id,
@@ -80,7 +89,7 @@ impl NotificationStore {
         self.next_id += 1;
     }
 
-    pub fn unread_count(&self) -> usize {
+    pub(crate) fn unread_count(&self) -> usize {
         self.items.iter().filter(|n| !n.read).count()
     }
 
@@ -91,14 +100,14 @@ impl NotificationStore {
             reason = "per-agent unread badge; used in future sidebar rendering"
         )
     )]
-    pub fn unread_count_for(&self, nous_id: &NousId) -> usize {
+    pub(crate) fn unread_count_for(&self, nous_id: &NousId) -> usize {
         self.items
             .iter()
             .filter(|n| n.nous_id.as_ref() == Some(nous_id) && !n.read)
             .count()
     }
 
-    pub fn mark_all_read(&mut self) {
+    pub(crate) fn mark_all_read(&mut self) {
         for n in &mut self.items {
             n.read = true;
         }
@@ -111,7 +120,7 @@ impl NotificationStore {
             reason = "per-agent mark-read; used in future overlay interactions"
         )
     )]
-    pub fn mark_read_for(&mut self, nous_id: &NousId) {
+    pub(crate) fn mark_read_for(&mut self, nous_id: &NousId) {
         for n in self.items.iter_mut() {
             if n.nous_id.as_ref() == Some(nous_id) {
                 n.read = true;

@@ -72,7 +72,7 @@ impl TriggerConfig {
 
     /// Return triggers that match a given scenario ID.
     #[must_use]
-    pub fn matching_triggers(&self, scenario_id: &str) -> Vec<&EvalTrigger> {
+    pub(crate) fn matching_triggers(&self, scenario_id: &str) -> Vec<&EvalTrigger> {
         self.triggers
             .iter()
             .filter(|t| t.enabled && scenario_id.contains(&t.scenario_pattern))
@@ -81,7 +81,7 @@ impl TriggerConfig {
 
     /// Return all enabled trigger patterns.
     #[must_use]
-    pub fn enabled_patterns(&self) -> Vec<&str> {
+    pub(crate) fn enabled_patterns(&self) -> Vec<&str> {
         self.triggers
             .iter()
             .filter(|t| t.enabled)

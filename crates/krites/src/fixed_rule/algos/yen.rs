@@ -1,9 +1,4 @@
 //! Yen's k-shortest paths.
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use std::collections::{BTreeMap, BTreeSet};
 
 use compact_str::CompactString;
@@ -41,6 +36,7 @@ impl FixedRule for KShortestPathYen {
         let mut starting_nodes = BTreeSet::new();
         for tuple in starting.iter()? {
             let tuple = tuple?;
+            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
             let node = &tuple[0];
             if let Some(idx) = inv_indices.get(node) {
                 starting_nodes.insert(*idx);
@@ -49,6 +45,7 @@ impl FixedRule for KShortestPathYen {
         let mut termination_nodes = BTreeSet::new();
         for tuple in termination.iter()? {
             let tuple = tuple?;
+            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
             let node = &tuple[0];
             if let Some(idx) = inv_indices.get(node) {
                 termination_nodes.insert(*idx);
@@ -144,9 +141,7 @@ fn k_shortest_path_yen(
     }
 
     for _ in 1..k {
-        let (_, prev_path) = k_shortest
-            .last()
-            .expect("k_shortest is non-empty after initial push");
+        let (_, prev_path) = k_shortest.last().unwrap_or_else(|| unreachable!());
         for i in 0..prev_path.len() - 1 {
             let spur_node = match prev_path.get(i) {
                 None => return Ok(vec![]),
@@ -179,6 +174,7 @@ fn k_shortest_path_yen(
             {
                 let mut total_cost = spur_cost;
                 for i in 0..root_path.len() - 1 {
+                    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                     let s = root_path[i];
                     let d = root_path[i + 1];
                     for target in edges.out_neighbors_with_values(s) {
@@ -203,9 +199,7 @@ fn k_shortest_path_yen(
             break;
         }
         candidates.sort_by(|(a_cost, _), (b_cost, _)| b_cost.total_cmp(a_cost));
-        let shortest = candidates
-            .pop()
-            .expect("candidates checked non-empty above");
+        let shortest = candidates.pop().unwrap_or_else(|| unreachable!());
         let shortest_dist = shortest.0;
         if shortest_dist.is_finite() {
             k_shortest.push(shortest);

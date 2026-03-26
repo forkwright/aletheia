@@ -292,7 +292,6 @@ impl Default for MemoryGraphState {
 /// Full state for the memory inspector panel.
 #[derive(Debug)]
 pub struct MemoryInspectorState {
-    // kanon:ignore RUST/pub-visibility
     /// Current active tab.
     pub(crate) tab: MemoryTab,
     /// Whether data is being loaded.

@@ -39,7 +39,7 @@ impl KnowledgeStore {
         reason = "sequential param mapping, splitting adds indirection"
     )]
     #[instrument(skip(self, old_fact, new_fact), fields(old_id = %old_fact.id, new_id = %new_fact.id))]
-    pub fn supersede_fact(
+    pub(crate) fn supersede_fact(
         &self,
         old_fact: &crate::knowledge::Fact,
         new_fact: &crate::knowledge::Fact,
@@ -184,7 +184,10 @@ impl KnowledgeStore {
 
     /// Point-in-time fact query.
     #[instrument(skip(self))]
-    pub fn query_facts_at(&self, time: &str) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
+    pub(crate) fn query_facts_at(
+        &self,
+        time: &str,
+    ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
         use std::collections::BTreeMap;
 
         use crate::engine::DataValue;
@@ -196,11 +199,20 @@ impl KnowledgeStore {
     }
 
     /// Increment access count and update last-accessed timestamp for the given fact IDs.
+    ///
+    /// Serialized via `access_lock` to prevent concurrent read-modify-write races.
     #[instrument(skip(self), fields(count = fact_ids.len()))]
-    pub fn increment_access(&self, fact_ids: &[crate::id::FactId]) -> crate::error::Result<()> {
+    pub(crate) fn increment_access(
+        &self,
+        fact_ids: &[crate::id::FactId],
+    ) -> crate::error::Result<()> {
         if fact_ids.is_empty() {
             return Ok(());
         }
+        let _guard = self.access_lock.lock().unwrap_or_else(|e| {
+            tracing::warn!("access_lock was poisoned, recovering");
+            e.into_inner()
+        });
         let now = jiff::Timestamp::now();
         for id in fact_ids {
             // WHY: CozoDB in-memory read-modify-write in a single Datalog rule does not
@@ -299,7 +311,7 @@ impl KnowledgeStore {
     ///
     /// Returns the restored fact. Errors if the fact does not exist.
     #[instrument(skip(self))]
-    pub fn unforget_fact(
+    pub(crate) fn unforget_fact(
         &self,
         fact_id: &crate::id::FactId,
     ) -> crate::error::Result<crate::knowledge::Fact> {
@@ -348,7 +360,7 @@ impl KnowledgeStore {
     ///
     /// Returns facts where `is_forgotten == true`, with their reasons and timestamps.
     #[instrument(skip(self))]
-    pub fn list_forgotten(
+    pub(crate) fn list_forgotten(
         &self,
         nous_id: &str,
         limit: i64,
@@ -444,7 +456,7 @@ impl KnowledgeStore {
 
     /// Query facts valid at a specific point in time.
     /// Returns facts where `valid_from <= at_time` AND `valid_to > at_time`.
-    pub fn query_facts_temporal(
+    pub(crate) fn query_facts_temporal(
         &self,
         nous_id: &str,
         at_time: &str,
@@ -470,7 +482,7 @@ impl KnowledgeStore {
     /// Query facts that changed between two timestamps.
     /// Returns facts where `valid_from` is in `(from_time, to_time]` OR
     /// `valid_to` is in `(from_time, to_time]`.
-    pub fn query_facts_diff(
+    pub(crate) fn query_facts_diff(
         &self,
         nous_id: &str,
         from_time: &str,
@@ -662,7 +674,7 @@ impl KnowledgeStore {
     /// Returns the updated fact. Errors if no fact with the given ID exists or
     /// if `confidence` is outside `[0.0, 1.0]`.
     #[instrument(skip(self))]
-    pub fn update_confidence(
+    pub(crate) fn update_confidence(
         &self,
         fact_id: &crate::id::FactId,
         confidence: f64,

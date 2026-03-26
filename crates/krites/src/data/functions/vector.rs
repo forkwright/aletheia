@@ -1,8 +1,4 @@
 //! Vector creation and distance operations.
-#![expect(
-    clippy::as_conversions,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use std::mem;
 
 use base64::Engine;
@@ -61,6 +57,10 @@ pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
                             clippy::cast_possible_truncation,
                             reason = "intentional F64→F32 reduction for mixed-precision vector arithmetic"
                         )]
+                        #[expect(
+                            clippy::cast_possible_truncation,
+                            reason = "f64 to f32: intentional precision reduction"
+                        )]
                         let f = f as f32;
                         row.fill(f);
                     }
@@ -97,6 +97,10 @@ pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
                         clippy::cast_possible_truncation,
                         reason = "intentional F64→F32 reduction for mixed-precision vector arithmetic"
                     )]
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        reason = "f64 to f32: intentional precision reduction"
+                    )]
                     let f = f as f32;
                     row.fill(f);
                 }
@@ -124,6 +128,10 @@ pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
                 #[expect(
                     clippy::cast_possible_truncation,
                     reason = "intentional F64→F32 reduction for mixed-precision vector arithmetic"
+                )]
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    reason = "f64 to f32: intentional precision reduction"
                 )]
                 let result = v.mapv(|x| x as f32);
                 Ok(DataValue::Vec(Vector::F32(result)))
@@ -253,6 +261,10 @@ pub(crate) fn op_rand_vec(args: &[DataValue]) -> Result<DataValue> {
                 #[expect(
                     clippy::cast_possible_truncation,
                     reason = "intentional F64→F32 reduction for mixed-precision vector arithmetic"
+                )]
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    reason = "f64 to f32: intentional precision reduction"
                 )]
                 let val = rng.random::<f64>() as f32;
                 row.fill(val);

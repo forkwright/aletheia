@@ -3,11 +3,6 @@
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::Ordering;
@@ -123,7 +118,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         }
         let write_lock = self.obtain_relation_locks(write_lock_names.iter());
         let _write_lock_guards = if is_write {
-            Some(write_lock[0].read().expect("lock poisoned"))
+            Some(write_lock[0].read().unwrap_or_else(|e| e.into_inner()))
         } else {
             None
         };
@@ -195,6 +190,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                         for CompiledRule { aggr, relation, .. } in rules.iter() {
                             clause_idx += 1;
                             let mut ret_for_relation = vec![];
+                            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                             let mut rel_stack = vec![relation];
                             let mut idx = 0;
                             let mut atom_type = "out";
@@ -450,7 +446,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         };
         self.running_queries
             .lock()
-            .expect("lock poisoned")
+            .unwrap_or_else(|e| e.into_inner())
             .insert(id, handle);
 
         let _guard = RunningQueryCleanup {

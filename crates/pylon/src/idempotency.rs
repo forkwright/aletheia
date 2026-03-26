@@ -87,10 +87,16 @@ impl IdempotencyCache {
 
     /// Look up a key. On miss, atomically inserts it as `InFlight`.
     pub(crate) fn check_or_insert(&self, key: &str) -> LookupResult {
-        #[expect(clippy::expect_used, reason = "Mutex::lock panics only on poison")]
-        let mut inner = self.inner.lock().expect("idempotency cache lock poisoned");
+        let mut inner = self.inner.lock().unwrap_or_else(|e| {
+            tracing::warn!("idempotency cache lock was poisoned, recovering");
+            e.into_inner()
+        });
         inner.evict_expired();
 
+        // TODO(#2200): Cache keys are not scoped per user. The `sub` claim from
+        // Claims is not available at this layer because the cache operates below
+        // the auth extractor. Callers should prefix the key with the user's `sub`
+        // before calling check_or_insert to prevent cross-user key collisions.
         if let Some(entry) = inner.entries.get(key) {
             return match &entry.state {
                 EntryState::InFlight => LookupResult::Conflict,
@@ -123,8 +129,10 @@ impl IdempotencyCache {
 
     /// Mark a key as completed with the given response.
     pub(crate) fn complete(&self, key: &str, status: StatusCode, body: String) {
-        #[expect(clippy::expect_used, reason = "Mutex::lock panics only on poison")]
-        let mut inner = self.inner.lock().expect("idempotency cache lock poisoned");
+        let mut inner = self.inner.lock().unwrap_or_else(|e| {
+            tracing::warn!("idempotency cache lock was poisoned, recovering");
+            e.into_inner()
+        });
         if let Some(entry) = inner.entries.get_mut(key) {
             entry.state = EntryState::Completed { status, body };
         }
@@ -132,8 +140,10 @@ impl IdempotencyCache {
 
     /// Remove a key from the cache (e.g. on error, to allow retry).
     pub(crate) fn remove(&self, key: &str) {
-        #[expect(clippy::expect_used, reason = "Mutex::lock panics only on poison")]
-        let mut inner = self.inner.lock().expect("idempotency cache lock poisoned");
+        let mut inner = self.inner.lock().unwrap_or_else(|e| {
+            tracing::warn!("idempotency cache lock was poisoned, recovering");
+            e.into_inner()
+        });
         inner.entries.remove(key);
         inner.order.retain(|k| k != key);
     }

@@ -3,10 +3,6 @@
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
-#![expect(
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 
 use std::fs;
 use std::path::Path;
@@ -158,7 +154,7 @@ unsafe impl Sync for FjallWriteTx<'_> {}
 
 impl FjallWriteTx<'_> {
     fn tx_ref(&self) -> &fjall::SingleWriterWriteTx<'_> {
-        self.tx.as_ref().expect("transaction already committed")
+        self.tx.as_ref().unwrap_or_else(|| unreachable!())
     }
 }
 
@@ -195,7 +191,7 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
         match self {
             FjallTx::Reader(_) => Err(WriteInReadTransactionSnafu.build()),
             FjallTx::Writer(w) => {
-                let tx = w.tx.as_mut().expect("transaction already committed");
+                let tx = w.tx.as_mut().unwrap_or_else(|| unreachable!());
                 tx.insert(w.keyspace, key, val);
                 Ok(())
             }
@@ -210,7 +206,7 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
         match self {
             FjallTx::Reader(_) => Err(WriteInReadTransactionSnafu.build()),
             FjallTx::Writer(w) => {
-                let tx = w.tx.as_mut().expect("transaction already committed");
+                let tx = w.tx.as_mut().unwrap_or_else(|| unreachable!());
                 tx.remove(w.keyspace, key);
                 Ok(())
             }
@@ -235,7 +231,7 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
                         })
                     })
                     .collect::<Result<Vec<_>>>()?;
-                let tx = w.tx.as_mut().expect("transaction already committed");
+                let tx = w.tx.as_mut().unwrap_or_else(|| unreachable!());
                 for k in keys {
                     tx.remove(w.keyspace, k);
                 }
@@ -454,7 +450,6 @@ impl Iterator for CollectedSkipIterator {
 }
 
 #[cfg(test)]
-#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use std::collections::BTreeMap;
 
@@ -466,7 +461,7 @@ mod tests {
     use crate::runtime::db::ScriptMutability;
 
     fn setup_test_db() -> InternalResult<(TempDir, DbCore<FjallStorage>)> {
-        let temp_dir = TempDir::new().expect("failed to create temp dir");
+        let temp_dir = TempDir::new().unwrap_or_else(|_| unreachable!());
         let db = new_cozo_fjall(temp_dir.path())?;
         db.run_script(
             r#"
@@ -581,7 +576,7 @@ mod tests {
 
     #[test]
     fn persistence_across_restarts() -> InternalResult<()> {
-        let dir = TempDir::new().expect("failed to create temp dir");
+        let dir = TempDir::new().unwrap_or_else(|_| unreachable!());
 
         {
             let db = new_cozo_fjall(dir.path())?;

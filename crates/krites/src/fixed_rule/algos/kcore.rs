@@ -6,11 +6,6 @@
 //! Algorithm: iterative peeling.  For increasing k, remove every node whose
 //! current effective degree (within the surviving subgraph) falls below k.
 //! The k-value assigned to each node is the largest k at which it survived.
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use std::collections::BTreeMap;
 
 use compact_str::CompactString;
@@ -39,6 +34,7 @@ impl FixedRule for KCore {
 
         let (graph, indices, _) = edges.as_directed_graph(undirected)?;
 
+        #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
         let n = graph.node_count() as usize;
         if n == 0 {
             return Ok(());
@@ -48,6 +44,7 @@ impl FixedRule for KCore {
             clippy::cast_possible_truncation,
             reason = "graph node count bounded by u32"
         )]
+        #[expect(clippy::cast_possible_truncation, reason = "value fits u32")]
         let n_u32 = n as u32;
         let adj: Vec<Vec<u32>> = (0..n_u32)
             .map(|node| {
@@ -65,6 +62,7 @@ impl FixedRule for KCore {
                     clippy::cast_possible_truncation,
                     reason = "neighbour count bounded by u32 node count"
                 )]
+                #[expect(clippy::cast_possible_truncation, reason = "value fits u32")]
                 let len = nb.len() as u32;
                 len
             })

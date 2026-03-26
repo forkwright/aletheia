@@ -190,7 +190,7 @@ impl AuthService {
 /// RBAC authorization logic.
 fn is_authorized(claims: &Claims, action: &Action) -> bool {
     match claims.role {
-        Role::Operator => true,
+        Role::Admin | Role::Operator => true,
         Role::Agent => match action {
             Action::ReadSession { nous_id } | Action::WriteSession { nous_id } => {
                 claims.nous_id.as_ref().is_some_and(|own| own == nous_id)

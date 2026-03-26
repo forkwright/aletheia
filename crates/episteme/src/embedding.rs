@@ -43,7 +43,7 @@ pub enum EmbeddingError {
 }
 
 /// Result type for embedding operations.
-pub type EmbeddingResult<T> = std::result::Result<T, EmbeddingError>;
+pub(crate) type EmbeddingResult<T> = std::result::Result<T, EmbeddingError>;
 
 /// Trait for text→vector embedding providers.
 ///
@@ -83,7 +83,7 @@ impl MockEmbeddingProvider {
     /// Create a mock provider with the given dimension.
     #[must_use]
     #[instrument]
-    pub fn new(dim: usize) -> Self {
+    pub(crate) fn new(dim: usize) -> Self {
         Self { dim }
     }
 }
@@ -182,7 +182,7 @@ mod candle_provider {
         ///
         /// Returns `EmbeddingError::InitFailed` if model download or initialization fails.
         #[instrument]
-        pub fn new(model_repo: Option<&str>) -> EmbeddingResult<Self> {
+        pub(crate) fn new(model_repo: Option<&str>) -> EmbeddingResult<Self> {
             let repo_id = model_repo.unwrap_or(Self::DEFAULT_REPO);
             let device = Device::Cpu;
 

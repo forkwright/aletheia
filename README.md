@@ -15,7 +15,7 @@ One binary. No containers. No external databases. No cloud dependencies beyond y
 Download the tarball from [releases](https://github.com/forkwright/aletheia/releases), extract, and run `init`:
 
 ```bash
-VERSION=v0.13.11
+VERSION=v0.13.13
 curl -L "https://github.com/forkwright/aletheia/releases/download/${VERSION}/aletheia-linux-x86_64-${VERSION}.tar.gz" \
   -o aletheia.tar.gz
 tar xzf aletheia.tar.gz
@@ -41,7 +41,7 @@ The tarball contains `instance.example/` with the reference config layout. See [
 
 ## Architecture
 
-Rust workspace with 23 crates. Single binary deployment. See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full dependency graph and trait boundaries.
+Rust workspace with 24 crates (23 in default workspace build, theatron-desktop excluded). Single binary deployment. See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full dependency graph and trait boundaries.
 
 ---
 

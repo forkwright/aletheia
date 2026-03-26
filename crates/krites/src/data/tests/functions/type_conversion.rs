@@ -1,9 +1,5 @@
 //! Tests for type conversion, coalesce, and range functions.
 #![expect(clippy::expect_used, reason = "test assertions")]
-#![expect(
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use serde_json::json;
 
 use crate::DbInstance;
@@ -17,7 +13,9 @@ fn test_now() {
         matches!(now, DataValue::Num(_)),
         "op_now should return a numeric timestamp"
     );
+    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
     let s = op_format_timestamp(&[now]).expect("test assertion");
+    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
     let _dt = op_parse_timestamp(&[s]).expect("test assertion");
 }
 

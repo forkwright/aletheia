@@ -13,7 +13,7 @@ pub struct QueryBuilder {
 
 impl QueryBuilder {
     /// Create an empty query builder.
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             lines: Vec::new(),
             params: BTreeMap::new(),
@@ -21,7 +21,7 @@ impl QueryBuilder {
     }
 
     /// Start a `:put` operation against a relation.
-    pub fn put(self, relation: Relation) -> PutBuilder {
+    pub(crate) fn put(self, relation: Relation) -> PutBuilder {
         PutBuilder {
             parent: self,
             relation,
@@ -32,7 +32,7 @@ impl QueryBuilder {
     }
 
     /// Start a `:rm` operation against a relation.
-    pub fn rm(self, relation: Relation) -> RmBuilder {
+    pub(crate) fn rm(self, relation: Relation) -> RmBuilder {
         RmBuilder {
             parent: self,
             relation,
@@ -41,7 +41,7 @@ impl QueryBuilder {
     }
 
     /// Start a `?[...] := *relation{...}` scan query.
-    pub fn scan(self, relation: Relation) -> ScanBuilder {
+    pub(crate) fn scan(self, relation: Relation) -> ScanBuilder {
         ScanBuilder {
             parent: self,
             relation,
@@ -54,26 +54,26 @@ impl QueryBuilder {
     }
 
     /// Append a raw Datalog line (escape hatch for complex queries).
-    pub fn raw(mut self, line: &str) -> Self {
+    pub(crate) fn raw(mut self, line: &str) -> Self {
         self.lines.push(line.to_owned());
         self
     }
 
     /// Bind a named parameter.
-    pub fn param(mut self, name: &str, value: DataValue) -> Self {
+    pub(crate) fn param(mut self, name: &str, value: DataValue) -> Self {
         self.params.insert(name.to_owned(), value);
         self
     }
 
     /// Consume the builder, producing `(script, params)`.
     #[must_use]
-    pub fn build(self) -> (String, BTreeMap<String, DataValue>) {
+    pub(crate) fn build(self) -> (String, BTreeMap<String, DataValue>) {
         (self.lines.join("\n"), self.params)
     }
 
     /// Consume the builder, producing only the script string.
     #[must_use]
-    pub fn build_script(self) -> String {
+    pub(crate) fn build_script(self) -> String {
         self.lines.join("\n")
     }
 }
@@ -96,7 +96,7 @@ pub struct PutBuilder {
 
 impl PutBuilder {
     /// Declare key fields (before the `=>` in the `:put` clause).
-    pub fn keys(mut self, fields: &[impl Field]) -> Self {
+    pub(crate) fn keys(mut self, fields: &[impl Field]) -> Self {
         self.key_count = fields.len();
         for f in fields {
             self.all_fields.push(f.name());
@@ -105,7 +105,7 @@ impl PutBuilder {
     }
 
     /// Declare value fields (after the `=>` in the `:put` clause).
-    pub fn values(mut self, fields: &[impl Field]) -> Self {
+    pub(crate) fn values(mut self, fields: &[impl Field]) -> Self {
         for f in fields {
             self.all_fields.push(f.name());
         }
@@ -117,7 +117,7 @@ impl PutBuilder {
     /// Each entry is a Datalog expression: `"$param_name"`, `"null"`, a quoted
     /// literal like `"\"9999-12-31\""`, etc. Required for multi-row puts where
     /// different rows bind different params (e.g. `SUPERSEDE_FACT`).
-    pub fn row(mut self, exprs: &[&str]) -> Self {
+    pub(crate) fn row(mut self, exprs: &[&str]) -> Self {
         self.rows
             .push(exprs.iter().map(|s| (*s).to_owned()).collect());
         self
@@ -127,7 +127,7 @@ impl PutBuilder {
     ///
     /// If no explicit `row()` was called, generates a single row from field
     /// names (convention: `$field_name` for each field).
-    pub fn done(mut self) -> QueryBuilder {
+    pub(crate) fn done(mut self) -> QueryBuilder {
         if self.rows.is_empty() {
             let auto_row: Vec<String> = self.all_fields.iter().map(|f| format!("${f}")).collect();
             self.rows.push(auto_row);
@@ -188,43 +188,43 @@ pub struct ScanBuilder {
 
 impl ScanBuilder {
     /// Set the `?[...]` projection fields.
-    pub fn select(mut self, fields: &[impl Field]) -> Self {
+    pub(crate) fn select(mut self, fields: &[impl Field]) -> Self {
         self.select = fields.iter().map(|f| f.name()).collect();
         self
     }
 
     /// Bind a field in the `*relation{...}` clause (just the field name).
-    pub fn bind(mut self, field: impl Field) -> Self {
+    pub(crate) fn bind(mut self, field: impl Field) -> Self {
         self.bindings.push(field.name().to_owned());
         self
     }
 
     /// Bind a field to an expression: `field: expr` in `*relation{...}`.
-    pub fn bind_to(mut self, field: impl Field, expr: &str) -> Self {
+    pub(crate) fn bind_to(mut self, field: impl Field, expr: &str) -> Self {
         self.bindings.push(format!("{}: {expr}", field.name()));
         self
     }
 
     /// Add a filter condition (raw Datalog expression after the scan clause).
-    pub fn filter(mut self, expr: &str) -> Self {
+    pub(crate) fn filter(mut self, expr: &str) -> Self {
         self.filters.push(expr.to_owned());
         self
     }
 
     /// Set `:order` directive (e.g. `"-confidence"`).
-    pub fn order(mut self, expr: &str) -> Self {
+    pub(crate) fn order(mut self, expr: &str) -> Self {
         self.order = Some(expr.to_owned());
         self
     }
 
     /// Set `:limit` directive (e.g. `"$limit"`).
-    pub fn limit(mut self, expr: &str) -> Self {
+    pub(crate) fn limit(mut self, expr: &str) -> Self {
         self.limit = Some(expr.to_owned());
         self
     }
 
     /// Finish the scan, returning the parent `QueryBuilder`.
-    pub fn done(mut self) -> QueryBuilder {
+    pub(crate) fn done(mut self) -> QueryBuilder {
         let select_list = self.select.join(", ");
         let binding_list = self.bindings.join(", ");
 
@@ -263,7 +263,7 @@ pub struct RmBuilder {
 
 impl RmBuilder {
     /// Declare the key fields that identify the row to remove.
-    pub fn keys(mut self, fields: &[impl Field]) -> Self {
+    pub(crate) fn keys(mut self, fields: &[impl Field]) -> Self {
         for f in fields {
             self.key_fields.push(f.name());
         }
@@ -271,7 +271,7 @@ impl RmBuilder {
     }
 
     /// Finish the `:rm`, returning the parent `QueryBuilder`.
-    pub fn done(mut self) -> QueryBuilder {
+    pub(crate) fn done(mut self) -> QueryBuilder {
         let field_list = self.key_fields.join(", ");
         let params: Vec<String> = self.key_fields.iter().map(|f| format!("${f}")).collect();
         let param_row = params.join(", ");

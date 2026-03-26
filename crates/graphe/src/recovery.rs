@@ -50,7 +50,7 @@ impl Default for RecoveryConfig {
 ///
 /// Returns `Ok(true)` if the database passes, `Ok(false)` if corruption
 /// is detected. Returns `Err` only for connection-level failures.
-pub fn check_integrity(conn: &Connection) -> Result<bool> {
+pub(crate) fn check_integrity(conn: &Connection) -> Result<bool> {
     let result: String = conn
         .pragma_query_value(None, "integrity_check", |row| row.get(0))
         .context(error::DatabaseSnafu)?;
@@ -64,7 +64,7 @@ pub fn check_integrity(conn: &Connection) -> Result<bool> {
 /// transient I/O condition, not structural database damage. Use
 /// [`is_disk_full_error`] to detect that case separately (#1720).
 #[must_use]
-pub fn is_corruption_error(err: &rusqlite::Error) -> bool {
+pub(crate) fn is_corruption_error(err: &rusqlite::Error) -> bool {
     match err {
         rusqlite::Error::SqliteFailure(ffi_err, _) => matches!(
             ffi_err.code,
@@ -80,7 +80,7 @@ pub fn is_corruption_error(err: &rusqlite::Error) -> bool {
 /// database damage and should be handled as a recoverable I/O error rather
 /// than triggering the corruption recovery workflow (#1720).
 #[must_use]
-pub fn is_disk_full_error(err: &rusqlite::Error) -> bool {
+pub(crate) fn is_disk_full_error(err: &rusqlite::Error) -> bool {
     match err {
         rusqlite::Error::SqliteFailure(ffi_err, _) => ffi_err.code == rusqlite::ErrorCode::DiskFull,
         _ => false,
@@ -91,7 +91,7 @@ pub fn is_disk_full_error(err: &rusqlite::Error) -> bool {
 ///
 /// # Errors
 /// Returns an error if the read-only connection cannot be opened.
-pub fn open_read_only(path: &Path) -> Result<Connection> {
+pub(crate) fn open_read_only(path: &Path) -> Result<Connection> {
     let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
         .context(error::DatabaseSnafu)?;
     // WHY: busy_timeout prevents SQLITE_BUSY errors when a write transaction is active.
@@ -106,7 +106,7 @@ pub fn open_read_only(path: &Path) -> Result<Connection> {
 ///
 /// # Errors
 /// Returns an error if the copy fails.
-pub fn backup_corrupt_file(path: &Path) -> Result<PathBuf> {
+pub(crate) fn backup_corrupt_file(path: &Path) -> Result<PathBuf> {
     let timestamp = jiff::Zoned::now().strftime("%Y%m%dT%H%M%S");
     let backup_name = format!(
         "{}.corrupt.{timestamp}",
@@ -138,7 +138,7 @@ pub fn backup_corrupt_file(path: &Path) -> Result<PathBuf> {
 /// # Errors
 /// Returns an error only for fatal I/O failures. Partial read failures from
 /// the corrupt database are logged and skipped.
-pub fn attempt_recovery(corrupt_path: &Path, new_path: &Path) -> Result<bool> {
+pub(crate) fn attempt_recovery(corrupt_path: &Path, new_path: &Path) -> Result<bool> {
     // WHY: Open the corrupt database read-only so we don't modify it.
     let old_conn = match open_read_only(corrupt_path) {
         Ok(c) => c,
@@ -185,14 +185,21 @@ pub fn attempt_recovery(corrupt_path: &Path, new_path: &Path) -> Result<bool> {
     // without triggering referential integrity violations.
     let tables = list_user_tables(&old_conn);
 
-    let mut total_rows = 0u64;
+    let mut total_copied = 0u64;
+    let mut total_skipped = 0u64;
     let mut failed_tables = Vec::new();
 
     for table in &tables {
         match copy_table(&old_conn, &new_conn, table) {
-            Ok(count) => {
-                total_rows = total_rows.saturating_add(count);
-                info!(table, rows = count, "recovered table");
+            Ok(result) => {
+                total_copied = total_copied.saturating_add(result.copied);
+                total_skipped = total_skipped.saturating_add(result.skipped);
+                info!(
+                    table,
+                    copied = result.copied,
+                    skipped = result.skipped,
+                    "recovered table"
+                );
             }
             Err(e) => {
                 warn!(table, error = %e, "skipped unreadable table during recovery");
@@ -209,11 +216,14 @@ pub fn attempt_recovery(corrupt_path: &Path, new_path: &Path) -> Result<bool> {
         return Ok(false);
     }
 
+    let total_processed = total_copied.saturating_add(total_skipped);
     info!(
-        total_rows,
+        total_processed,
+        total_copied,
+        total_skipped,
         recovered_tables = tables.len() - failed_tables.len(),
         skipped_tables = failed_tables.len(),
-        "database recovery complete"
+        "recovery complete: {total_processed} rows processed, {total_skipped} rows skipped due to errors"
     );
 
     Ok(true)
@@ -241,14 +251,20 @@ fn list_user_tables(conn: &Connection) -> Vec<String> {
     tables
 }
 
-/// Copy all readable rows from one table to another.
-///
-/// Returns the number of rows copied.
+/// Outcome of copying a single table during recovery.
+struct TableCopyResult {
+    /// Rows successfully inserted into the destination table.
+    copied: u64,
+    /// Rows skipped due to read errors or INSERT OR IGNORE conflicts.
+    skipped: u64,
+}
+
+/// Copy all readable rows from one table to another, tracking skipped rows.
 fn copy_table(
     src: &Connection,
     dst: &Connection,
     table: &str,
-) -> std::result::Result<u64, rusqlite::Error> {
+) -> std::result::Result<TableCopyResult, rusqlite::Error> {
     let columns = {
         let mut stmt = src.prepare(&format!(
             "PRAGMA table_info('{}')",
@@ -262,7 +278,10 @@ fn copy_table(
     };
 
     if columns.is_empty() {
-        return Ok(0);
+        return Ok(TableCopyResult {
+            copied: 0,
+            skipped: 0,
+        });
     }
 
     let col_list = columns.join(", ");
@@ -278,7 +297,8 @@ fn copy_table(
 
     let tx = dst.unchecked_transaction()?;
     let mut insert_stmt = tx.prepare(&insert_sql)?;
-    let mut count = 0u64;
+    let mut copied = 0u64;
+    let mut skipped = 0u64;
 
     let rows = select_stmt.query_map([], |row| {
         let mut values: Vec<rusqlite::types::Value> = Vec::with_capacity(column_count);
@@ -289,7 +309,10 @@ fn copy_table(
     })?;
 
     for row in rows {
-        let Ok(values) = row else { continue };
+        let Ok(values) = row else {
+            skipped = skipped.saturating_add(1);
+            continue;
+        };
         #[expect(
             clippy::as_conversions,
             reason = "coercion to dyn ToSql trait object: required by rusqlite API"
@@ -298,14 +321,22 @@ fn copy_table(
             .iter()
             .map(|v| v as &dyn rusqlite::types::ToSql)
             .collect();
-        if insert_stmt.execute(params.as_slice()).is_ok() {
-            count = count.saturating_add(1);
+        match insert_stmt.execute(params.as_slice()) {
+            Ok(changes) if changes > 0 => {
+                copied = copied.saturating_add(1);
+            }
+            Ok(_) => {
+                skipped = skipped.saturating_add(1);
+            }
+            Err(_) => {
+                skipped = skipped.saturating_add(1);
+            }
         }
     }
 
     drop(insert_stmt);
     tx.commit()?;
-    Ok(count)
+    Ok(TableCopyResult { copied, skipped })
 }
 
 /// Perform the full recovery workflow for a corrupt database.
@@ -323,7 +354,10 @@ fn copy_table(
 /// passes an error that is disk-full (detected via [`is_disk_full_error`]), the
 /// function falls through directly to the read-only fallback without attempting
 /// the repair workflow, which would itself require writing to a full disk (#1720).
-pub fn recover_database(path: &Path, config: &RecoveryConfig) -> Result<(Connection, StoreMode)> {
+pub(crate) fn recover_database(
+    path: &Path,
+    config: &RecoveryConfig,
+) -> Result<(Connection, StoreMode)> {
     let path_display = path.display().to_string();
 
     error!(

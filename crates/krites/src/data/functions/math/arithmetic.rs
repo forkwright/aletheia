@@ -1,8 +1,4 @@
 //! Basic arithmetic operators.
-#![expect(
-    clippy::as_conversions,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 
 use super::{arg, mul_vecs};
 use crate::data::error::*;
@@ -18,10 +14,20 @@ pub(crate) fn op_sub(args: &[DataValue]) -> Result<DataValue> {
             DataValue::Num(Num::Float(*a - *b))
         }
         (DataValue::Num(Num::Int(a)), DataValue::Num(Num::Float(b))) => {
-            DataValue::Num(Num::Float((*a as f64) - b))
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "i64 to f64: precision loss acceptable"
+            )]
+            let lhs = *a as f64;
+            DataValue::Num(Num::Float(lhs - b))
         }
         (DataValue::Num(Num::Float(a)), DataValue::Num(Num::Int(b))) => {
-            DataValue::Num(Num::Float(a - (*b as f64)))
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "i64 to f64: precision loss acceptable"
+            )]
+            let rhs = *b as f64;
+            DataValue::Num(Num::Float(a - rhs))
         }
         (DataValue::Vec(a), DataValue::Vec(b)) => match (a, b) {
             (Vector::F32(a), Vector::F32(b)) => DataValue::Vec(Vector::F32(a - b)),
@@ -49,6 +55,10 @@ pub(crate) fn op_sub(args: &[DataValue]) -> Result<DataValue> {
                         clippy::cast_possible_truncation,
                         reason = "intentional F64→F32 reduction for mixed-precision vector arithmetic"
                     )]
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        reason = "f64 to f32: intentional precision reduction"
+                    )]
                     let b = b as f32;
                     v -= b;
                     DataValue::Vec(Vector::F32(v))
@@ -72,6 +82,10 @@ pub(crate) fn op_sub(args: &[DataValue]) -> Result<DataValue> {
                     #[expect(
                         clippy::cast_possible_truncation,
                         reason = "intentional F64→F32 reduction for mixed-precision vector arithmetic"
+                    )]
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        reason = "f64 to f32: intentional precision reduction"
                     )]
                     let a = a as f32;
                     v -= a;
@@ -113,23 +127,48 @@ pub(crate) fn op_mul(args: &[DataValue]) -> Result<DataValue> {
     if f_accum == 1.0f64 {
         Ok(DataValue::Num(Num::Int(i_accum)))
     } else {
-        Ok(DataValue::Num(Num::Float(i_accum as f64 * f_accum)))
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "i64 to f64: precision loss acceptable"
+        )]
+        let acc = i_accum as f64;
+        Ok(DataValue::Num(Num::Float(acc * f_accum)))
     }
 }
 
 pub(crate) fn op_div(args: &[DataValue]) -> Result<DataValue> {
     Ok(match (arg(args, 0)?, arg(args, 1)?) {
         (DataValue::Num(Num::Int(a)), DataValue::Num(Num::Int(b))) => {
-            DataValue::Num(Num::Float((*a as f64) / (*b as f64)))
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "i64 to f64: precision loss acceptable"
+            )]
+            let lhs = *a as f64;
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "i64 to f64: precision loss acceptable"
+            )]
+            let rhs = *b as f64;
+            DataValue::Num(Num::Float(lhs / rhs))
         }
         (DataValue::Num(Num::Float(a)), DataValue::Num(Num::Float(b))) => {
             DataValue::Num(Num::Float(*a / *b))
         }
         (DataValue::Num(Num::Int(a)), DataValue::Num(Num::Float(b))) => {
-            DataValue::Num(Num::Float((*a as f64) / b))
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "i64 to f64: precision loss acceptable"
+            )]
+            let lhs = *a as f64;
+            DataValue::Num(Num::Float(lhs / b))
         }
         (DataValue::Num(Num::Float(a)), DataValue::Num(Num::Int(b))) => {
-            DataValue::Num(Num::Float(a / (*b as f64)))
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "i64 to f64: precision loss acceptable"
+            )]
+            let rhs = *b as f64;
+            DataValue::Num(Num::Float(a / rhs))
         }
         (DataValue::Vec(a), DataValue::Vec(b)) => match (a, b) {
             (Vector::F32(a), Vector::F32(b)) => DataValue::Vec(Vector::F32(a / b)),
@@ -157,6 +196,10 @@ pub(crate) fn op_div(args: &[DataValue]) -> Result<DataValue> {
                         clippy::cast_possible_truncation,
                         reason = "intentional F64→F32 reduction for mixed-precision vector arithmetic"
                     )]
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        reason = "f64 to f32: intentional precision reduction"
+                    )]
                     let b = b as f32;
                     v /= b;
                     DataValue::Vec(Vector::F32(v))
@@ -180,6 +223,10 @@ pub(crate) fn op_div(args: &[DataValue]) -> Result<DataValue> {
                     #[expect(
                         clippy::cast_possible_truncation,
                         reason = "intentional F64→F32 reduction for mixed-precision vector arithmetic"
+                    )]
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        reason = "f64 to f32: intentional precision reduction"
                     )]
                     let a = a as f32;
                     DataValue::Vec(Vector::F32(a / v))

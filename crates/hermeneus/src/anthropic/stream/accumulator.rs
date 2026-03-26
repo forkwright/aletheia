@@ -270,10 +270,21 @@ impl StreamAccumulator {
                     let input = if input_json.is_empty() {
                         serde_json::Value::Object(serde_json::Map::default())
                     } else {
-                        serde_json::from_str(&input_json).unwrap_or_else(|e| {
-                            warn!(error = %e, tool = %name, "failed to parse tool input JSON");
-                            serde_json::Value::Object(serde_json::Map::default())
-                        })
+                        match serde_json::from_str(&input_json) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                warn!(
+                                    error = %e,
+                                    tool = %name,
+                                    raw_json = %input_json,
+                                    "tool input JSON parse failed; returning error object to agent"
+                                );
+                                serde_json::json!({
+                                    "_parse_error": format!("malformed tool input: {e}"),
+                                    "_raw_input": input_json,
+                                })
+                            }
+                        }
                     };
                     ContentBlock::ToolUse { id, name, input }
                 }
@@ -294,10 +305,21 @@ impl StreamAccumulator {
                     let input = if input_json.is_empty() {
                         serde_json::Value::Object(serde_json::Map::default())
                     } else {
-                        serde_json::from_str(&input_json).unwrap_or_else(|e| {
-                            warn!(error = %e, tool = %name, "failed to parse server tool input JSON");
-                            serde_json::Value::Object(serde_json::Map::default())
-                        })
+                        match serde_json::from_str(&input_json) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                warn!(
+                                    error = %e,
+                                    tool = %name,
+                                    raw_json = %input_json,
+                                    "server tool input JSON parse failed; returning error object to agent"
+                                );
+                                serde_json::json!({
+                                    "_parse_error": format!("malformed tool input: {e}"),
+                                    "_raw_input": input_json,
+                                })
+                            }
+                        }
                     };
                     ContentBlock::ServerToolUse { id, name, input }
                 }

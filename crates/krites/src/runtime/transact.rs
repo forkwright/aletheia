@@ -3,11 +3,6 @@
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicU64};
@@ -142,6 +137,7 @@ impl<'a> SessionTx<'a> {
         Ok(ret)
     }
 
+    #[must_use = "commit can fail"]
     pub fn commit_tx(&mut self) -> Result<()> {
         self.store_tx.commit()?;
         Ok(())
@@ -250,12 +246,14 @@ impl<'s, S: Storage<'s>> Db<S> {
                     break;
                 }
                 TransactionPayload::Query((script, params)) => {
-                    let p = match parse_script(
-                        &script,
-                        &params,
-                        &self.fixed_rules.read().expect("lock poisoned"),
-                        ts,
-                    ) {
+                    let rules_guard = match self.fixed_rules.read() {
+                        Ok(g) => g,
+                        Err(poisoned) => {
+                            error!("fixed_rules lock poisoned, recovering inner data");
+                            poisoned.into_inner()
+                        }
+                    };
+                    let p = match parse_script(&script, &params, &rules_guard, ts) {
                         Ok(p) => p,
                         Err(err) => {
                             if results.send(Err(err)).is_err() {
@@ -282,7 +280,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                                 let lock = self
                                     .obtain_relation_locks(iter::once(e.key()))
                                     .pop()
-                                    .expect("obtain_relation_locks returns one lock per input");
+                                    .unwrap_or_else(|| unreachable!());
                                 e.insert(lock);
                             }
                             // NOTE: write lock already acquired for this relation
@@ -309,6 +307,7 @@ impl<'s, S: Storage<'s>> Db<S> {
     /// Export relations to JSON data.
     ///
     /// `relations` contains names of the stored relations to export.
+    #[must_use = "returns the exported data or an error"]
     pub fn export_relations<I, T>(&'s self, relations: I) -> Result<BTreeMap<String, NamedRows>>
     where
         T: AsRef<str>,
@@ -363,12 +362,13 @@ impl<'s, S: Storage<'s>> Db<S> {
     ///
     /// Note that triggers and callbacks are _not_ run for the relations, if any exists.
     /// If you need to activate triggers or callbacks, use queries with parameters.
+    #[must_use = "import can fail"]
     pub fn import_relations(&'s self, data: BTreeMap<String, NamedRows>) -> Result<()> {
         let rel_names = data.keys().map(CompactString::from).collect_vec();
         let locks = self.obtain_relation_locks(rel_names.iter());
         let _guards = locks
             .iter()
-            .map(|l| l.read().expect("lock poisoned"))
+            .map(|l| l.read().unwrap_or_else(|e| e.into_inner()))
             .collect_vec();
 
         let cur_vld = current_validity();

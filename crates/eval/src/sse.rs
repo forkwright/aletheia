@@ -16,6 +16,7 @@ pub struct ParsedSseEvent {
 
 /// Consume an entire SSE response body and parse it into discrete events.
 #[tracing::instrument(skip(response))]
+#[must_use]
 pub async fn parse_sse_stream(response: reqwest::Response) -> Result<Vec<ParsedSseEvent>> {
     let text = response.text().await.context(error::HttpSnafu)?;
     parse_sse_text(&text)
@@ -23,7 +24,7 @@ pub async fn parse_sse_stream(response: reqwest::Response) -> Result<Vec<ParsedS
 
 /// Parse raw SSE text into events. Exposed for testing.
 #[tracing::instrument(skip(text), fields(text_len = text.len()))]
-pub fn parse_sse_text(text: &str) -> Result<Vec<ParsedSseEvent>> {
+pub(crate) fn parse_sse_text(text: &str) -> Result<Vec<ParsedSseEvent>> {
     let mut events = Vec::new();
     let mut current_event_type = String::new();
     let mut current_data = String::new();
@@ -99,7 +100,7 @@ pub fn parse_sse_text(text: &str) -> Result<Vec<ParsedSseEvent>> {
 
 /// Extract the concatenated text content from a sequence of SSE events.
 #[tracing::instrument(skip_all, fields(event_count = events.len()))]
-pub fn extract_text(events: &[ParsedSseEvent]) -> String {
+pub(crate) fn extract_text(events: &[ParsedSseEvent]) -> String {
     events
         .iter()
         .filter(|e| e.event_type == "text_delta")
@@ -109,19 +110,19 @@ pub fn extract_text(events: &[ParsedSseEvent]) -> String {
 
 /// Check whether the stream completed successfully.
 #[tracing::instrument(skip_all, fields(event_count = events.len()))]
-pub fn is_complete(events: &[ParsedSseEvent]) -> bool {
+pub(crate) fn is_complete(events: &[ParsedSseEvent]) -> bool {
     events.iter().any(|e| e.event_type == "message_complete")
 }
 
 /// Check whether the stream contains an error event.
 #[tracing::instrument(skip_all, fields(event_count = events.len()))]
-pub fn has_error(events: &[ParsedSseEvent]) -> bool {
+pub(crate) fn has_error(events: &[ParsedSseEvent]) -> bool {
     events.iter().any(|e| e.event_type == "error")
 }
 
 /// Count `tool_use` events in the stream.
 #[tracing::instrument(skip_all, fields(event_count = events.len()))]
-pub fn tool_call_count(events: &[ParsedSseEvent]) -> usize {
+pub(crate) fn tool_call_count(events: &[ParsedSseEvent]) -> usize {
     events.iter().filter(|e| e.event_type == "tool_use").count()
 }
 
@@ -136,7 +137,7 @@ pub struct UsageData {
 
 /// Extract usage data from the `message_complete` event, if present.
 #[tracing::instrument(skip_all, fields(event_count = events.len()))]
-pub fn extract_usage(events: &[ParsedSseEvent]) -> Option<UsageData> {
+pub(crate) fn extract_usage(events: &[ParsedSseEvent]) -> Option<UsageData> {
     events
         .iter()
         .find(|e| e.event_type == "message_complete")

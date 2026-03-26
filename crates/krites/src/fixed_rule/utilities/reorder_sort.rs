@@ -1,9 +1,4 @@
 //! Reorder and sort fixed rule.
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use std::collections::BTreeMap;
 
 use compact_str::CompactString;
@@ -103,7 +98,7 @@ impl FixedRule for ReorderSort {
         let mut last = &DataValue::Bot;
         let take_plus_skip = take.saturating_add(skip);
         for val in &buffer {
-            let sorter = val.last().expect("sort buffer entries must be non-empty");
+            let sorter = val.last().unwrap_or_else(|| unreachable!());
 
             if sorter == last {
                 count += 1;
@@ -120,6 +115,7 @@ impl FixedRule for ReorderSort {
             if count <= skip {
                 continue;
             }
+            #[expect(clippy::cast_possible_wrap, reason = "value fits i64")]
             let mut out_t = vec![DataValue::from(if break_ties { count } else { rank } as i64)];
             out_t.extend_from_slice(&val[0..val.len() - 1]);
             out.put(out_t);

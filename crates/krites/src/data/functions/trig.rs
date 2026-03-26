@@ -1,8 +1,4 @@
 //! Trigonometric, hyperbolic, and geographic functions.
-#![expect(
-    clippy::as_conversions,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use crate::data::error::*;
 type Result<T> = DataResult<T>;
 use super::arg;
@@ -10,7 +6,14 @@ use crate::data::value::{DataValue, Num, Vector};
 
 pub(crate) fn op_sin(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
-        DataValue::Num(Num::Int(i)) => *i as f64,
+        DataValue::Num(Num::Int(i)) => {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "i64 to f64: precision loss acceptable for numeric ops"
+            )]
+            let v = *i as f64;
+            v
+        }
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
             return Ok(DataValue::Vec(Vector::F32(v.mapv(|x| x.sin()))));
@@ -31,7 +34,14 @@ pub(crate) fn op_sin(args: &[DataValue]) -> Result<DataValue> {
 
 pub(crate) fn op_cos(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
-        DataValue::Num(Num::Int(i)) => *i as f64,
+        DataValue::Num(Num::Int(i)) => {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "i64 to f64: precision loss acceptable for numeric ops"
+            )]
+            let v = *i as f64;
+            v
+        }
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
             return Ok(DataValue::Vec(Vector::F32(v.mapv(|x| x.cos()))));
@@ -52,7 +62,14 @@ pub(crate) fn op_cos(args: &[DataValue]) -> Result<DataValue> {
 
 pub(crate) fn op_tan(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
-        DataValue::Num(Num::Int(i)) => *i as f64,
+        DataValue::Num(Num::Int(i)) => {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "i64 to f64: precision loss acceptable for numeric ops"
+            )]
+            let v = *i as f64;
+            v
+        }
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
             return Ok(DataValue::Vec(Vector::F32(v.mapv(|x| x.tan()))));
@@ -73,7 +90,14 @@ pub(crate) fn op_tan(args: &[DataValue]) -> Result<DataValue> {
 
 pub(crate) fn op_asin(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
-        DataValue::Num(Num::Int(i)) => *i as f64,
+        DataValue::Num(Num::Int(i)) => {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "i64 to f64: precision loss acceptable for numeric ops"
+            )]
+            let v = *i as f64;
+            v
+        }
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
             return Ok(DataValue::Vec(Vector::F32(v.mapv(|x| x.asin()))));
@@ -94,7 +118,14 @@ pub(crate) fn op_asin(args: &[DataValue]) -> Result<DataValue> {
 
 pub(crate) fn op_acos(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
-        DataValue::Num(Num::Int(i)) => *i as f64,
+        DataValue::Num(Num::Int(i)) => {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "i64 to f64: precision loss acceptable for numeric ops"
+            )]
+            let v = *i as f64;
+            v
+        }
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
             return Ok(DataValue::Vec(Vector::F32(v.mapv(|x| x.acos()))));
@@ -115,7 +146,14 @@ pub(crate) fn op_acos(args: &[DataValue]) -> Result<DataValue> {
 
 pub(crate) fn op_atan(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
-        DataValue::Num(Num::Int(i)) => *i as f64,
+        DataValue::Num(Num::Int(i)) => {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "i64 to f64: precision loss acceptable for numeric ops"
+            )]
+            let v = *i as f64;
+            v
+        }
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
             return Ok(DataValue::Vec(Vector::F32(v.mapv(|x| x.atan()))));
@@ -136,7 +174,14 @@ pub(crate) fn op_atan(args: &[DataValue]) -> Result<DataValue> {
 
 pub(crate) fn op_atan2(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
-        DataValue::Num(Num::Int(i)) => *i as f64,
+        DataValue::Num(Num::Int(i)) => {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "i64 to f64: precision loss acceptable for numeric ops"
+            )]
+            let v = *i as f64;
+            v
+        }
         DataValue::Num(Num::Float(f)) => *f,
         _ => {
             return TypeMismatchSnafu {
@@ -147,7 +192,14 @@ pub(crate) fn op_atan2(args: &[DataValue]) -> Result<DataValue> {
         }
     };
     let b = match arg(args, 1)? {
-        DataValue::Num(Num::Int(i)) => *i as f64,
+        DataValue::Num(Num::Int(i)) => {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "i64 to f64: precision loss acceptable for numeric ops"
+            )]
+            let v = *i as f64;
+            v
+        }
         DataValue::Num(Num::Float(f)) => *f,
         _ => {
             return TypeMismatchSnafu {
@@ -163,7 +215,14 @@ pub(crate) fn op_atan2(args: &[DataValue]) -> Result<DataValue> {
 
 pub(crate) fn op_sinh(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
-        DataValue::Num(Num::Int(i)) => *i as f64,
+        DataValue::Num(Num::Int(i)) => {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "i64 to f64: precision loss acceptable for numeric ops"
+            )]
+            let v = *i as f64;
+            v
+        }
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
             return Ok(DataValue::Vec(Vector::F32(v.mapv(|x| x.sinh()))));
@@ -184,7 +243,14 @@ pub(crate) fn op_sinh(args: &[DataValue]) -> Result<DataValue> {
 
 pub(crate) fn op_cosh(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
-        DataValue::Num(Num::Int(i)) => *i as f64,
+        DataValue::Num(Num::Int(i)) => {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "i64 to f64: precision loss acceptable for numeric ops"
+            )]
+            let v = *i as f64;
+            v
+        }
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
             return Ok(DataValue::Vec(Vector::F32(v.mapv(|x| x.cosh()))));
@@ -205,7 +271,14 @@ pub(crate) fn op_cosh(args: &[DataValue]) -> Result<DataValue> {
 
 pub(crate) fn op_tanh(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
-        DataValue::Num(Num::Int(i)) => *i as f64,
+        DataValue::Num(Num::Int(i)) => {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "i64 to f64: precision loss acceptable for numeric ops"
+            )]
+            let v = *i as f64;
+            v
+        }
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
             return Ok(DataValue::Vec(Vector::F32(v.mapv(|x| x.tanh()))));
@@ -226,7 +299,14 @@ pub(crate) fn op_tanh(args: &[DataValue]) -> Result<DataValue> {
 
 pub(crate) fn op_asinh(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
-        DataValue::Num(Num::Int(i)) => *i as f64,
+        DataValue::Num(Num::Int(i)) => {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "i64 to f64: precision loss acceptable for numeric ops"
+            )]
+            let v = *i as f64;
+            v
+        }
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
             return Ok(DataValue::Vec(Vector::F32(v.mapv(|x| x.asinh()))));
@@ -247,7 +327,14 @@ pub(crate) fn op_asinh(args: &[DataValue]) -> Result<DataValue> {
 
 pub(crate) fn op_acosh(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
-        DataValue::Num(Num::Int(i)) => *i as f64,
+        DataValue::Num(Num::Int(i)) => {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "i64 to f64: precision loss acceptable for numeric ops"
+            )]
+            let v = *i as f64;
+            v
+        }
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
             return Ok(DataValue::Vec(Vector::F32(v.mapv(|x| x.acosh()))));
@@ -268,7 +355,14 @@ pub(crate) fn op_acosh(args: &[DataValue]) -> Result<DataValue> {
 
 pub(crate) fn op_atanh(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
-        DataValue::Num(Num::Int(i)) => *i as f64,
+        DataValue::Num(Num::Int(i)) => {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "i64 to f64: precision loss acceptable for numeric ops"
+            )]
+            let v = *i as f64;
+            v
+        }
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
             return Ok(DataValue::Vec(Vector::F32(v.mapv(|x| x.atanh()))));

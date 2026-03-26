@@ -1,9 +1,4 @@
 //! Degree centrality computation.
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use std::collections::BTreeMap;
 
 use compact_str::CompactString;
@@ -30,11 +25,13 @@ impl FixedRule for DegreeCentrality {
         let mut counter: BTreeMap<DataValue, (usize, usize, usize)> = BTreeMap::new();
         for tuple in it {
             let tuple = tuple?;
+            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
             let from = tuple[0].clone();
             let (from_total, from_out, _) = counter.entry(from).or_default();
             *from_total += 1;
             *from_out += 1;
 
+            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
             let to = tuple[1].clone();
             let (to_total, _, to_in) = counter.entry(to).or_default();
             *to_total += 1;
@@ -44,6 +41,7 @@ impl FixedRule for DegreeCentrality {
         if let Ok(nodes) = payload.get_input(1) {
             for tuple in nodes.iter()? {
                 let tuple = tuple?;
+                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                 let id = &tuple[0];
                 if !counter.contains_key(id) {
                     counter.insert(id.clone(), (0, 0, 0));

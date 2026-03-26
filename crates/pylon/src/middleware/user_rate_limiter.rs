@@ -182,91 +182,21 @@ impl UserRateLimiter {
 
 /// Extract the user identity for per-user rate limiting.
 ///
-/// Reads the `sub` claim from the JWT bearer token without full validation.
-/// Falls back to the client IP key used by the per-IP limiter.
+/// Uses the client IP as the rate-limit key. Previous versions extracted
+/// the JWT `sub` claim from raw payload bytes without signature verification,
+/// which allowed attackers to forge any `sub` and poison another user's
+/// rate-limit bucket (#2223). The auth extractor runs inside route handlers,
+/// after rate-limit middleware, so verified claims are unavailable here.
 fn extract_user_key(request: &Request, trust_proxy: bool) -> String {
-    // WHY: We decode the JWT payload without signature verification here
-    // because full auth validation happens later in the handler extractor.
-    // This is only for rate-limit keying, not for authorization.
-    if let Some(auth) = request
-        .headers()
-        .get("authorization")
-        .and_then(|v| v.to_str().ok())
-        && let Some(token) = auth.strip_prefix("Bearer ")
-        && let Some(sub) = extract_jwt_sub(token)
-    {
-        return sub;
-    }
     extract_client_key(request, trust_proxy)
-}
-
-/// Decode the `sub` claim from a JWT token without signature verification.
-///
-/// Used only for rate-limit keying. Authorization is validated separately.
-pub(super) fn extract_jwt_sub(token: &str) -> Option<String> {
-    let payload_part = token.split('.').nth(1)?;
-    let decoded = base64_decode_url_safe(payload_part);
-    let payload: serde_json::Value = serde_json::from_slice(&decoded).ok()?;
-    payload
-        .get("sub")
-        .and_then(|v| v.as_str())
-        .map(String::from)
-}
-
-/// Decode base64url without padding (JWT standard encoding).
-fn base64_decode_url_safe(input: &str) -> Vec<u8> {
-    // WHY: JWT uses base64url encoding without padding. We convert to standard
-    // base64 alphabet and add padding before decoding.
-    let mut s = input.replace('-', "+").replace('_', "/");
-    let padding = (4 - s.len() % 4) % 4;
-    for _ in 0..padding {
-        s.push('=');
-    }
-
-    let bytes: Vec<u8> = s.bytes().collect();
-    let mut output = Vec::with_capacity(bytes.len() * 3 / 4);
-    let decode_char = |c: u8| -> Option<u8> {
-        match c {
-            b'A'..=b'Z' => Some(c - b'A'),
-            b'a'..=b'z' => Some(c - b'a' + 26),
-            b'0'..=b'9' => Some(c - b'0' + 52),
-            b'+' => Some(62),
-            b'/' => Some(63),
-            _ => None,
-        }
-    };
-
-    for chunk in bytes.chunks(4) {
-        if chunk.len() < 4 {
-            break;
-        }
-        let vals: Vec<Option<u8>> = chunk.iter().map(|&b| decode_char(b)).collect();
-        // vals has exactly 4 elements because chunk.len() >= 4 is checked above
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "vals has exactly 4 elements: chunk.len() >= 4 is checked"
-        )]
-        if let (Some(a), Some(b)) = (vals[0], vals[1]) {
-            output.push((a << 2) | (b >> 4));
-            #[expect(clippy::indexing_slicing, reason = "vals has exactly 4 elements")]
-            if let Some(c) = vals[2] {
-                output.push((b << 4) | (c >> 2));
-                #[expect(clippy::indexing_slicing, reason = "vals has exactly 4 elements")]
-                if let Some(d) = vals[3] {
-                    output.push((c << 6) | d);
-                }
-            }
-        }
-    }
-
-    output
 }
 
 /// Middleware that enforces per-user rate limiting with endpoint categories.
 ///
-/// Reads the `Arc<UserRateLimiter>` from request extensions. Extracts user
-/// identity from the JWT bearer token. Returns 429 with `Retry-After` header
-/// when the user has exceeded the configured limit for the endpoint category.
+/// Reads the `Arc<UserRateLimiter>` from request extensions. Keys on client
+/// IP address (verified claims are unavailable at the middleware layer).
+/// Returns 429 with `Retry-After` header when the client has exceeded the
+/// configured limit for the endpoint category.
 pub async fn per_user_rate_limit(request: Request, next: Next) -> Response {
     let limiter = request.extensions().get::<Arc<UserRateLimiter>>().cloned();
     let trust_proxy = request

@@ -52,20 +52,29 @@ impl CredentialProvider for EnvCredentialProvider {
 
             // WHY: static env var tokens cannot be refreshed; a refreshable file
             // provider downstream must get a chance to supply a valid credential.
-            if v.starts_with(OAUTH_TOKEN_PREFIX)
-                && let Some(exp_secs) = decode_jwt_exp_secs(&v)
-            {
-                let now_secs = unix_epoch_ms() / 1000;
-                if exp_secs + CLOCK_SKEW_LEEWAY_SECS < now_secs {
-                    warn!(
-                        var = %self.var_name,
-                        exp_secs,
-                        now_secs,
-                        leeway_secs = CLOCK_SKEW_LEEWAY_SECS,
-                        "OAuth token from environment variable expired \
-                         (exp + leeway < now), falling through to next provider"
-                    );
-                    return None;
+            if v.starts_with(OAUTH_TOKEN_PREFIX) {
+                match decode_jwt_exp_secs(&v) {
+                    Some(exp_secs) => {
+                        let now_secs = unix_epoch_ms() / 1000;
+                        if exp_secs + CLOCK_SKEW_LEEWAY_SECS < now_secs {
+                            warn!(
+                                var = %self.var_name,
+                                exp_secs,
+                                now_secs,
+                                leeway_secs = CLOCK_SKEW_LEEWAY_SECS,
+                                "OAuth token from environment variable expired \
+                                 (exp + leeway < now), falling through to next provider"
+                            );
+                            return None;
+                        }
+                    }
+                    None => {
+                        warn!(
+                            var = %self.var_name,
+                            "OAuth token expiry could not be decoded, \
+                             proceeding without expiry check"
+                        );
+                    }
                 }
             }
 

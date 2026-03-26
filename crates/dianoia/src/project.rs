@@ -67,6 +67,7 @@ impl Project {
     }
 
     /// Advance project state via a transition.
+    #[must_use]
     pub fn advance(&mut self, transition: Transition) -> Result<()> {
         let current = self.state.clone();
         self.state = current.transition(transition)?;
@@ -82,12 +83,12 @@ impl Project {
 
     /// Get the current active phase (first non-complete phase).
     #[must_use]
-    pub fn active_phase(&self) -> Option<&Phase> {
+    pub(crate) fn active_phase(&self) -> Option<&Phase> {
         self.phases.iter().find(|p| !p.is_complete())
     }
 
     /// Get a mutable reference to the current active phase.
-    pub fn active_phase_mut(&mut self) -> Option<&mut Phase> {
+    pub(crate) fn active_phase_mut(&mut self) -> Option<&mut Phase> {
         self.phases.iter_mut().find(|p| !p.is_complete())
     }
 }

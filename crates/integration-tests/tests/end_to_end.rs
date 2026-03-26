@@ -189,6 +189,7 @@ impl TestHarness {
             jwt_manager: Arc::clone(&jwt_manager),
             start_time: Instant::now(),
             auth_mode: "token".to_owned(),
+            none_role: "readonly".to_owned(),
             config: Arc::new(tokio::sync::RwLock::new(default_config)),
             config_tx,
             idempotency_cache: Arc::new(aletheia_pylon::idempotency::IdempotencyCache::new()),

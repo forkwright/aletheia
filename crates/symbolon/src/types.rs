@@ -5,25 +5,30 @@ use serde::{Deserialize, Serialize};
 use aletheia_koina::secret::SecretString;
 
 /// Role in the RBAC model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// Ordered by privilege level: Readonly < Operator < Admin.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum Role {
-    /// Full access. Can manage agents, users, read all sessions, configure system.
-    Operator,
-    /// Per-nous scoped. Can access own sessions, use own tools, read shared workspace.
-    Agent,
     /// Dashboard access only. No mutations.
     Readonly,
+    /// Per-nous scoped. Can access own sessions, use own tools, read shared workspace.
+    Agent,
+    /// Full access. Can manage agents, users, read all sessions, configure system.
+    Operator,
+    /// Superuser. All Operator permissions plus system administration.
+    Admin,
 }
 
 impl Role {
     /// String representation for storage.
     pub(crate) fn as_str(self) -> &'static str {
         match self {
-            Self::Operator => "operator",
-            Self::Agent => "agent",
             Self::Readonly => "readonly",
+            Self::Agent => "agent",
+            Self::Operator => "operator",
+            Self::Admin => "admin",
         }
     }
 }
@@ -39,9 +44,10 @@ impl std::str::FromStr for Role {
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s {
-            "operator" => Ok(Self::Operator),
-            "agent" => Ok(Self::Agent),
             "readonly" => Ok(Self::Readonly),
+            "agent" => Ok(Self::Agent),
+            "operator" => Ok(Self::Operator),
+            "admin" => Ok(Self::Admin),
             other => Err(format!("unknown role: {other}")),
         }
     }

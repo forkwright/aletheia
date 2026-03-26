@@ -1,10 +1,5 @@
 //! Tests for vector indexing, FTS indexing, LSH indexing, and insertions.
 #![expect(clippy::expect_used, reason = "test assertions")]
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use std::collections::BTreeMap;
 
 use crate::DbInstance;
@@ -190,6 +185,10 @@ fn when_fts_index_created_text_search_finds_matching_rows() {
 #[test]
 fn when_lsh_index_created_exact_match_found_across_thresholds() {
     for i in 1..10 {
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "i64 to f64: precision loss acceptable"
+        )]
         let f = i as f64 / 10.;
         let db = DbInstance::default();
         db.run_default(r":create a {k: String => v: String}")
@@ -215,6 +214,10 @@ fn when_lsh_index_created_exact_match_found_across_thresholds() {
 #[test]
 fn when_lsh_index_on_text_field_exact_match_found_across_thresholds() {
     for i in 1..10 {
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "i64 to f64: precision loss acceptable"
+        )]
         let f = i as f64 / 10.;
         let db = DbInstance::default();
         db.run_default(r":create text {id: String,  => text: String, url: String? default null, dt: Float default now(), dup_for: String? default null }")
@@ -293,6 +296,10 @@ fn filtering() {
 #[test]
 fn when_lsh_row_deleted_similarity_search_returns_empty() {
     for i in 1..10 {
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "i64 to f64: precision loss acceptable"
+        )]
         let f = i as f64 / 10.;
         let db = DbInstance::default();
         db.run_default(r":create a {k: String => v: String}")

@@ -3,10 +3,6 @@
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
-#![expect(
-    clippy::as_conversions,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
@@ -53,7 +49,10 @@ pub(crate) struct RunningQueryCleanup {
 
 impl Drop for RunningQueryCleanup {
     fn drop(&mut self) {
-        let mut map = self.running_queries.lock().expect("lock poisoned");
+        let mut map = self
+            .running_queries
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         if let Some(handle) = map.remove(&self.id) {
             handle.poison.0.store(true, Ordering::Relaxed);
         }
@@ -165,6 +164,7 @@ impl NamedRows {
         })
     }
     /// Make named rows from JSON
+    #[must_use = "returns parsed rows or an error"]
     pub fn from_json(value: &JsonValue) -> Result<Self> {
         let headers = value
             .get("headers")
@@ -275,6 +275,7 @@ impl<'s, S: Storage<'s>> Db<S> {
     /// # Errors
     ///
     /// Returns an error if the storage backend fails during initial setup.
+    #[must_use = "returns the database instance or an error"]
     pub fn new(storage: S) -> Result<Self> {
         let ret = Self {
             db: storage,
@@ -294,6 +295,7 @@ impl<'s, S: Storage<'s>> Db<S> {
     }
 
     /// Must be called after creation of the database to initialize the runtime state.
+    #[must_use = "initialization can fail"]
     pub fn initialize(&'s self) -> Result<()> {
         self.load_last_ids()?;
         Ok(())
@@ -301,12 +303,17 @@ impl<'s, S: Storage<'s>> Db<S> {
 
     /// This returns the set of fixed rule implementations for this specific backend.
     pub fn get_fixed_rules(&'s self) -> BTreeMap<String, Arc<Box<dyn FixedRule>>> {
-        return self.fixed_rules.read().expect("lock poisoned").clone();
+        return self
+            .fixed_rules
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
     }
 
     /// Backup the running database into an Sqlite file.
     ///
     /// Not currently supported: requires the removed `storage-sqlite` feature.
+    #[must_use = "backup can fail"]
     pub fn backup_db(&'s self, _out_file: impl AsRef<Path>) -> Result<()> {
         UnsupportedSnafu {
             operation: "backup",
@@ -317,6 +324,7 @@ impl<'s, S: Storage<'s>> Db<S> {
     /// Restore from an Sqlite backup.
     ///
     /// Not currently supported: requires the removed `storage-sqlite` feature.
+    #[must_use = "restore can fail"]
     pub fn restore_backup(&'s self, _in_file: impl AsRef<Path>) -> Result<()> {
         UnsupportedSnafu {
             operation: "restore",
@@ -327,6 +335,7 @@ impl<'s, S: Storage<'s>> Db<S> {
     /// Import data from relations in a backup file.
     ///
     /// Not currently supported: requires the removed `storage-sqlite` feature.
+    #[must_use = "import can fail"]
     pub fn import_from_backup(
         &'s self,
         _in_file: impl AsRef<Path>,
@@ -339,11 +348,17 @@ impl<'s, S: Storage<'s>> Db<S> {
         .fail()?
     }
     /// Register a custom fixed rule implementation.
+    #[must_use = "registration can fail if the name is already taken"]
     pub fn register_fixed_rule<R>(&self, name: String, rule_impl: R) -> Result<()>
     where
         R: FixedRule + 'static,
     {
-        match self.fixed_rules.write().expect("lock poisoned").entry(name) {
+        match self
+            .fixed_rules
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .entry(name)
+        {
             Entry::Vacant(ent) => {
                 ent.insert(Arc::new(Box::new(rule_impl)));
                 Ok(())
@@ -357,6 +372,7 @@ impl<'s, S: Storage<'s>> Db<S> {
     }
 
     /// Unregister a custom fixed rule implementation.
+    #[must_use = "returns whether the rule existed or an error"]
     pub fn unregister_fixed_rule(&self, name: &str) -> Result<bool> {
         if DEFAULT_FIXED_RULES.contains_key(name) {
             InvalidOperationSnafu {
@@ -368,7 +384,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         Ok(self
             .fixed_rules
             .write()
-            .expect("lock poisoned")
+            .unwrap_or_else(|e| e.into_inner())
             .remove(name)
             .is_some())
     }
@@ -391,7 +407,10 @@ impl<'s, S: Storage<'s>> Db<S> {
             sender,
         };
 
-        let mut guard = self.event_callbacks.write().expect("lock poisoned");
+        let mut guard = self
+            .event_callbacks
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
         let new_id = self.callback_count.fetch_add(1, Ordering::SeqCst);
         guard
             .1
@@ -406,19 +425,22 @@ impl<'s, S: Storage<'s>> Db<S> {
     /// Unregister callbacks/channels to run when changes to relations are committed.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn unregister_callback(&self, id: u32) -> bool {
-        let mut guard = self.event_callbacks.write().expect("lock poisoned");
+        let mut guard = self
+            .event_callbacks
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
         let ret = guard.0.remove(&id);
         if let Some(cb) = &ret {
             guard
                 .1
                 .get_mut(&cb.dependent)
-                .expect("callback dependency entry exists")
+                .unwrap_or_else(|| unreachable!())
                 .remove(&id);
 
             if guard
                 .1
                 .get(&cb.dependent)
-                .expect("callback dependency entry exists")
+                .unwrap_or_else(|| unreachable!())
                 .is_empty()
             {
                 guard.1.remove(&cb.dependent);
@@ -434,7 +456,10 @@ impl<'s, S: Storage<'s>> Db<S> {
         let mut collected = vec![];
         let mut pending = vec![];
         {
-            let locks = self.relation_locks.read().expect("lock poisoned");
+            let locks = self
+                .relation_locks
+                .read()
+                .unwrap_or_else(|e| e.into_inner());
             for rel in rels {
                 match locks.get(rel) {
                     None => {
@@ -445,7 +470,10 @@ impl<'s, S: Storage<'s>> Db<S> {
             }
         }
         if !pending.is_empty() {
-            let mut locks = self.relation_locks.write().expect("lock poisoned");
+            let mut locks = self
+                .relation_locks
+                .write()
+                .unwrap_or_else(|e| e.into_inner());
             for rel in pending {
                 let lock = locks.entry(rel.clone()).or_default().clone();
                 collected.push(lock);
@@ -477,6 +505,7 @@ impl Poison {
     /// # Errors
     ///
     /// Returns a query-killed error if the user initiated termination.
+    #[must_use = "caller must propagate the query-killed error"]
     #[inline(always)]
     pub fn check(&self) -> Result<()> {
         if self.0.load(Ordering::Relaxed) {

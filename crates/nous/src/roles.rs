@@ -23,7 +23,7 @@ impl Role {
     ///
     /// Returns `None` for unrecognized role names.
     #[must_use]
-    pub fn parse(s: &str) -> Option<Self> {
+    pub(crate) fn parse(s: &str) -> Option<Self> {
         match s {
             "coder" => Some(Self::Coder),
             "researcher" => Some(Self::Researcher),
@@ -36,7 +36,7 @@ impl Role {
 
     /// All defined roles.
     #[must_use]
-    pub fn all() -> &'static [Role] {
+    pub(crate) fn all() -> &'static [Role] {
         &[
             Self::Coder,
             Self::Researcher,
@@ -48,7 +48,7 @@ impl Role {
 
     /// Role name as a lowercase string.
     #[must_use]
-    pub fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::Coder => "coder",
             Self::Researcher => "researcher",
@@ -60,7 +60,7 @@ impl Role {
 
     /// Structured template for this role.
     #[must_use]
-    pub fn template(self) -> RoleTemplate {
+    pub(crate) fn template(self) -> RoleTemplate {
         match self {
             Self::Coder => coder_template(),
             Self::Researcher => researcher_template(),
@@ -89,7 +89,7 @@ pub enum ToolPolicy {
 impl ToolPolicy {
     /// Check whether a tool name is permitted under this policy.
     #[must_use]
-    pub fn is_allowed(&self, tool_name: &str) -> bool {
+    pub(crate) fn is_allowed(&self, tool_name: &str) -> bool {
         match self {
             Self::Unrestricted => true,
             Self::AllowOnly(allowed) => allowed.iter().any(|a| a == tool_name),
@@ -100,7 +100,7 @@ impl ToolPolicy {
     ///
     /// Returns `None` for unrestricted (all tools allowed).
     #[must_use]
-    pub fn to_allowlist(&self) -> Option<Vec<String>> {
+    pub(crate) fn to_allowlist(&self) -> Option<Vec<String>> {
         match self {
             Self::Unrestricted => None,
             Self::AllowOnly(list) => Some(list.clone()),

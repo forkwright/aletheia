@@ -176,7 +176,7 @@ pub use user_rate_limiter::{
 };
 
 #[cfg(test)]
-use user_rate_limiter::{TokenBucket, extract_jwt_sub};
+use user_rate_limiter::TokenBucket;
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
@@ -371,72 +371,5 @@ mod tests {
         let evicted = limiter.cleanup_stale();
         assert_eq!(evicted, 0, "recent entries should not be evicted");
         assert_eq!(limiter.tracked_users(), 1, "active user should remain");
-    }
-
-    #[test]
-    fn extracts_sub_from_valid_jwt() {
-        let header = base64_encode_url_safe(br#"{"alg":"HS256","typ":"JWT"}"#);
-        let payload = base64_encode_url_safe(br#"{"sub":"alice","iat":1000000}"#);
-        let token = format!("{header}.{payload}.fakesignature");
-
-        assert_eq!(
-            extract_jwt_sub(&token),
-            Some("alice".to_owned()),
-            "should extract sub claim from JWT payload"
-        );
-    }
-
-    #[test]
-    fn returns_none_for_malformed_jwt() {
-        assert_eq!(extract_jwt_sub("not-a-jwt"), None);
-        assert_eq!(extract_jwt_sub("a.b"), None);
-        assert_eq!(extract_jwt_sub(""), None);
-    }
-
-    /// Base64url encode without padding (for test JWT construction).
-    fn base64_encode_url_safe(input: &[u8]) -> String {
-        const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-        let mut result = String::new();
-        for chunk in input.chunks(3) {
-            // chunks(3) always yields at least 1 element; b1/b2 use .get() for safety
-            #[expect(
-                clippy::indexing_slicing,
-                reason = "chunks(3) always has at least 1 element"
-            )]
-            let b0 = chunk[0];
-            let b1 = chunk.get(1).copied().unwrap_or(0);
-            let b2 = chunk.get(2).copied().unwrap_or(0);
-            let combined = u32::from(b0) << 16 | u32::from(b1) << 8 | u32::from(b2);
-            // 6-bit nibbles (0..=63) safely index 64-element CHARS; u8 ASCII is valid char
-            #[expect(
-                clippy::indexing_slicing,
-                reason = "6-bit value 0..=63 indexes 64-element CHARS"
-            )]
-            #[expect(clippy::as_conversions, reason = "6-bit→usize; u8 ASCII→char")]
-            result.push(CHARS[((combined >> 18) & 0x3F) as usize] as char);
-            #[expect(
-                clippy::indexing_slicing,
-                reason = "6-bit value 0..=63 indexes 64-element CHARS"
-            )]
-            #[expect(clippy::as_conversions, reason = "6-bit→usize; u8 ASCII→char")]
-            result.push(CHARS[((combined >> 12) & 0x3F) as usize] as char);
-            if chunk.len() > 1 {
-                #[expect(
-                    clippy::indexing_slicing,
-                    reason = "6-bit value 0..=63 indexes 64-element CHARS"
-                )]
-                #[expect(clippy::as_conversions, reason = "6-bit→usize; u8 ASCII→char")]
-                result.push(CHARS[((combined >> 6) & 0x3F) as usize] as char);
-            }
-            if chunk.len() > 2 {
-                #[expect(
-                    clippy::indexing_slicing,
-                    reason = "6-bit value 0..=63 indexes 64-element CHARS"
-                )]
-                #[expect(clippy::as_conversions, reason = "6-bit→usize; u8 ASCII→char")]
-                result.push(CHARS[(combined & 0x3F) as usize] as char);
-            }
-        }
-        result.replace('+', "-").replace('/', "_")
     }
 }

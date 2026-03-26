@@ -3,10 +3,6 @@
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
-#![expect(
-    clippy::as_conversions,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 
 use std::cmp::Reverse;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -28,10 +24,11 @@ pub(crate) fn current_validity() -> ValidityTs {
     let ts_micros = {
         let now = SystemTime::now();
         now.duration_since(UNIX_EPOCH)
-            .expect("SystemTime::now() is always after UNIX_EPOCH")
+            .unwrap_or_default()
             .as_micros() as i64
     };
     #[cfg(target_arch = "wasm32")]
+    #[expect(clippy::cast_possible_wrap, reason = "value fits i64")]
     let ts_micros = { (Date::now() * 1000.) as i64 };
 
     ValidityTs(Reverse(ts_micros))
@@ -64,7 +61,7 @@ pub(crate) fn op_now(_args: &[DataValue]) -> Result<DataValue> {
     let now = SystemTime::now();
     Ok(DataValue::from(
         now.duration_since(UNIX_EPOCH)
-            .expect("SystemTime::now() is always after UNIX_EPOCH")
+            .unwrap_or_default()
             .as_secs_f64(),
     ))
 }
@@ -148,9 +145,7 @@ pub(crate) fn op_rand_uuid_v1(_args: &[DataValue]) -> Result<DataValue> {
     #[cfg(not(target_arch = "wasm32"))]
     let ts = {
         let now = SystemTime::now();
-        let since_epoch = now
-            .duration_since(UNIX_EPOCH)
-            .expect("SystemTime::now() is always after UNIX_EPOCH");
+        let since_epoch = now.duration_since(UNIX_EPOCH).unwrap_or_default();
         Timestamp::from_unix(uuid_ctx, since_epoch.as_secs(), since_epoch.subsec_nanos())
     };
     let mut rand_vals = [0u8; 6];
@@ -170,6 +165,10 @@ pub(crate) fn op_uuid_timestamp(args: &[DataValue]) -> Result<DataValue> {
             None => DataValue::Null,
             Some(t) => {
                 let (s, subs) = t.to_unix();
+                #[expect(
+                    clippy::cast_precision_loss,
+                    reason = "i64 to f64: precision loss acceptable"
+                )]
                 let s = (s as f64) + (subs as f64 / 10_000_000.);
                 s.into()
             }

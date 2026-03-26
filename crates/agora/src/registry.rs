@@ -36,6 +36,7 @@ impl ChannelRegistry {
     /// # Errors
     ///
     /// Returns an error if a provider with the same ID is already registered.
+    #[must_use]
     pub fn register(&mut self, provider: Arc<dyn ChannelProvider>) -> Result<()> {
         let id = provider.id().to_owned();
         ensure!(
@@ -48,7 +49,7 @@ impl ChannelRegistry {
 
     /// Look up a provider by channel ID.
     #[must_use]
-    pub fn get(&self, channel_id: &str) -> Option<&Arc<dyn ChannelProvider>> {
+    pub(crate) fn get(&self, channel_id: &str) -> Option<&Arc<dyn ChannelProvider>> {
         self.providers.get(channel_id)
     }
 
@@ -59,6 +60,7 @@ impl ChannelRegistry {
     /// # Errors
     ///
     /// Returns an error if the channel is not registered.
+    #[must_use]
     pub async fn send(&self, channel_id: &str, params: &SendParams) -> Result<SendResult> {
         let provider = self.providers.get(channel_id).ok_or_else(|| {
             error::UnknownChannelSnafu {
@@ -83,19 +85,19 @@ impl ChannelRegistry {
 
     /// List all registered channel IDs, in insertion order.
     #[must_use]
-    pub fn channels(&self) -> Vec<&str> {
+    pub(crate) fn channels(&self) -> Vec<&str> {
         self.providers.keys().map(String::as_str).collect()
     }
 
     /// Number of registered channels.
     #[must_use]
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.providers.len()
     }
 
     /// Whether the registry is empty.
     #[must_use]
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.providers.is_empty()
     }
 }

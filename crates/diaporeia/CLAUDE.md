@@ -36,7 +36,7 @@ MCP server interface for external AI agents via the Model Context Protocol. 1.5K
 
 ## Patterns
 
-- **Shared state**: same `Arc` pointers as pylon's `AppState` — zero duplication, zero serialization overhead.
+- **Shared state**: same `Arc` pointers as pylon's `AppState` - zero duplication, zero serialization overhead.
 - **Rate limiting**: per-session, two tiers (Cheap/Expensive), configurable via `mcp.rate_limit` config.
 - **Path sanitization**: `sanitize::strip_paths()` removes server file paths before errors reach MCP clients.
 - **Two transports**: streamable HTTP (mounted into pylon's Axum router at `/mcp`) and stdio (for CLI use).

@@ -5,9 +5,9 @@ use std::path::PathBuf;
 use clap::Args;
 use snafu::prelude::*;
 
-use crate::error::Result;
-
 use aletheia_taxis::oikos::Oikos;
+
+use crate::error::Result;
 
 #[derive(Debug, Clone, Args)]
 pub(crate) struct AddNousArgs {
@@ -44,7 +44,7 @@ pub(crate) async fn run(instance_root: Option<&PathBuf>, args: &AddNousArgs) -> 
 
     scaffold_directory(&oikos, args)?;
     update_config(&oikos, args)?;
-    try_register(&args.name).await;
+    try_register(&oikos, &args.name).await;
     print_summary(&oikos, args);
 
     Ok(())
@@ -169,7 +169,6 @@ fn scaffold_directory(oikos: &Oikos, args: &AddNousArgs) -> Result<()> {
 /// Modify the TOML config in-place using `toml_edit` to preserve comments and structure.
 fn update_config(oikos: &Oikos, args: &AddNousArgs) -> Result<()> {
     let config_path = oikos.config().join("aletheia.toml");
-    let config_dir = oikos.config();
 
     let existing = if config_path.exists() {
         std::fs::read_to_string(&config_path)
@@ -245,33 +244,28 @@ fn update_config(oikos: &Oikos, args: &AddNousArgs) -> Result<()> {
 
     list.push(entry);
 
-    // WHY: atomic write: write to .tmp then rename, preserving existing comments in the file
-    std::fs::create_dir_all(&config_dir)
-        .with_whatever_context(|_| format!("failed to create {}", config_dir.display()))?;
-    let tmp = config_dir.join("aletheia.toml.tmp");
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "aletheia CLI commands use synchronous filesystem operations for config and certificate generation"
-    )]
-    std::fs::write(&tmp, doc.to_string())
-        .with_whatever_context(|_| format!("failed to write {}", tmp.display()))?;
-    // WHY: restrict config file to owner-only (0600) before atomic rename preserves permissions
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600))
-            .with_whatever_context(|_| format!("failed to set permissions on {}", tmp.display()))?;
-    }
-    std::fs::rename(&tmp, &config_path)
-        .with_whatever_context(|_| format!("failed to rename {}", tmp.display()))?;
+    aletheia_koina::fs::write_restricted(&config_path, doc.to_string().as_bytes())
+        .with_whatever_context(|_| format!("failed to write {}", config_path.display()))?;
 
     Ok(())
 }
 
 /// Check if the server is reachable by hitting its health endpoint.
-async fn try_register(name: &str) {
-    let url = "http://127.0.0.1:18789/api/health";
-    let server_running = reqwest::get(url).await.is_ok();
+///
+/// Reads `gateway.bind` and `gateway.port` from the instance config to
+/// construct the URL dynamically instead of assuming the default address.
+async fn try_register(oikos: &Oikos, name: &str) {
+    let config = aletheia_taxis::loader::load_config(oikos).ok(); // WHY: best-effort; fallback to defaults if instance config unavailable
+    let (bind, port) = config
+        .as_ref()
+        .map(|c| (c.gateway.bind.as_str(), c.gateway.port))
+        .unwrap_or(("127.0.0.1", 18789));
+    let host = match bind {
+        "lan" | "0.0.0.0" | "localhost" => "127.0.0.1",
+        other => other,
+    };
+    let url = format!("http://{host}:{port}/api/health");
+    let server_running = reqwest::get(&url).await.is_ok();
 
     if server_running {
         println!(
@@ -304,11 +298,7 @@ fn print_summary(oikos: &Oikos, args: &AddNousArgs) {
 }
 
 fn write_file(path: &std::path::Path, content: &str) -> Result<()> {
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "aletheia CLI commands use synchronous filesystem operations for config and certificate generation"
-    )]
-    std::fs::write(path, content)
+    aletheia_koina::fs::write_restricted(path, content.as_bytes())
         .with_whatever_context(|_| format!("failed to write: {}", path.display()))
 }
 

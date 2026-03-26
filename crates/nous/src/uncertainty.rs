@@ -67,7 +67,7 @@ pub struct CalibrationSummary {
     clippy::disallowed_types,
     reason = "uncertainty tracker owns its own isolated SQLite file; not part of the shared SessionStore pipeline"
 )]
-pub struct UncertaintyTracker {
+pub(crate) struct UncertaintyTracker {
     conn: Connection,
 }
 
@@ -81,7 +81,7 @@ impl UncertaintyTracker {
         clippy::disallowed_types,
         reason = "uncertainty tracker owns its own isolated SQLite file; not part of the shared SessionStore pipeline"
     )]
-    pub fn open(path: &std::path::Path) -> error::Result<Self> {
+    pub(crate) fn open(path: &std::path::Path) -> error::Result<Self> {
         let conn = Connection::open(path).context(error::UncertaintyStoreSnafu {
             message: "failed to open uncertainty database",
         })?;
@@ -97,7 +97,7 @@ impl UncertaintyTracker {
         clippy::disallowed_types,
         reason = "uncertainty tracker owns its own isolated SQLite file; not part of the shared SessionStore pipeline"
     )]
-    pub fn open_in_memory() -> error::Result<Self> {
+    pub(crate) fn open_in_memory() -> error::Result<Self> {
         let conn = Connection::open_in_memory().context(error::UncertaintyStoreSnafu {
             message: "failed to open in-memory uncertainty database",
         })?;
@@ -142,7 +142,7 @@ impl UncertaintyTracker {
     /// # Errors
     ///
     /// Returns `UncertaintyStore` on database write failure.
-    pub fn record(
+    pub(crate) fn record(
         &self,
         nous_id: &str,
         domain: &str,
@@ -176,7 +176,10 @@ impl UncertaintyTracker {
     /// # Errors
     ///
     /// Returns `UncertaintyStore` on database read failure.
-    pub fn calibration_curve(&self, nous_id: Option<&str>) -> error::Result<Vec<CalibrationBin>> {
+    pub(crate) fn calibration_curve(
+        &self,
+        nous_id: Option<&str>,
+    ) -> error::Result<Vec<CalibrationBin>> {
         let points = self.load_points(nous_id)?;
         Ok(compute_calibration_curve(&points))
     }
@@ -188,7 +191,7 @@ impl UncertaintyTracker {
     /// # Errors
     ///
     /// Returns `UncertaintyStore` on database read failure.
-    pub fn brier_score(&self, nous_id: Option<&str>) -> error::Result<f64> {
+    pub(crate) fn brier_score(&self, nous_id: Option<&str>) -> error::Result<f64> {
         let points = self.load_points(nous_id)?;
         Ok(compute_brier_score(&points))
     }
@@ -201,7 +204,7 @@ impl UncertaintyTracker {
     /// # Errors
     ///
     /// Returns `UncertaintyStore` on database read failure.
-    pub fn ece(&self, nous_id: Option<&str>) -> error::Result<f64> {
+    pub(crate) fn ece(&self, nous_id: Option<&str>) -> error::Result<f64> {
         let points = self.load_points(nous_id)?;
         let curve = compute_calibration_curve(&points);
         Ok(compute_ece(&curve))
@@ -215,7 +218,7 @@ impl UncertaintyTracker {
     /// # Errors
     ///
     /// Returns `UncertaintyStore` on database read failure.
-    pub fn overconfidence_patterns(
+    pub(crate) fn overconfidence_patterns(
         &self,
         nous_id: &str,
     ) -> error::Result<Vec<OverconfidencePattern>> {
@@ -271,7 +274,7 @@ impl UncertaintyTracker {
     /// # Errors
     ///
     /// Returns `UncertaintyStore` on database read failure.
-    pub fn summary(&self, nous_id: &str) -> error::Result<CalibrationSummary> {
+    pub(crate) fn summary(&self, nous_id: &str) -> error::Result<CalibrationSummary> {
         let points = self.load_points(Some(nous_id))?;
         let curve = compute_calibration_curve(&points);
         let brier = compute_brier_score(&points);

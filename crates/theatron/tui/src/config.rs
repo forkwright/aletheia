@@ -177,33 +177,9 @@ impl Config {
 }
 
 fn write_config(path: &Path, content: &str) -> Result<()> {
-    #[cfg(unix)]
-    {
-        use std::io::Write;
-        use std::os::unix::fs::OpenOptionsExt;
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(path)
-            .context(IoSnafu {
-                context: "open config file for writing",
-            })?;
-        file.write_all(content.as_bytes()).context(IoSnafu {
-            context: "write config file",
-        })?;
-    }
-    #[cfg(not(unix))]
-    {
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "non-unix fallback: no mode bits available"
-        )]
-        std::fs::write(path, content).context(IoSnafu {
-            context: "write config file",
-        })?;
-    }
+    aletheia_koina::fs::write_restricted(path, content.as_bytes()).context(IoSnafu {
+        context: "write config file",
+    })?;
     Ok(())
 }
 

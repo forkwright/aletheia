@@ -250,8 +250,8 @@ fn computer_use_def() -> ToolDef {
 /// # Errors
 ///
 /// Returns an error if the tool name collides with an existing tool.
-pub fn register(registry: &mut ToolRegistry, sandbox: &SandboxConfig) -> Result<()> {
-    // kanon:ignore RUST/pub-visibility  // kanon:ignore RUST/missing-must-use
+pub(crate) fn register(registry: &mut ToolRegistry, sandbox: &SandboxConfig) -> Result<()> {
+    // kanon:ignore RUST/pub-visibility
     let session_config = ComputerUseSessionConfig {
         enforcement: if sandbox.enabled {
             sandbox.enforcement

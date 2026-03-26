@@ -232,19 +232,19 @@ pub struct TurnId(u64);
 impl TurnId {
     /// Create a new turn ID.
     #[must_use]
-    pub fn new(n: u64) -> Self {
+    pub(crate) fn new(n: u64) -> Self {
         Self(n)
     }
 
     /// The underlying numeric value.
     #[must_use]
-    pub fn as_u64(self) -> u64 {
+    pub(crate) fn as_u64(self) -> u64 {
         self.0
     }
 
     /// Increment to next turn.
     #[must_use]
-    pub fn next(self) -> Self {
+    pub(crate) fn next(self) -> Self {
         Self(self.0 + 1)
     }
 }

@@ -136,8 +136,7 @@ pub struct SandboxPolicy {
 impl SandboxConfig {
     /// Create a disabled sandbox config (no restrictions applied).
     #[must_use]
-    pub fn disabled() -> Self {
-        // kanon:ignore RUST/pub-visibility
+    pub(crate) fn disabled() -> Self {
         Self {
             enabled: false,
             ..Self::default()
@@ -146,8 +145,11 @@ impl SandboxConfig {
 
     /// Build a resolved [`SandboxPolicy`] from this config for the given workspace.
     #[must_use]
-    pub fn build_policy(&self, workspace: &Path, allowed_roots: &[PathBuf]) -> SandboxPolicy {
-        // kanon:ignore RUST/pub-visibility
+    pub(crate) fn build_policy(
+        &self,
+        workspace: &Path,
+        allowed_roots: &[PathBuf],
+    ) -> SandboxPolicy {
         if !self.enabled {
             return SandboxPolicy {
                 enabled: false,

@@ -416,8 +416,9 @@ fn import_rejects_future_version() {
     let err = result
         .expect_err("future version should be rejected")
         .to_string();
+    let future_version = AGENT_FILE_VERSION + 1;
     assert!(
-        err.contains(&format!("{}", AGENT_FILE_VERSION + 1)),
+        err.contains(&format!("{future_version}")),
         "error should mention the unsupported version number"
     );
 }
@@ -650,8 +651,9 @@ fn import_skip_both_flags_imports_nothing_from_disk_or_sessions() {
 }
 
 mod proptests {
-    use super::*;
     use proptest::prelude::*;
+
+    use super::*;
 
     proptest! {
         #[test]

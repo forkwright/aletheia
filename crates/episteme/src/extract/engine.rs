@@ -38,7 +38,7 @@ impl ExtractionEngine {
     /// Access the extraction configuration.
     #[must_use]
     #[instrument(skip(self))]
-    pub fn config(&self) -> &ExtractionConfig {
+    pub(crate) fn config(&self) -> &ExtractionConfig {
         &self.config
     }
 
@@ -48,14 +48,14 @@ impl ExtractionEngine {
     /// instructions to the base prompt.
     #[must_use]
     #[instrument(skip(self, messages), fields(msg_count = messages.len()))]
-    pub fn build_prompt(&self, messages: &[ConversationMessage]) -> ExtractionPrompt {
+    pub(crate) fn build_prompt(&self, messages: &[ConversationMessage]) -> ExtractionPrompt {
         self.build_prompt_with_turn_type(messages, None)
     }
 
     /// Build the extraction prompt with optional turn-type-specific instructions.
     #[must_use]
     #[instrument(skip(self, messages), fields(msg_count = messages.len(), turn_type))]
-    pub fn build_prompt_with_turn_type(
+    pub(crate) fn build_prompt_with_turn_type(
         &self,
         messages: &[ConversationMessage],
         turn_type: Option<refinement::TurnType>,
@@ -113,7 +113,7 @@ Rules:
     ///
     /// Strips markdown code fences if present.
     #[instrument(skip(self, response))]
-    pub fn parse_response(&self, response: &str) -> Result<Extraction, ExtractionError> {
+    pub(crate) fn parse_response(&self, response: &str) -> Result<Extraction, ExtractionError> {
         let trimmed = strip_code_fences(response);
         serde_json::from_str(trimmed).context(ParseResponseSnafu)
     }

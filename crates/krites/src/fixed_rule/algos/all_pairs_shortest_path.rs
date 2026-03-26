@@ -1,9 +1,4 @@
 //! All-pairs shortest path (Floyd-Warshall).
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 
@@ -57,6 +52,10 @@ impl FixedRule for BetweennessCentrality {
                         clippy::cast_precision_loss,
                         reason = "path group count acceptable as approximate float"
                     )]
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        reason = "intentional f64 to f32 reduction"
+                    )]
                     let l = grp.len() as f32;
                     for (_, _, path) in grp {
                         if path.len() < 3 {
@@ -71,6 +70,7 @@ impl FixedRule for BetweennessCentrality {
                 Ok(ret)
             })
             .collect::<Result<_>>()?;
+        #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
         let mut centrality: Vec<f32> = vec![0.; n as usize];
         for m in centrality_segs {
             for (k, v) in m {
@@ -79,6 +79,7 @@ impl FixedRule for BetweennessCentrality {
         }
 
         for (i, s) in centrality.into_iter().enumerate() {
+            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
             let node = indices[i].clone();
             out.put(vec![node, f64::from(s).into()]);
         }
@@ -124,10 +125,18 @@ impl FixedRule for ClosenessCentrality {
                     clippy::cast_precision_loss,
                     reason = "reachable node count acceptable as approximate float"
                 )]
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    reason = "intentional f64 to f32 reduction"
+                )]
                 let nc: f32 = distances.iter().filter(|d| d.is_finite()).count() as f32;
                 #[expect(
                     clippy::cast_precision_loss,
                     reason = "node count minus one acceptable as approximate float"
+                )]
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    reason = "intentional f64 to f32 reduction"
                 )]
                 let denom = (n - 1) as f32;
                 Ok(nc * nc / total_dist / denom)
@@ -158,8 +167,10 @@ pub(crate) fn dijkstra_cost_only(
     start: u32,
     poison: Poison,
 ) -> Result<Vec<f32>> {
+    #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
     let mut distance = vec![f32::INFINITY; edges.node_count() as usize];
     let mut pq = PriorityQueue::new();
+    #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
     let mut back_pointers = vec![u32::MAX; edges.node_count() as usize];
     distance[start as usize] = 0.;
     pq.push(start, Reverse(OrderedFloat(0.)));

@@ -59,7 +59,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         {
             self.event_callbacks
                 .read()
-                .expect("event_callbacks lock poisoned")
+                .unwrap_or_else(|e| e.into_inner())
                 .1
                 .keys()
                 .cloned()
@@ -80,7 +80,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                 let (cbs, cb_dir) = &*self
                     .event_callbacks
                     .read()
-                    .expect("event_callbacks lock poisoned");
+                    .unwrap_or_else(|e| e.into_inner());
                 if let Some(cb_ids) = cb_dir.get(&table) {
                     let mut it = cb_ids.iter();
                     if let Some(fst) = it.next() {
@@ -106,7 +106,7 @@ impl<'s, S: Storage<'s>> Db<S> {
             let (cbs, cb_dir) = &mut *self
                 .event_callbacks
                 .write()
-                .expect("event_callbacks lock poisoned");
+                .unwrap_or_else(|e| e.into_inner());
             for removing_id in &to_remove {
                 if let Some(removed) = cbs.remove(removing_id)
                     && let Some(set) = cb_dir.get_mut(&removed.dependent)

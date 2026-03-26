@@ -1,8 +1,4 @@
 //! parse_sys implementation.
-#![expect(
-    clippy::as_conversions,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -29,15 +25,12 @@ pub(crate) fn parse_sys(
     algorithms: &BTreeMap<String, Arc<Box<dyn FixedRule>>>,
     cur_vld: ValidityTs,
 ) -> Result<SysOp> {
-    let inner = src.next().expect("pest guarantees sys op inner");
+    let inner = src.next().unwrap_or_else(|| unreachable!());
     Ok(match inner.as_rule() {
         Rule::compact_op => SysOp::Compact,
         Rule::running_op => SysOp::ListRunning,
         Rule::kill_op => {
-            let i_expr = inner
-                .into_inner()
-                .next()
-                .expect("pest guarantees kill op expr");
+            let i_expr = inner.into_inner().next().unwrap_or_else(|| unreachable!());
             let i_val = build_expr(i_expr, param_pool)?;
             let i_val = i_val.eval_to_const()?;
             let i_val = i_val.get_int().ok_or_else(|| {
@@ -53,7 +46,7 @@ pub(crate) fn parse_sys(
                 inner
                     .into_inner()
                     .next()
-                    .expect("pest guarantees explain op script")
+                    .unwrap_or_else(|| unreachable!())
                     .into_inner(),
                 param_pool,
                 algorithms,
@@ -63,9 +56,7 @@ pub(crate) fn parse_sys(
         }
         Rule::describe_relation_op => {
             let mut inner = inner.into_inner();
-            let rels_p = inner
-                .next()
-                .expect("pest guarantees describe relation name");
+            let rels_p = inner.next().unwrap_or_else(|| unreachable!());
             let rel = Symbol::new(rels_p.as_str(), rels_p.extract_span());
             let description = match inner.next() {
                 None => Default::default(),
@@ -83,18 +74,12 @@ pub(crate) fn parse_sys(
             SysOp::RemoveRelation(rel)
         }
         Rule::list_columns_op => {
-            let rels_p = inner
-                .into_inner()
-                .next()
-                .expect("pest guarantees column relation name");
+            let rels_p = inner.into_inner().next().unwrap_or_else(|| unreachable!());
             let rel = Symbol::new(rels_p.as_str(), rels_p.extract_span());
             SysOp::ListColumns(rel)
         }
         Rule::list_indices_op => {
-            let rels_p = inner
-                .into_inner()
-                .next()
-                .expect("pest guarantees index relation name");
+            let rels_p = inner.into_inner().next().unwrap_or_else(|| unreachable!());
             let rel = Symbol::new(rels_p.as_str(), rels_p.extract_span());
             SysOp::ListIndices(rel)
         }
@@ -103,9 +88,9 @@ pub(crate) fn parse_sys(
                 .into_inner()
                 .map(|pair| {
                     let mut src = pair.into_inner();
-                    let rels_p = src.next().expect("pest guarantees rename source name");
+                    let rels_p = src.next().unwrap_or_else(|| unreachable!());
                     let rel = Symbol::new(rels_p.as_str(), rels_p.extract_span());
-                    let rels_p = src.next().expect("pest guarantees rename target name");
+                    let rels_p = src.next().unwrap_or_else(|| unreachable!());
                     let new_rel = Symbol::new(rels_p.as_str(), rels_p.extract_span());
                     (rel, new_rel)
                 })
@@ -114,7 +99,7 @@ pub(crate) fn parse_sys(
         }
         Rule::access_level_op => {
             let mut ps = inner.into_inner();
-            let access_level = match ps.next().expect("pest guarantees access level").as_str() {
+            let access_level = match ps.next().unwrap_or_else(|| unreachable!()).as_str() {
                 "normal" => AccessLevel::Normal,
                 "protected" => AccessLevel::Protected,
                 "read_only" => AccessLevel::ReadOnly,
@@ -129,24 +114,21 @@ pub(crate) fn parse_sys(
             SysOp::SetAccessLevel(rels, access_level)
         }
         Rule::trigger_relation_show_op => {
-            let rels_p = inner
-                .into_inner()
-                .next()
-                .expect("pest guarantees trigger relation name");
+            let rels_p = inner.into_inner().next().unwrap_or_else(|| unreachable!());
             let rel = Symbol::new(rels_p.as_str(), rels_p.extract_span());
             SysOp::ShowTrigger(rel)
         }
         Rule::trigger_relation_op => {
             let mut src = inner.into_inner();
-            let rels_p = src.next().expect("pest guarantees trigger relation name");
+            let rels_p = src.next().unwrap_or_else(|| unreachable!());
             let rel = Symbol::new(rels_p.as_str(), rels_p.extract_span());
             let mut puts = vec![];
             let mut rms = vec![];
             let mut replaces = vec![];
             for clause in src {
                 let mut clause_inner = clause.into_inner();
-                let op = clause_inner.next().expect("pest guarantees trigger op");
-                let script = clause_inner.next().expect("pest guarantees trigger script");
+                let op = clause_inner.next().unwrap_or_else(|| unreachable!());
+                let script = clause_inner.next().unwrap_or_else(|| unreachable!());
                 let script_str = script.as_str();
                 parse_query(
                     script.into_inner(),
@@ -164,15 +146,12 @@ pub(crate) fn parse_sys(
             SysOp::SetTriggers(rel, puts, rms, replaces)
         }
         Rule::lsh_idx_op => {
-            let inner = inner
-                .into_inner()
-                .next()
-                .expect("pest guarantees lsh idx inner");
+            let inner = inner.into_inner().next().unwrap_or_else(|| unreachable!());
             match inner.as_rule() {
                 Rule::index_create_adv => {
                     let mut inner = inner.into_inner();
-                    let rel = inner.next().expect("pest guarantees lsh relation name");
-                    let name = inner.next().expect("pest guarantees lsh index name");
+                    let rel = inner.next().unwrap_or_else(|| unreachable!());
+                    let name = inner.next().unwrap_or_else(|| unreachable!());
                     let mut filters = vec![];
                     let mut tokenizer = TokenizerConfig {
                         name: Default::default(),
@@ -187,8 +166,8 @@ pub(crate) fn parse_sys(
                     let mut false_negative_weight = 1.0;
                     for opt_pair in inner {
                         let mut opt_inner = opt_pair.into_inner();
-                        let opt_name = opt_inner.next().expect("pest guarantees option name");
-                        let opt_val = opt_inner.next().expect("pest guarantees option value");
+                        let opt_name = opt_inner.next().unwrap_or_else(|| unreachable!());
+                        let opt_val = opt_inner.next().unwrap_or_else(|| unreachable!());
                         match opt_name.as_str() {
                             "false_positive_weight" => {
                                 let mut expr = build_expr(opt_val, param_pool)?;
@@ -396,10 +375,8 @@ pub(crate) fn parse_sys(
                 }
                 Rule::index_drop => {
                     let mut inner = inner.into_inner();
-                    let rel = inner
-                        .next()
-                        .expect("pest guarantees lsh drop relation name");
-                    let name = inner.next().expect("pest guarantees lsh drop index name");
+                    let rel = inner.next().unwrap_or_else(|| unreachable!());
+                    let name = inner.next().unwrap_or_else(|| unreachable!());
                     SysOp::RemoveIndex(
                         Symbol::new(rel.as_str(), rel.extract_span()),
                         Symbol::new(name.as_str(), name.extract_span()),
@@ -409,15 +386,12 @@ pub(crate) fn parse_sys(
             }
         }
         Rule::fts_idx_op => {
-            let inner = inner
-                .into_inner()
-                .next()
-                .expect("pest guarantees fts idx inner");
+            let inner = inner.into_inner().next().unwrap_or_else(|| unreachable!());
             match inner.as_rule() {
                 Rule::index_create_adv => {
                     let mut inner = inner.into_inner();
-                    let rel = inner.next().expect("pest guarantees fts relation name");
-                    let name = inner.next().expect("pest guarantees fts index name");
+                    let rel = inner.next().unwrap_or_else(|| unreachable!());
+                    let name = inner.next().unwrap_or_else(|| unreachable!());
                     let mut filters = vec![];
                     let mut tokenizer = TokenizerConfig {
                         name: Default::default(),
@@ -427,8 +401,8 @@ pub(crate) fn parse_sys(
                     let mut extract_filter = "".to_string();
                     for opt_pair in inner {
                         let mut opt_inner = opt_pair.into_inner();
-                        let opt_name = opt_inner.next().expect("pest guarantees option name");
-                        let opt_val = opt_inner.next().expect("pest guarantees option value");
+                        let opt_name = opt_inner.next().unwrap_or_else(|| unreachable!());
+                        let opt_val = opt_inner.next().unwrap_or_else(|| unreachable!());
                         match opt_name.as_str() {
                             "extractor" => {
                                 let mut ex = build_expr(opt_val, param_pool)?;
@@ -535,10 +509,8 @@ pub(crate) fn parse_sys(
                 }
                 Rule::index_drop => {
                     let mut inner = inner.into_inner();
-                    let rel = inner
-                        .next()
-                        .expect("pest guarantees fts drop relation name");
-                    let name = inner.next().expect("pest guarantees fts drop index name");
+                    let rel = inner.next().unwrap_or_else(|| unreachable!());
+                    let name = inner.next().unwrap_or_else(|| unreachable!());
                     SysOp::RemoveIndex(
                         Symbol::new(rel.as_str(), rel.extract_span()),
                         Symbol::new(name.as_str(), name.extract_span()),
@@ -548,15 +520,12 @@ pub(crate) fn parse_sys(
             }
         }
         Rule::vec_idx_op => {
-            let inner = inner
-                .into_inner()
-                .next()
-                .expect("pest guarantees vec idx inner");
+            let inner = inner.into_inner().next().unwrap_or_else(|| unreachable!());
             match inner.as_rule() {
                 Rule::index_create_adv => {
                     let mut inner = inner.into_inner();
-                    let rel = inner.next().expect("pest guarantees vec relation name");
-                    let name = inner.next().expect("pest guarantees vec index name");
+                    let rel = inner.next().unwrap_or_else(|| unreachable!());
+                    let name = inner.next().unwrap_or_else(|| unreachable!());
                     let mut vec_dim = 0;
                     let mut dtype = VecElementType::F32;
                     let mut vec_fields = vec![];
@@ -569,8 +538,8 @@ pub(crate) fn parse_sys(
 
                     for opt_pair in inner {
                         let mut opt_inner = opt_pair.into_inner();
-                        let opt_name = opt_inner.next().expect("pest guarantees option name");
-                        let opt_val = opt_inner.next().expect("pest guarantees option value");
+                        let opt_name = opt_inner.next().unwrap_or_else(|| unreachable!());
+                        let opt_val = opt_inner.next().unwrap_or_else(|| unreachable!());
                         let opt_val_str = opt_val.as_str();
                         match opt_name.as_str() {
                             "dim" => {
@@ -711,10 +680,8 @@ pub(crate) fn parse_sys(
                 }
                 Rule::index_drop => {
                     let mut inner = inner.into_inner();
-                    let rel = inner
-                        .next()
-                        .expect("pest guarantees vec drop relation name");
-                    let name = inner.next().expect("pest guarantees vec drop index name");
+                    let rel = inner.next().unwrap_or_else(|| unreachable!());
+                    let name = inner.next().unwrap_or_else(|| unreachable!());
                     SysOp::RemoveIndex(
                         Symbol::new(rel.as_str(), rel.extract_span()),
                         Symbol::new(name.as_str(), name.extract_span()),
@@ -724,16 +691,13 @@ pub(crate) fn parse_sys(
             }
         }
         Rule::index_op => {
-            let inner = inner
-                .into_inner()
-                .next()
-                .expect("pest guarantees index op inner");
+            let inner = inner.into_inner().next().unwrap_or_else(|| unreachable!());
             match inner.as_rule() {
                 Rule::index_create => {
                     let _span = inner.extract_span();
                     let mut inner = inner.into_inner();
-                    let rel = inner.next().expect("pest guarantees index relation name");
-                    let name = inner.next().expect("pest guarantees index name");
+                    let rel = inner.next().unwrap_or_else(|| unreachable!());
+                    let name = inner.next().unwrap_or_else(|| unreachable!());
                     let cols = inner
                         .map(|p| Symbol::new(p.as_str(), p.extract_span()))
                         .collect_vec();
@@ -753,10 +717,8 @@ pub(crate) fn parse_sys(
                 }
                 Rule::index_drop => {
                     let mut inner = inner.into_inner();
-                    let rel = inner
-                        .next()
-                        .expect("pest guarantees index drop relation name");
-                    let name = inner.next().expect("pest guarantees index drop name");
+                    let rel = inner.next().unwrap_or_else(|| unreachable!());
+                    let name = inner.next().unwrap_or_else(|| unreachable!());
                     SysOp::RemoveIndex(
                         Symbol::new(rel.as_str(), rel.extract_span()),
                         Symbol::new(name.as_str(), name.extract_span()),

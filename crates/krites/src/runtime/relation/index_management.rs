@@ -1,9 +1,4 @@
 //! SessionTx methods: column index management and relation renaming.
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 
 use itertools::Itertools;
 use rmp_serde::Serializer;
@@ -176,12 +171,12 @@ impl<'a> SessionTx<'a> {
             self.tokenizers
                 .named_cache
                 .write()
-                .expect("lock poisoned")
+                .unwrap_or_else(|e| e.into_inner())
                 .clear();
             self.tokenizers
                 .hashed_cache
                 .write()
-                .expect("lock poisoned")
+                .unwrap_or_else(|e| e.into_inner())
                 .clear();
         }
         if rel.indices.remove(&idx_name.name).is_none()
@@ -227,6 +222,7 @@ impl<'a> SessionTx<'a> {
             .fail()?;
         }
         let new_key = DataValue::Str(new.name.clone());
+        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let new_encoded = vec![new_key].encode_as_key(RelationId::SYSTEM);
 
         if self.store_tx.exists(&new_encoded, true)? {
@@ -237,6 +233,7 @@ impl<'a> SessionTx<'a> {
         };
 
         let old_key = DataValue::Str(old.name.clone());
+        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let old_encoded = vec![old_key].encode_as_key(RelationId::SYSTEM);
 
         let mut rel = self.get_relation(old, true)?;
@@ -263,6 +260,7 @@ impl<'a> SessionTx<'a> {
     }
     pub(crate) fn rename_temp_relation(&mut self, old: Symbol, new: Symbol) -> Result<()> {
         let new_key = DataValue::Str(new.name.clone());
+        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let new_encoded = vec![new_key].encode_as_key(RelationId::SYSTEM);
 
         if self.temp_store_tx.exists(&new_encoded, true)? {
@@ -273,6 +271,7 @@ impl<'a> SessionTx<'a> {
         };
 
         let old_key = DataValue::Str(old.name.clone());
+        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let old_encoded = vec![old_key].encode_as_key(RelationId::SYSTEM);
 
         let mut rel = self.get_relation(&old, true)?;

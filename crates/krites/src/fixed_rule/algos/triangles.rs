@@ -1,9 +1,4 @@
 //! Triangle counting in graphs.
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use std::collections::BTreeMap;
 
 use compact_str::CompactString;
@@ -87,6 +82,10 @@ fn clustering_coefficients(
                             .count()
                     })
                     .sum();
+                #[expect(
+                    clippy::cast_precision_loss,
+                    reason = "i64 to f64: precision loss acceptable"
+                )]
                 let cc = 2. * n_triangles as f64 / ((degree as f64) * ((degree as f64) - 1.));
                 poison.check()?;
                 Ok((cc, n_triangles, degree))

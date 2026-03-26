@@ -59,7 +59,7 @@ pub fn run_wizard(
 
 /// Entry point for the TUI, callable from the main `aletheia` binary or standalone.
 ///
-/// Returns a typed snafu error. Binary callers may convert with `.map_err(anyhow::Error::from)`.
+/// Returns a typed [`error::Error`]. Callers convert with `.map_err(Into::into)` as needed.
 #[tracing::instrument(skip_all, fields(url, agent))]
 pub async fn run_tui(
     url: Option<String>,

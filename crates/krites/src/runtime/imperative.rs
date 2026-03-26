@@ -151,7 +151,7 @@ impl<'s, S: Storage<'s>> Db<S> {
             reason = "returns is non-empty (checked above), so loop runs at least once"
         )]
         Ok(ControlCode::Termination(
-            *current.expect("returns is non-empty"),
+            *current.unwrap_or_else(|| unreachable!()),
         ))
     }
 
@@ -385,7 +385,7 @@ impl<'s, S: Storage<'s>> Db<S> {
             };
             self.running_queries
                 .lock()
-                .expect("lock poisoned")
+                .unwrap_or_else(|e| e.into_inner())
                 .insert(qid, q_handle);
             let _guard = RunningQueryCleanup {
                 id: qid,

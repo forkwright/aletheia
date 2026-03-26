@@ -4,6 +4,7 @@ use serde_json::Value;
 use snafu::Snafu;
 
 use crate::config::AletheiaConfig;
+use crate::oikos::Oikos;
 
 /// Validation error with collected messages.
 #[derive(Debug, Snafu)]
@@ -26,7 +27,7 @@ pub struct ValidationError {
     clippy::double_must_use,
     reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
 )]
-pub fn validate_config(config: &AletheiaConfig) -> Result<(), ValidationError> {
+pub(crate) fn validate_config(config: &AletheiaConfig) -> Result<(), ValidationError> {
     let value = serde_json::to_value(config).unwrap_or(Value::Null);
     let Value::Object(ref sections) = value else {
         return ValidationSnafu {
@@ -48,6 +49,49 @@ pub fn validate_config(config: &AletheiaConfig) -> Result<(), ValidationError> {
         Ok(())
     } else {
         ValidationSnafu { errors: all_errors }.fail()
+    }
+}
+
+/// Validate config preconditions required before server startup.
+///
+/// Checks that at least one agent is defined and that every agent's workspace
+/// directory exists on disk. Call this after config loading but before actors
+/// spawn.
+///
+/// # Errors
+///
+/// Returns [`ValidationError`] if `agents.list` is empty or any agent's
+/// workspace directory does not exist.
+#[must_use]
+#[expect(
+    clippy::double_must_use,
+    reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+)]
+pub fn validate_startup(config: &AletheiaConfig, oikos: &Oikos) -> Result<(), ValidationError> {
+    let mut errors = Vec::new();
+
+    if config.agents.list.is_empty() {
+        errors.push("agents.list is empty: at least one agent must be configured".to_owned());
+    }
+
+    for agent in &config.agents.list {
+        let path = if std::path::Path::new(&agent.workspace).is_absolute() {
+            std::path::PathBuf::from(&agent.workspace)
+        } else {
+            oikos.root().join(&agent.workspace)
+        };
+        if !path.is_dir() {
+            errors.push(format!(
+                "agent '{}' workspace '{}' does not exist",
+                agent.id, agent.workspace
+            ));
+        }
+    }
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        ValidationSnafu { errors }.fail()
     }
 }
 
@@ -256,6 +300,8 @@ fn validate_channels(value: &Value, errors: &mut Vec<String>) {
     }
 }
 
+const KNOWN_CHANNEL_TYPES: &[&str] = &["signal", "slack", "discord", "webhook", "http"];
+
 fn validate_bindings(value: &Value, errors: &mut Vec<String>) {
     let Some(bindings) = value.as_array() else {
         return;
@@ -271,6 +317,16 @@ fn validate_bindings(value: &Value, errors: &mut Vec<String>) {
                     // NOTE: non-empty field value passes validation
                 }
             }
+        }
+
+        if let Some(channel) = binding.get("channel").and_then(Value::as_str)
+            && !channel.is_empty()
+            && !KNOWN_CHANNEL_TYPES.contains(&channel)
+        {
+            errors.push(format!(
+                "bindings[{i}].channel '{channel}' is not a known channel type (expected one of: {})",
+                KNOWN_CHANNEL_TYPES.join(", ")
+            ));
         }
     }
 }

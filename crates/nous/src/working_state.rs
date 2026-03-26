@@ -82,12 +82,12 @@ const MAX_TASK_STACK: usize = 10;
 impl WorkingState {
     /// Create an empty working state.
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::default()
     }
 
     /// Push a task onto the stack.
-    pub fn push_task(&mut self, description: impl Into<String>) {
+    pub(crate) fn push_task(&mut self, description: impl Into<String>) {
         if self.task_stack.len() >= MAX_TASK_STACK {
             self.task_stack.remove(0);
         }
@@ -99,7 +99,7 @@ impl WorkingState {
     }
 
     /// Pop the most recent task from the stack.
-    pub fn pop_task(&mut self) -> Option<TaskEntry> {
+    pub(crate) fn pop_task(&mut self) -> Option<TaskEntry> {
         let task = self.task_stack.pop();
         if task.is_some() {
             self.touch();
@@ -109,12 +109,12 @@ impl WorkingState {
 
     /// Peek at the current (most recent) task.
     #[must_use]
-    pub fn current_task(&self) -> Option<&TaskEntry> {
+    pub(crate) fn current_task(&self) -> Option<&TaskEntry> {
         self.task_stack.last()
     }
 
     /// Set the focus context.
-    pub fn set_focus(
+    pub(crate) fn set_focus(
         &mut self,
         file: Option<String>,
         function: Option<String>,
@@ -129,13 +129,13 @@ impl WorkingState {
     }
 
     /// Clear the focus context.
-    pub fn clear_focus(&mut self) {
+    pub(crate) fn clear_focus(&mut self) {
         self.focus = None;
         self.touch();
     }
 
     /// Set the wait state.
-    pub fn set_wait(&mut self, kind: WaitKind, description: impl Into<String>) {
+    pub(crate) fn set_wait(&mut self, kind: WaitKind, description: impl Into<String>) {
         self.wait = Some(WaitState {
             kind,
             description: description.into(),
@@ -145,20 +145,20 @@ impl WorkingState {
     }
 
     /// Clear the wait state.
-    pub fn clear_wait(&mut self) {
+    pub(crate) fn clear_wait(&mut self) {
         self.wait = None;
         self.touch();
     }
 
     /// Whether the working state has any content worth persisting.
     #[must_use]
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.task_stack.is_empty() && self.focus.is_none() && self.wait.is_none()
     }
 
     /// Generate the blackboard key for persisting this state.
     #[must_use]
-    pub fn persist_key(nous_id: &str, session_id: &str) -> String {
+    pub(crate) fn persist_key(nous_id: &str, session_id: &str) -> String {
         format!("ws:{nous_id}:{session_id}")
     }
 
@@ -167,7 +167,7 @@ impl WorkingState {
     /// # Errors
     ///
     /// Returns serialization error (should not happen for valid state).
-    pub fn to_json(&self) -> Result<String, serde_json::Error> {
+    pub(crate) fn to_json(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string(self)
     }
 
@@ -176,7 +176,7 @@ impl WorkingState {
     /// # Errors
     ///
     /// Returns deserialization error if the JSON is malformed.
-    pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
+    pub(crate) fn from_json(json: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(json)
     }
 
@@ -184,7 +184,7 @@ impl WorkingState {
     ///
     /// Returns `None` if the working state is empty.
     #[must_use]
-    pub fn to_bootstrap_section(&self) -> Option<BootstrapSection> {
+    pub(crate) fn to_bootstrap_section(&self) -> Option<BootstrapSection> {
         if self.is_empty() {
             return None;
         }
@@ -252,7 +252,7 @@ impl WorkingState {
 }
 
 /// Blackboard TTL for working state entries (7 days).
-pub const WORKING_STATE_TTL_SECS: i64 = 604_800;
+pub(crate) const WORKING_STATE_TTL_SECS: i64 = 604_800;
 
 fn now_iso8601() -> String {
     jiff::Timestamp::now().to_string()

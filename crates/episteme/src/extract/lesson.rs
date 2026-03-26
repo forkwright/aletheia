@@ -98,7 +98,7 @@ pub struct LessonConfig {
 /// 3. Extract knowledge facts from the changes
 /// 4. Produce entities, relationships, and causal edges
 #[must_use]
-pub fn extract_lessons(diff: &str, config: &LessonConfig) -> ExtractedLesson {
+pub(crate) fn extract_lessons(diff: &str, config: &LessonConfig) -> ExtractedLesson {
     let parsed = parse_unified_diff(diff);
     let changes = classify_changes(&parsed);
     build_lesson(&changes, config)
@@ -393,7 +393,7 @@ fn extract_module_name(path: &str) -> String {
     clippy::too_many_lines,
     reason = "sequential persist pipeline: entities → relationships → facts → causal edges"
 )]
-pub fn persist_lesson(
+pub(crate) fn persist_lesson(
     lesson: &ExtractedLesson,
     store: &crate::knowledge_store::KnowledgeStore,
     config: &LessonConfig,

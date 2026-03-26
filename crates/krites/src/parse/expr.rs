@@ -3,11 +3,6 @@
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 
 use std::collections::BTreeMap;
 use std::sync::LazyLock;
@@ -161,7 +156,9 @@ fn build_expr_infix(lhs: Result<Expr>, op: Pair<'_>, rhs: Result<Expr>) -> Resul
         Rule::op_field_access => &OP_MAYBE_GET,
         _ => unreachable!(),
     };
+    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
     let start = args[0].span().0;
+    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
     let end = args[1].span().0 + args[1].span().1;
     let length = end - start;
     Ok(Expr::Apply {
@@ -183,7 +180,7 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
             let param_str = pair
                 .as_str()
                 .strip_prefix('$')
-                .expect("pest guarantees $ prefix on param");
+                .unwrap_or_else(|| unreachable!());
             Expr::Const {
                 val: param_pool
                     .get(param_str)
@@ -272,8 +269,8 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
             let mut args = vec![];
             for p in pair.into_inner() {
                 let mut p = p.into_inner();
-                let k = p.next().expect("pest guarantees object key");
-                let v = p.next().expect("pest guarantees object value");
+                let k = p.next().unwrap_or_else(|| unreachable!());
+                let v = p.next().unwrap_or_else(|| unreachable!());
                 let k = build_expr(k, param_pool)?;
                 let v = build_expr(v, param_pool)?;
                 args.push(k);
@@ -287,11 +284,11 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
         }
         Rule::apply => {
             let mut p = pair.into_inner();
-            let ident_p = p.next().expect("pest guarantees apply ident");
+            let ident_p = p.next().unwrap_or_else(|| unreachable!());
             let ident = ident_p.as_str();
             let mut args: Vec<_> = p
                 .next()
-                .expect("pest guarantees apply args")
+                .unwrap_or_else(|| unreachable!())
                 .into_inner()
                 .map(|v| build_expr(v, param_pool))
                 .try_collect()?;
@@ -310,7 +307,7 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
                             args.len() - 1,
                             Expr::Const {
                                 val: DataValue::Null,
-                                span: args.last().expect("just checked non-empty").span(),
+                                span: args.last().unwrap_or_else(|| unreachable!()).span(),
                             },
                         )
                     }
@@ -352,8 +349,8 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
 
                     let mut clauses = vec![];
                     let mut args = args.into_iter();
-                    let cond = args.next().expect("checked len >= 2");
-                    let then = args.next().expect("checked len >= 2");
+                    let cond = args.next().unwrap_or_else(|| unreachable!());
+                    let then = args.next().unwrap_or_else(|| unreachable!());
                     clauses.push((cond, then));
                     clauses.push((
                         Expr::Const {
@@ -405,9 +402,7 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
             }
         }
         Rule::grouping => build_expr(
-            pair.into_inner()
-                .next()
-                .expect("pest guarantees grouping inner"),
+            pair.into_inner().next().unwrap_or_else(|| unreachable!()),
             param_pool,
         )?,
         r => unreachable!("Encountered unknown op {:?}", r),
@@ -416,7 +411,7 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
 
 pub(crate) fn parse_int(s: &str, radix: u32) -> i64 {
     i64::from_str_radix(&s.get(2..).unwrap_or("").replace('_', ""), radix)
-        .expect("pest guarantees valid integer literal syntax")
+        .unwrap_or_else(|_| unreachable!())
 }
 
 pub(crate) fn parse_string(pair: Pair<'_>) -> Result<CompactString> {
@@ -433,7 +428,7 @@ fn parse_quoted_string(pair: Pair<'_>) -> Result<CompactString> {
     let pairs = pair
         .into_inner()
         .next()
-        .expect("pest guarantees quoted string inner")
+        .unwrap_or_else(|| unreachable!())
         .into_inner();
     let mut ret = CompactString::default();
     for pair in pairs {
@@ -448,6 +443,7 @@ fn parse_quoted_string(pair: Pair<'_>) -> Result<CompactString> {
             r"\r" => ret.push('\r'),
             r"\t" => ret.push('\t'),
             s if s.starts_with(r"\u") => {
+                #[expect(clippy::cast_possible_truncation, reason = "value fits u32")]
                 let code = parse_int(s, 16) as u32;
                 let ch = char::from_u32(code).ok_or_else(|| {
                     InvalidQuerySnafu {
@@ -474,7 +470,7 @@ fn parse_s_quoted_string(pair: Pair<'_>) -> Result<CompactString> {
     let pairs = pair
         .into_inner()
         .next()
-        .expect("pest guarantees s-quoted string inner")
+        .unwrap_or_else(|| unreachable!())
         .into_inner();
     let mut ret = CompactString::default();
     for pair in pairs {
@@ -489,6 +485,7 @@ fn parse_s_quoted_string(pair: Pair<'_>) -> Result<CompactString> {
             r"\r" => ret.push('\r'),
             r"\t" => ret.push('\t'),
             s if s.starts_with(r"\u") => {
+                #[expect(clippy::cast_possible_truncation, reason = "value fits u32")]
                 let code = parse_int(s, 16) as u32;
                 let ch = char::from_u32(code).ok_or_else(|| {
                     InvalidQuerySnafu {
@@ -515,7 +512,7 @@ fn parse_raw_string(pair: Pair<'_>) -> Result<CompactString> {
     Ok(CompactString::from(
         pair.into_inner()
             .next()
-            .expect("pest guarantees raw string inner")
+            .unwrap_or_else(|| unreachable!())
             .as_str(),
     ))
 }

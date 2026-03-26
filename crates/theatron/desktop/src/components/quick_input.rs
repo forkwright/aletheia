@@ -147,7 +147,7 @@ pub(crate) fn QuickInputOverlay() -> Element {
                                         guard.close();
                                     }
                                 }
-                                _ => {}
+                                _ => {} // NOTE: other key events are ignored in quick-input mode
                             }
                         },
                     }

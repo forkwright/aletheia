@@ -15,6 +15,18 @@ use crate::stream::TurnStreamEvent;
 
 use super::{DEGRADED_PANIC_THRESHOLD, DEGRADED_WINDOW, NousActor, NousLifecycle};
 
+/// Drop guard that drops the streaming sender when the turn completes or is cancelled.
+/// Signals the receiver that no more data is coming, preventing hung SSE connections.
+struct StreamSenderGuard(Option<mpsc::Sender<TurnStreamEvent>>);
+
+impl Drop for StreamSenderGuard {
+    fn drop(&mut self) {
+        // WHY: explicitly take and drop the sender so the receiver sees a closed channel
+        // even if the turn was cancelled via cancellation token or task abort.
+        drop(self.0.take());
+    }
+}
+
 impl NousActor {
     /// # Cancel safety
     ///
@@ -86,6 +98,11 @@ impl NousActor {
         caller_span: tracing::Span,
         reply: tokio::sync::oneshot::Sender<crate::error::Result<TurnResult>>,
     ) {
+        // WHY: wrap sender in a Drop guard so it is dropped (closing the channel) even
+        // if the turn is cancelled via cancellation token or panic, preventing hung
+        // SSE connections on the receiver side.
+        let _stream_guard = StreamSenderGuard(Some(stream_tx.clone()));
+
         if self.channel.status == NousLifecycle::Dormant {
             debug!("auto-waking from dormant for streaming turn");
             self.channel.status = NousLifecycle::Idle;
@@ -126,6 +143,7 @@ impl NousActor {
 
         // WHY: ignore send error: caller may have dropped the receiver
         let _ = reply.send(result);
+        // NOTE: _stream_guard drops here, closing the channel if no other senders remain
     }
 
     /// Execute a turn with a panic boundary. If the pipeline panics, the panic
@@ -182,6 +200,7 @@ impl NousActor {
         stream_tx: Option<mpsc::Sender<TurnStreamEvent>>,
         caller_span: tracing::Span,
     ) -> Result<crate::error::Result<TurnResult>, tokio::task::JoinError> {
+        self.evict_oldest_session_if_needed();
         let session = self
             .sessions
             .entry(session_key.to_owned())
@@ -193,6 +212,26 @@ impl NousActor {
             });
 
         session.next_turn();
+
+        // WHY(#2160): persist session to store BEFORE spawning the pipeline task.
+        // If the actor crashes mid-pipeline, the session_id survives in SQLite
+        // for recovery instead of being lost with the in-memory HashMap.
+        if let Some(ref store) = self.stores.session_store {
+            let guard = store.lock().await;
+            if let Err(e) = guard.find_or_create_session(
+                &session.id,
+                &session.nous_id,
+                &session.session_key,
+                Some(&session.model),
+                None,
+            ) {
+                warn!(
+                    session_id = %session.id,
+                    error = %e,
+                    "failed to pre-persist session — pipeline will retry in finalize"
+                );
+            }
+        }
 
         let input = crate::pipeline::PipelineInput {
             content: content.to_owned(),
@@ -212,9 +251,19 @@ impl NousActor {
             Err(e) => return Ok(Err(e)),
         };
 
+        let session_id = match SessionId::parse(session.id.as_str()) {
+            Ok(id) => id,
+            Err(e) => {
+                return Ok(Err(crate::error::ConfigSnafu {
+                    message: format!("invalid session id '{}': {e}", session.id),
+                }
+                .build()));
+            }
+        };
+
         let tool_ctx = ToolContext {
             nous_id,
-            session_id: SessionId::parse(session.id.as_str()).unwrap_or_else(|_| SessionId::new()),
+            session_id,
             workspace: self.services.oikos.nous_dir(&self.id),
             allowed_roots: vec![self.services.oikos.root().to_path_buf()],
             services: self.services.tool_services.clone(),
@@ -335,9 +384,9 @@ impl NousActor {
     /// Record a panic occurrence. Enters degraded mode if too many panics in the window.
     pub(super) fn record_panic(&mut self) {
         self.runtime.panic_count += 1;
-        self.runtime
-            .panic_timestamps
-            .push(std::time::Instant::now());
+        let now = std::time::Instant::now();
+        self.runtime.panic_timestamps.push(now);
+        self.runtime.last_panic_at = Some(now);
 
         let cutoff = std::time::Instant::now()
             .checked_sub(DEGRADED_WINDOW)
@@ -369,6 +418,7 @@ impl NousActor {
         session_key: &str,
         content: &str,
     ) -> crate::error::Result<TurnResult> {
+        self.evict_oldest_session_if_needed();
         let session = self
             .sessions
             .entry(session_key.to_owned())
@@ -402,9 +452,16 @@ impl NousActor {
             .build()
         })?;
 
+        let session_id = SessionId::parse(session.id.as_str()).map_err(|e| {
+            crate::error::ConfigSnafu {
+                message: format!("invalid session id '{}': {e}", session.id),
+            }
+            .build()
+        })?;
+
         let tool_ctx = ToolContext {
             nous_id,
-            session_id: SessionId::parse(session.id.as_str()).unwrap_or_else(|_| SessionId::new()),
+            session_id,
             workspace: self.services.oikos.nous_dir(&self.id),
             allowed_roots: vec![self.services.oikos.root().to_path_buf()],
             services: self.services.tool_services.clone(),

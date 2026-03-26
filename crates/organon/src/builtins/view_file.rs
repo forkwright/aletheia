@@ -16,6 +16,15 @@ use crate::types::{
 
 use super::workspace::{extract_opt_u64, extract_str, validate_path};
 
+/// WHY: Full filesystem paths in error messages leak instance directory
+/// structure to the LLM. Show workspace-relative path instead. Closes #2166.
+fn relativize_path(path: &Path, workspace: &Path) -> String {
+    path.strip_prefix(workspace)
+        .unwrap_or(path)
+        .display()
+        .to_string()
+}
+
 const MAX_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
 const MAX_PDF_BYTES: u64 = 32 * 1024 * 1024;
 
@@ -54,12 +63,29 @@ impl ToolExecutor for ViewFileExecutor {
             let max_lines = extract_opt_u64(&input.arguments, "maxLines");
             let path = validate_path(path_str, ctx, &input.name)?;
 
+            // WHY: A symlink validated against allowed_roots could point outside
+            // the workspace. Resolve and re-validate so the actual target is
+            // checked. Closes #2169.
+            let symlink_meta = std::fs::symlink_metadata(&path);
+            if let Ok(ref meta) = symlink_meta
+                && meta.is_symlink()
+            {
+                match std::fs::canonicalize(&path) {
+                    Ok(resolved) => {
+                        validate_path(&resolved.to_string_lossy(), ctx, &input.name)?;
+                    }
+                    Err(e) => {
+                        return Ok(ToolResult::error(format!("cannot resolve symlink: {e}")));
+                    }
+                }
+            }
+
             let metadata = match std::fs::metadata(&path) {
                 Ok(m) => m,
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                     return Ok(ToolResult::error(format!(
                         "file not found: {}",
-                        path.display()
+                        relativize_path(&path, &ctx.workspace)
                     )));
                 }
                 Err(e) => {
@@ -68,7 +94,10 @@ impl ToolExecutor for ViewFileExecutor {
             };
 
             if !metadata.is_file() {
-                return Ok(ToolResult::error(format!("not a file: {}", path.display())));
+                return Ok(ToolResult::error(format!(
+                    "not a file: {}",
+                    relativize_path(&path, &ctx.workspace)
+                )));
             }
 
             let Some(kind) = detect_media_kind(&path) else {
@@ -81,7 +110,13 @@ impl ToolExecutor for ViewFileExecutor {
                 )));
             };
 
-            Ok(execute_by_kind(&kind, &path, &metadata, max_lines))
+            Ok(execute_by_kind(
+                &kind,
+                &path,
+                &metadata,
+                max_lines,
+                &ctx.workspace,
+            ))
         })
     }
 }
@@ -91,6 +126,7 @@ fn execute_by_kind(
     path: &std::path::Path,
     metadata: &std::fs::Metadata,
     max_lines: Option<u64>,
+    workspace: &std::path::Path,
 ) -> ToolResult {
     match kind {
         MediaKind::Image(media_type) => {
@@ -119,7 +155,11 @@ fn execute_by_kind(
                     },
                 },
                 ToolResultBlock::Text {
-                    text: format!("{} ({} bytes)", path.display(), bytes.len()),
+                    text: format!(
+                        "{} ({} bytes)",
+                        relativize_path(path, workspace),
+                        bytes.len()
+                    ),
                 },
             ])
         }
@@ -149,7 +189,11 @@ fn execute_by_kind(
                     },
                 },
                 ToolResultBlock::Text {
-                    text: format!("{} ({} bytes)", path.display(), bytes.len()),
+                    text: format!(
+                        "{} ({} bytes)",
+                        relativize_path(path, workspace),
+                        bytes.len()
+                    ),
                 },
             ])
         }

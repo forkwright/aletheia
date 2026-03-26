@@ -33,23 +33,20 @@ static BACKUP_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
 });
 
 /// Force-initialize all lazy metric statics.
-pub fn init() {
-    // kanon:ignore RUST/pub-visibility
+pub(crate) fn init() {
     LazyLock::force(&SESSIONS_TOTAL);
     LazyLock::force(&BACKUP_DURATION_SECONDS);
 }
 
 /// Record a session creation.
-pub fn record_session_created(nous_id: &str, session_type: &str) {
-    // kanon:ignore RUST/pub-visibility
+pub(crate) fn record_session_created(nous_id: &str, session_type: &str) {
     SESSIONS_TOTAL
         .with_label_values(&[nous_id, session_type])
         .inc();
 }
 
 /// Record a backup operation duration.
-pub fn record_backup_duration(duration_secs: f64, success: bool) {
-    // kanon:ignore RUST/pub-visibility
+pub(crate) fn record_backup_duration(duration_secs: f64, success: bool) {
     let status = if success { "ok" } else { "error" };
     BACKUP_DURATION_SECONDS
         .with_label_values(&[status])

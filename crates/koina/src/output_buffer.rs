@@ -30,7 +30,7 @@
 use std::collections::HashMap;
 
 /// Dead-letter output name constant.
-pub const DEAD_LETTER: &str = "__dead_letter";
+pub(crate) const DEAD_LETTER: &str = "__dead_letter";
 
 /// A buffer that routes events to multiple named outputs.
 ///
@@ -53,7 +53,7 @@ impl<T: Clone> Default for OutputBuffer<T> {
 impl<T: Clone> OutputBuffer<T> {
     /// Create an empty output buffer with no registered outputs.
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             outputs: HashMap::new(),
         }
@@ -69,7 +69,7 @@ impl<T: Clone> OutputBuffer<T> {
     /// Register the dead-letter output for failed events.
     ///
     /// Equivalent to `register_output(DEAD_LETTER)`.
-    pub fn register_dead_letter(&mut self) {
+    pub(crate) fn register_dead_letter(&mut self) {
         self.register_output(DEAD_LETTER);
     }
 
@@ -78,7 +78,7 @@ impl<T: Clone> OutputBuffer<T> {
     /// If the output does not exist and a dead-letter output is registered,
     /// the event is routed there instead. Returns `false` if the event
     /// was dropped (no matching output and no dead-letter).
-    pub fn push(&mut self, event: T, output: &str) -> bool {
+    pub(crate) fn push(&mut self, event: T, output: &str) -> bool {
         if let Some(queue) = self.outputs.get_mut(output) {
             queue.push(event);
             true
@@ -96,7 +96,7 @@ impl<T: Clone> OutputBuffer<T> {
     /// silently skipped. If no targets matched and a dead-letter output
     /// is registered, the event lands there. Returns the number of
     /// outputs that received the event.
-    pub fn fan_out(&mut self, event: T, targets: &[&str]) -> usize {
+    pub(crate) fn fan_out(&mut self, event: T, targets: &[&str]) -> usize {
         let mut delivered = 0;
         for &target in targets {
             if let Some(queue) = self.outputs.get_mut(target) {
@@ -117,7 +117,7 @@ impl<T: Clone> OutputBuffer<T> {
     /// The routing function receives a reference to the event and returns the
     /// output name. If the output does not exist, the event goes to the
     /// dead-letter output (if registered).
-    pub fn route(&mut self, event: T, router: impl FnOnce(&T) -> &str) -> bool {
+    pub(crate) fn route(&mut self, event: T, router: impl FnOnce(&T) -> &str) -> bool {
         let target = router(&event).to_owned();
         self.push(event, &target)
     }
@@ -126,7 +126,7 @@ impl<T: Clone> OutputBuffer<T> {
     ///
     /// Returns an empty `Vec` if the output does not exist.
     #[must_use]
-    pub fn drain(&mut self, output: &str) -> Vec<T> {
+    pub(crate) fn drain(&mut self, output: &str) -> Vec<T> {
         self.outputs
             .get_mut(output)
             .map(std::mem::take)
@@ -135,48 +135,48 @@ impl<T: Clone> OutputBuffer<T> {
 
     /// Drain the dead-letter output.
     #[must_use]
-    pub fn drain_dead_letter(&mut self) -> Vec<T> {
+    pub(crate) fn drain_dead_letter(&mut self) -> Vec<T> {
         self.drain(DEAD_LETTER)
     }
 
     /// Peek at events in a named output without draining.
     #[must_use]
-    pub fn peek(&self, output: &str) -> &[T] {
+    pub(crate) fn peek(&self, output: &str) -> &[T] {
         self.outputs.get(output).map_or(&[], Vec::as_slice)
     }
 
     /// Number of events in a named output.
     #[must_use]
-    pub fn len(&self, output: &str) -> usize {
+    pub(crate) fn len(&self, output: &str) -> usize {
         self.outputs.get(output).map_or(0, Vec::len)
     }
 
     /// Whether a named output is empty or does not exist.
     #[must_use]
-    pub fn is_empty(&self, output: &str) -> bool {
+    pub(crate) fn is_empty(&self, output: &str) -> bool {
         self.len(output) == 0
     }
 
     /// Total events across all outputs.
     #[must_use]
-    pub fn total_events(&self) -> usize {
+    pub(crate) fn total_events(&self) -> usize {
         self.outputs.values().map(Vec::len).sum()
     }
 
     /// Names of all registered outputs (including dead-letter if registered).
     #[must_use]
-    pub fn output_names(&self) -> Vec<&str> {
+    pub(crate) fn output_names(&self) -> Vec<&str> {
         self.outputs.keys().map(String::as_str).collect()
     }
 
     /// Whether a named output is registered.
     #[must_use]
-    pub fn has_output(&self, name: &str) -> bool {
+    pub(crate) fn has_output(&self, name: &str) -> bool {
         self.outputs.contains_key(name)
     }
 
     /// Clear all events from all outputs without removing the registrations.
-    pub fn clear(&mut self) {
+    pub(crate) fn clear(&mut self) {
         for queue in self.outputs.values_mut() {
             queue.clear();
         }

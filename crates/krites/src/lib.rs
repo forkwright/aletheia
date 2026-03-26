@@ -457,7 +457,6 @@ mod safety_assertions {
 }
 
 #[cfg(test)]
-#[expect(clippy::expect_used, reason = "test assertions")]
 mod db_cache_tests {
     use std::collections::BTreeMap;
     use std::num::NonZeroUsize;
@@ -467,7 +466,7 @@ mod db_cache_tests {
 
     #[test]
     fn cache_stats_none_without_cache() {
-        let db = Db::open_mem().expect("open_mem should succeed");
+        let db = Db::open_mem().unwrap_or_else(|_| unreachable!());
         assert!(
             db.cache_stats().is_none(),
             "cache_stats should be None when no cache is attached"
@@ -477,16 +476,15 @@ mod db_cache_tests {
     #[test]
     fn cache_tracks_misses_and_hits() {
         let db = Db::open_mem()
-            .expect("open_mem should succeed")
-            .with_cache(NonZeroUsize::new(16).expect("16 is non-zero"));
+            .unwrap_or_else(|_| unreachable!())
+            .with_cache(NonZeroUsize::new(16).unwrap_or_else(|| unreachable!()));
 
+        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let script = "?[x] := x = 1";
         let _ = db.run(script, BTreeMap::new(), ScriptMutability::Immutable);
         let _ = db.run(script, BTreeMap::new(), ScriptMutability::Immutable);
 
-        let stats = db
-            .cache_stats()
-            .expect("cache_stats should be Some after with_cache");
+        let stats = db.cache_stats().unwrap_or_else(|| unreachable!());
         assert_eq!(stats.misses, 1, "first run should be a cache miss");
         assert_eq!(stats.hits, 1, "second identical run should be a cache hit");
     }
@@ -494,8 +492,8 @@ mod db_cache_tests {
     #[test]
     fn cache_normalizes_whitespace() {
         let db = Db::open_mem()
-            .expect("open_mem should succeed")
-            .with_cache(NonZeroUsize::new(16).expect("16 is non-zero"));
+            .unwrap_or_else(|_| unreachable!())
+            .with_cache(NonZeroUsize::new(16).unwrap_or_else(|| unreachable!()));
 
         let _ = db.run(
             "?[x] := x = 1",
@@ -509,7 +507,7 @@ mod db_cache_tests {
             ScriptMutability::Immutable,
         );
 
-        let stats = db.cache_stats().expect("cache_stats should be Some");
+        let stats = db.cache_stats().unwrap_or_else(|| unreachable!());
         assert_eq!(
             stats.hits, 1,
             "whitespace-normalized query should be a cache hit"

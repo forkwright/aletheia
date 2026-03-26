@@ -28,13 +28,13 @@ pub struct SequenceSignature {
 impl SequenceSignature {
     /// Number of steps in the normalized sequence.
     #[must_use]
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.normalized.len()
     }
 
     /// Returns `true` if the normalized sequence is empty.
     #[must_use]
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.normalized.is_empty()
     }
 }

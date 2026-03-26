@@ -185,7 +185,7 @@ pub async fn execute(
     loop {
         iterations += 1;
 
-        if iterations > config.limits.max_tool_iterations {
+        if iterations >= config.limits.max_tool_iterations {
             warn!(iterations, "max tool iterations reached");
             break;
         }
@@ -420,7 +420,7 @@ pub async fn execute_streaming(
     loop {
         iterations += 1;
 
-        if iterations > config.limits.max_tool_iterations {
+        if iterations >= config.limits.max_tool_iterations {
             warn!(iterations, "max tool iterations reached");
             break;
         }

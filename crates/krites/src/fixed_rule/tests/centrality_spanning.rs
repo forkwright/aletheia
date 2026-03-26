@@ -1,10 +1,6 @@
 //! Centrality and spanning tree tests: DegreeCentrality, MST, LabelProp, PageRank, RandomWalk.
 #![cfg(test)]
 #![expect(clippy::expect_used, reason = "test assertions")]
-#![expect(
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use crate::DbInstance;
 use crate::data::value::DataValue;
 
@@ -325,6 +321,10 @@ edges[src, dst] <- [[0, 1], [1, 2], [2, 3], [3, 0]]
         .iter()
         .map(|r| r[1].get_float().expect("PageRank score should be a float"))
         .collect();
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "i64 to f64: precision loss acceptable"
+    )]
     let mean = ranks.iter().sum::<f64>() / ranks.len() as f64;
     for &r in &ranks {
         assert!(
@@ -415,6 +415,7 @@ start[] <- [[1]]
         .rows;
 
     assert_eq!(res.len(), 1, "dead-end walk should return exactly one row");
+    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
     let path_len = res[0][2]
         .get_slice()
         .expect("walk path field should be a slice")

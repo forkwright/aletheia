@@ -47,7 +47,7 @@ impl Default for WatchdogConfig {
 /// Lifecycle handle for a monitored process.
 ///
 /// Implemented by the binary crate where concrete process types are available.
-pub trait ProcessHandle: Send + Sync {
+pub(crate) trait ProcessHandle: Send + Sync {
     /// Unique identifier for this process.
     fn id(&self) -> &str;
 
@@ -140,7 +140,7 @@ struct WatchedProcess {
 ///
 /// Tracks registered processes via heartbeats, detects hangs, and performs
 /// auto-restart with exponential backoff.
-pub struct Watchdog {
+pub(crate) struct Watchdog {
     processes: HashMap<String, WatchedProcess>,
     config: WatchdogConfig,
     shutdown: CancellationToken,
@@ -149,7 +149,7 @@ pub struct Watchdog {
 
 impl Watchdog {
     /// Create a new watchdog with the given configuration.
-    pub fn new(config: WatchdogConfig, shutdown: CancellationToken) -> Self {
+    pub(crate) fn new(config: WatchdogConfig, shutdown: CancellationToken) -> Self {
         Self {
             processes: HashMap::new(),
             config,
@@ -159,7 +159,7 @@ impl Watchdog {
     }
 
     /// Register a process for monitoring.
-    pub fn register(&mut self, handle: std::sync::Arc<dyn ProcessHandle>) {
+    pub(crate) fn register(&mut self, handle: std::sync::Arc<dyn ProcessHandle>) {
         let id = handle.id().to_owned();
         tracing::info!(process_id = %id, "watchdog: registered process");
         self.processes.insert(
@@ -175,7 +175,7 @@ impl Watchdog {
     }
 
     /// Record a heartbeat from a process.
-    pub fn heartbeat(&mut self, process_id: &str) {
+    pub(crate) fn heartbeat(&mut self, process_id: &str) {
         if let Some(proc) = self.processes.get_mut(process_id) {
             proc.last_heartbeat = Instant::now();
             if proc.state == ProcessState::Hung {
@@ -189,7 +189,7 @@ impl Watchdog {
     }
 
     /// Report a process exit so the watchdog can schedule a restart.
-    pub fn report_exit(&mut self, process_id: &str, reason: &str) {
+    pub(crate) fn report_exit(&mut self, process_id: &str, reason: &str) {
         if let Some(proc) = self.processes.get_mut(process_id) {
             proc.state = ProcessState::Hung;
             tracing::warn!(
@@ -201,7 +201,7 @@ impl Watchdog {
     }
 
     /// Get status snapshots for all watched processes.
-    pub fn status(&self) -> Vec<ProcessStatus> {
+    pub(crate) fn status(&self) -> Vec<ProcessStatus> {
         self.processes
             .iter()
             .map(|(id, proc)| ProcessStatus {
@@ -214,7 +214,7 @@ impl Watchdog {
     }
 
     /// Get the restart event log.
-    pub fn restart_log(&self) -> &[RestartEvent] {
+    pub(crate) fn restart_log(&self) -> &[RestartEvent] {
         &self.restart_log
     }
 
@@ -393,7 +393,7 @@ impl Watchdog {
 /// - attempt 3: 8s
 /// - attempt 4: 16s
 /// - attempt 5+: capped at 300s (5 min)
-pub fn watchdog_backoff(attempt: u32) -> Duration {
+pub(crate) fn watchdog_backoff(attempt: u32) -> Duration {
     let exponent = attempt.saturating_sub(1);
     let multiplier = 1u64.checked_shl(exponent).unwrap_or(u64::MAX);
     let delay = BACKOFF_BASE.saturating_mul(u32::try_from(multiplier).unwrap_or(u32::MAX));

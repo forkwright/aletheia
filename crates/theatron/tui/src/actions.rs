@@ -97,6 +97,7 @@ impl App {
             text,
         );
         self.connection.stream_rx = Some(rx);
+        self.connection.state_epoch = self.connection.state_epoch.wrapping_add(1);
     }
 
     #[expect(

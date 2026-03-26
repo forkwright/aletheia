@@ -1,8 +1,4 @@
 //! Expr type and all its implementations.
-#![expect(
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Display, Formatter};
 use std::mem;
@@ -88,7 +84,7 @@ impl Display for Expr {
                 let mut writer = f.debug_tuple(
                     op.name
                         .strip_prefix("OP_")
-                        .expect("all operator names are prefixed with OP_")
+                        .unwrap_or(op.name)
                         .to_lowercase()
                         .as_str(),
                 );
@@ -251,6 +247,7 @@ impl Expr {
         Ok(())
     }
     /// Evaluate the expression to a constant value if possible
+    #[must_use = "returns the evaluated constant or an error"]
     pub fn eval_to_const(mut self) -> Result<DataValue> {
         self.partial_eval()?;
         match self {
@@ -287,6 +284,7 @@ impl Expr {
                 }) = arg1.first()
                 && op2.name == OP_NEGATE.name
             {
+                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                 let mut new_self = arg2[0].clone();
                 mem::swap(self, &mut new_self);
             }
@@ -340,6 +338,7 @@ impl Expr {
             },
             Expr::Const { val, .. } => Ok(val.clone()),
             Expr::Apply { op, args, .. } => {
+                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                 let args: Box<[DataValue]> = args
                     .iter()
                     .map(|v| v.eval(bindings.as_ref()))

@@ -72,9 +72,7 @@ fn parse_imperative_stmt(
                     Rule::query_script_inner => {
                         let mut src = p.into_inner();
                         let prog = parse_query(
-                            src.next()
-                                .expect("grammar guarantees query_script_inner pair")
-                                .into_inner(),
+                            src.next().unwrap_or_else(|| unreachable!()).into_inner(),
                             param_pool,
                             fixed_rules,
                             cur_vld,
@@ -90,15 +88,13 @@ fn parse_imperative_stmt(
         Rule::if_chain | Rule::if_not_chain => {
             let negated = pair.as_rule() == Rule::if_not_chain;
             let mut inner = pair.into_inner();
-            let condition = inner.next().expect("grammar guarantees condition pair");
+            let condition = inner.next().unwrap_or_else(|| unreachable!());
             let cond = match condition.as_rule() {
                 Rule::underscore_ident => Left(CompactString::from(condition.as_str())),
                 Rule::imperative_clause => {
                     let mut src = condition.into_inner();
                     let prog = parse_query(
-                        src.next()
-                            .expect("grammar guarantees query_script_inner pair")
-                            .into_inner(),
+                        src.next().unwrap_or_else(|| unreachable!()).into_inner(),
                         param_pool,
                         fixed_rules,
                         cur_vld,
@@ -110,7 +106,7 @@ fn parse_imperative_stmt(
             };
             let body = inner
                 .next()
-                .expect("grammar guarantees imperative block pair")
+                .unwrap_or_else(|| unreachable!())
                 .into_inner()
                 .map(|p| parse_imperative_stmt(p, param_pool, fixed_rules, cur_vld))
                 .try_collect()?;
@@ -131,21 +127,19 @@ fn parse_imperative_stmt(
         Rule::loop_block => {
             let mut inner = pair.into_inner();
             let mut mark = None;
-            let mut nxt = inner.next().expect("grammar guarantees loop body pair");
+            let mut nxt = inner.next().unwrap_or_else(|| unreachable!());
             if nxt.as_rule() == Rule::ident {
                 mark = Some(CompactString::from(nxt.as_str()));
-                nxt = inner
-                    .next()
-                    .expect("grammar guarantees loop body pair after label");
+                nxt = inner.next().unwrap_or_else(|| unreachable!());
             }
             let body = parse_imperative_block(nxt, param_pool, fixed_rules, cur_vld)?;
             ImperativeStmt::Loop { label: mark, body }
         }
         Rule::temp_swap => {
             let mut pairs = pair.into_inner();
-            let left = pairs.next().expect("grammar guarantees left swap pair");
+            let left = pairs.next().unwrap_or_else(|| unreachable!());
             let left_name = left.as_str();
-            let right = pairs.next().expect("grammar guarantees right swap pair");
+            let right = pairs.next().unwrap_or_else(|| unreachable!());
             let right_name = right.as_str();
 
             ImperativeStmt::TempSwap {
@@ -154,10 +148,7 @@ fn parse_imperative_stmt(
             }
         }
         Rule::debug_stmt => {
-            let name_p = pair
-                .into_inner()
-                .next()
-                .expect("grammar guarantees debug name pair");
+            let name_p = pair.into_inner().next().unwrap_or_else(|| unreachable!());
             let name = name_p.as_str();
 
             ImperativeStmt::TempDebug {
@@ -167,9 +158,7 @@ fn parse_imperative_stmt(
         Rule::imperative_sysop => {
             let mut src = pair.into_inner();
             let sysop = parse_sys(
-                src.next()
-                    .expect("grammar guarantees sysop pair")
-                    .into_inner(),
+                src.next().unwrap_or_else(|| unreachable!()).into_inner(),
                 param_pool,
                 fixed_rules,
                 cur_vld,
@@ -182,9 +171,7 @@ fn parse_imperative_stmt(
         Rule::imperative_clause => {
             let mut src = pair.into_inner();
             let prog = parse_query(
-                src.next()
-                    .expect("grammar guarantees query_script_inner pair")
-                    .into_inner(),
+                src.next().unwrap_or_else(|| unreachable!()).into_inner(),
                 param_pool,
                 fixed_rules,
                 cur_vld,
@@ -195,15 +182,10 @@ fn parse_imperative_stmt(
             }
         }
         Rule::ignore_error_script => {
-            let pair = pair
-                .into_inner()
-                .next()
-                .expect("grammar guarantees ignore_error inner pair");
+            let pair = pair.into_inner().next().unwrap_or_else(|| unreachable!());
             let mut src = pair.into_inner();
             let prog = parse_query(
-                src.next()
-                    .expect("grammar guarantees query_script_inner pair")
-                    .into_inner(),
+                src.next().unwrap_or_else(|| unreachable!()).into_inner(),
                 param_pool,
                 fixed_rules,
                 cur_vld,

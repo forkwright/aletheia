@@ -1,9 +1,4 @@
 //! Relation metadata and schema definitions.
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use std::cmp::Reverse;
 use std::fmt::{Display, Formatter};
 use std::mem;
@@ -266,6 +261,10 @@ impl NullableColType {
                             for (mut row, el) in
                                 res_arr.axis_iter_mut(ndarray::Axis(0)).zip(l.iter())
                             {
+                                #[expect(
+                                    clippy::cast_possible_truncation,
+                                    reason = "f64 to f32: intentional precision reduction"
+                                )]
                                 let f = el.get_float().ok_or_else(make_err)? as f32;
                                 row.fill(f);
                             }
@@ -428,7 +427,9 @@ impl NullableColType {
                 },
                 DataValue::List(l) => {
                     if l.len() == 2 {
+                        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                         let o_ts = l[0].get_int();
+                        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                         let o_is_assert = l[1].get_bool();
                         if let (Some(ts), Some(is_assert)) = (o_ts, o_is_assert) {
                             if ts == i64::MAX || ts == i64::MIN {

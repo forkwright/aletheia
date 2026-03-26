@@ -393,7 +393,7 @@ impl crate::app::App {
         match (key.modifiers, key.code) {
             (KeyModifiers::CONTROL, KeyCode::Char('c'))
             | (KeyModifiers::CONTROL, KeyCode::Char('q')) => return Some(Msg::Quit),
-            _ => {}
+            _ => {} // NOTE: non-quit key combos fall through to view-specific handling below
         }
 
         // WHY: Modal inputs (rename, new file, confirm delete) intercept all keys.

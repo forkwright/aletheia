@@ -1,7 +1,3 @@
-#![expect(
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
@@ -66,6 +62,7 @@ impl HnswSearchRA {
             .parent
             .iter(tx, delta_rule, stores)?
             .map_ok(move |tuple| -> Result<_> {
+                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                 let v = match tuple[bind_idx].clone() {
                     DataValue::Vec(v) => v,
                     d => {
@@ -143,6 +140,7 @@ impl FtsSearchRA {
             .parent
             .iter(tx, delta_rule, stores)?
             .map_ok(move |tuple| -> Result<_> {
+                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                 let q = match tuple[bind_idx].clone() {
                     DataValue::Str(s) => s,
                     DataValue::List(l) => {
@@ -151,11 +149,9 @@ impl FtsSearchRA {
                             match d {
                                 DataValue::Str(s) => {
                                     if !coll.is_empty() {
-                                        coll.write_str(" OR ")
-                                            .expect("write to CompactString is infallible");
+                                        coll.write_str(" OR ").unwrap_or_else(|_| unreachable!());
                                     }
-                                    coll.write_str(&s)
-                                        .expect("write to CompactString is infallible");
+                                    coll.write_str(&s).unwrap_or_else(|_| unreachable!());
                                 }
                                 d => {
                                     return Err(TypeSnafu {

@@ -109,6 +109,6 @@ fn emit_connection_toasts(was_connected: bool, is_connected: bool) {
                     .push(Severity::Success, "Server connection restored");
             }
         }
-        _ => {}
+        _ => {} // NOTE: other SSE event types require no UI-level handling
     }
 }

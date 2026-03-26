@@ -118,7 +118,7 @@ pub enum Error {
 }
 
 /// Convenience alias for results with [`Error`].
-pub type Result<T> = std::result::Result<T, Error>;
+pub(crate) type Result<T> = std::result::Result<T, Error>;
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]

@@ -3,11 +3,6 @@
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 
 use itertools::Itertools;
 use rustc_hash::FxHashSet;
@@ -35,16 +30,14 @@ impl<'a> SessionTx<'a> {
                     #[expect(clippy::cast_sign_loss, reason = "HNSW indices are non-negative")]
                     let idx = t[orig_table.metadata.keys.len() + 1]
                         .get_int()
-                        .expect("HNSW index stores integers at this position")
-                        as usize;
+                        .unwrap_or_else(|| unreachable!()) as usize;
                     #[expect(
                         clippy::cast_possible_truncation,
                         reason = "HNSW subindex bounded by m_max (< i32::MAX)"
                     )]
                     let subidx = t[orig_table.metadata.keys.len() + 2]
                         .get_int()
-                        .expect("HNSW index stores integers at this position")
-                        as i32;
+                        .unwrap_or_else(|| unreachable!()) as i32;
                     Some((
                         t[1..orig_table.metadata.keys.len() + 1].to_vec(),
                         idx,
@@ -138,7 +131,7 @@ impl<'a> SessionTx<'a> {
                 neighbour_val[0] = DataValue::from(
                     neighbour_val[0]
                         .get_float()
-                        .expect("HNSW index stores floats at this position")
+                        .unwrap_or_else(|| unreachable!())
                         - 1.,
                 );
                 self.store_tx.put(
@@ -170,9 +163,8 @@ impl<'a> SessionTx<'a> {
             if let Some(ep) = ep_res {
                 let ep = ep?;
                 let target_key_bytes = idx_table.encode_key_for_store(&ep, Default::default())?;
-                let bottom_level = ep[0]
-                    .get_int()
-                    .expect("HNSW index stores integers at this position");
+                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+                let bottom_level = ep[0].get_int().unwrap_or_else(|| unreachable!());
                 // WHY: canary value is for conflict detection: prevent the scenario of disconnected graphs at all levels
                 let canary_value = [
                     DataValue::from(bottom_level),

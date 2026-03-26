@@ -28,17 +28,14 @@ impl FixedRule for Constant {
     ) -> Result<()> {
         let data = payload
             .expr_option("data", None)
-            .expect("data option validated in init_options");
+            .unwrap_or_else(|_| unreachable!());
         let data = data
             .get_const()
-            .expect("data is a constant, validated in init_options")
+            .unwrap_or_else(|| unreachable!())
             .get_slice()
-            .expect("data is a list, validated in init_options");
+            .unwrap_or_else(|| unreachable!());
         for row in data {
-            let tuple = row
-                .get_slice()
-                .expect("row is a list, validated in init_options")
-                .into();
+            let tuple = row.get_slice().unwrap_or_else(|| unreachable!()).into();
             out.put(tuple)
         }
         Ok(())
@@ -56,11 +53,11 @@ impl FixedRule for Constant {
     ) -> Result<usize> {
         let data = options
             .get("data")
-            .expect("data option must exist")
+            .unwrap_or_else(|| unreachable!())
             .get_const()
-            .expect("data must be a constant")
+            .unwrap_or_else(|| unreachable!())
             .get_slice()
-            .expect("data must be a list");
+            .unwrap_or_else(|| unreachable!());
         Ok(if data.is_empty() {
             match rule_head.len() {
                 0 => {
@@ -75,9 +72,9 @@ impl FixedRule for Constant {
             }
         } else {
             data.first()
-                .expect("data is non-empty")
+                .unwrap_or_else(|| unreachable!())
                 .get_slice()
-                .expect("first row must be a list")
+                .unwrap_or_else(|| unreachable!())
                 .len()
         })
     }

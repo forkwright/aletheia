@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 /// Agent file format version.
-pub const AGENT_FILE_VERSION: u32 = 1;
+pub(crate) const AGENT_FILE_VERSION: u32 = 1;
 
 /// Portable agent file: wire-compatible with the TypeScript `AgentFile` format.
 #[derive(Debug, Clone, Serialize, Deserialize)]

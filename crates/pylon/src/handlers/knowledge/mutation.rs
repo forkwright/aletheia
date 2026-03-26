@@ -3,7 +3,10 @@
 use axum::Json;
 use axum::extract::{Path, State};
 
+use aletheia_symbolon::types::Role;
+
 use crate::error::ApiError;
+use crate::extract::{Claims, require_role};
 use crate::state::KnowledgeState;
 
 use super::{ForgetRequest, UpdateConfidenceRequest};
@@ -26,9 +29,11 @@ use super::{ForgetRequest, UpdateConfidenceRequest};
 )]
 pub async fn forget_fact(
     State(state): State<KnowledgeState>,
+    claims: Claims,
     Path(id): Path<String>,
     Json(body): Json<ForgetRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
+    require_role(&claims, Role::Operator)?;
     #[cfg(feature = "knowledge-store")]
     if let Some(ref store) = state.knowledge_store {
         let fact_id = aletheia_mneme::id::FactId::new(&id).map_err(|e| ApiError::BadRequest {
@@ -76,8 +81,10 @@ pub async fn forget_fact(
 )]
 pub async fn restore_fact(
     State(state): State<KnowledgeState>,
+    claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
+    require_role(&claims, Role::Operator)?;
     #[cfg(feature = "knowledge-store")]
     if let Some(ref store) = state.knowledge_store {
         let fact_id = aletheia_mneme::id::FactId::new(&id).map_err(|e| ApiError::BadRequest {
@@ -127,9 +134,11 @@ pub async fn restore_fact(
 )]
 pub async fn update_confidence(
     State(state): State<KnowledgeState>,
+    claims: Claims,
     Path(id): Path<String>,
     Json(body): Json<UpdateConfidenceRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
+    require_role(&claims, Role::Operator)?;
     if !(0.0..=1.0).contains(&body.confidence) {
         return Err(ApiError::BadRequest {
             message: "confidence must be between 0.0 and 1.0".to_string(),

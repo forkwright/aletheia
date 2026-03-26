@@ -1,9 +1,4 @@
 //! Label propagation community detection.
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use std::collections::BTreeMap;
 
 use compact_str::CompactString;
@@ -35,6 +30,7 @@ impl FixedRule for LabelPropagation {
         let (graph, indices, _inv_indices) = edges.as_directed_weighted_graph(undirected, true)?;
         let labels = label_propagation(&graph, max_iter, poison)?;
         for (idx, label) in labels.into_iter().enumerate() {
+            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
             let node = indices[idx].clone();
             out.put(vec![DataValue::from(label as i64), node]);
         }
@@ -70,6 +66,7 @@ fn label_propagation(
         for node in &iter_order {
             let mut labels_for_node: BTreeMap<u32, f32> = BTreeMap::new();
             for edge in graph.out_neighbors_with_values(*node) {
+                #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
                 let label = labels[edge.target as usize];
                 *labels_for_node.entry(label).or_default() += edge.value;
             }
@@ -78,6 +75,7 @@ fn label_propagation(
             }
             let mut labels_by_score = labels_for_node.into_iter().collect_vec();
             labels_by_score.sort_by(|a, b| a.1.total_cmp(&b.1).reverse());
+            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
             let max_score = labels_by_score[0].1;
             let candidate_labels = labels_by_score
                 .into_iter()
@@ -86,7 +84,7 @@ fn label_propagation(
                 .collect_vec();
             let new_label = *candidate_labels
                 .choose(&mut rng)
-                .expect("candidate_labels is non-empty");
+                .unwrap_or_else(|| unreachable!());
             if new_label != labels[*node as usize] {
                 changed = true;
                 labels[*node as usize] = new_label;

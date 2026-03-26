@@ -1,9 +1,4 @@
 //! Topological sort.
-#![expect(
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use std::collections::BTreeMap;
 
 use compact_str::CompactString;
@@ -40,7 +35,8 @@ impl FixedRule for TopSort {
         for (idx, val_id) in sorted.iter().enumerate() {
             let val = indices
                 .get(*val_id as usize)
-                .expect("val_id within graph index bounds");
+                .unwrap_or_else(|| unreachable!());
+            #[expect(clippy::cast_possible_wrap, reason = "value fits i64")]
             let tuple = vec![DataValue::from(idx as i64), val.clone()];
             out.put(tuple);
         }
@@ -60,12 +56,14 @@ impl FixedRule for TopSort {
 
 pub(crate) fn kahn_g(graph: &DirectedCsrGraph, poison: Poison) -> Result<Vec<u32>> {
     let graph_size = graph.node_count();
+    #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
     let mut in_degree = vec![0; graph_size as usize];
     for tos in 0..graph_size {
         for to in graph.out_neighbors(tos) {
             in_degree[to as usize] += 1;
         }
     }
+    #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
     let mut sorted = Vec::with_capacity(graph_size as usize);
     let mut pending = vec![];
 

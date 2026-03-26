@@ -14,6 +14,8 @@ pub enum CredentialSource {
     File,
     /// Obtained via OAuth token refresh.
     OAuth,
+    /// Read from the OS keyring (e.g. GNOME Keyring, macOS Keychain).
+    Keyring,
 }
 
 impl fmt::Display for CredentialSource {
@@ -22,6 +24,7 @@ impl fmt::Display for CredentialSource {
             Self::Environment => write!(f, "environment"),
             Self::File => write!(f, "file"),
             Self::OAuth => write!(f, "oauth"),
+            Self::Keyring => write!(f, "keyring"),
         }
     }
 }
@@ -74,11 +77,13 @@ mod tests {
         assert_eq!(CredentialSource::Environment.to_string(), "environment");
         assert_eq!(CredentialSource::File.to_string(), "file");
         assert_eq!(CredentialSource::OAuth.to_string(), "oauth");
+        assert_eq!(CredentialSource::Keyring.to_string(), "keyring");
     }
 
     #[test]
     fn source_equality() {
         assert_eq!(CredentialSource::Environment, CredentialSource::Environment);
         assert_ne!(CredentialSource::File, CredentialSource::OAuth);
+        assert_ne!(CredentialSource::Keyring, CredentialSource::File);
     }
 }
