@@ -41,6 +41,10 @@ fn token_preview(s: &str) -> String {
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "credential action dispatch: each action branch is a sequential display sequence; splitting adds indirection"
+)]
 pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Result<()> {
     let oikos = match instance_root {
         Some(root) => Oikos::from_root(root),

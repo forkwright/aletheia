@@ -342,6 +342,10 @@ impl DistillEngine {
     /// Records success or failure into the backoff state so that
     /// `tick_turn` gates subsequent retry attempts.
     #[instrument(skip(self, messages, provider), fields(nous_id, distillation_number))]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "distillation pipeline stages are sequential; splitting adds indirection without clarity"
+    )]
     pub async fn distill(
         &self,
         messages: &[Message],

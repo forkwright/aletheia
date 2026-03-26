@@ -34,7 +34,6 @@ use crate::sandbox::SandboxConfig;
 ///
 /// Returns an error if any built-in tool name collides with an
 /// already-registered tool.
-#[must_use]
 pub fn register_all(registry: &mut ToolRegistry) -> Result<()> {
     register_all_with_sandbox(registry, SandboxConfig::default())
 }

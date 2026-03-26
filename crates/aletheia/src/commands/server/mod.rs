@@ -22,6 +22,10 @@ pub(crate) struct Args {
     pub json_logs: bool,
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "server startup sequence: sequential subsystem init; splitting adds indirection without clarity"
+)]
 pub(crate) async fn run(args: Args) -> Result<()> {
     // Oikos is pure path resolution: no IO, safe before tracing is set up.
     let oikos = match &args.instance_root {

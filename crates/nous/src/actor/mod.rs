@@ -38,7 +38,7 @@ pub const DEFAULT_INBOX_CAPACITY: usize = 32;
 /// Maximum number of concurrent background tasks (extraction, distillation, skills).
 pub(crate) const MAX_SPAWNED_TASKS: usize = 8;
 
-/// Maximum number of sessions tracked in the actor's in-memory HashMap.
+/// Maximum number of sessions tracked in the actor's in-memory `HashMap`.
 /// When exceeded, the oldest session (by last activity) is evicted.
 pub(crate) const MAX_SESSIONS: usize = 1000;
 
@@ -225,6 +225,10 @@ impl NousActor {
     /// cancel-safe. Dropping the future exits the loop without leaving
     /// inconsistent state.
     #[instrument(skip(self), fields(nous.id = %self.id))]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "actor run loop: sequential select! branches; splitting would obscure the event-driven structure"
+    )]
     pub async fn run(mut self) {
         if let Err(e) = spawn::validate_workspace(&self.services.oikos, &self.id).await {
             error!(error = %e, "workspace validation failed, shutting down");
@@ -466,7 +470,7 @@ impl NousActor {
         true
     }
 
-    /// Evict the oldest session (by turn_id, which is a ULID encoding creation time)
+    /// Evict the oldest session (by `turn_id`, which is a `ULID` encoding creation time)
     /// when the session count reaches `MAX_SESSIONS`. Prevents unbounded memory growth.
     fn evict_oldest_session_if_needed(&mut self) {
         if self.sessions.len() < MAX_SESSIONS {

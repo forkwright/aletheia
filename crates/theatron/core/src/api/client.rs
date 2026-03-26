@@ -94,7 +94,6 @@ impl ApiClient {
     ///
     /// Returns [`ApiError::InvalidToken`] if `token` contains characters invalid in HTTP headers.
     /// Returns [`ApiError::Http`] if the HTTP client cannot be constructed.
-    #[must_use]
     pub fn new(base_url: &str, token: Option<String>) -> Result<Self> {
         // kanon:ignore RUST/pub-visibility
         let client = build_http_client(token.as_deref())?;
@@ -140,7 +139,6 @@ impl ApiClient {
     ///
     /// A 503 (unhealthy) means the server IS running but has degraded checks.
     #[tracing::instrument(skip(self))]
-    #[must_use]
     pub async fn health(&self) -> Result<bool> {
         let resp = self.client.get(self.url("/api/health")).send().await;
         Ok(resp.is_ok())
@@ -148,7 +146,6 @@ impl ApiClient {
 
     /// Query the server's authentication mode.
     #[tracing::instrument(skip(self))]
-    #[must_use]
     pub async fn auth_mode(&self) -> Result<AuthMode> {
         let resp = self
             .request(reqwest::Method::GET, "/api/auth/mode")
@@ -164,7 +161,6 @@ impl ApiClient {
 
     /// Authenticate with username and password.
     #[tracing::instrument(skip(self, password))]
-    #[must_use]
     pub async fn login(&self, username: &str, password: &str) -> Result<LoginResponse> {
         let resp = self
             .client
@@ -186,7 +182,6 @@ impl ApiClient {
 
     /// Fetch all registered agents.
     #[tracing::instrument(skip(self))]
-    #[must_use]
     pub async fn agents(&self) -> Result<Vec<Agent>> {
         let resp = self
             .request(reqwest::Method::GET, "/api/v1/nous")
@@ -211,7 +206,6 @@ impl ApiClient {
     /// Returns [`ApiError::Auth`] if the server rejects the authentication token.
     /// Returns [`ApiError::Server`] if the server returns a non-success status.
     #[tracing::instrument(skip(self))]
-    #[must_use]
     pub async fn sessions(&self, nous_id: &str) -> Result<Vec<Session>> {
         let encoded = encode_path(nous_id);
         let resp = self
@@ -240,7 +234,6 @@ impl ApiClient {
     /// Returns [`ApiError::Auth`] if the server rejects the authentication token.
     /// Returns [`ApiError::Server`] if the server returns a non-success status.
     #[tracing::instrument(skip(self))]
-    #[must_use]
     pub async fn history(&self, session_id: &str) -> Result<Vec<HistoryMessage>> {
         let encoded = encode_path(session_id);
         let resp = self
@@ -263,7 +256,6 @@ impl ApiClient {
 
     /// Create a new session for an agent.
     #[tracing::instrument(skip(self))]
-    #[must_use]
     pub async fn create_session(&self, nous_id: &str, session_key: &str) -> Result<Session> {
         let resp = self
             .request(reqwest::Method::POST, "/api/v1/sessions")
@@ -285,7 +277,6 @@ impl ApiClient {
 
     /// Archive a session.
     #[tracing::instrument(skip(self))]
-    #[must_use]
     pub async fn archive_session(&self, session_id: &str) -> Result<()> {
         let encoded = encode_path(session_id);
         let resp = self
@@ -304,7 +295,6 @@ impl ApiClient {
 
     /// Unarchive a previously archived session.
     #[tracing::instrument(skip(self))]
-    #[must_use]
     pub async fn unarchive_session(&self, session_id: &str) -> Result<()> {
         let encoded = encode_path(session_id);
         let resp = self
@@ -323,7 +313,6 @@ impl ApiClient {
 
     /// Rename a session.
     #[tracing::instrument(skip(self))]
-    #[must_use]
     pub async fn rename_session(&self, session_id: &str, name: &str) -> Result<()> {
         let encoded = encode_path(session_id);
         let resp = self
@@ -343,7 +332,6 @@ impl ApiClient {
 
     /// Abort a running turn.
     #[tracing::instrument(skip(self))]
-    #[must_use]
     pub async fn abort_turn(&self, turn_id: &str) -> Result<()> {
         let encoded = encode_path(turn_id);
         let resp = self
@@ -362,7 +350,6 @@ impl ApiClient {
 
     /// Approve a tool invocation awaiting user consent.
     #[tracing::instrument(skip(self))]
-    #[must_use]
     pub async fn approve_tool(&self, turn_id: &str, tool_id: &str) -> Result<()> {
         let t = encode_path(turn_id);
         let d = encode_path(tool_id);
@@ -382,7 +369,6 @@ impl ApiClient {
 
     /// Deny a tool invocation awaiting user consent.
     #[tracing::instrument(skip(self))]
-    #[must_use]
     pub async fn deny_tool(&self, turn_id: &str, tool_id: &str) -> Result<()> {
         let t = encode_path(turn_id);
         let d = encode_path(tool_id);
@@ -402,7 +388,6 @@ impl ApiClient {
 
     /// Approve a proposed execution plan.
     #[tracing::instrument(skip(self))]
-    #[must_use]
     pub async fn approve_plan(&self, plan_id: &str) -> Result<()> {
         let encoded = encode_path(plan_id);
         let resp = self
@@ -421,7 +406,6 @@ impl ApiClient {
 
     /// Cancel a proposed execution plan.
     #[tracing::instrument(skip(self))]
-    #[must_use]
     pub async fn cancel_plan(&self, plan_id: &str) -> Result<()> {
         let encoded = encode_path(plan_id);
         let resp = self
@@ -440,7 +424,6 @@ impl ApiClient {
 
     /// Fetch today's LLM cost in cents.
     #[tracing::instrument(skip(self))]
-    #[must_use]
     pub async fn today_cost_cents(&self) -> Result<u32> {
         let resp = self
             .request(reqwest::Method::GET, "/api/v1/costs/daily")
@@ -468,7 +451,6 @@ impl ApiClient {
 
     /// Trigger distillation (memory compaction) for a session.
     #[tracing::instrument(skip(self))]
-    #[must_use]
     pub async fn compact(&self, session_id: &str) -> Result<()> {
         let encoded = encode_path(session_id);
         let resp = self
@@ -493,7 +475,6 @@ impl ApiClient {
     /// Returns [`ApiError::Auth`] if the server rejects the authentication token.
     /// Returns [`ApiError::Server`] if the server returns a non-success status.
     #[tracing::instrument(skip(self))]
-    #[must_use]
     pub async fn tools(&self, nous_id: &str) -> Result<Vec<NousTool>> {
         let encoded = encode_path(nous_id);
         let resp = self
@@ -516,7 +497,6 @@ impl ApiClient {
 
     /// Search agent memory by query.
     #[tracing::instrument(skip(self))]
-    #[must_use]
     pub async fn recall(&self, nous_id: &str, query: &str) -> Result<String> {
         let encoded = encode_path(nous_id);
         let resp = self
@@ -544,7 +524,6 @@ impl ApiClient {
     /// Returns [`ApiError::Auth`] if the server rejects the authentication token.
     /// Returns [`ApiError::Server`] if the server returns a non-success status.
     #[tracing::instrument(skip(self))]
-    #[must_use]
     pub async fn config(&self) -> Result<serde_json::Value> {
         let resp = self
             .request(reqwest::Method::GET, "/api/v1/config")
@@ -609,7 +588,6 @@ impl ApiClient {
 
     /// Fetch detail for a single knowledge fact.
     #[tracing::instrument(skip(self))]
-    #[must_use]
     pub async fn knowledge_fact_detail(&self, fact_id: &str) -> Result<serde_json::Value> {
         let encoded = encode_path(fact_id);
         let resp = self
@@ -630,7 +608,6 @@ impl ApiClient {
 
     /// Mark a knowledge fact as forgotten.
     #[tracing::instrument(skip(self))]
-    #[must_use]
     pub async fn knowledge_forget(&self, fact_id: &str) -> Result<()> {
         let encoded = encode_path(fact_id);
         let resp = self
@@ -649,7 +626,6 @@ impl ApiClient {
 
     /// Restore a previously forgotten fact.
     #[tracing::instrument(skip(self))]
-    #[must_use]
     pub async fn knowledge_restore(&self, fact_id: &str) -> Result<()> {
         let encoded = encode_path(fact_id);
         let resp = self
@@ -668,7 +644,6 @@ impl ApiClient {
 
     /// Fetch all knowledge entities.
     #[tracing::instrument(skip(self))]
-    #[must_use]
     pub async fn knowledge_entities(&self) -> Result<serde_json::Value> {
         let resp = self
             .request(reqwest::Method::GET, "/api/v1/knowledge/entities")
@@ -708,7 +683,6 @@ impl ApiClient {
 
     /// Fetch the knowledge activity timeline.
     #[tracing::instrument(skip(self))]
-    #[must_use]
     pub async fn knowledge_timeline(&self) -> Result<serde_json::Value> {
         let resp = self
             .request(reqwest::Method::GET, "/api/v1/knowledge/timeline")
@@ -725,7 +699,6 @@ impl ApiClient {
 
     /// Update the confidence score for a knowledge fact.
     #[tracing::instrument(skip(self))]
-    #[must_use]
     pub async fn knowledge_update_confidence(&self, fact_id: &str, confidence: f64) -> Result<()> {
         let encoded = encode_path(fact_id);
         let resp = self
@@ -745,7 +718,6 @@ impl ApiClient {
 
     /// Queue a message for asynchronous processing.
     #[tracing::instrument(skip(self, text))]
-    #[must_use]
     pub async fn queue_message(&self, session_id: &str, text: &str) -> Result<()> {
         let encoded = encode_path(session_id);
         let resp = self

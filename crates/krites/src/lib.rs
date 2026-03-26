@@ -105,6 +105,7 @@ pub(crate) mod query;
 pub(crate) mod runtime;
 #[expect(
     dead_code,
+    clippy::indexing_slicing,
     clippy::pedantic,
     clippy::result_large_err,
     clippy::type_complexity,

@@ -136,7 +136,7 @@ pub(crate) struct TuiArgs {
 #[derive(Debug, Clone, Args)]
 pub(crate) struct InitArgs {
     /// Instance root directory (default in interactive/-y mode: ./instance).
-    /// Also reads ALETHEIA_ROOT as a fallback env var
+    /// Also reads `ALETHEIA_ROOT` as a fallback env var
     #[arg(
         short = 'r',
         long,

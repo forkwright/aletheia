@@ -67,7 +67,6 @@ impl Project {
     }
 
     /// Advance project state via a transition.
-    #[must_use]
     pub fn advance(&mut self, transition: Transition) -> Result<()> {
         let current = self.state.clone();
         self.state = current.transition(transition)?;

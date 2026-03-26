@@ -252,13 +252,10 @@ fn is_protected_file(path: &Path, workspace: &Path) -> Option<&'static str> {
         }
     }
 
-    for &substring in PROTECTED_SUBSTRINGS {
-        if filename_lower.contains(substring) {
-            return Some(substring);
-        }
-    }
-
-    None
+    PROTECTED_SUBSTRINGS
+        .iter()
+        .copied()
+        .find(|&substring| filename_lower.contains(substring))
 }
 
 fn err_result(msg: String) -> ToolResult {
@@ -281,12 +278,11 @@ impl ToolExecutor for ReadExecutor {
             // WHY: Close TOCTOU window for symlink-based attacks. A validated
             // path could be swapped to a symlink pointing outside allowed roots
             // between validate_path and the actual read. Closes #2162.
-            if path.exists() {
-                if let Ok(canonical) = std::fs::canonicalize(&path) {
-                    if canonical != path {
-                        validate_path(&canonical.to_string_lossy(), ctx, &input.name)?;
-                    }
-                }
+            if path.exists()
+                && let Ok(canonical) = std::fs::canonicalize(&path)
+                && canonical != path
+            {
+                validate_path(&canonical.to_string_lossy(), ctx, &input.name)?;
             }
 
             match std::fs::metadata(&path) {

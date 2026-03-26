@@ -163,8 +163,7 @@ impl ScenarioRunner {
                     }
                 }
                 () = tokio::time::sleep(timeout) => {
-                    // scenario_fut is dropped here, cancelling any in-flight work
-                    drop(scenario_fut);
+                    // NOTE: scenario_fut goes out of scope here, cancelling any in-flight work
                     let duration = scenario_start.elapsed();
                     warn!(
                         id = meta.id,
