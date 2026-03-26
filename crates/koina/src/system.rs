@@ -35,10 +35,8 @@
 //! assert!(!has_config(&sys, Path::new("/etc/missing.toml")), "missing file must not exist");
 //! ```
 
-use std::collections::{HashMap, HashSet};
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
 
 use jiff::{SignedDuration, Timestamp};
 

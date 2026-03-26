@@ -114,6 +114,10 @@ where
     dead_code,
     reason = "serde helper for config fields with optional secrets"
 )]
+#[expect(
+    clippy::ref_option,
+    reason = "serde serialize_with requires &Option<T> signature"
+)]
 /// This exists for symmetry with [`deserialize_option_secret_non_empty`].
 pub(crate) fn serialize_option_secret_redacted<S>(
     value: &Option<SecretString>,

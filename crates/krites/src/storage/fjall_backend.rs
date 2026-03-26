@@ -1,8 +1,4 @@
 //! Fjall persistent storage backend.
-#![expect(
-    clippy::expect_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
 
 use std::fs;
 use std::path::Path;
