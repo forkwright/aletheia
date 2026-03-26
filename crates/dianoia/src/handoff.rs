@@ -394,8 +394,8 @@ mod tests {
         let context = sample_context();
         let md = context.to_markdown();
         assert!(md.contains("## Metadata"));
-        assert!(md.contains("- Project: 01JTEST00000000000000000"));
-        assert!(md.contains("- Session: 01JSESS00000000000000000"));
+        assert!(md.contains("- Project: `01JTEST00000000000000000`"));
+        assert!(md.contains("- Session: `01JSESS00000000000000000`"));
         assert!(md.contains("- Reason: distillation"));
     }
 
