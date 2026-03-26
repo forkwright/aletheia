@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.15](https://github.com/forkwright/aletheia/compare/v0.13.14...v0.13.15) (2026-03-26)
+
+
+### Documentation
+
+* expand v0.13.14 changelog to reflect full audit scope ([e2139f1](https://github.com/forkwright/aletheia/commit/e2139f183f4220131b64a24ca4a06ee08a6c5914))
+
 ## [0.13.14](https://github.com/forkwright/aletheia/compare/v0.13.13...v0.13.14) (2026-03-26)
 
 Full QA audit of v0.13.13 followed by systematic fix campaign. 119 issues resolved across 20+ crates. Zero kanon lint violations. ([#2225](https://github.com/forkwright/aletheia/issues/2225))
