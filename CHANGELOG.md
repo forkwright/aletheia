@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.19](https://github.com/forkwright/aletheia/compare/v0.13.18...v0.13.19) (2026-03-26)
+
+
+### Bug Fixes
+
+* **workspace:** resolve all remaining clippy warnings across crates ([#2246](https://github.com/forkwright/aletheia/issues/2246)) ([0fce7ed](https://github.com/forkwright/aletheia/commit/0fce7ed815bd93c2f9a6f8e82d5ca6679f83a2bf))
+
 ## [0.13.18](https://github.com/forkwright/aletheia/compare/v0.13.17...v0.13.18) (2026-03-26)
 
 
