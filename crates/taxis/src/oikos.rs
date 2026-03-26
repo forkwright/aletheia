@@ -43,7 +43,7 @@ impl Oikos {
     /// 2. `./instance` relative to current directory
     ///
     /// Call [`Oikos::discover_with`] to supply a custom [`Environment`]
-    /// implementation (e.g. [`aletheia_koina::system::TestSystem`] in tests).
+    /// implementation (e.g. `aletheia_koina::system::TestSystem` in tests).
     #[must_use]
     pub fn discover() -> Self {
         Self::discover_with(&RealSystem)
