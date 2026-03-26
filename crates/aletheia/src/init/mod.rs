@@ -155,6 +155,12 @@ fn print_success_outro(root: &std::path::Path) -> Result<(), InitError> {
 }
 
 pub(crate) fn run(args: RunArgs) -> Result<(), InitError> {
+    // WHY: pass the env var through a parameter so tests can call run_inner
+    // directly with None and bypass ALETHEIA_ROOT without touching env state
+    run_inner(args, std::env::var("ALETHEIA_ROOT").ok().map(PathBuf::from))
+}
+
+fn run_inner(args: RunArgs, env_root: Option<PathBuf>) -> Result<(), InitError> {
     let RunArgs {
         root,
         yes,
@@ -167,7 +173,7 @@ pub(crate) fn run(args: RunArgs) -> Result<(), InitError> {
 
     // WHY: ALETHEIA_ROOT is the legacy env var used by deploy scripts; accept it
     // as a fallback when ALETHEIA_INSTANCE_PATH (the clap env) was not set.
-    let root = root.or_else(|| std::env::var("ALETHEIA_ROOT").ok().map(PathBuf::from));
+    let root = root.or(env_root);
 
     let is_non_interactive = non_interactive || yes;
 
