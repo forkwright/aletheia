@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.13.16](https://github.com/forkwright/aletheia/compare/v0.13.15...v0.13.16) (2026-03-26)
+
+
+### Bug Fixes
+
+* **deploy:** parameterize hardcoded paths, add discovery chain ([4b69cea](https://github.com/forkwright/aletheia/commit/4b69ceabec0a823f0979cfed26a6101ca09ec74b))
+* **lint:** suppress dead code warnings for planned and WIP items ([15cd702](https://github.com/forkwright/aletheia/commit/15cd70210725995fb44f271ba7de0ae2371712ba))
+* **visibility:** unbreak test compilation, fix leaked private types ([0ebe890](https://github.com/forkwright/aletheia/commit/0ebe89062bedb3ce0b846956a7975fe091d963d7))
+
 ## [0.13.15](https://github.com/forkwright/aletheia/compare/v0.13.14...v0.13.15) (2026-03-26)
 
 
