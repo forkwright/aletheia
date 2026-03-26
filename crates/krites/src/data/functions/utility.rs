@@ -1,8 +1,4 @@
 //! Type checking, conversion, and JSON operation functions.
-#![expect(
-    clippy::expect_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
 
 use std::str::FromStr;
 

@@ -1,8 +1,4 @@
 //! Schema and relation transact operations.
-#![expect(
-    clippy::expect_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicU64};

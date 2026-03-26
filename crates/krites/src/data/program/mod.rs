@@ -1,8 +1,4 @@
 //! Datalog program representation.
-#![expect(
-    clippy::expect_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
 
 mod atoms;
 mod fixed_rule;

@@ -47,10 +47,6 @@ impl FixedRule for LabelPropagation {
     }
 }
 
-#[expect(
-    clippy::expect_used,
-    reason = "candidate_labels guaranteed non-empty by take_while on non-empty source"
-)]
 fn label_propagation(
     graph: &DirectedCsrGraph<f32>,
     max_iter: usize,
@@ -66,7 +62,6 @@ fn label_propagation(
         for node in &iter_order {
             let mut labels_for_node: BTreeMap<u32, f32> = BTreeMap::new();
             for edge in graph.out_neighbors_with_values(*node) {
-                #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
                 let label = labels[edge.target as usize];
                 *labels_for_node.entry(label).or_default() += edge.value;
             }

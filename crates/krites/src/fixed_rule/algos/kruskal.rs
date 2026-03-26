@@ -56,7 +56,6 @@ impl FixedRule for MinimumSpanningForestKruskal {
 fn kruskal(edges: &DirectedCsrGraph<f32>, poison: Poison) -> Result<Vec<(u32, u32, f32)>> {
     let mut pq = PriorityQueue::new();
     let mut uf = UnionFind::new(edges.node_count());
-    #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
     let mut mst = Vec::with_capacity((edges.node_count() - 1) as usize);
     for from in 0..edges.node_count() {
         for target in edges.out_neighbors_with_values(from) {
@@ -111,7 +110,6 @@ impl UnionFind {
             root = self.ids[root as usize];
         }
         while p != root {
-            #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
             let next = self.ids[p as usize];
             self.ids[p as usize] = root;
             p = next;

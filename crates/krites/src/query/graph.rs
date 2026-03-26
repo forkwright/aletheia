@@ -1,8 +1,4 @@
 //! Dependency graph analysis for stratification.
-#![expect(
-    clippy::expect_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
 
 use std::cmp::min;
 use std::collections::{BTreeMap, BTreeSet};
@@ -60,7 +56,6 @@ pub(crate) fn reachable_components<'a, T: Ord + Debug>(
     graph: &'a Graph<T>,
     start: &'a T,
 ) -> BTreeSet<&'a T> {
-    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
     let mut collected = BTreeSet::from([start]);
     let worker = Reachable { graph };
     worker.walk(start, &mut collected);

@@ -155,10 +155,6 @@ impl<'a> SessionTx<'a> {
         Ok(())
     }
 
-    #[expect(
-        clippy::expect_used,
-        reason = "RwLock poisoning is unrecoverable — propagating would leave caches inconsistent"
-    )]
     pub(crate) fn remove_index(
         &mut self,
         rel_name: &Symbol,
@@ -222,7 +218,6 @@ impl<'a> SessionTx<'a> {
             .fail()?;
         }
         let new_key = DataValue::Str(new.name.clone());
-        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let new_encoded = vec![new_key].encode_as_key(RelationId::SYSTEM);
 
         if self.store_tx.exists(&new_encoded, true)? {
@@ -233,7 +228,6 @@ impl<'a> SessionTx<'a> {
         };
 
         let old_key = DataValue::Str(old.name.clone());
-        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let old_encoded = vec![old_key].encode_as_key(RelationId::SYSTEM);
 
         let mut rel = self.get_relation(old, true)?;
@@ -260,7 +254,6 @@ impl<'a> SessionTx<'a> {
     }
     pub(crate) fn rename_temp_relation(&mut self, old: Symbol, new: Symbol) -> Result<()> {
         let new_key = DataValue::Str(new.name.clone());
-        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let new_encoded = vec![new_key].encode_as_key(RelationId::SYSTEM);
 
         if self.temp_store_tx.exists(&new_encoded, true)? {
@@ -271,7 +264,6 @@ impl<'a> SessionTx<'a> {
         };
 
         let old_key = DataValue::Str(old.name.clone());
-        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let old_encoded = vec![old_key].encode_as_key(RelationId::SYSTEM);
 
         let mut rel = self.get_relation(&old, true)?;

@@ -19,10 +19,6 @@ use crate::runtime::temp_store::RegularTempStore;
 pub(crate) struct RandomWalk;
 
 impl FixedRule for RandomWalk {
-    #[expect(
-        clippy::expect_used,
-        reason = "candidate_steps checked non-empty before choose"
-    )]
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,

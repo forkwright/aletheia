@@ -55,10 +55,6 @@ pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
                         })?;
                         #[expect(
                             clippy::cast_possible_truncation,
-                            reason = "intentional F64→F32 reduction for mixed-precision vector arithmetic"
-                        )]
-                        #[expect(
-                            clippy::cast_possible_truncation,
                             reason = "f64 to f32: intentional precision reduction"
                         )]
                         let f = f as f32;
@@ -95,10 +91,6 @@ pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
                     })?;
                     #[expect(
                         clippy::cast_possible_truncation,
-                        reason = "intentional F64→F32 reduction for mixed-precision vector arithmetic"
-                    )]
-                    #[expect(
-                        clippy::cast_possible_truncation,
                         reason = "f64 to f32: intentional precision reduction"
                     )]
                     let f = f as f32;
@@ -125,10 +117,6 @@ pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
             (VecElementType::F32, Vector::F32(v)) => Ok(DataValue::Vec(Vector::F32(v.clone()))),
             (VecElementType::F64, Vector::F64(v)) => Ok(DataValue::Vec(Vector::F64(v.clone()))),
             (VecElementType::F32, Vector::F64(v)) => {
-                #[expect(
-                    clippy::cast_possible_truncation,
-                    reason = "intentional F64→F32 reduction for mixed-precision vector arithmetic"
-                )]
                 #[expect(
                     clippy::cast_possible_truncation,
                     reason = "f64 to f32: intentional precision reduction"
@@ -258,10 +246,6 @@ pub(crate) fn op_rand_vec(args: &[DataValue]) -> Result<DataValue> {
         VecElementType::F32 => {
             let mut res_arr = ndarray::Array1::zeros(len);
             for mut row in res_arr.axis_iter_mut(ndarray::Axis(0)) {
-                #[expect(
-                    clippy::cast_possible_truncation,
-                    reason = "intentional F64→F32 reduction for mixed-precision vector arithmetic"
-                )]
                 #[expect(
                     clippy::cast_possible_truncation,
                     reason = "f64 to f32: intentional precision reduction"

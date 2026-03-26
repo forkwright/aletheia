@@ -195,10 +195,6 @@ pub(crate) fn op_pow(args: &[DataValue]) -> Result<DataValue> {
             })?;
             #[expect(
                 clippy::cast_possible_truncation,
-                reason = "intentional F64→F32 reduction for mixed-precision vector arithmetic"
-            )]
-            #[expect(
-                clippy::cast_possible_truncation,
                 reason = "f64 to f32: intentional precision reduction"
             )]
             let b = b as f32;
