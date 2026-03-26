@@ -30,7 +30,7 @@ use crate::oikos::Oikos;
 /// encrypted values pass through unchanged with a warning.
 ///
 /// Call [`load_config_with`] to supply a custom [`FileSystem`] implementation
-/// (e.g. [`aletheia_koina::system::TestSystem`] in tests).
+/// (e.g. `aletheia_koina::system::TestSystem` in tests).
 ///
 /// # Errors
 ///
