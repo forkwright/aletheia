@@ -22,10 +22,6 @@ use crate::utils::TempCollector;
 use super::handles::{InputRelationHandle, RelationHandle, RelationId};
 
 impl<'a> SessionTx<'a> {
-    #[expect(
-        clippy::expect_used,
-        reason = "pest parse success guarantees at least one pair"
-    )]
     pub(crate) fn create_minhash_lsh_index(&mut self, config: &MinHashLshConfig) -> Result<()> {
         let mut rel_handle = self.get_relation(&config.base_relation, true)?;
 
@@ -163,10 +159,6 @@ impl<'a> SessionTx<'a> {
         Ok(())
     }
 
-    #[expect(
-        clippy::expect_used,
-        reason = "pest parse success guarantees at least one pair"
-    )]
     pub(crate) fn create_fts_index(&mut self, config: &FtsIndexConfig) -> Result<()> {
         let mut rel_handle = self.get_relation(&config.base_relation, true)?;
 
@@ -314,10 +306,6 @@ impl<'a> SessionTx<'a> {
         Ok(())
     }
 
-    #[expect(
-        clippy::expect_used,
-        reason = "pest parse success guarantees at least one pair"
-    )]
     pub(crate) fn create_hnsw_index(&mut self, config: &HnswIndexConfig) -> Result<()> {
         let mut rel_handle = self.get_relation(&config.base_relation, true)?;
 

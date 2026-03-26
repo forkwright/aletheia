@@ -285,7 +285,6 @@ const CODEPOINT_UTF8_WIDTH: [u8; 16] = [1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2
 //
 // To do that we count the number of higher significant bits set to `1`.
 fn utf8_codepoint_width(b: u8) -> usize {
-    #[expect(clippy::cast_sign_loss, reason = "value known non-negative")]
     let higher_4_bits = (b as usize) >> 4;
     CODEPOINT_UTF8_WIDTH[higher_4_bits] as usize
 }

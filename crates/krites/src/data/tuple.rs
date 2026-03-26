@@ -1,8 +1,4 @@
 //! Tuple encoding and decoding.
-#![expect(
-    clippy::expect_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
 
 use std::cmp::Reverse;
 
@@ -61,10 +57,6 @@ pub fn check_key_for_validity(
     size_hint: Option<usize>,
 ) -> (Option<Tuple>, Vec<u8>) {
     let mut decoded = decode_tuple_from_key(key, size_hint.unwrap_or(DEFAULT_SIZE_HINT));
-    #[expect(
-        clippy::expect_used,
-        reason = "decoding stored key; RelationId is always valid"
-    )]
     let rel_id = RelationId::raw_decode(key).unwrap_or_else(|_| unreachable!());
     let vld = match decoded.last().unwrap_or_else(|| unreachable!()) {
         DataValue::Validity(vld) => vld,

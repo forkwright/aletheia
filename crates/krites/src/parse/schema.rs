@@ -1,8 +1,4 @@
 //! Schema definition parsing.
-#![expect(
-    clippy::expect_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
 
 use std::collections::BTreeSet;
 

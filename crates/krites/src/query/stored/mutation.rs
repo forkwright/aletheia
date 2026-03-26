@@ -1,10 +1,6 @@
 //! Stored relation mutation: put, delete, and index maintenance.
 //! SessionTx methods for stored relation mutation and FTS/HNSW/LSH index maintenance.
 //! Stored relation access operators.
-#![expect(
-    clippy::expect_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;

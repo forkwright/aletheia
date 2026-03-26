@@ -36,10 +36,6 @@ impl StronglyConnectedComponent {
 
 #[cfg(feature = "graph-algo")]
 impl FixedRule for StronglyConnectedComponent {
-    #[expect(
-        clippy::expect_used,
-        reason = "indices bounded by graph size; tuples guaranteed non-empty"
-    )]
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
@@ -120,10 +116,6 @@ impl TarjanSccG {
 
         let mut low_map: BTreeMap<u32, Vec<u32>> = BTreeMap::new();
         for (idx, grp) in self.low.into_iter().enumerate() {
-            #[expect(
-                clippy::cast_possible_truncation,
-                reason = "graph node count bounded by u32"
-            )]
             #[expect(clippy::cast_possible_truncation, reason = "value fits u32")]
             let idx_u32 = idx as u32;
             low_map.entry(grp).or_default().push(idx_u32);
@@ -131,10 +123,6 @@ impl TarjanSccG {
 
         Ok(low_map.into_values().collect_vec())
     }
-    #[expect(
-        clippy::expect_used,
-        reason = "ids[at] set on entry before recursive use"
-    )]
     fn dfs(&mut self, at: u32) {
         self.stack.push(at);
         self.on_stack[at as usize] = true;

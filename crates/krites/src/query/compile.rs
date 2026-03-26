@@ -1,8 +1,4 @@
 //! Query plan compilation from logical to relational algebra.
-#![expect(
-    clippy::expect_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
 
 use std::collections::{BTreeMap, BTreeSet};
 

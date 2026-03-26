@@ -1,8 +1,4 @@
 //! Temporary in-memory tuple store for query evaluation.
-#![expect(
-    clippy::expect_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
 
 use std::cmp::Ordering;
 use std::collections::BTreeMap;

@@ -32,7 +32,6 @@ impl FixedRule for Dfs {
         let condition_bytecode = condition.compile()?;
         let condition_span = condition.span();
         let binding_indices = condition.binding_indices()?;
-        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let skip_query_nodes = binding_indices.is_subset(&BTreeSet::from([0]));
 
         let mut visited: BTreeSet<DataValue> = Default::default();

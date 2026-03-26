@@ -1,8 +1,4 @@
 //! System operation and metadata query methods for the Db engine.
-#![expect(
-    clippy::expect_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
 
 use std::iter;
 use std::sync::atomic::Ordering;

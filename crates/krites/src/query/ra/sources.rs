@@ -501,7 +501,6 @@ impl TempStoreRA {
         } else {
             let mut right_join_vals = BTreeSet::new();
             for tuple in storage.all_iter() {
-                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                 let to_join: Box<[DataValue]> = right_join_indices
                     .iter()
                     .map(|i| tuple.get(*i).clone())

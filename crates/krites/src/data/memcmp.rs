@@ -38,7 +38,7 @@ const EXACT_INT_BOUND: i64 = 0x20_0000_0000_0000;
 
 // INVARIANT: split_at(N) always yields exactly N bytes; convert to fixed-size array
 fn as_array<const N: usize>(slice: &[u8]) -> [u8; N] {
-    slice.try_into().unwrap_or_else(|_| [0u8; N])
+    slice.try_into().unwrap_or([0u8; N])
 }
 
 pub(crate) trait MemCmpEncoder: Write {
@@ -54,24 +54,19 @@ pub(crate) trait MemCmpEncoder: Write {
                 let _ = self.write_all(&[TRUE_TAG]);
             }
             DataValue::Vec(arr) => {
-                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                 let _ = self.write_all(&[VEC_TAG]);
                 match arr {
                     Vector::F32(a) => {
-                        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                         let _ = self.write_all(&[VEC_F32]);
                         let l = a.len();
-                        #[expect(clippy::cast_possible_truncation, reason = "value fits u64")]
                         let _ = self.write_all(&(l as u64).to_be_bytes());
                         for el in a {
                             let _ = self.write_all(&el.to_be_bytes());
                         }
                     }
                     Vector::F64(a) => {
-                        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                         let _ = self.write_all(&[VEC_F64]);
                         let l = a.len();
-                        #[expect(clippy::cast_possible_truncation, reason = "value fits u64")]
                         let _ = self.write_all(&(l as u64).to_be_bytes());
                         for el in a {
                             let _ = self.write_all(&el.to_be_bytes());
@@ -80,28 +75,23 @@ pub(crate) trait MemCmpEncoder: Write {
                 }
             }
             DataValue::Num(n) => {
-                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                 let _ = self.write_all(&[NUM_TAG]);
                 self.encode_num(*n);
             }
             DataValue::Str(s) => {
-                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                 let _ = self.write_all(&[STR_TAG]);
                 self.encode_bytes(s.as_bytes());
             }
             DataValue::Json(j) => {
-                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                 let _ = self.write_all(&[JSON_TAG]);
                 let s = j.0.to_string();
                 self.encode_bytes(s.as_bytes());
             }
             DataValue::Bytes(b) => {
-                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                 let _ = self.write_all(&[BYTES_TAG]);
                 self.encode_bytes(b)
             }
             DataValue::Uuid(u) => {
-                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                 let _ = self.write_all(&[UUID_TAG]);
                 let (s_l, s_m, s_h, s_rest) = u.0.as_fields();
                 let _ = self.write_all(&s_h.to_be_bytes());
@@ -110,37 +100,30 @@ pub(crate) trait MemCmpEncoder: Write {
                 let _ = self.write_all(s_rest.as_ref());
             }
             DataValue::Regex(rx) => {
-                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                 let _ = self.write_all(&[REGEX_TAG]);
                 let s = rx.0.as_str().as_bytes();
                 self.encode_bytes(s)
             }
             DataValue::List(l) => {
-                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                 let _ = self.write_all(&[LIST_TAG]);
                 for el in l {
                     self.encode_datavalue(el);
                 }
-                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                 let _ = self.write_all(&[INIT_TAG]);
             }
             DataValue::Set(s) => {
-                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                 let _ = self.write_all(&[SET_TAG]);
                 for el in s {
                     self.encode_datavalue(el);
                 }
-                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                 let _ = self.write_all(&[INIT_TAG]);
             }
             DataValue::Validity(vld) => {
                 let ts = vld.timestamp.0.0;
                 let ts_u64 = order_encode_i64(ts);
                 let ts_flipped = !ts_u64;
-                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                 let _ = self.write_all(&[VLD_TAG]);
                 let _ = self.write_all(&ts_flipped.to_be_bytes());
-                #[expect(clippy::cast_possible_truncation, reason = "value fits u8")]
                 let _ = self.write_all(&[!vld.is_assert.0 as u8]);
             }
             DataValue::Bot => {
@@ -155,17 +138,14 @@ pub(crate) trait MemCmpEncoder: Write {
         match v {
             Num::Int(i) => {
                 if i > -EXACT_INT_BOUND && i < EXACT_INT_BOUND {
-                    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                     let _ = self.write_all(&[IS_EXACT_INT]);
                 } else {
-                    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                     let _ = self.write_all(&[IS_APPROX_INT]);
                     let en = order_encode_i64(i);
                     let _ = self.write_all(&en.to_be_bytes());
                 }
             }
             Num::Float(_) => {
-                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                 let _ = self.write_all(&[IS_FLOAT]);
             }
         }
@@ -203,7 +183,6 @@ pub fn decode_bytes(data: &[u8]) -> (Vec<u8>, &[u8]) {
 
         // INVARIANT: chunk is ENC_GROUP_SIZE+1 bytes, always non-empty
         let (&marker, bytes) = chunk.split_last().unwrap_or((&0, &[]));
-        #[expect(clippy::cast_sign_loss, reason = "value known non-negative")]
         let pad_size = (ENC_MARKER - marker) as usize;
 
         if pad_size == 0 {
@@ -371,7 +350,6 @@ impl DataValue {
                 let (t_tag, remaining) = remaining.split_first().unwrap_or((&0, &[]));
                 let (len_bytes, mut rest) = remaining.split_at(8);
                 // INVARIANT: split_at(8) yields exactly 8 bytes
-                #[expect(clippy::cast_sign_loss, reason = "value known non-negative")]
                 let len = u64::from_be_bytes(as_array(len_bytes)) as usize;
                 match *t_tag {
                     VEC_F32 => {

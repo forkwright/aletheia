@@ -16,10 +16,6 @@ use crate::runtime::temp_store::RegularTempStore;
 pub(crate) struct TopSort;
 
 impl FixedRule for TopSort {
-    #[expect(
-        clippy::expect_used,
-        reason = "val_id produced by graph traversal, always in bounds"
-    )]
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
@@ -56,14 +52,12 @@ impl FixedRule for TopSort {
 
 pub(crate) fn kahn_g(graph: &DirectedCsrGraph, poison: Poison) -> Result<Vec<u32>> {
     let graph_size = graph.node_count();
-    #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
     let mut in_degree = vec![0; graph_size as usize];
     for tos in 0..graph_size {
         for to in graph.out_neighbors(tos) {
             in_degree[to as usize] += 1;
         }
     }
-    #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
     let mut sorted = Vec::with_capacity(graph_size as usize);
     let mut pending = vec![];
 

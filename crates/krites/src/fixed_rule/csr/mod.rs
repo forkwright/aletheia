@@ -44,28 +44,20 @@ struct Csr<EV> {
 
 impl<EV> Csr<EV> {
     fn node_count(&self) -> u32 {
-        #[expect(
-            clippy::cast_possible_truncation,
-            reason = "graph node count bounded by u32"
-        )]
         #[expect(clippy::cast_possible_truncation, reason = "value fits u32")]
         let count = (self.offsets.len() - 1) as u32;
         count
     }
 
     fn degree(&self, node: u32) -> u32 {
-        #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
         let i = node as usize;
         self.offsets[i + 1] - self.offsets[i]
     }
 
     fn targets_with_values(&self, node: u32) -> &[Target<EV>] {
-        #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
         let i = node as usize;
-        #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
         #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let from = self.offsets[i] as usize;
-        #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
         let to = self.offsets[i + 1] as usize;
         &self.targets[from..to]
     }
@@ -73,12 +65,9 @@ impl<EV> Csr<EV> {
 
 impl Csr<()> {
     fn targets_iter(&self, node: u32) -> impl Iterator<Item = u32> + '_ {
-        #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
         let i = node as usize;
-        #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
         #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let from = self.offsets[i] as usize;
-        #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
         let to = self.offsets[i + 1] as usize;
         self.targets[from..to].iter().map(|t| t.target)
     }
@@ -157,7 +146,6 @@ impl<EV: Copy> CsrBuilder<EV> {
     }
 
     fn build_csr(&self, node_count: u32, incoming: bool) -> Csr<EV> {
-        #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
         let n = node_count as usize;
 
         let mut adj: Vec<Vec<Target<EV>>> = vec![Vec::new(); n];
@@ -175,19 +163,11 @@ impl<EV: Copy> CsrBuilder<EV> {
         let mut offsets = Vec::with_capacity(n + 1);
         let mut targets = Vec::new();
         for list in adj {
-            #[expect(
-                clippy::cast_possible_truncation,
-                reason = "edge count bounded by u32 graph capacity"
-            )]
             #[expect(clippy::cast_possible_truncation, reason = "value fits u32")]
             let offset = targets.len() as u32;
             offsets.push(offset);
             targets.extend(list);
         }
-        #[expect(
-            clippy::cast_possible_truncation,
-            reason = "edge count bounded by u32 graph capacity"
-        )]
         #[expect(clippy::cast_possible_truncation, reason = "value fits u32")]
         let final_offset = targets.len() as u32;
         offsets.push(final_offset);

@@ -1,10 +1,6 @@
 //! SessionTx methods for HNSW KNN search.
 //! SessionTx methods for HNSW vector index operations.
 //! Hierarchical Navigable Small World vector index.
-#![expect(
-    clippy::expect_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
 
 use ordered_float::OrderedFloat;
 use priority_queue::PriorityQueue;
@@ -42,10 +38,6 @@ impl<'a> SessionTx<'a> {
             (v @ Vector::F64(_), VecElementType::F64) => v,
             (Vector::F32(v), VecElementType::F64) => Vector::F64(v.mapv(f64::from)),
             (Vector::F64(v), VecElementType::F32) => {
-                #[expect(
-                    clippy::cast_possible_truncation,
-                    reason = "intentional F64→F32 precision reduction for vector storage"
-                )]
                 #[expect(
                     clippy::cast_possible_truncation,
                     reason = "f64 to f32: intentional precision reduction"

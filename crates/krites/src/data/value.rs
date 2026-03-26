@@ -1,8 +1,4 @@
 //! Core value type for the Datalog engine.
-#![expect(
-    clippy::expect_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
 
 use std::cmp::{Ordering, Reverse};
 use std::collections::BTreeSet;
@@ -266,7 +262,6 @@ impl<'de> Visitor<'de> for VectorVisitor {
         let tag: u8 = seq
             .next_element()?
             .ok_or_else(|| serde::de::Error::invalid_length(0, &self))?;
-        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let bytes: &[u8] = seq
             .next_element()?
             .ok_or_else(|| serde::de::Error::invalid_length(1, &self))?;

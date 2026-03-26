@@ -20,7 +20,6 @@ use super::handles::{AccessLevel, InputRelationHandle, RelationHandle, RelationI
 impl<'a> SessionTx<'a> {
     pub(crate) fn relation_exists(&self, name: &str) -> Result<bool> {
         let key = DataValue::from(name);
-        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let encoded = vec![key].encode_as_key(RelationId::SYSTEM);
         if name.starts_with('_') {
             self.temp_store_tx
@@ -76,7 +75,6 @@ impl<'a> SessionTx<'a> {
         input_meta: InputRelationHandle,
     ) -> Result<RelationHandle> {
         let key = DataValue::Str(input_meta.name.name.clone());
-        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let encoded = vec![key].encode_as_key(RelationId::SYSTEM);
 
         let is_temp = input_meta.name.is_temp_store_name();
@@ -143,7 +141,6 @@ impl<'a> SessionTx<'a> {
     }
     pub(crate) fn get_relation(&self, name: &str, lock: bool) -> Result<RelationHandle> {
         let key = DataValue::from(name);
-        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let encoded = vec![key].encode_as_key(RelationId::SYSTEM);
 
         let found = if name.starts_with('_') {
@@ -216,7 +213,6 @@ impl<'a> SessionTx<'a> {
         }
 
         let key = DataValue::from(name);
-        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let encoded = vec![key].encode_as_key(RelationId::SYSTEM);
         if is_temp {
             self.temp_store_tx.del(&encoded)?;

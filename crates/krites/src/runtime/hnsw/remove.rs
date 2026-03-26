@@ -1,8 +1,4 @@
 //! SessionTx methods for HNSW vector removal.
-#![expect(
-    clippy::expect_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
 
 use itertools::Itertools;
 use rustc_hash::FxHashSet;

@@ -1,8 +1,4 @@
 //! Full-text search subsystem.
-#![expect(
-    clippy::expect_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
 
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};

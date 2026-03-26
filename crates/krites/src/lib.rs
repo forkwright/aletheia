@@ -14,10 +14,6 @@ use std::sync::Arc;
 use crossbeam::channel::{Receiver, Sender, bounded};
 
 pub mod error;
-#[expect(
-    clippy::expect_used,
-    reason = "vendored CozoDB engine — Mutex poisoning is unrecoverable in cache internals"
-)]
 pub mod query_cache;
 pub use error::{Error, Result};
 pub use query_cache::{QueryCache, QueryCacheStats};
@@ -43,57 +39,68 @@ pub(crate) type DbInstance = crate::runtime::db::Db<crate::storage::mem::MemStor
 #[expect(
     unsafe_code,
     private_interfaces,
-    clippy::pedantic,
-    clippy::float_cmp,
+    clippy::as_conversions,
+    clippy::indexing_slicing,
     clippy::mutable_key_type,
+    clippy::pedantic,
     clippy::result_large_err,
-    reason = "vendored CozoDB engine — unsafe for DataValue layout, pedantic lints deferred"
+    reason = "vendored CozoDB engine — unsafe for DataValue layout, numeric casts and indexing are engine-internal invariants"
 )]
 pub(crate) mod data;
 #[expect(
     private_interfaces,
-    clippy::pedantic,
+    clippy::as_conversions,
+    clippy::indexing_slicing,
     clippy::mutable_key_type,
+    clippy::pedantic,
     clippy::result_large_err,
     clippy::type_complexity,
-    reason = "vendored CozoDB engine — graph algorithm signatures are domain-inherent"
+    reason = "vendored CozoDB engine — graph algorithm casts and indexing are engine-internal invariants"
 )]
 pub(crate) mod fixed_rule;
 #[expect(
-    clippy::pedantic,
+    clippy::as_conversions,
+    clippy::indexing_slicing,
     clippy::mutable_key_type,
+    clippy::pedantic,
     clippy::result_large_err,
     clippy::too_many_arguments,
-    reason = "vendored CozoDB engine — FTS tokenizer data files and Unicode tables"
+    reason = "vendored CozoDB engine — FTS tokenizer casts and indexing are engine-internal invariants"
 )]
 pub(crate) mod fts;
 #[expect(
-    clippy::pedantic,
+    clippy::as_conversions,
+    clippy::indexing_slicing,
     clippy::needless_return,
+    clippy::pedantic,
     clippy::result_large_err,
     clippy::type_complexity,
-    reason = "vendored CozoDB engine — parser signatures are domain-inherent"
+    reason = "vendored CozoDB engine — parser casts and indexing are engine-internal invariants"
 )]
 pub(crate) mod parse;
 #[expect(
-    clippy::pedantic,
+    clippy::as_conversions,
+    clippy::indexing_slicing,
     clippy::mutable_key_type,
+    clippy::pedantic,
     clippy::result_large_err,
     clippy::too_many_arguments,
     clippy::type_complexity,
-    reason = "vendored CozoDB engine — query planner complexity is inherent"
+    reason = "vendored CozoDB engine — query planner casts and indexing are engine-internal invariants"
 )]
 pub(crate) mod query;
 #[expect(
     dead_code,
     private_interfaces,
-    clippy::pedantic,
+    clippy::as_conversions,
+    clippy::indexing_slicing,
     clippy::mutable_key_type,
     clippy::needless_return,
+    clippy::pedantic,
     clippy::result_large_err,
     clippy::too_many_arguments,
     clippy::type_complexity,
-    reason = "vendored CozoDB engine — runtime DB core with unsafe storage layer"
+    reason = "vendored CozoDB engine — runtime casts and indexing are engine-internal invariants"
 )]
 pub(crate) mod runtime;
 #[expect(

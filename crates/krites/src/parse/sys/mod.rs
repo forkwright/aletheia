@@ -1,8 +1,4 @@
 //! System command parsing.
-#![expect(
-    clippy::expect_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
 
 use compact_str::CompactString;
 use ordered_float::OrderedFloat;

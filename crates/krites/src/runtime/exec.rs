@@ -1,8 +1,4 @@
 //! Query execution methods for the Db engine.
-#![expect(
-    clippy::expect_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::Ordering;
@@ -190,7 +186,6 @@ impl<'s, S: Storage<'s>> Db<S> {
                         for CompiledRule { aggr, relation, .. } in rules.iter() {
                             clause_idx += 1;
                             let mut ret_for_relation = vec![];
-                            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                             let mut rel_stack = vec![relation];
                             let mut idx = 0;
                             let mut atom_type = "out";

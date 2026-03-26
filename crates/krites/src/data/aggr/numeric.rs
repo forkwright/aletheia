@@ -1,5 +1,4 @@
 //! Numeric aggregation operators.
-#![expect(clippy::expect_used, reason = "engine invariant")]
 
 use super::super::error::*;
 

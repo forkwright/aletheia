@@ -155,7 +155,6 @@ impl MmapVectorStorage {
             clippy::cast_possible_truncation,
             reason = "file size bounded by available memory"
         )]
-        #[expect(clippy::cast_sign_loss, reason = "value known non-negative")]
         let file_len_usize = file_len as usize;
 
         if !file_len_usize.is_multiple_of(stride) {
@@ -172,7 +171,6 @@ impl MmapVectorStorage {
 
         let count = file_len_usize / stride;
         let inner = Self::create_inner(&file, file_len_usize)?;
-        #[expect(clippy::cast_possible_truncation, reason = "value fits u8")]
         let hint = AtomicU8::new(AccessHint::Random as u8);
 
         debug!(path = %path.display(), dim, count, "opened mmap vector storage");
@@ -376,14 +374,12 @@ impl MmapVectorStorage {
 
         let stride = self.dim * std::mem::size_of::<f32>();
         // SAFETY: f32 slice → u8 slice of same memory, stride = dim * 4.
-        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let bytes: &[u8] =
             unsafe { std::slice::from_raw_parts(vector.as_ptr().cast::<u8>(), stride) };
 
         #[cfg(unix)]
         {
             use std::os::unix::fs::FileExt;
-            #[expect(clippy::cast_possible_truncation, reason = "value fits u64")]
             let offset = (self.count * stride) as u64;
             self.file
                 .write_at(bytes, offset)

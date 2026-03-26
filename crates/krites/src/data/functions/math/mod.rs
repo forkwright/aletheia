@@ -1,8 +1,4 @@
 //! Comparison, arithmetic, and basic math functions.
-#![expect(
-    clippy::expect_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
 
 use super::arg;
 use crate::data::error::*;
@@ -68,10 +64,6 @@ pub(crate) fn add_vecs(args: &[DataValue]) -> Result<DataValue> {
                 Vector::F32(mut v) => {
                     #[expect(
                         clippy::cast_possible_truncation,
-                        reason = "intentional F64→F32 reduction for mixed-precision vector arithmetic"
-                    )]
-                    #[expect(
-                        clippy::cast_possible_truncation,
                         reason = "f64 to f32: intentional precision reduction"
                     )]
                     let f = f as f32;
@@ -94,10 +86,6 @@ pub(crate) fn add_vecs(args: &[DataValue]) -> Result<DataValue> {
             })?;
             match b {
                 Vector::F32(v) => {
-                    #[expect(
-                        clippy::cast_possible_truncation,
-                        reason = "intentional F64→F32 reduction for mixed-precision vector arithmetic"
-                    )]
                     #[expect(
                         clippy::cast_possible_truncation,
                         reason = "f64 to f32: intentional precision reduction"
@@ -152,10 +140,6 @@ pub(crate) fn mul_vecs(args: &[DataValue]) -> Result<DataValue> {
                 Vector::F32(mut v) => {
                     #[expect(
                         clippy::cast_possible_truncation,
-                        reason = "intentional F64→F32 reduction for mixed-precision vector arithmetic"
-                    )]
-                    #[expect(
-                        clippy::cast_possible_truncation,
                         reason = "f64 to f32: intentional precision reduction"
                     )]
                     let f = f as f32;
@@ -178,10 +162,6 @@ pub(crate) fn mul_vecs(args: &[DataValue]) -> Result<DataValue> {
             })?;
             match b {
                 Vector::F32(v) => {
-                    #[expect(
-                        clippy::cast_possible_truncation,
-                        reason = "intentional F64→F32 reduction for mixed-precision vector arithmetic"
-                    )]
                     #[expect(
                         clippy::cast_possible_truncation,
                         reason = "f64 to f32: intentional precision reduction"

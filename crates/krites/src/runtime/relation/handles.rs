@@ -172,10 +172,6 @@ impl RelationHandle {
         );
         Ok(NamedRows::new(headers, rows))
     }
-    #[expect(
-        clippy::expect_used,
-        reason = "arg_uses and mapper guaranteed non-empty by callers"
-    )]
     pub(crate) fn choose_index(
         &self,
         arg_uses: &[IndexPositionUse],
@@ -355,10 +351,6 @@ impl RelationHandle {
         tx: &'a SessionTx<'_>,
     ) -> impl Iterator<Item = Result<Tuple>> + use<'a> {
         let lower = Tuple::default().encode_as_key(self.id);
-        #[expect(
-            clippy::expect_used,
-            reason = "RelationId from store is always < 2^48; next() cannot overflow"
-        )]
         let upper =
             Tuple::default().encode_as_key(self.id.next().unwrap_or_else(|_| unreachable!()));
         if self.is_temp {
@@ -374,10 +366,6 @@ impl RelationHandle {
         valid_at: ValidityTs,
     ) -> impl Iterator<Item = Result<Tuple>> + use<'a> {
         let lower = Tuple::default().encode_as_key(self.id);
-        #[expect(
-            clippy::expect_used,
-            reason = "RelationId from store is always < 2^48; next() cannot overflow"
-        )]
         let upper =
             Tuple::default().encode_as_key(self.id.next().unwrap_or_else(|_| unreachable!()));
         if self.is_temp {
@@ -549,10 +537,6 @@ pub fn decode_tuple_from_kv(key: &[u8], val: &[u8], size_hint: Option<usize>) ->
     tup
 }
 
-#[expect(
-    clippy::expect_used,
-    reason = "storage layer invariant — msgpack corruption is unrecoverable"
-)]
 pub fn extend_tuple_from_v(key: &mut Tuple, val: &[u8]) {
     if !val.is_empty() {
         // INVARIANT: storage layer writes well-formed msgpack tuples; deserialization only fails on data corruption

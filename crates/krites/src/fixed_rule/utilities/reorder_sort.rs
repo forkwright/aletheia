@@ -19,10 +19,6 @@ use crate::runtime::temp_store::RegularTempStore;
 pub(crate) struct ReorderSort;
 
 impl FixedRule for ReorderSort {
-    #[expect(
-        clippy::expect_used,
-        reason = "sort buffer entries always have a trailing sorter element"
-    )]
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,

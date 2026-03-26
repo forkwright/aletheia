@@ -23,10 +23,6 @@ use crate::runtime::temp_store::RegularTempStore;
 pub(crate) struct ShortestPathDijkstra;
 
 impl FixedRule for ShortestPathDijkstra {
-    #[expect(
-        clippy::expect_used,
-        reason = "termination set checked len() == 1 before .next()"
-    )]
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
@@ -256,10 +252,8 @@ pub(crate) fn dijkstra<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal + Clone>(
     forbidden_nodes: &FN,
 ) -> Vec<(u32, f32, Vec<u32>)> {
     let graph_size = edges.node_count();
-    #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
     let mut distance = vec![f32::INFINITY; graph_size as usize];
     let mut pq = PriorityQueue::new();
-    #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
     let mut back_pointers = vec![u32::MAX; graph_size as usize];
     distance[start as usize] = 0.;
     pq.push(start, Reverse(OrderedFloat(0.)));
@@ -297,7 +291,6 @@ pub(crate) fn dijkstra<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal + Clone>(
     goals
         .iter(edges.node_count())
         .map(|target| {
-            #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
             let cost = distance[target as usize];
             if !cost.is_finite() {
                 (target, cost, vec![])
@@ -324,10 +317,8 @@ pub(crate) fn dijkstra_keep_ties<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal +
     forbidden_nodes: &FN,
     poison: Poison,
 ) -> Result<Vec<(u32, f32, Vec<u32>)>> {
-    #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
     let mut distance = vec![f32::INFINITY; edges.node_count() as usize];
     let mut pq = PriorityQueue::new();
-    #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
     let mut back_pointers: Vec<SmallVec<[u32; 1]>> = vec![smallvec![]; edges.node_count() as usize];
     distance[start as usize] = 0.;
     pq.push(start, Reverse(OrderedFloat(0.)));
@@ -370,7 +361,6 @@ pub(crate) fn dijkstra_keep_ties<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal +
     let ret = goals
         .iter(edges.node_count())
         .flat_map(|target| {
-            #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
             let cost = distance[target as usize];
             if !cost.is_finite() {
                 vec![(target, cost, vec![])]
@@ -380,10 +370,6 @@ pub(crate) fn dijkstra_keep_ties<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal +
                 }
 
                 impl CollectPath {
-                    #[expect(
-                        clippy::expect_used,
-                        reason = "chain initialized with [target] and only extended, never empty"
-                    )]
                     fn collect(
                         &mut self,
                         chain: &[u32],
@@ -393,7 +379,6 @@ pub(crate) fn dijkstra_keep_ties<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal +
                         back_pointers: &[SmallVec<[u32; 1]>],
                     ) {
                         let last = chain.last().unwrap_or_else(|| unreachable!());
-                        #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
                         let prevs = &back_pointers[*last as usize];
                         for nxt in prevs {
                             let mut ret = chain.to_vec();

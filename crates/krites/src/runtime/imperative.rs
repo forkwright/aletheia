@@ -1,8 +1,4 @@
 //! Imperative script execution.
-#![expect(
-    clippy::expect_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::Ordering;
 
@@ -146,10 +142,6 @@ impl<'s, S: Storage<'s>> Db<S> {
             nr.next = current;
             current = Some(Box::new(nr))
         }
-        #[expect(
-            clippy::expect_used,
-            reason = "returns is non-empty (checked above), so loop runs at least once"
-        )]
         Ok(ControlCode::Termination(
             *current.unwrap_or_else(|| unreachable!()),
         ))

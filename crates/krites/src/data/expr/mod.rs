@@ -1,8 +1,4 @@
 //! Expression evaluation and representation.
-#![expect(
-    clippy::expect_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
 
 use std::fmt::Debug;
 
