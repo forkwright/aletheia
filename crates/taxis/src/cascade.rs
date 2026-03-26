@@ -56,7 +56,7 @@ pub struct CascadeEntry {
 /// is returned (nous > shared > theke).
 ///
 /// Call [`discover_with`] to supply a custom [`FileSystem`] implementation
-/// (e.g. [`aletheia_koina::system::TestSystem`] in tests).
+/// (e.g. `aletheia_koina::system::TestSystem` in tests).
 ///
 /// # Arguments
 /// * `oikos`: The oikos instance for path resolution
