@@ -1,8 +1,4 @@
 //! Full-text search indexing operations.
-#![expect(
-    clippy::expect_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
 
 use std::cmp::Reverse;
 use std::collections::HashMap;

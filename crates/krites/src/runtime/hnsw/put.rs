@@ -1,8 +1,4 @@
 //! SessionTx methods for HNSW vector insertion.
-#![expect(
-    clippy::expect_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
 
 use std::cmp::{Reverse, max};
 

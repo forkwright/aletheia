@@ -1,8 +1,4 @@
 //! Magic sets query transformation.
-#![expect(
-    clippy::expect_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
 #![cfg_attr(
     test,
     expect(

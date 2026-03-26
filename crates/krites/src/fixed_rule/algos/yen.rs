@@ -118,10 +118,6 @@ impl FixedRule for KShortestPathYen {
     }
 }
 
-#[expect(
-    clippy::expect_used,
-    reason = "k_shortest/candidates checked non-empty before access"
-)]
 fn k_shortest_path_yen(
     k: usize,
     edges: &DirectedCsrGraph<f32>,

@@ -338,7 +338,6 @@ impl Expr {
             },
             Expr::Const { val, .. } => Ok(val.clone()),
             Expr::Apply { op, args, .. } => {
-                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                 let args: Box<[DataValue]> = args
                     .iter()
                     .map(|v| v.eval(bindings.as_ref()))

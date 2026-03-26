@@ -1,8 +1,4 @@
 //! UUID, timestamp, validity, and random number functions.
-#![expect(
-    clippy::expect_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
 
 use std::cmp::Reverse;
 use std::time::{SystemTime, UNIX_EPOCH};

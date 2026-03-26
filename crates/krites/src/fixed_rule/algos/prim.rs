@@ -77,9 +77,7 @@ fn prim(
     starting: u32,
     poison: Poison,
 ) -> Result<Vec<(u32, u32, f32)>> {
-    #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
     let mut visited = vec![false; graph.node_count() as usize];
-    #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
     let mut mst_edges = Vec::with_capacity((graph.node_count() - 1) as usize);
     let mut pq = PriorityQueue::new();
 

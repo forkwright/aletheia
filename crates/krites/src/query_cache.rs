@@ -74,7 +74,10 @@ impl QueryCache {
     pub fn check(&self, query: &str) -> bool {
         let normalized = Self::normalize(query);
         // WHY: lock held only for the duration of the LRU lookup -- no await points.
-        let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let mut guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if guard.get(normalized.as_str()).is_some() {
             drop(guard);
             self.hits.fetch_add(1, Ordering::Relaxed);
@@ -90,7 +93,10 @@ impl QueryCache {
     /// Return a snapshot of current cache statistics.
     #[must_use]
     pub fn stats(&self) -> QueryCacheStats {
-        let guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         QueryCacheStats {
             hits: self.hits.load(Ordering::Relaxed),
             misses: self.misses.load(Ordering::Relaxed),

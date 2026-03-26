@@ -377,7 +377,6 @@ impl HashPermutations {
         bytemuck::cast_slice(&self.0)
     }
     pub(crate) fn from_bytes(bytes: &[u8]) -> Result<Self> {
-        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let perms: &[u32] =
             bytemuck::try_cast_slice(bytes).map_err(|e| crate::error::InternalError::Runtime {
                 source: InvalidOperationSnafu {
@@ -408,10 +407,6 @@ impl HashValues {
             for (i, seed) in perms.0.iter().enumerate() {
                 let mut hasher = XxHash32::with_seed(*seed);
                 v.hash(&mut hasher);
-                #[expect(
-                    clippy::cast_possible_truncation,
-                    reason = "intentional hash truncation to u32"
-                )]
                 #[expect(clippy::cast_possible_truncation, reason = "value fits u32")]
                 let hash = hasher.finish() as u32;
                 self.0[i] = min(self.0[i], hash);

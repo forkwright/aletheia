@@ -29,15 +29,10 @@ pub(crate) fn page_rank(
         damping_factor,
     } = config;
 
-    #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
     let node_count = graph.node_count() as usize;
     #[expect(
         clippy::cast_precision_loss,
         reason = "node count acceptable as approximate float for scoring"
-    )]
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "intentional f64 to f32 reduction"
     )]
     let node_count_f32 = node_count as f32;
     let init_score = 1_f32 / node_count_f32;
@@ -45,19 +40,11 @@ pub(crate) fn page_rank(
 
     let mut out_scores: Vec<f32> = (0..node_count)
         .map(|n| {
-            #[expect(
-                clippy::cast_possible_truncation,
-                reason = "graph node count bounded by u32"
-            )]
             #[expect(clippy::cast_possible_truncation, reason = "value fits u32")]
             let n_u32 = n as u32;
             #[expect(
                 clippy::cast_precision_loss,
                 reason = "out-degree acceptable as approximate float"
-            )]
-            #[expect(
-                clippy::cast_possible_truncation,
-                reason = "intentional f64 to f32 reduction"
             )]
             let degree_f32 = graph.out_degree(n_u32) as f32;
             init_score / degree_f32
@@ -72,10 +59,6 @@ pub(crate) fn page_rank(
         let mut error = 0_f64;
 
         for u in 0..node_count {
-            #[expect(
-                clippy::cast_possible_truncation,
-                reason = "graph node count bounded by u32"
-            )]
             #[expect(clippy::cast_possible_truncation, reason = "value fits u32")]
             let u_u32 = u as u32;
             let incoming_total: f32 = graph
@@ -93,10 +76,6 @@ pub(crate) fn page_rank(
             #[expect(
                 clippy::cast_precision_loss,
                 reason = "out-degree acceptable as approximate float"
-            )]
-            #[expect(
-                clippy::cast_possible_truncation,
-                reason = "intentional f64 to f32 reduction"
             )]
             let degree_f32 = graph.out_degree(u_u32) as f32;
             out_scores[u] = new_score / degree_f32;

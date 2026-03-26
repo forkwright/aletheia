@@ -1,8 +1,4 @@
 //! In-memory storage backend.
-#![expect(
-    clippy::expect_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::collections::btree_map::Range;

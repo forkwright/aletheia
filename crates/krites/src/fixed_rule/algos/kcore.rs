@@ -34,16 +34,11 @@ impl FixedRule for KCore {
 
         let (graph, indices, _) = edges.as_directed_graph(undirected)?;
 
-        #[expect(clippy::cast_sign_loss, reason = "graph node u32 fits usize")]
         let n = graph.node_count() as usize;
         if n == 0 {
             return Ok(());
         }
 
-        #[expect(
-            clippy::cast_possible_truncation,
-            reason = "graph node count bounded by u32"
-        )]
         #[expect(clippy::cast_possible_truncation, reason = "value fits u32")]
         let n_u32 = n as u32;
         let adj: Vec<Vec<u32>> = (0..n_u32)
@@ -58,10 +53,6 @@ impl FixedRule for KCore {
         let mut effective_degree: Vec<u32> = adj
             .iter()
             .map(|nb: &Vec<u32>| {
-                #[expect(
-                    clippy::cast_possible_truncation,
-                    reason = "neighbour count bounded by u32 node count"
-                )]
                 #[expect(clippy::cast_possible_truncation, reason = "value fits u32")]
                 let len = nb.len() as u32;
                 len
