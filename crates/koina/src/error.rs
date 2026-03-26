@@ -84,18 +84,20 @@ mod tests {
 
     #[test]
     fn error_display_includes_path() {
-        let err: std::result::Result<Vec<u8>, Error> = std::fs::read("/nonexistent/path").context(ReadFileSnafu {
-            path: PathBuf::from("/nonexistent/path"),
-        });
+        let err: std::result::Result<Vec<u8>, Error> =
+            std::fs::read("/nonexistent/path").context(ReadFileSnafu {
+                path: PathBuf::from("/nonexistent/path"),
+            });
         let msg = err.unwrap_err().to_string();
         assert!(msg.contains("/nonexistent/path"));
     }
 
     #[test]
     fn error_source_chain() {
-        let err: std::result::Result<Vec<u8>, Error> = std::fs::read("/nonexistent/path").context(ReadFileSnafu {
-            path: PathBuf::from("/nonexistent/path"),
-        });
+        let err: std::result::Result<Vec<u8>, Error> =
+            std::fs::read("/nonexistent/path").context(ReadFileSnafu {
+                path: PathBuf::from("/nonexistent/path"),
+            });
         let err = err.unwrap_err();
         // NOTE: snafu chains preserve the source error
         assert!(std::error::Error::source(&err).is_some());
@@ -121,8 +123,8 @@ mod tests {
 
     #[test]
     fn create_dir_error_display() {
-        let err: std::result::Result<(), Error> =
-            std::fs::create_dir("/nonexistent/parent/child").context(CreateDirSnafu {
+        let err: std::result::Result<(), Error> = std::fs::create_dir("/nonexistent/parent/child")
+            .context(CreateDirSnafu {
                 path: PathBuf::from("/nonexistent/parent/child"),
             });
         let msg = err.unwrap_err().to_string();

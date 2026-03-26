@@ -546,7 +546,10 @@ pub struct BatchFilterResult {
 
 /// Apply quality filters to a batch of extracted facts, including deduplication.
 #[must_use]
-#[expect(dead_code, reason = "extraction quality filter for deduplication and confidence thresholds")]
+#[expect(
+    dead_code,
+    reason = "extraction quality filter for deduplication and confidence thresholds"
+)]
 pub(crate) fn filter_batch(facts: &[(String, f64)]) -> BatchFilterResult {
     let mut passed = Vec::new();
     let mut rejected = Vec::new();

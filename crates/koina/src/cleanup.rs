@@ -38,7 +38,10 @@ impl<F: FnOnce()> CleanupGuard<F> {
     /// Register the guard at the point of resource acquisition so cleanup
     /// is guaranteed even on early return or panic.
     #[must_use]
-    #[expect(dead_code, reason = "RAII cleanup guard tested and awaiting integration into session lifecycle")]
+    #[expect(
+        dead_code,
+        reason = "RAII cleanup guard tested and awaiting integration into session lifecycle"
+    )]
     pub(crate) fn new(callback: F) -> Self {
         Self {
             callback: Some(callback),
@@ -49,7 +52,10 @@ impl<F: FnOnce()> CleanupGuard<F> {
     ///
     /// Call this on the success path when cleanup is no longer needed
     /// (e.g., ownership was transferred to another component).
-    #[expect(dead_code, reason = "RAII cleanup guard tested and awaiting integration into session lifecycle")]
+    #[expect(
+        dead_code,
+        reason = "RAII cleanup guard tested and awaiting integration into session lifecycle"
+    )]
     pub fn disarm(mut self) {
         self.callback = None;
     }

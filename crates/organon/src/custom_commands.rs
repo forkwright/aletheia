@@ -44,7 +44,10 @@ impl CustomCommandDef {
     /// If explicitly set, uses the override. Otherwise derives from the
     /// most dangerous step: a command with any irreversible step is irreversible.
     #[must_use]
-    #[expect(dead_code, reason = "custom command reversibility derivation for approval pipeline")]
+    #[expect(
+        dead_code,
+        reason = "custom command reversibility derivation for approval pipeline"
+    )]
     pub(crate) fn effective_reversibility(
         &self,
         lookup: impl Fn(&str) -> Option<Reversibility>,

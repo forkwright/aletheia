@@ -119,7 +119,10 @@ pub trait FileSystem: Send + Sync {
 ///
 /// Use [`RealSystem`] in production and a frozen [`TestSystem`] in tests to
 /// obtain deterministic timestamps without sleeping.
-#[expect(dead_code, reason = "system abstraction trait for testable time, used by TestSystem")]
+#[expect(
+    dead_code,
+    reason = "system abstraction trait for testable time, used by TestSystem"
+)]
 pub(crate) trait Clock: Send + Sync {
     /// Return the current time as a [`Timestamp`].
     #[must_use]

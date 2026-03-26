@@ -38,7 +38,10 @@ impl ExtractionEngine {
     /// Access the extraction configuration.
     #[must_use]
     #[instrument(skip(self))]
-    #[expect(dead_code, reason = "extraction engine config accessor for pipeline consumers")]
+    #[expect(
+        dead_code,
+        reason = "extraction engine config accessor for pipeline consumers"
+    )]
     pub(crate) fn config(&self) -> &ExtractionConfig {
         &self.config
     }

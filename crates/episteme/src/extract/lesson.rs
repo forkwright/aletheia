@@ -394,7 +394,10 @@ fn extract_module_name(path: &str) -> String {
     clippy::too_many_lines,
     reason = "sequential persist pipeline: entities → relationships → facts → causal edges"
 )]
-#[expect(dead_code, reason = "post-merge lesson persistence, feature-gated behind mneme-engine")]
+#[expect(
+    dead_code,
+    reason = "post-merge lesson persistence, feature-gated behind mneme-engine"
+)]
 pub(crate) fn persist_lesson(
     lesson: &ExtractedLesson,
     store: &crate::knowledge_store::KnowledgeStore,

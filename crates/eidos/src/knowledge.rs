@@ -489,7 +489,10 @@ pub fn far_future() -> jiff::Timestamp {
 /// Returns `true` for any timestamp in year 9999, accommodating both the new
 /// `9999-01-01` sentinel and legacy `9999-12-31` strings.
 #[must_use]
-#[expect(dead_code, reason = "temporal validity check for bi-temporal fact model")]
+#[expect(
+    dead_code,
+    reason = "temporal validity check for bi-temporal fact model"
+)]
 pub(crate) fn is_far_future(ts: &jiff::Timestamp) -> bool {
     let s = format_timestamp(ts);
     s.starts_with("9999-")

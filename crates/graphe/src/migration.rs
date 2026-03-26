@@ -25,7 +25,10 @@ pub(crate) struct Migration {
     /// SQL to apply the migration.
     pub up: &'static str,
     /// SQL to reverse the migration.
-    #[expect(dead_code, reason = "down migrations preserved for future rollback support")]
+    #[expect(
+        dead_code,
+        reason = "down migrations preserved for future rollback support"
+    )]
     pub down: &'static str,
 }
 

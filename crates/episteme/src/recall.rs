@@ -388,7 +388,10 @@ pub(crate) fn compute_effective_stability(
 /// The stored value is for diagnostics/reporting: actual `R(t)` is computed
 /// on-the-fly at query time via [`RecallEngine::score_decay`].
 #[must_use]
-#[expect(dead_code, reason = "FSRS stability recomputation for knowledge store maintenance")]
+#[expect(
+    dead_code,
+    reason = "FSRS stability recomputation for knowledge store maintenance"
+)]
 pub(crate) fn refresh_stability_hours(fact_type: &str, tier: &str, access_count: u32) -> f64 {
     let ft = FactType::from_str_lossy(fact_type);
     let et = match tier {
