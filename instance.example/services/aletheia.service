@@ -6,13 +6,13 @@ Wants=network-online.target
 [Service]
 Type=simple
 Environment=RUST_BACKTRACE=1
-# Optional: set API key here if not stored in instance/config/credentials/anthropic.json
-# Environment=ANTHROPIC_API_KEY=sk-ant-...
-# Load additional env vars from a file (silently ignored if the file does not exist).
+# WARNING: Do not put secrets (API keys, tokens) directly in this file.
+# Use the EnvironmentFile below instead. Unit files are world-readable.
+# Load env vars from a file (silently ignored if the file does not exist).
 # OAuth tokens written by the deploy script land here automatically.
-EnvironmentFile=-%h/aletheia/instance/config/env
+EnvironmentFile=-%h/aletheia/instance/config/env  # CUSTOMIZE: path to your instance config/env
 # %h expands to the user's home directory at runtime.
-ExecStart=%h/.local/bin/aletheia -r %h/aletheia/instance
+ExecStart=%h/.local/bin/aletheia -r %h/aletheia/instance  # CUSTOMIZE: binary and instance paths
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal

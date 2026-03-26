@@ -4,6 +4,6 @@ After=aletheia.service
 
 [Service]
 Type=oneshot
-ExecStart=%h/aletheia/scripts/health-monitor.sh
-StandardOutput=append:%h/aletheia/instance/logs/health.log
-StandardError=append:%h/aletheia/instance/logs/health.log
+ExecStart=%h/aletheia/scripts/health-monitor.sh  # CUSTOMIZE: path to health-monitor.sh
+StandardOutput=append:%h/aletheia/instance/logs/health.log  # CUSTOMIZE: path to instance logs
+StandardError=append:%h/aletheia/instance/logs/health.log  # CUSTOMIZE: path to instance logs

@@ -10,12 +10,36 @@ set -euo pipefail
 #   --download vX.Y.Z  Download prebuilt binary from GitHub releases (falls back to build)
 #   No flags:    build + copy + restart (full deploy)
 #
+# Path discovery (first match wins):
+#   Instance root:  $ALETHEIA_ROOT > ~/ergon/instance > ~/aletheia/instance
+#   Binary dest:    $ALETHEIA_BINARY > ~/ergon/bin/aletheia > ~/.local/bin/aletheia
+#
 # Prerequisites: cargo, curl, jq, systemctl
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-INSTANCE_ROOT="${ALETHEIA_ROOT:-$HOME/aletheia/instance}"
+
+# Instance root: env var, then common locations, then fail
+if [ -n "${ALETHEIA_ROOT:-}" ]; then
+    INSTANCE_ROOT="$ALETHEIA_ROOT"
+elif [ -d "$HOME/ergon/instance" ]; then
+    INSTANCE_ROOT="$HOME/ergon/instance"
+elif [ -d "$HOME/aletheia/instance" ]; then
+    INSTANCE_ROOT="$HOME/aletheia/instance"
+else
+    echo "[deploy] ERROR: No instance root found. Set ALETHEIA_ROOT or create ~/ergon/instance/" >&2
+    exit 1
+fi
+
 BINARY_SRC="$REPO_ROOT/target/release/aletheia"
-BINARY_DST="${ALETHEIA_BINARY:-$HOME/.local/bin/aletheia}"
+
+# Binary destination: env var, then common locations
+if [ -n "${ALETHEIA_BINARY:-}" ]; then
+    BINARY_DST="$ALETHEIA_BINARY"
+elif [ -d "$HOME/ergon/bin" ]; then
+    BINARY_DST="$HOME/ergon/bin/aletheia"
+else
+    BINARY_DST="$HOME/.local/bin/aletheia"
+fi
 SERVICE="aletheia.service"
 BACKUP_DIR="${INSTANCE_ROOT}/.deploy-backup"
 DEPLOY_LOG="${INSTANCE_ROOT}/deploy.log"
