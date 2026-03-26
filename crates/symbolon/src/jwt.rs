@@ -116,7 +116,7 @@ impl JwtManager {
     /// Returns an error if the JWT claims cannot be encoded or signed.
     #[must_use = "issued token must be delivered to the caller"]
     #[instrument(skip(self), fields(kind = "access"))]
-    pub(crate) fn issue_access(
+    pub fn issue_access(
         &self,
         sub: &str,
         role: Role,
@@ -133,7 +133,7 @@ impl JwtManager {
 
     /// Issue a refresh token.
     #[instrument(skip(self), fields(kind = "refresh"))]
-    pub(crate) fn issue_refresh(&self, sub: &str, role: Role) -> Result<String> {
+    pub fn issue_refresh(&self, sub: &str, role: Role) -> Result<String> {
         self.issue(sub, role, None, TokenKind::Refresh, self.config.refresh_ttl)
     }
 
@@ -248,7 +248,7 @@ impl JwtManager {
     /// Production code should use [`issue_access`](Self::issue_access) or
     /// `issue_refresh`.
     #[must_use = "encoded token must be delivered to the caller"]
-    pub(crate) fn encode_claims(&self, claims: &Claims) -> Result<String> {
+    pub fn encode_claims(&self, claims: &Claims) -> Result<String> {
         let payload_json = serde_json::to_vec(claims).map_err(|e| {
             error::TokenEncodeSnafu {
                 message: format!("failed to serialize claims: {e}"),

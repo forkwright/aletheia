@@ -197,7 +197,7 @@ impl SessionStore {
     ///
     /// Returns `Database` if the query fails.
     #[instrument(skip(self), level = "debug")]
-    pub(crate) fn get_history_with_budget(
+    pub fn get_history_with_budget(
         &self,
         session_id: &str,
         max_tokens: i64,

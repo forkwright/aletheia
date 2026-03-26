@@ -280,7 +280,7 @@ impl SpecReport {
     clippy::expect_used,
     reason = "test-support: 'alice' is a known-valid NousId in synthetic test data"
 )]
-pub(crate) fn make_test_context() -> ToolContext {
+pub fn make_test_context() -> ToolContext {
     ToolContext {
         nous_id: NousId::new("alice").expect("valid nous id"), // kanon:ignore RUST/expect
         session_id: SessionId::new(),
@@ -293,7 +293,7 @@ pub(crate) fn make_test_context() -> ToolContext {
 
 /// Build a [`ToolInput`] for the given tool name with an empty arguments object.
 #[must_use]
-pub(crate) fn make_tool_input(name: &ToolName) -> ToolInput {
+pub fn make_tool_input(name: &ToolName) -> ToolInput {
     ToolInput {
         name: name.clone(),
         tool_use_id: "tu_test_00000".to_owned(),

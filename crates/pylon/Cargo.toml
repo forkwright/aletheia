@@ -60,6 +60,7 @@ aletheia-symbolon = { path = "../symbolon" }
 
 [dev-dependencies]
 aletheia-hermeneus = { path = "../hermeneus", features = ["test-utils"] }
+aletheia-symbolon = { path = "../symbolon", features = ["test-support"] }
 http-body-util = "0.1"
 jiff = { workspace = true }
 reqwest = { workspace = true }

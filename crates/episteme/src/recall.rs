@@ -138,6 +138,7 @@ impl RecallEngine {
     /// Set the max access count for frequency normalization.
     #[must_use]
     #[instrument(skip(self))]
+    #[expect(dead_code, reason = "recall engine scoring methods")]
     pub(crate) fn with_max_access_count(mut self, count: f64) -> Self {
         self.max_access_count = count;
         self
@@ -198,7 +199,7 @@ impl RecallEngine {
     /// 1.0 if the memory belongs to the querying nous, 0.5 for shared, 0.3 for other.
     #[must_use]
     #[instrument(skip(self))]
-    pub(crate) fn score_relevance(&self, memory_nous_id: &str, query_nous_id: &str) -> f64 {
+    pub fn score_relevance(&self, memory_nous_id: &str, query_nous_id: &str) -> f64 {
         if memory_nous_id == query_nous_id {
             1.0
         } else if memory_nous_id.is_empty() {
@@ -211,7 +212,7 @@ impl RecallEngine {
     /// Compute the epistemic tier score.
     #[must_use]
     #[instrument(skip(self))]
-    pub(crate) fn score_epistemic_tier(&self, tier: &str) -> f64 {
+    pub fn score_epistemic_tier(&self, tier: &str) -> f64 {
         match tier {
             "verified" => 1.0,
             "inferred" => 0.6,
@@ -291,6 +292,7 @@ impl RecallEngine {
     /// Access the current weights.
     #[must_use]
     #[instrument(skip(self))]
+    #[expect(dead_code, reason = "knowledge pipeline infrastructure")]
     pub(crate) fn weights(&self) -> &RecallWeights {
         &self.weights
     }
@@ -303,6 +305,7 @@ impl RecallEngine {
     /// Returns the base tier score directly when graph recall weight is zero.
     #[must_use]
     #[instrument(skip(self))]
+    #[expect(dead_code, reason = "knowledge pipeline infrastructure")]
     pub(crate) fn score_epistemic_tier_with_importance(&self, tier: &str, importance: f64) -> f64 {
         let base = self.score_epistemic_tier(tier);
         // PERF: skip graph-enhanced scoring when relationship proximity weight is zero.
@@ -320,6 +323,7 @@ impl RecallEngine {
     /// Returns the base hop score directly when graph recall weight is zero.
     #[must_use]
     #[instrument(skip(self))]
+    #[expect(dead_code, reason = "knowledge pipeline infrastructure")]
     pub(crate) fn score_relationship_proximity_with_cluster(
         &self,
         hops: Option<u32>,
@@ -341,6 +345,7 @@ impl RecallEngine {
     /// Returns the base access score directly when graph recall weight is zero.
     #[must_use]
     #[instrument(skip(self))]
+    #[expect(dead_code, reason = "recall engine scoring methods")]
     pub(crate) fn score_access_with_evolution(&self, access_count: u64, chain_length: u32) -> f64 {
         let base = self.score_access_frequency(access_count);
         // PERF: skip graph-enhanced scoring when relationship proximity weight is zero.
@@ -383,6 +388,7 @@ pub(crate) fn compute_effective_stability(
 /// The stored value is for diagnostics/reporting: actual `R(t)` is computed
 /// on-the-fly at query time via [`RecallEngine::score_decay`].
 #[must_use]
+#[expect(dead_code, reason = "FSRS stability recomputation for knowledge store maintenance")]
 pub(crate) fn refresh_stability_hours(fact_type: &str, tier: &str, access_count: u32) -> f64 {
     let ft = FactType::from_str_lossy(fact_type);
     let et = match tier {

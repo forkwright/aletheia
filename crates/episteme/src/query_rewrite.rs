@@ -15,7 +15,7 @@ use tracing::instrument;
 ///
 /// Keeps mneme independent of hermeneus. The nous layer bridges this trait
 /// to the full `LlmProvider` + `CompletionRequest` API.
-pub(crate) trait RewriteProvider: Send + Sync {
+pub trait RewriteProvider: Send + Sync {
     /// Generate a completion from a system prompt and user message.
     fn complete(&self, system: &str, user_message: &str) -> Result<String, RewriteError>;
 }
@@ -41,7 +41,7 @@ impl std::fmt::Display for RewriteError {
 
 /// Configuration for query rewriting behavior.
 #[derive(Debug, Clone)]
-pub(crate) struct RewriteConfig {
+pub struct RewriteConfig {
     /// Maximum number of variant queries to generate (2-4).
     pub max_variants: usize,
     /// Whether to always include the original query in the variant set.
@@ -59,7 +59,7 @@ impl Default for RewriteConfig {
 
 /// Result of a query rewrite operation.
 #[derive(Debug, Clone)]
-pub(crate) struct RewriteResult {
+pub struct RewriteResult {
     /// The original query string.
     pub original: String,
     /// Generated search variant queries (may include the original).
@@ -69,20 +69,20 @@ pub(crate) struct RewriteResult {
 }
 
 /// LLM-powered query rewriter for the recall pipeline.
-pub(crate) struct QueryRewriter {
+pub struct QueryRewriter {
     config: RewriteConfig,
 }
 
 impl QueryRewriter {
     /// Create a new query rewriter with the given configuration.
     #[must_use]
-    pub(crate) fn new(config: RewriteConfig) -> Self {
+    pub fn new(config: RewriteConfig) -> Self {
         Self { config }
     }
 
     /// Create a query rewriter with default configuration.
     #[must_use]
-    pub(crate) fn with_defaults() -> Self {
+    pub fn with_defaults() -> Self {
         Self::new(RewriteConfig::default())
     }
 
@@ -91,7 +91,7 @@ impl QueryRewriter {
     /// Returns the original query plus generated variants. Never fails;
     /// falls back to the original query on any error.
     #[instrument(skip(self, provider, context))]
-    pub(crate) fn rewrite(
+    pub fn rewrite(
         &self,
         query: &str,
         context: Option<&str>,

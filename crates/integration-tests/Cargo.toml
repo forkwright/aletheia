@@ -21,7 +21,7 @@ test-full = ["test-core"]
 
 [dev-dependencies]
 aletheia-dokimion = { path = "../eval" }
-aletheia-koina = { path = "../koina" }
+aletheia-koina = { path = "../koina", features = ["test-support"] }
 aletheia-taxis = { path = "../taxis" }
 aletheia-mneme = { path = "../mneme", default-features = false, features = ["test-support"] }
 aletheia-hermeneus = { path = "../hermeneus", features = ["test-utils"] }

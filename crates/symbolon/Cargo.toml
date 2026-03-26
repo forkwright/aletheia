@@ -12,6 +12,7 @@ workspace = true
 
 [features]
 keyring = ["dep:keyring"]
+test-support = []
 test-core = []
 test-full = []
 

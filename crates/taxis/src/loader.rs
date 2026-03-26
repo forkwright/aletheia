@@ -68,7 +68,7 @@ pub fn load_config(oikos: &Oikos) -> Result<AletheiaConfig> {
     clippy::double_must_use,
     reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
 )]
-pub(crate) fn load_config_with(oikos: &Oikos, fs: &impl FileSystem) -> Result<AletheiaConfig> {
+pub fn load_config_with(oikos: &Oikos, fs: &impl FileSystem) -> Result<AletheiaConfig> {
     let toml_path = oikos.config().join("aletheia.toml");
     let yaml_path = oikos.config().join("aletheia.yaml");
 

@@ -83,7 +83,7 @@ impl MockEmbeddingProvider {
     /// Create a mock provider with the given dimension.
     #[must_use]
     #[instrument]
-    pub(crate) fn new(dim: usize) -> Self {
+    pub fn new(dim: usize) -> Self {
         Self { dim }
     }
 }

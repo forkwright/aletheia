@@ -14,7 +14,7 @@ use super::{KnowledgeStore, QueryResult, queries};
 impl KnowledgeStore {
     /// Insert or update an entity.
     #[instrument(skip(self, entity), fields(entity_id = %entity.id))]
-    pub(crate) fn insert_entity(
+    pub fn insert_entity(
         &self,
         entity: &crate::knowledge::Entity,
     ) -> crate::error::Result<()> {
@@ -26,7 +26,7 @@ impl KnowledgeStore {
 
     /// Insert a relationship.
     #[instrument(skip(self, rel))]
-    pub(crate) fn insert_relationship(
+    pub fn insert_relationship(
         &self,
         rel: &crate::knowledge::Relationship,
     ) -> crate::error::Result<()> {
@@ -62,6 +62,7 @@ impl KnowledgeStore {
 
     /// Insert a fact-entity mapping.
     #[instrument(skip(self))]
+    #[expect(dead_code, reason = "entity operations for knowledge store")]
     pub(crate) fn insert_fact_entity(
         &self,
         fact_id: &crate::id::FactId,
@@ -278,6 +279,7 @@ impl KnowledgeStore {
 
     /// Approve a pending merge: execute it.
     #[instrument(skip(self))]
+    #[expect(dead_code, reason = "entity operations for knowledge store")]
     pub(crate) fn approve_merge(
         &self,
         canonical_id: &crate::id::EntityId,
@@ -292,6 +294,7 @@ impl KnowledgeStore {
         clippy::used_underscore_binding,
         reason = "nous_id reserved for future filtering"
     )]
+    #[expect(dead_code, reason = "entity operations for knowledge store")]
     pub(crate) fn get_merge_history(
         &self,
         _nous_id: &str,

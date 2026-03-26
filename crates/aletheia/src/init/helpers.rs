@@ -252,6 +252,11 @@ mod tests {
 
     #[test]
     fn non_interactive_without_instance_path_returns_error() {
+        // WHY: skip when ALETHEIA_ROOT is set -- the env fallback provides a root,
+        // masking the missing-flag error this test asserts on
+        if std::env::var("ALETHEIA_ROOT").is_ok() {
+            return;
+        }
         let result = run(RunArgs {
             root: None,
             yes: false,

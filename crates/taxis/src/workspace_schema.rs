@@ -100,7 +100,7 @@ impl WorkspaceSchema {
     /// prompt.  This is the minimum that [`crate::oikos::Oikos`] expects to
     /// find when loading an agent.
     #[must_use]
-    pub(crate) fn standard() -> Self {
+    pub fn standard() -> Self {
         Self::new().require(WorkspaceRequirement {
             path: "SOUL.md",
             kind: RequirementKind::File,
@@ -109,7 +109,7 @@ impl WorkspaceSchema {
 
     /// Add a requirement to the schema (builder-style).
     #[must_use]
-    pub(crate) fn require(mut self, req: WorkspaceRequirement) -> Self {
+    pub fn require(mut self, req: WorkspaceRequirement) -> Self {
         self.requirements.push(req);
         self
     }
@@ -167,6 +167,7 @@ impl WorkspaceSchema {
 /// Returns [`WorkspaceSchemaError`] when any agent workspace fails validation.
 /// The `workspace` field in the error is set to the instance root; individual
 /// agent failures appear in `failures`.
+#[expect(dead_code, reason = "validates all agent workspaces during startup preflight")]
 pub(crate) fn validate_agent_workspaces(
     config: &AletheiaConfig,
     oikos: &Oikos,

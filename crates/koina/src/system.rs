@@ -119,6 +119,7 @@ pub trait FileSystem: Send + Sync {
 ///
 /// Use [`RealSystem`] in production and a frozen [`TestSystem`] in tests to
 /// obtain deterministic timestamps without sleeping.
+#[expect(dead_code, reason = "system abstraction trait for testable time, used by TestSystem")]
 pub(crate) trait Clock: Send + Sync {
     /// Return the current time as a [`Timestamp`].
     #[must_use]
@@ -248,6 +249,7 @@ impl Environment for RealSystem {
 /// assert_eq!(sys.var("HOME").as_deref(), Some("/home/alice"), "env var must match");
 /// assert!(!sys.exists(Path::new("/etc/missing")), "path must not exist");
 /// ```
+#[cfg(any(test, feature = "test-support"))]
 #[derive(Debug, Clone)]
 pub struct TestSystem {
     /// Byte contents of virtual files, keyed by absolute path.
@@ -260,10 +262,11 @@ pub struct TestSystem {
     env: HashMap<String, String>,
 }
 
+#[cfg(any(test, feature = "test-support"))]
 impl TestSystem {
     /// Create an empty [`TestSystem`] with the clock frozen at the Unix epoch.
     #[must_use]
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             files: Arc::new(Mutex::new(HashMap::new())),
             dirs: Arc::new(Mutex::new(HashSet::new())),
@@ -274,14 +277,14 @@ impl TestSystem {
 
     /// Set the frozen clock to `ts` (builder pattern).
     #[must_use]
-    pub(crate) fn with_clock(mut self, ts: Timestamp) -> Self {
+    pub fn with_clock(mut self, ts: Timestamp) -> Self {
         self.clock = ts;
         self
     }
 
     /// Add an environment variable (builder pattern).
     #[must_use]
-    pub(crate) fn with_env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+    pub fn with_env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.env.insert(key.into(), value.into());
         self
     }
@@ -292,26 +295,26 @@ impl TestSystem {
     /// [`list_dir`](FileSystem::list_dir) work without calling [`create_dir`](FileSystem::create_dir) first.
     ///
     /// [`exists`]: FileSystem::exists
-    pub(crate) fn add_file(&mut self, path: impl Into<PathBuf>, contents: impl Into<Vec<u8>>) {
+    pub fn add_file(&mut self, path: impl Into<PathBuf>, contents: impl Into<Vec<u8>>) {
         let path = path.into();
         self.register_ancestors(&path);
         self.files_guard().insert(path, contents.into());
     }
 
     /// Add (or overwrite) an environment variable after construction.
-    pub(crate) fn add_env(&mut self, key: impl Into<String>, value: impl Into<String>) {
+    pub fn add_env(&mut self, key: impl Into<String>, value: impl Into<String>) {
         self.env.insert(key.into(), value.into());
     }
 
     /// Return all virtual file paths.
     #[must_use]
-    pub(crate) fn file_paths(&self) -> Vec<PathBuf> {
+    pub fn file_paths(&self) -> Vec<PathBuf> {
         self.files_guard().keys().cloned().collect()
     }
 
     /// Return the content of a virtual file, or `None` if absent.
     #[must_use]
-    pub(crate) fn get_file(&self, path: &Path) -> Option<Vec<u8>> {
+    pub fn get_file(&self, path: &Path) -> Option<Vec<u8>> {
         self.files_guard().get(path).cloned()
     }
 
@@ -349,12 +352,14 @@ impl TestSystem {
     }
 }
 
+#[cfg(any(test, feature = "test-support"))]
 impl Default for TestSystem {
     fn default() -> Self {
         Self::new()
     }
 }
 
+#[cfg(any(test, feature = "test-support"))]
 impl FileSystem for TestSystem {
     fn read_file(&self, path: &Path) -> io::Result<Vec<u8>> {
         self.files_guard()
@@ -449,6 +454,7 @@ impl FileSystem for TestSystem {
     }
 }
 
+#[cfg(any(test, feature = "test-support"))]
 impl Clock for TestSystem {
     fn now(&self) -> Timestamp {
         self.clock
@@ -459,6 +465,7 @@ impl Clock for TestSystem {
     }
 }
 
+#[cfg(any(test, feature = "test-support"))]
 impl Environment for TestSystem {
     fn var(&self, name: &str) -> Option<String> {
         self.env.get(name).cloned()

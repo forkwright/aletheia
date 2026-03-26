@@ -10,7 +10,7 @@ use crate::error::{self, Result};
 use crate::sse::{self, ParsedSseEvent};
 
 /// HTTP client for a running Aletheia instance.
-pub(crate) struct EvalClient {
+pub struct EvalClient {
     http: reqwest::Client,
     base_url: String,
     token: Option<SecretString>,
