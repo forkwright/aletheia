@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.14](https://github.com/forkwright/aletheia/compare/v0.13.13...v0.13.14) (2026-03-26)
+
+
+### Bug Fixes
+
+* v0.13.13 full audit - 118 issues resolved ([#2225](https://github.com/forkwright/aletheia/issues/2225)) ([961433b](https://github.com/forkwright/aletheia/commit/961433b72769aabad04be411439ae45d8377cef6))
+
 ## [0.13.13](https://github.com/forkwright/aletheia/compare/v0.13.12...v0.13.13) (2026-03-25)
 
 
