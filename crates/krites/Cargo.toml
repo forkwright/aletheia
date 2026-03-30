@@ -39,7 +39,7 @@ itertools = "0.14.0"
 rustc-hash = "2.1.2"
 twox-hash = "2.1"
 regex = { workspace = true }
-sha2 = "0.10"
+sha2 = "0.11"
 either = "1"
 rand = { workspace = true }
 base64 = { workspace = true }

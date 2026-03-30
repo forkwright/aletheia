@@ -27,7 +27,7 @@ prometheus = { workspace = true }
 rusqlite = { workspace = true, optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-sha2 = { version = "0.10", optional = true }
+sha2 = { version = "0.11", optional = true }
 snafu = { workspace = true }
 tokio = { workspace = true, optional = true }
 tracing = { workspace = true }
