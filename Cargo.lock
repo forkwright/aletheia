@@ -33,7 +33,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia"
-version = "0.13.17"
+version = "0.13.19"
 dependencies = [
  "aletheia-agora",
  "aletheia-dianoia",
@@ -74,7 +74,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "toml 1.1.0+spec-1.1.0",
- "toml_edit",
+ "toml_edit 0.25.8+spec-1.1.0",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
@@ -83,7 +83,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-agora"
-version = "0.13.17"
+version = "0.13.19"
 dependencies = [
  "aletheia-koina",
  "aletheia-taxis",
@@ -104,7 +104,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-dianoia"
-version = "0.13.17"
+version = "0.13.19"
 dependencies = [
  "aletheia-koina",
  "jiff",
@@ -119,7 +119,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-diaporeia"
-version = "0.13.17"
+version = "0.13.19"
 dependencies = [
  "aletheia-koina",
  "aletheia-mneme",
@@ -142,7 +142,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-dokimion"
-version = "0.13.17"
+version = "0.13.19"
 dependencies = [
  "aletheia-koina",
  "owo-colors",
@@ -161,7 +161,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-eidos"
-version = "0.13.17"
+version = "0.13.19"
 dependencies = [
  "jiff",
  "serde",
@@ -170,7 +170,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-episteme"
-version = "0.13.17"
+version = "0.13.19"
 dependencies = [
  "aletheia-eidos",
  "aletheia-graphe",
@@ -200,7 +200,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-graphe"
-version = "0.13.17"
+version = "0.13.19"
 dependencies = [
  "aletheia-eidos",
  "aletheia-koina",
@@ -221,7 +221,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-hermeneus"
-version = "0.13.17"
+version = "0.13.19"
 dependencies = [
  "aletheia-koina",
  "jiff",
@@ -244,7 +244,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-integration-tests"
-version = "0.13.17"
+version = "0.13.19"
 dependencies = [
  "aletheia-dokimion",
  "aletheia-hermeneus",
@@ -270,7 +270,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-koina"
-version = "0.13.17"
+version = "0.13.19"
 dependencies = [
  "compact_str",
  "jiff",
@@ -290,7 +290,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-krites"
-version = "0.13.17"
+version = "0.13.19"
 dependencies = [
  "aho-corasick",
  "aletheia-eidos",
@@ -334,7 +334,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-melete"
-version = "0.13.17"
+version = "0.13.19"
 dependencies = [
  "aletheia-hermeneus",
  "futures",
@@ -350,7 +350,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-mneme"
-version = "0.13.17"
+version = "0.13.19"
 dependencies = [
  "aletheia-eidos",
  "aletheia-episteme",
@@ -365,7 +365,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-nous"
-version = "0.13.17"
+version = "0.13.19"
 dependencies = [
  "aletheia-dianoia",
  "aletheia-hermeneus",
@@ -393,7 +393,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-oikonomos"
-version = "0.13.17"
+version = "0.13.19"
 dependencies = [
  "aletheia-koina",
  "chrono",
@@ -414,7 +414,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-organon"
-version = "0.13.17"
+version = "0.13.19"
 dependencies = [
  "aletheia-hermeneus",
  "aletheia-koina",
@@ -441,7 +441,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-pylon"
-version = "0.13.17"
+version = "0.13.19"
 dependencies = [
  "aletheia-hermeneus",
  "aletheia-koina",
@@ -475,7 +475,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-symbolon"
-version = "0.13.17"
+version = "0.13.19"
 dependencies = [
  "aletheia-koina",
  "argon2",
@@ -502,7 +502,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-taxis"
-version = "0.13.17"
+version = "0.13.19"
 dependencies = [
  "aletheia-koina",
  "base64 0.22.1",
@@ -520,7 +520,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-thesauros"
-version = "0.13.17"
+version = "0.13.19"
 dependencies = [
  "aletheia-koina",
  "aletheia-organon",
@@ -5890,7 +5890,7 @@ dependencies = [
 
 [[package]]
 name = "theatron-core"
-version = "0.13.17"
+version = "0.13.19"
 dependencies = [
  "aletheia-koina",
  "bytes",
@@ -5909,7 +5909,7 @@ dependencies = [
 
 [[package]]
 name = "theatron-tui"
-version = "0.13.17"
+version = "0.13.19"
 dependencies = [
  "aletheia-koina",
  "arboard",
@@ -6168,7 +6168,7 @@ dependencies = [
  "serde",
  "serde_spanned 0.6.9",
  "toml_datetime 0.6.11",
- "toml_edit",
+ "toml_edit 0.22.27",
 ]
 
 [[package]]
@@ -6216,6 +6216,19 @@ dependencies = [
  "toml_datetime 0.6.11",
  "toml_write",
  "winnow 0.7.15",
+]
+
+[[package]]
+name = "toml_edit"
+version = "0.25.8+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "16bff38f1d86c47f9ff0647e6838d7bb362522bdf44006c7068c2b1e606f1f3c"
+dependencies = [
+ "indexmap 2.13.0",
+ "toml_datetime 1.1.0+spec-1.1.0",
+ "toml_parser",
+ "toml_writer",
+ "winnow 1.0.0",
 ]
 
 [[package]]
@@ -7421,6 +7434,9 @@ name = "winnow"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a90e88e4667264a994d34e6d1ab2d26d398dcdca8b7f52bec8668957517fc7d8"
+dependencies = [
+ "memchr",
+]
 
 [[package]]
 name = "wiremock"
