@@ -16,6 +16,7 @@ test-full = []
 
 [dependencies]
 aletheia-hermeneus = { path = "../hermeneus" }
+fd-lock = { workspace = true }
 futures = { workspace = true }
 prometheus = { workspace = true }
 serde = { workspace = true }
@@ -28,4 +29,5 @@ jiff = { workspace = true }
 [dev-dependencies]
 aletheia-hermeneus = { path = "../hermeneus", features = ["test-utils"] }
 static_assertions = { workspace = true }
+tempfile = { workspace = true }
 tokio = { workspace = true, features = ["full", "test-util"] }

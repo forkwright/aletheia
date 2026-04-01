@@ -56,6 +56,38 @@ pub trait KnowledgeMaintenanceExecutor: Send + Sync {
 pub struct KnowledgeMaintenanceConfig {
     /// Whether knowledge maintenance tasks are enabled.
     pub enabled: bool,
+    /// Auto-dream consolidation settings.
+    pub auto_dream: AutoDreamConfig,
+}
+
+/// Configuration for auto-dream memory consolidation.
+///
+/// Controls the background consolidation process that periodically merges
+/// session transcripts into the knowledge graph.
+#[derive(Debug, Clone)]
+pub struct AutoDreamConfig {
+    /// Whether auto-dream consolidation is enabled.
+    pub enabled: bool,
+    /// Minimum hours between consolidation runs.
+    pub min_hours: u64,
+    /// Minimum sessions required to trigger consolidation.
+    pub min_sessions: usize,
+    /// Session scan throttle interval in seconds.
+    pub scan_interval_secs: i64,
+    /// Stale lock threshold in seconds.
+    pub stale_threshold_secs: i64,
+}
+
+impl Default for AutoDreamConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            min_hours: 24,
+            min_sessions: 5,
+            scan_interval_secs: 600,
+            stale_threshold_secs: 3_600,
+        }
+    }
 }
 
 #[cfg(test)]

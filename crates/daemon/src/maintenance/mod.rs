@@ -13,7 +13,9 @@ pub(crate) mod trace_rotation;
 
 pub use db_monitor::{DbInfo, DbMonitor, DbMonitoringConfig, DbSizeReport, DbStatus};
 pub use drift_detection::{DriftDetectionConfig, DriftDetector, DriftReport};
-pub use knowledge::{KnowledgeMaintenanceConfig, KnowledgeMaintenanceExecutor, MaintenanceReport};
+pub use knowledge::{
+    AutoDreamConfig, KnowledgeMaintenanceConfig, KnowledgeMaintenanceExecutor, MaintenanceReport,
+};
 pub use retention::{RetentionConfig, RetentionExecutor, RetentionSummary};
 pub use trace_rotation::{RotationReport, TraceRotationConfig, TraceRotator};
 

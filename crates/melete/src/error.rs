@@ -40,6 +40,41 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// I/O error during consolidation lock operations.
+    #[snafu(display("consolidation lock I/O: {context}"))]
+    DreamLockIo {
+        context: String,
+        source: std::io::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Consolidation lock is held by another active process.
+    #[snafu(display("consolidation lock held by PID {pid}"))]
+    DreamLockHeld {
+        pid: u32,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Transcript source failed during auto-dream consolidation.
+    #[snafu(display("transcript source error: {context}"))]
+    DreamTranscriptSource {
+        context: String,
+        source: std::io::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Consolidation target failed during fact merge.
+    #[snafu(display("consolidation target error: {context}"))]
+    DreamConsolidationTarget {
+        context: String,
+        source: std::io::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Convenience alias for `Result` with melete's [`Error`] type.
