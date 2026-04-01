@@ -22,6 +22,7 @@ use crate::bootstrap::BootstrapSection;
 use crate::config::{NousConfig, PipelineConfig};
 use crate::cross::CrossNousEnvelope;
 use crate::handle::NousHandle;
+use crate::working_state::CacheSafeParams;
 
 use super::{DEFAULT_INBOX_CAPACITY, NousActor};
 
@@ -91,8 +92,8 @@ pub(crate) fn spawn(
 /// parameters so the binary crate can wire daemon spawns through to the
 /// nous actor system.
 #[expect(
-    clippy::too_many_arguments,
-    reason = "mirrors the full spawn signature; all fields are required runtime dependencies"
+    dead_code,
+    reason = "daemon spawn infrastructure — wired by daemon coordinator in a follow-up"
 )]
 pub struct DaemonSpawnParams {
     /// Agent configuration for the child.
@@ -118,6 +119,11 @@ pub struct DaemonSpawnParams {
     pub tool_services: Option<Arc<aletheia_organon::types::ToolServices>>,
     /// Additional bootstrap sections for the child agent.
     pub extra_bootstrap: Vec<BootstrapSection>,
+    /// Cache-safe params from the parent agent for prompt cache sharing.
+    /// WHY: child agents that share the parent's system prompt, tools, model,
+    /// message prefix, and thinking config hit the Anthropic prompt cache,
+    /// reducing input token costs by ~90%.
+    pub cache_params: Option<Arc<CacheSafeParams>>,
 }
 
 /// Spawn a child agent for daemon coordination.
@@ -126,7 +132,15 @@ pub struct DaemonSpawnParams {
 /// parent's runtime services. This public function wraps the internal `spawn`
 /// with a parameter struct and cancellation token from the coordinator.
 ///
+/// When `cache_params` is set, the child's working state is initialized with
+/// the parent's cache-safe parameters so subsequent API calls hit the
+/// Anthropic prompt cache.
+///
 /// Returns the same triple as internal spawn: `(NousHandle, JoinHandle, active_turn)`.
+#[expect(
+    dead_code,
+    reason = "daemon spawn infrastructure — wired by daemon coordinator in a follow-up"
+)]
 pub fn spawn_for_daemon(
     params: DaemonSpawnParams,
     cancel: CancellationToken,
