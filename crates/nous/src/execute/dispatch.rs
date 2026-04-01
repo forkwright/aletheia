@@ -541,6 +541,10 @@ mod tests {
         let limit = 80 + image_size + 10;
         let content = ToolResultContent::Blocks(blocks);
         #[expect(clippy::as_conversions, reason = "usize→u32: test value fits")]
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "limit is config-bounded well within u32 range"
+        )]
         let result = truncate_tool_result(content, limit as u32); // kanon:ignore RUST/as-cast
         match result {
             ToolResultContent::Blocks(bs) => {

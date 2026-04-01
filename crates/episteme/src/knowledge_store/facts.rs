@@ -185,7 +185,10 @@ impl KnowledgeStore {
 
     /// Point-in-time fact query.
     #[instrument(skip(self))]
-    #[expect(dead_code, reason = "fact temporal operations for knowledge store")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "fact temporal operations for knowledge store")
+    )]
     pub(crate) fn query_facts_at(
         &self,
         time: &str,

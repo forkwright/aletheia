@@ -413,6 +413,10 @@ struct CollectedSkipIterator {
     next_bound: Vec<u8>,
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "INVARIANT: bounds checked by while/if guard above each index"
+)]
 impl Iterator for CollectedSkipIterator {
     type Item = Tuple;
 
@@ -446,6 +450,10 @@ impl Iterator for CollectedSkipIterator {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions: index panics are acceptable in tests"
+)]
 mod tests {
     use std::collections::BTreeMap;
 

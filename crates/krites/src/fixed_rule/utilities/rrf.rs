@@ -1,10 +1,4 @@
 //! Reciprocal rank fusion fixed rule.
-#![cfg_attr(
-    test,
-    expect(
-        reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-    )
-)]
 
 use std::collections::BTreeMap;
 

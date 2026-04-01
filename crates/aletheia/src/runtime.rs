@@ -558,7 +558,7 @@ impl RuntimeBuilder {
                     cache_enabled: resolved.capabilities.cache_enabled,
                     recall: resolved.recall.into(),
                     tool_allowlist: None,
-                    hooks: Default::default(),
+                    hooks: aletheia_nous::config::HookConfig::default(),
                 };
                 nous_manager
                     .spawn(

@@ -92,9 +92,12 @@ impl ToolOutcome {
 
     /// Parse from a stored string.
     #[must_use]
-    #[expect(
-        dead_code,
-        reason = "instinct outcome deserialization from knowledge store"
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "instinct outcome deserialization from knowledge store"
+        )
     )]
     pub(crate) fn from_stored_string(s: &str) -> Self {
         if s == "success" {

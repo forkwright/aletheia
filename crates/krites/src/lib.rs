@@ -105,7 +105,6 @@ pub(crate) mod query;
 pub(crate) mod runtime;
 #[expect(
     dead_code,
-    clippy::indexing_slicing,
     clippy::pedantic,
     clippy::result_large_err,
     clippy::type_complexity,
@@ -487,7 +486,6 @@ mod db_cache_tests {
             .unwrap_or_else(|_| unreachable!())
             .with_cache(NonZeroUsize::new(16).unwrap_or_else(|| unreachable!()));
 
-        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let script = "?[x] := x = 1";
         let _ = db.run(script, BTreeMap::new(), ScriptMutability::Immutable);
         let _ = db.run(script, BTreeMap::new(), ScriptMutability::Immutable);

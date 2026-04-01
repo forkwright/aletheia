@@ -188,7 +188,7 @@ pub(crate) fn build_config(
         },
         knowledge_maintenance: aletheia_oikonomos::maintenance::KnowledgeMaintenanceConfig {
             enabled: settings.knowledge_maintenance_enabled,
-            auto_dream: Default::default(),
+            auto_dream: aletheia_oikonomos::maintenance::AutoDreamConfig::default(),
         },
         cron: aletheia_oikonomos::cron::CronConfig {
             evolution: aletheia_oikonomos::cron::CronEvolutionConfig {

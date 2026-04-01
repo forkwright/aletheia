@@ -91,6 +91,10 @@ async fn run_gc_sweep(registry: &TaskRegistry) {
 use tracing::Instrument as _;
 
 #[cfg(test)]
+#[expect(
+    clippy::expect_used,
+    reason = "test code: panics are acceptable in tests"
+)]
 mod tests {
     use std::time::Duration;
 

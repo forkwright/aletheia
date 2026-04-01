@@ -17,6 +17,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use tracing::{info, instrument};
 
+use aletheia_koina::id::SessionId;
 use aletheia_mneme::types::SessionStatus;
 
 use aletheia_symbolon::types::Role;
@@ -72,7 +73,7 @@ pub async fn create(
         .build()
     })?;
 
-    let id = ulid::Ulid::new().to_string();
+    let id = SessionId::new().to_string();
     let model = config.generation.model.clone();
 
     let state_clone = state.clone();
@@ -455,7 +456,7 @@ pub(crate) async fn resolve_session(
     session_key: &str,
     model: Option<&str>,
 ) -> Result<String, ApiError> {
-    let id = ulid::Ulid::new().to_string();
+    let id = SessionId::new().to_string();
     let state_clone = state.clone();
     let id_clone = id.clone();
     let aid = agent_id.to_owned();

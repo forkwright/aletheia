@@ -136,9 +136,12 @@ pub struct SandboxPolicy {
 impl SandboxConfig {
     /// Create a disabled sandbox config (no restrictions applied).
     #[must_use]
-    #[expect(
-        dead_code,
-        reason = "sandbox bypass for test and no-restriction configurations"
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "sandbox bypass for test and no-restriction configurations"
+        )
     )]
     pub(crate) fn disabled() -> Self {
         Self {

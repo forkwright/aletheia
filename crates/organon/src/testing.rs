@@ -58,6 +58,10 @@ enum MockMode {
     Sequence(Vec<ToolResult>),
 }
 
+#[expect(
+    dead_code,
+    reason = "test infrastructure: mock constructors for downstream test code"
+)]
 impl MockToolExecutor {
     /// Create a mock that always returns the given text as a success result.
     #[must_use]
@@ -158,6 +162,10 @@ pub(crate) struct ToolExecutorSpec {
     tool_name: ToolName,
 }
 
+#[expect(
+    dead_code,
+    reason = "test infrastructure: spec validator for downstream test code"
+)]
 impl ToolExecutorSpec {
     /// Declare a spec for the executor registered under `tool_name`.
     #[must_use]
@@ -258,6 +266,10 @@ impl SpecReport {
 
     /// Names of checks that passed.
     #[must_use]
+    #[expect(
+        dead_code,
+        reason = "test infrastructure: accessor for downstream test code"
+    )]
     pub(crate) fn passes(&self) -> &[String] {
         &self.passed
     }

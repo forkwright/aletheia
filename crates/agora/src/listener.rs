@@ -148,7 +148,10 @@ impl ChannelListener {
     }
 
     /// Stop all polling tasks.
-    #[expect(dead_code, reason = "explicit stop for channel listener polling tasks")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "explicit stop for channel listener polling tasks")
+    )]
     pub(crate) fn stop(self) {
         drop(self);
     }

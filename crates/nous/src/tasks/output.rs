@@ -131,6 +131,10 @@ pub(crate) async fn remove_output_file(path: &Path) -> Result<(), OutputError> {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::expect_used,
+    reason = "test code: panics are acceptable in tests"
+)]
 mod tests {
     use tokio::io::AsyncReadExt as _;
 

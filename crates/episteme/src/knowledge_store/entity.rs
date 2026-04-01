@@ -59,7 +59,10 @@ impl KnowledgeStore {
 
     /// Insert a fact-entity mapping.
     #[instrument(skip(self))]
-    #[expect(dead_code, reason = "entity operations for knowledge store")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "entity operations for knowledge store")
+    )]
     pub(crate) fn insert_fact_entity(
         &self,
         fact_id: &crate::id::FactId,

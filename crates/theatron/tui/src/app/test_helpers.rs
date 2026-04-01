@@ -1,8 +1,4 @@
 #![expect(
-    clippy::unwrap_used,
-    reason = "test helper; infallible test setup for localhost URLs"
-)]
-#![expect(
     clippy::expect_used,
     reason = "test helper; panics with context on impossible failures"
 )]
