@@ -1,5 +1,7 @@
 //! Scheduling primitives for background tasks.
 
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -45,6 +47,12 @@ pub struct TaskDef {
     /// Whether to catch up missed cron windows on startup (within last 24h).
     /// Default: true for maintenance tasks, false for prosoche.
     pub catch_up: bool,
+    /// Maximum jitter to add to computed next-fire times.
+    ///
+    /// WHY: jitter prevents thundering-herd when multiple tasks share the same
+    /// cron expression. The actual jitter is deterministic, seeded from the task
+    /// ID hash, so it is stable across restarts.
+    pub jitter: Option<jiff::SignedDuration>,
 }
 
 impl Default for TaskDef {
@@ -59,6 +67,7 @@ impl Default for TaskDef {
             active_window: None,
             timeout: Duration::from_secs(300),
             catch_up: true,
+            jitter: None,
         }
     }
 }
@@ -215,6 +224,55 @@ impl Schedule {
             hour >= start || hour < end
         }
     }
+}
+
+/// Compute deterministic jitter for a task based on its ID hash.
+///
+/// WHY: deterministic jitter prevents thundering-herd without introducing
+/// randomness. The same task ID always produces the same jitter, which aids
+/// debugging and makes schedule behavior reproducible across restarts.
+///
+/// The algorithm hashes the task ID, extracts the lower 32 bits as a fraction
+/// in `[0, 1)`, and multiplies by `max_jitter`.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "u32 → f64 is lossless for all u32 values (f64 has 52-bit mantissa)"
+)]
+pub(crate) fn compute_jitter(task_id: &str, max_jitter: jiff::SignedDuration) -> jiff::SignedDuration {
+    let mut hasher = DefaultHasher::new();
+    task_id.hash(&mut hasher);
+    let hash = hasher.finish();
+
+    // NOTE: extract lower 32 bits → [0, 1) fraction
+    let frac = (hash as u32) as f64 / f64::from(u32::MAX);
+
+    let max_nanos = max_jitter.as_nanos();
+    // NOTE: f64 multiplication then truncate back to i128 → i64
+    let jitter_nanos = (max_nanos as f64 * frac) as i128;
+
+    // SAFETY: jitter_nanos ≤ max_jitter nanos, which fits in the input SignedDuration
+    jiff::SignedDuration::from_nanos(jitter_nanos as i64)
+}
+
+/// Apply jitter to a computed next-run timestamp.
+///
+/// Returns `None` if no base timestamp or no jitter configured.
+#[expect(
+    clippy::expect_used,
+    reason = "jitter addition to a valid timestamp cannot overflow for reasonable jitter values (< 24h)"
+)]
+pub(crate) fn apply_jitter(
+    base: Option<jiff::Timestamp>,
+    task_id: &str,
+    jitter: Option<jiff::SignedDuration>,
+) -> Option<jiff::Timestamp> {
+    let ts = base?;
+    let max_jitter = jitter?;
+    let offset = compute_jitter(task_id, max_jitter);
+    Some(
+        ts.checked_add(offset)
+            .expect("jitter addition within valid timestamp range"),
+    )
 }
 
 /// Compute exponential backoff delay based on consecutive failure count.
@@ -453,5 +511,83 @@ mod tests {
         assert_eq!(def.timeout, Duration::from_secs(300));
         assert!(def.catch_up);
         assert!(def.enabled);
+        assert!(def.jitter.is_none(), "default jitter should be None");
+    }
+
+    // -- Jitter tests --
+
+    #[test]
+    fn jitter_is_deterministic() {
+        let max = jiff::SignedDuration::from_secs(60);
+        let j1 = compute_jitter("task-alpha", max);
+        let j2 = compute_jitter("task-alpha", max);
+        assert_eq!(j1, j2, "same task_id must produce identical jitter");
+    }
+
+    #[test]
+    fn jitter_differs_for_different_tasks() {
+        let max = jiff::SignedDuration::from_secs(600);
+        let j1 = compute_jitter("task-alpha", max);
+        let j2 = compute_jitter("task-beta", max);
+        // NOTE: technically hash collisions are possible but astronomically unlikely
+        assert_ne!(
+            j1, j2,
+            "different task IDs should produce different jitter"
+        );
+    }
+
+    #[test]
+    fn jitter_within_bounds() {
+        let max = jiff::SignedDuration::from_secs(120);
+        for id in &["a", "bb", "ccc", "task-1", "prosoche", "evolution-search"] {
+            let j = compute_jitter(id, max);
+            assert!(
+                j.as_nanos() >= 0,
+                "jitter must be non-negative, got {j:?} for {id}"
+            );
+            assert!(
+                j <= max,
+                "jitter must be <= max_jitter, got {j:?} > {max:?} for {id}"
+            );
+        }
+    }
+
+    #[test]
+    fn jitter_zero_max_returns_zero() {
+        let j = compute_jitter("any-task", jiff::SignedDuration::ZERO);
+        assert_eq!(
+            j,
+            jiff::SignedDuration::ZERO,
+            "zero max_jitter must produce zero jitter"
+        );
+    }
+
+    #[test]
+    fn apply_jitter_with_none_base_returns_none() {
+        let result = apply_jitter(None, "task", Some(jiff::SignedDuration::from_secs(60)));
+        assert!(result.is_none(), "no base timestamp → no result");
+    }
+
+    #[test]
+    fn apply_jitter_with_none_jitter_returns_none() {
+        let base = jiff::Timestamp::now();
+        let result = apply_jitter(Some(base), "task", None);
+        assert!(result.is_none(), "no jitter config → no result");
+    }
+
+    #[test]
+    fn apply_jitter_shifts_timestamp_forward() {
+        let base = jiff::Timestamp::now();
+        let max = jiff::SignedDuration::from_secs(300);
+        let result = apply_jitter(Some(base), "test-task", Some(max)).unwrap();
+        assert!(
+            result >= base,
+            "jittered timestamp must be >= base (jitter is non-negative)"
+        );
+        let offset = result.since(base).unwrap();
+        assert!(
+            offset.get_seconds() <= 300,
+            "jitter offset must be <= max_jitter"
+        );
     }
 }

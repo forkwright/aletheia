@@ -669,3 +669,153 @@ fn maintenance_status_ids_accepted_by_run() {
         );
     }
 }
+
+// -- Brief output mode tests --
+
+#[test]
+fn truncate_output_short_passes_through() {
+    let short = "line 1\nline 2\nline 3";
+    assert_eq!(
+        truncate_output(short),
+        short,
+        "short output should pass through unchanged"
+    );
+}
+
+#[test]
+fn truncate_output_long_shows_head_and_tail() {
+    let lines: Vec<String> = (1..=20).map(|i| format!("line {i}")).collect();
+    let long = lines.join("\n");
+    let truncated = truncate_output(&long);
+
+    assert!(
+        truncated.contains("line 1"),
+        "head should include first line"
+    );
+    assert!(
+        truncated.contains("line 5"),
+        "head should include line 5 (BRIEF_HEAD_LINES=5)"
+    );
+    assert!(
+        truncated.contains("lines omitted"),
+        "should contain omission marker"
+    );
+    assert!(
+        truncated.contains("line 20"),
+        "tail should include last line"
+    );
+    assert!(
+        truncated.contains("line 18"),
+        "tail should include line 18 (BRIEF_TAIL_LINES=3)"
+    );
+    assert!(
+        !truncated.contains("line 10"),
+        "middle lines should be omitted"
+    );
+}
+
+#[test]
+fn truncate_response_short_passes_through() {
+    let short = "All good.";
+    assert_eq!(truncate_response(short), short);
+}
+
+#[test]
+fn truncate_response_long_truncates_at_word_boundary() {
+    let long = "word ".repeat(100);
+    let truncated = truncate_response(&long);
+    assert!(
+        truncated.len() <= BRIEF_RESPONSE_MAX_CHARS + 10,
+        "truncated response should be near BRIEF_RESPONSE_MAX_CHARS"
+    );
+    assert!(
+        truncated.ends_with("..."),
+        "truncated response should end with ellipsis"
+    );
+}
+
+#[test]
+fn with_output_mode_sets_mode() {
+    let token = CancellationToken::new();
+    let runner = TaskRunner::new("test-nous", token).with_output_mode(DaemonOutputMode::Brief);
+    assert_eq!(runner.output_mode, DaemonOutputMode::Brief);
+}
+
+#[test]
+fn default_output_mode_is_full() {
+    let token = CancellationToken::new();
+    let runner = TaskRunner::new("test-nous", token);
+    assert_eq!(runner.output_mode, DaemonOutputMode::Full);
+}
+
+// -- Jitter integration test in runner --
+
+#[test]
+fn register_task_with_jitter_shifts_next_run() {
+    let token = CancellationToken::new();
+    let mut runner = TaskRunner::new("test-nous", token);
+
+    let task = TaskDef {
+        id: "jittered-task".to_owned(),
+        name: "Jittered".to_owned(),
+        nous_id: "test-nous".to_owned(),
+        schedule: Schedule::Interval(Duration::from_secs(3600)),
+        action: TaskAction::Command("echo hello".to_owned()),
+        enabled: true,
+        jitter: Some(jiff::SignedDuration::from_secs(600)),
+        ..TaskDef::default()
+    };
+
+    let before = jiff::Timestamp::now();
+    runner.register(task);
+
+    let statuses = runner.status();
+    let next_run: jiff::Timestamp = statuses[0]
+        .next_run
+        .as_ref()
+        .expect("should have next_run")
+        .parse()
+        .expect("valid timestamp");
+
+    // NOTE: with jitter, next_run should be >= now + interval (base) since
+    // jitter is additive and non-negative.
+    assert!(
+        next_run > before,
+        "jittered next_run should be in the future"
+    );
+}
+
+// -- State persistence integration test --
+
+#[test]
+fn with_state_store_persists_across_restarts() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let db_path = tmp.path().join("state.db");
+
+    // First runner: register, complete a task, persist
+    {
+        let token = CancellationToken::new();
+        let store = crate::state::TaskStateStore::open(&db_path).expect("open store");
+        let mut runner = TaskRunner::new("test-nous", token).with_state_store(store);
+        runner.register(make_echo_task("persist-task"));
+        runner.record_task_completion("persist-task", Duration::from_millis(10));
+
+        let statuses = runner.status();
+        assert_eq!(statuses[0].run_count, 1);
+    }
+
+    // Second runner: restore state from same DB
+    {
+        let token = CancellationToken::new();
+        let store = crate::state::TaskStateStore::open(&db_path).expect("reopen store");
+        let mut runner = TaskRunner::new("test-nous", token).with_state_store(store);
+        runner.register(make_echo_task("persist-task"));
+        runner.restore_state();
+
+        let statuses = runner.status();
+        assert_eq!(
+            statuses[0].run_count, 1,
+            "run_count should be restored from SQLite"
+        );
+    }
+}

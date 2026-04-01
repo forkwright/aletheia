@@ -84,6 +84,71 @@ pub(crate) fn spawn(
     (handle, join_handle, active_turn)
 }
 
+/// Parameters for daemon-initiated child agent spawning.
+///
+/// WHY: the daemon coordinator needs to spawn child agents with a subset of
+/// the parent's runtime dependencies. This struct collects the required
+/// parameters so the binary crate can wire daemon spawns through to the
+/// nous actor system.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "mirrors the full spawn signature; all fields are required runtime dependencies"
+)]
+pub struct DaemonSpawnParams {
+    /// Agent configuration for the child.
+    pub config: NousConfig,
+    /// Pipeline configuration.
+    pub pipeline_config: PipelineConfig,
+    /// LLM provider registry (shared with parent).
+    pub providers: Arc<ProviderRegistry>,
+    /// Tool registry (shared with parent).
+    pub tools: Arc<ToolRegistry>,
+    /// Workspace organization.
+    pub oikos: Arc<Oikos>,
+    /// Optional embedding provider (shared with parent).
+    pub embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
+    /// Optional vector search (shared with parent).
+    pub vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
+    /// Optional session store (shared with parent).
+    pub session_store: Option<Arc<Mutex<SessionStore>>>,
+    /// Optional knowledge store (shared with parent).
+    #[cfg(feature = "knowledge-store")]
+    pub knowledge_store: Option<Arc<KnowledgeStore>>,
+    /// Optional tool services (shared with parent).
+    pub tool_services: Option<Arc<aletheia_organon::types::ToolServices>>,
+    /// Additional bootstrap sections for the child agent.
+    pub extra_bootstrap: Vec<BootstrapSection>,
+}
+
+/// Spawn a child agent for daemon coordination.
+///
+/// WHY: the daemon coordinator needs to create child agents that share the
+/// parent's runtime services. This public function wraps the internal `spawn`
+/// with a parameter struct and cancellation token from the coordinator.
+///
+/// Returns the same triple as internal spawn: `(NousHandle, JoinHandle, active_turn)`.
+pub fn spawn_for_daemon(
+    params: DaemonSpawnParams,
+    cancel: CancellationToken,
+) -> (NousHandle, tokio::task::JoinHandle<()>, Arc<AtomicBool>) {
+    spawn(
+        params.config,
+        params.pipeline_config,
+        params.providers,
+        params.tools,
+        params.oikos,
+        params.embedding_provider,
+        params.vector_search,
+        params.session_store,
+        #[cfg(feature = "knowledge-store")]
+        params.knowledge_store,
+        params.tool_services,
+        params.extra_bootstrap,
+        None, // WHY: daemon-spawned children don't use cross-nous messaging
+        cancel,
+    )
+}
+
 /// Validate the workspace directory exists and required files are resolvable.
 ///
 /// Called at actor startup before entering the message loop. Creates the
