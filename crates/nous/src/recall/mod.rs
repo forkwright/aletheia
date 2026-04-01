@@ -56,6 +56,8 @@ impl RecallStageResult {
 pub struct RecallStage {
     engine: RecallEngine,
     config: RecallConfig,
+    /// Optional side-query selected IDs for pre-filtering before 6-factor scoring.
+    side_query_ids: Option<HashSet<String>>,
 }
 
 impl RecallStage {
@@ -74,6 +76,25 @@ impl RecallStage {
         Self {
             engine: RecallEngine::with_weights(engine_weights),
             config,
+            side_query_ids: None,
+        }
+    }
+
+    /// Set side-query selected IDs for pre-filtering before 6-factor scoring.
+    ///
+    /// WHY: when a side-query has identified relevant source IDs, this narrows
+    /// the candidate set before the expensive scoring pipeline runs.
+    #[must_use]
+    pub fn with_side_query_ids(mut self, ids: HashSet<String>) -> Self {
+        self.side_query_ids = Some(ids);
+        self
+    }
+
+    /// Rank candidates, applying side-query pre-filter when configured.
+    fn rank_candidates(&self, candidates: Vec<ScoredResult>) -> Vec<ScoredResult> {
+        match &self.side_query_ids {
+            Some(ids) => self.engine.rank_with_prefilter(candidates, ids),
+            None => self.engine.rank(candidates),
         }
     }
 
@@ -102,7 +123,7 @@ impl RecallStage {
         }
 
         let candidates = self.build_candidates(raw, nous_id);
-        let ranked = self.engine.rank(candidates);
+        let ranked = self.rank_candidates(candidates);
         Ok(self.finalize_results(ranked, remaining_budget))
     }
 
@@ -164,7 +185,7 @@ impl RecallStage {
         }
 
         let candidates = self.build_candidates(raw, nous_id);
-        let ranked = self.engine.rank(candidates);
+        let ranked = self.rank_candidates(candidates);
         Ok(self.finalize_results(ranked, remaining_budget))
     }
 
@@ -236,7 +257,7 @@ impl RecallStage {
         );
 
         let candidates = self.build_candidates(merged, nous_id);
-        let ranked = self.engine.rank(candidates);
+        let ranked = self.rank_candidates(candidates);
         Ok(self.finalize_results(ranked, remaining_budget))
     }
 
