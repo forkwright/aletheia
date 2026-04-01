@@ -12,7 +12,6 @@ use snafu::ResultExt as _;
 
 use crate::error::Result;
 
-
 /// Persisted execution state for a single registered task.
 #[derive(Debug, Clone)]
 pub struct TaskState {
@@ -36,6 +35,13 @@ pub(crate) struct TaskStateStore {
 
 impl TaskStateStore {
     /// Open (or create) the task state database at `path`.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "wired via TaskRunner::with_state_store in test harness"
+        )
+    )]
     pub(crate) fn open(path: &Path) -> Result<Self> {
         let conn = rusqlite::Connection::open(path).map_err(|e| {
             crate::error::TaskFailedSnafu {
@@ -146,7 +152,6 @@ impl TaskStateStore {
     }
 }
 
-
 /// Per-workspace daemon configuration parsed from `.aletheia/daemon.toml`.
 ///
 /// WHY: the daemon only activates for workspaces that have explicitly opted in.
@@ -231,11 +236,10 @@ impl DaemonConfig {
             return Ok(Self::default());
         }
 
-        let contents = std::fs::read_to_string(&config_path).context(
-            crate::error::MaintenanceIoSnafu {
+        let contents =
+            std::fs::read_to_string(&config_path).context(crate::error::MaintenanceIoSnafu {
                 context: format!("reading daemon config: {}", config_path.display()),
-            },
-        )?;
+            })?;
 
         let config: Self = toml::from_str(&contents).map_err(|e| {
             crate::error::TaskFailedSnafu {
@@ -265,7 +269,6 @@ impl DaemonConfig {
     }
 }
 
-
 /// Single-instance lock guard for daemon process per workspace.
 ///
 /// WHY: only one daemon process should run per workspace. `fd-lock` provides
@@ -288,11 +291,9 @@ impl WorkspaceGuard {
     pub fn acquire(workspace_root: &Path) -> Result<Self> {
         let lock_dir = workspace_root.join(".aletheia");
         if !lock_dir.exists() {
-            std::fs::create_dir_all(&lock_dir).context(
-                crate::error::MaintenanceIoSnafu {
-                    context: format!("creating lock directory: {}", lock_dir.display()),
-                },
-            )?;
+            std::fs::create_dir_all(&lock_dir).context(crate::error::MaintenanceIoSnafu {
+                context: format!("creating lock directory: {}", lock_dir.display()),
+            })?;
         }
 
         let lock_path = lock_dir.join("daemon.lock");
@@ -352,12 +353,19 @@ impl Drop for WorkspaceGuard {
     }
 }
 
-
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 #[expect(
     clippy::indexing_slicing,
     reason = "test: vec indices valid after asserting len"
+)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "test setup writes config files to temp directories"
+)]
+#[expect(
+    clippy::used_underscore_binding,
+    reason = "underscore-prefixed bindings used for RAII guards in tests"
 )]
 mod tests {
     use super::*;
