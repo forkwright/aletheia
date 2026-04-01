@@ -273,7 +273,10 @@ impl WorkingState {
 
     /// Generate the blackboard key for persisting this state.
     #[must_use]
-    #[expect(dead_code, reason = "working state management for agent context")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "working state management for agent context")
+    )]
     pub(crate) fn persist_key(nous_id: &str, session_id: &str) -> String {
         format!("ws:{nous_id}:{session_id}")
     }
@@ -283,7 +286,10 @@ impl WorkingState {
     /// # Errors
     ///
     /// Returns serialization error (should not happen for valid state).
-    #[expect(dead_code, reason = "working state management for agent context")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "working state management for agent context")
+    )]
     pub(crate) fn to_json(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string(self)
     }
@@ -293,7 +299,10 @@ impl WorkingState {
     /// # Errors
     ///
     /// Returns deserialization error if the JSON is malformed.
-    #[expect(dead_code, reason = "working state management for agent context")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "working state management for agent context")
+    )]
     pub(crate) fn from_json(json: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(json)
     }
@@ -302,7 +311,10 @@ impl WorkingState {
     ///
     /// Returns `None` if the working state is empty.
     #[must_use]
-    #[expect(dead_code, reason = "working state management for agent context")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "working state management for agent context")
+    )]
     pub(crate) fn to_bootstrap_section(&self) -> Option<BootstrapSection> {
         if self.is_empty() {
             return None;

@@ -548,7 +548,8 @@ fn spawn_test_actor_with_store(
 #[tokio::test]
 async fn session_id_adoption_prevents_fk_divergence() {
     let store = aletheia_mneme::store::SessionStore::open_in_memory().expect("in-memory store");
-    let db_session_id = "db-ses-from-pylon";
+    // WHY: SessionId now requires UUID v4 format (see koina::id::SessionId)
+    let db_session_id = "550e8400-e29b-41d4-a716-446655440000";
 
     // NOTE: Simulate pylon creating the session in the store
     store
