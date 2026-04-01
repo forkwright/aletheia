@@ -12,6 +12,9 @@
 //! Each factor produces a score in [0.0, 1.0]. The final score is a weighted
 //! combination, configurable per-nous via oikos cascade.
 
+use std::collections::HashSet;
+use std::hash::BuildHasher;
+
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
@@ -404,6 +407,34 @@ pub(crate) fn refresh_stability_hours(fact_type: &str, tier: &str, access_count:
         _ => EpistemicTier::Assumed,
     };
     compute_effective_stability(ft, et, access_count)
+}
+
+/// Pre-filter recall candidates using side-query selections.
+///
+/// Retains only candidates whose `source_id` appears in `selected_ids`.
+/// Designed to run between vector search retrieval and 6-factor scoring
+/// to reduce the candidate set before the more expensive scoring runs.
+///
+/// # Arguments
+///
+/// * `candidates` — Raw scored results from vector search.
+/// * `selected_ids` — Source IDs chosen by the side-query selector.
+///
+/// # Returns
+///
+/// Filtered candidates preserving original order.
+#[must_use]
+pub fn pre_filter_by_side_query<S: BuildHasher>(
+    candidates: Vec<ScoredResult>,
+    selected_ids: &HashSet<String, S>,
+) -> Vec<ScoredResult> {
+    if selected_ids.is_empty() {
+        return candidates;
+    }
+    candidates
+        .into_iter()
+        .filter(|c| selected_ids.contains(&c.source_id))
+        .collect()
 }
 
 #[cfg(test)]
