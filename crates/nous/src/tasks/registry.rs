@@ -414,6 +414,11 @@ impl std::fmt::Debug for TaskRegistry {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    reason = "test code: panics are acceptable in tests"
+)]
 mod tests {
     use std::time::Duration;
 

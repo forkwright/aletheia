@@ -20,7 +20,10 @@ async fn app_with_per_user_limits(
             enabled: false,
             ..crate::security::CsrfConfig::default()
         },
+        // WHY: per-user rate limiting now keys on client IP via X-Forwarded-For
         rate_limit: crate::security::RateLimitConfig {
+            enabled: true,
+            trust_proxy: true,
             per_user: config,
             ..crate::security::RateLimitConfig::default()
         },
@@ -180,12 +183,14 @@ async fn user_a_limit_does_not_affect_user_b() {
 
     let req = Request::get("/api/v1/nous")
         .header("authorization", format!("Bearer {token_a}"))
+        .header("x-forwarded-for", "192.168.1.10")
         .body(Body::empty())
         .unwrap();
     router.clone().oneshot(req).await.unwrap();
 
     let req = Request::get("/api/v1/nous")
         .header("authorization", format!("Bearer {token_a}"))
+        .header("x-forwarded-for", "192.168.1.10")
         .body(Body::empty())
         .unwrap();
     let resp = router.clone().oneshot(req).await.unwrap();
@@ -197,6 +202,7 @@ async fn user_a_limit_does_not_affect_user_b() {
 
     let req = Request::get("/api/v1/nous")
         .header("authorization", format!("Bearer {token_b}"))
+        .header("x-forwarded-for", "192.168.1.20")
         .body(Body::empty())
         .unwrap();
     let resp = router.clone().oneshot(req).await.unwrap();

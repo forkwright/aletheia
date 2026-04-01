@@ -103,7 +103,9 @@ async fn idempotency_key_in_flight_returns_409() {
     let id = created["id"].as_str().unwrap();
 
     let key = "inflight-key-001";
-    state.idempotency_cache.check_or_insert(key);
+    // WHY: handler scopes idempotency keys per-user by prepending `{claims.sub}:`
+    let scoped_key = format!("test-user:{key}");
+    state.idempotency_cache.check_or_insert(&scoped_key);
 
     let req = send_message_req(id, Some(key));
     let resp = router.clone().oneshot(req).await.unwrap();

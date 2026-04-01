@@ -245,10 +245,6 @@ mod tests {
         .unwrap();
         // Insert 10 vectors (well below any threshold).
         for i in 0..10 {
-            #[expect(
-                clippy::cast_possible_truncation,
-                reason = "f64 to f32: intentional precision reduction"
-            )]
             let val = i as f32;
             db.run_default(&format!(
                 "?[id, vec] <- [[{i}, vec([{val}, {val}, {val}, {val}])]] :put vectors {{}}"

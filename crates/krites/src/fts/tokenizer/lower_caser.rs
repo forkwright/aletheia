@@ -1,10 +1,4 @@
 //! Lowercasing token filter.
-#![cfg_attr(
-    test,
-    expect(
-        reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-    )
-)]
 use std::mem;
 
 use super::{Token, TokenFilter, TokenStream};

@@ -43,7 +43,10 @@ pub(crate) fn upsert_fact() -> String {
 /// Query current facts for a nous (not superseded, currently valid).
 /// Params: `$nous_id`, `$now`, `$limit`.
 #[must_use]
-#[expect(dead_code, reason = "Datalog query for current (non-superseded) facts")]
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "Datalog query for current (non-superseded) facts")
+)]
 pub(crate) fn current_facts() -> String {
     use FactsField::*;
     QueryBuilder::new()

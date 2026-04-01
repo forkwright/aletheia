@@ -39,7 +39,10 @@ static CREDENTIAL_WRITE_FAILURES_TOTAL: LazyLock<prometheus::IntCounter> = LazyL
     .expect("metric registration")
 });
 
-#[expect(dead_code, reason = "metric init called from server startup")]
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "metric init called from server startup")
+)]
 /// Force-initialize all lazy metric statics.
 pub(crate) fn init() {
     LazyLock::force(&AUTH_ATTEMPTS_TOTAL);
