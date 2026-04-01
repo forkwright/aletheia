@@ -106,6 +106,7 @@ impl SpawnService for SpawnServiceImpl {
             cache_enabled: true,
             recall: crate::recall::RecallConfig::default(),
             tool_allowlist,
+            hooks: crate::config::HookConfig::default(),
         };
 
         let pipeline_config = PipelineConfig {

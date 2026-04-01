@@ -125,6 +125,38 @@ pub struct NousConfig {
     /// during ephemeral sub-agent spawning.
     #[serde(default)]
     pub tool_allowlist: Option<Vec<String>>,
+    /// Turn-level hook configuration.
+    #[serde(default)]
+    pub hooks: HookConfig,
+}
+
+/// Configuration for turn-level behavior hooks.
+///
+/// Controls which built-in hooks are enabled and their parameters.
+/// All hooks are enabled by default.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct HookConfig {
+    /// Enable the cost control hook (priority 10).
+    pub cost_control_enabled: bool,
+    /// Maximum tokens allowed per turn before cost control aborts.
+    /// 0 = unlimited (default: 0).
+    pub turn_token_budget: u64,
+    /// Enable the scope enforcement hook (priority 20).
+    pub scope_enforcement_enabled: bool,
+    /// Enable the audit logging hook (priority 100).
+    pub audit_logging_enabled: bool,
+}
+
+impl Default for HookConfig {
+    fn default() -> Self {
+        Self {
+            cost_control_enabled: true,
+            turn_token_budget: 0,
+            scope_enforcement_enabled: true,
+            audit_logging_enabled: true,
+        }
+    }
 }
 
 fn default_cache_enabled() -> bool {
@@ -163,6 +195,7 @@ impl Default for NousConfig {
             cache_enabled: true,
             recall: RecallConfig::default(),
             tool_allowlist: None,
+            hooks: HookConfig::default(),
         }
     }
 }
@@ -312,6 +345,7 @@ mod tests {
             cache_enabled: false,
             recall: RecallConfig::default(),
             tool_allowlist: None,
+            hooks: HookConfig::default(),
         };
         assert_eq!(config.name.as_deref(), Some("Chiron"));
         assert!(config.generation.thinking_enabled);

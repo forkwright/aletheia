@@ -279,6 +279,10 @@ impl NousActor {
         let mut extra_bootstrap = self.extra_bootstrap.clone();
         extra_bootstrap.extend(self.resolve_skill_sections(content).await);
 
+        // WHY: create hook registry from config so hooks run inside the spawned pipeline task
+        let mut hook_registry = crate::hooks::registry::HookRegistry::new();
+        crate::hooks::builtins::register_builtin_hooks(&mut hook_registry, &self.config.hooks);
+
         let oikos = Arc::clone(&self.services.oikos);
         let config = self.config.clone();
         let pipeline_config = self.pipeline_config.clone();
@@ -314,6 +318,7 @@ impl NousActor {
                             extra_bootstrap,
                             Some(stx),
                             None,
+                            Some(&hook_registry),
                         )
                         .await
                     }
@@ -333,6 +338,7 @@ impl NousActor {
                             extra_bootstrap,
                             None,
                             None,
+                            Some(&hook_registry),
                         )
                         .await
                     }
@@ -477,6 +483,10 @@ impl NousActor {
         let mut extra_bootstrap = self.extra_bootstrap.clone();
         extra_bootstrap.extend(self.resolve_skill_sections(content).await);
 
+        // WHY: create hook registry for the direct (non-spawned) execute_turn path
+        let mut hook_registry = crate::hooks::registry::HookRegistry::new();
+        crate::hooks::builtins::register_builtin_hooks(&mut hook_registry, &self.config.hooks);
+
         #[cfg(feature = "knowledge-store")]
         let text_search_ref: Option<&dyn crate::recall::TextSearch> =
             self.stores.text_search.as_deref();
@@ -498,6 +508,7 @@ impl NousActor {
             extra_bootstrap,
             None,
             None,
+            Some(&hook_registry),
         )
         .await
     }

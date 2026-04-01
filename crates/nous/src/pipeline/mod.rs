@@ -21,6 +21,8 @@ use crate::budget::{CompactionMetrics, TokenBudget};
 use crate::config::{NousConfig, PipelineConfig};
 use crate::error;
 use crate::history::HistoryResult;
+use crate::hooks::registry::HookRegistry;
+use crate::hooks::{QueryContext, TurnContext};
 use crate::session::SessionState;
 use crate::stream::TurnStreamEvent;
 use crate::working_state::WorkingState;
@@ -665,6 +667,7 @@ pub(crate) async fn run_pipeline(
     extra_bootstrap: Vec<BootstrapSection>,
     stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
     emitter: Option<&EventEmitter>,
+    hooks: Option<&HookRegistry>,
 ) -> error::Result<TurnResult> {
     let default_emitter = EventEmitter::new();
     let emitter = emitter.unwrap_or(&default_emitter);
@@ -728,6 +731,21 @@ pub(crate) async fn run_pipeline(
     run_guard_stage(&input.session, config, emitter)?;
     stages_completed += 1;
 
+    // WHY: before_query hooks run after guard (so rejected requests never reach hooks)
+    // but before execute (so hooks can modify context before the model call).
+    if let Some(hook_registry) = hooks {
+        let mut query_ctx = QueryContext {
+            pipeline: &mut ctx,
+            nous_id: &config.id,
+            user_message: &input.content,
+        };
+        if let crate::hooks::HookResult::Abort { reason } =
+            hook_registry.run_before_query(&mut query_ctx).await
+        {
+            return Err(error::GuardRejectedSnafu { reason }.build());
+        }
+    }
+
     let result = run_execute_stage(
         config,
         pipeline_config,
@@ -740,12 +758,24 @@ pub(crate) async fn run_pipeline(
         pipeline_start,
         total_timeout,
         emitter,
+        hooks,
     )
     .await?;
     stages_completed += 1;
 
     run_finalize_stage(config, &input, &result, session_store, emitter).await;
     stages_completed += 1;
+
+    // WHY: on_turn_complete hooks run after finalize so audit hooks see the
+    // fully persisted state. Does not short-circuit: all hooks fire.
+    if let Some(hook_registry) = hooks {
+        let turn_ctx = TurnContext {
+            result: &result,
+            nous_id: &config.id,
+            session_tokens: input.session.cumulative_tokens,
+        };
+        hook_registry.run_on_turn_complete(&turn_ctx).await;
+    }
 
     if !result.tool_calls.is_empty() {
         crate::instinct::record_observations(&result.tool_calls, &input.content, &config.id);
