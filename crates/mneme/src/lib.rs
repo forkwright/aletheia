@@ -12,6 +12,24 @@ pub use aletheia_eidos::id;
 /// Knowledge graph domain types: facts, entities, relationships, embeddings (re-exported from `eidos`).
 pub use aletheia_eidos::knowledge;
 
+// ── Path validation (eidos) ───────────────────────────────────────────────
+
+/// Defense-in-depth path validation for memory file operations.
+///
+/// All memory read/write paths MUST go through [`validate_memory_path()`]
+/// to obtain a [`ValidatedPath`], which gates I/O behind the full
+/// validation layer stack. `ValidatedPath` has private fields and can only
+/// be constructed through validation, making bypass impossible at the type
+/// level.
+///
+/// [`validate_memory_path()`]: knowledge::validate_memory_path
+/// [`ValidatedPath`]: knowledge::ValidatedPath
+pub mod path_validation {
+    pub use aletheia_eidos::knowledge::{
+        PathValidationError, PathValidationLayer, ValidatedPath, validate_memory_path,
+    };
+}
+
 // ── Engine (krites) ────────────────────────────────────────────────────────
 
 /// Datalog/graph engine (enabled by `mneme-engine` feature, provided by `aletheia-krites`).
