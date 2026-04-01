@@ -287,6 +287,7 @@ async fn run_pipeline_simple() {
         Vec::new(),
         None,
         None,
+        None,
     )
     .await
     .expect("pipeline should succeed");

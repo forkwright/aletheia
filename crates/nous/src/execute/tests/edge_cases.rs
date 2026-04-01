@@ -20,6 +20,7 @@ async fn empty_text_response() {
         &providers,
         &tools,
         &test_tool_ctx(),
+        None,
     )
     .await
     .expect("execute");
@@ -77,6 +78,7 @@ async fn thinking_only_response() {
         &providers,
         &tools,
         &test_tool_ctx(),
+        None,
     )
     .await
     .expect("execute");
@@ -103,6 +105,7 @@ async fn no_provider_for_model_returns_error() {
         &providers,
         &tools,
         &test_tool_ctx(),
+        None,
     )
     .await;
 
@@ -232,6 +235,7 @@ async fn max_iterations_one_exits_immediately() {
         &providers,
         &tools,
         &test_tool_ctx(),
+        None,
     )
     .await
     .expect("should succeed");

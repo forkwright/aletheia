@@ -20,6 +20,7 @@ async fn streaming_falls_back_to_non_streaming_for_mock() {
         &tools,
         &test_tool_ctx(),
         &tx,
+        None,
     )
     .await
     .expect("execute_streaming");
@@ -62,6 +63,7 @@ async fn streaming_tool_events_emitted() {
         &tools,
         &test_tool_ctx(),
         &tx,
+        None,
     )
     .await
     .expect("execute_streaming");

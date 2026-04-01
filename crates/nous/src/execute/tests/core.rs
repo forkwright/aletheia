@@ -21,6 +21,7 @@ async fn simple_text_response() {
         &providers,
         &tools,
         &test_tool_ctx(),
+        None,
     )
     .await
     .expect("execute");
@@ -75,6 +76,7 @@ async fn single_tool_iteration() {
         &providers,
         &tools,
         &test_tool_ctx(),
+        None,
     )
     .await
     .expect("execute");
@@ -132,6 +134,7 @@ async fn multi_tool_iteration() {
         &providers,
         &tools,
         &test_tool_ctx(),
+        None,
     )
     .await
     .expect("execute");
@@ -171,6 +174,7 @@ async fn loop_detection_triggers() {
         &providers,
         &tools,
         &test_tool_ctx(),
+        None,
     )
     .await
     .expect_err("should detect loop");
@@ -203,6 +207,7 @@ async fn max_iterations_respected() {
         &providers,
         &tools,
         &test_tool_ctx(),
+        None,
     )
     .await
     .expect("should not error");
@@ -233,6 +238,7 @@ async fn tool_error_captured() {
         &providers,
         &tools,
         &test_tool_ctx(),
+        None,
     )
     .await
     .expect("execute should succeed despite tool error");
@@ -350,6 +356,7 @@ async fn usage_accumulates_across_iterations() {
         &providers,
         &tools,
         &test_tool_ctx(),
+        None,
     )
     .await
     .expect("execute");
@@ -392,6 +399,7 @@ async fn tool_error_captured_not_propagated() {
         &providers,
         &tools,
         &test_tool_ctx(),
+        None,
     )
     .await
     .expect("pipeline should complete despite tool error");
@@ -425,6 +433,7 @@ async fn max_iterations_stops_loop() {
         &providers,
         &tools,
         &test_tool_ctx(),
+        None,
     )
     .await
     .expect("should complete after hitting max iterations");
@@ -451,6 +460,7 @@ async fn text_response_no_tools() {
         &providers,
         &tools,
         &test_tool_ctx(),
+        None,
     )
     .await
     .expect("execute");

@@ -19,6 +19,7 @@ use crate::compact::CompactConfig;
 use crate::config::{NousConfig, PipelineConfig};
 use crate::error;
 use crate::history::{self, HistoryConfig};
+use crate::hooks::registry::HookRegistry;
 use crate::session::SessionState;
 use crate::stream::TurnStreamEvent;
 
@@ -486,6 +487,7 @@ pub(super) async fn run_execute_stage(
     pipeline_start: Instant,
     total_timeout: Option<Duration>,
     emitter: &EventEmitter,
+    hooks: Option<&HookRegistry>,
 ) -> error::Result<TurnResult> {
     let span = info_span!(
         "pipeline_stage",
@@ -521,10 +523,20 @@ pub(super) async fn run_execute_stage(
                 tools,
                 tool_ctx,
                 tx,
+                hooks,
             )
             .await
         } else {
-            crate::execute::execute(ctx, &input.session, config, providers, tools, tool_ctx).await
+            crate::execute::execute(
+                ctx,
+                &input.session,
+                config,
+                providers,
+                tools,
+                tool_ctx,
+                hooks,
+            )
+            .await
         }
     };
 

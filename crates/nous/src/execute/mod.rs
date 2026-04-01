@@ -26,6 +26,8 @@ use self::dispatch::{
 };
 use crate::config::NousConfig;
 use crate::error;
+use crate::hooks::registry::HookRegistry;
+use crate::hooks::{ToolHookContext, ToolHookResult};
 use crate::pipeline::{LoopDetector, PipelineContext, ToolCall, TurnResult, TurnUsage};
 use crate::session::SessionState;
 use crate::stream::TurnStreamEvent;
@@ -156,6 +158,7 @@ pub async fn execute(
     providers: &ProviderRegistry,
     tools: &ToolRegistry,
     tool_ctx: &ToolContext,
+    hooks: Option<&HookRegistry>,
 ) -> error::Result<TurnResult> {
     let provider = resolve_provider_checked(providers, &config.generation.model)?;
 
@@ -292,6 +295,36 @@ pub async fn execute(
             extracted.tool_uses
         };
 
+        // WHY: before_tool hooks run after allowlist filtering but before dispatch,
+        // so hooks can deny individual tool calls based on budget/scope/policy.
+        let effective_tool_uses = if let Some(hook_registry) = hooks {
+            let hook_ctx = ToolHookContext {
+                nous_id: &session.nous_id,
+                turn_usage: &total_usage,
+                tool_allowlist: config.tool_allowlist.as_deref(),
+            };
+            let mut hook_allowed = Vec::with_capacity(effective_tool_uses.len());
+            for (id, name, input) in effective_tool_uses {
+                match hook_registry
+                    .run_before_tool(&name, &input, &hook_ctx)
+                    .await
+                {
+                    ToolHookResult::Allow => hook_allowed.push((id, name, input)),
+                    ToolHookResult::Deny { reason } => {
+                        warn!(tool = %name, tool_use_id = %id, reason = %reason, "tool call denied by hook");
+                        denied_blocks.push(ContentBlock::ToolResult {
+                            tool_use_id: id,
+                            content: ToolResultContent::Text(reason),
+                            is_error: Some(true),
+                        });
+                    }
+                }
+            }
+            hook_allowed
+        } else {
+            effective_tool_uses
+        };
+
         let DispatchResult {
             mut blocks,
             loop_warning,
@@ -371,6 +404,10 @@ pub async fn execute(
     clippy::too_many_lines,
     reason = "streaming agent loop parallels execute() with provider callback — one cohesive operation"
 )]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "streaming execute requires provider, tools, context, stream channel, and hooks"
+)]
 #[instrument(skip_all, fields(nous_id = %session.nous_id, session_id = %session.id))]
 pub async fn execute_streaming(
     ctx: &PipelineContext,
@@ -380,11 +417,12 @@ pub async fn execute_streaming(
     tools: &ToolRegistry,
     tool_ctx: &ToolContext,
     stream_tx: &mpsc::Sender<TurnStreamEvent>,
+    hooks: Option<&HookRegistry>,
 ) -> error::Result<TurnResult> {
     let Some(streaming_provider) = providers.find_streaming_provider(&config.generation.model)
     else {
         // NOTE: fall back to non-streaming execute if no streaming provider is registered
-        return execute(ctx, session, config, providers, tools, tool_ctx).await;
+        return execute(ctx, session, config, providers, tools, tool_ctx, hooks).await;
     };
 
     let provider = resolve_provider_checked(providers, &config.generation.model)?;
@@ -528,6 +566,35 @@ pub async fn execute_streaming(
             allowed
         } else {
             extracted.tool_uses
+        };
+
+        // WHY: before_tool hooks filter tool calls before streaming dispatch
+        let effective_tool_uses = if let Some(hook_registry) = hooks {
+            let hook_ctx = ToolHookContext {
+                nous_id: &session.nous_id,
+                turn_usage: &total_usage,
+                tool_allowlist: config.tool_allowlist.as_deref(),
+            };
+            let mut hook_allowed = Vec::with_capacity(effective_tool_uses.len());
+            for (id, name, input) in effective_tool_uses {
+                match hook_registry
+                    .run_before_tool(&name, &input, &hook_ctx)
+                    .await
+                {
+                    ToolHookResult::Allow => hook_allowed.push((id, name, input)),
+                    ToolHookResult::Deny { reason } => {
+                        warn!(tool = %name, tool_use_id = %id, reason = %reason, "tool call denied by hook");
+                        denied_blocks.push(ContentBlock::ToolResult {
+                            tool_use_id: id,
+                            content: ToolResultContent::Text(reason),
+                            is_error: Some(true),
+                        });
+                    }
+                }
+            }
+            hook_allowed
+        } else {
+            effective_tool_uses
         };
 
         let DispatchResult {

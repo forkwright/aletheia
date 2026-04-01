@@ -32,6 +32,8 @@ pub(crate) mod finalize;
 pub mod handle;
 /// Conversation history retrieval and token-budgeted formatting.
 pub(crate) mod history;
+/// Turn-level hook system for behavior correction at query, tool, and turn boundaries.
+pub(crate) mod hooks;
 /// Instinct observation bridge: records tool usage for behavioral pattern learning.
 pub(crate) mod instinct;
 /// Lifecycle manager for spawning and addressing nous actors.
