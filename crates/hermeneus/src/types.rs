@@ -5,6 +5,76 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Classification of tool result types for compaction TTL assignment.
+///
+/// Different tool types produce output with different staleness characteristics:
+/// file reads change slowly, shell output is ephemeral, and search results
+/// become stale quickly as context shifts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum ToolResultType {
+    /// File read/edit/write operations (TTL: 5 minutes).
+    FileOperation,
+    /// Shell/bash command output (TTL: 3 minutes).
+    ShellOutput,
+    /// Search, grep, glob results (TTL: 2 minutes).
+    SearchResult,
+    /// Web search or fetch results (TTL: 2 minutes).
+    WebResult,
+    /// Unclassified tool output (no automatic TTL).
+    Other,
+}
+
+impl ToolResultType {
+    /// Classify a tool name into a result type for TTL assignment.
+    #[must_use]
+    pub fn classify(tool_name: &str) -> Self {
+        let lower = tool_name.to_lowercase();
+        // WHY: classification mirrors CC's COMPACTABLE_TOOLS whitelist.
+        // NOTE: web check before search because "web_search" should match WebResult, not SearchResult.
+        if lower.contains("read")
+            || lower.contains("edit")
+            || lower.contains("write")
+            || lower.contains("file")
+        {
+            Self::FileOperation
+        } else if lower.contains("bash")
+            || lower.contains("shell")
+            || lower.contains("exec")
+            || lower.contains("command")
+        {
+            Self::ShellOutput
+        } else if lower.contains("web") || lower.contains("fetch") || lower.contains("http") {
+            Self::WebResult
+        } else if lower.contains("grep")
+            || lower.contains("glob")
+            || lower.contains("search")
+            || lower.contains("find")
+        {
+            Self::SearchResult
+        } else {
+            Self::Other
+        }
+    }
+}
+
+/// Aging metadata attached to tool results for compaction decisions.
+///
+/// Tracks when a tool result was created and its type, enabling the
+/// microcompaction pass to expire stale results based on per-type TTLs.
+/// Not serialized over the wire — lives only in the pipeline's in-memory
+/// message representation.
+#[derive(Debug, Clone)]
+pub struct ToolResultAge {
+    /// When the tool result was created.
+    pub created_at: jiff::Timestamp,
+    /// Classified tool type for TTL lookup.
+    pub tool_type: ToolResultType,
+    /// Original token count before any compaction.
+    pub original_tokens: u64,
+}
+
 /// A message in the conversation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {

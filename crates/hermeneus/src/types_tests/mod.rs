@@ -296,3 +296,131 @@ fn usage_total() {
 
 mod advanced;
 mod request_response;
+
+#[test]
+fn tool_result_type_classifies_file_operations() {
+    assert_eq!(
+        ToolResultType::classify("file_read"),
+        ToolResultType::FileOperation,
+        "file_read should classify as FileOperation"
+    );
+    assert_eq!(
+        ToolResultType::classify("FileEdit"),
+        ToolResultType::FileOperation,
+        "FileEdit should classify as FileOperation"
+    );
+    assert_eq!(
+        ToolResultType::classify("write_file"),
+        ToolResultType::FileOperation,
+        "write_file should classify as FileOperation"
+    );
+}
+
+#[test]
+fn tool_result_type_classifies_shell_output() {
+    assert_eq!(
+        ToolResultType::classify("bash"),
+        ToolResultType::ShellOutput,
+        "bash should classify as ShellOutput"
+    );
+    assert_eq!(
+        ToolResultType::classify("shell_exec"),
+        ToolResultType::ShellOutput,
+        "shell_exec should classify as ShellOutput"
+    );
+    assert_eq!(
+        ToolResultType::classify("command_runner"),
+        ToolResultType::ShellOutput,
+        "command_runner should classify as ShellOutput"
+    );
+}
+
+#[test]
+fn tool_result_type_classifies_search_results() {
+    assert_eq!(
+        ToolResultType::classify("grep"),
+        ToolResultType::SearchResult,
+        "grep should classify as SearchResult"
+    );
+    assert_eq!(
+        ToolResultType::classify("glob"),
+        ToolResultType::SearchResult,
+        "glob should classify as SearchResult"
+    );
+    assert_eq!(
+        ToolResultType::classify("code_search"),
+        ToolResultType::SearchResult,
+        "code_search should classify as SearchResult"
+    );
+}
+
+#[test]
+fn tool_result_type_classifies_web_results() {
+    assert_eq!(
+        ToolResultType::classify("web_search"),
+        ToolResultType::WebResult,
+        "web_search should classify as WebResult"
+    );
+    assert_eq!(
+        ToolResultType::classify("http_fetch"),
+        ToolResultType::WebResult,
+        "http_fetch should classify as WebResult"
+    );
+}
+
+#[test]
+fn tool_result_type_classifies_unknown_as_other() {
+    assert_eq!(
+        ToolResultType::classify("calculator"),
+        ToolResultType::Other,
+        "calculator should classify as Other"
+    );
+    assert_eq!(
+        ToolResultType::classify("database_query"),
+        ToolResultType::Other,
+        "database_query should classify as Other"
+    );
+}
+
+#[test]
+fn tool_result_type_serde_roundtrip() {
+    for tool_type in [
+        ToolResultType::FileOperation,
+        ToolResultType::ShellOutput,
+        ToolResultType::SearchResult,
+        ToolResultType::WebResult,
+        ToolResultType::Other,
+    ] {
+        let json =
+            serde_json::to_string(&tool_type).expect("ToolResultType should serialize to JSON");
+        let back: ToolResultType =
+            serde_json::from_str(&json).expect("ToolResultType should deserialize from JSON");
+        assert_eq!(
+            tool_type, back,
+            "ToolResultType should round-trip through JSON unchanged"
+        );
+    }
+}
+
+#[test]
+fn tool_result_age_fields_accessible() {
+    let age = ToolResultAge {
+        created_at: jiff::Timestamp::UNIX_EPOCH,
+        tool_type: ToolResultType::FileOperation,
+        original_tokens: 500,
+    };
+    assert_eq!(
+        age.created_at,
+        jiff::Timestamp::UNIX_EPOCH,
+        "ToolResultAge created_at should be accessible"
+    );
+    assert_eq!(
+        age.tool_type,
+        ToolResultType::FileOperation,
+        "ToolResultAge tool_type should be accessible"
+    );
+    assert_eq!(
+        age.original_tokens, 500,
+        "ToolResultAge original_tokens should be accessible"
+    );
+}

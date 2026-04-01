@@ -153,6 +153,34 @@ impl TokenBudget {
     }
 }
 
+/// Tracks token reclamation across compaction passes.
+///
+/// Records pre-compaction and post-compaction token counts so callers
+/// can measure how much context space was freed. Used by both
+/// microcompaction (in-place clearing) and full compaction (summarization).
+#[derive(Debug, Clone, Default)]
+pub struct CompactionMetrics {
+    /// Token count before compaction.
+    pub pre_compact_tokens: u64,
+    /// Token count after compaction.
+    pub post_compact_tokens: u64,
+    /// Number of tool results cleared by microcompaction.
+    pub results_cleared: u32,
+    /// Number of tool results preserved (last-N or unexpired).
+    pub results_preserved: u32,
+    /// Whether full compaction was triggered.
+    pub full_compaction_triggered: bool,
+}
+
+impl CompactionMetrics {
+    /// Tokens reclaimed by compaction.
+    #[must_use]
+    pub fn tokens_reclaimed(&self) -> u64 {
+        self.pre_compact_tokens
+            .saturating_sub(self.post_compact_tokens)
+    }
+}
+
 use std::time::{Duration, Instant};
 
 use crate::config::StageBudget;

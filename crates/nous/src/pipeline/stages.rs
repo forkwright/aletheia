@@ -15,6 +15,7 @@ use aletheia_organon::types::ToolContext;
 use aletheia_taxis::oikos::Oikos;
 
 use crate::bootstrap::{BootstrapSection, TaskHint};
+use crate::compact::CompactConfig;
 use crate::config::{NousConfig, PipelineConfig};
 use crate::error;
 use crate::history::{self, HistoryConfig};
@@ -233,6 +234,171 @@ pub(super) async fn run_history_stage(
         duration_secs,
     });
     Ok(())
+}
+
+/// Microcompaction stage: clear expired tool results in-place.
+///
+/// Runs every turn as a cheap synchronous pass. Replaces tool results older
+/// than their per-type TTL with cleared markers, preserving the last N results
+/// per tool type. No-op when no tool results are expired.
+pub(super) fn run_microcompact_stage(
+    config: &NousConfig,
+    ctx: &mut PipelineContext,
+    emitter: &EventEmitter,
+) {
+    let span = info_span!(
+        "pipeline_stage",
+        stage = "microcompact",
+        duration_ms = tracing::field::Empty,
+        status = tracing::field::Empty,
+        results_cleared = tracing::field::Empty
+    );
+    let _guard = span.enter();
+    let start = Instant::now();
+
+    let compact_config = CompactConfig::default();
+    let now = jiff::Timestamp::now();
+    let metrics =
+        crate::compact::micro::run_microcompaction(&mut ctx.messages, &compact_config, now);
+
+    span.record("results_cleared", metrics.results_cleared);
+
+    if metrics.results_cleared > 0 {
+        // NOTE: update history budget with reclaimed tokens
+        #[expect(
+            clippy::cast_possible_wrap,
+            clippy::as_conversions,
+            reason = "u64→i64: reclaimed tokens fit in i64"
+        )]
+        {
+            ctx.history_budget += metrics.tokens_reclaimed() as i64; // kanon:ignore RUST/as-cast
+        }
+        ctx.compaction_metrics = Some(metrics);
+        span.record("status", "ok");
+    } else {
+        span.record("status", "noop");
+    }
+
+    let duration_secs = start.elapsed().as_secs_f64();
+    record_stage_duration(&span, &start);
+    crate::metrics::record_stage(&config.id, "microcompact", duration_secs);
+    emitter.emit(&StageCompleted {
+        nous_id: config.id.clone(),
+        stage: "microcompact",
+        duration_secs,
+    });
+}
+
+/// Full compaction stage: check threshold and prepare for summarization.
+///
+/// Checks whether token usage exceeds the configured threshold. If so,
+/// identifies critical files and prepares the compaction. The actual model
+/// call for summarization is deferred to a background task (via task registry
+/// when available). For now, builds the compaction request and applies a
+/// placeholder summary.
+///
+/// No-op when token usage is below threshold.
+pub(super) fn run_full_compact_stage(
+    config: &NousConfig,
+    ctx: &mut PipelineContext,
+    emitter: &EventEmitter,
+) {
+    let span = info_span!(
+        "pipeline_stage",
+        stage = "full_compact",
+        duration_ms = tracing::field::Empty,
+        status = tracing::field::Empty
+    );
+    let _guard = span.enter();
+    let start = Instant::now();
+
+    let compact_config = CompactConfig::default();
+    let context_window = u64::from(config.generation.context_window);
+
+    // NOTE: estimate consumed tokens from messages in context
+    #[expect(
+        clippy::cast_sign_loss,
+        clippy::as_conversions,
+        reason = "i64→u64: token estimates are non-negative in practice"
+    )]
+    let consumed: u64 = ctx
+        .messages
+        .iter()
+        .map(|m| m.token_estimate.max(0) as u64) // kanon:ignore RUST/as-cast
+        .sum();
+
+    if !crate::compact::full::should_trigger(consumed, context_window, &compact_config) {
+        span.record("status", "noop");
+        let duration_secs = start.elapsed().as_secs_f64();
+        record_stage_duration(&span, &start);
+        crate::metrics::record_stage(&config.id, "full_compact", duration_secs);
+        emitter.emit(&StageSkipped {
+            nous_id: config.id.clone(),
+            stage: "full_compact",
+            reason: format!("token usage {consumed}/{context_window} below threshold"),
+        });
+        return;
+    }
+
+    let critical_files =
+        crate::compact::full::identify_critical_files(&ctx.messages, &compact_config);
+    let (_request, preserved) =
+        crate::compact::full::build_summary_request(&ctx.messages, &compact_config);
+
+    // TODO(#2261): spawn background task via task registry for model summarization.
+    // For now, build a structural summary from message roles and content snippets.
+    let summary = build_structural_summary(&ctx.messages, &compact_config);
+
+    let result = crate::compact::full::apply_compaction(
+        &summary,
+        preserved,
+        critical_files,
+        consumed,
+        &compact_config,
+    );
+
+    ctx.messages = result.messages;
+    ctx.compaction_metrics = Some(result.metrics);
+    span.record("status", "ok");
+
+    let duration_secs = start.elapsed().as_secs_f64();
+    record_stage_duration(&span, &start);
+    crate::metrics::record_stage(&config.id, "full_compact", duration_secs);
+    emitter.emit(&StageCompleted {
+        nous_id: config.id.clone(),
+        stage: "full_compact",
+        duration_secs,
+    });
+}
+
+/// Build a structural summary without a model call.
+///
+/// Extracts key information from messages: tool calls, decisions, file paths.
+/// Used as a fallback until the task registry enables background model calls.
+fn build_structural_summary(messages: &[PipelineMessage], config: &CompactConfig) -> String {
+    use std::fmt::Write;
+
+    let preserve_count = config.preserve_turns.min(messages.len());
+    let split_point = messages.len().saturating_sub(preserve_count);
+    let to_summarize = messages.get(..split_point).unwrap_or(&[]);
+
+    let mut summary = String::from("Previous conversation context:\n");
+    let mut turn_count = 0;
+
+    for msg in to_summarize {
+        // NOTE: include truncated content to preserve key context
+        let truncated: String = msg.content.chars().take(200).collect();
+        let role = &msg.role;
+        let _ = write!(summary, "- [{role}] {truncated}");
+        if msg.content.len() > 200 {
+            summary.push_str("...");
+        }
+        summary.push('\n');
+        turn_count += 1;
+    }
+
+    let _ = write!(summary, "\n({turn_count} messages summarized)");
+    summary
 }
 
 /// Guard stage: check rate limits, loop detection, safety.
