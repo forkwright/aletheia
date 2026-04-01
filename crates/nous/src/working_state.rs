@@ -4,7 +4,11 @@
 //! on (focus context), and what it is waiting for (wait state). Persisted to
 //! SQLite via the session store blackboard so state survives crashes.
 
+use std::sync::Arc;
+
 use serde::{Deserialize, Serialize};
+
+use aletheia_hermeneus::types::{Message, ThinkingConfig, ToolDefinition};
 
 use crate::bootstrap::{BootstrapSection, SectionPriority};
 
@@ -55,6 +59,70 @@ pub struct WaitState {
     pub since: String,
 }
 
+/// Cache-critical parameters for forked agent prompt cache sharing.
+///
+/// Captures the five fields that compose the Anthropic API cache key.
+/// Forked agents clone these from the parent via [`Arc`] so child API calls
+/// hit the parent's prompt cache, reducing input token costs by ~90%.
+///
+/// WHY: the Anthropic API keys its prompt cache on system prompt, tools list,
+/// model, message prefix, and thinking config. Sharing these identically
+/// between parent and child ensures cache hits on the child's first call.
+#[derive(Debug, Clone)]
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "forked agent cache coherence — fields read by spawn path and pipeline"
+    )
+)]
+pub(crate) struct CacheSafeParams {
+    /// Complete system prompt (not a template).
+    pub(crate) system_prompt: Arc<str>,
+    /// Tools list sorted deterministically.
+    /// WHY: tool order affects the Anthropic API cache key.
+    pub(crate) tools: Arc<[ToolDefinition]>,
+    /// Model identifier (e.g., `claude-opus-4-20250514`).
+    pub(crate) model: String,
+    /// Shared immutable conversation prefix from the parent.
+    /// WHY: `Arc<[Message]>` avoids deep-cloning the message history on fork.
+    pub(crate) message_prefix: Arc<[Message]>,
+    /// Thinking config (`budget_tokens`), if applicable.
+    pub(crate) thinking_config: Option<ThinkingConfig>,
+}
+
+impl CacheSafeParams {
+    /// Create cache-safe params with deterministically sorted tools.
+    ///
+    /// Tools are sorted by name to ensure identical cache keys regardless
+    /// of registration order.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "forked agent cache coherence — wired from spawn path"
+        )
+    )]
+    pub(crate) fn new(
+        system_prompt: impl Into<Arc<str>>,
+        mut tools: Vec<ToolDefinition>,
+        model: impl Into<String>,
+        message_prefix: Arc<[Message]>,
+        thinking_config: Option<ThinkingConfig>,
+    ) -> Self {
+        // WHY: tool order affects the Anthropic API cache key; deterministic sorting
+        // ensures forked agents produce identical cache keys.
+        tools.sort_by(|a, b| a.name.cmp(&b.name));
+        Self {
+            system_prompt: system_prompt.into(),
+            tools: Arc::from(tools),
+            model: model.into(),
+            message_prefix,
+            thinking_config,
+        }
+    }
+}
+
 /// Working state: tracks the agent's current activities, focus, and pending operations.
 ///
 /// Designed for persistence and context assembly. The task stack enables
@@ -74,6 +142,10 @@ pub struct WorkingState {
     /// ISO-8601 timestamp of the last update.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<String>,
+    /// Cache-safe parameters shared with forked agents.
+    /// WHY: runtime-only field; not persisted because `Arc` references are session-scoped.
+    #[serde(skip)]
+    pub(crate) cache_params: Option<Arc<CacheSafeParams>>,
 }
 
 /// Maximum task stack depth before oldest entries are evicted.
@@ -161,6 +233,42 @@ impl WorkingState {
     #[must_use]
     pub(crate) fn is_empty(&self) -> bool {
         self.task_stack.is_empty() && self.focus.is_none() && self.wait.is_none()
+    }
+
+    /// Set cache-safe parameters for prompt cache sharing with forked agents.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "forked agent cache coherence — wired from spawn path"
+        )
+    )]
+    pub(crate) fn set_cache_params(&mut self, params: Arc<CacheSafeParams>) {
+        self.cache_params = Some(params);
+    }
+
+    /// Create a child working state for a forked agent.
+    ///
+    /// Shares cache-safe params via [`Arc`] (zero-copy) and deep-clones
+    /// mutable state. The child starts with no pending wait state.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "forked agent cache coherence — wired from spawn path"
+        )
+    )]
+    pub(crate) fn clone_for_fork(&self) -> Self {
+        Self {
+            // WHY: deep clone mutable state so child mutations don't affect parent
+            task_stack: self.task_stack.clone(),
+            focus: self.focus.clone(),
+            // WHY: child starts with no pending wait; it will set its own
+            wait: None,
+            updated_at: Some(now_iso8601()),
+            // WHY: Arc clone is zero-copy; child shares parent's cache key
+            cache_params: self.cache_params.clone(),
+        }
     }
 
     /// Generate the blackboard key for persisting this state.
@@ -275,6 +383,10 @@ fn now_iso8601() -> String {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions on known-length slices"
+)]
 mod tests {
     use super::*;
 
@@ -494,5 +606,198 @@ mod tests {
     fn from_json_invalid_returns_error() {
         let result = WorkingState::from_json("not json");
         assert!(result.is_err());
+    }
+
+    // -- Forked agent cache coherence tests --
+
+    fn test_tool(name: &str) -> ToolDefinition {
+        ToolDefinition {
+            name: name.to_owned(),
+            description: format!("Test tool {name}"),
+            input_schema: serde_json::json!({"type": "object"}),
+            disable_passthrough: None,
+        }
+    }
+
+    fn test_message(text: &str) -> Message {
+        Message {
+            role: aletheia_hermeneus::types::Role::User,
+            content: aletheia_hermeneus::types::Content::Text(text.to_owned()),
+        }
+    }
+
+    fn test_cache_params() -> Arc<CacheSafeParams> {
+        let messages: Arc<[Message]> =
+            Arc::from(vec![test_message("hello"), test_message("world")]);
+        Arc::new(CacheSafeParams::new(
+            "You are a test agent.",
+            vec![test_tool("zeta_tool"), test_tool("alpha_tool")],
+            "claude-opus-4-20250514",
+            messages,
+            Some(ThinkingConfig {
+                enabled: true,
+                budget_tokens: 4096,
+            }),
+        ))
+    }
+
+    #[test]
+    fn cache_safe_params_preserves_all_fields() {
+        let params = test_cache_params();
+        assert_eq!(params.model, "claude-opus-4-20250514");
+        assert_eq!(params.system_prompt.as_ref(), "You are a test agent.");
+        assert_eq!(params.tools.len(), 2);
+        assert_eq!(params.message_prefix.len(), 2);
+        let thinking = params.thinking_config.as_ref().unwrap();
+        assert!(thinking.enabled);
+        assert_eq!(thinking.budget_tokens, 4096);
+    }
+
+    #[test]
+    fn cache_safe_params_sorts_tools_deterministically() {
+        let params = test_cache_params();
+        // WHY: tools were provided as [zeta, alpha] but must be sorted [alpha, zeta]
+        assert_eq!(params.tools[0].name, "alpha_tool");
+        assert_eq!(params.tools[1].name, "zeta_tool");
+    }
+
+    #[test]
+    fn clone_for_fork_shares_cache_params_via_arc() {
+        let mut parent = WorkingState::new();
+        let params = test_cache_params();
+        parent.set_cache_params(Arc::clone(&params));
+        parent.push_task("parent work");
+
+        let child = parent.clone_for_fork();
+
+        // WHY: Arc pointer equality proves zero-copy sharing (no deep clone)
+        let parent_params = parent.cache_params.as_ref().unwrap();
+        let child_params = child.cache_params.as_ref().unwrap();
+        assert!(Arc::ptr_eq(parent_params, child_params));
+
+        // NOTE: inner Arc fields are also shared transitively
+        assert!(Arc::ptr_eq(
+            &parent_params.system_prompt,
+            &child_params.system_prompt
+        ));
+        assert!(Arc::ptr_eq(&parent_params.tools, &child_params.tools));
+        assert!(Arc::ptr_eq(
+            &parent_params.message_prefix,
+            &child_params.message_prefix
+        ));
+    }
+
+    #[test]
+    fn clone_for_fork_deep_clones_mutable_state() {
+        let mut parent = WorkingState::new();
+        parent.set_cache_params(test_cache_params());
+        parent.push_task("shared context");
+        parent.set_focus(Some("src/lib.rs".to_owned()), None, None);
+
+        let mut child = parent.clone_for_fork();
+
+        // NOTE: child starts with parent's task stack and focus
+        assert_eq!(child.task_stack.len(), 1);
+        assert!(child.focus.is_some());
+
+        // WHY: mutations in child must not affect parent (state isolation)
+        child.push_task("child-only work");
+        child.set_focus(None, None, Some("child concept".to_owned()));
+
+        assert_eq!(
+            parent.task_stack.len(),
+            1,
+            "parent task stack must be unchanged"
+        );
+        assert_eq!(child.task_stack.len(), 2, "child should have its own task");
+        assert_eq!(
+            parent.focus.as_ref().unwrap().file.as_deref(),
+            Some("src/lib.rs"),
+            "parent focus must be unchanged"
+        );
+    }
+
+    #[test]
+    fn clone_for_fork_resets_wait_state() {
+        let mut parent = WorkingState::new();
+        parent.set_wait(WaitKind::SubAgent, "research agent");
+
+        let child = parent.clone_for_fork();
+
+        // WHY: child starts with no pending wait; parent's wait is independent
+        assert!(child.wait.is_none(), "child should have no wait state");
+        assert!(parent.wait.is_some(), "parent wait must be preserved");
+    }
+
+    #[test]
+    fn clone_for_fork_sets_fresh_timestamp() {
+        let mut parent = WorkingState::new();
+        parent.push_task("work");
+        let parent_ts = parent.updated_at.clone();
+
+        // NOTE: timestamps use jiff::Timestamp::now() so they may be identical
+        // if the fork happens within the same tick; we just verify it's set
+        let child = parent.clone_for_fork();
+        assert!(
+            child.updated_at.is_some(),
+            "child should have a fresh timestamp"
+        );
+        assert_eq!(
+            parent.updated_at, parent_ts,
+            "parent timestamp must not change"
+        );
+    }
+
+    #[test]
+    fn clone_for_fork_without_cache_params() {
+        let mut parent = WorkingState::new();
+        parent.push_task("work without cache params");
+
+        let child = parent.clone_for_fork();
+
+        assert!(
+            child.cache_params.is_none(),
+            "child should have no cache params when parent has none"
+        );
+        assert_eq!(child.task_stack.len(), 1);
+    }
+
+    #[test]
+    fn shared_prefix_immutability() {
+        let messages: Arc<[Message]> = Arc::from(vec![
+            test_message("context message 1"),
+            test_message("context message 2"),
+        ]);
+        let prefix_clone = Arc::clone(&messages);
+
+        let params = Arc::new(CacheSafeParams::new(
+            "system prompt",
+            vec![test_tool("tool_a")],
+            "model-v1",
+            messages,
+            None,
+        ));
+
+        // WHY: Arc<[Message]> is immutable once created; verify the shared
+        // reference still points to the same data after params construction
+        assert!(Arc::ptr_eq(&params.message_prefix, &prefix_clone));
+        assert_eq!(params.message_prefix.len(), 2);
+    }
+
+    #[test]
+    fn cache_params_serde_roundtrip_skips_field() {
+        let mut state = WorkingState::new();
+        state.push_task("test task");
+        state.set_cache_params(test_cache_params());
+
+        let json = state.to_json().unwrap();
+        let restored = WorkingState::from_json(&json).unwrap();
+
+        // WHY: cache_params is #[serde(skip)] — runtime-only, not persisted
+        assert!(
+            restored.cache_params.is_none(),
+            "cache_params should not survive serialization"
+        );
+        assert_eq!(restored.task_stack.len(), 1, "mutable state should persist");
     }
 }

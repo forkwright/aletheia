@@ -438,7 +438,15 @@ fn reconcile_user_version(conn: &Connection, table_version: u32) -> Result<()> {
 fn compute_checksum(sql: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(sql.as_bytes());
-    format!("{:x}", hasher.finalize())
+    // WHY: sha2 0.11 output no longer implements LowerHex; format byte-by-byte
+    hasher
+        .finalize()
+        .iter()
+        .fold(String::with_capacity(64), |mut hex, byte| {
+            use std::fmt::Write;
+            let _ = write!(hex, "{byte:02x}");
+            hex
+        })
 }
 
 #[cfg(test)]
