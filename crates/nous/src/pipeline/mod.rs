@@ -17,7 +17,7 @@ use aletheia_organon::types::ToolContext;
 use aletheia_taxis::oikos::Oikos;
 
 use crate::bootstrap::{BootstrapAssembler, BootstrapSection, TaskHint, classify_task_hint};
-use crate::budget::TokenBudget;
+use crate::budget::{CompactionMetrics, TokenBudget};
 use crate::config::{NousConfig, PipelineConfig};
 use crate::error;
 use crate::history::HistoryResult;
@@ -59,6 +59,8 @@ pub struct PipelineContext {
     pub history_result: Option<HistoryResult>,
     /// Working state from the previous turn (loaded from persistence).
     pub working_state: Option<WorkingState>,
+    /// Compaction metrics from the most recent compaction pass.
+    pub compaction_metrics: Option<CompactionMetrics>,
 }
 
 impl Default for PipelineContext {
@@ -74,6 +76,7 @@ impl Default for PipelineContext {
             recall_result: None,
             history_result: None,
             working_state: None,
+            compaction_metrics: None,
         }
     }
 }
@@ -634,7 +637,7 @@ pub fn check_guard(session: &SessionState, config: &NousConfig) -> GuardResult {
 
 /// Run the full pipeline for one turn.
 ///
-/// Stages: context → recall → history → guard → execute → finalize.
+/// Stages: context, recall, history, microcompact, full-compact, guard, execute, finalize.
 ///
 /// The [`EventEmitter`] couples metrics and logs: each stage emits a single
 /// typed event that simultaneously records a metric and produces a structured
@@ -716,6 +719,12 @@ pub(crate) async fn run_pipeline(
     run_history_stage(config, &mut ctx, &input, session_store, emitter).await?;
     stages_completed += 1;
 
+    run_microcompact_stage(config, &mut ctx, emitter);
+    stages_completed += 1;
+
+    run_full_compact_stage(config, &mut ctx, emitter);
+    stages_completed += 1;
+
     run_guard_stage(&input.session, config, emitter)?;
     stages_completed += 1;
 
@@ -788,8 +797,8 @@ pub(crate) mod events;
 mod stages;
 
 use stages::{
-    run_context_stage, run_execute_stage, run_finalize_stage, run_guard_stage, run_history_stage,
-    run_recall_stage,
+    run_context_stage, run_execute_stage, run_finalize_stage, run_full_compact_stage,
+    run_guard_stage, run_history_stage, run_microcompact_stage, run_recall_stage,
 };
 
 #[cfg(test)]
