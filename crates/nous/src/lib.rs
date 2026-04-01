@@ -54,6 +54,8 @@ pub(crate) mod skills;
 pub mod spawn_svc;
 /// Real-time streaming events for the turn pipeline.
 pub mod stream;
+/// Task registry with progress streaming, cooperative cancellation, and GC.
+pub mod tasks;
 /// Uncertainty quantification: calibration tracking for agent confidence predictions.
 pub mod uncertainty;
 /// User-facing error formatting for display in chat responses.
