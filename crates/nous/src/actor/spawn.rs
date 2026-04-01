@@ -125,7 +125,7 @@ pub struct DaemonSpawnParams {
 /// Returns the same triple as internal spawn: `(NousHandle, JoinHandle, active_turn)`.
 #[expect(
     dead_code,
-    reason = "daemon spawn wiring not yet connected from binary crate"
+    reason = "daemon coordinator wiring not yet connected; public API for child agent spawning"
 )]
 pub fn spawn_for_daemon(
     params: DaemonSpawnParams,
