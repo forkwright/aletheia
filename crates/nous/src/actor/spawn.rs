@@ -90,10 +90,6 @@ pub(crate) fn spawn(
 /// the parent's runtime dependencies. This struct collects the required
 /// parameters so the binary crate can wire daemon spawns through to the
 /// nous actor system.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "mirrors the full spawn signature; all fields are required runtime dependencies"
-)]
 pub struct DaemonSpawnParams {
     /// Agent configuration for the child.
     pub config: NousConfig,
@@ -127,6 +123,10 @@ pub struct DaemonSpawnParams {
 /// with a parameter struct and cancellation token from the coordinator.
 ///
 /// Returns the same triple as internal spawn: `(NousHandle, JoinHandle, active_turn)`.
+#[expect(
+    dead_code,
+    reason = "daemon spawn wiring not yet connected from binary crate"
+)]
 pub fn spawn_for_daemon(
     params: DaemonSpawnParams,
     cancel: CancellationToken,
