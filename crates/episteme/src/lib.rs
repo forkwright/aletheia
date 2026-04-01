@@ -42,6 +42,8 @@ pub mod instinct;
 pub mod knowledge_portability;
 /// `CozoDB`-backed knowledge store for graph traversal and vector search.
 pub mod knowledge_store;
+/// Memory manifest: lightweight headers for side-query pre-filtering.
+pub mod manifest;
 /// Prometheus metric definitions for the knowledge pipeline.
 pub mod metrics;
 /// Typed Datalog query builder for compile-time schema validation.
@@ -57,6 +59,8 @@ pub mod recall;
     expect(dead_code, reason = "pub(crate) items used only in tests")
 )]
 pub mod serendipity;
+/// Side-query memory relevance selector with LRU caching and already-surfaced tracking.
+pub mod side_query;
 /// Skill storage helpers and SKILL.md parser.
 pub mod skill;
 /// Skill auto-capture: heuristic filter, signature hashing, and candidate tracking.
