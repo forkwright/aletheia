@@ -223,6 +223,42 @@ impl ToolRegistry {
             .map(|t| (t.def.name.clone(), t.def.description.clone()))
             .collect()
     }
+
+    /// Check whether a tool is allowed under the daemon's trust boundaries.
+    ///
+    /// WHY: daemon-mode tool execution must respect the same permission model
+    /// as interactive mode. Tools requiring explicit approval (`Irreversible`,
+    /// `RequiresApproval`) are blocked in daemon mode unless the caller has
+    /// pre-approved them.
+    ///
+    /// Returns `true` if the tool exists and its reversibility level permits
+    /// autonomous execution (i.e., `Reversible` or `ReadOnly`).
+    #[must_use]
+    pub fn is_daemon_safe(&self, name: &ToolName) -> bool {
+        // kanon:ignore RUST/pub-visibility
+        self.tools.get(name).is_some_and(|t| {
+            matches!(
+                t.def.reversibility,
+                Reversibility::Reversible | Reversibility::ReadOnly
+            )
+        })
+    }
+
+    /// List all tools that are safe for autonomous daemon execution.
+    #[must_use]
+    pub fn daemon_safe_tools(&self) -> Vec<&ToolDef> {
+        // kanon:ignore RUST/pub-visibility
+        self.tools
+            .values()
+            .filter(|t| {
+                matches!(
+                    t.def.reversibility,
+                    Reversibility::Reversible | Reversibility::ReadOnly
+                )
+            })
+            .map(|t| &t.def)
+            .collect()
+    }
 }
 
 #[cfg(test)]

@@ -12,7 +12,70 @@ use crate::bridge::DaemonBridge;
 use crate::error::Result;
 use crate::execution::execute_action;
 use crate::maintenance::{KnowledgeMaintenanceExecutor, MaintenanceConfig, RetentionExecutor};
-use crate::schedule::{BuiltinTask, Schedule, TaskAction, TaskDef, TaskStatus, backoff_delay};
+use crate::schedule::{
+    BuiltinTask, Schedule, TaskAction, TaskDef, TaskStatus, apply_jitter, backoff_delay,
+};
+
+
+/// Output mode for daemon logging.
+///
+/// WHY: daemon logs should be scannable; full model responses and tool results
+/// flood the log when running in production.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DaemonOutputMode {
+    /// Full output — all tool results and model responses logged verbatim.
+    #[default]
+    Full,
+    /// Brief output — tool results truncated to first/last N lines, model
+    /// responses logged at info level with truncation.
+    Brief,
+}
+
+/// Maximum lines to keep from tool output in brief mode (head + tail).
+const BRIEF_HEAD_LINES: usize = 5;
+/// Maximum lines from the tail of tool output in brief mode.
+const BRIEF_TAIL_LINES: usize = 3;
+/// Maximum character length for model response summaries in brief mode.
+const BRIEF_RESPONSE_MAX_CHARS: usize = 200;
+
+
+/// Truncate output for brief mode.
+///
+/// Keeps the first `BRIEF_HEAD_LINES` and last `BRIEF_TAIL_LINES`, inserting
+/// a `... (N lines omitted)` marker in between.
+pub(crate) fn truncate_output(output: &str) -> String {
+    let lines: Vec<&str> = output.lines().collect();
+    let total = lines.len();
+
+    if total <= BRIEF_HEAD_LINES + BRIEF_TAIL_LINES {
+        return output.to_owned();
+    }
+
+    let head = &lines[..BRIEF_HEAD_LINES];
+    let tail = &lines[total - BRIEF_TAIL_LINES..];
+    let omitted = total - BRIEF_HEAD_LINES - BRIEF_TAIL_LINES;
+
+    format!(
+        "{}\n... ({omitted} lines omitted)\n{}",
+        head.join("\n"),
+        tail.join("\n")
+    )
+}
+
+/// Truncate a model response for brief-mode logging.
+pub(crate) fn truncate_response(response: &str) -> String {
+    if response.len() <= BRIEF_RESPONSE_MAX_CHARS {
+        return response.to_owned();
+    }
+
+    let truncated = &response[..BRIEF_RESPONSE_MAX_CHARS];
+    // NOTE: find the last space to avoid cutting mid-word
+    let end = truncated
+        .rfind(' ')
+        .unwrap_or(BRIEF_RESPONSE_MAX_CHARS);
+    format!("{}...", &response[..end])
+}
+
 
 /// Per-nous background task runner.
 pub struct TaskRunner {
@@ -27,6 +90,8 @@ pub struct TaskRunner {
     in_flight: HashMap<String, InFlightTask>,
     /// Optional SQLite-backed state store for cross-restart persistence.
     state_store: Option<crate::state::TaskStateStore>,
+    /// Output mode: full or brief (truncated).
+    output_mode: DaemonOutputMode,
 }
 
 /// Tracks a task that is currently executing.
@@ -71,6 +136,7 @@ impl TaskRunner {
             knowledge_executor: None,
             in_flight: HashMap::new(),
             state_store: None,
+            output_mode: DaemonOutputMode::Full,
         }
     }
 
@@ -90,6 +156,7 @@ impl TaskRunner {
             knowledge_executor: None,
             in_flight: HashMap::new(),
             state_store: None,
+            output_mode: DaemonOutputMode::Full,
         }
     }
 
@@ -123,9 +190,15 @@ impl TaskRunner {
     /// State is loaded on the first call to [`Self::run`] (before catch-up),
     /// and saved after every task completion or failure.
     #[must_use]
-    #[expect(dead_code, reason = "daemon task runner configuration")]
     pub(crate) fn with_state_store(mut self, store: crate::state::TaskStateStore) -> Self {
         self.state_store = Some(store);
+        self
+    }
+
+    /// Set the output mode (full or brief).
+    #[must_use]
+    pub fn with_output_mode(mut self, mode: DaemonOutputMode) -> Self {
+        self.output_mode = mode;
         self
     }
 
@@ -310,11 +383,16 @@ impl TaskRunner {
     }
 
     /// Register a task. Startup tasks are marked for immediate execution.
+    ///
+    /// If the task has jitter configured, it is applied to the initial next_run.
     pub fn register(&mut self, task: TaskDef) {
-        let next_run = match &task.schedule {
+        let base_next_run = match &task.schedule {
             Schedule::Startup => Some(jiff::Timestamp::now()),
             other => other.next_run().unwrap_or(None),
         };
+
+        // WHY: apply jitter to spread task executions that share the same schedule.
+        let next_run = apply_jitter(base_next_run, &task.id, task.jitter).or(base_next_run);
 
         tracing::info!(
             nous_id = %self.nous_id,
@@ -398,7 +476,16 @@ impl TaskRunner {
 
         self.check_missed_cron_catchup();
 
+        // WHY: send READY=1 to systemd after initialization is complete.
+        sd_notify_ready();
+
         let mut interval = tokio::time::interval(Duration::from_secs(1));
+
+        // WHY: watchdog interval for systemd WatchdogSec integration.
+        let watchdog_interval = sd_watchdog_interval();
+        let mut watchdog_tick = tokio::time::interval(
+            watchdog_interval.unwrap_or(Duration::from_secs(30)),
+        );
 
         loop {
             tokio::select! {
@@ -410,6 +497,11 @@ impl TaskRunner {
                     self.check_in_flight().await;
                     self.tick();
                 }
+                // WHY: send WATCHDOG=1 on the systemd watchdog interval so
+                // WatchdogSec integration enables automatic restart on hang.
+                _ = watchdog_tick.tick(), if watchdog_interval.is_some() => {
+                    sd_notify_watchdog();
+                }
                 // SAFETY: cancel-safe. `CancellationToken::cancelled()` is cancel-safe;
                 // dropping the future before it fires has no side effects.
                 () = self.shutdown.cancelled() => {
@@ -418,6 +510,9 @@ impl TaskRunner {
                 }
             }
         }
+
+        // WHY: send STOPPING=1 to systemd before cleanup.
+        sd_notify_stopping();
 
         // WHY: abort all in-flight tasks on shutdown to prevent leaked work
         // after the runner exits. Without this, spawned tasks continue running
@@ -498,7 +593,8 @@ impl TaskRunner {
                 let duration = in_flight.started_at.elapsed();
 
                 match in_flight.handle.await {
-                    Ok(Ok(_result)) => {
+                    Ok(Ok(result)) => {
+                        self.log_result(&task_id, &result);
                         self.record_task_completion(&task_id, duration);
                     }
                     Ok(Err(e)) => {
@@ -523,6 +619,23 @@ impl TaskRunner {
         }
     }
 
+    /// Log task result, applying brief-mode truncation if configured.
+    fn log_result(&self, task_id: &str, result: &ExecutionResult) {
+        let Some(output) = result.output.as_deref() else {
+            return;
+        };
+
+        match self.output_mode {
+            DaemonOutputMode::Full => {
+                tracing::debug!(task_id = %task_id, output = %output, "task output");
+            }
+            DaemonOutputMode::Brief => {
+                let truncated = truncate_output(output);
+                tracing::info!(task_id = %task_id, output = %truncated, "task output (brief)");
+            }
+        }
+    }
+
     /// Record a successful task completion and update scheduling.
     fn record_task_completion(&mut self, task_id: &str, duration: Duration) {
         let Some(task) = self.tasks.iter_mut().find(|t| t.def.id == task_id) else {
@@ -534,7 +647,10 @@ impl TaskRunner {
         task.consecutive_failures = 0;
         task.backoff_until = None;
         task.last_error = None;
-        task.next_run = task.def.schedule.next_run().unwrap_or(None);
+
+        // WHY: apply jitter to the next scheduled run to maintain spread.
+        let base_next = task.def.schedule.next_run().unwrap_or(None);
+        task.next_run = apply_jitter(base_next, &task.def.id, task.def.jitter).or(base_next);
 
         crate::metrics::record_cron_execution(&task.def.name, duration.as_secs_f64(), true);
 
@@ -768,6 +884,83 @@ impl TaskRunner {
         }
     }
 }
+
+
+// -- systemd notify integration --
+
+/// Send `READY=1` to systemd via the `$NOTIFY_SOCKET`.
+///
+/// WHY: systemd `Type=notify` services need this to know initialization is
+/// complete. No-op if `$NOTIFY_SOCKET` is not set.
+fn sd_notify_ready() {
+    sd_notify("READY=1");
+}
+
+/// Send `WATCHDOG=1` to systemd.
+///
+/// WHY: `WatchdogSec` integration enables automatic restart on hang.
+fn sd_notify_watchdog() {
+    sd_notify("WATCHDOG=1");
+}
+
+/// Send `STOPPING=1` to systemd before shutdown cleanup.
+fn sd_notify_stopping() {
+    sd_notify("STOPPING=1");
+}
+
+/// Parse `$WATCHDOG_USEC` to determine the systemd watchdog interval.
+///
+/// Returns `None` if the variable is not set or unparseable. The recommended
+/// notification interval is half the watchdog timeout.
+fn sd_watchdog_interval() -> Option<Duration> {
+    let usec_str = std::env::var("WATCHDOG_USEC").ok()?;
+    let usec: u64 = usec_str.parse().ok()?;
+    // WHY: notify at half the watchdog interval to avoid races.
+    Some(Duration::from_micros(usec / 2))
+}
+
+/// Low-level sd_notify: write a message to `$NOTIFY_SOCKET` (Unix datagram).
+///
+/// No-op on non-Unix platforms or when `$NOTIFY_SOCKET` is not set.
+#[cfg(unix)]
+fn sd_notify(msg: &str) {
+    let Ok(socket_path) = std::env::var("NOTIFY_SOCKET") else {
+        return;
+    };
+
+    // NOTE: $NOTIFY_SOCKET may be an abstract socket (prefixed with @)
+    // or a filesystem path. std::os::unix::net handles both.
+    let path = if let Some(stripped) = socket_path.strip_prefix('@') {
+        // WHY: abstract sockets use a null byte prefix on Linux.
+        format!("\0{stripped}")
+    } else {
+        socket_path.clone()
+    };
+
+    match std::os::unix::net::UnixDatagram::unbound() {
+        Ok(sock) => {
+            if let Err(e) = sock.send_to(msg.as_bytes(), &path) {
+                tracing::debug!(
+                    error = %e,
+                    socket = %socket_path,
+                    message = %msg,
+                    "sd_notify send failed"
+                );
+            } else {
+                tracing::trace!(message = %msg, "sd_notify sent");
+            }
+        }
+        Err(e) => {
+            tracing::debug!(error = %e, "failed to create Unix datagram socket for sd_notify");
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn sd_notify(_msg: &str) {
+    // NOTE: systemd notify is Linux-only. No-op on other platforms.
+}
+
 
 #[cfg(test)]
 #[path = "runner_tests.rs"]

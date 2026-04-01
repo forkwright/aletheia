@@ -164,6 +164,12 @@ rusqlite = { version = "0.38", features = ["bundled"] }
 # FFI
 rustix = { version = "1", default-features = false, features = ["fs", "mm", "thread"] }
 
+# File locking
+fd-lock = "4"
+
+# File watching
+notify = { version = "8", default-features = false, features = ["macos_fsevent"] }
+
 # Random number generation
 rand = "0.9"
 

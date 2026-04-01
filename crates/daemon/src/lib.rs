@@ -4,9 +4,15 @@
 //! Oikonomos (οἰκονόμος): "the steward." The quiet persistent presence that
 //! keeps things running in the background. Manages scheduled tasks, periodic
 //! attention checks (prosoche), and maintenance cycles for each nous.
+//!
+//! Supports KAIROS-style autonomous daemon mode with jitter-aware scheduling,
+//! single-instance locking, child agent coordination, event-driven triggers,
+//! and systemd notify integration.
 
 /// Bridge trait for daemon-to-nous communication without direct dependency coupling.
 pub mod bridge;
+/// Team coordination: child agent spawning with concurrency limits.
+pub mod coordination;
 /// Periodic cron tasks: evolution, reflection, and graph cleanup.
 pub mod cron;
 /// Error types for task execution, scheduling, and maintenance operations.
@@ -21,10 +27,12 @@ pub mod metrics;
 pub mod prosoche;
 /// Per-nous background task runner with cron scheduling, failure tracking, and graceful shutdown.
 pub mod runner;
-/// Scheduling primitives: cron, interval, one-shot, and active time windows.
+/// Scheduling primitives: cron, interval, one-shot, jitter, and active time windows.
 pub mod schedule;
-/// SQLite-backed persistence for daemon task execution state.
-pub(crate) mod state;
+/// SQLite-backed persistence, workspace config, and single-instance locking.
+pub mod state;
+/// Event-driven activation: file watchers and webhook receiver.
+pub mod triggers;
 /// Watchdog process monitor with heartbeat tracking and auto-recovery.
 pub mod watchdog;
 
@@ -40,4 +48,7 @@ mod assertions {
     assert_impl_all!(super::maintenance::DbMonitor: Send, Sync);
     assert_impl_all!(super::watchdog::Watchdog: Send);
     assert_impl_all!(super::watchdog::WatchdogConfig: Send, Sync);
+    assert_impl_all!(super::state::DaemonConfig: Send, Sync);
+    assert_impl_all!(super::coordination::Coordinator: Send);
+    assert_impl_all!(super::triggers::TriggerRouter: Send, Sync);
 }
