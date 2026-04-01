@@ -4,6 +4,8 @@
 //! - **Facts**: extracted from conversations, bi-temporal (`valid_from`/`valid_to`)
 //! - **Entities**: people, projects, tools, concepts with typed relationships
 //! - **Vectors**: embedding-indexed for semantic recall
+//! - **Memory scopes**: team memory sharing model (`User`, `Feedback`, `Project`, `Reference`)
+//! - **Path validation layers**: defense-in-depth security for memory path operations
 
 use serde::{Deserialize, Serialize};
 
@@ -59,6 +61,13 @@ pub struct Fact {
     pub nous_id: String,
     pub fact_type: String,
     pub content: String,
+
+    /// Memory sharing scope for team memory.
+    ///
+    /// `None` for facts created before the team memory model was introduced.
+    /// New facts should always populate this field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<MemoryScope>,
 
     /// Bi-temporal validity and recording timestamps.
     #[serde(flatten)]
@@ -625,6 +634,273 @@ pub struct RecallResult {
     pub source_type: String,
     /// Source ID.
     pub source_id: String,
+}
+
+// ---------------------------------------------------------------------------
+// Team memory: scopes, access policies, and path validation layers
+// ---------------------------------------------------------------------------
+
+/// Memory sharing scope for multi-agent team memory.
+///
+/// Each scope maps to a subdirectory under the memory root and defines
+/// distinct access control semantics. Scopes form the authorization
+/// boundary that [`ScopeAccessPolicy`] enforces; path validation then
+/// confirms the resolved filesystem path falls within the correct scope
+/// directory.
+///
+/// Taxonomy mirrors the CC memory type model (`user`, `feedback`,
+/// `project`, `reference`) from `memoryTypes.ts`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum MemoryScope {
+    /// Private to the user, never shared with other agents.
+    ///
+    /// WHY: User memories contain personal context (role, preferences,
+    /// knowledge level) that should not leak across agent boundaries.
+    User,
+    /// Selectively shared corrections and preferences, write-gated to the user.
+    ///
+    /// WHY: Feedback memories encode behavioral guidance. Agents read them
+    /// to avoid repeating mistakes, but only the user can write because
+    /// agent-written feedback creates self-reinforcing loops.
+    Feedback,
+    /// Shared across all agents in a workspace, read-write.
+    ///
+    /// WHY: Project memories track ongoing work, deadlines, and decisions
+    /// that every agent in the workspace needs visibility into.
+    Project,
+    /// Hybrid: agents read, user curates write access.
+    ///
+    /// WHY: Reference memories point to external systems (Linear, Grafana,
+    /// Slack). Agents need to read them for context but the user controls
+    /// what gets indexed because stale pointers are worse than no pointers.
+    Reference,
+}
+
+impl MemoryScope {
+    /// All scope variants in definition order.
+    pub const ALL: [Self; 4] = [Self::User, Self::Feedback, Self::Project, Self::Reference];
+
+    /// Return the lowercase string representation of this scope.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::User => "user",
+            Self::Feedback => "feedback",
+            Self::Project => "project",
+            Self::Reference => "reference",
+        }
+    }
+
+    /// Directory name for this scope under the memory root.
+    ///
+    /// Each scope maps to a single subdirectory: `<memory_root>/<dir_name>/`.
+    /// The name is identical to `as_str()` by convention.
+    #[must_use]
+    pub fn as_dir_name(self) -> &'static str {
+        // WHY: Directory names match the enum's string representation to keep
+        // the mapping predictable and greppable.
+        self.as_str()
+    }
+
+    /// Access control policy for this scope.
+    ///
+    /// Returns the static [`ScopeAccessPolicy`] that describes who can
+    /// read and write within this scope boundary.
+    #[must_use]
+    #[expect(
+        clippy::match_same_arms,
+        reason = "Feedback and Reference share the same access policy values but are semantically distinct scopes with different sharing intent"
+    )]
+    pub fn access_policy(self) -> ScopeAccessPolicy {
+        match self {
+            Self::User => ScopeAccessPolicy {
+                agent_read: false,
+                agent_write: false,
+                user_write_only: true,
+            },
+            Self::Feedback => ScopeAccessPolicy {
+                agent_read: true,
+                agent_write: false,
+                user_write_only: true,
+            },
+            Self::Project => ScopeAccessPolicy {
+                agent_read: true,
+                agent_write: true,
+                user_write_only: false,
+            },
+            Self::Reference => ScopeAccessPolicy {
+                agent_read: true,
+                agent_write: false,
+                user_write_only: true,
+            },
+        }
+    }
+
+    /// Parse from a string, returning `None` for unknown values.
+    #[must_use]
+    pub fn from_str_opt(s: &str) -> Option<Self> {
+        match s {
+            "user" => Some(Self::User),
+            "feedback" => Some(Self::Feedback),
+            "project" => Some(Self::Project),
+            "reference" => Some(Self::Reference),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for MemoryScope {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl std::str::FromStr for MemoryScope {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Self::from_str_opt(s).ok_or_else(|| format!("unknown memory scope: {s}"))
+    }
+}
+
+/// Access control policy for a [`MemoryScope`].
+///
+/// Defines who can read and write within a scope boundary. The policy is
+/// static per scope variant -- it does not change at runtime.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ScopeAccessPolicy {
+    /// Whether agents can read memories in this scope.
+    pub agent_read: bool,
+    /// Whether agents can write memories in this scope.
+    pub agent_write: bool,
+    /// Whether only the user can write (agent writes are rejected).
+    pub user_write_only: bool,
+}
+
+impl ScopeAccessPolicy {
+    /// Whether an agent is allowed to perform a write operation in this scope.
+    #[must_use]
+    pub fn permits_agent_write(&self) -> bool {
+        self.agent_write && !self.user_write_only
+    }
+
+    /// Whether an agent is allowed to perform a read operation in this scope.
+    #[must_use]
+    pub fn permits_agent_read(&self) -> bool {
+        self.agent_read
+    }
+}
+
+/// Validation layer in the defense-in-depth path security model.
+///
+/// Each layer addresses a distinct class of path manipulation attack.
+/// Layers are applied in order during `validate_memory_path()` (in mneme);
+/// a path must pass all layers. The variant names map 1:1 to
+/// `PathValidationError` variants for error classification and logging.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum PathValidationLayer {
+    /// Null bytes truncate paths in C-based syscalls (libc, kernel).
+    NullByte,
+    /// Raw string checks miss `foo/../../../etc/passwd`; resolved via
+    /// `std::path::Path::components()`.
+    Canonicalization,
+    /// Symlinks can escape directory jails; resolved via
+    /// `std::fs::canonicalize()` with root containment check.
+    SymlinkResolution,
+    /// Dangling symlinks indicate filesystem manipulation; detected via
+    /// `std::fs::symlink_metadata()` when canonicalize returns ENOENT.
+    DanglingSymlink,
+    /// Symlink loops cause infinite recursion; capped at 40 hops matching
+    /// the Linux `ELOOP` limit.
+    LoopDetection,
+    /// URL-encoded traversals (`%2e%2e%2f` = `../`) bypass string-level
+    /// checks; detected by percent-decoding then re-checking for `..` or
+    /// separator characters.
+    UrlEncodedTraversal,
+    /// Fullwidth characters (U+FF0E `.`, U+FF0F `/`) normalize to ASCII
+    /// separators under NFKC; detected by normalizing and comparing to
+    /// the original.
+    UnicodeNormalization,
+    /// Resolved path falls outside the expected scope subdirectory.
+    ScopeContainment,
+}
+
+/// Total number of filesystem-level validation layers (excluding scope
+/// containment which is a logical check).
+pub const PATH_VALIDATION_FS_LAYERS: usize = 7;
+
+/// Maximum symlink hops before declaring a loop, matching the Linux
+/// `ELOOP` kernel limit.
+pub const SYMLINK_HOP_LIMIT: usize = 40;
+
+impl PathValidationLayer {
+    /// All layer variants in application order.
+    pub const ALL: [Self; 8] = [
+        Self::NullByte,
+        Self::Canonicalization,
+        Self::SymlinkResolution,
+        Self::DanglingSymlink,
+        Self::LoopDetection,
+        Self::UrlEncodedTraversal,
+        Self::UnicodeNormalization,
+        Self::ScopeContainment,
+    ];
+
+    /// Return the `snake_case` string representation of this layer.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::NullByte => "null_byte",
+            Self::Canonicalization => "canonicalization",
+            Self::SymlinkResolution => "symlink_resolution",
+            Self::DanglingSymlink => "dangling_symlink",
+            Self::LoopDetection => "loop_detection",
+            Self::UrlEncodedTraversal => "url_encoded_traversal",
+            Self::UnicodeNormalization => "unicode_normalization",
+            Self::ScopeContainment => "scope_containment",
+        }
+    }
+
+    /// Whether this layer requires filesystem I/O.
+    ///
+    /// Pure string-based layers (`NullByte`, `Canonicalization`,
+    /// `UrlEncodedTraversal`, `UnicodeNormalization`, `ScopeContainment`)
+    /// can run without touching the filesystem.
+    #[must_use]
+    pub fn requires_io(self) -> bool {
+        matches!(
+            self,
+            Self::SymlinkResolution | Self::DanglingSymlink | Self::LoopDetection
+        )
+    }
+}
+
+impl std::fmt::Display for PathValidationLayer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl std::str::FromStr for PathValidationLayer {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "null_byte" => Ok(Self::NullByte),
+            "canonicalization" => Ok(Self::Canonicalization),
+            "symlink_resolution" => Ok(Self::SymlinkResolution),
+            "dangling_symlink" => Ok(Self::DanglingSymlink),
+            "loop_detection" => Ok(Self::LoopDetection),
+            "url_encoded_traversal" => Ok(Self::UrlEncodedTraversal),
+            "unicode_normalization" => Ok(Self::UnicodeNormalization),
+            "scope_containment" => Ok(Self::ScopeContainment),
+            other => Err(format!("unknown path validation layer: {other}")),
+        }
+    }
 }
 
 #[cfg(test)]
