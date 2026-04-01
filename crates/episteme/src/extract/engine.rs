@@ -413,6 +413,7 @@ Rules:
                 nous_id: nous_id.to_owned(),
                 content,
                 fact_type: classified_type.as_str().to_owned(),
+                scope: None,
                 temporal: FactTemporal {
                     valid_from: now,
                     valid_to: far_future(),

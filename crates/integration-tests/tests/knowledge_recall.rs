@@ -59,6 +59,7 @@ fn sample_fact(id: &str, nous_id: &str, tier: EpistemicTier) -> Fact {
             access_count: 0,
             last_accessed_at: None,
         },
+        scope: None,
     }
 }
 

@@ -212,6 +212,7 @@ impl KnowledgeStore {
             nous_id: nous_id.to_owned(),
             content: skill_json,
             fact_type: "skill".to_owned(),
+            scope: None,
             temporal: crate::knowledge::FactTemporal {
                 valid_from: now,
                 valid_to: jiff::Timestamp::from_second(i64::MAX / 2).unwrap_or(now),

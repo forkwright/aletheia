@@ -261,6 +261,7 @@ impl KnowledgeStore {
                 nous_id: nous_id.to_owned(),
                 content: consolidated.content.clone(),
                 fact_type: "observation".to_owned(),
+                scope: None,
                 temporal: FactTemporal {
                     valid_from: now,
                     valid_to: far_future,

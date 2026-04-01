@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use snafu::ResultExt as _;
+
 use crate::error::Result;
 
 
@@ -229,12 +231,11 @@ impl DaemonConfig {
             return Ok(Self::default());
         }
 
-        let contents = std::fs::read_to_string(&config_path).map_err(|e| {
+        let contents = std::fs::read_to_string(&config_path).context(
             crate::error::MaintenanceIoSnafu {
                 context: format!("reading daemon config: {}", config_path.display()),
-            }
-            .build_with_source(e)
-        })?;
+            },
+        )?;
 
         let config: Self = toml::from_str(&contents).map_err(|e| {
             crate::error::TaskFailedSnafu {
@@ -287,12 +288,11 @@ impl WorkspaceGuard {
     pub fn acquire(workspace_root: &Path) -> Result<Self> {
         let lock_dir = workspace_root.join(".aletheia");
         if !lock_dir.exists() {
-            std::fs::create_dir_all(&lock_dir).map_err(|e| {
+            std::fs::create_dir_all(&lock_dir).context(
                 crate::error::MaintenanceIoSnafu {
                     context: format!("creating lock directory: {}", lock_dir.display()),
-                }
-                .build_with_source(e)
-            })?;
+                },
+            )?;
         }
 
         let lock_path = lock_dir.join("daemon.lock");
@@ -302,39 +302,35 @@ impl WorkspaceGuard {
             .read(true)
             .write(true)
             .open(&lock_path)
-            .map_err(|e| {
-                crate::error::MaintenanceIoSnafu {
-                    context: format!("opening lock file: {}", lock_path.display()),
-                }
-                .build_with_source(e)
+            .context(crate::error::MaintenanceIoSnafu {
+                context: format!("opening lock file: {}", lock_path.display()),
             })?;
 
         let mut lock = fd_lock::RwLock::new(file);
 
         // NOTE: try_write() is non-blocking; returns Err if another process holds the lock.
-        match lock.try_write() {
-            Ok(_guard) => {
-                // WHY: we need to hold the RwLock (not the guard) for the lifetime
-                // of the daemon. The RwLock itself keeps the file descriptor open
-                // and the advisory lock held.
-                tracing::info!(
-                    path = %lock_path.display(),
-                    "workspace daemon lock acquired"
-                );
-                Ok(Self {
-                    _lock: lock,
-                    path: lock_path,
-                })
-            }
-            Err(e) => Err(crate::error::TaskFailedSnafu {
+        // WHY: we probe with try_write() then immediately drop the guard. The RwLock
+        // itself keeps the file descriptor open and the advisory lock held for the
+        // lifetime of this struct.
+        if let Err(e) = lock.try_write() {
+            return Err(crate::error::TaskFailedSnafu {
                 task_id: "workspace-lock".to_owned(),
                 reason: format!(
                     "another daemon instance holds the lock at {}: {e}",
                     lock_path.display()
                 ),
             }
-            .build()),
+            .build());
         }
+
+        tracing::info!(
+            path = %lock_path.display(),
+            "workspace daemon lock acquired"
+        );
+        Ok(Self {
+            _lock: lock,
+            path: lock_path,
+        })
     }
 
     /// Path to the lock file.

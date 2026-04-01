@@ -232,14 +232,14 @@ impl ToolRegistry {
     /// pre-approved them.
     ///
     /// Returns `true` if the tool exists and its reversibility level permits
-    /// autonomous execution (i.e., `Reversible` or `ReadOnly`).
+    /// autonomous execution (i.e., `Reversible` or `FullyReversible`).
     #[must_use]
     pub fn is_daemon_safe(&self, name: &ToolName) -> bool {
         // kanon:ignore RUST/pub-visibility
         self.tools.get(name).is_some_and(|t| {
             matches!(
                 t.def.reversibility,
-                Reversibility::Reversible | Reversibility::ReadOnly
+                Reversibility::Reversible | Reversibility::FullyReversible
             )
         })
     }
@@ -253,7 +253,7 @@ impl ToolRegistry {
             .filter(|t| {
                 matches!(
                     t.def.reversibility,
-                    Reversibility::Reversible | Reversibility::ReadOnly
+                    Reversibility::Reversible | Reversibility::FullyReversible
                 )
             })
             .map(|t| &t.def)

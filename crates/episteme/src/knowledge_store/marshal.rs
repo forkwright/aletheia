@@ -362,6 +362,7 @@ pub(super) fn rows_to_facts(
             },
             content,
             fact_type,
+            scope: None,
             temporal: crate::knowledge::FactTemporal {
                 valid_from: crate::knowledge::parse_timestamp(&valid_from)
                     .unwrap_or(jiff::Timestamp::UNIX_EPOCH),
@@ -500,6 +501,7 @@ pub(super) fn rows_to_raw_facts(
             nous_id,
             content,
             fact_type,
+            scope: None,
             temporal: crate::knowledge::FactTemporal {
                 valid_from: crate::knowledge::parse_timestamp(&valid_from)
                     .unwrap_or(jiff::Timestamp::UNIX_EPOCH),
@@ -568,6 +570,7 @@ pub(super) fn rows_to_facts_partial(
             nous_id: String::new(),
             content,
             fact_type: String::new(),
+            scope: None,
             temporal: crate::knowledge::FactTemporal {
                 valid_from: jiff::Timestamp::UNIX_EPOCH,
                 valid_to: crate::knowledge::far_future(),

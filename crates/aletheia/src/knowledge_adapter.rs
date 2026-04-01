@@ -146,6 +146,7 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
 
             let ts_now = jiff::Timestamp::now();
             let new_fact = Fact {
+                scope: None,
                 id: aletheia_mneme::id::FactId::new(new_id.as_str()).map_err(|e| {
                     MutateStoreSnafu {
                         message: e.to_string(),

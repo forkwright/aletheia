@@ -436,8 +436,6 @@ fn reconcile_user_version(conn: &Connection, table_version: u32) -> Result<()> {
 
 /// Compute the SHA-256 checksum of the given SQL string, returned as a hex string.
 fn compute_checksum(sql: &str) -> String {
-    use std::fmt::Write as _;
-
     let mut hasher = Sha256::new();
     hasher.update(sql.as_bytes());
     // WHY: sha2 0.11 output no longer implements LowerHex; format byte-by-byte

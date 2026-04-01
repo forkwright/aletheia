@@ -309,6 +309,7 @@ pub fn store_audit_report(
             nous_id: report.nous_id.clone(),
             fact_type: String::from("audit"),
             content,
+            scope: None,
             temporal: FactTemporal {
                 valid_from: now,
                 valid_to: far_future(),

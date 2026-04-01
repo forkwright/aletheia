@@ -430,6 +430,7 @@ pub(crate) fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
                 nous_id: nous_id.to_owned(),
                 content: content_json.clone(),
                 fact_type: "skill".to_owned(),
+                scope: None,
                 temporal: FactTemporal {
                     valid_from: now,
                     valid_to: aletheia_mneme::knowledge::far_future(),
