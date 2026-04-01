@@ -294,6 +294,8 @@ pub enum ForgetReason {
     Stale,
     /// Replaced by a newer or better skill during deduplication.
     Superseded,
+    /// Contradicted by a newer extraction during auto-dream consolidation.
+    Contradicted,
 }
 
 impl ForgetReason {
@@ -307,6 +309,7 @@ impl ForgetReason {
             Self::Privacy => "privacy",
             Self::Stale => "stale",
             Self::Superseded => "superseded",
+            Self::Contradicted => "contradicted",
         }
     }
 }
@@ -328,6 +331,7 @@ impl std::str::FromStr for ForgetReason {
             "privacy" => Ok(Self::Privacy),
             "stale" => Ok(Self::Stale),
             "superseded" => Ok(Self::Superseded),
+            "contradicted" => Ok(Self::Contradicted),
             other => Err(format!("unknown forget reason: {other}")),
         }
     }
@@ -498,9 +502,12 @@ pub fn far_future() -> jiff::Timestamp {
 /// Returns `true` for any timestamp in year 9999, accommodating both the new
 /// `9999-01-01` sentinel and legacy `9999-12-31` strings.
 #[must_use]
-#[expect(
-    dead_code,
-    reason = "temporal validity check for bi-temporal fact model"
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "bi-temporal validity check used by knowledge_test.rs"
+    )
 )]
 pub(crate) fn is_far_future(ts: &jiff::Timestamp) -> bool {
     let s = format_timestamp(ts);

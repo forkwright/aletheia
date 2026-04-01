@@ -5,6 +5,8 @@
 pub mod contradiction;
 /// Context distillation engine: token budgeting, LLM-driven summarization, and verbatim tail preservation.
 pub mod distill;
+/// Auto-dream memory consolidation: triple-gate background process for knowledge graph maintenance.
+pub mod dream;
 /// Melete-specific error types for distillation failures.
 pub mod error;
 /// Memory flush types for persisting critical context before distillation boundaries.

@@ -46,7 +46,13 @@ static TOKENS_SAVED_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
     .expect("metric registration")
 });
 
-#[expect(dead_code, reason = "metric init called from server startup")]
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "called from server startup, not from within the crate"
+    )
+)]
 /// Force-initialize all lazy metric statics.
 pub(crate) fn init() {
     LazyLock::force(&DISTILLATION_TOTAL);
