@@ -236,15 +236,27 @@ impl Schedule {
 /// in `[0, 1)`, and multiplies by `max_jitter`.
 #[expect(
     clippy::cast_precision_loss,
-    reason = "u32 → f64 is lossless for all u32 values (f64 has 52-bit mantissa)"
+    reason = "i128 → f64 may lose precision for very large nanos, acceptable for jitter"
 )]
-pub(crate) fn compute_jitter(task_id: &str, max_jitter: jiff::SignedDuration) -> jiff::SignedDuration {
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "intentional: u64→u32 takes lower 32 bits; f64→i128 and i128→i64 bounded by max_jitter"
+)]
+#[expect(
+    clippy::as_conversions,
+    reason = "numeric casts for hash-based jitter computation, all bounded by max_jitter"
+)]
+pub(crate) fn compute_jitter(
+    task_id: &str,
+    max_jitter: jiff::SignedDuration,
+) -> jiff::SignedDuration {
     let mut hasher = DefaultHasher::new();
     task_id.hash(&mut hasher);
     let hash = hasher.finish();
 
     // NOTE: extract lower 32 bits → [0, 1) fraction
-    let frac = (hash as u32) as f64 / f64::from(u32::MAX);
+    let lower = hash as u32;
+    let frac = f64::from(lower) / f64::from(u32::MAX);
 
     let max_nanos = max_jitter.as_nanos();
     // NOTE: f64 multiplication then truncate back to i128 → i64
@@ -530,10 +542,7 @@ mod tests {
         let j1 = compute_jitter("task-alpha", max);
         let j2 = compute_jitter("task-beta", max);
         // NOTE: technically hash collisions are possible but astronomically unlikely
-        assert_ne!(
-            j1, j2,
-            "different task IDs should produce different jitter"
-        );
+        assert_ne!(j1, j2, "different task IDs should produce different jitter");
     }
 
     #[test]

@@ -149,9 +149,12 @@ pub(crate) struct Watchdog {
 
 impl Watchdog {
     /// Create a new watchdog with the given configuration.
-    #[expect(
-        dead_code,
-        reason = "watchdog process monitor, tested and awaiting integration"
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "watchdog process monitor, tested and awaiting integration"
+        )
     )]
     pub(crate) fn new(config: WatchdogConfig, shutdown: CancellationToken) -> Self {
         Self {
@@ -163,9 +166,12 @@ impl Watchdog {
     }
 
     /// Register a process for monitoring.
-    #[expect(
-        dead_code,
-        reason = "watchdog process monitor, tested and awaiting integration"
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "watchdog process monitor, tested and awaiting integration"
+        )
     )]
     pub(crate) fn register(&mut self, handle: std::sync::Arc<dyn ProcessHandle>) {
         let id = handle.id().to_owned();
@@ -183,9 +189,12 @@ impl Watchdog {
     }
 
     /// Record a heartbeat from a process.
-    #[expect(
-        dead_code,
-        reason = "watchdog process monitor, tested and awaiting integration"
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "watchdog process monitor, tested and awaiting integration"
+        )
     )]
     pub(crate) fn heartbeat(&mut self, process_id: &str) {
         if let Some(proc) = self.processes.get_mut(process_id) {
@@ -201,7 +210,7 @@ impl Watchdog {
     }
 
     /// Report a process exit so the watchdog can schedule a restart.
-    #[expect(dead_code, reason = "daemon infrastructure")]
+    #[cfg_attr(not(test), expect(dead_code, reason = "daemon infrastructure"))]
     pub(crate) fn report_exit(&mut self, process_id: &str, reason: &str) {
         if let Some(proc) = self.processes.get_mut(process_id) {
             proc.state = ProcessState::Hung;
@@ -214,7 +223,7 @@ impl Watchdog {
     }
 
     /// Get status snapshots for all watched processes.
-    #[expect(dead_code, reason = "daemon infrastructure")]
+    #[cfg_attr(not(test), expect(dead_code, reason = "daemon infrastructure"))]
     pub(crate) fn status(&self) -> Vec<ProcessStatus> {
         self.processes
             .iter()
@@ -228,7 +237,7 @@ impl Watchdog {
     }
 
     /// Get the restart event log.
-    #[expect(dead_code, reason = "daemon infrastructure")]
+    #[cfg_attr(not(test), expect(dead_code, reason = "daemon infrastructure"))]
     pub(crate) fn restart_log(&self) -> &[RestartEvent] {
         &self.restart_log
     }
@@ -239,9 +248,12 @@ impl Watchdog {
     ///
     /// Cancel-safe at the loop boundary. `interval.tick()` is cancel-safe,
     /// and `CancellationToken::cancelled()` is cancel-safe.
-    #[expect(
-        dead_code,
-        reason = "watchdog process monitor, tested and awaiting integration"
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "watchdog process monitor, tested and awaiting integration"
+        )
     )]
     pub async fn run(&mut self) {
         tracing::info!(

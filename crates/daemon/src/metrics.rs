@@ -54,7 +54,10 @@ static CRON_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
     .expect("metric registration")
 });
 
-#[expect(dead_code, reason = "metric init called from server startup")]
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "metric init called from server startup")
+)]
 /// Force-initialize all lazy metric statics.
 pub(crate) fn init() {
     LazyLock::force(&WATCHDOG_RESTARTS_TOTAL);

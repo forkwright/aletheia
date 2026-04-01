@@ -16,7 +16,6 @@ use crate::schedule::{
     BuiltinTask, Schedule, TaskAction, TaskDef, TaskStatus, apply_jitter, backoff_delay,
 };
 
-
 /// Output mode for daemon logging.
 ///
 /// WHY: daemon logs should be scannable; full model responses and tool results
@@ -38,11 +37,14 @@ const BRIEF_TAIL_LINES: usize = 3;
 /// Maximum character length for model response summaries in brief mode.
 const BRIEF_RESPONSE_MAX_CHARS: usize = 200;
 
-
 /// Truncate output for brief mode.
 ///
 /// Keeps the first `BRIEF_HEAD_LINES` and last `BRIEF_TAIL_LINES`, inserting
 /// a `... (N lines omitted)` marker in between.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "bounds checked: early return when total <= HEAD + TAIL"
+)]
 pub(crate) fn truncate_output(output: &str) -> String {
     let lines: Vec<&str> = output.lines().collect();
     let total = lines.len();
@@ -63,6 +65,14 @@ pub(crate) fn truncate_output(output: &str) -> String {
 }
 
 /// Truncate a model response for brief-mode logging.
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "infrastructure for brief output mode wiring")
+)]
+#[expect(
+    clippy::string_slice,
+    reason = "slicing ASCII-dominated LLM output; rfind(' ') ensures valid boundary"
+)]
 pub(crate) fn truncate_response(response: &str) -> String {
     if response.len() <= BRIEF_RESPONSE_MAX_CHARS {
         return response.to_owned();
@@ -70,12 +80,9 @@ pub(crate) fn truncate_response(response: &str) -> String {
 
     let truncated = &response[..BRIEF_RESPONSE_MAX_CHARS];
     // NOTE: find the last space to avoid cutting mid-word
-    let end = truncated
-        .rfind(' ')
-        .unwrap_or(BRIEF_RESPONSE_MAX_CHARS);
+    let end = truncated.rfind(' ').unwrap_or(BRIEF_RESPONSE_MAX_CHARS);
     format!("{}...", &response[..end])
 }
-
 
 /// Per-nous background task runner.
 pub struct TaskRunner {
@@ -169,7 +176,10 @@ impl TaskRunner {
 
     /// Attach a retention executor for data cleanup.
     #[must_use]
-    #[expect(dead_code, reason = "daemon task runner configuration")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "daemon task runner configuration")
+    )]
     pub(crate) fn with_retention(mut self, executor: Arc<dyn RetentionExecutor>) -> Self {
         self.retention_executor = Some(executor);
         self
@@ -190,6 +200,13 @@ impl TaskRunner {
     /// State is loaded on the first call to [`Self::run`] (before catch-up),
     /// and saved after every task completion or failure.
     #[must_use]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "daemon task runner configuration, wired via test harness"
+        )
+    )]
     pub(crate) fn with_state_store(mut self, store: crate::state::TaskStateStore) -> Self {
         self.state_store = Some(store);
         self
@@ -384,7 +401,7 @@ impl TaskRunner {
 
     /// Register a task. Startup tasks are marked for immediate execution.
     ///
-    /// If the task has jitter configured, it is applied to the initial next_run.
+    /// If the task has jitter configured, it is applied to the initial `next_run`.
     pub fn register(&mut self, task: TaskDef) {
         let base_next_run = match &task.schedule {
             Schedule::Startup => Some(jiff::Timestamp::now()),
@@ -451,7 +468,10 @@ impl TaskRunner {
     }
 
     /// Set the `last_run` timestamp for a task by ID (for catch-up testing/persistence).
-    #[expect(dead_code, reason = "daemon task runner configuration")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "daemon task runner configuration")
+    )]
     pub(crate) fn set_last_run(&mut self, task_id: &str, last_run: jiff::Timestamp) {
         if let Some(task) = self.tasks.iter_mut().find(|t| t.def.id == task_id) {
             task.last_run = Some(last_run);
@@ -483,9 +503,8 @@ impl TaskRunner {
 
         // WHY: watchdog interval for systemd WatchdogSec integration.
         let watchdog_interval = sd_watchdog_interval();
-        let mut watchdog_tick = tokio::time::interval(
-            watchdog_interval.unwrap_or(Duration::from_secs(30)),
-        );
+        let mut watchdog_tick =
+            tokio::time::interval(watchdog_interval.unwrap_or(Duration::from_secs(30)));
 
         loop {
             tokio::select! {
@@ -885,7 +904,6 @@ impl TaskRunner {
     }
 }
 
-
 // -- systemd notify integration --
 
 /// Send `READY=1` to systemd via the `$NOTIFY_SOCKET`.
@@ -919,7 +937,7 @@ fn sd_watchdog_interval() -> Option<Duration> {
     Some(Duration::from_micros(usec / 2))
 }
 
-/// Low-level sd_notify: write a message to `$NOTIFY_SOCKET` (Unix datagram).
+/// Low-level `sd_notify`: write a message to `$NOTIFY_SOCKET` (Unix datagram).
 ///
 /// No-op on non-Unix platforms or when `$NOTIFY_SOCKET` is not set.
 #[cfg(unix)]
@@ -960,7 +978,6 @@ fn sd_notify(msg: &str) {
 fn sd_notify(_msg: &str) {
     // NOTE: systemd notify is Linux-only. No-op on other platforms.
 }
-
 
 #[cfg(test)]
 #[path = "runner_tests.rs"]
