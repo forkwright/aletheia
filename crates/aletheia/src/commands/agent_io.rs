@@ -232,7 +232,7 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
     };
     #[expect(
         clippy::disallowed_methods,
-        reason = "aletheia CLI commands use synchronous filesystem operations for config and certificate generation"
+        reason = "aletheia CLI commands use synchronous filesystem operations for agent export writes"
     )]
     std::fs::write(&output_path, &json)
         .with_whatever_context(|_| format!("failed to write {}", output_path.display()))?;
