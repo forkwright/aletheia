@@ -1,4 +1,7 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(clippy::unwrap_used, reason = "test assertions")]
+use std::path::{Path, PathBuf};
+
 use super::*;
 use crate::id::FactId;
 
@@ -1277,4 +1280,671 @@ fn symlink_hop_limit_matches_linux_eloop() {
         SYMLINK_HOP_LIMIT, 40,
         "SYMLINK_HOP_LIMIT should match Linux ELOOP limit of 40"
     );
+}
+
+// ---------------------------------------------------------------------------
+// PathValidationError tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn path_validation_error_layer_mapping() {
+    // WHY: Every error variant must map back to the correct layer for logging.
+    let cases: Vec<(PathValidationError, PathValidationLayer)> = vec![
+        (
+            PathValidationError::NullByte {
+                path: String::new(),
+            },
+            PathValidationLayer::NullByte,
+        ),
+        (
+            PathValidationError::Canonicalization {
+                path: String::new(),
+                component: String::new(),
+            },
+            PathValidationLayer::Canonicalization,
+        ),
+        (
+            PathValidationError::SymlinkResolution {
+                path: PathBuf::new(),
+                root: PathBuf::new(),
+            },
+            PathValidationLayer::SymlinkResolution,
+        ),
+        (
+            PathValidationError::DanglingSymlink {
+                path: PathBuf::new(),
+            },
+            PathValidationLayer::DanglingSymlink,
+        ),
+        (
+            PathValidationError::LoopDetection {
+                path: PathBuf::new(),
+                hops: 0,
+            },
+            PathValidationLayer::LoopDetection,
+        ),
+        (
+            PathValidationError::UrlEncodedTraversal {
+                path: String::new(),
+                decoded_fragment: String::new(),
+            },
+            PathValidationLayer::UrlEncodedTraversal,
+        ),
+        (
+            PathValidationError::UnicodeNormalization {
+                path: String::new(),
+                offending_char: '.',
+            },
+            PathValidationLayer::UnicodeNormalization,
+        ),
+        (
+            PathValidationError::ScopeContainment {
+                path: PathBuf::new(),
+                scope: MemoryScope::User,
+                expected_dir: PathBuf::new(),
+            },
+            PathValidationLayer::ScopeContainment,
+        ),
+    ];
+    assert_eq!(
+        cases.len(),
+        PathValidationLayer::ALL.len(),
+        "every PathValidationLayer must have a corresponding error variant"
+    );
+    for (error, expected_layer) in cases {
+        assert_eq!(
+            error.layer(),
+            expected_layer,
+            "error variant should map to {expected_layer}"
+        );
+    }
+}
+
+#[test]
+fn path_validation_error_display() {
+    let err = PathValidationError::NullByte {
+        path: "bad\0path".to_owned(),
+    };
+    assert!(
+        err.to_string().contains("null byte"),
+        "NullByte display should mention null byte"
+    );
+
+    let err = PathValidationError::ScopeContainment {
+        path: PathBuf::from("/escape"),
+        scope: MemoryScope::Project,
+        expected_dir: PathBuf::from("/root/project"),
+    };
+    let msg = err.to_string();
+    assert!(msg.contains("project"), "display should mention the scope");
+    assert!(msg.contains("escapes"), "display should mention escape");
+}
+
+#[test]
+fn path_validation_error_is_std_error() {
+    // WHY: PathValidationError must implement std::error::Error for
+    // compatibility with snafu context propagation.
+    let err = PathValidationError::NullByte {
+        path: String::new(),
+    };
+    let _: &dyn std::error::Error = &err;
+}
+
+// ---------------------------------------------------------------------------
+// ValidatedPath tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn validated_path_accessors() {
+    // WHY: ValidatedPath's public API must expose path and scope without
+    // revealing the inner PathBuf directly.
+    let vp = validate_memory_path(
+        Path::new("notes.md"),
+        Path::new("/test/memory"),
+        MemoryScope::Project,
+    )
+    .expect("valid path should pass validation");
+
+    assert_eq!(
+        vp.as_path(),
+        Path::new("/test/memory/project/notes.md"),
+        "as_path should return the normalized full path"
+    );
+    assert_eq!(
+        vp.scope(),
+        MemoryScope::Project,
+        "scope should return the validated scope"
+    );
+
+    let as_ref: &Path = vp.as_ref();
+    assert_eq!(
+        as_ref,
+        Path::new("/test/memory/project/notes.md"),
+        "AsRef<Path> should match as_path"
+    );
+}
+
+#[test]
+fn validated_path_into_path_buf() {
+    let vp = validate_memory_path(
+        Path::new("file.md"),
+        Path::new("/test/memory"),
+        MemoryScope::User,
+    )
+    .expect("valid path should pass validation");
+
+    let pb = vp.into_path_buf();
+    assert_eq!(
+        pb,
+        PathBuf::from("/test/memory/user/file.md"),
+        "into_path_buf should return the inner PathBuf"
+    );
+}
+
+#[test]
+fn validated_path_display() {
+    let vp = validate_memory_path(
+        Path::new("file.md"),
+        Path::new("/test/memory"),
+        MemoryScope::Feedback,
+    )
+    .expect("valid path should pass validation");
+
+    assert_eq!(
+        vp.to_string(),
+        "/test/memory/feedback/file.md",
+        "Display should render the path"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// validate_memory_path() — positive tests per scope
+// ---------------------------------------------------------------------------
+
+#[test]
+fn valid_user_scope_path() {
+    let result = validate_memory_path(
+        Path::new("preferences.md"),
+        Path::new("/test/memory"),
+        MemoryScope::User,
+    );
+    assert!(result.is_ok(), "simple file in user scope should validate");
+    let vp = result.expect("checked above");
+    assert_eq!(vp.scope(), MemoryScope::User);
+    assert_eq!(vp.as_path(), Path::new("/test/memory/user/preferences.md"));
+}
+
+#[test]
+fn valid_feedback_scope_path() {
+    let result = validate_memory_path(
+        Path::new("corrections.md"),
+        Path::new("/test/memory"),
+        MemoryScope::Feedback,
+    );
+    assert!(
+        result.is_ok(),
+        "simple file in feedback scope should validate"
+    );
+    let vp = result.expect("checked above");
+    assert_eq!(vp.scope(), MemoryScope::Feedback);
+}
+
+#[test]
+fn valid_project_scope_path() {
+    let result = validate_memory_path(
+        Path::new("roadmap.md"),
+        Path::new("/test/memory"),
+        MemoryScope::Project,
+    );
+    assert!(
+        result.is_ok(),
+        "simple file in project scope should validate"
+    );
+    let vp = result.expect("checked above");
+    assert_eq!(vp.scope(), MemoryScope::Project);
+}
+
+#[test]
+fn valid_reference_scope_path() {
+    let result = validate_memory_path(
+        Path::new("links.md"),
+        Path::new("/test/memory"),
+        MemoryScope::Reference,
+    );
+    assert!(
+        result.is_ok(),
+        "simple file in reference scope should validate"
+    );
+    let vp = result.expect("checked above");
+    assert_eq!(vp.scope(), MemoryScope::Reference);
+}
+
+#[test]
+fn valid_nested_subdirectory_path() {
+    let result = validate_memory_path(
+        Path::new("sub/dir/deep.md"),
+        Path::new("/test/memory"),
+        MemoryScope::Project,
+    );
+    assert!(
+        result.is_ok(),
+        "nested subdirectories within scope should validate"
+    );
+    assert_eq!(
+        result.expect("checked above").as_path(),
+        Path::new("/test/memory/project/sub/dir/deep.md")
+    );
+}
+
+#[test]
+fn valid_path_with_dots_in_filename() {
+    let result = validate_memory_path(
+        Path::new("file.backup.2026.md"),
+        Path::new("/test/memory"),
+        MemoryScope::Project,
+    );
+    assert!(
+        result.is_ok(),
+        "dots in filename (not traversal) should validate"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// validate_memory_path() — adversarial tests per layer
+// ---------------------------------------------------------------------------
+
+// Layer 1: NullByte
+
+#[test]
+fn rejects_null_byte_in_path() {
+    let path = Path::new("file\0.md");
+    let result = validate_memory_path(path, Path::new("/test/memory"), MemoryScope::Project);
+    assert!(result.is_err(), "null byte should be rejected");
+    let err = result.unwrap_err();
+    assert_eq!(
+        err.layer(),
+        PathValidationLayer::NullByte,
+        "error should identify NullByte layer"
+    );
+}
+
+#[test]
+fn rejects_null_byte_at_end() {
+    let path_str = "file.md\0";
+    let path = Path::new(path_str);
+    let result = validate_memory_path(path, Path::new("/test/memory"), MemoryScope::Project);
+    assert!(result.is_err(), "trailing null byte should be rejected");
+    assert_eq!(result.unwrap_err().layer(), PathValidationLayer::NullByte);
+}
+
+// Layer 2: Canonicalization
+
+#[test]
+fn rejects_parent_directory_traversal() {
+    let path = Path::new("../user/secret.md");
+    let result = validate_memory_path(path, Path::new("/test/memory"), MemoryScope::Project);
+    assert!(result.is_err(), ".. traversal should be rejected");
+    assert_eq!(
+        result.unwrap_err().layer(),
+        PathValidationLayer::Canonicalization
+    );
+}
+
+#[test]
+fn rejects_deep_traversal() {
+    let path = Path::new("sub/../../user/secret.md");
+    let result = validate_memory_path(path, Path::new("/test/memory"), MemoryScope::Project);
+    assert!(result.is_err(), "deep .. traversal should be rejected");
+    assert_eq!(
+        result.unwrap_err().layer(),
+        PathValidationLayer::Canonicalization
+    );
+}
+
+#[test]
+fn rejects_backslash_in_path() {
+    let path = Path::new("sub\\..\\file.md");
+    let result = validate_memory_path(path, Path::new("/test/memory"), MemoryScope::Project);
+    assert!(result.is_err(), "backslash should be rejected");
+    assert_eq!(
+        result.unwrap_err().layer(),
+        PathValidationLayer::Canonicalization
+    );
+}
+
+// Layer 3: URL-encoded traversal
+
+#[test]
+fn rejects_url_encoded_dot() {
+    let path = Path::new("%2e%2e%2fuser/secret.md");
+    let result = validate_memory_path(path, Path::new("/test/memory"), MemoryScope::Project);
+    assert!(result.is_err(), "URL-encoded .. should be rejected");
+    assert_eq!(
+        result.unwrap_err().layer(),
+        PathValidationLayer::UrlEncodedTraversal
+    );
+}
+
+#[test]
+fn rejects_url_encoded_slash() {
+    let path = Path::new("sub%2fparent");
+    let result = validate_memory_path(path, Path::new("/test/memory"), MemoryScope::Project);
+    assert!(result.is_err(), "URL-encoded / should be rejected");
+    assert_eq!(
+        result.unwrap_err().layer(),
+        PathValidationLayer::UrlEncodedTraversal
+    );
+}
+
+#[test]
+fn rejects_url_encoded_backslash() {
+    let path = Path::new("sub%5cfile");
+    let result = validate_memory_path(path, Path::new("/test/memory"), MemoryScope::Project);
+    assert!(result.is_err(), "URL-encoded \\ should be rejected");
+    assert_eq!(
+        result.unwrap_err().layer(),
+        PathValidationLayer::UrlEncodedTraversal
+    );
+}
+
+#[test]
+fn rejects_mixed_case_url_encoding() {
+    let path = Path::new("sub%2Efile");
+    let result = validate_memory_path(path, Path::new("/test/memory"), MemoryScope::Project);
+    assert!(
+        result.is_err(),
+        "mixed-case URL encoding should be rejected"
+    );
+    assert_eq!(
+        result.unwrap_err().layer(),
+        PathValidationLayer::UrlEncodedTraversal
+    );
+}
+
+// Layer 4: Unicode normalization
+
+#[test]
+fn rejects_fullwidth_period() {
+    // U+FF0E (fullwidth period) normalizes to '.' under NFKC
+    let path_str = "file\u{FF0E}md";
+    let path = Path::new(path_str);
+    let result = validate_memory_path(path, Path::new("/test/memory"), MemoryScope::Project);
+    assert!(result.is_err(), "fullwidth period should be rejected");
+    let err = result.unwrap_err();
+    assert_eq!(err.layer(), PathValidationLayer::UnicodeNormalization);
+    if let PathValidationError::UnicodeNormalization { offending_char, .. } = err {
+        assert_eq!(offending_char, '\u{FF0E}');
+    }
+}
+
+#[test]
+fn rejects_fullwidth_solidus() {
+    // U+FF0F (fullwidth solidus) normalizes to '/' under NFKC
+    let path_str = "sub\u{FF0F}file";
+    let path = Path::new(path_str);
+    let result = validate_memory_path(path, Path::new("/test/memory"), MemoryScope::Project);
+    assert!(result.is_err(), "fullwidth solidus should be rejected");
+    assert_eq!(
+        result.unwrap_err().layer(),
+        PathValidationLayer::UnicodeNormalization
+    );
+}
+
+#[test]
+fn rejects_fullwidth_backslash() {
+    // U+FF3C (fullwidth reverse solidus) normalizes to '\' under NFKC
+    let path_str = "sub\u{FF3C}file";
+    let path = Path::new(path_str);
+    let result = validate_memory_path(path, Path::new("/test/memory"), MemoryScope::Project);
+    assert!(
+        result.is_err(),
+        "fullwidth reverse solidus should be rejected"
+    );
+    assert_eq!(
+        result.unwrap_err().layer(),
+        PathValidationLayer::UnicodeNormalization
+    );
+}
+
+// Layer 5: Scope containment
+
+#[test]
+fn rejects_wrong_scope_directory() {
+    // WHY: A project-scope path must be under project/, not user/.
+    let path = Path::new("/test/memory/user/secret.md");
+    let result = validate_memory_path(path, Path::new("/test/memory"), MemoryScope::Project);
+    assert!(result.is_err(), "wrong scope directory should be rejected");
+    assert_eq!(
+        result.unwrap_err().layer(),
+        PathValidationLayer::ScopeContainment
+    );
+}
+
+#[test]
+fn rejects_path_escaping_root() {
+    let path = Path::new("/etc/passwd");
+    let result = validate_memory_path(path, Path::new("/test/memory"), MemoryScope::Project);
+    assert!(result.is_err(), "absolute path outside root should fail");
+    assert_eq!(
+        result.unwrap_err().layer(),
+        PathValidationLayer::ScopeContainment
+    );
+}
+
+#[test]
+fn rejects_root_directory_itself() {
+    // WHY: The memory root itself is not a valid scope path.
+    let path = Path::new("/test/memory");
+    let result = validate_memory_path(path, Path::new("/test/memory"), MemoryScope::Project);
+    assert!(
+        result.is_err(),
+        "root directory itself should not validate as a scope path"
+    );
+}
+
+// Layers 6–7: Symlink resolution, dangling symlink, loop detection (I/O)
+
+#[cfg(unix)]
+#[test]
+fn rejects_symlink_escaping_root() {
+    let tmp = tempfile::tempdir().expect("tempdir should succeed");
+    let root = tmp.path().join("memory");
+    let scope_dir = root.join("project");
+    std::fs::create_dir_all(&scope_dir).expect("create scope dir");
+
+    // Create a target outside root
+    let outside = tmp.path().join("outside");
+    std::fs::create_dir_all(&outside).expect("create outside dir");
+    std::fs::write(outside.join("secret.txt"), b"secret").expect("write secret");
+
+    // Create symlink inside scope pointing outside root
+    let link = scope_dir.join("escape");
+    std::os::unix::fs::symlink(&outside, &link).expect("create symlink");
+
+    let result = validate_memory_path(Path::new("escape"), &root, MemoryScope::Project);
+    assert!(result.is_err(), "symlink escaping root should be rejected");
+    let err = result.unwrap_err();
+    assert!(
+        matches!(
+            err.layer(),
+            PathValidationLayer::SymlinkResolution | PathValidationLayer::ScopeContainment
+        ),
+        "error should be SymlinkResolution or ScopeContainment, got {:?}",
+        err.layer()
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn rejects_dangling_symlink() {
+    let tmp = tempfile::tempdir().expect("tempdir should succeed");
+    let root = tmp.path().join("memory");
+    let scope_dir = root.join("project");
+    std::fs::create_dir_all(&scope_dir).expect("create scope dir");
+
+    // Create symlink to nonexistent target
+    let link = scope_dir.join("dangling");
+    std::os::unix::fs::symlink("/nonexistent/target", &link).expect("create symlink");
+
+    let result = validate_memory_path(Path::new("dangling"), &root, MemoryScope::Project);
+    assert!(result.is_err(), "dangling symlink should be rejected");
+    assert_eq!(
+        result.unwrap_err().layer(),
+        PathValidationLayer::DanglingSymlink,
+        "error should identify DanglingSymlink layer"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn accepts_valid_symlink_within_scope() {
+    let tmp = tempfile::tempdir().expect("tempdir should succeed");
+    let root = tmp.path().join("memory");
+    let scope_dir = root.join("project");
+    let sub = scope_dir.join("sub");
+    std::fs::create_dir_all(&sub).expect("create sub dir");
+
+    // Create a real file and a symlink to it within the same scope
+    let real_file = sub.join("real.md");
+    std::fs::write(&real_file, b"content").expect("write real file");
+    let link = scope_dir.join("alias.md");
+    std::os::unix::fs::symlink(&real_file, &link).expect("create symlink");
+
+    let result = validate_memory_path(Path::new("alias.md"), &root, MemoryScope::Project);
+    assert!(
+        result.is_ok(),
+        "symlink within scope should be accepted: {:?}",
+        result.err()
+    );
+}
+
+// ---------------------------------------------------------------------------
+// validate_memory_path() — cross-layer combos
+// ---------------------------------------------------------------------------
+
+#[test]
+fn null_byte_caught_before_traversal() {
+    // WHY: Layer ordering means null byte is checked before canonicalization.
+    let path = Path::new("../\0secret.md");
+    let result = validate_memory_path(path, Path::new("/test/memory"), MemoryScope::Project);
+    assert!(result.is_err());
+    // NOTE: The first layer to fire wins. Both null byte and traversal are
+    // present; null byte is checked first (Layer 1).
+    assert_eq!(
+        result.unwrap_err().layer(),
+        PathValidationLayer::NullByte,
+        "null byte should fire before canonicalization"
+    );
+}
+
+#[test]
+fn traversal_caught_before_url_encoding() {
+    // WHY: Canonicalization (Layer 2) fires before URL decoding (Layer 3).
+    let path = Path::new("../%2e%2e/secret.md");
+    let result = validate_memory_path(path, Path::new("/test/memory"), MemoryScope::Project);
+    assert!(result.is_err());
+    assert_eq!(
+        result.unwrap_err().layer(),
+        PathValidationLayer::Canonicalization,
+        "canonicalization should fire before URL-encoded traversal"
+    );
+}
+
+#[test]
+fn url_encoding_caught_before_unicode() {
+    // WHY: URL-encoded traversal (Layer 3) fires before Unicode (Layer 4).
+    let path_str = "%2e\u{FF0E}file";
+    let path = Path::new(path_str);
+    let result = validate_memory_path(path, Path::new("/test/memory"), MemoryScope::Project);
+    assert!(result.is_err());
+    assert_eq!(
+        result.unwrap_err().layer(),
+        PathValidationLayer::UrlEncodedTraversal,
+        "URL encoding should fire before unicode normalization"
+    );
+}
+
+#[test]
+fn unicode_caught_before_scope_containment() {
+    // WHY: Unicode normalization (Layer 4) fires before scope check (Layer 5).
+    let path_str = "/wrong/scope/\u{FF0E}file";
+    let path = Path::new(path_str);
+    let result = validate_memory_path(path, Path::new("/test/memory"), MemoryScope::Project);
+    assert!(result.is_err());
+    assert_eq!(
+        result.unwrap_err().layer(),
+        PathValidationLayer::UnicodeNormalization,
+        "unicode normalization should fire before scope containment"
+    );
+}
+
+#[test]
+fn scope_containment_catches_cross_scope_access() {
+    // WHY: Agent in project scope cannot access user scope memories.
+    for wrong_scope in &[
+        MemoryScope::User,
+        MemoryScope::Feedback,
+        MemoryScope::Reference,
+    ] {
+        let path_string = format!("/test/memory/{}/secret.md", wrong_scope.as_str());
+        let path = Path::new(&path_string);
+        let result = validate_memory_path(path, Path::new("/test/memory"), MemoryScope::Project);
+        assert!(
+            result.is_err(),
+            "accessing {wrong_scope} from project scope should fail"
+        );
+        assert_eq!(
+            result.unwrap_err().layer(),
+            PathValidationLayer::ScopeContainment
+        );
+    }
+}
+
+#[test]
+fn double_url_encoded_traversal() {
+    // WHY: Double-encoding like %252e could bypass single-pass decoding.
+    // Our check catches %2e at the first pass.
+    let path = Path::new("%252e%252e%252f");
+    // NOTE: %25 is '%', so %252e decodes to %2e in a two-pass decode.
+    // Our single-pass check doesn't catch this, but the scope containment
+    // layer will catch the resulting path if it escapes.
+    let result = validate_memory_path(path, Path::new("/test/memory"), MemoryScope::Project);
+    // This path is literal "%252e%252e%252f" — no traversal at string level
+    // and it stays within scope, so it passes. That's acceptable because
+    // the filename is literally "%252e%252e%252f" after scope_dir join.
+    assert!(
+        result.is_ok(),
+        "double-encoded path should pass (treated as literal filename)"
+    );
+}
+
+#[test]
+fn backslash_plus_url_encoding_combo() {
+    let path = Path::new("sub\\%2e%2e");
+    let result = validate_memory_path(path, Path::new("/test/memory"), MemoryScope::Project);
+    assert!(result.is_err());
+    // Backslash is caught first (Layer 2, Canonicalization).
+    assert_eq!(
+        result.unwrap_err().layer(),
+        PathValidationLayer::Canonicalization
+    );
+}
+
+#[test]
+fn all_scopes_accept_valid_relative_path() {
+    for scope in MemoryScope::ALL {
+        let result =
+            validate_memory_path(Path::new("valid-file.md"), Path::new("/test/memory"), scope);
+        assert!(
+            result.is_ok(),
+            "valid relative path should pass for {} scope: {:?}",
+            scope.as_str(),
+            result.err()
+        );
+        assert_eq!(
+            result.expect("checked above").scope(),
+            scope,
+            "validated scope should match input"
+        );
+    }
 }
