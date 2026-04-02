@@ -56,6 +56,7 @@ impl SignalClient {
     /// # Errors
     ///
     /// Returns [`super::error::Error::Http`] if the HTTP client cannot be constructed.
+    #[must_use]
     pub fn new(base_url: &str) -> Result<Self> {
         let base = normalize_url(base_url);
 
@@ -73,6 +74,7 @@ impl SignalClient {
 
     /// Low-level JSON-RPC call.
     #[instrument(skip(self, params), fields(method))]
+    #[must_use]
     pub async fn rpc(
         &self,
         method: &str,
@@ -120,6 +122,7 @@ impl SignalClient {
     /// Retries up to 2 times with 500ms, 1000ms backoff.
     /// Does NOT retry JSON-RPC application errors (only transport failures).
     #[instrument(skip(self, params))]
+    #[must_use]
     pub async fn send_message(&self, params: &SendParams) -> Result<Option<serde_json::Value>> {
         let rpc_params = params.to_rpc_value();
         let backoffs = [500u64, 1000];
@@ -174,6 +177,7 @@ impl SignalClient {
     /// that have accumulated since the last call. Uses a longer timeout than
     /// standard RPC calls since receive may block briefly.
     #[instrument(skip(self))]
+    #[must_use]
     pub async fn receive(&self, account: Option<&str>) -> Result<Vec<SignalEnvelope>> {
         let mut params = serde_json::Map::new();
         if let Some(acct) = account {

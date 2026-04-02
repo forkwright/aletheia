@@ -255,15 +255,17 @@ pub(crate) fn compute_jitter(
     let hash = hasher.finish();
 
     // NOTE: extract lower 32 bits → [0, 1) fraction
-    let lower = hash as u32;
+    let lower = u32::try_from(hash).unwrap_or_else(|_| hash as u32); // WHY: u64 to u32, taking lower 32 bits.
     let frac = f64::from(lower) / f64::from(u32::MAX);
 
     let max_nanos = max_jitter.as_nanos();
     // NOTE: f64 multiplication then truncate back to i128 → i64
-    let jitter_nanos = (max_nanos as f64 * frac) as i128;
+    let jitter_nanos = i128::try_from((max_nanos as f64 * frac).round() as i64) // WHY: f64 to i128, bounded by max_jitter.
+        .unwrap_or_else(|_| (max_nanos as f64 * frac) as i128);
 
     // SAFETY: jitter_nanos ≤ max_jitter nanos, which fits in the input SignedDuration
-    jiff::SignedDuration::from_nanos(jitter_nanos as i64)
+    jiff::SignedDuration::from_nanos(i64::try_from(jitter_nanos) // WHY: i128 to i64, bounded by max_jitter.
+        .unwrap_or_else(|_| jitter_nanos as i64))
 }
 
 /// Apply jitter to a computed next-run timestamp.

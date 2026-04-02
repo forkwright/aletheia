@@ -42,6 +42,7 @@ impl TaskStateStore {
             reason = "wired via TaskRunner::with_state_store in test harness"
         )
     )]
+    #[must_use]
     pub(crate) fn open(path: &Path) -> Result<Self> {
         let conn = rusqlite::Connection::open(path).map_err(|e| {
             crate::error::TaskFailedSnafu {
@@ -82,6 +83,7 @@ impl TaskStateStore {
     }
 
     /// Load all persisted task states.
+    #[must_use]
     pub(crate) fn load_all(&self) -> Result<Vec<TaskState>> {
         let mut stmt = self
             .conn
@@ -225,6 +227,7 @@ impl DaemonConfig {
     /// # Errors
     ///
     /// Returns `TaskFailed` if the file exists but cannot be parsed.
+    #[must_use]
     pub fn load(workspace_root: &Path) -> Result<Self> {
         let config_path = workspace_root.join(".aletheia").join("daemon.toml");
 
@@ -288,6 +291,7 @@ impl WorkspaceGuard {
     ///
     /// Returns `TaskFailed` if the lock file cannot be created or another
     /// daemon instance already holds the lock.
+    #[must_use]
     pub fn acquire(workspace_root: &Path) -> Result<Self> {
         let lock_dir = workspace_root.join(".aletheia");
         if !lock_dir.exists() {
