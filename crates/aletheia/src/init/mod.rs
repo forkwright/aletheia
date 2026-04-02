@@ -371,7 +371,7 @@ fn collect_credential() -> Result<Option<SecretString>, InitError> {
 mod helpers;
 mod scaffold;
 
-use helpers::{capitalize, detect_timezone};
+use helpers::{capitalize, detect_timezone, set_permissions};
 use scaffold::scaffold;
 
 #[cfg(feature = "tui")]
@@ -431,5 +431,10 @@ fn write_user_profile_from_wizard(
             &format!("- **Timezone:** {}", wa.timezone),
         );
 
-    std::fs::write(&user_md_path, updated).context(WriteFileSnafu { path: user_md_path })
+    std::fs::write(&user_md_path, updated).context(WriteFileSnafu {
+        path: user_md_path.clone(),
+    })?;
+    // WHY: restrict USER.md to owner-only (0600) — contains personal user data (name, role, timezone)
+    set_permissions(&user_md_path, 0o600)?;
+    Ok(())
 }

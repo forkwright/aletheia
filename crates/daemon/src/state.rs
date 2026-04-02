@@ -12,7 +12,6 @@ use snafu::ResultExt as _;
 
 use crate::error::Result;
 
-
 /// Persisted execution state for a single registered task.
 #[derive(Debug, Clone)]
 pub struct TaskState {
@@ -146,7 +145,6 @@ impl TaskStateStore {
     }
 }
 
-
 /// Per-workspace daemon configuration parsed from `.aletheia/daemon.toml`.
 ///
 /// WHY: the daemon only activates for workspaces that have explicitly opted in.
@@ -231,11 +229,10 @@ impl DaemonConfig {
             return Ok(Self::default());
         }
 
-        let contents = std::fs::read_to_string(&config_path).context(
-            crate::error::MaintenanceIoSnafu {
+        let contents =
+            std::fs::read_to_string(&config_path).context(crate::error::MaintenanceIoSnafu {
                 context: format!("reading daemon config: {}", config_path.display()),
-            },
-        )?;
+            })?;
 
         let config: Self = toml::from_str(&contents).map_err(|e| {
             crate::error::TaskFailedSnafu {
@@ -265,7 +262,6 @@ impl DaemonConfig {
     }
 }
 
-
 /// Single-instance lock guard for daemon process per workspace.
 ///
 /// WHY: only one daemon process should run per workspace. `fd-lock` provides
@@ -288,11 +284,9 @@ impl WorkspaceGuard {
     pub fn acquire(workspace_root: &Path) -> Result<Self> {
         let lock_dir = workspace_root.join(".aletheia");
         if !lock_dir.exists() {
-            std::fs::create_dir_all(&lock_dir).context(
-                crate::error::MaintenanceIoSnafu {
-                    context: format!("creating lock directory: {}", lock_dir.display()),
-                },
-            )?;
+            std::fs::create_dir_all(&lock_dir).context(crate::error::MaintenanceIoSnafu {
+                context: format!("creating lock directory: {}", lock_dir.display()),
+            })?;
         }
 
         let lock_path = lock_dir.join("daemon.lock");
@@ -351,7 +345,6 @@ impl Drop for WorkspaceGuard {
         let _ = std::fs::remove_file(&self.path);
     }
 }
-
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
