@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.13.22](https://github.com/forkwright/aletheia/compare/v0.13.21...v0.13.22) (2026-04-02)
+
+
+### Features
+
+* **nous,episteme:** wire side-query pre-filter into recall pipeline ([#2321](https://github.com/forkwright/aletheia/issues/2321)) ([05e24a3](https://github.com/forkwright/aletheia/commit/05e24a379549624a2a279068128782dbe68728a3))
+
+
+### Bug Fixes
+
+* **aletheia:** set 0600 permissions on config and credential writes ([#2320](https://github.com/forkwright/aletheia/issues/2320)) ([0bb651b](https://github.com/forkwright/aletheia/commit/0bb651b00d34b6333295e9258f9ed9360d5855e0))
+* **nous,episteme:** fix side-query integration and corrective test failures ([#2276](https://github.com/forkwright/aletheia/issues/2276)) ([8f05e73](https://github.com/forkwright/aletheia/commit/8f05e7374e08a226c815044cc802c4b989401e57))
+
+
+### Documentation
+
+* **symbolon:** fix credential module path references in CLAUDE.md ([#2319](https://github.com/forkwright/aletheia/issues/2319)) ([b79fc16](https://github.com/forkwright/aletheia/commit/b79fc1626ad6aa73b693502c4e5e6aeae049cfc9))
+
 ## [0.13.21](https://github.com/forkwright/aletheia/compare/v0.13.20...v0.13.21) (2026-04-02)
 
 
