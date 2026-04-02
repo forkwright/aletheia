@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.13.23](https://github.com/forkwright/aletheia/compare/v0.13.22...v0.13.23) (2026-04-02)
+
+
+### Bug Fixes
+
+* **aletheia:** correct #[expect] reason strings in export commands ([#2334](https://github.com/forkwright/aletheia/issues/2334)) ([b9c83af](https://github.com/forkwright/aletheia/commit/b9c83af0d7f2c3d020813e1a26cf346a2afb2cd1))
+* resolve 17 lint violations via verda ([#2340](https://github.com/forkwright/aletheia/issues/2340)) ([49ad8cb](https://github.com/forkwright/aletheia/commit/49ad8cb9da27b114e6d15c4e560294abcb645363))
+
 ## [0.13.22](https://github.com/forkwright/aletheia/compare/v0.13.21...v0.13.22) (2026-04-02)
 
 
