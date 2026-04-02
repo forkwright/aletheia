@@ -1,3 +1,5 @@
+
+
 //! Project lifecycle state machine.
 
 use serde::{Deserialize, Serialize};
@@ -76,6 +78,7 @@ pub enum Transition {
 impl ProjectState {
     /// Attempt a state transition. Returns the new state or an error
     /// if the transition is invalid from the current state.
+    #[must_use]
     pub fn transition(self, t: Transition) -> Result<Self> {
         let from_label = state_label(&self);
         let result = match (&self, &t) {

@@ -1,3 +1,5 @@
+
+
 name: CodeQL
 
 on:
@@ -9,6 +11,10 @@ on:
 # PROJECT: explicit top-level default deny; job-level permissions grant only what's needed
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   analyze-actions:
