@@ -16,7 +16,6 @@ use crate::schedule::{
     BuiltinTask, Schedule, TaskAction, TaskDef, TaskStatus, apply_jitter, backoff_delay,
 };
 
-
 /// Output mode for daemon logging.
 ///
 /// WHY: daemon logs should be scannable; full model responses and tool results
@@ -37,7 +36,6 @@ const BRIEF_HEAD_LINES: usize = 5;
 const BRIEF_TAIL_LINES: usize = 3;
 /// Maximum character length for model response summaries in brief mode.
 const BRIEF_RESPONSE_MAX_CHARS: usize = 200;
-
 
 /// Truncate output for brief mode.
 ///
@@ -70,12 +68,9 @@ pub(crate) fn truncate_response(response: &str) -> String {
 
     let truncated = &response[..BRIEF_RESPONSE_MAX_CHARS];
     // NOTE: find the last space to avoid cutting mid-word
-    let end = truncated
-        .rfind(' ')
-        .unwrap_or(BRIEF_RESPONSE_MAX_CHARS);
+    let end = truncated.rfind(' ').unwrap_or(BRIEF_RESPONSE_MAX_CHARS);
     format!("{}...", &response[..end])
 }
-
 
 /// Per-nous background task runner.
 pub struct TaskRunner {
@@ -483,9 +478,8 @@ impl TaskRunner {
 
         // WHY: watchdog interval for systemd WatchdogSec integration.
         let watchdog_interval = sd_watchdog_interval();
-        let mut watchdog_tick = tokio::time::interval(
-            watchdog_interval.unwrap_or(Duration::from_secs(30)),
-        );
+        let mut watchdog_tick =
+            tokio::time::interval(watchdog_interval.unwrap_or(Duration::from_secs(30)));
 
         loop {
             tokio::select! {
@@ -885,7 +879,6 @@ impl TaskRunner {
     }
 }
 
-
 // -- systemd notify integration --
 
 /// Send `READY=1` to systemd via the `$NOTIFY_SOCKET`.
@@ -960,7 +953,6 @@ fn sd_notify(msg: &str) {
 fn sd_notify(_msg: &str) {
     // NOTE: systemd notify is Linux-only. No-op on other platforms.
 }
-
 
 #[cfg(test)]
 #[path = "runner_tests.rs"]

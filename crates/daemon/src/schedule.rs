@@ -238,7 +238,10 @@ impl Schedule {
     clippy::cast_precision_loss,
     reason = "u32 → f64 is lossless for all u32 values (f64 has 52-bit mantissa)"
 )]
-pub(crate) fn compute_jitter(task_id: &str, max_jitter: jiff::SignedDuration) -> jiff::SignedDuration {
+pub(crate) fn compute_jitter(
+    task_id: &str,
+    max_jitter: jiff::SignedDuration,
+) -> jiff::SignedDuration {
     let mut hasher = DefaultHasher::new();
     task_id.hash(&mut hasher);
     let hash = hasher.finish();
@@ -530,10 +533,7 @@ mod tests {
         let j1 = compute_jitter("task-alpha", max);
         let j2 = compute_jitter("task-beta", max);
         // NOTE: technically hash collisions are possible but astronomically unlikely
-        assert_ne!(
-            j1, j2,
-            "different task IDs should produce different jitter"
-        );
+        assert_ne!(j1, j2, "different task IDs should produce different jitter");
     }
 
     #[test]

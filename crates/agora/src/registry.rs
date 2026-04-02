@@ -48,7 +48,6 @@ impl ChannelRegistry {
 
     /// Look up a provider by channel ID.
     #[must_use]
-    #[expect(dead_code, reason = "channel registry provider dispatch")]
     pub(crate) fn get(&self, channel_id: &str) -> Option<&Arc<dyn ChannelProvider>> {
         self.providers.get(channel_id)
     }
@@ -84,14 +83,12 @@ impl ChannelRegistry {
 
     /// List all registered channel IDs, in insertion order.
     #[must_use]
-    #[expect(dead_code, reason = "channel registry provider dispatch")]
     pub(crate) fn channels(&self) -> Vec<&str> {
         self.providers.keys().map(String::as_str).collect()
     }
 
     /// Number of registered channels.
     #[must_use]
-    #[expect(dead_code, reason = "channel registry provider dispatch")]
     pub(crate) fn len(&self) -> usize {
         self.providers.len()
     }

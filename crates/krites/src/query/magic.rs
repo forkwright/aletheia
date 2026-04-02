@@ -1,10 +1,4 @@
 //! Magic sets query transformation.
-#![cfg_attr(
-    test,
-    expect(
-        reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-    )
-)]
 
 use std::collections::BTreeSet;
 use std::mem;

@@ -72,7 +72,9 @@ pub async fn create(
         .build()
     })?;
 
-    let id = ulid::Ulid::new().to_string();
+    // WHY: SessionId uses UUID format; the actor's spawn_pipeline_task calls
+    // SessionId::parse which rejects non-UUID strings.
+    let id = aletheia_koina::id::SessionId::new().to_string();
     let model = config.generation.model.clone();
 
     let state_clone = state.clone();
@@ -455,7 +457,8 @@ pub(crate) async fn resolve_session(
     session_key: &str,
     model: Option<&str>,
 ) -> Result<String, ApiError> {
-    let id = ulid::Ulid::new().to_string();
+    // WHY: SessionId uses UUID format; ULID strings are rejected by SessionId::parse.
+    let id = aletheia_koina::id::SessionId::new().to_string();
     let state_clone = state.clone();
     let id_clone = id.clone();
     let aid = agent_id.to_owned();

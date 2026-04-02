@@ -72,7 +72,6 @@ impl TriggerConfig {
 
     /// Return triggers that match a given scenario ID.
     #[must_use]
-    #[expect(dead_code, reason = "eval trigger pattern matching")]
     pub(crate) fn matching_triggers(&self, scenario_id: &str) -> Vec<&EvalTrigger> {
         self.triggers
             .iter()
@@ -82,7 +81,6 @@ impl TriggerConfig {
 
     /// Return all enabled trigger patterns.
     #[must_use]
-    #[expect(dead_code, reason = "eval trigger pattern matching")]
     pub(crate) fn enabled_patterns(&self) -> Vec<&str> {
         self.triggers
             .iter()
