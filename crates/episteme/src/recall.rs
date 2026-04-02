@@ -279,6 +279,22 @@ impl RecallEngine {
         raw / total_weight
     }
 
+    /// Pre-filter candidates via side-query selection, then score and rank.
+    ///
+    /// WHY: runs `pre_filter_by_side_query` before 6-factor scoring so the
+    /// expensive `compute_score` loop operates on a narrower candidate set.
+    /// When `selected_ids` is empty, all candidates pass through unfiltered.
+    #[must_use]
+    #[instrument(skip(self, candidates, selected_ids), fields(count = candidates.len()))]
+    pub fn rank_with_prefilter<S: BuildHasher>(
+        &self,
+        candidates: Vec<ScoredResult>,
+        selected_ids: &HashSet<String, S>,
+    ) -> Vec<ScoredResult> {
+        let filtered = pre_filter_by_side_query(candidates, selected_ids);
+        self.rank(filtered)
+    }
+
     /// Score and rank a batch of candidates. Returns sorted by score descending.
     #[must_use]
     #[instrument(skip(self, candidates), fields(count = candidates.len()))]
