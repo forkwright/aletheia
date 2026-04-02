@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.13.20](https://github.com/forkwright/aletheia/compare/v0.13.19...v0.13.20) (2026-04-01)
+
+
+### Features
+
+* **eidos:** add memory scope model and path validation layer types ([#2271](https://github.com/forkwright/aletheia/issues/2271)) ([b037384](https://github.com/forkwright/aletheia/commit/b03738401ea7a00e257d546419731f3afbfe32b9))
+* **episteme:** add side-query memory relevance ranking ([#2267](https://github.com/forkwright/aletheia/issues/2267)) ([85f6b2a](https://github.com/forkwright/aletheia/commit/85f6b2a3de36d2b46b8b6a3cf7655da0051561b0))
+* **melete:** add auto-dream memory consolidation with triple-gate system ([#2272](https://github.com/forkwright/aletheia/issues/2272)) ([820ccd5](https://github.com/forkwright/aletheia/commit/820ccd5ba037b6f09ccb5cfdc25b3d33d2c9408d))
+* **nous:** add CacheSafeParams and cache metrics for forked agent coherence ([#2269](https://github.com/forkwright/aletheia/issues/2269)) ([5520098](https://github.com/forkwright/aletheia/commit/5520098ef745577de8f222d545c5d60e76a3b011))
+* **nous:** add context compaction -- microcompact and full compact ([#2273](https://github.com/forkwright/aletheia/issues/2273)) ([520c9bf](https://github.com/forkwright/aletheia/commit/520c9bf6c17756702edf096bdf6bf8c2f19cc860))
+* **nous:** add task registry with progress streaming and GC ([#2270](https://github.com/forkwright/aletheia/issues/2270)) ([9520abe](https://github.com/forkwright/aletheia/commit/9520abeec256fd815df658dcd7023bb37c76f972))
+* **nous:** add turn-level hook system for behavior correction ([#2268](https://github.com/forkwright/aletheia/issues/2268)) ([851d5ee](https://github.com/forkwright/aletheia/commit/851d5ee664aba102a8aa95741f40a81af1bfce60)), closes [#1818](https://github.com/forkwright/aletheia/issues/1818)
+
+
+### Bug Fixes
+
+* **workspace:** resolve cross-PR integration errors from CC-mined merge batch ([d6cbd83](https://github.com/forkwright/aletheia/commit/d6cbd8336757d94bb2617ee936b8252e2573e5ad))
+
 ## [0.13.19](https://github.com/forkwright/aletheia/compare/v0.13.18...v0.13.19) (2026-03-26)
 
 
