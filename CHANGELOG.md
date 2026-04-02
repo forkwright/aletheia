@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.13.21](https://github.com/forkwright/aletheia/compare/v0.13.20...v0.13.21) (2026-04-02)
+
+
+### Features
+
+* **eidos:** add defense-in-depth path validation for memory operations ([#2280](https://github.com/forkwright/aletheia/issues/2280)) ([93f3cad](https://github.com/forkwright/aletheia/commit/93f3cade405adebb0d63d191d923108e44d9310c))
+
+
+### Bug Fixes
+
+* **nous:** fix off-by-one in execute loop, dead-code lint, and UUID session ID in test ([#2277](https://github.com/forkwright/aletheia/issues/2277)) ([6bf4f3e](https://github.com/forkwright/aletheia/commit/6bf4f3e809c27317e6f63986c3b217ec1225ccd8))
+* **nous:** resolve clippy errors and test failures from task registry merge ([#2279](https://github.com/forkwright/aletheia/issues/2279)) ([bbdfa59](https://github.com/forkwright/aletheia/commit/bbdfa5943750dbcb4cb604d58247a89b821147eb))
+
 ## [0.13.20](https://github.com/forkwright/aletheia/compare/v0.13.19...v0.13.20) (2026-04-01)
 
 
