@@ -225,10 +225,11 @@ pub(crate) fn simulation_step(
     // Barnes-Hut would be needed for larger graphs.
     for i in 0..n {
         for j in (i + 1)..n {
-            // SAFETY: i < j < n == positions.len(), indices always in bounds.
+            // INVARIANT: i < j < n == positions.len(), indices always in bounds.
             let (left, right) = positions.split_at_mut(j);
-            let pi = &mut left[i];
-            let pj = &mut right[0];
+            let (Some(pi), Some(pj)) = (left.get_mut(i), right.first_mut()) else {
+                continue;
+            };
             let dx = pj.x - pi.x;
             let dy = pj.y - pi.y;
             let dist_sq = (dx * dx + dy * dy).max(1.0);
@@ -377,8 +378,8 @@ const COMMUNITY_PALETTE: &[&str] = &[
 #[must_use]
 pub(crate) fn community_color(community_id: u32) -> &'static str {
     let idx = community_id as usize % COMMUNITY_PALETTE.len();
-    // SAFETY: idx is always < COMMUNITY_PALETTE.len() due to modulo.
-    COMMUNITY_PALETTE[idx]
+    // INVARIANT: idx always < len due to modulo on non-empty const array.
+    COMMUNITY_PALETTE.get(idx).copied().unwrap_or("#7a7aff")
 }
 
 /// Node radius based on PageRank score.
@@ -450,9 +451,10 @@ impl TimelineStep {
         if parts.len() != 3 {
             return date.to_string();
         }
-        let year: i32 = parts[0].parse().unwrap_or(2026);
-        let month: u32 = parts[1].parse().unwrap_or(1);
-        let day: u32 = parts[2].parse().unwrap_or(1);
+        // INVARIANT: parts.len() == 3 verified by early return above.
+        let year: i32 = parts.first().and_then(|s| s.parse().ok()).unwrap_or(2026);
+        let month: u32 = parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(1);
+        let day: u32 = parts.get(2).and_then(|s| s.parse().ok()).unwrap_or(1);
 
         let (y, m, d) = match self {
             Self::Day => advance_days(year, month, day, 1),
@@ -529,8 +531,9 @@ pub(crate) fn visible_node_indices(
         .enumerate()
         .filter(|(i, node)| {
             filter.is_visible(node.community_id)
-                && *i < positions.len()
-                && viewport.is_visible(positions[*i].x, positions[*i].y, margin)
+                && positions
+                    .get(*i)
+                    .is_some_and(|pos| viewport.is_visible(pos.x, pos.y, margin))
         })
         .map(|(i, node)| (i, node.pagerank))
         .collect();
