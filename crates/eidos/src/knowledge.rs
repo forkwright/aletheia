@@ -355,7 +355,7 @@ pub enum FactType {
     Task,
     /// "Build was slow": very ephemeral (3 days).
     Observation,
-    /// Chiron self-audit result: short-lived (30 days).
+    /// Self-audit result: short-lived (30 days).
     Audit,
     /// Claim-source provenance check: ephemeral (7 days).
     Verification,

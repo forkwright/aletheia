@@ -156,7 +156,7 @@ mod tests {
 
     #[test]
     fn record_multiple_stages_different_agents() {
-        for agent in ["syn", "demiurge", "chiron"] {
+        for agent in ["syn", "demiurge", "analyst"] {
             record_stage(agent, "context", 0.01);
             record_stage(agent, "execute", 0.5);
             record_turn(agent);

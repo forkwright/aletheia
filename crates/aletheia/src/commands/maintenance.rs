@@ -126,9 +126,9 @@ fn run_task(name: &str, maint: &MaintenanceConfig, verbose: bool) -> Result<()> 
                 );
             }
         }
-        "chiron-audit" => {
-            use aletheia_nous::chiron::{AuditTrigger, CheckContext, ChironAuditor};
-            let mut auditor = ChironAuditor::new();
+        "self-audit" => {
+            use aletheia_nous::self_audit::{AuditTrigger, CheckContext, SelfAuditor};
+            let mut auditor = SelfAuditor::new();
             auditor.register_defaults();
             let ctx = CheckContext {
                 nous_id: String::from("system"),
@@ -140,13 +140,13 @@ fn run_task(name: &str, maint: &MaintenanceConfig, verbose: bool) -> Result<()> 
                     "  {}: {} (score: {:.2})",
                     r.check_name, r.result.status, r.result.score,
                 );
-                if r.result.status != aletheia_nous::chiron::CheckStatus::Pass {
+                if r.result.status != aletheia_nous::self_audit::CheckStatus::Pass {
                     println!("    evidence: {}", r.result.evidence);
                 }
             }
         }
         other => whatever!(
-            "unknown task: {other}. Valid: trace-rotation, drift-detection, db-monitor, chiron-audit, all"
+            "unknown task: {other}. Valid: trace-rotation, drift-detection, db-monitor, self-audit, all"
         ),
     }
     Ok(())

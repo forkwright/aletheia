@@ -256,7 +256,7 @@ async fn domain_tagged_sections_reach_correct_agents() {
 
     // Create oikos dirs for both agents
     let root = oikos_dir.path();
-    std::fs::create_dir_all(root.join("nous/chiron")).expect("mkdir");
+    std::fs::create_dir_all(root.join("nous/analyst")).expect("mkdir");
     std::fs::create_dir_all(root.join("nous/hermes")).expect("mkdir");
     std::fs::create_dir_all(root.join("shared")).expect("mkdir");
     std::fs::create_dir_all(root.join("theke")).expect("mkdir");
@@ -264,7 +264,7 @@ async fn domain_tagged_sections_reach_correct_agents() {
         clippy::disallowed_methods,
         reason = "integration tests write fixture files to temp directories; synchronous I/O is required in test setup"
     )]
-    std::fs::write(root.join("nous/chiron/SOUL.md"), "I am Chiron.").expect("write");
+    std::fs::write(root.join("nous/analyst/SOUL.md"), "I am Analyst.").expect("write");
     #[expect(
         clippy::disallowed_methods,
         reason = "integration tests write fixture files to temp directories; synchronous I/O is required in test setup"
@@ -285,7 +285,7 @@ path = "context/GENERAL.md"
 path = "context/HEALTHCARE.md"
 agents = ["healthcare"]
 
-[overlays.chiron]
+[overlays.analyst]
 domains = ["healthcare"]
 "#,
         &[
@@ -299,18 +299,18 @@ domains = ["healthcare"]
 
     let packs = load_packs(&[pack_dir.path().to_path_buf()]);
 
-    // Chiron: domains from pack overlay include "healthcare"
-    let chiron_captured = Arc::new(Mutex::new(Vec::new()));
+    // NOTE: analyst agent has domains from pack overlay including "healthcare"
+    let analyst_captured = Arc::new(Mutex::new(Vec::new()));
     let hermes_captured = Arc::new(Mutex::new(Vec::new()));
 
-    // Spawn chiron (with healthcare domain)
-    let mut chiron_providers = ProviderRegistry::new();
-    chiron_providers.register(Box::new(CapturingMockProvider::new(Arc::clone(
-        &chiron_captured,
+    // Spawn analyst (with healthcare domain)
+    let mut analyst_providers = ProviderRegistry::new();
+    analyst_providers.register(Box::new(CapturingMockProvider::new(Arc::clone(
+        &analyst_captured,
     ))));
 
-    let mut chiron_manager = NousManager::new(
-        Arc::new(chiron_providers),
+    let mut analyst_manager = NousManager::new(
+        Arc::new(analyst_providers),
         Arc::new(ToolRegistry::new()),
         Arc::clone(&oikos),
         None,
@@ -323,8 +323,8 @@ domains = ["healthcare"]
         None,
     );
 
-    let chiron_config = NousConfig {
-        id: "chiron".to_owned(),
+    let analyst_config = NousConfig {
+        id: "analyst".to_owned(),
         generation: aletheia_nous::config::NousGenerationConfig {
             model: "mock-model".to_owned(),
             ..Default::default()
@@ -332,10 +332,10 @@ domains = ["healthcare"]
         domains: vec!["healthcare".to_owned()],
         ..NousConfig::default()
     };
-    let chiron_handle = chiron_manager
-        .spawn(chiron_config, PipelineConfig::default())
+    let analyst_handle = analyst_manager
+        .spawn(analyst_config, PipelineConfig::default())
         .await;
-    chiron_handle
+    analyst_handle
         .send_turn("main", "Hello")
         .await
         .expect("turn");
@@ -376,21 +376,21 @@ domains = ["healthcare"]
         .await
         .expect("turn");
 
-    // Verify chiron gets healthcare content
+    // Verify analyst gets healthcare content
     {
         #[expect(
             clippy::expect_used,
             reason = "test assertion: poisoned lock means a test bug"
         )]
-        let chiron_reqs = chiron_captured.lock().expect("lock poisoned");
-        let chiron_system = chiron_reqs[0].system.as_ref().expect("system");
+        let analyst_reqs = analyst_captured.lock().expect("lock poisoned");
+        let analyst_system = analyst_reqs[0].system.as_ref().expect("system");
         assert!(
-            chiron_system.contains("HIPAA compliance"),
-            "chiron (healthcare domain) should see healthcare section"
+            analyst_system.contains("HIPAA compliance"),
+            "analyst (healthcare domain) should see healthcare section"
         );
         assert!(
-            chiron_system.contains("General knowledge"),
-            "chiron should see general section"
+            analyst_system.contains("General knowledge"),
+            "analyst should see general section"
         );
     }
 
@@ -412,7 +412,7 @@ domains = ["healthcare"]
         );
     }
 
-    chiron_manager.shutdown_all().await;
+    analyst_manager.shutdown_all().await;
     hermes_manager.shutdown_all().await;
 }
 

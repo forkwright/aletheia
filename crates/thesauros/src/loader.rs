@@ -225,14 +225,14 @@ version = "1.0"
 [[context]]
 path = "context/LOGIC.md"
 priority = "important"
-agents = ["chiron"]
+agents = ["analyst"]
 
 [[context]]
 path = "context/GLOSSARY.md"
 priority = "flexible"
 truncatable = true
 
-[overlays.chiron]
+[overlays.analyst]
 domains = ["healthcare", "sql"]
 "#
     }
@@ -251,7 +251,7 @@ domains = ["healthcare", "sql"]
         assert_eq!(pack.sections[0].name, "LOGIC.md");
         assert_eq!(pack.sections[0].content, "Business logic content.");
         assert_eq!(pack.sections[0].priority, Priority::Important);
-        assert_eq!(pack.sections[0].agents, vec!["chiron"]);
+        assert_eq!(pack.sections[0].agents, vec!["analyst"]);
         assert_eq!(pack.sections[0].pack_name, "test-pack");
         assert_eq!(pack.sections[1].name, "GLOSSARY.md");
         assert!(pack.sections[1].truncatable);
@@ -308,8 +308,8 @@ domains = ["healthcare", "sql"]
 
         let pack = load_single_pack(dir.path()).unwrap();
 
-        let chiron_sections = pack.sections_for_agent("chiron");
-        assert_eq!(chiron_sections.len(), 2);
+        let analyst_sections = pack.sections_for_agent("analyst");
+        assert_eq!(analyst_sections.len(), 2);
 
         let hermes_sections = pack.sections_for_agent("hermes");
         assert_eq!(hermes_sections.len(), 1);
@@ -326,7 +326,7 @@ domains = ["healthcare", "sql"]
 
         let pack = load_single_pack(dir.path()).unwrap();
 
-        let sections = pack.sections_for_agent_or_domains("chiron", &[]);
+        let sections = pack.sections_for_agent_or_domains("analyst", &[]);
         assert_eq!(sections.len(), 2);
     }
 
@@ -374,7 +374,7 @@ path = "general.md"
 
 [[context]]
 path = "restricted.md"
-agents = ["chiron"]
+agents = ["analyst"]
 "#;
         let dir = setup_pack(&[
             ("pack.toml", toml),
@@ -398,7 +398,7 @@ agents = ["chiron"]
         ]);
 
         let pack = load_single_pack(dir.path()).unwrap();
-        assert_eq!(pack.domains_for_agent("chiron"), vec!["healthcare", "sql"]);
+        assert_eq!(pack.domains_for_agent("analyst"), vec!["healthcare", "sql"]);
         assert!(pack.domains_for_agent("hermes").is_empty());
     }
 

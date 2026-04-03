@@ -1,4 +1,4 @@
-//! Chiron (Χείρων): self-auditing loop via prosoche checks.
+//! Self-auditing loop via prosoche checks.
 //!
 //! Implements periodic, event-based, and manual audit checks that assess
 //! agent behavior and store results in the knowledge graph. Failed checks
@@ -143,7 +143,7 @@ impl AuditReport {
         self.failed_checks()
             .map(|r| {
                 format!(
-                    "[chiron-audit] {}: {} (score: {:.2}, status: {}). Evidence: {}",
+                    "[self-audit] {}: {} (score: {:.2}, status: {}). Evidence: {}",
                     r.check_name,
                     r.check_description,
                     r.result.score,
@@ -173,14 +173,14 @@ pub trait ProsocheCheck: Send + Sync {
 /// Default number of agent actions between event-based audit triggers.
 const DEFAULT_EVENT_THRESHOLD: u32 = 50;
 
-/// Chiron self-auditor: manages registered checks and trigger logic.
-pub struct ChironAuditor {
+/// Self-auditor: manages registered prosoche checks and trigger logic.
+pub struct SelfAuditor {
     checks: Vec<Box<dyn ProsocheCheck>>,
     action_counter: AtomicU32,
     event_threshold: u32,
 }
 
-impl ChironAuditor {
+impl SelfAuditor {
     /// Create a new auditor with no registered checks.
     #[must_use]
     pub fn new() -> Self {
@@ -251,7 +251,7 @@ impl ChironAuditor {
     }
 }
 
-impl Default for ChironAuditor {
+impl Default for SelfAuditor {
     fn default() -> Self {
         Self::new()
     }
@@ -342,7 +342,7 @@ pub fn store_audit_report(
         nous_id = %report.nous_id,
         checks = report.results.len(),
         failed = report.failed_checks().count(),
-        "chiron audit results stored"
+        "self-audit results stored"
     );
 
     Ok(())
@@ -403,8 +403,8 @@ mod tests {
     }
 
     #[test]
-    fn chiron_auditor_register_defaults() {
-        let mut auditor = ChironAuditor::new();
+    fn self_auditor_register_defaults() {
+        let mut auditor = SelfAuditor::new();
         auditor.register_defaults();
         assert_eq!(
             auditor.check_count(),
@@ -414,8 +414,8 @@ mod tests {
     }
 
     #[test]
-    fn chiron_auditor_record_action_triggers_at_threshold() {
-        let auditor = ChironAuditor::new().with_event_threshold(3);
+    fn self_auditor_record_action_triggers_at_threshold() {
+        let auditor = SelfAuditor::new().with_event_threshold(3);
         assert!(!auditor.record_action(), "1st action should not trigger");
         assert!(!auditor.record_action(), "2nd action should not trigger");
         assert!(auditor.record_action(), "3rd action should trigger audit");
@@ -427,7 +427,7 @@ mod tests {
 
     #[test]
     fn run_audit_produces_report() {
-        let mut auditor = ChironAuditor::new();
+        let mut auditor = SelfAuditor::new();
         auditor.register_defaults();
         let ctx = CheckContext {
             nous_id: String::from("test-nous"),
@@ -509,7 +509,7 @@ mod tests {
 
     #[test]
     fn default_auditor_has_no_checks() {
-        let auditor = ChironAuditor::default();
+        let auditor = SelfAuditor::default();
         assert_eq!(
             auditor.check_count(),
             0,

@@ -20,7 +20,7 @@ Relations are stored (persistent) or derived (computed from rules).
 
 ```datalog
 # Stored relation: insert data
-?[entity, relation, target] <- [["chiron", "knows", "cody"], ["chiron", "uses", "aletheia"]]
+?[entity, relation, target] <- [["agent-01", "knows", "cody"], ["agent-01", "uses", "aletheia"]]
 
 # Query a stored relation
 ?[entity, target] := *facts[entity, _, target]
@@ -57,7 +57,7 @@ Rules define derived relations. The head (left of `:=`) is what you produce. The
 ?[name, score] := *facts[_, name, _, score], score > 0.5
 
 # String matching
-?[name] := *entities[_, name, _], starts_with(name, "chiron")
+?[name] := *entities[_, name, _], starts_with(name, "agent-01")
 
 # Arithmetic
 ?[entity, total] := *scores[entity, s1], *bonuses[entity, s2], total = s1 + s2
@@ -74,7 +74,7 @@ Rules define derived relations. The head (left of `:=`) is what you produce. The
 | Stored relations | `snake_case` | `facts`, `entities`, `relationships` |
 | Rule names | `snake_case` | `active_facts`, `related_entities` |
 | Variables | `snake_case` | `entity_id`, `fact_content` |
-| Constants | As stored (case-sensitive) | `"Verified"`, `"chiron"` |
+| Constants | As stored (case-sensitive) | `"Verified"`, `"agent-01"` |
 
 ### Query Structure
 
@@ -133,7 +133,7 @@ Facts have a tier indicating confidence level:
 | `Identity` | "Cody is a data scientist" |
 | `Preference` | "User prefers tables over prose" |
 | `Skill` | "Agent can query Redshift" |
-| `Relationship` | "Chiron reports to Cody" |
+| `Relationship` | "Agent-01 reports to Cody" |
 | `Event` | "Deployed v0.11.0 on 2026-03-14" |
 | `Task` | "Investigate Landlock exec failure" |
 | `Observation` | "Haiku pricing not configured" |
@@ -146,7 +146,7 @@ Krites includes fixed rules (built-in algorithms) accessible from Datalog:
 
 ```datalog
 # Shortest path
-?[path] <~ ShortestPathBFS(*relationships[], src: "chiron", dst: "cody")
+?[path] <~ ShortestPathBFS(*relationships[], src: "agent-01", dst: "cody")
 
 # Community detection
 ?[node, community] <~ CommunityDetectionLouvain(*relationships[])
