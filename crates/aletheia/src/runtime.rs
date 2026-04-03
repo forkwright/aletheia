@@ -896,8 +896,8 @@ fn build_signal_provider(
         let base_url = format!("http://{}:{}", account_cfg.http_host, account_cfg.http_port);
         match SignalClient::new(&base_url) {
             Ok(client) => {
-                provider.add_account(account_id.clone(), client);
-                info!(account = %account_id, "signal account added");
+                provider.add_account(account_id.clone(), client, account_cfg.auto_start);
+                info!(account = %account_id, auto_start = account_cfg.auto_start, "signal account added");
             }
             Err(e) => {
                 warn!(account = %account_id, error = %e, "failed to create signal client");

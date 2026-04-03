@@ -376,6 +376,10 @@ fn signal_account_defaults() {
         account.http_port, 8080,
         "signal account default port should be 8080"
     );
+    assert!(
+        account.auto_start,
+        "signal account should auto-start by default"
+    );
 }
 
 #[test]
