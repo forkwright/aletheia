@@ -225,41 +225,51 @@ pub(crate) fn simulation_step(
     // Barnes-Hut would be needed for larger graphs.
     for i in 0..n {
         for j in (i + 1)..n {
-            let dx = positions[j].x - positions[i].x;
-            let dy = positions[j].y - positions[i].y;
+            // SAFETY: i < j < n == positions.len(), indices always in bounds.
+            let (left, right) = positions.split_at_mut(j);
+            let pi = &mut left[i];
+            let pj = &mut right[0];
+            let dx = pj.x - pi.x;
+            let dy = pj.y - pi.y;
             let dist_sq = (dx * dx + dy * dy).max(1.0);
             let dist = dist_sq.sqrt();
             let force = params.repulsion / dist_sq;
             let fx = force * dx / dist;
             let fy = force * dy / dist;
-            if !positions[i].pinned {
-                positions[i].vx -= fx;
-                positions[i].vy -= fy;
+            if !pi.pinned {
+                pi.vx -= fx;
+                pi.vy -= fy;
             }
-            if !positions[j].pinned {
-                positions[j].vx += fx;
-                positions[j].vy += fy;
+            if !pj.pinned {
+                pj.vx += fx;
+                pj.vy += fy;
             }
         }
     }
 
     for &(src, tgt) in edge_indices {
-        if src >= n || tgt >= n {
+        let (Some(pos_src), Some(pos_tgt)) = (positions.get(src), positions.get(tgt)) else {
             continue;
-        }
-        let dx = positions[tgt].x - positions[src].x;
-        let dy = positions[tgt].y - positions[src].y;
+        };
+        let dx = pos_tgt.x - pos_src.x;
+        let dy = pos_tgt.y - pos_src.y;
         let dist = (dx * dx + dy * dy).sqrt().max(1.0);
         let force = params.attraction * (dist - params.rest_length);
         let fx = force * dx / dist;
         let fy = force * dy / dist;
-        if !positions[src].pinned {
-            positions[src].vx += fx;
-            positions[src].vy += fy;
+        let src_pinned = pos_src.pinned;
+        let tgt_pinned = pos_tgt.pinned;
+        if !src_pinned {
+            if let Some(p) = positions.get_mut(src) {
+                p.vx += fx;
+                p.vy += fy;
+            }
         }
-        if !positions[tgt].pinned {
-            positions[tgt].vx -= fx;
-            positions[tgt].vy -= fy;
+        if !tgt_pinned {
+            if let Some(p) = positions.get_mut(tgt) {
+                p.vx -= fx;
+                p.vy -= fy;
+            }
         }
     }
 
