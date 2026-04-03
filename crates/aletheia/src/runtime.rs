@@ -257,6 +257,37 @@ impl RuntimeBuilder {
             println!("  [pass] {jwt_check_label} (auth mode '{auth_mode}' -- JWT not required)");
         }
 
+        // External tools
+        let tools_config = crate::external_tools::load_tools_config(&self.oikos);
+        let total = tools_config.required.len() + tools_config.optional.len();
+        if total > 0 {
+            let mut tools_ok = true;
+            for (name, entry) in &tools_config.required {
+                if entry.kind != crate::external_tools::ExternalToolKind::Builtin
+                    && entry.endpoint.is_none()
+                {
+                    println!("  [FAIL] tools.required.{name}: missing endpoint");
+                    tools_ok = false;
+                }
+            }
+            for (name, entry) in &tools_config.optional {
+                if entry.kind != crate::external_tools::ExternalToolKind::Builtin
+                    && entry.endpoint.is_none()
+                {
+                    println!("  [warn] tools.optional.{name}: missing endpoint");
+                }
+            }
+            if tools_ok {
+                println!(
+                    "  [pass] tools ({} required, {} optional)",
+                    tools_config.required.len(),
+                    tools_config.optional.len()
+                );
+            } else {
+                all_ok = false;
+            }
+        }
+
         println!();
         if all_ok {
             println!("Configuration OK");
@@ -375,6 +406,28 @@ impl RuntimeBuilder {
             for err in &tool_errors {
                 warn!(error = %err, "failed to register pack tool");
             }
+        }
+
+        // Register external tools from [tools] config section
+        let tools_config = crate::external_tools::load_tools_config(&self.oikos);
+        let tool_manifest = crate::external_tools::register_external_tools(
+            &tools_config,
+            &mut tool_registry,
+            reqwest::Client::new(),
+        );
+        if tool_manifest.available_count() > 0 || !tools_config.required.is_empty() {
+            info!(
+                available = tool_manifest.available_count(),
+                missing_required = tool_manifest.missing_required_count(),
+                "external tools registered"
+            );
+        }
+        let missing = tool_manifest.missing_required_count();
+        if missing > 0 {
+            warn!(
+                count = missing,
+                "required external tools unavailable -- agents will degrade gracefully"
+            );
         }
 
         let tool_registry = Arc::new(tool_registry);

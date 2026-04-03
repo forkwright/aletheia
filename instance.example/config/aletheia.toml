@@ -143,3 +143,19 @@ workspace = "nous/main"
 # baseUrl = "http://localhost:8000/v1"
 # model = "qwen3.5-27b"            # default model for "local/" requests
 # timeoutSecs = 120
+
+# --- External tools ---
+# Pluggable external tool registry. Agents discover available tools at session
+# start and adapt behaviour based on what's available, not what's hardcoded.
+#
+# Types: builtin (reference to built-in tool), mcp (MCP server), http (HTTP POST)
+# Required tools warn on startup if unavailable. Optional tools degrade silently.
+#
+# [tools.required]
+# file_ops = { type = "builtin" }
+# shell = { type = "builtin" }
+#
+# [tools.optional]
+# semantic_scholar = { type = "mcp", endpoint = "http://localhost:3100", description = "Search academic papers via Semantic Scholar" }
+# pubmed = { type = "mcp", endpoint = "http://localhost:3101", description = "Search PubMed articles" }
+# kanon = { type = "mcp", endpoint = "http://localhost:3102", description = "Kanon project management" }

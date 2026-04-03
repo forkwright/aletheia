@@ -4,6 +4,7 @@ mod commands;
 mod daemon_bridge;
 mod dispatch;
 mod error;
+mod external_tools;
 mod init;
 #[cfg(feature = "recall")]
 mod knowledge_adapter;
