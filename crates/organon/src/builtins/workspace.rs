@@ -184,6 +184,14 @@ pub(crate) fn extract_opt_bool(args: &serde_json::Value, field: &str) -> Option<
     args.get(field).and_then(serde_json::Value::as_bool)
 }
 
+pub(crate) fn extract_opt_str<'a>(args: &'a serde_json::Value, field: &str) -> Option<&'a str> {
+    args.get(field).and_then(serde_json::Value::as_str)
+}
+
+pub(crate) fn extract_opt_f64(args: &serde_json::Value, field: &str) -> Option<f64> {
+    args.get(field).and_then(serde_json::Value::as_f64)
+}
+
 /// Maximum file size the read tool will process.
 const MAX_READ_BYTES: u64 = 50 * 1024 * 1024; // 50 MB
 

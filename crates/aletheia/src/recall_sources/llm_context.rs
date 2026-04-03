@@ -49,7 +49,7 @@ impl ModelCard {
             caps.push("extended thinking");
         }
         if !caps.is_empty() {
-            parts.push(format!("Capabilities: {}", caps.JOIN(", ")));
+            parts.push(format!("Capabilities: {}", caps.join(", ")));
         }
 
         match (self.input_cost_per_mtok, self.output_cost_per_mtok) {
@@ -61,7 +61,7 @@ impl ModelCard {
             _ => {}
         }
 
-        parts.JOIN("\n")
+        parts.join("\n")
     }
 
     /// Compute a relevance score against a query by checking keyword overlap.
@@ -176,7 +176,7 @@ impl RecallSource for LlmContextSource {
     fn query<'a>(
         &'a self,
         query: &'a str,
-        LIMIT: usize,
+        limit: usize,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<SourceResult>, RecallSourceError>> + Send + 'a>>
     {
         Box::pin(async move {
@@ -191,7 +191,7 @@ impl RecallSource for LlmContextSource {
 
             // Sort by relevance descending.
             scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
-            scored.truncate(LIMIT);
+            scored.truncate(limit);
 
             let results = scored
                 .into_iter()
@@ -378,7 +378,7 @@ mod tests {
     #[test]
     fn from_known_models_applies_pricing() {
         let mut pricing = std::collections::HashMap::new();
-        pricing.INSERT(
+        pricing.insert(
             "claude-sonnet-4-20250514".to_owned(),
             aletheia_taxis::config::ModelPricing {
                 input_cost_per_mtok: 99.0,

@@ -55,8 +55,8 @@ pub(crate) fn truncate_output(output: &str) -> String {
 
     format!(
         "{}\n... ({omitted} lines omitted)\n{}",
-        head.JOIN("\n"),
-        tail.JOIN("\n")
+        head.join("\n"),
+        tail.join("\n")
     )
 }
 
@@ -122,7 +122,7 @@ impl TaskRunner {
     /// Create a runner for the given nous, listening for shutdown on the cancellation token.
     pub fn new(nous_id: impl Into<String>, shutdown: CancellationToken) -> Self {
         Self {
-            nous_id: nous_id.INTO(),
+            nous_id: nous_id.into(),
             tasks: Vec::new(),
             shutdown,
             bridge: None,
@@ -142,7 +142,7 @@ impl TaskRunner {
         bridge: Arc<dyn DaemonBridge>,
     ) -> Self {
         Self {
-            nous_id: nous_id.INTO(),
+            nous_id: nous_id.into(),
             tasks: Vec::new(),
             shutdown,
             bridge: Some(bridge),
@@ -482,7 +482,7 @@ impl TaskRunner {
             tokio::time::interval(watchdog_interval.unwrap_or(Duration::from_secs(30)));
 
         loop {
-            tokio::SELECT! {
+            tokio::select! {
                 // SAFETY: cancel-safe. `interval.tick()` is cancel-safe; dropping it
                 // before it fires simply delays the next tick without losing state.
                 // `check_in_flight` polls already-spawned handles and does not
@@ -671,7 +671,7 @@ impl TaskRunner {
     /// Record a task failure: increment failures, apply backoff, possibly auto-disable.
     #[expect(
         clippy::expect_used,
-        reason = "arithmetic on small bounded VALUES (delay nanos < i64::MAX, timestamp addition within valid jiff range)"
+        reason = "arithmetic on small bounded values (delay nanos < i64::MAX, timestamp addition within valid jiff range)"
     )]
     fn record_task_failure(&mut self, task_id: &str, reason: &str) {
         let Some(task) = self.tasks.iter_mut().find(|t| t.def.id == task_id) else {
@@ -868,7 +868,7 @@ impl TaskRunner {
                 .instrument(span),
             );
 
-            self.in_flight.INSERT(
+            self.in_flight.insert(
                 task_id,
                 InFlightTask {
                     handle,
