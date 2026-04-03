@@ -378,6 +378,10 @@ fn default_stability_by_fact_type() {
         "observation stability should be 72 hours"
     );
     assert!(
+        (default_stability_hours("verification") - 168.0).abs() < f64::EPSILON,
+        "verification stability should be 168 hours"
+    );
+    assert!(
         (default_stability_hours("inference") - 72.0).abs() < f64::EPSILON,
         "inference should fall back to 72 hours"
     );
@@ -1947,4 +1951,186 @@ fn all_scopes_accept_valid_relative_path() {
             "validated scope should match input"
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// Verification types
+// ---------------------------------------------------------------------------
+
+#[test]
+fn verification_fact_type_roundtrip() {
+    let ft = FactType::Verification;
+    assert_eq!(ft.as_str(), "verification");
+    assert_eq!(FactType::from_str_lossy("verification"), ft);
+    assert_eq!(ft.to_string(), "verification");
+}
+
+#[test]
+fn verification_fact_type_serde_roundtrip() {
+    let ft = FactType::Verification;
+    let json = serde_json::to_string(&ft).expect("FactType serialization is infallible");
+    assert_eq!(
+        json, r#""verification""#,
+        "should serialize as snake_case string"
+    );
+    let back: FactType =
+        serde_json::from_str(&json).expect("FactType should deserialize from its own JSON");
+    assert_eq!(
+        ft, back,
+        "FactType::Verification should survive serde roundtrip"
+    );
+}
+
+#[test]
+fn verification_source_as_str_and_parse() {
+    for (variant, expected) in [
+        (VerificationSource::Command, "command"),
+        (VerificationSource::Query, "query"),
+        (VerificationSource::Arithmetic, "arithmetic"),
+        (VerificationSource::Reference, "reference"),
+    ] {
+        assert_eq!(variant.as_str(), expected, "{variant:?} as_str mismatch");
+        assert_eq!(
+            VerificationSource::from_str_opt(expected),
+            Some(variant),
+            "from_str_opt({expected}) should return {variant:?}"
+        );
+        assert_eq!(
+            variant.to_string(),
+            expected,
+            "{variant:?} Display mismatch"
+        );
+    }
+    assert_eq!(
+        VerificationSource::from_str_opt("bogus"),
+        None,
+        "unknown source should return None"
+    );
+}
+
+#[test]
+fn verification_source_serde_roundtrip() {
+    for src in [
+        VerificationSource::Command,
+        VerificationSource::Query,
+        VerificationSource::Arithmetic,
+        VerificationSource::Reference,
+    ] {
+        let json =
+            serde_json::to_string(&src).expect("VerificationSource serialization is infallible");
+        let back: VerificationSource = serde_json::from_str(&json)
+            .expect("VerificationSource should deserialize from its own JSON");
+        assert_eq!(
+            src, back,
+            "VerificationSource should survive serde roundtrip"
+        );
+    }
+}
+
+#[test]
+fn verification_status_as_str_and_parse() {
+    for (variant, expected) in [
+        (VerificationStatus::Pass, "pass"),
+        (VerificationStatus::Fail, "fail"),
+        (VerificationStatus::Stale, "stale"),
+    ] {
+        assert_eq!(variant.as_str(), expected, "{variant:?} as_str mismatch");
+        assert_eq!(
+            VerificationStatus::from_str_opt(expected),
+            Some(variant),
+            "from_str_opt({expected}) should return {variant:?}"
+        );
+        assert_eq!(
+            variant.to_string(),
+            expected,
+            "{variant:?} Display mismatch"
+        );
+    }
+    assert_eq!(
+        VerificationStatus::from_str_opt("unknown"),
+        None,
+        "unknown status should return None"
+    );
+}
+
+#[test]
+fn verification_status_serde_roundtrip() {
+    for status in [
+        VerificationStatus::Pass,
+        VerificationStatus::Fail,
+        VerificationStatus::Stale,
+    ] {
+        let json =
+            serde_json::to_string(&status).expect("VerificationStatus serialization is infallible");
+        let back: VerificationStatus = serde_json::from_str(&json)
+            .expect("VerificationStatus should deserialize from its own JSON");
+        assert_eq!(
+            status, back,
+            "VerificationStatus should survive serde roundtrip"
+        );
+    }
+}
+
+#[test]
+fn verification_record_serde_roundtrip() {
+    let record = VerificationRecord {
+        claim: "total line count is 383".to_owned(),
+        source: VerificationSource::Command,
+        expected: serde_json::json!(383),
+        actual: serde_json::json!(383),
+        tolerance: 0.0,
+        status: VerificationStatus::Pass,
+        verified_at: test_timestamp("2026-03-15T10:30:00Z"),
+    };
+    let json =
+        serde_json::to_string(&record).expect("VerificationRecord serialization is infallible");
+    let back: VerificationRecord = serde_json::from_str(&json)
+        .expect("VerificationRecord should deserialize from its own JSON");
+    assert_eq!(back.claim, record.claim, "claim should survive roundtrip");
+    assert_eq!(
+        back.source, record.source,
+        "source should survive roundtrip"
+    );
+    assert_eq!(
+        back.expected, record.expected,
+        "expected should survive roundtrip"
+    );
+    assert_eq!(
+        back.actual, record.actual,
+        "actual should survive roundtrip"
+    );
+    assert!(
+        (back.tolerance - record.tolerance).abs() < f64::EPSILON,
+        "tolerance should survive roundtrip"
+    );
+    assert_eq!(
+        back.status, record.status,
+        "status should survive roundtrip"
+    );
+    assert_eq!(
+        back.verified_at, record.verified_at,
+        "verified_at should survive roundtrip"
+    );
+}
+
+#[test]
+fn verification_record_fail_with_tolerance() {
+    let record = VerificationRecord {
+        claim: "build time is 120s".to_owned(),
+        source: VerificationSource::Arithmetic,
+        expected: serde_json::json!(120),
+        actual: serde_json::json!(135),
+        tolerance: 0.1,
+        status: VerificationStatus::Fail,
+        verified_at: test_timestamp("2026-03-15T11:00:00Z"),
+    };
+    let json = serde_json::to_string(&record).expect("serialization should succeed");
+    assert!(
+        json.contains(r#""status":"fail""#),
+        "JSON should contain fail status"
+    );
+    assert!(
+        json.contains(r#""tolerance":0.1"#),
+        "JSON should contain tolerance"
+    );
 }

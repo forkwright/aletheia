@@ -363,6 +363,8 @@ pub enum FactType {
     Observation,
     /// Chiron self-audit result: short-lived (30 days).
     Audit,
+    /// Claim-source provenance check: ephemeral (7 days).
+    Verification,
 }
 
 impl FactType {
@@ -370,7 +372,7 @@ impl FactType {
     #[must_use]
     #[expect(
         clippy::match_same_arms,
-        reason = "Audit and Event share the same decay rate (30 days) but are semantically distinct fact types"
+        reason = "Audit/Event share 30-day decay, Task/Verification share 7-day decay, but are semantically distinct"
     )]
     pub fn base_stability_hours(self) -> f64 {
         match self {
@@ -382,6 +384,7 @@ impl FactType {
             Self::Task => 168.0,
             Self::Observation => 72.0,
             Self::Audit => 720.0,
+            Self::Verification => 168.0,
         }
     }
 
@@ -433,6 +436,7 @@ impl FactType {
             Self::Task => "task",
             Self::Observation => "observation",
             Self::Audit => "audit",
+            Self::Verification => "verification",
         }
     }
 
@@ -447,6 +451,7 @@ impl FactType {
             "event" => Self::Event,
             "task" => Self::Task,
             "audit" => Self::Audit,
+            "verification" => Self::Verification,
             // WHY: Unknown values fall back to Observation to keep the type system open.
             _ => Self::Observation,
         }
@@ -457,6 +462,117 @@ impl std::fmt::Display for FactType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.as_str())
     }
+}
+
+/// How a verification claim was checked against ground truth.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum VerificationSource {
+    /// Shell command whose output is compared against the claim.
+    Command,
+    /// Database or API query returning structured data.
+    Query,
+    /// Arithmetic re-derivation (e.g. sum checks, percentage recalculation).
+    Arithmetic,
+    /// Cross-reference against an authoritative document or fact.
+    Reference,
+}
+
+impl VerificationSource {
+    /// Return the `snake_case` string representation.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Command => "command",
+            Self::Query => "query",
+            Self::Arithmetic => "arithmetic",
+            Self::Reference => "reference",
+        }
+    }
+
+    /// Parse from a string, returning `None` for unknown values.
+    #[must_use]
+    pub fn from_str_opt(s: &str) -> Option<Self> {
+        match s {
+            "command" => Some(Self::Command),
+            "query" => Some(Self::Query),
+            "arithmetic" => Some(Self::Arithmetic),
+            "reference" => Some(Self::Reference),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for VerificationSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// Outcome of a verification check.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum VerificationStatus {
+    /// Actual value matches expected within tolerance.
+    Pass,
+    /// Actual value diverges from expected beyond tolerance.
+    Fail,
+    /// Verification result is older than the staleness threshold.
+    Stale,
+}
+
+impl VerificationStatus {
+    /// Return the `snake_case` string representation.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pass => "pass",
+            Self::Fail => "fail",
+            Self::Stale => "stale",
+        }
+    }
+
+    /// Parse from a string, returning `None` for unknown values.
+    #[must_use]
+    pub fn from_str_opt(s: &str) -> Option<Self> {
+        match s {
+            "pass" => Some(Self::Pass),
+            "fail" => Some(Self::Fail),
+            "stale" => Some(Self::Stale),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for VerificationStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// Structured record of a claim-source provenance check.
+///
+/// Stored as JSON in the `content` field of a `Fact` with
+/// `fact_type = "verification"`. Captures what was claimed, how it was
+/// checked, and whether the check passed.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VerificationRecord {
+    /// The assertion being verified (e.g. "build succeeded", "total is 383").
+    pub claim: String,
+    /// How the claim was checked against ground truth.
+    pub source: VerificationSource,
+    /// The value the claim asserts.
+    pub expected: serde_json::Value,
+    /// The value observed from the source.
+    pub actual: serde_json::Value,
+    /// Acceptable relative deviation before marking as `Fail` (0.0 = exact match).
+    pub tolerance: f64,
+    /// Outcome of the comparison.
+    pub status: VerificationStatus,
+    /// When the verification was performed.
+    pub verified_at: jiff::Timestamp,
 }
 
 /// Heuristic: content mentions a named relationship pattern (e.g. "works at", "reports to").
