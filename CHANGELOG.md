@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.25](https://github.com/forkwright/aletheia/compare/v0.13.24...v0.13.25) (2026-04-03)
+
+
+### Bug Fixes
+
+* **pylon:** replace ULID session ID generation with UUID v4 ([#2349](https://github.com/forkwright/aletheia/issues/2349)) ([739f052](https://github.com/forkwright/aletheia/commit/739f0526d91cfc3917476e9b996ef49b4fd5251e))
+
 ## [0.13.24](https://github.com/forkwright/aletheia/compare/v0.13.23...v0.13.24) (2026-04-03)
 
 
