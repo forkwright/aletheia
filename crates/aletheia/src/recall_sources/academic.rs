@@ -50,7 +50,7 @@ impl RecallSource for AcademicSource {
                 .client
                 .get(&endpoint)
                 .query(&[("query", query), ("fields", PAPER_FIELDS)])
-                .query(&[("LIMIT", clamped_limit)]);
+                .query(&[("limit", clamped_limit)]);
 
             if let Some(ref key) = self.api_key {
                 req = req.header("x-api-key", key);
@@ -85,7 +85,7 @@ impl RecallSource for AcademicSource {
                     // Semantic Scholar returns results in relevance order.
                     let denominator = (clamped_limit.max(1)) as f64;
                     #[expect(clippy::cast_precision_loss, reason = "rank index is small enough that f64 precision is sufficient")]
-                    let relevance = 1.0 - (f64::try_from(rank).unwrap_or_default() / denominator);
+                    let relevance = 1.0 - (rank as f64 / denominator);
                     SourceResult {
                         content,
                         relevance,

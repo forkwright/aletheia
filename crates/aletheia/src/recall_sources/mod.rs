@@ -93,7 +93,7 @@ impl RecallSourceRegistry {
             let source = Arc::clone(source);
             let query = query.to_owned();
             handles.push(tokio::spawn(async move {
-                let source_type = source.source_type(.instrument(tracing::info_span!("spawned_task"))).to_owned();
+                let source_type = source.source_type().to_owned();
                 match source.query(&query, limit_per_source).await {
                     Ok(results) => {
                         debug!(
