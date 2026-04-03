@@ -134,6 +134,12 @@ pub(crate) async fn run(args: Args) -> Result<()> {
 
     info!(addr = %bind_addr, "pylon listening");
 
+    // WHY: Without a SIGHUP handler, the signal hits the default Unix
+    // disposition (terminate), crashing the server instead of reloading (#2350).
+    #[cfg(unix)]
+    let sighup_handle =
+        aletheia_pylon::server::spawn_sighup_handler(Arc::clone(&runtime.state));
+
     // Axum graceful shutdown: wait for OS signal, then cancel root token so
     // all subsystems observe shutdown simultaneously.
     let token_for_signal = runtime.shutdown_token.clone();
@@ -149,6 +155,7 @@ pub(crate) async fn run(args: Args) -> Result<()> {
     // Drain ordering:
     // 1. HTTP server has stopped accepting new requests (axum graceful_shutdown).
     // 2. Root token is cancelled: daemon tasks observe it and exit their loops.
+    // 2a. Drain SIGHUP handler (observes shutdown token).
     // 3. Wait for system daemon to finish in-flight maintenance work.
     // 4. Drain nous actors with a timeout, flushing fjall WAL and other state.
     // 5. Drop AppState (session store, registries).
@@ -161,6 +168,17 @@ pub(crate) async fn run(args: Args) -> Result<()> {
             .and_then(|v| v.parse::<u64>().ok())
             .unwrap_or(10),
     );
+
+    // Drain SIGHUP handler before other subsystems.
+    #[cfg(unix)]
+    {
+        if tokio::time::timeout(shutdown_timeout, sighup_handle)
+            .await
+            .is_err()
+        {
+            warn!("sighup handler did not exit within drain timeout");
+        }
+    }
 
     // Await system daemon handles
     for handle in runtime.daemon_handles.drain(..) {
