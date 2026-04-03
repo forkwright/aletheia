@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.13.34](https://github.com/forkwright/aletheia/compare/v0.13.33...v0.13.34) (2026-04-03)
+
+
+### Bug Fixes
+
+* remove private agent name from codebase ([#2415](https://github.com/forkwright/aletheia/issues/2415)) ([59c6cfa](https://github.com/forkwright/aletheia/commit/59c6cfad7ea0cdd137d0988fc15f8f1acc826ffa))
+* resolve lint violations via kanon lint --fix ([15c6a4e](https://github.com/forkwright/aletheia/commit/15c6a4e6add525601a73676cf56e2c3d223f99a7))
+
+
+### Documentation
+
+* add AGENTS.md and operating principle ([#2418](https://github.com/forkwright/aletheia/issues/2418)) ([5aa00b0](https://github.com/forkwright/aletheia/commit/5aa00b0c28a8e6c74ff06cd27177f0bb1943d800))
+
 ## [0.13.33](https://github.com/forkwright/aletheia/compare/v0.13.32...v0.13.33) (2026-04-03)
 
 
