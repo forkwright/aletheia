@@ -26,3 +26,4 @@ pub(crate) fn authenticated_client(config: &ConnectionConfig) -> Client {
         .build()
         .unwrap_or_default()
 }
+test
