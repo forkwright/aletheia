@@ -97,8 +97,9 @@ impl PylonClient {
 
         if let Some(ref token) = config.auth_token {
             let value = format!("Bearer {token}");
-            let header_value = HeaderValue::from_str(&value).map_err(|e| {
-                tracing::debug!(error = %e, "auth token contains invalid header characters");
+            // SAFETY: log only the error kind, not the token value.
+            let header_value = HeaderValue::from_str(&value).map_err(|_| {
+                tracing::debug!("auth token contains invalid header characters");
                 ConnectionError::InvalidToken
             })?;
             headers.insert(AUTHORIZATION, header_value);
@@ -199,9 +200,10 @@ impl ConnectionService {
     ///
     /// This is designed to be spawned as a background task:
     /// ```ignore
+    /// use tracing::Instrument;
     /// let (tx, rx) = mpsc::unbounded_channel();
     /// let svc = ConnectionService::new(config, cancel.clone(), tx);
-    /// tokio::spawn(svc.run());
+    /// tokio::spawn(svc.run().instrument(tracing::info_span!("connection_service")));
     /// // rx.recv() in a Dioxus coroutine
     /// ```
     pub async fn run(self) {
