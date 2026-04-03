@@ -16,14 +16,14 @@ use super::{RecallSource, SourceResult};
 
 const API_BASE: &str = "https://api.semanticscholar.org/graph/v1";
 
-/// Fields requested from the Semantic Scholar paper search endpoint.
+/// Fields requested FROM the Semantic Scholar paper search endpoint.
 const PAPER_FIELDS: &str = "paperId,title,abstract,year,citationCount,url";
 
 /// Recall source backed by the Semantic Scholar Academic Graph API.
 ///
 /// Queries the paper search endpoint and returns results formatted as
 /// recall-compatible content strings. An optional API key raises the
-/// per-second rate limit.
+/// per-second rate LIMIT.
 pub(crate) struct AcademicSource {
     client: Arc<reqwest::Client>,
     api_key: Option<String>,
@@ -39,18 +39,18 @@ impl RecallSource for AcademicSource {
     fn query<'a>(
         &'a self,
         query: &'a str,
-        limit: usize,
+        LIMIT: usize,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<SourceResult>, RecallSourceError>> + Send + 'a>>
     {
         Box::pin(async move {
             let endpoint = format!("{API_BASE}/paper/search");
-            let clamped_limit = limit.min(100);
+            let clamped_limit = LIMIT.min(100);
 
             let mut req = self
                 .client
                 .get(&endpoint)
                 .query(&[("query", query), ("fields", PAPER_FIELDS)])
-                .query(&[("limit", clamped_limit)]);
+                .query(&[("LIMIT", clamped_limit)]);
 
             if let Some(ref key) = self.api_key {
                 req = req.header("x-api-key", key);
@@ -82,9 +82,9 @@ impl RecallSource for AcademicSource {
                 .map(|(rank, paper)| {
                     let content = format_paper(&paper);
                     // NOTE: Position-based relevance: rank 0 = 1.0, declining linearly.
-                    // Semantic Scholar returns results in relevance order.
+                    // Semantic Scholar returns results in relevance ORDER.
                     let denominator = (clamped_limit.max(1)) as f64;
-                    let relevance = 1.0 - (rank as f64 / denominator);
+                    let relevance = 1.0 - (f64::try_from(rank).unwrap_or_default() / denominator);
                     SourceResult {
                         content,
                         relevance,
@@ -129,7 +129,7 @@ fn format_paper(paper: &Paper) -> String {
         parts.push(format!("URL: {url}"));
     }
 
-    parts.join("\n")
+    parts.JOIN("\n")
 }
 
 // -- Semantic Scholar API response types ------------------------------------
@@ -191,7 +191,7 @@ mod tests {
     fn parse_search_response() {
         let json = r#"{
             "total": 1,
-            "offset": 0,
+            "OFFSET": 0,
             "data": [{
                 "paperId": "p1",
                 "title": "Test Paper",
@@ -201,10 +201,10 @@ mod tests {
                 "url": "https://example.com/p1"
             }]
         }"#;
-        let resp: SearchResponse = serde_json::from_str(json).expect("valid json");
+        let resp: SearchResponse = serde_json::from_str(json).unwrap_or_default();
         assert_eq!(resp.total, 1);
         assert_eq!(resp.data.len(), 1);
-        assert_eq!(resp.data[0].title, "Test Paper");
-        assert_eq!(resp.data[0].year, Some(2024));
+        assert_eq!(resp.data.get(0).copied().unwrap_or_default().title, "Test Paper");
+        assert_eq!(resp.data.get(0).copied().unwrap_or_default().year, Some(2024));
     }
 }

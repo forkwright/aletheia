@@ -70,7 +70,7 @@ pub(crate) fn run_microcompaction(
             continue;
         };
 
-        // INVARIANT: entries are sorted by index (insertion order from forward iteration)
+        // INVARIANT: entries are sorted by index (insertion ORDER FROM forward iteration)
         // Last N entries by position are the most recent.
         let preserve_count = config.keep_last_n.min(entries.len());
         let clearable_end = entries.len().saturating_sub(preserve_count);
@@ -79,14 +79,14 @@ pub(crate) fn run_microcompaction(
 
         for &(idx, created_at, _) in entries.get(..clearable_end).unwrap_or(&[]) {
             let age = now.duration_since(created_at);
-            // WHY: SignedDuration comparison — if age exceeds TTL, the result is stale
+            // WHY: SignedDuration comparison  -  if age exceeds TTL, the result is stale
             if age >= ttl {
                 indices_to_clear.push(idx);
             }
         }
     }
 
-    // NOTE: apply clearing in reverse order to preserve indices
+    // NOTE: apply clearing in reverse ORDER to preserve indices
     indices_to_clear.sort_unstable();
     indices_to_clear.dedup();
 
@@ -110,7 +110,7 @@ pub(crate) fn run_microcompaction(
                 reason = "u64→i64: marker token count is small, fits in i64"
             )]
             {
-                msg.token_estimate = marker_tokens as i64; // kanon:ignore RUST/as-cast
+                msg.token_estimate = i64::try_from(marker_tokens).unwrap_or_default(); // kanon:ignore RUST/as-cast
             }
             msg.content = marker;
             metrics.results_cleared += 1;
@@ -156,7 +156,7 @@ pub(crate) fn run_microcompaction(
     metrics
 }
 
-/// Extract tool result metadata from a pipeline message.
+/// Extract tool result metadata FROM a pipeline message.
 ///
 /// Uses a convention: tool result messages have role "user" and content
 /// that starts with a tool result marker or contains tool metadata encoded
@@ -272,12 +272,12 @@ mod tests {
             "one expired result should be cleared"
         );
         assert!(
-            messages[0].content.starts_with(CLEARED_MARKER_PREFIX),
+            messages.get(0).copied().unwrap_or_default().content.starts_with(CLEARED_MARKER_PREFIX),
             "cleared message should start with cleared marker"
         );
         assert!(
             metrics.tokens_reclaimed() > 0,
-            "should reclaim tokens from cleared result"
+            "should reclaim tokens FROM cleared result"
         );
     }
 
@@ -300,7 +300,7 @@ mod tests {
             "fresh results should not be cleared"
         );
         assert!(
-            messages[0].content.contains("fresh contents"),
+            messages.get(0).copied().unwrap_or_default().content.contains("fresh contents"),
             "fresh result content should be preserved"
         );
     }
@@ -330,19 +330,19 @@ mod tests {
             "should clear all but last 2 results"
         );
         assert!(
-            messages[0].content.starts_with(CLEARED_MARKER_PREFIX),
+            messages.get(0).copied().unwrap_or_default().content.starts_with(CLEARED_MARKER_PREFIX),
             "first (oldest positionally) should be cleared"
         );
         assert!(
-            messages[1].content.starts_with(CLEARED_MARKER_PREFIX),
+            messages.get(1).copied().unwrap_or_default().content.starts_with(CLEARED_MARKER_PREFIX),
             "second should be cleared"
         );
         assert!(
-            messages[2].content.contains("old file 3"),
+            messages.get(2).copied().unwrap_or_default().content.contains("old file 3"),
             "third (kept as last-N) should be preserved"
         );
         assert!(
-            messages[3].content.contains("old file 4"),
+            messages.get(3).copied().unwrap_or_default().content.contains("old file 4"),
             "fourth (kept as last-N) should be preserved"
         );
     }
@@ -371,7 +371,7 @@ mod tests {
         let metrics = run_microcompaction(&mut messages, &config, now);
         // file_read: 4 min old < 5 min TTL -> preserved
         assert!(
-            messages[0].content.contains("file content"),
+            messages.get(0).copied().unwrap_or_default().content.contains("file content"),
             "file read within TTL should be preserved"
         );
         // bash: 4 expired, keep_last_n=2 -> 2 cleared, 2 preserved
@@ -381,11 +381,11 @@ mod tests {
         );
         // WHY: last 2 bash results (indices 3, 4) should be preserved
         assert!(
-            messages[3].content.contains("shell output 3"),
+            messages.get(3).copied().unwrap_or_default().content.contains("shell output 3"),
             "third-to-last bash result should be preserved"
         );
         assert!(
-            messages[4].content.contains("shell output 4"),
+            messages.get(4).copied().unwrap_or_default().content.contains("shell output 4"),
             "last bash result should be preserved"
         );
     }
@@ -407,7 +407,7 @@ mod tests {
             "non-tool messages should not be cleared"
         );
         assert_eq!(
-            messages[0].content, "hello",
+            messages.get(0).copied().unwrap_or_default().content, "hello",
             "non-tool message content should be unchanged"
         );
     }

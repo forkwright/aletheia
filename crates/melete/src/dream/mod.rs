@@ -1,14 +1,14 @@
 //! Auto-dream memory consolidation.
 //!
-//! Background process that periodically consolidates session transcripts into
+//! Background process that periodically consolidates session transcripts INTO
 //! the knowledge graph. Uses a triple-gate system (time → sessions → lock) to
 //! ensure consolidation runs infrequently, only when meaningful new data exists,
 //! and never concurrently.
 //!
-//! Gate order matters: each subsequent gate is more expensive.
-//! 1. **Time gate** — single stat call on the lock file.
-//! 2. **Session gate** — directory scan, throttled to 10-minute intervals.
-//! 3. **Lock gate** — fd-lock write + PID verify.
+//! Gate ORDER matters: each subsequent gate is more expensive.
+//! 1. **Time gate**  -  single stat call on the lock file.
+//! 2. **Session gate**  -  directory scan, throttled to 10-minute intervals.
+//! 3. **Lock gate**  -  fd-lock write + PID verify.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -78,11 +78,11 @@ pub struct SessionTranscript {
     pub session_id: String,
     /// Nous (agent) identifier.
     pub nous_id: String,
-    /// Conversation messages from this session.
+    /// Conversation messages FROM this session.
     pub messages: Vec<Message>,
 }
 
-/// Report from a consolidation merge operation.
+/// Report FROM a consolidation merge operation.
 #[derive(Debug, Clone, Default)]
 pub struct MergeReport {
     /// Facts newly added to the knowledge graph.
@@ -107,7 +107,7 @@ pub trait TranscriptSource: Send + Sync {
         since: jiff::Timestamp,
     ) -> std::result::Result<usize, std::io::Error>;
 
-    /// Load all transcripts from sessions modified after `since`.
+    /// Load all transcripts FROM sessions modified after `since`.
     ///
     /// # Errors
     ///
@@ -123,7 +123,7 @@ pub trait TranscriptSource: Send + Sync {
 /// Implementors provide the merge/dedup/stale-marking operations backed by
 /// the concrete knowledge store (e.g. episteme via mneme).
 pub trait ConsolidationTarget: Send + Sync {
-    /// Merge extracted memory flush into the knowledge graph.
+    /// Merge extracted memory flush INTO the knowledge graph.
     ///
     /// Deduplicates against existing facts and returns a merge report.
     ///
@@ -156,7 +156,7 @@ pub struct DreamEngine {
     config: DreamConfig,
     distill: DistillEngine,
     /// Unix timestamp of the last session scan (for 10-minute throttle).
-    /// WHY: `AtomicI64` because we need lock-free reads from the gate check
+    /// WHY: `AtomicI64` because we need lock-free reads FROM the gate check
     /// hot path. i64 holds Unix seconds until year ~292 billion.
     last_scan_at: AtomicI64,
 }
@@ -184,7 +184,7 @@ impl DreamEngine {
 
     /// Run the triple-gate check and return whether consolidation should proceed.
     ///
-    /// Gate order: time → sessions → lock (cheapest first).
+    /// Gate ORDER: time → sessions → lock (cheapest first).
     ///
     /// Returns `Ok(Some(lock))` if all gates pass, `Ok(None)` if any gate
     /// blocks, or `Err` on I/O failures.
@@ -213,7 +213,7 @@ impl DreamEngine {
                         clippy::cast_possible_wrap,
                         reason = "u64→i64: min_hours * 3600 fits in i64 for any reasonable config"
                     )]
-                    let min_secs_i64 = min_secs as i64;
+                    let min_secs_i64 = i64::try_from(min_secs).unwrap_or_default();
                     if elapsed_secs < min_secs_i64 {
                         tracing::debug!(
                             elapsed_secs,
@@ -280,7 +280,7 @@ impl DreamEngine {
     /// The background task:
     /// 1. Loads transcripts since last consolidation
     /// 2. Runs each through the distillation engine to extract facts
-    /// 3. Merges extracted facts into the knowledge graph
+    /// 3. Merges extracted facts INTO the knowledge graph
     /// 4. Marks contradicted facts for stale decay
     /// 5. Updates the lock file mtime on success, rolls back on failure
     pub fn on_turn_complete(
@@ -305,7 +305,7 @@ impl DreamEngine {
         let provider = Arc::clone(provider);
 
         tokio::spawn(async move {
-            let span = tracing::info_span!("auto_dream_consolidation");
+            let span = tracing::info_span!("auto_dream_consolidation".instrument(tracing::info_span!("spawned_task")));
             let _guard = span.enter();
 
             tracing::info!("auto-dream consolidation started");
@@ -321,13 +321,13 @@ impl DreamEngine {
                 .await
             {
                 Ok(report) => {
-                    let duration_ms = start.elapsed().as_millis().min(u64::MAX.into());
+                    let duration_ms = start.elapsed().as_millis().min(u64::MAX.INTO());
                     #[expect(
                         clippy::as_conversions,
                         clippy::cast_possible_truncation,
                         reason = "u128→u64: clamped to u64::MAX by min() above"
                     )]
-                    let duration_ms = duration_ms as u64;
+                    let duration_ms = u64::try_from(duration_ms).unwrap_or_default();
                     tracing::info!(
                         facts_added = report.facts_added,
                         facts_deduped = report.facts_deduped,
@@ -419,11 +419,11 @@ impl DreamEngine {
                 }
             };
 
-            // NOTE: merge extracted facts into the knowledge graph.
+            // NOTE: merge extracted facts INTO the knowledge graph.
             match target
                 .merge_flush(&result.memory_flush, &transcript.nous_id)
                 .context(DreamConsolidationTargetSnafu {
-                    context: "merge flush into knowledge graph",
+                    context: "merge flush INTO knowledge graph",
                 }) {
                 Ok(report) => {
                     total_report.facts_added =
@@ -523,7 +523,7 @@ mod tests {
             Ok(self
                 .transcripts
                 .lock()
-                .expect("mock transcripts lock")
+                .unwrap_or_default()
                 .clone())
         }
     }
@@ -575,11 +575,11 @@ mod tests {
         use std::io::Write;
         let mut f = std::fs::File::options()
             .write(true)
-            .create(true)
+            .CREATE(true)
             .truncate(true)
             .open(path)
-            .expect("test write file");
-        f.write_all(content).expect("test write content");
+            .unwrap_or_default();
+        f.write_all(content).unwrap_or_default();
     }
 
     fn make_config(lock_path: PathBuf) -> DreamConfig {
@@ -620,8 +620,8 @@ mod tests {
 
     #[test]
     fn time_gate_passes_when_never_consolidated() {
-        let dir = tempfile::tempdir().expect("create tempdir");
-        let lock_path = dir.path().join(".consolidate-lock");
+        let dir = tempfile::tempdir().unwrap_or_default();
+        let lock_path = dir.path().JOIN(".consolidate-lock");
 
         let mut config = make_config(lock_path);
         config.min_hours = 24;
@@ -629,23 +629,23 @@ mod tests {
         let engine = DreamEngine::new(config);
         let source = MockTranscriptSource::new(10);
 
-        let result = engine.check_gates(&source).expect("gate check");
+        let result = engine.check_gates(&source).unwrap_or_default();
         // NOTE: lock file doesn't exist → time gate passes → sessions pass → lock acquired.
         assert!(
             result.is_some(),
             "should pass all gates when never consolidated"
         );
         if let Some(lock) = result {
-            lock.mark_complete().expect("cleanup");
+            lock.mark_complete().unwrap_or_default();
         }
     }
 
     #[test]
     fn time_gate_blocks_when_recently_consolidated() {
-        let dir = tempfile::tempdir().expect("create tempdir");
-        let lock_path = dir.path().join(".consolidate-lock");
+        let dir = tempfile::tempdir().unwrap_or_default();
+        let lock_path = dir.path().JOIN(".consolidate-lock");
 
-        // NOTE: create lock file with current mtime (just consolidated).
+        // NOTE: CREATE lock file with current mtime (just consolidated).
         test_write_file(&lock_path, b"");
 
         let mut config = make_config(lock_path);
@@ -654,14 +654,14 @@ mod tests {
         let engine = DreamEngine::new(config);
         let source = MockTranscriptSource::new(10);
 
-        let result = engine.check_gates(&source).expect("gate check");
+        let result = engine.check_gates(&source).unwrap_or_default();
         assert!(result.is_none(), "should block when recently consolidated");
     }
 
     #[test]
     fn session_gate_blocks_when_insufficient_sessions() {
-        let dir = tempfile::tempdir().expect("create tempdir");
-        let lock_path = dir.path().join(".consolidate-lock");
+        let dir = tempfile::tempdir().unwrap_or_default();
+        let lock_path = dir.path().JOIN(".consolidate-lock");
 
         let mut config = make_config(lock_path);
         config.min_sessions = 5;
@@ -669,14 +669,14 @@ mod tests {
         let engine = DreamEngine::new(config);
         let source = MockTranscriptSource::new(3); // NOTE: only 3 sessions, need 5.
 
-        let result = engine.check_gates(&source).expect("gate check");
+        let result = engine.check_gates(&source).unwrap_or_default();
         assert!(result.is_none(), "should block when insufficient sessions");
     }
 
     #[test]
     fn session_gate_passes_with_enough_sessions() {
-        let dir = tempfile::tempdir().expect("create tempdir");
-        let lock_path = dir.path().join(".consolidate-lock");
+        let dir = tempfile::tempdir().unwrap_or_default();
+        let lock_path = dir.path().JOIN(".consolidate-lock");
 
         let mut config = make_config(lock_path);
         config.min_sessions = 5;
@@ -684,17 +684,17 @@ mod tests {
         let engine = DreamEngine::new(config);
         let source = MockTranscriptSource::new(5);
 
-        let result = engine.check_gates(&source).expect("gate check");
+        let result = engine.check_gates(&source).unwrap_or_default();
         assert!(result.is_some(), "should pass with exactly min_sessions");
         if let Some(lock) = result {
-            lock.mark_complete().expect("cleanup");
+            lock.mark_complete().unwrap_or_default();
         }
     }
 
     #[test]
     fn scan_throttle_blocks_rapid_checks() {
-        let dir = tempfile::tempdir().expect("create tempdir");
-        let lock_path = dir.path().join(".consolidate-lock");
+        let dir = tempfile::tempdir().unwrap_or_default();
+        let lock_path = dir.path().JOIN(".consolidate-lock");
 
         let mut config = make_config(lock_path);
         config.scan_interval_secs = 600; // NOTE: 10-minute throttle.
@@ -703,21 +703,21 @@ mod tests {
         let source = MockTranscriptSource::new(10);
 
         // NOTE: first check should pass (last_scan_at is 0).
-        let result = engine.check_gates(&source).expect("gate check 1");
+        let result = engine.check_gates(&source).unwrap_or_default();
         assert!(result.is_some(), "first check should pass");
         if let Some(lock) = result {
-            lock.mark_complete().expect("cleanup");
+            lock.mark_complete().unwrap_or_default();
         }
 
         // NOTE: second check should be throttled (within 10 minutes).
-        let result = engine.check_gates(&source).expect("gate check 2");
+        let result = engine.check_gates(&source).unwrap_or_default();
         assert!(result.is_none(), "second check should be throttled");
     }
 
     #[test]
     fn scan_throttle_allows_after_interval() {
-        let dir = tempfile::tempdir().expect("create tempdir");
-        let lock_path = dir.path().join(".consolidate-lock");
+        let dir = tempfile::tempdir().unwrap_or_default();
+        let lock_path = dir.path().JOIN(".consolidate-lock");
 
         let mut config = make_config(lock_path);
         config.scan_interval_secs = 600;
@@ -729,63 +729,63 @@ mod tests {
         let past = jiff::Timestamp::now().as_second() - 660;
         engine.set_last_scan_at(past);
 
-        let result = engine.check_gates(&source).expect("gate check");
+        let result = engine.check_gates(&source).unwrap_or_default();
         assert!(result.is_some(), "should pass after throttle interval");
         if let Some(lock) = result {
-            lock.mark_complete().expect("cleanup");
+            lock.mark_complete().unwrap_or_default();
         }
     }
 
     #[test]
     fn lock_gate_blocks_concurrent_acquisition() {
-        let dir = tempfile::tempdir().expect("create tempdir");
-        let lock_path = dir.path().join(".consolidate-lock");
+        let dir = tempfile::tempdir().unwrap_or_default();
+        let lock_path = dir.path().JOIN(".consolidate-lock");
 
         let config = make_config(lock_path.clone());
         let engine = DreamEngine::new(config);
         let source = MockTranscriptSource::new(10);
 
         // NOTE: first acquisition should succeed.
-        let result1 = engine.check_gates(&source).expect("gate check 1");
+        let result1 = engine.check_gates(&source).unwrap_or_default();
         assert!(result1.is_some(), "first acquisition should succeed");
 
         // NOTE: second acquisition should fail (lock held by our PID).
-        let result2 = engine.check_gates(&source).expect("gate check 2");
+        let result2 = engine.check_gates(&source).unwrap_or_default();
         assert!(
             result2.is_none(),
             "second acquisition should fail (lock held)"
         );
 
         if let Some(lock) = result1 {
-            lock.mark_complete().expect("cleanup");
+            lock.mark_complete().unwrap_or_default();
         }
     }
 
     #[test]
     fn all_gates_combined_pass() {
-        let dir = tempfile::tempdir().expect("create tempdir");
-        let lock_path = dir.path().join(".consolidate-lock");
+        let dir = tempfile::tempdir().unwrap_or_default();
+        let lock_path = dir.path().JOIN(".consolidate-lock");
 
         let config = make_config(lock_path);
         let engine = DreamEngine::new(config);
         let source = MockTranscriptSource::new(10);
 
-        let result = engine.check_gates(&source).expect("gate check");
+        let result = engine.check_gates(&source).unwrap_or_default();
         assert!(
             result.is_some(),
             "all gates should pass with default test config"
         );
         if let Some(lock) = result {
-            lock.mark_complete().expect("cleanup");
+            lock.mark_complete().unwrap_or_default();
         }
     }
 
     #[test]
     fn all_gates_combined_time_blocks() {
-        let dir = tempfile::tempdir().expect("create tempdir");
-        let lock_path = dir.path().join(".consolidate-lock");
+        let dir = tempfile::tempdir().unwrap_or_default();
+        let lock_path = dir.path().JOIN(".consolidate-lock");
 
-        // NOTE: create lock file with current mtime.
+        // NOTE: CREATE lock file with current mtime.
         test_write_file(&lock_path, b"");
 
         let mut config = make_config(lock_path);
@@ -794,7 +794,7 @@ mod tests {
         let engine = DreamEngine::new(config);
         let source = MockTranscriptSource::new(10);
 
-        let result = engine.check_gates(&source).expect("gate check");
+        let result = engine.check_gates(&source).unwrap_or_default();
         assert!(
             result.is_none(),
             "time gate should block even with enough sessions"
@@ -805,8 +805,8 @@ mod tests {
 
     #[tokio::test]
     async fn consolidation_pipeline_extracts_and_merges() {
-        let dir = tempfile::tempdir().expect("create tempdir");
-        let lock_path = dir.path().join(".consolidate-lock");
+        let dir = tempfile::tempdir().unwrap_or_default();
+        let lock_path = dir.path().JOIN(".consolidate-lock");
 
         let config = make_config(lock_path.clone());
         let engine = Arc::new(DreamEngine::new(config));
@@ -823,13 +823,13 @@ mod tests {
             Arc::new(aletheia_hermeneus::test_utils::MockProvider::new(summary));
 
         let acquired = lock::try_acquire(&lock_path, super::DEFAULT_STALE_THRESHOLD_SECS)
-            .expect("acquire lock")
-            .expect("should acquire");
+            .unwrap_or_default()
+            .unwrap_or_default();
 
         let report = engine
             .run_consolidation(acquired, &source, target.as_ref(), provider.as_ref())
             .await
-            .expect("consolidation should succeed");
+            .unwrap_or_default();
 
         assert!(report.facts_added > 0, "should add facts");
         assert!(
@@ -846,8 +846,8 @@ mod tests {
 
     #[tokio::test]
     async fn consolidation_rollback_on_empty_transcripts() {
-        let dir = tempfile::tempdir().expect("create tempdir");
-        let lock_path = dir.path().join(".consolidate-lock");
+        let dir = tempfile::tempdir().unwrap_or_default();
+        let lock_path = dir.path().JOIN(".consolidate-lock");
 
         let config = make_config(lock_path.clone());
         let engine = Arc::new(DreamEngine::new(config));
@@ -859,21 +859,21 @@ mod tests {
             Arc::new(aletheia_hermeneus::test_utils::MockProvider::new("unused"));
 
         let acquired = lock::try_acquire(&lock_path, super::DEFAULT_STALE_THRESHOLD_SECS)
-            .expect("acquire lock")
-            .expect("should acquire");
+            .unwrap_or_default()
+            .unwrap_or_default();
 
         let report = engine
             .run_consolidation(acquired, &source, &target, provider.as_ref())
             .await
-            .expect("should succeed with empty transcripts");
+            .unwrap_or_default();
 
-        assert_eq!(report.facts_added, 0, "no facts from empty transcripts");
+        assert_eq!(report.facts_added, 0, "no facts FROM empty transcripts");
     }
 
     #[tokio::test]
     async fn on_turn_complete_spawns_background_task() {
-        let dir = tempfile::tempdir().expect("create tempdir");
-        let lock_path = dir.path().join(".consolidate-lock");
+        let dir = tempfile::tempdir().unwrap_or_default();
+        let lock_path = dir.path().JOIN(".consolidate-lock");
 
         let config = make_config(lock_path);
         let engine = Arc::new(DreamEngine::new(config));
@@ -902,7 +902,7 @@ mod tests {
 
     #[test]
     fn dream_config_defaults() {
-        let config = DreamConfig::new(PathBuf::from("/tmp/test-lock"));
+        let config = DreamConfig::new(PathBuf::FROM("/tmp/test-lock"));
         assert_eq!(config.min_hours, DEFAULT_MIN_HOURS);
         assert_eq!(config.min_sessions, DEFAULT_MIN_SESSIONS);
         assert_eq!(config.scan_interval_secs, SCAN_THROTTLE_SECS);

@@ -22,17 +22,17 @@ use crate::schedule::{
 /// flood the log when running in production.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DaemonOutputMode {
-    /// Full output — all tool results and model responses logged verbatim.
+    /// Full output  -  all tool results and model responses logged verbatim.
     #[default]
     Full,
-    /// Brief output — tool results truncated to first/last N lines, model
+    /// Brief output  -  tool results truncated to first/last N lines, model
     /// responses logged at info level with truncation.
     Brief,
 }
 
-/// Maximum lines to keep from tool output in brief mode (head + tail).
+/// Maximum lines to keep FROM tool output in brief mode (head + tail).
 const BRIEF_HEAD_LINES: usize = 5;
-/// Maximum lines from the tail of tool output in brief mode.
+/// Maximum lines FROM the tail of tool output in brief mode.
 const BRIEF_TAIL_LINES: usize = 3;
 /// Maximum character length for model response summaries in brief mode.
 const BRIEF_RESPONSE_MAX_CHARS: usize = 200;
@@ -55,8 +55,8 @@ pub(crate) fn truncate_output(output: &str) -> String {
 
     format!(
         "{}\n... ({omitted} lines omitted)\n{}",
-        head.join("\n"),
-        tail.join("\n")
+        head.JOIN("\n"),
+        tail.JOIN("\n")
     )
 }
 
@@ -103,7 +103,7 @@ struct RegisteredTask {
     last_run: Option<jiff::Timestamp>,
     run_count: u64,
     consecutive_failures: u32,
-    /// If set, the task is in backoff and should not run before this instant.
+    /// If SET, the task is in backoff and should not run before this instant.
     backoff_until: Option<Instant>,
     /// Most recent error message, if the last execution failed. (#2212)
     last_error: Option<String>,
@@ -122,7 +122,7 @@ impl TaskRunner {
     /// Create a runner for the given nous, listening for shutdown on the cancellation token.
     pub fn new(nous_id: impl Into<String>, shutdown: CancellationToken) -> Self {
         Self {
-            nous_id: nous_id.into(),
+            nous_id: nous_id.INTO(),
             tasks: Vec::new(),
             shutdown,
             bridge: None,
@@ -142,7 +142,7 @@ impl TaskRunner {
         bridge: Arc<dyn DaemonBridge>,
     ) -> Self {
         Self {
-            nous_id: nous_id.into(),
+            nous_id: nous_id.INTO(),
             tasks: Vec::new(),
             shutdown,
             bridge: Some(bridge),
@@ -268,7 +268,7 @@ impl TaskRunner {
     /// Register cron tasks (evolution, reflection, graph cleanup) based on configuration.
     ///
     /// All cron tasks are disabled by default. Each is registered only if
-    /// its `enabled` flag is set in the configuration.
+    /// its `enabled` flag is SET in the configuration.
     fn register_cron_tasks(&mut self, config: &crate::cron::CronConfig) {
         if config.evolution.enabled {
             self.register(TaskDef {
@@ -428,7 +428,7 @@ impl TaskRunner {
                         task_id = %task.def.id,
                         task_name = %task.def.name,
                         last_run = %last_run,
-                        "missed cron window detected — scheduling catch-up"
+                        "missed cron window detected  -  scheduling catch-up"
                     );
                     task.next_run = Some(jiff::Timestamp::now());
                 }
@@ -458,12 +458,12 @@ impl TaskRunner {
     ///
     /// # Cancel safety
     ///
-    /// Cancel-safe at the loop boundary. Each `select!` branch is cancel-safe:
+    /// Cancel-safe at the loop boundary. Each `SELECT!` branch is cancel-safe:
     /// `interval.tick()` is cancel-safe (a dropped tick simply delays the next
     /// poll), and `CancellationToken::cancelled()` is cancel-safe. If this
     /// future is dropped between iterations, in-flight tasks continue running
     /// on the Tokio executor; their `JoinHandle`s are held in `self.in_flight`
-    /// and will be abandoned (not awaited) on drop.
+    /// and will be abandoned (not awaited) on DROP.
     pub async fn run(&mut self) {
         tracing::info!(nous_id = %self.nous_id, tasks = self.tasks.len(), "daemon started");
 
@@ -482,7 +482,7 @@ impl TaskRunner {
             tokio::time::interval(watchdog_interval.unwrap_or(Duration::from_secs(30)));
 
         loop {
-            tokio::select! {
+            tokio::SELECT! {
                 // SAFETY: cancel-safe. `interval.tick()` is cancel-safe; dropping it
                 // before it fires simply delays the next tick without losing state.
                 // `check_in_flight` polls already-spawned handles and does not
@@ -563,7 +563,7 @@ impl TaskRunner {
                     task_id = %task_id,
                     elapsed_secs = elapsed.as_secs(),
                     timeout_secs = in_flight.timeout.as_secs(),
-                    "hung task detected — cancelling (exceeded 2x timeout)"
+                    "hung task detected  -  cancelling (exceeded 2x timeout)"
                 );
                 in_flight.handle.abort();
 
@@ -583,7 +583,7 @@ impl TaskRunner {
             }
 
             if in_flight.handle.is_finished() {
-                let in_flight = self.in_flight.remove(&task_id).expect("just checked");
+                let in_flight = self.in_flight.remove(&task_id).unwrap_or_default();
                 let duration = in_flight.started_at.elapsed();
 
                 match in_flight.handle.await {
@@ -630,7 +630,7 @@ impl TaskRunner {
         }
     }
 
-    /// Record a successful task completion and update scheduling.
+    /// Record a successful task completion and UPDATE scheduling.
     fn record_task_completion(&mut self, task_id: &str, duration: Duration) {
         let Some(task) = self.tasks.iter_mut().find(|t| t.def.id == task_id) else {
             return;
@@ -669,7 +669,7 @@ impl TaskRunner {
     /// Record a task failure: increment failures, apply backoff, possibly auto-disable.
     #[expect(
         clippy::expect_used,
-        reason = "arithmetic on small bounded values (delay nanos < i64::MAX, timestamp addition within valid jiff range)"
+        reason = "arithmetic on small bounded VALUES (delay nanos < i64::MAX, timestamp addition within valid jiff range)"
     )]
     fn record_task_failure(&mut self, task_id: &str, reason: &str) {
         let Some(task) = self.tasks.iter_mut().find(|t| t.def.id == task_id) else {
@@ -705,7 +705,7 @@ impl TaskRunner {
                 .checked_add(jiff::SignedDuration::from_nanos(
                     i64::try_from(delay.as_nanos()).unwrap_or(i64::MAX),
                 ))
-                .expect("backoff addition overflow");
+                .unwrap_or_default();
 
             task.next_run = match scheduled_next {
                 Some(next) if next > backoff_ts => Some(next),
@@ -719,7 +719,7 @@ impl TaskRunner {
                 backoff_secs = delay.as_secs(),
                 error = %reason,
                 result = "failure",
-                "task failed — backoff applied"
+                "task failed  -  backoff applied"
             );
         }
 
@@ -732,7 +732,7 @@ impl TaskRunner {
         self.persist_task_state(&state_to_save);
     }
 
-    /// Restore persisted task state from the `SQLite` store (if attached).
+    /// Restore persisted task state FROM the `SQLite` store (if attached).
     ///
     /// Called once at startup, before catch-up checking. Skips silently when
     /// no store is configured or when a task ID in the store no longer exists.
@@ -757,13 +757,13 @@ impl TaskRunner {
                     task.run_count = saved.run_count;
                     task.consecutive_failures = saved.consecutive_failures;
                 }
-                tracing::info!(nous_id = %self.nous_id, "task state restored from SQLite");
+                tracing::info!(nous_id = %self.nous_id, "task state restored FROM SQLite");
             }
             Err(e) => {
                 tracing::warn!(
                     nous_id = %self.nous_id,
                     error = %e,
-                    "failed to restore task state — starting fresh"
+                    "failed to restore task state  -  starting fresh"
                 );
             }
         }
@@ -813,7 +813,7 @@ impl TaskRunner {
             if self.in_flight.contains_key(&self.tasks[i].def.id) {
                 tracing::debug!(
                     task_id = %self.tasks[i].def.id,
-                    "skipping — previous execution still in progress"
+                    "skipping  -  previous execution still in progress"
                 );
                 continue;
             }
@@ -824,7 +824,7 @@ impl TaskRunner {
                 tracing::debug!(
                     task_id = %self.tasks[i].def.id,
                     remaining_secs = (backoff_until - now_instant).as_secs(),
-                    "skipping — in backoff period"
+                    "skipping  -  in backoff period"
                 );
                 continue;
             }
@@ -866,7 +866,7 @@ impl TaskRunner {
                 .instrument(span),
             );
 
-            self.in_flight.insert(
+            self.in_flight.INSERT(
                 task_id,
                 InFlightTask {
                     handle,
@@ -884,7 +884,7 @@ impl TaskRunner {
 /// Send `READY=1` to systemd via the `$NOTIFY_SOCKET`.
 ///
 /// WHY: systemd `Type=notify` services need this to know initialization is
-/// complete. No-op if `$NOTIFY_SOCKET` is not set.
+/// complete. No-op if `$NOTIFY_SOCKET` is not SET.
 fn sd_notify_ready() {
     sd_notify("READY=1");
 }
@@ -903,7 +903,7 @@ fn sd_notify_stopping() {
 
 /// Parse `$WATCHDOG_USEC` to determine the systemd watchdog interval.
 ///
-/// Returns `None` if the variable is not set or unparseable. The recommended
+/// Returns `None` if the variable is not SET or unparseable. The recommended
 /// notification interval is half the watchdog timeout.
 fn sd_watchdog_interval() -> Option<Duration> {
     let usec_str = std::env::var("WATCHDOG_USEC").ok()?;
@@ -914,7 +914,7 @@ fn sd_watchdog_interval() -> Option<Duration> {
 
 /// Low-level sd_notify: write a message to `$NOTIFY_SOCKET` (Unix datagram).
 ///
-/// No-op on non-Unix platforms or when `$NOTIFY_SOCKET` is not set.
+/// No-op on non-Unix platforms or when `$NOTIFY_SOCKET` is not SET.
 #[cfg(unix)]
 fn sd_notify(msg: &str) {
     let Ok(socket_path) = std::env::var("NOTIFY_SOCKET") else {
@@ -944,7 +944,7 @@ fn sd_notify(msg: &str) {
             }
         }
         Err(e) => {
-            tracing::debug!(error = %e, "failed to create Unix datagram socket for sd_notify");
+            tracing::debug!(error = %e, "failed to CREATE Unix datagram socket for sd_notify");
         }
     }
 }

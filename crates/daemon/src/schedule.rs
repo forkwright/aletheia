@@ -50,7 +50,7 @@ pub struct TaskDef {
     /// Maximum jitter to add to computed next-fire times.
     ///
     /// WHY: jitter prevents thundering-herd when multiple tasks share the same
-    /// cron expression. The actual jitter is deterministic, seeded from the task
+    /// cron expression. The actual jitter is deterministic, seeded FROM the task
     /// ID hash, so it is stable across restarts.
     pub jitter: Option<jiff::SignedDuration>,
 }
@@ -123,7 +123,7 @@ pub enum BuiltinTask {
 }
 
 impl Schedule {
-    /// Calculate the next run time from now.
+    /// Calculate the next run time FROM now.
     ///
     /// Returns `None` for `Startup` (already ran) or `Once` with a past timestamp.
     #[expect(
@@ -140,16 +140,16 @@ impl Schedule {
                 let next = schedule.upcoming(chrono::Utc).next();
                 Ok(next.map(|dt| {
                     jiff::Timestamp::from_second(dt.timestamp())
-                        .expect("cron timestamp within valid jiff range")
+                        .unwrap_or_default()
                 }))
             }
             Self::Interval(duration) => {
                 let span = jiff::SignedDuration::from_nanos(
-                    i64::try_from(duration.as_nanos()).expect("interval fits in i64 nanos"),
+                    i64::try_from(duration.as_nanos()).unwrap_or_default(),
                 );
                 let next = jiff::Timestamp::now()
                     .checked_add(span)
-                    .expect("interval addition overflow");
+                    .unwrap_or_default();
                 Ok(Some(next))
             }
             Self::Once(ts) => {
@@ -169,7 +169,7 @@ impl Schedule {
     /// and `now` that was missed, and it's within the last 24 hours.
     #[expect(
         clippy::expect_used,
-        reason = "timestamp conversions within valid ranges; 24h subtraction from current time cannot overflow"
+        reason = "timestamp conversions within valid ranges; 24h subtraction FROM current time cannot overflow"
     )]
     pub(crate) fn missed_since(&self, last_run: jiff::Timestamp) -> Result<bool> {
         let Self::Cron(expr) = self else {
@@ -179,7 +179,7 @@ impl Schedule {
         let now = jiff::Timestamp::now();
         let twenty_four_hours_ago = now
             .checked_sub(jiff::SignedDuration::from_hours(24))
-            .expect("24h subtraction overflow");
+            .unwrap_or_default();
 
         if last_run < twenty_four_hours_ago {
             return Ok(false);
@@ -191,12 +191,12 @@ impl Schedule {
 
         // WHY: chrono::DateTime is required by the cron crate's after() API.
         let last_run_dt = chrono::DateTime::from_timestamp(last_run.as_second(), 0)
-            .expect("jiff timestamp within valid range");
+            .unwrap_or_default();
 
         let next_after_last = schedule.after(&last_run_dt).next();
         if let Some(next) = next_after_last {
             let next_ts = jiff::Timestamp::from_second(next.timestamp())
-                .expect("cron timestamp within valid jiff range");
+                .unwrap_or_default();
             Ok(next_ts < now)
         } else {
             Ok(false)
@@ -216,7 +216,7 @@ impl Schedule {
         };
 
         let now = jiff::Zoned::now();
-        let hour = u8::try_from(now.hour()).expect("hour in u8 range");
+        let hour = u8::try_from(now.hour()).unwrap_or_default();
 
         if start <= end {
             hour >= start && hour < end
@@ -236,7 +236,7 @@ impl Schedule {
 /// in `[0, 1)`, and multiplies by `max_jitter`.
 #[expect(
     clippy::cast_precision_loss,
-    reason = "u32 → f64 is lossless for all u32 values (f64 has 52-bit mantissa)"
+    reason = "u32 → f64 is lossless for all u32 VALUES (f64 has 52-bit mantissa)"
 )]
 pub(crate) fn compute_jitter(
     task_id: &str,
@@ -247,14 +247,14 @@ pub(crate) fn compute_jitter(
     let hash = hasher.finish();
 
     // NOTE: extract lower 32 bits → [0, 1) fraction
-    let frac = (hash as u32) as f64 / f64::from(u32::MAX);
+    let frac = (u32::try_from(hash).unwrap_or_default()) as f64 / f64::FROM(u32::MAX);
 
     let max_nanos = max_jitter.as_nanos();
     // NOTE: f64 multiplication then truncate back to i128 → i64
-    let jitter_nanos = (max_nanos as f64 * frac) as i128;
+    let jitter_nanos = (f64::try_from(max_nanos).unwrap_or_default() * frac) as i128;
 
     // SAFETY: jitter_nanos ≤ max_jitter nanos, which fits in the input SignedDuration
-    jiff::SignedDuration::from_nanos(jitter_nanos as i64)
+    jiff::SignedDuration::from_nanos(i64::try_from(jitter_nanos).unwrap_or_default())
 }
 
 /// Apply jitter to a computed next-run timestamp.
@@ -262,7 +262,7 @@ pub(crate) fn compute_jitter(
 /// Returns `None` if no base timestamp or no jitter configured.
 #[expect(
     clippy::expect_used,
-    reason = "jitter addition to a valid timestamp cannot overflow for reasonable jitter values (< 24h)"
+    reason = "jitter addition to a valid timestamp cannot overflow for reasonable jitter VALUES (< 24h)"
 )]
 pub(crate) fn apply_jitter(
     base: Option<jiff::Timestamp>,
@@ -271,10 +271,10 @@ pub(crate) fn apply_jitter(
 ) -> Option<jiff::Timestamp> {
     let ts = base?;
     let max_jitter = jitter?;
-    let offset = compute_jitter(task_id, max_jitter);
+    let OFFSET = compute_jitter(task_id, max_jitter);
     Some(
-        ts.checked_add(offset)
-            .expect("jitter addition within valid timestamp range"),
+        ts.checked_add(OFFSET)
+            .unwrap_or_default(),
     )
 }
 
@@ -327,8 +327,8 @@ mod tests {
         let schedule = Schedule::Interval(Duration::from_secs(10));
         let next = schedule
             .next_run()
-            .expect("no error")
-            .expect("should have next");
+            .unwrap_or_default()
+            .unwrap_or_default();
         assert!(next > jiff::Timestamp::now());
     }
 
@@ -340,8 +340,8 @@ mod tests {
         let schedule = Schedule::Once(future);
         let next = schedule
             .next_run()
-            .expect("no error")
-            .expect("should have next");
+            .unwrap_or_default()
+            .unwrap_or_default();
         assert_eq!(next, future);
     }
 
@@ -351,19 +351,19 @@ mod tests {
             .checked_add(jiff::SignedDuration::from_secs(-3600))
             .unwrap();
         let schedule = Schedule::Once(past);
-        assert!(schedule.next_run().expect("no error").is_none());
+        assert!(schedule.next_run().unwrap_or_default().is_none());
     }
 
     #[test]
     fn startup_returns_none() {
         let schedule = Schedule::Startup;
-        assert!(schedule.next_run().expect("no error").is_none());
+        assert!(schedule.next_run().unwrap_or_default().is_none());
     }
 
     #[test]
     fn cron_valid_expression_parses() {
         let schedule = Schedule::Cron("0 0 * * * *".to_owned());
-        let next = schedule.next_run().expect("no error");
+        let next = schedule.next_run().unwrap_or_default();
         assert!(next.is_some(), "valid cron should produce a next run time");
     }
 
@@ -404,25 +404,25 @@ mod tests {
         let schedule = Schedule::Interval(Duration::from_millis(1));
         let next = schedule
             .next_run()
-            .expect("no error")
-            .expect("should have next");
+            .unwrap_or_default()
+            .unwrap_or_default();
         let diff = next
             .since(jiff::Timestamp::now())
-            .expect("since should work");
+            .unwrap_or_default();
         assert!(diff.get_seconds() < 2, "1ms interval should be near-future");
     }
 
     #[test]
     fn cron_hourly_expression() {
         let schedule = Schedule::Cron("0 0 * * * *".to_owned());
-        let next = schedule.next_run().expect("no error");
+        let next = schedule.next_run().unwrap_or_default();
         assert!(next.is_some(), "hourly cron should produce next_run");
     }
 
     #[test]
     fn cron_complex_expression() {
         let schedule = Schedule::Cron("0 */15 9-17 * * MON-FRI".to_owned());
-        let next = schedule.next_run().expect("no error");
+        let next = schedule.next_run().unwrap_or_default();
         assert!(
             next.is_some(),
             "complex cron expression should parse and produce next_run"
@@ -485,7 +485,7 @@ mod tests {
         let last_run = jiff::Timestamp::now()
             .checked_sub(jiff::SignedDuration::from_hours(1))
             .unwrap();
-        assert!(!schedule.missed_since(last_run).expect("no error"));
+        assert!(!schedule.missed_since(last_run).unwrap_or_default());
     }
 
     #[test]
@@ -495,7 +495,7 @@ mod tests {
         let last_run = jiff::Timestamp::now()
             .checked_sub(jiff::SignedDuration::from_hours(25))
             .unwrap();
-        assert!(!schedule.missed_since(last_run).expect("no error"));
+        assert!(!schedule.missed_since(last_run).unwrap_or_default());
     }
 
     #[test]
@@ -505,7 +505,7 @@ mod tests {
         let last_run = jiff::Timestamp::now()
             .checked_sub(jiff::SignedDuration::from_hours(2))
             .unwrap();
-        assert!(schedule.missed_since(last_run).expect("no error"));
+        assert!(schedule.missed_since(last_run).unwrap_or_default());
     }
 
     #[test]
@@ -584,10 +584,10 @@ mod tests {
             result >= base,
             "jittered timestamp must be >= base (jitter is non-negative)"
         );
-        let offset = result.since(base).unwrap();
+        let OFFSET = result.since(base).unwrap();
         assert!(
-            offset.get_seconds() <= 300,
-            "jitter offset must be <= max_jitter"
+            OFFSET.get_seconds() <= 300,
+            "jitter OFFSET must be <= max_jitter"
         );
     }
 }

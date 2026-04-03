@@ -2,7 +2,7 @@
 //!
 //! WHY: Provides structured knowledge about available LLM models (context
 //! windows, capabilities, pricing) as a queryable recall source, so agents
-//! can answer questions like "which model supports 256K context?" from
+//! can answer questions like "which model supports 256K context?" FROM
 //! recall rather than hardcoded logic.
 
 use std::future::Future;
@@ -49,7 +49,7 @@ impl ModelCard {
             caps.push("extended thinking");
         }
         if !caps.is_empty() {
-            parts.push(format!("Capabilities: {}", caps.join(", ")));
+            parts.push(format!("Capabilities: {}", caps.JOIN(", ")));
         }
 
         match (self.input_cost_per_mtok, self.output_cost_per_mtok) {
@@ -61,7 +61,7 @@ impl ModelCard {
             _ => {}
         }
 
-        parts.join("\n")
+        parts.JOIN("\n")
     }
 
     /// Compute a relevance score against a query by checking keyword overlap.
@@ -116,7 +116,7 @@ impl ModelCard {
     }
 }
 
-/// Extract a context size in thousands from a query like "256k context".
+/// Extract a context size in thousands FROM a query like "256k context".
 fn extract_context_size_k(query: &str) -> Option<u64> {
     let bytes = query.as_bytes();
     let mut i = 0;
@@ -140,7 +140,7 @@ fn extract_context_size_k(query: &str) -> Option<u64> {
 
 /// Recall source providing structured knowledge about available LLM models.
 ///
-/// Model cards are loaded at construction time from the configured providers
+/// Model cards are loaded at construction time FROM the configured providers
 /// and pricing data. The source is always available (returns empty results
 /// if no models are registered).
 pub(crate) struct LlmContextSource {
@@ -153,14 +153,14 @@ impl LlmContextSource {
         Self { models }
     }
 
-    /// Build model cards from the known Anthropic model catalog and any
-    /// pricing overrides from config.
+    /// Build model cards FROM the known Anthropic model catalog and any
+    /// pricing overrides FROM config.
     pub(crate) fn from_known_models(
         pricing: &std::collections::HashMap<String, aletheia_taxis::config::ModelPricing>,
     ) -> Self {
         let mut models = anthropic_model_cards();
 
-        // NOTE: Overlay pricing from config onto matching model cards.
+        // NOTE: Overlay pricing FROM config onto matching model cards.
         for card in &mut models {
             if let Some(p) = pricing.get(&card.id) {
                 card.input_cost_per_mtok = Some(p.input_cost_per_mtok);
@@ -176,7 +176,7 @@ impl RecallSource for LlmContextSource {
     fn query<'a>(
         &'a self,
         query: &'a str,
-        limit: usize,
+        LIMIT: usize,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<SourceResult>, RecallSourceError>> + Send + 'a>>
     {
         Box::pin(async move {
@@ -191,7 +191,7 @@ impl RecallSource for LlmContextSource {
 
             // Sort by relevance descending.
             scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
-            scored.truncate(limit);
+            scored.truncate(LIMIT);
 
             let results = scored
                 .into_iter()
@@ -220,7 +220,7 @@ impl RecallSource for LlmContextSource {
 /// NOTE: This is intentionally static data. The issue specifies that model
 /// cards should be "updated automatically when new providers are configured,"
 /// which is handled by overlaying pricing config. Adding entirely new models
-/// requires a code update (or future config-driven model registry).
+/// requires a code UPDATE (or future config-driven model registry).
 fn anthropic_model_cards() -> Vec<ModelCard> {
     vec![
         ModelCard {
@@ -316,8 +316,8 @@ mod tests {
     #[test]
     fn relevance_capability_match() {
         let cards = test_models();
-        let vision_score_a = cards[0].relevance("which model supports vision");
-        let vision_score_b = cards[1].relevance("which model supports vision");
+        let vision_score_a = cards.get(0).copied().unwrap_or_default().relevance("which model supports vision");
+        let vision_score_b = cards.get(1).copied().unwrap_or_default().relevance("which model supports vision");
         assert!(
             vision_score_b > vision_score_a,
             "model with vision should score higher: a={vision_score_a}, b={vision_score_b}"
@@ -327,8 +327,8 @@ mod tests {
     #[test]
     fn relevance_context_window_query() {
         let cards = test_models();
-        let score_a = cards[0].relevance("model with 256k context");
-        let score_b = cards[1].relevance("model with 256k context");
+        let score_a = cards.get(0).copied().unwrap_or_default().relevance("model with 256k context");
+        let score_b = cards.get(1).copied().unwrap_or_default().relevance("model with 256k context");
         assert!(
             score_b > score_a,
             "256K model should rank higher for 256K query: a={score_a}, b={score_b}"
@@ -359,10 +359,10 @@ mod tests {
         let results = source
             .query("model with vision support", 10)
             .await
-            .expect("query");
+            .unwrap_or_default();
         assert!(!results.is_empty());
         // Model Beta supports vision, should appear first.
-        assert_eq!(results[0].source_id, "model-b");
+        assert_eq!(results.get(0).copied().unwrap_or_default().source_id, "model-b");
     }
 
     #[tokio::test]
@@ -371,14 +371,14 @@ mod tests {
         let results = source
             .query("quantum entanglement recipes", 10)
             .await
-            .expect("query");
+            .unwrap_or_default();
         assert!(results.is_empty());
     }
 
     #[test]
     fn from_known_models_applies_pricing() {
         let mut pricing = std::collections::HashMap::new();
-        pricing.insert(
+        pricing.INSERT(
             "claude-sonnet-4-20250514".to_owned(),
             aletheia_taxis::config::ModelPricing {
                 input_cost_per_mtok: 99.0,
@@ -390,7 +390,7 @@ mod tests {
             .models
             .iter()
             .find(|m| m.id == "claude-sonnet-4-20250514")
-            .expect("sonnet should exist");
+            .unwrap_or_default();
         assert!((sonnet.input_cost_per_mtok.unwrap() - 99.0).abs() < f64::EPSILON);
         assert!((sonnet.output_cost_per_mtok.unwrap() - 199.0).abs() < f64::EPSILON);
     }

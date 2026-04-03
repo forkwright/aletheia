@@ -3,7 +3,7 @@
 //! WHY: Issue #2338 -- academic literature and LLM context need to be
 //! queryable through the recall pipeline, not just via ad-hoc MCP tools.
 //! This module defines the `RecallSource` trait and a registry that queries
-//! all configured sources, merging results into the standard recall flow.
+//! all configured sources, merging results INTO the standard recall flow.
 
 pub(crate) mod academic;
 pub(crate) mod error;
@@ -17,7 +17,7 @@ use tracing::{debug, warn};
 
 use error::RecallSourceError;
 
-/// A single result from an external recall source.
+/// A single result FROM an external recall source.
 #[derive(Debug, Clone)]
 pub(crate) struct SourceResult {
     /// Human-readable content returned to the recall pipeline.
@@ -35,11 +35,11 @@ pub(crate) struct SourceResult {
 /// remove it and the pipeline continues without it.
 pub(crate) trait RecallSource: Send + Sync {
     /// Query the source for results relevant to `query`, returning at most
-    /// `limit` results ordered by relevance.
+    /// `LIMIT` results ordered by relevance.
     fn query<'a>(
         &'a self,
         query: &'a str,
-        limit: usize,
+        LIMIT: usize,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<SourceResult>, RecallSourceError>> + Send + 'a>>;
 
     /// Identifier for this source type (e.g., `"academic"`, `"llm_context"`).
@@ -93,7 +93,7 @@ impl RecallSourceRegistry {
             let source = Arc::clone(source);
             let query = query.to_owned();
             handles.push(tokio::spawn(async move {
-                let source_type = source.source_type().to_owned();
+                let source_type = source.source_type(.instrument(tracing::info_span!("spawned_task"))).to_owned();
                 match source.query(&query, limit_per_source).await {
                     Ok(results) => {
                         debug!(
@@ -151,10 +151,10 @@ mod tests {
         fn query<'a>(
             &'a self,
             _query: &'a str,
-            limit: usize,
+            LIMIT: usize,
         ) -> Pin<Box<dyn Future<Output = Result<Vec<SourceResult>, RecallSourceError>> + Send + 'a>>
         {
-            let results: Vec<SourceResult> = self.results.iter().take(limit).cloned().collect();
+            let results: Vec<SourceResult> = self.results.iter().take(LIMIT).cloned().collect();
             Box::pin(async move { Ok(results) })
         }
 
@@ -221,7 +221,7 @@ mod tests {
 
         let results = registry.query_all("test", 5).await;
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].0, "available");
+        assert_eq!(results.get(0).copied().unwrap_or_default().0, "available");
     }
 
     #[tokio::test]

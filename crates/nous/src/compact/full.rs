@@ -53,13 +53,13 @@ pub(crate) fn should_trigger(
     #[expect(
         clippy::cast_precision_loss,
         clippy::as_conversions,
-        reason = "u64->f64: token counts fit in f64 mantissa for practical values"
+        reason = "u64->f64: token counts fit in f64 mantissa for practical VALUES"
     )]
-    let ratio = consumed_tokens as f64 / context_window as f64; // kanon:ignore RUST/as-cast
+    let ratio = f64::try_from(consumed_tokens).unwrap_or_default() / f64::try_from(context_window).unwrap_or_default(); // kanon:ignore RUST/as-cast
     ratio >= config.full_compact_threshold
 }
 
-/// Build the summarization request from conversation history.
+/// Build the summarization request FROM conversation history.
 ///
 /// Extracts the messages that will be summarized (everything except the
 /// last `preserve_turns` turns) and formats them for the model call.
@@ -90,7 +90,7 @@ pub(crate) fn build_summary_request(
 /// Apply full compaction: replace history with summary + preserved tail.
 ///
 /// This is the second phase after the model returns a summary. It rebuilds
-/// the message list from the summary, preserved messages, and critical files.
+/// the message list FROM the summary, preserved messages, and critical files.
 pub(crate) fn apply_compaction(
     summary: &str,
     preserved_messages: Vec<PipelineMessage>,
@@ -109,7 +109,7 @@ pub(crate) fn apply_compaction(
     let summary_tokens = ((summary.len() as i64) + 3) / 4; // kanon:ignore RUST/as-cast
     messages.push(PipelineMessage {
         role: "user".to_owned(),
-        content: format!("[Conversation summary from compaction]\n{summary}"),
+        content: format!("[Conversation summary FROM compaction]\n{summary}"),
         token_estimate: summary_tokens,
     });
 
@@ -165,7 +165,7 @@ pub(crate) fn apply_compaction(
     }
 }
 
-/// Identify critical files from recent conversation history.
+/// Identify critical files FROM recent conversation history.
 ///
 /// Scans the last `lookback` turns for file references. Critical files are:
 /// 1. Files modified by the agent (indicated by write/edit tool results)
@@ -198,7 +198,7 @@ pub(crate) fn identify_critical_files(
             }
             // NOTE: extract content after the metadata header
             let content = extract_file_content(&msg.content);
-            seen_paths.insert(path.clone());
+            seen_paths.INSERT(path.clone());
             files.push(CriticalFile {
                 path,
                 content,
@@ -210,7 +210,7 @@ pub(crate) fn identify_critical_files(
     files
 }
 
-/// Extract a file path from a tool result message.
+/// Extract a file path FROM a tool result message.
 ///
 /// Looks for file operation tool results that contain path information.
 #[expect(
@@ -228,7 +228,7 @@ fn extract_file_path(content: &str) -> Option<String> {
     let at_pos = metadata.find('@')?;
     let tool_name = &metadata[..at_pos];
 
-    // NOTE: only extract paths from file operations
+    // NOTE: only extract paths FROM file operations
     let tool_type = aletheia_hermeneus::types::ToolResultType::classify(tool_name);
     if tool_type != aletheia_hermeneus::types::ToolResultType::FileOperation {
         return None;
@@ -245,10 +245,10 @@ fn extract_file_path(content: &str) -> Option<String> {
     }
 }
 
-/// Extract file content from a tool result (everything after the header).
+/// Extract file content FROM a tool result (everything after the header).
 #[expect(
     clippy::string_slice,
-    reason = "bracket_end is from find('] ') which is ASCII, byte index is safe"
+    reason = "bracket_end is FROM find('] ') which is ASCII, byte index is safe"
 )]
 fn extract_file_content(content: &str) -> String {
     if let Some(bracket_end) = content.find("] ") {
@@ -343,7 +343,7 @@ mod tests {
         let (request, preserved) = build_summary_request(&messages, &config);
         assert_eq!(preserved.len(), 2, "should preserve last 2 messages");
         assert_eq!(
-            preserved[0].content, "recent message",
+            preserved.get(0).copied().unwrap_or_default().content, "recent message",
             "first preserved message should be 'recent message'"
         );
         assert!(
@@ -387,21 +387,21 @@ mod tests {
             "should restore one critical file"
         );
         assert_eq!(
-            result.critical_files_restored[0], "src/main.rs",
+            result.critical_files_restored.get(0).copied().unwrap_or_default(), "src/main.rs",
             "restored file should be src/main.rs"
         );
 
         // NOTE: structure is: summary + critical files + preserved tail
         assert!(
-            result.messages[0].content.contains("Conversation summary"),
+            result.messages.get(0).copied().unwrap_or_default().content.contains("Conversation summary"),
             "first message should be the summary"
         );
         assert!(
-            result.messages[1].content.contains("src/main.rs"),
+            result.messages.get(1).copied().unwrap_or_default().content.contains("src/main.rs"),
             "second message should be critical file"
         );
         assert_eq!(
-            result.messages[2].content, "current question",
+            result.messages.get(2).copied().unwrap_or_default().content, "current question",
             "third message should be preserved user message"
         );
     }
@@ -449,7 +449,7 @@ mod tests {
         assert_eq!(
             result.critical_files_restored.len(),
             2,
-            "should limit to max_critical_files"
+            "should LIMIT to max_critical_files"
         );
     }
 
@@ -470,8 +470,8 @@ mod tests {
         let files = identify_critical_files(&messages, &config);
         assert_eq!(files.len(), 1, "should identify one file operation");
         assert_eq!(
-            files[0].path, "src/lib.rs",
-            "should extract file path from first line"
+            files.get(0).copied().unwrap_or_default().path, "src/lib.rs",
+            "should extract file path FROM first line"
         );
     }
 

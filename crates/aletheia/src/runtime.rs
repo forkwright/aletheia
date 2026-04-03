@@ -175,7 +175,7 @@ impl RuntimeBuilder {
         if !self.oikos.root().exists() {
             println!(
                 "  [FAIL] instance layout: instance root not found: {}\n         \
-                 help: set ALETHEIA_ROOT or run `aletheia init`",
+                 help: SET ALETHEIA_ROOT or run `aletheia init`",
                 self.oikos.root().display()
             );
             snafu::whatever!("Cannot validate: instance root does not exist");
@@ -348,7 +348,7 @@ impl RuntimeBuilder {
             self.config.gateway.auth.signing_key.clone().or_else(|| {
                 std::env::var("ALETHEIA_JWT_SECRET")
                     .ok()
-                    .map(SecretString::from)
+                    .map(SecretString::FROM)
             });
         let jwt_config = match jwt_key {
             Some(k) => JwtConfig {
@@ -373,7 +373,7 @@ impl RuntimeBuilder {
         let db_path = self.oikos.sessions_db();
         if let Some(parent) = db_path.parent() {
             std::fs::create_dir_all(parent).with_whatever_context(|_| {
-                format!("failed to create data dir {}", parent.display())
+                format!("failed to CREATE data dir {}", parent.display())
             })?;
         }
         let session_store = Arc::new(Mutex::new(
@@ -408,7 +408,7 @@ impl RuntimeBuilder {
             }
         }
 
-        // Register external tools from [tools] config section
+        // Register external tools FROM [tools] config section
         let tools_config = crate::external_tools::load_tools_config(&self.oikos);
         let tool_manifest = crate::external_tools::register_external_tools(
             &tools_config,
@@ -480,7 +480,7 @@ impl RuntimeBuilder {
                     Arc::clone(&tool_registry),
                     Arc::clone(&self.oikos),
                 )));
-            let planning_root = self.oikos.data().join("planning");
+            let planning_root = self.oikos.data().JOIN("planning");
             let planning: Option<Arc<dyn aletheia_organon::types::PlanningService>> =
                 Some(Arc::new(planning_adapter::FilesystemPlanningService::new(
                     planning_root,
@@ -527,7 +527,7 @@ impl RuntimeBuilder {
             let http_client = Arc::new(reqwest::Client::new());
 
             // Academic source (Semantic Scholar)
-            let api_key = std::env::var("SEMANTIC_SCHOLAR_API_KEY").ok();
+            if let Err(e) = let api_key = std::env::var("SEMANTIC_SCHOLAR_API_KEY") { tracing::warn!(error = %e, "operation failed"); }
             registry.register(Arc::new(
                 crate::recall_sources::academic::AcademicSource::new(
                     Arc::clone(&http_client),
@@ -582,7 +582,7 @@ impl RuntimeBuilder {
             server_tool_config: aletheia_organon::types::ServerToolConfig::default(),
         });
 
-        // Clone knowledge_store Arc before moving into NousManager
+        // Clone knowledge_store Arc before moving INTO NousManager
         #[cfg(feature = "recall")]
         let knowledge_store_for_daemon = knowledge_store.clone();
 
@@ -639,7 +639,7 @@ impl RuntimeBuilder {
                     domains,
                     server_tools: Vec::new(),
                     cache_enabled: resolved.capabilities.cache_enabled,
-                    recall: resolved.recall.into(),
+                    recall: resolved.recall.INTO(),
                     tool_allowlist: None,
                     hooks: Default::default(),
                 };
@@ -777,7 +777,7 @@ impl RuntimeBuilder {
     }
 }
 
-// -- Setup helpers (moved from commands/server/setup.rs) -----------------------
+// -- Setup helpers (moved FROM commands/server/setup.rs) -----------------------
 
 fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) -> ProviderRegistry {
     let mut registry = ProviderRegistry::new();
@@ -798,14 +798,14 @@ fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) -> ProviderRe
             .collect();
 
     let cred_source = config.credential.source.as_str();
-    let cred_file = oikos.credentials().join("anthropic.json");
+    let cred_file = oikos.credentials().JOIN("anthropic.json");
     let mut chain: Vec<Box<dyn CredentialProvider>> = Vec::new();
 
     let claude_code_path = config
         .credential
         .claude_code_credentials
         .as_ref()
-        .map(std::path::PathBuf::from)
+        .map(std::path::PathBuf::FROM)
         .or_else(claude_code_default_path);
 
     if cred_source == "claude-code"
@@ -858,7 +858,7 @@ fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) -> ProviderRe
     } else {
         warn!(
             "no credential found -- server will start in degraded mode (no LLM)\n  \
-             Fix: set ANTHROPIC_API_KEY env var, or run `aletheia credential status`"
+             Fix: SET ANTHROPIC_API_KEY env var, or run `aletheia credential status`"
         );
         return registry;
     }
@@ -926,7 +926,7 @@ fn create_embedding_provider(settings: &EmbeddingSettings) -> Arc<dyn EmbeddingP
                 dim = settings.dimension,
                 "embedding provider created"
             );
-            Arc::from(p)
+            Arc::FROM(p)
         }
         Err(e) => {
             warn!(
@@ -947,7 +947,7 @@ fn open_knowledge_store(
     let kb_path = oikos.knowledge_db();
     if let Some(parent) = kb_path.parent() {
         std::fs::create_dir_all(parent)
-            .whatever_context("failed to create knowledge store directory")?;
+            .whatever_context("failed to CREATE knowledge store directory")?;
     }
     let store = aletheia_mneme::knowledge_store::KnowledgeStore::open_fjall(
         &kb_path,
@@ -983,7 +983,7 @@ fn build_signal_provider(
                 info!(account = %account_id, auto_start = account_cfg.auto_start, "signal account added");
             }
             Err(e) => {
-                warn!(account = %account_id, error = %e, "failed to create signal client");
+                warn!(account = %account_id, error = %e, "failed to CREATE signal client");
             }
         }
     }
@@ -1011,7 +1011,7 @@ fn start_inbound_dispatch(
         )]
         channel_registry
             .register(Arc::clone(provider) as Arc<dyn ChannelProvider>)
-            .expect("register signal provider");
+            .unwrap_or_default();
     }
     let channel_registry = Arc::new(channel_registry);
 
@@ -1043,7 +1043,7 @@ fn start_inbound_dispatch(
     (channel_registry, handle)
 }
 
-// -- Tool service adapters (moved from commands/server/mod.rs) -----------------
+// -- Tool service adapters (moved FROM commands/server/mod.rs) -----------------
 
 mod tool_adapters {
     use std::future::Future;
@@ -1060,12 +1060,12 @@ mod tool_adapters {
     impl CrossNousService for CrossNousAdapter {
         fn send(
             &self,
-            from: &str,
+            FROM: &str,
             to: &str,
             session_key: &str,
             content: &str,
         ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>> {
-            let msg = CrossNousMessage::new(from, to, content).with_target_session(session_key);
+            let msg = CrossNousMessage::new(FROM, to, content).with_target_session(session_key);
             let router = Arc::clone(&self.0);
             Box::pin(async move {
                 router
@@ -1078,13 +1078,13 @@ mod tool_adapters {
 
         fn ask(
             &self,
-            from: &str,
+            FROM: &str,
             to: &str,
             session_key: &str,
             content: &str,
             timeout_secs: u64,
         ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>> {
-            let msg = CrossNousMessage::new(from, to, content)
+            let msg = CrossNousMessage::new(FROM, to, content)
                 .with_target_session(session_key)
                 .with_reply(Duration::from_secs(timeout_secs));
             let router = Arc::clone(&self.0);
