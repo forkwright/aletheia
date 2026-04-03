@@ -31,7 +31,7 @@ use crate::types::{
 use prompt_gen::generate_prompt;
 use scoring::{compute_priority_score, score_relevance};
 
-use super::workspace::{extract_opt_u64, extract_str};
+use super::workspace::{extract_opt_f64, extract_opt_str, extract_opt_u64, extract_str};
 
 /// A parsed GitHub issue with extracted metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -84,11 +84,6 @@ fn require_services(
     ctx.services
         .as_deref()
         .ok_or_else(|| ToolResult::error("tool services not configured"))
-}
-
-/// Extract optional string field from JSON arguments.
-fn extract_opt_str<'a>(args: &'a serde_json::Value, field: &str) -> Option<&'a str> {
-    args.get(field).and_then(serde_json::Value::as_str)
 }
 
 // ---------------------------------------------------------------------------
@@ -533,11 +528,6 @@ fn slugify(title: &str) -> String {
     } else {
         trimmed.to_owned()
     }
-}
-
-/// Extract optional `f64` field from JSON arguments.
-fn extract_opt_f64(args: &serde_json::Value, field: &str) -> Option<f64> {
-    args.get(field).and_then(serde_json::Value::as_f64)
 }
 
 /// Format a human-readable summary of fetched issues.

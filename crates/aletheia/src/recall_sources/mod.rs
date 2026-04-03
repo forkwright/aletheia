@@ -35,11 +35,11 @@ pub(crate) struct SourceResult {
 /// remove it and the pipeline continues without it.
 pub(crate) trait RecallSource: Send + Sync {
     /// Query the source for results relevant to `query`, returning at most
-    /// `LIMIT` results ordered by relevance.
+    /// `limit` results ordered by relevance.
     fn query<'a>(
         &'a self,
         query: &'a str,
-        LIMIT: usize,
+        limit: usize,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<SourceResult>, RecallSourceError>> + Send + 'a>>;
 
     /// Identifier for this source type (e.g., `"academic"`, `"llm_context"`).
@@ -93,7 +93,7 @@ impl RecallSourceRegistry {
             let source = Arc::clone(source);
             let query = query.to_owned();
             handles.push(tokio::spawn(async move {
-                let source_type = source.source_type(.instrument(tracing::info_span!("spawned_task"))).to_owned();
+                let source_type = source.source_type().to_owned();
                 match source.query(&query, limit_per_source).await {
                     Ok(results) => {
                         debug!(
@@ -151,7 +151,7 @@ mod tests {
         fn query<'a>(
             &'a self,
             _query: &'a str,
-            LIMIT: usize,
+            limit: usize,
         ) -> Pin<Box<dyn Future<Output = Result<Vec<SourceResult>, RecallSourceError>> + Send + 'a>>
         {
             let results: Vec<SourceResult> = self.results.iter().take(LIMIT).cloned().collect();

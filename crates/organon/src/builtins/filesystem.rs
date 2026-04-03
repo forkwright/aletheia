@@ -21,7 +21,9 @@ use crate::types::{
     ToolInput, ToolResult,
 };
 
-use super::workspace::{extract_opt_bool, extract_opt_u64, extract_str, validate_path};
+use super::workspace::{
+    extract_opt_bool, extract_opt_str, extract_opt_u64, extract_str, validate_path,
+};
 
 /// WHY: Close TOCTOU window between `validate_path` and actual filesystem access.
 /// A symlink could be swapped after validation to point outside allowed roots.
@@ -46,10 +48,6 @@ fn canonicalize_and_revalidate(
 /// engine (`ReDoS`). Cap at 1000 chars which covers all legitimate search
 /// patterns. Closes #2167.
 const MAX_PATTERN_LENGTH: usize = 1000;
-
-fn extract_opt_str<'a>(args: &'a serde_json::Value, field: &str) -> Option<&'a str> {
-    args.get(field).and_then(serde_json::Value::as_str)
-}
 
 fn truncate_output(mut output: String) -> String {
     if output.len() > MAX_OUTPUT_BYTES {
