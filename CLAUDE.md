@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+Build the system you'd trust to run without you.
+
 Project conventions for AI coding agents working on this codebase.
 
 ## Standards
