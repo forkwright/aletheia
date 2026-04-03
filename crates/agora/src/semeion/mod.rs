@@ -295,9 +295,7 @@ impl ChannelProvider for SignalProvider {
                         s.enqueue(send_params);
                         return SendResult {
                             sent: false,
-                            error: Some(
-                                "circuit breaker open, message buffered".to_owned(),
-                            ),
+                            error: Some("circuit breaker open, message buffered".to_owned()),
                         };
                     }
                 }
@@ -625,7 +623,6 @@ mod tests {
             let _ = tokio::time::timeout(Duration::from_secs(5), h).await;
         }
     }
-
 
     #[tokio::test]
     async fn listen_skips_auto_start_false() {

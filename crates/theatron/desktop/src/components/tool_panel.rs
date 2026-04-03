@@ -11,19 +11,19 @@ const PANEL_COLLAPSED_STYLE: &str = "\
     align-items: center; \
     gap: 8px; \
     padding: 6px 10px; \
-    background: #1a1a30; \
-    border: 1px solid #2a2a4a; \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
     border-radius: 6px; \
     cursor: pointer; \
     margin-top: 4px; \
     font-size: 13px; \
-    color: #aaa;\
+    color: var(--text-secondary);\
 ";
 
 const PANEL_EXPANDED_STYLE: &str = "\
     padding: 8px 10px; \
-    background: #1a1a30; \
-    border: 1px solid #2a2a4a; \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
     border-radius: 6px; \
     margin-top: 4px; \
     font-size: 13px;\
@@ -34,51 +34,51 @@ const PANEL_HEADER_STYLE: &str = "\
     align-items: center; \
     gap: 8px; \
     cursor: pointer; \
-    color: #aaa; \
+    color: var(--text-secondary); \
     margin-bottom: 8px;\
 ";
 
 const TOOL_NAME_STYLE: &str = "\
     font-weight: 600; \
-    color: #c0c0e0;\
+    color: var(--text-primary);\
 ";
 
 const DURATION_BADGE_STYLE: &str = "\
     font-size: 11px; \
     padding: 1px 6px; \
-    background: #2a2a4a; \
+    background: var(--border); \
     border-radius: 10px; \
-    color: #888;\
+    color: var(--text-secondary);\
 ";
 
 const CODE_BLOCK_STYLE: &str = "\
-    background: #0f0f1a; \
-    border: 1px solid #333; \
+    background: var(--code-bg); \
+    border: 1px solid var(--border); \
     border-radius: 4px; \
     padding: 8px; \
     margin-top: 6px; \
     overflow-x: auto; \
     white-space: pre-wrap; \
     word-wrap: break-word; \
-    font-family: 'JetBrains Mono', 'Fira Code', monospace; \
+    font-family: var(--font-mono); \
     font-size: 12px; \
-    color: #b0b0d0; \
+    color: var(--code-fg); \
     max-height: 300px; \
     overflow-y: auto;\
 ";
 
 const SECTION_LABEL_STYLE: &str = "\
     font-size: 11px; \
-    color: #666; \
+    color: var(--text-muted); \
     text-transform: uppercase; \
     letter-spacing: 0.5px; \
     margin-top: 8px;\
 ";
 
 const ERROR_DETAIL_STYLE: &str = "\
-    color: #ef4444; \
-    background: #1a0f0f; \
-    border: 1px solid #4a2020; \
+    color: var(--status-error); \
+    background: var(--status-error-bg); \
+    border: 1px solid var(--status-error); \
     border-radius: 4px; \
     padding: 8px; \
     margin-top: 6px; \

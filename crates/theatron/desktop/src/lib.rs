@@ -29,6 +29,7 @@ pub(crate) mod views;
 /// once the connection is established.
 pub fn run() {
     // WHY: reqwest with rustls-no-provider requires an explicit crypto provider
+    // install before any Client is constructed, otherwise it panics (#2363).
     // install before any Client is constructed, otherwise it panics with
     // "No provider set" (#2363).
     let _ = rustls::crypto::ring::default_provider().install_default();

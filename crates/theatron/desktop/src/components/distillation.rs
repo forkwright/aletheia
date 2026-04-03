@@ -14,20 +14,20 @@ const CONTAINER_STYLE: &str = "\
     align-items: center; \
     gap: 10px; \
     padding: 6px 16px; \
-    background: #1a1a2e; \
-    border-top: 1px solid #333;\
+    background: var(--bg-surface); \
+    border-top: 1px solid var(--border);\
 ";
 
 const LABEL_STYLE: &str = "\
     font-size: 12px; \
-    color: #888; \
+    color: var(--text-secondary); \
     min-width: 90px;\
 ";
 
 const TRACK_STYLE: &str = "\
     flex: 1; \
     height: 3px; \
-    background: #2a2a3a; \
+    background: var(--bg-surface-bright); \
     border-radius: 2px; \
     overflow: hidden;\
 ";
@@ -35,13 +35,13 @@ const TRACK_STYLE: &str = "\
 const BAR_STYLE: &str = "\
     height: 3px; \
     border-radius: 2px; \
-    background: #4a4aff;\
+    background: var(--accent);\
 ";
 
 const BAR_COMPLETE_STYLE: &str = "\
     height: 3px; \
     border-radius: 2px; \
-    background: #22c55e;\
+    background: var(--status-success);\
 ";
 
 /// Map a distillation stage name to a progress bar fill percentage.

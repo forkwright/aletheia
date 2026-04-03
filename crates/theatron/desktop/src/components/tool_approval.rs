@@ -13,25 +13,25 @@ const APPROVAL_BASE_STYLE: &str = "\
 
 const TOOL_NAME_STYLE: &str = "\
     font-weight: 600; \
-    color: #c0c0e0; \
+    color: var(--text-primary); \
     font-size: 14px;\
 ";
 
 const REASON_STYLE: &str = "\
-    color: #aaa; \
+    color: var(--text-secondary); \
     margin-top: 4px; \
     font-size: 13px;\
 ";
 
 const INPUT_PREVIEW_STYLE: &str = "\
-    background: #0f0f1a; \
-    border: 1px solid #333; \
+    background: var(--code-bg); \
+    border: 1px solid var(--border); \
     border-radius: 4px; \
     padding: 6px 8px; \
     margin-top: 8px; \
-    font-family: 'JetBrains Mono', 'Fira Code', monospace; \
+    font-family: var(--font-mono); \
     font-size: 12px; \
-    color: #b0b0d0; \
+    color: var(--code-fg); \
     max-height: 120px; \
     overflow-y: auto; \
     white-space: pre-wrap;\
@@ -55,8 +55,8 @@ const BUTTON_ROW_STYLE: &str = "\
 ";
 
 const APPROVE_BTN_STYLE: &str = "\
-    background: #22c55e; \
-    color: #0f0f1a; \
+    background: var(--status-success); \
+    color: var(--code-bg); \
     border: none; \
     border-radius: 6px; \
     padding: 6px 16px; \
@@ -66,8 +66,8 @@ const APPROVE_BTN_STYLE: &str = "\
 ";
 
 const DENY_BTN_STYLE: &str = "\
-    background: #ef4444; \
-    color: white; \
+    background: var(--status-error); \
+    color: var(--text-inverse); \
     border: none; \
     border-radius: 6px; \
     padding: 6px 16px; \
@@ -77,7 +77,7 @@ const DENY_BTN_STYLE: &str = "\
 ";
 
 const RESOLVED_STYLE: &str = "\
-    color: #666; \
+    color: var(--text-muted); \
     font-style: italic; \
     padding: 8px; \
     font-size: 13px;\
@@ -139,10 +139,10 @@ pub(crate) fn ToolApproval(
 /// Build the container style with risk-level-appropriate border and background.
 fn approval_container_style(risk: RiskLevel) -> String {
     let (border_color, background) = match risk {
-        RiskLevel::Low => ("#2a4a2a", "#1a1a2e"),
-        RiskLevel::Medium => ("#8b6914", "#1e1a10"),
-        RiskLevel::High => ("#7a2020", "#1e0f0f"),
-        RiskLevel::Critical => ("#a02020", "#2a1010"),
+        RiskLevel::Low => ("var(--status-success)", "var(--status-success-bg)"),
+        RiskLevel::Medium => ("var(--status-warning)", "var(--status-warning-bg)"),
+        RiskLevel::High => ("var(--status-error)", "var(--status-error-bg)"),
+        RiskLevel::Critical => ("var(--aima)", "var(--aima-bg)"),
     };
     format!("{APPROVAL_BASE_STYLE} border: 2px solid {border_color}; background: {background};")
 }
@@ -150,10 +150,10 @@ fn approval_container_style(risk: RiskLevel) -> String {
 /// Build the risk badge style with risk-appropriate colors.
 fn risk_badge_style(risk: RiskLevel) -> String {
     let (bg, color) = match risk {
-        RiskLevel::Low => ("#1a3a1a", "#4ade80"),
-        RiskLevel::Medium => ("#3a2a0a", "#fbbf24"),
-        RiskLevel::High => ("#3a1010", "#f87171"),
-        RiskLevel::Critical => ("#5a1515", "#fca5a5"),
+        RiskLevel::Low => ("var(--status-success-bg)", "var(--status-success)"),
+        RiskLevel::Medium => ("var(--status-warning-bg)", "var(--status-warning)"),
+        RiskLevel::High => ("var(--status-error-bg)", "var(--status-error)"),
+        RiskLevel::Critical => ("var(--aima-bg)", "var(--aima)"),
     };
     format!("{RISK_BADGE_BASE} background: {bg}; color: {color};")
 }
@@ -183,8 +183,8 @@ mod tests {
         let critical = approval_container_style(RiskLevel::Critical);
         // WHY: critical risk gets a visibly red-tinted background.
         assert!(
-            critical.contains("#2a1010"),
-            "critical should have red-tinted background"
+            critical.contains("--aima-bg"),
+            "critical should use aima-bg token"
         );
     }
 }

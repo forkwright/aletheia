@@ -49,9 +49,9 @@ pub(crate) fn run(args: &DesktopArgs) -> anyhow::Result<()> {
         cmd.args(["--session", session]);
     }
 
-    let status = cmd.status().map_err(|e| {
-        anyhow::anyhow!("failed to exec `{}`: {e}", binary.display())
-    })?;
+    let status = cmd
+        .status()
+        .map_err(|e| anyhow::anyhow!("failed to exec `{}`: {e}", binary.display()))?;
 
     if !status.success() {
         std::process::exit(status.code().unwrap_or(1));
