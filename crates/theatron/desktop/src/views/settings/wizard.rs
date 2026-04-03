@@ -85,6 +85,7 @@ pub(crate) fn SetupWizard() -> Element {
                                     drop(server_id);
 
                                     let selected_theme = data.selected_theme.clone();
+                                    let selected_accent = data.selected_accent.clone();
                                     let density = data.selected_density;
                                     drop(data);
 
@@ -98,6 +99,9 @@ pub(crate) fn SetupWizard() -> Element {
                                         let mut app = appearance.write();
                                         app.theme = selected_theme;
                                         app.density = density;
+                                        if !selected_accent.is_empty() {
+                                            app.accent_color = selected_accent;
+                                        }
                                     }
 
                                     // Persist settings (appearance, keybindings, server list).
@@ -293,22 +297,27 @@ fn StepAppearance(
                 style: "display: flex; flex-direction: column; gap: 8px;",
                 div {
                     style: "font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;",
-                    "Accent Color (preview)"
+                    "Accent Color"
                 }
                 div {
                     style: "display: flex; gap: 10px; flex-wrap: wrap;",
                     for (label, hex) in ACCENT_PRESETS.iter() {
                         {
                             let hex_owned = hex.to_string();
+                            let is_active = wizard_data.read().selected_accent == *hex;
+                            let border = if is_active { "3px solid #fff" } else { "2px solid var(--border)" };
                             let style = format!(
                                 "width: 28px; height: 28px; border-radius: 50%; background: {hex_owned}; \
-                                 border: 2px solid var(--border); cursor: pointer; outline: none;"
+                                 border: {border}; cursor: pointer; outline: none;"
                             );
                             rsx! {
                                 button {
                                     key: "{label}",
                                     title: "{label}",
                                     style: "{style}",
+                                    onclick: move |_| {
+                                        wizard_data.write().selected_accent = hex_owned.clone();
+                                    },
                                 }
                             }
                         }
