@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.13.27](https://github.com/forkwright/aletheia/compare/v0.13.26...v0.13.27) (2026-04-03)
+
+
+### Features
+
+* **aletheia:** integrate LLM context access + Semantic Scholar as native recall sources ([#2388](https://github.com/forkwright/aletheia/issues/2388)) ([b6ebb18](https://github.com/forkwright/aletheia/commit/b6ebb18255e595cba432258da2e2577614114061))
+* **aletheia:** pluggable external tool registry ([#2339](https://github.com/forkwright/aletheia/issues/2339)) ([#2382](https://github.com/forkwright/aletheia/issues/2382)) ([0054636](https://github.com/forkwright/aletheia/commit/0054636e25ff32ec01a3054c623042769e9eb89a))
+
+
+### Bug Fixes
+
+* resolve lint violations via kanon lint --fix ([3275267](https://github.com/forkwright/aletheia/commit/3275267b4817189628a56bbd36d8afd9513f0838))
+
 ## [0.13.26](https://github.com/forkwright/aletheia/compare/v0.13.25...v0.13.26) (2026-04-03)
 
 
