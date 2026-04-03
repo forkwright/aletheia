@@ -1,5 +1,7 @@
 //! Shared authenticated HTTP client for view-layer API requests.
 
+use std::time::Duration;
+
 use reqwest::Client;
 use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue};
 

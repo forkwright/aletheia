@@ -255,16 +255,16 @@ fn highlight_content(content: &str, path: &str) -> Vec<HighlightedLine> {
 
     // WHY: Use the same base16-ocean.dark theme as the TUI highlighter for
     // visual consistency across frontends.
+    let fallback_theme = theme_set.themes.values().next();
     let theme = theme_set
         .themes
         .get("base16-ocean.dark")
-        .unwrap_or_else(|| {
-            theme_set
-                .themes
-                .values()
-                .next()
-                .expect("syntect default themes are non-empty")
-        });
+        .or(fallback_theme);
+
+    let Some(theme) = theme else {
+        // NOTE: syntect ships with default themes, so this should not happen.
+        return Vec::new();
+    };
 
     let mut h = HighlightLines::new(syntax, theme);
     let mut lines = Vec::new();
