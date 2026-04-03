@@ -28,6 +28,7 @@ use commands::agent_io::{
 use commands::backup::BackupArgs;
 use commands::config;
 use commands::credential;
+use commands::desktop::DesktopArgs;
 use commands::eval::EvalArgs;
 use commands::health::HealthArgs;
 use commands::maintenance;
@@ -109,6 +110,8 @@ enum Command {
     SessionExport(SessionExportArgs),
     /// Launch the terminal dashboard
     Tui(TuiArgs),
+    /// Launch the desktop app (discovers theatron-desktop in PATH)
+    Desktop(DesktopArgs),
     /// Migrate memories from Qdrant into embedded `KnowledgeStore`
     MigrateMemory(MigrateMemoryArgs),
     /// Initialize a new instance
@@ -211,6 +214,7 @@ async fn dispatch_command(cmd: Command, instance_root: Option<&PathBuf>) -> Resu
             .map_err(anyhow::Error::from),
         #[cfg(not(feature = "tui"))]
         Command::Tui(_) => anyhow::bail!("TUI not available - rebuild with `--features tui`"),
+        Command::Desktop(a) => commands::desktop::run(&a),
         Command::Eval(a) => commands::eval::run(a).await.map_err(Into::into),
         Command::Export(a) => {
             commands::agent_io::export_agent(instance_root, &a).map_err(Into::into)
