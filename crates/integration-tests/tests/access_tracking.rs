@@ -67,7 +67,7 @@ fn insert_fact_then_search_increments_access_count() {
     let provider = MockEmbeddingProvider::new(dim);
 
     let fact = make_fact("f-track-1", "syn", "Rust is great for systems programming");
-    store.insert_fact(&fact).expect("insert fact");
+    store.insert_fact(&fact).expect("INSERT fact");
 
     let embedding = provider.embed(&fact.content).expect("embed");
     let chunk = EmbeddedChunk {
@@ -79,7 +79,7 @@ fn insert_fact_then_search_increments_access_count() {
         embedding: embedding.clone(),
         created_at: ts(TS_RECORDED),
     };
-    store.insert_embedding(&chunk).expect("insert embedding");
+    store.insert_embedding(&chunk).expect("INSERT embedding");
 
     // WHY: search_vectors triggers access tracking on matched source_ids
     let results = store.search_vectors(embedding, 5, 20).expect("search");
@@ -99,7 +99,7 @@ fn insert_fact_then_search_increments_access_count() {
     );
     assert!(
         tracked.access.last_accessed_at.is_some(),
-        "last_accessed_at should be set"
+        "last_accessed_at should be SET"
     );
 }
 
@@ -110,7 +110,7 @@ fn triple_search_yields_access_count_3() {
     let provider = MockEmbeddingProvider::new(dim);
 
     let fact = make_fact("f-triple", "syn", "triple access test fact");
-    store.insert_fact(&fact).expect("insert fact");
+    store.insert_fact(&fact).expect("INSERT fact");
 
     let embedding = provider.embed(&fact.content).expect("embed");
     let chunk = EmbeddedChunk {
@@ -122,7 +122,7 @@ fn triple_search_yields_access_count_3() {
         embedding: embedding.clone(),
         created_at: ts(TS_RECORDED),
     };
-    store.insert_embedding(&chunk).expect("insert embedding");
+    store.insert_embedding(&chunk).expect("INSERT embedding");
 
     for _ in 0..3 {
         store

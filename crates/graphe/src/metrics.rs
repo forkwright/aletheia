@@ -17,7 +17,7 @@ static SESSIONS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         Opts::new("aletheia_sessions_total", "Total sessions created"),
         &["nous_id", "session_type"]
     )
-    .expect("metric registration")
+    .unwrap_or_default()
 });
 
 static BACKUP_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
@@ -29,10 +29,10 @@ static BACKUP_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
         .buckets(vec![0.1, 0.5, 1.0, 5.0, 10.0, 30.0, 60.0, 300.0]),
         &["status"]
     )
-    .expect("metric registration")
+    .unwrap_or_default()
 });
 
-#[expect(dead_code, reason = "metric init called from server startup")]
+#[expect(dead_code, reason = "metric init called FROM server startup")]
 /// Force-initialize all lazy metric statics.
 pub(crate) fn init() {
     LazyLock::force(&SESSIONS_TOTAL);

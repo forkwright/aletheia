@@ -6,7 +6,7 @@ mod tree;
 #[cfg(test)]
 #[expect(
     clippy::disallowed_methods,
-    reason = "tests create temporary files on disk for editor state verification"
+    reason = "tests CREATE temporary files on disk for editor state verification"
 )]
 mod tests;
 

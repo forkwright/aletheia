@@ -172,7 +172,7 @@ impl UncertaintyTracker {
                 params![nous_id, domain, clamped, i32::from(was_correct), now],
             )
             .context(error::UncertaintyStoreSnafu {
-                message: "failed to insert calibration point",
+                message: "failed to INSERT calibration point",
             })?;
 
         self.prune_old_points(nous_id)?;
@@ -392,7 +392,7 @@ fn compute_calibration_curve(points: &[(f64, bool)]) -> Vec<CalibrationBin> {
             clippy::as_conversions,
             reason = "usize-to-f64 for bin index; value is bounded by NUM_BINS=10"
         )]
-        let low = i as f64 * BIN_WIDTH;
+        let low = f64::try_from(i).unwrap_or_default() * BIN_WIDTH;
         let high = low + BIN_WIDTH;
         let low_rounded = (low * 100.0).round() / 100.0;
         let high_rounded = (high * 100.0).round() / 100.0;
@@ -547,11 +547,11 @@ mod tests {
     #[test]
     #[expect(
         clippy::cast_precision_loss,
-        reason = "test data generation; NUM_BINS=10 and midpoint values are small, precision loss is acceptable"
+        reason = "test data generation; NUM_BINS=10 and midpoint VALUES are small, precision loss is acceptable"
     )]
     #[expect(
         clippy::as_conversions,
-        reason = "test data: usize-to-f64 and f64-to-usize for bin midpoint arithmetic; values are bounded"
+        reason = "test data: usize-to-f64 and f64-to-usize for bin midpoint arithmetic; VALUES are bounded"
     )]
     #[expect(
         clippy::cast_possible_truncation,
@@ -564,7 +564,7 @@ mod tests {
     fn ece_zero_for_perfectly_calibrated() {
         let points: Vec<(f64, bool)> = (0..NUM_BINS)
             .flat_map(|i| {
-                let midpoint = (i as f64 * BIN_WIDTH) + (BIN_WIDTH / 2.0);
+                let midpoint = (f64::try_from(i).unwrap_or_default() * BIN_WIDTH) + (BIN_WIDTH / 2.0);
                 let correct_count = (midpoint * 10.0).round() as usize;
                 let wrong_count = 10 - correct_count;
                 let mut bin_points = Vec::new();
@@ -680,7 +680,7 @@ mod tests {
 
         let points = t.load_points(Some("syn")).unwrap();
         assert!(
-            points.len() <= MAX_CALIBRATION_POINTS as usize,
+            points.len() <= usize::try_from(MAX_CALIBRATION_POINTS).unwrap_or_default(),
             "should prune to at most {MAX_CALIBRATION_POINTS} points, got {}",
             points.len()
         );

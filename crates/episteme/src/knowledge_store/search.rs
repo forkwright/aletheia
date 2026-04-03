@@ -79,9 +79,9 @@ impl KnowledgeStore {
             clippy::cast_sign_loss,
             clippy::as_conversions,
             clippy::cast_possible_truncation,
-            reason = "k is a user-supplied positive limit; truncating to usize is safe"
+            reason = "k is a user-supplied positive LIMIT; truncating to usize is safe"
         )]
-        results.truncate(k as usize);
+        results.truncate(usize::try_from(k).unwrap_or_default());
 
         let source_ids: Vec<crate::id::FactId> = results
             .iter()
@@ -157,7 +157,7 @@ impl KnowledgeStore {
         params.insert("k".to_owned(), DataValue::from(limit_i64.saturating_mul(2)));
         params.insert("ef".to_owned(), DataValue::from(ef_i64));
         params.insert(
-            "limit".to_owned(),
+            "LIMIT".to_owned(),
             DataValue::from(limit_i64.saturating_mul(2)),
         );
 

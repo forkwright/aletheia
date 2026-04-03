@@ -139,7 +139,7 @@ fn parse_response_with_code_fences() {
     assert_eq!(
         extraction.entities.len(),
         1,
-        "should parse 1 entity from fenced JSON"
+        "should parse 1 entity FROM fenced JSON"
     );
     assert_eq!(
         extraction.entities[0].name, "Rust",
@@ -221,7 +221,7 @@ async fn extract_calls_provider() {
     assert_eq!(
         result.facts.len(),
         1,
-        "should extract 1 fact from provider response"
+        "should extract 1 fact FROM provider response"
     );
     assert_eq!(
         result.facts[0].subject, "Dr. Chen",

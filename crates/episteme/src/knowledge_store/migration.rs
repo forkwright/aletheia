@@ -34,7 +34,7 @@ impl KnowledgeStore {
             })?;
 
         let _ = self.db.run(
-            "::fts drop facts:content_fts",
+            "::fts DROP facts:content_fts",
             BTreeMap::new(),
             ScriptMutability::Mutable,
         );
@@ -49,7 +49,7 @@ impl KnowledgeStore {
             })?;
 
         self.db
-            .run(KNOWLEDGE_DDL[0], BTreeMap::new(), ScriptMutability::Mutable)
+            .run(KNOWLEDGE_DDL.get(0).copied().unwrap_or_default(), BTreeMap::new(), ScriptMutability::Mutable)
             .map_err(|e| {
                 crate::error::EngineQuerySnafu {
                     message: format!("v1->v2 recreate facts: {e}"),
@@ -120,7 +120,7 @@ impl KnowledgeStore {
             )
             .map_err(|e| {
                 crate::error::EngineQuerySnafu {
-                    message: format!("v1->v2 update version: {e}"),
+                    message: format!("v1->v2 UPDATE version: {e}"),
                 }
                 .build()
             })?;
@@ -159,7 +159,7 @@ impl KnowledgeStore {
             })?;
 
         let _ = self.db.run(
-            "::fts drop facts:content_fts",
+            "::fts DROP facts:content_fts",
             BTreeMap::new(),
             ScriptMutability::Mutable,
         );
@@ -174,7 +174,7 @@ impl KnowledgeStore {
             })?;
 
         self.db
-            .run(KNOWLEDGE_DDL[0], BTreeMap::new(), ScriptMutability::Mutable)
+            .run(KNOWLEDGE_DDL.get(0).copied().unwrap_or_default(), BTreeMap::new(), ScriptMutability::Mutable)
             .map_err(|e| {
                 crate::error::EngineQuerySnafu {
                     message: format!("v2->v3 recreate facts: {e}"),
@@ -252,7 +252,7 @@ impl KnowledgeStore {
             )
             .map_err(|e| {
                 crate::error::EngineQuerySnafu {
-                    message: format!("v2->v3 update version: {e}"),
+                    message: format!("v2->v3 UPDATE version: {e}"),
                 }
                 .build()
             })?;
@@ -269,12 +269,12 @@ impl KnowledgeStore {
         tracing::info!("migrating knowledge schema v3 -> v4");
 
         // WHY: bounded range [3..6) to avoid creating relations from later migrations (causal_edges = index 6).
-        for ddl in &KNOWLEDGE_DDL[3..6] {
+        for ddl in KNOWLEDGE_DDL.get(3..6).unwrap_or_default() {
             self.db
                 .run(ddl, BTreeMap::new(), ScriptMutability::Mutable)
                 .map_err(|e| {
                     crate::error::EngineQuerySnafu {
-                        message: format!("v3->v4 create relation: {e}"),
+                        message: format!("v3->v4 CREATE relation: {e}"),
                     }
                     .build()
                 })?;
@@ -288,7 +288,7 @@ impl KnowledgeStore {
             )
             .map_err(|e| {
                 crate::error::EngineQuerySnafu {
-                    message: format!("v3->v4 create graph_scores: {e}"),
+                    message: format!("v3->v4 CREATE graph_scores: {e}"),
                 }
                 .build()
             })?;
@@ -304,7 +304,7 @@ impl KnowledgeStore {
             )
             .map_err(|e| {
                 crate::error::EngineQuerySnafu {
-                    message: format!("v3->v4 update version: {e}"),
+                    message: format!("v3->v4 UPDATE version: {e}"),
                 }
                 .build()
             })?;
@@ -327,7 +327,7 @@ impl KnowledgeStore {
             )
             .map_err(|e| {
                 crate::error::EngineQuerySnafu {
-                    message: format!("v4->v5 create consolidation_audit: {e}"),
+                    message: format!("v4->v5 CREATE consolidation_audit: {e}"),
                 }
                 .build()
             })?;
@@ -343,7 +343,7 @@ impl KnowledgeStore {
             )
             .map_err(|e| {
                 crate::error::EngineQuerySnafu {
-                    message: format!("v4->v5 update version: {e}"),
+                    message: format!("v4->v5 UPDATE version: {e}"),
                 }
                 .build()
             })?;
@@ -361,10 +361,10 @@ impl KnowledgeStore {
 
         // KNOWLEDGE_DDL[6] is the causal_edges relation (index 6, zero-based).
         self.db
-            .run(KNOWLEDGE_DDL[6], BTreeMap::new(), ScriptMutability::Mutable)
+            .run(KNOWLEDGE_DDL.get(6).copied().unwrap_or_default(), BTreeMap::new(), ScriptMutability::Mutable)
             .map_err(|e| {
                 crate::error::EngineQuerySnafu {
-                    message: format!("v5->v6 create causal_edges: {e}"),
+                    message: format!("v5->v6 CREATE causal_edges: {e}"),
                 }
                 .build()
             })?;
@@ -380,7 +380,7 @@ impl KnowledgeStore {
             )
             .map_err(|e| {
                 crate::error::EngineQuerySnafu {
-                    message: format!("v5->v6 update version: {e}"),
+                    message: format!("v5->v6 UPDATE version: {e}"),
                 }
                 .build()
             })?;

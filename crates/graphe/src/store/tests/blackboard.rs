@@ -40,13 +40,13 @@ fn blackboard_crud() {
 
     let deleted = store
         .blackboard_delete("goal", "syn")
-        .expect("blackboard delete");
+        .expect("blackboard DELETE");
     assert!(
         deleted,
         "blackboard_delete should return true when entry was removed"
     );
 
-    let gone = store.blackboard_read("goal").expect("blackboard delete");
+    let gone = store.blackboard_read("goal").expect("blackboard DELETE");
     assert!(
         gone.is_none(),
         "deleted blackboard entry should no longer be readable"
@@ -76,7 +76,7 @@ fn blackboard_upsert() {
     assert_eq!(
         list.len(),
         1,
-        "upsert to same key should not create a second entry"
+        "upsert to same key should not CREATE a second entry"
     );
 }
 
@@ -90,12 +90,12 @@ fn blackboard_delete_only_author() {
     let deleted = store
         .blackboard_delete("secret", "other-agent")
         .expect("blackboard write");
-    assert!(!deleted, "delete by non-author should return false");
+    assert!(!deleted, "DELETE by non-author should return false");
 
-    let still_there = store.blackboard_read("secret").expect("blackboard delete");
+    let still_there = store.blackboard_read("secret").expect("blackboard DELETE");
     assert!(
         still_there.is_some(),
-        "entry written by syn should still exist after failed delete by other-agent"
+        "entry written by syn should still exist after failed DELETE by other-agent"
     );
 }
 
@@ -144,7 +144,7 @@ fn record_distillation_increments_count() {
     let store = test_store();
     store
         .create_session("ses-1", "syn", "main", None, None)
-        .expect("create session");
+        .expect("CREATE session");
 
     let session = store
         .find_session_by_id("ses-1")
@@ -173,7 +173,7 @@ fn record_distillation_increments_count() {
     );
     assert!(
         session.metrics.last_distilled_at.is_some(),
-        "last_distilled_at should be set after first distillation"
+        "last_distilled_at should be SET after first distillation"
     );
 
     store
@@ -200,14 +200,14 @@ fn open_in_memory_creates_tables() {
     );
     let session = store
         .create_session("tbl-check", "syn", "main", None, None)
-        .expect("create session");
+        .expect("CREATE session");
     assert_eq!(
         session.id, "tbl-check",
         "created session should have the expected id"
     );
     let found = store
         .find_session_by_id("tbl-check")
-        .expect("create session");
+        .expect("CREATE session");
     assert!(
         found.is_some(),
         "session tbl-check should be findable immediately after creation"
@@ -219,7 +219,7 @@ fn create_session_duplicate_id_errors() {
     let store = test_store();
     store
         .create_session("ses-dup", "syn", "main", None, None)
-        .expect("create session");
+        .expect("CREATE session");
     let result = store.create_session("ses-dup", "syn", "other", None, None);
     assert!(
         result.is_err(),

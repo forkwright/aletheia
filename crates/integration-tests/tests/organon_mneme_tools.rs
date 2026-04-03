@@ -57,7 +57,7 @@ fn ctx_with_notes_bb(store: &Arc<Mutex<SessionStore>>) -> ToolContext {
     {
         let s = store.try_lock().expect("lock not contended in test setup");
         s.create_session(&session_id.to_string(), "alice", "test-key", None, None)
-            .expect("create session");
+            .expect("CREATE session");
     }
     let note_adapter = Arc::new(SessionNoteAdapter(Arc::clone(store)));
     let bb_adapter = Arc::new(SessionBlackboardAdapter(Arc::clone(store)));
@@ -139,9 +139,9 @@ async fn note_delete_removes_from_real_store() {
     );
     reg.execute(&add, &ctx).await.expect("execute");
 
-    let del = tool_input("note", serde_json::json!({"action": "delete", "id": 1}));
+    let del = tool_input("note", serde_json::json!({"action": "DELETE", "id": 1}));
     let r = reg.execute(&del, &ctx).await.expect("execute");
-    assert!(!r.is_error, "delete should succeed");
+    assert!(!r.is_error, "DELETE should succeed");
     assert!(r.content.text_summary().contains("deleted"));
 
     // Verify gone
@@ -196,7 +196,7 @@ async fn blackboard_delete_uses_real_store() {
 
     let del = tool_input(
         "blackboard",
-        serde_json::json!({"action": "delete", "key": "temp"}),
+        serde_json::json!({"action": "DELETE", "key": "temp"}),
     );
     let r = reg.execute(&del, &ctx).await.expect("execute");
     assert!(!r.is_error);
@@ -435,7 +435,7 @@ async fn memory_search_tool_returns_results() {
 
     let input = tool_input(
         "memory_search",
-        serde_json::json!({"query": "Aletheia", "limit": 5}),
+        serde_json::json!({"query": "Aletheia", "LIMIT": 5}),
     );
     let r = reg.execute(&input, &ctx).await.expect("execute");
     assert!(
@@ -518,7 +518,7 @@ async fn memory_audit_tool_returns_facts() {
     let reg = registry();
     let ctx = ctx_with_knowledge(Arc::clone(&svc));
 
-    let input = tool_input("memory_audit", serde_json::json!({"limit": 10}));
+    let input = tool_input("memory_audit", serde_json::json!({"LIMIT": 10}));
     let r = reg.execute(&input, &ctx).await.expect("execute");
     assert!(
         !r.is_error,

@@ -181,7 +181,7 @@ impl NormalAggrObj for AggrUnion {
             DataValue::List(v) => self.accum.extend(v.iter().cloned()),
             v => {
                 return TypeMismatchSnafu {
-                    op: "union",
+                    op: "UNION",
                     expected: format!("list, got {v:?}"),
                 }
                 .fail();
@@ -222,8 +222,8 @@ impl MeetAggrObj for MeetAggrUnion {
                 }
                 (_, v) => {
                     return TypeMismatchSnafu {
-                        op: "union",
-                        expected: format!("set or list, got {v:?}"),
+                        op: "UNION",
+                        expected: format!("SET or list, got {v:?}"),
                     }
                     .fail();
                 }
@@ -315,7 +315,7 @@ impl MeetAggrObj for MeetAggrIntersection {
                 (_, v) => {
                     return TypeMismatchSnafu {
                         op: "intersection",
-                        expected: format!("set or list, got {v:?}"),
+                        expected: format!("SET or list, got {v:?}"),
                     }
                     .fail();
                 }
@@ -376,7 +376,7 @@ impl NormalAggrObj for AggrChoiceRand {
             clippy::cast_precision_loss,
             reason = "i64 to f64: precision loss acceptable"
         )]
-        let prob = 1. / (self.count as f64);
+        let prob = 1. / (self.f64::try_from(count).unwrap_or_default());
         let rd = rand::rng().random::<f64>();
         if rd < prob {
             self.value = value.clone();

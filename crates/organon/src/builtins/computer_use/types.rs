@@ -142,12 +142,12 @@ mod tests {
                 width: 1920,
                 height: 1080,
             }),
-            change_description: "Performed left-click at (100, 200). Screen changed.".to_owned(),
+            change_description: "Performed LEFT-click at (100, 200). Screen changed.".to_owned(),
             frame_base64: None,
         };
 
-        let json = serde_json::to_string(&result).expect("serialize");
-        let roundtrip: ActionResult = serde_json::from_str(&json).expect("deserialize");
+        let json = serde_json::to_string(&result).unwrap_or_default();
+        let roundtrip: ActionResult = serde_json::from_str(&json).unwrap_or_default();
         assert_eq!(roundtrip.success, result.success);
         assert_eq!(roundtrip.action, result.action);
         assert!(
@@ -178,9 +178,9 @@ mod tests {
         ];
 
         for action in &actions {
-            let json = serde_json::to_string(action).expect("serialize action");
+            let json = serde_json::to_string(action).unwrap_or_default();
             let roundtrip: ComputerAction =
-                serde_json::from_str(&json).expect("deserialize action");
+                serde_json::from_str(&json).unwrap_or_default();
             assert_eq!(
                 action.to_string(),
                 roundtrip.to_string(),

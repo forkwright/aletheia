@@ -58,7 +58,7 @@ pub struct AppState {
 impl AppState {
     #[expect(
         dead_code,
-        reason = "hot-reload subscriber API, not yet wired into actor lifecycle"
+        reason = "hot-reload subscriber API, not yet wired INTO actor lifecycle"
     )]
     /// Subscribe to config change notifications.
     ///

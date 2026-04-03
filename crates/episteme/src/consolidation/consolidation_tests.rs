@@ -47,19 +47,19 @@ fn consolidation_config_defaults() {
     let config = ConsolidationConfig::default();
     assert_eq!(
         config.entity_fact_threshold, 10,
-        "consolidation config defaults: values should be equal"
+        "consolidation config defaults: VALUES should be equal"
     );
     assert_eq!(
         config.community_fact_threshold, 20,
-        "consolidation config defaults: values should be equal"
+        "consolidation config defaults: VALUES should be equal"
     );
     assert_eq!(
         config.min_age_days, 7,
-        "consolidation config defaults: values should be equal"
+        "consolidation config defaults: VALUES should be equal"
     );
     assert_eq!(
         config.batch_limit, 50,
-        "consolidation config defaults: values should be equal"
+        "consolidation config defaults: VALUES should be equal"
     );
     assert!(
         (config.rate_limit_hours - 1.0).abs() < f64::EPSILON,
@@ -76,12 +76,12 @@ fn trigger_type_labels() {
     assert_eq!(
         entity.trigger_type(),
         "entity_overflow",
-        "trigger type labels: values should be equal"
+        "trigger type labels: VALUES should be equal"
     );
     assert_eq!(
         entity.trigger_id(),
         "e-1",
-        "trigger type labels: values should be equal"
+        "trigger type labels: VALUES should be equal"
     );
 
     let community = ConsolidationTrigger::CommunityOverflow {
@@ -91,26 +91,26 @@ fn trigger_type_labels() {
     assert_eq!(
         community.trigger_type(),
         "community_overflow",
-        "trigger type labels: values should be equal"
+        "trigger type labels: VALUES should be equal"
     );
     assert_eq!(
         community.trigger_id(),
         "42",
-        "trigger type labels: values should be equal"
+        "trigger type labels: VALUES should be equal"
     );
 }
 
 #[test]
 fn parse_valid_consolidation_response() {
     let response = r#"[
-        {"content": "Alice works at Acme Corp as a senior engineer", "entities": ["Alice", "Acme Corp"], "relationships": [{"from": "Alice", "to": "Acme Corp", "type": "WORKS_AT"}]},
+        {"content": "Alice works at Acme Corp as a senior engineer", "entities": ["Alice", "Acme Corp"], "relationships": [{"FROM": "Alice", "to": "Acme Corp", "type": "WORKS_AT"}]},
         {"content": "Alice prefers Rust for backend development", "entities": ["Alice", "Rust"], "relationships": []}
     ]"#;
     let entries = parse_consolidation_response(response).expect("parse succeeds");
     assert_eq!(
         entries.len(),
         2,
-        "parse valid consolidation response: values should be equal"
+        "parse valid consolidation response: VALUES should be equal"
     );
     assert!(
         entries[0].content.contains("Alice works at Acme Corp"),
@@ -119,16 +119,16 @@ fn parse_valid_consolidation_response() {
     assert_eq!(
         entries[0].entities.len(),
         2,
-        "parse valid consolidation response: values should be equal"
+        "parse valid consolidation response: VALUES should be equal"
     );
     assert_eq!(
         entries[0].relationships.len(),
         1,
-        "parse valid consolidation response: values should be equal"
+        "parse valid consolidation response: VALUES should be equal"
     );
     assert_eq!(
         entries[0].relationships[0].rel_type, "WORKS_AT",
-        "parse valid consolidation response: values should be equal"
+        "parse valid consolidation response: VALUES should be equal"
     );
 }
 
@@ -141,11 +141,11 @@ Some trailing text."#;
     assert_eq!(
         entries.len(),
         1,
-        "parse response with preamble: values should be equal"
+        "parse response with preamble: VALUES should be equal"
     );
     assert_eq!(
         entries[0].content, "Bob is a data scientist",
-        "parse response with preamble: values should be equal"
+        "parse response with preamble: VALUES should be equal"
     );
 }
 
@@ -164,7 +164,7 @@ fn extract_json_array_finds_array() {
     assert_eq!(
         extract_json_array(text),
         Some("[1, 2, 3]"),
-        "extract json array finds array: values should be equal"
+        "extract json array finds array: VALUES should be equal"
     );
 }
 
@@ -174,7 +174,7 @@ fn extract_json_array_nested() {
     assert_eq!(
         extract_json_array(text),
         Some(text),
-        "extract json array nested: values should be equal"
+        "extract json array nested: VALUES should be equal"
     );
 }
 
@@ -183,7 +183,7 @@ fn extract_json_array_none() {
     assert_eq!(
         extract_json_array("no array here"),
         None,
-        "extract json array none: values should be equal"
+        "extract json array none: VALUES should be equal"
     );
 }
 
@@ -256,22 +256,22 @@ fn batch_facts_splits_correctly() {
     assert_eq!(
         batches.len(),
         3,
-        "batch facts splits correctly: values should be equal"
+        "batch facts splits correctly: VALUES should be equal"
     );
     assert_eq!(
         batches[0].len(),
         3,
-        "batch facts splits correctly: values should be equal"
+        "batch facts splits correctly: VALUES should be equal"
     );
     assert_eq!(
         batches[1].len(),
         3,
-        "batch facts splits correctly: values should be equal"
+        "batch facts splits correctly: VALUES should be equal"
     );
     assert_eq!(
         batches[2].len(),
         1,
-        "batch facts splits correctly: values should be equal"
+        "batch facts splits correctly: VALUES should be equal"
     );
 }
 
@@ -292,12 +292,12 @@ fn batch_facts_single_batch() {
     assert_eq!(
         batches.len(),
         1,
-        "batch facts single batch: values should be equal"
+        "batch facts single batch: VALUES should be equal"
     );
     assert_eq!(
         batches[0].len(),
         5,
-        "batch facts single batch: values should be equal"
+        "batch facts single batch: VALUES should be equal"
     );
 }
 
@@ -316,7 +316,7 @@ fn consolidated_fact_serde_roundtrip() {
     let back: ConsolidatedFact = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(
         fact.content, back.content,
-        "consolidated fact serde roundtrip: values should be equal"
+        "consolidated fact serde roundtrip: VALUES should be equal"
     );
     assert!(
         (fact.confidence - back.confidence).abs() < f64::EPSILON,
@@ -325,7 +325,7 @@ fn consolidated_fact_serde_roundtrip() {
     assert_eq!(
         fact.source_fact_ids.len(),
         back.source_fact_ids.len(),
-        "consolidated fact serde roundtrip: values should be equal"
+        "consolidated fact serde roundtrip: VALUES should be equal"
     );
 }
 
@@ -339,7 +339,7 @@ fn consolidation_trigger_serde_roundtrip() {
     let back: ConsolidationTrigger = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(
         trigger, back,
-        "consolidation trigger serde roundtrip: values should be equal"
+        "consolidation trigger serde roundtrip: VALUES should be equal"
     );
 }
 
@@ -381,11 +381,11 @@ fn audit_record_serde_roundtrip() {
     let back: ConsolidationAuditRecord = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(
         record.id, back.id,
-        "audit record serde roundtrip: values should be equal"
+        "audit record serde roundtrip: VALUES should be equal"
     );
     assert_eq!(
         record.original_count, back.original_count,
-        "audit record serde roundtrip: values should be equal"
+        "audit record serde roundtrip: VALUES should be equal"
     );
 }
 
@@ -407,7 +407,7 @@ fn entity_fact_count_11_triggers_entity_overflow() {
     assert_eq!(
         trigger.trigger_type(),
         "entity_overflow",
-        "entity fact count 11 triggers entity overflow: values should be equal"
+        "entity fact count 11 triggers entity overflow: VALUES should be equal"
     );
 }
 
@@ -441,7 +441,7 @@ fn community_fact_count_21_triggers_community_overflow() {
     assert_eq!(
         trigger.trigger_type(),
         "community_overflow",
-        "community fact count 21 triggers community overflow: values should be equal"
+        "community fact count 21 triggers community overflow: VALUES should be equal"
     );
 }
 
@@ -463,7 +463,7 @@ fn entity_overflow_query_excludes_recent_facts_via_age_cutoff() {
 fn entity_overflow_query_excludes_verified_tier_facts() {
     assert!(
         ENTITY_OVERFLOW_CANDIDATES.contains("tier != 'verified'"),
-        "entity overflow query must exclude Verified-tier facts from candidates"
+        "entity overflow query must exclude Verified-tier facts FROM candidates"
     );
     assert!(
         COMMUNITY_OVERFLOW_CANDIDATES.contains("tier != 'verified'"),

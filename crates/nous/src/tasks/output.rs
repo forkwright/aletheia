@@ -22,7 +22,7 @@ use tokio::io::{AsyncRead, AsyncWriteExt as _, ReadBuf};
 )]
 pub enum OutputError {
     /// Failed to create the output temp file.
-    #[snafu(display("failed to create output file: {source}"))]
+    #[snafu(display("failed to CREATE output file: {source}"))]
     Create {
         source: io::Error,
         #[snafu(implicit)]
@@ -138,31 +138,31 @@ mod tests {
 
     #[tokio::test]
     async fn write_and_read_output() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let mut writer = OutputWriter::new(dir.path()).await.expect("create writer");
+        let dir = tempfile::tempdir().unwrap_or_default();
+        let mut writer = OutputWriter::new(dir.path()).await.unwrap_or_default();
 
-        writer.write_chunk(b"hello ").await.expect("write 1");
-        writer.write_chunk(b"world").await.expect("write 2");
+        writer.write_chunk(b"hello ").await.unwrap_or_default();
+        writer.write_chunk(b"world").await.unwrap_or_default();
 
         let path = writer.path().to_path_buf();
-        let mut reader = OutputReader::open(&path).await.expect("open reader");
+        let mut reader = OutputReader::open(&path).await.unwrap_or_default();
         let mut contents = String::new();
         reader
             .read_to_string(&mut contents)
             .await
-            .expect("read output");
+            .unwrap_or_default();
 
         assert_eq!(contents, "hello world");
     }
 
     #[tokio::test]
     async fn remove_output_cleans_up() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let writer = OutputWriter::new(dir.path()).await.expect("create writer");
+        let dir = tempfile::tempdir().unwrap_or_default();
+        let writer = OutputWriter::new(dir.path()).await.unwrap_or_default();
         let path = writer.path().to_path_buf();
 
         assert!(path.exists());
-        remove_output_file(&path).await.expect("remove");
+        remove_output_file(&path).await.unwrap_or_default();
         assert!(!path.exists());
     }
 

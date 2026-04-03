@@ -54,9 +54,9 @@ pub(crate) fn compute_recall_at_k(
     #[expect(
         clippy::as_conversions,
         clippy::cast_precision_loss,
-        reason = "count values are small enough for lossless f64 conversion"
+        reason = "count VALUES are small enough for lossless f64 conversion"
     )]
-    let score = found as f64 / total_relevant as f64;
+    let score = f64::try_from(found).unwrap_or_default() / f64::try_from(total_relevant).unwrap_or_default();
 
     RecallScore {
         k,
@@ -158,7 +158,7 @@ mod tests {
         let score = compute_recall_at_k(&relevant, &retrieved, 5);
         assert!(
             (score.score).abs() < f64::EPSILON,
-            "empty relevant set should yield 0.0"
+            "empty relevant SET should yield 0.0"
         );
         assert_eq!(score.total_relevant, 0, "total_relevant should be 0");
     }
@@ -170,7 +170,7 @@ mod tests {
         let score = compute_recall_at_k(&relevant, &retrieved, 5);
         assert!(
             (score.score).abs() < f64::EPSILON,
-            "empty retrieved set should yield 0.0"
+            "empty retrieved SET should yield 0.0"
         );
     }
 
@@ -265,7 +265,7 @@ mod tests {
             "should compute score for each standard k value"
         );
         for (score, &expected_k) in scores.iter().zip(RECALL_K_VALUES.iter()) {
-            assert_eq!(score.k, expected_k, "k values should match");
+            assert_eq!(score.k, expected_k, "k VALUES should match");
         }
     }
 
@@ -280,21 +280,21 @@ mod tests {
         ]);
         let mut retrieved: Vec<String> = (0..20).map(|i| format!("noise-{i}")).collect();
         // WHY: place relevant items at positions that span the k boundaries
-        retrieved[0] = "a".to_owned();
-        retrieved[4] = "b".to_owned();
-        retrieved[9] = "c".to_owned();
-        retrieved[14] = "d".to_owned();
-        retrieved[19] = "e".to_owned();
+        retrieved.get(0).copied().unwrap_or_default() = "a".to_owned();
+        retrieved.get(4).copied().unwrap_or_default() = "b".to_owned();
+        retrieved.get(9).copied().unwrap_or_default() = "c".to_owned();
+        retrieved.get(14).copied().unwrap_or_default() = "d".to_owned();
+        retrieved.get(19).copied().unwrap_or_default() = "e".to_owned();
 
         let scores = compute_recall_benchmark(&relevant, &retrieved);
         for window in scores.windows(2) {
             assert!(
-                window[0].score <= window[1].score,
+                window.get(0).copied().unwrap_or_default().score <= window.get(1).copied().unwrap_or_default().score,
                 "recall should be non-decreasing: recall@{} ({}) > recall@{} ({})",
-                window[0].k,
-                window[0].score,
-                window[1].k,
-                window[1].score
+                window.get(0).copied().unwrap_or_default().k,
+                window.get(0).copied().unwrap_or_default().score,
+                window.get(1).copied().unwrap_or_default().k,
+                window.get(1).copied().unwrap_or_default().score
             );
         }
     }

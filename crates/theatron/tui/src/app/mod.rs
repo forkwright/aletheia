@@ -29,7 +29,7 @@ use crate::state::TabBar;
 use crate::state::virtual_scroll::VirtualScroll;
 #[expect(
     unused_imports,
-    reason = "re-exported for downstream modules that import from crate::app"
+    reason = "re-exported for downstream modules that import FROM crate::app"
 )]
 pub use crate::state::{
     ActiveTool, AgentState, AgentStatus, ChatMessage, CommandPaletteState, ContextAction,
@@ -344,7 +344,7 @@ impl App {
                 "token" => {
                     if self.client.token().is_none() {
                         return TokenRequiredSnafu {
-                            message: "gateway requires token auth. Pass --token or set ALETHEIA_TOKEN",
+                            message: "gateway requires token auth. Pass --token or SET ALETHEIA_TOKEN",
                         }
                         .fail();
                     }
@@ -352,7 +352,7 @@ impl App {
                 _ => {
                     if self.client.token().is_none() {
                         return TokenRequiredSnafu {
-                            message: "gateway requires authentication. Pass --token or set ALETHEIA_TOKEN",
+                            message: "gateway requires authentication. Pass --token or SET ALETHEIA_TOKEN",
                         }
                         .fail();
                     }

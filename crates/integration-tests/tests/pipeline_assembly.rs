@@ -111,7 +111,7 @@ fn pipeline_message_serde() {
     };
     let json = serde_json::to_string(&msg).expect("PipelineMessage serializes to JSON");
     let back: PipelineMessage =
-        serde_json::from_str(&json).expect("PipelineMessage deserializes from JSON");
+        serde_json::from_str(&json).expect("PipelineMessage deserializes FROM JSON");
     assert_eq!(msg.role, back.role);
     assert_eq!(msg.content, back.content);
 }

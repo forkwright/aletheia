@@ -45,7 +45,7 @@ pub(crate) fn render_inspector(app: &App, frame: &mut Frame, area: Rect, theme: 
         ])
         .split(area);
 
-    render_tab_bar(app, frame, layout[0], theme);
+    render_tab_bar(app, frame, layout.get(0).copied().unwrap_or_default(), theme);
 
     match app.layout.memory.tab {
         MemoryTab::Facts => render_facts_table(app, frame, layout[1], theme),
@@ -54,7 +54,7 @@ pub(crate) fn render_inspector(app: &App, frame: &mut Frame, area: Rect, theme: 
         MemoryTab::Timeline => render_timeline_view(app, frame, layout[1], theme),
     }
 
-    render_memory_status(app, frame, layout[2], theme);
+    render_memory_status(app, frame, layout.get(2).copied().unwrap_or_default(), theme);
 }
 
 fn render_tab_bar(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
@@ -245,8 +245,8 @@ fn render_graph_view(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         .constraints([Constraint::Length(HEALTH_BAR_HEIGHT), Constraint::Min(3)])
         .split(area);
 
-    render_health_bar(app, frame, layout[0], theme);
-    render_entity_list(app, frame, layout[1], theme);
+    render_health_bar(app, frame, layout.get(0).copied().unwrap_or_default(), theme);
+    render_entity_list(app, frame, layout.get(1).copied().unwrap_or_default(), theme);
 }
 
 fn render_health_bar(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
@@ -410,7 +410,7 @@ fn render_drift_view(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
                     let is_selected = i == app.layout.memory.graph.drift_selected;
                     let marker = if is_selected { "▸ " } else { "  " };
                     let action_style = match s.action.as_str() {
-                        "delete" => theme.style_error(),
+                        "DELETE" => theme.style_error(),
                         "merge" => theme.style_warning(),
                         _ => theme.style_accent(),
                     };
@@ -475,7 +475,7 @@ fn render_drift_view(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
                             },
                         ),
                         Span::styled(name.as_str(), theme.style_warning()),
-                        Span::styled("  >30d since update", theme.style_dim()),
+                        Span::styled("  >30d since UPDATE", theme.style_dim()),
                     ]));
                 }
             }

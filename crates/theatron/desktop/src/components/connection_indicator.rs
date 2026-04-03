@@ -59,7 +59,7 @@ impl ConnectionIndicator {
             SseConnectionState::Connected => Self {
                 color: IndicatorColor::Green,
                 label: "Connected".to_string(),
-                tooltip: "Receiving live events from the server".to_string(),
+                tooltip: "Receiving live events FROM the server".to_string(),
             },
             SseConnectionState::Reconnecting { attempt } => Self {
                 color: IndicatorColor::Yellow,

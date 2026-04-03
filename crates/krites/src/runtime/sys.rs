@@ -99,7 +99,7 @@ impl<'s, S: Storage<'s>> Db<S> {
             SysOp::CreateIndex(rel_name, idx_name, cols) => {
                 if read_only {
                     ReadOnlyViolationSnafu {
-                        operation: "create index",
+                        operation: "CREATE index",
                     }
                     .fail()?;
                 }
@@ -121,7 +121,7 @@ impl<'s, S: Storage<'s>> Db<S> {
             SysOp::CreateVectorIndex(config) => {
                 if read_only {
                     ReadOnlyViolationSnafu {
-                        operation: "create vector index",
+                        operation: "CREATE vector index",
                     }
                     .fail()?;
                 }
@@ -143,7 +143,7 @@ impl<'s, S: Storage<'s>> Db<S> {
             SysOp::CreateFtsIndex(config) => {
                 if read_only {
                     ReadOnlyViolationSnafu {
-                        operation: "create FTS index",
+                        operation: "CREATE FTS index",
                     }
                     .fail()?;
                 }
@@ -165,7 +165,7 @@ impl<'s, S: Storage<'s>> Db<S> {
             SysOp::CreateMinHashLshIndex(config) => {
                 if read_only {
                     ReadOnlyViolationSnafu {
-                        operation: "create MinHash LSH index",
+                        operation: "CREATE MinHash LSH index",
                     }
                     .fail()?;
                 }
@@ -282,7 +282,7 @@ impl<'s, S: Storage<'s>> Db<S> {
             SysOp::SetTriggers(name, puts, rms, replaces) => {
                 if read_only {
                     ReadOnlyViolationSnafu {
-                        operation: "set triggers",
+                        operation: "SET triggers",
                     }
                     .fail()?;
                 }
@@ -295,7 +295,7 @@ impl<'s, S: Storage<'s>> Db<S> {
             SysOp::SetAccessLevel(names, level) => {
                 if read_only {
                     ReadOnlyViolationSnafu {
-                        operation: "set access level",
+                        operation: "SET access level",
                     }
                     .fail()?;
                 }
@@ -329,7 +329,7 @@ impl<'s, S: Storage<'s>> Db<S> {
             .iter()
             .map(|(k, v)| {
                 vec![
-                    DataValue::from(*k as i64),
+                    DataValue::from(*i64::try_from(k).unwrap_or_default()),
                     DataValue::from(format!("{:?}", v.started_at)),
                 ]
             })

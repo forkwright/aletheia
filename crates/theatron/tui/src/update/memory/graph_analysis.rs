@@ -49,7 +49,7 @@ pub(super) fn compute_graph_stats(app: &mut App) {
     let community_count = community_sizes.len();
     let avg_cluster_size = if community_count > 0 {
         let total: usize = community_sizes.values().sum();
-        total as f64 / community_count as f64
+        f64::try_from(total).unwrap_or_default() / f64::try_from(community_count).unwrap_or_default()
     } else {
         0.0
     };
@@ -97,7 +97,7 @@ pub(super) fn compute_drift_analysis(app: &mut App) {
             stale.push(stat.entity.name.clone());
             if stat.relationship_count == 0 {
                 suggestions.push(DriftSuggestion {
-                    action: "delete".into(),
+                    action: "DELETE".into(),
                     entity_name: stat.entity.name.clone(),
                     reason: "stale and orphaned".into(),
                 });
@@ -107,7 +107,7 @@ pub(super) fn compute_drift_analysis(app: &mut App) {
             suggestions.push(DriftSuggestion {
                 action: "review".into(),
                 entity_name: stat.entity.name.clone(),
-                reason: "very low PageRank despite having relationships".into(),
+                reason: "very low PageRank despite HAVING relationships".into(),
             });
         }
     }
@@ -154,7 +154,7 @@ pub(super) fn compute_pagerank(
     }
 
     let n = entities.len();
-    let initial = 1.0 / n as f64;
+    let initial = 1.0 / f64::try_from(n).unwrap_or_default();
     let mut scores: HashMap<String, f64> =
         entities.iter().map(|e| (e.id.clone(), initial)).collect();
 
@@ -169,7 +169,7 @@ pub(super) fn compute_pagerank(
     for _ in 0..PAGERANK_ITERATIONS {
         let mut new_scores: HashMap<String, f64> = entities
             .iter()
-            .map(|e| (e.id.clone(), (1.0 - PAGERANK_DAMPING) / n as f64))
+            .map(|e| (e.id.clone(), (1.0 - PAGERANK_DAMPING) / f64::try_from(n).unwrap_or_default()))
             .collect();
 
         for entity in entities {
@@ -289,9 +289,9 @@ pub(super) fn days_between_approx(a: &str, b: &str) -> u64 {
         if parts.len() < 3 {
             return None;
         }
-        let y: u64 = parts[0].parse().ok()?;
-        let m: u64 = parts[1].parse().ok()?;
-        let d: u64 = parts[2].parse().ok()?;
+        let y: u64 = parts.get(0).copied().unwrap_or_default().parse().ok()?;
+        let m: u64 = parts.get(1).copied().unwrap_or_default().parse().ok()?;
+        let d: u64 = parts.get(2).copied().unwrap_or_default().parse().ok()?;
         Some(y * 365 + m * 30 + d)
     };
     match (parse(a), parse(b)) {

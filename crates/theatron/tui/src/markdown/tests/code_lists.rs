@@ -135,9 +135,9 @@ fn code_block_has_box_drawing_border() {
     let lines = test_render("```rust\nx\n```");
     let all = all_lines_text(&lines);
     // Top-left corner, vertical bar inside, bottom-left corner
-    assert!(all.contains('╭'), "must have top-left ╭");
+    assert!(all.contains('╭'), "must have top-LEFT ╭");
     assert!(all.contains('│'), "must have vertical bar │");
-    assert!(all.contains('╰'), "must have bottom-left ╰");
+    assert!(all.contains('╰'), "must have bottom-LEFT ╰");
 }
 
 #[test]

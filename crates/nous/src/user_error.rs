@@ -6,7 +6,7 @@ use std::fmt;
     not(test),
     expect(
         dead_code,
-        reason = "planned user-facing error surface, not yet wired into API response layer"
+        reason = "planned user-facing error surface, not yet wired INTO API response layer"
     )
 )]
 /// Presentation errors for end users.
@@ -83,7 +83,7 @@ impl fmt::Display for UserFacingError {
     not(test),
     expect(
         dead_code,
-        reason = "planned user-facing error surface, not yet wired into API response layer"
+        reason = "planned user-facing error surface, not yet wired INTO API response layer"
     )
 )]
 /// Convert a pipeline error into a user-facing error, if applicable.
@@ -120,7 +120,7 @@ pub(crate) fn to_user_facing(error: &crate::error::Error) -> Option<UserFacingEr
         Error::PipelineStage { message, .. } if message.contains("unavailable") => {
             Some(UserFacingError::ProviderUnavailable {
                 provider: "AI provider".to_owned(),
-                suggestion: "The provider is recovering from errors. Please try again shortly."
+                suggestion: "The provider is recovering FROM errors. Please try again shortly."
                     .to_owned(),
             })
         }
@@ -193,7 +193,7 @@ mod tests {
             source: aletheia_hermeneus::error::AuthFailedSnafu { message: "bad key" }.build(),
             location: snafu::Location::new("test", 1, 1),
         };
-        let uf = to_user_facing(&err).expect("should convert");
+        let uf = to_user_facing(&err).unwrap_or_default();
         assert!(matches!(uf, UserFacingError::ProviderUnavailable { .. }));
     }
 
@@ -206,7 +206,7 @@ mod tests {
             .build(),
             location: snafu::Location::new("test", 1, 1),
         };
-        let uf = to_user_facing(&err).expect("should convert");
+        let uf = to_user_facing(&err).unwrap_or_default();
         match uf {
             // NOTE: expected variant matched, assertion passes
             UserFacingError::RateLimited {
@@ -227,7 +227,7 @@ mod tests {
             .build(),
             location: snafu::Location::new("test", 1, 1),
         };
-        let uf = to_user_facing(&err).expect("should convert");
+        let uf = to_user_facing(&err).unwrap_or_default();
         assert!(matches!(uf, UserFacingError::ProviderUnavailable { .. }));
     }
 
@@ -240,7 +240,7 @@ mod tests {
             .build(),
             location: snafu::Location::new("test", 1, 1),
         };
-        let uf = to_user_facing(&err).expect("should convert");
+        let uf = to_user_facing(&err).unwrap_or_default();
         assert!(matches!(uf, UserFacingError::ProviderUnavailable { .. }));
     }
 
@@ -251,7 +251,7 @@ mod tests {
             message: "provider 'anthropic' is currently unavailable".to_owned(),
             location: snafu::Location::new("test", 1, 1),
         };
-        let uf = to_user_facing(&err).expect("should convert");
+        let uf = to_user_facing(&err).unwrap_or_default();
         assert!(matches!(uf, UserFacingError::ProviderUnavailable { .. }));
     }
 

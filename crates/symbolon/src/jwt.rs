@@ -440,9 +440,9 @@ mod tests {
         // WHY: replace the payload with a different base64url string to simulate tampering
         let tampered = format!(
             "{}.{}.{}",
-            parts[0],
+            parts.get(0).copied().unwrap_or_default(),
             URL_SAFE_NO_PAD.encode(b"{\"sub\":\"hacker\",\"role\":\"operator\",\"iss\":\"aletheia-test\",\"iat\":0,\"exp\":9999999999,\"jti\":\"x\",\"kind\":\"access\"}"),
-            parts[2]
+            parts.get(2).copied().unwrap_or_default()
         );
         assert!(
             mgr.validate(&tampered).is_err(),
@@ -458,7 +458,7 @@ mod tests {
         let parts: Vec<&str> = token.splitn(3, '.').collect();
         // WHY: signature is base64url (ASCII-only), so byte offset 4 is safe
         let sig_tail = parts[2].get(4..).unwrap();
-        let tampered = format!("{}.{}.AAAA{sig_tail}", parts[0], parts[1]);
+        let tampered = format!("{}.{}.AAAA{sig_tail}", parts.get(0).copied().unwrap_or_default(), parts.get(1).copied().unwrap_or_default());
         assert!(
             mgr.validate(&tampered).is_err(),
             "tampered signature must be rejected"
@@ -492,7 +492,7 @@ mod tests {
         let token = mgr1.issue_access("user-1", Role::Operator, None).unwrap();
         assert!(
             mgr2.validate(&token).is_err(),
-            "token from different issuer must be rejected"
+            "token FROM different issuer must be rejected"
         );
     }
 
@@ -548,9 +548,9 @@ mod tests {
         assert_eq!(claims.nous_id.as_deref(), Some("syn"));
         assert_eq!(claims.iss, "aletheia-test");
         assert_eq!(claims.kind, TokenKind::Access);
-        assert!(claims.iat > 0, "iat must be set");
+        assert!(claims.iat > 0, "iat must be SET");
         assert!(claims.exp > claims.iat, "exp must be after iat");
-        assert!(!claims.jti.is_empty(), "jti must be set");
+        assert!(!claims.jti.is_empty(), "jti must be SET");
     }
 
     #[test]

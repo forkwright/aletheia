@@ -11,7 +11,7 @@ fn classify_discussion_default() {
     assert_eq!(
         classify_turn(content),
         TurnType::Discussion,
-        "classify discussion default: values should be equal"
+        "classify discussion default: VALUES should be equal"
     );
 }
 
@@ -28,7 +28,7 @@ fn classify_tool_heavy() {
     assert_eq!(
         classify_turn(content),
         TurnType::ToolHeavy,
-        "classify tool heavy: values should be equal"
+        "classify tool heavy: VALUES should be equal"
     );
 }
 
@@ -40,7 +40,7 @@ fn classify_planning() {
     assert_eq!(
         classify_turn(content),
         TurnType::Planning,
-        "classify planning: values should be equal"
+        "classify planning: VALUES should be equal"
     );
 }
 
@@ -52,7 +52,7 @@ fn classify_debugging() {
     assert_eq!(
         classify_turn(content),
         TurnType::Debugging,
-        "classify debugging: values should be equal"
+        "classify debugging: VALUES should be equal"
     );
 }
 
@@ -62,7 +62,7 @@ fn classify_correction() {
     assert_eq!(
         classify_turn(content),
         TurnType::Correction,
-        "classify correction: values should be equal"
+        "classify correction: VALUES should be equal"
     );
 }
 
@@ -72,7 +72,7 @@ fn classify_correction_was_wrong() {
     assert_eq!(
         classify_turn(content),
         TurnType::Correction,
-        "classify correction was wrong: values should be equal"
+        "classify correction was wrong: VALUES should be equal"
     );
 }
 
@@ -85,7 +85,7 @@ fn classify_procedural() {
     assert_eq!(
         classify_turn(content),
         TurnType::Procedural,
-        "classify procedural: values should be equal"
+        "classify procedural: VALUES should be equal"
     );
 }
 
@@ -96,7 +96,7 @@ fn classify_correction_takes_priority_over_debugging() {
     assert_eq!(
         classify_turn(content),
         TurnType::Correction,
-        "classify correction takes priority over debugging: values should be equal"
+        "classify correction takes priority over debugging: VALUES should be equal"
     );
 }
 
@@ -105,12 +105,12 @@ fn classify_fact_identity() {
     assert_eq!(
         classify_fact("I am a software engineer"),
         FactType::Identity,
-        "classify fact identity: values should be equal"
+        "classify fact identity: VALUES should be equal"
     );
     assert_eq!(
         classify_fact("My name is Alice"),
         FactType::Identity,
-        "classify fact identity: values should be equal"
+        "classify fact identity: VALUES should be equal"
     );
 }
 
@@ -119,12 +119,12 @@ fn classify_fact_preference() {
     assert_eq!(
         classify_fact("I prefer Rust over Python"),
         FactType::Preference,
-        "classify fact preference: values should be equal"
+        "classify fact preference: VALUES should be equal"
     );
     assert_eq!(
         classify_fact("I don't like dynamic typing"),
         FactType::Preference,
-        "classify fact preference: values should be equal"
+        "classify fact preference: VALUES should be equal"
     );
 }
 
@@ -133,12 +133,12 @@ fn classify_fact_skill() {
     assert_eq!(
         classify_fact("I work with Kubernetes daily"),
         FactType::Skill,
-        "classify fact skill: values should be equal"
+        "classify fact skill: VALUES should be equal"
     );
     assert_eq!(
         classify_fact("I know how to use Docker"),
         FactType::Skill,
-        "classify fact skill: values should be equal"
+        "classify fact skill: VALUES should be equal"
     );
 }
 
@@ -147,7 +147,7 @@ fn classify_fact_task() {
     assert_eq!(
         classify_fact("I need to finish the todo list by Friday"),
         FactType::Task,
-        "classify fact task: values should be equal"
+        "classify fact task: VALUES should be equal"
     );
 }
 
@@ -156,7 +156,7 @@ fn classify_fact_event() {
     assert_eq!(
         classify_fact("Yesterday I deployed the new version"),
         FactType::Event,
-        "classify fact event: values should be equal"
+        "classify fact event: VALUES should be equal"
     );
 }
 
@@ -165,7 +165,7 @@ fn classify_fact_relationship() {
     assert_eq!(
         classify_fact("Alice works with Bob on the project"),
         FactType::Relationship,
-        "classify fact relationship: values should be equal"
+        "classify fact relationship: VALUES should be equal"
     );
 }
 
@@ -174,7 +174,7 @@ fn classify_fact_observation_default() {
     assert_eq!(
         classify_fact("Rust is a systems programming language"),
         FactType::Observation,
-        "classify fact observation default: values should be equal"
+        "classify fact observation default: VALUES should be equal"
     );
 }
 
@@ -232,7 +232,7 @@ fn filter_low_confidence_rejected() {
     assert_eq!(
         result.reason,
         Some(FilterReason::LowConfidence),
-        "filter low confidence rejected: values should be equal"
+        "filter low confidence rejected: VALUES should be equal"
     );
 }
 
@@ -246,7 +246,7 @@ fn filter_short_content_rejected() {
     assert_eq!(
         result.reason,
         Some(FilterReason::TooShort),
-        "filter short content rejected: values should be equal"
+        "filter short content rejected: VALUES should be equal"
     );
 }
 
@@ -261,7 +261,7 @@ fn filter_long_content_rejected() {
     assert_eq!(
         result.reason,
         Some(FilterReason::TooLong),
-        "filter long content rejected: values should be equal"
+        "filter long content rejected: VALUES should be equal"
     );
 }
 
@@ -275,7 +275,7 @@ fn filter_trivial_content_rejected() {
     assert_eq!(
         result.reason,
         Some(FilterReason::Trivial),
-        "filter trivial content rejected: values should be equal"
+        "filter trivial content rejected: VALUES should be equal"
     );
 }
 
@@ -285,7 +285,7 @@ fn filter_valid_fact_passes() {
     assert!(result.passed, "filter valid fact passes: assertion failed");
     assert_eq!(
         result.reason, None,
-        "filter valid fact passes: values should be equal"
+        "filter valid fact passes: VALUES should be equal"
     );
 }
 
@@ -300,17 +300,17 @@ fn filter_batch_deduplication() {
     assert_eq!(
         result.passed.len(),
         2,
-        "filter batch deduplication: values should be equal"
+        "filter batch deduplication: VALUES should be equal"
     );
     assert_eq!(
         result.rejected.len(),
         1,
-        "filter batch deduplication: values should be equal"
+        "filter batch deduplication: VALUES should be equal"
     );
     assert_eq!(
         result.rejected[0].reason,
         FilterReason::Duplicate,
-        "filter batch deduplication: values should be equal"
+        "filter batch deduplication: VALUES should be equal"
     );
 }
 
@@ -326,12 +326,12 @@ fn filter_batch_mixed_rejections() {
     assert_eq!(
         result.passed.len(),
         1,
-        "filter batch mixed rejections: values should be equal"
+        "filter batch mixed rejections: VALUES should be equal"
     );
     assert_eq!(
         result.rejected.len(),
         3,
-        "filter batch mixed rejections: values should be equal"
+        "filter batch mixed rejections: VALUES should be equal"
     );
 }
 
@@ -387,27 +387,27 @@ fn each_turn_type_has_distinct_appendix() {
 fn turn_type_confidence_boost_values() {
     assert!(
         (TurnType::Discussion.confidence_boost()).abs() < f64::EPSILON,
-        "turn type confidence boost values: assertion failed"
+        "turn type confidence boost VALUES: assertion failed"
     );
     assert!(
         (TurnType::ToolHeavy.confidence_boost()).abs() < f64::EPSILON,
-        "turn type confidence boost values: assertion failed"
+        "turn type confidence boost VALUES: assertion failed"
     );
     assert!(
         (TurnType::Planning.confidence_boost() - 0.1).abs() < f64::EPSILON,
-        "turn type confidence boost values: assertion failed"
+        "turn type confidence boost VALUES: assertion failed"
     );
     assert!(
         (TurnType::Debugging.confidence_boost()).abs() < f64::EPSILON,
-        "turn type confidence boost values: assertion failed"
+        "turn type confidence boost VALUES: assertion failed"
     );
     assert!(
         (TurnType::Correction.confidence_boost() - 0.2).abs() < f64::EPSILON,
-        "turn type confidence boost values: assertion failed"
+        "turn type confidence boost VALUES: assertion failed"
     );
     assert!(
         (TurnType::Procedural.confidence_boost()).abs() < f64::EPSILON,
-        "turn type confidence boost values: assertion failed"
+        "turn type confidence boost VALUES: assertion failed"
     );
 }
 
@@ -416,32 +416,32 @@ fn turn_type_display() {
     assert_eq!(
         TurnType::Discussion.to_string(),
         "discussion",
-        "turn type display: values should be equal"
+        "turn type display: VALUES should be equal"
     );
     assert_eq!(
         TurnType::ToolHeavy.to_string(),
         "tool_heavy",
-        "turn type display: values should be equal"
+        "turn type display: VALUES should be equal"
     );
     assert_eq!(
         TurnType::Planning.to_string(),
         "planning",
-        "turn type display: values should be equal"
+        "turn type display: VALUES should be equal"
     );
     assert_eq!(
         TurnType::Debugging.to_string(),
         "debugging",
-        "turn type display: values should be equal"
+        "turn type display: VALUES should be equal"
     );
     assert_eq!(
         TurnType::Correction.to_string(),
         "correction",
-        "turn type display: values should be equal"
+        "turn type display: VALUES should be equal"
     );
     assert_eq!(
         TurnType::Procedural.to_string(),
         "procedural",
-        "turn type display: values should be equal"
+        "turn type display: VALUES should be equal"
     );
 }
 
@@ -460,7 +460,7 @@ fn turn_type_serde_roundtrip() {
             serde_json::from_str(&json).expect("TurnType deserialization must succeed");
         assert_eq!(
             tt, back,
-            "turn type serde roundtrip: values should be equal"
+            "turn type serde roundtrip: VALUES should be equal"
         );
     }
 }
@@ -470,37 +470,37 @@ fn fact_type_as_str() {
     assert_eq!(
         FactType::Identity.as_str(),
         "identity",
-        "fact type as str: values should be equal"
+        "fact type as str: VALUES should be equal"
     );
     assert_eq!(
         FactType::Preference.as_str(),
         "preference",
-        "fact type as str: values should be equal"
+        "fact type as str: VALUES should be equal"
     );
     assert_eq!(
         FactType::Skill.as_str(),
         "skill",
-        "fact type as str: values should be equal"
+        "fact type as str: VALUES should be equal"
     );
     assert_eq!(
         FactType::Relationship.as_str(),
         "relationship",
-        "fact type as str: values should be equal"
+        "fact type as str: VALUES should be equal"
     );
     assert_eq!(
         FactType::Event.as_str(),
         "event",
-        "fact type as str: values should be equal"
+        "fact type as str: VALUES should be equal"
     );
     assert_eq!(
         FactType::Task.as_str(),
         "task",
-        "fact type as str: values should be equal"
+        "fact type as str: VALUES should be equal"
     );
     assert_eq!(
         FactType::Observation.as_str(),
         "observation",
-        "fact type as str: values should be equal"
+        "fact type as str: VALUES should be equal"
     );
 }
 
@@ -520,7 +520,7 @@ fn fact_type_serde_roundtrip() {
             serde_json::from_str(&json).expect("TurnType deserialization must succeed");
         assert_eq!(
             ft, back,
-            "fact type serde roundtrip: values should be equal"
+            "fact type serde roundtrip: VALUES should be equal"
         );
     }
 }
@@ -530,7 +530,7 @@ fn empty_content_classified_as_discussion() {
     assert_eq!(
         classify_turn(""),
         TurnType::Discussion,
-        "empty content classified as discussion: values should be equal"
+        "empty content classified as discussion: VALUES should be equal"
     );
 }
 
@@ -547,7 +547,7 @@ fn classify_fact_empty_is_observation() {
     assert_eq!(
         classify_fact(""),
         FactType::Observation,
-        "classify fact empty is observation: values should be equal"
+        "classify fact empty is observation: VALUES should be equal"
     );
 }
 
@@ -560,7 +560,7 @@ fn full_pipeline_correction_turn() {
     assert_eq!(
         turn_type,
         TurnType::Correction,
-        "full pipeline correction turn: values should be equal"
+        "full pipeline correction turn: VALUES should be equal"
     );
 
     let correction = detect_correction(content);
@@ -574,7 +574,7 @@ fn full_pipeline_correction_turn() {
     assert_eq!(
         fact_type,
         FactType::Skill,
-        "full pipeline correction turn: values should be equal"
+        "full pipeline correction turn: VALUES should be equal"
     );
 
     let base_confidence = 0.8;
@@ -611,7 +611,7 @@ fn full_pipeline_tool_heavy_turn() {
     assert_eq!(
         turn_type,
         TurnType::ToolHeavy,
-        "full pipeline tool heavy turn: values should be equal"
+        "full pipeline tool heavy turn: VALUES should be equal"
     );
     assert!(
         (turn_type.confidence_boost()).abs() < f64::EPSILON,

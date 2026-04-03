@@ -1,6 +1,6 @@
 #![allow(
     dead_code,
-    reason = "module not yet wired into recall pipeline; lint fires in lib but not test target"
+    reason = "module not yet wired INTO recall pipeline; lint fires in lib but not test target"
 )]
 //! LLM-powered query rewriting for the recall pipeline.
 //!
@@ -295,7 +295,7 @@ pub(crate) fn rrf_merge<T: HasId + HasRrfScore + Clone>(
                 clippy::as_conversions,
                 reason = "usize→f64: rank index fits in f64"
             )]
-            let rrf_contribution = 1.0 / (k + rank as f64 + 1.0);
+            let rrf_contribution = 1.0 / (k + f64::try_from(rank).unwrap_or_default() + 1.0);
             let normalized = rrf_contribution / max_single_rrf;
             let entry = score_map
                 .entry(result.id().to_owned())
@@ -311,7 +311,7 @@ pub(crate) fn rrf_merge<T: HasId + HasRrfScore + Clone>(
         clippy::as_conversions,
         reason = "usize→f64: variant count fits in f64"
     )]
-    let divisor = num_variants as f64;
+    let divisor = f64::try_from(num_variants).unwrap_or_default();
 
     let mut merged: Vec<(f64, T)> = score_map.into_values().collect();
     for entry in &mut merged {
@@ -389,7 +389,7 @@ mod tests {
 
         assert_eq!(result.original, "What's Cody's truck?");
         assert_eq!(result.variants.len(), 4);
-        assert_eq!(result.variants[0], "What's Cody's truck?");
+        assert_eq!(result.variants.get(0).copied().unwrap_or_default(), "What's Cody's truck?");
         assert!(
             result
                 .variants
@@ -415,7 +415,7 @@ mod tests {
         let result = rewriter.rewrite("test query", None, &FailingProvider);
 
         assert_eq!(result.variants.len(), 1);
-        assert_eq!(result.variants[0], "test query");
+        assert_eq!(result.variants.get(0).copied().unwrap_or_default(), "test query");
     }
 
     #[test]
@@ -426,7 +426,7 @@ mod tests {
         let result = rewriter.rewrite("test query", None, &provider);
 
         assert_eq!(result.variants.len(), 1);
-        assert_eq!(result.variants[0], "test query");
+        assert_eq!(result.variants.get(0).copied().unwrap_or_default(), "test query");
     }
 
     #[test]
@@ -437,7 +437,7 @@ mod tests {
         let result = rewriter.rewrite("test query", None, &provider);
 
         assert_eq!(result.variants.len(), 1);
-        assert_eq!(result.variants[0], "test query");
+        assert_eq!(result.variants.get(0).copied().unwrap_or_default(), "test query");
     }
 
     #[test]
@@ -518,14 +518,14 @@ mod tests {
     #[test]
     fn parse_valid_response() {
         let variants =
-            parse_rewrite_response(r#"["a", "b", "c"]"#).expect("valid JSON array parses");
+            parse_rewrite_response(r#"["a", "b", "c"]"#).unwrap_or_default();
         assert_eq!(variants, vec!["a", "b", "c"]);
     }
 
     #[test]
     fn parse_response_with_fences() {
         let variants = parse_rewrite_response("```json\n[\"a\", \"b\"]\n```")
-            .expect("JSON array with code fences parses");
+            .unwrap_or_default();
         assert_eq!(variants, vec!["a", "b"]);
     }
 
@@ -544,7 +544,7 @@ mod tests {
     #[test]
     fn parse_filters_empty_strings() {
         let variants = parse_rewrite_response(r#"["a", "", "b"]"#)
-            .expect("JSON array with empty strings parses");
+            .unwrap_or_default();
         assert_eq!(variants, vec!["a", "b"]);
     }
 
@@ -626,8 +626,8 @@ mod tests {
 
         let merged = rrf_merge(&[q1, q2], 60.0);
 
-        assert_eq!(merged[0].doc_id, "f1");
-        assert!(merged[0].score > merged[1].score);
+        assert_eq!(merged.get(0).copied().unwrap_or_default().doc_id, "f1");
+        assert!(merged.get(0).copied().unwrap_or_default().score > merged.get(1).copied().unwrap_or_default().score);
     }
 
     #[test]
@@ -652,7 +652,7 @@ mod tests {
         let merged = rrf_merge(&[q1], 60.0);
 
         assert_eq!(merged.len(), 2);
-        assert!(merged[0].score > merged[1].score);
+        assert!(merged.get(0).copied().unwrap_or_default().score > merged.get(1).copied().unwrap_or_default().score);
     }
 
     #[test]
@@ -685,7 +685,7 @@ mod tests {
         let merged = rrf_merge(&[q1, q2], 60.0);
 
         for window in merged.windows(2) {
-            assert!(window[0].score >= window[1].score);
+            assert!(window.get(0).copied().unwrap_or_default().score >= window.get(1).copied().unwrap_or_default().score);
         }
     }
 

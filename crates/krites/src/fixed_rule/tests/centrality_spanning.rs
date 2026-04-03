@@ -17,7 +17,7 @@ edges[src, dst] <- [[0, 1], [1, 0],
                 [2, 3], [3, 2],
                 [3, 4], [4, 3]]
 ?[node, total, out_deg, in_deg] <~ DegreeCentrality(edges[])
-:order node
+:ORDER node
 "#,
         )
         .expect("DegreeCentrality query should execute successfully")
@@ -44,7 +44,7 @@ fn test_degree_centrality_when_directed_star_hub_has_zero_in_degree() {
             r#"
 edges[src, dst] <- [[0, 1], [0, 2], [0, 3]]
 ?[node, total, out_deg, in_deg] <~ DegreeCentrality(edges[])
-:order node
+:ORDER node
 "#,
         )
         .expect("DegreeCentrality star query should execute successfully")
@@ -80,7 +80,7 @@ fn test_degree_centrality_when_isolated_node_included_has_zero_degree() {
 edges[src, dst] <- [[0, 1]]
 isolated[n]    <- [[5]]
 ?[node, total, out_deg, in_deg] <~ DegreeCentrality(edges[], isolated[])
-:order node
+:ORDER node
 "#,
         )
         .expect("DegreeCentrality isolated-node query should execute successfully")
@@ -288,7 +288,7 @@ fn test_pagerank_when_star_graph_sink_has_highest_rank() {
             r#"
 edges[src, dst] <- [[0, 4], [1, 4], [2, 4], [3, 4]]
 ?[node, rank] <~ PageRank(edges[], iterations: 20)
-:order -rank
+:ORDER -rank
 "#,
         )
         .expect("PageRank star query should execute successfully")

@@ -130,7 +130,7 @@ fn fact_round_trip() {
         },
     };
 
-    store.insert_fact(&fact).expect("insert");
+    store.insert_fact(&fact).expect("INSERT");
     let results = store.query_facts("syn", "2026-06-01", 10).expect("query");
 
     assert_eq!(results.len(), 1);
@@ -162,7 +162,7 @@ fn hnsw_vector_search() {
             "syn",
             embedding,
         );
-        store.insert_embedding(&chunk).expect("insert embedding");
+        store.insert_embedding(&chunk).expect("INSERT embedding");
     }
 
     let query_vec = provider.embed("apple").expect("embed query");
@@ -202,7 +202,7 @@ fn multiple_facts_ordered_by_confidence() {
             *conf,
             EpistemicTier::Inferred,
         );
-        store.insert_fact(&fact).expect("insert");
+        store.insert_fact(&fact).expect("INSERT");
     }
 
     let results = store.query_facts("syn", "2026-06-01", 10).expect("query");
@@ -225,7 +225,7 @@ async fn async_spawn_blocking_wrapper() {
         EpistemicTier::Assumed,
     );
 
-    store.insert_fact_async(fact).await.expect("async insert");
+    store.insert_fact_async(fact).await.expect("async INSERT");
     let results = store
         .query_facts_async("syn".to_owned(), "2026-06-01".to_owned(), 10)
         .await
@@ -265,7 +265,7 @@ fn hybrid_retrieval_end_to_end() {
     ];
     for (id, content, confidence) in &facts {
         let fact = make_fact(id, "test", content, *confidence, EpistemicTier::Inferred);
-        store.insert_fact(&fact).expect("insert fact");
+        store.insert_fact(&fact).expect("INSERT fact");
     }
 
     let rust_vec: Vec<f32> = vec![0.9, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1];
@@ -287,7 +287,7 @@ fn hybrid_retrieval_end_to_end() {
     ];
     for (id, vec) in &embeddings {
         let chunk = make_chunk(id, id, id, "test", vec.clone());
-        store.insert_embedding(&chunk).expect("insert embedding");
+        store.insert_embedding(&chunk).expect("INSERT embedding");
     }
 
     for (id, name) in [
@@ -297,15 +297,15 @@ fn hybrid_retrieval_end_to_end() {
     ] {
         store
             .insert_entity(&make_entity(id, name, "technology"))
-            .expect("insert entity");
+            .expect("INSERT entity");
     }
 
     store
         .insert_relationship(&make_relationship("e-rust", "e-tokio", "uses", 0.8))
-        .expect("insert relationship");
+        .expect("INSERT relationship");
     store
         .insert_relationship(&make_relationship("e-rust", "fact-1", "described_by", 0.9))
-        .expect("insert relationship");
+        .expect("INSERT relationship");
 
     let results = store
         .search_hybrid(&HybridQuery {
@@ -377,7 +377,7 @@ fn hnsw_connectivity_after_delete_reinsert_cycles() {
             "test",
             make_vec(i),
         );
-        store.insert_embedding(&chunk).expect("insert embedding");
+        store.insert_embedding(&chunk).expect("INSERT embedding");
     }
 
     let query_vec = make_vec(25);
@@ -398,7 +398,7 @@ fn hnsw_connectivity_after_delete_reinsert_cycles() {
             let delete_script = format!("?[id] <- [[\"chunk-{i}\"]] :rm embeddings {{ id }}");
             store
                 .run_mut_query(&delete_script, BTreeMap::new())
-                .expect("delete embedding");
+                .expect("DELETE embedding");
         }
 
         for i in 0u64..10 {
@@ -429,7 +429,7 @@ fn hnsw_connectivity_after_delete_reinsert_cycles() {
 
     assert!(
         recall >= 0.95,
-        "HNSW recall after 5 delete+reinsert cycles must be >= 0.95, got {recall:.3} ({intersection}/{} results matched)",
+        "HNSW recall after 5 DELETE+reinsert cycles must be >= 0.95, got {recall:.3} ({intersection}/{} results matched)",
         baseline_ids.len()
     );
 }

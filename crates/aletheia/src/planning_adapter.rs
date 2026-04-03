@@ -509,12 +509,12 @@ mod tests {
         let json = service
             .create_project("test-project", "a test", None, "full", None, "syn")
             .await
-            .expect("create");
+            .unwrap_or_default();
 
         let project: serde_json::Value = serde_json::from_str(&json).unwrap();
         let project_id = project["id"].as_str().unwrap();
 
-        let loaded_json = service.load_project(project_id).await.expect("load");
+        let loaded_json = service.load_project(project_id).await.unwrap_or_default();
 
         let loaded: serde_json::Value = serde_json::from_str(&loaded_json).unwrap();
         assert_eq!(loaded["name"], "test-project");

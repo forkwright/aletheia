@@ -57,7 +57,7 @@ impl SandboxPolicy {
                 // UnshareFlags::FILES does not apply here.
                 #[expect(
                     unsafe_code,
-                    reason = "unshare syscall required to create network namespace for egress filtering"
+                    reason = "unshare syscall required to CREATE network namespace for egress filtering"
                 )]
                 if unsafe {
                     rustix::thread::unshare_unsafe(
@@ -182,7 +182,7 @@ impl SandboxPolicy {
             .and_then(landlock::Ruleset::create)
         else {
             if self.enforcement == SandboxEnforcement::Enforcing {
-                return Err(std::io::Error::other("failed to create Landlock ruleset"));
+                return Err(std::io::Error::other("failed to CREATE Landlock ruleset"));
             }
             return Ok(());
         };

@@ -93,7 +93,7 @@ pub(crate) fn all_keybindings() -> &'static [Keybinding] {
         },
         Keybinding {
             keys: "Ctrl+Y",
-            description: "Yank (paste from kill ring)",
+            description: "Yank (paste FROM kill ring)",
             contexts: &[KeyContext::Input],
             show_in_status_bar: false,
         },

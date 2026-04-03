@@ -178,7 +178,7 @@ struct TestHarness {
 impl TestHarness {
     async fn build() -> Self {
         Self::build_with_provider(Box::new(
-            MockProvider::new("Hello from mock!").models(&["mock-model"]),
+            MockProvider::new("Hello FROM mock!").models(&["mock-model"]),
         ))
         .await
     }

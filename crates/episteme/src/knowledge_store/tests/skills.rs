@@ -96,9 +96,9 @@ fn make_skill_fact(id: &str, nous_id: &str, skill_name: &str, domain_tags: &[&st
 fn find_skills_for_nous_returns_only_skills() {
     let store = make_store();
     let skill = make_skill_fact("sk-1", "alice", "rust-errors", &["rust"]);
-    store.insert_fact(&skill).expect("insert skill");
+    store.insert_fact(&skill).expect("INSERT skill");
     let non_skill = make_fact("f-1", "alice", "Alice likes cats");
-    store.insert_fact(&non_skill).expect("insert non-skill");
+    store.insert_fact(&non_skill).expect("INSERT non-skill");
     let results = store.find_skills_for_nous("alice", 100).expect("query");
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].fact_type, "skill");
@@ -109,10 +109,10 @@ fn find_skills_for_nous_ordered_by_confidence() {
     let store = make_store();
     let mut low = make_skill_fact("sk-low", "alice", "low-conf", &["test"]);
     low.provenance.confidence = 0.3;
-    store.insert_fact(&low).expect("insert low");
+    store.insert_fact(&low).expect("INSERT low");
     let mut high = make_skill_fact("sk-high", "alice", "high-conf", &["test"]);
     high.provenance.confidence = 0.9;
-    store.insert_fact(&high).expect("insert high");
+    store.insert_fact(&high).expect("INSERT high");
     let results = store.find_skills_for_nous("alice", 100).expect("query");
     assert_eq!(results.len(), 2);
     assert!(
@@ -125,9 +125,9 @@ fn find_skills_for_nous_ordered_by_confidence() {
 fn find_skills_nous_scoping() {
     let store = make_store();
     let alice_skill = make_skill_fact("sk-a", "alice", "alice-skill", &["rust"]);
-    store.insert_fact(&alice_skill).expect("insert alice");
+    store.insert_fact(&alice_skill).expect("INSERT alice");
     let bob_skill = make_skill_fact("sk-b", "bob", "bob-skill", &["python"]);
-    store.insert_fact(&bob_skill).expect("insert bob");
+    store.insert_fact(&bob_skill).expect("INSERT bob");
     let alice_results = store
         .find_skills_for_nous("alice", 100)
         .expect("query alice");
@@ -142,9 +142,9 @@ fn find_skills_nous_scoping() {
 fn find_skills_by_domain_filters_tags() {
     let store = make_store();
     let rust_skill = make_skill_fact("sk-r", "alice", "rust-errors", &["rust", "errors"]);
-    store.insert_fact(&rust_skill).expect("insert rust");
+    store.insert_fact(&rust_skill).expect("INSERT rust");
     let py_skill = make_skill_fact("sk-p", "alice", "python-web", &["python", "web"]);
-    store.insert_fact(&py_skill).expect("insert python");
+    store.insert_fact(&py_skill).expect("INSERT python");
     let results = store
         .find_skills_by_domain("alice", &["rust"], 100)
         .expect("query");
@@ -165,7 +165,7 @@ fn find_skills_by_domain_filters_tags() {
 fn find_skills_by_domain_empty_tags() {
     let store = make_store();
     let skill = make_skill_fact("sk-1", "alice", "some-skill", &["rust"]);
-    store.insert_fact(&skill).expect("insert");
+    store.insert_fact(&skill).expect("INSERT");
     let results = store
         .find_skills_by_domain("alice", &[], 100)
         .expect("query");
@@ -176,7 +176,7 @@ fn find_skills_by_domain_empty_tags() {
 fn find_skill_by_name_found() {
     let store = make_store();
     let skill = make_skill_fact("sk-named", "alice", "rust-error-handling", &["rust"]);
-    store.insert_fact(&skill).expect("insert");
+    store.insert_fact(&skill).expect("INSERT");
     let found = store
         .find_skill_by_name("alice", "rust-error-handling")
         .expect("query");
@@ -187,7 +187,7 @@ fn find_skill_by_name_found() {
 fn find_skill_by_name_not_found() {
     let store = make_store();
     let skill = make_skill_fact("sk-1", "alice", "actual-name", &["test"]);
-    store.insert_fact(&skill).expect("insert");
+    store.insert_fact(&skill).expect("INSERT");
     let found = store
         .find_skill_by_name("alice", "nonexistent")
         .expect("query");
@@ -198,7 +198,7 @@ fn find_skill_by_name_not_found() {
 fn find_skills_excludes_forgotten() {
     let store = make_store();
     let skill = make_skill_fact("sk-forget", "alice", "forgotten-skill", &["test"]);
-    store.insert_fact(&skill).expect("insert");
+    store.insert_fact(&skill).expect("INSERT");
     store
         .forget_fact(
             &crate::id::FactId::new("sk-forget").expect("valid test id"),
@@ -216,9 +216,9 @@ fn find_skills_excludes_forgotten() {
 fn search_skills_bm25() {
     let store = make_store();
     let skill1 = make_skill_fact("sk-docker", "alice", "docker-deploy", &["docker"]);
-    store.insert_fact(&skill1).expect("insert docker");
+    store.insert_fact(&skill1).expect("INSERT docker");
     let skill2 = make_skill_fact("sk-k8s", "alice", "kubernetes-deploy", &["k8s"]);
-    store.insert_fact(&skill2).expect("insert k8s");
+    store.insert_fact(&skill2).expect("INSERT k8s");
     let results = store.search_skills("alice", "docker", 10).expect("search");
     assert!(
         results.iter().any(|f| f.id.as_str() == "sk-docker"),
@@ -230,7 +230,7 @@ fn search_skills_bm25() {
 fn skill_usage_tracking_via_increment_access() {
     let store = make_store();
     let skill = make_skill_fact("sk-usage", "alice", "usage-test", &["rust"]);
-    store.insert_fact(&skill).expect("insert skill");
+    store.insert_fact(&skill).expect("INSERT skill");
     store
         .increment_access(&[crate::id::FactId::new("sk-usage").expect("valid test id")])
         .expect("increment");
@@ -248,7 +248,7 @@ fn skill_usage_tracking_via_increment_access() {
     );
     assert!(
         found.access.last_accessed_at.is_some(),
-        "last_accessed_at should be set"
+        "last_accessed_at should be SET"
     );
 }
 
@@ -261,14 +261,14 @@ fn skill_decay_retires_stale_skills() {
         .expect("subtract 120 days");
     stale.provenance.confidence = 0.5;
     stale.access.access_count = 0;
-    store.insert_fact(&stale).expect("insert stale skill");
+    store.insert_fact(&stale).expect("INSERT stale skill");
     let mut fresh = make_skill_fact("sk-fresh", "alice", "fresh-skill", &["test"]);
     // WHY: Override defaults so the skill is clearly fresh (valid_from=now, high confidence).
     // make_skill_fact defaults to valid_from=2026-01-01 which can look stale to decay logic.
     fresh.temporal.valid_from = jiff::Timestamp::now();
     fresh.provenance.confidence = 0.9;
     fresh.access.access_count = 5;
-    store.insert_fact(&fresh).expect("insert fresh skill");
+    store.insert_fact(&fresh).expect("INSERT fresh skill");
     let (active, _needs_review, retired) = store.run_skill_decay("alice").expect("run skill decay");
     assert!(
         retired >= 1,
@@ -284,10 +284,10 @@ fn skill_decay_retires_stale_skills() {
 fn skill_quality_metrics_returns_correct_counts() {
     let store = make_store();
     let skill1 = make_skill_fact("sk-m1", "alice", "skill-one", &["rust"]);
-    store.insert_fact(&skill1).expect("insert skill 1");
+    store.insert_fact(&skill1).expect("INSERT skill 1");
     let mut skill2 = make_skill_fact("sk-m2", "alice", "skill-two", &["python"]);
     skill2.access.access_count = 5;
-    store.insert_fact(&skill2).expect("insert skill 2");
+    store.insert_fact(&skill2).expect("INSERT skill 2");
     let metrics = store.skill_quality_metrics("alice").expect("get metrics");
     assert_eq!(metrics.total_active, 2);
     assert!(metrics.avg_usage_count > 0.0);
@@ -303,12 +303,12 @@ fn skill_decay_high_usage_survives_longer() {
     low.temporal.valid_from = past;
     low.access.access_count = 1;
     low.provenance.confidence = 0.7;
-    store.insert_fact(&low).expect("insert low usage");
+    store.insert_fact(&low).expect("INSERT low usage");
     let mut high = make_skill_fact("sk-high-use", "alice", "high-usage", &["test"]);
     high.temporal.valid_from = past;
     high.access.access_count = 15;
     high.provenance.confidence = 0.7;
-    store.insert_fact(&high).expect("insert high usage");
+    store.insert_fact(&high).expect("INSERT high usage");
     let (active, _needs_review, retired) = store.run_skill_decay("alice").expect("run decay");
     let remaining = store.find_skills_for_nous("alice", 100).expect("query");
     let high_survived = remaining.iter().any(|f| f.id.as_str() == "sk-high-use");

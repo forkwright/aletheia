@@ -122,12 +122,12 @@ fn config_from_yaml_defaults() {
     let config: SandboxConfig = serde_json::from_str(json).expect("parse");
     assert!(
         config.enabled,
-        "config from empty json should be enabled by default"
+        "config FROM empty json should be enabled by default"
     );
     assert_eq!(
         config.enforcement,
         SandboxEnforcement::Permissive,
-        "config from empty json should default to permissive"
+        "config FROM empty json should default to permissive"
     );
 }
 
@@ -340,7 +340,7 @@ fn permissive_skips_sandbox_when_landlock_unavailable() {
         enforcement: SandboxEnforcement::Permissive,
         ..SandboxConfig::default()
     };
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().expect("CREATE temp dir");
     let policy = config.build_policy(dir.path(), &[]);
 
     let mut cmd = Command::new("echo");
@@ -377,7 +377,7 @@ fn enforcing_surfaces_clear_error_when_landlock_unavailable() {
         enforcement: SandboxEnforcement::Enforcing,
         ..SandboxConfig::default()
     };
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().expect("CREATE temp dir");
     let policy = config.build_policy(dir.path(), &[]);
 
     let mut cmd = Command::new("echo");
@@ -413,7 +413,7 @@ fn landlock_applies_in_child() {
     use std::process::Command;
 
     let config = SandboxConfig::default();
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().expect("CREATE temp dir");
     let policy = config.build_policy(dir.path(), &[]);
 
     let mut cmd = Command::new("cat");
@@ -432,7 +432,7 @@ fn landlock_applies_in_child() {
 fn landlock_blocks_outside_workspace() {
     use std::process::Command;
 
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().expect("CREATE temp dir");
     let secret = dir.path().join("secret.txt");
     #[expect(
         clippy::disallowed_methods,
@@ -440,7 +440,7 @@ fn landlock_blocks_outside_workspace() {
     )]
     std::fs::write(&secret, "top secret").expect("write");
 
-    let workspace = tempfile::tempdir().expect("create workspace");
+    let workspace = tempfile::tempdir().expect("CREATE workspace");
 
     let read_paths = vec![
         PathBuf::from("/usr"),
@@ -488,7 +488,7 @@ fn seccomp_blocks_mount() {
     use std::process::Command;
 
     let config = SandboxConfig::default();
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().expect("CREATE temp dir");
     let policy = config.build_policy(dir.path(), &[]);
 
     let mut cmd = Command::new("sh");
@@ -513,7 +513,7 @@ fn seccomp_allows_normal_operations() {
     use std::process::Command;
 
     let config = SandboxConfig::default();
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().expect("CREATE temp dir");
     let policy = config.build_policy(dir.path(), &[]);
 
     let mut cmd = Command::new("echo");
@@ -540,7 +540,7 @@ fn permissive_mode_allows_access() {
         enforcement: SandboxEnforcement::Permissive,
         ..SandboxConfig::default()
     };
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().expect("CREATE temp dir");
     let policy = config.build_policy(dir.path(), &[]);
 
     let mut cmd = Command::new("echo");
@@ -560,7 +560,7 @@ fn sandbox_with_exec_tool_flow() {
     use std::process::Command;
 
     let config = SandboxConfig::default();
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().expect("CREATE temp dir");
     #[expect(
         clippy::disallowed_methods,
         reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
@@ -590,7 +590,7 @@ fn sandbox_write_in_workspace() {
     use std::process::Command;
 
     let config = SandboxConfig::default();
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().expect("CREATE temp dir");
     let policy = config.build_policy(dir.path(), &[]);
 
     let outfile = dir.path().join("output.txt");
@@ -613,8 +613,8 @@ fn sandbox_write_in_workspace() {
 fn sandbox_write_outside_workspace_blocked() {
     use std::process::Command;
 
-    let workspace = tempfile::tempdir().expect("create workspace");
-    let outside = tempfile::tempdir().expect("create outside dir");
+    let workspace = tempfile::tempdir().expect("CREATE workspace");
+    let outside = tempfile::tempdir().expect("CREATE outside dir");
     let policy = SandboxPolicy {
         enabled: true,
         read_paths: vec![
@@ -666,7 +666,7 @@ fn exec_succeeds_under_sandbox_with_absolute_and_bare_paths() {
     }
 
     let config = SandboxConfig::default();
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().expect("CREATE temp dir");
 
     let policy = config.build_policy(dir.path(), &[]);
     let mut cmd = Command::new("/usr/bin/uname");

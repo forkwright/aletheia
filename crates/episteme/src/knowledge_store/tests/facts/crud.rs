@@ -100,7 +100,7 @@ fn query_without_timeout_succeeds() {
 fn insert_fact_and_retrieve() {
     let store = make_store();
     let fact = make_fact("f1", "agent-a", "Rust is a systems programming language");
-    store.insert_fact(&fact).expect("insert fact");
+    store.insert_fact(&fact).expect("INSERT fact");
 
     let results = store
         .query_facts("agent-a", "2026-06-01", 10)
@@ -130,7 +130,7 @@ fn insert_multiple_facts_and_retrieve() {
     let store = make_store();
     for i in 0..5 {
         let fact = make_fact(&format!("f{i}"), "agent-a", &format!("Fact number {i}"));
-        store.insert_fact(&fact).expect("insert fact");
+        store.insert_fact(&fact).expect("INSERT fact");
     }
 
     let results = store
@@ -143,7 +143,7 @@ fn insert_multiple_facts_and_retrieve() {
 fn upsert_fact_overwrites() {
     let store = make_store();
     let mut fact = make_fact("f1", "agent-a", "Original content");
-    store.insert_fact(&fact).expect("insert fact");
+    store.insert_fact(&fact).expect("INSERT fact");
 
     fact.content = "Updated content".to_owned();
     fact.provenance.confidence = 0.95;
@@ -155,7 +155,7 @@ fn upsert_fact_overwrites() {
     assert_eq!(
         results.len(),
         1,
-        "upsert should not create a duplicate fact"
+        "upsert should not CREATE a duplicate fact"
     );
     assert_eq!(
         results[0].content, "Updated content",
@@ -171,7 +171,7 @@ fn upsert_fact_overwrites() {
 fn forget_fact_excludes_from_query() {
     let store = make_store();
     let fact = make_fact("f1", "agent-a", "Secret fact");
-    store.insert_fact(&fact).expect("insert fact");
+    store.insert_fact(&fact).expect("INSERT fact");
 
     let forgotten = store
         .forget_fact(
@@ -190,7 +190,7 @@ fn forget_fact_excludes_from_query() {
     );
     assert!(
         forgotten.lifecycle.forgotten_at.is_some(),
-        "forgotten_at timestamp should be set"
+        "forgotten_at timestamp should be SET"
     );
 
     let results = store
@@ -206,7 +206,7 @@ fn forget_fact_excludes_from_query() {
 fn forget_fact_then_unforget_restores_recall() {
     let store = make_store();
     let fact = make_fact("f1", "agent-a", "Recoverable fact");
-    store.insert_fact(&fact).expect("insert fact");
+    store.insert_fact(&fact).expect("INSERT fact");
 
     store
         .forget_fact(
@@ -218,7 +218,7 @@ fn forget_fact_then_unforget_restores_recall() {
     let results = store
         .query_facts("agent-a", "2026-06-01", 10)
         .expect("query");
-    assert!(results.is_empty(), "forgotten fact excluded from recall");
+    assert!(results.is_empty(), "forgotten fact excluded FROM recall");
 
     let restored = store
         .unforget_fact(&crate::id::FactId::new("f1").expect("valid test id"))
@@ -251,7 +251,7 @@ fn forget_fact_then_unforget_restores_recall() {
 fn forget_preserves_in_audit() {
     let store = make_store();
     let fact = make_fact("f1", "agent-a", "Auditable fact");
-    store.insert_fact(&fact).expect("insert fact");
+    store.insert_fact(&fact).expect("INSERT fact");
 
     store
         .forget_fact(
@@ -288,7 +288,7 @@ fn forget_reason_roundtrips() {
 
     for (id, reason) in reasons {
         let fact = make_fact(id, "agent-a", &format!("fact for {reason}"));
-        store.insert_fact(&fact).expect("insert");
+        store.insert_fact(&fact).expect("INSERT");
 
         let forgotten = store
             .forget_fact(&crate::id::FactId::new(id).expect("valid test id"), reason)
@@ -342,7 +342,7 @@ fn forget_nonexistent_fact_errors() {
 fn forget_excluded_from_temporal_diff() {
     let store = make_store();
     let fact = make_fact("f-diff", "agent-a", "Temporal diff fact");
-    store.insert_fact(&fact).expect("insert");
+    store.insert_fact(&fact).expect("INSERT");
 
     store
         .forget_fact(
@@ -364,7 +364,7 @@ fn forget_excluded_from_temporal_diff() {
 fn increment_access_updates_count() {
     let store = make_store();
     let fact = make_fact("f1", "agent-a", "Accessed fact");
-    store.insert_fact(&fact).expect("insert fact");
+    store.insert_fact(&fact).expect("INSERT fact");
 
     store
         .increment_access(&[crate::id::FactId::new("f1").expect("valid test id")])
@@ -462,13 +462,13 @@ fn query_facts_filters_by_nous_id() {
     let store = make_store();
     store
         .insert_fact(&make_fact("f1", "agent-a", "Fact for A"))
-        .expect("insert f1");
+        .expect("INSERT f1");
     store
         .insert_fact(&make_fact("f2", "agent-b", "Fact for B"))
-        .expect("insert f2");
+        .expect("INSERT f2");
     store
         .insert_fact(&make_fact("f3", "agent-a", "Another fact for A"))
-        .expect("insert f3");
+        .expect("INSERT f3");
 
     let results_a = store
         .query_facts("agent-a", "2026-06-01", 100)
@@ -500,15 +500,15 @@ fn query_facts_respects_limit() {
                 "agent-a",
                 &format!("Fact {i}"),
             ))
-            .expect("insert");
+            .expect("INSERT");
     }
 
     let results = store
         .query_facts("agent-a", "2026-06-01", 5)
-        .expect("query with limit");
+        .expect("query with LIMIT");
     assert_eq!(
         results.len(),
         5,
-        "query with limit 5 should return exactly 5 results"
+        "query with LIMIT 5 should return exactly 5 results"
     );
 }

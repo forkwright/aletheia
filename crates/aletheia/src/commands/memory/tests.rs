@@ -74,7 +74,7 @@ fn check_detects_orphaned_entity() {
     let entity = make_entity("ent-001", "Alice", "person");
     store
         .insert_entity(&entity)
-        .expect("insert entity should succeed");
+        .expect("INSERT entity should succeed");
 
     let report = super::build_check_report(&store).expect("check should succeed");
     assert_eq!(report.entity_count, 1, "one entity inserted");
@@ -90,8 +90,8 @@ fn check_entity_with_relationship_not_orphaned() {
     let store = test_store();
     let e1 = make_entity("ent-a", "Alice", "person");
     let e2 = make_entity("ent-b", "Bob", "person");
-    store.insert_entity(&e1).expect("insert e1");
-    store.insert_entity(&e2).expect("insert e2");
+    store.insert_entity(&e1).expect("INSERT e1");
+    store.insert_entity(&e2).expect("INSERT e2");
 
     let rel = aletheia_mneme::knowledge::Relationship {
         src: EntityId::new("ent-a").expect("valid id"),
@@ -102,7 +102,7 @@ fn check_entity_with_relationship_not_orphaned() {
     };
     store
         .insert_relationship(&rel)
-        .expect("insert relationship");
+        .expect("INSERT relationship");
 
     let report = super::build_check_report(&store).expect("check should succeed");
     assert_eq!(report.entity_count, 2, "two entities");
@@ -118,13 +118,13 @@ fn dedup_finds_content_hash_duplicates() {
     let f1 = make_fact("fact-001", "nous-1", "Alice likes Rust");
     let f2 = make_fact("fact-002", "nous-1", "Alice likes Rust");
     let f3 = make_fact("fact-003", "nous-1", "Bob prefers Go");
-    store.insert_fact(&f1).expect("insert f1");
-    store.insert_fact(&f2).expect("insert f2");
-    store.insert_fact(&f3).expect("insert f3");
+    store.insert_fact(&f1).expect("INSERT f1");
+    store.insert_fact(&f2).expect("INSERT f2");
+    store.insert_fact(&f3).expect("INSERT f3");
 
     let dupes =
         super::find_content_hash_duplicates(&store, "nous-1").expect("dedup scan should succeed");
-    assert_eq!(dupes.len(), 1, "one set of duplicates");
+    assert_eq!(dupes.len(), 1, "one SET of duplicates");
     assert_eq!(dupes[0].1.len(), 2, "two copies of the duplicate");
 }
 
@@ -133,8 +133,8 @@ fn dedup_no_false_positives_on_unique_content() {
     let store = test_store();
     let f1 = make_fact("fact-a", "nous-1", "fact one");
     let f2 = make_fact("fact-b", "nous-1", "fact two");
-    store.insert_fact(&f1).expect("insert f1");
-    store.insert_fact(&f2).expect("insert f2");
+    store.insert_fact(&f1).expect("INSERT f1");
+    store.insert_fact(&f2).expect("INSERT f2");
 
     let dupes =
         super::find_content_hash_duplicates(&store, "nous-1").expect("dedup scan should succeed");
@@ -168,7 +168,7 @@ fn count_relation_after_insert() {
     let store = test_store();
     store
         .insert_fact(&make_fact("f1", "n1", "content"))
-        .expect("insert");
+        .expect("INSERT");
     let count = super::count_relation(&store, "facts").expect("count should succeed");
-    assert!(count >= 1, "at least one fact after insert");
+    assert!(count >= 1, "at least one fact after INSERT");
 }

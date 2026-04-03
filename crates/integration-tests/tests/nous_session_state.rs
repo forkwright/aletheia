@@ -23,7 +23,7 @@ fn session_state_tracks_tokens_with_store() {
 
     store
         .create_session("ses-1", "syn", "main", None, Some(&config.generation.model))
-        .expect("create session");
+        .expect("CREATE session");
 
     store
         .append_message("ses-1", Role::User, "hello", None, None, 100)
@@ -50,7 +50,7 @@ fn distillation_threshold_aligned() {
 
     store
         .create_session("ses-1", "syn", "main", None, None)
-        .expect("create session");
+        .expect("CREATE session");
 
     // Append enough tokens to cross the 90% threshold of 200k context window
     store
@@ -82,7 +82,7 @@ fn session_manager_creates_compatible_state() {
             None,
             Some(&state.model),
         )
-        .expect("create session in store");
+        .expect("CREATE session in store");
 
     assert_eq!(state.id, db_session.id);
     assert_eq!(state.nous_id, db_session.nous_id);

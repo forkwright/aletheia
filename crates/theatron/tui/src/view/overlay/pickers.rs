@@ -49,7 +49,7 @@ pub(super) fn render_agent_picker(
                 .fg(theme.colors.accent)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(" select  ", theme.style_muted()),
+        Span::styled(" SELECT  ", theme.style_muted()),
         Span::styled(
             "Esc",
             Style::default()

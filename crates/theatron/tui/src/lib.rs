@@ -82,7 +82,7 @@ async fn run_tui_inner(
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join("aletheia");
     tokio::fs::create_dir_all(&log_dir).await.context(IoSnafu {
-        context: "create log directory",
+        context: "CREATE log directory",
     })?;
     let file_appender = rolling::daily(&log_dir, "tui.log");
     let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);

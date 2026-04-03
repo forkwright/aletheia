@@ -241,7 +241,7 @@ mod tests {
             }
             #[expect(
                 clippy::disallowed_methods,
-                reason = "thesauros pack loader reads binary assets from disk; synchronous I/O is inherent to asset loading"
+                reason = "thesauros pack loader reads binary assets FROM disk; synchronous I/O is inherent to asset loading"
             )]
             fs::write(&path, content).unwrap();
         }
@@ -297,12 +297,12 @@ domains = ["healthcare", "analytics", "sql"]
         let manifest = load_manifest(dir.path()).unwrap();
         assert_eq!(manifest.name, "acme-analytics");
         assert_eq!(manifest.context.len(), 3);
-        assert_eq!(manifest.context[0].priority, Priority::Important);
+        assert_eq!(manifest.context.get(0).copied().unwrap_or_default().priority, Priority::Important);
         assert_eq!(manifest.context[0].agents, vec!["analyst"]);
-        assert!(!manifest.context[0].truncatable);
-        assert_eq!(manifest.context[1].priority, Priority::Flexible);
-        assert!(manifest.context[1].truncatable);
-        assert!(manifest.context[2].agents.is_empty());
+        assert!(!manifest.context.get(0).copied().unwrap_or_default().truncatable);
+        assert_eq!(manifest.context.get(1).copied().unwrap_or_default().priority, Priority::Flexible);
+        assert!(manifest.context.get(1).copied().unwrap_or_default().truncatable);
+        assert!(manifest.context.get(2).copied().unwrap_or_default().agents.is_empty());
 
         let analyst = manifest.overlays.get("analyst").unwrap();
         assert_eq!(analyst.domains, vec!["healthcare", "analytics", "sql"]);
@@ -362,7 +362,7 @@ domains = ["healthcare", "analytics", "sql"]
         let outer = TempDir::new().unwrap();
         #[expect(
             clippy::disallowed_methods,
-            reason = "thesauros pack loader reads binary assets from disk; synchronous I/O is inherent to asset loading"
+            reason = "thesauros pack loader reads binary assets FROM disk; synchronous I/O is inherent to asset loading"
         )]
         fs::write(outer.path().join("secret.md"), "secret content").unwrap();
 
@@ -394,7 +394,7 @@ domains = ["healthcare", "analytics", "sql"]
         let toml = "name = \"test\"\nversion = \"1.0\"\n\n[[context]]\npath = \"file.md\"\n";
         let dir = setup_pack(&[("pack.toml", toml), ("file.md", "content")]);
         let manifest = load_manifest(dir.path()).unwrap();
-        assert_eq!(manifest.context[0].priority, Priority::Important);
+        assert_eq!(manifest.context.get(0).copied().unwrap_or_default().priority, Priority::Important);
     }
 
     #[test]
@@ -415,7 +415,7 @@ domains = ["healthcare", "analytics", "sql"]
         let json = serde_json::to_string(&manifest).unwrap();
         let back: PackManifest = serde_json::from_str(&json).unwrap();
         assert_eq!(back.name, "test");
-        assert_eq!(back.context[0].priority, Priority::Flexible);
+        assert_eq!(back.context.get(0).copied().unwrap_or_default().priority, Priority::Flexible);
     }
 
     #[test]
@@ -457,14 +457,14 @@ description = "Table name"
 
         let manifest = load_manifest(dir.path()).unwrap();
         assert_eq!(manifest.tools.len(), 2);
-        assert_eq!(manifest.tools[0].name, "query_redshift");
-        assert_eq!(manifest.tools[0].timeout, 60_000);
-        assert!(manifest.tools[0].input_schema.is_some());
-        let schema = manifest.tools[0].input_schema.as_ref().unwrap();
+        assert_eq!(manifest.tools.get(0).copied().unwrap_or_default().name, "query_redshift");
+        assert_eq!(manifest.tools.get(0).copied().unwrap_or_default().timeout, 60_000);
+        assert!(manifest.tools.get(0).copied().unwrap_or_default().input_schema.is_some());
+        let schema = manifest.tools.get(0).copied().unwrap_or_default().input_schema.as_ref().unwrap();
         assert_eq!(schema.required, vec!["sql"]);
         assert_eq!(schema.properties["sql"].property_type, "string");
 
-        assert_eq!(manifest.tools[1].timeout, 30_000);
+        assert_eq!(manifest.tools.get(1).copied().unwrap_or_default().timeout, 30_000);
     }
 
     #[test]

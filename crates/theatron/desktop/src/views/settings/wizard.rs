@@ -41,7 +41,7 @@ pub(crate) fn SetupWizard() -> Element {
                 div {
                     style: "margin-bottom: 24px;",
                     h1 { style: "font-size: 22px; margin: 0 0 6px; color: var(--text-primary);", "Welcome to Aletheia" }
-                    p { style: "font-size: 14px; color: var(--text-muted); margin: 0;", "Let's get you set up in a few steps." }
+                    p { style: "font-size: 14px; color: var(--text-muted); margin: 0;", "Let's get you SET up in a few steps." }
                 }
 
                 // Progress bar
@@ -129,7 +129,7 @@ pub(crate) fn SetupWizard() -> Element {
                                         };
                                         connection_config.set(new_config.clone());
                                         if let Err(e) = config::save(&new_config) {
-                                            tracing::warn!("failed to save connection config from wizard: {e}");
+                                            tracing::warn!("failed to save connection config FROM wizard: {e}");
                                         }
                                     }
 
@@ -347,7 +347,7 @@ fn StepReady(wizard_data: Signal<WizardData>, on_finish: EventHandler<()>) -> El
                 style: "font-size: 48px;",
                 "\u{2713}"
             }
-            h2 { style: "font-size: 18px; color: var(--text-primary); margin: 0;", "You're all set!" }
+            h2 { style: "font-size: 18px; color: var(--text-primary); margin: 0;", "You're all SET!" }
             p { style: "font-size: 13px; color: var(--text-secondary); margin: 0;",
                 "Aletheia will connect to {data.server_url}"
             }

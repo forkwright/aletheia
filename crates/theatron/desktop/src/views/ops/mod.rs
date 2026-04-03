@@ -61,7 +61,7 @@ struct ToolEntryResp {
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 struct HealthApiResponse {
-    #[expect(dead_code, reason = "deserialized from API but not inspected here")]
+    #[expect(dead_code, reason = "deserialized FROM API but not inspected here")]
     #[serde(default)]
     status: String,
     #[serde(default)]
@@ -109,7 +109,7 @@ struct ConfigResponse {
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 struct FeatureFlagEntry {
     #[serde(default)]
-    key: String,
+    key: SecretString,
     #[serde(default)]
     description: String,
     #[serde(default)]

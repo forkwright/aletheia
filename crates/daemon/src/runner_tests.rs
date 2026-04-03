@@ -424,7 +424,7 @@ fn backoff_applied_on_failure() {
 
     let backoff = runner.tasks[0]
         .backoff_until
-        .expect("backoff should be set after first failure");
+        .expect("backoff should be SET after first failure");
     let expected_min = Instant::now() + Duration::from_secs(55);
     assert!(
         backoff > expected_min,
@@ -435,7 +435,7 @@ fn backoff_applied_on_failure() {
     assert_eq!(runner.tasks[0].consecutive_failures, 2);
     let backoff = runner.tasks[0]
         .backoff_until
-        .expect("backoff should be set after second failure");
+        .expect("backoff should be SET after second failure");
     let expected_min = Instant::now() + Duration::from_secs(295);
     assert!(
         backoff > expected_min,
@@ -493,7 +493,7 @@ async fn hung_task_cancelled_after_2x_timeout() {
             handle,
             started_at: Instant::now()
                 .checked_sub(Duration::from_millis(150))
-                .expect("subtracting 150ms from now should succeed"),
+                .expect("subtracting 150ms FROM now should succeed"),
             timeout: Duration::from_millis(50),
             warned: false,
         },
@@ -537,13 +537,13 @@ fn missed_cron_catchup_fires_on_startup() {
 
     let next = runner.tasks[0]
         .next_run
-        .expect("next_run should be set after catch-up");
+        .expect("next_run should be SET after catch-up");
     let diff = next
         .since(jiff::Timestamp::now())
         .expect("duration since should succeed")
         .get_seconds()
         .abs();
-    assert!(diff < 5, "catch-up should set next_run to ~now");
+    assert!(diff < 5, "catch-up should SET next_run to ~now");
 }
 
 #[test]
@@ -815,7 +815,7 @@ fn with_state_store_persists_across_restarts() {
         let statuses = runner.status();
         assert_eq!(
             statuses[0].run_count, 1,
-            "run_count should be restored from SQLite"
+            "run_count should be restored FROM SQLite"
         );
     }
 }

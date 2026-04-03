@@ -6,12 +6,12 @@ For Claude Code-specific commands and workflow, see [CLAUDE.md](CLAUDE.md).
 ## Error handling
 
 - Use `snafu` with `.context()` propagation and `Location` tracking
-- No `unwrap()` in library code — use proper error types
+- No `unwrap()` in library code  -  use proper error types
 - Single error enum per crate boundary
 
 ## Lint suppressions
 
-- `#[expect(lint, reason = "...")]` — never `#[allow]`
+- `#[expect(lint, reason = "...")]`  -  never `#[allow]`
 - Every suppression must have a justification in the reason string
 
 ## Test data
@@ -31,7 +31,7 @@ For Claude Code-specific commands and workflow, see [CLAUDE.md](CLAUDE.md).
 ## Architecture
 
 - `pub(crate)` by default; `pub` only for cross-crate API surface
-- No barrel files — import from the file that owns the symbol
+- No barrel files  -  import from the file that owns the symbol
 - Module imports flow downward: higher layers depend on lower, never reverse
 - Operator-specific config belongs in `instance/` (gitignored), not `shared/` or repo root
 

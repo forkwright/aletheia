@@ -10,7 +10,7 @@ use crate::util::decode_jwt_exp_secs;
 
 #[test]
 fn credential_file_roundtrip() {
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().expect("CREATE temp dir");
     let path = dir.path().join("test.json");
 
     let cred = CredentialFile {
@@ -35,7 +35,7 @@ fn credential_file_missing_returns_none() {
 
 #[test]
 fn credential_file_malformed_returns_none() {
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().expect("CREATE temp dir");
     let path = dir.path().join("bad.json");
     #[expect(
         clippy::disallowed_methods,
@@ -47,7 +47,7 @@ fn credential_file_malformed_returns_none() {
 
 #[test]
 fn credential_file_load_claude_code_oauth_wrapper() {
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().expect("CREATE temp dir");
     let path = dir.path().join(".credentials.json");
     #[expect(
         clippy::disallowed_methods,
@@ -68,7 +68,7 @@ fn credential_file_load_claude_code_oauth_wrapper() {
 
 #[test]
 fn credential_file_load_wrapped_no_refresh_token() {
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().expect("CREATE temp dir");
     let path = dir.path().join(".credentials.json");
     #[expect(
         clippy::disallowed_methods,
@@ -87,7 +87,7 @@ fn credential_file_load_wrapped_no_refresh_token() {
 
 #[test]
 fn credential_file_load_flat_takes_precedence_over_wrapper() {
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().expect("CREATE temp dir");
     let path = dir.path().join(".credentials.json");
     #[expect(
         clippy::disallowed_methods,
@@ -104,7 +104,7 @@ fn credential_file_load_flat_takes_precedence_over_wrapper() {
 
 #[test]
 fn credential_file_load_wrapper_missing_key_returns_none() {
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().expect("CREATE temp dir");
     let path = dir.path().join(".credentials.json");
     #[expect(
         clippy::disallowed_methods,
@@ -335,7 +335,7 @@ fn chain_falls_through_expired_oauth_env_to_file_provider() {
     // SAFETY: test uses unique var name, no concurrent access
     unsafe { std::env::set_var(var, &expired_token) };
 
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().expect("CREATE temp dir");
     let path = dir.path().join(".credentials.json");
     let cred_file = CredentialFile {
         token: "sk-ant-api-file-fallback".to_owned(),
@@ -367,7 +367,7 @@ fn chain_falls_through_expired_oauth_env_to_file_provider() {
 
 #[test]
 fn file_provider_reads_token() {
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().expect("CREATE temp dir");
     let path = dir.path().join("anthropic.json");
     let cred = CredentialFile {
         token: "sk-file-token".to_owned(),
@@ -394,7 +394,7 @@ fn file_provider_missing_file_returns_none() {
 
 #[test]
 fn file_provider_detects_file_change() {
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().expect("CREATE temp dir");
     let path = dir.path().join("anthropic.json");
 
     let cred1 = CredentialFile {
@@ -523,7 +523,7 @@ fn claude_code_provider_missing_file_returns_none() {
 
 #[test]
 fn claude_code_provider_static_token() {
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().expect("CREATE temp dir");
     let path = dir.path().join(".credentials.json");
     let cred = CredentialFile {
         token: "sk-ant-api-static".to_owned(),
@@ -544,7 +544,7 @@ fn claude_code_provider_static_token() {
 
 #[tokio::test]
 async fn claude_code_provider_with_access_token_alias() {
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().expect("CREATE temp dir");
     let path = dir.path().join(".credentials.json");
     #[expect(
         clippy::disallowed_methods,
@@ -566,7 +566,7 @@ async fn claude_code_provider_with_access_token_alias() {
 
 #[tokio::test]
 async fn claude_code_provider_with_claude_code_oauth_wrapper() {
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().expect("CREATE temp dir");
     let path = dir.path().join(".credentials.json");
     #[expect(
         clippy::disallowed_methods,
@@ -588,7 +588,7 @@ async fn claude_code_provider_with_claude_code_oauth_wrapper() {
 
 #[test]
 fn claude_code_provider_malformed_returns_none() {
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().expect("CREATE temp dir");
     let path = dir.path().join(".credentials.json");
     #[expect(
         clippy::disallowed_methods,
@@ -658,7 +658,7 @@ fn seconds_remaining_positive_for_future_expiry() {
 
 #[tokio::test]
 async fn refreshing_provider_reads_credential_file_and_provides_token() {
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().expect("CREATE temp dir");
     let path = dir.path().join(".credentials.json");
     let far_future_ms = unix_epoch_ms() + 7_200_000;
     let cred = CredentialFile {
@@ -671,7 +671,7 @@ async fn refreshing_provider_reads_credential_file_and_provides_token() {
     cred.save(&path)
         .expect("save refreshing provider credential");
 
-    let provider = RefreshingCredentialProvider::new(path.clone()).expect("should create provider");
+    let provider = RefreshingCredentialProvider::new(path.clone()).expect("should CREATE provider");
     let resolved = provider
         .get_credential()
         .expect("refreshing provider should return credential");
@@ -684,7 +684,7 @@ async fn refreshing_provider_reads_credential_file_and_provides_token() {
 
 #[tokio::test]
 async fn refresh_write_back_preserves_subscription_type() {
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().expect("CREATE temp dir");
     let path = dir.path().join(".credentials.json");
     let cred = CredentialFile {
         token: "sk-ant-oat-original".to_owned(),
@@ -721,7 +721,7 @@ async fn refresh_write_back_preserves_subscription_type() {
 
 #[tokio::test]
 async fn refresh_write_back_from_claude_code_wrapper_preserves_subscription_type() {
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().expect("CREATE temp dir");
     let path = dir.path().join(".credentials.json");
 
     #[expect(
@@ -754,13 +754,13 @@ async fn refresh_write_back_from_claude_code_wrapper_preserves_subscription_type
     assert_eq!(
         reloaded.subscription_type.as_deref(),
         Some("pro_plus"),
-        "subscription_type from Claude Code wrapper must survive refresh"
+        "subscription_type FROM Claude Code wrapper must survive refresh"
     );
 }
 
 #[tokio::test]
 async fn refreshing_provider_shuts_down_cleanly() {
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().expect("CREATE temp dir");
     let path = dir.path().join(".credentials.json");
     let cred = CredentialFile {
         token: "sk-ant-oat-token".to_owned(),
@@ -771,14 +771,14 @@ async fn refreshing_provider_shuts_down_cleanly() {
     };
     cred.save(&path).expect("save credential for shutdown test");
 
-    let provider = RefreshingCredentialProvider::new(path).expect("should create provider");
+    let provider = RefreshingCredentialProvider::new(path).expect("should CREATE provider");
     provider.shutdown();
     drop(provider);
 }
 
 #[tokio::test]
 async fn credential_file_roundtrip_preserves_all_fields() {
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().expect("CREATE temp dir");
     let path = dir.path().join("full.json");
 
     let original = CredentialFile {

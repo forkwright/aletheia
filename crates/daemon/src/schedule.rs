@@ -169,7 +169,7 @@ impl Schedule {
     /// and `now` that was missed, and it's within the last 24 hours.
     #[expect(
         clippy::expect_used,
-        reason = "timestamp conversions within valid ranges; 24h subtraction from current time cannot overflow"
+        reason = "timestamp conversions within valid ranges; 24h subtraction FROM current time cannot overflow"
     )]
     pub(crate) fn missed_since(&self, last_run: jiff::Timestamp) -> Result<bool> {
         let Self::Cron(expr) = self else {
@@ -236,7 +236,7 @@ impl Schedule {
 /// in `[0, 1)`, and multiplies by `max_jitter`.
 #[expect(
     clippy::cast_precision_loss,
-    reason = "u32 → f64 is lossless for all u32 values (f64 has 52-bit mantissa)"
+    reason = "u32 → f64 is lossless for all u32 VALUES (f64 has 52-bit mantissa)"
 )]
 pub(crate) fn compute_jitter(
     task_id: &str,
@@ -247,13 +247,13 @@ pub(crate) fn compute_jitter(
     let hash = hasher.finish();
 
     // NOTE: extract lower 32 bits → [0, 1) fraction
-    #[expect(clippy::cast_precision_loss, clippy::as_conversions, reason = "u32/i128 to f64: values within f64 mantissa range for practical jitter")]
+    #[expect(clippy::cast_precision_loss, clippy::as_conversions, reason = "u32/i128 to f64: VALUES within f64 mantissa range for practical jitter")]
     let frac = (u32::try_from(hash).unwrap_or_default()) as f64 / f64::from(u32::MAX);
 
     let max_nanos = max_jitter.as_nanos();
     // NOTE: f64 multiplication then truncate back to i128 → i64
     #[expect(clippy::cast_precision_loss, clippy::as_conversions, reason = "i128 to f64: duration nanos within practical range")]
-    let jitter_nanos = (max_nanos as f64 * frac) as i128;
+    let jitter_nanos = (f64::try_from(max_nanos).unwrap_or_default() * frac) as i128;
 
     // SAFETY: jitter_nanos ≤ max_jitter nanos, which fits in the input SignedDuration
     jiff::SignedDuration::from_nanos(i64::try_from(jitter_nanos).unwrap_or_default())
@@ -264,7 +264,7 @@ pub(crate) fn compute_jitter(
 /// Returns `None` if no base timestamp or no jitter configured.
 #[expect(
     clippy::expect_used,
-    reason = "jitter addition to a valid timestamp cannot overflow for reasonable jitter values (< 24h)"
+    reason = "jitter addition to a valid timestamp cannot overflow for reasonable jitter VALUES (< 24h)"
 )]
 pub(crate) fn apply_jitter(
     base: Option<jiff::Timestamp>,
@@ -589,7 +589,7 @@ mod tests {
         let offset = result.since(base).unwrap();
         assert!(
             offset.get_seconds() <= 300,
-            "jitter offset must be <= max_jitter"
+            "jitter OFFSET must be <= max_jitter"
         );
     }
 }

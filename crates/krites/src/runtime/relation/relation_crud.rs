@@ -38,15 +38,15 @@ impl<'a> SessionTx<'a> {
     ) -> Result<()> {
         if name.name.starts_with('_') {
             InvalidOperationSnafu {
-                op: "set triggers",
-                reason: "cannot set triggers for temp store",
+                op: "SET triggers",
+                reason: "cannot SET triggers for temp store",
             }
             .fail()?;
         }
         let mut original = self.get_relation(name, true)?;
         if original.access_level < AccessLevel::Protected {
             InsufficientAccessSnafu {
-                operation: "set triggers on stored relation",
+                operation: "SET triggers on stored relation",
             }
             .fail()?;
         }

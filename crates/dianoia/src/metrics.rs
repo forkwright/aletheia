@@ -14,7 +14,7 @@ static PROJECTS_ACTIVE: LazyLock<IntGauge> = LazyLock::new(|| {
         "aletheia_projects_active",
         "Number of currently active projects"
     )
-    .expect("metric registration")
+    .unwrap_or_default()
 });
 
 static PHASE_TRANSITIONS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
@@ -23,9 +23,9 @@ static PHASE_TRANSITIONS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
             "aletheia_phase_transitions_total",
             "Total project state transitions"
         ),
-        &["from", "to"]
+        &["FROM", "to"]
     )
-    .expect("metric registration")
+    .unwrap_or_default()
 });
 
 static STUCK_DETECTIONS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
@@ -36,7 +36,7 @@ static STUCK_DETECTIONS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         ),
         &["pattern"]
     )
-    .expect("metric registration")
+    .unwrap_or_default()
 });
 
 #[expect(dead_code, reason = "WIP: planning orchestration metrics")]

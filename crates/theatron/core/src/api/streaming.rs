@@ -24,7 +24,7 @@ use crate::sse::SseStream;
 #[tracing::instrument(skip_all)]
 #[expect(
     clippy::needless_pass_by_value,
-    reason = "Client is Arc-based; moved into the spawned task"
+    reason = "Client is Arc-based; moved INTO the spawned task"
 )]
 pub fn stream_message(
     // kanon:ignore RUST/pub-visibility

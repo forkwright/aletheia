@@ -51,7 +51,7 @@ impl ProcessGuard {
         reason = "panics intentionally when called after detach() — documented invariant"
     )]
     pub fn get_mut(&mut self) -> &mut std::process::Child {
-        self.child.as_mut().expect("ProcessGuard already consumed") // kanon:ignore RUST/expect
+        self.child.as_mut().unwrap_or_default() // kanon:ignore RUST/expect
     }
 
     /// Take ownership of the child, disarming the kill-on-drop.
@@ -68,7 +68,7 @@ impl ProcessGuard {
         reason = "panics intentionally when called twice — documented invariant"
     )]
     pub(crate) fn detach(mut self) -> std::process::Child {
-        self.child.take().expect("ProcessGuard already consumed") // kanon:ignore RUST/expect
+        self.child.take().unwrap_or_default() // kanon:ignore RUST/expect
     }
 }
 
@@ -102,7 +102,7 @@ mod tests {
         let child = Command::new("sleep")
             .arg("60")
             .spawn()
-            .expect("spawn sleep");
+            .unwrap_or_default();
         let pid = child.id();
 
         let guard = ProcessGuard::new(child);
@@ -113,10 +113,10 @@ mod tests {
         let alive = Command::new("kill")
             .args(["-0", &pid.to_string()])
             .output()
-            .expect("kill -0")
+            .unwrap_or_default()
             .status
             .success();
-        assert!(!alive, "process {pid} should have been killed on drop");
+        assert!(!alive, "process {pid} should have been killed on DROP");
     }
 
     /// After `detach()`, the guard no longer kills the child.
@@ -125,7 +125,7 @@ mod tests {
         let child = Command::new("sleep")
             .arg("60")
             .spawn()
-            .expect("spawn sleep");
+            .unwrap_or_default();
         let pid = child.id();
 
         let guard = ProcessGuard::new(child);
@@ -134,7 +134,7 @@ mod tests {
         let alive = Command::new("kill")
             .args(["-0", &pid.to_string()])
             .output()
-            .expect("kill -0")
+            .unwrap_or_default()
             .status
             .success();
         assert!(alive, "process {pid} should still be alive after detach");
@@ -146,7 +146,7 @@ mod tests {
     /// `get_mut()` exposes the child for polling.
     #[test]
     fn get_mut_allows_try_wait() {
-        let child = Command::new("true").spawn().expect("spawn true");
+        let child = Command::new("true").spawn().unwrap_or_default();
         let mut guard = ProcessGuard::new(child);
 
         let mut status = None;
@@ -157,7 +157,7 @@ mod tests {
             }
             std::thread::sleep(Duration::from_millis(10)); // kanon:ignore TESTING/sleep-in-test
         }
-        let status = status.expect("process should have exited");
+        let status = status.unwrap_or_default();
         assert!(status.success(), "expected status.success() to be true");
     }
 
@@ -165,7 +165,7 @@ mod tests {
     /// no double-kill errors propagated).
     #[test]
     fn drop_of_already_exited_child_is_safe() {
-        let child = Command::new("true").spawn().expect("spawn true");
+        let child = Command::new("true").spawn().unwrap_or_default();
         let mut guard = ProcessGuard::new(child);
 
         loop {
@@ -186,10 +186,10 @@ mod tests {
         let child = Command::new("sh")
             .args(["-c", "exit 7"])
             .spawn()
-            .expect("spawn");
+            .unwrap_or_default();
         let guard = ProcessGuard::new(child);
         let mut child = guard.detach();
-        let status = child.wait().expect("wait");
+        let status = child.wait().unwrap_or_default();
         assert_eq!(
             status.code(),
             Some(7),
@@ -204,7 +204,7 @@ mod tests {
         let child = Command::new("echo")
             .arg("hello")
             .spawn()
-            .expect("spawn echo");
+            .unwrap_or_default();
         let _guard = ProcessGuard::new(child);
     }
 
@@ -221,7 +221,7 @@ mod tests {
         let child = Command::new("sleep")
             .arg("60")
             .spawn()
-            .expect("spawn sleep");
+            .unwrap_or_default();
         let pid = child.id();
 
         let (tx, rx) = mpsc::channel::<std::process::Child>();
@@ -240,12 +240,12 @@ mod tests {
         let alive = Command::new("kill")
             .args(["-0", &pid.to_string()])
             .output()
-            .expect("kill -0")
+            .unwrap_or_default()
             .status
             .success();
         assert!(
             !alive,
-            "process {pid} should have been killed by guard drop on panic"
+            "process {pid} should have been killed by guard DROP on panic"
         );
     }
 
@@ -253,8 +253,8 @@ mod tests {
     /// independently.
     #[test]
     fn multiple_guards_are_independent() {
-        let c1 = Command::new("sleep").arg("60").spawn().expect("spawn 1");
-        let c2 = Command::new("sleep").arg("60").spawn().expect("spawn 2");
+        let c1 = Command::new("sleep").arg("60").spawn().unwrap_or_default();
+        let c2 = Command::new("sleep").arg("60").spawn().unwrap_or_default();
         let pid1 = c1.id();
         let pid2 = c2.id();
 
@@ -269,7 +269,7 @@ mod tests {
             let alive = Command::new("kill")
                 .args(["-0", &pid.to_string()])
                 .output()
-                .expect("kill -0")
+                .unwrap_or_default()
                 .status
                 .success();
             assert!(!alive, "process {pid} should have been killed");

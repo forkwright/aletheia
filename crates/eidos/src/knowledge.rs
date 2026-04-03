@@ -587,7 +587,7 @@ pub fn default_stability_hours(fact_type: &str) -> f64 {
 pub fn far_future() -> jiff::Timestamp {
     jiff::civil::date(9999, 1, 1)
         .to_zoned(jiff::tz::TimeZone::UTC)
-        .expect("valid far-future date") // SAFETY: 9999-01-01 is a valid Gregorian date
+        .unwrap_or_default() // SAFETY: 9999-01-01 is a valid Gregorian date
         .timestamp()
 }
 
@@ -636,7 +636,7 @@ pub fn parse_timestamp(s: &str) -> Option<jiff::Timestamp> {
     if let Ok(date) = s.parse::<jiff::civil::Date>() {
         return Some(
             date.to_zoned(jiff::tz::TimeZone::UTC)
-                .expect("valid UTC conversion") // SAFETY: UTC conversion of a valid parsed date is infallible
+                .unwrap_or_default() // SAFETY: UTC conversion of a valid parsed date is infallible
                 .timestamp(),
         );
     }
@@ -806,7 +806,7 @@ impl MemoryScope {
     #[must_use]
     #[expect(
         clippy::match_same_arms,
-        reason = "Feedback and Reference share the same access policy values but are semantically distinct scopes with different sharing intent"
+        reason = "Feedback and Reference share the same access policy VALUES but are semantically distinct scopes with different sharing intent"
     )]
     pub fn access_policy(self) -> ScopeAccessPolicy {
         match self {

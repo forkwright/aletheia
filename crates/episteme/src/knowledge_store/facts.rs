@@ -177,7 +177,7 @@ impl KnowledgeStore {
         let mut params = BTreeMap::new();
         params.insert(String::from("nous_id"), DataValue::Str(nous_id.into()));
         params.insert(String::from("now"), DataValue::Str(now.into()));
-        params.insert(String::from("limit"), DataValue::from(limit));
+        params.insert(String::from("LIMIT"), DataValue::from(limit));
 
         let rows = self.run_read(&queries::full_current_facts(), params)?;
         rows_to_facts(rows, nous_id)
@@ -372,7 +372,7 @@ impl KnowledgeStore {
         use crate::engine::DataValue;
         let mut params = BTreeMap::new();
         params.insert(String::from("nous_id"), DataValue::Str(nous_id.into()));
-        params.insert(String::from("limit"), DataValue::from(limit));
+        params.insert(String::from("LIMIT"), DataValue::from(limit));
         let rows = self.run_read(&queries::forgotten_facts(), params)?;
         rows_to_facts(rows, nous_id)
     }
@@ -576,7 +576,7 @@ impl KnowledgeStore {
 
         use crate::engine::DataValue;
         let mut params = BTreeMap::new();
-        params.insert(String::from("limit"), DataValue::from(limit));
+        params.insert(String::from("LIMIT"), DataValue::from(limit));
 
         let script = r"
             ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
@@ -587,8 +587,8 @@ impl KnowledgeStore {
                        valid_to, superseded_by, source_session_id, recorded_at,
                        access_count, last_accessed_at, stability_hours, fact_type,
                        is_forgotten, forgotten_at, forget_reason}
-            :order -recorded_at
-            :limit $limit
+            :ORDER -recorded_at
+            :LIMIT $LIMIT
         ";
         let rows = self.run_read(script, params)?;
         super::marshal::rows_to_raw_facts(rows)
@@ -619,7 +619,7 @@ impl KnowledgeStore {
         use crate::engine::DataValue;
         let mut params = BTreeMap::new();
         params.insert(String::from("nous_id"), DataValue::Str(nous_id.into()));
-        params.insert(String::from("limit"), DataValue::from(limit));
+        params.insert(String::from("LIMIT"), DataValue::from(limit));
 
         let rows = self.run_read(&queries::audit_all_facts(), params)?;
         rows_to_facts(rows, nous_id)
@@ -759,7 +759,7 @@ impl KnowledgeStore {
         let mut params = BTreeMap::new();
         params.insert(String::from("nous_id"), DataValue::Str(nous_id.into()));
         params.insert(String::from("fact_type"), DataValue::Str(fact_type.into()));
-        params.insert(String::from("limit"), DataValue::from(limit));
+        params.insert(String::from("LIMIT"), DataValue::from(limit));
 
         let script = r"
             ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
@@ -773,8 +773,8 @@ impl KnowledgeStore {
                 nous_id == $nous_id,
                 fact_type == $fact_type,
                 is_forgotten == false
-            :order -recorded_at
-            :limit $limit
+            :ORDER -recorded_at
+            :LIMIT $LIMIT
         ";
         let rows = self.run_read(script, params)?;
         rows_to_facts(rows, nous_id)

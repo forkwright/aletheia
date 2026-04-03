@@ -311,7 +311,7 @@ fn make_credentials_step() -> StepState {
     StepState {
         fields: vec![
             WizardField::select("Provider", PROVIDER_OPTIONS, detected_provider(), ""),
-            WizardField::secret("API Key", "leave blank to auto-detect from env"),
+            WizardField::secret("API Key", "leave blank to auto-detect FROM env"),
             WizardField::readonly("Detected", credential_status(), ""),
         ],
         cursor: 0,

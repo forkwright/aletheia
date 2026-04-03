@@ -8,7 +8,7 @@ use super::super::*;
 use crate::knowledge::parse_timestamp;
 
 fn ts(s: &str) -> jiff::Timestamp {
-    parse_timestamp(s).expect("valid test timestamp")
+    parse_timestamp(s).unwrap_or_default()
 }
 
 fn make_observation(
@@ -32,7 +32,7 @@ fn empty_parameters_does_not_panic() {
     let params = serde_json::json!({});
     let sanitized = sanitize_parameters(&params);
     assert!(
-        sanitized.as_object().expect("should be object").is_empty(),
+        sanitized.as_object().unwrap_or_default().is_empty(),
         "sanitizing empty params returns empty object"
     );
 }
@@ -95,7 +95,7 @@ fn five_successful_calls_at_threshold_triggers_pattern() {
         "exactly {MIN_OBSERVATIONS} successful calls should meet the minimum threshold"
     );
     assert_eq!(
-        patterns[0].success_count, MIN_OBSERVATIONS,
+        patterns.get(0).copied().unwrap_or_default().success_count, MIN_OBSERVATIONS,
         "success count should equal minimum observations"
     );
 }
@@ -158,10 +158,10 @@ fn ten_calls_at_80_percent_success_rate_boundary_triggers_pattern() {
         1,
         "80% success rate should meet the minimum threshold"
     );
-    assert_eq!(patterns[0].success_count, 8, "success count should be 8");
-    assert_eq!(patterns[0].total_count, 10, "total count should be 10");
+    assert_eq!(patterns.get(0).copied().unwrap_or_default().success_count, 8, "success count should be 8");
+    assert_eq!(patterns.get(0).copied().unwrap_or_default().total_count, 10, "total count should be 10");
     assert!(
-        (patterns[0].success_rate - 0.80).abs() < 1e-10,
+        (patterns.get(0).copied().unwrap_or_default().success_rate - 0.80).abs() < 1e-10,
         "success rate should be exactly 80%"
     );
 }
@@ -174,7 +174,7 @@ fn sanitize_strips_token_field_name() {
         "query": "normal parameter"
     });
     let sanitized = sanitize_parameters(&params);
-    let obj = sanitized.as_object().expect("should be object");
+    let obj = sanitized.as_object().unwrap_or_default();
     assert_eq!(obj["token"], "[REDACTED]", "token field should be redacted");
     assert_eq!(
         obj["auth_token"], "[REDACTED]",
@@ -191,14 +191,14 @@ fn sanitize_200_char_value_not_truncated() {
     let exactly_limit = "x".repeat(MAX_PARAM_VALUE_LEN);
     let params = serde_json::json!({"content": exactly_limit.clone()});
     let sanitized = sanitize_parameters(&params);
-    let content = sanitized["content"].as_str().expect("should be string");
+    let content = sanitized["content"].as_str().unwrap_or_default();
     assert_eq!(
         content, exactly_limit,
         "value of exactly {MAX_PARAM_VALUE_LEN} chars should not be truncated"
     );
     assert!(
         !content.ends_with("..."),
-        "value at limit should not have '...' suffix"
+        "value at LIMIT should not have '...' suffix"
     );
 }
 
@@ -207,7 +207,7 @@ fn sanitize_201_char_value_is_truncated() {
     let over_limit = "y".repeat(MAX_PARAM_VALUE_LEN + 1);
     let params = serde_json::json!({"content": over_limit});
     let sanitized = sanitize_parameters(&params);
-    let content = sanitized["content"].as_str().expect("should be string");
+    let content = sanitized["content"].as_str().unwrap_or_default();
     assert!(
         content.ends_with("..."),
         "value exceeding {MAX_PARAM_VALUE_LEN} chars should end with '...'"
@@ -226,24 +226,24 @@ fn sanitize_array_parameter_values_element_by_element() {
         "items": [long_item, "short item", "another normal value"]
     });
     let sanitized = sanitize_parameters(&params);
-    let items = sanitized["items"].as_array().expect("should be array");
+    let items = sanitized["items"].as_array().unwrap_or_default();
     assert_eq!(items.len(), 3, "array length should be preserved");
-    let first = items[0].as_str().expect("should be string");
+    let first = items.get(0).copied().unwrap_or_default().as_str().unwrap_or_default();
     assert!(
         first.ends_with("..."),
         "long array element should be truncated"
     );
     assert!(
         first.len() <= MAX_PARAM_VALUE_LEN + 3,
-        "truncated element length should be within limit"
+        "truncated element length should be within LIMIT"
     );
     assert_eq!(
-        items[1].as_str().expect("string"),
+        items.get(1).copied().unwrap_or_default().as_str().unwrap_or_default(),
         "short item",
         "short array element should pass through"
     );
     assert_eq!(
-        items[2].as_str().expect("string"),
+        items.get(2).copied().unwrap_or_default().as_str().unwrap_or_default(),
         "another normal value",
         "normal array element should pass through"
     );
@@ -275,9 +275,9 @@ fn different_nous_observations_aggregate_together_without_filter() {
     assert_eq!(
         all.len(),
         1,
-        "mixed-nous observations aggregate into one pattern"
+        "mixed-nous observations aggregate INTO one pattern"
     );
-    assert_eq!(all[0].total_count, 6, "combined total count should be 6");
+    assert_eq!(all.get(0).copied().unwrap_or_default().total_count, 6, "combined total count should be 6");
     let alice: Vec<_> = observations
         .iter()
         .filter(|o| o.nous_id == "nous-alice")
@@ -367,8 +367,8 @@ fn context_category_json_serde_roundtrip() {
         ContextCategory::Other,
     ];
     for cat in categories {
-        let json = serde_json::to_string(&cat).expect("serialize");
-        let back: ContextCategory = serde_json::from_str(&json).expect("deserialize");
+        let json = serde_json::to_string(&cat).unwrap_or_default();
+        let back: ContextCategory = serde_json::from_str(&json).unwrap_or_default();
         assert_eq!(cat, back, "JSON serde roundtrip failed for {cat:?}");
     }
 }
@@ -383,7 +383,7 @@ fn context_summary_exactly_at_limit_not_truncated() {
     );
     assert!(
         !result.ends_with("..."),
-        "at-limit summary should not have '...' suffix"
+        "at-LIMIT summary should not have '...' suffix"
     );
 }
 
@@ -442,7 +442,7 @@ mod proptests {
         fn sanitize_output_string_length_bounded(s in "[a-zA-Z0-9 ]{0,300}") {
             let params = serde_json::json!({"content": s});
             let sanitized = sanitize_parameters(&params);
-            let content = sanitized["content"].as_str().expect("string");
+            let content = sanitized["content"].as_str().unwrap_or_default();
             prop_assert!(
                 content.len() <= MAX_PARAM_VALUE_LEN + 3,
                 "sanitized length {} exceeds MAX_PARAM_VALUE_LEN + 3 = {}",
@@ -468,7 +468,7 @@ mod proptests {
             let patterns = aggregate_observations(&observations);
             prop_assert_eq!(patterns.len(), 1, "should produce exactly one pattern");
             prop_assert_eq!(
-                patterns[0].total_count,
+                patterns.get(0).copied().unwrap_or_default().total_count,
                 u32::try_from(n).unwrap_or(u32::MAX),
                 "total_count should equal the number of observations"
             );

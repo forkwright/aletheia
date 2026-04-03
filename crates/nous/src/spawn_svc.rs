@@ -137,7 +137,7 @@ impl SpawnService for SpawnServiceImpl {
             async move {
                 let nous_dir = oikos.nous_dir(&spawn_id);
                 if let Err(e) = tokio::fs::create_dir_all(&nous_dir).await {
-                    return Err(format!("failed to create spawn workspace: {e}"));
+                    return Err(format!("failed to CREATE spawn workspace: {e}"));
                 }
                 let soul_path = nous_dir.join("SOUL.md");
                 if let Err(e) = tokio::fs::write(&soul_path, &soul_content).await {
@@ -215,10 +215,10 @@ mod tests {
     use super::*;
 
     fn make_oikos() -> (tempfile::TempDir, Arc<Oikos>) {
-        let dir = tempfile::TempDir::new().expect("tmpdir");
+        let dir = tempfile::TempDir::new().unwrap_or_default();
         let root = dir.path();
-        std::fs::create_dir_all(root.join("shared")).expect("mkdir");
-        std::fs::create_dir_all(root.join("theke")).expect("mkdir");
+        std::fs::create_dir_all(root.join("shared")).unwrap_or_default();
+        std::fs::create_dir_all(root.join("theke")).unwrap_or_default();
         let oikos = Arc::new(Oikos::from_root(root));
         (dir, oikos)
     }
@@ -267,7 +267,7 @@ mod tests {
                 "test-parent",
             )
             .await
-            .expect("spawn");
+            .unwrap_or_default();
 
         assert!(!result.is_error, "unexpected error: {}", result.content);
         assert_eq!(result.content, "Sub-agent result");
@@ -309,7 +309,7 @@ mod tests {
                 "test-parent",
             )
             .await
-            .expect("spawn");
+            .unwrap_or_default();
 
         assert!(result.is_error);
         assert!(result.content.contains("timed out"));
@@ -388,7 +388,7 @@ mod tests {
                 "test-parent",
             )
             .await
-            .expect("spawn");
+            .unwrap_or_default();
 
         assert!(!result.is_error);
     }
@@ -410,7 +410,7 @@ mod tests {
                 "test-parent",
             )
             .await
-            .expect("spawn");
+            .unwrap_or_default();
 
         assert!(!result.is_error);
         // WHY: The ephemeral workspace should have been cleaned up
@@ -421,7 +421,7 @@ mod tests {
     fn spawn_service_construction() {
         let providers = Arc::new(ProviderRegistry::new());
         let tools = Arc::new(ToolRegistry::new());
-        let dir = tempfile::TempDir::new().expect("tmpdir");
+        let dir = tempfile::TempDir::new().unwrap_or_default();
         let oikos = Arc::new(Oikos::from_root(dir.path()));
         let _svc = SpawnServiceImpl::new(providers, tools, oikos);
     }

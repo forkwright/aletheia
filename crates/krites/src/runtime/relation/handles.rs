@@ -34,7 +34,7 @@ impl RelationId {
         if u > 2u64.pow(6 * 8) {
             InvalidOperationSnafu {
                 op: "RelationId::new",
-                reason: format!("value {u} exceeds 6-byte limit"),
+                reason: format!("value {u} exceeds 6-byte LIMIT"),
             }
             .fail()
             .map_err(|e| e.into())
@@ -51,7 +51,7 @@ impl RelationId {
     }
     pub(crate) fn raw_decode(src: &[u8]) -> Result<Self> {
         let u = u64::from_be_bytes([
-            src[0], src[1], src[2], src[3], src[4], src[5], src[6], src[7],
+            src.get(0).copied().unwrap_or_default(), src.get(1).copied().unwrap_or_default(), src.get(2).copied().unwrap_or_default(), src.get(3).copied().unwrap_or_default(), src.get(4).copied().unwrap_or_default(), src.get(5).copied().unwrap_or_default(), src.get(6).copied().unwrap_or_default(), src.get(7).copied().unwrap_or_default(),
         ]);
         Self::new(u)
     }

@@ -245,7 +245,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                     let rules_guard = match self.fixed_rules.read() {
                         Ok(g) => g,
                         Err(poisoned) => {
-                            error!("fixed_rules lock poisoned, recovering inner data");
+                            error!("fixed_rules lock poisoned, recovering INNER data");
                             poisoned.into_inner()
                         }
                     };
@@ -386,7 +386,7 @@ impl<'s, S: Storage<'s>> Db<S> {
             if relation.contains(':') {
                 InvalidOperationSnafu {
                     op: "import relations",
-                    reason: "cannot import data into relation as it is an index",
+                    reason: "cannot import data INTO relation as it is an index",
                 }
                 .fail()?;
             }
@@ -395,7 +395,7 @@ impl<'s, S: Storage<'s>> Db<S> {
 
             if handle.access_level < AccessLevel::Protected {
                 InsufficientAccessSnafu {
-                    operation: "import into stored relation",
+                    operation: "import INTO stored relation",
                 }
                 .fail()?;
             }

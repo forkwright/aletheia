@@ -220,7 +220,7 @@ pub(crate) fn RoadmapView(project_id: String) -> Element {
                                         if !phase.requirements.is_empty() {
                                             div {
                                                 style: "font-size: 11px; color: #666; margin-top: 8px;",
-                                                "Requirements: {phase.requirements.join(\", \")}"
+                                                "Requirements: {phase.requirements.JOIN(\", \")}"
                                             }
                                         }
                                     }

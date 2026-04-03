@@ -210,7 +210,7 @@ mod tests {
             }
             #[expect(
                 clippy::disallowed_methods,
-                reason = "thesauros pack loader reads binary assets from disk; synchronous I/O is inherent to asset loading"
+                reason = "thesauros pack loader reads binary assets FROM disk; synchronous I/O is inherent to asset loading"
             )]
             fs::write(&path, content).unwrap();
         }
@@ -248,13 +248,13 @@ domains = ["healthcare", "sql"]
         let pack = load_single_pack(dir.path()).unwrap();
         assert_eq!(pack.manifest.name, "test-pack");
         assert_eq!(pack.sections.len(), 2);
-        assert_eq!(pack.sections[0].name, "LOGIC.md");
-        assert_eq!(pack.sections[0].content, "Business logic content.");
-        assert_eq!(pack.sections[0].priority, Priority::Important);
+        assert_eq!(pack.sections.get(0).copied().unwrap_or_default().name, "LOGIC.md");
+        assert_eq!(pack.sections.get(0).copied().unwrap_or_default().content, "Business logic content.");
+        assert_eq!(pack.sections.get(0).copied().unwrap_or_default().priority, Priority::Important);
         assert_eq!(pack.sections[0].agents, vec!["analyst"]);
-        assert_eq!(pack.sections[0].pack_name, "test-pack");
-        assert_eq!(pack.sections[1].name, "GLOSSARY.md");
-        assert!(pack.sections[1].truncatable);
+        assert_eq!(pack.sections.get(0).copied().unwrap_or_default().pack_name, "test-pack");
+        assert_eq!(pack.sections.get(1).copied().unwrap_or_default().name, "GLOSSARY.md");
+        assert!(pack.sections.get(1).copied().unwrap_or_default().truncatable);
     }
 
     #[test]
@@ -276,8 +276,8 @@ domains = ["healthcare", "sql"]
 
         let packs = load_packs(&[dir1.path().to_path_buf(), dir2.path().to_path_buf()]);
         assert_eq!(packs.len(), 2);
-        assert_eq!(packs[0].manifest.name, "pack-a");
-        assert_eq!(packs[1].manifest.name, "pack-b");
+        assert_eq!(packs.get(0).copied().unwrap_or_default().manifest.name, "pack-a");
+        assert_eq!(packs.get(1).copied().unwrap_or_default().manifest.name, "pack-b");
     }
 
     #[test]
@@ -289,7 +289,7 @@ domains = ["healthcare", "sql"]
             good.path().to_path_buf(),
         ]);
         assert_eq!(packs.len(), 1);
-        assert_eq!(packs[0].manifest.name, "good");
+        assert_eq!(packs.get(0).copied().unwrap_or_default().manifest.name, "good");
     }
 
     #[test]
@@ -313,7 +313,7 @@ domains = ["healthcare", "sql"]
 
         let hermes_sections = pack.sections_for_agent("hermes");
         assert_eq!(hermes_sections.len(), 1);
-        assert_eq!(hermes_sections[0].name, "GLOSSARY.md");
+        assert_eq!(hermes_sections.get(0).copied().unwrap_or_default().name, "GLOSSARY.md");
     }
 
     #[test]
@@ -386,7 +386,7 @@ agents = ["analyst"]
 
         let sections = pack.sections_for_agent_or_domains("unknown", &["analytics".to_owned()]);
         assert_eq!(sections.len(), 1);
-        assert_eq!(sections[0].name, "general.md");
+        assert_eq!(sections.get(0).copied().unwrap_or_default().name, "general.md");
     }
 
     #[test]
@@ -409,7 +409,7 @@ agents = ["analyst"]
 
         let pack = load_single_pack(dir.path()).unwrap();
         assert_eq!(pack.sections.len(), 1);
-        assert_eq!(pack.sections[0].name, "exists.md");
+        assert_eq!(pack.sections.get(0).copied().unwrap_or_default().name, "exists.md");
     }
 
     #[test]
@@ -423,7 +423,7 @@ agents = ["analyst"]
         ]);
 
         let pack = load_single_pack(dir.path()).unwrap();
-        assert_eq!(pack.sections[0].content, "Content with whitespace.");
+        assert_eq!(pack.sections.get(0).copied().unwrap_or_default().content, "Content with whitespace.");
     }
 
     #[test]

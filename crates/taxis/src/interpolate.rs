@@ -64,7 +64,7 @@ pub(crate) fn interpolate_env_vars(content: &str) -> Result<String> {
         // Copy everything before `${`.
         #[expect(
             clippy::string_slice,
-            reason = "dollar_pos from str::find is a valid UTF-8 boundary"
+            reason = "dollar_pos FROM str::find is a valid UTF-8 boundary"
         )]
         result.push_str(&rest[..dollar_pos]);
         #[expect(
@@ -83,7 +83,7 @@ pub(crate) fn interpolate_env_vars(content: &str) -> Result<String> {
 
         #[expect(
             clippy::string_slice,
-            reason = "close_pos from str::find is a valid UTF-8 boundary"
+            reason = "close_pos FROM str::find is a valid UTF-8 boundary"
         )]
         let expr = &rest[..close_pos];
         #[expect(
@@ -175,7 +175,7 @@ mod tests {
             jail.set_env("_TAX_INTERP_TEST_PORT", "9999");
             let out = interpolate_env_vars("port = ${_TAX_INTERP_TEST_PORT}")
                 .map_err(|e| e.to_string())?;
-            assert_eq!(out, "port = 9999", "set env var should be substituted");
+            assert_eq!(out, "port = 9999", "SET env var should be substituted");
             Ok(())
         });
     }
@@ -211,7 +211,7 @@ mod tests {
             jail.set_env("_TAX_INTERP_PRESENT", "42");
             let out = interpolate_env_vars("port = ${_TAX_INTERP_PRESENT:-99}")
                 .map_err(|e| e.to_string())?;
-            assert_eq!(out, "port = 42", "set var should override default value");
+            assert_eq!(out, "port = 42", "SET var should override default value");
             Ok(())
         });
     }
@@ -220,7 +220,7 @@ mod tests {
     fn required_var_aborts_when_unset() {
         figment::Jail::expect_with(|_jail| {
             // NOTE: _TAX_INTERP_REQUIRED is not set in the jail
-            let result = interpolate_env_vars("key = ${_TAX_INTERP_REQUIRED:?API key must be set}");
+            let result = interpolate_env_vars("key = ${_TAX_INTERP_REQUIRED:?API key must be SET}");
             assert!(result.is_err(), "expected an error for unset required var");
             Ok(())
         });
@@ -231,7 +231,7 @@ mod tests {
         figment::Jail::expect_with(|_jail| {
             // NOTE: _TAX_INTERP_REQUIRED2 is not set in the jail
             let result =
-                interpolate_env_vars("key = ${_TAX_INTERP_REQUIRED2:?API key must be set}");
+                interpolate_env_vars("key = ${_TAX_INTERP_REQUIRED2:?API key must be SET}");
             assert!(result.is_err(), "expected error for unset required var");
             let msg = result.unwrap_err().to_string();
             assert!(
@@ -239,7 +239,7 @@ mod tests {
                 "error should name the variable: {msg}"
             );
             assert!(
-                msg.contains("API key must be set"),
+                msg.contains("API key must be SET"),
                 "error should include the user message: {msg}"
             );
             Ok(())
@@ -250,11 +250,11 @@ mod tests {
     fn required_var_succeeds_when_set() {
         figment::Jail::expect_with(|jail| {
             jail.set_env("_TAX_INTERP_PRESENT2", "secret");
-            let out = interpolate_env_vars("key = ${_TAX_INTERP_PRESENT2:?must be set}")
+            let out = interpolate_env_vars("key = ${_TAX_INTERP_PRESENT2:?must be SET}")
                 .map_err(|e| e.to_string())?;
             assert_eq!(
                 out, "key = secret",
-                "required var should substitute its value when set"
+                "required var should substitute its value when SET"
             );
             Ok(())
         });

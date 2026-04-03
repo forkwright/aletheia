@@ -278,7 +278,7 @@ mod tests {
         assert!(!config.generation.thinking_enabled);
         assert_eq!(
             config.limits.max_consecutive_tool_only_iterations, 3,
-            "default tool-only iteration limit should be 3"
+            "default tool-only iteration LIMIT should be 3"
         );
     }
 

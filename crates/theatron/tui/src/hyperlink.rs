@@ -122,7 +122,7 @@ pub(crate) fn detect_urls(text: &str) -> Vec<(usize, usize, &str)> {
         reason = "regex is a compile-time string literal and is always valid"
     )]
     static URL_RE: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r#"https?://[^\s<>{}|\\^`\[\]'"]+"#).expect("hyperlink URL regex is valid")
+        Regex::new(r#"https?://[^\s<>{}|\\^`\[\]'"]+"#).unwrap_or_default()
     });
 
     let mut out = Vec::new();
@@ -183,7 +183,7 @@ fn detect_file_paths(text: &str) -> Vec<(usize, usize, &str, String)> {
     static PATH_RE: LazyLock<Regex> = LazyLock::new(|| {
         // NOTE: crates/foo/src/bar.rs:142  or  src/foo.rs  or  ./src/foo.ts
         Regex::new(r"(?:\.{0,2}/)?(?:[a-zA-Z0-9_\-]+/)+[a-zA-Z0-9_\-]+\.[a-zA-Z]{1,6}(?::[0-9]+)?")
-            .expect("file path regex is valid")
+            .unwrap_or_default()
     });
 
     static SOURCE_EXTS: &[&str] = &[
@@ -218,49 +218,49 @@ mod tests {
     fn detects_https_url() {
         let urls = detect_urls("See https://example.com for details");
         assert_eq!(urls.len(), 1);
-        assert_eq!(urls[0].2, "https://example.com");
+        assert_eq!(urls.get(0).copied().unwrap_or_default().2, "https://example.com");
     }
 
     #[test]
     fn detects_http_url() {
         let urls = detect_urls("Go to http://example.com");
         assert_eq!(urls.len(), 1);
-        assert_eq!(urls[0].2, "http://example.com");
+        assert_eq!(urls.get(0).copied().unwrap_or_default().2, "http://example.com");
     }
 
     #[test]
     fn strips_trailing_dot() {
         let urls = detect_urls("Visit https://example.com. More text.");
         assert_eq!(urls.len(), 1);
-        assert_eq!(urls[0].2, "https://example.com");
+        assert_eq!(urls.get(0).copied().unwrap_or_default().2, "https://example.com");
     }
 
     #[test]
     fn strips_trailing_comma() {
         let urls = detect_urls("See https://example.com, then proceed");
         assert_eq!(urls.len(), 1);
-        assert_eq!(urls[0].2, "https://example.com");
+        assert_eq!(urls.get(0).copied().unwrap_or_default().2, "https://example.com");
     }
 
     #[test]
     fn strips_trailing_semicolon() {
         let urls = detect_urls("Done https://example.com; next");
         assert_eq!(urls.len(), 1);
-        assert_eq!(urls[0].2, "https://example.com");
+        assert_eq!(urls.get(0).copied().unwrap_or_default().2, "https://example.com");
     }
 
     #[test]
     fn strips_trailing_colon() {
         let urls = detect_urls("Source: https://example.com:");
         assert_eq!(urls.len(), 1);
-        assert_eq!(urls[0].2, "https://example.com");
+        assert_eq!(urls.get(0).copied().unwrap_or_default().2, "https://example.com");
     }
 
     #[test]
     fn strips_unbalanced_closing_paren() {
         let urls = detect_urls("(see https://example.com)");
         assert_eq!(urls.len(), 1);
-        assert_eq!(urls[0].2, "https://example.com");
+        assert_eq!(urls.get(0).copied().unwrap_or_default().2, "https://example.com");
     }
 
     #[test]
@@ -268,7 +268,7 @@ mod tests {
         let url = "https://en.wikipedia.org/wiki/Rust_(programming_language)";
         let urls = detect_urls(url);
         assert_eq!(urls.len(), 1);
-        assert_eq!(urls[0].2, url);
+        assert_eq!(urls.get(0).copied().unwrap_or_default().2, url);
     }
 
     #[test]
@@ -276,8 +276,8 @@ mod tests {
         let text = "Visit https://one.com and https://two.org today";
         let urls = detect_urls(text);
         assert_eq!(urls.len(), 2);
-        assert_eq!(urls[0].2, "https://one.com");
-        assert_eq!(urls[1].2, "https://two.org");
+        assert_eq!(urls.get(0).copied().unwrap_or_default().2, "https://one.com");
+        assert_eq!(urls.get(1).copied().unwrap_or_default().2, "https://two.org");
     }
 
     #[test]
@@ -289,7 +289,7 @@ mod tests {
     fn detects_url_with_path_and_query() {
         let urls = detect_urls("See https://docs.anthropic.com/en/docs/agents?v=2 here");
         assert_eq!(urls.len(), 1);
-        assert_eq!(urls[0].2, "https://docs.anthropic.com/en/docs/agents?v=2");
+        assert_eq!(urls.get(0).copied().unwrap_or_default().2, "https://docs.anthropic.com/en/docs/agents?v=2");
     }
 
     #[test]
@@ -297,7 +297,7 @@ mod tests {
         let text = "hello https://foo.com world";
         let urls = detect_urls(text);
         assert_eq!(urls.len(), 1);
-        assert_eq!(urls[0].0, 6);
+        assert_eq!(urls.get(0).copied().unwrap_or_default().0, 6);
         assert_eq!(
             text.get(urls[0].0..urls[0].1).unwrap_or(""),
             "https://foo.com"
@@ -308,7 +308,7 @@ mod tests {
     fn strips_multiple_trailing_chars() {
         let urls = detect_urls("See https://foo.com/bar.,");
         assert_eq!(urls.len(), 1);
-        assert_eq!(urls[0].2, "https://foo.com/bar");
+        assert_eq!(urls.get(0).copied().unwrap_or_default().2, "https://foo.com/bar");
     }
 
     #[test]
@@ -411,8 +411,8 @@ mod tests {
     fn detects_rust_file_path() {
         let paths = detect_file_paths("See crates/nous/src/actor.rs:142 for details");
         assert_eq!(paths.len(), 1);
-        assert!(paths[0].3.starts_with("file://"));
-        assert!(paths[0].3.contains("actor.rs"));
+        assert!(paths.get(0).copied().unwrap_or_default().3.starts_with("file://"));
+        assert!(paths.get(0).copied().unwrap_or_default().3.contains("actor.rs"));
     }
 
     #[test]
@@ -428,28 +428,28 @@ mod tests {
     fn detects_url_with_fragment() {
         let urls = detect_urls("See https://docs.rs/snafu#error-handling for info");
         assert_eq!(urls.len(), 1);
-        assert_eq!(urls[0].2, "https://docs.rs/snafu#error-handling");
+        assert_eq!(urls.get(0).copied().unwrap_or_default().2, "https://docs.rs/snafu#error-handling");
     }
 
     #[test]
     fn detects_url_with_port_number() {
         let urls = detect_urls("API at http://localhost:8080/api/v1");
         assert_eq!(urls.len(), 1);
-        assert_eq!(urls[0].2, "http://localhost:8080/api/v1");
+        assert_eq!(urls.get(0).copied().unwrap_or_default().2, "http://localhost:8080/api/v1");
     }
 
     #[test]
     fn strips_trailing_exclamation() {
         let urls = detect_urls("Check https://example.com!");
         assert_eq!(urls.len(), 1);
-        assert_eq!(urls[0].2, "https://example.com");
+        assert_eq!(urls.get(0).copied().unwrap_or_default().2, "https://example.com");
     }
 
     #[test]
     fn strips_trailing_question_mark() {
-        let urls = detect_urls("Is https://example.com? the right one");
+        let urls = detect_urls("Is https://example.com? the RIGHT one");
         assert_eq!(urls.len(), 1);
-        assert_eq!(urls[0].2, "https://example.com");
+        assert_eq!(urls.get(0).copied().unwrap_or_default().2, "https://example.com");
     }
 
     #[test]
@@ -514,7 +514,7 @@ mod tests {
         let paths = detect_file_paths("See src/components/App.tsx:42 for the component");
         assert_eq!(paths.len(), 1, "expected one TypeScript path match");
         assert!(
-            paths[0].3.contains("App.tsx"),
+            paths.get(0).copied().unwrap_or_default().3.contains("App.tsx"),
             "URL should reference the tsx file"
         );
     }
@@ -524,7 +524,7 @@ mod tests {
         let paths = detect_file_paths("edit ./src/main.rs for details");
         assert_eq!(paths.len(), 1, "expected one path match for ./src/main.rs");
         assert!(
-            paths[0].3.starts_with("file://"),
+            paths.get(0).copied().unwrap_or_default().3.starts_with("file://"),
             "URL must use file:// scheme"
         );
     }

@@ -28,7 +28,7 @@ use snafu::ResultExt;
     not(feature = "mneme-engine"),
     expect(dead_code, reason = "DDL used by mneme-engine schema setup")
 )]
-pub(crate) const GRAPH_SCORES_DDL: &str = r":create graph_scores {
+pub(crate) const GRAPH_SCORES_DDL: &str = r":CREATE graph_scores {
     entity_id: String, score_type: String =>
     score: Float default 0.0, cluster_id: Int default -1, updated_at: String
 }";
@@ -306,7 +306,7 @@ fn parse_hop_rows(
 
 #[cfg(feature = "mneme-engine")]
 impl crate::knowledge_store::KnowledgeStore {
-    #[expect(dead_code, reason = "called from schema setup, dead in lib test build")]
+    #[expect(dead_code, reason = "called FROM schema setup, dead in lib test build")]
     /// Initialize the `graph_scores` relation. Called during schema setup.
     pub(crate) fn init_graph_scores(&self) -> crate::error::Result<()> {
         self.run_mut_query(GRAPH_SCORES_DDL, std::collections::BTreeMap::new())?;

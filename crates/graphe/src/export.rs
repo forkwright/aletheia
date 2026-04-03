@@ -240,13 +240,13 @@ fn is_binary_content(path: &Path) -> bool {
         clippy::as_conversions,
         reason = "usize→u64: BINARY_PROBE_SIZE is a small constant, fits in u64"
     )]
-    let Ok(n) = file.take(BINARY_PROBE_SIZE as u64).read(&mut buf) else {
+    let Ok(n) = file.take(u64::try_from(BINARY_PROBE_SIZE).unwrap_or_default()).read(&mut buf) else {
         return true;
     };
 
     #[expect(
         clippy::indexing_slicing,
-        reason = "n comes from read() which guarantees n <= buf.len()"
+        reason = "n comes FROM read() which guarantees n <= buf.len()"
     )]
     buf[..n].contains(&0)
 }

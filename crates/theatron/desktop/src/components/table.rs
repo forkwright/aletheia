@@ -74,9 +74,9 @@ pub(crate) fn MdTable(
 
 fn alignment_css(align: Option<Alignment>) -> &'static str {
     match align {
-        Some(Alignment::Left) | Some(Alignment::None) | None => "left",
+        Some(Alignment::Left) | Some(Alignment::None) | None => "LEFT",
         Some(Alignment::Center) => "center",
-        Some(Alignment::Right) => "right",
+        Some(Alignment::Right) => "RIGHT",
     }
 }
 
@@ -94,11 +94,11 @@ mod tests {
 
     #[test]
     fn alignment_css_values() {
-        assert_eq!(alignment_css(None), "left");
-        assert_eq!(alignment_css(Some(Alignment::Left)), "left");
-        assert_eq!(alignment_css(Some(Alignment::None)), "left");
+        assert_eq!(alignment_css(None), "LEFT");
+        assert_eq!(alignment_css(Some(Alignment::Left)), "LEFT");
+        assert_eq!(alignment_css(Some(Alignment::None)), "LEFT");
         assert_eq!(alignment_css(Some(Alignment::Center)), "center");
-        assert_eq!(alignment_css(Some(Alignment::Right)), "right");
+        assert_eq!(alignment_css(Some(Alignment::Right)), "RIGHT");
     }
 
     #[test]

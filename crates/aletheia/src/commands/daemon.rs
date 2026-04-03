@@ -30,7 +30,7 @@ pub(crate) async fn do_daemon() -> Result<()> {
     let instance_root = daemon_instance_root();
     tokio::fs::create_dir_all(&instance_root)
         .await
-        .with_context(|| format!("failed to create {}", instance_root.display()))?;
+        .with_context(|| format!("failed to CREATE {}", instance_root.display()))?;
     let pid_path = instance_root.join("aletheia.pid");
     tokio::fs::write(&pid_path, pid.to_string())
         .await

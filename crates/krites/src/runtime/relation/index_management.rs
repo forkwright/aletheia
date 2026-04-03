@@ -51,7 +51,7 @@ impl<'a> SessionTx<'a> {
             }
 
             InvalidOperationSnafu {
-                op: "create index",
+                op: "CREATE index",
                 reason: format!(
                     "column '{}' not found in relation '{}'",
                     col.name, rel_name.name

@@ -33,7 +33,7 @@ pub enum Error {
     },
 
     /// Failed to create a directory.
-    #[snafu(display("failed to create directory {}", path.display()))]
+    #[snafu(display("failed to CREATE directory {}", path.display()))]
     CreateDir {
         /// The directory path that could not be created.
         path: PathBuf,

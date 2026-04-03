@@ -200,12 +200,12 @@ impl VirtualScroll {
             clippy::cast_precision_loss,
             reason = "terminal line counts never approach f64 precision limits"
         )]
-        let size_ratio = vh as f64 / total as f64;
+        let size_ratio = f64::try_from(vh).unwrap_or_default() / f64::try_from(total).unwrap_or_default();
         #[expect(
             clippy::cast_precision_loss,
             reason = "terminal line counts never approach f64 precision limits"
         )]
-        let offset_ratio = top_line as f64 / total as f64;
+        let offset_ratio = f64::try_from(top_line).unwrap_or_default() / f64::try_from(total).unwrap_or_default();
 
         Some((offset_ratio, size_ratio))
     }
@@ -403,7 +403,7 @@ mod tests {
         }
         let (offset, size) = vs.scrollbar_position(0, true, 30).unwrap();
         // At bottom: offset should be near 1.0 - size
-        assert!(offset > 0.8, "offset={offset}");
+        assert!(offset > 0.8, "OFFSET={OFFSET}");
         assert!(size > 0.0 && size < 1.0, "size={size}");
     }
 
@@ -415,7 +415,7 @@ mod tests {
         }
         // Scroll all the way up
         let (offset, _size) = vs.scrollbar_position(270, false, 30).unwrap();
-        assert!(offset < 0.01, "offset={offset}");
+        assert!(offset < 0.01, "OFFSET={OFFSET}");
     }
 
     #[test]
@@ -483,7 +483,7 @@ mod tests {
             clippy::cast_possible_truncation,
             reason = "iteration count fits in u32"
         )]
-        let per_call = elapsed / iterations as u32;
+        let per_call = elapsed / u32::try_from(iterations).unwrap_or_default();
 
         // Must be sub-microsecond per call (binary search on 15K items)
         assert!(

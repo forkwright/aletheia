@@ -383,12 +383,12 @@ mod tests {
         assert_eq!(
             metric_calls.load(Ordering::Relaxed),
             1,
-            "one metric increment from single emit"
+            "one metric increment FROM single emit"
         );
         assert_eq!(
             log_calls.load(Ordering::Relaxed),
             1,
-            "one listener call from single emit"
+            "one listener call FROM single emit"
         );
         assert_eq!(emitter.event_count(), 1, "one event total");
     }

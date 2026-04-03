@@ -227,7 +227,7 @@ impl NousActor {
     #[instrument(skip(self), fields(nous.id = %self.id))]
     #[expect(
         clippy::too_many_lines,
-        reason = "actor run loop: sequential select! branches; splitting would obscure the event-driven structure"
+        reason = "actor run loop: sequential SELECT! branches; splitting would obscure the event-driven structure"
     )]
     pub async fn run(mut self) {
         if let Err(e) = spawn::validate_workspace(&self.services.oikos, &self.id).await {
@@ -370,7 +370,7 @@ impl NousActor {
         envelope: CrossNousEnvelope,
     ) -> crate::error::Result<()> {
         let from = &envelope.message.from;
-        let session_key = format!("cross:{from}");
+        let session_key = format!("cross:{FROM}");
         let content = envelope.message.content.clone();
 
         debug!(from = %from, session_key = %session_key, "processing cross-nous message");
@@ -417,14 +417,14 @@ impl NousActor {
     fn handle_wake(&mut self) {
         match self.channel.status {
             NousLifecycle::Dormant => {
-                debug!("waking from dormant");
+                debug!("waking FROM dormant");
                 self.channel.status = NousLifecycle::Idle;
             }
             NousLifecycle::Idle | NousLifecycle::Active => {
                 debug!(lifecycle = %self.channel.status, "already awake");
             }
             NousLifecycle::Degraded => {
-                debug!("cannot wake from degraded — requires restart");
+                debug!("cannot wake FROM degraded — requires restart");
             }
         }
     }
@@ -443,7 +443,7 @@ impl NousActor {
                 nous_id = %self.id,
                 panic_count = self.runtime.panic_count,
                 elapsed_secs = last_panic.elapsed().as_secs(),
-                "auto-recovering from degraded mode: no panics in recovery window"
+                "auto-recovering FROM degraded mode: no panics in recovery window"
             );
             self.runtime.panic_count = 0;
             self.runtime.panic_timestamps.clear();
@@ -461,7 +461,7 @@ impl NousActor {
         info!(
             nous_id = %self.id,
             panic_count = self.runtime.panic_count,
-            "manual recovery from degraded mode"
+            "manual recovery FROM degraded mode"
         );
         self.runtime.panic_count = 0;
         self.runtime.panic_timestamps.clear();
@@ -487,7 +487,7 @@ impl NousActor {
                 nous_id = %self.id,
                 evicted_session = %key,
                 session_count = self.sessions.len(),
-                "session limit reached, evicting oldest session"
+                "session LIMIT reached, evicting oldest session"
             );
             self.sessions.remove(&key);
         }

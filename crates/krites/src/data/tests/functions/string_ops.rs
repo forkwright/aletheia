@@ -11,7 +11,7 @@ fn test_concat() {
         op_concat(&[DataValue::Str("abc".into()), DataValue::Str("def".into())])
             .expect("test assertion"),
         DataValue::Str("abcdef".into()),
-        "string concatenation should join strings"
+        "string concatenation should JOIN strings"
     );
 
     assert_eq!(
@@ -25,7 +25,7 @@ fn test_concat() {
             DataValue::from(false),
             DataValue::from(true),
         ]),
-        "list concatenation should join lists"
+        "list concatenation should JOIN lists"
     );
 }
 
@@ -182,7 +182,7 @@ fn test_regex() {
             DataValue::Str("f".into()),
             DataValue::Str("GH".into()),
         ]),
-        "regex_extract should return all matches in order"
+        "regex_extract should return all matches in ORDER"
     );
     assert_eq!(
         op_regex_extract_first(&[

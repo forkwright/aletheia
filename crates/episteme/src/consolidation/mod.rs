@@ -204,7 +204,7 @@ pub trait ConsolidationProvider: Send + Sync {
 /// Build the system prompt for the consolidation LLM call.
 #[must_use]
 pub fn consolidation_system_prompt() -> &'static str {
-    r#"You are a knowledge consolidation engine. Given a set of related facts about the same topic, consolidate them into the essential knowledge.
+    r#"You are a knowledge consolidation engine. Given a SET of related facts about the same topic, consolidate them INTO the essential knowledge.
 
 Rules:
 - Preserve important details and nuances
@@ -215,7 +215,7 @@ Rules:
 
 Output consolidated facts as a JSON array:
 [
-  {"content": "...", "entities": ["..."], "relationships": [{"from": "...", "to": "...", "type": "..."}]}
+  {"content": "...", "entities": ["..."], "relationships": [{"FROM": "...", "to": "...", "type": "..."}]}
 ]
 
 Output ONLY the JSON array, no other text."#
@@ -383,7 +383,7 @@ pub const CLUSTER_FACTS_FOR_CONSOLIDATION: &str = r"
 ";
 
 /// Datalog DDL for the `consolidation_audit` relation.
-pub const CONSOLIDATION_AUDIT_DDL: &str = r":create consolidation_audit {
+pub const CONSOLIDATION_AUDIT_DDL: &str = r":CREATE consolidation_audit {
     id: String =>
     trigger_type: String,
     trigger_id: String,

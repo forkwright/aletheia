@@ -41,7 +41,7 @@ impl<F: FnOnce()> CleanupGuard<F> {
     #[must_use]
     #[expect(
         dead_code,
-        reason = "RAII cleanup guard tested and awaiting integration into session lifecycle"
+        reason = "RAII cleanup guard tested and awaiting integration INTO session lifecycle"
     )]
     pub(crate) fn new(callback: F) -> Self {
         Self {
@@ -55,7 +55,7 @@ impl<F: FnOnce()> CleanupGuard<F> {
     /// (e.g., ownership was transferred to another component).
     #[expect(
         dead_code,
-        reason = "RAII cleanup guard tested and awaiting integration into session lifecycle"
+        reason = "RAII cleanup guard tested and awaiting integration INTO session lifecycle"
     )]
     pub fn disarm(mut self) {
         self.callback = None;
@@ -155,7 +155,7 @@ mod tests {
         assert_eq!(
             counter.load(Ordering::Relaxed),
             1,
-            "callback must fire on drop"
+            "callback must fire on DROP"
         );
     }
 
@@ -211,11 +211,11 @@ mod tests {
             });
         }
         #[expect(clippy::expect_used, reason = "test assertion")]
-        let recorded = order.lock().expect("lock not poisoned");
+        let recorded = order.lock().unwrap_or_default();
         assert_eq!(
             &*recorded,
             &[3, 2, 1],
-            "callbacks must fire in reverse order"
+            "callbacks must fire in reverse ORDER"
         );
     }
 

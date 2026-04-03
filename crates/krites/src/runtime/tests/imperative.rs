@@ -11,27 +11,27 @@ use crate::runtime::db::ScriptMutability;
 #[test]
 fn deletion() {
     let db = DbInstance::default();
-    db.run_default(r":create a {x => y}")
+    db.run_default(r":CREATE a {x => y}")
         .expect("creating relation should succeed");
     assert!(
-        db.run_default(r"?[x] <- [[1]] :delete a {x}").is_err(),
+        db.run_default(r"?[x] <- [[1]] :DELETE a {x}").is_err(),
         "deleting non-existent row should fail"
     );
     assert!(
-        db.run_default(r"?[x, y] <- [[1, 2]] :insert a {x => y}",)
+        db.run_default(r"?[x, y] <- [[1, 2]] :INSERT a {x => y}",)
             .is_ok(),
         "inserting row should succeed"
     );
-    db.run_default(r"?[x] <- [[1]] :delete a {x}")
+    db.run_default(r"?[x] <- [[1]] :DELETE a {x}")
         .expect("deleting existing row should succeed");
 }
 
 #[test]
 fn into_payload() {
     let db = DbInstance::default();
-    db.run_default(r":create a {x => y}")
+    db.run_default(r":CREATE a {x => y}")
         .expect("creating relation a should succeed");
-    db.run_default(r"?[x, y] <- [[1, 2], [3, 4]] :insert a {x => y}")
+    db.run_default(r"?[x, y] <- [[1, 2], [3, 4]] :INSERT a {x => y}")
         .expect("inserting 2 rows should succeed");
 
     let mut res = db
@@ -41,17 +41,17 @@ fn into_payload() {
 
     let delete = res.clone().into_payload("a", "rm");
     db.run_script(delete.0.as_str(), delete.1, ScriptMutability::Mutable)
-        .expect("running delete payload should succeed");
+        .expect("running DELETE payload should succeed");
     assert_eq!(
         db.run_default(r"?[x, y] := *a[x, y]")
-            .expect("querying after delete should succeed")
+            .expect("querying after DELETE should succeed")
             .rows
             .len(),
         0,
         "all rows should be deleted"
     );
 
-    db.run_default(r":create b {m => n}")
+    db.run_default(r":CREATE b {m => n}")
         .expect("creating relation b should succeed");
     res.headers = vec!["m".into(), "n".into()];
     let put = res.into_payload("b", "put");
@@ -70,15 +70,15 @@ fn into_payload() {
 #[test]
 fn returning() {
     let db = DbInstance::default();
-    db.run_default(":create a {x => y}")
+    db.run_default(":CREATE a {x => y}")
         .expect("creating relation should succeed");
     let res = db
-        .run_default(r"?[x, y] <- [[1, 2]] :insert a {x => y} ")
-        .expect("insert should succeed");
+        .run_default(r"?[x, y] <- [[1, 2]] :INSERT a {x => y} ")
+        .expect("INSERT should succeed");
     assert_eq!(
         res.into_json()["rows"],
         json!([["OK"]]),
-        "insert without :returning should return OK"
+        "INSERT without :returning should return OK"
     );
 
     let res = db
@@ -102,11 +102,11 @@ fn returning() {
         ]),
         ":returning on rm should show requested and actually deleted rows"
     );
-    db.run_default(r":create todo{id:Uuid default rand_uuid_v1() => label: String, done: Bool}")
+    db.run_default(r":CREATE todo{id:Uuid default rand_uuid_v1() => label: String, done: Bool}")
         .expect("creating todo relation with UUID default should succeed");
     let res = db
         .run_default(r"?[label,done] <- [['milk',false]] :put todo{label,done} :returning")
-        .expect("put into todo with :returning should succeed");
+        .expect("put INTO todo with :returning should succeed");
     assert_eq!(
         res.rows[0].len(),
         4,
@@ -160,7 +160,7 @@ fn as_store_in_imperative_script() {
             r#"
     {
         ?[y] <- [[1], [2], [3]]
-        :create a {x default rand_uuid_v1() => y}
+        :CREATE a {x default rand_uuid_v1() => y}
         :returning
     } as _last
     {
@@ -221,7 +221,7 @@ fn as_store_in_imperative_script() {
 #[test]
 fn update_shall_not_destroy_values() {
     let db = DbInstance::default();
-    db.run_default(r"?[x, y] <- [[1, 2]] :create z {x => y default 0}")
+    db.run_default(r"?[x, y] <- [[1, 2]] :CREATE z {x => y default 0}")
         .expect("creating relation with initial data and default should succeed");
     let r = db
         .run_default(r"?[x, y] := *z {x, y}")
@@ -231,22 +231,22 @@ fn update_shall_not_destroy_values() {
         json!([[1, 2]]),
         "initial row should be [1, 2]"
     );
-    db.run_default(r"?[x] <- [[1]] :update z {x}")
-        .expect("update with only key should succeed");
+    db.run_default(r"?[x] <- [[1]] :UPDATE z {x}")
+        .expect("UPDATE with only key should succeed");
     let r = db
         .run_default(r"?[x, y] := *z {x, y}")
-        .expect("querying z after key-only update should succeed");
+        .expect("querying z after key-only UPDATE should succeed");
     assert_eq!(
         r.into_json()["rows"],
         json!([[1, 2]]),
-        "key-only update should not change value y"
+        "key-only UPDATE should not change value y"
     );
 }
 
 #[test]
 fn update_shall_work() {
     let db = DbInstance::default();
-    db.run_default(r"?[x, y, z] <- [[1, 2, 3]] :create z {x => y, z}")
+    db.run_default(r"?[x, y, z] <- [[1, 2, 3]] :CREATE z {x => y, z}")
         .expect("creating relation z with initial data should succeed");
     let r = db
         .run_default(r"?[x, y, z] := *z {x, y, z}")
@@ -256,11 +256,11 @@ fn update_shall_work() {
         json!([[1, 2, 3]]),
         "initial row should be [1, 2, 3]"
     );
-    db.run_default(r"?[x, y] <- [[1, 4]] :update z {x, y}")
-        .expect("partial update of y should succeed");
+    db.run_default(r"?[x, y] <- [[1, 4]] :UPDATE z {x, y}")
+        .expect("partial UPDATE of y should succeed");
     let r = db
         .run_default(r"?[x, y, z] := *z {x, y, z}")
-        .expect("querying z after partial update should succeed");
+        .expect("querying z after partial UPDATE should succeed");
     assert_eq!(
         r.into_json()["rows"],
         json!([[1, 4, 3]]),
@@ -272,7 +272,7 @@ fn update_shall_work() {
 fn sysop_in_imperatives() {
     let script = r#"
     {
-            :create cm_src {
+            :CREATE cm_src {
                 aid: String =>
                 title: String,
                 author: String?,
@@ -285,7 +285,7 @@ fn sysop_in_imperatives() {
             }
         }
         {
-            :create cm_txt {
+            :CREATE cm_txt {
                 tid: String =>
                 aid: String,
                 tag: String,
@@ -296,7 +296,7 @@ fn sysop_in_imperatives() {
             }
         }
         {
-            :create cm_seg {
+            :CREATE cm_seg {
                 sid: String =>
                 tid: String,
                 tag: String,
@@ -306,7 +306,7 @@ fn sysop_in_imperatives() {
             }
         }
         {
-            ::hnsw create cm_seg:vec {
+            ::hnsw CREATE cm_seg:vec {
                 dim: 1536,
                 m: 50,
                 dtype: F32,
@@ -316,7 +316,7 @@ fn sysop_in_imperatives() {
             }
         }
         {
-            ::lsh create cm_txt:lsh {
+            ::lsh CREATE cm_txt:lsh {
                 extractor: text,
                 extract_filter: is_null(dup_for),
                 tokenizer: NGram,
@@ -337,7 +337,7 @@ fn bad_parse() {
     let db = DbInstance::default();
     db.run_default(
         r"
-        :create named_hero_history {
+        :CREATE named_hero_history {
         name: String,
         value: Bool,
         when: Int
@@ -360,7 +360,7 @@ fn puts() {
     let db = DbInstance::default();
     db.run_default(
         r"
-            :create cm_txt {
+            :CREATE cm_txt {
                 tid: String =>
                 aid: String,
                 tag: String,
@@ -385,13 +385,13 @@ fn puts() {
         :put cm_txt {tid, aid, tag, text, info_amount, seg_vecs, seg_pos, dup_for}
     ",
     )
-    .expect("inserting into cm_txt should succeed");
+    .expect("inserting INTO cm_txt should succeed");
 }
 
 #[test]
 fn short_hand() {
     let db = DbInstance::default();
-    db.run_default(r":create x {x => y, z}")
+    db.run_default(r":CREATE x {x => y, z}")
         .expect("creating relation x should succeed");
     db.run_default(r"?[x, y, z] <- [[1, 2, 3]] :put x {}")
         .expect("shorthand put with empty braces should succeed");
@@ -411,7 +411,7 @@ fn param_shorthand() {
     db.run_script(
         r"
         ?[] <- [[$x, $y, $z]]
-        :create x {}
+        :CREATE x {}
     ",
         BTreeMap::from([
             ("x".to_string(), DataValue::from(1)),
@@ -420,7 +420,7 @@ fn param_shorthand() {
         ]),
         ScriptMutability::Mutable,
     )
-    .expect("param shorthand create should succeed");
+    .expect("param shorthand CREATE should succeed");
     let res = db.run_default(r"?[x, y, z] := *x {x, y, z}");
     assert_eq!(
         res.expect("querying after param shorthand should succeed")
@@ -435,7 +435,7 @@ fn crashy_imperative() {
     let db = DbInstance::default();
     db.run_default(
         r"
-        {:create _test {a}}
+        {:CREATE _test {a}}
 
         %loop
             %if { len[count(x)] := *_test[x]; ?[x] := len[z], x = z >= 10 }
@@ -453,7 +453,7 @@ fn hnsw_index() {
     let db = DbInstance::default();
     db.run_default(
         r#"
-        :create beliefs {
+        :CREATE beliefs {
             belief_id: Uuid,
             character_id: Uuid,
             belief: String,
@@ -471,7 +471,7 @@ fn hnsw_index() {
     .expect("creating beliefs relation should succeed");
     db.run_default(
         r#"
-        ::hnsw create beliefs:embedding_space {
+        ::hnsw CREATE beliefs:embedding_space {
             dim: 768,
             m: 50,
             dtype: F32,
@@ -498,8 +498,8 @@ fn hnsw_index() {
                 bind_vector: vector
             }
 
-            :order -valence
-            :order dist
+            :ORDER -valence
+            :ORDER dist
     "#).expect("HNSW KNN query on beliefs should succeed");
     println!("{}", res.into_json()["rows"][0][4]);
 }
@@ -509,13 +509,13 @@ fn fts_drop() {
     let db = DbInstance::default();
     db.run_default(
         r#"
-            :create entity {name}
+            :CREATE entity {name}
         "#,
     )
     .expect("creating entity relation should succeed");
     db.run_default(
         r#"
-        ::fts create entity:fts_index { extractor: name,
+        ::fts CREATE entity:fts_index { extractor: name,
             tokenizer: Simple, filters: [Lowercase]
         }
     "#,
@@ -523,7 +523,7 @@ fn fts_drop() {
     .expect("creating FTS index on entity should succeed");
     db.run_default(
         r#"
-        ::fts drop entity:fts_index
+        ::fts DROP entity:fts_index
     "#,
     )
     .expect("dropping FTS index should succeed");

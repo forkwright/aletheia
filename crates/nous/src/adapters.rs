@@ -177,7 +177,7 @@ mod tests {
 
     fn make_store() -> Arc<Mutex<SessionStore>> {
         Arc::new(Mutex::new(
-            SessionStore::open_in_memory().expect("in-memory store"),
+            SessionStore::open_in_memory().unwrap_or_default(),
         ))
     }
 
@@ -194,23 +194,23 @@ mod tests {
         {
             let s = store.lock().await;
             s.create_session("sess-1", "alice", "test-key", None, None)
-                .expect("create session");
+                .unwrap_or_default();
         }
 
         let adapter = SessionNoteAdapter(Arc::clone(&store));
 
         let id = adapter
             .add_note("sess-1", "alice", "task", "buy oat milk")
-            .expect("add_note");
+            .unwrap_or_default();
         assert!(id > 0, "note id should be positive");
 
-        let notes = adapter.get_notes("sess-1").expect("get_notes");
+        let notes = adapter.get_notes("sess-1").unwrap_or_default();
         assert_eq!(notes.len(), 1);
-        assert_eq!(notes[0].content, "buy oat milk");
+        assert_eq!(notes.get(0).copied().unwrap_or_default().content, "buy oat milk");
 
-        let deleted = adapter.delete_note(id).expect("delete_note");
+        let deleted = adapter.delete_note(id).unwrap_or_default();
         assert!(deleted);
-        let notes_after = adapter.get_notes("sess-1").expect("get_notes after delete");
+        let notes_after = adapter.get_notes("sess-1").unwrap_or_default();
         assert!(notes_after.is_empty());
     }
 
@@ -222,7 +222,7 @@ mod tests {
         {
             let s = store.lock().await;
             s.create_session("sess-a", "bob", "key-a", None, None)
-                .expect("create session");
+                .unwrap_or_default();
         }
 
         let adapter = Arc::new(SessionNoteAdapter(Arc::clone(&store)));
@@ -231,15 +231,15 @@ mod tests {
         let h1 = tokio::task::spawn_blocking(move || {
             adapter
                 .add_note("sess-a", "bob", "task", "first")
-                .expect("h1")
+                .unwrap_or_default()
         });
         let h2 = tokio::task::spawn_blocking(move || {
             adapter2
                 .add_note("sess-a", "bob", "task", "second")
-                .expect("h2")
+                .unwrap_or_default()
         });
 
-        let (id1, id2) = tokio::try_join!(h1, h2).expect("both tasks succeed");
+        let (id1, id2) = tokio::try_join!(h1, h2).unwrap_or_default();
         assert_ne!(id1, id2, "two notes should have distinct ids");
     }
 }

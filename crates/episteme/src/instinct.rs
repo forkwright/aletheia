@@ -94,7 +94,7 @@ impl ToolOutcome {
     #[must_use]
     #[expect(
         dead_code,
-        reason = "instinct outcome deserialization from knowledge store"
+        reason = "instinct outcome deserialization FROM knowledge store"
     )]
     pub(crate) fn from_stored_string(s: &str) -> Self {
         if s == "success" {

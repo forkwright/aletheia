@@ -31,13 +31,13 @@ pub(crate) fn deep_merge_json(value1: JsonValue, value2: JsonValue) -> JsonValue
 pub(crate) fn get_index(mut i: i64, total: usize, is_upper: bool) -> Result<usize> {
     if i < 0 {
         #[expect(clippy::cast_possible_wrap, reason = "length fits i64")]
-        let total_i64 = total as i64;
+        let total_i64 = i64::try_from(total).unwrap_or_default();
         i += total_i64;
     }
     Ok(if i >= 0 {
         let i = usize::try_from(i).map_err(|_e| IndexOutOfBoundsSnafu { index: i }.build())?;
         if i > total || (!is_upper && i == total) {
-            return IndexOutOfBoundsSnafu { index: i as i64 }.fail();
+            return IndexOutOfBoundsSnafu { index: i64::try_from(i).unwrap_or_default() }.fail();
         } else {
             i
         }
@@ -128,7 +128,7 @@ pub(crate) fn get_impl(args: &[DataValue]) -> Result<DataValue> {
             })?;
             let idx = get_index(n, l.len(), false)?;
             Ok(l.get(idx)
-                .ok_or_else(|| IndexOutOfBoundsSnafu { index: idx as i64 }.build())?
+                .ok_or_else(|| IndexOutOfBoundsSnafu { index: i64::try_from(idx).unwrap_or_default() }.build())?
                 .clone())
         }
         DataValue::Json(json) => {
@@ -297,7 +297,7 @@ pub(crate) fn op_union(args: &[DataValue]) -> Result<DataValue> {
             }
             _ => {
                 return TypeMismatchSnafu {
-                    op: "union",
+                    op: "UNION",
                     expected: "lists",
                 }
                 .fail();
@@ -619,7 +619,7 @@ pub(crate) fn op_slice(args: &[DataValue]) -> Result<DataValue> {
     let n = get_index(n, l.len(), true)?;
     Ok(DataValue::List(
         l.get(m..n)
-            .ok_or_else(|| IndexOutOfBoundsSnafu { index: n as i64 }.build())?
+            .ok_or_else(|| IndexOutOfBoundsSnafu { index: i64::try_from(n).unwrap_or_default() }.build())?
             .to_vec(),
     ))
 }

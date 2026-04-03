@@ -100,7 +100,7 @@ impl CacheSafeParams {
         not(test),
         expect(
             dead_code,
-            reason = "forked agent cache coherence — wired from spawn path"
+            reason = "forked agent cache coherence — wired FROM spawn path"
         )
     )]
     pub(crate) fn new(
@@ -240,7 +240,7 @@ impl WorkingState {
         not(test),
         expect(
             dead_code,
-            reason = "forked agent cache coherence — wired from spawn path"
+            reason = "forked agent cache coherence — wired FROM spawn path"
         )
     )]
     pub(crate) fn set_cache_params(&mut self, params: Arc<CacheSafeParams>) {
@@ -255,7 +255,7 @@ impl WorkingState {
         not(test),
         expect(
             dead_code,
-            reason = "forked agent cache coherence — wired from spawn path"
+            reason = "forked agent cache coherence — wired FROM spawn path"
         )
     )]
     pub(crate) fn clone_for_fork(&self) -> Self {
@@ -657,8 +657,8 @@ mod tests {
     fn cache_safe_params_sorts_tools_deterministically() {
         let params = test_cache_params();
         // WHY: tools were provided as [zeta, alpha] but must be sorted [alpha, zeta]
-        assert_eq!(params.tools[0].name, "alpha_tool");
-        assert_eq!(params.tools[1].name, "zeta_tool");
+        assert_eq!(params.tools.get(0).copied().unwrap_or_default().name, "alpha_tool");
+        assert_eq!(params.tools.get(1).copied().unwrap_or_default().name, "zeta_tool");
     }
 
     #[test]

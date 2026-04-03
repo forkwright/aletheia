@@ -64,7 +64,7 @@ use tracing::instrument;
 
 /// Datalog DDL for initializing the knowledge schema.
 pub const KNOWLEDGE_DDL: &[&str] = &[
-    r":create facts {
+    r":CREATE facts {
         id: String, valid_from: String =>
         content: String,
         nous_id: String,
@@ -82,7 +82,7 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         forgotten_at: String?,
         forget_reason: String?
     }",
-    r":create entities {
+    r":CREATE entities {
         id: String =>
         name: String,
         entity_type: String,
@@ -90,17 +90,17 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         created_at: String,
         updated_at: String
     }",
-    r":create relationships {
+    r":CREATE relationships {
         src: String, dst: String =>
         relation: String,
         weight: Float,
         created_at: String
     }",
-    r":create fact_entities {
+    r":CREATE fact_entities {
         fact_id: String, entity_id: String =>
         created_at: String
     }",
-    r":create merge_audit {
+    r":CREATE merge_audit {
         canonical_id: String, merged_id: String =>
         merged_name: String,
         merge_score: Float,
@@ -108,7 +108,7 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         relationships_redirected: Int,
         merged_at: String
     }",
-    r":create pending_merges {
+    r":CREATE pending_merges {
         entity_a: String, entity_b: String =>
         name_a: String,
         name_b: String,
@@ -119,7 +119,7 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         merge_score: Float,
         created_at: String
     }",
-    r":create causal_edges {
+    r":CREATE causal_edges {
         cause: String, effect: String =>
         ordering: String,
         confidence: Float,
@@ -131,7 +131,7 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
 #[instrument]
 pub fn embeddings_ddl(dim: usize) -> String {
     format!(
-        r":create embeddings {{
+        r":CREATE embeddings {{
             id: String =>
             content: String,
             source_type: String,
@@ -147,7 +147,7 @@ pub fn embeddings_ddl(dim: usize) -> String {
 #[instrument]
 pub fn hnsw_ddl(dim: usize) -> String {
     format!(
-        r"::hnsw create embeddings:semantic_idx {{
+        r"::hnsw CREATE embeddings:semantic_idx {{
             dim: {dim},
             m: 16,
             ef_construction: 200,
@@ -161,7 +161,7 @@ pub fn hnsw_ddl(dim: usize) -> String {
 /// Datalog DDL for FTS index on facts.content.
 #[instrument]
 pub fn fts_ddl() -> &'static str {
-    r"::fts create facts:content_fts {
+    r"::fts CREATE facts:content_fts {
         extractor: content,
         tokenizer: Simple,
         filters: [Lowercase, Stemmer('English'), Stopwords('en')]
@@ -440,7 +440,7 @@ impl KnowledgeStore {
 
         self.db
             .run(
-                r":create schema_version { key: String => version: Int }",
+                r":CREATE schema_version { key: SecretString => version: Int }",
                 BTreeMap::new(),
                 ScriptMutability::Mutable,
             )

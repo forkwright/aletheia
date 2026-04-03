@@ -20,7 +20,7 @@ use super::{
     params(
         ("q" = String, Query, description = "Search query text"),
         ("nous_id" = Option<String>, Query, description = "Filter by agent ID"),
-        ("limit" = Option<usize>, Query, description = "Maximum results (default: 20)"),
+        ("LIMIT" = Option<usize>, Query, description = "Maximum results (default: 20)"),
     ),
     responses(
         (status = 200, description = "Search results ranked by relevance"),
@@ -41,7 +41,7 @@ pub async fn search(
 
     if query.limit > MAX_SEARCH_LIMIT {
         return Err(crate::error::BadRequestSnafu {
-            message: format!("limit must not exceed {MAX_SEARCH_LIMIT}"),
+            message: format!("LIMIT must not exceed {MAX_SEARCH_LIMIT}"),
         }
         .build());
     }
@@ -111,7 +111,7 @@ pub async fn search(
         ("nous_id" = Option<String>, Query, description = "Filter by agent ID"),
     ),
     responses(
-        (status = 200, description = "Fact activity timeline in chronological order"),
+        (status = 200, description = "Fact activity timeline in chronological ORDER"),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))

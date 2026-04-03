@@ -50,7 +50,7 @@ impl KnowledgeStore {
         let limit_i64 = i64::try_from(limit).unwrap_or(i64::MAX);
         let mut params = BTreeMap::new();
         params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
-        params.insert("limit".to_owned(), DataValue::from(limit_i64));
+        params.insert("LIMIT".to_owned(), DataValue::from(limit_i64));
 
         let script = r"?[id, content, confidence, tier, recorded_at, nous_id,
               valid_from, valid_to, superseded_by, source_session_id,
@@ -64,8 +64,8 @@ impl KnowledgeStore {
             fact_type = 'skill',
             is_null(superseded_by),
             is_forgotten == false
-        :order -confidence, -access_count
-        :limit $limit";
+        :ORDER -confidence, -access_count
+        :LIMIT $LIMIT";
 
         let rows = self.run_read(script, params)?;
         rows_to_facts(rows, nous_id)
@@ -90,7 +90,7 @@ impl KnowledgeStore {
         params.insert("query_text".to_owned(), DataValue::Str(query.into()));
         params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
         params.insert("k".to_owned(), DataValue::from(limit_i64 * 3));
-        params.insert("limit".to_owned(), DataValue::from(limit_i64));
+        params.insert("LIMIT".to_owned(), DataValue::from(limit_i64));
 
         let script = r"candidates[id, score] :=
                 ~facts:content_fts{id | query: $query_text, k: $k, score_kind: 'bm25', bind_score: score}
@@ -108,8 +108,8 @@ impl KnowledgeStore {
                 fact_type = 'skill',
                 is_null(superseded_by),
                 is_forgotten == false
-            :order -confidence
-            :limit $limit";
+            :ORDER -confidence
+            :LIMIT $LIMIT";
 
         let rows = self.run_read(script, params)?;
         rows_to_facts(rows, nous_id)
@@ -161,7 +161,7 @@ impl KnowledgeStore {
             fact_type = 'skill_pending',
             is_null(superseded_by),
             is_forgotten == false
-        :order -recorded_at";
+        :ORDER -recorded_at";
 
         let rows = self.run_read(script, params)?;
         rows_to_facts(rows, nous_id)
@@ -356,7 +356,7 @@ impl KnowledgeStore {
                 reason = "skill count fits f64"
             )]
             {
-                usage_counts.iter().map(|&c| f64::from(c)).sum::<f64>() / total_active as f64
+                usage_counts.iter().map(|&c| f64::from(c)).sum::<f64>() / f64::try_from(total_active).unwrap_or_default()
             }
         } else {
             0.0

@@ -305,7 +305,7 @@ impl DreamEngine {
         let provider = Arc::clone(provider);
 
         tokio::spawn(async move {
-            let span = tracing::info_span!("auto_dream_consolidation");
+            let span = tracing::info_span!("auto_dream_consolidation".instrument(tracing::info_span!("spawned_task")));
             let _guard = span.enter();
 
             tracing::info!("auto-dream consolidation started");

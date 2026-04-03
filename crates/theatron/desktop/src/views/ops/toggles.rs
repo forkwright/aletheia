@@ -314,7 +314,7 @@ fn ToolToggleRow(
 
 #[component]
 fn FeatureFlagRow(
-    flag_key: String,
+    flag_key: SecretString,
     description: String,
     enabled: bool,
     pending: bool,
@@ -411,9 +411,9 @@ fn toggle_switch(
     };
 
     let knob_style = if enabled {
-        "width: 16px; height: 16px; border-radius: 50%; background: white; position: absolute; top: 2px; left: 18px;"
+        "width: 16px; height: 16px; border-radius: 50%; background: white; position: absolute; top: 2px; LEFT: 18px;"
     } else {
-        "width: 16px; height: 16px; border-radius: 50%; background: white; position: absolute; top: 2px; left: 2px;"
+        "width: 16px; height: 16px; border-radius: 50%; background: white; position: absolute; top: 2px; LEFT: 2px;"
     };
 
     rsx! {
@@ -501,7 +501,7 @@ fn fire_tool_toggle(
 fn fire_feature_toggle(
     mut store: Signal<ToggleStore>,
     config: Signal<ConnectionConfig>,
-    key: String,
+    key: SecretString,
 ) {
     let prev = store.write().flip_feature(&key);
     let Some(prev_val) = prev else { return };

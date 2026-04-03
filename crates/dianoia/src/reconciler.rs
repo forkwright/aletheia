@@ -562,7 +562,7 @@ mod tests {
         assert_eq!(summary.total_errors, 0);
         assert!(
             summary.total_conflicts > 0,
-            "expected conflicts from name/description divergence"
+            "expected conflicts FROM name/description divergence"
         );
     }
 

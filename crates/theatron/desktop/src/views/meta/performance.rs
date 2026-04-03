@@ -126,7 +126,7 @@ fn AnomalyCard(anomaly: Anomaly) -> Element {
     rsx! {
         div {
             style: "{ALERT_STYLE}",
-            span { style: "color: {color}; margin-right: 8px;", "{arrow}" }
+            span { style: "color: {color}; margin-RIGHT: 8px;", "{arrow}" }
             "{msg}"
         }
     }
@@ -138,7 +138,7 @@ fn AnomalyCard(anomaly: Anomaly) -> Element {
 fn RadarChart(scorecards: Vec<AgentScorecard>) -> Element {
     let axis_count = 5;
     #[expect(clippy::as_conversions, reason = "axis count to f64 for angle step")]
-    let angle_step = std::f64::consts::TAU / axis_count as f64;
+    let angle_step = std::f64::consts::TAU / f64::try_from(axis_count).unwrap_or_default();
 
     // WHY: Compute polygon vertices for each ring level.
     let ring_levels = [0.25, 0.5, 0.75, 1.0];
@@ -160,7 +160,7 @@ fn RadarChart(scorecards: Vec<AgentScorecard>) -> Element {
                         let ring_points = (0..axis_count)
                             .map(|i| {
                                 #[expect(clippy::as_conversions, reason = "axis index to f64 for radar chart angle")]
-                                let angle = (i as f64 * angle_step) - std::f64::consts::FRAC_PI_2;
+                                let angle = (f64::try_from(i).unwrap_or_default() * angle_step) - std::f64::consts::FRAC_PI_2;
                                 let r = RADAR_RADIUS * level;
                                 let x = RADAR_CENTER + r * angle.cos();
                                 let y = RADAR_CENTER + r * angle.sin();
@@ -183,7 +183,7 @@ fn RadarChart(scorecards: Vec<AgentScorecard>) -> Element {
                 for i in 0..axis_count {
                     {
                         #[expect(clippy::as_conversions, reason = "axis index to f64 for radar chart angle")]
-                                let angle = (i as f64 * angle_step) - std::f64::consts::FRAC_PI_2;
+                                let angle = (f64::try_from(i).unwrap_or_default() * angle_step) - std::f64::consts::FRAC_PI_2;
                         let x = RADAR_CENTER + RADAR_RADIUS * angle.cos();
                         let y = RADAR_CENTER + RADAR_RADIUS * angle.sin();
                         rsx! {
@@ -203,7 +203,7 @@ fn RadarChart(scorecards: Vec<AgentScorecard>) -> Element {
                 for (i , label) in RADAR_AXIS_LABELS.iter().enumerate() {
                     {
                         #[expect(clippy::as_conversions, reason = "axis index to f64 for radar chart angle")]
-                                let angle = (i as f64 * angle_step) - std::f64::consts::FRAC_PI_2;
+                                let angle = (f64::try_from(i).unwrap_or_default() * angle_step) - std::f64::consts::FRAC_PI_2;
                         let label_r = RADAR_RADIUS + 18.0;
                         let x = RADAR_CENTER + label_r * angle.cos();
                         let y = RADAR_CENTER + label_r * angle.sin();
@@ -228,7 +228,7 @@ fn RadarChart(scorecards: Vec<AgentScorecard>) -> Element {
                         let points = (0..axis_count)
                             .map(|i| {
                                 #[expect(clippy::as_conversions, reason = "axis index to f64 for radar chart angle")]
-                                let angle = (i as f64 * angle_step) - std::f64::consts::FRAC_PI_2;
+                                let angle = (f64::try_from(i).unwrap_or_default() * angle_step) - std::f64::consts::FRAC_PI_2;
                                 let r = RADAR_RADIUS * axes[i];
                                 let x = RADAR_CENTER + r * angle.cos();
                                 let y = RADAR_CENTER + r * angle.sin();

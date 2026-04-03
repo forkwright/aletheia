@@ -309,7 +309,7 @@ mod registry_tests {
         assert_eq!(
             *calls,
             vec!["first", "second", "third"],
-            "hooks should run in priority order (lower number first)"
+            "hooks should run in priority ORDER (lower number first)"
         );
     }
 
@@ -343,7 +343,7 @@ mod registry_tests {
         let result = registry.run_before_query(&mut ctx).await;
         assert!(
             matches!(result, HookResult::Abort { .. }),
-            "should abort from aborting hook"
+            "should abort FROM aborting hook"
         );
 
         let calls = order.lock().expect("lock");
@@ -381,7 +381,7 @@ mod registry_tests {
 
         assert!(
             matches!(result, ToolHookResult::Deny { .. }),
-            "should deny from denying hook"
+            "should deny FROM denying hook"
         );
 
         let calls = order.lock().expect("lock");
@@ -455,7 +455,7 @@ mod registry_tests {
         assert_eq!(
             *calls,
             vec!["a", "b", "c"],
-            "equal-priority hooks should run in insertion order"
+            "equal-priority hooks should run in insertion ORDER"
         );
     }
 }

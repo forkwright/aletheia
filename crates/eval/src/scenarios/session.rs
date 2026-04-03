@@ -19,7 +19,7 @@ struct SessionCreateAndGet;
 impl Scenario for SessionCreateAndGet {
     fn meta(&self) -> ScenarioMeta {
         ScenarioMeta {
-            id: "session-create-and-get",
+            id: "session-CREATE-and-get",
             description: "Create a session and retrieve it by ID",
             category: "session",
             requires_auth: true,
@@ -36,7 +36,7 @@ impl Scenario for SessionCreateAndGet {
                     .first()
                     .context(crate::error::NoAgentsAvailableSnafu)?;
                 let nous_id = &nous.id;
-                let key = super::unique_key("session", "create");
+                let key = super::unique_key("session", "CREATE");
                 let session = client.create_session(nous_id, &key).await?;
                 assert_eval(!session.id.is_empty(), "session id should not be empty")?;
                 assert_eq_eval(&session.nous_id, nous_id, "nous_id should match")?;
@@ -53,7 +53,7 @@ impl Scenario for SessionCreateAndGet {
             }
             .instrument(tracing::info_span!(
                 "scenario",
-                id = "session-create-and-get"
+                id = "session-CREATE-and-get"
             )),
         )
     }

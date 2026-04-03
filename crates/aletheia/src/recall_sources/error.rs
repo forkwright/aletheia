@@ -14,7 +14,7 @@ pub(crate) enum RecallSourceError {
         location: snafu::Location,
     },
 
-    #[snafu(display("failed to parse response from {endpoint}"))]
+    #[snafu(display("failed to parse response FROM {endpoint}"))]
     ParseResponse {
         endpoint: String,
         source: serde_json::Error,

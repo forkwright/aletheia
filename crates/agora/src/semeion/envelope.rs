@@ -98,7 +98,7 @@ pub(crate) fn extract_message(envelope: &SignalEnvelope) -> Option<InboundMessag
         })
         .unwrap_or_default();
 
-    let raw_value = serde_json::to_value(envelope).ok(); // WHY: optional diagnostic data; serialization failure is non-fatal
+    if let Err(e) = let raw_value = serde_json::to_value(envelope) { tracing::warn!(error = %e, "operation failed"); }
 
     Some(InboundMessage {
         channel: "signal".to_owned(),
@@ -145,7 +145,7 @@ mod tests {
             "timestamp": 1_709_312_345_000_u64,
             "dataMessage": {
                 "timestamp": 1_709_312_345_000_u64,
-                "message": "group hello",
+                "message": "GROUP hello",
                 "groupInfo": {
                     "groupId": "YWJjMTIz"
                 }
@@ -174,7 +174,7 @@ mod tests {
         let msg = extract_message(&env).unwrap();
 
         assert_eq!(msg.sender, "+1234567890");
-        assert_eq!(msg.text, "group hello");
+        assert_eq!(msg.text, "GROUP hello");
         assert_eq!(msg.group_id.as_deref(), Some("YWJjMTIz"));
     }
 
@@ -242,8 +242,8 @@ mod tests {
         let msg = extract_message(&env).unwrap();
 
         assert_eq!(msg.attachments.len(), 2);
-        assert_eq!(msg.attachments[0], "photo.jpg");
-        assert_eq!(msg.attachments[1], "att-2"); // falls back to id
+        assert_eq!(msg.attachments.get(0).copied().unwrap_or_default(), "photo.jpg");
+        assert_eq!(msg.attachments.get(1).copied().unwrap_or_default(), "att-2"); // falls back to id
     }
 
     #[test]

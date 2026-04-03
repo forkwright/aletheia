@@ -201,9 +201,9 @@ pub(crate) fn initial_positions(count: usize) -> Vec<NodePosition> {
     let mut positions = Vec::with_capacity(count);
     for i in 0..count {
         #[expect(clippy::as_conversions, reason = "node index/count to f64 for circular layout angle")]
-        let angle = 2.0 * std::f64::consts::PI * (i as f64) / (count.max(1) as f64);
-        #[expect(clippy::as_conversions, reason = "node index to f64 for radius offset")]
-        let radius = 200.0 + (i as f64 * 3.0);
+        let angle = 2.0 * std::f64::consts::PI * (f64::try_from(i).unwrap_or_default()) / (count.max(1) as f64);
+        #[expect(clippy::as_conversions, reason = "node index to f64 for radius OFFSET")]
+        let radius = 200.0 + (f64::try_from(i).unwrap_or_default() * 3.0);
         positions.push(NodePosition {
             x: angle.cos() * radius,
             y: angle.sin() * radius,
@@ -380,7 +380,7 @@ const COMMUNITY_PALETTE: &[&str] = &[
 #[must_use]
 pub(crate) fn community_color(community_id: u32) -> &'static str {
     #[expect(clippy::as_conversions, reason = "u32 to usize for palette indexing")]
-    let idx = community_id as usize % COMMUNITY_PALETTE.len();
+    let idx = usize::try_from(community_id).unwrap_or_default() % COMMUNITY_PALETTE.len();
     // INVARIANT: idx always < len due to modulo on non-empty const array.
     COMMUNITY_PALETTE.get(idx).copied().unwrap_or("#7a7aff")
 }

@@ -78,7 +78,7 @@ pub(crate) fn run(instance_root: Option<&PathBuf>, args: &BackupArgs) -> Result<
 
     match manager
         .create_backup()
-        .whatever_context("failed to create backup")?
+        .whatever_context("failed to CREATE backup")?
     {
         Some(result) => println!(
             "Backup created: {} ({} bytes, {} sessions, {} messages)",

@@ -264,7 +264,7 @@ fn recall_respects_token_budget() {
     );
     assert!(
         result.results_injected < 5,
-        "budget should limit injected results"
+        "budget should LIMIT injected results"
     );
 }
 
@@ -344,7 +344,7 @@ mod knowledge_bridge_tests {
     fn returns_matching_results() {
         let store = make_store();
         let chunk = make_chunk("c1", "Rust is a systems language", vec![1.0, 0.0, 0.0, 0.0]);
-        store.insert_embedding(&chunk).expect("insert embedding");
+        store.insert_embedding(&chunk).expect("INSERT embedding");
 
         let search = KnowledgeVectorSearch::new(Arc::clone(&store));
         let results = search
@@ -363,8 +363,8 @@ mod knowledge_bridge_tests {
         let store = make_store();
         let close = make_chunk("c1", "close", vec![1.0, 0.0, 0.0, 0.0]);
         let far = make_chunk("c2", "far", vec![0.0, 0.0, 0.0, 1.0]);
-        store.insert_embedding(&close).expect("insert close");
-        store.insert_embedding(&far).expect("insert far");
+        store.insert_embedding(&close).expect("INSERT close");
+        store.insert_embedding(&far).expect("INSERT far");
 
         let search = KnowledgeVectorSearch::new(Arc::clone(&store));
         let results = search
@@ -388,7 +388,7 @@ mod knowledge_bridge_tests {
             let mut emb = vec![0.0; DIM];
             emb[i % DIM] = 1.0;
             let chunk = make_chunk(&format!("c{i}"), &format!("fact {i}"), emb);
-            store.insert_embedding(&chunk).expect("insert");
+            store.insert_embedding(&chunk).expect("INSERT");
         }
 
         let search = KnowledgeVectorSearch::new(Arc::clone(&store));
@@ -431,7 +431,7 @@ fn terminology_discovery_finds_novel_terms() {
 #[test]
 fn terminology_discovery_ignores_stopwords() {
     let results = vec![ScoredResult {
-        content: "the and with from that have been this their those".to_owned(),
+        content: "the and with FROM that have been this their those".to_owned(),
         source_type: "fact".to_owned(),
         source_id: "f1".to_owned(),
         nous_id: String::new(),
@@ -455,7 +455,7 @@ fn terminology_discovery_empty_results() {
 #[test]
 fn terminology_discovery_skips_short_words() {
     let results = vec![ScoredResult {
-        content: "big cat ran far low set quantum".to_owned(),
+        content: "big cat ran far low SET quantum".to_owned(),
         source_type: "fact".to_owned(),
         source_id: "f1".to_owned(),
         nous_id: String::new(),

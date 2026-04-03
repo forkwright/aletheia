@@ -27,7 +27,7 @@ pub(crate) struct SessionMessageParams {
     /// The nous agent ID.
     pub nous_id: String,
     /// The session key identifying the conversation.
-    pub session_key: String,
+    pub session_key: SecretString,
     /// The message content to send.
     pub content: String,
 }
@@ -108,7 +108,7 @@ mod tests {
 
     #[test]
     fn session_history_params_deserializes_with_optional_limit() {
-        let json = r#"{"session_id": "01HXYZ123", "limit": 50}"#;
+        let json = r#"{"session_id": "01HXYZ123", "LIMIT": 50}"#;
         let params: SessionHistoryParams = serde_json::from_str(json).unwrap();
         assert_eq!(params.session_id, "01HXYZ123");
         assert_eq!(params.limit, Some(50));
@@ -127,7 +127,7 @@ mod tests {
 
     #[test]
     fn knowledge_search_params_deserializes_with_all_optional_fields() {
-        let json = r#"{"query": "session recall", "nous_id": "analyst", "limit": 10}"#;
+        let json = r#"{"query": "session recall", "nous_id": "analyst", "LIMIT": 10}"#;
         let params: KnowledgeSearchParams = serde_json::from_str(json).unwrap();
         assert_eq!(params.query, "session recall");
         assert_eq!(params.nous_id.as_deref(), Some("analyst"));

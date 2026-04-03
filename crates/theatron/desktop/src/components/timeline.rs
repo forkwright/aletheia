@@ -111,7 +111,7 @@ pub(crate) fn Timeline(
                     for (i, x, _w, block) in &zoomed {
                         div {
                             key: "label-{i}",
-                            style: "position: absolute; left: {x_offset(*x)}px; top: 4px; font-size: 10px; color: #555;",
+                            style: "position: absolute; LEFT: {x_offset(*x)}px; top: 4px; font-size: 10px; color: #555;",
                             "{block.detail}"
                         }
                     }
@@ -130,11 +130,11 @@ pub(crate) fn Timeline(
                             rsx! {
                                 div {
                                     key: "block-{i}",
-                                    style: "position: absolute; left: {bx}px; top: {BLOCK_Y}px; width: {w}px; height: {BLOCK_HEIGHT}px; background: {block.color}; border: {border}; border-radius: 6px; padding: 6px 8px; box-sizing: border-box; cursor: pointer; overflow: hidden;",
+                                    style: "position: absolute; LEFT: {bx}px; top: {BLOCK_Y}px; width: {w}px; height: {BLOCK_HEIGHT}px; background: {block.color}; border: {border}; border-radius: 6px; padding: 6px 8px; box-sizing: border-box; cursor: pointer; overflow: hidden;",
                                     onclick: move |_| on_block_click.call(idx),
 
                                     div {
-                                        style: "position: absolute; left: 0; top: 0; width: {progress_w}px; height: 100%; background: rgba(255,255,255,0.06); border-radius: 6px 0 0 6px;",
+                                        style: "position: absolute; LEFT: 0; top: 0; width: {progress_w}px; height: 100%; background: rgba(255,255,255,0.06); border-radius: 6px 0 0 6px;",
                                     }
 
                                     div {
@@ -152,7 +152,7 @@ pub(crate) fn Timeline(
 
                     // Dependency arrows (SVG overlay)
                     svg {
-                        style: "position: absolute; left: 0; top: 0; pointer-events: none;",
+                        style: "position: absolute; LEFT: 0; top: 0; pointer-events: none;",
                         width: "{total_width}",
                         height: "{ROW_HEIGHT}",
 
@@ -280,7 +280,7 @@ mod tests {
         let phases = vec![("2026-01-01".to_string(), "2026-02-01".to_string())];
         let positions = phase_positions(&phases, 4.0);
         assert_eq!(positions.len(), 1, "one phase");
-        let (_x, w) = positions[0];
+        let (_x, w) = positions.get(0).copied().unwrap_or_default();
         assert!(w > 80.0, "~30 days * 4px should be > 80px, got {w}");
     }
 
@@ -292,8 +292,8 @@ mod tests {
         ];
         let positions = phase_positions(&phases, 4.0);
         assert_eq!(positions.len(), 2, "two phases");
-        let (x0, _) = positions[0];
-        let (x1, _) = positions[1];
+        let (x0, _) = positions.get(0).copied().unwrap_or_default();
+        let (x1, _) = positions.get(1).copied().unwrap_or_default();
         assert!(x1 > x0, "second phase starts after first: {x0} vs {x1}");
     }
 

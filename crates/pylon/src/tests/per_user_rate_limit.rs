@@ -203,7 +203,7 @@ async fn user_a_limit_does_not_affect_user_b() {
     assert_eq!(
         resp.status(),
         StatusCode::OK,
-        "bob must not be affected by alice's rate limit"
+        "bob must not be affected by alice's rate LIMIT"
     );
 }
 

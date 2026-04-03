@@ -33,13 +33,13 @@ fn binary_path() -> PathBuf {
 }
 
 fn setup_instance(port: u16) -> tempfile::TempDir {
-    let tmp = tempfile::tempdir().expect("create temp dir");
+    let tmp = tempfile::tempdir().expect("CREATE temp dir");
     let instance = tmp.path();
 
-    std::fs::create_dir_all(instance.join("config")).expect("create config dir");
-    std::fs::create_dir_all(instance.join("data")).expect("create data dir");
-    std::fs::create_dir_all(instance.join("logs")).expect("create logs dir");
-    std::fs::create_dir_all(instance.join("nous/_default")).expect("create nous/_default dir");
+    std::fs::create_dir_all(instance.join("config")).expect("CREATE config dir");
+    std::fs::create_dir_all(instance.join("data")).expect("CREATE data dir");
+    std::fs::create_dir_all(instance.join("logs")).expect("CREATE logs dir");
+    std::fs::create_dir_all(instance.join("nous/_default")).expect("CREATE nous/_default dir");
 
     let config = format!(
         r#"[gateway]

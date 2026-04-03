@@ -62,7 +62,7 @@ pub(super) fn spawn_log_retention(log_dir: PathBuf, retention_days: u32, token: 
                         tracing::warn!(error = %e, "log retention cleanup failed");
                     }
                     Err(e) => {
-                        tracing::warn!(error = %e, "log retention task join error");
+                        tracing::warn!(error = %e, "log retention task JOIN error");
                     }
                 }
 
@@ -144,7 +144,7 @@ pub(super) fn init_tracing(
             .with(text_console)
             .with(redacting)
             .try_init()
-            .whatever_context("failed to set global tracing subscriber")?;
+            .whatever_context("failed to SET global tracing subscriber")?;
     } else {
         let file_layer = fmt::layer()
             .json()
@@ -158,7 +158,7 @@ pub(super) fn init_tracing(
             .with(text_console)
             .with(file_layer)
             .try_init()
-            .whatever_context("failed to set global tracing subscriber")?;
+            .whatever_context("failed to SET global tracing subscriber")?;
     }
 
     Ok(guard)
@@ -190,13 +190,13 @@ pub(super) async fn shutdown_signal() {
     let ctrl_c = async {
         tokio::signal::ctrl_c()
             .await
-            .expect("failed to install ctrl+c handler");
+            .unwrap_or_default();
     };
 
     #[cfg(unix)]
     let terminate = async {
         tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .expect("failed to install SIGTERM handler")
+            .unwrap_or_default()
             .recv()
             .await;
     };

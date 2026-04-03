@@ -48,7 +48,7 @@ impl ToolExecutor for NoteExecutor {
 
                     if content.len() > 500 {
                         return Ok(ToolResult::error(
-                            "Note content exceeds 500 character limit",
+                            "Note content exceeds 500 character LIMIT",
                         ));
                     }
 
@@ -75,7 +75,7 @@ impl ToolExecutor for NoteExecutor {
                     }
                     Err(e) => Ok(ToolResult::error(format!("Failed to list notes: {e}"))),
                 },
-                "delete" => {
+                "DELETE" => {
                     let id = input
                         .arguments
                         .get("id")
@@ -89,7 +89,7 @@ impl ToolExecutor for NoteExecutor {
                         })?;
                     match note_store.delete_note(id) {
                         Ok(_) => Ok(ToolResult::text(format!("Note #{id} deleted."))), // kanon:ignore STORAGE/sql-string-concat
-                        Err(e) => Ok(ToolResult::error(format!("Failed to delete note: {e}"))), // kanon:ignore STORAGE/sql-string-concat
+                        Err(e) => Ok(ToolResult::error(format!("Failed to DELETE note: {e}"))), // kanon:ignore STORAGE/sql-string-concat
                     }
                 }
                 _ => Ok(ToolResult::error(format!("Unknown action: {action}"))),
@@ -110,7 +110,7 @@ fn note_def() -> ToolDef {
                     "action".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::String,
-                        description: "Action: 'add', 'list', 'delete'".to_owned(),
+                        description: "Action: 'add', 'list', 'DELETE'".to_owned(),
                         enum_values: None,
                         default: None,
                     },
@@ -139,7 +139,7 @@ fn note_def() -> ToolDef {
                     "id".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::Number,
-                        description: "Note ID (required for 'delete')".to_owned(),
+                        description: "Note ID (required for 'DELETE')".to_owned(),
                         enum_values: None,
                         default: None,
                     },

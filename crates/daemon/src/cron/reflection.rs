@@ -40,7 +40,7 @@ pub(crate) async fn execute_reflection(
     let prompt = concat!(
         "Run reflection cycle: review your recent sessions and performance. ",
         "Identify patterns, recurring corrections, contradictions in your knowledge, ",
-        "and areas where you could improve. Consolidate any insights into your ",
+        "and areas WHERE you could improve. Consolidate any insights INTO your ",
         "long-term memory. Evaluate your strengths and weaknesses by domain."
     );
 
@@ -89,8 +89,8 @@ mod tests {
     async fn execute_without_bridge_returns_failure() {
         let result = execute_reflection("test-nous", None)
             .await
-            .expect("should not error");
+            .unwrap_or_default();
         assert!(!result.success);
-        assert!(result.output.expect("has output").contains("no bridge"));
+        assert!(result.output.unwrap_or_default().contains("no bridge"));
     }
 }

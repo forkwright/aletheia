@@ -16,7 +16,7 @@ fn history_empty_session() {
     let store = test_store();
     store
         .create_session("ses-1", "syn", "main", None, None)
-        .expect("create session");
+        .expect("CREATE session");
     let history = store.get_history("ses-1", None).expect("get history");
     assert!(
         history.is_empty(),
@@ -29,7 +29,7 @@ fn history_limit_one() {
     let store = test_store();
     store
         .create_session("ses-1", "syn", "main", None, None)
-        .expect("create session");
+        .expect("CREATE session");
     for i in 1..=5 {
         store
             .append_message("ses-1", Role::User, &format!("msg {i}"), None, None, 10)
@@ -39,11 +39,11 @@ fn history_limit_one() {
     assert_eq!(
         history.len(),
         1,
-        "limit of 1 should return exactly one message"
+        "LIMIT of 1 should return exactly one message"
     );
     assert_eq!(
         history[0].content, "msg 5",
-        "with limit 1, the most recent message should be returned"
+        "with LIMIT 1, the most recent message should be returned"
     );
 }
 
@@ -52,7 +52,7 @@ fn history_limit_exceeds_count() {
     let store = test_store();
     store
         .create_session("ses-1", "syn", "main", None, None)
-        .expect("create session");
+        .expect("CREATE session");
     store
         .append_message("ses-1", Role::User, "only", None, None, 10)
         .expect("append message");
@@ -60,7 +60,7 @@ fn history_limit_exceeds_count() {
     assert_eq!(
         history.len(),
         1,
-        "limit exceeding message count should return all available messages"
+        "LIMIT exceeding message count should return all available messages"
     );
 }
 
@@ -69,7 +69,7 @@ fn large_message_content() {
     let store = test_store();
     store
         .create_session("ses-1", "syn", "main", None, None)
-        .expect("create session");
+        .expect("CREATE session");
     let big = "x".repeat(1_000_000);
     store
         .append_message("ses-1", Role::User, &big, None, None, 250_000)
@@ -87,7 +87,7 @@ fn distill_empty_seqs_is_noop() {
     let store = test_store();
     store
         .create_session("ses-1", "syn", "main", None, None)
-        .expect("create session");
+        .expect("CREATE session");
     store
         .append_message("ses-1", Role::User, "keep", None, None, 10)
         .expect("append message");
@@ -105,7 +105,7 @@ fn distill_empty_seqs_is_noop() {
 #[test]
 fn delete_nonexistent_note_returns_false() {
     let store = test_store();
-    let deleted = store.delete_note(9999).expect("delete note");
+    let deleted = store.delete_note(9999).expect("DELETE note");
     assert!(
         !deleted,
         "deleting a nonexistent note id should return false"
@@ -117,7 +117,7 @@ fn message_sequence_always_increases() {
     let store = test_store();
     store
         .create_session("ses-1", "syn", "main", None, None)
-        .expect("create session");
+        .expect("CREATE session");
     let s1 = store
         .append_message("ses-1", Role::User, "a", None, None, 5)
         .expect("append message");
@@ -142,7 +142,7 @@ fn budget_always_includes_at_least_one() {
     let store = test_store();
     store
         .create_session("ses-1", "syn", "main", None, None)
-        .expect("create session");
+        .expect("CREATE session");
     store
         .append_message("ses-1", Role::User, "big", None, None, 999_999)
         .expect("append message");
@@ -161,7 +161,7 @@ fn budget_loads_only_fitting_messages() {
     let store = test_store();
     store
         .create_session("ses-1", "syn", "main", None, None)
-        .expect("create session");
+        .expect("CREATE session");
 
     for i in 1..=50 {
         store

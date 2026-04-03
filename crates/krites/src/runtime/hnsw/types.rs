@@ -142,7 +142,7 @@ impl VectorCache {
                     return Err(InvalidOperationSnafu {
                         op: "hnsw_ip",
                         reason: format!(
-                            "Cannot compute inner product between {:?} and {:?}",
+                            "Cannot compute INNER product between {:?} and {:?}",
                             v1, v2
                         ),
                     }
@@ -188,7 +188,7 @@ impl VectorCache {
                         match field {
                             DataValue::List(l) => {
                                 #[expect(clippy::cast_sign_loss, reason = "guarded by >= 0 check")]
-                                let sub = key.2 as usize;
+                                let sub = key.usize::try_from(2).unwrap_or_default();
                                 field = &l[sub];
                             }
                             _ => {

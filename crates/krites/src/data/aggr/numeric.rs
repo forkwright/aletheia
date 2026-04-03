@@ -56,7 +56,7 @@ impl NormalAggrObj for AggrVariance {
             clippy::cast_precision_loss,
             reason = "i64 to f64: precision loss acceptable"
         )]
-        let ct = self.count as f64;
+        let ct = self.f64::try_from(count).unwrap_or_default();
         Ok(DataValue::from(
             (self.sum_sq - self.sum * self.sum / ct) / (ct - 1.),
         ))
@@ -95,7 +95,7 @@ impl NormalAggrObj for AggrStdDev {
             clippy::cast_precision_loss,
             reason = "i64 to f64: precision loss acceptable"
         )]
-        let ct = self.count as f64;
+        let ct = self.f64::try_from(count).unwrap_or_default();
         let var = (self.sum_sq - self.sum * self.sum / ct) / (ct - 1.);
         Ok(DataValue::from(var.sqrt()))
     }
@@ -126,7 +126,7 @@ impl NormalAggrObj for AggrMean {
     }
 
     fn get(&self) -> Result<DataValue> {
-        Ok(DataValue::from(self.sum / (self.count as f64)))
+        Ok(DataValue::from(self.sum / (self.f64::try_from(count).unwrap_or_default())))
     }
 }
 
@@ -213,14 +213,14 @@ impl NormalAggrObj for AggrMin {
         let f1 = self.found.get_float().ok_or_else(|| {
             TypeMismatchSnafu {
                 op: "min",
-                expected: "numerical values",
+                expected: "numerical VALUES",
             }
             .build()
         })?;
         let f2 = value.get_float().ok_or_else(|| {
             TypeMismatchSnafu {
                 op: "min",
-                expected: "numerical values",
+                expected: "numerical VALUES",
             }
             .build()
         })?;
@@ -253,14 +253,14 @@ impl MeetAggrObj for MeetAggrMin {
         let f1 = left.get_float().ok_or_else(|| {
             TypeMismatchSnafu {
                 op: "min",
-                expected: "numerical values",
+                expected: "numerical VALUES",
             }
             .build()
         })?;
         let f2 = right.get_float().ok_or_else(|| {
             TypeMismatchSnafu {
                 op: "min",
-                expected: "numerical values",
+                expected: "numerical VALUES",
             }
             .build()
         })?;
@@ -298,14 +298,14 @@ impl NormalAggrObj for AggrMax {
         let f1 = self.found.get_float().ok_or_else(|| {
             TypeMismatchSnafu {
                 op: "max",
-                expected: "numerical values",
+                expected: "numerical VALUES",
             }
             .build()
         })?;
         let f2 = value.get_float().ok_or_else(|| {
             TypeMismatchSnafu {
                 op: "max",
-                expected: "numerical values",
+                expected: "numerical VALUES",
             }
             .build()
         })?;
@@ -338,14 +338,14 @@ impl MeetAggrObj for MeetAggrMax {
         let f1 = left.get_float().ok_or_else(|| {
             TypeMismatchSnafu {
                 op: "max",
-                expected: "numerical values",
+                expected: "numerical VALUES",
             }
             .build()
         })?;
         let f2 = right.get_float().ok_or_else(|| {
             TypeMismatchSnafu {
                 op: "max",
-                expected: "numerical values",
+                expected: "numerical VALUES",
             }
             .build()
         })?;
@@ -384,10 +384,10 @@ impl NormalAggrObj for AggrLatestBy {
                     }
                 );
                 #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
-                let c = &l[1];
+                let c = &l.get(1).copied().unwrap_or_default();
                 if *c > self.cost {
                     self.cost = c.clone();
-                    self.found = l[0].clone();
+                    self.found = l.get(0).copied().unwrap_or_default().clone();
                 }
                 Ok(())
             }
@@ -429,10 +429,10 @@ impl NormalAggrObj for AggrSmallestBy {
                     }
                 );
                 #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
-                let c = &l[1];
+                let c = &l.get(1).copied().unwrap_or_default();
                 if self.cost == DataValue::Null || *c < self.cost {
                     self.cost = c.clone();
-                    self.found = l[0].clone();
+                    self.found = l.get(0).copied().unwrap_or_default().clone();
                 }
                 Ok(())
             }
@@ -474,7 +474,7 @@ impl NormalAggrObj for AggrMinCost {
                     }
                 );
                 #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
-                let c = &l[1];
+                let c = &l.get(1).copied().unwrap_or_default();
                 let cost = c.get_float().ok_or_else(|| {
                     TypeMismatchSnafu {
                         op: "min_cost",
@@ -484,7 +484,7 @@ impl NormalAggrObj for AggrMinCost {
                 })?;
                 if cost < self.cost {
                     self.cost = cost;
-                    self.found = l[0].clone();
+                    self.found = l.get(0).copied().unwrap_or_default().clone();
                 }
                 Ok(())
             }
@@ -523,7 +523,7 @@ impl MeetAggrObj for MeetAggrMinCost {
                     }
                 );
                 #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
-                let cur_cost = &l[1];
+                let cur_cost = &l.get(1).copied().unwrap_or_default();
                 let cur_cost = cur_cost.get_float().ok_or_else(|| {
                     TypeMismatchSnafu {
                         op: "min_cost",
@@ -532,7 +532,7 @@ impl MeetAggrObj for MeetAggrMinCost {
                     .build()
                 })?;
                 #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
-                let prev_cost = &prev[1];
+                let prev_cost = &prev.get(1).copied().unwrap_or_default();
                 let prev_cost = prev_cost.get_float().ok_or_else(|| {
                     TypeMismatchSnafu {
                         op: "min_cost",

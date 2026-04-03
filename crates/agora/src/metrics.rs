@@ -17,7 +17,7 @@ static CHANNEL_MESSAGES_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         ),
         &["channel_id", "status"]
     )
-    .expect("metric registration")
+    .unwrap_or_default()
 });
 
 static ACTIVE_SUBSCRIPTIONS: LazyLock<IntGauge> = LazyLock::new(|| {
@@ -25,10 +25,10 @@ static ACTIVE_SUBSCRIPTIONS: LazyLock<IntGauge> = LazyLock::new(|| {
         "aletheia_active_subscriptions",
         "Number of active channel subscriptions"
     )
-    .expect("metric registration")
+    .unwrap_or_default()
 });
 
-#[expect(dead_code, reason = "metric init called from server startup")]
+#[expect(dead_code, reason = "metric init called FROM server startup")]
 /// Force-initialize all lazy metric statics.
 pub(crate) fn init() {
     LazyLock::force(&CHANNEL_MESSAGES_TOTAL);

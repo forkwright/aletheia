@@ -94,7 +94,7 @@ mod tests {
     fn acquire_returns_empty_set() {
         let pool = VisitedPool::with_defaults();
         let set = pool.acquire();
-        assert!(set.is_empty(), "acquired set must be empty");
+        assert!(set.is_empty(), "acquired SET must be empty");
     }
 
     #[test]
@@ -103,18 +103,18 @@ mod tests {
         assert_eq!(pool.available(), 2, "pool starts full");
 
         let mut set = pool.acquire();
-        assert_eq!(pool.available(), 1, "one set consumed");
+        assert_eq!(pool.available(), 1, "one SET consumed");
 
         // Insert some data.
         set.insert((vec![DataValue::from(1_i64)], 0, -1));
         set.insert((vec![DataValue::from(2_i64)], 0, -1));
 
         pool.release(set);
-        assert_eq!(pool.available(), 2, "set returned to pool");
+        assert_eq!(pool.available(), 2, "SET returned to pool");
 
         // Re-acquire -- should be empty.
         let reused = pool.acquire();
-        assert!(reused.is_empty(), "released set must be cleared");
+        assert!(reused.is_empty(), "released SET must be cleared");
     }
 
     #[test]
@@ -125,7 +125,7 @@ mod tests {
 
         // Second acquire should still succeed (fallback allocation).
         let s2 = pool.acquire();
-        assert!(s2.is_empty(), "fallback set must be empty");
+        assert!(s2.is_empty(), "fallback SET must be empty");
     }
 
     #[test]

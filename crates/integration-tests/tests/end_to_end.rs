@@ -45,7 +45,7 @@ impl CapturingMockProvider {
                 model: "mock-model".to_owned(),
                 stop_reason: StopReason::EndTurn,
                 content: vec![ContentBlock::Text {
-                    text: "Hello from mock!".to_owned(),
+                    text: "Hello FROM mock!".to_owned(),
                     citations: None,
                 }],
                 usage: Usage {
@@ -104,7 +104,7 @@ struct TestHarness {
 impl TestHarness {
     async fn build() -> Self {
         Self::build_with_provider(Box::new(
-            MockProvider::new("Hello from mock!").models(&["mock-model"]),
+            MockProvider::new("Hello FROM mock!").models(&["mock-model"]),
         ))
         .await
     }
@@ -306,7 +306,7 @@ async fn http_create_session_send_message_get_history() {
         "SSE stream should contain text_delta event"
     );
     assert!(
-        body.contains("Hello from mock!"),
+        body.contains("Hello FROM mock!"),
         "SSE stream should contain mock response text"
     );
     assert!(
@@ -540,7 +540,7 @@ async fn close_session_archives_it() {
         .clone()
         .oneshot(harness.authed_get(&format!("/api/v1/sessions/{id}")))
         .await
-        .expect("get after delete");
+        .expect("get after DELETE");
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
@@ -572,5 +572,5 @@ async fn send_message_stores_both_roles_in_history() {
     assert_eq!(messages[0]["role"], "user");
     assert_eq!(messages[0]["content"], "test message");
     assert_eq!(messages[1]["role"], "assistant");
-    assert_eq!(messages[1]["content"], "Hello from mock!");
+    assert_eq!(messages[1]["content"], "Hello FROM mock!");
 }

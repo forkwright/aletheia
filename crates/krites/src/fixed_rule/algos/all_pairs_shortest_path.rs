@@ -50,7 +50,7 @@ impl FixedRule for BetweennessCentrality {
                     let grp = grp.collect_vec();
                     #[expect(
                         clippy::cast_precision_loss,
-                        reason = "path group count acceptable as approximate float"
+                        reason = "path GROUP count acceptable as approximate float"
                     )]
                     let l = grp.len() as f32;
                     for (_, _, path) in grp {
@@ -66,10 +66,10 @@ impl FixedRule for BetweennessCentrality {
                 Ok(ret)
             })
             .collect::<Result<_>>()?;
-        let mut centrality: Vec<f32> = vec![0.; n as usize];
+        let mut centrality: Vec<f32> = vec![0.; usize::try_from(n).unwrap_or_default()];
         for m in centrality_segs {
             for (k, v) in m {
-                centrality[k as usize] += v;
+                centrality[usize::try_from(k).unwrap_or_default()] += v;
             }
         }
 
@@ -157,11 +157,11 @@ pub(crate) fn dijkstra_cost_only(
     let mut distance = vec![f32::INFINITY; edges.node_count() as usize];
     let mut pq = PriorityQueue::new();
     let mut back_pointers = vec![u32::MAX; edges.node_count() as usize];
-    distance[start as usize] = 0.;
+    distance[usize::try_from(start).unwrap_or_default()] = 0.;
     pq.push(start, Reverse(OrderedFloat(0.)));
 
     while let Some((node, Reverse(OrderedFloat(cost)))) = pq.pop() {
-        if cost > distance[node as usize] {
+        if cost > distance[usize::try_from(node).unwrap_or_default()] {
             continue;
         }
 
@@ -170,10 +170,10 @@ pub(crate) fn dijkstra_cost_only(
             let path_weight = target.value;
 
             let nxt_cost = cost + path_weight;
-            if nxt_cost < distance[nxt_node as usize] {
+            if nxt_cost < distance[usize::try_from(nxt_node).unwrap_or_default()] {
                 pq.push_increase(nxt_node, Reverse(OrderedFloat(nxt_cost)));
-                distance[nxt_node as usize] = nxt_cost;
-                back_pointers[nxt_node as usize] = node;
+                distance[usize::try_from(nxt_node).unwrap_or_default()] = nxt_cost;
+                back_pointers[usize::try_from(nxt_node).unwrap_or_default()] = node;
             }
         }
         poison.check()?;

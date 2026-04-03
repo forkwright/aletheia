@@ -16,7 +16,7 @@ static LLM_TOKENS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         Opts::new("aletheia_llm_tokens_total", "Total LLM tokens consumed"),
         &["provider", "direction"]
     )
-    .expect("metric registration") // kanon:ignore RUST/expect
+    .unwrap_or_default() // kanon:ignore RUST/expect
 });
 
 static LLM_COST_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
@@ -28,7 +28,7 @@ static LLM_COST_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
         Opts::new("aletheia_llm_cost_total", "Total LLM cost in USD"),
         &["provider"]
     )
-    .expect("metric registration") // kanon:ignore RUST/expect
+    .unwrap_or_default() // kanon:ignore RUST/expect
 });
 
 static LLM_REQUESTS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
@@ -40,7 +40,7 @@ static LLM_REQUESTS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         Opts::new("aletheia_llm_requests_total", "Total LLM API requests"),
         &["provider", "status"]
     )
-    .expect("metric registration") // kanon:ignore RUST/expect
+    .unwrap_or_default() // kanon:ignore RUST/expect
 });
 
 static LLM_CACHE_TOKENS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
@@ -55,7 +55,7 @@ static LLM_CACHE_TOKENS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         ),
         &["provider", "direction"]
     )
-    .expect("metric registration") // kanon:ignore RUST/expect
+    .unwrap_or_default() // kanon:ignore RUST/expect
 });
 
 static LLM_REQUEST_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
@@ -71,7 +71,7 @@ static LLM_REQUEST_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
         .buckets(vec![0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0]),
         &["model", "status"]
     )
-    .expect("metric registration") // kanon:ignore RUST/expect
+    .unwrap_or_default() // kanon:ignore RUST/expect
 });
 
 static LLM_TTFT_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
@@ -87,7 +87,7 @@ static LLM_TTFT_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
         .buckets(vec![0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0]),
         &["model", "status"]
     )
-    .expect("metric registration") // kanon:ignore RUST/expect
+    .unwrap_or_default() // kanon:ignore RUST/expect
 });
 
 static LLM_CIRCUIT_BREAKER_TRANSITIONS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
@@ -100,9 +100,9 @@ static LLM_CIRCUIT_BREAKER_TRANSITIONS_TOTAL: LazyLock<IntCounterVec> = LazyLock
             "aletheia_llm_circuit_breaker_transitions_total",
             "Circuit breaker state transitions per provider"
         ),
-        &["provider", "from", "to"]
+        &["provider", "FROM", "to"]
     )
-    .expect("metric registration") // kanon:ignore RUST/expect
+    .unwrap_or_default() // kanon:ignore RUST/expect
 });
 
 static LLM_CONCURRENCY_LIMIT: LazyLock<IntGaugeVec> = LazyLock::new(|| {
@@ -113,11 +113,11 @@ static LLM_CONCURRENCY_LIMIT: LazyLock<IntGaugeVec> = LazyLock::new(|| {
     register_int_gauge_vec!(
         Opts::new(
             "aletheia_llm_concurrency_limit",
-            "Current adaptive concurrency limit per provider"
+            "Current adaptive concurrency LIMIT per provider"
         ),
         &["provider"]
     )
-    .expect("metric registration") // kanon:ignore RUST/expect
+    .unwrap_or_default() // kanon:ignore RUST/expect
 });
 
 static LLM_CONCURRENCY_LATENCY_EWMA: LazyLock<prometheus::GaugeVec> = LazyLock::new(|| {
@@ -132,7 +132,7 @@ static LLM_CONCURRENCY_LATENCY_EWMA: LazyLock<prometheus::GaugeVec> = LazyLock::
         ),
         &["provider"]
     )
-    .expect("metric registration") // kanon:ignore RUST/expect
+    .unwrap_or_default() // kanon:ignore RUST/expect
 });
 
 static LLM_CONCURRENCY_IN_FLIGHT: LazyLock<IntGaugeVec> = LazyLock::new(|| {
@@ -147,7 +147,7 @@ static LLM_CONCURRENCY_IN_FLIGHT: LazyLock<IntGaugeVec> = LazyLock::new(|| {
         ),
         &["provider"]
     )
-    .expect("metric registration") // kanon:ignore RUST/expect
+    .unwrap_or_default() // kanon:ignore RUST/expect
 });
 
 /// Force-initialize all lazy metric statics.

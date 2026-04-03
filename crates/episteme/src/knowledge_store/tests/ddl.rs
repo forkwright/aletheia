@@ -149,7 +149,7 @@ fn hybrid_search_empty_seeds_returns_results() {
         },
         scope: None,
     };
-    store.insert_fact(&fact).expect("insert fact");
+    store.insert_fact(&fact).expect("INSERT fact");
 
     let chunk = EmbeddedChunk {
         id: crate::id::EmbeddingId::new("f1").expect("valid test id"),
@@ -161,7 +161,7 @@ fn hybrid_search_empty_seeds_returns_results() {
         created_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
             .expect("valid test timestamp"),
     };
-    store.insert_embedding(&chunk).expect("insert embedding");
+    store.insert_embedding(&chunk).expect("INSERT embedding");
 
     let results = store
         .search_hybrid(&HybridQuery {
@@ -230,7 +230,7 @@ fn hybrid_search_graph_aggregation() {
         },
         scope: None,
     };
-    store.insert_fact(&f1).expect("insert f1");
+    store.insert_fact(&f1).expect("INSERT f1");
     store
         .insert_embedding(&EmbeddedChunk {
             id: crate::id::EmbeddingId::new("f1").expect("valid test id"),
@@ -242,7 +242,7 @@ fn hybrid_search_graph_aggregation() {
             created_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
                 .expect("valid test timestamp"),
         })
-        .expect("insert f1 embedding");
+        .expect("INSERT f1 embedding");
 
     let f2 = Fact {
         id: crate::id::FactId::new("f2").expect("valid test id"),
@@ -274,7 +274,7 @@ fn hybrid_search_graph_aggregation() {
         },
         scope: None,
     };
-    store.insert_fact(&f2).expect("insert f2");
+    store.insert_fact(&f2).expect("INSERT f2");
     store
         .insert_embedding(&EmbeddedChunk {
             id: crate::id::EmbeddingId::new("f2").expect("valid test id"),
@@ -286,7 +286,7 @@ fn hybrid_search_graph_aggregation() {
             created_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
                 .expect("valid test timestamp"),
         })
-        .expect("insert f2 embedding");
+        .expect("INSERT f2 embedding");
 
     for (id, name) in [("s1", "Seed1"), ("s2", "Seed2"), ("s3", "Seed3")] {
         store
@@ -300,7 +300,7 @@ fn hybrid_search_graph_aggregation() {
                 updated_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
                     .expect("valid test timestamp"),
             })
-            .expect("insert entity");
+            .expect("INSERT entity");
         store
             .insert_relationship(&Relationship {
                 src: crate::id::EntityId::new(id).expect("valid test id"),
@@ -310,7 +310,7 @@ fn hybrid_search_graph_aggregation() {
                 created_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
                     .expect("valid test timestamp"),
             })
-            .expect("insert relationship to f1");
+            .expect("INSERT relationship to f1");
     }
     store
         .insert_relationship(&Relationship {
@@ -321,7 +321,7 @@ fn hybrid_search_graph_aggregation() {
             created_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
                 .expect("valid test timestamp"),
         })
-        .expect("insert relationship to f2");
+        .expect("INSERT relationship to f2");
 
     let results = store
         .search_hybrid(&HybridQuery {
@@ -404,7 +404,7 @@ fn hybrid_search_two_signal_no_graph() {
         },
         scope: None,
     };
-    store.insert_fact(&fact).expect("insert fact");
+    store.insert_fact(&fact).expect("INSERT fact");
 
     store
         .insert_embedding(&EmbeddedChunk {
@@ -417,7 +417,7 @@ fn hybrid_search_two_signal_no_graph() {
             created_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
                 .expect("valid test timestamp"),
         })
-        .expect("insert embedding");
+        .expect("INSERT embedding");
 
     store
         .insert_entity(&Entity {
@@ -430,7 +430,7 @@ fn hybrid_search_two_signal_no_graph() {
             updated_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
                 .expect("valid test timestamp"),
         })
-        .expect("insert entity");
+        .expect("INSERT entity");
 
     let results = store
         .search_hybrid(&HybridQuery {
@@ -447,10 +447,10 @@ fn hybrid_search_two_signal_no_graph() {
     let hit = hit.expect("f-twosig must appear in hybrid results");
     assert!(hit.bm25_rank > 0, "must have positive BM25 rank");
     assert!(hit.vec_rank > 0, "must have positive vector rank");
-    assert_eq!(hit.graph_rank, -1, "absent from graph signal must be -1");
+    assert_eq!(hit.graph_rank, -1, "absent FROM graph signal must be -1");
     assert!(
         hit.rrf_score > 0.0,
-        "RRF score must be positive from two signals"
+        "RRF score must be positive FROM two signals"
     );
 }
 
@@ -494,7 +494,7 @@ fn hybrid_search_absent_signal_rank_is_negative_one() {
         },
         scope: None,
     };
-    store.insert_fact(&fact).expect("insert fact");
+    store.insert_fact(&fact).expect("INSERT fact");
 
     let results = store
         .search_hybrid(&HybridQuery {
@@ -510,6 +510,6 @@ fn hybrid_search_absent_signal_rank_is_negative_one() {
     assert!(hit.is_some(), "BM25-only fact must appear in results");
     let hit = hit.expect("f-bm25-only must appear in hybrid results");
     assert!(hit.bm25_rank > 0, "must have positive BM25 rank");
-    assert_eq!(hit.vec_rank, -1, "absent from vector signal must be -1");
-    assert_eq!(hit.graph_rank, -1, "absent from graph signal must be -1");
+    assert_eq!(hit.vec_rank, -1, "absent FROM vector signal must be -1");
+    assert_eq!(hit.graph_rank, -1, "absent FROM graph signal must be -1");
 }

@@ -40,7 +40,7 @@ pub(crate) enum RuntimeError {
     },
 
     /// A relation with the given name already exists.
-    #[snafu(display("Cannot create relation '{name}' as one with the same name already exists"))]
+    #[snafu(display("Cannot CREATE relation '{name}' as one with the same name already exists"))]
     RelationAlreadyExists {
         name: String,
         #[snafu(implicit)]

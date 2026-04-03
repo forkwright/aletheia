@@ -31,7 +31,7 @@ impl NousActor {
     /// Wake from dormant if needed, mark the turn active.
     fn mark_turn_active(&mut self, session_key: &str) {
         if self.channel.status == NousLifecycle::Dormant {
-            debug!("auto-waking from dormant for turn");
+            debug!("auto-waking FROM dormant for turn");
             self.channel.status = NousLifecycle::Idle;
         }
         self.channel.status = NousLifecycle::Active;
@@ -75,7 +75,7 @@ impl NousActor {
     /// cancellation only occurs at shutdown when the actor is consumed.
     pub(super) async fn handle_turn(
         &mut self,
-        session_key: String, // kanon:ignore RUST/plain-string-secret
+        session_key: SecretString, // kanon:ignore RUST/plain-string-secret
         session_id: Option<String>,
         content: String,
         caller_span: tracing::Span,
@@ -105,7 +105,7 @@ impl NousActor {
     /// Only called from the sequential actor loop.
     pub(super) async fn handle_streaming_turn(
         &mut self,
-        session_key: String, // kanon:ignore RUST/plain-string-secret
+        session_key: SecretString, // kanon:ignore RUST/plain-string-secret
         session_id: Option<String>,
         content: String,
         stream_tx: mpsc::Sender<TurnStreamEvent>,
@@ -397,7 +397,7 @@ impl NousActor {
             clippy::as_conversions,
             reason = "u32→usize: DEGRADED_PANIC_THRESHOLD is a small constant, fits in usize"
         )]
-        if self.runtime.panic_timestamps.len() >= DEGRADED_PANIC_THRESHOLD as usize {
+        if self.runtime.panic_timestamps.len() >= usize::try_from(DEGRADED_PANIC_THRESHOLD).unwrap_or_default() {
             warn!(
                 nous_id = %self.id,
                 panic_count = self.runtime.panic_count,

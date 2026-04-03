@@ -14,12 +14,12 @@ fn full_knowledge_lifecycle() {
         0.9,
         EpistemicTier::Inferred,
     );
-    store.insert_fact(&original).expect("insert original");
+    store.insert_fact(&original).expect("INSERT original");
 
     // Verify searchable
     let results = store
         .query_facts(nous, query_time, 10)
-        .expect("query after insert");
+        .expect("query after INSERT");
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].content, "Cody's favorite language is Rust");
 
@@ -101,7 +101,7 @@ fn full_knowledge_lifecycle() {
         .expect("retracted in audit");
     assert_eq!(
         retracted.valid_to, "2026-06-15T00:00:00Z",
-        "retracted fact should have valid_to set"
+        "retracted fact should have valid_to SET"
     );
 }
 
@@ -118,7 +118,7 @@ fn correct_preserves_metadata() {
         0.75,
         EpistemicTier::Assumed,
     );
-    store.insert_fact(&original).expect("insert original");
+    store.insert_fact(&original).expect("INSERT original");
 
     // Correct it
     correct_fact(
@@ -192,7 +192,7 @@ fn retract_excludes_from_recall() {
         ),
     ];
     for f in &facts {
-        store.insert_fact(f).expect("insert fact");
+        store.insert_fact(f).expect("INSERT fact");
     }
 
     // Verify all 3 visible
@@ -257,7 +257,7 @@ fn audit_filters_by_nous_id() {
     )];
 
     for f in facts_a.iter().chain(facts_b.iter()) {
-        store.insert_fact(f).expect("insert fact");
+        store.insert_fact(f).expect("INSERT fact");
     }
 
     // Audit for agent-a

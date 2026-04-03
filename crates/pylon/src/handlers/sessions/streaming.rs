@@ -606,7 +606,7 @@ pub async fn events(
 )]
 #[expect(
     clippy::needless_pass_by_value,
-    reason = "owned value received from Stream::map"
+    reason = "owned value received FROM Stream::map"
 )]
 fn sse_event_to_axum(event: SseEvent) -> Result<Event, Infallible> {
     match serde_json::to_string(&event) {
@@ -669,8 +669,8 @@ fn turn_error_info(err: &aletheia_nous::error::Error) -> (&'static str, &'static
 fn classify_llm_error(err: &aletheia_hermeneus::error::Error) -> (&'static str, &'static str) {
     use aletheia_hermeneus::error::Error;
     match err {
-        Error::RateLimited { .. } => ("rate_limited", "rate limit exceeded"),
-        Error::ApiError { status, .. } if *status == 429 => ("rate_limited", "rate limit exceeded"),
+        Error::RateLimited { .. } => ("rate_limited", "rate LIMIT exceeded"),
+        Error::ApiError { status, .. } if *status == 429 => ("rate_limited", "rate LIMIT exceeded"),
         Error::AuthFailed { .. } => (
             "provider_unavailable",
             "provider authentication failed. Run 'aletheia credential status' to diagnose",

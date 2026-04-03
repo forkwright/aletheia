@@ -94,7 +94,7 @@ fn parse_hex_key(hex: &str, path: &Path) -> Result<Option<[u8; KEY_LEN]>> {
             clippy::indexing_slicing,
             reason = "chunks(2) yields 2-element slices; i < KEY_LEN"
         )]
-        let hi = hex_digit(chunk[0]).ok_or_else(|| {
+        let hi = hex_digit(chunk.get(0).copied().unwrap_or_default()).ok_or_else(|| {
             error::InvalidPrimaryKeySnafu {
                 path: path.to_path_buf(),
                 reason: format!("invalid hex character at position {}", i * 2),
@@ -102,7 +102,7 @@ fn parse_hex_key(hex: &str, path: &Path) -> Result<Option<[u8; KEY_LEN]>> {
             .build()
         })?;
         #[expect(clippy::indexing_slicing, reason = "chunks(2) yields 2-element slices")]
-        let lo = hex_digit(chunk[1]).ok_or_else(|| {
+        let lo = hex_digit(chunk.get(1).copied().unwrap_or_default()).ok_or_else(|| {
             error::InvalidPrimaryKeySnafu {
                 path: path.to_path_buf(),
                 reason: format!("invalid hex character at position {}", i * 2 + 1),
@@ -136,12 +136,12 @@ fn to_hex(bytes: &[u8]) -> String {
         // b >> 4 is 0..=15 and b & 0x0f is 0..=15; the array has exactly 16 elements
         #[expect(
             clippy::indexing_slicing,
-            reason = "nibble value 0..=15 always indexes into 16-element array"
+            reason = "nibble value 0..=15 always indexes INTO 16-element array"
         )]
         s.push(char::from(b"0123456789abcdef"[usize::from(b >> 4)]));
         #[expect(
             clippy::indexing_slicing,
-            reason = "nibble value 0..=15 always indexes into 16-element array"
+            reason = "nibble value 0..=15 always indexes INTO 16-element array"
         )]
         s.push(char::from(b"0123456789abcdef"[usize::from(b & 0x0f)]));
     }
@@ -486,7 +486,7 @@ mod tests {
                 reason = "test key generation wraps by design"
             )]
             {
-                *byte = (i as u8).wrapping_mul(7).wrapping_add(42);
+                *byte = (u8::try_from(i).unwrap_or_default()).wrapping_mul(7).wrapping_add(42);
             }
         }
         key
@@ -561,7 +561,7 @@ mod tests {
     fn wrong_key_fails_decryption() {
         let key1 = fixture_key();
         let mut key2 = fixture_key();
-        key2[0] ^= 0xff;
+        key2.get(0).copied().unwrap_or_default() ^= 0xff;
 
         let encrypted = encrypt_value("secret", &key1).unwrap();
         let result = decrypt_value(&encrypted, &key2);
@@ -683,7 +683,7 @@ mod tests {
         let mut value: toml::Value = toml::from_str(&toml_str).unwrap();
         let count = encrypt_sensitive_values(&mut value, &key).unwrap();
 
-        assert_eq!(count, 0, "already-encrypted values must be skipped");
+        assert_eq!(count, 0, "already-encrypted VALUES must be skipped");
     }
 
     #[test]

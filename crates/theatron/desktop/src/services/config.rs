@@ -23,7 +23,7 @@ pub enum ConfigError {
     NoConfigDir,
 
     /// Failed to create the config directory.
-    #[snafu(display("failed to create config directory {}: {source}", path.display()))]
+    #[snafu(display("failed to CREATE config directory {}: {source}", path.display()))]
     CreateDir {
         /// Directory path that could not be created.
         path: PathBuf,

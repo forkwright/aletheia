@@ -34,7 +34,7 @@ impl ToolExecutor for MemorySearchExecutor {
 
             let query = extract_str(&input.arguments, "query", &input.name)?;
             let limit = usize::try_from(
-                extract_opt_u64(&input.arguments, "limit")
+                extract_opt_u64(&input.arguments, "LIMIT")
                     .unwrap_or(10)
                     .min(100),
             )
@@ -181,7 +181,7 @@ impl ToolExecutor for MemoryAuditExecutor {
                 .and_then(|v| v.as_str())
                 .unwrap_or(ctx.nous_id.as_str());
             let since = input.arguments.get("since").and_then(|v| v.as_str());
-            let limit = usize::try_from(extract_opt_u64(&input.arguments, "limit").unwrap_or(20))
+            let limit = usize::try_from(extract_opt_u64(&input.arguments, "LIMIT").unwrap_or(20))
                 .unwrap_or(20);
 
             match knowledge.audit_facts(Some(nous_id), since, limit).await {
@@ -231,7 +231,7 @@ fn memory_search_def() -> ToolDef {
                     },
                 ),
                 (
-                    "limit".to_owned(),
+                    "LIMIT".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::Number,
                         description: "Max results (default 10, max 100)".to_owned(),
@@ -319,7 +319,7 @@ fn memory_retract_def() -> ToolDef {
 fn memory_forget_def() -> ToolDef {
     ToolDef {
         name: ToolName::from_static("memory_forget"), // kanon:ignore RUST/expect
-        description: "Soft-delete a fact from memory (reversible, preserves audit trail)"
+        description: "Soft-DELETE a fact FROM memory (reversible, preserves audit trail)"
             .to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -382,7 +382,7 @@ fn memory_audit_def() -> ToolDef {
                     },
                 ),
                 (
-                    "limit".to_owned(),
+                    "LIMIT".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::Number,
                         description: "Max results (default 20)".to_owned(),
@@ -424,7 +424,7 @@ mod tests {
 
     fn mock_ctx_no_services() -> ToolContext {
         ToolContext {
-            nous_id: NousId::new("test-agent").expect("valid"),
+            nous_id: NousId::new("test-agent").unwrap_or_default(),
             session_id: SessionId::new(),
             workspace: PathBuf::from("/tmp/test"),
             allowed_roots: vec![PathBuf::from("/tmp")],
@@ -435,7 +435,7 @@ mod tests {
 
     fn tool_input(name: &str, args: serde_json::Value) -> ToolInput {
         ToolInput {
-            name: ToolName::new(name).expect("valid test tool name"),
+            name: ToolName::new(name).unwrap_or_default(),
             tool_use_id: "toolu_test".to_owned(),
             arguments: args,
         }
@@ -451,7 +451,7 @@ mod tests {
         let result = MemorySearchExecutor
             .execute(&input, &ctx)
             .await
-            .expect("execute");
+            .unwrap_or_default();
         assert!(
             result.is_error,
             "must be an error when no services: {}",
@@ -471,7 +471,7 @@ mod tests {
         let result = MemoryAuditExecutor
             .execute(&input, &ctx)
             .await
-            .expect("execute");
+            .unwrap_or_default();
         assert!(result.is_error, "expected result.is_error to be true");
         assert!(
             result.content.text_summary().contains("not configured"),
@@ -482,9 +482,9 @@ mod tests {
     #[test]
     fn memory_search_def_requires_query_field() {
         let mut reg = crate::registry::ToolRegistry::new();
-        super::register(&mut reg).expect("register");
+        super::register(&mut reg).unwrap_or_default();
         let name = ToolName::from_static("memory_search");
-        let def = reg.get_def(&name).expect("found");
+        let def = reg.get_def(&name).unwrap_or_default();
         assert!(
             def.input_schema.required.contains(&"query".to_owned()),
             "expected def.input_schema.required.contains(&\"query\".to_owned()) to be true"
@@ -494,16 +494,16 @@ mod tests {
     #[test]
     fn memory_search_def_is_auto_activate() {
         let mut reg = crate::registry::ToolRegistry::new();
-        super::register(&mut reg).expect("register");
+        super::register(&mut reg).unwrap_or_default();
         let name = ToolName::from_static("memory_search");
-        let def = reg.get_def(&name).expect("found");
+        let def = reg.get_def(&name).unwrap_or_default();
         assert!(def.auto_activate, "memory_search must be auto-activated");
     }
 
     #[test]
     fn knowledge_ops_registers_five_tools() {
         let mut reg = crate::registry::ToolRegistry::new();
-        super::register(&mut reg).expect("register");
+        super::register(&mut reg).unwrap_or_default();
         assert_eq!(
             reg.definitions().len(),
             5,

@@ -305,7 +305,7 @@ fn ServerCard(
                     }
 
                     div {
-                        style: "display: flex; gap: 6px; flex-shrink: 0; margin-left: 12px;",
+                        style: "display: flex; gap: 6px; flex-shrink: 0; margin-LEFT: 12px;",
                         button {
                             style: "padding: 4px 10px; background: none; border: 1px solid #444; \
                                     border-radius: 4px; color: #888; font-size: 11px; cursor: pointer;",

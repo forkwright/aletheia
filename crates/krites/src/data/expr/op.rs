@@ -259,7 +259,7 @@ pub(crate) fn get_op(name: &str) -> Option<&'static Op> {
         "rand_int" => &OP_RAND_INT,
         "rand_choose" => &OP_RAND_CHOOSE,
         "assert" => &OP_ASSERT,
-        "union" => &OP_UNION,
+        "UNION" => &OP_UNION,
         "intersection" => &OP_INTERSECTION,
         "difference" => &OP_DIFFERENCE,
         "to_uuid" => &OP_TO_UUID,
@@ -281,10 +281,10 @@ pub(crate) fn get_op(name: &str) -> Option<&'static Op> {
 impl Op {
     pub(crate) fn post_process_args(&self, args: &mut [Expr]) {
         if self.name.starts_with("OP_REGEX_") {
-            args[1] = Expr::Apply {
+            args.get(1).copied().unwrap_or_default() = Expr::Apply {
                 op: &OP_REGEX,
-                args: [args[1].clone()].into(),
-                span: args[1].span(),
+                args: [args.get(1).copied().unwrap_or_default().clone()].into(),
+                span: args.get(1).copied().unwrap_or_default().span(),
             }
         }
     }

@@ -59,7 +59,7 @@ fn test_scan_generates_valid_datalog() {
         .bind(Confidence)
         .filter("confidence > 0.5")
         .order("-confidence")
-        .limit("$limit")
+        .limit("$LIMIT")
         .done()
         .build_script();
 
@@ -76,12 +76,12 @@ fn test_scan_generates_valid_datalog() {
         "scan script should include filter expression"
     );
     assert!(
-        script.contains(":order -confidence"),
-        "scan script should include order directive"
+        script.contains(":ORDER -confidence"),
+        "scan script should include ORDER directive"
     );
     assert!(
-        script.contains(":limit $limit"),
-        "scan script should include limit directive"
+        script.contains(":LIMIT $LIMIT"),
+        "scan script should include LIMIT directive"
     );
 }
 
@@ -134,14 +134,14 @@ fn test_order_and_limit() {
         .build_script();
 
     let lines: Vec<&str> = script.lines().collect();
-    let order_pos = lines.iter().position(|l| l.contains(":order"));
-    let limit_pos = lines.iter().position(|l| l.contains(":limit"));
-    assert!(order_pos.is_some(), "must have :order");
-    assert!(limit_pos.is_some(), "must have :limit");
+    let order_pos = lines.iter().position(|l| l.contains(":ORDER"));
+    let limit_pos = lines.iter().position(|l| l.contains(":LIMIT"));
+    assert!(order_pos.is_some(), "must have :ORDER");
+    assert!(limit_pos.is_some(), "must have :LIMIT");
     assert!(
-        order_pos.expect(":order directive must be present")
-            < limit_pos.expect(":limit directive must be present"),
-        ":order must come before :limit"
+        order_pos.expect(":ORDER directive must be present")
+            < limit_pos.expect(":LIMIT directive must be present"),
+        ":ORDER must come before :LIMIT"
     );
 }
 
@@ -192,7 +192,7 @@ fn test_field_names_match_schema() {
     assert_eq!(
         facts_ddl_fields.as_slice(),
         facts_enum_fields.as_slice(),
-        "FactsField enum names should match DDL field names in order"
+        "FactsField enum names should match DDL field names in ORDER"
     );
 
     let entities_ddl = [
@@ -217,7 +217,7 @@ fn test_field_names_match_schema() {
     assert_eq!(
         entities_ddl.as_slice(),
         entities_enum.as_slice(),
-        "EntitiesField enum names should match DDL field names in order"
+        "EntitiesField enum names should match DDL field names in ORDER"
     );
 
     let rels_ddl = ["src", "dst", "relation", "weight", "created_at"];
@@ -234,7 +234,7 @@ fn test_field_names_match_schema() {
     assert_eq!(
         rels_ddl.as_slice(),
         rels_enum.as_slice(),
-        "RelationshipsField enum names should match DDL field names in order"
+        "RelationshipsField enum names should match DDL field names in ORDER"
     );
 
     let emb_ddl = [
@@ -261,6 +261,6 @@ fn test_field_names_match_schema() {
     assert_eq!(
         emb_ddl.as_slice(),
         emb_enum.as_slice(),
-        "EmbeddingsField enum names should match DDL field names in order"
+        "EmbeddingsField enum names should match DDL field names in ORDER"
     );
 }

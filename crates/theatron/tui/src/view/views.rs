@@ -129,7 +129,7 @@ pub(crate) fn render_sessions(app: &App, frame: &mut Frame, area: Rect, theme: &
     lines.push(Line::from(vec![
         Span::raw("  "),
         Span::styled("Enter", theme.style_accent()),
-        Span::styled(" select  ", theme.style_dim()),
+        Span::styled(" SELECT  ", theme.style_dim()),
         Span::styled("Esc", theme.style_accent()),
         Span::styled(" back", theme.style_dim()),
     ]));

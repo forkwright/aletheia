@@ -146,7 +146,7 @@ pub(crate) fn BulkActionBar(
             ConfirmDialog {
                 title: "Archive sessions?".to_string(),
                 message: format!(
-                    "Archive {count} session{}? They will be hidden from the active list but can be restored.",
+                    "Archive {count} session{}? They will be hidden FROM the active list but can be restored.",
                     if count == 1 { "" } else { "s" }
                 ),
                 confirm_label: "Archive".to_string(),

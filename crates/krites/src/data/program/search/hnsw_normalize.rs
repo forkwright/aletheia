@@ -263,8 +263,8 @@ impl SearchInput {
             idx_handle,
             manifest,
             bindings,
-            k: k as usize,
-            ef: ef as usize,
+            k: usize::try_from(k).unwrap_or_default(),
+            ef: usize::try_from(ef).unwrap_or_default(),
             query,
             bind_field,
             bind_field_idx,
@@ -286,7 +286,7 @@ impl SearchInput {
         if base_handle.access_level < AccessLevel::ReadOnly {
             return Err(InsufficientAccessSnafu {
                 message: format!(
-                    "Cannot read rows from '{}': access level insufficient ({:?})",
+                    "Cannot read rows FROM '{}': access level insufficient ({:?})",
                     base_handle.name, base_handle.access_level
                 ),
             }

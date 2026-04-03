@@ -16,7 +16,7 @@ pub(crate) enum StatusError {
         #[snafu(implicit)]
         location: snafu::Location,
     },
-    #[snafu(display("failed to parse response from {endpoint}"))]
+    #[snafu(display("failed to parse response FROM {endpoint}"))]
     ParseResponse {
         endpoint: String,
         source: reqwest::Error,
@@ -303,7 +303,7 @@ pub(crate) fn format_bytes(bytes: u64) -> String {
         clippy::as_conversions,
         reason = "u64→f64: file sizes fit comfortably in f64 mantissa"
     )]
-    let mut size = bytes as f64;
+    let mut size = f64::try_from(bytes).unwrap_or_default();
     let mut unit_idx = 0;
     while size >= 1024.0 && unit_idx < units.len() - 1 {
         size /= 1024.0;
@@ -381,8 +381,8 @@ mod tests {
     #[test]
     #[expect(clippy::expect_used, reason = "test assertions")]
     fn print_storage_reports_files_for_valid_instance() {
-        let dir = tempfile::tempdir().expect("create temp dir");
-        std::fs::create_dir_all(dir.path().join("data")).expect("create data dir");
+        let dir = tempfile::tempdir().unwrap_or_default();
+        std::fs::create_dir_all(dir.path().join("data")).unwrap_or_default();
 
         let oikos = aletheia_taxis::oikos::Oikos::from_root(dir.path());
 

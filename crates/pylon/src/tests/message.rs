@@ -55,7 +55,7 @@ async fn send_message_stream_contains_events() {
         "should contain text_delta event"
     );
     assert!(
-        body.contains("Hello from mock!"),
+        body.contains("Hello FROM mock!"),
         "should contain mock response text"
     );
     assert!(
@@ -181,7 +181,7 @@ async fn send_message_routes_through_actor() {
 
     assert!(body.contains("event: text_delta"), "should have text_delta");
     assert!(
-        body.contains("Hello from mock!"),
+        body.contains("Hello FROM mock!"),
         "should contain mock response"
     );
     assert!(
@@ -201,7 +201,7 @@ async fn stream_turn_returns_sse() {
         "/api/v1/sessions/stream",
         Some(serde_json::json!({
             "agentId": "syn",
-            "message": "Hello from TUI",
+            "message": "Hello FROM TUI",
             "sessionKey": "stream-test"
         })),
     );

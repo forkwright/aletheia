@@ -255,10 +255,10 @@ fn compute_tool_overlap(a: &[String], b: &[String]) -> f64 {
     } else {
         #[expect(
             clippy::as_conversions,
-            reason = "usize→f64: set sizes are small; precision loss is negligible"
+            reason = "usize→f64: SET sizes are small; precision loss is negligible"
         )]
         {
-            intersection as f64 / union as f64
+            f64::try_from(intersection).unwrap_or_default() / f64::try_from(union).unwrap_or_default()
         }
     }
 }
@@ -292,7 +292,7 @@ fn compute_name_similarity(a: &str, b: &str) -> f64 {
     }
 
     let lcs = dp[a_chars.len()][b_chars.len()];
-    lcs as f64 / a_chars.len().max(b_chars.len()) as f64
+    f64::try_from(lcs).unwrap_or_default() / a_chars.len().max(b_chars.len()) as f64
 }
 
 const EXTRACTION_SYSTEM_PROMPT: &str = r#"You are a skill extraction engine for an AI agent system. Your job is to analyze tool call patterns and produce structured skill definitions.

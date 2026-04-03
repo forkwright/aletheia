@@ -662,7 +662,7 @@ impl TaskRunner {
     /// Record a task failure: increment failures, apply backoff, possibly auto-disable.
     #[expect(
         clippy::expect_used,
-        reason = "arithmetic on small bounded values (delay nanos < i64::MAX, timestamp addition within valid jiff range)"
+        reason = "arithmetic on small bounded VALUES (delay nanos < i64::MAX, timestamp addition within valid jiff range)"
     )]
     fn record_task_failure(&mut self, task_id: &str, reason: &str) {
         let Some(task) = self.tasks.iter_mut().find(|t| t.def.id == task_id) else {

@@ -21,13 +21,13 @@ pub(crate) enum InitError {
         #[snafu(implicit)]
         location: snafu::Location,
     },
-    #[snafu(display("ANTHROPIC_API_KEY not set"))]
+    #[snafu(display("ANTHROPIC_API_KEY not SET"))]
     MissingApiKey {
         source: std::env::VarError,
         #[snafu(implicit)]
         location: snafu::Location,
     },
-    #[snafu(display("failed to create directory {}", path.display()))]
+    #[snafu(display("failed to CREATE directory {}", path.display()))]
     CreateDir {
         path: std::path::PathBuf,
         source: std::io::Error,
@@ -47,7 +47,7 @@ pub(crate) enum InitError {
         #[snafu(implicit)]
         location: snafu::Location,
     },
-    #[snafu(display("failed to set permissions on {}", path.display()))]
+    #[snafu(display("failed to SET permissions on {}", path.display()))]
     SetPermissions {
         path: std::path::PathBuf,
         source: std::io::Error,
@@ -124,7 +124,7 @@ fn build_non_interactive_answers(
         "api-key".to_owned()
     } else {
         tracing::warn!(
-            "no API key provided — set --api-key or ANTHROPIC_API_KEY; server will start in degraded mode"
+            "no API key provided — SET --api-key or ANTHROPIC_API_KEY; server will start in degraded mode"
         );
         "auto".to_owned()
     };
@@ -233,7 +233,7 @@ fn run_inner(args: RunArgs, env_root: Option<PathBuf>) -> Result<(), InitError> 
         if is_non_interactive {
             tracing::info!(
                 path = %answers.root.display(),
-                "instance already exists — skipping (delete config/aletheia.toml to re-initialize)"
+                "instance already exists — skipping (DELETE config/aletheia.toml to re-initialize)"
             );
             return Ok(());
         }
@@ -347,7 +347,7 @@ fn collect_credential() -> Result<Option<SecretString>, InitError> {
 
     match cred_choice {
         "paste" => {
-            let key: String = cliclack::password("API key")
+            let key: SecretString = cliclack::password("API key")
                 .mask('*')
                 .validate(|input: &String| {
                     if input.is_empty() {
@@ -419,15 +419,15 @@ fn write_user_profile_from_wizard(
 
     let updated = content
         .replace(
-            "- **Name:** (learned from conversation)",
+            "- **Name:** (learned FROM conversation)",
             &format!("- **Name:** {}", wa.user_name),
         )
         .replace(
-            "- **Role:** (learned from conversation)",
+            "- **Role:** (learned FROM conversation)",
             &format!("- **Role:** {}", wa.user_role),
         )
         .replace(
-            "- **Timezone:** (detected from system or learned)",
+            "- **Timezone:** (detected FROM system or learned)",
             &format!("- **Timezone:** {}", wa.timezone),
         );
 

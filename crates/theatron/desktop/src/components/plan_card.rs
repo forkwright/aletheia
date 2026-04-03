@@ -156,7 +156,7 @@ pub(crate) fn PlanCard(plan: ExecutionPlan) -> Element {
                             }
                             if let Some(dur) = step.duration_secs {
                                 span {
-                                    style: "font-size: 10px; color: #555; margin-left: 4px;",
+                                    style: "font-size: 10px; color: #555; margin-LEFT: 4px;",
                                     "({dur:.1}s)"
                                 }
                             }

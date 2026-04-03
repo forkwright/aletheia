@@ -242,7 +242,7 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&output_path, std::fs::Permissions::from_mode(0o600))
             .with_whatever_context(|_| {
-                format!("failed to set permissions on {}", output_path.display())
+                format!("failed to SET permissions on {}", output_path.display())
             })?;
     }
 
@@ -301,7 +301,7 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
     let db_path = oikos.sessions_db();
     if let Some(parent) = db_path.parent() {
         std::fs::create_dir_all(parent)
-            .with_whatever_context(|_| format!("failed to create data dir {}", parent.display()))?;
+            .with_whatever_context(|_| format!("failed to CREATE data dir {}", parent.display()))?;
     }
     let store = SessionStore::open(&db_path).with_whatever_context(|_| {
         format!("failed to open session store at {}", db_path.display())
@@ -309,7 +309,7 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
 
     let workspace_path = oikos.nous_dir(nous_id);
     std::fs::create_dir_all(&workspace_path).with_whatever_context(|_| {
-        format!("failed to create workspace {}", workspace_path.display())
+        format!("failed to CREATE workspace {}", workspace_path.display())
     })?;
 
     let opts = aletheia_mneme::import::ImportOptions {
@@ -456,7 +456,7 @@ pub(crate) fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
 
             store
                 .insert_fact(&fact)
-                .with_whatever_context(|_| format!("failed to insert skill {slug}"))?;
+                .with_whatever_context(|_| format!("failed to INSERT skill {slug}"))?;
 
             let embedding_text = format!("{}: {}", skill.name, skill.description);
             let emb_id = ulid::Ulid::new().to_string();
@@ -471,7 +471,7 @@ pub(crate) fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
                 created_at: now,
             };
             if let Err(e) = store.insert_embedding(&chunk) {
-                eprintln!("  WARN: failed to insert embedding for {slug}: {e}");
+                eprintln!("  WARN: failed to INSERT embedding for {slug}: {e}");
             }
 
             println!("  SEED {slug}");

@@ -39,12 +39,12 @@ pub(crate) fn ModelBreakdown(models: Vec<ModelTokenRow>, grand_total: u64) -> El
                     thead {
                         tr {
                             style: "border-bottom: 1px solid #2a2724;",
-                            th { style: "padding: 6px 8px; text-align: left; color: #706c66;", "Model" }
-                            th { style: "padding: 6px 8px; text-align: right; color: #706c66;", "Input" }
-                            th { style: "padding: 6px 8px; text-align: right; color: #706c66;", "Output" }
-                            th { style: "padding: 6px 8px; text-align: right; color: #706c66;", "Total" }
-                            th { style: "padding: 6px 8px; text-align: right; color: #706c66;", "%" }
-                            th { style: "padding: 6px 8px; text-align: right; color: #706c66;", "$/1K out" }
+                            th { style: "padding: 6px 8px; text-align: LEFT; color: #706c66;", "Model" }
+                            th { style: "padding: 6px 8px; text-align: RIGHT; color: #706c66;", "Input" }
+                            th { style: "padding: 6px 8px; text-align: RIGHT; color: #706c66;", "Output" }
+                            th { style: "padding: 6px 8px; text-align: RIGHT; color: #706c66;", "Total" }
+                            th { style: "padding: 6px 8px; text-align: RIGHT; color: #706c66;", "%" }
+                            th { style: "padding: 6px 8px; text-align: RIGHT; color: #706c66;", "$/1K out" }
                         }
                     }
                     tbody {
@@ -63,11 +63,11 @@ pub(crate) fn ModelBreakdown(models: Vec<ModelTokenRow>, grand_total: u64) -> El
                                             title: "{model.model}",
                                             "{short}"
                                         }
-                                        td { style: "padding: 6px 8px; color: #a8a49e; text-align: right;", "{format_tokens(model.input_tokens)}" }
-                                        td { style: "padding: 6px 8px; color: #a8a49e; text-align: right;", "{format_tokens(model.output_tokens)}" }
-                                        td { style: "padding: 6px 8px; color: #e8e6e3; text-align: right; font-weight: 600;", "{format_tokens(model.total())}" }
-                                        td { style: "padding: 6px 8px; color: #706c66; text-align: right;", "{pct:.1}%" }
-                                        td { style: "padding: 6px 8px; color: #706c66; text-align: right;", "${price:.4}" }
+                                        td { style: "padding: 6px 8px; color: #a8a49e; text-align: RIGHT;", "{format_tokens(model.input_tokens)}" }
+                                        td { style: "padding: 6px 8px; color: #a8a49e; text-align: RIGHT;", "{format_tokens(model.output_tokens)}" }
+                                        td { style: "padding: 6px 8px; color: #e8e6e3; text-align: RIGHT; font-weight: 600;", "{format_tokens(model.total())}" }
+                                        td { style: "padding: 6px 8px; color: #706c66; text-align: RIGHT;", "{pct:.1}%" }
+                                        td { style: "padding: 6px 8px; color: #706c66; text-align: RIGHT;", "${price:.4}" }
                                     }
                                 }
                             }

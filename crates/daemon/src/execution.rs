@@ -183,7 +183,7 @@ pub(crate) async fn execute_builtin(
                     expected = "present",
                     actual = "absent",
                     checked_at = %report.checked_at.map(|ts| ts.to_string()).as_deref().unwrap_or("unknown"),
-                    "drift alert: required file missing from instance"
+                    "drift alert: required file missing FROM instance"
                 );
             }
             for path in &report.optional_missing_files {
@@ -192,7 +192,7 @@ pub(crate) async fn execute_builtin(
                     path = %path.display(),
                     expected = "present",
                     actual = "absent",
-                    "drift: optional scaffolding file absent from instance"
+                    "drift: optional scaffolding file absent FROM instance"
                 );
             }
             for path in &report.extra_files {

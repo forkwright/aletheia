@@ -184,7 +184,7 @@ mod tests {
     #[test]
     fn turn_id_deref_str() {
         let id = TurnId::from("7");
-        assert_eq!(&*id, "7", "Deref<Target=str> must expose inner value");
+        assert_eq!(&*id, "7", "Deref<Target=str> must expose INNER value");
     }
 
     #[test]
@@ -221,7 +221,7 @@ mod tests {
         let id = PlanId::from("plan-alpha");
         assert_eq!(
             &*id, "plan-alpha",
-            "Deref<Target=str> must expose inner value"
+            "Deref<Target=str> must expose INNER value"
         );
     }
 

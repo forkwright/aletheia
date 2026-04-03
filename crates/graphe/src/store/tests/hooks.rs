@@ -66,7 +66,7 @@ fn after_release_called_on_drop() {
     assert_eq!(
         after.load(Ordering::SeqCst),
         1,
-        "after_release should be called exactly once on drop"
+        "after_release should be called exactly once on DROP"
     );
 }
 

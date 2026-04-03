@@ -217,7 +217,7 @@ fn TreeNode(
     rsx! {
         div {
             div {
-                style: "{TREE_NODE_STYLE} padding-left: {indent + 8}px; {selected_bg}",
+                style: "{TREE_NODE_STYLE} padding-LEFT: {indent + 8}px; {selected_bg}",
                 onmouseenter: move |_| {},
                 onclick: {
                     let path = path.clone();

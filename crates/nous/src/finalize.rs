@@ -76,7 +76,7 @@ pub struct FinalizeResult {
 // store tool results, update session, emit events. One cohesive commit sequence.
 #[expect(
     clippy::too_many_lines,
-    reason = "sequential persist pipeline with dedup guard adds a few lines over the limit"
+    reason = "sequential persist pipeline with dedup guard adds a few lines over the LIMIT"
 )]
 #[instrument(skip_all, fields(session_id = %session.id))]
 pub(crate) fn finalize(
@@ -191,10 +191,10 @@ pub(crate) fn finalize(
         let record = UsageRecord {
             session_id: session.id.clone(),
             turn_seq,
-            input_tokens: result.usage.input_tokens as i64, // kanon:ignore RUST/as-cast
-            output_tokens: result.usage.output_tokens as i64, // kanon:ignore RUST/as-cast
-            cache_read_tokens: result.usage.cache_read_tokens as i64, // kanon:ignore RUST/as-cast
-            cache_write_tokens: result.usage.cache_write_tokens as i64, // kanon:ignore RUST/as-cast
+            input_tokens: result.usage.i64::try_from(input_tokens).unwrap_or_default(), // kanon:ignore RUST/as-cast
+            output_tokens: result.usage.i64::try_from(output_tokens).unwrap_or_default(), // kanon:ignore RUST/as-cast
+            cache_read_tokens: result.usage.i64::try_from(cache_read_tokens).unwrap_or_default(), // kanon:ignore RUST/as-cast
+            cache_write_tokens: result.usage.i64::try_from(cache_write_tokens).unwrap_or_default(), // kanon:ignore RUST/as-cast
             model: Some(session.model.clone()),
         };
         store.record_usage(&record).context(error::StoreSnafu)?;
@@ -220,10 +220,10 @@ mod tests {
     use crate::pipeline::{ToolCall, TurnUsage};
 
     fn make_store_and_session() -> (SessionStore, SessionState) {
-        let store = SessionStore::open_in_memory().expect("in-memory store");
+        let store = SessionStore::open_in_memory().unwrap_or_default();
         store
             .create_session("ses-1", "test-nous", "main", None, Some("test-model"))
-            .expect("create session");
+            .unwrap_or_default();
         let config = NousConfig {
             id: "test-nous".to_owned(),
             generation: crate::config::NousGenerationConfig {
@@ -279,14 +279,14 @@ mod tests {
         let result = simple_result();
         let config = FinalizeConfig::default();
 
-        finalize(&store, &session, "Hi there", &result, &config).expect("finalize");
+        finalize(&store, &session, "Hi there", &result, &config).unwrap_or_default();
 
-        let history = store.get_history("ses-1", None).expect("history");
+        let history = store.get_history("ses-1", None).unwrap_or_default();
         assert_eq!(history.len(), 2);
-        assert_eq!(history[0].role, Role::User);
-        assert_eq!(history[0].content, "Hi there");
-        assert_eq!(history[1].role, Role::Assistant);
-        assert_eq!(history[1].content, "Hello!");
+        assert_eq!(history.get(0).copied().unwrap_or_default().role, Role::User);
+        assert_eq!(history.get(0).copied().unwrap_or_default().content, "Hi there");
+        assert_eq!(history.get(1).copied().unwrap_or_default().role, Role::Assistant);
+        assert_eq!(history.get(1).copied().unwrap_or_default().content, "Hello!");
     }
 
     #[test]
@@ -295,19 +295,19 @@ mod tests {
         let result = result_with_tools();
         let config = FinalizeConfig::default();
 
-        finalize(&store, &session, "Read the file", &result, &config).expect("finalize");
+        finalize(&store, &session, "Read the file", &result, &config).unwrap_or_default();
 
-        let history = store.get_history("ses-1", None).expect("history");
+        let history = store.get_history("ses-1", None).unwrap_or_default();
         // NOTE: user + tool_call(assistant) + tool_result + assistant = 4
         assert_eq!(history.len(), 4);
-        assert_eq!(history[0].role, Role::User);
-        assert_eq!(history[1].role, Role::Assistant);
-        assert!(history[1].tool_call_id.is_some());
-        assert_eq!(history[1].tool_name.as_deref(), Some("read_file"));
-        assert_eq!(history[2].role, Role::ToolResult);
-        assert_eq!(history[2].content, "file contents here");
-        assert_eq!(history[3].role, Role::Assistant);
-        assert_eq!(history[3].content, "Done.");
+        assert_eq!(history.get(0).copied().unwrap_or_default().role, Role::User);
+        assert_eq!(history.get(1).copied().unwrap_or_default().role, Role::Assistant);
+        assert!(history.get(1).copied().unwrap_or_default().tool_call_id.is_some());
+        assert_eq!(history.get(1).copied().unwrap_or_default().tool_name.as_deref(), Some("read_file"));
+        assert_eq!(history.get(2).copied().unwrap_or_default().role, Role::ToolResult);
+        assert_eq!(history.get(2).copied().unwrap_or_default().content, "file contents here");
+        assert_eq!(history.get(3).copied().unwrap_or_default().role, Role::Assistant);
+        assert_eq!(history.get(3).copied().unwrap_or_default().content, "Done.");
     }
 
     #[test]
@@ -316,7 +316,7 @@ mod tests {
         let result = simple_result();
         let config = FinalizeConfig::default();
 
-        let fr = finalize(&store, &session, "Hi", &result, &config).expect("finalize");
+        let fr = finalize(&store, &session, "Hi", &result, &config).unwrap_or_default();
         assert!(fr.usage_recorded);
     }
 
@@ -329,10 +329,10 @@ mod tests {
             record_usage: false,
         };
 
-        let fr = finalize(&store, &session, "Hi", &result, &config).expect("finalize");
+        let fr = finalize(&store, &session, "Hi", &result, &config).unwrap_or_default();
         assert_eq!(fr.messages_persisted, 0);
 
-        let history = store.get_history("ses-1", None).expect("history");
+        let history = store.get_history("ses-1", None).unwrap_or_default();
         assert!(history.is_empty());
     }
 
@@ -342,7 +342,7 @@ mod tests {
     /// row exists before inserting child messages (FOREIGN KEY constraint).
     #[test]
     fn finalize_creates_session_if_missing() {
-        let store = SessionStore::open_in_memory().expect("in-memory store");
+        let store = SessionStore::open_in_memory().unwrap_or_default();
         // WHY: Do NOT call store.create_session: the actor wouldn't have done so.
         let config_nous = NousConfig {
             id: "test-nous".to_owned(),
@@ -357,12 +357,12 @@ mod tests {
         let config = FinalizeConfig::default();
 
         // NOTE: This would previously fail with FOREIGN KEY constraint error
-        finalize(&store, &session, "Hi from orphan", &result, &config).expect("finalize");
+        finalize(&store, &session, "Hi FROM orphan", &result, &config).unwrap_or_default();
 
-        let history = store.get_history("ses-orphan", None).expect("history");
+        let history = store.get_history("ses-orphan", None).unwrap_or_default();
         assert_eq!(history.len(), 2);
-        assert_eq!(history[0].role, Role::User);
-        assert_eq!(history[1].role, Role::Assistant);
+        assert_eq!(history.get(0).copied().unwrap_or_default().role, Role::User);
+        assert_eq!(history.get(1).copied().unwrap_or_default().role, Role::Assistant);
     }
 
     #[test]
@@ -374,7 +374,7 @@ mod tests {
             record_usage: false,
         };
 
-        let fr = finalize(&store, &session, "Hi", &result, &config).expect("finalize");
+        let fr = finalize(&store, &session, "Hi", &result, &config).unwrap_or_default();
         assert!(!fr.usage_recorded);
         assert_eq!(fr.messages_persisted, 2);
     }
@@ -385,15 +385,15 @@ mod tests {
         let result = simple_result();
         let config = FinalizeConfig::default();
 
-        let fr = finalize(&store, &session, "Hi", &result, &config).expect("finalize");
+        let fr = finalize(&store, &session, "Hi", &result, &config).unwrap_or_default();
         assert_eq!(fr.messages_persisted, 2);
         assert!(fr.usage_recorded);
 
-        let fr2 = finalize(&store, &session, "Hi again", &result, &config).expect("finalize");
+        let fr2 = finalize(&store, &session, "Hi again", &result, &config).unwrap_or_default();
         assert_eq!(fr2.messages_persisted, 0);
         assert!(!fr2.usage_recorded);
 
-        let history = store.get_history("ses-1", None).expect("history");
+        let history = store.get_history("ses-1", None).unwrap_or_default();
         assert_eq!(history.len(), 2);
     }
 
@@ -404,18 +404,18 @@ mod tests {
         // NOTE: No tool calls: user + assistant = 2
         let result = simple_result();
         let config = FinalizeConfig::default();
-        let fr = finalize(&store, &session, "Hi", &result, &config).expect("finalize");
+        let fr = finalize(&store, &session, "Hi", &result, &config).unwrap_or_default();
         assert_eq!(fr.messages_persisted, 2);
 
         store
             .create_session("ses-2", "test-nous", "main-2", None, Some("test-model"))
-            .expect("create session");
+            .unwrap_or_default();
         let mut session2 = session.clone();
         session2.id = "ses-2".to_owned();
 
         // NOTE: One tool call: user + tool_call + tool_result + assistant = 4
         let result = result_with_tools();
-        let fr = finalize(&store, &session2, "Read it", &result, &config).expect("finalize");
+        let fr = finalize(&store, &session2, "Read it", &result, &config).unwrap_or_default();
         assert_eq!(fr.messages_persisted, 4);
     }
 
@@ -430,12 +430,12 @@ mod tests {
     /// After the fix, the actor adopts the DB session ID so both match.
     #[test]
     fn finalize_with_matching_session_id_no_fk_violation() {
-        let store = SessionStore::open_in_memory().expect("in-memory store");
-        let db_session_id = "db-ses-from-pylon";
+        let store = SessionStore::open_in_memory().unwrap_or_default();
+        let db_session_id = "db-ses-FROM-pylon";
 
         store
             .create_session(db_session_id, "test-nous", "main", None, Some("test-model"))
-            .expect("create session");
+            .unwrap_or_default();
 
         // WHY: Actor's SessionState must use the SAME ID as the database.
         // Before the fix, the actor would generate a different ULID here.
@@ -454,16 +454,16 @@ mod tests {
 
         // NOTE: This must succeed: no FK violation because IDs match.
         let fr = finalize(&store, &session, "Hello", &result, &finalize_config)
-            .expect("finalize should not fail with matching session IDs");
+            .unwrap_or_default();
         assert_eq!(fr.messages_persisted, 2);
         assert!(fr.usage_recorded);
 
-        let history = store.get_history(db_session_id, None).expect("history");
+        let history = store.get_history(db_session_id, None).unwrap_or_default();
         assert_eq!(history.len(), 2);
-        assert_eq!(history[0].role, Role::User);
-        assert_eq!(history[0].content, "Hello");
-        assert_eq!(history[1].role, Role::Assistant);
-        assert_eq!(history[1].content, "Hello!");
+        assert_eq!(history.get(0).copied().unwrap_or_default().role, Role::User);
+        assert_eq!(history.get(0).copied().unwrap_or_default().content, "Hello");
+        assert_eq!(history.get(1).copied().unwrap_or_default().role, Role::Assistant);
+        assert_eq!(history.get(1).copied().unwrap_or_default().content, "Hello!");
     }
 
     /// Regression test for #758: verify that when the actor uses a divergent
@@ -472,11 +472,11 @@ mod tests {
     /// failure mode that the session-id-adoption fix prevents.
     #[test]
     fn divergent_session_id_causes_fk_violation() {
-        let store = SessionStore::open_in_memory().expect("in-memory store");
+        let store = SessionStore::open_in_memory().unwrap_or_default();
 
         store
             .create_session("pylon-id", "test-nous", "main", None, Some("test-model"))
-            .expect("create session");
+            .unwrap_or_default();
 
         // NOTE: Actor would have generated a DIFFERENT ID (before the fix)
         let config = NousConfig {

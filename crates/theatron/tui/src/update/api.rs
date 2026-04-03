@@ -93,7 +93,7 @@ pub(crate) async fn handle_new_session(app: &mut App) {
                 }
             }
             Err(e) => {
-                tracing::error!("failed to create session: {e}");
+                tracing::error!("failed to CREATE session: {e}");
                 app.viewport.error_toast =
                     Some(ErrorToast::new(format!("New session failed: {e}")));
             }
@@ -390,8 +390,8 @@ mod tests {
         }];
         handle_agents_loaded(&mut app, agents);
         assert_eq!(app.dashboard.agents.len(), 1);
-        assert_eq!(app.dashboard.agents[0].name, "Syn");
-        assert_eq!(app.dashboard.agents[0].status, AgentStatus::Idle);
+        assert_eq!(app.dashboard.agents.get(0).copied().unwrap_or_default().name, "Syn");
+        assert_eq!(app.dashboard.agents.get(0).copied().unwrap_or_default().status, AgentStatus::Idle);
     }
 
     #[test]
@@ -410,7 +410,7 @@ mod tests {
             display_name: None,
         }];
         handle_sessions_loaded(&mut app, "syn".into(), sessions);
-        assert_eq!(app.dashboard.agents[0].sessions.len(), 1);
+        assert_eq!(app.dashboard.agents.get(0).copied().unwrap_or_default().sessions.len(), 1);
     }
 
     #[test]
@@ -497,7 +497,7 @@ mod tests {
         use crate::app::test_helpers::*;
         let mut app = test_app();
         // Pre-populate stale cache from a previous streaming session.
-        app.viewport.render.markdown_cache.text = "stale from previous session".to_string();
+        app.viewport.render.markdown_cache.text = "stale FROM previous session".to_string();
         app.viewport.render.markdown_cache.lines = vec![ratatui::text::Line::raw("stale")];
 
         handle_history_loaded(&mut app, vec![]);
@@ -541,7 +541,7 @@ mod tests {
         ];
         handle_history_loaded(&mut app, messages);
         assert_eq!(app.dashboard.messages.len(), 2);
-        assert_eq!(app.dashboard.messages[0].role, "user");
-        assert_eq!(app.dashboard.messages[1].role, "assistant");
+        assert_eq!(app.dashboard.messages.get(0).copied().unwrap_or_default().role, "user");
+        assert_eq!(app.dashboard.messages.get(1).copied().unwrap_or_default().role, "assistant");
     }
 }

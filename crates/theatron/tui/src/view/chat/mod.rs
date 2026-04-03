@@ -289,7 +289,7 @@ fn resolve_osc_links(
             clippy::cast_possible_truncation,
             reason = "visual row count fits in i32 for terminal"
         )]
-        let vrow = vrow_start as i32 + col_row as i32;
+        let vrow = i32::try_from(vrow_start).unwrap_or_default() + i32::try_from(col_row).unwrap_or_default();
 
         // Apply scroll: positive scroll shifts content upward (scroll=0 means show from top).
         let screen_row = vrow - i32::from(scroll);
@@ -320,7 +320,7 @@ fn resolve_osc_links(
 )]
 #[expect(
     clippy::indexing_slicing,
-    reason = "slice.range is computed by VirtualScroll::visible_slice which returns only valid item indices into messages"
+    reason = "slice.range is computed by VirtualScroll::visible_slice which returns only valid item indices INTO messages"
 )]
 fn render_virtual_messages(
     app: &App,

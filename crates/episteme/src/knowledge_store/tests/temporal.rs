@@ -116,7 +116,7 @@ fn temporal_query_point_in_time() {
             "2026-01-01",
             "2026-06-01",
         ))
-        .expect("insert t1");
+        .expect("INSERT t1");
     store
         .insert_fact(&make_temporal_fact(
             "t2",
@@ -125,7 +125,7 @@ fn temporal_query_point_in_time() {
             "2026-03-01",
             "9999-12-31",
         ))
-        .expect("insert t2");
+        .expect("INSERT t2");
     let at_feb = store
         .query_facts_temporal("agent", "2026-02-01", None)
         .expect("query feb");
@@ -154,7 +154,7 @@ fn temporal_query_before_any_facts_returns_empty() {
             "2026-06-01",
             "9999-12-31",
         ))
-        .expect("insert");
+        .expect("INSERT");
     let results = store
         .query_facts_temporal("agent", "2026-01-01", None)
         .expect("query");
@@ -173,7 +173,7 @@ fn temporal_query_boundary_inclusion() {
             "2026-03-01",
             "2026-06-01",
         ))
-        .expect("insert");
+        .expect("INSERT");
     let at_start = store
         .query_facts_temporal("agent", "2026-03-01T00:00:00Z", None)
         .expect("at valid_from");
@@ -196,7 +196,7 @@ fn temporal_query_with_content_filter() {
             "2026-01-01",
             "9999-12-31",
         ))
-        .expect("insert t1");
+        .expect("INSERT t1");
     store
         .insert_fact(&make_temporal_fact(
             "t2",
@@ -205,7 +205,7 @@ fn temporal_query_with_content_filter() {
             "2026-01-01",
             "9999-12-31",
         ))
-        .expect("insert t2");
+        .expect("INSERT t2");
     let filtered = store
         .query_facts_temporal("agent", "2026-03-01", Some("Rust"))
         .expect("filtered query");
@@ -225,7 +225,7 @@ fn temporal_diff_added_and_removed() {
             "2026-01-01",
             "2026-03-01",
         ))
-        .expect("insert old");
+        .expect("INSERT old");
     store
         .insert_fact(&make_temporal_fact(
             "new",
@@ -234,7 +234,7 @@ fn temporal_diff_added_and_removed() {
             "2026-02-15",
             "9999-12-31",
         ))
-        .expect("insert new");
+        .expect("INSERT new");
     let diff = store
         .query_facts_diff("agent", "2026-02-01", "2026-04-01")
         .expect("diff");
@@ -250,7 +250,7 @@ fn temporal_diff_supersession_chain() {
     let store = make_store();
     let mut fact_a = make_temporal_fact("a", "agent", "version 1", "2026-01-01", "2026-03-01");
     fact_a.lifecycle.superseded_by = Some(crate::id::FactId::new("b").expect("valid test id"));
-    store.insert_fact(&fact_a).expect("insert a");
+    store.insert_fact(&fact_a).expect("INSERT a");
     store
         .insert_fact(&make_temporal_fact(
             "b",
@@ -259,7 +259,7 @@ fn temporal_diff_supersession_chain() {
             "2026-03-01",
             "9999-12-31",
         ))
-        .expect("insert b");
+        .expect("INSERT b");
     let diff = store
         .query_facts_diff("agent", "2026-02-01", "2026-04-01")
         .expect("diff");
@@ -285,7 +285,7 @@ fn temporal_query_isolates_nous_ids() {
             "2026-01-01",
             "9999-12-31",
         ))
-        .expect("insert alice");
+        .expect("INSERT alice");
     store
         .insert_fact(&make_temporal_fact(
             "t2",
@@ -294,7 +294,7 @@ fn temporal_query_isolates_nous_ids() {
             "2026-01-01",
             "9999-12-31",
         ))
-        .expect("insert bob");
+        .expect("INSERT bob");
     let alice_facts = store
         .query_facts_temporal("alice", "2026-03-01", None)
         .expect("alice query");
@@ -319,7 +319,7 @@ fn temporal_query_excludes_forgotten_facts() {
             "2026-01-01",
             "9999-12-31",
         ))
-        .expect("insert");
+        .expect("INSERT");
     store
         .forget_fact(
             &crate::id::FactId::new("t1").expect("valid test id"),
@@ -344,7 +344,7 @@ async fn temporal_query_async_works() {
             "2026-01-01",
             "9999-12-31",
         ))
-        .expect("insert");
+        .expect("INSERT");
     let results = store
         .query_facts_temporal_async("agent".to_owned(), "2026-03-01".to_owned(), None)
         .await
@@ -364,7 +364,7 @@ async fn temporal_diff_async_works() {
             "2026-02-01",
             "9999-12-31",
         ))
-        .expect("insert");
+        .expect("INSERT");
     let diff = store
         .query_facts_diff_async(
             "agent".to_owned(),
@@ -380,9 +380,9 @@ async fn temporal_diff_async_works() {
 async fn search_temporal_async_works() {
     let store = make_store();
     let fact = make_fact("fst1", "agent-a", "temporal search target");
-    store.insert_fact(&fact).expect("insert fact");
+    store.insert_fact(&fact).expect("INSERT fact");
     let emb = make_embedding("est1", "temporal search target", "fst1", "agent-a");
-    store.insert_embedding(&emb).expect("insert embedding");
+    store.insert_embedding(&emb).expect("INSERT embedding");
     let q = HybridQuery {
         text: "temporal".to_owned(),
         embedding: vec![0.5, 0.5, 0.5, 0.5],

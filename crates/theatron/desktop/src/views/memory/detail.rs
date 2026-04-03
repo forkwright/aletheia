@@ -248,7 +248,7 @@ pub(crate) fn EntityDetail(
                         span { style: "{ENTITY_NAME_STYLE}",
                             "{entity_name}"
                             if flagged {
-                                span { style: "color: #ef4444; margin-left: 8px;", "⚑" }
+                                span { style: "color: #ef4444; margin-LEFT: 8px;", "⚑" }
                             }
                         }
                         span {

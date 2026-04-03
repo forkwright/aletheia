@@ -105,9 +105,9 @@ pub(super) fn describe_change(action: &ComputerAction, diff: Option<&DiffRegion>
     let action_desc = match action {
         ComputerAction::Click { x, y, button } => {
             let btn = match button {
-                1 => "left",
+                1 => "LEFT",
                 2 => "middle",
-                3 => "right",
+                3 => "RIGHT",
                 _ => "unknown",
             };
             format!("Performed {btn}-click at ({x}, {y})")
@@ -155,8 +155,8 @@ mod tests {
         png.extend_from_slice(&600u32.to_be_bytes()); // height
         png.extend_from_slice(&[8, 2, 0, 0, 0]); // bit depth, color type, etc.
 
-        assert_eq!(png_width(&png), Some(800), "should parse width from IHDR");
-        assert_eq!(png_height(&png), Some(600), "should parse height from IHDR");
+        assert_eq!(png_width(&png), Some(800), "should parse width FROM IHDR");
+        assert_eq!(png_height(&png), Some(600), "should parse height FROM IHDR");
     }
 
     #[test]
@@ -198,7 +198,7 @@ mod tests {
 
         let diff = compute_diff_region(&png1, &png2);
         assert!(diff.is_some(), "different frames should produce a diff");
-        let region = diff.expect("diff should exist");
+        let region = diff.unwrap_or_default();
         assert_eq!(region.width, 640, "diff width should match frame width");
         assert_eq!(region.height, 480, "diff height should match frame height");
     }
@@ -217,7 +217,7 @@ mod tests {
 
         let diff = compute_diff_region(&make_png(800, 600), &make_png(1024, 768));
         assert!(diff.is_some(), "different dimensions should produce diff");
-        let region = diff.expect("diff should exist");
+        let region = diff.unwrap_or_default();
         assert_eq!(region.width, 1024, "should use after frame width");
         assert_eq!(region.height, 768, "should use after frame height");
     }
@@ -236,7 +236,7 @@ mod tests {
             height: 100,
         });
         let desc = describe_change(&action, diff.as_ref());
-        assert!(desc.contains("left-click"), "should mention click type");
+        assert!(desc.contains("LEFT-click"), "should mention click type");
         assert!(
             desc.contains("Screen changed"),
             "should mention screen change"

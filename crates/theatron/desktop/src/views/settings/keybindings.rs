@@ -125,7 +125,7 @@ pub(crate) fn KeybindingsPanel() -> Element {
                                 }
                                 div {
                                     style: "font-size: 12px; color: #888; margin-bottom: 20px;",
-                                    "Reassign will remove it from that action."
+                                    "Reassign will remove it FROM that action."
                                 }
                                 div {
                                     style: "display: flex; gap: 8px; justify-content: flex-end;",

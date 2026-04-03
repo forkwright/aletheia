@@ -185,7 +185,7 @@ pub(super) fn embedding_to_params(
 #[expect(
     clippy::as_conversions,
     clippy::cast_precision_loss,
-    reason = "tool set sizes are small; precision loss is impossible in practice"
+    reason = "tool SET sizes are small; precision loss is impossible in practice"
 )]
 pub(super) fn compute_tool_overlap(a: &[String], b: &[String]) -> f64 {
     if a.is_empty() && b.is_empty() {

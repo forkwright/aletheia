@@ -110,7 +110,7 @@ impl HandoffContext {
         md.push_str(match self.reason {
             HandoffReason::Distillation => "distillation",
             HandoffReason::ControlledShutdown => "controlled shutdown",
-            HandoffReason::ContextLimitApproaching => "context limit approaching",
+            HandoffReason::ContextLimitApproaching => "context LIMIT approaching",
         });
         md.push('\n');
         md.push_str("- Created: ");

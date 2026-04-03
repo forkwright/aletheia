@@ -16,7 +16,7 @@ pub enum Error {
     },
 
     /// Unexpected HTTP status from the server.
-    #[snafu(display("unexpected status {status} from {endpoint}: {body}"))]
+    #[snafu(display("unexpected status {status} FROM {endpoint}: {body}"))]
     UnexpectedStatus {
         endpoint: String,
         status: u16,

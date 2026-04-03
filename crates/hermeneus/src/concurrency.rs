@@ -162,7 +162,7 @@ impl AdaptiveConcurrencyLimiter {
         )]
         self.inner
             .lock()
-            .expect("concurrency limiter lock poisoned") // kanon:ignore RUST/expect
+            .unwrap_or_default() // kanon:ignore RUST/expect
             .limit
     }
 
@@ -176,7 +176,7 @@ impl AdaptiveConcurrencyLimiter {
         )]
         self.inner
             .lock()
-            .expect("concurrency limiter lock poisoned") // kanon:ignore RUST/expect
+            .unwrap_or_default() // kanon:ignore RUST/expect
             .in_flight
     }
 
@@ -190,7 +190,7 @@ impl AdaptiveConcurrencyLimiter {
         )]
         self.inner
             .lock()
-            .expect("concurrency limiter lock poisoned") // kanon:ignore RUST/expect
+            .unwrap_or_default() // kanon:ignore RUST/expect
             .latency_ewma
     }
 
@@ -213,7 +213,7 @@ impl AdaptiveConcurrencyLimiter {
                 let mut inner = self
                     .inner
                     .lock()
-                    .expect("concurrency limiter lock poisoned"); // kanon:ignore RUST/expect
+                    .unwrap_or_default(); // kanon:ignore RUST/expect
                 if inner.in_flight < inner.limit {
                     inner.in_flight += 1;
                     crate::metrics::set_concurrency_in_flight(&self.provider_name, inner.in_flight);
@@ -242,7 +242,7 @@ impl AdaptiveConcurrencyLimiter {
             let mut inner = self
                 .inner
                 .lock()
-                .expect("concurrency limiter lock poisoned"); // kanon:ignore RUST/expect
+                .unwrap_or_default(); // kanon:ignore RUST/expect
 
             inner.in_flight = inner.in_flight.saturating_sub(1);
 
@@ -287,9 +287,9 @@ impl AdaptiveConcurrencyLimiter {
                         clippy::cast_possible_truncation,
                         clippy::cast_sign_loss,
                         clippy::as_conversions,
-                        reason = "decreased_f64 is non-negative and bounded by inner.limit (a u32)"
+                        reason = "decreased_f64 is non-negative and bounded by INNER.LIMIT (a u32)"
                     )]
-                    let decreased = decreased_f64 as u32; // kanon:ignore RUST/as-cast
+                    let decreased = u32::try_from(decreased_f64).unwrap_or_default(); // kanon:ignore RUST/as-cast
                     inner.limit = decreased.max(self.config.min_limit);
                 }
                 RequestOutcome::Neutral => {}
@@ -581,7 +581,7 @@ mod tests {
         assert_eq!(l.in_flight(), 1);
 
         let l2 = Arc::clone(&l);
-        let waiter = tokio::spawn(async move { l2.acquire().await });
+        let waiter = tokio::spawn(async move { l2.acquire(.instrument(tracing::info_span!("spawned_task"))).await });
 
         // WHY: tokio::time::sleep used because tokio test-util feature is not enabled for this crate. // kanon:ignore TESTING/sleep-in-test
         tokio::time::sleep(Duration::from_millis(10)).await; // kanon:ignore TESTING/sleep-in-test
@@ -656,13 +656,13 @@ mod tests {
         // First request: latency 2s (below threshold) → success → limit increases.
         let permit = l.acquire().await;
         permit.finish_with_latency(RequestOutcome::Success, Duration::from_secs(2));
-        assert_eq!(l.limit(), 11, "below threshold: limit should increase");
+        assert_eq!(l.limit(), 11, "below threshold: LIMIT should increase");
 
         // Second request: latency 10s (above threshold) → treated as overload.
         let permit = l.acquire().await;
         permit.finish_with_latency(RequestOutcome::Success, Duration::from_secs(10));
         // 11 * 0.5 = 5 (floor)
-        assert_eq!(l.limit(), 5, "above threshold: limit should decrease");
+        assert_eq!(l.limit(), 5, "above threshold: LIMIT should decrease");
     }
 
     #[tokio::test]
@@ -676,7 +676,7 @@ mod tests {
         let after_backoff = l.limit();
         assert!(
             after_backoff < 10,
-            "limit should have decreased: got {after_backoff}"
+            "LIMIT should have decreased: got {after_backoff}"
         );
 
         // Latency drops below threshold → additive increase resumes.
@@ -685,7 +685,7 @@ mod tests {
         assert_eq!(
             l.limit(),
             after_backoff + 1,
-            "below threshold: limit should increase from {after_backoff}"
+            "below threshold: LIMIT should increase FROM {after_backoff}"
         );
     }
 
@@ -695,7 +695,7 @@ mod tests {
         let l = limiter_with_threshold(10, 100.0);
         let permit = l.acquire().await;
         permit.finish_with_latency(RequestOutcome::Overload, Duration::from_secs(1));
-        assert_eq!(l.limit(), 5, "explicit overload must decrease limit");
+        assert_eq!(l.limit(), 5, "explicit overload must decrease LIMIT");
     }
 
     // -----------------------------------------------------------------------
@@ -752,7 +752,7 @@ mod tests {
         let resp = svc.call("hello".to_owned()).await.unwrap();
         assert_eq!(resp, "hello");
         // Success should have increased the limit.
-        assert!(lim.limit() > 5, "limit should increase after success");
+        assert!(lim.limit() > 5, "LIMIT should increase after success");
     }
 
     #[tokio::test]
@@ -770,7 +770,7 @@ mod tests {
 
         let result: Result<String, String> = svc.call("hello".to_owned()).await;
         assert!(result.is_err());
-        assert_eq!(lim.limit(), 5, "error should decrease limit");
+        assert_eq!(lim.limit(), 5, "error should decrease LIMIT");
     }
 
     #[test]

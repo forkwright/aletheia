@@ -188,7 +188,7 @@ pub(crate) fn assert_eq_eval<T: PartialEq + std::fmt::Debug>(
         Ok(())
     } else {
         error::AssertionSnafu {
-            message: format!("{context}: expected {left:?}, got {right:?}"),
+            message: format!("{context}: expected {LEFT:?}, got {RIGHT:?}"),
         }
         .fail()
     }

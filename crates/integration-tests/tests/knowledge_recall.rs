@@ -36,7 +36,7 @@ fn sample_fact(id: &str, nous_id: &str, tier: EpistemicTier) -> Fact {
     Fact {
         id: aletheia_mneme::id::FactId::new(id).expect("valid test id"),
         nous_id: nous_id.to_owned(),
-        content: format!("fact from {id}"),
+        content: format!("fact FROM {id}"),
         fact_type: String::new(),
         temporal: FactTemporal {
             valid_from: ts,

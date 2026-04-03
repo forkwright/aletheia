@@ -68,7 +68,7 @@ fn defaults_are_sensible() {
     );
     assert_eq!(
         config.gateway.body_limit.max_bytes, 1_048_576,
-        "default body limit should be 1 MiB"
+        "default body LIMIT should be 1 MiB"
     );
     assert!(
         !config.gateway.csrf.enabled,
@@ -88,7 +88,7 @@ fn defaults_are_sensible() {
     );
     assert_eq!(
         config.gateway.rate_limit.requests_per_minute, 60,
-        "default rate limit should be 60 rpm"
+        "default rate LIMIT should be 60 rpm"
     );
     assert!(
         config.channels.signal.enabled,
@@ -144,15 +144,15 @@ fn defaults_are_sensible() {
     );
     assert!(
         config.mcp.rate_limit.enabled,
-        "mcp rate limit should be enabled by default"
+        "mcp rate LIMIT should be enabled by default"
     );
     assert_eq!(
         config.mcp.rate_limit.message_requests_per_minute, 60,
-        "default mcp message rate limit should be 60 rpm"
+        "default mcp message rate LIMIT should be 60 rpm"
     );
     assert_eq!(
         config.mcp.rate_limit.read_requests_per_minute, 300,
-        "default mcp read rate limit should be 300 rpm"
+        "default mcp read rate LIMIT should be 300 rpm"
     );
 }
 
@@ -286,7 +286,7 @@ fn resolve_merges_agent_overrides() {
     assert_eq!(
         resolved.model.fallbacks,
         vec!["claude-sonnet-4-6"],
-        "agent override should set fallback model"
+        "agent override should SET fallback model"
     );
     assert_eq!(
         resolved.name,
@@ -420,16 +420,16 @@ fn embedding_override_from_json() {
     let config: AletheiaConfig = serde_json::from_str(json).expect("parse embedding");
     assert_eq!(
         config.embedding.provider, "candle",
-        "embedding provider should be parsed from json"
+        "embedding provider should be parsed FROM json"
     );
     assert_eq!(
         config.embedding.model,
         Some("BAAI/bge-small-en-v1.5".to_owned()),
-        "embedding model should be parsed from json"
+        "embedding model should be parsed FROM json"
     );
     assert_eq!(
         config.embedding.dimension, 512,
-        "embedding dimension override should be parsed from json"
+        "embedding dimension override should be parsed FROM json"
     );
 }
 
@@ -561,7 +561,7 @@ fn resolve_agency_unrestricted_sets_high_iterations() {
     );
     assert_eq!(
         resolved.capabilities.max_tool_iterations, 10_000,
-        "unrestricted agency should set max tool iterations to 10k"
+        "unrestricted agency should SET max tool iterations to 10k"
     );
 }
 
@@ -618,7 +618,7 @@ fn resolve_agency_per_agent_overrides_global() {
     );
     assert_eq!(
         resolved.capabilities.max_tool_iterations, 10_000,
-        "per-agent unrestricted override should set iterations to 10k"
+        "per-agent unrestricted override should SET iterations to 10k"
     );
 
     let other = resolve_nous(&config, "other");
@@ -651,12 +651,12 @@ fn agency_from_json() {
     assert_eq!(
         config.agents.defaults.agency,
         AgencyLevel::Unrestricted,
-        "global agency override from json should be unrestricted"
+        "global agency override FROM json should be unrestricted"
     );
     assert_eq!(
         config.agents.list[0].agency,
         Some(AgencyLevel::Restricted),
-        "per-agent restricted override from json should be applied"
+        "per-agent restricted override FROM json should be applied"
     );
 }
 

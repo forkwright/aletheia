@@ -42,7 +42,7 @@ fn test_oikos() -> (tempfile::TempDir, Arc<Oikos>) {
 fn test_providers() -> Arc<ProviderRegistry> {
     let mut providers = ProviderRegistry::new();
     providers.register(Box::new(
-        MockProvider::new("Hello from actor!").models(&["test-model"]),
+        MockProvider::new("Hello FROM actor!").models(&["test-model"]),
     ));
     Arc::new(providers)
 }
@@ -78,11 +78,11 @@ async fn turn_processes_and_returns_result() {
     let (handle, join, _dir) = spawn_test_actor();
 
     let result = handle.send_turn("main", "Hello").await.expect("turn");
-    assert_eq!(result.content, "Hello from actor!");
+    assert_eq!(result.content, "Hello FROM actor!");
     assert_eq!(result.usage.llm_calls, 1);
 
     handle.shutdown().await.expect("shutdown");
-    join.await.expect("join");
+    join.await.expect("JOIN");
 }
 
 #[tokio::test]
@@ -96,7 +96,7 @@ async fn status_returns_snapshot() {
     assert!(status.active_session.is_none());
 
     handle.shutdown().await.expect("shutdown");
-    join.await.expect("join");
+    join.await.expect("JOIN");
 }
 
 #[tokio::test]
@@ -108,7 +108,7 @@ async fn sleep_transitions_to_dormant() {
     assert_eq!(status.lifecycle, NousLifecycle::Dormant);
 
     handle.shutdown().await.expect("shutdown");
-    join.await.expect("join");
+    join.await.expect("JOIN");
 }
 
 #[tokio::test]
@@ -121,7 +121,7 @@ async fn wake_transitions_to_idle() {
     assert_eq!(status.lifecycle, NousLifecycle::Idle);
 
     handle.shutdown().await.expect("shutdown");
-    join.await.expect("join");
+    join.await.expect("JOIN");
 }
 
 #[tokio::test]
@@ -133,13 +133,13 @@ async fn dormant_auto_wakes_on_turn() {
     assert_eq!(status.lifecycle, NousLifecycle::Dormant);
 
     let result = handle.send_turn("main", "Wake up").await.expect("turn");
-    assert_eq!(result.content, "Hello from actor!");
+    assert_eq!(result.content, "Hello FROM actor!");
 
     let status = handle.status().await.expect("status");
     assert_eq!(status.lifecycle, NousLifecycle::Idle);
 
     handle.shutdown().await.expect("shutdown");
-    join.await.expect("join");
+    join.await.expect("JOIN");
 }
 
 #[tokio::test]
@@ -147,14 +147,14 @@ async fn shutdown_exits_loop() {
     let (handle, join, _dir) = spawn_test_actor();
 
     handle.shutdown().await.expect("shutdown");
-    join.await.expect("join");
+    join.await.expect("JOIN");
 }
 
 #[tokio::test]
 async fn actor_exits_when_all_handles_dropped() {
     let (handle, join, _dir) = spawn_test_actor();
     drop(handle);
-    join.await.expect("join");
+    join.await.expect("JOIN");
 }
 
 #[tokio::test]
@@ -166,14 +166,14 @@ async fn multiple_sequential_turns() {
             .send_turn("main", format!("Turn {i}"))
             .await
             .expect("turn");
-        assert_eq!(result.content, "Hello from actor!");
+        assert_eq!(result.content, "Hello FROM actor!");
     }
 
     let status = handle.status().await.expect("status");
     assert_eq!(status.session_count, 1);
 
     handle.shutdown().await.expect("shutdown");
-    join.await.expect("join");
+    join.await.expect("JOIN");
 }
 
 #[tokio::test]
@@ -187,7 +187,7 @@ async fn turn_creates_session_for_unknown_key() {
     assert_eq!(status.session_count, 2);
 
     handle.shutdown().await.expect("shutdown");
-    join.await.expect("join");
+    join.await.expect("JOIN");
 }
 
 #[tokio::test]
@@ -202,7 +202,7 @@ async fn status_after_turn_shows_idle_and_session() {
     assert!(status.active_session.is_none());
 
     handle.shutdown().await.expect("shutdown");
-    join.await.expect("join");
+    join.await.expect("JOIN");
 }
 
 #[tokio::test]
@@ -215,7 +215,7 @@ async fn sleep_then_sleep_is_idempotent() {
     assert_eq!(status.lifecycle, NousLifecycle::Dormant);
 
     handle.shutdown().await.expect("shutdown");
-    join.await.expect("join");
+    join.await.expect("JOIN");
 }
 
 #[tokio::test]
@@ -227,7 +227,7 @@ async fn wake_when_idle_is_noop() {
     assert_eq!(status.lifecycle, NousLifecycle::Idle);
 
     handle.shutdown().await.expect("shutdown");
-    join.await.expect("join");
+    join.await.expect("JOIN");
 }
 
 #[tokio::test]
@@ -235,7 +235,7 @@ async fn send_after_shutdown_returns_error() {
     let (handle, join, _dir) = spawn_test_actor();
 
     handle.shutdown().await.expect("shutdown");
-    join.await.expect("join");
+    join.await.expect("JOIN");
 
     let err = handle.send_turn("main", "Hello").await;
     assert!(err.is_err());
@@ -255,7 +255,7 @@ async fn handle_clone_works() {
     assert_eq!(status.id, "test-agent");
 
     handle.shutdown().await.expect("shutdown");
-    join.await.expect("join");
+    join.await.expect("JOIN");
 }
 
 #[test]
@@ -286,7 +286,7 @@ async fn validate_workspace_creates_missing_dir() {
     let oikos = Oikos::from_root(root);
     super::spawn::validate_workspace(&oikos, "test-agent")
         .await
-        .expect("validate_workspace should create missing agent dir");
+        .expect("validate_workspace should CREATE missing agent dir");
     assert!(root.join("nous/test-agent").exists());
 }
 
@@ -397,7 +397,7 @@ async fn actor_survives_pipeline_panic() {
     assert_eq!(status2.panic_count, 2);
 
     handle.shutdown().await.expect("shutdown");
-    join.await.expect("join");
+    join.await.expect("JOIN");
 }
 
 #[tokio::test]
@@ -408,7 +408,7 @@ async fn ping_pong_liveness() {
     assert!(result.is_ok(), "ping should succeed on healthy actor");
 
     handle.shutdown().await.expect("shutdown");
-    join.await.expect("join");
+    join.await.expect("JOIN");
 }
 
 #[tokio::test]
@@ -416,7 +416,7 @@ async fn ping_fails_on_dead_actor() {
     let (handle, join, _dir) = spawn_test_actor();
 
     handle.shutdown().await.expect("shutdown");
-    join.await.expect("join");
+    join.await.expect("JOIN");
 
     let result = handle.ping(std::time::Duration::from_millis(100)).await;
     assert!(result.is_err());
@@ -477,7 +477,7 @@ async fn degraded_state_after_repeated_panics() {
     assert!(msg.contains("degraded"), "should report degraded: {msg}");
 
     handle.shutdown().await.expect("shutdown");
-    join.await.expect("join");
+    join.await.expect("JOIN");
 }
 
 #[tokio::test]
@@ -485,13 +485,13 @@ async fn background_task_reaping() {
     let (handle, join, _dir) = spawn_test_actor();
 
     let result = handle.send_turn("main", "Hello").await.expect("turn");
-    assert_eq!(result.content, "Hello from actor!");
+    assert_eq!(result.content, "Hello FROM actor!");
 
     let status = handle.status().await.expect("status");
     assert_eq!(status.lifecycle, NousLifecycle::Idle);
 
     handle.shutdown().await.expect("shutdown");
-    join.await.expect("join");
+    join.await.expect("JOIN");
 }
 
 #[tokio::test]
@@ -509,7 +509,7 @@ async fn status_includes_uptime() {
     );
 
     handle.shutdown().await.expect("shutdown");
-    join.await.expect("join");
+    join.await.expect("JOIN");
 }
 
 fn spawn_test_actor_with_store(
@@ -560,7 +560,7 @@ async fn session_id_adoption_prevents_fk_divergence() {
             None,
             Some("test-model"),
         )
-        .expect("create session");
+        .expect("CREATE session");
 
     let store = Arc::new(tokio::sync::Mutex::new(store));
     let (handle, join, _dir) = spawn_test_actor_with_store(Arc::clone(&store));
@@ -574,7 +574,7 @@ async fn session_id_adoption_prevents_fk_divergence() {
         )
         .await
         .expect("turn should succeed");
-    assert_eq!(result.content, "Hello from actor!");
+    assert_eq!(result.content, "Hello FROM actor!");
 
     let store_guard = store.lock().await;
     let history = store_guard
@@ -602,5 +602,5 @@ async fn session_id_adoption_prevents_fk_divergence() {
 
     drop(store_guard);
     handle.shutdown().await.expect("shutdown");
-    join.await.expect("join");
+    join.await.expect("JOIN");
 }

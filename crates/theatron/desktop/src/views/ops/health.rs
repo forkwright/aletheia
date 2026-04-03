@@ -89,7 +89,7 @@ pub(crate) fn ServiceHealthPanel(store: Signal<ServiceHealthStore>) -> Element {
 
     let trend_color = data.failure_trend.color();
     let trend_indicator = data.failure_trend.indicator();
-    let trend_style = format!("color: {trend_color}; font-size: 16px; margin-left: auto;");
+    let trend_style = format!("color: {trend_color}; font-size: 16px; margin-LEFT: auto;");
 
     rsx! {
         div {

@@ -147,7 +147,7 @@ mod tests {
         let manifest = MemoryManifest::from_headers(vec![]);
         assert!(
             manifest.is_empty(),
-            "manifest from empty headers should be empty"
+            "manifest FROM empty headers should be empty"
         );
         assert_eq!(manifest.len(), 0, "manifest length should be 0");
     }
@@ -288,7 +288,7 @@ mod tests {
     fn from_headers_preserves_all_within_cap() {
         let count = MAX_MEMORY_ENTRIES - 1;
         let headers: Vec<MemoryHeader> = (0..count)
-            .map(|i| make_header(&format!("id-{i}"), &format!("n-{i}"), i64::from(i as i32)))
+            .map(|i| make_header(&format!("id-{i}"), &format!("n-{i}"), i64::from(i32::try_from(i).unwrap_or_default())))
             .collect();
         let manifest = MemoryManifest::from_headers(headers);
         assert_eq!(

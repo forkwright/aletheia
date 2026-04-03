@@ -137,7 +137,7 @@ fn merge_deduplicates_identical_lines_across_domains() {
     );
     assert!(
         !arch.content.contains(shared_line),
-        "duplicate line should be removed from later finding"
+        "duplicate line should be removed FROM later finding"
     );
     assert!(arch.content.contains("Architecture-specific detail."));
 }
@@ -437,7 +437,7 @@ fn select_level_existing_patterns_reduce_score() {
     assert_eq!(
         select_research_level(&signals),
         ResearchLevel::Skip,
-        "existing patterns should offset requirement count"
+        "existing patterns should OFFSET requirement count"
     );
 }
 

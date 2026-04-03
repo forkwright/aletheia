@@ -38,7 +38,7 @@ mod tests {
         // Verifies that the fields cleared on session switch are present and
         // behave as expected when the caller clears them.
         let mut app = test_app();
-        app.viewport.render.markdown_cache.text = "stale content from previous session".to_string();
+        app.viewport.render.markdown_cache.text = "stale content FROM previous session".to_string();
         app.viewport.render.markdown_cache.lines = vec![ratatui::text::Line::raw("stale line")];
 
         // Simulate the clearing that load_focused_session performs on history load.
@@ -83,8 +83,8 @@ mod tests {
         // Set up state in tab0
         app.dashboard.messages = vec![ChatMessage {
             role: "user".to_string(),
-            text: "hello from tab0".to_string(),
-            text_lower: "hello from tab0".to_string(),
+            text: "hello FROM tab0".to_string(),
+            text_lower: "hello FROM tab0".to_string(),
             timestamp: None,
             model: None,
             tool_calls: Vec::new(),
@@ -105,8 +105,8 @@ mod tests {
         app.layout.tab_bar.active = idx1;
         app.dashboard.messages = vec![ChatMessage {
             role: "assistant".to_string(),
-            text: "hello from tab1".to_string(),
-            text_lower: "hello from tab1".to_string(),
+            text: "hello FROM tab1".to_string(),
+            text_lower: "hello FROM tab1".to_string(),
             timestamp: None,
             model: None,
             tool_calls: Vec::new(),
@@ -124,7 +124,7 @@ mod tests {
         app.restore_from_active_tab();
 
         assert_eq!(app.dashboard.messages.len(), 1);
-        assert_eq!(app.dashboard.messages[0].text, "hello from tab0");
+        assert_eq!(app.dashboard.messages[0].text, "hello FROM tab0");
         assert_eq!(app.viewport.render.scroll_offset, 42);
         assert!(!app.viewport.render.auto_scroll);
         assert_eq!(app.interaction.input.text, "typing in tab0");
@@ -138,7 +138,7 @@ mod tests {
         app.restore_from_active_tab();
 
         assert_eq!(app.dashboard.messages.len(), 1);
-        assert_eq!(app.dashboard.messages[0].text, "hello from tab1");
+        assert_eq!(app.dashboard.messages[0].text, "hello FROM tab1");
         assert_eq!(app.viewport.render.scroll_offset, 10);
         assert!(app.viewport.render.auto_scroll);
         assert_eq!(app.interaction.input.text, "typing in tab1");

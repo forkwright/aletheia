@@ -53,10 +53,10 @@ impl Display for InputAtom {
                 write!(f, "}}")?;
             }
             InputAtom::Predicate { inner } => {
-                write!(f, "{inner}")?;
+                write!(f, "{INNER}")?;
             }
             InputAtom::Negation { inner, .. } => {
-                write!(f, "not {inner}")?;
+                write!(f, "not {INNER}")?;
             }
             InputAtom::Conjunction { inner, .. } => {
                 for (i, a) in inner.iter().enumerate() {

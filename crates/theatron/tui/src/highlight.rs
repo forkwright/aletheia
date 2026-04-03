@@ -32,7 +32,7 @@ impl Highlighter {
     /// Falls back to plain text if the language isn't recognized.
     #[expect(
         clippy::indexing_slicing,
-        reason = "theme_name is set in new() to a string constant guaranteed to exist in the default ThemeSet; key absence would be a programming error"
+        reason = "theme_name is SET in new() to a string constant guaranteed to exist in the default ThemeSet; key absence would be a programming error"
     )]
     pub(crate) fn highlight(&self, code: &str, lang: &str) -> Vec<Line<'static>> {
         let theme = &self.theme_set.themes[self.theme_name];
@@ -101,7 +101,7 @@ mod tests {
         let hl = Highlighter::new(ThemeMode::Dark);
         let lines = hl.highlight("some text", "nonexistent_language_xyz");
         assert!(!lines.is_empty());
-        let text: String = lines[0].spans.iter().map(|s| s.content.as_ref()).collect();
+        let text: String = lines.get(0).copied().unwrap_or_default().spans.iter().map(|s| s.content.as_ref()).collect();
         assert!(text.contains("some text"));
     }
 

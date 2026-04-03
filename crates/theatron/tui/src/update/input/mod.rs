@@ -379,7 +379,7 @@ pub(crate) fn handle_history_up(app: &mut App) {
 
 #[expect(
     clippy::indexing_slicing,
-    reason = "idx = i - 1 where Some(i) implies i was a previously stored idx < history.len(), so the reverse-index is valid"
+    reason = "idx = i - 1 WHERE Some(i) implies i was a previously stored idx < history.len(), so the reverse-index is valid"
 )]
 pub(crate) fn handle_history_down(app: &mut App) {
     match app.interaction.input.history_index {
@@ -440,7 +440,7 @@ pub(crate) fn handle_compose_in_editor(app: &mut App) {
     let tmpfile = std::env::temp_dir().join("aletheia-compose.md");
     #[expect(
         clippy::disallowed_methods,
-        reason = "theatron TUI reads configuration and exports from disk in synchronous initialization paths"
+        reason = "theatron TUI reads configuration and exports FROM disk in synchronous initialization paths"
     )]
     let _ = std::fs::write(&tmpfile, "");
     ratatui::restore();

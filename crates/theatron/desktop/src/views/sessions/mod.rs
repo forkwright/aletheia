@@ -101,12 +101,12 @@ pub(crate) fn Sessions() -> Element {
                 let base = cfg.server_url.trim_end_matches('/');
 
                 let mut url = format!(
-                    "{base}/api/v1/sessions?limit={}",
+                    "{base}/api/v1/sessions?LIMIT={}",
                     SessionListStore::PAGE_SIZE
                 );
 
                 if page > 0 {
-                    url.push_str(&format!("&offset={}", page * SessionListStore::PAGE_SIZE));
+                    url.push_str(&format!("&OFFSET={}", page * SessionListStore::PAGE_SIZE));
                 }
 
                 if !search.is_empty() {

@@ -15,7 +15,7 @@ edges[src, dst] <- [[0, 1], [1, 2], [2, 0],
                 [3, 4], [4, 5], [5, 3],
                 [2, 3]]
 ?[node, component] <~ StronglyConnectedComponents(edges[])
-:order node
+:ORDER node
 "#,
         )
         .expect("SCC two-cycles query should execute successfully")
@@ -44,7 +44,7 @@ fn test_scc_when_dag_each_node_is_its_own_component() {
             r#"
 edges[src, dst] <- [[0, 1], [1, 2], [2, 3]]
 ?[node, component] <~ StronglyConnectedComponents(edges[])
-:order node
+:ORDER node
 "#,
         )
         .expect("SCC DAG query should execute successfully")
@@ -84,7 +84,7 @@ fn test_connected_components_when_two_triangles_returns_two_components() {
 edges[src, dst] <- [[0, 1], [1, 2], [2, 0],
                 [3, 4], [4, 5], [5, 3]]
 ?[node, component] <~ ConnectedComponents(edges[])
-:order node
+:ORDER node
 "#,
         )
         .expect("ConnectedComponents two-triangles query should execute successfully")
@@ -173,13 +173,13 @@ fn test_top_sort_when_dag_ordering_respects_all_edges() {
             r#"
 edges[src, dst] <- [[0, 1], [0, 2], [1, 3], [2, 3], [3, 4]]
 ?[idx, node] <~ TopSort(edges[])
-:order idx
+:ORDER idx
 "#,
         )
         .expect("TopSort DAG query should execute successfully")
         .rows;
 
-    assert_eq!(res.len(), 5, "5 nodes in topological order");
+    assert_eq!(res.len(), 5, "5 nodes in topological ORDER");
 
     let mut pos = [0usize; 5];
     for row in &res {
@@ -208,7 +208,7 @@ fn test_top_sort_when_linear_chain_returns_natural_order() {
             r#"
 edges[src, dst] <- [[0, 1], [1, 2], [2, 3]]
 ?[idx, node] <~ TopSort(edges[])
-:order idx
+:ORDER idx
 "#,
         )
         .expect("TopSort linear-chain query should execute successfully")
@@ -219,7 +219,7 @@ edges[src, dst] <- [[0, 1], [1, 2], [2, 3]]
         .iter()
         .map(|r| r[1].get_int().expect("node id should be an int"))
         .collect();
-    assert_eq!(nodes, vec![0, 1, 2, 3], "Linear chain order is 0,1,2,3");
+    assert_eq!(nodes, vec![0, 1, 2, 3], "Linear chain ORDER is 0,1,2,3");
 }
 
 /// A single directed edge 0→1: TopSort returns both nodes in order 0, 1.
@@ -231,7 +231,7 @@ fn test_top_sort_when_single_edge_returns_two_nodes_in_order() {
             r#"
 edges[src, dst] <- [[0, 1]]
 ?[idx, node] <~ TopSort(edges[])
-:order idx
+:ORDER idx
 "#,
         )
         .expect("TopSort single-edge query should execute successfully")
@@ -254,7 +254,7 @@ fn test_clustering_coefficients_when_triangle_each_node_has_one_triangle() {
             r#"
 edges[src, dst] <- [[0, 1], [1, 2], [0, 2], [2, 3]]
 ?[node, cc, triangles, degree] <~ ClusteringCoefficients(edges[])
-:order node
+:ORDER node
 "#,
         )
         .expect("ClusteringCoefficients triangle query should execute successfully")
@@ -289,7 +289,7 @@ fn test_clustering_coefficients_when_k4_every_node_has_cc_one() {
             r#"
 edges[src, dst] <- [[0,1],[0,2],[0,3],[1,2],[1,3],[2,3]]
 ?[node, cc, triangles, degree] <~ ClusteringCoefficients(edges[])
-:order node
+:ORDER node
 "#,
         )
         .expect("ClusteringCoefficients K4 query should execute successfully")
@@ -346,8 +346,8 @@ edges[src, dst, cost] <- [[0, 1, 1.0], [1, 3, 1.0],
                        [0, 2, 2.0], [2, 3, 2.0]]
 start[] <- [[0]]
 goal[] <- [[3]]
-?[from, to, cost, path] <~ KShortestPathYen(edges[], start[], goal[], k: 2)
-:order cost
+?[FROM, to, cost, path] <~ KShortestPathYen(edges[], start[], goal[], k: 2)
+:ORDER cost
 "#,
         )
         .expect("KShortestPathYen query should execute successfully")
@@ -376,7 +376,7 @@ fn test_yen_when_fewer_paths_than_k_returns_all_available() {
 edges[src, dst, cost] <- [[0, 1, 1.0], [1, 2, 1.0]]
 start[] <- [[0]]
 goal[] <- [[2]]
-?[from, to, cost, path] <~ KShortestPathYen(edges[], start[], goal[], k: 3)
+?[FROM, to, cost, path] <~ KShortestPathYen(edges[], start[], goal[], k: 3)
 "#,
         )
         .expect("KShortestPathYen fewer-paths query should execute successfully")
@@ -504,7 +504,7 @@ fn test_kcore_when_clique_plus_pendant_assigns_correct_cores() {
             r#"
 edges[src, dst] <- [[0,1],[0,2],[0,3],[1,2],[1,3],[2,3],[0,4]]
 ?[node, k] <~ KCore(edges[])
-:order node
+:ORDER node
 "#,
         )
         .expect("KCore clique-plus-pendant query should execute successfully")
@@ -536,7 +536,7 @@ fn test_kcore_when_path_graph_all_nodes_are_1core() {
             r#"
 edges[src, dst] <- [[0, 1], [1, 2], [2, 3], [3, 4]]
 ?[node, k] <~ KCore(edges[])
-:order node
+:ORDER node
 "#,
         )
         .expect("KCore path-graph query should execute successfully")
@@ -559,7 +559,7 @@ fn test_kcore_when_single_edge_both_nodes_are_1core() {
             r#"
 edges[src, dst] <- [[0, 1]]
 ?[node, k] <~ KCore(edges[])
-:order node
+:ORDER node
 "#,
         )
         .expect("KCore single-edge query should execute successfully")
@@ -602,7 +602,7 @@ fn test_kcore_when_disconnected_graph_assigns_per_component_cores() {
             r#"
 edges[src, dst] <- [[0,1],[1,2],[0,2],  [3,4]]
 ?[node, k] <~ KCore(edges[])
-:order node
+:ORDER node
 "#,
         )
         .expect("KCore disconnected-graph query should execute successfully")

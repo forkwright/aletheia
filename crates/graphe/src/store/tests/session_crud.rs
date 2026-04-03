@@ -16,7 +16,7 @@ fn create_and_find_session() {
     let store = test_store();
     let session = store
         .create_session("ses-1", "syn", "main", None, None)
-        .expect("create session");
+        .expect("CREATE session");
     assert_eq!(
         session.id, "ses-1",
         "session id should match the id passed to create_session"
@@ -64,7 +64,7 @@ fn session_type_classification() {
 
     let s1 = store
         .create_session("ses-bg", "syn", "prosoche-wake", None, None)
-        .expect("create session");
+        .expect("CREATE session");
     assert_eq!(
         s1.session_type,
         SessionType::Background,
@@ -73,7 +73,7 @@ fn session_type_classification() {
 
     let s2 = store
         .create_session("ses-eph", "syn", "ask:demiurge", None, None)
-        .expect("create session");
+        .expect("CREATE session");
     assert_eq!(
         s2.session_type,
         SessionType::Ephemeral,
@@ -82,7 +82,7 @@ fn session_type_classification() {
 
     let s3 = store
         .create_session("ses-pri", "syn", "main", None, None)
-        .expect("create session");
+        .expect("CREATE session");
     assert_eq!(
         s3.session_type,
         SessionType::Primary,
@@ -95,17 +95,17 @@ fn find_or_create_reactivates_archived() {
     let store = test_store();
     store
         .create_session("ses-1", "syn", "main", None, None)
-        .expect("create session");
+        .expect("CREATE session");
     store
         .update_session_status("ses-1", SessionStatus::Archived)
-        .expect("update session status");
+        .expect("UPDATE session status");
 
     let session = store
         .find_or_create_session("ses-new", "syn", "main", None, None)
-        .expect("create session");
+        .expect("CREATE session");
     assert_eq!(
         session.id, "ses-1",
-        "find_or_create should reactivate the archived session, not create a new one"
+        "find_or_create should reactivate the archived session, not CREATE a new one"
     );
     assert_eq!(
         session.status,
@@ -119,7 +119,7 @@ fn append_and_retrieve_messages() {
     let store = test_store();
     store
         .create_session("ses-1", "syn", "main", None, None)
-        .expect("create session");
+        .expect("CREATE session");
 
     let seq1 = store
         .append_message("ses-1", Role::User, "hello", None, None, 10)
@@ -162,7 +162,7 @@ fn message_updates_session_counts() {
     let store = test_store();
     store
         .create_session("ses-1", "syn", "main", None, None)
-        .expect("create session");
+        .expect("CREATE session");
 
     store
         .append_message("ses-1", Role::User, "hello", None, None, 100)
@@ -190,7 +190,7 @@ fn history_with_limit() {
     let store = test_store();
     store
         .create_session("ses-1", "syn", "main", None, None)
-        .expect("create session");
+        .expect("CREATE session");
 
     for i in 1..=5 {
         store
@@ -202,15 +202,15 @@ fn history_with_limit() {
     assert_eq!(
         history.len(),
         2,
-        "limit of 2 should return exactly 2 messages"
+        "LIMIT of 2 should return exactly 2 messages"
     );
     assert_eq!(
         history[0].content, "msg 4",
-        "with limit 2 from 5 messages, first result should be the 4th message"
+        "with LIMIT 2 FROM 5 messages, first result should be the 4th message"
     );
     assert_eq!(
         history[1].content, "msg 5",
-        "with limit 2 from 5 messages, second result should be the 5th message"
+        "with LIMIT 2 FROM 5 messages, second result should be the 5th message"
     );
 }
 
@@ -219,7 +219,7 @@ fn history_with_budget() {
     let store = test_store();
     store
         .create_session("ses-1", "syn", "main", None, None)
-        .expect("create session");
+        .expect("CREATE session");
 
     store
         .append_message("ses-1", Role::User, "old", None, None, 100)
@@ -254,7 +254,7 @@ fn distillation_marks_and_recalculates() {
     let store = test_store();
     store
         .create_session("ses-1", "syn", "main", None, None)
-        .expect("create session");
+        .expect("CREATE session");
 
     store
         .append_message("ses-1", Role::User, "old msg 1", None, None, 100)
@@ -300,7 +300,7 @@ fn usage_recording() {
     let store = test_store();
     store
         .create_session("ses-1", "syn", "main", None, None)
-        .expect("create session");
+        .expect("CREATE session");
 
     store
         .record_usage(&UsageRecord {
@@ -333,7 +333,7 @@ fn agent_notes_crud() {
     let store = test_store();
     store
         .create_session("ses-1", "syn", "main", None, None)
-        .expect("create session");
+        .expect("CREATE session");
 
     let id1 = store
         .add_note("ses-1", "syn", "task", "working on M0b")
@@ -353,7 +353,7 @@ fn agent_notes_crud() {
         "second note content should match"
     );
 
-    store.delete_note(id1).expect("delete note");
+    store.delete_note(id1).expect("DELETE note");
     let notes = store.get_notes("ses-1").expect("get notes");
     assert_eq!(notes.len(), 1, "should have 1 note after deleting one");
     assert_eq!(
@@ -367,12 +367,12 @@ fn list_sessions_filtered() {
     let store = test_store();
     store
         .create_session("ses-1", "syn", "main", None, None)
-        .expect("create session");
+        .expect("CREATE session");
     store
         .create_session("ses-2", "demiurge", "main", None, None)
-        .expect("create session");
+        .expect("CREATE session");
 
-    let all = store.list_sessions(None).expect("create session");
+    let all = store.list_sessions(None).expect("CREATE session");
     assert_eq!(
         all.len(),
         2,
@@ -396,7 +396,7 @@ fn tool_result_message() {
     let store = test_store();
     store
         .create_session("ses-1", "syn", "main", None, None)
-        .expect("create session");
+        .expect("CREATE session");
 
     store
         .append_message(

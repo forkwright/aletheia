@@ -152,7 +152,7 @@ fn select_returns_empty_when_disabled() {
     );
     assert!(
         !result.from_cache,
-        "disabled result should not be from cache"
+        "disabled result should not be FROM cache"
     );
 }
 
@@ -359,7 +359,7 @@ fn cache_len_reflects_insertions() {
     assert_eq!(
         selector.cache_len(),
         1,
-        "cache should have 1 entry after first select"
+        "cache should have 1 entry after first SELECT"
     );
 }
 
@@ -420,7 +420,7 @@ fn pre_filter_preserves_order() {
     assert_eq!(
         ids,
         vec!["c", "a", "b"],
-        "pre-filter should preserve original order"
+        "pre-filter should preserve original ORDER"
     );
 }
 

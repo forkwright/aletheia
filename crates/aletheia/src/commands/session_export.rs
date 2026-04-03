@@ -43,7 +43,7 @@ pub(crate) enum ExportFormat {
 #[derive(Debug, Deserialize)]
 struct SessionResponse {
     id: String,
-    session_key: String,
+    session_key: SecretString,
     created_at: String,
 }
 
@@ -83,7 +83,7 @@ fn build_client(token: Option<&str>) -> Result<reqwest::Client> {
     }
     reqwest::Client::builder()
         .default_headers(headers)
-        .build()
+        .timeout(std::time::Duration::from_secs(30)).build()
         .whatever_context("failed to build HTTP client")
 }
 
@@ -216,7 +216,7 @@ fn write_output(content: &str, path: Option<&std::path::Path>) -> Result<()> {
                 use std::os::unix::fs::PermissionsExt;
                 std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o600))
                     .with_whatever_context(|_| {
-                        format!("failed to set permissions on {}", p.display())
+                        format!("failed to SET permissions on {}", p.display())
                     })?;
             }
             Ok(())

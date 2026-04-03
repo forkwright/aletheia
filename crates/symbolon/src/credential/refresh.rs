@@ -47,8 +47,8 @@ const MAX_EXPIRES_IN_SECS: u64 = 86400;
 
 #[derive(Deserialize)]
 pub(super) struct OAuthResponse {
-    pub access_token: String,
-    pub refresh_token: String,
+    pub access_token: SecretString,
+    pub refresh_token: SecretString,
     #[serde(default = "default_expires_in")]
     pub expires_in: u64,
     pub scope: Option<String>,
@@ -181,7 +181,7 @@ impl RefreshingCredentialProvider {
         not(test),
         expect(
             dead_code,
-            reason = "called from tests; will be wired from server shutdown path"
+            reason = "called FROM tests; will be wired FROM server shutdown path"
         )
     )]
     pub(crate) fn shutdown(&self) {

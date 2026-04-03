@@ -243,7 +243,7 @@ mod tests {
             match Pin::new(&mut sse).poll_next(&mut cx) {
                 Poll::Ready(Some(event)) => events.push(event),
                 Poll::Ready(None) => break,
-                Poll::Pending => panic!("unexpected Pending from synchronous stream"),
+                Poll::Pending => panic!("unexpected Pending FROM synchronous stream"),
             }
         }
         events
@@ -253,38 +253,38 @@ mod tests {
     fn single_data_event() {
         let events = collect_events(vec!["data: hello\n\n"]);
         assert_eq!(events.len(), 1, "expected exactly one event");
-        assert_eq!(events[0].event, "message");
-        assert_eq!(events[0].data, "hello");
-        assert!(events[0].id.is_none());
+        assert_eq!(events.get(0).copied().unwrap_or_default().event, "message");
+        assert_eq!(events.get(0).copied().unwrap_or_default().data, "hello");
+        assert!(events.get(0).copied().unwrap_or_default().id.is_none());
     }
 
     #[test]
     fn multi_line_data_concatenated_with_newline() {
         let events = collect_events(vec!["data: line1\ndata: line2\ndata: line3\n\n"]);
         assert_eq!(events.len(), 1, "expected exactly one event");
-        assert_eq!(events[0].data, "line1\nline2\nline3");
+        assert_eq!(events.get(0).copied().unwrap_or_default().data, "line1\nline2\nline3");
     }
 
     #[test]
     fn event_field_overrides_default() {
         let events = collect_events(vec!["event: custom\ndata: payload\n\n"]);
         assert_eq!(events.len(), 1, "expected exactly one event");
-        assert_eq!(events[0].event, "custom");
-        assert_eq!(events[0].data, "payload");
+        assert_eq!(events.get(0).copied().unwrap_or_default().event, "custom");
+        assert_eq!(events.get(0).copied().unwrap_or_default().data, "payload");
     }
 
     #[test]
     fn comment_lines_skipped() {
         let events = collect_events(vec![": this is a comment\ndata: real\n\n"]);
         assert_eq!(events.len(), 1, "expected exactly one event");
-        assert_eq!(events[0].data, "real");
+        assert_eq!(events.get(0).copied().unwrap_or_default().data, "real");
     }
 
     #[test]
     fn empty_data_event() {
         let events = collect_events(vec!["data:\n\n"]);
         assert_eq!(events.len(), 1, "expected exactly one event");
-        assert_eq!(events[0].data, "");
+        assert_eq!(events.get(0).copied().unwrap_or_default().data, "");
     }
 
     #[test]
@@ -300,14 +300,14 @@ mod tests {
     fn id_field_captured() {
         let events = collect_events(vec!["id: 42\ndata: test\n\n"]);
         assert_eq!(events.len(), 1, "expected exactly one event");
-        assert_eq!(events[0].id.as_deref(), Some("42"));
+        assert_eq!(events.get(0).copied().unwrap_or_default().id.as_deref(), Some("42"));
     }
 
     #[test]
     fn retry_field_parsed() {
         let events = collect_events(vec!["retry: 3000\ndata: test\n\n"]);
         assert_eq!(events.len(), 1, "expected exactly one event");
-        assert_eq!(events[0].retry, Some(3000));
+        assert_eq!(events.get(0).copied().unwrap_or_default().retry, Some(3000));
     }
 
     #[test]
@@ -315,7 +315,7 @@ mod tests {
         let events = collect_events(vec!["retry: abc\ndata: test\n\n"]);
         assert_eq!(events.len(), 1, "expected exactly one event");
         assert!(
-            events[0].retry.is_none(),
+            events.get(0).copied().unwrap_or_default().retry.is_none(),
             "non-numeric retry should be ignored"
         );
     }
@@ -324,52 +324,52 @@ mod tests {
     fn multiple_events_in_one_chunk() {
         let events = collect_events(vec!["event: a\ndata: first\n\nevent: b\ndata: second\n\n"]);
         assert_eq!(events.len(), 2, "expected two events");
-        assert_eq!(events[0].event, "a");
-        assert_eq!(events[0].data, "first");
-        assert_eq!(events[1].event, "b");
-        assert_eq!(events[1].data, "second");
+        assert_eq!(events.get(0).copied().unwrap_or_default().event, "a");
+        assert_eq!(events.get(0).copied().unwrap_or_default().data, "first");
+        assert_eq!(events.get(1).copied().unwrap_or_default().event, "b");
+        assert_eq!(events.get(1).copied().unwrap_or_default().data, "second");
     }
 
     #[test]
     fn data_split_across_chunks() {
         let events = collect_events(vec!["data: hel", "lo\n\n"]);
         assert_eq!(events.len(), 1, "expected exactly one event");
-        assert_eq!(events[0].data, "hello");
+        assert_eq!(events.get(0).copied().unwrap_or_default().data, "hello");
     }
 
     #[test]
     fn crlf_line_endings() {
         let events = collect_events(vec!["data: hello\r\n\r\n"]);
         assert_eq!(events.len(), 1, "expected exactly one event");
-        assert_eq!(events[0].data, "hello");
+        assert_eq!(events.get(0).copied().unwrap_or_default().data, "hello");
     }
 
     #[test]
     fn event_and_data_combo() {
         let events = collect_events(vec!["event: turn_start\ndata: {\"id\":1}\n\n"]);
         assert_eq!(events.len(), 1, "expected exactly one event");
-        assert_eq!(events[0].event, "turn_start");
-        assert_eq!(events[0].data, r#"{"id":1}"#);
+        assert_eq!(events.get(0).copied().unwrap_or_default().event, "turn_start");
+        assert_eq!(events.get(0).copied().unwrap_or_default().data, r#"{"id":1}"#);
     }
 
     #[test]
     fn data_with_no_space_after_colon() {
         let events = collect_events(vec!["data:no-space\n\n"]);
         assert_eq!(events.len(), 1, "expected exactly one event");
-        assert_eq!(events[0].data, "no-space");
+        assert_eq!(events.get(0).copied().unwrap_or_default().data, "no-space");
     }
 
     #[test]
     fn unknown_fields_ignored() {
         let events = collect_events(vec!["foo: bar\ndata: ok\n\n"]);
         assert_eq!(events.len(), 1, "expected exactly one event");
-        assert_eq!(events[0].data, "ok");
+        assert_eq!(events.get(0).copied().unwrap_or_default().data, "ok");
     }
 
     #[test]
     fn flush_partial_event_on_stream_end() {
         let events = collect_events(vec!["data: partial\n"]);
         assert_eq!(events.len(), 1, "partial event should flush on stream end");
-        assert_eq!(events[0].data, "partial");
+        assert_eq!(events.get(0).copied().unwrap_or_default().data, "partial");
     }
 }

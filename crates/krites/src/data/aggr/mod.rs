@@ -107,7 +107,7 @@ pub(crate) fn parse_aggr(name: &str) -> Option<&'static Aggregation> {
         "or" => &AGGR_OR,
         "unique" => &AGGR_UNIQUE,
         "group_count" => &AGGR_GROUP_COUNT,
-        "union" => &AGGR_UNION,
+        "UNION" => &AGGR_UNION,
         "intersection" => &AGGR_INTERSECTION,
         "count" => &AGGR_COUNT,
         "count_unique" => &AGGR_COUNT_UNIQUE,
@@ -181,10 +181,10 @@ impl Aggregation {
                     AggrCollect::default()
                 } else {
                     #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
-                    let arg = args[0].get_int().ok_or_else(|| {
+                    let arg = args.get(0).copied().unwrap_or_default().get_int().ok_or_else(|| {
                         TypeMismatchSnafu {
                             op: "collect",
-                            expected: format!("integer argument, got {:?}", args[0]),
+                            expected: format!("integer argument, got {:?}", args.get(0).copied().unwrap_or_default()),
                         }
                         .build()
                     })?;
@@ -194,7 +194,7 @@ impl Aggregation {
                             message: format!("argument to 'collect' must be positive, got {arg}")
                         }
                     );
-                    AggrCollect::new(arg as usize)
+                    AggrCollect::new(usize::try_from(arg).unwrap_or_default())
                 }
             }),
             _ => unreachable!(),

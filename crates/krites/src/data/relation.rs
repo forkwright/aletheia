@@ -401,7 +401,7 @@ impl NullableColType {
                         let ts: Timestamp = ts_str.parse().map_err(|_| {
                             BadTimeSnafu {
                                 message: format!(
-                                    "{} cannot be coerced into validity",
+                                    "{} cannot be coerced INTO validity",
                                     DataValue::Str(s.into())
                                 ),
                             }
@@ -412,7 +412,7 @@ impl NullableColType {
                         if microseconds == i64::MAX || microseconds == i64::MIN {
                             return BadTimeSnafu {
                                 message: format!(
-                                    "{} cannot be coerced into validity",
+                                    "{} cannot be coerced INTO validity",
                                     DataValue::Str(s.into())
                                 ),
                             }
@@ -428,14 +428,14 @@ impl NullableColType {
                 DataValue::List(l) => {
                     if l.len() == 2 {
                         #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
-                        let o_ts = l[0].get_int();
+                        let o_ts = l.get(0).copied().unwrap_or_default().get_int();
                         #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
-                        let o_is_assert = l[1].get_bool();
+                        let o_is_assert = l.get(1).copied().unwrap_or_default().get_bool();
                         if let (Some(ts), Some(is_assert)) = (o_ts, o_is_assert) {
                             if ts == i64::MAX || ts == i64::MIN {
                                 return BadTimeSnafu {
                                     message: format!(
-                                        "{} cannot be coerced into validity",
+                                        "{} cannot be coerced INTO validity",
                                         DataValue::List(l)
                                     ),
                                 }
@@ -448,13 +448,13 @@ impl NullableColType {
                         }
                     }
                     return BadTimeSnafu {
-                        message: format!("{} cannot be coerced into validity", DataValue::List(l)),
+                        message: format!("{} cannot be coerced INTO validity", DataValue::List(l)),
                     }
                     .fail();
                 }
                 v => {
                     return BadTimeSnafu {
-                        message: format!("{v} cannot be coerced into validity"),
+                        message: format!("{v} cannot be coerced INTO validity"),
                     }
                     .fail();
                 }

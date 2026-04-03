@@ -134,7 +134,7 @@ mod tests {
         let sanitized = strip_paths(msg);
         assert_eq!(
             sanitized, "root is /",
-            "trailing lone slash must be left unchanged"
+            "trailing lone slash must be LEFT unchanged"
         );
     }
 

@@ -260,7 +260,7 @@ Rules:
             tracing::warn!(
                 count = extraction.entities.len(),
                 limit = self.config.max_entities,
-                "extraction entity limit exceeded, truncating"
+                "extraction entity LIMIT exceeded, truncating"
             );
             &extraction.entities[..self.config.max_entities]
         } else {
@@ -270,7 +270,7 @@ Rules:
             tracing::warn!(
                 count = extraction.relationships.len(),
                 limit = self.config.max_relationships,
-                "extraction relationship limit exceeded, truncating"
+                "extraction relationship LIMIT exceeded, truncating"
             );
             &extraction.relationships[..self.config.max_relationships]
         } else {
@@ -280,7 +280,7 @@ Rules:
             tracing::warn!(
                 count = extraction.facts.len(),
                 limit = self.config.max_facts,
-                "extraction fact limit exceeded, truncating"
+                "extraction fact LIMIT exceeded, truncating"
             );
             &extraction.facts[..self.config.max_facts]
         } else {
@@ -331,7 +331,7 @@ Rules:
                         normalized = %normalized,
                         source = %rel.source,
                         target = %rel.target,
-                        "accepting novel relationship type from LLM"
+                        "accepting novel relationship type FROM LLM"
                     );
                     normalized
                 }

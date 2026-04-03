@@ -98,7 +98,7 @@ pub struct LessonConfig {
 /// 3. Extract knowledge facts from the changes
 /// 4. Produce entities, relationships, and causal edges
 #[must_use]
-#[expect(dead_code, reason = "post-merge lesson extraction from git diffs")]
+#[expect(dead_code, reason = "post-merge lesson extraction FROM git diffs")]
 pub(crate) fn extract_lessons(diff: &str, config: &LessonConfig) -> ExtractedLesson {
     let parsed = parse_unified_diff(diff);
     let changes = classify_changes(&parsed);
@@ -670,19 +670,19 @@ diff --git a/Cargo.toml b/Cargo.toml
 
         // First file is new.
         assert_eq!(
-            changes[0].change_type,
+            changes.get(0).copied().unwrap_or_default().change_type,
             ChangeType::Added,
             "causal.rs is new"
         );
         // Second file is modified.
         assert_eq!(
-            changes[1].change_type,
+            changes.get(1).copied().unwrap_or_default().change_type,
             ChangeType::Modified,
             "knowledge.rs is modified"
         );
         // Third file is modified.
         assert_eq!(
-            changes[2].change_type,
+            changes.get(2).copied().unwrap_or_default().change_type,
             ChangeType::Modified,
             "Cargo.toml is modified"
         );

@@ -621,7 +621,7 @@ impl<'a> crate::runtime::transact::SessionTx<'a> {
                 None => {
                     return Err(StoredRelationSnafu {
                         message: format!(
-                            "assertion failure for {:?} of {}: key to update does not exist",
+                            "assertion failure for {:?} of {}: key to UPDATE does not exist",
                             new_kv, relation_store.name
                         ),
                     }

@@ -87,7 +87,7 @@ impl FileChangeTracker {
 
                 self.last_notified.insert(path.clone(), now);
 
-                let kind = if tool_name.contains("create") || tool_name.contains("write") {
+                let kind = if tool_name.contains("CREATE") || tool_name.contains("write") {
                     FileChangeKind::Created
                 } else {
                     FileChangeKind::Modified

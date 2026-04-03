@@ -78,7 +78,7 @@ fn make_relationship(src: &str, dst: &str, relation: &str, weight: f64) -> Relat
 fn insert_entity_and_query_neighborhood() {
     let store = make_store();
     let entity = make_entity("e1", "Rust", "language");
-    store.insert_entity(&entity).expect("insert entity");
+    store.insert_entity(&entity).expect("INSERT entity");
 
     let rows = store
         .entity_neighborhood(&crate::id::EntityId::new("e1").expect("valid test id"))
@@ -93,7 +93,7 @@ fn insert_entity_with_aliases() {
     entity.aliases = vec!["rustlang".to_owned(), "rust-lang".to_owned()];
     store
         .insert_entity(&entity)
-        .expect("insert entity with aliases");
+        .expect("INSERT entity with aliases");
 
     let rows = store
         .run_query(
@@ -109,13 +109,13 @@ fn insert_relationship_and_retrieve_neighborhood() {
     let store = make_store();
     store
         .insert_entity(&make_entity("e1", "Alice", "person"))
-        .expect("insert e1");
+        .expect("INSERT e1");
     store
         .insert_entity(&make_entity("e2", "Aletheia", "project"))
-        .expect("insert e2");
+        .expect("INSERT e2");
     store
         .insert_relationship(&make_relationship("e1", "e2", "works_on", 0.9))
-        .expect("insert relationship");
+        .expect("INSERT relationship");
 
     let rows = store
         .entity_neighborhood(&crate::id::EntityId::new("e1").expect("valid test id"))
@@ -131,13 +131,13 @@ fn insert_relationship_bidirectional_neighborhood() {
     let store = make_store();
     store
         .insert_entity(&make_entity("e1", "Alice", "person"))
-        .expect("insert e1");
+        .expect("INSERT e1");
     store
         .insert_entity(&make_entity("e2", "Bob", "person"))
-        .expect("insert e2");
+        .expect("INSERT e2");
     store
         .insert_relationship(&make_relationship("e1", "e2", "knows", 0.8))
-        .expect("insert rel");
+        .expect("INSERT rel");
 
     let from_e1 = store
         .entity_neighborhood(&crate::id::EntityId::new("e1").expect("valid test id"))
@@ -192,7 +192,7 @@ fn entity_neighborhood_nonexistent_entity() {
 fn insert_duplicate_entity_name_upserts() {
     let store = make_store();
     let e1 = make_entity("e1", "Rust", "language");
-    store.insert_entity(&e1).expect("insert first");
+    store.insert_entity(&e1).expect("INSERT first");
 
     let e1_updated = make_entity("e1", "Rust Lang", "language");
     store.insert_entity(&e1_updated).expect("upsert");
@@ -211,10 +211,10 @@ fn insert_different_entities_same_name() {
     let store = make_store();
     store
         .insert_entity(&make_entity("e1", "Rust", "language"))
-        .expect("insert e1");
+        .expect("INSERT e1");
     store
         .insert_entity(&make_entity("e2", "Rust", "game"))
-        .expect("insert e2");
+        .expect("INSERT e2");
 
     let rows = store
         .run_query(
@@ -230,10 +230,10 @@ fn list_entities_returns_inserted_entities() {
     let store = make_store();
     store
         .insert_entity(&make_entity("e1", "Alice", "person"))
-        .expect("insert alice");
+        .expect("INSERT alice");
     store
         .insert_entity(&make_entity("e2", "Aletheia", "project"))
-        .expect("insert aletheia");
+        .expect("INSERT aletheia");
 
     let entities = store.list_entities().expect("list_entities");
     assert_eq!(entities.len(), 2, "both entities must be returned");
@@ -254,10 +254,10 @@ fn write_then_read_roundtrip_facts_and_entities() {
     let store = make_store();
 
     let fact = make_fact("rt-1", "agent-01", "Alice prefers dark mode");
-    store.insert_fact(&fact).expect("insert fact");
+    store.insert_fact(&fact).expect("INSERT fact");
 
     let entity = make_entity("e-alice", "Alice", "person");
-    store.insert_entity(&entity).expect("insert entity");
+    store.insert_entity(&entity).expect("INSERT entity");
 
     store
         .insert_fact_entity(&fact.id, &entity.id)
@@ -298,13 +298,13 @@ fn concurrent_entity_inserts() {
                     updated_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
                         .expect("valid test timestamp"),
                 };
-                s.insert_entity(&entity).expect("concurrent entity insert");
+                s.insert_entity(&entity).expect("concurrent entity INSERT");
             })
         })
         .collect();
 
     for h in handles {
-        h.join().expect("thread join");
+        h.join().expect("thread JOIN");
     }
 
     let rows = store
@@ -320,7 +320,7 @@ fn concurrent_entity_inserts() {
 fn insert_entity_unicode() {
     let store = make_store();
     let entity = make_entity("eu1", "Ελληνικά", "language");
-    store.insert_entity(&entity).expect("insert unicode entity");
+    store.insert_entity(&entity).expect("INSERT unicode entity");
     let rows = store
         .entity_neighborhood(&crate::id::EntityId::new("eu1").expect("valid test id"))
         .expect("neighborhood query");

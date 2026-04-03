@@ -37,16 +37,16 @@ impl Debug for QueryOutOptions {
 impl Display for QueryOutOptions {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         if let Some(l) = self.limit {
-            writeln!(f, ":limit {l};")?;
+            writeln!(f, ":LIMIT {l};")?;
         }
         if let Some(l) = self.offset {
-            writeln!(f, ":offset {l};")?;
+            writeln!(f, ":OFFSET {l};")?;
         }
         if let Some(l) = self.timeout {
             writeln!(f, ":timeout {l};")?;
         }
         for (symb, dir) in &self.sorters {
-            write!(f, ":order ")?;
+            write!(f, ":ORDER ")?;
             if *dir == SortDir::Dsc {
                 write!(f, "-")?;
             }
@@ -69,25 +69,25 @@ impl Display for QueryOutOptions {
             }
             match op {
                 RelationOp::Create => {
-                    write!(f, ":create ")?;
+                    write!(f, ":CREATE ")?;
                 }
                 RelationOp::Replace => {
                     write!(f, ":replace ")?;
                 }
                 RelationOp::Insert => {
-                    write!(f, ":insert ")?;
+                    write!(f, ":INSERT ")?;
                 }
                 RelationOp::Put => {
                     write!(f, ":put ")?;
                 }
                 RelationOp::Update => {
-                    write!(f, ":update ")?;
+                    write!(f, ":UPDATE ")?;
                 }
                 RelationOp::Rm => {
                     write!(f, ":rm ")?;
                 }
                 RelationOp::Delete => {
-                    write!(f, ":delete ")?;
+                    write!(f, ":DELETE ")?;
                 }
                 RelationOp::Ensure => {
                     write!(f, ":ensure ")?;

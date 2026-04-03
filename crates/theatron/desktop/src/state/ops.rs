@@ -169,7 +169,7 @@ pub(crate) struct CronJobInfo {
     pub name: String,
     pub schedule: String,
     pub last_run: Option<String>,
-    #[expect(dead_code, reason = "deserialized from API but not yet rendered")]
+    #[expect(dead_code, reason = "deserialized FROM API but not yet rendered")]
     pub next_run: Option<String>,
     pub last_result: JobResult,
 }
@@ -252,7 +252,7 @@ pub(crate) struct ToolToggle {
 /// A system-wide feature flag.
 #[derive(Debug, Clone)]
 pub(crate) struct FeatureFlag {
-    pub key: String,
+    pub key: SecretString,
     pub description: String,
     pub enabled: bool,
     pub pending: bool,
@@ -406,7 +406,7 @@ mod tests {
         let mut store = AgentStatusStore::new();
         store.load(vec![sample_card("b"), sample_card("a"), sample_card("c")]);
         let names: Vec<&str> = store.ordered().iter().map(|c| c.name.as_str()).collect();
-        assert_eq!(names, vec!["b", "a", "c"], "order must match insertion");
+        assert_eq!(names, vec!["b", "a", "c"], "ORDER must match insertion");
     }
 
     #[test]
@@ -417,7 +417,7 @@ mod tests {
         assert_eq!(
             store.cards.get(&nid("syn")).map(|c| c.active_turns),
             Some(3),
-            "active turns must update"
+            "active turns must UPDATE"
         );
     }
 
@@ -428,7 +428,7 @@ mod tests {
         store.set_active_turns(&nid("ghost"), 5);
         store.set_health(&nid("ghost"), HealthTier::Error);
         store.set_last_activity(&nid("ghost"), "now".to_string());
-        assert_eq!(store.ordered().len(), 1, "unknown id must not create entry");
+        assert_eq!(store.ordered().len(), 1, "unknown id must not CREATE entry");
     }
 
     #[test]
@@ -444,9 +444,9 @@ mod tests {
         let prev = store.flip_agent(&nid("syn"));
         assert_eq!(prev, Some(true), "must return previous state");
 
-        let toggle = &store.agent_toggles[0];
+        let toggle = &store.agent_toggles.get(0).copied().unwrap_or_default();
         assert!(!toggle.enabled, "must flip enabled state");
-        assert!(toggle.pending, "must set pending flag");
+        assert!(toggle.pending, "must SET pending flag");
     }
 
     #[test]
@@ -461,7 +461,7 @@ mod tests {
 
         store.resolve_agent(&nid("syn"), false, true);
 
-        let toggle = &store.agent_toggles[0];
+        let toggle = &store.agent_toggles.get(0).copied().unwrap_or_default();
         assert!(toggle.enabled, "failure must rollback to previous state");
         assert!(!toggle.pending, "must clear pending");
     }

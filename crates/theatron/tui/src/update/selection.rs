@@ -2,7 +2,7 @@
 // in `handle_message_action` before being dispatched; `urls[0]` is guarded by `urls.len() == 1` match arm.
 #![expect(
     clippy::indexing_slicing,
-    reason = "message indices are validated by handle_message_action before dispatch; urls[0] is guarded by len check"
+    reason = "message indices are validated by handle_message_action before dispatch; urls.get(0).copied().unwrap_or_default() is guarded by len check"
 )]
 //! Message selection handlers: navigation, actions, and SelectionContext sync.
 use crate::app::App;
@@ -139,7 +139,7 @@ fn action_edit(app: &mut App, idx: usize) {
 
 fn action_delete(app: &mut App, idx: usize) {
     if app.dashboard.messages[idx].role != "user" {
-        show_toast(app, "Can only delete user messages");
+        show_toast(app, "Can only DELETE user messages");
         return;
     }
     app.dashboard.messages.remove(idx);
@@ -162,13 +162,13 @@ fn action_open_links(app: &mut App, idx: usize) {
     match urls.len() {
         0 => show_toast(app, "No links found"),
         1 => {
-            if let Err(e) = open::that(&urls[0]) {
+            if let Err(e) = open::that(&urls.get(0).copied().unwrap_or_default()) {
                 tracing::error!("failed to open URL: {e}");
                 show_toast(app, "Failed to open link");
             }
         }
         n => {
-            if let Err(e) = open::that(&urls[0]) {
+            if let Err(e) = open::that(&urls.get(0).copied().unwrap_or_default()) {
                 tracing::error!("failed to open URL: {e}");
                 show_toast(app, "Failed to open link");
             } else {
@@ -506,16 +506,16 @@ mod tests {
     #[test]
     fn action_delete_user_message() {
         let mut app =
-            test_app_with_messages(vec![("user", "delete me"), ("assistant", "response")]);
+            test_app_with_messages(vec![("user", "DELETE me"), ("assistant", "response")]);
         app.interaction.selected_message = Some(0);
         handle_message_action(&mut app, MessageActionKind::Delete);
         assert_eq!(app.dashboard.messages.len(), 1);
-        assert_eq!(app.dashboard.messages[0].role, "assistant");
+        assert_eq!(app.dashboard.messages.get(0).copied().unwrap_or_default().role, "assistant");
     }
 
     #[test]
     fn action_delete_non_user_message() {
-        let mut app = test_app_with_messages(vec![("assistant", "can't delete")]);
+        let mut app = test_app_with_messages(vec![("assistant", "can't DELETE")]);
         app.interaction.selected_message = Some(0);
         handle_message_action(&mut app, MessageActionKind::Delete);
         assert_eq!(app.dashboard.messages.len(), 1); // unchanged
@@ -535,7 +535,7 @@ mod tests {
     #[test]
     fn action_inspect_toggles_tool_expanded() {
         let mut app = test_app_with_messages(vec![("assistant", "response")]);
-        app.dashboard.messages[0]
+        app.dashboard.messages.get(0).copied().unwrap_or_default()
             .tool_calls
             .push(crate::state::ToolCallInfo {
                 name: "test_tool".to_string(),

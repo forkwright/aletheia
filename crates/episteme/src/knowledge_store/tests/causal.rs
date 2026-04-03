@@ -61,15 +61,15 @@ fn insert_and_query_causal_edge() {
 
     store
         .insert_fact(&make_fact("fact-a", "Alice uses Rust"))
-        .expect("insert fact-a should succeed");
+        .expect("INSERT fact-a should succeed");
     store
         .insert_fact(&make_fact("fact-b", "Alice chose Rust for performance"))
-        .expect("insert fact-b should succeed");
+        .expect("INSERT fact-b should succeed");
 
     let edge = make_edge("fact-a", "fact-b", 0.9);
     store
         .insert_causal_edge(&edge)
-        .expect("insert causal edge should succeed");
+        .expect("INSERT causal edge should succeed");
 
     // Query effects of fact-a.
     let effects = store
@@ -100,20 +100,20 @@ fn list_causal_edges() {
 
     store
         .insert_fact(&make_fact("f1", "fact one"))
-        .expect("insert f1");
+        .expect("INSERT f1");
     store
         .insert_fact(&make_fact("f2", "fact two"))
-        .expect("insert f2");
+        .expect("INSERT f2");
     store
         .insert_fact(&make_fact("f3", "fact three"))
-        .expect("insert f3");
+        .expect("INSERT f3");
 
     store
         .insert_causal_edge(&make_edge("f1", "f2", 0.8))
-        .expect("insert edge f1->f2");
+        .expect("INSERT edge f1->f2");
     store
         .insert_causal_edge(&make_edge("f2", "f3", 0.7))
-        .expect("insert edge f2->f3");
+        .expect("INSERT edge f2->f3");
 
     let all = store
         .list_causal_edges()
@@ -127,14 +127,14 @@ fn remove_causal_edge() {
 
     store
         .insert_fact(&make_fact("f1", "fact one"))
-        .expect("insert f1");
+        .expect("INSERT f1");
     store
         .insert_fact(&make_fact("f2", "fact two"))
-        .expect("insert f2");
+        .expect("INSERT f2");
 
     store
         .insert_causal_edge(&make_edge("f1", "f2", 0.8))
-        .expect("insert edge");
+        .expect("INSERT edge");
 
     store
         .remove_causal_edge(
@@ -155,14 +155,14 @@ fn confidence_propagation_direct() {
 
     store
         .insert_fact(&make_fact("f1", "fact one"))
-        .expect("insert f1");
+        .expect("INSERT f1");
     store
         .insert_fact(&make_fact("f2", "fact two"))
-        .expect("insert f2");
+        .expect("INSERT f2");
 
     store
         .insert_causal_edge(&make_edge("f1", "f2", 0.9))
-        .expect("insert edge");
+        .expect("INSERT edge");
 
     let conf = store
         .propagate_confidence(
@@ -183,19 +183,19 @@ fn confidence_propagation_chain() {
 
     store
         .insert_fact(&make_fact("a", "start"))
-        .expect("insert a");
+        .expect("INSERT a");
     store
         .insert_fact(&make_fact("b", "middle"))
-        .expect("insert b");
-    store.insert_fact(&make_fact("c", "end")).expect("insert c");
+        .expect("INSERT b");
+    store.insert_fact(&make_fact("c", "end")).expect("INSERT c");
 
     // a -> b (0.8) -> c (0.5)
     store
         .insert_causal_edge(&make_edge("a", "b", 0.8))
-        .expect("insert edge a->b");
+        .expect("INSERT edge a->b");
     store
         .insert_causal_edge(&make_edge("b", "c", 0.5))
-        .expect("insert edge b->c");
+        .expect("INSERT edge b->c");
 
     let conf = store
         .propagate_confidence(
@@ -217,10 +217,10 @@ fn confidence_propagation_no_path() {
 
     store
         .insert_fact(&make_fact("x", "isolated"))
-        .expect("insert x");
+        .expect("INSERT x");
     store
         .insert_fact(&make_fact("y", "also isolated"))
-        .expect("insert y");
+        .expect("INSERT y");
 
     let conf = store
         .propagate_confidence(
@@ -237,7 +237,7 @@ fn confidence_propagation_same_node() {
 
     store
         .insert_fact(&make_fact("z", "self"))
-        .expect("insert z");
+        .expect("INSERT z");
 
     let conf = store
         .propagate_confidence(
@@ -282,10 +282,10 @@ fn causal_edge_with_concurrent_ordering() {
 
     store
         .insert_fact(&make_fact("c1", "concurrent cause"))
-        .expect("insert c1");
+        .expect("INSERT c1");
     store
         .insert_fact(&make_fact("c2", "concurrent effect"))
-        .expect("insert c2");
+        .expect("INSERT c2");
 
     let edge = CausalEdge {
         cause: FactId::new("c1").expect("valid test id"),
@@ -296,7 +296,7 @@ fn causal_edge_with_concurrent_ordering() {
     };
     store
         .insert_causal_edge(&edge)
-        .expect("insert concurrent edge");
+        .expect("INSERT concurrent edge");
 
     let effects = store
         .query_effects(&FactId::new("c1").expect("valid test id"))

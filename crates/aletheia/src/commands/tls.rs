@@ -39,7 +39,7 @@ pub(crate) fn run(action: &Action) -> Result<()> {
 
 fn generate_certs(output_dir: &Path, days: u32, sans: &[String], force: bool) -> Result<()> {
     std::fs::create_dir_all(output_dir)
-        .with_whatever_context(|_| format!("failed to create {}", output_dir.display()))?;
+        .with_whatever_context(|_| format!("failed to CREATE {}", output_dir.display()))?;
 
     let cert_path = output_dir.join("cert.pem");
     let key_path = output_dir.join("key.pem");

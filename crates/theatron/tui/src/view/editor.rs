@@ -29,21 +29,21 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         ])
         .split(area);
 
-    render_tab_bar(editor, frame, layout[0], theme);
+    render_tab_bar(editor, frame, layout.get(0).copied().unwrap_or_default(), theme);
 
     if editor.tree_visible {
         let body = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Length(TREE_WIDTH), Constraint::Min(20)])
-            .split(layout[1]);
+            .split(layout.get(1).copied().unwrap_or_default());
 
-        render_file_tree(editor, frame, body[0], theme);
-        render_content(app, frame, body[1], theme);
+        render_file_tree(editor, frame, body.get(0).copied().unwrap_or_default(), theme);
+        render_content(app, frame, body.get(1).copied().unwrap_or_default(), theme);
     } else {
-        render_content(app, frame, layout[1], theme);
+        render_content(app, frame, layout.get(1).copied().unwrap_or_default(), theme);
     }
 
-    render_status_line(editor, frame, layout[2], theme);
+    render_status_line(editor, frame, layout.get(2).copied().unwrap_or_default(), theme);
 
     if editor.confirm_delete.is_some() {
         render_delete_confirm(editor, frame, area, theme);
@@ -182,7 +182,7 @@ fn render_content(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let Some(tab) = editor.active_tab() else {
         let msg = Line::from(vec![
             Span::raw("  "),
-            Span::styled("Select a file from the tree to edit", theme.style_dim()),
+            Span::styled("Select a file FROM the tree to edit", theme.style_dim()),
         ]);
         let block = Block::default()
             .borders(Borders::NONE)

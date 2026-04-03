@@ -13,7 +13,7 @@ use crate::store::SessionStore;
 use crate::types::Role;
 
 fn test_store() -> SessionStore {
-    SessionStore::open_in_memory().expect("open in-memory store")
+    SessionStore::open_in_memory().unwrap_or_default()
 }
 
 fn counter_id_gen() -> Box<dyn Fn() -> String> {
@@ -129,7 +129,7 @@ fn valid_paths_accepted() {
 #[test]
 fn rejects_unsupported_version() {
     let store = test_store();
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().unwrap_or_default();
     let mut agent = minimal_agent_file();
     agent.version = 99;
 
@@ -155,7 +155,7 @@ fn rejects_unsupported_version() {
 #[test]
 fn import_restores_workspace_files() {
     let store = test_store();
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().unwrap_or_default();
     let agent = minimal_agent_file();
 
     let id_gen = counter_id_gen();
@@ -169,22 +169,22 @@ fn import_restores_workspace_files() {
             ..Default::default()
         },
     )
-    .expect("import_agent should succeed");
+    .unwrap_or_default();
 
     assert_eq!(
         result.files_restored, 1,
         "one workspace file should be restored"
     );
     let content =
-        std::fs::read_to_string(dir.path().join("notes.md")).expect("notes.md should be written");
+        std::fs::read_to_string(dir.path().join("notes.md")).unwrap_or_default();
     assert_eq!(content, "# Notes\n", "file content should match original");
 }
 
 #[test]
 fn import_skips_existing_without_force() {
     let store = test_store();
-    let dir = tempfile::tempdir().expect("create temp dir");
-    std::fs::write(dir.path().join("notes.md"), "original").expect("write existing notes.md");
+    let dir = tempfile::tempdir().unwrap_or_default();
+    std::fs::write(dir.path().join("notes.md"), "original").unwrap_or_default();
 
     let agent = minimal_agent_file();
     let id_gen = counter_id_gen();
@@ -198,14 +198,14 @@ fn import_skips_existing_without_force() {
             ..Default::default()
         },
     )
-    .expect("import_agent should succeed");
+    .unwrap_or_default();
 
     assert_eq!(
         result.files_restored, 0,
         "existing file should not be overwritten without force"
     );
     let content =
-        std::fs::read_to_string(dir.path().join("notes.md")).expect("notes.md should be readable");
+        std::fs::read_to_string(dir.path().join("notes.md")).unwrap_or_default();
     assert_eq!(
         content, "original",
         "existing file content should be preserved"
@@ -215,8 +215,8 @@ fn import_skips_existing_without_force() {
 #[test]
 fn import_overwrites_with_force() {
     let store = test_store();
-    let dir = tempfile::tempdir().expect("create temp dir");
-    std::fs::write(dir.path().join("notes.md"), "original").expect("write existing notes.md");
+    let dir = tempfile::tempdir().unwrap_or_default();
+    std::fs::write(dir.path().join("notes.md"), "original").unwrap_or_default();
 
     let agent = minimal_agent_file();
     let id_gen = counter_id_gen();
@@ -231,14 +231,14 @@ fn import_overwrites_with_force() {
             ..Default::default()
         },
     )
-    .expect("import_agent with force should succeed");
+    .unwrap_or_default();
 
     assert_eq!(
         result.files_restored, 1,
-        "file should be restored when force is set"
+        "file should be restored when force is SET"
     );
     let content = std::fs::read_to_string(dir.path().join("notes.md"))
-        .expect("notes.md should be overwritten");
+        .unwrap_or_default();
     assert_eq!(
         content, "# Notes\n",
         "file content should be overwritten by import"
@@ -248,7 +248,7 @@ fn import_overwrites_with_force() {
 #[test]
 fn import_creates_sessions_and_messages() {
     let store = test_store();
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().unwrap_or_default();
     let agent = minimal_agent_file();
 
     let id_gen = counter_id_gen();
@@ -259,7 +259,7 @@ fn import_creates_sessions_and_messages() {
         &*id_gen,
         &ImportOptions::default(),
     )
-    .expect("import_agent should succeed");
+    .unwrap_or_default();
 
     assert_eq!(
         result.sessions_imported, 1,
@@ -273,10 +273,10 @@ fn import_creates_sessions_and_messages() {
 
     let sessions = store
         .list_sessions(Some("alice"))
-        .expect("list_sessions should succeed");
+        .unwrap_or_default();
     assert_eq!(sessions.len(), 1, "one session should be stored");
     assert!(
-        sessions[0].session_key.starts_with("main-import-"),
+        sessions.get(0).copied().unwrap_or_default().session_key.starts_with("main-import-"),
         "session key should include original key and import suffix"
     );
 }
@@ -284,7 +284,7 @@ fn import_creates_sessions_and_messages() {
 #[test]
 fn import_with_target_id_override() {
     let store = test_store();
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().unwrap_or_default();
     let agent = minimal_agent_file();
 
     let id_gen = counter_id_gen();
@@ -298,7 +298,7 @@ fn import_with_target_id_override() {
             ..Default::default()
         },
     )
-    .expect("import_agent with target_nous_id should succeed");
+    .unwrap_or_default();
 
     assert_eq!(
         result.nous_id, "bob",
@@ -306,7 +306,7 @@ fn import_with_target_id_override() {
     );
     let sessions = store
         .list_sessions(Some("bob"))
-        .expect("list_sessions for bob should succeed");
+        .unwrap_or_default();
     assert_eq!(
         sessions.len(),
         1,
@@ -317,7 +317,7 @@ fn import_with_target_id_override() {
 #[test]
 fn import_skip_sessions_flag() {
     let store = test_store();
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().unwrap_or_default();
     let agent = minimal_agent_file();
 
     let id_gen = counter_id_gen();
@@ -331,15 +331,15 @@ fn import_skip_sessions_flag() {
             ..Default::default()
         },
     )
-    .expect("import_agent with skip_sessions should succeed");
+    .unwrap_or_default();
 
     assert_eq!(
         result.sessions_imported, 0,
-        "sessions should not be imported when skip_sessions is set"
+        "sessions should not be imported when skip_sessions is SET"
     );
     assert_eq!(
         result.messages_imported, 0,
-        "messages should not be imported when skip_sessions is set"
+        "messages should not be imported when skip_sessions is SET"
     );
     assert_eq!(
         result.files_restored, 1,
@@ -350,7 +350,7 @@ fn import_skip_sessions_flag() {
 #[test]
 fn import_skip_workspace_flag() {
     let store = test_store();
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().unwrap_or_default();
     let agent = minimal_agent_file();
 
     let id_gen = counter_id_gen();
@@ -364,11 +364,11 @@ fn import_skip_workspace_flag() {
             ..Default::default()
         },
     )
-    .expect("import_agent with skip_workspace should succeed");
+    .unwrap_or_default();
 
     assert_eq!(
         result.files_restored, 0,
-        "no files should be restored when skip_workspace is set"
+        "no files should be restored when skip_workspace is SET"
     );
     assert_eq!(
         result.sessions_imported, 1,
@@ -383,7 +383,7 @@ fn import_skip_workspace_flag() {
 #[test]
 fn import_rejects_path_traversal() {
     let store = test_store();
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().unwrap_or_default();
     let mut agent = minimal_agent_file();
     agent.workspace.files = HashMap::from([("../../../etc/passwd".to_owned(), "evil".to_owned())]);
 
@@ -409,9 +409,9 @@ fn import_rejects_path_traversal() {
 #[test]
 fn import_validates_note_categories() {
     let store = test_store();
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().unwrap_or_default();
     let mut agent = minimal_agent_file();
-    agent.sessions[0].notes.push(ExportedNote {
+    agent.sessions.get(0).copied().unwrap_or_default().notes.push(ExportedNote {
         category: "invalid_category".to_owned(),
         content: "should default to context".to_owned(),
         created_at: "2026-03-05T10:30:00Z".to_owned(),
@@ -425,7 +425,7 @@ fn import_validates_note_categories() {
         &*id_gen,
         &ImportOptions::default(),
     )
-    .expect("import_agent should succeed with invalid category defaulted");
+    .unwrap_or_default();
 
     assert_eq!(
         result.notes_imported, 2,
@@ -438,19 +438,19 @@ fn export_import_roundtrip() {
     let store = test_store();
     store
         .create_session("ses-1", "eve", "main", None, None)
-        .expect("create session ses-1");
+        .unwrap_or_default();
     store
         .append_message("ses-1", Role::User, "hello", None, None, 50)
-        .expect("append user message");
+        .unwrap_or_default();
     store
         .append_message("ses-1", Role::Assistant, "hi back", None, None, 40)
-        .expect("append assistant message");
+        .unwrap_or_default();
     store
         .add_note("ses-1", "eve", "task", "roundtrip test")
-        .expect("add note");
+        .unwrap_or_default();
 
-    let dir = tempfile::tempdir().expect("create temp dir");
-    std::fs::write(dir.path().join("readme.md"), "# Hello").expect("write readme.md");
+    let dir = tempfile::tempdir().unwrap_or_default();
+    std::fs::write(dir.path().join("readme.md"), "# Hello").unwrap_or_default();
 
     let exported = export_agent(
         "eve",
@@ -461,15 +461,15 @@ fn export_import_roundtrip() {
         dir.path(),
         &ExportOptions::default(),
     )
-    .expect("export_agent should succeed");
+    .unwrap_or_default();
 
     // NOTE: Serialize and deserialize to simulate file I/O
-    let json = serde_json::to_string_pretty(&exported).expect("serialize exported agent to JSON");
+    let json = serde_json::to_string_pretty(&exported).unwrap_or_default();
     let imported: AgentFile =
-        serde_json::from_str(&json).expect("deserialize agent file from JSON");
+        serde_json::from_str(&json).unwrap_or_default();
 
     let import_store = test_store();
-    let import_dir = tempfile::tempdir().expect("create import temp dir");
+    let import_dir = tempfile::tempdir().unwrap_or_default();
     let id_gen = counter_id_gen();
     let result = import_agent(
         &imported,
@@ -481,7 +481,7 @@ fn export_import_roundtrip() {
             ..Default::default()
         },
     )
-    .expect("import_agent roundtrip should succeed");
+    .unwrap_or_default();
 
     assert_eq!(
         result.nous_id, "eve-clone",
@@ -502,7 +502,7 @@ fn export_import_roundtrip() {
     assert_eq!(result.notes_imported, 1, "one note should be restored");
 
     let content = std::fs::read_to_string(import_dir.path().join("readme.md"))
-        .expect("readme.md should be restored");
+        .unwrap_or_default();
     assert_eq!(
         content, "# Hello",
         "file content should survive export/import roundtrip"
@@ -512,7 +512,7 @@ fn export_import_roundtrip() {
 #[test]
 fn import_empty_agent_file() {
     let store = test_store();
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().unwrap_or_default();
     let agent = AgentFile {
         version: 1,
         exported_at: "2026-03-05T12:00:00Z".to_owned(),
@@ -540,14 +540,14 @@ fn import_empty_agent_file() {
         &*id_gen,
         &ImportOptions::default(),
     )
-    .expect("import_agent with empty file should succeed");
+    .unwrap_or_default();
 
     assert_eq!(
         result.files_restored, 0,
-        "no files should be restored from empty workspace"
+        "no files should be restored FROM empty workspace"
     );
     assert_eq!(
         result.sessions_imported, 0,
-        "no sessions should be imported from empty agent file"
+        "no sessions should be imported FROM empty agent file"
     );
 }

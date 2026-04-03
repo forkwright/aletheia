@@ -44,7 +44,7 @@ fn build_completion_request_from_mneme_history() {
     let store = SessionStore::open_in_memory().expect("open in-memory session store");
     store
         .create_session("ses-1", "syn", "main", None, None)
-        .expect("create session");
+        .expect("CREATE session");
 
     store
         .append_message("ses-1", m::Role::User, "what is 2+2?", None, None, 20)
@@ -78,7 +78,7 @@ fn tool_result_converts_to_content_block() {
     let store = SessionStore::open_in_memory().expect("open in-memory session store");
     store
         .create_session("ses-1", "syn", "main", None, None)
-        .expect("create session");
+        .expect("CREATE session");
 
     store
         .append_message(

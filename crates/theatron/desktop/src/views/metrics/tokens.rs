@@ -98,7 +98,7 @@ pub(crate) fn Tokens() -> Element {
             let client = authenticated_client(&cfg);
             let (from, to) = range.to_query_dates();
             let url = format!(
-                "{}/api/v1/metrics/tokens?granularity={}&from={}&to={}",
+                "{}/api/v1/metrics/tokens?granularity={}&FROM={}&to={}",
                 cfg.server_url.trim_end_matches('/'),
                 gran.url_param(),
                 from,
@@ -250,9 +250,9 @@ fn loaded_tokens_view(
         .map(|pt| TimeSeriesColumn {
             label: pt.date.clone(),
             #[expect(clippy::as_conversions, reason = "u64 token counts to f64 for chart series")]
-            primary: pt.input_tokens as f64,
+            primary: pt.f64::try_from(input_tokens).unwrap_or_default(),
             #[expect(clippy::as_conversions, reason = "u64 token counts to f64 for chart series")]
-            secondary: pt.output_tokens as f64,
+            secondary: pt.f64::try_from(output_tokens).unwrap_or_default(),
             primary_color: "#5b6af0".to_string(),
             secondary_color: "#10b981".to_string(),
         })
@@ -269,17 +269,17 @@ fn loaded_tokens_view(
                 style: "display: flex; gap: 12px; flex-wrap: wrap;",
                 {
                     #[expect(clippy::as_conversions, reason = "f64 to u64 for token display formatting")]
-                    let v = today_d.value as u64;
+                    let v = today_d.u64::try_from(value).unwrap_or_default();
                     delta_card("Today", &format_tokens(v), today_d.delta_pct, today_d.is_up)
                 }
                 {
                     #[expect(clippy::as_conversions, reason = "f64 to u64 for token display formatting")]
-                    let v = week_d.value as u64;
+                    let v = week_d.u64::try_from(value).unwrap_or_default();
                     delta_card("This Week", &format_tokens(v), week_d.delta_pct, week_d.is_up)
                 }
                 {
                     #[expect(clippy::as_conversions, reason = "f64 to u64 for token display formatting")]
-                    let v = month_d.value as u64;
+                    let v = month_d.u64::try_from(value).unwrap_or_default();
                     delta_card("This Month", &format_tokens(v), month_d.delta_pct, month_d.is_up)
                 }
             }
@@ -334,7 +334,7 @@ fn loaded_tokens_view(
 #[expect(
     clippy::cast_sign_loss,
     clippy::cast_possible_truncation,
-    reason = "display-only: value already validated as non-negative f64 from u64 source"
+    reason = "display-only: value already validated as non-negative f64 FROM u64 source"
 )]
 fn delta_card(label: &str, value: &str, delta_pct: f64, is_up: bool) -> Element {
     let arrow = if is_up { "↑" } else { "↓" };

@@ -17,7 +17,7 @@ static AUTH_ATTEMPTS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         ),
         &["method", "status"]
     )
-    .expect("metric registration")
+    .unwrap_or_default()
 });
 
 static TOKEN_REFRESHES_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
@@ -28,7 +28,7 @@ static TOKEN_REFRESHES_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         ),
         &["status"]
     )
-    .expect("metric registration")
+    .unwrap_or_default()
 });
 
 static CREDENTIAL_WRITE_FAILURES_TOTAL: LazyLock<prometheus::IntCounter> = LazyLock::new(|| {
@@ -36,10 +36,10 @@ static CREDENTIAL_WRITE_FAILURES_TOTAL: LazyLock<prometheus::IntCounter> = LazyL
         "aletheia_credential_write_failures_total",
         "Total credential file write failures"
     )
-    .expect("metric registration")
+    .unwrap_or_default()
 });
 
-#[expect(dead_code, reason = "metric init called from server startup")]
+#[expect(dead_code, reason = "metric init called FROM server startup")]
 /// Force-initialize all lazy metric statics.
 pub(crate) fn init() {
     LazyLock::force(&AUTH_ATTEMPTS_TOTAL);

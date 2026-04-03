@@ -61,12 +61,12 @@ fn query_facts_excludes_expired() {
 
     store
         .insert_fact(&make_fact("f-active", "agent-a", "Active fact"))
-        .expect("insert active");
+        .expect("INSERT active");
 
     let mut expired = make_fact("f-expired", "agent-a", "Expired fact");
     expired.temporal.valid_to =
         crate::knowledge::parse_timestamp("2025-01-01").expect("valid expiry timestamp");
-    store.insert_fact(&expired).expect("insert expired");
+    store.insert_fact(&expired).expect("INSERT expired");
 
     let results = store
         .query_facts("agent-a", "2026-06-01", 100)
@@ -94,7 +94,7 @@ fn query_facts_nonexistent_nous_id_returns_empty() {
     let store = make_store();
     store
         .insert_fact(&make_fact("f1", "agent-a", "Some fact"))
-        .expect("insert");
+        .expect("INSERT");
 
     let results = store
         .query_facts("nonexistent-agent", "2026-06-01", 100)
@@ -114,7 +114,7 @@ fn query_facts_at_returns_snapshot() {
         .expect("valid_from timestamp for temporal test");
     fact.temporal.valid_to = crate::knowledge::parse_timestamp("2026-06-01")
         .expect("valid_to timestamp for temporal test");
-    store.insert_fact(&fact).expect("insert temporal fact");
+    store.insert_fact(&fact).expect("INSERT temporal fact");
 
     let results = store
         .query_facts_at("2026-03-15")
@@ -142,7 +142,7 @@ fn query_facts_at_returns_snapshot() {
 #[test]
 fn backup_db_returns_error_for_mem_backend() {
     let store = make_store();
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().expect("CREATE temp dir");
     let backup_path = dir.path().join("backup.db");
     let result = store.backup_db(&backup_path);
     assert!(
@@ -154,7 +154,7 @@ fn backup_db_returns_error_for_mem_backend() {
 #[test]
 fn restore_backup_returns_error_for_mem_backend() {
     let store = make_store();
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().expect("CREATE temp dir");
     let backup_path = dir.path().join("backup.db");
     #[expect(
         clippy::disallowed_methods,
@@ -171,7 +171,7 @@ fn restore_backup_returns_error_for_mem_backend() {
 #[test]
 fn import_from_backup_returns_error_for_mem_backend() {
     let store = make_store();
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = tempfile::tempdir().expect("CREATE temp dir");
     let backup_path = dir.path().join("backup.db");
     #[expect(
         clippy::disallowed_methods,

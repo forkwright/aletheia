@@ -11,7 +11,7 @@ use super::*;
 
 #[tokio::test]
 async fn full_turn_lifecycle_sse_events_and_persistence() {
-    let (harness, captured) = TestHarness::build_capturing("Hello from the agent!").await;
+    let (harness, captured) = TestHarness::build_capturing("Hello FROM the agent!").await;
     let router = harness.router();
 
     // Create session
@@ -41,7 +41,7 @@ async fn full_turn_lifecycle_sse_events_and_persistence() {
         .collect();
     let text_combined: String = text_events.join("");
     assert!(
-        text_combined.contains("Hello from the agent!"),
+        text_combined.contains("Hello FROM the agent!"),
         "text_delta events should contain response, got: {text_combined}"
     );
 
@@ -289,7 +289,7 @@ async fn session_lifecycle_create_list_archive_unarchive_rename() {
         .clone()
         .oneshot(harness.authed_get(&format!("/api/v1/sessions/{id}")))
         .await
-        .expect("get after delete");
+        .expect("get after DELETE");
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 
     // Unarchive

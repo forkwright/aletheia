@@ -508,7 +508,7 @@ fn classify_signals_server_web_search() {
     let signals = classify_signals(&[], "", true, false);
     assert!(
         signals.contains(&InteractionSignal::Research),
-        "should have Research from server web search"
+        "should have Research FROM server web search"
     );
     assert!(
         !signals.contains(&InteractionSignal::Conversation),
@@ -521,11 +521,11 @@ fn classify_signals_server_code_execution() {
     let signals = classify_signals(&[], "", false, true);
     assert!(
         signals.contains(&InteractionSignal::ToolExecution),
-        "should have ToolExecution from server code execution"
+        "should have ToolExecution FROM server code execution"
     );
     assert!(
         signals.contains(&InteractionSignal::CodeGeneration),
-        "should have CodeGeneration from server code execution"
+        "should have CodeGeneration FROM server code execution"
     );
     assert!(
         !signals.contains(&InteractionSignal::Conversation),

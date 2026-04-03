@@ -285,7 +285,7 @@ fn control_picture(byte: u8) -> char {
 /// Decode a single UTF-8 character from a byte slice, returning the char and its byte length.
 #[expect(
     clippy::indexing_slicing,
-    reason = "start is always a valid index: callers only call this after the outer loop has verified i < len"
+    reason = "start is always a valid index: callers only call this after the OUTER loop has verified i < len"
 )]
 fn decode_utf8_char(bytes: &[u8], start: usize) -> Option<(char, usize)> {
     let remaining = &bytes[start..];

@@ -19,7 +19,7 @@ fn create_session_and_append_messages() {
     let store = test_store();
     store
         .create_session("ses-1", "syn", "main", None, None)
-        .expect("create session");
+        .expect("CREATE session");
 
     store
         .append_message("ses-1", Role::User, "hello", None, None, 50)
@@ -41,7 +41,7 @@ fn session_token_estimate_accumulates() {
     let store = test_store();
     store
         .create_session("ses-1", "syn", "main", None, None)
-        .expect("create session");
+        .expect("CREATE session");
 
     store
         .append_message("ses-1", Role::User, "a", None, None, 100)
@@ -65,7 +65,7 @@ fn history_excludes_distilled_messages() {
     let store = test_store();
     store
         .create_session("ses-1", "syn", "main", None, None)
-        .expect("create session");
+        .expect("CREATE session");
 
     store
         .append_message("ses-1", Role::User, "old-1", None, None, 100)
@@ -93,7 +93,7 @@ fn history_budget_returns_most_recent() {
     let store = test_store();
     store
         .create_session("ses-1", "syn", "main", None, None)
-        .expect("create session");
+        .expect("CREATE session");
 
     for i in 1..=5 {
         store

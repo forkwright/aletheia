@@ -215,6 +215,6 @@ async fn error_nonexistent_nous_returns_404() {
         .clone()
         .oneshot(req)
         .await
-        .expect("create session for unknown nous");
+        .expect("CREATE session for unknown nous");
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }

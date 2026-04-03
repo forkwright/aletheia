@@ -69,11 +69,11 @@ fn make_embedding(id: &str, content: &str, source_id: &str, nous_id: &str) -> Em
 fn insert_embedding_and_search() {
     let store = make_store();
     let fact = make_fact("f1", "agent-a", "Rust memory safety");
-    store.insert_fact(&fact).expect("insert fact");
+    store.insert_fact(&fact).expect("INSERT fact");
 
     let mut chunk = make_embedding("emb1", "Rust memory safety", "f1", "agent-a");
     chunk.embedding = vec![0.9, 0.1, 0.0, 0.0];
-    store.insert_embedding(&chunk).expect("insert embedding");
+    store.insert_embedding(&chunk).expect("INSERT embedding");
 
     let results = store
         .search_vectors(vec![0.9, 0.1, 0.0, 0.0], 5, 20)
@@ -99,11 +99,11 @@ fn search_vectors_returns_nearest() {
 
     let mut chunk_a = make_embedding("emb-a", "Rust programming", "f1", "agent-a");
     chunk_a.embedding = vec![1.0, 0.0, 0.0, 0.0];
-    store.insert_embedding(&chunk_a).expect("insert emb-a");
+    store.insert_embedding(&chunk_a).expect("INSERT emb-a");
 
     let mut chunk_b = make_embedding("emb-b", "Python scripting", "f2", "agent-a");
     chunk_b.embedding = vec![0.0, 1.0, 0.0, 0.0];
-    store.insert_embedding(&chunk_b).expect("insert emb-b");
+    store.insert_embedding(&chunk_b).expect("INSERT emb-b");
 
     let results = store
         .search_vectors(vec![0.9, 0.1, 0.0, 0.0], 1, 20)
@@ -128,7 +128,7 @@ fn search_vectors_respects_k() {
         )]
         let component = i as f32 * 0.1;
         chunk.embedding = vec![component, 0.5, 0.3, 0.1];
-        store.insert_embedding(&chunk).expect("insert");
+        store.insert_embedding(&chunk).expect("INSERT");
     }
 
     let results = store
@@ -150,7 +150,7 @@ async fn search_vectors_async_works() {
     let store = make_store();
     let mut chunk = make_embedding("emb-async", "Async search content", "f1", "agent-a");
     chunk.embedding = vec![0.7, 0.3, 0.0, 0.0];
-    store.insert_embedding(&chunk).expect("insert embedding");
+    store.insert_embedding(&chunk).expect("INSERT embedding");
 
     let results = store
         .search_vectors_async(vec![0.7, 0.3, 0.0, 0.0], 5, 20)
@@ -227,21 +227,21 @@ mod correctness {
 
         let f_live = fact("sv-live", "live banjo fact");
         let f_forgotten = fact("sv-forgotten", "forgotten banjo fact");
-        store.insert_fact(&f_live).expect("insert live fact");
+        store.insert_fact(&f_live).expect("INSERT live fact");
         store
             .insert_fact(&f_forgotten)
-            .expect("insert forgotten fact");
+            .expect("INSERT forgotten fact");
 
         store
             .insert_embedding(&embedding("sv-live", "sv-live", vec![1.0, 0.0, 0.0, 0.0]))
-            .expect("insert live embedding");
+            .expect("INSERT live embedding");
         store
             .insert_embedding(&embedding(
                 "sv-forgotten",
                 "sv-forgotten",
                 vec![1.0, 0.0, 0.0, 0.0],
             ))
-            .expect("insert forgotten embedding");
+            .expect("INSERT forgotten embedding");
 
         store
             .forget_fact(
@@ -269,7 +269,7 @@ mod correctness {
     fn insert_embedding_rejects_wrong_dimension() {
         let store = make_store(); // DIM = 4
         let fact_data = fact("dim-check", "dimension validation fact");
-        store.insert_fact(&fact_data).expect("insert fact");
+        store.insert_fact(&fact_data).expect("INSERT fact");
 
         let wrong_dim = EmbeddedChunk {
             id: crate::id::EmbeddingId::new("dim-check").expect("valid test id"),
@@ -302,7 +302,7 @@ mod correctness {
     fn insert_embedding_accepts_correct_dimension() {
         let store = make_store(); // DIM = 4
         let fact_data = fact("dim-ok", "correct dimension fact");
-        store.insert_fact(&fact_data).expect("insert fact");
+        store.insert_fact(&fact_data).expect("INSERT fact");
 
         let correct = EmbeddedChunk {
             id: crate::id::EmbeddingId::new("dim-ok").expect("valid test id"),

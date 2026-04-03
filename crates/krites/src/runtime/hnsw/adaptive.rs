@@ -228,10 +228,10 @@ mod tests {
     #[test]
     fn exact_search_returns_correct_results() {
         let db = DbInstance::default();
-        db.run_default(":create vectors { id: Int => vec: <F32; 4> }")
+        db.run_default(":CREATE vectors { id: Int => vec: <F32; 4> }")
             .unwrap();
         db.run_default(
-            r#"::hnsw create vectors:idx {
+            r#"::hnsw CREATE vectors:idx {
                 dim: 4,
                 m: 16,
                 dtype: F32,
@@ -249,7 +249,7 @@ mod tests {
                 clippy::cast_possible_truncation,
                 reason = "f64 to f32: intentional precision reduction"
             )]
-            let val = i as f32;
+            let val = f32::try_from(i).unwrap_or_default();
             db.run_default(&format!(
                 "?[id, vec] <- [[{i}, vec([{val}, {val}, {val}, {val}])]] :put vectors {{}}"
             ))
@@ -263,7 +263,7 @@ mod tests {
             .unwrap();
         assert!(!res.rows.is_empty(), "HNSW search should return results");
         #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
-        let ids: Vec<i64> = res.rows.iter().filter_map(|r| r[0].get_int()).collect();
+        let ids: Vec<i64> = res.rows.iter().filter_map(|r| r.get(0).copied().unwrap_or_default().get_int()).collect();
         assert!(
             ids.contains(&5),
             "exact match id=5 should be in results, got {:?}",

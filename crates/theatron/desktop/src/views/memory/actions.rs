@@ -218,7 +218,7 @@ pub(crate) fn MergeDialog(
                 // Entity selection
                 div {
                     style: "{DIALOG_BODY_STYLE}",
-                    "Select the entity to merge into "
+                    "Select the entity to merge INTO "
                     strong { "{entity_name}" }
                     ":"
                 }
@@ -447,7 +447,7 @@ pub(crate) fn DeleteDialog(
                 div {
                     style: "{IMPACT_STYLE}",
                     div { style: "font-weight: 600; margin-bottom: 8px;", "Impact" }
-                    div { "This will permanently delete " strong { "{entity_name}" } " and:" }
+                    div { "This will permanently DELETE " strong { "{entity_name}" } " and:" }
                     ul { style: "margin: 8px 0 0 16px; padding: 0;",
                         li { "Remove {relationship_count} relationship(s)" }
                         li { "Affect {memory_count} associated memory/memories" }
@@ -491,11 +491,11 @@ pub(crate) fn DeleteDialog(
                                             on_deleted.call(());
                                         }
                                         Ok(resp) => {
-                                            tracing::warn!("delete failed: {}", resp.status());
+                                            tracing::warn!("DELETE failed: {}", resp.status());
                                             is_submitting.set(false);
                                         }
                                         Err(e) => {
-                                            tracing::warn!("delete error: {e}");
+                                            tracing::warn!("DELETE error: {e}");
                                             is_submitting.set(false);
                                         }
                                     }

@@ -20,7 +20,7 @@ static WATCHDOG_RESTARTS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         ),
         &["process_id"]
     )
-    .expect("metric registration")
+    .unwrap_or_default()
 });
 
 static WATCHDOG_HUNG_PROCESSES: LazyLock<IntGauge> = LazyLock::new(|| {
@@ -28,7 +28,7 @@ static WATCHDOG_HUNG_PROCESSES: LazyLock<IntGauge> = LazyLock::new(|| {
         "aletheia_watchdog_hung_processes",
         "Number of processes currently detected as hung"
     )
-    .expect("metric registration")
+    .unwrap_or_default()
 });
 
 static CRON_EXECUTIONS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
@@ -39,7 +39,7 @@ static CRON_EXECUTIONS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         ),
         &["task_name", "status"]
     )
-    .expect("metric registration")
+    .unwrap_or_default()
 });
 
 static CRON_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
@@ -51,10 +51,10 @@ static CRON_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
         .buckets(vec![0.1, 0.5, 1.0, 5.0, 10.0, 30.0, 60.0, 300.0, 600.0]),
         &["task_name"]
     )
-    .expect("metric registration")
+    .unwrap_or_default()
 });
 
-#[expect(dead_code, reason = "metric init called from server startup")]
+#[expect(dead_code, reason = "metric init called FROM server startup")]
 /// Force-initialize all lazy metric statics.
 pub(crate) fn init() {
     LazyLock::force(&WATCHDOG_RESTARTS_TOTAL);

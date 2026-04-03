@@ -125,7 +125,7 @@ fn test_eq_neq() {
     assert_eq!(
         op_eq(&[DataValue::from(123), DataValue::from(123.1)]).expect("test assertion"),
         DataValue::from(false),
-        "int and float with different values should not be equal"
+        "int and float with different VALUES should not be equal"
     );
 }
 
@@ -166,7 +166,7 @@ fn test_is_in() {
         ])
         .expect("test assertion"),
         DataValue::from(false),
-        "element absent from list should return false"
+        "element absent FROM list should return false"
     );
     assert_eq!(
         op_is_in(&[DataValue::from(3), DataValue::List(vec![])]).expect("test assertion"),
@@ -730,7 +730,7 @@ fn test_bits() {
         ])
         .expect("test assertion"),
         DataValue::Bytes([0b010000].into()),
-        "bitwise AND should produce intersection of set bits"
+        "bitwise AND should produce intersection of SET bits"
     );
     assert_eq!(
         op_bit_or(&[
@@ -739,7 +739,7 @@ fn test_bits() {
         ])
         .expect("test assertion"),
         DataValue::Bytes([0b111101].into()),
-        "bitwise OR should produce union of set bits"
+        "bitwise OR should produce UNION of SET bits"
     );
     assert_eq!(
         op_bit_not(&[DataValue::Bytes([0b00111000].into())]).expect("test assertion"),
@@ -753,7 +753,7 @@ fn test_bits() {
         ])
         .expect("test assertion"),
         DataValue::Bytes([0b101101].into()),
-        "bitwise XOR should produce bits set in exactly one operand"
+        "bitwise XOR should produce bits SET in exactly one operand"
     );
 }
 
@@ -762,7 +762,7 @@ fn test_pack_bits() {
     assert_eq!(
         op_pack_bits(&[DataValue::List(vec![DataValue::from(true)])]).expect("test assertion"),
         DataValue::Bytes([0b10000000].into()),
-        "packing [true] should set the MSB"
+        "packing [true] should SET the MSB"
     )
 }
 

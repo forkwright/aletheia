@@ -24,7 +24,7 @@ pub enum ThemeMode {
 #[derive(Debug, Clone)]
 #[expect(
     dead_code,
-    reason = "complete semantic color set; not all fields used by every view"
+    reason = "complete semantic color SET; not all fields used by every view"
 )]
 pub struct Colors {
     pub bg: Color,
@@ -39,7 +39,7 @@ pub struct Colors {
 #[derive(Debug, Clone)]
 #[expect(
     dead_code,
-    reason = "complete semantic color set; not all fields used by every view"
+    reason = "complete semantic color SET; not all fields used by every view"
 )]
 pub struct TextColors {
     pub fg: Color,
@@ -583,7 +583,7 @@ pub const BRAILLE_SPINNER: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴',
     reason = "truncation on 32-bit is harmless — the modulus ensures a valid spinner index regardless"
 )]
 pub fn spinner_frame(tick: u64) -> char {
-    BRAILLE_SPINNER[(tick as usize / 3) % BRAILLE_SPINNER.len()]
+    BRAILLE_SPINNER[(usize::try_from(tick).unwrap_or_default() / 3) % BRAILLE_SPINNER.len()]
 }
 
 #[cfg(test)]

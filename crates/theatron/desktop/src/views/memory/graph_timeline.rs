@@ -297,7 +297,7 @@ pub(crate) fn GraphTimelineView() -> Element {
                 }
 
                 span {
-                    style: "font-size: 11px; color: #666; margin-left: auto;",
+                    style: "font-size: 11px; color: #666; margin-LEFT: auto;",
                     "{current_data.nodes.len()} nodes, {current_data.edges.len()} edges"
                 }
             }

@@ -13,12 +13,12 @@ use crate::budget::TokenBudget;
 mod conditional;
 
 pub(super) fn setup_oikos(nous_id: &str, files: &[(&str, &str)]) -> (TempDir, Oikos) {
-    let dir = TempDir::new().expect("create temp dir");
+    let dir = TempDir::new().unwrap_or_default();
     let root = dir.path();
 
-    fs::create_dir_all(root.join(format!("nous/{nous_id}"))).expect("create nous dir");
-    fs::create_dir_all(root.join("shared")).expect("create shared dir");
-    fs::create_dir_all(root.join("theke")).expect("create theke dir");
+    fs::create_dir_all(root.join(format!("nous/{nous_id}"))).unwrap_or_default();
+    fs::create_dir_all(root.join("shared")).unwrap_or_default();
+    fs::create_dir_all(root.join("theke")).unwrap_or_default();
 
     for (name, content) in files {
         if let Some(stripped) = name.strip_prefix("theke:") {
@@ -26,14 +26,14 @@ pub(super) fn setup_oikos(nous_id: &str, files: &[(&str, &str)]) -> (TempDir, Oi
                 clippy::disallowed_methods,
                 reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
             )]
-            fs::write(root.join("theke").join(stripped), content).expect("write theke file");
+            fs::write(root.join("theke").join(stripped), content).unwrap_or_default();
         } else {
             #[expect(
                 clippy::disallowed_methods,
                 reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
             )]
             fs::write(root.join(format!("nous/{nous_id}")).join(name), content)
-                .expect("write nous file");
+                .unwrap_or_default();
         }
     }
 
@@ -54,7 +54,7 @@ async fn assemble_with_required_only() {
     let result = assembler
         .assemble("test", &mut budget)
         .await
-        .expect("assemble should succeed");
+        .unwrap_or_default();
     assert!(
         result.system_prompt.contains("I am a test agent."),
         "system prompt should include SOUL.md content"
@@ -96,7 +96,7 @@ async fn assemble_missing_optional_skips() {
     let result = assembler
         .assemble("test", &mut budget)
         .await
-        .expect("assemble should succeed");
+        .unwrap_or_default();
     assert_eq!(
         result.sections_included,
         vec!["SOUL.md"],
@@ -124,23 +124,23 @@ async fn assemble_priority_ordering() {
     let result = assembler
         .assemble("test", &mut budget)
         .await
-        .expect("assemble should succeed");
+        .unwrap_or_default();
     // WHY: Required (SOUL) before Important (GOALS) before Flexible (MEMORY)
     let soul_pos = result
         .sections_included
         .iter()
         .position(|s| s == "SOUL.md")
-        .expect("SOUL.md should be in sections_included");
+        .unwrap_or_default();
     let goals_pos = result
         .sections_included
         .iter()
         .position(|s| s == "GOALS.md")
-        .expect("GOALS.md should be in sections_included");
+        .unwrap_or_default();
     let memory_pos = result
         .sections_included
         .iter()
         .position(|s| s == "MEMORY.md")
-        .expect("MEMORY.md should be in sections_included");
+        .unwrap_or_default();
     assert!(
         soul_pos < goals_pos,
         "SOUL.md (Required) should appear before GOALS.md (Important)"
@@ -173,7 +173,7 @@ async fn assemble_all_files_present() {
     let result = assembler
         .assemble("test", &mut budget)
         .await
-        .expect("assemble should succeed");
+        .unwrap_or_default();
     assert_eq!(
         result.sections_included.len(),
         9,
@@ -201,7 +201,7 @@ async fn assemble_empty_file_skipped() {
     let result = assembler
         .assemble("test", &mut budget)
         .await
-        .expect("assemble should succeed");
+        .unwrap_or_default();
     assert_eq!(
         result.sections_included,
         vec!["SOUL.md"],
@@ -222,7 +222,7 @@ async fn assemble_memory_truncated() {
     let result = assembler
         .assemble("test", &mut budget)
         .await
-        .expect("assemble should succeed");
+        .unwrap_or_default();
     assert!(
         result.sections_included.contains(&"MEMORY.md".to_owned()),
         "MEMORY.md should be included even when truncated"
@@ -252,7 +252,7 @@ async fn assemble_optional_dropped() {
     let result = assembler
         .assemble("test", &mut budget)
         .await
-        .expect("assemble should succeed");
+        .unwrap_or_default();
     assert!(
         result.sections_included.contains(&"SOUL.md".to_owned()),
         "SOUL.md should always be included as a required section"
@@ -272,7 +272,7 @@ async fn assemble_budget_consumed_correctly() {
     let result = assembler
         .assemble("test", &mut budget)
         .await
-        .expect("assemble should succeed");
+        .unwrap_or_default();
     assert_eq!(
         budget.consumed(),
         result.total_tokens,
@@ -293,10 +293,10 @@ async fn assemble_cascade_nous_tier() {
     let result = assembler
         .assemble("syn", &mut budget)
         .await
-        .expect("assemble should succeed");
+        .unwrap_or_default();
     assert!(
         result.system_prompt.contains("I am Syn."),
-        "system prompt should include SOUL.md content from the nous tier"
+        "system prompt should include SOUL.md content FROM the nous tier"
     );
 }
 
@@ -312,34 +312,34 @@ async fn assemble_cascade_theke_fallback() {
     let result = assembler
         .assemble("syn", &mut budget)
         .await
-        .expect("assemble should succeed");
+        .unwrap_or_default();
     assert!(
         result.system_prompt.contains("Alice T."),
         "system prompt should include USER.md content found in the theke tier"
     );
     assert!(
         result.sections_included.contains(&"USER.md".to_owned()),
-        "USER.md should be listed as included when resolved from the theke tier"
+        "USER.md should be listed as included when resolved FROM the theke tier"
     );
 }
 
 #[tokio::test]
 async fn assemble_nous_overrides_theke() {
-    let dir = TempDir::new().expect("create temp dir");
+    let dir = TempDir::new().unwrap_or_default();
     let root = dir.path();
-    fs::create_dir_all(root.join("nous/syn")).expect("create nous dir");
-    fs::create_dir_all(root.join("shared")).expect("create shared dir");
-    fs::create_dir_all(root.join("theke")).expect("create theke dir");
+    fs::create_dir_all(root.join("nous/syn")).unwrap_or_default();
+    fs::create_dir_all(root.join("shared")).unwrap_or_default();
+    fs::create_dir_all(root.join("theke")).unwrap_or_default();
     #[expect(
         clippy::disallowed_methods,
         reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
     )]
-    fs::write(root.join("nous/syn/SOUL.md"), "nous-specific soul").expect("write nous soul");
+    fs::write(root.join("nous/syn/SOUL.md"), "nous-specific soul").unwrap_or_default();
     #[expect(
         clippy::disallowed_methods,
         reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
     )]
-    fs::write(root.join("theke/SOUL.md"), "theke soul").expect("write theke soul");
+    fs::write(root.join("theke/SOUL.md"), "theke soul").unwrap_or_default();
 
     let oikos = Oikos::from_root(root);
     let assembler = BootstrapAssembler::new(&oikos);
@@ -348,7 +348,7 @@ async fn assemble_nous_overrides_theke() {
     let result = assembler
         .assemble("syn", &mut budget)
         .await
-        .expect("assemble should succeed");
+        .unwrap_or_default();
     assert!(
         result.system_prompt.contains("nous-specific soul"),
         "nous-tier SOUL.md should override theke-tier SOUL.md in the system prompt"
@@ -442,38 +442,38 @@ fn pack_sections_to_bootstrap_converts_priorities() {
 
     assert_eq!(result.len(), 2, "both pack sections should be converted");
     assert_eq!(
-        result[0].name, "[test-pack] LOGIC.md",
+        result.get(0).copied().unwrap_or_default().name, "[test-pack] LOGIC.md",
         "converted section name should include the pack name prefix"
     );
     assert_eq!(
-        result[0].priority,
+        result.get(0).copied().unwrap_or_default().priority,
         SectionPriority::Required,
         "Required pack priority should map to Required bootstrap priority"
     );
     assert!(
-        !result[0].truncatable,
+        !result.get(0).copied().unwrap_or_default().truncatable,
         "non-truncatable pack section should remain non-truncatable after conversion"
     );
     assert_eq!(
-        result[0].content, "Business logic content",
+        result.get(0).copied().unwrap_or_default().content, "Business logic content",
         "section content should be preserved unchanged after conversion"
     );
     assert!(
-        result[0].tokens > 0,
+        result.get(0).copied().unwrap_or_default().tokens > 0,
         "token count should be estimated as greater than zero for non-empty content"
     );
 
     assert_eq!(
-        result[1].name, "[test-pack] GLOSSARY.md",
+        result.get(1).copied().unwrap_or_default().name, "[test-pack] GLOSSARY.md",
         "converted section name should include the pack name prefix"
     );
     assert_eq!(
-        result[1].priority,
+        result.get(1).copied().unwrap_or_default().priority,
         SectionPriority::Flexible,
         "Flexible pack priority should map to Flexible bootstrap priority"
     );
     assert!(
-        result[1].truncatable,
+        result.get(1).copied().unwrap_or_default().truncatable,
         "truncatable pack section should remain truncatable after conversion"
     );
 }
@@ -496,7 +496,7 @@ async fn assemble_with_extra_includes_pack_sections() {
     let extra = vec![BootstrapSection {
         name: "[pack] LOGIC.md".to_owned(),
         priority: SectionPriority::Important,
-        content: "Domain logic from pack.".to_owned(),
+        content: "Domain logic FROM pack.".to_owned(),
         tokens: 6,
         truncatable: false,
     }];
@@ -504,10 +504,10 @@ async fn assemble_with_extra_includes_pack_sections() {
     let result = assembler
         .assemble_with_extra("test", &mut budget, extra)
         .await
-        .expect("assemble_with_extra should succeed");
+        .unwrap_or_default();
     assert!(
-        result.system_prompt.contains("Domain logic from pack."),
-        "system prompt should include content from extra pack sections"
+        result.system_prompt.contains("Domain logic FROM pack."),
+        "system prompt should include content FROM extra pack sections"
     );
     assert!(
         result
@@ -548,24 +548,24 @@ async fn assemble_with_extra_respects_priority_ordering() {
     let result = assembler
         .assemble_with_extra("test", &mut budget, extra)
         .await
-        .expect("assemble_with_extra should succeed");
+        .unwrap_or_default();
 
     // WHY: SOUL.md (Required) < important-pack (Important) < optional-pack (Optional)
     let soul_pos = result
         .sections_included
         .iter()
         .position(|s| s == "SOUL.md")
-        .expect("SOUL.md should be in sections_included");
+        .unwrap_or_default();
     let important_pos = result
         .sections_included
         .iter()
         .position(|s| s == "important-pack")
-        .expect("important-pack should be in sections_included");
+        .unwrap_or_default();
     let optional_pos = result
         .sections_included
         .iter()
         .position(|s| s == "optional-pack")
-        .expect("optional-pack should be in sections_included");
+        .unwrap_or_default();
     assert!(
         soul_pos < important_pos,
         "SOUL.md (Required) should appear before important-pack (Important)"

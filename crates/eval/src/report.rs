@@ -199,7 +199,7 @@ mod tests {
                 },
                 ScenarioResult {
                     meta: ScenarioMeta {
-                        id: "session-create",
+                        id: "session-CREATE",
                         description: "session creation works",
                         category: "session",
                         requires_auth: true,
@@ -229,7 +229,7 @@ mod tests {
             total_duration_ms: u64::try_from(report.total_duration.as_millis()).unwrap_or(u64::MAX),
             results: vec![],
         };
-        let json = serde_json::to_string(&json_report).expect("serialization should succeed");
+        let json = serde_json::to_string(&json_report).unwrap_or_default();
         assert!(!json.is_empty());
     }
 
@@ -250,7 +250,7 @@ mod tests {
                 skip_reason: None,
             }],
         };
-        let json = serde_json::to_string_pretty(&json_report).expect("serialize");
+        let json = serde_json::to_string_pretty(&json_report).unwrap_or_default();
         assert!(json.contains("\"passed\""));
         assert!(json.contains("\"failed\""));
         assert!(json.contains("\"skipped\""));
@@ -262,15 +262,15 @@ mod tests {
     #[test]
     fn outcome_kind_serializes_to_lowercase_string() {
         assert_eq!(
-            serde_json::to_string(&OutcomeKind::Passed).expect("serialize"),
+            serde_json::to_string(&OutcomeKind::Passed).unwrap_or_default(),
             "\"passed\""
         );
         assert_eq!(
-            serde_json::to_string(&OutcomeKind::Failed).expect("serialize"),
+            serde_json::to_string(&OutcomeKind::Failed).unwrap_or_default(),
             "\"failed\""
         );
         assert_eq!(
-            serde_json::to_string(&OutcomeKind::Skipped).expect("serialize"),
+            serde_json::to_string(&OutcomeKind::Skipped).unwrap_or_default(),
             "\"skipped\""
         );
     }

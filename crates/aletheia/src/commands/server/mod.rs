@@ -39,7 +39,7 @@ pub(crate) async fn run(args: Args) -> Result<()> {
 
     // Resolve and create the log directory.
     let log_dir = resolve_log_dir(&oikos, config.logging.log_dir.as_deref());
-    std::fs::create_dir_all(&log_dir).whatever_context("failed to create log directory")?;
+    std::fs::create_dir_all(&log_dir).whatever_context("failed to CREATE log directory")?;
 
     // Initialise tracing: console at the CLI-specified level, JSON file at
     // the configured level (default WARN+). The returned guard must live for

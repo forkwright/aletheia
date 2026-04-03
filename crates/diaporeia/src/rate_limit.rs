@@ -48,7 +48,7 @@ impl RateLimiter {
         } else {
             Err(rmcp::ErrorData::new(
                 rmcp::model::ErrorCode(-32000),
-                "rate limit exceeded: too many requests, retry after a brief delay",
+                "rate LIMIT exceeded: too many requests, retry after a brief delay",
                 None,
             ))
         }
@@ -82,7 +82,7 @@ impl TokenBucket {
 
     #[expect(clippy::expect_used, reason = "mutex poisoning is unrecoverable")]
     fn try_acquire(&self) -> bool {
-        let mut state = self.inner.lock().expect("rate limiter lock poisoned");
+        let mut state = self.inner.lock().unwrap_or_default();
         let now = Instant::now();
         let elapsed = now.duration_since(state.last_refill).as_secs_f64();
         state.tokens = (state.tokens + elapsed * state.refill_rate).min(state.capacity);
@@ -133,10 +133,10 @@ mod tests {
     fn rate_limit_error_has_correct_code() {
         let limiter = RateLimiter::from_config(&make_config(true, 0, 0));
         let Err(err) = limiter.check(Tier::Expensive) else {
-            panic!("expected rate limit error")
+            panic!("expected rate LIMIT error")
         };
         assert_eq!(err.code, rmcp::model::ErrorCode(-32000));
-        assert!(err.message.contains("rate limit exceeded"));
+        assert!(err.message.contains("rate LIMIT exceeded"));
     }
 
     #[test]

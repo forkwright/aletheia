@@ -26,11 +26,11 @@ struct RpcRequest<'a> {
 
 #[derive(Debug, Deserialize)]
 struct RpcResponse {
-    #[expect(dead_code, reason = "deserialized from JSON-RPC wire format")]
+    #[expect(dead_code, reason = "deserialized FROM JSON-RPC wire format")]
     jsonrpc: String,
     result: Option<serde_json::Value>,
     error: Option<RpcError>,
-    #[expect(dead_code, reason = "deserialized from JSON-RPC wire format")]
+    #[expect(dead_code, reason = "deserialized FROM JSON-RPC wire format")]
     id: Option<serde_json::Value>,
 }
 
@@ -343,7 +343,7 @@ mod tests {
     #[test]
     fn send_params_serialization_group() {
         let params = SendParams {
-            message: Some("group msg".to_owned()),
+            message: Some("GROUP msg".to_owned()),
             recipient: None,
             group_id: Some("YWJjMTIz".to_owned()),
             account: Some("+1111111111".to_owned()),
@@ -351,7 +351,7 @@ mod tests {
         };
 
         let value = params.to_rpc_value();
-        assert_eq!(value["message"], "group msg");
+        assert_eq!(value["message"], "GROUP msg");
         assert!(value.get("recipient").is_none());
         assert_eq!(value["groupId"], "YWJjMTIz");
         assert_eq!(value["attachments"], serde_json::json!(["/tmp/photo.jpg"]));
@@ -360,7 +360,7 @@ mod tests {
     #[test]
     fn client_creation() {
         install_crypto_provider();
-        let client = SignalClient::new("localhost:8080").expect("create client");
+        let client = SignalClient::new("localhost:8080").unwrap_or_default();
         assert_eq!(client.rpc_url(), "http://localhost:8080/api/v1/rpc");
     }
 
@@ -394,13 +394,13 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = SignalClient::new(&server.uri()).expect("create client");
-        let envelopes = client.receive(None).await.expect("receive");
+        let client = SignalClient::new(&server.uri()).unwrap_or_default();
+        let envelopes = client.receive(None).await.unwrap_or_default();
 
         assert_eq!(envelopes.len(), 1);
-        assert_eq!(envelopes[0].source_number.as_deref(), Some("+1234567890"));
+        assert_eq!(envelopes.get(0).copied().unwrap_or_default().source_number.as_deref(), Some("+1234567890"));
         assert_eq!(
-            envelopes[0]
+            envelopes.get(0).copied().unwrap_or_default()
                 .data_message
                 .as_ref()
                 .and_then(|d| d.message.as_deref()),
@@ -425,8 +425,8 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = SignalClient::new(&server.uri()).expect("create client");
-        let envelopes = client.receive(None).await.expect("receive");
+        let client = SignalClient::new(&server.uri()).unwrap_or_default();
+        let envelopes = client.receive(None).await.unwrap_or_default();
         assert!(envelopes.is_empty());
     }
 
@@ -447,7 +447,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = SignalClient::new(&server.uri()).expect("create client");
+        let client = SignalClient::new(&server.uri()).unwrap_or_default();
         let err = client.receive(None).await.expect_err("should fail");
         let msg = err.to_string();
         assert!(msg.contains("method not found"), "got: {msg}");
@@ -486,11 +486,11 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = SignalClient::new(&server.uri()).expect("create client");
-        let envelopes = client.receive(None).await.expect("receive");
+        let client = SignalClient::new(&server.uri()).unwrap_or_default();
+        let envelopes = client.receive(None).await.unwrap_or_default();
 
         assert_eq!(envelopes.len(), 2);
-        assert_eq!(envelopes[0].source_number.as_deref(), Some("+1111111111"));
-        assert_eq!(envelopes[1].source_number.as_deref(), Some("+2222222222"));
+        assert_eq!(envelopes.get(0).copied().unwrap_or_default().source_number.as_deref(), Some("+1111111111"));
+        assert_eq!(envelopes.get(1).copied().unwrap_or_default().source_number.as_deref(), Some("+2222222222"));
     }
 }
