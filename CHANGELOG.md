@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.13.26](https://github.com/forkwright/aletheia/compare/v0.13.25...v0.13.26) (2026-04-03)
+
+
+### Features
+
+* **aletheia:** add desktop subcommand ([#2359](https://github.com/forkwright/aletheia/issues/2359)) ([#2361](https://github.com/forkwright/aletheia/issues/2361)) ([1c2d701](https://github.com/forkwright/aletheia/commit/1c2d701417a163702983be478c536abbf17d1e73))
+* **eidos:** add verification fact type for claim-source provenance ([#2375](https://github.com/forkwright/aletheia/issues/2375)) ([0790be6](https://github.com/forkwright/aletheia/commit/0790be66c84e4f4b6a61db6bff8640d116364bad))
+* **eidos:** add verification fact type for claim-source provenance ([#2377](https://github.com/forkwright/aletheia/issues/2377)) ([dfea6fc](https://github.com/forkwright/aletheia/commit/dfea6fc18b8117466fe02dcc1736540961a47306))
+
+
+### Bug Fixes
+
+* **theatron-desktop:** handle Discover Agents error ([#2366](https://github.com/forkwright/aletheia/issues/2366)) ([#2368](https://github.com/forkwright/aletheia/issues/2368)) ([7907d95](https://github.com/forkwright/aletheia/commit/7907d95cf503c2122e652d95b3b7f58254f93b29))
+* **theatron-desktop:** install rustls crypto provider ([#2363](https://github.com/forkwright/aletheia/issues/2363)) ([#2367](https://github.com/forkwright/aletheia/issues/2367)) ([0c2beea](https://github.com/forkwright/aletheia/commit/0c2beead386d4acf5596aefeb417a552be92fde1))
+* **theatron-desktop:** setup wizard UX + theme consistency ([#2364](https://github.com/forkwright/aletheia/issues/2364), [#2365](https://github.com/forkwright/aletheia/issues/2365)) ([#2369](https://github.com/forkwright/aletheia/issues/2369)) ([3828694](https://github.com/forkwright/aletheia/commit/3828694aa1dbc5eeae91eaaf83d53dfa078ddc09))
+
 ## [0.13.25](https://github.com/forkwright/aletheia/compare/v0.13.24...v0.13.25) (2026-04-03)
 
 
