@@ -320,6 +320,20 @@ impl RecallEngine {
         &self.weights
     }
 
+    /// Apply a graph-enhanced scorer when graph recall is active,
+    /// otherwise return the base score unchanged.
+    ///
+    /// PERF: skips the `enhance` closure entirely when the relationship
+    /// proximity weight is zero.
+    #[must_use]
+    fn graph_enhanced(&self, base: f64, enhance: impl FnOnce(f64) -> f64) -> f64 {
+        if self.weights.graph_recall_active() {
+            enhance(base)
+        } else {
+            base
+        }
+    }
+
     /// Epistemic tier score boosted by entity `PageRank` importance.
     ///
     /// Superset of [`score_epistemic_tier`](Self::score_epistemic_tier): calling with `importance=0.0`
@@ -331,11 +345,9 @@ impl RecallEngine {
     #[expect(dead_code, reason = "knowledge pipeline infrastructure")]
     pub(crate) fn score_epistemic_tier_with_importance(&self, tier: &str, importance: f64) -> f64 {
         let base = self.score_epistemic_tier(tier);
-        // PERF: skip graph-enhanced scoring when relationship proximity weight is zero.
-        if !self.weights.graph_recall_active() {
-            return base;
-        }
-        crate::graph_intelligence::score_epistemic_tier_with_importance(base, importance)
+        self.graph_enhanced(base, |b| {
+            crate::graph_intelligence::score_epistemic_tier_with_importance(b, importance)
+        })
     }
 
     /// Relationship proximity score with community-aware floor.
@@ -353,11 +365,9 @@ impl RecallEngine {
         same_cluster: bool,
     ) -> f64 {
         let base = self.score_relationship_proximity(hops);
-        // PERF: skip graph-enhanced scoring when relationship proximity weight is zero.
-        if !self.weights.graph_recall_active() {
-            return base;
-        }
-        crate::graph_intelligence::score_relationship_proximity_with_cluster(base, same_cluster)
+        self.graph_enhanced(base, |b| {
+            crate::graph_intelligence::score_relationship_proximity_with_cluster(b, same_cluster)
+        })
     }
 
     /// Access frequency score with supersession chain evolution bonus.
@@ -371,11 +381,9 @@ impl RecallEngine {
     #[expect(dead_code, reason = "recall engine scoring methods")]
     pub(crate) fn score_access_with_evolution(&self, access_count: u64, chain_length: u32) -> f64 {
         let base = self.score_access_frequency(access_count);
-        // PERF: skip graph-enhanced scoring when relationship proximity weight is zero.
-        if !self.weights.graph_recall_active() {
-            return base;
-        }
-        crate::graph_intelligence::score_access_with_evolution(base, chain_length)
+        self.graph_enhanced(base, |b| {
+            crate::graph_intelligence::score_access_with_evolution(b, chain_length)
+        })
     }
 }
 

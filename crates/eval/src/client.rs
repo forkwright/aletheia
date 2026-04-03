@@ -107,16 +107,7 @@ impl EvalClient {
         let resp = self.authed_delete(&url).await?;
         let status = resp.status().as_u16();
         if status != 204 && status != 200 {
-            let body = resp.text().await.unwrap_or_else(|e| {
-                tracing::warn!(error = %e, "failed to read error response body");
-                String::new()
-            });
-            return error::UnexpectedStatusSnafu {
-                endpoint: url,
-                status,
-                body,
-            }
-            .fail();
+            return self.status_error(url, status, resp).await;
         }
         Ok(())
     }
@@ -133,16 +124,7 @@ impl EvalClient {
         let resp = self.authed_post(&url, &body).await?;
         let status = resp.status().as_u16();
         if status != 200 {
-            let body_text = resp.text().await.unwrap_or_else(|e| {
-                tracing::warn!(error = %e, "failed to read error response body");
-                String::new()
-            });
-            return error::UnexpectedStatusSnafu {
-                endpoint: url,
-                status,
-                body: body_text,
-            }
-            .fail();
+            return self.status_error(url, status, resp).await;
         }
         sse::parse_sse_stream(resp).await
     }
@@ -259,18 +241,29 @@ impl EvalClient {
     ) -> Result<T> {
         let status = response.status().as_u16();
         if !accepted.contains(&status) {
-            let body = response.text().await.unwrap_or_else(|e| {
-                tracing::warn!(error = %e, "failed to read error response body");
-                String::new()
-            });
-            return error::UnexpectedStatusSnafu {
-                endpoint: url.to_owned(),
-                status,
-                body,
-            }
-            .fail();
+            return self.status_error(url.to_owned(), status, response).await;
         }
         response.json().await.context(error::HttpSnafu)
+    }
+
+    /// Build an [`UnexpectedStatus`](error::Error::UnexpectedStatus) error from
+    /// a failed response, reading the body for diagnostics.
+    async fn status_error<T>(
+        &self,
+        endpoint: String,
+        status: u16,
+        response: reqwest::Response,
+    ) -> Result<T> {
+        let body = response.text().await.unwrap_or_else(|e| {
+            tracing::warn!(error = %e, "failed to read error response body");
+            String::new()
+        });
+        error::UnexpectedStatusSnafu {
+            endpoint,
+            status,
+            body,
+        }
+        .fail()
     }
 }
 
