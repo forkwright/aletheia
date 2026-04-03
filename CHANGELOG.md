@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.13.32](https://github.com/forkwright/aletheia/compare/v0.13.31...v0.13.32) (2026-04-03)
+
+
+### Bug Fixes
+
+* resolve lint violations via kanon lint --fix ([fed2235](https://github.com/forkwright/aletheia/commit/fed2235cf63498f0a001c098da3cf75259afd6e9))
+* resolve lint violations via kanon lint --fix ([41c8514](https://github.com/forkwright/aletheia/commit/41c851434de8a490a251881080f5b96237c3f531))
+* resolve lint violations via kanon lint --fix ([60319ad](https://github.com/forkwright/aletheia/commit/60319addc7586f7236ac3b899a1ddb44e9a11e11))
+* resolve lint violations via kanon lint --fix ([969afd3](https://github.com/forkwright/aletheia/commit/969afd36a97a9ab766baa3bee3164c227c610cb9))
+* resolve lint violations via kanon lint --fix ([f1f5cbf](https://github.com/forkwright/aletheia/commit/f1f5cbfcad63b42e0cc91a72a4ad08702c20cc50))
+* resolve lint violations via kanon lint --fix ([8633074](https://github.com/forkwright/aletheia/commit/8633074a92de9cc294bd34b003a4e337add6fd07))
+* resolve lint violations via kanon lint --fix ([17e2f29](https://github.com/forkwright/aletheia/commit/17e2f290d5ff28c52aa547c0c1f42168d7572b5f))
+* resolve lint violations via kanon lint --fix ([6e69898](https://github.com/forkwright/aletheia/commit/6e69898b643331e07eabe3dd151fb6720399f1a3))
+* resolve lint violations via kanon lint --fix ([c3d34d4](https://github.com/forkwright/aletheia/commit/c3d34d41025e9a9d4ba9144e5a97c50d484c2609))
+
 ## [0.13.31](https://github.com/forkwright/aletheia/compare/v0.13.30...v0.13.31) (2026-04-03)
 
 
