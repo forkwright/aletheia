@@ -77,6 +77,93 @@ pub trait Scenario: Send + Sync {
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a>;
 }
 
+/// Define a scenario with less boilerplate.
+///
+/// Generates a unit struct, a [`Scenario`] trait impl with `meta()` returning
+/// [`ScenarioMeta`], and a `run()` method wrapped in `Box::pin` with a tracing
+/// `instrument` span.
+///
+/// # Required fields
+///
+/// - `id`: unique scenario identifier (string literal)
+/// - `description`: human-readable description (string literal)
+/// - `category`: grouping category (string literal)
+///
+/// # Optional fields (default to `false` / `None`)
+///
+/// - `requires_auth`: whether the scenario needs an auth token
+/// - `requires_nous`: whether the scenario needs a configured nous
+/// - `expected_contains`: substring the response must contain
+/// - `expected_pattern`: regex the response must match
+///
+/// # Body
+///
+/// The `run` closure receives `client: &EvalClient` and must return
+/// `Result<()>`. The body is async.
+///
+/// # Example
+///
+/// ```ignore
+/// define_scenario!(HealthReturnsOk {
+///     id: "health-returns-ok",
+///     description: "Health endpoint returns OK",
+///     category: "health",
+///     run: |client| {
+///         let health = client.health().await?;
+///         assert_eval(health.status == InstanceStatus::Healthy, "not healthy")
+///     }
+/// });
+/// ```
+macro_rules! define_scenario {
+    // Entry point: parse struct name, then fields.
+    ($name:ident {
+        id: $id:expr,
+        description: $desc:expr,
+        category: $cat:expr,
+        $( requires_auth: $auth:expr, )?
+        $( requires_nous: $nous:expr, )?
+        $( expected_contains: $contains:expr, )?
+        $( expected_pattern: $pattern:expr, )?
+        run: |$client:ident| $body:expr $(,)?
+    }) => {
+        struct $name;
+
+        impl $crate::scenario::Scenario for $name {
+            fn meta(&self) -> $crate::scenario::ScenarioMeta {
+                $crate::scenario::ScenarioMeta {
+                    id: $id,
+                    description: $desc,
+                    category: $cat,
+                    requires_auth: define_scenario!(@opt_bool $( $auth )?),
+                    requires_nous: define_scenario!(@opt_bool $( $nous )?),
+                    expected_contains: define_scenario!(@opt_val $( $contains )?),
+                    expected_pattern: define_scenario!(@opt_val $( $pattern )?),
+                }
+            }
+
+            fn run<'a>(
+                &'a self,
+                $client: &'a $crate::client::EvalClient,
+            ) -> $crate::scenario::ScenarioFuture<'a> {
+                Box::pin(
+                    async move { $body }
+                        .instrument(tracing::info_span!("scenario", id = $id)),
+                )
+            }
+        }
+    };
+
+    // Default: false for bool options.
+    (@opt_bool) => { false };
+    (@opt_bool $val:expr) => { $val };
+
+    // Default: None for optional values.
+    (@opt_val) => { None };
+    (@opt_val $val:expr) => { $val };
+}
+
+pub(crate) use define_scenario;
+
 /// Assert a condition, returning an assertion error if it fails.
 #[tracing::instrument(skip_all)]
 pub(crate) fn assert_eval(condition: bool, message: impl Into<String>) -> Result<()> {
