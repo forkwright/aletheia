@@ -40,13 +40,13 @@ pub enum IndicatorColor {
 }
 
 impl IndicatorColor {
-    /// CSS-compatible color string for rendering.
+    /// CSS-compatible color string using theme tokens.
     #[must_use]
     pub(crate) fn css(self) -> &'static str {
         match self {
-            Self::Green => "#22c55e",
-            Self::Yellow => "#eab308",
-            Self::Red => "#ef4444",
+            Self::Green => "var(--status-success)",
+            Self::Yellow => "var(--status-warning)",
+            Self::Red => "var(--status-error)",
         }
     }
 }
@@ -134,8 +134,8 @@ mod tests {
 
     #[test]
     fn indicator_color_css() {
-        assert_eq!(IndicatorColor::Green.css(), "#22c55e");
-        assert_eq!(IndicatorColor::Yellow.css(), "#eab308");
-        assert_eq!(IndicatorColor::Red.css(), "#ef4444");
+        assert_eq!(IndicatorColor::Green.css(), "var(--status-success)");
+        assert_eq!(IndicatorColor::Yellow.css(), "var(--status-warning)");
+        assert_eq!(IndicatorColor::Red.css(), "var(--status-error)");
     }
 }

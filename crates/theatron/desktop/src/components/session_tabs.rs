@@ -12,8 +12,8 @@ const TABS_BAR_STYLE: &str = "\
     align-items: center; \
     gap: 4px; \
     padding: 8px 16px 0; \
-    background: #0f0f1a; \
-    border-bottom: 1px solid #2a2a3a; \
+    background: var(--bg); \
+    border-bottom: 1px solid var(--border-separator); \
     overflow-x: auto;\
 ";
 
@@ -24,10 +24,10 @@ const TAB_STYLE: &str = "\
     padding: 6px 14px 7px; \
     border-radius: 6px 6px 0 0; \
     font-size: 13px; \
-    color: #888; \
+    color: var(--text-secondary); \
     cursor: pointer; \
-    background: #1a1a2e; \
-    border: 1px solid #333; \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
     border-bottom: none; \
     white-space: nowrap;\
 ";
@@ -39,16 +39,16 @@ const TAB_ACTIVE_STYLE: &str = "\
     padding: 6px 14px 7px; \
     border-radius: 6px 6px 0 0; \
     font-size: 13px; \
-    color: #ffffff; \
+    color: var(--text-primary); \
     cursor: pointer; \
-    background: #0f0f1a; \
-    border: 1px solid #4a4aff; \
-    border-bottom: 1px solid #0f0f1a; \
+    background: var(--bg); \
+    border: 1px solid var(--accent); \
+    border-bottom: 1px solid var(--bg); \
     white-space: nowrap;\
 ";
 
 const CLOSE_BTN_STYLE: &str = "\
-    color: #555; \
+    color: var(--text-muted); \
     font-size: 11px; \
     padding: 0 2px; \
     cursor: pointer; \
@@ -59,7 +59,7 @@ const UNREAD_BADGE_STYLE: &str = "\
     width: 7px; \
     height: 7px; \
     border-radius: 50%; \
-    background: #4a4aff; \
+    background: var(--accent); \
     flex-shrink: 0;\
 ";
 

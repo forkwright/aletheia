@@ -25,7 +25,7 @@ const GUTTER_NUM_STYLE: &str = "\
     width: 4ch; \
     text-align: right; \
     padding: 0 4px; \
-    color: #555;\
+    color: var(--text-muted);\
 ";
 
 const INDICATOR_STYLE: &str = "\
@@ -72,9 +72,9 @@ fn indicator_char(change_type: ChangeType) -> &'static str {
 /// Indicator text color.
 fn indicator_color(change_type: ChangeType) -> &'static str {
     match change_type {
-        ChangeType::Context => "#555",
-        ChangeType::Add => "#22c55e",
-        ChangeType::Remove => "#ef4444",
+        ChangeType::Context => "var(--text-muted)",
+        ChangeType::Add => "var(--status-success)",
+        ChangeType::Remove => "var(--status-error)",
     }
 }
 
