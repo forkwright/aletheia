@@ -40,6 +40,34 @@ select {
   color: inherit;
 }
 
+/* WHY: Ensure text inputs are always visible against surface backgrounds.
+   Browser/WebView resets strip native borders, leaving invisible fields. */
+input[type="text"],
+input[type="password"],
+input[type="url"],
+input[type="email"],
+input[type="search"],
+input:not([type]),
+textarea {
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  color: var(--text-primary);
+  transition: border-color var(--transition-quick);
+}
+
+input[type="text"]:focus,
+input[type="password"]:focus,
+input[type="url"]:focus,
+input[type="email"]:focus,
+input[type="search"]:focus,
+input:not([type]):focus,
+textarea:focus {
+  border-color: var(--input-border-focus);
+}
+
+
 /* ===================================================================== */
 /* Body defaults                                                         */
 /* ===================================================================== */
