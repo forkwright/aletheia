@@ -154,9 +154,10 @@ fn parse_date_to_days(date: &str) -> u32 {
     if parts.len() != 3 {
         return 0;
     }
-    let y: u32 = parts[0].parse().unwrap_or(0);
-    let m: u32 = parts[1].parse().unwrap_or(1);
-    let d: u32 = parts[2].parse().unwrap_or(1);
+    // INVARIANT: parts.len() == 3 verified by early return above.
+    let y: u32 = parts.first().and_then(|s| s.parse().ok()).unwrap_or(0);
+    let m: u32 = parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(1);
+    let d: u32 = parts.get(2).and_then(|s| s.parse().ok()).unwrap_or(1);
     // WHY: Rough approximation is sufficient for slider positioning.
     y * 365 + m * 30 + d
 }
