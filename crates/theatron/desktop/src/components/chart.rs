@@ -122,7 +122,9 @@ pub(crate) fn TimeSeriesChart(
                 for col in &columns {
                     {
                         let total = col.total();
+                        #[expect(clippy::as_conversions, reason = "CSS percentage from bounded UI ratio")]
                         let total_pct = (total / max_total * 100.0) as u32;
+                        #[expect(clippy::as_conversions, reason = "CSS percentage from bounded UI ratio")]
                         let primary_pct = if total > 0.0 { (col.primary / total * 100.0) as u32 } else { 50 };
                         let secondary_pct = 100u32.saturating_sub(primary_pct);
                         let pcol = col.primary_color.clone();
