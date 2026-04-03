@@ -80,6 +80,9 @@ pub struct SignalProvider {
     /// connection status transitions and buffered-message drain; held
     /// briefly during send and poll-loop state updates.
     account_states: HashMap<String, Arc<Mutex<AccountState>>>,
+    /// Per-account auto-start flag. When `false`, `listen()` skips
+    /// spawning the receive poll task for that account.
+    auto_start: HashMap<String, bool>,
     buffer_capacity: usize,
 }
 
@@ -97,14 +100,23 @@ impl SignalProvider {
             clients: HashMap::new(),
             default_account: None,
             account_states: HashMap::new(),
+            auto_start: HashMap::new(),
             buffer_capacity: capacity,
         }
     }
 
     /// Register a Signal account backed by a client.
     ///
-    /// The first account added becomes the default.
-    pub fn add_account(&mut self, account_id: String, client: client::SignalClient) {
+    /// The first account added becomes the default. When `auto_start` is
+    /// `true`, [`listen`](Self::listen) spawns a receive-poll task for this
+    /// account; when `false`, the account is registered for sending but the
+    /// receive loop is not started automatically.
+    pub fn add_account(
+        &mut self,
+        account_id: String,
+        client: client::SignalClient,
+        auto_start: bool,
+    ) {
         if self.default_account.is_none() {
             self.default_account = Some(account_id.clone());
         }
@@ -112,13 +124,16 @@ impl SignalProvider {
             account_id.clone(),
             Arc::new(Mutex::new(AccountState::new(self.buffer_capacity))),
         );
+        self.auto_start.insert(account_id.clone(), auto_start);
         self.clients.insert(account_id, client);
     }
 
-    /// Start listening for inbound messages on all registered accounts.
+    /// Start listening for inbound messages on accounts with `auto_start` enabled.
     ///
-    /// Spawns a polling task per account with reconnect backoff.
-    /// Messages from all accounts merge into the returned receiver.
+    /// Spawns a polling task per eligible account with reconnect backoff.
+    /// Accounts where `auto_start` was set to `false` in [`add_account`](Self::add_account)
+    /// are skipped (they remain available for sending but do not receive).
+    /// Messages from all started accounts merge into the returned receiver.
     /// When the `cancel` token is cancelled, polling tasks exit promptly.
     #[instrument(skip(self, cancel))]
     #[expect(
@@ -135,6 +150,12 @@ impl SignalProvider {
         let mut handles = Vec::with_capacity(self.clients.len());
 
         for (account_id, signal_client) in &self.clients {
+            // WHY: skip accounts where auto_start is false -- they are registered
+            // for outbound sends but should not spawn a receive poll loop.
+            if !self.auto_start.get(account_id).copied().unwrap_or(true) {
+                tracing::info!(account = %account_id, "skipping receive loop (auto_start=false)");
+                continue;
+            }
             let tx = tx.clone();
             let account_id = account_id.clone();
             let signal_client = signal_client.clone();
@@ -360,6 +381,7 @@ impl std::fmt::Debug for SignalProvider {
             .field("accounts", &self.clients.keys().collect::<Vec<_>>())
             .field("default_account", &self.default_account)
             .field("account_states_count", &self.account_states.len())
+            .field("auto_start", &self.auto_start)
             .field("buffer_capacity", &self.buffer_capacity)
             .finish()
     }
@@ -591,10 +613,46 @@ mod tests {
 
         let mut provider = SignalProvider::new();
         let signal_client = client::SignalClient::new(&server.uri()).expect("client");
-        provider.add_account("+1111111111".to_owned(), signal_client);
+        provider.add_account("+1111111111".to_owned(), signal_client, true);
 
         let token = CancellationToken::new();
         let (rx, handles) = provider.listen(Some(Duration::from_secs(60)), token.clone());
+        assert_eq!(handles.len(), 1);
+
+        token.cancel();
+        drop(rx);
+        for h in handles {
+            let _ = tokio::time::timeout(Duration::from_secs(5), h).await;
+        }
+    }
+
+
+    #[tokio::test]
+    async fn listen_skips_auto_start_false() {
+        install_crypto_provider();
+        let server = wiremock::MockServer::start().await;
+
+        let rpc_response = serde_json::json!({
+            "jsonrpc": "2.0",
+            "result": [],
+            "id": "test"
+        });
+
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::path("/api/v1/rpc"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(&rpc_response))
+            .mount(&server)
+            .await;
+
+        let mut provider = SignalProvider::new();
+        let client_a = client::SignalClient::new(&server.uri()).expect("client");
+        let client_b = client::SignalClient::new(&server.uri()).expect("client");
+        provider.add_account("+1111111111".to_owned(), client_a, true);
+        provider.add_account("+2222222222".to_owned(), client_b, false);
+
+        let token = CancellationToken::new();
+        let (rx, handles) = provider.listen(Some(Duration::from_secs(60)), token.clone());
+        // WHY: only the auto_start=true account should have a poll task.
         assert_eq!(handles.len(), 1);
 
         token.cancel();
@@ -668,7 +726,7 @@ mod tests {
         let mut provider = SignalProvider::with_buffer_capacity(50);
         let server = wiremock::MockServer::start().await;
         let signal_client = client::SignalClient::new(&server.uri()).expect("client");
-        provider.add_account("+1111111111".to_owned(), signal_client);
+        provider.add_account("+1111111111".to_owned(), signal_client, true);
 
         let health = provider.connection_health().await;
         let report = health.get("+1111111111").expect("account present");

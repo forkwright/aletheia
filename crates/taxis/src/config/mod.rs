@@ -706,6 +706,8 @@ pub struct SignalAccountConfig {
     pub http_host: String,
     /// Port for the signal-cli JSON-RPC HTTP interface.
     pub http_port: u16,
+    /// Whether to auto-start the receive loop for this account on server boot.
+    pub auto_start: bool,
 }
 
 impl Default for SignalAccountConfig {
@@ -714,6 +716,7 @@ impl Default for SignalAccountConfig {
             enabled: true,
             http_host: "localhost".to_owned(),
             http_port: 8080,
+            auto_start: true,
         }
     }
 }
