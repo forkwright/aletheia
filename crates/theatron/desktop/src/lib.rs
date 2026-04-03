@@ -52,7 +52,12 @@ pub fn run() {
         ))
         .with_maximized(window_state.maximized);
 
-    let config = Config::new().with_window(window_builder);
+    // WHY: Passing `None` removes the default OS menu bar (Window/Edit/Help)
+    // that Dioxus injects via `MenuBuilderState::Unset`. The app's intentional
+    // menu structure lives in `platform::menus` and will be wired in separately.
+    let config = Config::new()
+        .with_window(window_builder)
+        .with_menu(None::<dioxus::desktop::muda::Menu>);
 
     dioxus::LaunchBuilder::desktop()
         .with_cfg(config)
