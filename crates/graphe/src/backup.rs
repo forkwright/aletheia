@@ -10,11 +10,13 @@ use aletheia_koina::disk_space::DiskSpaceMonitor;
 
 use crate::error::{self, Result};
 
-/// Validate a backup path contains only safe characters for SQL interpolation.
+/// Validate a backup path for safe SQL interpolation and optional directory containment.
 ///
-/// `SQLite` `VACUUM INTO` doesn't support parameter binding, so this is the
-/// only defense against path injection.
-fn validate_backup_path(path: &Path) -> Result<()> {
+/// `SQLite` `VACUUM INTO` doesn't support parameter binding, so character
+/// validation is the sole defense against path injection. When `backup_dir`
+/// is provided, also verifies the resolved path stays within that directory
+/// (canonicalizing the parent to handle paths that don't yet exist on disk).
+fn validate_backup_path(path: &Path, backup_dir: Option<&Path>) -> Result<()> {
     let path_str = path.to_str().ok_or_else(|| {
         error::InvalidBackupPathSnafu {
             path: path.to_path_buf(),
@@ -35,36 +37,28 @@ fn validate_backup_path(path: &Path) -> Result<()> {
         }
     );
 
-    Ok(())
-}
+    if let Some(backup_dir) = backup_dir {
+        let canonical_dir = std::fs::canonicalize(backup_dir).context(error::IoSnafu {
+            path: backup_dir.to_path_buf(),
+        })?;
 
-/// Verify the resolved backup path stays within the expected backup directory.
-///
-/// Canonicalizes the backup directory (which must exist), then resolves the
-/// backup path's parent to check containment. Works for paths that do not
-/// yet exist on disk by canonicalizing the parent directory and re-appending
-/// the filename.
-fn validate_backup_path_traversal(path: &Path, backup_dir: &Path) -> Result<()> {
-    let canonical_dir = std::fs::canonicalize(backup_dir).context(error::IoSnafu {
-        path: backup_dir.to_path_buf(),
-    })?;
+        let parent = path.parent().unwrap_or(path);
+        let canonical_parent = std::fs::canonicalize(parent).context(error::IoSnafu {
+            path: parent.to_path_buf(),
+        })?;
+        let canonical_path = match path.file_name() {
+            Some(name) => canonical_parent.join(name),
+            None => canonical_parent.clone(),
+        };
 
-    let parent = path.parent().unwrap_or(path);
-    let canonical_parent = std::fs::canonicalize(parent).context(error::IoSnafu {
-        path: parent.to_path_buf(),
-    })?;
-    let canonical_path = match path.file_name() {
-        Some(name) => canonical_parent.join(name),
-        None => canonical_parent.clone(),
-    };
-
-    snafu::ensure!(
-        canonical_path.starts_with(&canonical_dir),
-        error::BackupPathTraversalSnafu {
-            path: canonical_path,
-            allowed_dir: canonical_dir,
-        }
-    );
+        snafu::ensure!(
+            canonical_path.starts_with(&canonical_dir),
+            error::BackupPathTraversalSnafu {
+                path: canonical_path,
+                allowed_dir: canonical_dir,
+            }
+        );
+    }
 
     Ok(())
 }
@@ -163,8 +157,7 @@ impl<'a> BackupManager<'a> {
         let timestamp = jiff::Timestamp::now().strftime("%Y%m%dT%H%M%S").to_string();
         let filename = format!("sessions_{timestamp}.db");
         let backup_path = self.backup_dir.join(&filename);
-        validate_backup_path(&backup_path)?;
-        validate_backup_path_traversal(&backup_path, &self.backup_dir)?;
+        validate_backup_path(&backup_path, Some(&self.backup_dir))?;
 
         self.conn
             .execute(&format!("VACUUM INTO '{}'", backup_path.display()), [])
@@ -316,26 +309,59 @@ impl<'a> BackupManager<'a> {
     }
 }
 
+/// Serializable snapshot of a session for JSON export.
+#[derive(serde::Serialize)]
+struct SessionExport {
+    id: String,
+    nous_id: String,
+    session_key: String,
+    status: String,
+    model: Option<String>,
+    session_type: String,
+    token_count_estimate: i64,
+    message_count: i64,
+    created_at: String,
+    updated_at: String,
+}
+
+/// Serializable snapshot of a message for JSON export.
+#[derive(serde::Serialize)]
+struct MessageExport {
+    seq: i64,
+    role: String,
+    content: String,
+    token_estimate: i64,
+    created_at: String,
+}
+
+/// Top-level JSON export archive.
+#[derive(serde::Serialize)]
+struct SessionArchive {
+    session: SessionExport,
+    messages: Vec<MessageExport>,
+    exported_at: String,
+}
+
 fn build_session_json(conn: &Connection, session_id: &str) -> Result<String> {
-    let session: serde_json::Value = conn
+    let session = conn
         .query_row(
             "SELECT id, nous_id, session_key, status, model, session_type,
                     token_count_estimate, message_count, created_at, updated_at
              FROM sessions WHERE id = ?1",
             [session_id],
             |row| {
-                Ok(serde_json::json!({
-                    "id": row.get::<_, String>(0)?,
-                    "nous_id": row.get::<_, String>(1)?,
-                    "session_key": row.get::<_, String>(2)?,
-                    "status": row.get::<_, String>(3)?,
-                    "model": row.get::<_, Option<String>>(4)?,
-                    "session_type": row.get::<_, String>(5)?,
-                    "token_count_estimate": row.get::<_, i64>(6)?,
-                    "message_count": row.get::<_, i64>(7)?,
-                    "created_at": row.get::<_, String>(8)?,
-                    "updated_at": row.get::<_, String>(9)?,
-                }))
+                Ok(SessionExport {
+                    id: row.get(0)?,
+                    nous_id: row.get(1)?,
+                    session_key: row.get(2)?,
+                    status: row.get(3)?,
+                    model: row.get(4)?,
+                    session_type: row.get(5)?,
+                    token_count_estimate: row.get(6)?,
+                    message_count: row.get(7)?,
+                    created_at: row.get(8)?,
+                    updated_at: row.get(9)?,
+                })
             },
         )
         .context(error::DatabaseSnafu)?;
@@ -347,25 +373,25 @@ fn build_session_json(conn: &Connection, session_id: &str) -> Result<String> {
         )
         .context(error::DatabaseSnafu)?;
 
-    let messages: Vec<serde_json::Value> = msg_stmt
+    let messages: Vec<MessageExport> = msg_stmt
         .query_map([session_id], |row| {
-            Ok(serde_json::json!({
-                "seq": row.get::<_, i64>(0)?,
-                "role": row.get::<_, String>(1)?,
-                "content": row.get::<_, String>(2)?,
-                "token_estimate": row.get::<_, i64>(3)?,
-                "created_at": row.get::<_, String>(4)?,
-            }))
+            Ok(MessageExport {
+                seq: row.get(0)?,
+                role: row.get(1)?,
+                content: row.get(2)?,
+                token_estimate: row.get(3)?,
+                created_at: row.get(4)?,
+            })
         })
         .context(error::DatabaseSnafu)?
         .collect::<std::result::Result<Vec<_>, _>>()
         .context(error::DatabaseSnafu)?;
 
-    let archive = serde_json::json!({
-        "session": session,
-        "messages": messages,
-        "exported_at": jiff::Timestamp::now().to_string(),
-    });
+    let archive = SessionArchive {
+        session,
+        messages,
+        exported_at: jiff::Timestamp::now().to_string(),
+    };
 
     serde_json::to_string_pretty(&archive).context(error::StoredJsonSnafu)
 }

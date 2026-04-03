@@ -72,79 +72,42 @@ impl SessionStore {
         limit: Option<i64>,
         before_seq: Option<i64>,
     ) -> Result<Vec<Message>> {
-        let mut messages = Vec::new();
+        // WHY: Dynamic SQL builder replaces a 4-branch match that duplicated
+        // the query/collect pattern. The parameter index (`idx`) advances as
+        // optional clauses are appended, keeping bind positions correct.
+        let mut where_clause = String::from("session_id = ?1 AND is_distilled = 0");
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> =
+            vec![Box::new(session_id.to_owned())];
+        let mut idx = 2u32;
 
-        match (limit, before_seq) {
-            (Some(limit), Some(before)) => {
-                let mut stmt = self
-                    .conn
-                    .prepare_cached(
-                        "SELECT * FROM (\
-                           SELECT * FROM messages \
-                           WHERE session_id = ?1 AND is_distilled = 0 AND seq < ?3 \
-                           ORDER BY seq DESC LIMIT ?2\
-                         ) ORDER BY seq ASC",
-                    )
-                    .context(error::DatabaseSnafu)?;
-                let rows = stmt
-                    .query_map(rusqlite::params![session_id, limit, before], map_message)
-                    .context(error::DatabaseSnafu)?;
-                for row in rows {
-                    messages.push(row.context(error::DatabaseSnafu)?);
-                }
-            }
-            (Some(limit), None) => {
-                let mut stmt = self
-                    .conn
-                    .prepare_cached(
-                        "SELECT * FROM (\
-                           SELECT * FROM messages \
-                           WHERE session_id = ?1 AND is_distilled = 0 \
-                           ORDER BY seq DESC LIMIT ?2\
-                         ) ORDER BY seq ASC",
-                    )
-                    .context(error::DatabaseSnafu)?;
-                let rows = stmt
-                    .query_map(rusqlite::params![session_id, limit], map_message)
-                    .context(error::DatabaseSnafu)?;
-                for row in rows {
-                    messages.push(row.context(error::DatabaseSnafu)?);
-                }
-            }
-            (None, Some(before)) => {
-                let mut stmt = self
-                    .conn
-                    .prepare_cached(
-                        "SELECT * FROM messages \
-                         WHERE session_id = ?1 AND is_distilled = 0 AND seq < ?2 \
-                         ORDER BY seq ASC",
-                    )
-                    .context(error::DatabaseSnafu)?;
-                let rows = stmt
-                    .query_map(rusqlite::params![session_id, before], map_message)
-                    .context(error::DatabaseSnafu)?;
-                for row in rows {
-                    messages.push(row.context(error::DatabaseSnafu)?);
-                }
-            }
-            (None, None) => {
-                let mut stmt = self
-                    .conn
-                    .prepare_cached(
-                        "SELECT * FROM messages \
-                         WHERE session_id = ?1 AND is_distilled = 0 \
-                         ORDER BY seq ASC",
-                    )
-                    .context(error::DatabaseSnafu)?;
-                let rows = stmt
-                    .query_map([session_id], map_message)
-                    .context(error::DatabaseSnafu)?;
-                for row in rows {
-                    messages.push(row.context(error::DatabaseSnafu)?);
-                }
-            }
+        if let Some(before) = before_seq {
+            where_clause.push_str(&format!(" AND seq < ?{idx}"));
+            params.push(Box::new(before));
+            idx += 1;
         }
 
+        let sql = if let Some(lim) = limit {
+            params.push(Box::new(lim));
+            format!(
+                "SELECT * FROM (\
+                   SELECT * FROM messages WHERE {where_clause} \
+                   ORDER BY seq DESC LIMIT ?{idx}\
+                 ) ORDER BY seq ASC"
+            )
+        } else {
+            format!("SELECT * FROM messages WHERE {where_clause} ORDER BY seq ASC")
+        };
+
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| &**p).collect();
+        let mut stmt = self.conn.prepare_cached(&sql).context(error::DatabaseSnafu)?;
+        let rows = stmt
+            .query_map(&*param_refs, map_message)
+            .context(error::DatabaseSnafu)?;
+
+        let mut messages = Vec::new();
+        for row in rows {
+            messages.push(row.context(error::DatabaseSnafu)?);
+        }
         Ok(messages)
     }
 

@@ -150,43 +150,43 @@ fn list_backups_empty_when_no_dir() {
 #[test]
 fn validate_rejects_single_quote() {
     let path = Path::new("/tmp/it's-a-trap.db");
-    assert!(validate_backup_path(path).is_err());
+    assert!(validate_backup_path(path, None).is_err());
 }
 
 #[test]
 fn validate_rejects_semicolon() {
     let path = Path::new("/tmp/backup;DROP TABLE sessions.db");
-    assert!(validate_backup_path(path).is_err());
+    assert!(validate_backup_path(path, None).is_err());
 }
 
 #[test]
 fn validate_rejects_backtick() {
     let path = Path::new("/tmp/backup`cmd`.db");
-    assert!(validate_backup_path(path).is_err());
+    assert!(validate_backup_path(path, None).is_err());
 }
 
 #[test]
 fn validate_rejects_double_dash() {
     let path = Path::new("/tmp/backup--comment.db");
-    assert!(validate_backup_path(path).is_err());
+    assert!(validate_backup_path(path, None).is_err());
 }
 
 #[test]
 fn validate_accepts_normal_path() {
     let path = Path::new("/tmp/backup-2026-01-01.db");
-    assert!(validate_backup_path(path).is_ok());
+    assert!(validate_backup_path(path, None).is_ok());
 }
 
 #[test]
 fn validate_accepts_path_with_spaces() {
     let path = Path::new("/tmp/my backup.db");
-    assert!(validate_backup_path(path).is_ok());
+    assert!(validate_backup_path(path, None).is_ok());
 }
 
 #[test]
 fn validate_accepts_dotted_path() {
     let path = Path::new("/home/user/.config/backup.db");
-    assert!(validate_backup_path(path).is_ok());
+    assert!(validate_backup_path(path, None).is_ok());
 }
 
 #[test]
@@ -258,7 +258,7 @@ fn backup_path_validation_rejects_injection() {
     for bad in &bad_paths {
         let path = Path::new(bad);
         assert!(
-            validate_backup_path(path).is_err(),
+            validate_backup_path(path, None).is_err(),
             "path should be rejected: {bad}"
         );
     }
@@ -272,7 +272,7 @@ fn backup_path_validation_rejects_injection() {
 fn path_traversal_not_caught_by_sql_validation() {
     let traversal = Path::new("../../../etc/passwd");
     assert!(
-        validate_backup_path(traversal).is_ok(),
+        validate_backup_path(traversal, None).is_ok(),
         "traversal passes SQL-injection validation (known gap)"
     );
 }
@@ -280,79 +280,79 @@ fn path_traversal_not_caught_by_sql_validation() {
 #[test]
 fn validate_rejects_null_byte() {
     let path = Path::new("/tmp/backup\x00.db");
-    assert!(validate_backup_path(path).is_err());
+    assert!(validate_backup_path(path, None).is_err());
 }
 
 #[test]
 fn validate_rejects_parentheses() {
     let path = Path::new("/tmp/backup(1).db");
-    assert!(validate_backup_path(path).is_err());
+    assert!(validate_backup_path(path, None).is_err());
 }
 
 #[test]
 fn validate_rejects_dollar_sign() {
     let path = Path::new("/tmp/$HOME/backup.db");
-    assert!(validate_backup_path(path).is_err());
+    assert!(validate_backup_path(path, None).is_err());
 }
 
 #[test]
 fn validate_rejects_pipe() {
     let path = Path::new("/tmp/backup|evil.db");
-    assert!(validate_backup_path(path).is_err());
+    assert!(validate_backup_path(path, None).is_err());
 }
 
 #[test]
 fn validate_rejects_angle_brackets() {
     let path = Path::new("/tmp/backup<script>.db");
-    assert!(validate_backup_path(path).is_err());
+    assert!(validate_backup_path(path, None).is_err());
 }
 
 #[test]
 fn validate_rejects_curly_braces() {
     let path = Path::new("/tmp/backup{0}.db");
-    assert!(validate_backup_path(path).is_err());
+    assert!(validate_backup_path(path, None).is_err());
 }
 
 #[test]
 fn validate_rejects_at_sign() {
     let path = Path::new("/tmp/backup@host.db");
-    assert!(validate_backup_path(path).is_err());
+    assert!(validate_backup_path(path, None).is_err());
 }
 
 #[test]
 fn validate_rejects_exclamation() {
     let path = Path::new("/tmp/backup!.db");
-    assert!(validate_backup_path(path).is_err());
+    assert!(validate_backup_path(path, None).is_err());
 }
 
 #[test]
 fn validate_rejects_hash() {
     let path = Path::new("/tmp/backup#1.db");
-    assert!(validate_backup_path(path).is_err());
+    assert!(validate_backup_path(path, None).is_err());
 }
 
 #[test]
 fn validate_rejects_percent() {
     let path = Path::new("/tmp/backup%20.db");
-    assert!(validate_backup_path(path).is_err());
+    assert!(validate_backup_path(path, None).is_err());
 }
 
 #[test]
 fn validate_rejects_double_quote() {
     let path = Path::new("/tmp/backup\"quoted\".db");
-    assert!(validate_backup_path(path).is_err());
+    assert!(validate_backup_path(path, None).is_err());
 }
 
 #[test]
 fn validate_rejects_ampersand() {
     let path = Path::new("/tmp/backup&cmd.db");
-    assert!(validate_backup_path(path).is_err());
+    assert!(validate_backup_path(path, None).is_err());
 }
 
 #[test]
 fn validate_rejects_asterisk() {
     let path = Path::new("/tmp/backup*.db");
-    assert!(validate_backup_path(path).is_err());
+    assert!(validate_backup_path(path, None).is_err());
 }
 
 #[test]
@@ -378,7 +378,7 @@ fn validate_rejects_all_sqlite_metacharacters() {
     for bad in &metachar_paths {
         let path = Path::new(bad);
         assert!(
-            validate_backup_path(path).is_err(),
+            validate_backup_path(path, None).is_err(),
             "path should be rejected: {bad}"
         );
     }
@@ -395,7 +395,7 @@ fn validate_rejects_unicode_control_chars() {
     for bad in &paths_with_unicode {
         let path = Path::new(bad);
         assert!(
-            validate_backup_path(path).is_err(),
+            validate_backup_path(path, None).is_err(),
             "path with unicode control char should be rejected: {bad:?}"
         );
     }
@@ -405,7 +405,7 @@ fn validate_rejects_unicode_control_chars() {
 fn validate_accepts_unicode_alphanumeric() {
     let path = Path::new("/tmp/backup-données.db");
     assert!(
-        validate_backup_path(path).is_ok(),
+        validate_backup_path(path, None).is_ok(),
         "unicode alphanumeric chars should be accepted"
     );
 }
@@ -420,7 +420,7 @@ fn backup_path_validation_accepts_safe_paths() {
     for good in &good_paths {
         let path = Path::new(good);
         assert!(
-            validate_backup_path(path).is_ok(),
+            validate_backup_path(path, None).is_ok(),
             "path should be accepted: {good}"
         );
     }
@@ -506,7 +506,7 @@ fn backup_empty_store() {
 fn backup_path_with_spaces() {
     let path = Path::new("/home/my user/backup dir/sessions 2026.db");
     assert!(
-        validate_backup_path(path).is_ok(),
+        validate_backup_path(path, None).is_ok(),
         "paths with spaces should be accepted"
     );
 }
@@ -515,13 +515,13 @@ fn backup_path_with_spaces() {
 fn backup_path_with_dots() {
     let traversal = Path::new("../../etc/shadow.db");
     assert!(
-        validate_backup_path(traversal).is_ok(),
+        validate_backup_path(traversal, None).is_ok(),
         ".. components pass SQL-injection validation (path traversal is a separate concern)"
     );
 
     let dotted = Path::new("/home/user/.local/share/aletheia/backup.2026.01.01.db");
     assert!(
-        validate_backup_path(dotted).is_ok(),
+        validate_backup_path(dotted, None).is_ok(),
         "dotted paths are safe for SQL"
     );
 }
@@ -533,7 +533,7 @@ fn backup_path_empty_string() {
     // This documents current behavior: empty paths would fail at the filesystem
     // level during VACUUM INTO, not at validation time.
     assert!(
-        validate_backup_path(path).is_ok(),
+        validate_backup_path(path, None).is_ok(),
         "empty path passes SQL validation (filesystem rejects it later)"
     );
 }
@@ -628,7 +628,7 @@ fn restore_from_corrupt_file_errors() {
 fn validate_path_rejects_semicolons_in_filename() {
     let path = Path::new("/backups/data;rm -rf.db");
     assert!(
-        validate_backup_path(path).is_err(),
+        validate_backup_path(path, None).is_err(),
         "semicolon in filename must be rejected"
     );
 }
@@ -637,7 +637,7 @@ fn validate_path_rejects_semicolons_in_filename() {
 fn validate_path_rejects_backticks_in_filename() {
     let path = Path::new("/backups/`whoami`.db");
     assert!(
-        validate_backup_path(path).is_err(),
+        validate_backup_path(path, None).is_err(),
         "backticks in filename must be rejected"
     );
 }
@@ -646,7 +646,7 @@ fn validate_path_rejects_backticks_in_filename() {
 fn validate_path_rejects_single_quotes_in_dir() {
     let path = Path::new("/tmp/bob's dir/backup.db");
     assert!(
-        validate_backup_path(path).is_err(),
+        validate_backup_path(path, None).is_err(),
         "single quotes in directory must be rejected"
     );
 }
@@ -655,7 +655,7 @@ fn validate_path_rejects_single_quotes_in_dir() {
 fn validate_path_accepts_normal_nested() {
     let path = Path::new("/var/lib/aletheia/backups/sessions_20260309T120000.db");
     assert!(
-        validate_backup_path(path).is_ok(),
+        validate_backup_path(path, None).is_ok(),
         "normal nested path with underscores and digits must be accepted"
     );
 }
