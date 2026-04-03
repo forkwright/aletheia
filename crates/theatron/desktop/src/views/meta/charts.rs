@@ -99,33 +99,49 @@ pub(crate) fn LineChart(
             }
 
             if show_labels {
-                // NOTE: Show first and last labels only to avoid clutter.
-                if let Some((first, &(x, _))) = data.first().zip(points.first()) {
-                    rsx! {
-                        text {
-                            x: "{x:.1}",
-                            y: "{height - 4.0:.1}",
-                            fill: "#666",
-                            font_size: "10",
-                            text_anchor: "start",
-                            "{first.label}"
-                        }
-                    }
-                }
-                if data.len() > 1 {
-                    if let Some((last, &(x, _))) = data.last().zip(points.last()) {
-                        rsx! {
-                            text {
-                                x: "{x:.1}",
-                                y: "{height - 4.0:.1}",
-                                fill: "#666",
-                                font_size: "10",
-                                text_anchor: "end",
-                                "{last.label}"
-                            }
-                        }
-                    }
-                }
+                {label_elements(&data, &points, height)}
+            }
+        }
+    }
+}
+
+/// Build SVG text label elements for the first and last data points.
+///
+/// WHY: Extracted because Dioxus 0.7 rsx! macro cannot parse SVG `text`
+/// elements inside `if let Some(...)` conditional blocks -- the `text`
+/// identifier conflicts with the text-node parser. A standalone function
+/// with its own top-level rsx! avoids the ambiguity.
+fn label_elements(
+    data: &[crate::state::meta::DataPoint],
+    points: &[(f64, f64)],
+    height: f64,
+) -> Element {
+    let first_label = data.first().map(|p| p.label.clone());
+    let first_x = points.first().map(|&(x, _)| x);
+    let last_label = if data.len() > 1 { data.last().map(|p| p.label.clone()) } else { None };
+    let last_x = if data.len() > 1 { points.last().map(|&(x, _)| x) } else { None };
+
+    let y_pos = format!("{:.1}", height - 4.0);
+
+    rsx! {
+        if let (Some(label), Some(x)) = (first_label, first_x) {
+            text {
+                x: "{x:.1}",
+                y: "{y_pos}",
+                fill: "#666",
+                font_size: "10",
+                text_anchor: "start",
+                "{label}"
+            }
+        }
+        if let (Some(label), Some(x)) = (last_label, last_x) {
+            text {
+                x: "{x:.1}",
+                y: "{y_pos}",
+                fill: "#666",
+                font_size: "10",
+                text_anchor: "end",
+                "{label}"
             }
         }
     }

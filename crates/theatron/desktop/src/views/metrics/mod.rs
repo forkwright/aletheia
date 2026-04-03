@@ -4,7 +4,7 @@ mod agent_breakdown;
 mod agent_costs;
 mod costs;
 mod model_breakdown;
-mod tool_detail;
+pub(crate) mod tool_detail;
 mod tool_duration;
 mod tool_frequency;
 mod tool_results;
