@@ -19,13 +19,13 @@ const CONTAINER_STYLE: &str = "\
     align-items: center; \
     justify-content: center; \
     height: 100vh; \
-    background: #0f0f1a; \
-    color: #e0e0e0; \
-    font-family: system-ui, -apple-system, sans-serif;\
+    background: var(--bg); \
+    color: var(--text-primary); \
+    font-family: var(--font-body, system-ui, -apple-system, sans-serif);\
 ";
 
 const CARD_STYLE: &str = "\
-    background: #1a1a2e; \
+    background: var(--bg-surface); \
     border-radius: 12px; \
     padding: 40px; \
     width: 400px; \
@@ -43,24 +43,24 @@ const TITLE_STYLE: &str = "\
 
 const LABEL_STYLE: &str = "\
     font-size: 14px; \
-    color: #aaa; \
+    color: var(--text-secondary); \
     margin-bottom: 4px;\
 ";
 
 const INPUT_STYLE: &str = "\
-    background: #0f0f1a; \
-    border: 1px solid #333; \
+    background: var(--bg); \
+    border: 1px solid var(--border); \
     border-radius: 6px; \
     padding: 10px 12px; \
-    color: #e0e0e0; \
+    color: var(--text-primary); \
     font-size: 14px; \
     width: 100%; \
     box-sizing: border-box;\
 ";
 
 const BUTTON_STYLE: &str = "\
-    background: #4a4aff; \
-    color: white; \
+    background: var(--accent); \
+    color: var(--text-inverse); \
     border: none; \
     border-radius: 6px; \
     padding: 12px; \
@@ -70,8 +70,8 @@ const BUTTON_STYLE: &str = "\
 ";
 
 const BUTTON_DISABLED_STYLE: &str = "\
-    background: #333; \
-    color: #666; \
+    background: var(--bg-surface-bright); \
+    color: var(--text-muted); \
     border: none; \
     border-radius: 6px; \
     padding: 12px; \
@@ -120,10 +120,10 @@ pub(crate) fn ConnectView(
     };
 
     let status_color = match &*connection_state.read() {
-        ConnectionState::Connected => "#4caf50",
-        ConnectionState::Failed { .. } => "#f44336",
-        ConnectionState::Reconnecting { .. } | ConnectionState::Connecting => "#ff9800",
-        ConnectionState::Disconnected => "#888",
+        ConnectionState::Connected => "var(--status-success)",
+        ConnectionState::Failed { .. } => "var(--status-error)",
+        ConnectionState::Reconnecting { .. } | ConnectionState::Connecting => "var(--status-warning)",
+        ConnectionState::Disconnected => "var(--text-muted)",
     };
 
     let on_connect = move |_| {
