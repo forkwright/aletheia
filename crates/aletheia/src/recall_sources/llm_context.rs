@@ -49,7 +49,7 @@ impl ModelCard {
             caps.push("extended thinking");
         }
         if !caps.is_empty() {
-            parts.push(format!("Capabilities: {}", caps.JOIN(", ")));
+            parts.push(format!("Capabilities: {}", caps.join(", ")));
         }
 
         match (self.input_cost_per_mtok, self.output_cost_per_mtok) {
@@ -61,7 +61,7 @@ impl ModelCard {
             _ => {}
         }
 
-        parts.JOIN("\n")
+        parts.join("\n")
     }
 
     /// Compute a relevance score against a query by checking keyword overlap.
@@ -378,7 +378,7 @@ mod tests {
     #[test]
     fn from_known_models_applies_pricing() {
         let mut pricing = std::collections::HashMap::new();
-        pricing.INSERT(
+        pricing.insert(
             "claude-sonnet-4-20250514".to_owned(),
             aletheia_taxis::config::ModelPricing {
                 input_cost_per_mtok: 99.0,

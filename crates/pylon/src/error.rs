@@ -204,86 +204,83 @@ impl IntoResponse for ApiError {
     }
 }
 
-impl From<aletheia_mneme::error::Error> for ApiError {
-    fn from(err: aletheia_mneme::error::Error) -> Self {
-        use aletheia_mneme::error::Error;
-        match err {
-            Error::SessionNotFound { id, .. } => SessionNotFoundSnafu { id }.build(),
-            Error::FactNotFound { id, .. } => NotFoundSnafu {
-                path: format!("fact/{id}"),
+/// Convert a crate error into an [`ApiError`], with a catch-all mapping to [`InternalSnafu`].
+///
+/// WHY: three downstream crate errors (mneme, hermeneus, nous) share the same
+/// pattern — match specific variants, fall through to `InternalSnafu`. This
+/// macro eliminates the repeated catch-all and `From` boilerplate.
+macro_rules! impl_from_error {
+    ($error_mod:path, |$err:ident| { $($arms:tt)* }) => {
+        impl From<$error_mod> for ApiError {
+            fn from($err: $error_mod) -> Self {
+                #[expect(clippy::enum_glob_use, reason = "scoped to From impl body for concise match arms")]
+                use $error_mod::*;
+                match $err {
+                    $($arms)*
+                    #[expect(unreachable_patterns, reason = "catch-all after explicit arms")]
+                    _ => InternalSnafu {
+                        message: $err.to_string(),
+                    }
+                    .build(),
+                }
             }
-            .build(),
-            // WHY: validation errors are the caller's fault and are safe to expose.
-            Error::EmptyContent { .. }
-            | Error::ContentTooLong { .. }
-            | Error::InvalidConfidence { .. }
-            | Error::InvalidTimestamp { .. }
-            | Error::EmptyEntityName { .. }
-            | Error::InvalidWeight { .. }
-            | Error::EmptyEmbedding { .. }
-            | Error::EmptyEmbeddingContent { .. } => BadRequestSnafu {
-                message: err.to_string(),
-            }
-            .build(),
-            _ => InternalSnafu {
-                message: err.to_string(),
-            }
-            .build(),
         }
-    }
+    };
 }
 
-impl From<aletheia_hermeneus::error::Error> for ApiError {
-    fn from(err: aletheia_hermeneus::error::Error) -> Self {
-        use aletheia_hermeneus::error::Error;
-        match err {
-            Error::RateLimited { retry_after_ms, .. } => RateLimitedSnafu {
-                retry_after_secs: retry_after_ms.div_ceil(1000),
-            }
-            .build(),
-            Error::AuthFailed { message, .. } => ServiceUnavailableSnafu {
-                message: format!("provider auth failed: {message}"),
-            }
-            .build(),
-            Error::ApiError { status: 429, .. } => RateLimitedSnafu {
-                retry_after_secs: 0_u64,
-            }
-            .build(),
-            Error::ApiError {
-                status: 503,
-                message,
-                ..
-            } => ServiceUnavailableSnafu { message }.build(),
-            _ => InternalSnafu {
-                message: err.to_string(),
-            }
-            .build(),
-        }
+impl_from_error!(aletheia_mneme::error::Error, |err| {
+    SessionNotFound { id, .. } => SessionNotFoundSnafu { id }.build(),
+    FactNotFound { id, .. } => NotFoundSnafu {
+        path: format!("fact/{id}"),
     }
-}
+    .build(),
+    // WHY: validation errors are the caller's fault and are safe to expose.
+    EmptyContent { .. }
+    | ContentTooLong { .. }
+    | InvalidConfidence { .. }
+    | InvalidTimestamp { .. }
+    | EmptyEntityName { .. }
+    | InvalidWeight { .. }
+    | EmptyEmbedding { .. }
+    | EmptyEmbeddingContent { .. } => BadRequestSnafu {
+        message: err.to_string(),
+    }
+    .build(),
+});
 
-impl From<aletheia_nous::error::Error> for ApiError {
-    fn from(err: aletheia_nous::error::Error) -> Self {
-        use aletheia_nous::error::Error;
-        match err {
-            Error::NousNotFound { nous_id, .. } => NousNotFoundSnafu { id: nous_id }.build(),
-            Error::GuardRejected { reason, .. } => ForbiddenSnafu { message: reason }.build(),
-            Error::PipelineTimeout {
-                stage,
-                timeout_secs,
-                ..
-            } => ServiceUnavailableSnafu {
-                message: format!("pipeline stage '{stage}' timed out after {timeout_secs}s"),
-            }
-            .build(),
-            Error::Llm { source, .. } => Self::from(source),
-            _ => InternalSnafu {
-                message: err.to_string(),
-            }
-            .build(),
-        }
+impl_from_error!(aletheia_hermeneus::error::Error, |err| {
+    RateLimited { retry_after_ms, .. } => RateLimitedSnafu {
+        retry_after_secs: retry_after_ms.div_ceil(1000),
     }
-}
+    .build(),
+    AuthFailed { message, .. } => ServiceUnavailableSnafu {
+        message: format!("provider auth failed: {message}"),
+    }
+    .build(),
+    ApiError { status: 429, .. } => RateLimitedSnafu {
+        retry_after_secs: 0_u64,
+    }
+    .build(),
+    ApiError {
+        status: 503,
+        message,
+        ..
+    } => ServiceUnavailableSnafu { message }.build(),
+});
+
+impl_from_error!(aletheia_nous::error::Error, |err| {
+    NousNotFound { nous_id, .. } => NousNotFoundSnafu { id: nous_id }.build(),
+    GuardRejected { reason, .. } => ForbiddenSnafu { message: reason }.build(),
+    PipelineTimeout {
+        stage,
+        timeout_secs,
+        ..
+    } => ServiceUnavailableSnafu {
+        message: format!("pipeline stage '{stage}' timed out after {timeout_secs}s"),
+    }
+    .build(),
+    Llm { source, .. } => Self::from(source),
+});
 
 impl From<tokio::task::JoinError> for ApiError {
     fn from(err: tokio::task::JoinError) -> Self {

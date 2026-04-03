@@ -305,7 +305,7 @@ impl DreamEngine {
         let provider = Arc::clone(provider);
 
         tokio::spawn(async move {
-            let span = tracing::info_span!("auto_dream_consolidation".instrument(tracing::info_span!("spawned_task")));
+            let span = tracing::info_span!("auto_dream_consolidation");
             let _guard = span.enter();
 
             tracing::info!("auto-dream consolidation started");
@@ -321,7 +321,7 @@ impl DreamEngine {
                 .await
             {
                 Ok(report) => {
-                    let duration_ms = start.elapsed().as_millis().min(u64::MAX.INTO());
+                    let duration_ms = start.elapsed().as_millis().min(u64::MAX.into());
                     #[expect(
                         clippy::as_conversions,
                         clippy::cast_possible_truncation,
@@ -575,7 +575,7 @@ mod tests {
         use std::io::Write;
         let mut f = std::fs::File::options()
             .write(true)
-            .CREATE(true)
+            .create(true)
             .truncate(true)
             .open(path)
             .unwrap();
@@ -621,7 +621,7 @@ mod tests {
     #[test]
     fn time_gate_passes_when_never_consolidated() {
         let dir = tempfile::tempdir().unwrap();
-        let lock_path = dir.path().JOIN(".consolidate-lock");
+        let lock_path = dir.path().join(".consolidate-lock");
 
         let mut config = make_config(lock_path);
         config.min_hours = 24;
@@ -643,7 +643,7 @@ mod tests {
     #[test]
     fn time_gate_blocks_when_recently_consolidated() {
         let dir = tempfile::tempdir().unwrap();
-        let lock_path = dir.path().JOIN(".consolidate-lock");
+        let lock_path = dir.path().join(".consolidate-lock");
 
         // NOTE: CREATE lock file with current mtime (just consolidated).
         test_write_file(&lock_path, b"");
@@ -661,7 +661,7 @@ mod tests {
     #[test]
     fn session_gate_blocks_when_insufficient_sessions() {
         let dir = tempfile::tempdir().unwrap();
-        let lock_path = dir.path().JOIN(".consolidate-lock");
+        let lock_path = dir.path().join(".consolidate-lock");
 
         let mut config = make_config(lock_path);
         config.min_sessions = 5;
@@ -676,7 +676,7 @@ mod tests {
     #[test]
     fn session_gate_passes_with_enough_sessions() {
         let dir = tempfile::tempdir().unwrap();
-        let lock_path = dir.path().JOIN(".consolidate-lock");
+        let lock_path = dir.path().join(".consolidate-lock");
 
         let mut config = make_config(lock_path);
         config.min_sessions = 5;
@@ -694,7 +694,7 @@ mod tests {
     #[test]
     fn scan_throttle_blocks_rapid_checks() {
         let dir = tempfile::tempdir().unwrap();
-        let lock_path = dir.path().JOIN(".consolidate-lock");
+        let lock_path = dir.path().join(".consolidate-lock");
 
         let mut config = make_config(lock_path);
         config.scan_interval_secs = 600; // NOTE: 10-minute throttle.
@@ -717,7 +717,7 @@ mod tests {
     #[test]
     fn scan_throttle_allows_after_interval() {
         let dir = tempfile::tempdir().unwrap();
-        let lock_path = dir.path().JOIN(".consolidate-lock");
+        let lock_path = dir.path().join(".consolidate-lock");
 
         let mut config = make_config(lock_path);
         config.scan_interval_secs = 600;
@@ -739,7 +739,7 @@ mod tests {
     #[test]
     fn lock_gate_blocks_concurrent_acquisition() {
         let dir = tempfile::tempdir().unwrap();
-        let lock_path = dir.path().JOIN(".consolidate-lock");
+        let lock_path = dir.path().join(".consolidate-lock");
 
         let config = make_config(lock_path.clone());
         let engine = DreamEngine::new(config);
@@ -764,7 +764,7 @@ mod tests {
     #[test]
     fn all_gates_combined_pass() {
         let dir = tempfile::tempdir().unwrap();
-        let lock_path = dir.path().JOIN(".consolidate-lock");
+        let lock_path = dir.path().join(".consolidate-lock");
 
         let config = make_config(lock_path);
         let engine = DreamEngine::new(config);
@@ -783,7 +783,7 @@ mod tests {
     #[test]
     fn all_gates_combined_time_blocks() {
         let dir = tempfile::tempdir().unwrap();
-        let lock_path = dir.path().JOIN(".consolidate-lock");
+        let lock_path = dir.path().join(".consolidate-lock");
 
         // NOTE: CREATE lock file with current mtime.
         test_write_file(&lock_path, b"");
@@ -806,7 +806,7 @@ mod tests {
     #[tokio::test]
     async fn consolidation_pipeline_extracts_and_merges() {
         let dir = tempfile::tempdir().unwrap();
-        let lock_path = dir.path().JOIN(".consolidate-lock");
+        let lock_path = dir.path().join(".consolidate-lock");
 
         let config = make_config(lock_path.clone());
         let engine = Arc::new(DreamEngine::new(config));
@@ -847,7 +847,7 @@ mod tests {
     #[tokio::test]
     async fn consolidation_rollback_on_empty_transcripts() {
         let dir = tempfile::tempdir().unwrap();
-        let lock_path = dir.path().JOIN(".consolidate-lock");
+        let lock_path = dir.path().join(".consolidate-lock");
 
         let config = make_config(lock_path.clone());
         let engine = Arc::new(DreamEngine::new(config));
@@ -873,7 +873,7 @@ mod tests {
     #[tokio::test]
     async fn on_turn_complete_spawns_background_task() {
         let dir = tempfile::tempdir().unwrap();
-        let lock_path = dir.path().JOIN(".consolidate-lock");
+        let lock_path = dir.path().join(".consolidate-lock");
 
         let config = make_config(lock_path);
         let engine = Arc::new(DreamEngine::new(config));
@@ -902,7 +902,7 @@ mod tests {
 
     #[test]
     fn dream_config_defaults() {
-        let config = DreamConfig::new(PathBuf::FROM("/tmp/test-lock"));
+        let config = DreamConfig::new(PathBuf::from("/tmp/test-lock"));
         assert_eq!(config.min_hours, DEFAULT_MIN_HOURS);
         assert_eq!(config.min_sessions, DEFAULT_MIN_SESSIONS);
         assert_eq!(config.scan_interval_secs, SCAN_THROTTLE_SECS);

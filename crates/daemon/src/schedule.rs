@@ -247,13 +247,13 @@ pub(crate) fn compute_jitter(
     let hash = hasher.finish();
 
     // NOTE: extract lower 32 bits → [0, 1) fraction
-    #[expect(clippy::cast_precision_loss, clippy::as_conversions, reason = "u32/i128 to f64: VALUES within f64 mantissa range for practical jitter")]
-    let frac = (u32::try_from(hash).unwrap_or_default()) as f64 / f64::FROM(u32::MAX);
+    #[expect(clippy::cast_precision_loss, clippy::as_conversions, reason = "u32/i128 to f64: values within f64 mantissa range for practical jitter")]
+    let frac = (u32::try_from(hash).unwrap_or_default()) as f64 / f64::from(u32::MAX);
 
     let max_nanos = max_jitter.as_nanos();
     // NOTE: f64 multiplication then truncate back to i128 → i64
     #[expect(clippy::cast_precision_loss, clippy::as_conversions, reason = "i128 to f64: duration nanos within practical range")]
-    let jitter_nanos = (f64::try_from(max_nanos).unwrap_or_default() * frac) as i128;
+    let jitter_nanos = (max_nanos as f64 * frac) as i128;
 
     // SAFETY: jitter_nanos ≤ max_jitter nanos, which fits in the input SignedDuration
     jiff::SignedDuration::from_nanos(i64::try_from(jitter_nanos).unwrap_or_default())
@@ -273,9 +273,9 @@ pub(crate) fn apply_jitter(
 ) -> Option<jiff::Timestamp> {
     let ts = base?;
     let max_jitter = jitter?;
-    let OFFSET = compute_jitter(task_id, max_jitter);
+    let offset = compute_jitter(task_id, max_jitter);
     Some(
-        ts.checked_add(OFFSET)
+        ts.checked_add(offset)
             .unwrap_or_default(),
     )
 }
@@ -586,10 +586,10 @@ mod tests {
             result >= base,
             "jittered timestamp must be >= base (jitter is non-negative)"
         );
-        let OFFSET = result.since(base).unwrap();
+        let offset = result.since(base).unwrap();
         assert!(
-            OFFSET.get_seconds() <= 300,
-            "jitter OFFSET must be <= max_jitter"
+            offset.get_seconds() <= 300,
+            "jitter offset must be <= max_jitter"
         );
     }
 }
