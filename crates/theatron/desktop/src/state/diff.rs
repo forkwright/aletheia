@@ -158,27 +158,28 @@ pub(crate) fn align_side_by_side(lines: &[DiffLine]) -> Vec<SideBySideRow> {
     let mut i = 0;
 
     while i < lines.len() {
-        match lines[i].change_type {
+        let Some(line) = lines.get(i) else { break };
+        match line.change_type {
             ChangeType::Context => {
                 rows.push(SideBySideRow {
-                    left: Some(lines[i].clone()),
-                    right: Some(lines[i].clone()),
+                    left: Some(line.clone()),
+                    right: Some(line.clone()),
                 });
                 i += 1;
             }
             ChangeType::Remove => {
                 // WHY: Collect consecutive removes, then pair with consecutive adds.
                 let remove_start = i;
-                while i < lines.len() && lines[i].change_type == ChangeType::Remove {
+                while lines.get(i).is_some_and(|l| l.change_type == ChangeType::Remove) {
                     i += 1;
                 }
-                let removes = &lines[remove_start..i];
+                let removes = lines.get(remove_start..i).unwrap_or_default();
 
                 let add_start = i;
-                while i < lines.len() && lines[i].change_type == ChangeType::Add {
+                while lines.get(i).is_some_and(|l| l.change_type == ChangeType::Add) {
                     i += 1;
                 }
-                let adds = &lines[add_start..i];
+                let adds = lines.get(add_start..i).unwrap_or_default();
 
                 let max_len = removes.len().max(adds.len());
                 for j in 0..max_len {
@@ -191,7 +192,7 @@ pub(crate) fn align_side_by_side(lines: &[DiffLine]) -> Vec<SideBySideRow> {
             ChangeType::Add => {
                 rows.push(SideBySideRow {
                     left: None,
-                    right: Some(lines[i].clone()),
+                    right: Some(line.clone()),
                 });
                 i += 1;
             }
@@ -216,8 +217,8 @@ fn parse_hunk_header(line: &str) -> Option<HunkHeader> {
     let line = line.strip_prefix("@@ ")?;
     let rest = line.strip_prefix('-')?;
     let at_idx = rest.find(" +")?;
-    let old_part = &rest[..at_idx];
-    let rest = &rest[at_idx + 2..];
+    let old_part = rest.get(..at_idx).unwrap_or("");
+    let rest = rest.get(at_idx + 2..).unwrap_or("");
 
     let end_idx = rest.find(" @@")?;
     let new_part = &rest[..end_idx];
