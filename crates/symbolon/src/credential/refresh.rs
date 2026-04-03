@@ -430,10 +430,7 @@ async fn refresh_loop(
     }
 }
 
-pub(super) async fn do_refresh(
-    client: &reqwest::Client,
-    refresh_token: &str,
-) -> RefreshOutcome {
+pub(super) async fn do_refresh(client: &reqwest::Client, refresh_token: &str) -> RefreshOutcome {
     // WHY: Anthropic OAuth endpoint expects form-urlencoded, not JSON
     let body = format!(
         "grant_type=refresh_token&refresh_token={refresh_token}&client_id={OAUTH_CLIENT_ID}",

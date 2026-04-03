@@ -137,8 +137,7 @@ pub(crate) async fn run(args: Args) -> Result<()> {
     // WHY: Without a SIGHUP handler, the signal hits the default Unix
     // disposition (terminate), crashing the server instead of reloading (#2350).
     #[cfg(unix)]
-    let sighup_handle =
-        aletheia_pylon::server::spawn_sighup_handler(Arc::clone(&runtime.state));
+    let sighup_handle = aletheia_pylon::server::spawn_sighup_handler(Arc::clone(&runtime.state));
 
     // Axum graceful shutdown: wait for OS signal, then cancel root token so
     // all subsystems observe shutdown simultaneously.
