@@ -1,4 +1,8 @@
 //! Adapter bridging `KnowledgeStore` + `EmbeddingProvider` to `KnowledgeSearchService`.
+//!
+//! WHY: Also integrates external recall sources (issue #2338) so that
+//! academic literature and LLM context results appear alongside mneme
+//! facts in the recall pipeline.
 
 use std::future::Future;
 use std::pin::Pin;
@@ -15,14 +19,25 @@ use aletheia_organon::error::{
 };
 use aletheia_organon::types::{DatalogResult, FactSummary, KnowledgeSearchService, MemoryResult};
 
+use crate::recall_sources::RecallSourceRegistry;
+
 pub(crate) struct KnowledgeSearchAdapter {
     store: Arc<KnowledgeStore>,
     embedder: Arc<dyn EmbeddingProvider>,
+    recall_sources: Arc<RecallSourceRegistry>,
 }
 
 impl KnowledgeSearchAdapter {
-    pub(crate) fn new(store: Arc<KnowledgeStore>, embedder: Arc<dyn EmbeddingProvider>) -> Self {
-        Self { store, embedder }
+    pub(crate) fn new(
+        store: Arc<KnowledgeStore>,
+        embedder: Arc<dyn EmbeddingProvider>,
+        recall_sources: Arc<RecallSourceRegistry>,
+    ) -> Self {
+        Self {
+            store,
+            embedder,
+            recall_sources,
+        }
     }
 }
 
@@ -44,6 +59,7 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
                 .build()
             })?;
 
+            let query_for_external = query.clone();
             let hybrid_query = HybridQuery {
                 text: query,
                 embedding,
@@ -90,6 +106,37 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
                     source_type: "fact".to_owned(),
                 });
             }
+
+            // WHY: External recall sources (issue #2338) are queried in
+            // parallel with the knowledge store. Results are appended with
+            // lower scores so mneme facts take priority, but external
+            // knowledge is still surfaced when relevant.
+            let external_limit = limit.saturating_sub(out.len()).max(2);
+            let external = self
+                .recall_sources
+                .query_all(&query_for_external, external_limit)
+                .await;
+            for (source_type, result) in external {
+                // NOTE: Scale external relevance to [0.0, 0.5] so knowledge
+                // store facts (which score 0.0-1.0 via RRF) naturally rank
+                // higher. External sources supplement rather than displace.
+                let scaled_score = result.relevance * 0.5;
+                out.push(MemoryResult {
+                    id: result.source_id,
+                    content: result.content,
+                    score: scaled_score,
+                    source_type,
+                });
+            }
+
+            // Sort by score descending, then truncate to requested limit.
+            out.sort_by(|a, b| {
+                b.score
+                    .partial_cmp(&a.score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+            out.truncate(limit);
+
             Ok(out)
         })
     }

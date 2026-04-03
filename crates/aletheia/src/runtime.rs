@@ -520,6 +520,35 @@ impl RuntimeBuilder {
         #[cfg(not(feature = "recall"))]
         let vector_search: Option<Arc<dyn aletheia_nous::recall::VectorSearch>> = None;
 
+        // External recall sources (issue #2338)
+        #[cfg(feature = "recall")]
+        let recall_source_registry = {
+            let mut registry = crate::recall_sources::RecallSourceRegistry::new();
+            let http_client = Arc::new(reqwest::Client::new());
+
+            // Academic source (Semantic Scholar)
+            let api_key = std::env::var("SEMANTIC_SCHOLAR_API_KEY").ok();
+            registry.register(Arc::new(
+                crate::recall_sources::academic::AcademicSource::new(
+                    Arc::clone(&http_client),
+                    api_key,
+                ),
+            ));
+
+            // LLM context source (model cards + pricing)
+            registry.register(Arc::new(
+                crate::recall_sources::llm_context::LlmContextSource::from_known_models(
+                    &self.config.pricing,
+                ),
+            ));
+
+            info!(
+                count = registry.source_count(),
+                "external recall sources registered"
+            );
+            Arc::new(registry)
+        };
+
         // Knowledge search adapter for tool layer
         #[cfg(feature = "recall")]
         #[expect(
@@ -532,6 +561,7 @@ impl RuntimeBuilder {
             Arc::new(crate::knowledge_adapter::KnowledgeSearchAdapter::new(
                 Arc::clone(ks),
                 Arc::clone(&embedding_provider),
+                Arc::clone(&recall_source_registry),
             )) as Arc<dyn aletheia_organon::types::KnowledgeSearchService>
         });
         #[cfg(not(feature = "recall"))]
