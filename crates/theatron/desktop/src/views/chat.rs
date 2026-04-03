@@ -536,7 +536,8 @@ fn format_tool_call(tc: &crate::state::events::ToolCallInfo) -> String {
             None => format!("{marker} {}", tc.tool_name),
         }
     } else {
-        format!("[...] {}", tc.tool_name)
+        let ellipsis = "[\u{2026}]";
+        format!("{ellipsis} {}", tc.tool_name)
     }
 }
 
