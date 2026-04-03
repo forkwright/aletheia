@@ -100,19 +100,20 @@ impl ProviderHealthTracker {
         }
     }
 
+    /// Acquire the inner lock, panicking on poison (thread panic is unrecoverable).
+    #[expect(
+        clippy::expect_used,
+        reason = "Mutex poisoning means a thread panicked; no Result return to propagate through"
+    )]
+    fn lock_inner(&self) -> std::sync::MutexGuard<'_, TrackerInner> {
+        self.inner.lock().expect("health lock poisoned") // kanon:ignore RUST/expect
+    }
+
     /// Current health state.
     #[must_use]
     pub fn health(&self) -> ProviderHealth {
         // kanon:ignore RUST/pub-visibility
-        #[expect(
-            clippy::expect_used,
-            reason = "Mutex poisoning means a thread panicked; no Result return to propagate through"
-        )]
-        self.inner
-            .lock()
-            .expect("health lock poisoned") // kanon:ignore RUST/expect
-            .health
-            .clone()
+        self.lock_inner().health.clone()
     }
 
     /// Check if the provider can accept a request.
@@ -123,11 +124,7 @@ impl ProviderHealthTracker {
     #[must_use = "caller must handle provider unavailability"]
     pub fn check_available(&self) -> Result<(), ProviderHealth> {
         // kanon:ignore RUST/pub-visibility
-        #[expect(
-            clippy::expect_used,
-            reason = "Mutex poisoning means a thread panicked; error type is ProviderHealth, not suitable for lock errors"
-        )]
-        let mut inner = self.inner.lock().expect("health lock poisoned"); // kanon:ignore RUST/expect
+        let mut inner = self.lock_inner();
         match &inner.health {
             ProviderHealth::Up | ProviderHealth::Degraded { .. } => Ok(()),
             ProviderHealth::Down { since, reason } => {
@@ -161,11 +158,7 @@ impl ProviderHealthTracker {
     /// Record a successful request.
     pub fn record_success(&self) {
         // kanon:ignore RUST/pub-visibility
-        #[expect(
-            clippy::expect_used,
-            reason = "Mutex poisoning means a thread panicked; no Result return to propagate through"
-        )]
-        let mut inner = self.inner.lock().expect("health lock poisoned"); // kanon:ignore RUST/expect
+        let mut inner = self.lock_inner();
         inner.total_requests += 1;
         match inner.health {
             ProviderHealth::Degraded { .. } => {
@@ -183,11 +176,7 @@ impl ProviderHealthTracker {
     /// Record a failed request and update health state.
     pub fn record_error(&self, error: &Error) {
         // kanon:ignore RUST/pub-visibility
-        #[expect(
-            clippy::expect_used,
-            reason = "Mutex poisoning means a thread panicked; no Result return to propagate through"
-        )]
-        let mut inner = self.inner.lock().expect("health lock poisoned"); // kanon:ignore RUST/expect
+        let mut inner = self.lock_inner();
         inner.total_requests += 1;
         inner.total_errors += 1;
 

@@ -54,14 +54,26 @@ impl DiskStatus {
     }
 }
 
+impl DiskStatus {
+    /// Human-readable status level name.
+    #[must_use]
+    fn level_name(self) -> &'static str {
+        match self {
+            Self::Ok { .. } => "ok",
+            Self::Warning { .. } => "warning",
+            Self::Critical { .. } => "critical",
+        }
+    }
+}
+
 impl fmt::Display for DiskStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mb = self.available_bytes() / BYTES_PER_MB;
-        match self {
-            Self::Ok { .. } => write!(f, "ok ({mb} MB available)"),
-            Self::Warning { .. } => write!(f, "warning ({mb} MB available)"),
-            Self::Critical { .. } => write!(f, "critical ({mb} MB available)"),
-        }
+        write!(
+            f,
+            "{} ({} MB available)",
+            self.level_name(),
+            self.available_bytes() / BYTES_PER_MB
+        )
     }
 }
 

@@ -204,20 +204,15 @@ impl SignalClient {
 
         match rpc_response.result {
             Some(serde_json::Value::Array(items)) => {
-                let mut envelopes = Vec::with_capacity(items.len());
-                for item in items {
-                    let env_value = item.get("envelope").cloned().unwrap_or(item);
-
-                    match serde_json::from_value::<SignalEnvelope>(env_value) {
-                        Ok(env) => envelopes.push(env),
-                        Err(e) => {
-                            tracing::debug!(
-                                error = %e,
-                                "skipping unparseable envelope"
-                            );
-                        }
-                    }
-                }
+                let envelopes = items
+                    .into_iter()
+                    .filter_map(|item| {
+                        let env_value = item.get("envelope").cloned().unwrap_or(item);
+                        serde_json::from_value::<SignalEnvelope>(env_value)
+                            .inspect_err(|e| tracing::debug!(error = %e, "skipping unparseable envelope"))
+                            .ok()
+                    })
+                    .collect();
                 Ok(envelopes)
             }
             Some(_) | None => Ok(Vec::new()),
@@ -271,39 +266,20 @@ impl SendParams {
         let mut map = serde_json::Map::new();
 
         if let Some(ref msg) = self.message {
-            map.insert(
-                String::from("message"),
-                serde_json::Value::String(msg.clone()),
-            );
+            map.insert("message".to_owned(), serde_json::json!(msg));
         }
+        // NOTE: signal-cli expects recipient as an array
         if let Some(ref r) = self.recipient {
-            // NOTE: signal-cli expects recipient as an array
-            map.insert(
-                String::from("recipient"),
-                serde_json::Value::Array(vec![serde_json::Value::String(r.clone())]),
-            );
+            map.insert("recipient".to_owned(), serde_json::json!([r]));
         }
         if let Some(ref g) = self.group_id {
-            map.insert(
-                String::from("groupId"),
-                serde_json::Value::String(g.clone()),
-            );
+            map.insert("groupId".to_owned(), serde_json::json!(g));
         }
         if let Some(ref a) = self.account {
-            map.insert(
-                String::from("account"),
-                serde_json::Value::String(a.clone()),
-            );
+            map.insert("account".to_owned(), serde_json::json!(a));
         }
         if let Some(ref att) = self.attachments {
-            map.insert(
-                String::from("attachments"),
-                serde_json::Value::Array(
-                    att.iter()
-                        .map(|a| serde_json::Value::String(a.clone()))
-                        .collect(),
-                ),
-            );
+            map.insert("attachments".to_owned(), serde_json::json!(att));
         }
 
         serde_json::Value::Object(map)

@@ -208,21 +208,16 @@ impl SignalProvider {
 
     fn build_send_params(account: &str, params: &ChannelSendParams) -> client::SendParams {
         let target = parse_target(&params.to);
-        match target {
-            SignalTarget::Phone(phone) => client::SendParams {
-                message: Some(params.text.clone()),
-                recipient: Some(phone),
-                group_id: None,
-                account: Some(account.to_owned()),
-                attachments: params.attachments.clone(),
-            },
-            SignalTarget::Group(group_id) => client::SendParams {
-                message: Some(params.text.clone()),
-                recipient: None,
-                group_id: Some(group_id),
-                account: Some(account.to_owned()),
-                attachments: params.attachments.clone(),
-            },
+        let (recipient, group_id) = match target {
+            SignalTarget::Phone(phone) => (Some(phone), None),
+            SignalTarget::Group(gid) => (None, Some(gid)),
+        };
+        client::SendParams {
+            message: Some(params.text.clone()),
+            recipient,
+            group_id,
+            account: Some(account.to_owned()),
+            attachments: params.attachments.clone(),
         }
     }
 }
@@ -260,20 +255,14 @@ impl ChannelProvider for SignalProvider {
     ) -> Pin<Box<dyn Future<Output = SendResult> + Send + 'a>> {
         Box::pin(async move {
             let Some((account, client)) = self.resolve_client(params.account_id.as_deref()) else {
-                return SendResult {
-                    sent: false,
-                    error: Some("no Signal client available".to_owned()),
-                };
+                return SendResult::err("no Signal client available");
             };
 
             let account_id = account.to_owned();
             let send_params = Self::build_send_params(account, params);
 
             let Some(state_mutex) = self.account_states.get(&account_id) else {
-                return SendResult {
-                    sent: false,
-                    error: Some("account state not initialized".to_owned()),
-                };
+                return SendResult::err("account state not initialized");
             };
 
             // WHY: buffer immediately when the connection is known to be unavailable.
@@ -286,26 +275,17 @@ impl ChannelProvider for SignalProvider {
                     ConnectionState::Connected => {}
                     ConnectionState::Reconnecting { .. } => {
                         s.enqueue(send_params);
-                        return SendResult {
-                            sent: false,
-                            error: Some("connection unavailable, message buffered".to_owned()),
-                        };
+                        return SendResult::err("connection unavailable, message buffered");
                     }
                     ConnectionState::Halted { .. } => {
                         s.enqueue(send_params);
-                        return SendResult {
-                            sent: false,
-                            error: Some("circuit breaker open, message buffered".to_owned()),
-                        };
+                        return SendResult::err("circuit breaker open, message buffered");
                     }
                 }
             }
 
             match client.send_message(&send_params).await {
-                Ok(_) => SendResult {
-                    sent: true,
-                    error: None,
-                },
+                Ok(_) => SendResult::ok(),
                 Err(e) => {
                     // WHY: buffer on transport failure: handles the case where the connection
                     // dropped between the state check and this send (no TOCTOU window).
@@ -313,10 +293,7 @@ impl ChannelProvider for SignalProvider {
                         let mut s = state_mutex.lock().await;
                         s.enqueue(send_params);
                     }
-                    SendResult {
-                        sent: false,
-                        error: Some(e.to_string()),
-                    }
+                    SendResult::err(e.to_string())
                 }
             }
         })
@@ -341,22 +318,19 @@ impl ChannelProvider for SignalProvider {
                 if ok {
                     any_ok = true;
                 }
-                let mut detail = serde_json::Map::new();
-                detail.insert(String::from("reachable"), serde_json::Value::Bool(ok));
+                let mut detail = serde_json::json!({"reachable": ok});
 
                 if let Some(state_mutex) = self.account_states.get(account_id) {
                     let s = state_mutex.lock().await;
-                    detail.insert(
-                        String::from("connection_state"),
-                        serde_json::Value::String(format!("{:?}", s.state)),
-                    );
-                    detail.insert(
-                        String::from("buffered_messages"),
-                        serde_json::Value::Number(s.buffered_count().into()),
-                    );
+                    let map = detail.as_object_mut();
+                    debug_assert!(map.is_some(), "detail is a JSON object");
+                    if let Some(map) = map {
+                        map.insert("connection_state".to_owned(), serde_json::json!(format!("{:?}", s.state)));
+                        map.insert("buffered_messages".to_owned(), serde_json::json!(s.buffered_count()));
+                    }
                 }
 
-                account_results.insert(account_id.clone(), serde_json::Value::Object(detail));
+                account_results.insert(account_id.clone(), detail);
             }
 
             ProbeResult {

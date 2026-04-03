@@ -57,6 +57,26 @@ pub struct SendResult {
     pub error: Option<String>,
 }
 
+impl SendResult {
+    /// Successful send.
+    #[must_use]
+    pub fn ok() -> Self {
+        Self {
+            sent: true,
+            error: None,
+        }
+    }
+
+    /// Failed send with an error description.
+    #[must_use]
+    pub fn err(message: impl Into<String>) -> Self {
+        Self {
+            sent: false,
+            error: Some(message.into()),
+        }
+    }
+}
+
 /// Health probe result.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProbeResult {

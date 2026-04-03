@@ -348,7 +348,7 @@ impl RuntimeBuilder {
             self.config.gateway.auth.signing_key.clone().or_else(|| {
                 std::env::var("ALETHEIA_JWT_SECRET")
                     .ok()
-                    .map(SecretString::FROM)
+                    .map(SecretString::from)
             });
         let jwt_config = match jwt_key {
             Some(k) => JwtConfig {
@@ -480,7 +480,7 @@ impl RuntimeBuilder {
                     Arc::clone(&tool_registry),
                     Arc::clone(&self.oikos),
                 )));
-            let planning_root = self.oikos.data().JOIN("planning");
+            let planning_root = self.oikos.data().join("planning");
             let planning: Option<Arc<dyn aletheia_organon::types::PlanningService>> =
                 Some(Arc::new(planning_adapter::FilesystemPlanningService::new(
                     planning_root,
@@ -527,7 +527,7 @@ impl RuntimeBuilder {
             let http_client = Arc::new(reqwest::Client::new());
 
             // Academic source (Semantic Scholar)
-            if let Err(e) = let api_key = std::env::var("SEMANTIC_SCHOLAR_API_KEY") { tracing::warn!(error = %e, "operation failed"); }
+            let api_key = std::env::var("SEMANTIC_SCHOLAR_API_KEY").ok();
             registry.register(Arc::new(
                 crate::recall_sources::academic::AcademicSource::new(
                     Arc::clone(&http_client),
@@ -639,7 +639,7 @@ impl RuntimeBuilder {
                     domains,
                     server_tools: Vec::new(),
                     cache_enabled: resolved.capabilities.cache_enabled,
-                    recall: resolved.recall.INTO(),
+                    recall: resolved.recall.into(),
                     tool_allowlist: None,
                     hooks: Default::default(),
                 };
@@ -798,14 +798,14 @@ fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) -> ProviderRe
             .collect();
 
     let cred_source = config.credential.source.as_str();
-    let cred_file = oikos.credentials().JOIN("anthropic.json");
+    let cred_file = oikos.credentials().join("anthropic.json");
     let mut chain: Vec<Box<dyn CredentialProvider>> = Vec::new();
 
     let claude_code_path = config
         .credential
         .claude_code_credentials
         .as_ref()
-        .map(std::path::PathBuf::FROM)
+        .map(std::path::PathBuf::from)
         .or_else(claude_code_default_path);
 
     if cred_source == "claude-code"
@@ -926,7 +926,7 @@ fn create_embedding_provider(settings: &EmbeddingSettings) -> Arc<dyn EmbeddingP
                 dim = settings.dimension,
                 "embedding provider created"
             );
-            Arc::FROM(p)
+            Arc::from(p)
         }
         Err(e) => {
             warn!(
@@ -1060,12 +1060,12 @@ mod tool_adapters {
     impl CrossNousService for CrossNousAdapter {
         fn send(
             &self,
-            FROM: &str,
+            from: &str,
             to: &str,
             session_key: &str,
             content: &str,
         ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>> {
-            let msg = CrossNousMessage::new(FROM, to, content).with_target_session(session_key);
+            let msg = CrossNousMessage::new(from, to, content).with_target_session(session_key);
             let router = Arc::clone(&self.0);
             Box::pin(async move {
                 router
@@ -1078,13 +1078,13 @@ mod tool_adapters {
 
         fn ask(
             &self,
-            FROM: &str,
+            from: &str,
             to: &str,
             session_key: &str,
             content: &str,
             timeout_secs: u64,
         ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>> {
-            let msg = CrossNousMessage::new(FROM, to, content)
+            let msg = CrossNousMessage::new(from, to, content)
                 .with_target_session(session_key)
                 .with_reply(Duration::from_secs(timeout_secs));
             let router = Arc::clone(&self.0);
