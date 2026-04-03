@@ -20,6 +20,25 @@ use super::{
 };
 use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
 
+/// OAuth error response from the token endpoint.
+#[derive(Debug, Deserialize)]
+struct OAuthErrorResponse {
+    error: String,
+    #[serde(default)]
+    error_description: Option<String>,
+}
+
+/// Outcome of an OAuth refresh attempt.
+pub(super) enum RefreshOutcome {
+    /// Refresh succeeded.
+    Success(OAuthResponse),
+    /// Refresh token is permanently invalid (e.g. `invalid_grant`).
+    /// Retrying will never succeed — the user must re-authenticate.
+    InvalidGrant,
+    /// Transient failure (network, server error, etc.). Safe to retry.
+    TransientError,
+}
+
 /// Minimum `expires_in` accepted from OAuth responses (seconds).
 const MIN_EXPIRES_IN_SECS: u64 = 60;
 
@@ -347,48 +366,66 @@ async fn refresh_loop(
         // WHY: zeroize the plaintext refresh token from memory immediately
         // after use to limit the window for memory disclosure attacks.
         refresh_token_value.zeroize();
-        if let Some(resp) = refresh_result {
-            circuit_breaker.record_success();
-            let expires_in = clamp_expires_in(resp.expires_in);
-            let new_expires_at_ms = unix_epoch_ms() + expires_in * 1000;
+        match refresh_result {
+            RefreshOutcome::Success(resp) => {
+                circuit_breaker.record_success();
+                let expires_in = clamp_expires_in(resp.expires_in);
+                let new_expires_at_ms = unix_epoch_ms() + expires_in * 1000;
 
-            let scopes = resp
-                .scope
-                .as_deref()
-                .map(|s| s.split_whitespace().map(String::from).collect());
-            let cred_file = CredentialFile {
-                token: resp.access_token.clone(),
-                refresh_token: Some(resp.refresh_token.clone()),
-                expires_at: Some(new_expires_at_ms),
-                scopes,
-                subscription_type: subscription_type.clone(),
-            };
+                let scopes = resp
+                    .scope
+                    .as_deref()
+                    .map(|s| s.split_whitespace().map(String::from).collect());
+                let cred_file = CredentialFile {
+                    token: resp.access_token.clone(),
+                    refresh_token: Some(resp.refresh_token.clone()),
+                    expires_at: Some(new_expires_at_ms),
+                    scopes,
+                    subscription_type: subscription_type.clone(),
+                };
 
-            match cred_file.save(&path) {
-                Ok(()) => {
-                    mtime_tracker.has_changed(&path);
-                    let final_state = resolve_post_refresh_state(
-                        &path,
-                        resp,
-                        new_expires_at_ms,
-                        subscription_type,
-                    );
-                    if let Ok(mut guard) = state.write() {
-                        *guard = Some(final_state);
+                match cred_file.save(&path) {
+                    Ok(()) => {
+                        mtime_tracker.has_changed(&path);
+                        let final_state = resolve_post_refresh_state(
+                            &path,
+                            resp,
+                            new_expires_at_ms,
+                            subscription_type,
+                        );
+                        if let Ok(mut guard) = state.write() {
+                            *guard = Some(final_state);
+                        }
+                        crate::metrics::record_token_refresh(true);
+                        info!(expires_in_secs = expires_in, "OAuth token refreshed");
                     }
-                    crate::metrics::record_token_refresh(true);
-                    info!(expires_in_secs = expires_in, "OAuth token refreshed");
-                }
-                Err(e) => {
-                    error!(error = %e, "failed to write refreshed credential file, keeping previous in-memory token");
-                    crate::metrics::record_credential_write_failure();
-                    crate::metrics::record_token_refresh(true);
+                    Err(e) => {
+                        error!(error = %e, "failed to write refreshed credential file, keeping previous in-memory token");
+                        crate::metrics::record_credential_write_failure();
+                        crate::metrics::record_token_refresh(true);
+                    }
                 }
             }
-        } else {
-            circuit_breaker.record_failure();
-            crate::metrics::record_token_refresh(false);
-            warn!("OAuth token refresh failed, will retry next cycle");
+            RefreshOutcome::InvalidGrant => {
+                // WHY: invalid_grant is permanent — the refresh token has been
+                // revoked, expired, or was never valid. Continuing to retry wastes
+                // resources and floods logs. Clear the in-memory state so callers
+                // fall through to file-based providers, and stop the refresh loop.
+                if let Ok(mut guard) = state.write() {
+                    *guard = None;
+                }
+                crate::metrics::record_token_refresh(false);
+                error!(
+                    "OAuth refresh loop stopping: refresh token is permanently invalid. \
+                     Re-authenticate to resume automatic token refresh."
+                );
+                break;
+            }
+            RefreshOutcome::TransientError => {
+                circuit_breaker.record_failure();
+                crate::metrics::record_token_refresh(false);
+                warn!("OAuth token refresh failed, will retry next cycle");
+            }
         }
     }
 }
@@ -396,42 +433,62 @@ async fn refresh_loop(
 pub(super) async fn do_refresh(
     client: &reqwest::Client,
     refresh_token: &str,
-) -> Option<OAuthResponse> {
+) -> RefreshOutcome {
     // WHY: Anthropic OAuth endpoint expects form-urlencoded, not JSON
     let body = format!(
         "grant_type=refresh_token&refresh_token={refresh_token}&client_id={OAUTH_CLIENT_ID}",
     );
 
-    let resp = client
+    let resp = match client
         .post(OAUTH_TOKEN_URL)
         .header("Content-Type", "application/x-www-form-urlencoded")
         .body(body)
         .timeout(Duration::from_secs(30))
         .send()
         .await
-        .map_err(|e| {
+    {
+        Ok(r) => r,
+        Err(e) => {
             warn!(error = %e, "OAuth refresh request failed");
-            e
-        })
-        .ok()?;
+            return RefreshOutcome::TransientError;
+        }
+    };
 
     if !resp.status().is_success() {
         let status = resp.status();
-        let body = resp.text().await.unwrap_or_else(|e| {
+        let body_text = resp.text().await.unwrap_or_else(|e| {
             warn!("failed to read OAuth error response body: {e}");
             String::new()
         });
-        warn!(status = %status, body = %body, "OAuth refresh returned error");
-        return None;
+
+        // WHY: `invalid_grant` means the refresh token is revoked, expired, or
+        // otherwise permanently invalid. Retrying will never succeed — the user
+        // must re-authenticate to obtain a new refresh token.
+        if let Ok(err_resp) = serde_json::from_str::<OAuthErrorResponse>(&body_text) {
+            if err_resp.error == "invalid_grant" {
+                error!(
+                    status = %status,
+                    error = %err_resp.error,
+                    description = err_resp.error_description.as_deref().unwrap_or(""),
+                    "OAuth refresh token is invalid — re-authentication required. \
+                     Run `aletheia auth login` or re-authorize via Claude Code to obtain \
+                     a new refresh token."
+                );
+                return RefreshOutcome::InvalidGrant;
+            }
+        }
+
+        warn!(status = %status, body = %body_text, "OAuth refresh returned error");
+        return RefreshOutcome::TransientError;
     }
 
-    resp.json::<OAuthResponse>()
-        .await
-        .map_err(|e| {
+    match resp.json::<OAuthResponse>().await {
+        Ok(oauth) => RefreshOutcome::Success(oauth),
+        Err(e) => {
             warn!(error = %e, "failed to parse OAuth refresh response");
-            e
-        })
-        .ok()
+            RefreshOutcome::TransientError
+        }
+    }
 }
 
 /// Force a one-shot OAuth token refresh (for CLI `credential refresh`).
@@ -453,9 +510,19 @@ pub async fn force_refresh(path: &Path) -> Result<CredentialFile, String> {
         .ok_or("no refresh token in credential file")?;
 
     let client = reqwest::Client::new();
-    let resp = do_refresh(&client, refresh_token)
-        .await
-        .ok_or("OAuth refresh failed")?;
+    let resp = match do_refresh(&client, refresh_token).await {
+        RefreshOutcome::Success(r) => r,
+        RefreshOutcome::InvalidGrant => {
+            return Err(
+                "OAuth refresh token is invalid (invalid_grant). Re-authenticate with \
+                 `aletheia auth login` or re-authorize via Claude Code."
+                    .to_owned(),
+            );
+        }
+        RefreshOutcome::TransientError => {
+            return Err("OAuth refresh failed (transient error)".to_owned());
+        }
+    };
 
     let expires_in = clamp_expires_in(resp.expires_in);
     let now_ms = unix_epoch_ms();
