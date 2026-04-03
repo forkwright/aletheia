@@ -10,6 +10,8 @@ use rmcp::model::CallToolResult;
 use rmcp::{tool, tool_router};
 use snafu::{OptionExt as _, ResultExt as _};
 
+use aletheia_koina::id::SessionId;
+
 use crate::error::{NousNotFoundSnafu, PipelineSnafu, SerializationSnafu, SessionStoreSnafu};
 use crate::rate_limit::Tier;
 use crate::server::DiaporeiaServer;
@@ -28,7 +30,9 @@ impl DiaporeiaServer {
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Expensive)?;
         let session_key = params.session_key.as_deref().unwrap_or("main");
-        let session_id = ulid::Ulid::new().to_string();
+        // WHY: SessionId (UUID v4) is the canonical format. ULID here caused
+        // 'invalid SessionId' when nous parsed the stored ID back (#2349).
+        let session_id = SessionId::new().to_string();
 
         let store = self.state.session_store.lock().await;
         let session = store
