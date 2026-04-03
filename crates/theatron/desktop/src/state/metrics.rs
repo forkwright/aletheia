@@ -162,6 +162,7 @@ impl AgentTokenRow {
         clippy::cast_precision_loss,
         reason = "display-only: percentage rounded for rendering"
     )]
+    #[expect(clippy::as_conversions, reason = "u64 to f64 for display percentage")]
     pub(crate) fn pct_of_total(&self, grand_total: u64) -> f64 {
         if grand_total == 0 {
             0.0
@@ -193,6 +194,7 @@ impl ModelTokenRow {
         clippy::cast_precision_loss,
         reason = "display-only: percentage rounded for rendering"
     )]
+    #[expect(clippy::as_conversions, reason = "u64 to f64 for display percentage")]
     pub(crate) fn pct_of_total(&self, grand_total: u64) -> f64 {
         if grand_total == 0 {
             0.0
@@ -301,7 +303,10 @@ impl AgentCostRow {
         if self.session_count == 0 {
             0.0
         } else {
-            self.total_cost / self.session_count as f64
+            {
+            #[expect(clippy::as_conversions, reason = "session count to f64 for cost ratio")]
+            let ratio = self.total_cost / self.session_count as f64;
+            ratio
         }
     }
 
@@ -309,7 +314,10 @@ impl AgentCostRow {
         if self.message_count == 0 {
             0.0
         } else {
-            self.total_cost / self.message_count as f64
+            {
+            #[expect(clippy::as_conversions, reason = "message count to f64 for cost ratio")]
+            let ratio = self.total_cost / self.message_count as f64;
+            ratio
         }
     }
 
@@ -317,7 +325,10 @@ impl AgentCostRow {
         if self.output_tokens == 0 {
             0.0
         } else {
-            self.total_cost / (self.output_tokens as f64 / 1000.0)
+            {
+            #[expect(clippy::as_conversions, reason = "token count to f64 for cost ratio")]
+            let ratio = self.total_cost / (self.output_tokens as f64 / 1000.0);
+            ratio
         }
     }
 }
@@ -369,6 +380,7 @@ pub(crate) struct SummaryDelta {
     clippy::cast_precision_loss,
     reason = "display-only: sub-unit precision irrelevant for delta"
 )]
+#[expect(clippy::as_conversions, reason = "u64 to f64 for delta comparison")]
 pub(crate) fn compute_delta_u64(current: u64, previous: u64) -> SummaryDelta {
     compute_delta_f64(current as f64, previous as f64)
 }
@@ -429,6 +441,7 @@ pub(crate) fn project_month_end(
     clippy::cast_precision_loss,
     reason = "display-only: sub-token precision irrelevant"
 )]
+#[expect(clippy::as_conversions, reason = "u64 to f64 for human-readable formatting")]
 pub(crate) fn format_tokens(count: u64) -> String {
     const K: u64 = 1_000;
     const M: u64 = 1_000_000;
@@ -486,6 +499,7 @@ fn unix_seconds() -> u64 {
 /// INVARIANT: Algorithm from Howard Hinnant's date library. Correct for all
 /// dates representable in a u64 Unix timestamp.
 fn epoch_secs_to_ymd(secs: u64) -> (u32, u32, u32) {
+    #[expect(clippy::as_conversions, reason = "epoch day count fits i64")]
     let days = (secs / 86400) as i64;
     let z = days + 719468;
     let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
@@ -497,7 +511,11 @@ fn epoch_secs_to_ymd(secs: u64) -> (u32, u32, u32) {
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = if m <= 2 { y + 1 } else { y };
-    (y as u32, m as u32, d as u32)
+    {
+        #[expect(clippy::as_conversions, reason = "calendar components fit u32 for valid dates")]
+        let result = (y as u32, m as u32, d as u32);
+        result
+    }
 }
 
 fn days_in_month(year: u32, month: u32) -> u32 {

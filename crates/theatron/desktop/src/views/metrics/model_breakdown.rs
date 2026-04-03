@@ -12,6 +12,7 @@ pub(crate) fn ModelBreakdown(models: Vec<ModelTokenRow>, grand_total: u64) -> El
         .iter()
         .map(|m| ChartEntry {
             label: short_model_name(&m.model),
+            #[expect(clippy::as_conversions, reason = "u64 token count to f64 for chart value")]
             value: m.total() as f64,
             color: model_color(&m.model).to_string(),
             sub_label: None,

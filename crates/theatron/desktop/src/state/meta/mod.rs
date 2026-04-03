@@ -126,7 +126,9 @@ pub(crate) fn detect_anomaly(
     }
 
     let n = values.len();
+    #[expect(clippy::as_conversions, reason = "sample count to f64 for statistical mean")]
     let mean = values.iter().sum::<f64>() / n as f64;
+    #[expect(clippy::as_conversions, reason = "sample count to f64 for variance")]
     let variance = values.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n as f64;
     let std_dev = variance.sqrt();
 
@@ -250,7 +252,9 @@ pub(crate) fn compute_average(values: &[f64]) -> f64 {
     if values.is_empty() {
         return 0.0;
     }
-    values.iter().sum::<f64>() / values.len() as f64
+    #[expect(clippy::as_conversions, reason = "slice length to f64 for average")]
+    let avg = values.iter().sum::<f64>() / values.len() as f64;
+    avg
 }
 
 /// Compute ratio of agent turns to user turns.
@@ -260,7 +264,11 @@ pub(crate) fn compute_ratio(numerator: u64, denominator: u64) -> f64 {
     if denominator == 0 {
         return 0.0;
     }
-    numerator as f64 / denominator as f64
+    {
+        #[expect(clippy::as_conversions, reason = "u64 to f64 for ratio calculation")]
+        let ratio = numerator as f64 / denominator as f64;
+        ratio
+    }
 }
 
 // -- Knowledge growth ---------------------------------------------------------
@@ -521,7 +529,7 @@ pub(crate) fn build_heatmap(timestamps: &[(u8, u8)]) -> Vec<HeatmapCell> {
 
     for &(day, hour) in timestamps {
         if day < 7 && hour < 24 {
-            grid[day as usize][hour as usize] += 1;
+            grid[usize::from(day)][usize::from(hour)] += 1;
         }
     }
 
@@ -531,7 +539,7 @@ pub(crate) fn build_heatmap(timestamps: &[(u8, u8)]) -> Vec<HeatmapCell> {
             cells.push(HeatmapCell {
                 day,
                 hour,
-                count: grid[day as usize][hour as usize],
+                count: grid[usize::from(day)][usize::from(hour)],
             });
         }
     }
@@ -562,7 +570,11 @@ pub(crate) fn cost_per_entity(total_cost: f64, total_entities: u64) -> f64 {
     if total_entities == 0 {
         return 0.0;
     }
-    total_cost / total_entities as f64
+    {
+        #[expect(clippy::as_conversions, reason = "entity count to f64 for cost ratio")]
+        let ratio = total_cost / total_entities as f64;
+        ratio
+    }
 }
 
 /// Compute tokens-per-entity.
@@ -571,7 +583,11 @@ pub(crate) fn tokens_per_entity(total_tokens: u64, total_entities: u64) -> f64 {
     if total_entities == 0 {
         return 0.0;
     }
-    total_tokens as f64 / total_entities as f64
+    {
+        #[expect(clippy::as_conversions, reason = "u64 to f64 for per-entity ratio")]
+        let ratio = total_tokens as f64 / total_entities as f64;
+        ratio
+    }
 }
 
 #[cfg(test)]

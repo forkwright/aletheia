@@ -249,7 +249,9 @@ fn loaded_tokens_view(
         .step_by(step.max(1))
         .map(|pt| TimeSeriesColumn {
             label: pt.date.clone(),
+            #[expect(clippy::as_conversions, reason = "u64 token counts to f64 for chart series")]
             primary: pt.input_tokens as f64,
+            #[expect(clippy::as_conversions, reason = "u64 token counts to f64 for chart series")]
             secondary: pt.output_tokens as f64,
             primary_color: "#5b6af0".to_string(),
             secondary_color: "#10b981".to_string(),
@@ -265,9 +267,21 @@ fn loaded_tokens_view(
             // Summary cards
             div {
                 style: "display: flex; gap: 12px; flex-wrap: wrap;",
-                { delta_card("Today", &format_tokens(today_d.value as u64), today_d.delta_pct, today_d.is_up) }
-                { delta_card("This Week", &format_tokens(week_d.value as u64), week_d.delta_pct, week_d.is_up) }
-                { delta_card("This Month", &format_tokens(month_d.value as u64), month_d.delta_pct, month_d.is_up) }
+                {
+                    #[expect(clippy::as_conversions, reason = "f64 to u64 for token display formatting")]
+                    let v = today_d.value as u64;
+                    delta_card("Today", &format_tokens(v), today_d.delta_pct, today_d.is_up)
+                }
+                {
+                    #[expect(clippy::as_conversions, reason = "f64 to u64 for token display formatting")]
+                    let v = week_d.value as u64;
+                    delta_card("This Week", &format_tokens(v), week_d.delta_pct, week_d.is_up)
+                }
+                {
+                    #[expect(clippy::as_conversions, reason = "f64 to u64 for token display formatting")]
+                    let v = month_d.value as u64;
+                    delta_card("This Month", &format_tokens(v), month_d.delta_pct, month_d.is_up)
+                }
             }
 
             // Time series chart

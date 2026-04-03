@@ -152,6 +152,7 @@ fn ActivityHeatmap(cells: Vec<crate::state::meta::HeatmapCell>) -> Element {
                 // NOTE: Day labels along left.
                 for (d , label) in DAY_LABELS.iter().enumerate() {
                     {
+                        #[expect(clippy::as_conversions, reason = "day index to f64 for heatmap cell position")]
                         let y = 20.0 + d as f64 * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2.0;
                         rsx! {
                             text {
@@ -234,7 +235,11 @@ fn EfficiencyPanel(
             }
             div {
                 style: "{CARD_STYLE} flex: 1; min-width: 140px; text-align: center;",
-                div { style: "{CARD_VALUE}", "{format_tokens(tokens_per_entity as u64)}" }
+                div { style: "{CARD_VALUE}", {
+                    #[expect(clippy::as_conversions, reason = "f64 to u64 for token display formatting")]
+                    let tokens = tokens_per_entity as u64;
+                    format!("{}", format_tokens(tokens))
+                } }
                 div { style: "{CARD_LABEL}", "Tokens / Entity" }
                 div { style: "{CARD_SUB}", "Conversation cost per knowledge node" }
             }
@@ -350,6 +355,7 @@ fn format_cost(value: f64) -> String {
     clippy::cast_precision_loss,
     reason = "display-only: sub-token precision irrelevant"
 )]
+#[expect(clippy::as_conversions, reason = "u64 to f64 for human-readable formatting")]
 fn format_tokens(count: u64) -> String {
     const K: u64 = 1_000;
     const M: u64 = 1_000_000;

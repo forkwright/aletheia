@@ -123,8 +123,10 @@ pub(crate) fn TimeSeriesChart(
                     {
                         let total = col.total();
                         #[expect(clippy::as_conversions, reason = "CSS percentage from bounded UI ratio")]
+                        #[expect(clippy::as_conversions, reason = "CSS percentage from bounded ratio")]
                         let total_pct = (total / max_total * 100.0) as u32;
                         #[expect(clippy::as_conversions, reason = "CSS percentage from bounded UI ratio")]
+                        #[expect(clippy::as_conversions, reason = "CSS percentage from bounded ratio")]
                         let primary_pct = if total > 0.0 { (col.primary / total * 100.0) as u32 } else { 50 };
                         let secondary_pct = 100u32.saturating_sub(primary_pct);
                         let pcol = col.primary_color.clone();
@@ -197,6 +199,7 @@ pub(crate) fn HorizBarChart(
             style: "display: flex; flex-direction: column; gap: 8px;",
             for (idx, entry) in entries.iter().enumerate() {
                 {
+                    #[expect(clippy::as_conversions, reason = "CSS percentage from bounded ratio")]
                     let pct = ((entry.value / effective_max) * 100.0).min(100.0) as u32;
                     let color = entry.color.clone();
                     let label = entry.label.clone();
@@ -362,7 +365,9 @@ pub(crate) fn GroupedBarChart(
                 style: "display: flex; align-items: flex-end; gap: 8px; height: {height_px}px; overflow-x: auto; padding-bottom: 4px;",
                 for entry in &entries {
                     {
+                        #[expect(clippy::as_conversions, reason = "CSS percentage from bounded ratio")]
                         let curr_pct = (entry.current / max_val * 100.0) as u32;
+                        #[expect(clippy::as_conversions, reason = "CSS percentage from bounded ratio")]
                         let prev_pct = (entry.previous / max_val * 100.0) as u32;
                         let ccol = entry.current_color.clone();
                         let pcol = entry.previous_color.clone();
@@ -479,6 +484,7 @@ pub(crate) fn LineChart(series: Vec<LineSeries>, height: u32) -> Element {
                         for s in &series {
                             {
                                 let val = s.points.get(idx).map_or(0.0, |p| p.value);
+                                #[expect(clippy::as_conversions, reason = "CSS percentage from bounded ratio")]
                                 let pct = ((val / max_val) * 100.0) as u32;
                                 let color = s.color.clone();
                                 let label_text = s.points.get(idx).map(|p| p.label.clone()).unwrap_or_default();
@@ -567,6 +573,7 @@ pub(crate) fn PercentileBarChart(entries: Vec<PercentileEntry>) -> Element {
                 {
                     let label = entry.label.clone();
                     #[expect(clippy::cast_precision_loss, reason = "display-only percentage")]
+                    #[expect(clippy::as_conversions, reason = "display-only percentage from bounded values")]
                     let pct = |v: u64| -> u32 {
                         ((v as f64 / global_max as f64) * 100.0) as u32
                     };
@@ -629,6 +636,7 @@ pub(crate) fn HorizontalBarChart(
         .map(|(i, e)| ChartEntry {
             label: e.label.clone(),
             #[expect(clippy::cast_precision_loss, reason = "display-only")]
+            #[expect(clippy::as_conversions, reason = "u64 to f64 for chart display")]
             value: e.value as f64,
             color: e
                 .color
@@ -711,8 +719,10 @@ pub(crate) fn StackedBarChart(
                 {
                     let total = entry.success + entry.failure;
                     #[expect(clippy::cast_precision_loss, reason = "display-only percentage")]
+                    #[expect(clippy::as_conversions, reason = "display-only percentage from bounded values")]
                     let total_pct = ((total as f64 / max_total as f64) * 100.0) as u32;
                     #[expect(clippy::cast_precision_loss, reason = "display-only percentage")]
+                    #[expect(clippy::as_conversions, reason = "display-only percentage from bounded values")]
                     let success_pct = if total > 0 { ((entry.success as f64 / total as f64) * 100.0) as u32 } else { 50 };
                     let failure_pct = 100u32.saturating_sub(success_pct);
                     let label = entry.label.clone();
@@ -762,6 +772,7 @@ pub(crate) fn format_chart_value(v: f64) -> String {
     } else if v >= 1_000.0 {
         format!("{:.1}K", v / 1_000.0)
     } else if v == v.trunc() {
+        #[expect(clippy::as_conversions, reason = "integer-valued f64 for display formatting")]
         let n = v as u64;
         format!("{n}")
     } else {

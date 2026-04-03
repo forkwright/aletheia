@@ -34,7 +34,11 @@ pub(crate) fn LineChart(
         .enumerate()
         .map(|(i, p)| {
             let x = if data.len() > 1 {
-                padding + (i as f64 / (data.len() - 1) as f64) * chart_w
+                {
+                #[expect(clippy::as_conversions, reason = "point index to f64 for SVG coordinate")]
+                let x = padding + (i as f64 / (data.len() - 1) as f64) * chart_w;
+                x
+            }
             } else {
                 padding + chart_w / 2.0
             };
@@ -170,7 +174,9 @@ pub(crate) fn BarChart(
     let padding = 30.0;
     let chart_w = width - padding * 2.0;
     let chart_h = height - padding * 2.0;
+    #[expect(clippy::as_conversions, reason = "data count to f64 for SVG bar width")]
     let bar_width = (chart_w / data.len() as f64) * 0.7;
+    #[expect(clippy::as_conversions, reason = "data count to f64 for SVG gap")]
     let gap = (chart_w / data.len() as f64) * 0.3;
 
     let viewbox = format!("0 0 {width} {height}");
@@ -185,6 +191,7 @@ pub(crate) fn BarChart(
             for (i , point) in data.iter().enumerate() {
                 {
                     let bar_h = (point.value / max_val) * chart_h;
+                    #[expect(clippy::as_conversions, reason = "bar index to f64 for SVG position")]
                     let x = padding + (i as f64 * (bar_width + gap)) + gap / 2.0;
                     let y = padding + chart_h - bar_h;
                     rsx! {

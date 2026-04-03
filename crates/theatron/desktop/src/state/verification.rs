@@ -89,7 +89,11 @@ impl VerificationStore {
             .iter()
             .filter(|r| r.status == VerificationStatus::Verified)
             .count();
-        Some(((verified * 100) / reqs.len()).min(100) as u8)
+        Some({
+            #[expect(clippy::as_conversions, reason = "percentage clamped to 0–100 fits u8")]
+            let pct = ((verified * 100) / reqs.len()).min(100) as u8;
+            pct
+        })
     }
 
     /// Coverage percentage for a specific tier (e.g., `"v1"`, `"v2"`).
@@ -106,7 +110,11 @@ impl VerificationStore {
             .iter()
             .filter(|r| r.status == VerificationStatus::Verified)
             .count();
-        Some(((verified * 100) / tier_reqs.len()).min(100) as u8)
+        Some({
+            #[expect(clippy::as_conversions, reason = "percentage clamped to 0–100 fits u8")]
+            let pct = ((verified * 100) / tier_reqs.len()).min(100) as u8;
+            pct
+        })
     }
 
     /// Requirements that have gaps (unverified, partially verified, or failed).

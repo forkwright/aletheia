@@ -111,7 +111,11 @@ pub(crate) fn DurationTrendView(
                     LinePoint {
                         label: bucket.date.clone(),
                         value: if bucket_count > 0 {
-                            tool.p50_ms as f64
+                            {
+                            #[expect(clippy::as_conversions, reason = "u64 ms to f64 for chart point")]
+                            let v = tool.p50_ms as f64;
+                            v
+                        }
                         } else {
                             0.0
                         },

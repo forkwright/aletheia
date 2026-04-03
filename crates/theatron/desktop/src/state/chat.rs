@@ -163,7 +163,11 @@ impl Default for ChatStore {
 pub(crate) fn relative_time(timestamp: i64) -> String {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
+        .map(|d| {
+            #[expect(clippy::as_conversions, reason = "epoch seconds fit in i64 until year 292B")]
+            let secs = d.as_secs() as i64;
+            secs
+        })
         .unwrap_or(0);
 
     let delta = now - timestamp;
@@ -171,6 +175,7 @@ pub(crate) fn relative_time(timestamp: i64) -> String {
         return "just now".to_string();
     }
 
+    #[expect(clippy::as_conversions, reason = "delta verified non-negative above")]
     let delta = delta as u64;
     match delta {
         0..=59 => "just now".to_string(),

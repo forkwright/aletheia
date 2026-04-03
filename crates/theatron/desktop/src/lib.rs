@@ -43,12 +43,12 @@ pub fn run() {
     let window_builder = dioxus::desktop::WindowBuilder::new()
         .with_title("Aletheia")
         .with_inner_size(dioxus::desktop::LogicalSize::new(
-            window_state.width as f64,
-            window_state.height as f64,
+            f64::from(window_state.width),
+            f64::from(window_state.height),
         ))
         .with_position(dioxus::desktop::LogicalPosition::new(
-            window_state.x as f64,
-            window_state.y as f64,
+            f64::from(window_state.x),
+            f64::from(window_state.y),
         ))
         .with_maximized(window_state.maximized);
 

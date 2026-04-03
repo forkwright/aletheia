@@ -70,7 +70,9 @@ pub(crate) fn TimelineScrubber(
     let since_days = days_between_simple(&min_date, &since);
     let until_days = days_between_simple(&min_date, &until);
 
+    #[expect(clippy::as_conversions, reason = "day counts to f64 for CSS percentage")]
     let since_pct = (since_days as f64 / total_days as f64 * 100.0).clamp(0.0, 100.0);
+    #[expect(clippy::as_conversions, reason = "day counts to f64 for CSS percentage")]
     let until_pct = (until_days as f64 / total_days as f64 * 100.0).clamp(0.0, 100.0);
     let highlight_left = since_pct;
     let highlight_width = (until_pct - since_pct).max(0.0);

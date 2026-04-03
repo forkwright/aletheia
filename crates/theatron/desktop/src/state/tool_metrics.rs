@@ -206,6 +206,7 @@ pub(crate) fn failure_rate(stat: &ToolStat) -> f64 {
         clippy::cast_precision_loss,
         reason = "display-only: sub-percent precision irrelevant"
     )]
+    #[expect(clippy::as_conversions, reason = "u64 to f64 for failure rate percentage")]
     let rate = stat.failed as f64 / stat.total as f64 * 100.0;
     rate
 }
@@ -276,6 +277,7 @@ pub(crate) fn percentile_nearest_rank(sorted_values: &[u64], p: f64) -> u64 {
         clippy::cast_precision_loss,
         reason = "display-only: fractional index is fine for N < 2^53"
     )]
+    #[expect(clippy::as_conversions, reason = "length to f64 and rank to usize for percentile")]
     let rank = (p * sorted_values.len() as f64).ceil() as usize;
     let idx = rank.saturating_sub(1).min(sorted_values.len() - 1);
     sorted_values[idx]

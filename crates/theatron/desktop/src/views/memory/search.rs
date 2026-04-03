@@ -208,6 +208,7 @@ pub(crate) fn EntitySearchBar(
                         {
                             #[expect(clippy::cast_sign_loss, reason = "min_confidence clamped 0.0–1.0")]
                             #[expect(clippy::cast_possible_truncation, reason = "percentage 0–100")]
+                            #[expect(clippy::as_conversions, reason = "confidence percentage for display chip")]
                             let pct = (min_confidence * 100.0) as u32;
                             rsx! {
                                 div {

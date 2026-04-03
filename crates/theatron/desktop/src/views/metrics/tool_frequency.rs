@@ -88,6 +88,7 @@ pub(crate) fn ToolTimeSeriesView(
                 .iter()
                 .map(|bucket| LinePoint {
                     label: bucket.date.clone(),
+                    #[expect(clippy::as_conversions, reason = "u64 call count to f64 for chart point")]
                     value: *bucket.counts.get(name).unwrap_or(&0) as f64,
                 })
                 .collect();
@@ -111,6 +112,7 @@ pub(crate) fn ToolTimeSeriesView(
                 let total_bucket: u64 = bucket.counts.values().sum();
                 LinePoint {
                     label: bucket.date.clone(),
+                    #[expect(clippy::as_conversions, reason = "u64 count to f64 for chart point")]
                     value: total_bucket.saturating_sub(top_sum) as f64,
                 }
             })

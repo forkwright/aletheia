@@ -222,6 +222,7 @@ fn render_overview(
 
                     // Overall success rate
                     {
+                        #[expect(clippy::as_conversions, reason = "rate 0.0–1.0 to percentage for display")]
                         let rate_pct = (data.summary.success_rate * 100.0) as u64;
                         let trend = trend_arrow(data.summary.success_rate, data.summary.success_rate_prev);
                         let rate_color = if data.summary.success_rate > 0.9 { "#22c55e" }
@@ -241,8 +242,16 @@ fn render_overview(
                     {
                         let dur = format_duration_ms(data.summary.avg_duration_ms);
                         let trend = trend_arrow(
-                            data.summary.avg_duration_ms as f64,
-                            data.summary.avg_duration_prev_ms as f64,
+                            {
+                                #[expect(clippy::as_conversions, reason = "u64 ms to f64 for trend comparison")]
+                                let v = data.summary.avg_duration_ms as f64;
+                                v
+                            },
+                            {
+                                #[expect(clippy::as_conversions, reason = "u64 ms to f64 for trend comparison")]
+                                let v = data.summary.avg_duration_prev_ms as f64;
+                                v
+                            },
                         );
                         rsx! {
                             div {

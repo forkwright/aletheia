@@ -65,6 +65,7 @@ pub(crate) fn ToastItem(toast: Toast) -> Element {
     // WHY: Auto-dismiss timer. Spawn a task that sleeps then dismisses.
     // Runs once per toast mount.
     if let Some(duration) = toast.auto_dismiss {
+        #[expect(clippy::as_conversions, reason = "toast duration under u64::MAX milliseconds")]
         let ms = duration.as_millis() as u64;
         spawn(async move {
             tokio::time::sleep(std::time::Duration::from_millis(ms)).await;

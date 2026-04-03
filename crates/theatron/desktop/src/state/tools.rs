@@ -196,6 +196,7 @@ impl PlanCardState {
             clippy::cast_precision_loss,
             reason = "step counts are small enough that f64 is exact"
         )]
+        #[expect(clippy::as_conversions, reason = "small step counts for progress fraction")]
         let fraction = done as f64 / total as f64;
         fraction
     }

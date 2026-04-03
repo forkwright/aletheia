@@ -359,6 +359,7 @@ impl RoadmapStore {
 #[must_use]
 pub(crate) fn days_between(start: &str, end: &str) -> u32 {
     match (date_to_days(start), date_to_days(end)) {
+        #[expect(clippy::as_conversions, reason = "day difference verified positive and small")]
         (Some(s), Some(e)) if e > s => (e - s) as u32,
         (Some(_), Some(_)) => 1,
         _ => 30,

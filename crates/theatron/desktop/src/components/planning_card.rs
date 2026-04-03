@@ -95,6 +95,7 @@ pub(crate) fn PlanningCard(plan: PlanCardState) -> Element {
             clippy::cast_precision_loss,
             reason = "step counts are small enough that f64 is exact"
         )]
+        #[expect(clippy::as_conversions, reason = "small step counts for progress display")]
         let pct = (completed as f64 / total as f64) * 100.0;
         pct
     } else {

@@ -26,6 +26,7 @@ pub(crate) fn AgentBreakdown(
         .enumerate()
         .map(|(i, a)| ChartEntry {
             label: a.name.clone(),
+            #[expect(clippy::as_conversions, reason = "u64 token count to f64 for chart value")]
             value: a.total() as f64,
             color: agent_color(i).to_string(),
             sub_label: Some(format_tokens(a.total())),

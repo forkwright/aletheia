@@ -109,6 +109,7 @@ fn failure_trend_chart(tools: &[ToolStat], time_series: &[TimeSeriesBucket]) -> 
                     let bucket_count = *bucket.counts.get(&tool.name).unwrap_or(&0);
                     // Approximate failure rate using overall failure ratio.
                     #[expect(clippy::cast_precision_loss, reason = "display-only approximation")]
+                    #[expect(clippy::as_conversions, reason = "u64 counts to f64 for failure rate chart")]
                     let approx_fail_rate =
                         (tool.failed as f64 / tool_total as f64) * bucket_count as f64;
                     LinePoint {

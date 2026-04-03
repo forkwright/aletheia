@@ -242,7 +242,7 @@ fn agent_color(agent_id: Option<&str>) -> &'static str {
     ];
     match agent_id {
         Some(id) => {
-            let hash: usize = id.bytes().map(|b| b as usize).sum();
+            let hash: usize = id.bytes().map(|b| usize::from(b)).sum();
             let idx = hash % AGENT_PALETTE.len();
             // SAFETY: idx always < len due to modulo.
             AGENT_PALETTE[idx]

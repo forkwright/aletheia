@@ -24,7 +24,9 @@ pub(crate) fn visible_range(
     if total_items == 0 || item_height <= 0.0 {
         return (0, 0);
     }
+    #[expect(clippy::as_conversions, reason = "scroll position to index, clamped to total_items")]
     let first = ((scroll_top / item_height) as usize).min(total_items);
+    #[expect(clippy::as_conversions, reason = "visible item count from container height, clamped")]
     let count = ((container_height / item_height).ceil() as usize + 1).min(total_items);
     let start = first.saturating_sub(overscan);
     let end = (first + count + overscan).min(total_items);
@@ -41,7 +43,9 @@ pub(crate) fn spacer_heights(
     total_items: usize,
     item_height: f64,
 ) -> (f64, f64) {
+    #[expect(clippy::as_conversions, reason = "index to pixel offset for virtual scroll spacer")]
     let pad_top = range_start as f64 * item_height;
+    #[expect(clippy::as_conversions, reason = "index to pixel offset for virtual scroll spacer")]
     let pad_bottom = total_items.saturating_sub(range_end) as f64 * item_height;
     (pad_top, pad_bottom)
 }

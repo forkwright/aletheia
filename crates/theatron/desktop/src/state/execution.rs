@@ -93,7 +93,11 @@ impl ExecutionPlan {
             return 0;
         }
         let done = self.completed_steps();
-        ((done * 100) / self.steps.len()).min(100) as u8
+        {
+            #[expect(clippy::as_conversions, reason = "percentage clamped to 0–100 fits u8")]
+            let pct = ((done * 100) / self.steps.len()).min(100) as u8;
+            pct
+        }
     }
 
     /// Whether any step has failed.
@@ -128,7 +132,11 @@ impl Wave {
             };
         }
         let done: usize = self.plans.iter().map(|p| p.completed_steps()).sum();
-        ((done * 100) / total_steps).min(100) as u8
+        {
+            #[expect(clippy::as_conversions, reason = "percentage clamped to 0–100 fits u8")]
+            let pct = ((done * 100) / total_steps).min(100) as u8;
+            pct
+        }
     }
 }
 
@@ -184,7 +192,11 @@ impl ExecutionStore {
             .flat_map(|w| &w.plans)
             .map(|p| p.completed_steps())
             .sum();
-        ((done * 100) / total_steps).min(100) as u8
+        {
+            #[expect(clippy::as_conversions, reason = "percentage clamped to 0–100 fits u8")]
+            let pct = ((done * 100) / total_steps).min(100) as u8;
+            pct
+        }
     }
 }
 

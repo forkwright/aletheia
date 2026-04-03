@@ -393,6 +393,7 @@ pub(crate) fn parse_iso_to_unix(s: &str) -> Option<u64> {
         30,
         31,
     ];
+    #[expect(clippy::as_conversions, reason = "month 1–12 to usize for array index")]
     for m in 0..(month.saturating_sub(1) as usize) {
         days += month_days.get(m).copied().unwrap_or(30);
     }

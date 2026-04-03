@@ -66,7 +66,11 @@ pub(crate) fn Chat() -> Element {
         let state = legacy_state.read();
         let now_ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs() as i64)
+            .map(|d| {
+                #[expect(clippy::as_conversions, reason = "epoch seconds fit in i64 until year 292B")]
+                let secs = d.as_secs() as i64;
+                secs
+            })
             .unwrap_or(0);
 
         state
@@ -74,13 +78,18 @@ pub(crate) fn Chat() -> Element {
             .iter()
             .enumerate()
             .map(|(i, m)| ChatMessage {
+                #[expect(clippy::as_conversions, reason = "message index to u64 id")]
                 id: i as u64 + 1,
                 role: match m.role {
                     MessageRole::User => Role::User,
                     MessageRole::Assistant => Role::Assistant,
                 },
                 content: m.content.clone(),
-                timestamp: now_ts - ((state.messages.len() - 1 - i) as i64 * 30),
+                timestamp: {
+                    #[expect(clippy::as_conversions, reason = "message offset to i64 for timestamp spacing")]
+                    let offset = (state.messages.len() - 1 - i) as i64 * 30;
+                    now_ts - offset
+                },
                 agent_id: state.agent_id.clone(),
                 tool_calls: m.tool_calls,
                 thinking_content: None,

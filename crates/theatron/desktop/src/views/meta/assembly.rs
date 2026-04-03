@@ -10,6 +10,7 @@ use super::{
 
 /// Assemble all fetched data into the composite `MetaData` structure.
 #[expect(clippy::cast_precision_loss, reason = "display-only metrics")]
+#[expect(clippy::as_conversions, reason = "display-only metrics assembly")]
 pub(super) fn assemble_meta_data(
     health: HealthApiResponse,
     metrics: MetricsApiResponse,
@@ -289,7 +290,15 @@ fn day_of_week(mut year: i32, month: u32, day: u32) -> u8 {
         year -= 1;
     }
     let dow =
-        (year + year / 4 - year / 100 + year / 400 + T[month as usize - 1] + day as i32) % 7;
+        {
+        #[expect(clippy::as_conversions, reason = "month/day to index/i32 for day-of-week algorithm")]
+        let dow_raw = (year + year / 4 - year / 100 + year / 400 + T[month as usize - 1] + day as i32) % 7;
+        dow_raw
+    };
     // WHY: Sakamoto returns 0=Sun, convert to 0=Mon.
-    ((dow + 6) % 7) as u8
+    {
+        #[expect(clippy::as_conversions, reason = "day-of-week 0–6 fits u8")]
+        let result = ((dow + 6) % 7) as u8;
+        result
+    }
 }

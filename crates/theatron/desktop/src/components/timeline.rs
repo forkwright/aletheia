@@ -220,7 +220,11 @@ fn x_offset(x: f64) -> f64 {
 }
 
 fn format_zoom(zoom: f64) -> String {
-    format!("{}%", (zoom * 100.0) as u32)
+    {
+    #[expect(clippy::as_conversions, reason = "zoom percentage for display")]
+    let pct = (zoom * 100.0) as u32;
+    format!("{pct}%")
+}
 }
 
 /// Calculate block positions from date ranges with a fixed pixels-per-day scale.
