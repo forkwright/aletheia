@@ -21,6 +21,30 @@ pub async fn parse_sse_stream(response: reqwest::Response) -> Result<Vec<ParsedS
     parse_sse_text(&text)
 }
 
+/// Try to parse a buffered SSE event from its type and data fields.
+///
+/// Returns `Some(event)` on success, `None` if either field is empty or
+/// the data is not valid JSON (with a warning logged).
+fn try_parse_event(event_type: &mut String, data: &mut String) -> Option<ParsedSseEvent> {
+    if event_type.is_empty() || data.is_empty() {
+        return None;
+    }
+    match serde_json::from_str::<serde_json::Value>(data) {
+        Ok(parsed) => Some(ParsedSseEvent {
+            event_type: std::mem::take(event_type),
+            data: parsed,
+        }),
+        Err(_) => {
+            tracing::warn!(
+                event_type = %event_type,
+                raw_data = %data,
+                "malformed SSE event skipped"
+            );
+            None
+        }
+    }
+}
+
 /// Parse raw SSE text into events. Exposed for testing.
 #[tracing::instrument(skip(text), fields(text_len = text.len()))]
 pub(crate) fn parse_sse_text(text: &str) -> Result<Vec<ParsedSseEvent>> {
@@ -35,23 +59,8 @@ pub(crate) fn parse_sse_text(text: &str) -> Result<Vec<ParsedSseEvent>> {
 
         if line.is_empty() {
             // NOTE: empty line signals SSE event boundary per the spec
-            if !current_event_type.is_empty() && !current_data.is_empty() {
-                match serde_json::from_str::<serde_json::Value>(&current_data) {
-                    Ok(data) => {
-                        events.push(ParsedSseEvent {
-                            event_type: std::mem::take(&mut current_event_type),
-                            data,
-                        });
-                        current_data.clear();
-                    }
-                    Err(_) => {
-                        tracing::warn!(
-                            event_type = %current_event_type,
-                            raw_data = %current_data,
-                            "malformed SSE event skipped"
-                        );
-                    }
-                }
+            if let Some(event) = try_parse_event(&mut current_event_type, &mut current_data) {
+                events.push(event);
             }
             current_event_type.clear();
             current_data.clear();
@@ -76,22 +85,8 @@ pub(crate) fn parse_sse_text(text: &str) -> Result<Vec<ParsedSseEvent>> {
     }
 
     // NOTE: handle trailing event without final blank line
-    if !current_event_type.is_empty() && !current_data.is_empty() {
-        match serde_json::from_str::<serde_json::Value>(&current_data) {
-            Ok(data) => {
-                events.push(ParsedSseEvent {
-                    event_type: current_event_type,
-                    data,
-                });
-            }
-            Err(_) => {
-                tracing::warn!(
-                    event_type = %current_event_type,
-                    raw_data = %current_data,
-                    "malformed SSE event skipped"
-                );
-            }
-        }
+    if let Some(event) = try_parse_event(&mut current_event_type, &mut current_data) {
+        events.push(event);
     }
 
     Ok(events)

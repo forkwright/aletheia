@@ -212,11 +212,7 @@ fn validate_agents(value: &Value, errors: &mut Vec<String>) {
 const VALID_AUTH_MODES: &[&str] = &["none", "token", "jwt"];
 
 fn validate_gateway(value: &Value, errors: &mut Vec<String>) {
-    if let Some(port) = value.get("port").and_then(Value::as_u64)
-        && (port == 0 || port > 65535)
-    {
-        errors.push("port must be between 1 and 65535".to_owned());
-    }
+    check_port(value, "port", "port", errors);
 
     if let Some(auth) = value.get("auth")
         && let Some(mode) = auth.get("mode").and_then(Value::as_str)
@@ -227,29 +223,19 @@ fn validate_gateway(value: &Value, errors: &mut Vec<String>) {
         ));
     }
 
-    if let Some(cors) = value.get("cors")
-        && let Some(val) = cors.get("maxAgeSecs").and_then(Value::as_u64)
-        && val == 0
-    {
-        errors.push("cors.maxAgeSecs must be positive".to_owned());
+    if let Some(cors) = value.get("cors") {
+        check_positive_u64(cors, "maxAgeSecs", errors);
     }
 
-    if let Some(body_limit) = value.get("bodyLimit")
-        && let Some(val) = body_limit.get("maxBytes").and_then(Value::as_u64)
-        && val == 0
-    {
-        errors.push("bodyLimit.maxBytes must be positive".to_owned());
+    if let Some(body_limit) = value.get("bodyLimit") {
+        check_positive_u64(body_limit, "maxBytes", errors);
     }
 }
 
 fn validate_maintenance(value: &Value, errors: &mut Vec<String>) {
     if let Some(tr) = value.get("traceRotation") {
         check_positive_u32(tr, "maxAgeDays", errors);
-        if let Some(val) = tr.get("maxTotalSizeMb").and_then(Value::as_u64)
-            && val == 0
-        {
-            errors.push("traceRotation.maxTotalSizeMb must be positive".to_owned());
-        }
+        check_positive_u64(tr, "maxTotalSizeMb", errors);
     }
 
     if let Some(db) = value.get("dbMonitoring") {
@@ -277,11 +263,7 @@ fn validate_embedding(value: &Value, errors: &mut Vec<String>) {
         errors.push("embedding.provider must not be empty".to_owned());
     }
 
-    if let Some(dim) = value.get("dimension").and_then(Value::as_u64)
-        && dim == 0
-    {
-        errors.push("embedding.dimension must be positive".to_owned());
-    }
+    check_positive_u64(value, "dimension", errors);
 }
 
 fn validate_channels(value: &Value, errors: &mut Vec<String>) {
@@ -289,13 +271,12 @@ fn validate_channels(value: &Value, errors: &mut Vec<String>) {
         && let Some(accounts) = signal.get("accounts").and_then(Value::as_object)
     {
         for (account_id, account) in accounts {
-            if let Some(port) = account.get("httpPort").and_then(Value::as_u64)
-                && (port == 0 || port > 65535)
-            {
-                errors.push(format!(
-                    "channels.signal.accounts.{account_id}.httpPort must be between 1 and 65535"
-                ));
-            }
+            check_port(
+                account,
+                "httpPort",
+                &format!("channels.signal.accounts.{account_id}.httpPort"),
+                errors,
+            );
         }
     }
 }
@@ -352,6 +333,24 @@ fn check_positive_u32(parent: &Value, key: &str, errors: &mut Vec<String>) {
         {
             errors.push(format!("{key} must be positive"));
         }
+    }
+}
+
+/// Reject a u64 field if its value is zero.
+fn check_positive_u64(parent: &Value, key: &str, errors: &mut Vec<String>) {
+    if let Some(val) = parent.get(key).and_then(Value::as_u64)
+        && val == 0
+    {
+        errors.push(format!("{key} must be positive"));
+    }
+}
+
+/// Reject a u64 field if its value is outside the port range (1..=65535).
+fn check_port(parent: &Value, key: &str, label: &str, errors: &mut Vec<String>) {
+    if let Some(port) = parent.get(key).and_then(Value::as_u64)
+        && (port == 0 || port > 65535)
+    {
+        errors.push(format!("{label} must be between 1 and 65535"));
     }
 }
 
