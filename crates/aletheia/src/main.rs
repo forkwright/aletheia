@@ -13,6 +13,8 @@ mod knowledge_maintenance;
 #[cfg(feature = "migrate-qdrant")]
 mod migrate_memory;
 mod planning_adapter;
+#[cfg(feature = "recall")]
+mod recall_sources;
 mod runtime;
 mod status;
 
