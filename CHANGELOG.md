@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.13.24](https://github.com/forkwright/aletheia/compare/v0.13.23...v0.13.24) (2026-04-03)
+
+
+### Bug Fixes
+
+* **agora:** circuit breaker for Signal polling ([#2344](https://github.com/forkwright/aletheia/issues/2344)) ([#2352](https://github.com/forkwright/aletheia/issues/2352)) ([32ca200](https://github.com/forkwright/aletheia/commit/32ca2000ebeac1a04b3db1436060fe462fa13fba))
+* **agora:** wire autoStart config to agent init ([#2345](https://github.com/forkwright/aletheia/issues/2345)) ([#2353](https://github.com/forkwright/aletheia/issues/2353)) ([4b78347](https://github.com/forkwright/aletheia/commit/4b783479350c9ee9b241045b7cf92ed02796909c))
+* **nous:** align SessionId format between graphe and koina ([#2349](https://github.com/forkwright/aletheia/issues/2349)) ([#2354](https://github.com/forkwright/aletheia/issues/2354)) ([fb3dac8](https://github.com/forkwright/aletheia/commit/fb3dac83ada9b8ffbd3cb37bfaaaa9aab4f8400a))
+* **pylon:** graceful SIGHUP config reload ([#2350](https://github.com/forkwright/aletheia/issues/2350)) ([#2355](https://github.com/forkwright/aletheia/issues/2355)) ([7cb847d](https://github.com/forkwright/aletheia/commit/7cb847d67ffacd9d645e083268c2929cf0112859))
+* resolve lint violations via kanon lint --fix ([4156b6b](https://github.com/forkwright/aletheia/commit/4156b6bc76ae55e80bbd302f020047e03fed72b7))
+* **symbolon:** circuit breaker for invalid_grant OAuth refresh ([#2346](https://github.com/forkwright/aletheia/issues/2346)) ([#2348](https://github.com/forkwright/aletheia/issues/2348)) ([e0a1b03](https://github.com/forkwright/aletheia/commit/e0a1b03c8e695f88f527cc4ce4ddfc93d5eacdc4))
+* **theatron:** resolve desktop compile errors (D2) ([#2343](https://github.com/forkwright/aletheia/issues/2343)) ([bb20d97](https://github.com/forkwright/aletheia/commit/bb20d971bd0a46a85292ad3947d02a40a69ef782))
+
 ## [0.13.23](https://github.com/forkwright/aletheia/compare/v0.13.22...v0.13.23) (2026-04-02)
 
 
