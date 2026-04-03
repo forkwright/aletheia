@@ -376,7 +376,7 @@ pub(crate) fn EntityDetail(
                                     let display_content = if is_expanded || !needs_expand {
                                         mem.content.clone()
                                     } else {
-                                        lines[..CONTENT_PREVIEW_MAX_LINES].join("\n")
+                                        lines.get(..CONTENT_PREVIEW_MAX_LINES).unwrap_or(&lines).join("\n")
                                     };
                                     let mem_id = mem.id.clone();
                                     let agent = mem.agent.clone();
