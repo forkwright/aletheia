@@ -295,7 +295,18 @@ pub(crate) fn save(config: &SettingsConfig) -> Result<(), SettingsConfigError> {
 }
 
 /// Load settings from disk, falling back to defaults on any error.
+///
+/// On first launch (no settings file), writes sensible defaults to disk
+/// silently -- a missing config on first run is expected, not exceptional.
 pub(crate) fn load_or_default() -> SettingsConfig {
+    if is_first_run() {
+        let config = SettingsConfig::default();
+        if let Err(e) = save(&config) {
+            tracing::warn!("failed to write default settings on first launch: {e}");
+        }
+        return config;
+    }
+
     match load() {
         Ok(config) => config,
         Err(e) => {
@@ -409,5 +420,22 @@ mod tests {
         assert_eq!(restored.servers.len(), 1);
         assert_eq!(restored.servers[0].name, "Local");
         assert_eq!(restored.appearance.theme, "dark");
+    }
+
+    #[test]
+    fn default_config_serializes_to_valid_toml() {
+        // WHY: first-launch path writes defaults to disk; verify the
+        // serialized form round-trips without data loss.
+        let config = SettingsConfig::default();
+        let toml_str = toml::to_string_pretty(&config).unwrap();
+        let restored: SettingsConfig = toml::from_str(&toml_str).unwrap();
+
+        assert!(restored.servers.is_empty());
+        assert!(restored.active_server.is_none());
+        assert_eq!(restored.appearance.theme, "system");
+        assert_eq!(restored.appearance.font_size, 14);
+        assert_eq!(restored.appearance.density, "comfortable");
+        assert_eq!(restored.appearance.accent_color, "#5b6af0");
+        assert!(restored.keybinding_overrides.is_empty());
     }
 }
