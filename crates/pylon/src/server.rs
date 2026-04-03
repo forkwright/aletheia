@@ -295,7 +295,7 @@ pub(crate) async fn apply_reload(
 ///
 /// Returns a `JoinHandle` so the caller can await graceful shutdown.
 #[cfg(unix)]
-fn spawn_sighup_handler(state: Arc<AppState>) -> tokio::task::JoinHandle<()> {
+pub fn spawn_sighup_handler(state: Arc<AppState>) -> tokio::task::JoinHandle<()> {
     use axum::extract::FromRef;
     use tracing::Instrument;
 
