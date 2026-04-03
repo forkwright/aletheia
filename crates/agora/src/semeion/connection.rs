@@ -16,6 +16,12 @@ pub enum ConnectionState {
         /// Number of reconnection attempts made so far.
         attempt: u32,
     },
+    /// Circuit breaker tripped after too many consecutive failures.
+    /// Polling has stopped; only periodic health checks run.
+    Halted {
+        /// Total consecutive failures when the circuit breaker tripped.
+        total_failures: u32,
+    },
 }
 
 /// Outbound message queued during disconnection.

@@ -29,6 +29,12 @@ use connection::{AccountState, ConnectionHealthReport, ConnectionState, reconnec
 const DEFAULT_POLL_INTERVAL: Duration = Duration::from_secs(2);
 const DEFAULT_BUFFER_CAPACITY: usize = 100;
 
+/// Consecutive poll failures before the circuit breaker trips and polling halts.
+const CIRCUIT_BREAKER_THRESHOLD: u32 = 20;
+
+/// Interval between health checks while the circuit breaker is open.
+const HALTED_HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(60);
+
 /// Parsed Signal message target.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
@@ -255,12 +261,24 @@ impl ChannelProvider for SignalProvider {
             // the HTTP error handler below buffers the message.
             {
                 let mut s = state_mutex.lock().await;
-                if s.state != ConnectionState::Connected {
-                    s.enqueue(send_params);
-                    return SendResult {
-                        sent: false,
-                        error: Some("connection unavailable, message buffered".to_owned()),
-                    };
+                match s.state {
+                    ConnectionState::Connected => {}
+                    ConnectionState::Reconnecting { .. } => {
+                        s.enqueue(send_params);
+                        return SendResult {
+                            sent: false,
+                            error: Some("connection unavailable, message buffered".to_owned()),
+                        };
+                    }
+                    ConnectionState::Halted { .. } => {
+                        s.enqueue(send_params);
+                        return SendResult {
+                            sent: false,
+                            error: Some(
+                                "circuit breaker open, message buffered".to_owned(),
+                            ),
+                        };
+                    }
                 }
             }
 
@@ -356,6 +374,33 @@ async fn poll_loop(
 ) {
     tracing::info!("polling started");
     loop {
+        // WHY: check for halted state first so we don't poll when the circuit
+        // breaker is open -- only run periodic health checks to detect recovery.
+        {
+            let s = state.lock().await;
+            if let ConnectionState::Halted { total_failures } = s.state {
+                drop(s);
+                tokio::select! {
+                    biased;
+                    () = cancel.cancelled() => {
+                        tracing::info!("cancellation received, stopping poll");
+                        return;
+                    }
+                    () = tokio::time::sleep(HALTED_HEALTH_CHECK_INTERVAL) => {}
+                }
+
+                if signal_client.health().await {
+                    let mut s = state.lock().await;
+                    tracing::info!(
+                        previous_failures = total_failures,
+                        "health check passed, resuming polling"
+                    );
+                    s.state = ConnectionState::Connected;
+                }
+                continue;
+            }
+        }
+
         tokio::select! {
             biased;
             () = cancel.cancelled() => {
@@ -419,8 +464,27 @@ async fn poll_loop(
                                 }
                                 ConnectionState::Reconnecting { attempt } => {
                                     let next = attempt.saturating_add(1);
+                                    if next >= CIRCUIT_BREAKER_THRESHOLD {
+                                        tracing::error!(
+                                            consecutive_failures = next,
+                                            threshold = CIRCUIT_BREAKER_THRESHOLD,
+                                            "circuit breaker tripped, halting Signal polling \
+                                             (will health-check every {}s)",
+                                            HALTED_HEALTH_CHECK_INTERVAL.as_secs()
+                                        );
+                                        s.state = ConnectionState::Halted {
+                                            total_failures: next,
+                                        };
+                                        // NOTE: no sleep here -- the halted branch at the
+                                        // top of the loop handles the health-check interval.
+                                        continue;
+                                    }
                                     s.state = ConnectionState::Reconnecting { attempt: next };
                                     next
+                                }
+                                ConnectionState::Halted { .. } => {
+                                    // SAFETY: unreachable -- halted state is handled at loop top.
+                                    continue;
                                 }
                             }
                         };
