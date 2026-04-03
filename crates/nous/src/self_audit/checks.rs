@@ -1,4 +1,4 @@
-//! Concrete prosoche check implementations for Chiron self-auditing.
+//! Concrete prosoche check implementations for self-auditing.
 //!
 //! Three default checks:
 //! - `KnowledgeConsistencyCheck`: knowledge graph integrity (temporal bounds, supersession chains)
@@ -223,7 +223,7 @@ impl ProsocheCheck for ResponseQualityCheck {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chiron::ToolCallRecord;
+    use crate::self_audit::ToolCallRecord;
 
     // --- KnowledgeConsistencyCheck ---
 

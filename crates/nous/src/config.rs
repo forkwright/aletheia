@@ -319,8 +319,8 @@ mod tests {
     #[test]
     fn nous_config_custom_values() {
         let config = NousConfig {
-            id: "chiron".to_owned(),
-            name: Some("Chiron".to_owned()),
+            id: "analyst".to_owned(),
+            name: Some("Analyst".to_owned()),
             generation: NousGenerationConfig {
                 model: "claude-haiku-4-5-20251001".to_owned(),
                 context_window: 100_000,
@@ -347,7 +347,7 @@ mod tests {
             tool_allowlist: None,
             hooks: HookConfig::default(),
         };
-        assert_eq!(config.name.as_deref(), Some("Chiron"));
+        assert_eq!(config.name.as_deref(), Some("Analyst"));
         assert!(config.generation.thinking_enabled);
         assert_eq!(config.domains.len(), 1);
         assert!(!config.cache_enabled);

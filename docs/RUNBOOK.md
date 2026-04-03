@@ -118,8 +118,8 @@ scripts/backup-cron.sh --keep 14 --output-dir /mnt/backup/aletheia
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `ALETHEIA_ROOT` | `~/ergon/instance` | Instance root |
-| `ALETHEIA_BINARY` | `~/ergon/bin/aletheia` | Binary path |
+| `ALETHEIA_ROOT` | `~/aletheia/instance` | Instance root |
+| `ALETHEIA_BINARY` | `~/aletheia/bin/aletheia` | Binary path |
 | `BACKUP_KEEP` | `7` | Number of backup files to retain |
 | `BACKUP_OUTPUT_DIR` | `$ALETHEIA_ROOT/backups` | Backup output directory |
 
@@ -130,7 +130,7 @@ The script uses `flock` to prevent concurrent runs. Backup files are named `sess
 Backup files are plain JSON exported by `aletheia backup --export-json`. To inspect:
 
 ```bash
-jq '.sessions | length' ~/ergon/instance/backups/sessions-*.json | tail -1
+jq '.sessions | length' ~/aletheia/instance/backups/sessions-*.json | tail -1
 ```
 
 ---

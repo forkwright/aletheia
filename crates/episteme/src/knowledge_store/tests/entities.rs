@@ -253,7 +253,7 @@ fn list_entities_empty_store_returns_empty() {
 fn write_then_read_roundtrip_facts_and_entities() {
     let store = make_store();
 
-    let fact = make_fact("rt-1", "chiron", "Alice prefers dark mode");
+    let fact = make_fact("rt-1", "agent-01", "Alice prefers dark mode");
     store.insert_fact(&fact).expect("insert fact");
 
     let entity = make_entity("e-alice", "Alice", "person");
@@ -263,8 +263,8 @@ fn write_then_read_roundtrip_facts_and_entities() {
         .insert_fact_entity(&fact.id, &entity.id)
         .expect("link fact to entity");
 
-    // NOTE: Read via scoped query (simulates ?nous_id=chiron)
-    let scoped = store.audit_all_facts("chiron", 100).expect("audit scoped");
+    // NOTE: Read via scoped query (simulates ?nous_id=agent-01)
+    let scoped = store.audit_all_facts("agent-01", 100).expect("audit scoped");
     assert_eq!(scoped.len(), 1);
     assert_eq!(scoped[0].content, "Alice prefers dark mode");
 
@@ -272,7 +272,7 @@ fn write_then_read_roundtrip_facts_and_entities() {
     let unscoped = store.list_all_facts(100).expect("list_all_facts");
     assert_eq!(unscoped.len(), 1);
     assert_eq!(unscoped[0].content, "Alice prefers dark mode");
-    assert_eq!(unscoped[0].nous_id, "chiron");
+    assert_eq!(unscoped[0].nous_id, "agent-01");
 
     let entities = store.list_entities().expect("list_entities");
     assert_eq!(entities.len(), 1);

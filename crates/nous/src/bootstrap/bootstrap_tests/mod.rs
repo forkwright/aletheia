@@ -432,7 +432,7 @@ fn pack_sections_to_bootstrap_converts_priorities() {
             content: "Term definitions".to_owned(),
             priority: PackPriority::Flexible,
             truncatable: true,
-            agents: vec!["chiron".to_owned()],
+            agents: vec!["analyst".to_owned()],
             pack_name: "test-pack".to_owned(),
         },
     ];

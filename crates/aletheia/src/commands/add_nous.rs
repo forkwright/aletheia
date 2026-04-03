@@ -321,7 +321,7 @@ mod tests {
     #[test]
     fn validate_name_accepts_alphanumeric() {
         assert!(
-            validate_name("chiron").is_ok(),
+            validate_name("analyst").is_ok(),
             "simple lowercase name should be valid"
         );
         assert!(
@@ -390,8 +390,8 @@ mod tests {
     #[test]
     fn capitalize_first_letter() {
         assert_eq!(
-            capitalize("chiron"),
-            "Chiron",
+            capitalize("analyst"),
+            "Analyst",
             "first letter should be uppercased"
         );
         assert_eq!(

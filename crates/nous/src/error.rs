@@ -216,9 +216,9 @@ pub enum Error {
         location: snafu::Location,
     },
 
-    /// Chiron audit error.
-    #[snafu(display("chiron audit failed: {message}"))]
-    ChironAudit {
+    /// Self-audit error.
+    #[snafu(display("self-audit failed: {message}"))]
+    SelfAudit {
         message: String,
         #[snafu(implicit)]
         location: snafu::Location,

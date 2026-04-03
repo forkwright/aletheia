@@ -9,8 +9,8 @@ pub mod adapters;
 pub mod bootstrap;
 /// Token and wall-clock time budget tracking for pipeline stages.
 pub mod budget;
-/// Chiron self-auditing loop: prosoche checks, audit triggers, and knowledge graph storage.
-pub mod chiron;
+/// Self-auditing loop: prosoche checks, audit triggers, and knowledge graph storage.
+pub mod self_audit;
 /// Context compaction: microcompaction (per-turn clearing) and full compaction (summarization).
 pub(crate) mod compact;
 /// Per-agent per-domain competence tracking with rolling statistics and model escalation.

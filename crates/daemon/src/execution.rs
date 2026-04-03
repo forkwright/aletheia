@@ -247,18 +247,18 @@ pub(crate) async fn execute_builtin(
                 output: Some(summary.join(", ")),
             })
         }
-        BuiltinTask::ChironAudit => {
+        BuiltinTask::SelfAudit => {
             if let Some(bridge) = bridge {
-                let prompt = "Run chiron self-audit: execute all registered prosoche checks.";
+                let prompt = "Run self-audit: execute all registered prosoche checks.";
                 match bridge
-                    .send_prompt(nous_id, "daemon:chiron-audit", prompt)
+                    .send_prompt(nous_id, "daemon:self-audit", prompt)
                     .await
                 {
                     Ok(result) => {
                         tracing::info!(
                             nous_id = %nous_id,
                             success = result.success,
-                            "chiron audit dispatch succeeded"
+                            "self-audit dispatch succeeded"
                         );
                         Ok(ExecutionResult {
                             success: true,
@@ -269,7 +269,7 @@ pub(crate) async fn execute_builtin(
                         tracing::warn!(
                             nous_id = %nous_id,
                             error = %e,
-                            "chiron audit dispatch failed"
+                            "self-audit dispatch failed"
                         );
                         Ok(ExecutionResult {
                             success: false,

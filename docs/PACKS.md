@@ -38,7 +38,7 @@ description = "Optional description of this pack"
 [[context]]
 path = "context/BUSINESS_LOGIC.md"
 priority = "important"
-agents = ["chiron"]
+agents = ["analyst"]
 
 [[context]]
 path = "context/GLOSSARY.md"
@@ -58,7 +58,7 @@ required = ["sql"]
 type = "string"
 description = "SQL query to execute"
 
-[overlays.chiron]
+[overlays.analyst]
 domains = ["healthcare", "sql"]
 ```
 
@@ -79,7 +79,7 @@ Priority controls inclusion order when the token budget is tight:
 - **flexible**: Truncated to fit if budget is tight
 - **optional**: First to be dropped when space runs out
 
-The `agents` field filters which agents receive the section. An empty list means all agents. Values match against both agent IDs (e.g., `chiron`) and domain tags (e.g., `healthcare`).
+The `agents` field filters which agents receive the section. An empty list means all agents. Values match against both agent IDs (e.g., `analyst`) and domain tags (e.g., `healthcare`).
 
 ## Tool definitions
 
@@ -115,7 +115,7 @@ Input schema properties support types: `string`, `number`, `integer`, `boolean`,
 Overlays assign per-agent domain tags. A section tagged `agents = ["healthcare"]` reaches any agent whose domain list includes `healthcare`.
 
 ```toml
-[overlays.chiron]
+[overlays.analyst]
 domains = ["healthcare", "analytics", "sql"]
 
 [overlays.hermes]
@@ -211,18 +211,18 @@ At spawn time, the manager calls `sections_for_agent_or_domains(agent_id, domain
 Use the `agents` field on context entries and the `overlays` table to target content:
 
 ```toml
-# Only agent "chiron" sees this section
+# Only agent "analyst" sees this section
 [[context]]
 path = "context/CLINICAL_GUIDELINES.md"
-agents = ["chiron"]
+agents = ["analyst"]
 
 # Or target by domain tag  -  any agent with "healthcare" domain receives it
 [[context]]
 path = "context/ICD_CODES.md"
 agents = ["healthcare"]
 
-# Assign the domain tag to chiron via overlay
-[overlays.chiron]
+# Assign the domain tag to analyst via overlay
+[overlays.analyst]
 domains = ["healthcare"]
 ```
 

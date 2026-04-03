@@ -272,7 +272,7 @@ description = "Acme Corp analytics domain pack"
 [[context]]
 path = "context/BUSINESS_LOGIC.md"
 priority = "important"
-agents = ["chiron"]
+agents = ["analyst"]
 truncatable = false
 
 [[context]]
@@ -284,7 +284,7 @@ truncatable = true
 path = "context/SQL_PATTERNS.md"
 priority = "important"
 
-[overlays.chiron]
+[overlays.analyst]
 domains = ["healthcare", "analytics", "sql"]
 "#;
         let dir = setup_pack(&[
@@ -298,14 +298,14 @@ domains = ["healthcare", "analytics", "sql"]
         assert_eq!(manifest.name, "acme-analytics");
         assert_eq!(manifest.context.len(), 3);
         assert_eq!(manifest.context[0].priority, Priority::Important);
-        assert_eq!(manifest.context[0].agents, vec!["chiron"]);
+        assert_eq!(manifest.context[0].agents, vec!["analyst"]);
         assert!(!manifest.context[0].truncatable);
         assert_eq!(manifest.context[1].priority, Priority::Flexible);
         assert!(manifest.context[1].truncatable);
         assert!(manifest.context[2].agents.is_empty());
 
-        let chiron = manifest.overlays.get("chiron").unwrap();
-        assert_eq!(chiron.domains, vec!["healthcare", "analytics", "sql"]);
+        let analyst = manifest.overlays.get("analyst").unwrap();
+        assert_eq!(analyst.domains, vec!["healthcare", "analytics", "sql"]);
     }
 
     #[test]
@@ -406,7 +406,7 @@ domains = ["healthcare", "analytics", "sql"]
             context: vec![ContextEntry {
                 path: "ctx/FILE.md".to_owned(),
                 priority: Priority::Flexible,
-                agents: vec!["chiron".to_owned()],
+                agents: vec!["analyst".to_owned()],
                 truncatable: true,
             }],
             tools: vec![],

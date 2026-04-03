@@ -81,9 +81,9 @@ mod tests {
 
     #[test]
     fn session_create_params_deserializes_with_session_key() {
-        let json = r#"{"nous_id": "chiron", "session_key": "debug-session"}"#;
+        let json = r#"{"nous_id": "analyst", "session_key": "debug-session"}"#;
         let params: SessionCreateParams = serde_json::from_str(json).unwrap();
-        assert_eq!(params.nous_id, "chiron");
+        assert_eq!(params.nous_id, "analyst");
         assert_eq!(params.session_key.as_deref(), Some("debug-session"));
     }
 
@@ -127,10 +127,10 @@ mod tests {
 
     #[test]
     fn knowledge_search_params_deserializes_with_all_optional_fields() {
-        let json = r#"{"query": "session recall", "nous_id": "chiron", "limit": 10}"#;
+        let json = r#"{"query": "session recall", "nous_id": "analyst", "limit": 10}"#;
         let params: KnowledgeSearchParams = serde_json::from_str(json).unwrap();
         assert_eq!(params.query, "session recall");
-        assert_eq!(params.nous_id.as_deref(), Some("chiron"));
+        assert_eq!(params.nous_id.as_deref(), Some("analyst"));
         assert_eq!(params.limit, Some(10));
     }
 
