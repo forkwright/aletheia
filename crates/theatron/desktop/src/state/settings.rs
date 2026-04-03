@@ -111,10 +111,10 @@ impl ServerHealth {
 
     pub(crate) fn color(self) -> &'static str {
         match self {
-            Self::Unchecked => "#666",
-            Self::Healthy => "#4ade80",
-            Self::Degraded => "#facc15",
-            Self::Unreachable => "#f87171",
+            Self::Unchecked => "var(--text-muted)",
+            Self::Healthy => "var(--status-success)",
+            Self::Degraded => "var(--status-warning)",
+            Self::Unreachable => "var(--status-error)",
         }
     }
 }
@@ -309,8 +309,6 @@ impl KeybindingStore {
 pub(crate) enum WizardStep {
     #[default]
     Server,
-    Auth,
-    Discovery,
     Appearance,
     Ready,
 }
@@ -319,22 +317,18 @@ impl WizardStep {
     pub(crate) fn index(self) -> usize {
         match self {
             Self::Server => 0,
-            Self::Auth => 1,
-            Self::Discovery => 2,
-            Self::Appearance => 3,
-            Self::Ready => 4,
+            Self::Appearance => 1,
+            Self::Ready => 2,
         }
     }
 
     pub(crate) fn total() -> usize {
-        5
+        3
     }
 
     pub(crate) fn next(self) -> Option<Self> {
         match self {
-            Self::Server => Some(Self::Auth),
-            Self::Auth => Some(Self::Discovery),
-            Self::Discovery => Some(Self::Appearance),
+            Self::Server => Some(Self::Appearance),
             Self::Appearance => Some(Self::Ready),
             Self::Ready => None,
         }
@@ -343,9 +337,7 @@ impl WizardStep {
     pub(crate) fn prev(self) -> Option<Self> {
         match self {
             Self::Server => None,
-            Self::Auth => Some(Self::Server),
-            Self::Discovery => Some(Self::Auth),
-            Self::Appearance => Some(Self::Discovery),
+            Self::Appearance => Some(Self::Server),
             Self::Ready => Some(Self::Appearance),
         }
     }
@@ -353,8 +345,6 @@ impl WizardStep {
     pub(crate) fn label(self) -> &'static str {
         match self {
             Self::Server => "Server",
-            Self::Auth => "Auth",
-            Self::Discovery => "Discovery",
             Self::Appearance => "Appearance",
             Self::Ready => "Ready",
         }
@@ -365,10 +355,7 @@ impl WizardStep {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct WizardData {
     pub(crate) server_url: String,
-    pub(crate) server_name: String,
     pub(crate) auth_token: String,
-    pub(crate) skip_auth: bool,
-    pub(crate) discovered_agents: Vec<String>,
     pub(crate) selected_theme: String,
     pub(crate) selected_density: UiDensity,
 }
@@ -664,7 +651,7 @@ mod tests {
 
     #[test]
     fn wizard_step_progression() {
-        assert_eq!(WizardStep::Server.next(), Some(WizardStep::Auth));
+        assert_eq!(WizardStep::Server.next(), Some(WizardStep::Appearance));
         assert_eq!(WizardStep::Server.prev(), None);
         assert_eq!(WizardStep::Ready.next(), None);
         assert_eq!(WizardStep::Ready.prev(), Some(WizardStep::Appearance));
