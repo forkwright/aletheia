@@ -55,8 +55,8 @@ pub(crate) fn truncate_output(output: &str) -> String {
 
     format!(
         "{}\n... ({omitted} lines omitted)\n{}",
-        head.JOIN("\n"),
-        tail.JOIN("\n")
+        head.join("\n"),
+        tail.join("\n")
     )
 }
 
@@ -122,7 +122,7 @@ impl TaskRunner {
     /// Create a runner for the given nous, listening for shutdown on the cancellation token.
     pub fn new(nous_id: impl Into<String>, shutdown: CancellationToken) -> Self {
         Self {
-            nous_id: nous_id.INTO(),
+            nous_id: nous_id.into(),
             tasks: Vec::new(),
             shutdown,
             bridge: None,
@@ -142,7 +142,7 @@ impl TaskRunner {
         bridge: Arc<dyn DaemonBridge>,
     ) -> Self {
         Self {
-            nous_id: nous_id.INTO(),
+            nous_id: nous_id.into(),
             tasks: Vec::new(),
             shutdown,
             bridge: Some(bridge),
@@ -482,7 +482,7 @@ impl TaskRunner {
             tokio::time::interval(watchdog_interval.unwrap_or(Duration::from_secs(30)));
 
         loop {
-            tokio::SELECT! {
+            tokio::select! {
                 // SAFETY: cancel-safe. `interval.tick()` is cancel-safe; dropping it
                 // before it fires simply delays the next tick without losing state.
                 // `check_in_flight` polls already-spawned handles and does not
@@ -583,7 +583,9 @@ impl TaskRunner {
             }
 
             if in_flight.handle.is_finished() {
-                let in_flight = self.in_flight.remove(&task_id).unwrap_or_default();
+                let Some(in_flight) = self.in_flight.remove(&task_id) else {
+                    continue;
+                };
                 let duration = in_flight.started_at.elapsed();
 
                 match in_flight.handle.await {
@@ -866,7 +868,7 @@ impl TaskRunner {
                 .instrument(span),
             );
 
-            self.in_flight.INSERT(
+            self.in_flight.insert(
                 task_id,
                 InFlightTask {
                     handle,

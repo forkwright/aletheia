@@ -28,6 +28,44 @@ impl Drop for StreamSenderGuard {
 }
 
 impl NousActor {
+    /// Wake from dormant if needed, mark the turn active.
+    fn mark_turn_active(&mut self, session_key: &str) {
+        if self.channel.status == NousLifecycle::Dormant {
+            debug!("auto-waking from dormant for turn");
+            self.channel.status = NousLifecycle::Idle;
+        }
+        self.channel.status = NousLifecycle::Active;
+        self.active_session = Some(session_key.to_owned());
+        self.runtime.active_turn.store(true, Ordering::Release);
+    }
+
+    /// Finalize turn: update session tokens, spawn side-effects, reset state.
+    async fn finalize_turn(
+        &mut self,
+        session_key: &str,
+        content: &str,
+        result: &crate::error::Result<TurnResult>,
+    ) {
+        if let Ok(turn_result) = result {
+            if let Some(session) = self.sessions.get_mut(session_key) {
+                session.cumulative_tokens = session
+                    .cumulative_tokens
+                    .saturating_add(turn_result.usage.input_tokens)
+                    .saturating_add(turn_result.usage.output_tokens);
+            }
+            self.maybe_spawn_extraction(content, &turn_result.content);
+            self.maybe_spawn_skill_analysis(&turn_result.tool_calls, session_key);
+            self.maybe_spawn_distillation(session_key).await;
+        }
+
+        self.active_session = None;
+        // WHY: only reset to Idle if not degraded: preserve degraded state
+        if self.channel.status != NousLifecycle::Degraded {
+            self.channel.status = NousLifecycle::Idle;
+        }
+        self.runtime.active_turn.store(false, Ordering::Release);
+    }
+
     /// # Cancel safety
     ///
     /// Not cancel-safe in isolation. Sets `lifecycle = Active` and
@@ -43,14 +81,7 @@ impl NousActor {
         caller_span: tracing::Span,
         reply: tokio::sync::oneshot::Sender<crate::error::Result<TurnResult>>,
     ) {
-        if self.channel.status == NousLifecycle::Dormant {
-            debug!("auto-waking from dormant for turn");
-            self.channel.status = NousLifecycle::Idle;
-        }
-
-        self.channel.status = NousLifecycle::Active;
-        self.active_session = Some(session_key.clone());
-        self.runtime.active_turn.store(true, Ordering::Release);
+        self.mark_turn_active(&session_key);
 
         let result = self
             .execute_turn_with_panic_boundary(
@@ -61,24 +92,7 @@ impl NousActor {
             )
             .await;
 
-        if let Ok(ref turn_result) = result {
-            if let Some(session) = self.sessions.get_mut(&session_key) {
-                session.cumulative_tokens = session
-                    .cumulative_tokens
-                    .saturating_add(turn_result.usage.input_tokens)
-                    .saturating_add(turn_result.usage.output_tokens);
-            }
-            self.maybe_spawn_extraction(&content, &turn_result.content);
-            self.maybe_spawn_skill_analysis(&turn_result.tool_calls, &session_key);
-            self.maybe_spawn_distillation(&session_key).await;
-        }
-
-        self.active_session = None;
-        // WHY: only reset to Idle if not degraded: preserve degraded state
-        if self.channel.status != NousLifecycle::Degraded {
-            self.channel.status = NousLifecycle::Idle;
-        }
-        self.runtime.active_turn.store(false, Ordering::Release);
+        self.finalize_turn(&session_key, &content, &result).await;
 
         // WHY: ignore send error: caller may have dropped the receiver
         let _ = reply.send(result);
@@ -103,14 +117,7 @@ impl NousActor {
         // SSE connections on the receiver side.
         let _stream_guard = StreamSenderGuard(Some(stream_tx.clone()));
 
-        if self.channel.status == NousLifecycle::Dormant {
-            debug!("auto-waking from dormant for streaming turn");
-            self.channel.status = NousLifecycle::Idle;
-        }
-
-        self.channel.status = NousLifecycle::Active;
-        self.active_session = Some(session_key.clone());
-        self.runtime.active_turn.store(true, Ordering::Release);
+        self.mark_turn_active(&session_key);
 
         let result = self
             .execute_streaming_turn_with_panic_boundary(
@@ -122,24 +129,7 @@ impl NousActor {
             )
             .await;
 
-        if let Ok(ref turn_result) = result {
-            if let Some(session) = self.sessions.get_mut(&session_key) {
-                session.cumulative_tokens = session
-                    .cumulative_tokens
-                    .saturating_add(turn_result.usage.input_tokens)
-                    .saturating_add(turn_result.usage.output_tokens);
-            }
-            self.maybe_spawn_extraction(&content, &turn_result.content);
-            self.maybe_spawn_skill_analysis(&turn_result.tool_calls, &session_key);
-            self.maybe_spawn_distillation(&session_key).await;
-        }
-
-        self.active_session = None;
-        // WHY: only reset to Idle if not degraded: preserve degraded state
-        if self.channel.status != NousLifecycle::Degraded {
-            self.channel.status = NousLifecycle::Idle;
-        }
-        self.runtime.active_turn.store(false, Ordering::Release);
+        self.finalize_turn(&session_key, &content, &result).await;
 
         // WHY: ignore send error: caller may have dropped the receiver
         let _ = reply.send(result);

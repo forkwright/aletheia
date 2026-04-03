@@ -12,6 +12,18 @@ use std::path::{Component, Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::id::{EmbeddingId, EntityId, FactId};
+
+/// Implement `Display` by delegating to `as_str()`.
+macro_rules! display_via_as_str {
+    ($($ty:ty),+ $(,)?) => {$(
+        impl std::fmt::Display for $ty {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str(self.as_str())
+            }
+        }
+    )+};
+}
+
 /// Maximum byte length for fact content strings.
 pub const MAX_CONTENT_LENGTH: usize = 102_400;
 
@@ -171,12 +183,6 @@ impl EpistemicTier {
     }
 }
 
-impl std::fmt::Display for EpistemicTier {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
 /// Knowledge lifecycle stage for graduated pruning.
 ///
 /// Facts progress through stages as decay increases, rather than being
@@ -244,12 +250,6 @@ impl KnowledgeStage {
     }
 }
 
-impl std::fmt::Display for KnowledgeStage {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
 impl std::str::FromStr for KnowledgeStage {
     type Err = String;
 
@@ -313,12 +313,6 @@ impl ForgetReason {
             Self::Superseded => "superseded",
             Self::Contradicted => "contradicted",
         }
-    }
-}
-
-impl std::fmt::Display for ForgetReason {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
     }
 }
 
@@ -458,12 +452,6 @@ impl FactType {
     }
 }
 
-impl std::fmt::Display for FactType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
 /// How a verification claim was checked against ground truth.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -504,12 +492,6 @@ impl VerificationSource {
     }
 }
 
-impl std::fmt::Display for VerificationSource {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
 /// Outcome of a verification check.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -543,12 +525,6 @@ impl VerificationStatus {
             "stale" => Some(Self::Stale),
             _ => None,
         }
-    }
-}
-
-impl std::fmt::Display for VerificationStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
     }
 }
 
@@ -695,12 +671,6 @@ impl TemporalOrdering {
             Self::After => "after",
             Self::Concurrent => "concurrent",
         }
-    }
-}
-
-impl std::fmt::Display for TemporalOrdering {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
     }
 }
 
@@ -876,12 +846,6 @@ impl MemoryScope {
     }
 }
 
-impl std::fmt::Display for MemoryScope {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
 impl std::str::FromStr for MemoryScope {
     type Err = String;
 
@@ -1001,12 +965,6 @@ impl PathValidationLayer {
             self,
             Self::SymlinkResolution | Self::DanglingSymlink | Self::LoopDetection
         )
-    }
-}
-
-impl std::fmt::Display for PathValidationLayer {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
     }
 }
 
@@ -1144,6 +1102,18 @@ impl std::fmt::Display for PathValidationError {
 }
 
 impl std::error::Error for PathValidationError {}
+
+display_via_as_str!(
+    EpistemicTier,
+    KnowledgeStage,
+    ForgetReason,
+    FactType,
+    VerificationSource,
+    VerificationStatus,
+    TemporalOrdering,
+    MemoryScope,
+    PathValidationLayer,
+);
 
 // ── Validated path newtype ───────────────────────────────────────────────
 

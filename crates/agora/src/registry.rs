@@ -142,10 +142,7 @@ mod tests {
             Self {
                 channel_id: id.to_owned(),
                 channel_name: format!("Mock {id}"),
-                send_result: SendResult {
-                    sent: true,
-                    error: None,
-                },
+                send_result: SendResult::ok(),
                 probe_result: ProbeResult {
                     ok: true,
                     latency_ms: Some(42),
@@ -226,19 +223,13 @@ mod tests {
     #[tokio::test]
     async fn send_routes_to_correct_provider() {
         let mut reg = ChannelRegistry::new();
-        reg.register(Arc::new(MockProvider::new("signal").with_send_result(
-            SendResult {
-                sent: true,
-                error: None,
-            },
-        )))
+        reg.register(Arc::new(
+            MockProvider::new("signal").with_send_result(SendResult::ok()),
+        ))
         .expect("register signal");
-        reg.register(Arc::new(MockProvider::new("slack").with_send_result(
-            SendResult {
-                sent: false,
-                error: Some("slack down".to_owned()),
-            },
-        )))
+        reg.register(Arc::new(
+            MockProvider::new("slack").with_send_result(SendResult::err("slack down")),
+        ))
         .expect("register slack");
 
         let signal_result = reg

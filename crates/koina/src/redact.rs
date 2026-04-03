@@ -7,45 +7,30 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-#[expect(
-    clippy::expect_used,
-    reason = "static regex patterns are literals; a panic here is a programming error caught at startup"
-)]
-static RE_ANTHROPIC_KEY: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"sk-ant-api03-[A-Za-z0-9_-]+").expect("static regex must compile")
-});
+/// Compile a static regex from a literal pattern. Panics if the pattern is invalid
+/// (programming error caught at startup, not a runtime concern).
+// WHY: #[allow] instead of #[expect] because clippy cannot track lint suppression
+// through macro expansion on static items.
+macro_rules! static_regex {
+    ($name:ident, $pattern:expr) => {
+        #[allow(clippy::expect_used)]
+        static $name: LazyLock<Regex> = LazyLock::new(||
+            Regex::new($pattern).expect("static regex must compile")
+        );
+    };
+}
 
-#[expect(
-    clippy::expect_used,
-    reason = "static regex patterns are literals; a panic here is a programming error caught at startup"
-)]
-static RE_SK_KEY: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"sk-[A-Za-z0-9_-]{20,}").expect("static regex must compile"));
-
-#[expect(
-    clippy::expect_used,
-    reason = "static regex patterns are literals; a panic here is a programming error caught at startup"
-)]
-static RE_BEARER: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"Bearer [A-Za-z0-9._-]+").expect("static regex must compile"));
-
-#[expect(
-    clippy::expect_used,
-    reason = "static regex patterns are literals; a panic here is a programming error caught at startup"
-)]
-static RE_JWT: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+")
-        .expect("static regex must compile")
-});
-
-#[expect(
-    clippy::expect_used,
-    reason = "static regex patterns are literals; a panic here is a programming error caught at startup"
-)]
-static RE_SECRETS: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)(password|secret|api_key|apikey)\s*[:=]\s*\S+")
-        .expect("static regex must compile")
-});
+static_regex!(RE_ANTHROPIC_KEY, r"sk-ant-api03-[A-Za-z0-9_-]+");
+static_regex!(RE_SK_KEY, r"sk-[A-Za-z0-9_-]{20,}");
+static_regex!(RE_BEARER, r"Bearer [A-Za-z0-9._-]+");
+static_regex!(
+    RE_JWT,
+    r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+"
+);
+static_regex!(
+    RE_SECRETS,
+    r"(?i)(password|secret|api_key|apikey)\s*[:=]\s*\S+"
+);
 
 /// Redact sensitive values (API keys, JWTs, bearer tokens, passwords) from a string.
 #[must_use]

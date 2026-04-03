@@ -87,6 +87,19 @@ impl RedactingVisitor<'_> {
     }
 }
 
+impl RedactingVisitor<'_> {
+    fn record_value(&mut self, field: &Field, value: Value) {
+        if self.redact_fields.contains(field.name()) {
+            self.fields.insert(
+                field.name().to_owned(),
+                Value::String("[REDACTED]".to_owned()),
+            );
+        } else {
+            self.fields.insert(field.name().to_owned(), value);
+        }
+    }
+}
+
 impl Visit for RedactingVisitor<'_> {
     fn record_debug(&mut self, field: &Field, value: &dyn stdfmt::Debug) {
         let s = format!("{value:?}");
@@ -100,53 +113,22 @@ impl Visit for RedactingVisitor<'_> {
     }
 
     fn record_i64(&mut self, field: &Field, value: i64) {
-        if self.redact_fields.contains(field.name()) {
-            self.fields.insert(
-                field.name().to_owned(),
-                Value::String("[REDACTED]".to_owned()),
-            );
-        } else {
-            self.fields
-                .insert(field.name().to_owned(), Value::from(value));
-        }
+        self.record_value(field, Value::from(value));
     }
 
     fn record_u64(&mut self, field: &Field, value: u64) {
-        if self.redact_fields.contains(field.name()) {
-            self.fields.insert(
-                field.name().to_owned(),
-                Value::String("[REDACTED]".to_owned()),
-            );
-        } else {
-            self.fields
-                .insert(field.name().to_owned(), Value::from(value));
-        }
+        self.record_value(field, Value::from(value));
     }
 
     fn record_f64(&mut self, field: &Field, value: f64) {
-        if self.redact_fields.contains(field.name()) {
-            self.fields.insert(
-                field.name().to_owned(),
-                Value::String("[REDACTED]".to_owned()),
-            );
-        } else {
-            self.fields.insert(
-                field.name().to_owned(),
-                serde_json::Number::from_f64(value).map_or(Value::Null, Value::Number),
-            );
-        }
+        self.record_value(
+            field,
+            serde_json::Number::from_f64(value).map_or(Value::Null, Value::Number),
+        );
     }
 
     fn record_bool(&mut self, field: &Field, value: bool) {
-        if self.redact_fields.contains(field.name()) {
-            self.fields.insert(
-                field.name().to_owned(),
-                Value::String("[REDACTED]".to_owned()),
-            );
-        } else {
-            self.fields
-                .insert(field.name().to_owned(), Value::Bool(value));
-        }
+        self.record_value(field, Value::Bool(value));
     }
 }
 

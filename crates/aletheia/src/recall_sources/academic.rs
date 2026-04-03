@@ -39,12 +39,12 @@ impl RecallSource for AcademicSource {
     fn query<'a>(
         &'a self,
         query: &'a str,
-        LIMIT: usize,
+        limit: usize,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<SourceResult>, RecallSourceError>> + Send + 'a>>
     {
         Box::pin(async move {
             let endpoint = format!("{API_BASE}/paper/search");
-            let clamped_limit = LIMIT.min(100);
+            let clamped_limit = limit.min(100);
 
             let mut req = self
                 .client
@@ -84,7 +84,8 @@ impl RecallSource for AcademicSource {
                     // NOTE: Position-based relevance: rank 0 = 1.0, declining linearly.
                     // Semantic Scholar returns results in relevance ORDER.
                     let denominator = (clamped_limit.max(1)) as f64;
-                    let relevance = 1.0 - (f64::try_from(rank).unwrap_or_default() / denominator);
+                    #[expect(clippy::cast_precision_loss, reason = "rank index is small enough that f64 precision is sufficient")]
+                    let relevance = 1.0 - (rank as f64 / denominator);
                     SourceResult {
                         content,
                         relevance,
@@ -129,7 +130,7 @@ fn format_paper(paper: &Paper) -> String {
         parts.push(format!("URL: {url}"));
     }
 
-    parts.JOIN("\n")
+    parts.join("\n")
 }
 
 // -- Semantic Scholar API response types ------------------------------------
@@ -201,10 +202,10 @@ mod tests {
                 "url": "https://example.com/p1"
             }]
         }"#;
-        let resp: SearchResponse = serde_json::from_str(json).unwrap_or_default();
+        let resp: SearchResponse = serde_json::from_str(json).unwrap();
         assert_eq!(resp.total, 1);
         assert_eq!(resp.data.len(), 1);
-        assert_eq!(resp.data.get(0).copied().unwrap_or_default().title, "Test Paper");
-        assert_eq!(resp.data.get(0).copied().unwrap_or_default().year, Some(2024));
+        assert_eq!(resp.data[0].title, "Test Paper");
+        assert_eq!(resp.data[0].year, Some(2024));
     }
 }

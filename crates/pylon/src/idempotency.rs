@@ -85,12 +85,17 @@ impl IdempotencyCache {
         }
     }
 
-    /// Look up a key. On miss, atomically inserts it as `InFlight`.
-    pub(crate) fn check_or_insert(&self, key: &str) -> LookupResult {
-        let mut inner = self.inner.lock().unwrap_or_else(|e| {
+    /// Acquire the inner lock, recovering from poison.
+    fn lock_inner(&self) -> std::sync::MutexGuard<'_, CacheInner> {
+        self.inner.lock().unwrap_or_else(|e| {
             tracing::warn!("idempotency cache lock was poisoned, recovering");
             e.into_inner()
-        });
+        })
+    }
+
+    /// Look up a key. On miss, atomically inserts it as `InFlight`.
+    pub(crate) fn check_or_insert(&self, key: &str) -> LookupResult {
+        let mut inner = self.lock_inner();
         inner.evict_expired();
 
         // TODO(#2200): Cache keys are not scoped per user. The `sub` claim from
@@ -129,10 +134,7 @@ impl IdempotencyCache {
 
     /// Mark a key as completed with the given response.
     pub(crate) fn complete(&self, key: &str, status: StatusCode, body: String) {
-        let mut inner = self.inner.lock().unwrap_or_else(|e| {
-            tracing::warn!("idempotency cache lock was poisoned, recovering");
-            e.into_inner()
-        });
+        let mut inner = self.lock_inner();
         if let Some(entry) = inner.entries.get_mut(key) {
             entry.state = EntryState::Completed { status, body };
         }
@@ -140,10 +142,7 @@ impl IdempotencyCache {
 
     /// Remove a key from the cache (e.g. on error, to allow retry).
     pub(crate) fn remove(&self, key: &str) {
-        let mut inner = self.inner.lock().unwrap_or_else(|e| {
-            tracing::warn!("idempotency cache lock was poisoned, recovering");
-            e.into_inner()
-        });
+        let mut inner = self.lock_inner();
         inner.entries.remove(key);
         inner.order.retain(|k| k != key);
     }

@@ -110,11 +110,18 @@ impl Role {
     }
 }
 
-impl std::fmt::Display for Role {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
+/// Implement `Display` by delegating to `as_str()`.
+macro_rules! display_via_as_str {
+    ($($ty:ty),+ $(,)?) => {$(
+        impl std::fmt::Display for $ty {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str(self.as_str())
+            }
+        }
+    )+};
 }
+
+display_via_as_str!(Role, StopReason);
 
 /// Message content: either plain text or structured blocks.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -616,12 +623,6 @@ impl StopReason {
             Self::MaxTokens => "max_tokens",
             Self::StopSequence => "stop_sequence",
         }
-    }
-}
-
-impl std::fmt::Display for StopReason {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
     }
 }
 
