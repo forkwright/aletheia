@@ -28,6 +28,11 @@ pub(crate) mod views;
 /// showing it. Platform features (tray, hotkeys, menus) are initialized
 /// once the connection is established.
 pub fn run() {
+    // WHY: reqwest with rustls-no-provider requires an explicit crypto provider
+    // install before any Client is constructed, otherwise it panics with
+    // "No provider set" (#2363).
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     use dioxus::desktop::Config;
 
     let window_state = platform::window_state::load_or_default();
