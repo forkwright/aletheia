@@ -394,6 +394,363 @@ pub(crate) fn GroupedBarChart(
     }
 }
 
+// -- Series colors ------------------------------------------------------------
+
+/// Palette for multi-series charts (8 visually distinct hues).
+pub(crate) const SERIES_COLORS: &[&str] = &[
+    "#5b6af0", "#22c55e", "#eab308", "#ef4444", "#a855f7", "#06b6d4", "#f97316", "#ec4899",
+];
+
+// -- Line chart types ---------------------------------------------------------
+
+/// A single data point in a line series.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct LinePoint {
+    pub label: String,
+    pub value: f64,
+}
+
+/// A named series of line points with a color.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct LineSeries {
+    pub name: String,
+    pub color: String,
+    pub points: Vec<LinePoint>,
+}
+
+/// Div-based multi-series line chart (approximated with vertical bars per point).
+///
+/// WHY: True SVG line rendering is not confirmed for Blitz. This component
+/// approximates a line chart using vertical bars sized proportionally to each
+/// point value, with a legend for series identification.
+#[component]
+pub(crate) fn LineChart(series: Vec<LineSeries>, height: u32) -> Element {
+    if series.is_empty() || series.iter().all(|s| s.points.is_empty()) {
+        return rsx! {
+            div {
+                style: "display: flex; align-items: center; justify-content: center; height: {height}px; color: #706c66; font-size: 13px;",
+                "No data"
+            }
+        };
+    }
+
+    let max_val = series
+        .iter()
+        .flat_map(|s| s.points.iter().map(|p| p.value))
+        .fold(0.0f64, f64::max)
+        .max(1.0);
+
+    let num_points = series
+        .iter()
+        .map(|s| s.points.len())
+        .max()
+        .unwrap_or(0);
+
+    rsx! {
+        div {
+            style: "display: flex; flex-direction: column; gap: 6px;",
+
+            // Legend
+            div {
+                style: "display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center;",
+                for s in &series {
+                    {
+                        let color = s.color.clone();
+                        let name = s.name.clone();
+                        rsx! {
+                            div {
+                                style: "display: flex; align-items: center; gap: 4px;",
+                                div { style: "width: 10px; height: 10px; border-radius: 2px; background: {color};" }
+                                span { style: "{CHART_LABEL_STYLE}", "{name}" }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Chart area: one column per time point, stacked bars per series
+            div {
+                style: "display: flex; align-items: flex-end; gap: 1px; height: {height}px; padding: 0 4px;",
+                for idx in 0..num_points {
+                    div {
+                        style: "flex: 1; display: flex; gap: 1px; align-items: flex-end; min-width: 2px; height: 100%;",
+                        for s in &series {
+                            {
+                                let val = s.points.get(idx).map_or(0.0, |p| p.value);
+                                let pct = ((val / max_val) * 100.0) as u32;
+                                let color = s.color.clone();
+                                let label_text = s.points.get(idx).map(|p| p.label.clone()).unwrap_or_default();
+                                rsx! {
+                                    div {
+                                        style: "flex: 1; height: {pct}%; background: {color}; border-radius: 1px 1px 0 0; min-height: 1px;",
+                                        title: "{label_text}: {val:.1}",
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // X-axis labels (first and last)
+            if num_points >= 2 {
+                {
+                    let first_label = series.iter()
+                        .find_map(|s| s.points.first().map(|p| p.label.clone()))
+                        .unwrap_or_default();
+                    let last_label = series.iter()
+                        .find_map(|s| s.points.last().map(|p| p.label.clone()))
+                        .unwrap_or_default();
+                    rsx! {
+                        div {
+                            style: "display: flex; justify-content: space-between; padding: 0 4px;",
+                            span { style: "{CHART_LABEL_STYLE}", "{first_label}" }
+                            span { style: "{CHART_LABEL_STYLE}", "{last_label}" }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// -- Percentile bar chart -----------------------------------------------------
+
+/// Percentile distribution entry for a single tool.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct PercentileEntry {
+    pub label: String,
+    pub min_ms: u64,
+    pub p25_ms: u64,
+    pub p50_ms: u64,
+    pub p75_ms: u64,
+    pub p95_ms: u64,
+    pub max_ms: u64,
+}
+
+/// Horizontal bars showing percentile ranges (min..p25..p50..p75..p95..max).
+#[component]
+pub(crate) fn PercentileBarChart(entries: Vec<PercentileEntry>) -> Element {
+    if entries.is_empty() {
+        return rsx! {
+            div {
+                style: "color: #706c66; font-size: 13px; padding: 16px 0;",
+                "No data"
+            }
+        };
+    }
+
+    let global_max = entries
+        .iter()
+        .map(|e| e.max_ms)
+        .max()
+        .unwrap_or(1)
+        .max(1);
+
+    rsx! {
+        div {
+            style: "display: flex; flex-direction: column; gap: 6px;",
+
+            // Legend
+            div {
+                style: "display: flex; gap: 12px; font-size: 11px; color: #706c66;",
+                span { "min-p25" }
+                span { style: "color: #5b6af0;", "p25-p50" }
+                span { style: "color: #22c55e;", "p50-p75" }
+                span { style: "color: #eab308;", "p75-p95" }
+                span { style: "color: #ef4444;", "p95-max" }
+            }
+
+            for entry in &entries {
+                {
+                    let label = entry.label.clone();
+                    #[expect(clippy::cast_precision_loss, reason = "display-only percentage")]
+                    let pct = |v: u64| -> u32 {
+                        ((v as f64 / global_max as f64) * 100.0) as u32
+                    };
+                    let w_min_p25 = pct(entry.p25_ms.saturating_sub(entry.min_ms));
+                    let w_p25_p50 = pct(entry.p50_ms.saturating_sub(entry.p25_ms));
+                    let w_p50_p75 = pct(entry.p75_ms.saturating_sub(entry.p50_ms));
+                    let w_p75_p95 = pct(entry.p95_ms.saturating_sub(entry.p75_ms));
+                    let w_p95_max = pct(entry.max_ms.saturating_sub(entry.p95_ms));
+                    let tip = format!(
+                        "{label}: min={}ms p25={}ms p50={}ms p75={}ms p95={}ms max={}ms",
+                        entry.min_ms, entry.p25_ms, entry.p50_ms, entry.p75_ms, entry.p95_ms, entry.max_ms
+                    );
+                    rsx! {
+                        div {
+                            style: "display: flex; align-items: center; gap: 8px;",
+                            div {
+                                style: "width: 120px; font-size: 12px; color: #a8a49e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0;",
+                                title: "{label}",
+                                "{label}"
+                            }
+                            div {
+                                style: "flex: 1; height: 16px; display: flex; border-radius: 3px; overflow: hidden;",
+                                title: "{tip}",
+                                div { style: "width: {w_min_p25}%; background: #3a3530; min-width: 1px;" }
+                                div { style: "width: {w_p25_p50}%; background: #5b6af0; min-width: 1px;" }
+                                div { style: "width: {w_p50_p75}%; background: #22c55e; min-width: 1px;" }
+                                div { style: "width: {w_p75_p95}%; background: #eab308; min-width: 1px;" }
+                                div { style: "width: {w_p95_max}%; background: #ef4444; min-width: 1px;" }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// -- BarEntry + HorizontalBarChart --------------------------------------------
+
+/// A bar entry with optional color (defaults assigned by the chart).
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct BarEntry {
+    pub label: String,
+    pub value: u64,
+    pub color: Option<String>,
+}
+
+/// Horizontal bar chart that accepts `BarEntry` (optional color).
+///
+/// Converts to `ChartEntry` and delegates to `HorizBarChart`.
+#[component]
+pub(crate) fn HorizontalBarChart(
+    entries: Vec<BarEntry>,
+    max_value: Option<f64>,
+    on_click: Option<EventHandler<String>>,
+) -> Element {
+    let chart_entries: Vec<ChartEntry> = entries
+        .iter()
+        .enumerate()
+        .map(|(i, e)| ChartEntry {
+            label: e.label.clone(),
+            #[expect(clippy::cast_precision_loss, reason = "display-only")]
+            value: e.value as f64,
+            color: e
+                .color
+                .clone()
+                .unwrap_or_else(|| SERIES_COLORS[i % SERIES_COLORS.len()].to_string()),
+            sub_label: None,
+        })
+        .collect();
+
+    let effective_max = max_value.unwrap_or(0.0);
+
+    rsx! {
+        HorizBarChart {
+            entries: chart_entries,
+            max_value: effective_max,
+            show_value: true,
+            on_click,
+        }
+    }
+}
+
+// -- Stacked bar chart --------------------------------------------------------
+
+/// A stacked bar entry with success/failure segments.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct StackedBarEntry {
+    pub label: String,
+    pub success: u64,
+    pub failure: u64,
+}
+
+/// Stacked horizontal bar chart showing success (green) and failure (red) segments.
+#[component]
+pub(crate) fn StackedBarChart(
+    entries: Vec<StackedBarEntry>,
+    sort_by_failure: bool,
+    on_click: Option<EventHandler<String>>,
+) -> Element {
+    if entries.is_empty() {
+        return rsx! {
+            div {
+                style: "color: #706c66; font-size: 13px; padding: 16px 0;",
+                "No data"
+            }
+        };
+    }
+
+    let mut sorted = entries.clone();
+    if sort_by_failure {
+        sorted.sort_by(|a, b| b.failure.cmp(&a.failure));
+    }
+
+    let max_total = sorted
+        .iter()
+        .map(|e| e.success + e.failure)
+        .max()
+        .unwrap_or(1)
+        .max(1);
+
+    rsx! {
+        div {
+            style: "display: flex; flex-direction: column; gap: 6px;",
+
+            // Legend
+            div {
+                style: "display: flex; gap: 12px; align-items: center;",
+                div {
+                    style: "display: flex; align-items: center; gap: 4px;",
+                    div { style: "width: 10px; height: 10px; border-radius: 2px; background: #22c55e;" }
+                    span { style: "{CHART_LABEL_STYLE}", "Success" }
+                }
+                div {
+                    style: "display: flex; align-items: center; gap: 4px;",
+                    div { style: "width: 10px; height: 10px; border-radius: 2px; background: #ef4444;" }
+                    span { style: "{CHART_LABEL_STYLE}", "Failure" }
+                }
+            }
+
+            for (idx, entry) in sorted.iter().enumerate() {
+                {
+                    let total = entry.success + entry.failure;
+                    #[expect(clippy::cast_precision_loss, reason = "display-only percentage")]
+                    let total_pct = ((total as f64 / max_total as f64) * 100.0) as u32;
+                    #[expect(clippy::cast_precision_loss, reason = "display-only percentage")]
+                    let success_pct = if total > 0 { ((entry.success as f64 / total as f64) * 100.0) as u32 } else { 50 };
+                    let failure_pct = 100u32.saturating_sub(success_pct);
+                    let label = entry.label.clone();
+                    let id = entry.label.clone();
+                    rsx! {
+                        div {
+                            key: "{idx}",
+                            style: "display: flex; align-items: center; gap: 8px; cursor: pointer;",
+                            onclick: move |_| {
+                                if let Some(handler) = &on_click {
+                                    handler.call(id.clone());
+                                }
+                            },
+                            div {
+                                style: "width: 120px; font-size: 12px; color: #a8a49e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0;",
+                                title: "{label}",
+                                "{label}"
+                            }
+                            div {
+                                style: "flex: 1; height: 20px; background: #1a1816; border-radius: 3px; overflow: hidden;",
+                                div {
+                                    style: "height: 100%; width: {total_pct}%; display: flex; border-radius: 3px; overflow: hidden;",
+                                    div { style: "width: {success_pct}%; background: #22c55e; min-width: 1px;" }
+                                    if failure_pct > 0 {
+                                        div { style: "width: {failure_pct}%; background: #ef4444; min-width: 1px;" }
+                                    }
+                                }
+                            }
+                            div {
+                                style: "width: 72px; text-align: right; font-size: 12px; color: #706c66; font-family: 'IBM Plex Mono', monospace; flex-shrink: 0;",
+                                "{total}"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 // -- Format helpers -----------------------------------------------------------
 
 /// Format a float value for chart labels (K/M suffix).
