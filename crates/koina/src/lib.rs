@@ -29,6 +29,8 @@ pub mod output_buffer;
 pub mod redact;
 /// Tracing layer that redacts sensitive field values before output.
 pub mod redacting_layer;
+/// Configurable retry strategies and backoff computation ([`retry::BackoffStrategy`], [`retry::RetryConfig`]).
+pub mod retry;
 /// Secret string newtype that prevents accidental leakage of sensitive values.
 pub mod secret;
 /// Trait abstractions for filesystem, clock, and environment operations.

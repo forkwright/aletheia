@@ -261,8 +261,12 @@ impl SessionStore {
     /// # Errors
     /// Returns an error if the checkpoint fails for a reason other than `SQLITE_BUSY`.
     pub fn checkpoint_wal(&self) -> Result<()> {
+        use aletheia_koina::retry::BackoffStrategy;
+
         const MAX_RETRIES: u32 = 3;
-        const RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(100);
+        let backoff = BackoffStrategy::Constant {
+            delay: std::time::Duration::from_millis(100),
+        };
 
         for attempt in 1..=MAX_RETRIES {
             match self.conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);") {
@@ -276,7 +280,7 @@ impl SessionStore {
                         max_retries = MAX_RETRIES,
                         "WAL checkpoint returned SQLITE_BUSY, retrying"
                     );
-                    std::thread::sleep(RETRY_DELAY);
+                    std::thread::sleep(backoff.delay_for_attempt(attempt.saturating_sub(1)));
                 }
                 Err(ref e) if is_busy_error(e) => {
                     warn!(

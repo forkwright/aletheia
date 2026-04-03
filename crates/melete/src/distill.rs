@@ -34,8 +34,11 @@ impl RetryState {
     fn record_failure(&mut self) {
         self.consecutive_failures = self.consecutive_failures.saturating_add(1);
         // NOTE: exponential backoff: 1, 2, 4, 8 turns; capped at MAX_BACKOFF_TURNS
-        let shift = self.consecutive_failures.saturating_sub(1).min(3);
-        self.turns_to_skip = (1u32 << shift).min(MAX_BACKOFF_TURNS);
+        self.turns_to_skip = aletheia_koina::retry::exponential_steps(
+            self.consecutive_failures.saturating_sub(1),
+            2,
+            MAX_BACKOFF_TURNS,
+        );
     }
 
     fn record_success(&mut self) {

@@ -26,9 +26,11 @@ snafu = { workspace = true }
 zeroize = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-tokio = { workspace = true, features = ["sync"] }
+rand = { workspace = true }
+tokio = { workspace = true, features = ["sync", "time"] }
 ulid = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
 static_assertions = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "test-util"] }

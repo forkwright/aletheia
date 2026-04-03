@@ -406,17 +406,23 @@ impl Watchdog {
 
 /// Compute exponential backoff delay for watchdog restarts.
 ///
-/// Formula: `min(base * 2^(attempt-1), cap)`
+/// Delegates to [`aletheia_koina::retry::BackoffStrategy::Exponential`] with
+/// base=2s, factor=2, cap=300s.
+///
 /// - attempt 1: 2s
 /// - attempt 2: 4s
 /// - attempt 3: 8s
 /// - attempt 4: 16s
 /// - attempt 5+: capped at 300s (5 min)
 pub(crate) fn watchdog_backoff(attempt: u32) -> Duration {
-    let exponent = attempt.saturating_sub(1);
-    let multiplier = 1u64.checked_shl(exponent).unwrap_or(u64::MAX);
-    let delay = BACKOFF_BASE.saturating_mul(u32::try_from(multiplier).unwrap_or(u32::MAX));
-    std::cmp::min(delay, BACKOFF_CAP)
+    use aletheia_koina::retry::BackoffStrategy;
+    let strategy = BackoffStrategy::Exponential {
+        base: BACKOFF_BASE,
+        factor: 2,
+        max_delay: BACKOFF_CAP,
+    };
+    // WHY: call site passes 1-indexed attempt; delay_for_attempt is 0-indexed
+    strategy.delay_for_attempt(attempt.saturating_sub(1))
 }
 
 #[cfg(test)]
