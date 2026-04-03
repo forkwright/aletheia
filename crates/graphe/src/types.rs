@@ -149,7 +149,7 @@ pub struct SessionOrigin {
 /// A session record persisted in the store.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
-    /// Unique session identifier (ULID).
+    /// Unique session identifier (UUID v4).
     pub id: String,
     /// Owning agent identifier.
     pub nous_id: String,

@@ -137,7 +137,6 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
- "ulid",
 ]
 
 [[package]]
