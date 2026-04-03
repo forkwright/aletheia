@@ -55,6 +55,7 @@ dependencies = [
  "clap",
  "clap_complete",
  "cliclack",
+ "indexmap 2.13.0",
  "jiff",
  "owo-colors",
  "predicates",

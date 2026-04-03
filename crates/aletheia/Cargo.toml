@@ -62,6 +62,7 @@ serde_json = { workspace = true }
 reqwest = { workspace = true }
 rustls = { workspace = true }
 
+indexmap = { workspace = true }
 jiff = { workspace = true }
 ulid = { workspace = true }
 
@@ -80,6 +81,7 @@ rcgen = { workspace = true }
 time = "0.3"
 owo-colors = "4"
 supports-color = "3"
+toml = { workspace = true }
 toml_edit = "0.25"
 
 [dev-dependencies]
