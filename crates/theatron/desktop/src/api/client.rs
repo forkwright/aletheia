@@ -23,7 +23,7 @@ pub(crate) fn authenticated_client(config: &ConnectionConfig) -> Client {
     // installed yet); views already handle HTTP errors gracefully.
     Client::builder()
         .default_headers(headers)
+        .timeout(Duration::from_secs(30))
         .build()
         .unwrap_or_default()
 }
-test
