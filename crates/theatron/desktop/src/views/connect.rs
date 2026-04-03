@@ -48,8 +48,8 @@ const LABEL_STYLE: &str = "\
 ";
 
 const INPUT_STYLE: &str = "\
-    background: var(--bg); \
-    border: 1px solid var(--border); \
+    background: var(--input-bg); \
+    border: 1px solid var(--input-border); \
     border-radius: 6px; \
     padding: 10px 12px; \
     color: var(--text-primary); \
