@@ -5,7 +5,8 @@
 
 use dioxus::prelude::*;
 
-use crate::services::settings_config;
+use crate::services::{config, settings_config};
+use crate::state::connection::ConnectionConfig;
 use crate::state::settings::{
     ACCENT_PRESETS, AppearanceSettings, ServerConfigStore, UiDensity, WizardData, WizardStep,
 };
@@ -19,6 +20,7 @@ pub(crate) fn SetupWizard() -> Element {
     let mut appearance: Signal<AppearanceSettings> = use_context();
     let keybindings = use_context::<Signal<crate::state::settings::KeybindingStore>>();
     let mut theme_mode: Signal<ThemeMode> = use_context();
+    let mut connection_config: Signal<ConnectionConfig> = use_context();
 
     let mut step = use_signal(WizardStep::default);
     let wizard_data = use_signal(WizardData::default);
@@ -98,12 +100,33 @@ pub(crate) fn SetupWizard() -> Element {
                                         app.density = density;
                                     }
 
-                                    // Persist.
+                                    // Persist settings (appearance, keybindings, server list).
                                     {
                                         let store = server_store.read();
                                         let app = appearance.read();
                                         let keys = keybindings.read();
                                         settings_config::save_state(&store, &app, &keys);
+                                    }
+
+                                    // WHY: Also persist the URL to the connection config
+                                    // (desktop.toml) so ConnectView picks it up instead
+                                    // of reverting to the compiled default.
+                                    {
+                                        let data = wizard_data.read();
+                                        let token = if data.auth_token.is_empty() {
+                                            None
+                                        } else {
+                                            Some(data.auth_token.clone())
+                                        };
+                                        let new_config = ConnectionConfig {
+                                            server_url: data.server_url.clone(),
+                                            auth_token: token,
+                                            auto_reconnect: true,
+                                        };
+                                        connection_config.set(new_config.clone());
+                                        if let Err(e) = config::save(&new_config) {
+                                            tracing::warn!("failed to save connection config from wizard: {e}");
+                                        }
                                     }
 
                                     is_first_run.set(false);
