@@ -1,5 +1,3 @@
-
-
 //! JSON-RPC client for the signal-cli HTTP daemon.
 
 use std::time::Duration;
@@ -125,40 +123,21 @@ impl SignalClient {
     #[instrument(skip(self, params))]
     #[must_use]
     pub async fn send_message(&self, params: &SendParams) -> Result<Option<serde_json::Value>> {
+        use aletheia_koina::retry::{BackoffStrategy, RetryConfig};
+
         let rpc_params = params.to_rpc_value();
-        let backoffs = [500u64, 1000];
-        let mut last_err = None;
-
-        for attempt in 0..=backoffs.len() {
-            match self.rpc("send", &rpc_params).await {
-                Ok(result) => return Ok(result),
-                Err(e) => {
-                    if matches!(e, super::error::Error::Rpc { .. }) {
-                        return Err(e);
-                    }
-                    last_err = Some(e);
-                    if attempt < backoffs.len() {
-                        #[expect(
-                            clippy::indexing_slicing,
-                            reason = "attempt < backoffs.len() is checked by the if-guard"
-                        )]
-                        let delay = backoffs[attempt];
-                        tracing::warn!(
-                            attempt = attempt + 1,
-                            backoff_ms = delay,
-                            "signal send attempt failed, retrying"
-                        );
-                        tokio::time::sleep(Duration::from_millis(delay)).await;
-                    }
-                }
-            }
-        }
-
-        #[expect(
-            clippy::expect_used,
-            reason = "loop range 0..=backoffs.len() always executes at least one iteration, so last_err is always Some here"
-        )]
-        Err(last_err.expect("at least one attempt was made"))
+        let config = RetryConfig {
+            max_retries: 2,
+            strategy: BackoffStrategy::Fixed {
+                delays: vec![Duration::from_millis(500), Duration::from_millis(1000)],
+            },
+        };
+        config
+            .retry_async(
+                || self.rpc("send", &rpc_params),
+                |e| !matches!(e, super::error::Error::Rpc { .. }),
+            )
+            .await
     }
 
     /// Health check: hits the signal-cli check endpoint.

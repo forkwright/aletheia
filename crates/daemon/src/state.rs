@@ -1,5 +1,3 @@
-
-
 //! SQLite-backed persistence for daemon task execution state.
 //!
 //! Survives process restarts so tasks resume their schedules rather than

@@ -16,6 +16,7 @@ test-full = []
 
 [dependencies]
 aletheia-hermeneus = { path = "../hermeneus" }
+aletheia-koina = { path = "../koina" }
 fd-lock = { workspace = true }
 futures = { workspace = true }
 prometheus = { workspace = true }

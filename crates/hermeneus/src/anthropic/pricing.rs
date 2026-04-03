@@ -3,10 +3,10 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use rand::Rng as _;
+use aletheia_koina::retry::BackoffStrategy;
 
 use crate::error;
-use crate::models::{BACKOFF_BASE_MS, BACKOFF_FACTOR, BACKOFF_MAX_MS};
+use crate::models::{BACKOFF_BASE_MS, BACKOFF_MAX_MS};
 use crate::provider::ModelPricing;
 
 /// Derive the model family name by stripping the last dash-separated segment.
@@ -125,19 +125,12 @@ pub(crate) fn backoff_delay(attempt: u32, last_error: Option<&error::Error>) -> 
         return Duration::from_millis(*retry_after_ms);
     }
 
-    // WHY: cap exponent at 30 to prevent u64 overflow (2^31 * 1000 > u64::MAX)
-    let exponent = attempt.saturating_sub(1).min(30);
-    let base = BACKOFF_BASE_MS.saturating_mul(BACKOFF_FACTOR.saturating_pow(exponent));
-    let capped = base.min(BACKOFF_MAX_MS);
-
-    // WHY: ±25% random jitter: prevents thundering herd under concurrent load
-    let jitter_range = capped / 4;
-    let delay = if jitter_range > 0 {
-        let offset = rand::rng().random_range(0..jitter_range * 2);
-        capped - jitter_range + offset
-    } else {
-        capped
+    let strategy = BackoffStrategy::ExponentialJitter {
+        base: Duration::from_millis(BACKOFF_BASE_MS),
+        factor: 2,
+        max_delay: Duration::from_millis(BACKOFF_MAX_MS),
     };
-
-    Duration::from_millis(delay.max(100))
+    // WHY: call site passes 1-indexed attempt; delay_for_attempt is 0-indexed
+    let delay = strategy.delay_for_attempt(attempt.saturating_sub(1));
+    delay.max(Duration::from_millis(100))
 }

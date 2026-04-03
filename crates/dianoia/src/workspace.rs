@@ -1,5 +1,3 @@
-
-
 //! On-disk workspace persistence for projects.
 
 use std::path::{Path, PathBuf};

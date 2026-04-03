@@ -1,5 +1,3 @@
-
-
 //! Project lifecycle state machine.
 
 use serde::{Deserialize, Serialize};

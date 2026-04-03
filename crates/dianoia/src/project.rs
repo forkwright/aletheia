@@ -1,5 +1,3 @@
-
-
 //! Project types and lifecycle management.
 
 use serde::{Deserialize, Serialize};

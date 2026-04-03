@@ -1,5 +1,3 @@
-
-
 //! Channel registry: the single source of truth for available channels.
 
 use std::sync::Arc;
