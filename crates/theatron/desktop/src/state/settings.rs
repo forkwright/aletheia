@@ -358,6 +358,7 @@ pub(crate) struct WizardData {
     pub(crate) auth_token: String,
     pub(crate) selected_theme: String,
     pub(crate) selected_density: UiDensity,
+    pub(crate) selected_accent: String,
 }
 
 /// Preset accent color swatches: (label, hex).
