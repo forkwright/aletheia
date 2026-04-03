@@ -221,7 +221,7 @@ fn parse_hunk_header(line: &str) -> Option<HunkHeader> {
     let rest = rest.get(at_idx + 2..).unwrap_or("");
 
     let end_idx = rest.find(" @@")?;
-    let new_part = &rest[..end_idx];
+    let new_part = rest.get(..end_idx).unwrap_or("");
     let context_label = rest.get(end_idx + 3..).unwrap_or("").trim().to_string();
 
     let (old_start, old_count) = parse_range(old_part);
