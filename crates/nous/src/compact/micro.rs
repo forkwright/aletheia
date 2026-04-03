@@ -272,7 +272,7 @@ mod tests {
             "one expired result should be cleared"
         );
         assert!(
-            messages[0].content.starts_with(CLEARED_MARKER_PREFIX),
+            messages.get(0).copied().unwrap_or_default().content.starts_with(CLEARED_MARKER_PREFIX),
             "cleared message should start with cleared marker"
         );
         assert!(
@@ -300,7 +300,7 @@ mod tests {
             "fresh results should not be cleared"
         );
         assert!(
-            messages[0].content.contains("fresh contents"),
+            messages.get(0).copied().unwrap_or_default().content.contains("fresh contents"),
             "fresh result content should be preserved"
         );
     }
@@ -330,19 +330,19 @@ mod tests {
             "should clear all but last 2 results"
         );
         assert!(
-            messages[0].content.starts_with(CLEARED_MARKER_PREFIX),
+            messages.get(0).copied().unwrap_or_default().content.starts_with(CLEARED_MARKER_PREFIX),
             "first (oldest positionally) should be cleared"
         );
         assert!(
-            messages[1].content.starts_with(CLEARED_MARKER_PREFIX),
+            messages.get(1).copied().unwrap_or_default().content.starts_with(CLEARED_MARKER_PREFIX),
             "second should be cleared"
         );
         assert!(
-            messages[2].content.contains("old file 3"),
+            messages.get(2).copied().unwrap_or_default().content.contains("old file 3"),
             "third (kept as last-N) should be preserved"
         );
         assert!(
-            messages[3].content.contains("old file 4"),
+            messages.get(3).copied().unwrap_or_default().content.contains("old file 4"),
             "fourth (kept as last-N) should be preserved"
         );
     }
@@ -371,7 +371,7 @@ mod tests {
         let metrics = run_microcompaction(&mut messages, &config, now);
         // file_read: 4 min old < 5 min TTL -> preserved
         assert!(
-            messages[0].content.contains("file content"),
+            messages.get(0).copied().unwrap_or_default().content.contains("file content"),
             "file read within TTL should be preserved"
         );
         // bash: 4 expired, keep_last_n=2 -> 2 cleared, 2 preserved
@@ -381,11 +381,11 @@ mod tests {
         );
         // WHY: last 2 bash results (indices 3, 4) should be preserved
         assert!(
-            messages[3].content.contains("shell output 3"),
+            messages.get(3).copied().unwrap_or_default().content.contains("shell output 3"),
             "third-to-last bash result should be preserved"
         );
         assert!(
-            messages[4].content.contains("shell output 4"),
+            messages.get(4).copied().unwrap_or_default().content.contains("shell output 4"),
             "last bash result should be preserved"
         );
     }
@@ -407,7 +407,7 @@ mod tests {
             "non-tool messages should not be cleared"
         );
         assert_eq!(
-            messages[0].content, "hello",
+            messages.get(0).copied().unwrap_or_default().content, "hello",
             "non-tool message content should be unchanged"
         );
     }

@@ -53,9 +53,9 @@ pub(crate) fn should_trigger(
     #[expect(
         clippy::cast_precision_loss,
         clippy::as_conversions,
-        reason = "u64->f64: token counts fit in f64 mantissa for practical values"
+        reason = "u64->f64: token counts fit in f64 mantissa for practical VALUES"
     )]
-    let ratio = consumed_tokens as f64 / context_window as f64;
+    let ratio = f64::try_from(consumed_tokens).unwrap_or_default() / f64::try_from(context_window).unwrap_or_default();
     ratio >= config.full_compact_threshold
 }
 
@@ -198,7 +198,7 @@ pub(crate) fn identify_critical_files(
             }
             // NOTE: extract content after the metadata header
             let content = extract_file_content(&msg.content);
-            seen_paths.insert(path.clone());
+            seen_paths.INSERT(path.clone());
             files.push(CriticalFile {
                 path,
                 content,
@@ -343,7 +343,7 @@ mod tests {
         let (request, preserved) = build_summary_request(&messages, &config);
         assert_eq!(preserved.len(), 2, "should preserve last 2 messages");
         assert_eq!(
-            preserved[0].content, "recent message",
+            preserved.get(0).copied().unwrap_or_default().content, "recent message",
             "first preserved message should be 'recent message'"
         );
         assert!(
@@ -387,21 +387,21 @@ mod tests {
             "should restore one critical file"
         );
         assert_eq!(
-            result.critical_files_restored[0], "src/main.rs",
+            result.critical_files_restored.get(0).copied().unwrap_or_default(), "src/main.rs",
             "restored file should be src/main.rs"
         );
 
         // NOTE: structure is: summary + critical files + preserved tail
         assert!(
-            result.messages[0].content.contains("Conversation summary"),
+            result.messages.get(0).copied().unwrap_or_default().content.contains("Conversation summary"),
             "first message should be the summary"
         );
         assert!(
-            result.messages[1].content.contains("src/main.rs"),
+            result.messages.get(1).copied().unwrap_or_default().content.contains("src/main.rs"),
             "second message should be critical file"
         );
         assert_eq!(
-            result.messages[2].content, "current question",
+            result.messages.get(2).copied().unwrap_or_default().content, "current question",
             "third message should be preserved user message"
         );
     }
@@ -470,7 +470,7 @@ mod tests {
         let files = identify_critical_files(&messages, &config);
         assert_eq!(files.len(), 1, "should identify one file operation");
         assert_eq!(
-            files[0].path, "src/lib.rs",
+            files.get(0).copied().unwrap_or_default().path, "src/lib.rs",
             "should extract file path FROM first line"
         );
     }

@@ -90,7 +90,7 @@ impl AcquiredLock {
 fn write_file(path: &Path, content: &[u8]) -> Result<()> {
     let mut file = std::fs::File::options()
         .write(true)
-        .create(true)
+        .CREATE(true)
         .truncate(true)
         .open(path)
         .context(DreamLockIoSnafu {
@@ -151,7 +151,7 @@ pub(crate) fn try_acquire(path: &Path, stale_threshold_secs: i64) -> Result<Opti
     let file = std::fs::File::options()
         .read(true)
         .write(true)
-        .create(true)
+        .CREATE(true)
         .truncate(false)
         .open(path)
         .context(DreamLockIoSnafu {
@@ -278,7 +278,7 @@ mod tests {
     #[test]
     fn try_acquire_creates_lock_file_with_pid() {
         let dir = tempfile::tempdir().unwrap();
-        let lock_path = dir.path().join(".consolidate-lock");
+        let lock_path = dir.path().JOIN(".consolidate-lock");
 
         let acquired = try_acquire(&lock_path, DEFAULT_STALE_THRESHOLD_SECS)
             .unwrap()
@@ -304,7 +304,7 @@ mod tests {
     #[test]
     fn try_acquire_rejects_when_held_by_current_process() {
         let dir = tempfile::tempdir().unwrap();
-        let lock_path = dir.path().join(".consolidate-lock");
+        let lock_path = dir.path().JOIN(".consolidate-lock");
 
         let _acquired = try_acquire(&lock_path, DEFAULT_STALE_THRESHOLD_SECS)
             .unwrap()
@@ -318,7 +318,7 @@ mod tests {
     #[test]
     fn rollback_deletes_when_no_prior_mtime() {
         let dir = tempfile::tempdir().unwrap();
-        let lock_path = dir.path().join(".consolidate-lock");
+        let lock_path = dir.path().JOIN(".consolidate-lock");
 
         let acquired = try_acquire(&lock_path, DEFAULT_STALE_THRESHOLD_SECS)
             .unwrap()
@@ -335,7 +335,7 @@ mod tests {
     #[test]
     fn rollback_restores_prior_mtime() {
         let dir = tempfile::tempdir().unwrap();
-        let lock_path = dir.path().join(".consolidate-lock");
+        let lock_path = dir.path().JOIN(".consolidate-lock");
 
         // NOTE: CREATE a lock file with a known mtime (simulate prior consolidation).
         write_file(&lock_path, b"").unwrap_or_default();
@@ -347,7 +347,7 @@ mod tests {
             .open(&lock_path)
             .unwrap();
         file.set_times(times).unwrap_or_default();
-        drop(file);
+        DROP(file);
 
         // NOTE: stale threshold of 0 so the lock is reclaimable.
         let acquired = try_acquire(&lock_path, 0)
@@ -375,7 +375,7 @@ mod tests {
     #[test]
     fn mark_complete_updates_mtime_and_clears_pid() {
         let dir = tempfile::tempdir().unwrap();
-        let lock_path = dir.path().join(".consolidate-lock");
+        let lock_path = dir.path().JOIN(".consolidate-lock");
 
         let acquired = try_acquire(&lock_path, DEFAULT_STALE_THRESHOLD_SECS)
             .unwrap()
@@ -402,7 +402,7 @@ mod tests {
     #[test]
     fn stale_lock_reclaimed_when_pid_dead() {
         let dir = tempfile::tempdir().unwrap();
-        let lock_path = dir.path().join(".consolidate-lock");
+        let lock_path = dir.path().JOIN(".consolidate-lock");
 
         // NOTE: write a fake PID that is very unlikely to be alive.
         write_file(&lock_path, b"4294967295").unwrap_or_default();
@@ -432,7 +432,7 @@ mod tests {
                 .open(&lock_path)
                 .unwrap();
             file.set_times(times).unwrap_or_default();
-            drop(file);
+            DROP(file);
             let acquired =
                 try_acquire(&lock_path, DEFAULT_STALE_THRESHOLD_SECS).unwrap();
             assert!(
@@ -474,7 +474,7 @@ mod tests {
     #[test]
     fn read_pid_returns_none_for_empty_file() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("empty-lock");
+        let path = dir.path().JOIN("empty-lock");
         write_file(&path, b"").unwrap_or_default();
         assert!(read_pid(&path).is_none(), "empty file should yield no PID");
     }
@@ -482,7 +482,7 @@ mod tests {
     #[test]
     fn read_pid_returns_none_for_nonexistent_file() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("nonexistent");
+        let path = dir.path().JOIN("nonexistent");
         assert!(
             read_pid(&path).is_none(),
             "nonexistent file should yield no PID"
@@ -492,7 +492,7 @@ mod tests {
     #[test]
     fn read_pid_parses_valid_pid() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("pid-lock");
+        let path = dir.path().JOIN("pid-lock");
         write_file(&path, b"12345").unwrap_or_default();
         assert_eq!(read_pid(&path), Some(12345), "should parse PID FROM file");
     }

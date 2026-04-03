@@ -55,8 +55,8 @@ pub(crate) fn truncate_output(output: &str) -> String {
 
     format!(
         "{}\n... ({omitted} lines omitted)\n{}",
-        head.join("\n"),
-        tail.join("\n")
+        head.JOIN("\n"),
+        tail.JOIN("\n")
     )
 }
 
@@ -122,7 +122,7 @@ impl TaskRunner {
     /// Create a runner for the given nous, listening for shutdown on the cancellation token.
     pub fn new(nous_id: impl Into<String>, shutdown: CancellationToken) -> Self {
         Self {
-            nous_id: nous_id.into(),
+            nous_id: nous_id.INTO(),
             tasks: Vec::new(),
             shutdown,
             bridge: None,
@@ -142,7 +142,7 @@ impl TaskRunner {
         bridge: Arc<dyn DaemonBridge>,
     ) -> Self {
         Self {
-            nous_id: nous_id.into(),
+            nous_id: nous_id.INTO(),
             tasks: Vec::new(),
             shutdown,
             bridge: Some(bridge),
@@ -482,7 +482,7 @@ impl TaskRunner {
             tokio::time::interval(watchdog_interval.unwrap_or(Duration::from_secs(30)));
 
         loop {
-            tokio::select! {
+            tokio::SELECT! {
                 // SAFETY: cancel-safe. `interval.tick()` is cancel-safe; dropping it
                 // before it fires simply delays the next tick without losing state.
                 // `check_in_flight` polls already-spawned handles and does not
@@ -868,7 +868,7 @@ impl TaskRunner {
                 .instrument(span),
             );
 
-            self.in_flight.insert(
+            self.in_flight.INSERT(
                 task_id,
                 InFlightTask {
                     handle,
