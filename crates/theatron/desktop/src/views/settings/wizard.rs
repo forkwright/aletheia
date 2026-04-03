@@ -185,7 +185,7 @@ fn StepServer(wizard_data: Signal<WizardData>, on_next: EventHandler<()>) -> Ele
                     "Server URL"
                 }
                 input {
-                    style: "background: var(--bg-surface-dim); border: 1px solid var(--border); border-radius: 6px; \
+                    style: "background: var(--input-bg); border: 1px solid var(--input-border); border-radius: 6px; \
                             padding: 8px 12px; color: var(--text-primary); font-size: 13px; width: 100%; box-sizing: border-box;",
                     placeholder: "http://localhost:3000",
                     value: "{wizard_data.read().server_url}",

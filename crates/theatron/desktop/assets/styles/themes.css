@@ -30,6 +30,11 @@
   --border-separator: #221f1c;
   --border-selected: #9A7B4F;
 
+  /* Inputs */
+  --input-bg: #1e1c19;
+  --input-border: #3d3832;
+  --input-border-focus: #9A7B4F;
+
   /* Status — muted earth tones */
   --status-success: #5C7A4A;
   --status-warning: #B8923B;
@@ -120,6 +125,11 @@
   --border-focused: #9A7B4F;
   --border-separator: #E0DBD3;
   --border-selected: #9A7B4F;
+
+  /* Inputs */
+  --input-bg: #FDFAF5;
+  --input-border: #B8B2A8;
+  --input-border-focus: #9A7B4F;
 
   /* Status — same palette, lighter values */
   --status-success: #4A6A3A;
