@@ -137,33 +137,47 @@ impl ProsocheCheck {
     }
 }
 
+/// Check a numeric value against two thresholds, returning an [`AttentionItem`] if either is exceeded.
+///
+/// `warn_threshold` maps to [`Urgency::High`], `critical_threshold` to [`Urgency::Critical`].
+/// `format_summary` receives the measured value and should return a human-readable description.
+fn check_threshold(
+    value: f64,
+    warn_threshold: f64,
+    critical_threshold: f64,
+    format_summary: impl FnOnce(f64) -> String,
+) -> Option<AttentionItem> {
+    let (urgency, summary) = if value >= critical_threshold {
+        (Urgency::Critical, format_summary(value))
+    } else if value >= warn_threshold {
+        (Urgency::High, format_summary(value))
+    } else {
+        return None;
+    };
+
+    Some(AttentionItem {
+        category: AttentionCategory::SystemHealth,
+        summary,
+        urgency,
+    })
+}
+
 /// Check disk space usage on the filesystem containing `path`.
 ///
 /// Uses `df` command output. WARN at 80% usage, CRITICAL at 95%.
 async fn check_disk_space(path: &Path) -> Vec<AttentionItem> {
-    let mut items = Vec::new();
-
     match disk_usage_percent(path).await {
         Ok(percent) => {
-            if percent >= 95.0 {
-                items.push(AttentionItem {
-                    category: AttentionCategory::SystemHealth,
-                    summary: format!(
-                        "Disk space critical: {percent:.1}% used on {}",
-                        path.display()
-                    ),
-                    urgency: Urgency::Critical,
-                });
-            } else if percent >= 80.0 {
-                items.push(AttentionItem {
-                    category: AttentionCategory::SystemHealth,
-                    summary: format!(
-                        "Disk space warning: {percent:.1}% used on {}",
-                        path.display()
-                    ),
-                    urgency: Urgency::High,
-                });
-            }
+            let label = if percent >= 95.0 {
+                "critical"
+            } else {
+                "warning"
+            };
+            check_threshold(percent, 80.0, 95.0, |p| {
+                format!("Disk space {label}: {p:.1}% used on {}", path.display())
+            })
+            .into_iter()
+            .collect()
         }
         Err(e) => {
             tracing::warn!(
@@ -171,10 +185,9 @@ async fn check_disk_space(path: &Path) -> Vec<AttentionItem> {
                 error = %e,
                 "failed to check disk space"
             );
+            Vec::new()
         }
     }
-
-    items
 }
 
 /// Get disk usage percentage for the filesystem containing `path` via `df`.
@@ -221,23 +234,16 @@ fn check_db_sizes(paths: &[PathBuf]) -> Vec<AttentionItem> {
     for path in paths {
         match std::fs::metadata(path) {
             Ok(meta) => {
-                let size = meta.len();
-                if size > ONE_GB {
-                    #[expect(
-                        clippy::cast_precision_loss,
-                        clippy::as_conversions,
-                        reason = "u64→f64: file sizes don't need exact precision for display"
-                    )]
-                    let size_gb = size as f64 / ONE_GB as f64;
-                    items.push(AttentionItem {
-                        category: AttentionCategory::SystemHealth,
-                        summary: format!(
-                            "Database file large: {} is {size_gb:.1} GB",
-                            path.display(),
-                        ),
-                        urgency: Urgency::High,
-                    });
-                }
+                #[expect(
+                    clippy::cast_precision_loss,
+                    clippy::as_conversions,
+                    reason = "u64→f64: file sizes don't need exact precision for display"
+                )]
+                let size_gb = meta.len() as f64 / ONE_GB as f64;
+                // NOTE: single threshold — any file over 1 GB is High urgency.
+                items.extend(check_threshold(size_gb, 1.0, f64::INFINITY, |gb| {
+                    format!("Database file large: {} is {gb:.1} GB", path.display())
+                }));
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 // NOTE: File doesn't exist: not an error for health checks.
@@ -262,23 +268,21 @@ fn check_memory() -> Vec<AttentionItem> {
     match read_process_rss_kb() {
         Ok(resident_kb) => {
             let rss_mb = resident_kb / 1024;
-            let mut items = Vec::new();
-
-            if rss_mb >= 2048 {
-                items.push(AttentionItem {
-                    category: AttentionCategory::SystemHealth,
-                    summary: format!("Process memory critical: {rss_mb} MB RSS"),
-                    urgency: Urgency::Critical,
-                });
-            } else if rss_mb >= 1024 {
-                items.push(AttentionItem {
-                    category: AttentionCategory::SystemHealth,
-                    summary: format!("Process memory high: {rss_mb} MB RSS"),
-                    urgency: Urgency::High,
-                });
-            }
-
-            items
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "u64→f64: MB values are small enough for exact representation"
+            )]
+            let rss_f64 = rss_mb as f64;
+            let label = if rss_mb >= 2048 {
+                "critical"
+            } else {
+                "high"
+            };
+            check_threshold(rss_f64, 1024.0, 2048.0, |mb| {
+                format!("Process memory {label}: {mb:.0} MB RSS")
+            })
+            .into_iter()
+            .collect()
         }
         Err(e) => {
             tracing::debug!(error = %e, "failed to read process RSS — skipping memory check");

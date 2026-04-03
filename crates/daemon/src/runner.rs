@@ -197,6 +197,27 @@ impl TaskRunner {
         self
     }
 
+    /// Register a builtin task with standard defaults, binding it to this runner's `nous_id`.
+    fn register_builtin(
+        &mut self,
+        id: &str,
+        name: &str,
+        schedule: Schedule,
+        task: BuiltinTask,
+        catch_up: bool,
+    ) {
+        self.register(TaskDef {
+            id: id.to_owned(),
+            name: name.to_owned(),
+            nous_id: self.nous_id.clone(),
+            schedule,
+            action: TaskAction::Builtin(task),
+            enabled: true,
+            catch_up,
+            ..TaskDef::default()
+        });
+    }
+
     /// Register default maintenance tasks based on configuration.
     ///
     /// Skips disabled tasks and retention when no executor is provided.
@@ -207,55 +228,43 @@ impl TaskRunner {
         let has_executor = self.retention_executor.is_some();
 
         if config.trace_rotation.enabled {
-            self.register(TaskDef {
-                id: "trace-rotation".to_owned(),
-                name: "Trace rotation".to_owned(),
-                nous_id: self.nous_id.clone(),
-                schedule: Schedule::Cron("0 0 3 * * *".to_owned()),
-                action: TaskAction::Builtin(BuiltinTask::TraceRotation),
-                enabled: true,
-                catch_up: true,
-                ..TaskDef::default()
-            });
+            self.register_builtin(
+                "trace-rotation",
+                "Trace rotation",
+                Schedule::Cron("0 0 3 * * *".to_owned()),
+                BuiltinTask::TraceRotation,
+                true,
+            );
         }
 
         if config.drift_detection.enabled {
-            self.register(TaskDef {
-                id: "drift-detection".to_owned(),
-                name: "Instance drift detection".to_owned(),
-                nous_id: self.nous_id.clone(),
-                schedule: Schedule::Cron("0 0 4 * * *".to_owned()),
-                action: TaskAction::Builtin(BuiltinTask::DriftDetection),
-                enabled: true,
-                catch_up: true,
-                ..TaskDef::default()
-            });
+            self.register_builtin(
+                "drift-detection",
+                "Instance drift detection",
+                Schedule::Cron("0 0 4 * * *".to_owned()),
+                BuiltinTask::DriftDetection,
+                true,
+            );
         }
 
         if config.db_monitoring.enabled {
-            self.register(TaskDef {
-                id: "db-monitor".to_owned(),
-                name: "Database size monitor".to_owned(),
-                nous_id: self.nous_id.clone(),
-                schedule: Schedule::Interval(Duration::from_secs(6 * 3600)),
-                action: TaskAction::Builtin(BuiltinTask::DbSizeMonitor),
-                enabled: true,
-                catch_up: true,
-                ..TaskDef::default()
-            });
+            self.register_builtin(
+                "db-monitor",
+                "Database size monitor",
+                Schedule::Interval(Duration::from_secs(6 * 3600)),
+                BuiltinTask::DbSizeMonitor,
+                true,
+            );
         }
 
         if config.retention.enabled && has_executor {
-            self.register(TaskDef {
-                id: "retention-execution".to_owned(),
-                name: "Data retention cleanup".to_owned(),
-                nous_id: self.nous_id.clone(),
-                schedule: Schedule::Cron("0 30 3 * * *".to_owned()),
-                action: TaskAction::Builtin(BuiltinTask::RetentionExecution),
-                enabled: true,
-                catch_up: true,
-                ..TaskDef::default()
-            });
+            self.register_builtin(
+                "retention-execution",
+                "Data retention cleanup",
+                Schedule::Cron("0 30 3 * * *".to_owned()),
+                BuiltinTask::RetentionExecution,
+                true,
+            );
         }
 
         if config.knowledge_maintenance.enabled && self.knowledge_executor.is_some() {
@@ -271,48 +280,39 @@ impl TaskRunner {
     /// its `enabled` flag is SET in the configuration.
     fn register_cron_tasks(&mut self, config: &crate::cron::CronConfig) {
         if config.evolution.enabled {
-            self.register(TaskDef {
-                id: "cron-evolution".to_owned(),
-                name: "Evolution: config variant search".to_owned(),
-                nous_id: self.nous_id.clone(),
-                schedule: Schedule::Interval(config.evolution.interval),
-                action: TaskAction::Builtin(BuiltinTask::EvolutionSearch),
-                enabled: true,
-                catch_up: false,
-                ..TaskDef::default()
-            });
+            self.register_builtin(
+                "cron-evolution",
+                "Evolution: config variant search",
+                Schedule::Interval(config.evolution.interval),
+                BuiltinTask::EvolutionSearch,
+                false,
+            );
         }
 
         if config.reflection.enabled {
-            self.register(TaskDef {
-                id: "cron-reflection".to_owned(),
-                name: "Reflection: self-evaluation".to_owned(),
-                nous_id: self.nous_id.clone(),
-                schedule: Schedule::Interval(config.reflection.interval),
-                action: TaskAction::Builtin(BuiltinTask::SelfReflection),
-                enabled: true,
-                catch_up: false,
-                ..TaskDef::default()
-            });
+            self.register_builtin(
+                "cron-reflection",
+                "Reflection: self-evaluation",
+                Schedule::Interval(config.reflection.interval),
+                BuiltinTask::SelfReflection,
+                false,
+            );
         }
 
         if config.graph_cleanup.enabled && self.knowledge_executor.is_some() {
-            self.register(TaskDef {
-                id: "cron-graph-cleanup".to_owned(),
-                name: "Graph cleanup: orphan removal".to_owned(),
-                nous_id: self.nous_id.clone(),
-                schedule: Schedule::Interval(config.graph_cleanup.interval),
-                action: TaskAction::Builtin(BuiltinTask::GraphCleanup),
-                enabled: true,
-                catch_up: false,
-                ..TaskDef::default()
-            });
+            self.register_builtin(
+                "cron-graph-cleanup",
+                "Graph cleanup: orphan removal",
+                Schedule::Interval(config.graph_cleanup.interval),
+                BuiltinTask::GraphCleanup,
+                false,
+            );
         }
     }
 
     /// Register the 7 knowledge maintenance tasks with their schedules.
     fn register_knowledge_maintenance_tasks(&mut self) {
-        let tasks = [
+        let tasks: [(_, _, Schedule, BuiltinTask); 8] = [
             (
                 "decay-refresh",
                 "Decay score refresh",
@@ -364,16 +364,7 @@ impl TaskRunner {
         ];
 
         for (id, name, schedule, task) in tasks {
-            self.register(TaskDef {
-                id: id.to_owned(),
-                name: name.to_owned(),
-                nous_id: self.nous_id.clone(),
-                schedule,
-                action: TaskAction::Builtin(task),
-                enabled: true,
-                catch_up: true,
-                ..TaskDef::default()
-            });
+            self.register_builtin(id, name, schedule, task, true);
         }
     }
 
@@ -458,7 +449,7 @@ impl TaskRunner {
     ///
     /// # Cancel safety
     ///
-    /// Cancel-safe at the loop boundary. Each `SELECT!` branch is cancel-safe:
+    /// Cancel-safe at the loop boundary. Each `select!` branch is cancel-safe:
     /// `interval.tick()` is cancel-safe (a dropped tick simply delays the next
     /// poll), and `CancellationToken::cancelled()` is cancel-safe. If this
     /// future is dropped between iterations, in-flight tasks continue running

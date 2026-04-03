@@ -586,10 +586,10 @@ mod tests {
             result >= base,
             "jittered timestamp must be >= base (jitter is non-negative)"
         );
-        let OFFSET = result.since(base).unwrap();
+        let offset = result.since(base).unwrap();
         assert!(
-            OFFSET.get_seconds() <= 300,
-            "jitter OFFSET must be <= max_jitter"
+            offset.get_seconds() <= 300,
+            "jitter offset must be <= max_jitter"
         );
     }
 }
