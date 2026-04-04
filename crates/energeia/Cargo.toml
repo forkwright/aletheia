@@ -24,8 +24,10 @@ aletheia-eidos = { path = "../eidos" }
 jiff = { workspace = true, features = ["serde"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
+serde_yaml = { workspace = true }
 snafu = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]
 static_assertions = { workspace = true }
+tempfile = { workspace = true }
