@@ -211,7 +211,7 @@ impl Budget {
             clippy::cast_precision_loss,
             reason = "hundredths values are small enough that f64 precision is sufficient"
         )]
-        let cost = hundredths as f64 / 10_000.0;
+        let cost = f64::try_from(hundredths).unwrap_or_default() / 10_000.0;
         cost
     }
 
@@ -545,7 +545,7 @@ mod tests {
     fn resume_policy_default_has_three_stages() {
         let policy = ResumePolicy::default();
         assert_eq!(policy.stages.len(), 3);
-        assert!(policy.stages[0].turn_budget > policy.stages[2].turn_budget);
+        assert!(policy.stages.get(0).copied().unwrap_or_default().turn_budget > policy.stages.get(2).copied().unwrap_or_default().turn_budget);
     }
 
     #[test]
