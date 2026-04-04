@@ -130,6 +130,30 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// State store read/write failure.
+    #[snafu(display("store error: {message}"))]
+    Store {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Record serialization or deserialization failure.
+    #[snafu(display("serialization error: {message}"))]
+    Serialization {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Requested record not found.
+    #[snafu(display("not found: {what}"))]
+    NotFound {
+        what: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Convenience alias for results with [`Error`].

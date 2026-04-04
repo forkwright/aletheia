@@ -159,6 +159,8 @@ pub enum EpistemicTier {
     Inferred,
     /// Unchecked assumption.
     Assumed,
+    /// Derived from agent session outcomes for training signal.
+    Training,
 }
 
 impl EpistemicTier {
@@ -169,6 +171,7 @@ impl EpistemicTier {
             Self::Verified => "verified",
             Self::Inferred => "inferred",
             Self::Assumed => "assumed",
+            Self::Training => "training",
         }
     }
 
@@ -179,6 +182,9 @@ impl EpistemicTier {
             Self::Verified => 2.0,
             Self::Inferred => 1.0,
             Self::Assumed => 0.5,
+            // WHY: training data is a permanent record of session outcomes,
+            // not subject to memory decay — it persists indefinitely.
+            Self::Training => 4.0,
         }
     }
 }

@@ -33,5 +33,7 @@ pub mod prompt;
 pub mod qa;
 /// Multi-stage resume escalation policy.
 pub mod resume;
+/// State persistence layer (fjall key-value store).
+pub mod store;
 /// Core dispatch types: specs, outcomes, QA results.
 pub mod types;
