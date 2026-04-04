@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.37](https://github.com/forkwright/aletheia/compare/v0.13.36...v0.13.37) (2026-04-04)
+
+
+### Features
+
+* **hermeneus:** CC request mimicry for OAuth API calls ([#2430](https://github.com/forkwright/aletheia/issues/2430)) ([15e8494](https://github.com/forkwright/aletheia/commit/15e849491b09d323659d46927ddb2159d2db3520))
+
 ## [0.13.36](https://github.com/forkwright/aletheia/compare/v0.13.35...v0.13.36) (2026-04-04)
 
 
