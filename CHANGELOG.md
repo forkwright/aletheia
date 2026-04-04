@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.39](https://github.com/forkwright/aletheia/compare/v0.13.38...v0.13.39) (2026-04-04)
+
+
+### Bug Fixes
+
+* resolve lint violations via kanon lint --fix ([7d9f242](https://github.com/forkwright/aletheia/commit/7d9f2423cfd58f85c067ee6c38f9e296e7b0effb))
+
 ## [0.13.38](https://github.com/forkwright/aletheia/compare/v0.13.37...v0.13.38) (2026-04-04)
 
 
