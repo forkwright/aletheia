@@ -19,10 +19,11 @@ dependencies = [
 
 [[package]]
 name = "aletheia-koina"
-version = "0.13.23"
+version = "0.13.28"
 dependencies = [
  "compact_str",
  "jiff",
+ "rand 0.9.2",
  "regex",
  "rustix",
  "serde",
@@ -4528,7 +4529,7 @@ dependencies = [
 
 [[package]]
 name = "theatron-core"
-version = "0.13.23"
+version = "0.13.28"
 dependencies = [
  "aletheia-koina",
  "bytes",
