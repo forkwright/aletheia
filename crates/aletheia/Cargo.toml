@@ -30,6 +30,8 @@ migrate-qdrant = ["dep:qdrant-client", "aletheia-mneme/mneme-engine", "aletheia-
 tls = ["aletheia-pylon/tls"]
 keyring = ["aletheia-symbolon/keyring"]
 tui = ["dep:theatron-tui"]
+# Dispatch orchestration (kanon phronesis port). Default off for incremental development.
+energeia = ["dep:aletheia-energeia"]
 # Test tiers (see docs/test-tiers.md)
 test-core = ["aletheia-mneme/test-core", "aletheia-nous/test-core", "aletheia-pylon/test-core"]
 test-full = ["test-core", "aletheia-mneme/test-full"]
@@ -37,6 +39,7 @@ test-full = ["test-core", "aletheia-mneme/test-full"]
 [dependencies]
 aletheia-diaporeia = { path = "../diaporeia", optional = true }
 aletheia-dianoia = { path = "../dianoia" }
+aletheia-energeia = { path = "../energeia", optional = true }
 aletheia-oikonomos = { path = "../daemon" }
 aletheia-koina = { path = "../koina" }
 aletheia-taxis = { path = "../taxis" }

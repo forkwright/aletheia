@@ -1,0 +1,31 @@
+[package]
+name = "aletheia-energeia"
+version.workspace = true
+description = "Dispatch orchestration — actualization of plans into execution"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+test-core = []
+test-full = []
+
+[dependencies]
+aletheia-koina = { path = "../koina" }
+aletheia-eidos = { path = "../eidos" }
+# WHY: hermeneus has pre-existing compilation errors on main (kanon lint pass
+# introduced unwrap_or_default on non-Default types). Add dependency once
+# hermeneus compiles again; implementations will need it for LLM evaluation.
+# aletheia-hermeneus = { path = "../hermeneus" }
+jiff = { workspace = true, features = ["serde"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+snafu = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+static_assertions = { workspace = true }
