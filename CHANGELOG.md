@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.38](https://github.com/forkwright/aletheia/compare/v0.13.37...v0.13.38) (2026-04-04)
+
+
+### Documentation
+
+* rewrite QUICKSTART.md as tested end-to-end cold-start guide ([a8f93f2](https://github.com/forkwright/aletheia/commit/a8f93f270c0976663545be00980336d1145d3bbc)), closes [#2419](https://github.com/forkwright/aletheia/issues/2419)
+
 ## [0.13.37](https://github.com/forkwright/aletheia/compare/v0.13.36...v0.13.37) (2026-04-04)
 
 
