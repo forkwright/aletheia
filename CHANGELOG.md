@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.13.40](https://github.com/forkwright/aletheia/compare/v0.13.39...v0.13.40) (2026-04-04)
+
+
+### Features
+
+* **energeia:** create crate shell with core types and trait boundaries ([#2447](https://github.com/forkwright/aletheia/issues/2447)) ([ceca8b2](https://github.com/forkwright/aletheia/commit/ceca8b29f399c30099dfb54aa5d65f764108761b))
+
+
+### Bug Fixes
+
+* resolve lint violations via kanon lint --fix ([5693cf6](https://github.com/forkwright/aletheia/commit/5693cf60e0e22a17958026c67980797827b71cd3))
+
 ## [0.13.39](https://github.com/forkwright/aletheia/compare/v0.13.38...v0.13.39) (2026-04-04)
 
 
