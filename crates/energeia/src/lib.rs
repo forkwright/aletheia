@@ -8,6 +8,7 @@
 //! # Architecture
 //!
 //! - [`engine::DispatchEngine`] — session execution backend (Agent SDK HTTP/SSE)
+//! - [`http`] — subprocess-based `DispatchEngine` implementation and mock engine
 //! - [`qa::QaGate`] — quality assurance evaluation (mechanical + LLM)
 //! - [`budget`] — atomic cost/turn/duration tracking for concurrent sessions
 //! - [`resume`] — multi-stage escalation policy for stuck sessions
@@ -24,6 +25,8 @@ pub mod dag;
 pub mod engine;
 /// Error types for energeia operations.
 pub mod error;
+/// HTTP/SSE dispatch engine: subprocess-based `DispatchEngine` and mock.
+pub mod http;
 /// Prompt loading from YAML frontmatter files.
 pub mod prompt;
 /// Quality assurance gate trait.

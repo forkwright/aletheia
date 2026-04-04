@@ -18,6 +18,10 @@ use crate::error::Result;
 ///
 /// Targets the Anthropic Agent SDK HTTP/SSE API. Production implementations
 /// use HTTP+SSE streaming; test implementations return canned responses.
+#[expect(
+    clippy::type_complexity,
+    reason = "async trait methods returning boxed trait objects require nested generics"
+)]
 pub trait DispatchEngine: Send + Sync {
     /// Spawn a new agent session for the given spec and options.
     fn spawn_session<'a>(
