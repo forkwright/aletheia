@@ -615,16 +615,19 @@ fn epistemic_tier_ordering() {
         EpistemicTier::Verified => 3,
         EpistemicTier::Inferred => 2,
         EpistemicTier::Assumed => 1,
+        EpistemicTier::Training => 4,
     };
     let inferred_score = match EpistemicTier::Inferred {
         EpistemicTier::Verified => 3,
         EpistemicTier::Inferred => 2,
         EpistemicTier::Assumed => 1,
+        EpistemicTier::Training => 4,
     };
     let assumed_score = match EpistemicTier::Assumed {
         EpistemicTier::Verified => 3,
         EpistemicTier::Inferred => 2,
         EpistemicTier::Assumed => 1,
+        EpistemicTier::Training => 4,
     };
     assert!(
         verified_score > inferred_score,

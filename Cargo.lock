@@ -176,7 +176,9 @@ version = "0.13.43"
 dependencies = [
  "aletheia-eidos",
  "aletheia-koina",
+ "fjall",
  "jiff",
+ "rmp-serde",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -185,6 +187,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
+ "ulid",
 ]
 
 [[package]]

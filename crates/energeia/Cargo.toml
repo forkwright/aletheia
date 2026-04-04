@@ -11,8 +11,9 @@ rust-version.workspace = true
 workspace = true
 
 [features]
-test-core = []
+test-core = ["storage-fjall"]
 test-full = []
+storage-fjall = ["dep:fjall"]
 
 [dependencies]
 aletheia-koina = { path = "../koina" }
@@ -21,13 +22,16 @@ aletheia-eidos = { path = "../eidos" }
 # introduced unwrap_or_default on non-Default types). Add dependency once
 # hermeneus compiles again; implementations will need it for LLM evaluation.
 # aletheia-hermeneus = { path = "../hermeneus" }
+fjall = { version = "3", optional = true }
 jiff = { workspace = true, features = ["serde"] }
+rmp-serde = "1.2"
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }
 snafu = { workspace = true }
 tokio = { workspace = true, features = ["process", "io-util"] }
 tracing = { workspace = true }
+ulid = { workspace = true }
 
 [dev-dependencies]
 static_assertions = { workspace = true }
