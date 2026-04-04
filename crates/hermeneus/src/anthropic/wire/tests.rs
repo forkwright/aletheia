@@ -101,7 +101,7 @@ fn wire_request_extracts_system_prompt() {
         stop_sequences: vec![],
         ..Default::default()
     };
-    let wire = WireRequest::from_request(&req, None);
+    let wire = WireRequest::from_request(&req, None, None);
     assert_eq!(
         wire.system,
         Some(serde_json::Value::String("You are helpful.".to_owned()))
@@ -132,7 +132,7 @@ fn wire_request_extracts_system_from_messages() {
         stop_sequences: vec![],
         ..Default::default()
     };
-    let wire = WireRequest::from_request(&req, None);
+    let wire = WireRequest::from_request(&req, None, None);
     assert_eq!(
         wire.system,
         Some(serde_json::Value::String("Be concise.".to_owned()))
@@ -160,7 +160,7 @@ fn wire_request_serializes_thinking_config() {
         stop_sequences: vec![],
         ..Default::default()
     };
-    let wire = WireRequest::from_request(&req, None);
+    let wire = WireRequest::from_request(&req, None, None);
     let json = serde_json::to_value(&wire).unwrap();
     let thinking = json.get("thinking").unwrap();
     assert_eq!(thinking["type"], "enabled");
@@ -194,7 +194,7 @@ fn wire_request_serializes_tools() {
         stop_sequences: vec![],
         ..Default::default()
     };
-    let wire = WireRequest::from_request(&req, None);
+    let wire = WireRequest::from_request(&req, None, None);
     let json = serde_json::to_value(&wire).unwrap();
     let tools = json["tools"].as_array().unwrap();
     assert_eq!(tools.len(), 1);
@@ -258,7 +258,7 @@ fn wire_request_cache_system_serializes_as_array() {
         cache_system: true,
         ..Default::default()
     };
-    let wire = WireRequest::from_request(&req, None);
+    let wire = WireRequest::from_request(&req, None, None);
     let json = serde_json::to_value(&wire).unwrap();
     let system = json["system"].as_array().unwrap();
     assert_eq!(system.len(), 1);
@@ -293,7 +293,7 @@ fn wire_request_cache_tools_on_last_tool() {
         cache_tools: true,
         ..Default::default()
     };
-    let wire = WireRequest::from_request(&req, None);
+    let wire = WireRequest::from_request(&req, None, None);
     let json = serde_json::to_value(&wire).unwrap();
     let tools = json["tools"].as_array().unwrap();
     assert!(tools[0].get("cache_control").is_none());
@@ -312,7 +312,7 @@ fn wire_request_tool_choice_auto() {
         tool_choice: Some(crate::types::ToolChoice::Auto),
         ..Default::default()
     };
-    let wire = WireRequest::from_request(&req, None);
+    let wire = WireRequest::from_request(&req, None, None);
     let json = serde_json::to_value(&wire).unwrap();
     assert_eq!(json["tool_choice"]["type"], "auto");
 }
@@ -331,7 +331,7 @@ fn wire_request_tool_choice_specific_tool() {
         }),
         ..Default::default()
     };
-    let wire = WireRequest::from_request(&req, None);
+    let wire = WireRequest::from_request(&req, None, None);
     let json = serde_json::to_value(&wire).unwrap();
     assert_eq!(json["tool_choice"]["type"], "tool");
     assert_eq!(json["tool_choice"]["name"], "exec");
@@ -348,7 +348,7 @@ fn wire_request_tool_choice_none_omitted() {
         max_tokens: 1024,
         ..Default::default()
     };
-    let wire = WireRequest::from_request(&req, None);
+    let wire = WireRequest::from_request(&req, None, None);
     let json = serde_json::to_value(&wire).unwrap();
     assert!(json.get("tool_choice").is_none());
 }
@@ -367,7 +367,7 @@ fn wire_request_metadata_serialized() {
         }),
         ..Default::default()
     };
-    let wire = WireRequest::from_request(&req, None);
+    let wire = WireRequest::from_request(&req, None, None);
     let json = serde_json::to_value(&wire).unwrap();
     assert_eq!(json["metadata"]["user_id"], "nous:syn:main");
 }
@@ -384,7 +384,7 @@ fn wire_request_citations_serialized() {
         citations: Some(crate::types::CitationConfig { enabled: true }),
         ..Default::default()
     };
-    let wire = WireRequest::from_request(&req, None);
+    let wire = WireRequest::from_request(&req, None, None);
     let json = serde_json::to_value(&wire).unwrap();
     assert_eq!(json["citations"]["enabled"], true);
 }
@@ -463,7 +463,7 @@ fn wire_request_mixed_user_and_server_tools() {
         }],
         ..Default::default()
     };
-    let wire = WireRequest::from_request(&req, None);
+    let wire = WireRequest::from_request(&req, None, None);
     let json = serde_json::to_value(&wire).unwrap();
     let tools = json["tools"].as_array().unwrap();
     assert_eq!(tools.len(), 2);
@@ -563,7 +563,7 @@ fn wire_request_cache_tools_only_on_user_tools() {
         cache_tools: true,
         ..Default::default()
     };
-    let wire = WireRequest::from_request(&req, None);
+    let wire = WireRequest::from_request(&req, None, None);
     let json = serde_json::to_value(&wire).unwrap();
     let tools = json["tools"].as_array().unwrap();
     assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");

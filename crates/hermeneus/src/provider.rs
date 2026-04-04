@@ -93,6 +93,12 @@ pub struct ProviderConfig {
     /// Per-model pricing for cost metrics. Keyed by model name.
     #[serde(default)]
     pub pricing: HashMap<String, ModelPricing>,
+    /// Enable CC request mimicry for OAuth credentials. Defaults to `true`
+    /// when using `with_credential_provider` against the first-party API.
+    /// Set to `false` to disable (e.g., when enforcement is lifted or
+    /// using API keys).
+    #[serde(default)]
+    pub cc_mimicry: Option<bool>,
 }
 
 impl Default for ProviderConfig {
@@ -151,6 +157,7 @@ impl Default for ProviderConfig {
             default_model: Some("claude-opus-4-20250514".to_owned()),
             max_retries: Some(3),
             pricing,
+            cc_mimicry: None,
         }
     }
 }

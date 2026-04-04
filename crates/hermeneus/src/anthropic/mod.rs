@@ -5,6 +5,7 @@
 //! as the public surface.
 
 pub(crate) mod batch;
+pub(crate) mod cc_profile;
 mod client;
 pub(crate) mod error;
 pub(crate) mod pricing;

@@ -36,6 +36,8 @@ pub struct AnthropicProvider {
     max_retries: u32,
     pricing: HashMap<String, ModelPricing>,
     health: Arc<ProviderHealthTracker>,
+    /// CC profile for request mimicry. `Some` when using OAuth credentials.
+    cc_profile: Option<super::cc_profile::CcProfile>,
 }
 
 /// Static credential provider for backward-compatible `from_config()`.
@@ -135,6 +137,7 @@ impl AnthropicProvider {
             max_retries: config.max_retries.unwrap_or(DEFAULT_MAX_RETRIES),
             pricing: Self::merge_pricing(config),
             health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
+            cc_profile: None, // API key mode — no mimicry needed
         };
         // TODO(#2178): add allow_insecure config field
         if !provider.base_url.starts_with("https://") && !is_loopback_url(&provider.base_url) {
@@ -153,11 +156,27 @@ impl AnthropicProvider {
     ///
     /// The credential is resolved per-request via `provider.get_credential()`,
     /// enabling mid-session token rotation and background OAuth refresh.
+    /// When using OAuth credentials against the first-party API, CC mimicry
+    /// is automatically enabled so requests match Claude Code's fingerprint.
     pub fn with_credential_provider(
         // kanon:ignore RUST/pub-visibility
         provider: Arc<dyn CredentialProvider>,
         config: &ProviderConfig,
     ) -> Result<Self> {
+        // WHY: OAuth credentials against the first-party API need CC mimicry
+        // to avoid detection as a third-party harness. Only activate when
+        // the credential provider can supply OAuth tokens and we're hitting
+        // api.anthropic.com (not a proxy or local endpoint).
+        let is_first_party = config
+            .base_url
+            .as_deref()
+            .map_or(true, |u| u.contains("anthropic.com"));
+        let cc_profile = if is_first_party && config.cc_mimicry.unwrap_or(true) {
+            Some(super::cc_profile::CcProfile::from_installed_cli())
+        } else {
+            None
+        };
+
         let provider = Self {
             client: build_http_client()?,
             credential_provider: provider,
@@ -169,6 +188,7 @@ impl AnthropicProvider {
             max_retries: config.max_retries.unwrap_or(DEFAULT_MAX_RETRIES),
             pricing: Self::merge_pricing(config),
             health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
+            cc_profile,
         };
         // TODO(#2178): add allow_insecure config field
         if !provider.base_url.starts_with("https://") && !is_loopback_url(&provider.base_url) {
@@ -234,7 +254,8 @@ impl AnthropicProvider {
         let mut ttft: Option<std::time::Duration> = None;
 
         let request = &self.maybe_prepend_oauth_identity(request);
-        let wire = WireRequest::from_request(request, Some(true));
+        let attribution = self.compute_attribution(request);
+        let wire = WireRequest::from_request(request, Some(true), attribution.as_deref());
         let body = serde_json::to_string(&wire).context(error::ParseResponseSnafu)?;
 
         let mut last_error = None;
@@ -492,6 +513,23 @@ impl AnthropicProvider {
         req
     }
 
+    /// Compute the CC attribution string for system prompt injection.
+    ///
+    /// Returns `None` when CC mimicry is inactive (API key mode or disabled).
+    /// The attribution is computed from the first user message text and the
+    /// CC version, matching CC's `getAttributionHeader()` in `constants/system.ts`.
+    fn compute_attribution(&self, request: &CompletionRequest) -> Option<String> {
+        let profile = self.cc_profile.as_ref()?;
+        // Extract first user message text for fingerprint computation.
+        let first_msg_text = request
+            .messages
+            .iter()
+            .find(|m| m.role == crate::types::Role::User)
+            .map(|m| m.content.text())
+            .unwrap_or_default();
+        Some(profile.attribution_header(&first_msg_text))
+    }
+
     fn build_headers(&self) -> Result<HeaderMap> {
         let credential = self.credential_provider.get_credential().ok_or_else(|| {
             error::AuthFailedSnafu {
@@ -517,13 +555,55 @@ impl AnthropicProvider {
                 .build()
             })?;
             headers.insert(reqwest::header::AUTHORIZATION, value);
-            // WHY: Anthropic requires this beta header to accept OAuth tokens
-            // on the Messages API. Without it, the API returns 401
-            // "OAuth authentication is currently not supported."
-            headers.insert(
-                "anthropic-beta",
-                HeaderValue::from_static("oauth-2025-04-20"),
-            );
+
+            // WHY: When cc_profile is active, send the full CC beta set
+            // (which includes oauth-2025-04-20). Otherwise fall back to
+            // the minimum required for OAuth.
+            if let Some(profile) = &self.cc_profile {
+                headers.insert(
+                    "anthropic-beta",
+                    HeaderValue::from_str(&profile.beta_header_value()).map_err(|_e| {
+                        error::AuthFailedSnafu {
+                            message: "beta header value contains invalid characters".to_owned(),
+                        }
+                        .build()
+                    })?,
+                );
+                // CC identification headers
+                headers.insert("x-app", HeaderValue::from_static("cli"));
+                headers.insert(
+                    reqwest::header::USER_AGENT,
+                    HeaderValue::from_str(&profile.user_agent()).map_err(|_e| {
+                        error::AuthFailedSnafu {
+                            message: "user agent contains invalid characters".to_owned(),
+                        }
+                        .build()
+                    })?,
+                );
+                headers.insert(
+                    "X-Claude-Code-Session-Id",
+                    HeaderValue::from_str(&profile.session_id.to_string()).map_err(|_e| {
+                        error::AuthFailedSnafu {
+                            message: "session id contains invalid characters".to_owned(),
+                        }
+                        .build()
+                    })?,
+                );
+                headers.insert(
+                    "x-client-request-id",
+                    HeaderValue::from_str(&uuid::Uuid::new_v4().to_string()).map_err(|_e| {
+                        error::AuthFailedSnafu {
+                            message: "request id contains invalid characters".to_owned(),
+                        }
+                        .build()
+                    })?,
+                );
+            } else {
+                headers.insert(
+                    "anthropic-beta",
+                    HeaderValue::from_static("oauth-2025-04-20"),
+                );
+            }
         } else {
             let value = HeaderValue::from_str(secret_value).map_err(|_e| {
                 error::AuthFailedSnafu {
@@ -590,8 +670,8 @@ impl AnthropicProvider {
         // prompt identity check. Without the CC identity prefix, only Haiku-tier
         // models are available. This matches what Claude Code itself sends.
         let request = &self.maybe_prepend_oauth_identity(request);
-
-        let wire = WireRequest::from_request(request, None);
+        let attribution = self.compute_attribution(request);
+        let wire = WireRequest::from_request(request, None, attribution.as_deref());
         let body = serde_json::to_string(&wire).context(error::ParseResponseSnafu)?;
 
         let mut last_error = None;
