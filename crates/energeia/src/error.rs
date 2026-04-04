@@ -1,5 +1,7 @@
 //! Energeia-specific errors.
 
+use std::path::PathBuf;
+
 use snafu::Snafu;
 
 /// Errors from dispatch orchestration operations.
@@ -11,6 +13,41 @@ use snafu::Snafu;
     reason = "snafu error variant fields are self-documenting via display format"
 )]
 pub enum Error {
+    /// I/O error reading or listing prompt files.
+    #[snafu(display("I/O error for '{}': {source}", path.display()))]
+    Io {
+        path: PathBuf,
+        source: std::io::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// YAML frontmatter parse error in a prompt file.
+    #[snafu(display("frontmatter parse error in '{}': {detail}", path.display()))]
+    FrontmatterParse {
+        path: PathBuf,
+        detail: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Cycle detected in the prompt dependency graph.
+    #[snafu(display("cycle in prompt DAG: {}", cycle.iter().map(|n| format!("#{n}")).collect::<Vec<_>>().join(" -> ")))]
+    DagCycle {
+        /// Prompt numbers forming the cycle.
+        cycle: Vec<u32>,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Broken or missing dependency references in the prompt DAG.
+    #[snafu(display("broken prompt dependencies: {detail}"))]
+    DagMissingDeps {
+        detail: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Dispatch was aborted via cancellation.
     #[snafu(display("dispatch aborted"))]
     Aborted {
@@ -100,6 +137,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
 
     #[test]
@@ -186,6 +225,51 @@ mod tests {
         }
         .build();
         assert!(err.to_string().contains("connection refused"));
+    }
+
+    #[test]
+    fn error_display_io() {
+        use snafu::IntoError as _;
+        let err = IoSnafu {
+            path: PathBuf::from("/tmp/foo.md"),
+        }
+        .into_error(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "no such file",
+        ));
+        assert!(err.to_string().contains("foo.md"));
+    }
+
+    #[test]
+    fn error_display_frontmatter_parse() {
+        let err = FrontmatterParseSnafu {
+            path: PathBuf::from("/tmp/foo.md"),
+            detail: "missing number field",
+        }
+        .build();
+        let msg = err.to_string();
+        assert!(msg.contains("foo.md"));
+        assert!(msg.contains("missing number field"));
+    }
+
+    #[test]
+    fn error_display_dag_cycle() {
+        let err = DagCycleSnafu {
+            cycle: vec![1u32, 2u32, 3u32],
+        }
+        .build();
+        let msg = err.to_string();
+        assert!(msg.contains("cycle"));
+        assert!(msg.contains("#1"));
+    }
+
+    #[test]
+    fn error_display_dag_missing_deps() {
+        let err = DagMissingDepsSnafu {
+            detail: "prompt 2 -> 99",
+        }
+        .build();
+        assert!(err.to_string().contains("2 -> 99"));
     }
 
     #[test]

@@ -9,14 +9,26 @@
 //!
 //! - [`engine::DispatchEngine`] — session execution backend (Agent SDK HTTP/SSE)
 //! - [`qa::QaGate`] — quality assurance evaluation (mechanical + LLM)
-//! - [`types`] — dispatch specs, outcomes, budgets, resume policies, QA results
+//! - [`budget`] — atomic cost/turn/duration tracking for concurrent sessions
+//! - [`resume`] — multi-stage escalation policy for stuck sessions
+//! - [`dag`] — prompt dependency graph with topological frontier computation
+//! - [`prompt`] — YAML frontmatter loading and DAG construction from prompt files
+//! - [`types`] — dispatch specs, outcomes, QA results
 //! - [`error`] — snafu error types with location tracking
 
+/// Atomic budget tracking for dispatch runs.
+pub mod budget;
+/// Prompt dependency DAG and parallel frontier computation.
+pub mod dag;
 /// Dispatch engine trait and session types.
 pub mod engine;
 /// Error types for energeia operations.
 pub mod error;
+/// Prompt loading from YAML frontmatter files.
+pub mod prompt;
 /// Quality assurance gate trait.
 pub mod qa;
-/// Core dispatch types: specs, outcomes, budgets, resume policies, QA results.
+/// Multi-stage resume escalation policy.
+pub mod resume;
+/// Core dispatch types: specs, outcomes, QA results.
 pub mod types;
