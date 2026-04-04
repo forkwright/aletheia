@@ -9,6 +9,10 @@ pub mod communication;
 pub mod computer_use;
 /// Dynamic tool activation meta-tool.
 pub mod enable_tool;
+/// Energeia capability tool stubs (dromeus, dokimasia, diorthosis, epitropos, parateresis,
+/// mathesis, prographe, schedion, metron). Real implementations land in AL-2060.
+#[cfg(feature = "energeia")]
+pub mod energeia;
 /// Filesystem navigation tools (grep, find, ls).
 pub mod filesystem;
 /// Knowledge graph and session memory tools (remember, recall).
@@ -56,5 +60,7 @@ pub fn register_all_with_sandbox(
     planning::register(registry)?;
     research::register(registry)?;
     triage::register(registry)?;
+    #[cfg(feature = "energeia")]
+    energeia::register(registry)?;
     Ok(())
 }

@@ -14,6 +14,9 @@ workspace = true
 # Computer use tool: screen capture, action dispatch, Landlock sandbox.
 # Not compiled by default — requires Linux kernel 5.13+ with Landlock support.
 computer-use = []
+# Energeia capability tools (dromeus, dokimasia, diorthosis, epitropos, parateresis,
+# mathesis, prographe, schedion, metron). Stubs only until AL-2060 implements them.
+energeia = []
 # Gates MockToolExecutor, ToolExecutorSpec, and other test helpers. No test code in release binaries.
 test-support = ["aletheia-hermeneus/test-support"]
 test-core = []
