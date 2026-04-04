@@ -95,7 +95,17 @@ impl<'a> WireRequest<'a> {
         clippy::too_many_lines,
         reason = "request construction with caching logic"
     )]
-    pub(crate) fn from_request(req: &'a CompletionRequest, stream: Option<bool>) -> Self {
+    /// Build a wire request from a completion request.
+    ///
+    /// `attribution`: Optional CC attribution string to prepend to the system
+    /// prompt. When present, the system prompt is always sent as an array of
+    /// text blocks (matching CC format). The attribution block intentionally
+    /// omits `cache_control` since it contains a per-conversation fingerprint.
+    pub(crate) fn from_request(
+        req: &'a CompletionRequest,
+        stream: Option<bool>,
+        attribution: Option<&str>,
+    ) -> Self {
         // WHY: Anthropic API requires system prompt as a top-level field, not in messages.
         let system_text = req.system.clone().or_else(|| {
             let system_texts: Vec<&str> = req
@@ -118,7 +128,28 @@ impl<'a> WireRequest<'a> {
         // WHY: Anthropic caching requires system as an array with cache_control on the last block.
         // codequality:ignore -- system_text is the LLM system prompt, not a credential
         let system = system_text.map(|text| {
-            if req.cache_system {
+            if let Some(attr) = attribution {
+                // WHY: CC always sends system as an array. The attribution block
+                // is first (no cache_control — fingerprint changes per conversation).
+                // The actual system prompt follows with cache_control if enabled.
+                let mut blocks = vec![serde_json::json!({
+                    "type": "text",
+                    "text": attr
+                })];
+                if req.cache_system {
+                    blocks.push(serde_json::json!({
+                        "type": "text",
+                        "text": text,
+                        "cache_control": {"type": "ephemeral"}
+                    }));
+                } else {
+                    blocks.push(serde_json::json!({
+                        "type": "text",
+                        "text": text
+                    }));
+                }
+                serde_json::Value::Array(blocks)
+            } else if req.cache_system {
                 serde_json::json!([{
                     "type": "text",
                     "text": text,
