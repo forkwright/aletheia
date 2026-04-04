@@ -39,6 +39,7 @@ dependencies = [
  "aletheia-dianoia",
  "aletheia-diaporeia",
  "aletheia-dokimion",
+ "aletheia-energeia",
  "aletheia-hermeneus",
  "aletheia-koina",
  "aletheia-mneme",
@@ -167,6 +168,20 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+]
+
+[[package]]
+name = "aletheia-energeia"
+version = "0.13.38"
+dependencies = [
+ "aletheia-eidos",
+ "aletheia-koina",
+ "jiff",
+ "serde",
+ "serde_json",
+ "snafu",
+ "static_assertions",
+ "tokio",
 ]
 
 [[package]]

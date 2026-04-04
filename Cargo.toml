@@ -5,6 +5,7 @@ members = [
     "crates/diaporeia",
     "crates/dianoia",
     "crates/eidos",
+    "crates/energeia",
     "crates/episteme",
     "crates/agora",
     "crates/daemon",
