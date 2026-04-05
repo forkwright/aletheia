@@ -19,6 +19,7 @@ storage-fjall = ["dep:fjall"]
 aletheia-koina = { path = "../koina" }
 aletheia-eidos = { path = "../eidos" }
 prometheus = { workspace = true }
+regex = { workspace = true }
 # WHY: hermeneus has pre-existing compilation errors on main (kanon lint pass
 # introduced unwrap_or_default on non-Default types). Add dependency once
 # hermeneus compiles again; implementations will need it for LLM evaluation.

@@ -2,8 +2,12 @@
 
 /// Unified diff parser for structured change analysis.
 pub mod diff;
+/// Dispatch pattern detection and scoring for steward learning.
+pub mod dispatch;
 /// Post-merge lesson extraction from PR diffs.
 pub mod lesson;
+/// Observation parsing from PR body markdown.
+pub mod observation;
 /// Context-dependent extraction refinement: turn classification, correction
 /// detection, quality filters, and fact type classification.
 pub mod refinement;

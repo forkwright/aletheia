@@ -42,5 +42,7 @@ pub mod resume;
 pub mod session;
 /// State persistence layer (fjall key-value store).
 pub mod store;
+/// Steward CI management pipeline: classify, merge, fix, and manage pull requests.
+pub mod steward;
 /// Core dispatch types: specs, outcomes, QA results.
 pub mod types;
