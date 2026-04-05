@@ -170,7 +170,7 @@ impl AnthropicProvider {
         let is_first_party = config
             .base_url
             .as_deref()
-            .map_or(true, |u| u.contains("anthropic.com"));
+            .is_none_or(|u| u.contains("anthropic.com"));
         let cc_profile = if is_first_party && config.cc_mimicry.unwrap_or(true) {
             Some(super::cc_profile::CcProfile::from_installed_cli())
         } else {

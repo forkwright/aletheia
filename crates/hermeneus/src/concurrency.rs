@@ -162,7 +162,7 @@ impl AdaptiveConcurrencyLimiter {
         )]
         self.inner
             .lock()
-            .unwrap_or_default() // kanon:ignore RUST/expect
+            .expect("mutex poisoning: thread panicked, no Result to propagate") // kanon:ignore RUST/expect
             .limit
     }
 
@@ -176,7 +176,7 @@ impl AdaptiveConcurrencyLimiter {
         )]
         self.inner
             .lock()
-            .unwrap_or_default() // kanon:ignore RUST/expect
+            .expect("mutex poisoning: thread panicked, no Result to propagate") // kanon:ignore RUST/expect
             .in_flight
     }
 
@@ -190,7 +190,7 @@ impl AdaptiveConcurrencyLimiter {
         )]
         self.inner
             .lock()
-            .unwrap_or_default() // kanon:ignore RUST/expect
+            .expect("mutex poisoning: thread panicked, no Result to propagate") // kanon:ignore RUST/expect
             .latency_ewma
     }
 
@@ -213,7 +213,7 @@ impl AdaptiveConcurrencyLimiter {
                 let mut inner = self
                     .inner
                     .lock()
-                    .unwrap_or_default(); // kanon:ignore RUST/expect
+                    .expect("mutex poisoning: thread panicked, no Result to propagate"); // kanon:ignore RUST/expect
                 if inner.in_flight < inner.limit {
                     inner.in_flight += 1;
                     crate::metrics::set_concurrency_in_flight(&self.provider_name, inner.in_flight);
@@ -242,7 +242,7 @@ impl AdaptiveConcurrencyLimiter {
             let mut inner = self
                 .inner
                 .lock()
-                .unwrap_or_default(); // kanon:ignore RUST/expect
+                .expect("mutex poisoning: thread panicked, no Result to propagate"); // kanon:ignore RUST/expect
 
             inner.in_flight = inner.in_flight.saturating_sub(1);
 
@@ -289,7 +289,7 @@ impl AdaptiveConcurrencyLimiter {
                         clippy::as_conversions,
                         reason = "decreased_f64 is non-negative and bounded by INNER.LIMIT (a u32)"
                     )]
-                    let decreased = u32::try_from(decreased_f64).unwrap_or_default(); // kanon:ignore RUST/as-cast
+                    let decreased = decreased_f64 as u32; // kanon:ignore RUST/as-cast
                     inner.limit = decreased.max(self.config.min_limit);
                 }
                 RequestOutcome::Neutral => {}
@@ -581,7 +581,7 @@ mod tests {
         assert_eq!(l.in_flight(), 1);
 
         let l2 = Arc::clone(&l);
-        let waiter = tokio::spawn(async move { l2.acquire(.instrument(tracing::info_span!("spawned_task"))).await });
+        let waiter = tokio::spawn(async move { l2.acquire().await });
 
         // WHY: tokio::time::sleep used because tokio test-util feature is not enabled for this crate. // kanon:ignore TESTING/sleep-in-test
         tokio::time::sleep(Duration::from_millis(10)).await; // kanon:ignore TESTING/sleep-in-test

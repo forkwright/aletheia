@@ -14,8 +14,7 @@ fn citation_char_location_serde() {
         cited_text: "some text".to_owned(),
     };
     let json = serde_json::to_string(&citation).unwrap_or_default();
-    let back: Citation =
-        serde_json::from_str(&json).unwrap_or_default();
+    let back: Citation = serde_json::from_str(&json).unwrap_or_default();
     match back {
         Citation::CharLocation {
             document_index,
@@ -42,8 +41,7 @@ fn thinking_signature_roundtrip() {
         signature: Some("sig_xyz".to_owned()),
     };
     let json = serde_json::to_string(&block).unwrap_or_default();
-    let back: ContentBlock =
-        serde_json::from_str(&json).unwrap_or_default();
+    let back: ContentBlock = serde_json::from_str(&json).unwrap_or_default();
     match back {
         ContentBlock::Thinking {
             thinking,
@@ -69,10 +67,8 @@ fn thinking_no_signature_roundtrip() {
         thinking: "brief".to_owned(),
         signature: None,
     };
-    let json = serde_json::to_string(&block)
-        .unwrap_or_default();
-    let back: ContentBlock = serde_json::from_str(&json)
-        .unwrap_or_default();
+    let json = serde_json::to_string(&block).unwrap_or_default();
+    let back: ContentBlock = serde_json::from_str(&json).unwrap_or_default();
     match back {
         ContentBlock::Thinking { signature, .. } => {
             assert!(
@@ -96,8 +92,7 @@ fn server_tool_use_block_serde() {
         json.contains("server_tool_use"),
         "serialized ServerToolUse should contain type tag 'server_tool_use'"
     );
-    let back: ContentBlock =
-        serde_json::from_str(&json).unwrap_or_default();
+    let back: ContentBlock = serde_json::from_str(&json).unwrap_or_default();
     match back {
         ContentBlock::ServerToolUse { id, name, input } => {
             assert_eq!(
@@ -125,14 +120,12 @@ fn web_search_tool_result_block_serde() {
             {"type": "web_search_result", "url": "https://example.com", "title": "Example", "encrypted_content": "abc"}
         ]),
     };
-    let json =
-        serde_json::to_string(&block).unwrap_or_default();
+    let json = serde_json::to_string(&block).unwrap_or_default();
     assert!(
         json.contains("web_search_tool_result"),
         "serialized WebSearchToolResult should contain type tag 'web_search_tool_result'"
     );
-    let back: ContentBlock = serde_json::from_str(&json)
-        .unwrap_or_default();
+    let back: ContentBlock = serde_json::from_str(&json).unwrap_or_default();
     match back {
         ContentBlock::WebSearchToolResult {
             tool_use_id,
@@ -166,8 +159,7 @@ fn server_tool_definition_serde() {
         json.contains("web_search_20250305"),
         "serialized ServerToolDefinition should contain tool_type 'web_search_20250305'"
     );
-    let back: ServerToolDefinition =
-        serde_json::from_str(&json).unwrap_or_default();
+    let back: ServerToolDefinition = serde_json::from_str(&json).unwrap_or_default();
     assert_eq!(
         back.tool_type, "web_search_20250305",
         "ServerToolDefinition tool_type should round-trip unchanged"

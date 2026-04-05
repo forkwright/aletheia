@@ -119,12 +119,12 @@ pub fn compute_cost_report(store: &EnergeiaStore, window_days: u32) -> Result<Co
 
     let dispatches: Vec<&DispatchRecord> = all_dispatches
         .iter()
-        .filter(|d| cutoff_ms.map_or(true, |cutoff| d.created_at.as_millisecond() >= cutoff))
+        .filter(|d| cutoff_ms.is_none_or(|cutoff| d.created_at.as_millisecond() >= cutoff))
         .collect();
 
     let sessions: Vec<&SessionRecord> = all_sessions
         .iter()
-        .filter(|s| cutoff_ms.map_or(true, |cutoff| s.created_at.as_millisecond() >= cutoff))
+        .filter(|s| cutoff_ms.is_none_or(|cutoff| s.created_at.as_millisecond() >= cutoff))
         .collect();
 
     // Count sessions per dispatch for aggregation.
@@ -139,14 +139,12 @@ pub fn compute_cost_report(store: &EnergeiaStore, window_days: u32) -> Result<Co
     let total_cost_usd: f64 = dispatches.iter().map(|d| d.total_cost_usd).sum();
 
     #[expect(
-        clippy::cast_possible_truncation,
         clippy::as_conversions,
         reason = "dispatch/session counts are bounded by scan limits, fit u64"
     )]
     let total_dispatches = dispatches.len() as u64;
 
     #[expect(
-        clippy::cast_possible_truncation,
         clippy::as_conversions,
         reason = "dispatch/session counts are bounded by scan limits, fit u64"
     )]
@@ -217,21 +215,13 @@ fn build_project_costs(
         let acc = by_project.entry(d.project.as_str()).or_default();
         acc.cost_usd += d.total_cost_usd;
 
-        #[expect(
-            clippy::cast_possible_truncation,
-            clippy::as_conversions,
-            reason = "dispatch count bounded, fits u64"
-        )]
-        {
-            acc.dispatches += 1;
-        }
+        acc.dispatches += 1;
 
         let session_count = sessions_per_dispatch
             .get(d.id.as_str())
-            .map_or(0, |v| v.len());
+            .map_or(0, Vec::len);
 
         #[expect(
-            clippy::cast_possible_truncation,
             clippy::as_conversions,
             reason = "session count bounded, fits u64"
         )]
@@ -302,21 +292,13 @@ fn build_daily_velocity(
 
         let acc = by_day.entry(date).or_default();
 
-        #[expect(
-            clippy::cast_possible_truncation,
-            clippy::as_conversions,
-            reason = "dispatch count bounded, fits u64"
-        )]
-        {
-            acc.dispatches += 1;
-        }
+        acc.dispatches += 1;
 
         let session_count = sessions_per_dispatch
             .get(d.id.as_str())
-            .map_or(0, |v| v.len());
+            .map_or(0, Vec::len);
 
         #[expect(
-            clippy::cast_possible_truncation,
             clippy::as_conversions,
             reason = "session count bounded, fits u64"
         )]

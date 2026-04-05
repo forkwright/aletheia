@@ -207,6 +207,31 @@ pub struct SessionResult {
     pub result_text: Option<String>,
 }
 
+impl SessionResult {
+    /// Create a session result.
+    ///
+    /// Intended for test harnesses and mock engines that need to produce
+    /// results without running a real agent session.
+    #[must_use]
+    pub fn new(
+        session_id: String,
+        cost_usd: f64,
+        num_turns: u32,
+        duration_ms: u64,
+        success: bool,
+        result_text: Option<String>,
+    ) -> Self {
+        Self {
+            session_id,
+            cost_usd,
+            num_turns,
+            duration_ms,
+            success,
+            result_text,
+        }
+    }
+}
+
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {

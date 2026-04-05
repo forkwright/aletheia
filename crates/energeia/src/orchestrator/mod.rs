@@ -311,16 +311,14 @@ impl Orchestrator {
         // --- Finish dispatch record ---
 
         #[cfg(feature = "storage-fjall")]
-        if let Some(store) = &self.store {
-            if let Some(ref store_id) = store_dispatch_id {
-                let status = if aborted {
-                    crate::store::records::DispatchStatus::Failed
-                } else {
-                    crate::store::records::DispatchStatus::Completed
-                };
-                if let Err(e) = store.finish_dispatch(store_id, status) {
-                    tracing::warn!(error = %e, "failed to finish dispatch record");
-                }
+        if let (Some(store), Some(ref store_id)) = (&self.store, store_dispatch_id) {
+            let status = if aborted {
+                crate::store::records::DispatchStatus::Failed
+            } else {
+                crate::store::records::DispatchStatus::Completed
+            };
+            if let Err(e) = store.finish_dispatch(store_id, status) {
+                tracing::warn!(error = %e, "failed to finish dispatch record");
             }
         }
 

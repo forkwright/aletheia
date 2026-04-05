@@ -357,7 +357,7 @@ async fn fetch_issues(
     limit: u64,
 ) -> std::result::Result<Vec<GitHubIssue>, String> {
     let mut url = format!(
-        "https://api.github.com/repos/{repo}/issues?state=open&per_page={LIMIT}&sort=updated&direction=desc"
+        "https://api.github.com/repos/{repo}/issues?state=open&per_page={limit}&sort=updated&direction=desc"
     );
     if let Some(l) = label {
         let _ = write!(url, "&labels={l}");

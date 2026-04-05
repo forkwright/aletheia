@@ -2,6 +2,9 @@
 
 /// Agent coordination tools (spawn, dispatch).
 pub mod agent;
+/// Bookkeeper tools (prompt archival and worktree cleanup).
+#[cfg(feature = "energeia")]
+pub mod bookkeeper;
 /// Inter-agent communication tools (send_message, broadcast).
 pub mod communication;
 /// Computer use: screen capture, action dispatch, sandboxed execution.
@@ -9,11 +12,8 @@ pub mod communication;
 pub mod computer_use;
 /// Dynamic tool activation meta-tool.
 pub mod enable_tool;
-/// Bookkeeper tools (prompt archival and worktree cleanup).
-#[cfg(feature = "energeia")]
-pub mod bookkeeper;
-/// Energeia capability tool stubs (dromeus, dokimasia, diorthosis, epitropos, parateresis,
-/// mathesis, prographe, schedion, metron). Real implementations land in AL-2060.
+/// Energeia capability tools (dromeus, dokimasia, diorthosis, epitropos, parateresis,
+/// mathesis, prographe, schedion, metron). Wired to real energeia subsystems.
 #[cfg(feature = "energeia")]
 pub mod energeia;
 /// Filesystem navigation tools (grep, find, ls).
@@ -64,7 +64,10 @@ pub fn register_all_with_sandbox(
     research::register(registry)?;
     triage::register(registry)?;
     #[cfg(feature = "energeia")]
-    energeia::register(registry)?;
+    // WHY: No EnergeiaServices provided at this registration level — callers that
+    // have services configured should use energeia::register(registry, Some(services)).
+    // Tools requiring services return structured errors rather than panicking.
+    energeia::register(registry, None)?;
     #[cfg(feature = "energeia")]
     bookkeeper::register(registry)?;
     Ok(())

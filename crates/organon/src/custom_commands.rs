@@ -231,11 +231,13 @@ confirm: true
         assert_eq!(cmd.steps.len(), 2, "should have 2 steps");
         assert!(cmd.confirm, "confirm should be true");
         assert_eq!(
-            cmd.steps.get(0).copied().unwrap_or_default().tool, "exec",
+            cmd.steps.get(0).copied().unwrap_or_default().tool,
+            "exec",
             "first step tool should be 'exec'"
         );
         assert_eq!(
-            cmd.steps.get(0).copied().unwrap_or_default().args["command"], "cargo build --release",
+            cmd.steps.get(0).copied().unwrap_or_default().args["command"],
+            "cargo build --release",
             "first step args should contain command"
         );
     }
@@ -429,7 +431,8 @@ reversibility: reversible
         let invalid = validate_step_tools(&cmd);
         assert_eq!(invalid.len(), 1, "should find one invalid tool name");
         assert_eq!(
-            invalid.get(0).copied().unwrap_or_default(), "INVALID TOOL NAME!",
+            invalid.get(0).copied().unwrap_or_default(),
+            "INVALID TOOL NAME!",
             "should report the invalid name"
         );
     }
@@ -452,7 +455,11 @@ reversibility: reversible
 
         let cmds = load_commands_from_dir(dir.path());
         assert_eq!(cmds.len(), 1, "should load only the yaml file");
-        assert_eq!(cmds.get(0).copied().unwrap_or_default().name, "deploy", "loaded command should be 'deploy'");
+        assert_eq!(
+            cmds.get(0).copied().unwrap_or_default().name,
+            "deploy",
+            "loaded command should be 'deploy'"
+        );
     }
 
     #[test]
@@ -482,7 +489,11 @@ reversibility: reversible
 
         let cmds = load_commands_from_dir(dir.path());
         assert_eq!(cmds.len(), 1, "should skip malformed and load good one");
-        assert_eq!(cmds.get(0).copied().unwrap_or_default().name, "good", "loaded command should be 'good'");
+        assert_eq!(
+            cmds.get(0).copied().unwrap_or_default().name,
+            "good",
+            "loaded command should be 'good'"
+        );
     }
 
     #[test]
@@ -504,15 +515,18 @@ steps:
         let cmd = parse_command_yaml(yaml).unwrap_or_default();
         assert_eq!(cmd.steps.len(), 3, "should have 3 steps");
         assert_eq!(
-            cmd.steps.get(0).copied().unwrap_or_default().args["command"], "cargo build",
+            cmd.steps.get(0).copied().unwrap_or_default().args["command"],
+            "cargo build",
             "first step should be build"
         );
         assert_eq!(
-            cmd.steps.get(1).copied().unwrap_or_default().args["command"], "cargo test",
+            cmd.steps.get(1).copied().unwrap_or_default().args["command"],
+            "cargo test",
             "second step should be test"
         );
         assert_eq!(
-            cmd.steps.get(2).copied().unwrap_or_default().args["command"], "cargo clippy",
+            cmd.steps.get(2).copied().unwrap_or_default().args["command"],
+            "cargo clippy",
             "third step should be clippy"
         );
     }

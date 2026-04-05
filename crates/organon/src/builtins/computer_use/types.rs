@@ -179,8 +179,7 @@ mod tests {
 
         for action in &actions {
             let json = serde_json::to_string(action).unwrap_or_default();
-            let roundtrip: ComputerAction =
-                serde_json::from_str(&json).unwrap_or_default();
+            let roundtrip: ComputerAction = serde_json::from_str(&json).unwrap_or_default();
             assert_eq!(
                 action.to_string(),
                 roundtrip.to_string(),

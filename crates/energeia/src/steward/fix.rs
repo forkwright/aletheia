@@ -128,7 +128,10 @@ mod tests {
 
     #[test]
     fn fix_kind_category_mechanical_kinds() {
-        assert_eq!(fix_kind_category(&FixKind::Format), CiFailureKind::Mechanical);
+        assert_eq!(
+            fix_kind_category(&FixKind::Format),
+            CiFailureKind::Mechanical
+        );
         assert_eq!(
             fix_kind_category(&FixKind::ClippyFix),
             CiFailureKind::Mechanical

@@ -79,6 +79,21 @@ pub struct PromptSpec {
     pub blast_radius: Vec<String>,
 }
 
+impl PromptSpec {
+    /// Create a minimal prompt spec for QA evaluation.
+    ///
+    /// All optional fields (acceptance criteria, blast radius) default to empty.
+    #[must_use]
+    pub fn new(prompt_number: u32, description: String) -> Self {
+        Self {
+            prompt_number,
+            description,
+            acceptance_criteria: Vec::new(),
+            blast_radius: Vec::new(),
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Orchestrator
 // ---------------------------------------------------------------------------
@@ -212,7 +227,7 @@ pub fn run_qa(diff: &str, prompt: &PromptSpec, pr_number: u64) -> QaResult {
 /// This is best-effort: failures are logged but do not propagate.
 #[cfg(feature = "storage-fjall")]
 pub fn record_training_data(
-    store: &crate::store::fjall_store::EnergeiaStore,
+    store: &crate::store::EnergeiaStore,
     qa_result: &QaResult,
     project: &str,
 ) {

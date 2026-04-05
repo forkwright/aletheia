@@ -51,7 +51,9 @@ impl ProcessGuard {
         reason = "panics intentionally when called after detach() — documented invariant"
     )]
     pub fn get_mut(&mut self) -> &mut std::process::Child {
-        self.child.as_mut().unwrap_or_default() // kanon:ignore RUST/expect
+        self.child
+            .as_mut()
+            .expect("ProcessGuard::get_mut called after detach") // kanon:ignore RUST/expect
     }
 
     /// Take ownership of the child, disarming the kill-on-drop.
@@ -68,7 +70,9 @@ impl ProcessGuard {
         reason = "panics intentionally when called twice — documented invariant"
     )]
     pub(crate) fn detach(mut self) -> std::process::Child {
-        self.child.take().unwrap_or_default() // kanon:ignore RUST/expect
+        self.child
+            .take()
+            .expect("ProcessGuard::detach called twice") // kanon:ignore RUST/expect
     }
 }
 
@@ -99,10 +103,7 @@ mod tests {
     /// is no longer alive.
     #[test]
     fn kills_child_on_drop() {
-        let child = Command::new("sleep")
-            .arg("60")
-            .spawn()
-            .unwrap_or_default();
+        let child = Command::new("sleep").arg("60").spawn().unwrap_or_default();
         let pid = child.id();
 
         let guard = ProcessGuard::new(child);
@@ -122,10 +123,7 @@ mod tests {
     /// After `detach()`, the guard no longer kills the child.
     #[test]
     fn detach_prevents_kill() {
-        let child = Command::new("sleep")
-            .arg("60")
-            .spawn()
-            .unwrap_or_default();
+        let child = Command::new("sleep").arg("60").spawn().unwrap_or_default();
         let pid = child.id();
 
         let guard = ProcessGuard::new(child);
@@ -218,10 +216,7 @@ mod tests {
     fn guard_cleans_up_on_thread_panic() {
         use std::sync::mpsc;
 
-        let child = Command::new("sleep")
-            .arg("60")
-            .spawn()
-            .unwrap_or_default();
+        let child = Command::new("sleep").arg("60").spawn().unwrap_or_default();
         let pid = child.id();
 
         let (tx, rx) = mpsc::channel::<std::process::Child>();

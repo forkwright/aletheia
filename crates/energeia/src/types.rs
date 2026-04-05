@@ -28,6 +28,21 @@ pub struct DispatchSpec {
     pub max_parallel: Option<u32>,
 }
 
+impl DispatchSpec {
+    /// Create a dispatch spec for a set of prompts in a project.
+    ///
+    /// All optional fields default to `None` (no DAG ref, no parallelism limit).
+    #[must_use]
+    pub fn new(project: String, prompt_numbers: Vec<u32>) -> Self {
+        Self {
+            prompt_numbers,
+            project,
+            dag_ref: None,
+            max_parallel: None,
+        }
+    }
+}
+
 /// Aggregate result of a dispatch run.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
@@ -130,6 +145,33 @@ pub struct QaResult {
     pub cost_usd: f64,
     /// Timestamp when the evaluation completed.
     pub evaluated_at: Timestamp,
+}
+
+impl QaResult {
+    /// Create a QA result.
+    ///
+    /// Intended for test harnesses and mock QA gates that need to produce
+    /// results without running a full evaluation pipeline.
+    #[must_use]
+    pub fn new(
+        prompt_number: u32,
+        pr_number: u64,
+        verdict: QaVerdict,
+        criteria_results: Vec<CriterionResult>,
+        mechanical_issues: Vec<MechanicalIssue>,
+        cost_usd: f64,
+        evaluated_at: Timestamp,
+    ) -> Self {
+        Self {
+            prompt_number,
+            pr_number,
+            verdict,
+            criteria_results,
+            mechanical_issues,
+            cost_usd,
+            evaluated_at,
+        }
+    }
 }
 
 /// Overall quality verdict for a PR.

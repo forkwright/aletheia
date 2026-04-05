@@ -90,18 +90,13 @@ fn parse_hex_key(hex: &str, path: &Path) -> Result<Option<[u8; KEY_LEN]>> {
     for (i, chunk) in hex.as_bytes().chunks(2).enumerate() {
         // chunks(2) on a string of even length always yields 2-element slices;
         // i is bounded by KEY_LEN because hex.len() == KEY_LEN * 2
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "chunks(2) yields 2-element slices; i < KEY_LEN"
-        )]
-        let hi = hex_digit(chunk.get(0).copied().unwrap_or_default()).ok_or_else(|| {
+        let hi = hex_digit(chunk.first().copied().unwrap_or_default()).ok_or_else(|| {
             error::InvalidPrimaryKeySnafu {
                 path: path.to_path_buf(),
                 reason: format!("invalid hex character at position {}", i * 2),
             }
             .build()
         })?;
-        #[expect(clippy::indexing_slicing, reason = "chunks(2) yields 2-element slices")]
         let lo = hex_digit(chunk.get(1).copied().unwrap_or_default()).ok_or_else(|| {
             error::InvalidPrimaryKeySnafu {
                 path: path.to_path_buf(),

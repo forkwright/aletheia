@@ -56,7 +56,7 @@ impl ResumePolicy {
     /// Return the resume stage appropriate for the current total turn count.
     ///
     /// Stages are activated by cumulative turn thresholds. Stage 0 covers turns
-    /// 0..max_turns[0], stage 1 covers max_turns[0]..sum(max_turns[0..=1]), and
+    /// `0..max_turns[0]`, stage 1 covers `max_turns[0]..sum(max_turns[0..=1])`, and
     /// so on. Returns `None` when all stage budgets have been consumed — the
     /// caller should mark the session as `Stuck`.
     ///
