@@ -9,6 +9,9 @@ pub mod communication;
 pub mod computer_use;
 /// Dynamic tool activation meta-tool.
 pub mod enable_tool;
+/// Bookkeeper tools (prompt archival and worktree cleanup).
+#[cfg(feature = "energeia")]
+pub mod bookkeeper;
 /// Energeia capability tool stubs (dromeus, dokimasia, diorthosis, epitropos, parateresis,
 /// mathesis, prographe, schedion, metron). Real implementations land in AL-2060.
 #[cfg(feature = "energeia")]
@@ -62,5 +65,7 @@ pub fn register_all_with_sandbox(
     triage::register(registry)?;
     #[cfg(feature = "energeia")]
     energeia::register(registry)?;
+    #[cfg(feature = "energeia")]
+    bookkeeper::register(registry)?;
     Ok(())
 }
