@@ -6,7 +6,9 @@
 #[cfg(feature = "storage-fjall")]
 use crate::error::{self, Result};
 #[cfg(feature = "storage-fjall")]
-use crate::store::records::{CiValidationRecord, LessonRecord, ObservationRecord, SessionRecord};
+use crate::store::records::{
+    CiValidationRecord, DispatchRecord, LessonRecord, ObservationRecord, SessionRecord,
+};
 #[cfg(feature = "storage-fjall")]
 use crate::store::schema;
 
@@ -137,15 +139,85 @@ pub(crate) fn query_observations(
     Ok(results)
 }
 
+/// Collect all dispatch records via prefix scan.
+///
+/// Results are ordered by ULID (time-ascending). Use `limit` to cap memory
+/// usage; pass `usize::MAX` for no limit.
+#[cfg(feature = "storage-fjall")]
+pub(crate) fn list_dispatches(
+    keyspace: &fjall::Keyspace,
+    limit: usize,
+) -> Result<Vec<crate::store::records::DispatchRecord>> {
+    let prefix_bytes = schema::dispatch_prefix().as_bytes();
+    let mut results = Vec::new();
+    for guard in keyspace.prefix(prefix_bytes) {
+        if results.len() >= limit {
+            break;
+        }
+        let (_key, value) = guard.into_inner().map_err(|e| {
+            error::StoreSnafu {
+                message: format!("dispatch prefix scan: {e}"),
+            }
+            .build()
+        })?;
+        results.push(deserialize_value::<DispatchRecord>(&value)?);
+    }
+    Ok(results)
+}
+
+/// Collect all session records across all dispatches via prefix scan.
+///
+/// Results are ordered by `(dispatch_ulid, prompt_number)` (time-approximate
+/// ascending). Use `limit` to cap memory usage.
+#[cfg(feature = "storage-fjall")]
+pub(crate) fn list_all_sessions(
+    keyspace: &fjall::Keyspace,
+    limit: usize,
+) -> Result<Vec<SessionRecord>> {
+    let prefix_bytes = schema::session_prefix().as_bytes();
+    let mut results = Vec::new();
+    for guard in keyspace.prefix(prefix_bytes) {
+        if results.len() >= limit {
+            break;
+        }
+        let (_key, value) = guard.into_inner().map_err(|e| {
+            error::StoreSnafu {
+                message: format!("session prefix scan: {e}"),
+            }
+            .build()
+        })?;
+        results.push(deserialize_value::<SessionRecord>(&value)?);
+    }
+    Ok(results)
+}
+
+/// Collect all CI validation records across all sessions via prefix scan.
+///
+/// Use `limit` to cap memory usage.
+#[cfg(feature = "storage-fjall")]
+pub(crate) fn list_all_ci_validations(
+    keyspace: &fjall::Keyspace,
+    limit: usize,
+) -> Result<Vec<CiValidationRecord>> {
+    let prefix_bytes = schema::ci_validation_prefix().as_bytes();
+    let mut results = Vec::new();
+    for guard in keyspace.prefix(prefix_bytes) {
+        if results.len() >= limit {
+            break;
+        }
+        let (_key, value) = guard.into_inner().map_err(|e| {
+            error::StoreSnafu {
+                message: format!("ci_validation prefix scan: {e}"),
+            }
+            .build()
+        })?;
+        results.push(deserialize_value::<CiValidationRecord>(&value)?);
+    }
+    Ok(results)
+}
+
 /// Collect CI validations for a given session via prefix scan.
 #[cfg(feature = "storage-fjall")]
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "will be called from store API as CI validation listing lands"
-    )
-)]
 pub(crate) fn list_ci_validations_for_session(
     keyspace: &fjall::Keyspace,
     session_id: &crate::store::records::SessionId,

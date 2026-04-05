@@ -145,6 +145,12 @@ pub(crate) fn ci_validation_key(session_id: &SessionId, check_name: &str) -> Str
     format!("{PREFIX_CI_VALIDATION}{}:{check_name}", session_id.as_str())
 }
 
+/// Prefix for scanning all CI validation records.
+#[must_use]
+pub(crate) fn ci_validation_prefix() -> &'static str {
+    PREFIX_CI_VALIDATION
+}
+
 /// Prefix for scanning CI validations for a session.
 #[must_use]
 pub(crate) fn ci_validation_prefix_for_session(session_id: &SessionId) -> String {

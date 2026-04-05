@@ -28,6 +28,8 @@ pub mod engine;
 pub mod error;
 /// HTTP/SSE dispatch engine: subprocess-based `DispatchEngine` and mock.
 pub mod http;
+/// Metrics and reporting: health signals, cost reports, status dashboard, Prometheus.
+pub mod metrics;
 /// Prompt loading from YAML frontmatter files.
 pub mod prompt;
 /// Quality assurance gate trait.

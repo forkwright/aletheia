@@ -21,3 +21,7 @@ mod fjall_store;
 
 #[cfg(feature = "storage-fjall")]
 pub use fjall_store::EnergeiaStore;
+#[cfg(feature = "storage-fjall")]
+pub(crate) use fjall_store::{
+    SCAN_LIMIT_CI_VALIDATIONS, SCAN_LIMIT_DISPATCHES, SCAN_LIMIT_SESSIONS,
+};

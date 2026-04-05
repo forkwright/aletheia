@@ -14,6 +14,11 @@ use crate::store::records::{
     LessonRecord, NewLesson, NewObservation, ObservationRecord, SessionId, SessionOutcomeData,
     SessionRecord, SessionUpdate,
 };
+
+/// Maximum records returned by bulk-scan methods to prevent unbounded memory use.
+pub(crate) const SCAN_LIMIT_DISPATCHES: usize = 10_000;
+pub(crate) const SCAN_LIMIT_SESSIONS: usize = 100_000;
+pub(crate) const SCAN_LIMIT_CI_VALIDATIONS: usize = 200_000;
 use crate::store::schema;
 use crate::types::{DispatchSpec, SessionOutcome, SessionStatus};
 
@@ -469,6 +474,59 @@ impl EnergeiaStore {
         };
 
         Ok(fact)
+    }
+
+    // -----------------------------------------------------------------------
+    // Bulk scan (metrics / reporting)
+    // -----------------------------------------------------------------------
+
+    /// List all dispatch records ordered by ULID (time-ascending), up to `limit`.
+    ///
+    /// Intended for metrics computation. Use [`SCAN_LIMIT_DISPATCHES`] as a
+    /// sensible default to prevent unbounded memory use.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::Store` on read failure.
+    pub fn list_dispatches(&self, limit: usize) -> Result<Vec<DispatchRecord>> {
+        queries::list_dispatches(&self.keyspace, limit)
+    }
+
+    /// List all session records across all dispatches, up to `limit`.
+    ///
+    /// Ordered approximately by time (dispatch ULID, then prompt number).
+    /// Intended for metrics computation. Use [`SCAN_LIMIT_SESSIONS`] as a
+    /// sensible default.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::Store` on read failure.
+    pub fn list_all_sessions(&self, limit: usize) -> Result<Vec<SessionRecord>> {
+        queries::list_all_sessions(&self.keyspace, limit)
+    }
+
+    /// List all CI validation records across all sessions, up to `limit`.
+    ///
+    /// Intended for metrics computation. Use [`SCAN_LIMIT_CI_VALIDATIONS`] as a
+    /// sensible default.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::Store` on read failure.
+    pub fn list_all_ci_validations(&self, limit: usize) -> Result<Vec<CiValidationRecord>> {
+        queries::list_all_ci_validations(&self.keyspace, limit)
+    }
+
+    /// List CI validation records for a specific session.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::Store` on read failure.
+    pub fn list_ci_validations_for_session(
+        &self,
+        session_id: &SessionId,
+    ) -> Result<Vec<CiValidationRecord>> {
+        queries::list_ci_validations_for_session(&self.keyspace, session_id)
     }
 
     // -----------------------------------------------------------------------
