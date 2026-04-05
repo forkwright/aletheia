@@ -28,10 +28,10 @@ pub struct Budget {
     pub max_turns: Option<u32>,
     /// Maximum allowed wall-clock duration in milliseconds.
     pub max_duration_ms: Option<u64>,
-    /// Accumulated cost in hundredths of a cent (1 USD = 10_000) for atomic precision.
+    /// Accumulated cost in hundredths of a cent (1 USD = `10_000`) for atomic precision.
     ///
     /// WHY: Integer atomics avoid floating-point accumulation drift across many
-    /// concurrent sessions. 10_000 hundredths per USD gives 0.01-cent precision.
+    /// concurrent sessions. `10_000` hundredths per USD gives 0.01-cent precision.
     current_cost_hundredths: AtomicU64,
     current_turns: AtomicU32,
     start_time: Instant,
@@ -74,6 +74,7 @@ impl Budget {
         // 1 USD = 10_000 hundredths of a cent.
         #[expect(clippy::cast_possible_truncation, reason = "cost * 10_000 fits in u64")]
         #[expect(clippy::cast_sign_loss, reason = "cost is non-negative")]
+        #[expect(clippy::as_conversions, reason = "intentional cast with truncation/sign checks above")]
         let hundredths = (cost_usd * 10_000.0) as u64;
         self.current_cost_hundredths
             .fetch_add(hundredths, Ordering::Relaxed);
@@ -131,6 +132,7 @@ impl Budget {
         let raw = self.current_cost_hundredths.load(Ordering::Relaxed);
         #[expect(
             clippy::cast_precision_loss,
+            clippy::as_conversions,
             reason = "cost value fits in f64 mantissa for any realistic dispatch"
         )]
         let cost = raw as f64 / 10_000.0;

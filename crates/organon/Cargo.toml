@@ -15,14 +15,15 @@ workspace = true
 # Not compiled by default — requires Linux kernel 5.13+ with Landlock support.
 computer-use = []
 # Energeia capability tools (dromeus, dokimasia, diorthosis, epitropos, parateresis,
-# mathesis, prographe, schedion, metron). Stubs only until AL-2060 implements them.
-energeia = []
+# mathesis, prographe, schedion, metron). Wires to real energeia subsystem.
+energeia = ["dep:aletheia-energeia"]
 # Gates MockToolExecutor, ToolExecutorSpec, and other test helpers. No test code in release binaries.
 test-support = ["aletheia-hermeneus/test-support"]
 test-core = []
 test-full = []
 
 [dependencies]
+aletheia-energeia = { path = "../energeia", optional = true, features = ["storage-fjall"] }
 aletheia-hermeneus = { path = "../hermeneus" }
 aletheia-koina = { path = "../koina" }
 aletheia-taxis = { path = "../taxis" }
@@ -44,6 +45,8 @@ rustix = { workspace = true, features = ["process", "thread"] }
 seccompiler = "0.5"
 
 [dev-dependencies]
+aletheia-energeia = { path = "../energeia", features = ["storage-fjall"] }
+fjall = { version = "3" }
 indexmap = { workspace = true }
 proptest = { workspace = true }
 rustls = { workspace = true }
@@ -61,3 +64,8 @@ required-features = ["test-support"]
 name = "spec_validation"
 path = "tests/spec_validation.rs"
 required-features = ["test-support"]
+
+[[test]]
+name = "energeia_tools"
+path = "tests/energeia_tools.rs"
+required-features = ["energeia"]

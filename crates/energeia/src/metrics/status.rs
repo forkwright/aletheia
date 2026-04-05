@@ -114,7 +114,6 @@ pub fn compute_status_dashboard(store: &EnergeiaStore) -> Result<StatusDashboard
         .collect();
 
     #[expect(
-        clippy::cast_possible_truncation,
         clippy::as_conversions,
         reason = "active dispatch count bounded by SCAN_LIMIT_DISPATCHES, fits u64"
     )]
@@ -191,10 +190,9 @@ fn build_project_summaries(
 
         let session_count = sessions_by_dispatch
             .get(d.id.as_str())
-            .map_or(0, |v| v.len());
+            .map_or(0, Vec::len);
 
         #[expect(
-            clippy::cast_possible_truncation,
             clippy::as_conversions,
             reason = "session count bounded, fits u64"
         )]

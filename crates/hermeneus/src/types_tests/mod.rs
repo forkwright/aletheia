@@ -26,8 +26,7 @@ fn stop_reason_serde_roundtrip() {
         StopReason::StopSequence,
     ] {
         let json = serde_json::to_string(&reason).unwrap_or_default();
-        let back: StopReason =
-            serde_json::from_str(&json).unwrap_or_default();
+        let back: StopReason = serde_json::from_str(&json).unwrap_or_default();
         assert_eq!(
             reason, back,
             "StopReason should round-trip through JSON unchanged"
@@ -81,8 +80,7 @@ fn tool_use_block_serde() {
         "serialized ToolUse should contain tool name 'exec'"
     );
 
-    let back: ContentBlock =
-        serde_json::from_str(&json).unwrap_or_default();
+    let back: ContentBlock = serde_json::from_str(&json).unwrap_or_default();
     match back {
         ContentBlock::ToolUse { id, name, .. } => {
             assert_eq!(id, "tool_123", "ToolUse id should round-trip unchanged");
@@ -100,8 +98,7 @@ fn tool_result_block_serde() {
         is_error: Some(false),
     };
     let json = serde_json::to_string(&block).unwrap_or_default();
-    let back: ContentBlock =
-        serde_json::from_str(&json).unwrap_or_default();
+    let back: ContentBlock = serde_json::from_str(&json).unwrap_or_default();
     match back {
         ContentBlock::ToolResult {
             tool_use_id,
@@ -135,8 +132,7 @@ fn tool_result_text_serializes_as_string() {
         is_error: None,
     };
     let json = serde_json::to_string(&block).unwrap_or_default();
-    let v: serde_json::Value =
-        serde_json::from_str(&json).unwrap_or_default();
+    let v: serde_json::Value = serde_json::from_str(&json).unwrap_or_default();
     assert!(
         v["content"].is_string(),
         "Text should serialize as bare string"
@@ -166,14 +162,10 @@ fn tool_result_blocks_serializes_as_array() {
         is_error: None,
     };
     let json = serde_json::to_string(&block).unwrap_or_default();
-    let v: serde_json::Value = serde_json::from_str(&json)
-        .unwrap_or_default();
+    let v: serde_json::Value = serde_json::from_str(&json).unwrap_or_default();
     assert!(v["content"].is_array(), "Blocks should serialize as array");
     assert_eq!(
-        v["content"]
-            .as_array()
-            .unwrap_or_default()
-            .len(),
+        v["content"].as_array().unwrap_or_default().len(),
         2,
         "content array should have exactly 2 elements"
     );
@@ -190,8 +182,7 @@ fn tool_result_blocks_serializes_as_array() {
 #[test]
 fn tool_result_content_text_deserializes_from_string() {
     let json = r#"{"type":"tool_result","tool_use_id":"t1","content":"hello"}"#;
-    let block: ContentBlock =
-        serde_json::from_str(json).unwrap_or_default();
+    let block: ContentBlock = serde_json::from_str(json).unwrap_or_default();
     match block {
         ContentBlock::ToolResult { content, .. } => {
             assert_eq!(
@@ -207,8 +198,7 @@ fn tool_result_content_text_deserializes_from_string() {
 #[test]
 fn tool_result_content_blocks_deserializes_from_array() {
     let json = r#"{"type":"tool_result","tool_use_id":"t1","content":[{"type":"text","text":"hi"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"abc"}}]}"#;
-    let block: ContentBlock =
-        serde_json::from_str(json).unwrap_or_default();
+    let block: ContentBlock = serde_json::from_str(json).unwrap_or_default();
     match block {
         ContentBlock::ToolResult { content, .. } => {
             assert_eq!(
@@ -229,8 +219,7 @@ fn image_source_serde_roundtrip() {
         data: "iVBOR".to_owned(),
     };
     let json = serde_json::to_string(&source).unwrap_or_default();
-    let back: ImageSource =
-        serde_json::from_str(&json).unwrap_or_default();
+    let back: ImageSource = serde_json::from_str(&json).unwrap_or_default();
     assert_eq!(
         back.source_type, "base64",
         "ImageSource source_type should round-trip unchanged"
@@ -253,8 +242,7 @@ fn document_source_serde_roundtrip() {
         data: "JVBERi0".to_owned(),
     };
     let json = serde_json::to_string(&source).unwrap_or_default();
-    let back: DocumentSource =
-        serde_json::from_str(&json).unwrap_or_default();
+    let back: DocumentSource = serde_json::from_str(&json).unwrap_or_default();
     assert_eq!(
         back.source_type, "base64",
         "DocumentSource source_type should round-trip unchanged"
@@ -391,10 +379,8 @@ fn tool_result_type_serde_roundtrip() {
         ToolResultType::WebResult,
         ToolResultType::Other,
     ] {
-        let json =
-            serde_json::to_string(&tool_type).unwrap_or_default();
-        let back: ToolResultType =
-            serde_json::from_str(&json).unwrap_or_default();
+        let json = serde_json::to_string(&tool_type).unwrap_or_default();
+        let back: ToolResultType = serde_json::from_str(&json).unwrap_or_default();
         assert_eq!(
             tool_type, back,
             "ToolResultType should round-trip through JSON unchanged"

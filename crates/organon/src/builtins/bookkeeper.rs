@@ -34,10 +34,7 @@ impl ToolExecutor for BookkeeperStub {
     ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
         let name = self.tool_name;
         Box::pin(async move {
-            tracing::warn!(
-                tool = name,
-                "bookkeeper tool invoked before implementation"
-            );
+            tracing::warn!(tool = name, "bookkeeper tool invoked before implementation");
             Ok(ToolResult::error(format!(
                 "bookkeeper: {name} is not yet implemented"
             )))
@@ -128,9 +125,8 @@ fn katharos_def() -> ToolDef {
                     "max_age_hours".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::Integer,
-                        description:
-                            "Remove worktrees older than this many hours (default: 48)"
-                                .to_owned(),
+                        description: "Remove worktrees older than this many hours (default: 48)"
+                            .to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(48)),
                     },
@@ -139,9 +135,8 @@ fn katharos_def() -> ToolDef {
                     "dry_run".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::Boolean,
-                        description:
-                            "List what would be cleaned without removing (default: false)"
-                                .to_owned(),
+                        description: "List what would be cleaned without removing (default: false)"
+                            .to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(false)),
                     },

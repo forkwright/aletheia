@@ -4,7 +4,7 @@
 
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use snafu::ResultExt as _;
 
 use crate::dag::{DagError, PromptDag, PromptStatus};
@@ -31,7 +31,7 @@ use crate::error::{DagCycleSnafu, DagMissingDepsSnafu, FrontmatterParseSnafu, Io
 ///
 /// # K-001: Task body here
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct PromptSpec {
     /// Prompt number (unique within the project queue).
@@ -104,8 +104,18 @@ fn parse_prompt_str(raw: &str, path: &Path) -> Result<PromptSpec> {
         .fail();
     };
 
+    // WHY: `close_pos` and `body_start` are byte offsets returned by `str::find`
+    // on ASCII delimiter bytes, so they are always on valid UTF-8 boundaries.
+    #[expect(
+        clippy::string_slice,
+        reason = "close_pos is a byte offset from str::find on ASCII delimiters, always a valid UTF-8 boundary"
+    )]
     let yaml_str = &after_open[..close_pos];
     let body_start = close_pos + "\n---\n".len();
+    #[expect(
+        clippy::string_slice,
+        reason = "body_start is computed from ASCII delimiter length added to a valid boundary, always aligned"
+    )]
     let body = after_open[body_start..].trim_start_matches('\n').to_owned();
 
     let fm: Frontmatter = serde_yaml::from_str(yaml_str).map_err(|e| {
@@ -173,7 +183,7 @@ pub fn build_dag(prompts: &[PromptSpec]) -> Result<PromptDag> {
         // NOTE: Duplicate numbers in the prompt set are not expected; treat as
         // a configuration error.
         dag.add_node(spec.number, spec.depends_on.clone())
-            .map_err(|_| {
+            .map_err(|_duplicate| {
                 DagMissingDepsSnafu {
                     detail: format!("duplicate prompt number {} in queue", spec.number),
                 }

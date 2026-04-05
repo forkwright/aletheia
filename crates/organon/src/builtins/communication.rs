@@ -574,15 +574,18 @@ mod tests {
         let calls = messenger_ref.send_calls.lock().unwrap();
         assert_eq!(calls.len(), 1, "expected calls.len() to equal 1");
         assert_eq!(
-            calls.get(0).copied().unwrap_or_default().0, "+1234567890",
+            calls.get(0).copied().unwrap_or_default().0,
+            "+1234567890",
             "expected calls.get(0).copied().unwrap_or_default().0 to equal \"+1234567890\""
         );
         assert_eq!(
-            calls.get(0).copied().unwrap_or_default().1, "hello world",
+            calls.get(0).copied().unwrap_or_default().1,
+            "hello world",
             "expected calls.get(0).copied().unwrap_or_default().1 to equal \"hello world\""
         );
         assert_eq!(
-            calls.get(0).copied().unwrap_or_default().2, "test-agent",
+            calls.get(0).copied().unwrap_or_default().2,
+            "test-agent",
             "expected calls.get(0).copied().unwrap_or_default().2 to equal \"test-agent\""
         );
     }
@@ -621,13 +624,23 @@ mod tests {
         let calls = cross_ref.send_calls.lock().unwrap();
         assert_eq!(calls.len(), 1, "expected calls.len() to equal 1");
         assert_eq!(
-            calls.get(0).copied().unwrap_or_default().0, "test-agent",
+            calls.get(0).copied().unwrap_or_default().0,
+            "test-agent",
             "expected calls.get(0).copied().unwrap_or_default().0 to equal \"test-agent\""
         );
-        assert_eq!(calls.get(0).copied().unwrap_or_default().1, "syn", "expected calls.get(0).copied().unwrap_or_default().1 to equal \"syn\"");
-        assert_eq!(calls.get(0).copied().unwrap_or_default().2, "main", "expected calls.get(0).copied().unwrap_or_default().2 to equal \"main\"");
         assert_eq!(
-            calls.get(0).copied().unwrap_or_default().3, "do the thing",
+            calls.get(0).copied().unwrap_or_default().1,
+            "syn",
+            "expected calls.get(0).copied().unwrap_or_default().1 to equal \"syn\""
+        );
+        assert_eq!(
+            calls.get(0).copied().unwrap_or_default().2,
+            "main",
+            "expected calls.get(0).copied().unwrap_or_default().2 to equal \"main\""
+        );
+        assert_eq!(
+            calls.get(0).copied().unwrap_or_default().3,
+            "do the thing",
             "expected calls.get(0).copied().unwrap_or_default().3 to equal \"do the thing\""
         );
     }
@@ -661,7 +674,8 @@ mod tests {
 
         let calls = cross_ref.send_calls.lock().unwrap();
         assert_eq!(
-            calls.get(0).copied().unwrap_or_default().2, "custom",
+            calls.get(0).copied().unwrap_or_default().2,
+            "custom",
             "expected calls.get(0).copied().unwrap_or_default().2 to equal \"custom\""
         );
     }

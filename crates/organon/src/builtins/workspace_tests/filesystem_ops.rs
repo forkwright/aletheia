@@ -387,7 +387,10 @@ async fn write_blocks_identity_md() {
         "write",
         serde_json::json!({ "path": "IDENTITY.md", "content": "tampered" }),
     );
-    let result = WriteExecutor.execute(&input, &ctx).await.unwrap_or_default();
+    let result = WriteExecutor
+        .execute(&input, &ctx)
+        .await
+        .unwrap_or_default();
     assert!(
         result.is_error,
         "writing to IDENTITY.md should produce an error result"
@@ -407,7 +410,10 @@ async fn write_blocks_soul_md() {
         "write",
         serde_json::json!({ "path": "SOUL.md", "content": "overwritten" }),
     );
-    let result = WriteExecutor.execute(&input, &ctx).await.unwrap_or_default();
+    let result = WriteExecutor
+        .execute(&input, &ctx)
+        .await
+        .unwrap_or_default();
     assert!(
         result.is_error,
         "writing to SOUL.md should produce an error result"
@@ -426,7 +432,10 @@ async fn write_blocks_goals_md() {
         "write",
         serde_json::json!({ "path": "GOALS.md", "content": "replaced" }),
     );
-    let result = WriteExecutor.execute(&input, &ctx).await.unwrap_or_default();
+    let result = WriteExecutor
+        .execute(&input, &ctx)
+        .await
+        .unwrap_or_default();
     assert!(
         result.is_error,
         "writing to GOALS.md should produce an error result"
@@ -445,6 +454,9 @@ async fn write_allows_non_protected_file() {
         "write",
         serde_json::json!({ "path": "notes.txt", "content": "safe" }),
     );
-    let result = WriteExecutor.execute(&input, &ctx).await.unwrap_or_default();
+    let result = WriteExecutor
+        .execute(&input, &ctx)
+        .await
+        .unwrap_or_default();
     assert!(!result.is_error, "non-protected file must be writable");
 }

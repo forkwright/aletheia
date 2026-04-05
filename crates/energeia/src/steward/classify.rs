@@ -17,28 +17,46 @@ use super::types::{
 // Using LazyLock instead of lazy_static per project convention.
 // INVARIANT: All patterns are compile-time constant strings, so Regex::new
 // will never fail. The expect() calls are safe.
-#[expect(clippy::expect_used, reason = "compile-time constant regex patterns cannot fail")]
+#[expect(
+    clippy::expect_used,
+    reason = "compile-time constant regex patterns cannot fail"
+)]
 static ALLOW_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"#\[allow\s*\(([^)]*)\)\s*\]").expect("valid regex"));
 
-#[expect(clippy::expect_used, reason = "compile-time constant regex patterns cannot fail")]
+#[expect(
+    clippy::expect_used,
+    reason = "compile-time constant regex patterns cannot fail"
+)]
 static EXPECT_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"#\[expect\s*\(([^)]*)\)\s*\]").expect("valid regex"));
 
-#[expect(clippy::expect_used, reason = "compile-time constant regex patterns cannot fail")]
+#[expect(
+    clippy::expect_used,
+    reason = "compile-time constant regex patterns cannot fail"
+)]
 static CFG_ATTR_ALLOW_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"#\[cfg_attr\s*\([^,]*,\s*allow\s*\(([^)]*)\)\s*\)\s*\]").expect("valid regex")
 });
 
-#[expect(clippy::expect_used, reason = "compile-time constant regex patterns cannot fail")]
+#[expect(
+    clippy::expect_used,
+    reason = "compile-time constant regex patterns cannot fail"
+)]
 static LINT_IGNORE_INLINE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"//\s*lint-ignore").expect("valid regex"));
 
-#[expect(clippy::expect_used, reason = "compile-time constant regex patterns cannot fail")]
+#[expect(
+    clippy::expect_used,
+    reason = "compile-time constant regex patterns cannot fail"
+)]
 static STRUCTURED_COMMENT_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"//\s*(SAFETY|INVARIANT)\s*:").expect("valid regex"));
 
-#[expect(clippy::expect_used, reason = "compile-time constant regex patterns cannot fail")]
+#[expect(
+    clippy::expect_used,
+    reason = "compile-time constant regex patterns cannot fail"
+)]
 static REASON_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#"reason\s*=\s*["']([^"']+)["']"#).expect("valid regex"));
 
@@ -159,7 +177,10 @@ pub(crate) fn extract_prompt_number_from_text(text: &str) -> Option<u32> {
 /// `#[cfg_attr(..., allow(...))]`, lint-ignore file additions,
 /// `// lint-ignore` inline comments, and `// SAFETY:` / `// INVARIANT:`
 /// comments added to bypass skip patterns.
-#[expect(clippy::too_many_lines, reason = "suppression detection branches are individually simple; splitting would obscure the diff-walking state machine")]
+#[expect(
+    clippy::too_many_lines,
+    reason = "suppression detection branches are individually simple; splitting would obscure the diff-walking state machine"
+)]
 #[must_use]
 pub fn parse_suppressions(diff: &str) -> Vec<SuppressionFinding> {
     let mut findings = Vec::new();

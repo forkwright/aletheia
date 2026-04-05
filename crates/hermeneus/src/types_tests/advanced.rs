@@ -35,16 +35,12 @@ fn text_block_with_citations_serde() {
             cited_text: "source".to_owned(),
         }]),
     };
-    let json =
-        serde_json::to_string(&block).unwrap_or_default();
-    let back: ContentBlock = serde_json::from_str(&json)
-        .unwrap_or_default();
+    let json = serde_json::to_string(&block).unwrap_or_default();
+    let back: ContentBlock = serde_json::from_str(&json).unwrap_or_default();
     match back {
         ContentBlock::Text { citations, .. } => {
             assert_eq!(
-                citations
-                    .unwrap_or_default()
-                    .len(),
+                citations.unwrap_or_default().len(),
                 1,
                 "citations vec should contain exactly one entry"
             );
@@ -69,10 +65,8 @@ fn completion_response_serde() {
             ..Usage::default()
         },
     };
-    let json =
-        serde_json::to_string(&response).unwrap_or_default();
-    let back: CompletionResponse =
-        serde_json::from_str(&json).unwrap_or_default();
+    let json = serde_json::to_string(&response).unwrap_or_default();
+    let back: CompletionResponse = serde_json::from_str(&json).unwrap_or_default();
     assert_eq!(
         back.id, "msg_123",
         "CompletionResponse id should round-trip unchanged"
@@ -92,8 +86,7 @@ fn cache_control_type_serde() {
         json.contains("\"type\":\"ephemeral\""),
         "serialized CacheControl should contain '\"type\":\"ephemeral\"'"
     );
-    let back: CacheControl =
-        serde_json::from_str(&json).unwrap_or_default();
+    let back: CacheControl = serde_json::from_str(&json).unwrap_or_default();
     assert_eq!(
         back.kind,
         CacheControlType::Ephemeral,
@@ -118,10 +111,8 @@ fn caching_config_defaults() {
 #[test]
 fn caching_strategy_serde_roundtrip() {
     for strategy in [CachingStrategy::Auto, CachingStrategy::Disabled] {
-        let json =
-            serde_json::to_string(&strategy).unwrap_or_default();
-        let back: CachingStrategy =
-            serde_json::from_str(&json).unwrap_or_default();
+        let json = serde_json::to_string(&strategy).unwrap_or_default();
+        let back: CachingStrategy = serde_json::from_str(&json).unwrap_or_default();
         assert_eq!(
             strategy, back,
             "CachingStrategy should round-trip through JSON unchanged"
@@ -154,8 +145,7 @@ fn code_execution_result_block_serde() {
         stderr: String::new(),
         return_code: 0,
     };
-    let json =
-        serde_json::to_string(&block).unwrap_or_default();
+    let json = serde_json::to_string(&block).unwrap_or_default();
     assert!(
         json.contains("code_execution_result"),
         "serialized CodeExecutionResult should contain type tag 'code_execution_result'"
@@ -164,8 +154,7 @@ fn code_execution_result_block_serde() {
         json.contains("print('hello')"),
         "serialized CodeExecutionResult should contain the code field"
     );
-    let back: ContentBlock = serde_json::from_str(&json)
-        .unwrap_or_default();
+    let back: ContentBlock = serde_json::from_str(&json).unwrap_or_default();
     match back {
         ContentBlock::CodeExecutionResult {
             code,
@@ -197,8 +186,7 @@ fn code_execution_result_block_serde() {
 #[test]
 fn code_execution_result_nonzero_return_code() {
     let json = r#"{"type":"code_execution_result","code":"exit(1)","stdout":"","stderr":"error","return_code":1}"#;
-    let block: ContentBlock = serde_json::from_str(json)
-        .unwrap_or_default();
+    let block: ContentBlock = serde_json::from_str(json).unwrap_or_default();
     match block {
         ContentBlock::CodeExecutionResult {
             return_code,
@@ -231,8 +219,7 @@ fn tool_definition_disable_passthrough_serde() {
         json.contains("\"disable_passthrough\":true"),
         "serialized ToolDefinition should contain '\"disable_passthrough\":true'"
     );
-    let back: ToolDefinition =
-        serde_json::from_str(&json).unwrap_or_default();
+    let back: ToolDefinition = serde_json::from_str(&json).unwrap_or_default();
     assert_eq!(
         back.disable_passthrough,
         Some(true),
@@ -270,8 +257,7 @@ fn code_execution_server_tool_definition_serde() {
         json.contains("code_execution_20250522"),
         "serialized ServerToolDefinition should contain tool_type 'code_execution_20250522'"
     );
-    let back: ServerToolDefinition =
-        serde_json::from_str(&json).unwrap_or_default();
+    let back: ServerToolDefinition = serde_json::from_str(&json).unwrap_or_default();
     assert_eq!(
         back.tool_type, "code_execution_20250522",
         "ServerToolDefinition tool_type should round-trip unchanged"

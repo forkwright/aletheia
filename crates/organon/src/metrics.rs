@@ -16,7 +16,9 @@ static TOOL_INVOCATIONS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         Opts::new("aletheia_tool_invocations_total", "Total tool invocations"),
         &["tool_name", "status"]
     )
-    .unwrap_or_default() // kanon:ignore RUST/expect
+    .expect(
+        "metric registration fails only on name/label collision, a startup-time programming error",
+    ) // kanon:ignore RUST/expect
 });
 
 static TOOL_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
@@ -34,7 +36,9 @@ static TOOL_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
         ]),
         &["tool_name"]
     )
-    .unwrap_or_default() // kanon:ignore RUST/expect
+    .expect(
+        "metric registration fails only on name/label collision, a startup-time programming error",
+    ) // kanon:ignore RUST/expect
 });
 
 #[expect(dead_code, reason = "metric init called FROM server startup")]

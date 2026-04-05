@@ -199,10 +199,6 @@ impl PromptDag {
             Black,
         }
 
-        let mut colors: HashMap<u32, Color> =
-            self.nodes.keys().map(|&k| (k, Color::White)).collect();
-        let mut path: Vec<u32> = Vec::new();
-
         fn dfs(
             node: u32,
             nodes: &HashMap<u32, DagNode>,
@@ -224,7 +220,13 @@ impl PromptDag {
                 match color {
                     Color::Gray => {
                         // WHY: Back-edge found — extract the cycle from the DFS stack.
+                        // `start` is the index of `dep` within `path`, which is always
+                        // a valid slice start since `position` returns an index into `path`.
                         let start = path.iter().position(|&n| n == dep).unwrap_or(0);
+                        #[expect(
+                            clippy::indexing_slicing,
+                            reason = "start is the result of position() on path, so it is a valid index"
+                        )]
                         let mut cycle: Vec<u32> = path[start..].to_vec();
                         cycle.push(dep);
                         return Err(DagError::Cycle { cycle });
@@ -239,11 +241,21 @@ impl PromptDag {
             Ok(())
         }
 
+        let mut colors: HashMap<u32, Color> =
+            self.nodes.keys().map(|&k| (k, Color::White)).collect();
+        let mut path: Vec<u32> = Vec::new();
+
         // NOTE: Process in sorted order for deterministic cycle reporting.
         let mut keys: Vec<u32> = self.nodes.keys().copied().collect();
         keys.sort_unstable();
 
         for node in keys {
+            // `colors` is built from `self.nodes.keys()` and `keys` is the same set,
+            // so every `node` is guaranteed to be present.
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "keys are derived from the same node set used to build colors"
+            )]
             if colors[&node] == Color::White {
                 dfs(node, &self.nodes, &mut colors, &mut path)?;
             }

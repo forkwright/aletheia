@@ -26,7 +26,7 @@ const DEFAULT_HIGH_THRESHOLD: u32 = 70;
 )]
 static FORCE_COMPLEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\b(think hard|deep think|opus|be thorough|take your time)\b")
-        .unwrap_or_default()
+        .expect("compile-time-constant regex literals cannot fail")
 });
 
 #[expect(
@@ -35,7 +35,7 @@ static FORCE_COMPLEX: LazyLock<Regex> = LazyLock::new(|| {
 )]
 static FORCE_ROUTINE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\b(quick question|just (?:tell me|answer)|short answer|quick)\b")
-        .unwrap_or_default()
+        .expect("compile-time-constant regex literals cannot fail")
 });
 
 #[expect(
@@ -44,7 +44,7 @@ static FORCE_ROUTINE: LazyLock<Regex> = LazyLock::new(|| {
 )]
 static SIMPLE_RESPONSE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)^(yes|no|ok|thanks|sure|got it|hi|hello|hey|yep|nope|k|lgtm|ship it|do it|go|go ahead)\b")
-        .unwrap_or_default()
+        .expect("compile-time-constant regex literals cannot fail")
 });
 
 #[expect(
@@ -53,7 +53,7 @@ static SIMPLE_RESPONSE: LazyLock<Regex> = LazyLock::new(|| {
 )]
 static COMPLEX_INTENT: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\b(analyze|plan|design|implement|debug|review|compare|explain why|architecture|strategy|refactor|investigate|evaluate|diagnose|decide|tradeoff|synthesize|audit|spec|migrate)\b")
-        .unwrap_or_default()
+        .expect("compile-time-constant regex literals cannot fail")
 });
 
 #[expect(
@@ -62,7 +62,7 @@ static COMPLEX_INTENT: LazyLock<Regex> = LazyLock::new(|| {
 )]
 static TOOL_KEYWORDS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\b(search|find|edit|run|execute|CREATE|DELETE|deploy|build|test|install|configure|check|read|write|commit|push|merge|pr)\b")
-        .unwrap_or_default()
+        .expect("compile-time-constant regex literals cannot fail")
 });
 
 #[expect(
@@ -73,15 +73,16 @@ static MULTI_STEP: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r"(?i)\b(then|after that|next|also|and then|step \d|first.*then|finally|for each|all of)\b",
     )
-    .unwrap_or_default()
+    .expect("compile-time-constant regex literals cannot fail")
 });
 
 #[expect(
     clippy::expect_used,
     reason = "compile-time-constant regex literals cannot fail"
 )]
-static CODE_BLOCK: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?s)```.*```").unwrap_or_default());
+static CODE_BLOCK: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?s)```.*```").expect("compile-time-constant regex literals cannot fail")
+});
 
 #[expect(
     clippy::expect_used,
@@ -89,7 +90,7 @@ static CODE_BLOCK: LazyLock<Regex> =
 )]
 static QUESTION_WORDS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)^(what|how|why|WHERE|when|who|which|can you|could you|would you)")
-        .unwrap_or_default()
+        .expect("compile-time-constant regex literals cannot fail")
 });
 
 #[expect(
@@ -98,7 +99,7 @@ static QUESTION_WORDS: LazyLock<Regex> = LazyLock::new(|| {
 )]
 static DOMAIN_JUDGMENT: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\b(should I|what do you think|your opinion|recommend|advice|best approach|pros and cons|worth it)\b")
-        .unwrap_or_default()
+        .expect("compile-time-constant regex literals cannot fail")
 });
 
 #[expect(
@@ -107,7 +108,7 @@ static DOMAIN_JUDGMENT: LazyLock<Regex> = LazyLock::new(|| {
 )]
 static PHILOSOPHICAL: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\b(meaning|philosophy|ethics|moral|epistem\w*|ontolog\w*|metaphys\w*|existential|consciousness)\b")
-        .unwrap_or_default()
+        .expect("compile-time-constant regex literals cannot fail")
 });
 
 /// Model capability tier.

@@ -134,12 +134,12 @@ pub fn compute_health_report(store: &EnergeiaStore, window_days: u32) -> Result<
 
     let dispatches: Vec<&DispatchRecord> = all_dispatches
         .iter()
-        .filter(|d| cutoff_ms.map_or(true, |cutoff| d.created_at.as_millisecond() >= cutoff))
+        .filter(|d| cutoff_ms.is_none_or(|cutoff| d.created_at.as_millisecond() >= cutoff))
         .collect();
 
     let sessions: Vec<&SessionRecord> = all_sessions
         .iter()
-        .filter(|s| cutoff_ms.map_or(true, |cutoff| s.created_at.as_millisecond() >= cutoff))
+        .filter(|s| cutoff_ms.is_none_or(|cutoff| s.created_at.as_millisecond() >= cutoff))
         .collect();
 
     // Build session-id → CI validations map for O(1) per-session lookup.
@@ -255,7 +255,6 @@ fn corrective_rate(dispatches: &[&DispatchRecord], sessions: &[&SessionRecord]) 
     let rate = corrective_dispatch_ids.len() as f64 / total as f64;
 
     #[expect(
-        clippy::cast_possible_truncation,
         clippy::as_conversions,
         reason = "dispatch count is bounded by SCAN_LIMIT_DISPATCHES, fits u64"
     )]
@@ -299,7 +298,6 @@ fn stuck_rate(sessions: &[&SessionRecord]) -> HealthMetric {
     let rate = stuck as f64 / total as f64;
 
     #[expect(
-        clippy::cast_possible_truncation,
         clippy::as_conversions,
         reason = "session count fits u64 within SCAN_LIMIT_SESSIONS"
     )]
@@ -345,7 +343,7 @@ fn qa_false_positive_rate(
         .filter(|s| {
             ci_by_session
                 .get(s.id.as_str())
-                .map_or(false, |validations| {
+                .is_some_and(|validations| {
                     validations
                         .iter()
                         .any(|v| v.status == CiValidationStatus::Fail)
@@ -361,7 +359,6 @@ fn qa_false_positive_rate(
     let rate = ci_fail_count as f64 / total as f64;
 
     #[expect(
-        clippy::cast_possible_truncation,
         clippy::as_conversions,
         reason = "session count fits u64 within SCAN_LIMIT_SESSIONS"
     )]
@@ -418,7 +415,6 @@ fn fix_agent_success_rate(
     let rate = successes as f64 / total as f64;
 
     #[expect(
-        clippy::cast_possible_truncation,
         clippy::as_conversions,
         reason = "session count fits u64 within SCAN_LIMIT_SESSIONS"
     )]
@@ -471,7 +467,6 @@ fn cycle_time(dispatches: &[&DispatchRecord]) -> HealthMetric {
     let avg_hours = (total_ms as f64 / total as f64) / 3_600_000.0;
 
     #[expect(
-        clippy::cast_possible_truncation,
         clippy::as_conversions,
         reason = "dispatch count fits u64 within SCAN_LIMIT_DISPATCHES"
     )]
@@ -550,7 +545,6 @@ fn batch_parallelism(dispatches: &[&DispatchRecord], sessions: &[&SessionRecord]
     let avg = total_sessions as f64 / n as f64;
 
     #[expect(
-        clippy::cast_possible_truncation,
         clippy::as_conversions,
         reason = "n fits u64 within SCAN_LIMIT_DISPATCHES"
     )]

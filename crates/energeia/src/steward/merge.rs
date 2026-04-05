@@ -7,8 +7,7 @@
 use std::collections::HashSet;
 
 use super::types::{
-    ClassifiedPr, MergeAction, MergeDecision, MergeMethod, MergeOptions, MergeTier,
-    QaVerdictStatus,
+    ClassifiedPr, MergeAction, MergeDecision, MergeMethod, MergeOptions, MergeTier, QaVerdictStatus,
 };
 
 /// Make a merge decision for a single classified PR.
@@ -72,9 +71,7 @@ pub fn make_merge_decision(
             action: MergeAction::Blocked("QA FAIL -- tier 5 block".to_string()),
             reason: format!(
                 "tier-5: QA verdict is {}",
-                classified
-                    .qa_verdict
-                    .unwrap_or(QaVerdictStatus::Unknown)
+                classified.qa_verdict.unwrap_or(QaVerdictStatus::Unknown)
             ),
         },
         MergeTier::Tier3Hold => MergeDecision {
@@ -319,10 +316,7 @@ mod tests {
         let opts = MergeOptions::default();
         let decision = make_merge_decision(&pr, &opts, None);
 
-        assert!(matches!(
-            decision.action,
-            MergeAction::HoldForArchitect(_)
-        ));
+        assert!(matches!(decision.action, MergeAction::HoldForArchitect(_)));
         assert!(decision.reason.contains("tier-3"));
     }
 
@@ -333,10 +327,7 @@ mod tests {
         let opts = MergeOptions::default();
         let decision = make_merge_decision(&pr, &opts, None);
 
-        assert!(matches!(
-            decision.action,
-            MergeAction::HoldForArchitect(_)
-        ));
+        assert!(matches!(decision.action, MergeAction::HoldForArchitect(_)));
         assert!(decision.reason.contains("tier-3"));
     }
 
@@ -347,10 +338,7 @@ mod tests {
         let diff = "+++ b/crates/energeia/src/lib.rs\n+pub fn new_api_function() {}\n";
         let decision = make_merge_decision(&pr, &opts, Some(diff));
 
-        assert!(matches!(
-            decision.action,
-            MergeAction::HoldForArchitect(_)
-        ));
+        assert!(matches!(decision.action, MergeAction::HoldForArchitect(_)));
         assert!(decision.reason.contains("tier-4"));
     }
 

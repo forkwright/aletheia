@@ -99,7 +99,10 @@ async fn write_creates_file() {
         "write",
         serde_json::json!({ "path": "out.txt", "content": "data" }),
     );
-    let result = WriteExecutor.execute(&input, &ctx).await.unwrap_or_default();
+    let result = WriteExecutor
+        .execute(&input, &ctx)
+        .await
+        .unwrap_or_default();
     assert!(
         !result.is_error,
         "writing a new file should not produce an error"
@@ -123,7 +126,10 @@ async fn write_creates_parent_dirs() {
         "write",
         serde_json::json!({ "path": "sub/deep/file.txt", "content": "nested" }),
     );
-    let result = WriteExecutor.execute(&input, &ctx).await.unwrap_or_default();
+    let result = WriteExecutor
+        .execute(&input, &ctx)
+        .await
+        .unwrap_or_default();
     assert!(
         !result.is_error,
         "writing to a nested path should CREATE parent directories"
@@ -149,7 +155,10 @@ async fn write_append_mode() {
         "write",
         serde_json::json!({ "path": "log.txt", "content": "second\n", "append": true }),
     );
-    let result = WriteExecutor.execute(&input, &ctx).await.unwrap_or_default();
+    let result = WriteExecutor
+        .execute(&input, &ctx)
+        .await
+        .unwrap_or_default();
     assert!(!result.is_error, "append write should not produce an error");
     let on_disk = std::fs::read_to_string(dir.path().join("log.txt")).unwrap_or_default();
     assert_eq!(
@@ -432,7 +441,10 @@ async fn test_write_reports_byte_count_in_success_message() {
         "write",
         serde_json::json!({ "path": "out.txt", "content": "hello" }),
     );
-    let result = WriteExecutor.execute(&input, &ctx).await.unwrap_or_default();
+    let result = WriteExecutor
+        .execute(&input, &ctx)
+        .await
+        .unwrap_or_default();
     assert!(
         !result.is_error,
         "writing a file should not produce an error"
@@ -456,7 +468,10 @@ async fn test_write_overwrite_replaces_existing_content() {
         "write",
         serde_json::json!({ "path": "out.txt", "content": "new content" }),
     );
-    let result = WriteExecutor.execute(&input, &ctx).await.unwrap_or_default();
+    let result = WriteExecutor
+        .execute(&input, &ctx)
+        .await
+        .unwrap_or_default();
     assert!(
         !result.is_error,
         "overwrite write should not produce an error"
@@ -476,7 +491,10 @@ async fn test_write_append_creates_file_when_absent() {
         "write",
         serde_json::json!({ "path": "new.txt", "content": "data", "append": true }),
     );
-    let result = WriteExecutor.execute(&input, &ctx).await.unwrap_or_default();
+    let result = WriteExecutor
+        .execute(&input, &ctx)
+        .await
+        .unwrap_or_default();
     assert!(
         !result.is_error,
         "append to non-existent file should CREATE it without error"

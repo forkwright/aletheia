@@ -58,6 +58,7 @@ impl CcProfile {
     }
 
     /// Add the 1M context beta header if the model supports it.
+    #[expect(dead_code, reason = "public API reserved for extended context window callers")]
     pub fn with_context_1m(&mut self) {
         let header = "context-1m-2025-08-07";
         if !self.beta_headers.iter().any(|h| h == header) {
@@ -107,26 +108,25 @@ pub(crate) fn compute_fingerprint(first_message_text: &str, version: &str) -> St
     let indices = [4, 7, 20];
     let extracted: String = indices
         .iter()
-        .map(|&i| if i < chars.len() { chars[i] } else { '0' })
+        .map(|&i| chars.get(i).copied().unwrap_or('0'))
         .collect();
 
     let input = format!("{FINGERPRINT_SALT}{extracted}{version}");
     let hash = digest::digest(&digest::SHA256, input.as_bytes());
-    // First 3 hex chars
-    hash.as_ref()
-        .iter()
-        .take(2) // 2 bytes = 4 hex chars, but we only want 3
-        .map(|b| format!("{b:02x}"))
-        .collect::<String>()[..3]
-        .to_owned()
+    // First 3 hex chars: take 2 bytes (= 4 hex chars), then slice to 3.
+    // All chars are ASCII hex digits so the byte slice is always valid UTF-8.
+    let hex: String = hash.as_ref().iter().take(2).flat_map(|b| {
+        let hi = char::from_digit(u32::from(b >> 4), 16).unwrap_or('0');
+        let lo = char::from_digit(u32::from(b & 0xf), 16).unwrap_or('0');
+        [hi, lo]
+    }).collect();
+    #[expect(clippy::string_slice, reason = "ASCII hex digits: byte slice is always on char boundary")]
+    hex[..3].to_owned()
 }
 
 /// Detect the installed Claude Code version by running `claude --version`.
 fn detect_cc_version() -> Option<String> {
-    let output = Command::new("claude")
-        .arg("--version")
-        .output()
-        .ok()?;
+    let output = Command::new("claude").arg("--version").output().ok()?;
 
     if !output.status.success() {
         return None;
@@ -138,7 +138,7 @@ fn detect_cc_version() -> Option<String> {
         .split_whitespace()
         .next()
         .filter(|v| v.contains('.'))
-        .map(|v| v.to_owned())
+        .map(str::to_owned)
 }
 
 #[cfg(test)]
