@@ -9,6 +9,7 @@
 //!
 //! - [`engine::DispatchEngine`] — session execution backend (Agent SDK HTTP/SSE)
 //! - [`http`] — subprocess-based `DispatchEngine` implementation and mock engine
+//! - [`session`] — per-prompt session management: spawn, monitor, resume, budget enforce
 //! - [`qa::QaGate`] — quality assurance evaluation (mechanical + LLM)
 //! - [`budget`] — atomic cost/turn/duration tracking for concurrent sessions
 //! - [`resume`] — multi-stage escalation policy for stuck sessions
@@ -33,6 +34,8 @@ pub mod prompt;
 pub mod qa;
 /// Multi-stage resume escalation policy.
 pub mod resume;
+/// Per-prompt session management: spawn, monitor, resume, budget enforce.
+pub mod session;
 /// State persistence layer (fjall key-value store).
 pub mod store;
 /// Core dispatch types: specs, outcomes, QA results.
