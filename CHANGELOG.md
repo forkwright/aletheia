@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.13.45](https://github.com/forkwright/aletheia/compare/v0.13.44...v0.13.45) (2026-04-05)
+
+
+### Features
+
+* **energeia:** implement QA evaluation engine and corrective prompt generation ([#2459](https://github.com/forkwright/aletheia/issues/2459)) ([a95a840](https://github.com/forkwright/aletheia/commit/a95a840419132c662bce320fd07f04d80e90826c))
+* **energeia:** implement session management layer ([#2458](https://github.com/forkwright/aletheia/issues/2458)) ([db96b69](https://github.com/forkwright/aletheia/commit/db96b69368adb285bf6f4ae4e31dd45171652ef1))
+
 ## [0.13.44](https://github.com/forkwright/aletheia/compare/v0.13.43...v0.13.44) (2026-04-04)
 
 
