@@ -6,6 +6,7 @@
 ### Features
 
 * **energeia:** implement DispatchEngine HTTP/SSE client shim ([#2452](https://github.com/forkwright/aletheia/issues/2452)) ([6a40a26](https://github.com/forkwright/aletheia/commit/6a40a268b1ff2a9fe6be12d0b80b75d90d4fa365))
+* **energeia:** implement fjall state persistence layer ([#2453](https://github.com/forkwright/aletheia/issues/2453)) ([c3b7a9d](https://github.com/forkwright/aletheia/commit/c3b7a9dd5108fd3635e9e6db61ebc02d802d13d4))
 * **energeia:** port budget engine, resume policy, prompt DAG, and frontier computation ([#2451](https://github.com/forkwright/aletheia/issues/2451)) ([8a952d2](https://github.com/forkwright/aletheia/commit/8a952d2cc81dabdad7059d93b0cfdf5b29b8840a))
 * **organon:** register 9 energeia tool stubs behind feature flag ([#2455](https://github.com/forkwright/aletheia/issues/2455)) ([5a56a67](https://github.com/forkwright/aletheia/commit/5a56a6743d89245636386c9ee0a3bcabc6247620))
 
