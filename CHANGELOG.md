@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.13.46](https://github.com/forkwright/aletheia/compare/v0.13.45...v0.13.46) (2026-04-05)
+
+
+### Features
+
+* **energeia:** implement dispatch orchestrator with DAG execution and QA ([#2462](https://github.com/forkwright/aletheia/issues/2462)) ([c9932cd](https://github.com/forkwright/aletheia/commit/c9932cd85e822c5585685ba3bea751c3e9aba315))
+* **energeia:** implement metron reporting capability ([#2461](https://github.com/forkwright/aletheia/issues/2461)) ([4bb548b](https://github.com/forkwright/aletheia/commit/4bb548b1e6917fd21b27b1683057bdf94f55aaeb))
+
 ## [0.13.45](https://github.com/forkwright/aletheia/compare/v0.13.44...v0.13.45) (2026-04-05)
 
 
