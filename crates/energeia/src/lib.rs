@@ -30,6 +30,8 @@ pub mod error;
 pub mod http;
 /// Metrics and reporting: health signals, cost reports, status dashboard, Prometheus.
 pub mod metrics;
+/// Top-level dispatch orchestrator: DAG execution with concurrency and QA.
+pub mod orchestrator;
 /// Prompt loading from YAML frontmatter files.
 pub mod prompt;
 /// Quality assurance gate trait.
