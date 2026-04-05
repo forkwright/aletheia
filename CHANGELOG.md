@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.47](https://github.com/forkwright/aletheia/compare/v0.13.46...v0.13.47) (2026-04-05)
+
+
+### Features
+
+* **energeia:** decompose steward subsystem into 4 homes ([#2464](https://github.com/forkwright/aletheia/issues/2464)) ([510e11e](https://github.com/forkwright/aletheia/commit/510e11e9738250d05803e140d9e19620cd29e36a))
+
 ## [0.13.46](https://github.com/forkwright/aletheia/compare/v0.13.45...v0.13.46) (2026-04-05)
 
 
