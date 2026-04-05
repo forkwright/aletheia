@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.48](https://github.com/forkwright/aletheia/compare/v0.13.47...v0.13.48) (2026-04-05)
+
+
+### Features
+
+* **energeia:** wire tool implementations and expose pub interfaces ([#2466](https://github.com/forkwright/aletheia/issues/2466)) ([890b5ec](https://github.com/forkwright/aletheia/commit/890b5ecd037c23201c0cf8ae9bf3ecd6e6ff9d52))
+
 ## [0.13.47](https://github.com/forkwright/aletheia/compare/v0.13.46...v0.13.47) (2026-04-05)
 
 
