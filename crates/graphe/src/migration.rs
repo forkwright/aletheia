@@ -205,6 +205,17 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<MigrationResult> {
 
     let current = get_schema_version(conn);
 
+    // Check if database schema is newer than this binary supports.
+    // This prevents running an old binary against a newer schema.
+    let max_supported_version = MIGRATIONS.last().map_or(0, |m| m.version);
+    if current > max_supported_version {
+        return Err(error::SchemaTooNewSnafu {
+            current,
+            max: max_supported_version,
+        }
+        .build());
+    }
+
     // Verify checksums for all already-applied migrations before proceeding.
     verify_migration_checksums(conn, current)?;
 
@@ -461,8 +472,7 @@ mod tests {
     #[test]
     fn fresh_database_gets_all_migrations() {
         let conn = fresh_conn();
-        let result =
-            run_migrations(&conn).unwrap_or_default();
+        let result = run_migrations(&conn).unwrap_or_default();
 
         assert!(
             result.was_fresh,
@@ -521,15 +531,15 @@ mod tests {
         // NOTE: Bootstrap table but don't apply migrations
         bootstrap_version_table(&conn).unwrap_or_default();
 
-        let pending = check_migrations(&conn)
-            .unwrap_or_default();
+        let pending = check_migrations(&conn).unwrap_or_default();
         assert_eq!(
             pending.len(),
             5,
             "all 5 migrations should be pending on a fresh database"
         );
         assert_eq!(
-            pending.get(0).copied().unwrap_or_default().version, 1,
+            pending.get(0).copied().unwrap_or_default().version,
+            1,
             "first pending migration should be version 1"
         );
 
@@ -542,8 +552,7 @@ mod tests {
         let conn = fresh_conn();
         run_migrations(&conn).unwrap_or_default();
 
-        let pending = check_migrations(&conn)
-            .unwrap_or_default();
+        let pending = check_migrations(&conn).unwrap_or_default();
         assert!(
             pending.is_empty(),
             "no migrations should be pending after full migration"
@@ -554,7 +563,8 @@ mod tests {
     fn migration_order_enforced() {
         for window in MIGRATIONS.windows(2) {
             assert!(
-                window.get(0).copied().unwrap_or_default().version < window.get(1).copied().unwrap_or_default().version,
+                window.get(0).copied().unwrap_or_default().version
+                    < window.get(1).copied().unwrap_or_default().version,
                 "migration {} must come before {}",
                 window.get(0).copied().unwrap_or_default().version,
                 window.get(1).copied().unwrap_or_default().version,
@@ -605,8 +615,7 @@ mod tests {
     fn run_migrations_idempotent() {
         let conn = fresh_conn();
         let first = run_migrations(&conn).unwrap_or_default();
-        let second =
-            run_migrations(&conn).unwrap_or_default();
+        let second = run_migrations(&conn).unwrap_or_default();
         assert_eq!(
             first.current_version, second.current_version,
             "version should be the same across idempotent runs"
@@ -620,15 +629,15 @@ mod tests {
     #[test]
     fn check_migrations_reports_pending() {
         let conn = fresh_conn();
-        let pending = check_migrations(&conn)
-            .unwrap_or_default();
+        let pending = check_migrations(&conn).unwrap_or_default();
         assert_eq!(
             pending.len(),
             MIGRATIONS.len(),
             "all migrations should be pending on a fresh database"
         );
         assert_eq!(
-            pending.get(0).copied().unwrap_or_default().version, 1,
+            pending.get(0).copied().unwrap_or_default().version,
+            1,
             "first pending migration should be version 1"
         );
     }
@@ -680,13 +689,11 @@ mod tests {
             )",
         )
         .unwrap_or_default();
-        conn.execute_batch(DDL)
-            .unwrap_or_default();
+        conn.execute_batch(DDL).unwrap_or_default();
         conn.execute("INSERT INTO schema_version (version) VALUES (1)", [])
             .unwrap_or_default();
 
-        let result =
-            run_migrations(&conn).unwrap_or_default();
+        let result = run_migrations(&conn).unwrap_or_default();
         assert!(!result.was_fresh, "upgraded database should not be fresh");
         assert_eq!(
             result.applied,
@@ -740,8 +747,7 @@ mod tests {
         let conn = fresh_conn();
         run_migrations(&conn).unwrap_or_default();
 
-        verify_migration_checksums(&conn, get_schema_version(&conn))
-            .unwrap_or_default();
+        verify_migration_checksums(&conn, get_schema_version(&conn)).unwrap_or_default();
     }
 
     #[test]
@@ -775,8 +781,7 @@ mod tests {
         let conn = fresh_conn();
         // Simulate legacy rows: schema_version with empty checksum.
         bootstrap_version_table(&conn).unwrap_or_default();
-        conn.execute_batch(DDL)
-            .unwrap_or_default();
+        conn.execute_batch(DDL).unwrap_or_default();
         conn.execute(
             "INSERT INTO schema_version (version, description, checksum) VALUES (1, 'base', '')",
             [],
@@ -784,7 +789,35 @@ mod tests {
         .unwrap_or_default();
 
         // Verification should skip the empty-checksum row without error.
-        verify_migration_checksums(&conn, 1)
+        verify_migration_checksums(&conn, 1).unwrap_or_default();
+    }
+
+    #[test]
+    fn schema_too_new_returns_error() {
+        let conn = fresh_conn();
+
+        // Simulate a database with a newer schema version than the binary supports.
+        bootstrap_version_table(&conn).unwrap_or_default();
+        let future_version = MIGRATIONS.last().map_or(1, |m| m.version + 1);
+        conn.execute(
+            "INSERT INTO schema_version (version, description, checksum) VALUES (?1, 'future migration', '')",
+            rusqlite::params![future_version],
+        )
+        .unwrap_or_default();
+        conn.pragma_update(None, "user_version", future_version)
             .unwrap_or_default();
+
+        // Running migrations should fail with SchemaTooNew error.
+        let err = run_migrations(&conn)
+            .expect_err("should fail when database schema is newer than binary supports");
+        let err_str = err.to_string();
+        assert!(
+            err_str.contains("newer than this binary supports"),
+            "error message should indicate schema is too new: {err_str}"
+        );
+        assert!(
+            err_str.contains(&future_version.to_string()),
+            "error message should include the current version: {err_str}"
+        );
     }
 }
