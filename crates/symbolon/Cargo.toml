@@ -24,7 +24,9 @@ base64 = { workspace = true }
 blake3 = "1"
 prometheus = { workspace = true }
 rand = { workspace = true }
-ring = { workspace = true }
+hmac = { workspace = true }
+sha2 = { workspace = true }
+aes-gcm = { workspace = true }
 reqwest = { workspace = true }
 rustix = { workspace = true }
 rusqlite = { workspace = true }

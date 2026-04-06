@@ -102,7 +102,7 @@ impl CcProfile {
 ///
 /// Public for unit testing.
 pub(crate) fn compute_fingerprint(first_message_text: &str, version: &str) -> String {
-    use ring::digest;
+    use sha2::{Digest, Sha256};
 
     let chars: Vec<char> = first_message_text.chars().collect();
     let indices = [4, 7, 20];
@@ -112,10 +112,10 @@ pub(crate) fn compute_fingerprint(first_message_text: &str, version: &str) -> St
         .collect();
 
     let input = format!("{FINGERPRINT_SALT}{extracted}{version}");
-    let hash = digest::digest(&digest::SHA256, input.as_bytes());
+    let hash = Sha256::digest(input.as_bytes());
     // First 3 hex chars: take 2 bytes (= 4 hex chars), then slice to 3.
     // All chars are ASCII hex digits so the byte slice is always valid UTF-8.
-    let hex: String = hash.as_ref().iter().take(2).flat_map(|b| {
+    let hex: String = hash.iter().take(2).flat_map(|b| {
         let hi = char::from_digit(u32::from(b >> 4), 16).unwrap_or('0');
         let lo = char::from_digit(u32::from(b & 0xf), 16).unwrap_or('0');
         [hi, lo]

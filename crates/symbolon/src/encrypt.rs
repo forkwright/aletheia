@@ -12,39 +12,20 @@
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
+use aes_gcm::aead::generic_array::GenericArray;
+use aes_gcm::aead::{Aead, AeadCore, OsRng};
+use aes_gcm::{Aes256Gcm, KeyInit};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use ring::aead::{
-    AES_256_GCM, Aad, BoundKey, NONCE_LEN as RING_NONCE_LEN, Nonce, NonceSequence, SealingKey,
-    UnboundKey,
-};
 
 /// Magic prefix that marks an encrypted credential file.
 pub(crate) const ENCRYPTED_SENTINEL: &str = "ALETHEIA_ENC_V1:";
 
 /// AES-256-GCM nonce length (96 bits / 12 bytes per NIST recommendation).
 const NONCE_LEN: usize = 12;
-// Compile-time assertion: our constant must match ring's.
-const _: () = assert!(NONCE_LEN == RING_NONCE_LEN, "NONCE_LEN must match ring");
 
 /// AES-256-GCM key length (256 bits / 32 bytes).
 const KEY_LEN: usize = 32;
-
-/// A [`NonceSequence`] that yields a single nonce and then errors.
-///
-/// AES-GCM with a random nonce is IND-CPA secure when the nonce is never
-/// reused. This type encodes "use once" at the type level: advancing it a
-/// second time returns `Unspecified`, which causes `SealingKey::seal` to fail.
-struct OnceThenError(Option<[u8; RING_NONCE_LEN]>);
-
-impl NonceSequence for OnceThenError {
-    fn advance(&mut self) -> Result<Nonce, ring::error::Unspecified> {
-        self.0
-            .take()
-            .map(Nonce::assume_unique_for_key)
-            .ok_or(ring::error::Unspecified)
-    }
-}
 
 /// Derive the key-file path from the credential file path.
 ///
@@ -158,27 +139,19 @@ pub(crate) fn commit_key_file(credential_path: &Path, tmp: &Path) -> std::io::Re
 ///
 /// # Errors
 ///
-/// Returns an `io::Error` if the RNG or the AEAD primitive fails.
+/// Returns an `io::Error` if the AEAD primitive fails.
 pub(crate) fn encrypt(key: &[u8; KEY_LEN], plaintext: &[u8]) -> std::io::Result<String> {
-    let nonce_bytes: [u8; NONCE_LEN] = generate_nonce()?;
+    let cipher = Aes256Gcm::new(GenericArray::from_slice(key));
+    let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
 
-    let unbound = UnboundKey::new(&AES_256_GCM, key)
-        .map_err(|_ignored| std::io::Error::other("AES-256-GCM: invalid key length"))?;
-
-    let mut sealing_key: SealingKey<OnceThenError> =
-        SealingKey::new(unbound, OnceThenError(Some(nonce_bytes)));
-
-    let mut in_out = plaintext.to_vec();
-    sealing_key
-        .seal_in_place_append_tag(Aad::empty(), &mut in_out)
-        .map_err(|_ignored| {
-            std::io::Error::other("AES-256-GCM: seal_in_place_append_tag failed")
-        })?;
+    let ciphertext_with_tag = cipher
+        .encrypt(&nonce, plaintext)
+        .map_err(|_ignored| std::io::Error::other("AES-256-GCM: encryption failed"))?;
 
     // Prepend nonce so the decryptor can recover it.
-    let mut combined = Vec::with_capacity(NONCE_LEN + in_out.len());
-    combined.extend_from_slice(&nonce_bytes);
-    combined.extend_from_slice(&in_out);
+    let mut combined = Vec::with_capacity(NONCE_LEN + ciphertext_with_tag.len());
+    combined.extend_from_slice(&nonce);
+    combined.extend_from_slice(&ciphertext_with_tag);
 
     Ok(BASE64.encode(&combined))
 }
@@ -189,8 +162,6 @@ pub(crate) fn encrypt(key: &[u8; KEY_LEN], plaintext: &[u8]) -> std::io::Result<
 ///
 /// Returns an `io::Error` if base64 decoding or AES-GCM authentication fails.
 pub(crate) fn decrypt(key: &[u8; KEY_LEN], encoded: &str) -> std::io::Result<Vec<u8>> {
-    use ring::aead::{LessSafeKey, Nonce as AeadNonce, UnboundKey as AeadUnbound};
-
     let combined = BASE64.decode(encoded).map_err(|e| {
         std::io::Error::new(
             std::io::ErrorKind::InvalidData,
@@ -206,21 +177,12 @@ pub(crate) fn decrypt(key: &[u8; KEY_LEN], encoded: &str) -> std::io::Result<Vec
     }
 
     let (nonce_bytes, ciphertext_with_tag) = combined.split_at(NONCE_LEN);
-    let nonce_arr: [u8; NONCE_LEN] = nonce_bytes.try_into().map_err(|_ignored| {
-        std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            "nonce slice has wrong length",
-        )
-    })?;
 
-    let unbound = AeadUnbound::new(&AES_256_GCM, key)
-        .map_err(|_ignored| std::io::Error::other("AES-256-GCM: invalid key length"))?;
-    let opening_key = LessSafeKey::new(unbound);
-    let nonce = AeadNonce::assume_unique_for_key(nonce_arr);
+    let cipher = Aes256Gcm::new(GenericArray::from_slice(key));
+    let nonce = GenericArray::from_slice(nonce_bytes);
 
-    let mut buf = ciphertext_with_tag.to_vec();
-    let plaintext = opening_key
-        .open_in_place(nonce, Aad::empty(), &mut buf)
+    let plaintext = cipher
+        .decrypt(nonce, ciphertext_with_tag)
         .map_err(|_ignored| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
@@ -228,35 +190,14 @@ pub(crate) fn decrypt(key: &[u8; KEY_LEN], encoded: &str) -> std::io::Result<Vec
             )
         })?;
 
-    Ok(plaintext.to_vec())
+    Ok(plaintext)
 }
 
 /// Generate a fresh random 32-byte AES-256-GCM key using the system CSPRNG.
-///
-/// # Errors
-///
-/// Returns an `io::Error` if the system random source is unavailable.
 fn generate_key() -> std::io::Result<[u8; KEY_LEN]> {
-    let random = ring::rand::SystemRandom::new();
     let mut key = [0u8; KEY_LEN];
-    ring::rand::SecureRandom::fill(&random, &mut key).map_err(|_ignored| {
-        std::io::Error::other("system RNG unavailable (cannot generate encryption key)")
-    })?;
+    rand::fill(&mut key);
     Ok(key)
-}
-
-/// Generate a fresh 12-byte nonce using the system CSPRNG.
-///
-/// # Errors
-///
-/// Returns an `io::Error` if the system random source is unavailable.
-fn generate_nonce() -> std::io::Result<[u8; NONCE_LEN]> {
-    let random = ring::rand::SystemRandom::new();
-    let mut buf = [0u8; NONCE_LEN];
-    ring::rand::SecureRandom::fill(&random, &mut buf).map_err(|_ignored| {
-        std::io::Error::other("system RNG unavailable (cannot generate nonce)")
-    })?;
-    Ok(buf)
 }
 
 /// Write the encryption key to disk with restrictive permissions.

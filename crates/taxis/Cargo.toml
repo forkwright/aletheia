@@ -19,7 +19,7 @@ aletheia-koina = { path = "../koina" }
 base64 = { workspace = true }
 figment = { workspace = true }
 rand = { workspace = true }
-ring = { workspace = true }
+chacha20poly1305 = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
