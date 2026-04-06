@@ -15,6 +15,7 @@ pub struct ParsedSseEvent {
 }
 
 /// Consume an entire SSE response body and parse it into discrete events.
+#[must_use]
 #[tracing::instrument(skip(response))]
 pub async fn parse_sse_stream(response: reqwest::Response) -> Result<Vec<ParsedSseEvent>> {
     let text = response.text().await.context(error::HttpSnafu)?;
@@ -47,6 +48,7 @@ fn try_parse_event(event_type: &mut String, data: &mut String) -> Option<ParsedS
 
 /// Parse raw SSE text into events. Exposed for testing.
 #[tracing::instrument(skip(text), fields(text_len = text.len()))]
+#[must_use]
 pub(crate) fn parse_sse_text(text: &str) -> Result<Vec<ParsedSseEvent>> {
     let mut events = Vec::new();
     let mut current_event_type = String::new();

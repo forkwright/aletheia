@@ -34,6 +34,7 @@ pub(crate) enum Action {
     },
 }
 
+#[must_use]
 pub(crate) fn run(action: Action, instance_root: Option<&PathBuf>) -> Result<()> {
     let oikos = match instance_root {
         Some(root) => Oikos::from_root(root),

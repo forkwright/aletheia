@@ -18,6 +18,7 @@ pub(crate) enum Action {
     Encrypt,
 }
 
+#[must_use]
 pub(crate) fn run(action: &Action, instance_root: Option<&PathBuf>) -> Result<()> {
     match action {
         Action::InitKey => run_init_key(),

@@ -20,6 +20,7 @@ mod vector;
 /// The engine validates arity before calling functions (see `min_arity` in
 /// `Op`), so out-of-bounds access indicates an internal engine bug rather than
 /// user error. Returns a typed error instead of panicking.
+#[must_use]
 pub(crate) fn arg(args: &[DataValue], idx: usize) -> Result<&DataValue> {
     args.get(idx).ok_or_else(|| {
         TypeMismatchSnafu {

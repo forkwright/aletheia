@@ -206,6 +206,7 @@ pub fn write_config(oikos: &Oikos, config: &AletheiaConfig) -> Result<()> {
     clippy::result_large_err,
     reason = "figment::Error is inherently large"
 )]
+#[must_use]
 pub(crate) fn write_config_checked(
     oikos: &Oikos,
     config: &AletheiaConfig,

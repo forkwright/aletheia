@@ -78,6 +78,7 @@ impl StreamAccumulator {
         clippy::too_many_lines,
         reason = "SSE event dispatch is inherently branchy"
     )]
+    #[must_use]
     pub(crate) fn process_event(
         &mut self,
         event: WireStreamEvent,

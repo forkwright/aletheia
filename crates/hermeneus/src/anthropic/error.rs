@@ -39,9 +39,13 @@ pub(crate) async fn map_error_response(
         "Anthropic API error response"
     );
 
-    let detail = serde_json::from_str::<WireErrorResponse>(&body)
-        .ok()
-        .map(|e| e.error.message);
+    let detail = match serde_json::from_str::<WireErrorResponse>(&body) {
+        Ok(e) => Some(e.error.message),
+        Err(e) => {
+            tracing::debug!(error = %e, "failed to parse Anthropic error response body");
+            None
+        }
+    };
 
     let message = detail.unwrap_or_else(|| format!("HTTP {status}"));
 

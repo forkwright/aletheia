@@ -76,6 +76,7 @@ pub(crate) struct WireErrorDetail {
 }
 
 impl WireResponse {
+    #[must_use]
     pub(crate) fn into_response(self) -> Result<CompletionResponse, String> {
         let stop_reason = parse_stop_reason(&self.stop_reason)?;
 

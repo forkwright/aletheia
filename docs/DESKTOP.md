@@ -34,8 +34,8 @@ cargo build -p theatron-desktop --manifest-path crates/theatron/desktop/Cargo.to
 ## Why excluded from workspace
 
 1. **CI compatibility.** GTK3 and webkit2gtk are not installed in the CI environment. Including the crate in the workspace would fail `cargo build --workspace` and `cargo clippy --workspace`.
-2. **Dependency advisories.** GTK bindings pull in crates with known advisories that are acceptable for a desktop app but would block cargo-deny checks for the rest of the workspace.
-3. **Independent versioning.** The desktop crate tracks its own version rather than inheriting from `[workspace.package]`, since it ships on a separate release cadence.
+2. **Dependency advisories.** GTK bindings pull in crates with known advisories that are tolerable for a desktop app but would block cargo-deny checks for the rest of the workspace.
+3. **Independent versioning.** The desktop crate tracks its own version instead of inheriting from `[workspace.package]`, since it ships on a separate release cadence.
 
 ## Architecture
 

@@ -18,6 +18,7 @@ use crate::runtime::transact::SessionTx;
 use crate::{DataValue, SourceSpan};
 
 impl<'a> SessionTx<'a> {
+    #[must_use]
     pub(crate) fn hnsw_knn(
         &self,
         q: Vector,

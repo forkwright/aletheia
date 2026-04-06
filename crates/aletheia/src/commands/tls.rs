@@ -26,6 +26,7 @@ pub(crate) enum Action {
     },
 }
 
+#[must_use]
 pub(crate) fn run(action: &Action) -> Result<()> {
     match action {
         Action::Generate {

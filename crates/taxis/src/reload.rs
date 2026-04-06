@@ -164,6 +164,7 @@ pub struct ReloadOutcome {
     clippy::result_large_err,
     reason = "figment::Error is inherently large"
 )]
+#[must_use]
 pub fn prepare_reload(
     oikos: &Oikos,
     current: &AletheiaConfig,

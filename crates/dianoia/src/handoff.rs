@@ -175,6 +175,7 @@ impl HandoffFile {
     /// Read a handoff file on resume, returning the preserved context.
     ///
     /// Returns `Ok(None)` if no handoff file exists.
+    #[must_use]
     pub(crate) fn read(&self) -> Result<Option<HandoffContext>> {
         let json_path = self.json_path();
         if !json_path.exists() {
@@ -241,6 +242,7 @@ impl std::fmt::Debug for HandoffFile {
 /// Returns `Ok(Some(context))` if a handoff file exists (indicating a crash or
 /// incomplete resume from a prior session). Returns `Ok(None)` if no handoff exists.
 #[expect(dead_code, reason = "WIP: context handoff for nous distillation")]
+#[must_use]
 pub(crate) fn detect_orphaned(dir: &Path) -> Result<Option<HandoffContext>> {
     HandoffFile::new(dir).read()
 }

@@ -79,6 +79,7 @@ pub(crate) fn to_json(d: &DataValue) -> JsonValue {
     }
 }
 
+#[must_use]
 pub(crate) fn get_json_path<'a>(
     mut pointer: &'a mut JsonValue,
     path: &[DataValue],
@@ -145,10 +146,12 @@ fn json2val_local(res: Value) -> DataValue {
     }
 }
 
+#[must_use]
 pub(crate) fn op_is_null(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::from(matches!(arg(args, 0)?, DataValue::Null)))
 }
 
+#[must_use]
 pub(crate) fn op_is_int(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::from(matches!(
         arg(args, 0)?,
@@ -156,6 +159,7 @@ pub(crate) fn op_is_int(args: &[DataValue]) -> Result<DataValue> {
     )))
 }
 
+#[must_use]
 pub(crate) fn op_is_float(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::from(matches!(
         arg(args, 0)?,
@@ -163,6 +167,7 @@ pub(crate) fn op_is_float(args: &[DataValue]) -> Result<DataValue> {
     )))
 }
 
+#[must_use]
 pub(crate) fn op_is_num(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::from(matches!(
         arg(args, 0)?,
@@ -170,6 +175,7 @@ pub(crate) fn op_is_num(args: &[DataValue]) -> Result<DataValue> {
     )))
 }
 
+#[must_use]
 pub(crate) fn op_is_finite(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::from(match arg(args, 0)? {
         DataValue::Num(Num::Int(_)) => true,
@@ -178,6 +184,7 @@ pub(crate) fn op_is_finite(args: &[DataValue]) -> Result<DataValue> {
     }))
 }
 
+#[must_use]
 pub(crate) fn op_is_infinite(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::from(match arg(args, 0)? {
         DataValue::Num(Num::Float(f)) => f.is_infinite(),
@@ -185,6 +192,7 @@ pub(crate) fn op_is_infinite(args: &[DataValue]) -> Result<DataValue> {
     }))
 }
 
+#[must_use]
 pub(crate) fn op_is_nan(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::from(match arg(args, 0)? {
         DataValue::Num(Num::Float(f)) => f.is_nan(),
@@ -192,10 +200,12 @@ pub(crate) fn op_is_nan(args: &[DataValue]) -> Result<DataValue> {
     }))
 }
 
+#[must_use]
 pub(crate) fn op_is_string(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::from(matches!(arg(args, 0)?, DataValue::Str(_))))
 }
 
+#[must_use]
 pub(crate) fn op_is_list(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::from(matches!(
         arg(args, 0)?,
@@ -203,10 +213,12 @@ pub(crate) fn op_is_list(args: &[DataValue]) -> Result<DataValue> {
     )))
 }
 
+#[must_use]
 pub(crate) fn op_is_vec(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::from(matches!(arg(args, 0)?, DataValue::Vec(_))))
 }
 
+#[must_use]
 pub(crate) fn op_is_bytes(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::from(matches!(
         arg(args, 0)?,
@@ -214,14 +226,17 @@ pub(crate) fn op_is_bytes(args: &[DataValue]) -> Result<DataValue> {
     )))
 }
 
+#[must_use]
 pub(crate) fn op_is_uuid(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::from(matches!(arg(args, 0)?, DataValue::Uuid(_))))
 }
 
+#[must_use]
 pub(crate) fn op_is_json(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::from(matches!(arg(args, 0)?, DataValue::Json(_))))
 }
 
+#[must_use]
 pub(crate) fn op_to_bool(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::from(match arg(args, 0)? {
         DataValue::Null => false,
@@ -247,6 +262,7 @@ pub(crate) fn op_to_bool(args: &[DataValue]) -> Result<DataValue> {
     }))
 }
 
+#[must_use]
 pub(crate) fn op_to_unity(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::from(match arg(args, 0)? {
         DataValue::Null => 0,
@@ -272,6 +288,7 @@ pub(crate) fn op_to_unity(args: &[DataValue]) -> Result<DataValue> {
     }))
 }
 
+#[must_use]
 pub(crate) fn op_to_int(args: &[DataValue]) -> Result<DataValue> {
     Ok(match arg(args, 0)? {
         DataValue::Num(n) => match n.get_int() {
@@ -305,6 +322,7 @@ pub(crate) fn op_to_int(args: &[DataValue]) -> Result<DataValue> {
     })
 }
 
+#[must_use]
 pub(crate) fn op_to_float(args: &[DataValue]) -> Result<DataValue> {
     Ok(match arg(args, 0)? {
         DataValue::Num(n) => n.get_float().into(),
@@ -335,10 +353,12 @@ pub(crate) fn op_to_float(args: &[DataValue]) -> Result<DataValue> {
     })
 }
 
+#[must_use]
 pub(crate) fn op_to_string(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::Str(val2str(arg(args, 0)?).into()))
 }
 
+#[must_use]
 pub(crate) fn op_to_uuid(args: &[DataValue]) -> Result<DataValue> {
     match arg(args, 0)? {
         d @ DataValue::Uuid(_u) => Ok(d.clone()),
@@ -359,6 +379,7 @@ pub(crate) fn op_to_uuid(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_json_to_scalar(args: &[DataValue]) -> Result<DataValue> {
     Ok(match arg(args, 0)? {
         DataValue::Json(JsonData(j)) => json2val_local(j.clone()),
@@ -366,10 +387,12 @@ pub(crate) fn op_json_to_scalar(args: &[DataValue]) -> Result<DataValue> {
     })
 }
 
+#[must_use]
 pub(crate) fn op_json(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::Json(JsonData(to_json(arg(args, 0)?))))
 }
 
+#[must_use]
 pub(crate) fn op_json_object(args: &[DataValue]) -> Result<DataValue> {
     snafu::ensure!(
         args.len().is_multiple_of(2),
@@ -388,6 +411,7 @@ pub(crate) fn op_json_object(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::Json(JsonData(Value::Object(obj))))
 }
 
+#[must_use]
 pub(crate) fn op_parse_json(args: &[DataValue]) -> Result<DataValue> {
     match arg(args, 0)?.get_str() {
         Some(s) => {
@@ -402,6 +426,7 @@ pub(crate) fn op_parse_json(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_dump_json(args: &[DataValue]) -> Result<DataValue> {
     match arg(args, 0)? {
         DataValue::Json(j) => Ok(DataValue::Str(j.0.to_string().into())),
@@ -413,6 +438,7 @@ pub(crate) fn op_dump_json(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_set_json_path(args: &[DataValue]) -> Result<DataValue> {
     let mut result = to_json(arg(args, 0)?);
     let path = arg(args, 1)?.get_slice().ok_or_else(|| {
@@ -427,6 +453,7 @@ pub(crate) fn op_set_json_path(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::Json(JsonData(result)))
 }
 
+#[must_use]
 pub(crate) fn op_remove_json_path(args: &[DataValue]) -> Result<DataValue> {
     let mut result = to_json(arg(args, 0)?);
     let path = arg(args, 1)?.get_slice().ok_or_else(|| {

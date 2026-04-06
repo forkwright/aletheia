@@ -20,6 +20,7 @@ impl ReorderRA {
     pub(crate) fn bindings(&self) -> Vec<Symbol> {
         self.new_order.clone()
     }
+    #[must_use]
     pub(crate) fn iter<'a>(
         &'a self,
         tx: &'a SessionTx<'_>,

@@ -23,6 +23,7 @@ pub(crate) struct DesktopArgs {
 }
 
 /// Search PATH for `theatron-desktop` and exec it with forwarded flags.
+#[must_use]
 pub(crate) fn run(args: &DesktopArgs) -> anyhow::Result<()> {
     let binary = find_in_path().ok_or_else(|| {
         anyhow::anyhow!(

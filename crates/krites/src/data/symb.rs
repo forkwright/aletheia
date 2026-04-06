@@ -81,6 +81,7 @@ impl Symbol {
     pub(crate) fn is_generated_ignored_symbol(&self) -> bool {
         self.name.starts_with('~')
     }
+    #[must_use]
     pub(crate) fn ensure_valid_field(&self) -> DataResult<()> {
         if self.name.contains('(') || self.name.contains(')') {
             return InvalidSymbolSnafu {

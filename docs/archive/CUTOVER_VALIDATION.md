@@ -1,6 +1,6 @@
 # Cutover validation: Rust binary replaces TS runtime
 
-**STATUS: ARCHIVED.** This document describes validation work completed in early March 2026. The codebase has moved well beyond cutover (now at v0.10.1). File paths, line numbers, test counts, and specific claims are obsolete. Kept for historical reference only.
+**STATUS: ARCHIVED.** Validation work completed in early March 2026. The codebase has moved well beyond cutover (now at v0.10.1). File paths, line numbers, test counts, and specific claims are obsolete. Kept for historical reference only.
 
 ---
 

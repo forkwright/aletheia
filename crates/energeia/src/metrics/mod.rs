@@ -74,6 +74,7 @@ impl MetricsService {
     /// # Errors
     ///
     /// Returns `Error::Store` if any store read fails.
+    #[must_use]
     pub fn health_report(&self, window_days: u32) -> Result<HealthReport> {
         health::compute_health_report(&self.store, window_days)
     }
@@ -85,6 +86,7 @@ impl MetricsService {
     /// # Errors
     ///
     /// Returns `Error::Store` if any store read fails.
+    #[must_use]
     pub fn cost_report(&self, window_days: u32) -> Result<CostReport> {
         cost::compute_cost_report(&self.store, window_days)
     }
@@ -94,6 +96,7 @@ impl MetricsService {
     /// # Errors
     ///
     /// Returns `Error::Store` if any store read fails.
+    #[must_use]
     pub fn status_dashboard(&self) -> Result<StatusDashboard> {
         status::compute_status_dashboard(&self.store)
     }

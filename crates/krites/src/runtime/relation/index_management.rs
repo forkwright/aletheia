@@ -20,6 +20,7 @@ use crate::utils::TempCollector;
 use super::handles::{AccessLevel, InputRelationHandle, RelationId};
 
 impl<'a> SessionTx<'a> {
+    #[must_use]
     pub(crate) fn create_index(
         &mut self,
         rel_name: &Symbol,
@@ -155,6 +156,7 @@ impl<'a> SessionTx<'a> {
         Ok(())
     }
 
+    #[must_use]
     pub(crate) fn remove_index(
         &mut self,
         rel_name: &Symbol,
@@ -209,6 +211,7 @@ impl<'a> SessionTx<'a> {
         Ok(to_clean)
     }
 
+    #[must_use]
     pub(crate) fn rename_relation(&mut self, old: &Symbol, new: &Symbol) -> Result<()> {
         if old.name.starts_with('_') || new.name.starts_with('_') {
             InvalidOperationSnafu {
@@ -252,6 +255,7 @@ impl<'a> SessionTx<'a> {
 
         Ok(())
     }
+    #[must_use]
     pub(crate) fn rename_temp_relation(&mut self, old: Symbol, new: Symbol) -> Result<()> {
         let new_key = DataValue::Str(new.name.clone());
         let new_encoded = vec![new_key].encode_as_key(RelationId::SYSTEM);

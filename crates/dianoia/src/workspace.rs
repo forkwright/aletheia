@@ -102,6 +102,7 @@ impl ProjectWorkspace {
 
     /// Write a blocker file for stuck detection integration.
     #[expect(dead_code, reason = "WIP: project workspace persistence")]
+    #[must_use]
     pub(crate) fn write_blocker(&self, phase_id: &str, blocker: &Blocker) -> Result<()> {
         let layout = self.layout();
         let phase_blockers = layout.blockers_dir.join(phase_id);
@@ -122,6 +123,7 @@ impl ProjectWorkspace {
 
     /// Read all blockers for a phase.
     #[expect(dead_code, reason = "WIP: project workspace persistence")]
+    #[must_use]
     pub(crate) fn read_blockers(&self, phase_id: &str) -> Result<Vec<Blocker>> {
         let layout = self.layout();
         let phase_blockers = layout.blockers_dir.join(phase_id);

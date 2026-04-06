@@ -47,6 +47,7 @@ impl Disjunction {
 pub(crate) struct Conjunction(pub(crate) Vec<NormalFormAtom>);
 
 impl InputAtom {
+    #[must_use]
     pub(crate) fn negation_normal_form(self) -> Result<Self> {
         Ok(match self {
             a @ (InputAtom::Rule { .. }
@@ -126,6 +127,7 @@ impl InputAtom {
         })
     }
 
+    #[must_use]
     pub(crate) fn disjunctive_normal_form(self, tx: &SessionTx<'_>) -> Result<Disjunction> {
         let neg_form = self.negation_normal_form()?;
         let mut r#gen = TempSymbGen::default();

@@ -70,6 +70,7 @@ impl<'a> SessionTx<'a> {
     /// Iterates over every canary entry in the index, computes the distance to
     /// the query vector, and returns the top-k nearest neighbours. This
     /// guarantees perfect recall but is O(n) in dataset size.
+    #[must_use]
     pub(crate) fn hnsw_exact_knn(
         &self,
         q: &Vector,

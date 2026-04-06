@@ -21,6 +21,7 @@ use crate::storage::Storage;
 use crate::{DbCore as Db, NamedRows, SourceSpan, StoreTx};
 
 impl<'a> crate::runtime::transact::SessionTx<'a> {
+    #[must_use]
     pub(crate) fn collect_mutations<'s, S: Storage<'s>>(
         &mut self,
         db: &Db<S>,
@@ -118,6 +119,7 @@ impl<'a> crate::runtime::transact::SessionTx<'a> {
         Ok(())
     }
 
+    #[must_use]
     pub(crate) fn update_in_index(
         &mut self,
         relation_store: &RelationHandle,
@@ -142,6 +144,7 @@ impl<'a> crate::runtime::transact::SessionTx<'a> {
         Ok(())
     }
 
+    #[must_use]
     pub(crate) fn ensure_not_in_relation(
         &mut self,
         res_iter: impl Iterator<Item = Tuple>,
@@ -192,6 +195,7 @@ impl<'a> crate::runtime::transact::SessionTx<'a> {
         Ok(())
     }
 
+    #[must_use]
     pub(crate) fn ensure_in_relation(
         &mut self,
         res_iter: impl Iterator<Item = Tuple>,
@@ -267,6 +271,7 @@ impl<'a> crate::runtime::transact::SessionTx<'a> {
         Ok(())
     }
 
+    #[must_use]
     pub(crate) fn remove_from_relation<'s, S: Storage<'s>>(
         &mut self,
         db: &Db<S>,

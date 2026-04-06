@@ -266,6 +266,7 @@ pub(crate) fn is_first_run() -> bool {
 /// # Errors
 ///
 /// Returns an error if the file exists but cannot be read or parsed.
+#[must_use]
 pub(crate) fn load() -> Result<SettingsConfig, SettingsConfigError> {
     let path = settings_path()?;
     let contents = std::fs::read_to_string(&path).context(ReadFileSnafu)?;
@@ -278,6 +279,7 @@ pub(crate) fn load() -> Result<SettingsConfig, SettingsConfigError> {
 ///
 /// Returns an error if the directory cannot be created or the file cannot
 /// be written.
+#[must_use]
 pub(crate) fn save(config: &SettingsConfig) -> Result<(), SettingsConfigError> {
     let path = settings_path()?;
     if let Some(parent) = path.parent() {

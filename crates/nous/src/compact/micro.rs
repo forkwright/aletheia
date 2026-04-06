@@ -110,7 +110,7 @@ pub(crate) fn run_microcompaction(
                 reason = "u64→i64: marker token count is small, fits in i64"
             )]
             {
-                msg.token_estimate = marker_tokens as i64; // kanon:ignore RUST/as-cast
+                msg.token_estimate = i64::try_from(marker_tokens).unwrap_or_default(); // kanon:ignore RUST/as-cast
             }
             msg.content = marker;
             metrics.results_cleared += 1;

@@ -26,6 +26,7 @@ pub(crate) struct HnswSearchRA {
 }
 
 impl HnswSearchRA {
+    #[must_use]
     pub(crate) fn fill_binding_indices_and_compile(&mut self) -> Result<()> {
         self.parent.fill_binding_indices_and_compile()?;
         if let Some(filter) = self.hnsw_search.filter.as_mut() {
@@ -41,6 +42,7 @@ impl HnswSearchRA {
         }
         Ok(())
     }
+    #[must_use]
     pub(crate) fn iter<'a>(
         &'a self,
         tx: &'a SessionTx<'_>,
@@ -98,6 +100,7 @@ pub(crate) struct FtsSearchRA {
 }
 
 impl FtsSearchRA {
+    #[must_use]
     pub(crate) fn fill_binding_indices_and_compile(&mut self) -> Result<()> {
         self.parent.fill_binding_indices_and_compile()?;
         if let Some(filter) = self.fts_search.filter.as_mut() {
@@ -113,6 +116,7 @@ impl FtsSearchRA {
         }
         Ok(())
     }
+    #[must_use]
     pub(crate) fn iter<'a>(
         &'a self,
         tx: &'a SessionTx<'_>,
@@ -206,6 +210,7 @@ pub(crate) struct LshSearchRA {
 }
 
 impl LshSearchRA {
+    #[must_use]
     pub(crate) fn fill_binding_indices_and_compile(&mut self) -> Result<()> {
         self.parent.fill_binding_indices_and_compile()?;
         if let Some(filter) = self.lsh_search.filter.as_mut() {
@@ -221,6 +226,7 @@ impl LshSearchRA {
         }
         Ok(())
     }
+    #[must_use]
     pub(crate) fn iter<'a>(
         &'a self,
         tx: &'a SessionTx<'_>,

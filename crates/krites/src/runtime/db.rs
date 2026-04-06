@@ -478,6 +478,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         collected
     }
 
+    #[must_use]
     pub(crate) fn compact_relation(&'s self) -> Result<()> {
         let l = Tuple::default().encode_as_key(RelationId(0));
         let u = vec![DataValue::Bot].encode_as_key(RelationId(u64::MAX));
@@ -510,6 +511,7 @@ impl Poison {
         Ok(())
     }
     #[cfg(target_arch = "wasm32")]
+    #[must_use]
     pub(crate) fn set_timeout(&self, _secs: f64) -> Result<()> {
         UnsupportedSnafu {
             operation: "SET timeout",
@@ -518,6 +520,7 @@ impl Poison {
         .fail()?
     }
     #[cfg(not(target_arch = "wasm32"))]
+    #[must_use]
     pub(crate) fn set_timeout(&self, secs: f64) -> Result<()> {
         let pill = self.clone();
         thread::spawn(move || {
@@ -528,6 +531,7 @@ impl Poison {
     }
 }
 
+#[must_use]
 pub(crate) fn seconds_since_the_epoch() -> Result<f64> {
     #[cfg(not(target_arch = "wasm32"))]
     let now = SystemTime::now();

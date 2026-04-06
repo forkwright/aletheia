@@ -98,6 +98,7 @@ impl MeetAggrStore {
     pub(crate) fn is_empty(&self) -> bool {
         self.inner.is_empty()
     }
+    #[must_use]
     pub(crate) fn new(aggrs: Vec<Option<(Aggregation, Vec<DataValue>)>>) -> Result<Self> {
         let total_key_len = aggrs.len();
         let mut aggregations = aggrs.into_iter().flatten().collect_vec();
@@ -111,6 +112,7 @@ impl MeetAggrStore {
             grouping_len,
         })
     }
+    #[must_use]
     pub(crate) fn meet_put(&mut self, tuple: Tuple) -> Result<bool> {
         let (key_part, val_part) = tuple.split_at(self.grouping_len);
         match self.inner.get_mut(key_part) {
@@ -172,6 +174,7 @@ impl MeetAggrStore {
     }
     /// returns true if prev is guaranteed to be the same as self after this function call,
     /// false if we are not sure.
+    #[must_use]
     pub(crate) fn merge_in(&mut self, prev: &mut Self, mut new: Self) -> Result<bool> {
         prev.inner.clear();
         if new.inner.is_empty() {
@@ -258,6 +261,7 @@ impl EpochStore {
             arity,
         }
     }
+    #[must_use]
     pub(crate) fn new_meet(aggrs: &[Option<(Aggregation, Vec<DataValue>)>]) -> Result<Self> {
         Ok(Self {
             total: TempStore::MeetAggr(MeetAggrStore::new(aggrs.to_vec())?),
@@ -266,6 +270,7 @@ impl EpochStore {
             arity: aggrs.len(),
         })
     }
+    #[must_use]
     pub(crate) fn merge_in(&mut self, new: TempStore) -> Result<()> {
         match (&mut self.total, &mut self.delta, new) {
             (TempStore::Normal(total), TempStore::Normal(prev), TempStore::Normal(new)) => {

@@ -14,6 +14,7 @@ use crate::store::schema;
 
 /// Deserialize a `MessagePack` value from a fjall value slice.
 #[cfg(feature = "storage-fjall")]
+#[must_use]
 pub(crate) fn deserialize_value<T: serde::de::DeserializeOwned>(value: &[u8]) -> Result<T> {
     rmp_serde::from_slice(value).map_err(|e| {
         error::SerializationSnafu {
@@ -25,6 +26,7 @@ pub(crate) fn deserialize_value<T: serde::de::DeserializeOwned>(value: &[u8]) ->
 
 /// Collect all sessions for a given dispatch via prefix scan.
 #[cfg(feature = "storage-fjall")]
+#[must_use]
 pub(crate) fn list_sessions_for_dispatch(
     keyspace: &fjall::Keyspace,
     dispatch_id: &crate::store::records::DispatchId,
@@ -47,6 +49,7 @@ pub(crate) fn list_sessions_for_dispatch(
 ///
 /// Results are ordered by key (source + timestamp ascending).
 #[cfg(feature = "storage-fjall")]
+#[must_use]
 pub(crate) fn query_lessons(
     keyspace: &fjall::Keyspace,
     source: Option<&str>,
@@ -92,6 +95,7 @@ pub(crate) fn query_lessons(
 ///
 /// Results are ordered by timestamp ascending (key order).
 #[cfg(feature = "storage-fjall")]
+#[must_use]
 pub(crate) fn query_observations(
     keyspace: &fjall::Keyspace,
     project: Option<&str>,
@@ -109,7 +113,7 @@ pub(crate) fn query_observations(
             clippy::expect_used,
             reason = "bounded subtraction from now is infallible for realistic day counts"
         )]
-        let cutoff = now.checked_sub(span).expect("timestamp subtraction");
+        let cutoff = now.checked_sub(span).unwrap_or_default();
         cutoff.as_millisecond()
     });
 
@@ -144,6 +148,7 @@ pub(crate) fn query_observations(
 /// Results are ordered by ULID (time-ascending). Use `limit` to cap memory
 /// usage; pass `usize::MAX` for no limit.
 #[cfg(feature = "storage-fjall")]
+#[must_use]
 pub(crate) fn list_dispatches(
     keyspace: &fjall::Keyspace,
     limit: usize,
@@ -170,6 +175,7 @@ pub(crate) fn list_dispatches(
 /// Results are ordered by `(dispatch_ulid, prompt_number)` (time-approximate
 /// ascending). Use `limit` to cap memory usage.
 #[cfg(feature = "storage-fjall")]
+#[must_use]
 pub(crate) fn list_all_sessions(
     keyspace: &fjall::Keyspace,
     limit: usize,
@@ -195,6 +201,7 @@ pub(crate) fn list_all_sessions(
 ///
 /// Use `limit` to cap memory usage.
 #[cfg(feature = "storage-fjall")]
+#[must_use]
 pub(crate) fn list_all_ci_validations(
     keyspace: &fjall::Keyspace,
     limit: usize,
@@ -218,6 +225,7 @@ pub(crate) fn list_all_ci_validations(
 
 /// Collect CI validations for a given session via prefix scan.
 #[cfg(feature = "storage-fjall")]
+#[must_use]
 pub(crate) fn list_ci_validations_for_session(
     keyspace: &fjall::Keyspace,
     session_id: &crate::store::records::SessionId,

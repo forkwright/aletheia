@@ -386,6 +386,7 @@ impl ToolExecutor for PlanStepFailExecutor {
 }
 
 /// Register planning tools into the registry.
+#[must_use]
 pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(plan_create_def(), Box::new(PlanCreateExecutor))?;
     registry.register(plan_research_def(), Box::new(PlanResearchExecutor))?;

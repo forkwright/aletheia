@@ -380,6 +380,7 @@ impl<'a> SessionTx<'a> {
             }
         }
     }
+    #[must_use]
     pub(crate) fn fts_search(
         &self,
         q: &str,
@@ -442,6 +443,7 @@ impl<'a> SessionTx<'a> {
         }
         Ok(ret)
     }
+    #[must_use]
     pub(crate) fn put_fts_index_item(
         &mut self,
         tuple: &[DataValue],
@@ -495,6 +497,7 @@ impl<'a> SessionTx<'a> {
         }
         Ok(())
     }
+    #[must_use]
     pub(crate) fn del_fts_index_item(
         &mut self,
         tuple: &[DataValue],

@@ -72,6 +72,7 @@ impl FromRequestParts<Arc<AppState>> for Claims {
 }
 
 /// Reject the request if the caller's role is below `minimum`.
+#[must_use]
 pub(crate) fn require_role(claims: &Claims, minimum: Role) -> Result<(), ApiError> {
     if claims.role < minimum {
         return Err(ApiError::forbidden("insufficient permissions"));
@@ -80,6 +81,7 @@ pub(crate) fn require_role(claims: &Claims, minimum: Role) -> Result<(), ApiErro
 }
 
 /// Reject the request if the caller has a scoped `nous_id` that does not match `target_nous_id`.
+#[must_use]
 pub(crate) fn require_nous_access(claims: &Claims, target_nous_id: &str) -> Result<(), ApiError> {
     if let Some(ref scoped) = claims.nous_id
         && scoped != target_nous_id

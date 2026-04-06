@@ -51,6 +51,7 @@ pub(crate) fn resource_templates() -> Vec<ResourceTemplate> {
 /// Read a nous workspace file resource.
 ///
 /// URI format: `aletheia://nous/{nous_id}/{file}`
+#[must_use]
 pub(crate) fn read_resource(
     state: &DiaporeiaState,
     params: &ReadResourceRequestParams,

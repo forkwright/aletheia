@@ -223,6 +223,7 @@ pub async fn maybe_distill(
 }
 
 /// Apply distillation result to the session store.
+#[must_use]
 pub fn apply_distillation(
     store: &SessionStore,
     session_id: &str,

@@ -115,6 +115,7 @@ pub(crate) struct StoredRelationMetadata {
 }
 
 impl StoredRelationMetadata {
+    #[must_use]
     pub(crate) fn satisfied_by_required_col(&self, col: &ColumnDef) -> DataResult<()> {
         for target in self.keys.iter().chain(self.non_keys.iter()) {
             if target.name == col.name {
@@ -129,6 +130,7 @@ impl StoredRelationMetadata {
         }
         Ok(())
     }
+    #[must_use]
     pub(crate) fn compatible_with_col(&self, col: &ColumnDef) -> DataResult<()> {
         for target in self.keys.iter().chain(self.non_keys.iter()) {
             if target.name == col.name {
@@ -160,6 +162,7 @@ impl NullableColType {
         clippy::map_err_ignore,
         reason = "error context preserved in returned error type"
     )]
+    #[must_use]
     pub(crate) fn coerce(&self, data: DataValue, cur_vld: ValidityTs) -> DataResult<DataValue> {
         if matches!(data, DataValue::Null) {
             return if self.nullable {

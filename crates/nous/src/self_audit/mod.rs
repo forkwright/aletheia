@@ -266,6 +266,7 @@ impl Default for SelfAuditor {
 ///
 /// Returns an error if inserting a fact into the knowledge store fails.
 #[cfg(feature = "knowledge-store")]
+#[must_use]
 pub fn store_audit_report(
     knowledge_store: &aletheia_mneme::knowledge_store::KnowledgeStore,
     report: &AuditReport,
@@ -357,6 +358,7 @@ pub fn store_audit_report(
 ///
 /// Returns an error if the knowledge store query fails.
 #[cfg(feature = "knowledge-store")]
+#[must_use]
 pub fn query_audit_history(
     knowledge_store: &aletheia_mneme::knowledge_store::KnowledgeStore,
     nous_id: &str,

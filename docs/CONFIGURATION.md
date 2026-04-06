@@ -379,7 +379,7 @@ enabled = true
 
 ## logging
 
-File-based log output. Console logging is controlled separately via the `RUST_LOG` environment variable.
+Configure file-based output in this section. Console logging is controlled separately via the `RUST_LOG` environment variable.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|

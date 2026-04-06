@@ -88,7 +88,7 @@ pub(crate) fn extract_message(envelope: &SignalEnvelope) -> Option<InboundMessag
 
     let group_id = data.group_info.as_ref().and_then(|g| g.group_id.clone());
 
-    let attachments = data
+    let attachments: Vec<String> = data
         .attachments
         .as_ref()
         .map(|atts| {
@@ -96,7 +96,7 @@ pub(crate) fn extract_message(envelope: &SignalEnvelope) -> Option<InboundMessag
                 .filter_map(|a| a.filename.clone().or_else(|| a.id.clone()))
                 .collect()
         })
-        .unwrap();
+        .unwrap_or_default();
 
     let raw_value = match serde_json::to_value(envelope) {
         Ok(v) => Some(v),

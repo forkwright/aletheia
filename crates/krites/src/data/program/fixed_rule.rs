@@ -28,6 +28,7 @@ pub(crate) struct FixedRuleApply {
 }
 
 impl FixedRuleApply {
+    #[must_use]
     pub(crate) fn arity(&self) -> Result<usize> {
         self.fixed_impl
             .as_ref()
@@ -106,6 +107,7 @@ impl MagicFixedRuleApply {
         dead_code,
         reason = "validation helper retained for fixed rule implementors"
     )]
+    #[must_use]
     pub(crate) fn relation_with_min_len(
         &self,
         idx: usize,
@@ -127,6 +129,7 @@ impl MagicFixedRuleApply {
     pub(crate) fn relations_count(&self) -> usize {
         self.rule_args.len()
     }
+    #[must_use]
     pub(crate) fn relation(&self, idx: usize) -> Result<&MagicFixedRuleRuleArg> {
         self.rule_args.get(idx).ok_or_else(|| {
             InternalError::from(

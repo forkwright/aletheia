@@ -20,6 +20,7 @@ use crate::runtime::transact::SessionTx;
 use crate::{DataValue, Expr, SourceSpan, Symbol};
 
 impl<'a> SessionTx<'a> {
+    #[must_use]
     pub(crate) fn del_lsh_index_item(
         &mut self,
         tuple: &[DataValue],
@@ -78,6 +79,7 @@ impl<'a> SessionTx<'a> {
         }
         Ok(())
     }
+    #[must_use]
     pub(crate) fn put_lsh_index_item(
         &mut self,
         tuple: &[DataValue],
@@ -170,6 +172,7 @@ impl<'a> SessionTx<'a> {
 
         Ok(())
     }
+    #[must_use]
     pub(crate) fn lsh_search(
         &self,
         q: &DataValue,
@@ -286,6 +289,7 @@ pub(crate) struct MinHashLshIndexManifest {
 }
 
 impl MinHashLshIndexManifest {
+    #[must_use]
     pub(crate) fn get_hash_perms(&self) -> Result<HashPermutations> {
         HashPermutations::from_bytes(&self.perms)
     }
@@ -376,6 +380,7 @@ impl HashPermutations {
     pub(crate) fn as_bytes(&self) -> &[u8] {
         bytemuck::cast_slice(&self.0)
     }
+    #[must_use]
     pub(crate) fn from_bytes(bytes: &[u8]) -> Result<Self> {
         let perms: &[u32] =
             bytemuck::try_cast_slice(bytes).map_err(|e| crate::error::InternalError::Runtime {

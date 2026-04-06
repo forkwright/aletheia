@@ -11,6 +11,7 @@ use crate::runtime::db::Poison;
 
 pub(crate) type Graph<T> = BTreeMap<T, Vec<T>>;
 
+#[must_use]
 pub(crate) fn strongly_connected_components<T>(graph: &Graph<T>) -> Result<Vec<Vec<&T>>>
 where
     T: Ord + Debug,

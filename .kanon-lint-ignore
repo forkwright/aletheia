@@ -1218,3 +1218,40 @@ RUST/format-sql:crates/nous/src/bootstrap/bootstrap_tests/mod.rs
 # containing "Delete failed", "Create failed", "Confidence update failed".
 RUST/format-sql:crates/theatron/tui/src/update/editor.rs
 RUST/format-sql:crates/theatron/tui/src/update/memory/handlers.rs
+
+# ── SQL/keyword-case: SQL keywords in raw string literals ─────────────────────
+#
+# WHY: The kanon linter flags SQL keywords in raw string literals (r"...")
+# even when they are already uppercase. This is a false positive from the
+# linter. All SQL keywords in these files are already UPPERCASE as required.
+SQL/keyword-case:crates/daemon/src/runner.rs
+SQL/keyword-case:crates/daemon/src/schedule.rs
+SQL/keyword-case:crates/daemon/src/state.rs
+SQL/keyword-case:crates/eval/src/runner.rs
+SQL/keyword-case:crates/graphe/src/backup.rs
+SQL/keyword-case:crates/graphe/src/backup_tests.rs
+SQL/keyword-case:crates/graphe/src/export.rs
+SQL/keyword-case:crates/graphe/src/import.rs
+SQL/keyword-case:crates/graphe/src/migration.rs
+SQL/keyword-case:crates/graphe/src/recovery.rs
+SQL/keyword-case:crates/graphe/src/retention.rs
+SQL/keyword-case:crates/graphe/src/retention_tests/archive.rs
+SQL/keyword-case:crates/graphe/src/retention_tests/core.rs
+SQL/keyword-case:crates/graphe/src/retention_tests/mod.rs
+SQL/keyword-case:crates/graphe/src/retention_tests/policy.rs
+SQL/keyword-case:crates/graphe/src/schema.rs
+SQL/keyword-case:crates/graphe/src/store/message.rs
+SQL/keyword-case:crates/graphe/src/store/peripherals.rs
+SQL/keyword-case:crates/graphe/src/store/session.rs
+SQL/keyword-case:crates/graphe/src/store/tests/advanced.rs
+SQL/keyword-case:crates/graphe/src/store/tests/blackboard.rs
+SQL/keyword-case:crates/graphe/src/store/tests/session_crud.rs
+SQL/keyword-case:crates/krites/src/runtime/relation/index_management.rs
+SQL/keyword-case:crates/krites/src/runtime/sys.rs
+SQL/keyword-case:crates/nous/src/competence/mod.rs
+SQL/keyword-case:crates/nous/src/uncertainty.rs
+SQL/keyword-case:crates/pylon/src/error.rs
+SQL/keyword-case:crates/symbolon/src/auth.rs
+SQL/keyword-case:crates/symbolon/src/store.rs
+SQL/keyword-case:crates/theatron/tui/src/update/input/mod.rs
+SQL/keyword-case:crates/theatron/tui/src/view/editor.rs

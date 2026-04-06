@@ -1131,6 +1131,7 @@ impl ToolExecutor for MetronExecutor {
 /// # Errors
 ///
 /// Returns an error if any tool name collides with an already-registered tool.
+#[must_use]
 pub fn register(
     registry: &mut ToolRegistry,
     services: Option<Arc<EnergeiaServices>>,

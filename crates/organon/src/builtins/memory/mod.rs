@@ -20,6 +20,7 @@ pub(super) fn require_services(
 }
 
 /// Register all memory tools (knowledge ops, notes, blackboard, datalog) into the registry.
+#[must_use]
 pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
     knowledge_ops::register(registry)?;
     note::register(registry)?;

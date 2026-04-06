@@ -53,6 +53,7 @@ impl NormalFormProgram {
 }
 
 impl StratifiedNormalFormProgram {
+    #[must_use]
     pub(crate) fn magic_sets_rewrite(self, tx: &SessionTx<'_>) -> Result<StratifiedMagicProgram> {
         let mut exempt_rules = BTreeSet::from([Symbol::new(PROG_ENTRY, SourceSpan(0, 0))]);
         let mut collected = vec![];

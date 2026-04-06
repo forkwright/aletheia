@@ -271,6 +271,7 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
 /// Uses HNSW vector search with cosine distance ≤ 0.28 (similarity ≥ 0.72),
 /// filtered to currently valid facts for the given nous.
 #[cfg(feature = "mneme-engine")]
+#[must_use]
 pub(crate) fn retrieve_candidates(
     store: &crate::knowledge_store::KnowledgeStore,
     fact: &FactForConflictCheck,
@@ -397,6 +398,7 @@ fn build_classification_prompt(
 /// Returns the classification for the highest-similarity candidate,
 /// or `None` if there are no candidates.
 #[cfg(any(feature = "mneme-engine", test))]
+#[must_use]
 pub(crate) fn classify_against_candidates(
     classifier: &dyn ConflictClassifier,
     fact: &FactForConflictCheck,
@@ -495,6 +497,7 @@ pub(crate) fn resolve_action(
 /// Phase 4: Action resolution
 #[cfg(feature = "mneme-engine")]
 #[expect(dead_code, reason = "used when mneme-engine feature is enabled")]
+#[must_use]
 pub(crate) fn detect_conflicts(
     facts: Vec<FactForConflictCheck>,
     store: &crate::knowledge_store::KnowledgeStore,

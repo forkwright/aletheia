@@ -2,6 +2,7 @@
 
 use std::time::Duration;
 
+use aletheia_koina::secret::SecretString;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::error::{self, ActorRecvSnafu, ActorSendSnafu, InboxFullSnafu};
@@ -73,7 +74,7 @@ impl NousHandle {
     ) -> error::Result<TurnResult> {
         let (tx, rx) = oneshot::channel();
         let msg = NousMessage::Turn {
-            session_key: session_key.into(),
+            session_key: SecretString::from(session_key.into()),
             session_id,
             content: content.into(),
             span: tracing::Span::current(),
@@ -150,7 +151,7 @@ impl NousHandle {
     ) -> error::Result<TurnResult> {
         let (tx, rx) = oneshot::channel();
         let msg = NousMessage::StreamingTurn {
-            session_key: session_key.into(),
+            session_key: SecretString::from(session_key.into()),
             session_id,
             content: content.into(),
             stream_tx,

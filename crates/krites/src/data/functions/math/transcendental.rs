@@ -6,6 +6,7 @@ use crate::data::error::*;
 type Result<T> = DataResult<T>;
 use crate::data::value::{DataValue, Num, Vector};
 
+#[must_use]
 pub(crate) fn op_sqrt(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => {
@@ -34,6 +35,7 @@ pub(crate) fn op_sqrt(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::Num(Num::Float(a.sqrt())))
 }
 
+#[must_use]
 pub(crate) fn op_exp(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => {
@@ -62,6 +64,7 @@ pub(crate) fn op_exp(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::Num(Num::Float(a.exp())))
 }
 
+#[must_use]
 pub(crate) fn op_exp2(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => {
@@ -90,6 +93,7 @@ pub(crate) fn op_exp2(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::Num(Num::Float(a.exp2())))
 }
 
+#[must_use]
 pub(crate) fn op_ln(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => {
@@ -118,6 +122,7 @@ pub(crate) fn op_ln(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::Num(Num::Float(a.ln())))
 }
 
+#[must_use]
 pub(crate) fn op_log2(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => {
@@ -146,6 +151,7 @@ pub(crate) fn op_log2(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::Num(Num::Float(a.log2())))
 }
 
+#[must_use]
 pub(crate) fn op_log10(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => {
@@ -174,6 +180,7 @@ pub(crate) fn op_log10(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::Num(Num::Float(a.log10())))
 }
 
+#[must_use]
 pub(crate) fn op_pow(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => {
@@ -239,6 +246,7 @@ pub(crate) fn op_pow(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::Num(Num::Float(a.powf(b))))
 }
 
+#[must_use]
 pub(crate) fn op_mod(args: &[DataValue]) -> Result<DataValue> {
     Ok(match (arg(args, 0)?, arg(args, 1)?) {
         (DataValue::Num(Num::Int(a)), DataValue::Num(Num::Int(b))) => {
@@ -270,6 +278,7 @@ pub(crate) fn op_mod(args: &[DataValue]) -> Result<DataValue> {
     })
 }
 
+#[must_use]
 pub(crate) fn op_is_in(args: &[DataValue]) -> Result<DataValue> {
     let left = arg(args, 0)?;
     let right = arg(args, 1)?.get_slice().ok_or_else(|| {
@@ -282,6 +291,7 @@ pub(crate) fn op_is_in(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::from(right.contains(left)))
 }
 
+#[must_use]
 pub(crate) fn op_coalesce(args: &[DataValue]) -> Result<DataValue> {
     for val in args {
         if *val != DataValue::Null {

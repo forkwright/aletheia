@@ -1155,6 +1155,7 @@ impl ValidatedPath {
     /// # Errors
     ///
     /// Returns `std::io::Error` if the file cannot be read.
+    #[must_use]
     pub fn read(&self) -> std::io::Result<Vec<u8>> {
         std::fs::read(&self.inner)
     }
@@ -1165,6 +1166,7 @@ impl ValidatedPath {
     ///
     /// Returns `std::io::Error` if directories cannot be created or the file
     /// cannot be written.
+    #[must_use]
     pub fn write(&self, data: &[u8]) -> std::io::Result<()> {
         if let Some(parent) = self.inner.parent() {
             std::fs::create_dir_all(parent)?;
@@ -1209,6 +1211,7 @@ impl std::fmt::Display for ValidatedPath {
 ///
 /// Returns [`PathValidationError`] identifying the first layer that
 /// rejected the path, with structured context for logging and diagnostics.
+#[must_use]
 pub fn validate_memory_path(
     path: &Path,
     root: &Path,

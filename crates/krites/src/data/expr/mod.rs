@@ -60,6 +60,7 @@ pub(crate) fn tuple_too_short_err(name: &str, index: usize, length: usize) -> Da
     .build()
 }
 
+#[must_use]
 pub fn eval_bytecode_pred(
     bytecodes: &[Bytecode],
     bindings: impl AsRef<[DataValue]>,
@@ -77,6 +78,7 @@ pub fn eval_bytecode_pred(
     }
 }
 
+#[must_use]
 pub fn eval_bytecode(
     bytecodes: &[Bytecode],
     bindings: impl AsRef<[DataValue]>,

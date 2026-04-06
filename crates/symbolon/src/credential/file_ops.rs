@@ -95,6 +95,7 @@ impl CredentialFile {
     /// Both the key file and credential file are written to temp files, fsynced,
     /// and renamed atomically as a pair. An advisory write lock (`flock`) is held
     /// for the duration to prevent races with Claude Code.
+    #[must_use]
     pub(crate) fn save(&self, path: &Path) -> std::io::Result<()> {
         use std::io::Write as _;
 

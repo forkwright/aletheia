@@ -1,6 +1,6 @@
 # Quickstart
 
-End-to-end guide: from zero to chatting with an agent. Tested on a clean machine. If something here doesn't work, that's a bug in this document -- file an issue.
+Get from zero to chatting with an agent. These steps were tested on a clean machine. If something here doesn't work, that's a bug -- file an issue.
 
 ---
 
@@ -241,7 +241,7 @@ See [CONFIGURATION.md](CONFIGURATION.md#channelssignal) for DM/group policies, a
 
 ## Optional: prosoche (heartbeat)
 
-Prosoche is the attention subsystem: a periodic background check where your agent surveys its environment and reports anything needing attention (calendar events, overdue tasks, system health).
+The attention subsystem runs periodic background checks where your agent surveys its environment and reports anything needing attention (calendar events, overdue tasks, system health).
 
 Each agent has a `PROSOCHE.md` workspace file defining what to check. The default agent template includes a starter checklist. To configure the heartbeat schedule, see [PROSOCHE.md](PROSOCHE.md).
 

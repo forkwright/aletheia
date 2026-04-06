@@ -79,6 +79,7 @@ pub trait Scenario: Send + Sync {
 
 /// Assert a condition, returning an assertion error if it fails.
 #[tracing::instrument(skip_all)]
+#[must_use]
 pub(crate) fn assert_eval(condition: bool, message: impl Into<String>) -> Result<()> {
     if condition {
         Ok(())
@@ -92,6 +93,7 @@ pub(crate) fn assert_eval(condition: bool, message: impl Into<String>) -> Result
 
 /// Assert two values are equal.
 #[tracing::instrument(skip_all)]
+#[must_use]
 pub(crate) fn assert_eq_eval<T: PartialEq + std::fmt::Debug>(
     left: &T,
     right: &T,
@@ -112,6 +114,7 @@ pub(crate) fn assert_eq_eval<T: PartialEq + std::fmt::Debug>(
 /// When neither `expected_contains` nor `expected_pattern` is set, accepts any
 /// non-empty response and logs a warning about missing validation criteria.
 #[tracing::instrument(skip(text), fields(scenario_id = meta.id, text_len = text.len()))]
+#[must_use]
 pub(crate) fn validate_response(meta: &ScenarioMeta, text: &str) -> Result<()> {
     if meta.expected_contains.is_none() && meta.expected_pattern.is_none() {
         tracing::warn!(

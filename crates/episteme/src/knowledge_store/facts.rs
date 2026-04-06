@@ -6,6 +6,7 @@ use super::{KnowledgeStore, queries};
 impl KnowledgeStore {
     /// Insert or update a fact.
     #[instrument(skip(self, fact), fields(fact_id = %fact.id))]
+    #[must_use]
     pub fn insert_fact(&self, fact: &crate::knowledge::Fact) -> crate::error::Result<()> {
         use snafu::ensure;
         ensure!(!fact.content.is_empty(), crate::error::EmptyContentSnafu);
@@ -40,6 +41,7 @@ impl KnowledgeStore {
     )]
     #[instrument(skip(self, old_fact, new_fact), fields(old_id = %old_fact.id, new_id = %new_fact.id))]
     #[expect(dead_code, reason = "fact temporal operations for knowledge store")]
+    #[must_use]
     pub(crate) fn supersede_fact(
         &self,
         old_fact: &crate::knowledge::Fact,
@@ -165,6 +167,7 @@ impl KnowledgeStore {
 
     /// Query current facts for a nous at a given time, up to limit results.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn query_facts(
         &self,
         nous_id: &str,
@@ -186,6 +189,7 @@ impl KnowledgeStore {
     /// Point-in-time fact query.
     #[instrument(skip(self))]
     #[expect(dead_code, reason = "fact temporal operations for knowledge store")]
+    #[must_use]
     pub(crate) fn query_facts_at(
         &self,
         time: &str,
@@ -204,6 +208,7 @@ impl KnowledgeStore {
     ///
     /// Serialized via `access_lock` to prevent concurrent read-modify-write races.
     #[instrument(skip(self), fields(count = fact_ids.len()))]
+    #[must_use]
     pub(crate) fn increment_access(
         &self,
         fact_ids: &[crate::id::FactId],
@@ -254,6 +259,7 @@ impl KnowledgeStore {
     ///
     /// Returns the forgotten fact. Errors if the fact does not exist.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn forget_fact(
         &self,
         fact_id: &crate::id::FactId,
@@ -313,6 +319,7 @@ impl KnowledgeStore {
     ///
     /// Returns the restored fact. Errors if the fact does not exist.
     #[instrument(skip(self))]
+    #[must_use]
     pub(crate) fn unforget_fact(
         &self,
         fact_id: &crate::id::FactId,
@@ -362,6 +369,7 @@ impl KnowledgeStore {
     ///
     /// Returns facts where `is_forgotten == true`, with their reasons and timestamps.
     #[instrument(skip(self))]
+    #[must_use]
     pub(crate) fn list_forgotten(
         &self,
         nous_id: &str,
@@ -458,6 +466,7 @@ impl KnowledgeStore {
 
     /// Query facts valid at a specific point in time.
     /// Returns facts where `valid_from <= at_time` AND `valid_to > at_time`.
+    #[must_use]
     pub(crate) fn query_facts_temporal(
         &self,
         nous_id: &str,
@@ -484,6 +493,7 @@ impl KnowledgeStore {
     /// Query facts that changed between two timestamps.
     /// Returns facts where `valid_from` is in `(from_time, to_time]` OR
     /// `valid_to` is in `(from_time, to_time]`.
+    #[must_use]
     pub(crate) fn query_facts_diff(
         &self,
         nous_id: &str,
@@ -571,6 +581,7 @@ impl KnowledgeStore {
     /// Unlike [`audit_all_facts`](Self::audit_all_facts), this does not require
     /// a `nous_id` filter and returns facts from every agent.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn list_all_facts(&self, limit: i64) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
         use std::collections::BTreeMap;
 
@@ -609,6 +620,7 @@ impl KnowledgeStore {
 
     /// Audit query: returns all facts regardless of forgotten/superseded/temporal state.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn audit_all_facts(
         &self,
         nous_id: &str,
@@ -676,6 +688,7 @@ impl KnowledgeStore {
     /// Returns the updated fact. Errors if no fact with the given ID exists or
     /// if `confidence` is outside `[0.0, 1.0]`.
     #[instrument(skip(self))]
+    #[must_use]
     pub(crate) fn update_confidence(
         &self,
         fact_id: &crate::id::FactId,
@@ -747,6 +760,7 @@ impl KnowledgeStore {
     ///
     /// Returns an error if the Datalog query fails.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn query_facts_by_type(
         &self,
         nous_id: &str,

@@ -31,6 +31,7 @@ use crate::{DbCore as Db, SourceSpan, StoreTx};
 use super::extractors::{make_extractors, make_update_extractors};
 
 impl<'a> crate::runtime::transact::SessionTx<'a> {
+    #[must_use]
     pub(crate) fn execute_relation<'s, S: Storage<'s>>(
         &mut self,
         db: &Db<S>,
@@ -353,6 +354,7 @@ impl<'a> crate::runtime::transact::SessionTx<'a> {
         Ok(())
     }
 
+    #[must_use]
     pub(crate) fn put_in_fts(
         &mut self,
         rel_handle: &RelationHandle,
@@ -367,6 +369,7 @@ impl<'a> crate::runtime::transact::SessionTx<'a> {
         Ok(())
     }
 
+    #[must_use]
     pub(crate) fn del_in_fts(
         &mut self,
         rel_handle: &RelationHandle,
@@ -381,6 +384,7 @@ impl<'a> crate::runtime::transact::SessionTx<'a> {
         Ok(())
     }
 
+    #[must_use]
     pub(crate) fn put_in_lsh(
         &mut self,
         rel_handle: &RelationHandle,
@@ -406,6 +410,7 @@ impl<'a> crate::runtime::transact::SessionTx<'a> {
         Ok(())
     }
 
+    #[must_use]
     pub(crate) fn del_in_lsh(
         &mut self,
         rel_handle: &RelationHandle,
@@ -417,6 +422,7 @@ impl<'a> crate::runtime::transact::SessionTx<'a> {
         Ok(())
     }
 
+    #[must_use]
     pub(crate) fn update_in_hnsw(
         &mut self,
         relation_store: &RelationHandle,
@@ -438,6 +444,7 @@ impl<'a> crate::runtime::transact::SessionTx<'a> {
         Ok(())
     }
 
+    #[must_use]
     pub(crate) fn make_lsh_hash_perms(
         &self,
         relation_store: &RelationHandle,
@@ -449,6 +456,7 @@ impl<'a> crate::runtime::transact::SessionTx<'a> {
         Ok(perms)
     }
 
+    #[must_use]
     pub(crate) fn make_fts_lsh_processors(
         &self,
         relation_store: &RelationHandle,
@@ -515,6 +523,7 @@ impl<'a> crate::runtime::transact::SessionTx<'a> {
         Ok(processors)
     }
 
+    #[must_use]
     pub(crate) fn make_hnsw_filters(
         relation_store: &RelationHandle,
     ) -> Result<BTreeMap<CompactString, Vec<Bytecode>>> {

@@ -306,20 +306,20 @@ fn strip_bullet_prefix(line: &str) -> Option<&str> {
     reason = "compile-time constant regex patterns cannot fail"
 )]
 static CRATE_PATH_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"crates/([\w][\w-]*)").expect("valid regex pattern"));
+    LazyLock::new(|| Regex::new(r"crates/([\w][\w-]*)").expect("regex pattern is valid"));
 #[expect(
     clippy::expect_used,
     reason = "compile-time constant regex patterns cannot fail"
 )]
 static BACKTICK_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"`([\w][\w-]*)`").expect("valid regex pattern"));
+    LazyLock::new(|| Regex::new(r"`([\w][\w-]*)`").expect("regex pattern is valid"));
 #[expect(
     clippy::expect_used,
     reason = "compile-time constant regex patterns cannot fail"
 )]
 static FILE_PATH_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?:^|\s|`)((?:src|crates|tests)/[\w/.-]+\.(?:rs|toml|md))(?:\s|`|$|,|\.)")
-        .expect("valid regex pattern")
+        .expect("regex pattern is valid")
 });
 
 /// Extract tags from observation text.
@@ -391,9 +391,9 @@ Some changes
 
         let result = parse_observations(body);
         assert_eq!(result.len(), 3);
-        assert!(result[0].text.contains("unused dependency"));
-        assert!(result[1].text.contains("refactoring"));
-        assert!(result[2].text.contains("CI flake"));
+        assert!(result.get(0).copied().unwrap_or_default().text.contains("unused dependency"));
+        assert!(result.get(1).copied().unwrap_or_default().text.contains("refactoring"));
+        assert!(result.get(2).copied().unwrap_or_default().text.contains("CI flake"));
     }
 
     #[test]
@@ -406,8 +406,8 @@ Some changes
 
         let result = parse_observations(body);
         assert_eq!(result.len(), 2);
-        assert_eq!(result[0].text, "First observation");
-        assert_eq!(result[1].text, "Second observation");
+        assert_eq!(result.get(0).copied().unwrap_or_default().text, "First observation");
+        assert_eq!(result.get(1).copied().unwrap_or_default().text, "Second observation");
     }
 
     #[test]
@@ -421,8 +421,8 @@ Some changes
 
         let result = parse_observations(body);
         assert_eq!(result.len(), 2);
-        assert!(result[0].text.contains("long observation"));
-        assert!(result[0].text.contains("continues"));
+        assert!(result.get(0).copied().unwrap_or_default().text.contains("long observation"));
+        assert!(result.get(0).copied().unwrap_or_default().text.contains("continues"));
     }
 
     #[test]
@@ -438,8 +438,8 @@ Some changes
 
         let result = parse_observations(body);
         assert_eq!(result.len(), 2);
-        assert!(result[0].text.contains("code:"));
-        assert_eq!(result[1].text, "Another observation");
+        assert!(result.get(0).copied().unwrap_or_default().text.contains("code:"));
+        assert_eq!(result.get(1).copied().unwrap_or_default().text, "Another observation");
     }
 
     #[test]
@@ -464,7 +464,7 @@ Some changes
 
         let result = parse_observations(body);
         assert_eq!(result.len(), 1);
-        assert!(result[0].text.contains("Final observation"));
+        assert!(result.get(0).copied().unwrap_or_default().text.contains("Final observation"));
     }
 
     #[test]
@@ -613,8 +613,8 @@ Some changes
 
         let result = parse_observations(body);
         assert_eq!(result.len(), 3);
-        assert_eq!(result[0].observation_type, ObservationType::Bug);
-        assert_eq!(result[1].observation_type, ObservationType::Debt);
-        assert_eq!(result[2].observation_type, ObservationType::Idea);
+        assert_eq!(result.get(0).copied().unwrap_or_default().observation_type, ObservationType::Bug);
+        assert_eq!(result.get(1).copied().unwrap_or_default().observation_type, ObservationType::Debt);
+        assert_eq!(result.get(2).copied().unwrap_or_default().observation_type, ObservationType::Idea);
     }
 }

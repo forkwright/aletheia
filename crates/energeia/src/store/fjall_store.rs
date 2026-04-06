@@ -62,6 +62,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::Store` if the partition cannot be opened.
+    #[must_use]
     pub fn new(db: &fjall::Database) -> Result<Self> {
         let keyspace = db
             .keyspace(PARTITION_NAME, fjall::KeyspaceCreateOptions::default)
@@ -95,6 +96,7 @@ impl EnergeiaStore {
     ///
     /// Returns `Error::Store` on write failure, `Error::Serialization` on
     /// encoding failure.
+    #[must_use]
     pub fn create_dispatch(&self, project: &str, spec: &DispatchSpec) -> Result<DispatchId> {
         let id = DispatchId::new(ulid::Ulid::new().to_string());
         let spec_json =
@@ -127,6 +129,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::NotFound` if the dispatch does not exist.
+    #[must_use]
     pub fn finish_dispatch(&self, id: &DispatchId, status: DispatchStatus) -> Result<()> {
         let mut record = self.get_dispatch(id)?.ok_or_else(|| {
             error::NotFoundSnafu {
@@ -164,6 +167,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::Store` on read failure.
+    #[must_use]
     pub fn get_dispatch(&self, id: &DispatchId) -> Result<Option<DispatchRecord>> {
         let key = schema::dispatch_key(id);
         match self
@@ -185,6 +189,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::Store` on write failure.
+    #[must_use]
     pub fn create_session(
         &self,
         dispatch_id: &DispatchId,
@@ -223,6 +228,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::NotFound` if the session does not exist.
+    #[must_use]
     pub fn update_session(&self, id: &SessionId, update: SessionUpdate) -> Result<()> {
         // WHY: session keys are indexed by (dispatch_id, prompt_number), so we
         // need to scan to find the record by SessionId. For the expected
@@ -266,6 +272,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::Store` on read failure.
+    #[must_use]
     pub fn list_sessions_for_dispatch(
         &self,
         dispatch_id: &DispatchId,
@@ -282,6 +289,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::Store` on write failure.
+    #[must_use]
     pub fn add_lesson(&self, lesson: &NewLesson) -> Result<()> {
         let now = jiff::Timestamp::now();
         let record = LessonRecord {
@@ -310,6 +318,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::Store` on read failure.
+    #[must_use]
     pub fn query_lessons(
         &self,
         source: Option<&str>,
@@ -329,6 +338,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::Store` on write failure.
+    #[must_use]
     pub fn add_observation(&self, observation: &NewObservation) -> Result<()> {
         let now = jiff::Timestamp::now();
         let obs_ulid = ulid::Ulid::new().to_string();
@@ -358,6 +368,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::Store` on read failure.
+    #[must_use]
     pub fn query_observations(
         &self,
         project: Option<&str>,
@@ -376,6 +387,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::Store` on write failure.
+    #[must_use]
     pub fn add_ci_validation(
         &self,
         session_id: &SessionId,
@@ -417,6 +429,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::Serialization` if the outcome cannot be encoded.
+    #[must_use]
     pub fn record_training_data(
         &self,
         session: &SessionRecord,
@@ -488,6 +501,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::Store` on read failure.
+    #[must_use]
     pub fn list_dispatches(&self, limit: usize) -> Result<Vec<DispatchRecord>> {
         queries::list_dispatches(&self.keyspace, limit)
     }
@@ -501,6 +515,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::Store` on read failure.
+    #[must_use]
     pub fn list_all_sessions(&self, limit: usize) -> Result<Vec<SessionRecord>> {
         queries::list_all_sessions(&self.keyspace, limit)
     }
@@ -513,6 +528,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::Store` on read failure.
+    #[must_use]
     pub fn list_all_ci_validations(&self, limit: usize) -> Result<Vec<CiValidationRecord>> {
         queries::list_all_ci_validations(&self.keyspace, limit)
     }
@@ -522,6 +538,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::Store` on read failure.
+    #[must_use]
     pub fn list_ci_validations_for_session(
         &self,
         session_id: &SessionId,
@@ -680,9 +697,9 @@ mod tests {
 
         let sessions = store.list_sessions_for_dispatch(&dispatch_id).unwrap();
         assert_eq!(sessions.len(), 3);
-        assert_eq!(sessions[0].prompt_number, 1);
-        assert_eq!(sessions[1].prompt_number, 2);
-        assert_eq!(sessions[2].prompt_number, 3);
+        assert_eq!(sessions.get(0).copied().unwrap_or_default().prompt_number, 1);
+        assert_eq!(sessions.get(1).copied().unwrap_or_default().prompt_number, 2);
+        assert_eq!(sessions.get(2).copied().unwrap_or_default().prompt_number, 3);
     }
 
     #[test]
@@ -721,7 +738,7 @@ mod tests {
             .unwrap();
 
         let sessions = store.list_sessions_for_dispatch(&dispatch_id).unwrap();
-        let session = &sessions[0];
+        let session = &sessions.get(0).copied().unwrap_or_default();
         assert_eq!(session.status, SessionStatus::Success);
         assert_eq!(session.cost_usd, 0.42);
         assert_eq!(
@@ -776,7 +793,7 @@ mod tests {
             .query_lessons(Some("steward"), None, None, 100)
             .unwrap();
         assert_eq!(by_source.len(), 1);
-        assert_eq!(by_source[0].lesson, "Always check clippy");
+        assert_eq!(by_source.get(0).copied().unwrap_or_default().lesson, "Always check clippy");
 
         let by_category = store.query_lessons(None, Some("style"), None, 100).unwrap();
         assert_eq!(by_category.len(), 1);
@@ -837,7 +854,7 @@ mod tests {
 
         let acme_only = store.query_observations(Some("acme"), None, 100).unwrap();
         assert_eq!(acme_only.len(), 1);
-        assert_eq!(acme_only[0].content, "Flaky test in auth module");
+        assert_eq!(acme_only.get(0).copied().unwrap_or_default().content, "Flaky test in auth module");
     }
 
     #[test]
@@ -900,7 +917,7 @@ mod tests {
         let session_id = store.create_session(&dispatch_id, 1).unwrap();
 
         let sessions = store.list_sessions_for_dispatch(&dispatch_id).unwrap();
-        let session = &sessions[0];
+        let session = &sessions.get(0).copied().unwrap_or_default();
 
         let outcome = SessionOutcome {
             prompt_number: 1,

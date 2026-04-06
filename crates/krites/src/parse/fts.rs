@@ -14,6 +14,7 @@ use crate::parse::error::{InvalidQuerySnafu, SyntaxSnafu};
 use crate::parse::expr::parse_string;
 use crate::parse::{DatalogParser, Pair, Rule, SourceSpan};
 
+#[must_use]
 pub(crate) fn parse_fts_query(q: &str) -> Result<FtsExpr> {
     let mut pairs = DatalogParser::parse(Rule::fts_doc, q).map_err(|err| {
         let span = match err.location {

@@ -29,6 +29,7 @@ use crate::runtime::relation::InputRelationHandle;
 use super::atoms::{parse_rule, parse_rule_head};
 use super::fixed_rules::{make_empty_const_rule, parse_fixed_rule};
 
+#[must_use]
 pub(crate) fn parse_query(
     src: Pairs<'_>,
     param_pool: &BTreeMap<String, DataValue>,

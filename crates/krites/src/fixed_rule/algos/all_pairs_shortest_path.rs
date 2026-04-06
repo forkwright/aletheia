@@ -149,6 +149,7 @@ impl FixedRule for ClosenessCentrality {
     }
 }
 
+#[must_use]
 pub(crate) fn dijkstra_cost_only(
     edges: &DirectedCsrGraph<f32>,
     start: u32,

@@ -76,9 +76,9 @@ This is model-level fallback within a single provider. It does not cross provide
 
 #### Assessment
 
-The coupling is well-structured. Anthropic-specific code is isolated in the `anthropic/` module. The `LlmProvider` trait and `ProviderRegistry` already form a multi-provider foundation. The model-level fallback chain is already implemented. The main gap is that the types (`CompletionRequest`, `CompletionResponse`) carry Anthropic-specific fields that other providers must ignore or translate.
+Coupling is well-structured. Anthropic-specific code is isolated in the `anthropic/` module. The `LlmProvider` trait and `ProviderRegistry` already form a multi-provider foundation. Model-level fallback is already implemented. The main gap is that the types (`CompletionRequest`, `CompletionResponse`) carry Anthropic-specific fields that other providers must ignore or translate.
 
-This is a strength, not a weakness. Making the types provider-neutral would lose Anthropic-specific features (prompt caching, extended thinking, server-side tools) that Aletheia uses heavily. The adapter pattern (other providers translate to/from these types) preserves full Anthropic capability while enabling other providers.
+This design is a strength. Making the types provider-neutral would lose Anthropic-specific features (prompt caching, extended thinking, server-side tools) that Aletheia uses heavily. The adapter pattern (other providers translate to/from these types) preserves full Anthropic capability while enabling other providers.
 
 ### 2. provider trait design
 

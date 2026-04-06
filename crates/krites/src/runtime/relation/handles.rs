@@ -30,6 +30,7 @@ use crate::{NamedRows, StoreTx};
 pub(crate) struct RelationId(pub(crate) u64);
 
 impl RelationId {
+    #[must_use]
     pub(crate) fn new(u: u64) -> Result<Self> {
         if u > 2u64.pow(6 * 8) {
             InvalidOperationSnafu {
@@ -42,6 +43,7 @@ impl RelationId {
             Ok(Self(u))
         }
     }
+    #[must_use]
     pub(crate) fn next(&self) -> Result<Self> {
         Self::new(self.0 + 1)
     }
@@ -49,6 +51,7 @@ impl RelationId {
     pub(crate) fn raw_encode(&self) -> [u8; 8] {
         self.0.to_be_bytes()
     }
+    #[must_use]
     pub(crate) fn raw_decode(src: &[u8]) -> Result<Self> {
         let u = u64::from_be_bytes([
             src.get(0).copied().unwrap_or_default(), src.get(1).copied().unwrap_or_default(), src.get(2).copied().unwrap_or_default(), src.get(3).copied().unwrap_or_default(), src.get(4).copied().unwrap_or_default(), src.get(5).copied().unwrap_or_default(), src.get(6).copied().unwrap_or_default(), src.get(7).copied().unwrap_or_default(),
@@ -156,6 +159,7 @@ impl RelationHandle {
         ret.extend(prefix_bytes);
         ret
     }
+    #[must_use]
     pub(crate) fn as_named_rows(&self, tx: &SessionTx<'_>) -> Result<NamedRows> {
         let rows: Vec<_> = self.scan_all(tx).try_collect()?;
         let mut headers = self
@@ -225,6 +229,7 @@ impl RelationHandle {
         }
         chosen
     }
+    #[must_use]
     pub(crate) fn encode_key_for_store(
         &self,
         tuple: &[DataValue],
@@ -253,6 +258,7 @@ impl RelationHandle {
         }
         ret
     }
+    #[must_use]
     pub(crate) fn encode_val_for_store(
         &self,
         tuple: &[DataValue],
@@ -271,6 +277,7 @@ impl RelationHandle {
             })?;
         Ok(ret)
     }
+    #[must_use]
     pub(crate) fn encode_val_only_for_store(
         &self,
         tuple: &[DataValue],
@@ -287,6 +294,7 @@ impl RelationHandle {
             })?;
         Ok(ret)
     }
+    #[must_use]
     pub(crate) fn ensure_compatible(
         &self,
         inp: &InputRelationHandle,
@@ -331,6 +339,7 @@ impl RelationHandle {
     pub(crate) fn arity(&self) -> usize {
         self.metadata.non_keys.len() + self.metadata.keys.len()
     }
+    #[must_use]
     pub(crate) fn decode(data: &[u8]) -> Result<Self> {
         rmp_serde::from_slice(data).map_err(|e| {
             error!(
@@ -346,6 +355,7 @@ impl RelationHandle {
             }
         })
     }
+    #[must_use]
     pub(crate) fn scan_all<'a>(
         &self,
         tx: &'a SessionTx<'_>,
@@ -360,6 +370,7 @@ impl RelationHandle {
         }
     }
 
+    #[must_use]
     pub(crate) fn skip_scan_all<'a>(
         &self,
         tx: &'a SessionTx<'_>,
@@ -376,6 +387,7 @@ impl RelationHandle {
         }
     }
 
+    #[must_use]
     pub(crate) fn get(&self, tx: &SessionTx<'_>, key: &[DataValue]) -> Result<Option<Tuple>> {
         let key_data = key.encode_as_key(self.id);
         if self.is_temp {
@@ -391,6 +403,7 @@ impl RelationHandle {
         }
     }
 
+    #[must_use]
     pub(crate) fn get_val_only(
         &self,
         tx: &SessionTx<'_>,
@@ -428,6 +441,7 @@ impl RelationHandle {
         }
     }
 
+    #[must_use]
     pub(crate) fn exists(&self, tx: &SessionTx<'_>, key: &[DataValue]) -> Result<bool> {
         let key_data = key.encode_as_key(self.id);
         if self.is_temp {
@@ -439,6 +453,7 @@ impl RelationHandle {
         }
     }
 
+    #[must_use]
     pub(crate) fn scan_prefix<'a>(
         &self,
         tx: &'a SessionTx<'_>,
@@ -459,6 +474,7 @@ impl RelationHandle {
         }
     }
 
+    #[must_use]
     pub(crate) fn skip_scan_prefix<'a>(
         &self,
         tx: &'a SessionTx<'_>,
@@ -480,6 +496,7 @@ impl RelationHandle {
         }
     }
 
+    #[must_use]
     pub(crate) fn scan_bounded_prefix<'a>(
         &self,
         tx: &'a SessionTx<'_>,
@@ -501,6 +518,7 @@ impl RelationHandle {
             tx.store_tx.range_scan_tuple(&lower_encoded, &upper_encoded)
         }
     }
+    #[must_use]
     pub(crate) fn skip_scan_bounded_prefix<'a>(
         &self,
         tx: &'a SessionTx<'_>,

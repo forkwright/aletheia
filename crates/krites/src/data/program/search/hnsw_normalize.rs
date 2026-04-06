@@ -277,6 +277,7 @@ impl SearchInput {
 
         Ok(Disjunction::conj(conj))
     }
+    #[must_use]
     pub(crate) fn normalize(
         self,
         r#gen: &mut TempSymbGen,

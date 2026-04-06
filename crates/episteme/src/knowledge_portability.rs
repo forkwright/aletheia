@@ -142,6 +142,7 @@ fn query_all_relationships(
 #[cfg(feature = "mneme-engine")]
 #[instrument(skip(knowledge, store))]
 #[expect(dead_code, reason = "knowledge import for agent portability")]
+#[must_use]
 pub(crate) fn import_knowledge(
     knowledge: &aletheia_graphe::portability::KnowledgeExport,
     store: &crate::knowledge_store::KnowledgeStore,

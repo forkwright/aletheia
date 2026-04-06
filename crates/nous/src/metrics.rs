@@ -1,6 +1,6 @@
 //! Prometheus metric definitions for the agent pipeline.
 
-// WHY: registration panics only on duplicate name (programmer error), so .unwrap_or_default() is appropriate in LazyLock
+// WHY: registration panics only on duplicate name (programmer error), so .expect("metric registration failed") is appropriate in LazyLock
 #![expect(
     clippy::expect_used,
     reason = "metric registration is infallible at startup"
@@ -21,7 +21,7 @@ static PIPELINE_TURNS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         ),
         &["nous_id"]
     )
-    .expect("metric registration should not fail")
+    .expect("metric registration failed")
 });
 
 static PIPELINE_STAGE_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
@@ -35,7 +35,7 @@ static PIPELINE_STAGE_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|
         ]),
         &["nous_id", "stage"]
     )
-    .expect("metric registration should not fail")
+    .expect("metric registration failed")
 });
 
 static PIPELINE_ERRORS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
@@ -43,7 +43,7 @@ static PIPELINE_ERRORS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         Opts::new("aletheia_pipeline_errors_total", "Total pipeline errors"),
         &["nous_id", "stage", "error_type"]
     )
-    .expect("metric registration should not fail")
+    .expect("metric registration failed")
 });
 
 static CACHE_READ_TOKENS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
@@ -54,7 +54,7 @@ static CACHE_READ_TOKENS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         ),
         &["nous_id"]
     )
-    .expect("metric registration should not fail")
+    .expect("metric registration failed")
 });
 
 static CACHE_CREATION_TOKENS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
@@ -65,7 +65,7 @@ static CACHE_CREATION_TOKENS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         ),
         &["nous_id"]
     )
-    .expect("metric registration should not fail")
+    .expect("metric registration failed")
 });
 
 #[cfg_attr(

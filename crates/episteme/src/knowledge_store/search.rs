@@ -11,6 +11,7 @@ use super::{HybridQuery, HybridResult, KnowledgeStore, queries};
 impl KnowledgeStore {
     /// Insert a vector embedding for semantic search.
     #[instrument(skip(self, chunk), fields(chunk_id = %chunk.id))]
+    #[must_use]
     pub fn insert_embedding(
         &self,
         chunk: &crate::knowledge::EmbeddedChunk,
@@ -38,6 +39,7 @@ impl KnowledgeStore {
 
     /// kNN semantic vector search.
     #[instrument(skip(self, query_vec))]
+    #[must_use]
     pub fn search_vectors(
         &self,
         query_vec: Vec<f32>,
@@ -115,6 +117,7 @@ impl KnowledgeStore {
     ///
     /// Used as a fallback when the embedding provider is unavailable or in mock mode.
     /// Distance is the reciprocal of the BM25 score (lower = more relevant).
+    #[must_use]
     pub fn search_text_for_recall(
         &self,
         query_text: &str,
@@ -136,6 +139,7 @@ impl KnowledgeStore {
     /// Runs a single Datalog query combining all three signals in the engine.
     /// When `seed_entities` is empty, the graph signal contributes zero to RRF.
     #[instrument(skip(self, q), fields(limit = q.limit, ef = q.ef))]
+    #[must_use]
     pub(crate) fn search_hybrid(&self, q: &HybridQuery) -> crate::error::Result<Vec<HybridResult>> {
         use std::collections::BTreeMap;
 
@@ -195,6 +199,7 @@ impl KnowledgeStore {
     ///
     /// The `base_query` provides the embedding and search parameters. Each variant
     /// replaces the `text` field for BM25 scoring while reusing the same embedding.
+    #[must_use]
     pub(crate) fn search_enhanced(
         &self,
         base_query: &HybridQuery,
@@ -229,6 +234,7 @@ impl KnowledgeStore {
     ///
     /// Escalates through tiers until sufficient results are found.
     /// Requires a `QueryRewriter` and `RewriteProvider` for tier 2+.
+    #[must_use]
     pub(crate) fn search_tiered(
         &self,
         base_query: &HybridQuery,
@@ -389,6 +395,7 @@ impl KnowledgeStore {
 
     /// Search for facts relevant to a query, as they existed at a specific time.
     /// Filters hybrid search results through the temporal lens.
+    #[must_use]
     pub(crate) fn search_temporal(
         &self,
         q: &HybridQuery,

@@ -154,6 +154,7 @@ fn print_success_outro(root: &std::path::Path) -> Result<(), InitError> {
     .context(PromptSnafu)
 }
 
+#[must_use]
 pub(crate) fn run(args: RunArgs) -> Result<(), InitError> {
     // WHY: pass the env var through a parameter so tests can call run_inner
     // directly with None and bypass ALETHEIA_ROOT without touching env state

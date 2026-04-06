@@ -320,6 +320,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         }
         Ok(Left(ret))
     }
+    #[must_use]
     pub(crate) fn execute_imperative(
         &'s self,
         cur_vld: ValidityTs,

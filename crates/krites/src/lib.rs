@@ -185,6 +185,7 @@ impl Db {
     }
 
     /// Open an in-memory database.
+    #[must_use]
     pub fn open_mem() -> crate::Result<Self> {
         crate::storage::mem::new_mem_db()
             .map(|db| Self::new(DbInner::Mem(db)))
@@ -196,6 +197,7 @@ impl Db {
     /// Primary production backend: pure Rust, LSM-tree, LZ4 compression,
     /// native read-your-own-writes.
     #[cfg(feature = "storage-fjall")]
+    #[must_use]
     pub fn open_fjall(path: impl AsRef<Path>) -> crate::Result<Self> {
         crate::storage::fjall_backend::new_cozo_fjall(path)
             .map(|db| Self::new(DbInner::Fjall(db)))
@@ -227,6 +229,7 @@ impl Db {
     ///
     /// If a query cache is attached, the normalized query string is checked
     /// before execution and the hit/miss counter is updated.
+    #[must_use]
     pub fn run(
         &self,
         script: &str,
@@ -245,6 +248,7 @@ impl Db {
     }
 
     /// Execute a Datalog script in read-only mode.
+    #[must_use]
     pub fn run_read_only(
         &self,
         script: &str,
@@ -256,6 +260,7 @@ impl Db {
     /// Backup the running database into an `SQLite` file.
     ///
     /// Not currently supported: requires the removed `storage-sqlite` feature.
+    #[must_use]
     pub fn backup_db(&self, out_file: impl AsRef<Path>) -> crate::Result<()> {
         let path = out_file.as_ref();
         let result = match &self.inner {
@@ -269,6 +274,7 @@ impl Db {
     /// Restore from an `SQLite` backup.
     ///
     /// Not currently supported: requires the removed `storage-sqlite` feature.
+    #[must_use]
     pub fn restore_backup(&self, in_file: impl AsRef<Path>) -> crate::Result<()> {
         let path = in_file.as_ref();
         let result = match &self.inner {
@@ -282,6 +288,7 @@ impl Db {
     /// Import data from relations in a backup file.
     ///
     /// Not currently supported: requires the removed `storage-sqlite` feature.
+    #[must_use]
     pub fn import_from_backup(
         &self,
         in_file: impl AsRef<Path>,
@@ -297,6 +304,7 @@ impl Db {
     }
 
     /// Export relations for backup.
+    #[must_use]
     pub fn export_relations<I, T>(&self, relations: I) -> crate::Result<BTreeMap<String, NamedRows>>
     where
         I: Iterator<Item = T>,
@@ -311,6 +319,7 @@ impl Db {
     }
 
     /// Import relations from backup.
+    #[must_use]
     pub fn import_relations(&self, data: BTreeMap<String, NamedRows>) -> crate::Result<()> {
         let result = match &self.inner {
             DbInner::Mem(db) => db.import_relations(data),
@@ -321,6 +330,7 @@ impl Db {
     }
 
     /// Register a custom fixed rule (graph algorithm).
+    #[must_use]
     pub fn register_fixed_rule<R: FixedRule + 'static>(
         &self,
         name: String,
@@ -404,6 +414,7 @@ impl DbInstance {
         crate::storage::mem::new_mem_db().unwrap()
     }
 
+    #[must_use]
     pub(crate) fn run_default(&self, script: &str) -> crate::error::InternalResult<NamedRows> {
         use crate::runtime::db::ScriptMutability;
         self.run_script(script, BTreeMap::new(), ScriptMutability::Mutable)
@@ -434,6 +445,7 @@ pub(crate) struct TestMultiTx {
 )]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 impl TestMultiTx {
+    #[must_use]
     pub(crate) fn run_script(
         &self,
         script: &str,
@@ -445,11 +457,13 @@ impl TestMultiTx {
         self.receiver.recv().unwrap()
     }
 
+    #[must_use]
     pub(crate) fn commit(self) -> crate::error::InternalResult<()> {
         self.sender.send(TransactionPayload::Commit).unwrap();
         self.receiver.recv().unwrap().map(|_| ())
     }
 
+    #[must_use]
     pub(crate) fn abort(self) -> crate::error::InternalResult<()> {
         self.sender.send(TransactionPayload::Abort).unwrap();
         self.receiver.recv().unwrap().map(|_| ())

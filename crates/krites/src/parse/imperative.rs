@@ -15,6 +15,7 @@ use crate::parse::{
 };
 use crate::{DataValue, FixedRule, ValidityTs};
 
+#[must_use]
 pub(crate) fn parse_imperative_block(
     src: Pair<'_>,
     param_pool: &BTreeMap<String, DataValue>,

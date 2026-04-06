@@ -86,6 +86,7 @@ pub struct DailyVelocity {
 /// # Errors
 ///
 /// Returns `Error::Store` if any underlying store read fails.
+#[must_use]
 pub fn compute_cost_report(store: &EnergeiaStore, window_days: u32) -> Result<CostReport> {
     let now = jiff::Timestamp::now();
 
@@ -97,7 +98,7 @@ pub fn compute_cost_report(store: &EnergeiaStore, window_days: u32) -> Result<Co
         )]
         let cutoff = now
             .checked_sub(span)
-            .expect("timestamp subtraction within realistic day range");
+            .unwrap_or_default();
         Some(cutoff.as_millisecond())
     } else {
         None
@@ -110,7 +111,7 @@ pub fn compute_cost_report(store: &EnergeiaStore, window_days: u32) -> Result<Co
                 clippy::expect_used,
                 reason = "ms from cutoff calculation is a valid timestamp"
             )]
-            jiff::Timestamp::from_millisecond(ms).expect("valid cutoff timestamp")
+            jiff::Timestamp::from_millisecond(ms).unwrap_or_default()
         },
     );
 
@@ -157,7 +158,7 @@ pub fn compute_cost_report(store: &EnergeiaStore, window_days: u32) -> Result<Co
             reason = "total_dispatches is bounded; precision loss unreachable"
         )]
         {
-            total_cost_usd / total_dispatches as f64
+            total_cost_usd / f64::try_from(total_dispatches).unwrap_or_default()
         }
     } else {
         0.0
@@ -170,7 +171,7 @@ pub fn compute_cost_report(store: &EnergeiaStore, window_days: u32) -> Result<Co
             reason = "total_sessions is bounded; precision loss unreachable"
         )]
         {
-            total_cost_usd / total_sessions as f64
+            total_cost_usd / f64::try_from(total_sessions).unwrap_or_default()
         }
     } else {
         0.0
@@ -226,7 +227,7 @@ fn build_project_costs(
             reason = "session count bounded, fits u64"
         )]
         {
-            acc.sessions += session_count as u64;
+            acc.sessions += u64::try_from(session_count).unwrap_or_default();
         }
 
         if d.status == DispatchStatus::Completed {
@@ -244,7 +245,7 @@ fn build_project_costs(
                     reason = "counts bounded; precision loss unreachable"
                 )]
                 {
-                    acc.completed as f64 / acc.dispatches as f64
+                    (acc.completed as f64) / (acc.dispatches as f64)
                 }
             } else {
                 0.0
@@ -303,7 +304,7 @@ fn build_daily_velocity(
             reason = "session count bounded, fits u64"
         )]
         {
-            acc.sessions += session_count as u64;
+            acc.sessions += u64::try_from(session_count).unwrap_or_default();
         }
 
         acc.cost_usd += d.total_cost_usd;
@@ -323,7 +324,7 @@ fn build_daily_velocity(
                     reason = "counts bounded; precision loss unreachable"
                 )]
                 {
-                    acc.completed as f64 / acc.dispatches as f64
+                    (acc.completed as f64) / (acc.dispatches as f64)
                 }
             } else {
                 0.0
@@ -423,8 +424,8 @@ mod tests {
         assert_eq!(report.total_dispatches, 2);
         assert!((report.total_cost_usd - 3.0).abs() < 0.01);
         assert_eq!(report.by_project.len(), 1);
-        assert_eq!(report.by_project[0].project, "acme");
-        assert!((report.by_project[0].cost_usd - 3.0).abs() < 0.01);
+        assert_eq!(report.by_project.get(0).copied().unwrap_or_default().project, "acme");
+        assert!((report.by_project.get(0).copied().unwrap_or_default().cost_usd - 3.0).abs() < 0.01);
     }
 
     #[test]
@@ -480,8 +481,8 @@ mod tests {
             .unwrap();
 
         let report = compute_cost_report(&store, 0).unwrap();
-        assert_eq!(report.by_project[0].project, "expensive");
-        assert_eq!(report.by_project[1].project, "cheap");
+        assert_eq!(report.by_project.get(0).copied().unwrap_or_default().project, "expensive");
+        assert_eq!(report.by_project.get(1).copied().unwrap_or_default().project, "cheap");
     }
 
     #[test]

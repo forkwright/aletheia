@@ -124,6 +124,7 @@ impl Unification {
     pub(crate) fn is_const(&self) -> bool {
         matches!(self.expr, Expr::Const { .. })
     }
+    #[must_use]
     pub(crate) fn bindings_in_expr(&self) -> Result<BTreeSet<Symbol>> {
         self.expr.bindings()
     }

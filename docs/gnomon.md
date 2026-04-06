@@ -144,7 +144,7 @@ The best names are gnomons. They indicate without containing. The name Aletheia 
 
 A name succeeds as a gnomon when someone encounters it, learns what it means, and feels that the thing has become more itself, not differently described but more clearly *seen*.
 
-A name fails as a gnomon when the name draws attention to itself rather than to what it names. If you're explaining the name, it's decoration. If the name is explaining the thing, it's a gnomon.
+A name fails as a gnomon when the name draws attention to itself instead of to what it names. If you're explaining the name, it's decoration. The name should explain the thing.
 
 ---
 
@@ -163,7 +163,7 @@ A name fails as a gnomon when the name draws attention to itself rather than to 
 - **Naming the implementation.** You named what it does technically, not what it is at its essence. "Tracker" is an implementation. Prosoche is the essential nature that tracking serves.
 - **Naming too precisely.** A name that works at only one layer is brittle. Essential-nature names survive refactors because the nature persists even when the mechanism changes.
 - **Forcing the Greek.** If you have to work through three dictionaries to justify the connection, the name is wrong. The right Greek word should feel like it was waiting.
-- **Naming for audience.** If the name exists to impress rather than to indicate, it's pretension.
+- **Naming for audience.** A name that exists to impress instead of indicate is pretension.
 - **Ignoring topology.** A name that sounds right in isolation but conflicts with adjacent names disrupts the system.
 
 ---

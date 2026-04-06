@@ -14,6 +14,7 @@ use std::path::Path;
 /// # Errors
 ///
 /// Returns an I/O error if any step (dir creation, write, rename) fails.
+#[must_use]
 pub fn write_restricted(path: &Path, content: &[u8]) -> std::io::Result<()> {
     use std::io::Write as _;
 

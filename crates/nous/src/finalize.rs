@@ -79,6 +79,7 @@ pub struct FinalizeResult {
     reason = "sequential persist pipeline with dedup guard adds a few lines over the LIMIT"
 )]
 #[instrument(skip_all, fields(session_id = %session.id))]
+#[must_use]
 pub(crate) fn finalize(
     store: &SessionStore,
     session: &SessionState,

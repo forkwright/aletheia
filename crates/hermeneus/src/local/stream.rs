@@ -241,6 +241,7 @@ pub(crate) async fn parse_openai_stream(
 
 /// Parse OpenAI-format SSE events from a byte reader (for tests).
 #[cfg(test)]
+#[must_use]
 pub(crate) fn parse_openai_stream_sync(
     mut reader: impl std::io::BufRead,
     on_event: &mut impl FnMut(StreamEvent),

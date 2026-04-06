@@ -57,6 +57,7 @@ impl TokenizerConfig {
         }
         hasher.finalize_fixed()
     }
+    #[must_use]
     pub(crate) fn build(&self, filters: &[Self]) -> Result<TextAnalyzer> {
         let tokenizer = self.construct_tokenizer()?;
         let token_filters = filters
@@ -68,6 +69,7 @@ impl TokenizerConfig {
             token_filters,
         })
     }
+    #[must_use]
     pub(crate) fn construct_tokenizer(&self) -> Result<Box<dyn Tokenizer>> {
         Ok(match &self.name as &str {
             "Raw" => Box::new(RawTokenizer),
@@ -144,6 +146,7 @@ impl TokenizerConfig {
             }
         })
     }
+    #[must_use]
     pub(crate) fn construct_token_filter(&self) -> Result<BoxTokenFilter> {
         Ok(match &self.name as &str {
             "AlphaNumOnly" => AlphaNumOnlyFilter.into(),
@@ -323,6 +326,7 @@ pub(crate) struct TokenizerCache {
 }
 
 impl TokenizerCache {
+    #[must_use]
     pub(crate) fn get(
         &self,
         tokenizer_name: &str,

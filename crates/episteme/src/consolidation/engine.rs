@@ -29,6 +29,7 @@ impl KnowledgeStore {
         dead_code,
         reason = "knowledge consolidation engine, feature-gated behind mneme-engine"
     )]
+    #[must_use]
     pub(crate) fn init_consolidation_audit(&self) -> crate::error::Result<()> {
         self.run_mut_query(CONSOLIDATION_AUDIT_DDL, BTreeMap::new())?;
         Ok(())
@@ -36,6 +37,7 @@ impl KnowledgeStore {
 
     /// Find entity-overflow consolidation candidates.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn find_entity_overflow_candidates(
         &self,
         nous_id: &str,
@@ -97,6 +99,7 @@ impl KnowledgeStore {
 
     /// Find community-overflow consolidation candidates.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn find_community_overflow_candidates(
         &self,
         nous_id: &str,
@@ -189,6 +192,7 @@ impl KnowledgeStore {
     ///
     /// If `dry_run` is true, returns the proposed result without mutations.
     #[instrument(skip(self, provider, candidate))]
+    #[must_use]
     pub(crate) fn execute_consolidation(
         &self,
         provider: &dyn ConsolidationProvider,
@@ -439,6 +443,7 @@ impl KnowledgeStore {
     }
 
     /// Query the last consolidation timestamp from the audit trail.
+    #[must_use]
     pub(crate) fn last_consolidation_time(
         &self,
         _nous_id: &str,
@@ -477,6 +482,7 @@ impl KnowledgeStore {
     /// without executing mutations.
     #[instrument(skip(self, provider))]
     #[expect(dead_code, reason = "knowledge pipeline infrastructure")]
+    #[must_use]
     pub(crate) fn consolidate_knowledge(
         &self,
         provider: &dyn ConsolidationProvider,

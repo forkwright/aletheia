@@ -201,6 +201,7 @@ fn make_scc_reduced_graph(
 
 impl NormalFormProgram {
     /// returns the stratified program and the store lifetimes of the intermediate relations
+    #[must_use]
     pub(crate) fn into_stratified_program(
         self,
     ) -> Result<(StratifiedNormalFormProgram, BTreeMap<MagicSymbol, usize>)> {

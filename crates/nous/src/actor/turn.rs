@@ -7,6 +7,7 @@ use tokio::sync::mpsc;
 use tracing::{Instrument, debug, error, warn};
 
 use aletheia_koina::id::{NousId, SessionId};
+use aletheia_koina::secret::SecretString;
 use aletheia_organon::types::ToolContext;
 
 use crate::pipeline::TurnResult;
@@ -75,24 +76,24 @@ impl NousActor {
     /// cancellation only occurs at shutdown when the actor is consumed.
     pub(super) async fn handle_turn(
         &mut self,
-        session_key: String,
+        session_key: SecretString,
         session_id: Option<String>,
         content: String,
         caller_span: tracing::Span,
         reply: tokio::sync::oneshot::Sender<crate::error::Result<TurnResult>>,
     ) {
-        self.mark_turn_active(&session_key);
+        self.mark_turn_active(session_key.expose_secret());
 
         let result = self
             .execute_turn_with_panic_boundary(
-                &session_key,
+                session_key.expose_secret(),
                 session_id.as_deref(),
                 &content,
                 caller_span,
             )
             .await;
 
-        self.finalize_turn(&session_key, &content, &result).await;
+        self.finalize_turn(session_key.expose_secret(), &content, &result).await;
 
         // WHY: ignore send error: caller may have dropped the receiver
         let _ = reply.send(result);
@@ -105,7 +106,7 @@ impl NousActor {
     /// Only called from the sequential actor loop.
     pub(super) async fn handle_streaming_turn(
         &mut self,
-        session_key: String,
+        session_key: SecretString,
         session_id: Option<String>,
         content: String,
         stream_tx: mpsc::Sender<TurnStreamEvent>,
@@ -117,11 +118,11 @@ impl NousActor {
         // SSE connections on the receiver side.
         let _stream_guard = StreamSenderGuard(Some(stream_tx.clone()));
 
-        self.mark_turn_active(&session_key);
+        self.mark_turn_active(session_key.expose_secret());
 
         let result = self
             .execute_streaming_turn_with_panic_boundary(
-                &session_key,
+                session_key.expose_secret(),
                 session_id.as_deref(),
                 &content,
                 &stream_tx,
@@ -129,7 +130,7 @@ impl NousActor {
             )
             .await;
 
-        self.finalize_turn(&session_key, &content, &result).await;
+        self.finalize_turn(session_key.expose_secret(), &content, &result).await;
 
         // WHY: ignore send error: caller may have dropped the receiver
         let _ = reply.send(result);
@@ -397,7 +398,7 @@ impl NousActor {
             clippy::as_conversions,
             reason = "u32→usize: DEGRADED_PANIC_THRESHOLD is a small constant, fits in usize"
         )]
-        if self.runtime.panic_timestamps.len() >= (DEGRADED_PANIC_THRESHOLD as usize) {
+        if self.runtime.panic_timestamps.len() >= (usize::try_from(DEGRADED_PANIC_THRESHOLD).unwrap_or_default()) {
             warn!(
                 nous_id = %self.id,
                 panic_count = self.runtime.panic_count,

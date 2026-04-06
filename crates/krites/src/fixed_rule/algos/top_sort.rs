@@ -50,6 +50,7 @@ impl FixedRule for TopSort {
     }
 }
 
+#[must_use]
 pub(crate) fn kahn_g(graph: &DirectedCsrGraph, poison: Poison) -> Result<Vec<u32>> {
     let graph_size = graph.node_count();
     let mut in_degree = vec![0; graph_size as usize];

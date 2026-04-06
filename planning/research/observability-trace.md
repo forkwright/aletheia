@@ -197,7 +197,7 @@ Separate from tracing, Prometheus metrics are exposed at `/metrics` (`crates/pyl
 
 ### R1: install a structured panic handler (high priority)
 
-`RUST.md` mandates a custom panic hook that logs to the structured log file. No panic handler is installed today. A panic in any async task silently disappears unless the `JoinHandle` is awaited and the `JoinError` explicitly logged. The daemon runner does catch task panics, but a panic on the main thread or in non-runner tasks would only hit stderr.
+`RUST.md` mandates a custom panic hook that logs to the structured log file. No panic handler is installed today. A panic in any async task silently disappears unless the `JoinHandle` is awaited and the `JoinError` explicitly logged. The daemon runner catches task panics, but a panic on the main thread or in non-runner tasks would only hit stderr.
 
 ```rust
 std::panic::set_hook(Box::new(|info| {

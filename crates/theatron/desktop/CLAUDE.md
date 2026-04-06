@@ -22,7 +22,7 @@ Dioxus desktop application for Aletheia: chat, planning, memory, metrics, ops, a
 | `CommandStore` | `state/commands.rs` | Command palette entries and execution |
 | `InputState` | `state/input.rs` | Chat input field state with submission tracking |
 | `PerMessageStreamState` | `state/streaming.rs` | Per-message streaming accumulator (text, thinking, tool calls) |
-| `ToolCallState` | `state/tools.rs` | Active tool call tracking with approval state |
+| `ToolCallState` | `state/tools.rs` | Active tool call state with approval tracking |
 | `PlanCardState` | `state/tools.rs` | Plan visualization with step status tracking |
 | `WindowState` | `state/platform.rs` | Window geometry persistence across sessions |
 | `TrayState` | `state/platform.rs` | System tray icon and menu state |

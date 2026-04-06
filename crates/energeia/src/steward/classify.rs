@@ -22,21 +22,21 @@ use super::types::{
     reason = "compile-time constant regex patterns cannot fail"
 )]
 static ALLOW_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"#\[allow\s*\(([^)]*)\)\s*\]").expect("valid regex"));
+    LazyLock::new(|| Regex::new(r"#\[allow\s*\(([^)]*)\)\s*\]").expect("regex pattern is valid"));
 
 #[expect(
     clippy::expect_used,
     reason = "compile-time constant regex patterns cannot fail"
 )]
 static EXPECT_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"#\[expect\s*\(([^)]*)\)\s*\]").expect("valid regex"));
+    LazyLock::new(|| Regex::new(r"#\[expect\s*\(([^)]*)\)\s*\]").expect("regex pattern is valid"));
 
 #[expect(
     clippy::expect_used,
     reason = "compile-time constant regex patterns cannot fail"
 )]
 static CFG_ATTR_ALLOW_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"#\[cfg_attr\s*\([^,]*,\s*allow\s*\(([^)]*)\)\s*\)\s*\]").expect("valid regex")
+    Regex::new(r"#\[cfg_attr\s*\([^,]*,\s*allow\s*\(([^)]*)\)\s*\)\s*\]").expect("regex pattern is valid")
 });
 
 #[expect(
@@ -44,21 +44,21 @@ static CFG_ATTR_ALLOW_RE: LazyLock<Regex> = LazyLock::new(|| {
     reason = "compile-time constant regex patterns cannot fail"
 )]
 static LINT_IGNORE_INLINE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"//\s*lint-ignore").expect("valid regex"));
+    LazyLock::new(|| Regex::new(r"//\s*lint-ignore").expect("regex pattern is valid"));
 
 #[expect(
     clippy::expect_used,
     reason = "compile-time constant regex patterns cannot fail"
 )]
 static STRUCTURED_COMMENT_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"//\s*(SAFETY|INVARIANT)\s*:").expect("valid regex"));
+    LazyLock::new(|| Regex::new(r"//\s*(SAFETY|INVARIANT)\s*:").expect("regex pattern is valid"));
 
 #[expect(
     clippy::expect_used,
     reason = "compile-time constant regex patterns cannot fail"
 )]
 static REASON_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"reason\s*=\s*["']([^"']+)["']"#).expect("valid regex"));
+    LazyLock::new(|| Regex::new(r#"reason\s*=\s*["']([^"']+)["']"#).expect("regex pattern is valid"));
 
 /// Determine aggregate CI status from individual check runs.
 ///

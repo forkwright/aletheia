@@ -58,6 +58,7 @@ impl EditorTab {
         clippy::disallowed_methods,
         reason = "editor save is a user-initiated sync write to the local filesystem"
     )]
+    #[must_use]
     pub(crate) fn save(&mut self) -> Result<(), String> {
         let mut content = self.content.join("\n");
         if !content.ends_with('\n') {

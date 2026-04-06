@@ -7,6 +7,7 @@ use snafu::ResultExt;
 use tracing::{info, instrument, warn};
 
 use aletheia_koina::disk_space::DiskSpaceMonitor;
+use aletheia_koina::secret::SecretString;
 
 use crate::error::{self, Result};
 
@@ -140,6 +141,7 @@ impl<'a> BackupManager<'a> {
     /// sequences. Any future changes to path construction MUST go through
     /// `validate_backup_path` (a private helper in this module).
     #[instrument(skip(self))]
+    #[must_use]
     pub fn create_backup(&self) -> Result<Option<BackupResult>> {
         let backup_start = std::time::Instant::now();
         if let Some(ref monitor) = self.disk_monitor
@@ -200,6 +202,7 @@ impl<'a> BackupManager<'a> {
     /// Exports are non-essential writes. When disk space is critical, this
     /// method returns `Ok(None)` instead of writing.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn export_sessions_json(&self, output_dir: &Path) -> Result<Option<ExportResult>> {
         if let Some(ref monitor) = self.disk_monitor
             && !monitor.allow_non_essential_write()
@@ -253,6 +256,7 @@ impl<'a> BackupManager<'a> {
 
     /// List available backup files.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn list_backups(&self) -> Result<Vec<BackupInfo>> {
         if !self.backup_dir.exists() {
             return Ok(Vec::new());
@@ -290,6 +294,7 @@ impl<'a> BackupManager<'a> {
 
     /// Prune old backups, keeping the N most recent.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn prune_backups(&self, keep: usize) -> Result<u32> {
         let backups = self.list_backups()?;
         let mut removed = 0u32;
@@ -314,7 +319,7 @@ impl<'a> BackupManager<'a> {
 struct SessionExport {
     id: String,
     nous_id: String,
-    session_key: String,
+    session_key: SecretString,
     status: String,
     model: Option<String>,
     session_type: String,
@@ -353,7 +358,7 @@ fn build_session_json(conn: &Connection, session_id: &str) -> Result<String> {
                 Ok(SessionExport {
                     id: row.get(0)?,
                     nous_id: row.get(1)?,
-                    session_key: row.get(2)?,
+                    session_key: SecretString::from(row.get::<_, String>(2)?),
                     status: row.get(3)?,
                     model: row.get(4)?,
                     session_type: row.get(5)?,

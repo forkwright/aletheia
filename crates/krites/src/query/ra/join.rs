@@ -47,6 +47,7 @@ impl Joiner {
             .map(|(l, r)| (&l.name as &str, &r.name as &str))
             .collect()
     }
+    #[must_use]
     pub(crate) fn join_indices(
         &self,
         left_bindings: &[Symbol],
@@ -84,6 +85,7 @@ pub(crate) struct NegJoin {
 }
 
 impl NegJoin {
+    #[must_use]
     pub(crate) fn do_eliminate_temp_vars(&mut self, used: &BTreeSet<Symbol>) -> Result<()> {
         for binding in self.left.bindings_after_eliminate() {
             if !used.contains(&binding) {
@@ -132,6 +134,7 @@ impl NegJoin {
         }
     }
 
+    #[must_use]
     pub(crate) fn iter<'a>(
         &'a self,
         tx: &'a SessionTx<'_>,
@@ -182,6 +185,7 @@ pub(crate) struct InnerJoin {
 }
 
 impl InnerJoin {
+    #[must_use]
     pub(crate) fn do_eliminate_temp_vars(&mut self, used: &BTreeSet<Symbol>) -> Result<()> {
         for binding in self.bindings() {
             if !used.contains(&binding) {
@@ -270,6 +274,7 @@ impl InnerJoin {
             }
         }
     }
+    #[must_use]
     pub(crate) fn iter<'a>(
         &'a self,
         tx: &'a SessionTx<'_>,

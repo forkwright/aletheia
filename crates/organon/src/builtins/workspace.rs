@@ -59,6 +59,7 @@ fn expand_tilde_str(raw: &str) -> std::borrow::Cow<'_, str> {
 /// causing path confusion. Reject both upfront. Closes #2163.
 const SHELL_METACHARACTERS: &[char] = &[';', '|', '&', '$', '`', '(', ')'];
 
+#[must_use]
 pub(crate) fn validate_path(raw: &str, ctx: &ToolContext, tool_name: &ToolName) -> Result<PathBuf> {
     if raw.is_empty() {
         return Err(error::InvalidInputSnafu {
@@ -160,6 +161,7 @@ pub(crate) fn normalize(path: &Path) -> PathBuf {
     result
 }
 
+#[must_use]
 pub(crate) fn extract_str<'a>(
     args: &'a serde_json::Value,
     field: &str,
@@ -671,6 +673,7 @@ impl ToolExecutor for ExecExecutor {
 }
 
 /// Register workspace tool executors.
+#[must_use]
 pub(crate) fn register(
     registry: &mut ToolRegistry,
     sandbox: crate::sandbox::SandboxConfig,

@@ -157,6 +157,7 @@ fn katharos_def() -> ToolDef {
 /// # Errors
 ///
 /// Returns an error if any tool name collides with an already-registered tool.
+#[must_use]
 pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(
         tamias_def(),

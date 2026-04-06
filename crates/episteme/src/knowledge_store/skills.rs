@@ -12,6 +12,7 @@ impl KnowledgeStore {
     /// contains at least one of the given `domain_tags`.
     #[instrument(skip(self))]
     #[expect(dead_code, reason = "skill operations for knowledge store")]
+    #[must_use]
     pub(crate) fn find_skills_by_domain(
         &self,
         nous_id: &str,
@@ -39,6 +40,7 @@ impl KnowledgeStore {
     /// Find all skills for a specific nous, ordered by confidence descending
     /// then access count descending.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn find_skills_for_nous(
         &self,
         nous_id: &str,
@@ -76,6 +78,7 @@ impl KnowledgeStore {
     /// Uses the existing hybrid search infrastructure but post-filters
     /// to only return skill-type facts.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn search_skills(
         &self,
         nous_id: &str,
@@ -119,6 +122,7 @@ impl KnowledgeStore {
     ///
     /// Returns the fact ID if found.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn find_skill_by_name(
         &self,
         nous_id: &str,
@@ -139,6 +143,7 @@ impl KnowledgeStore {
     ///
     /// Pending skills are stored as facts with `fact_type = "skill_pending"`.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn find_pending_skills(
         &self,
         nous_id: &str,
@@ -172,6 +177,7 @@ impl KnowledgeStore {
     /// Supersedes the pending fact and creates a new fact with `fact_type = "skill"`.
     /// Returns the new fact ID.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn approve_pending_skill(
         &self,
         pending_fact_id: &crate::id::FactId,
@@ -245,6 +251,7 @@ impl KnowledgeStore {
 
     /// Reject a pending skill: mark it as forgotten.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn reject_pending_skill(
         &self,
         pending_fact_id: &crate::id::FactId,
@@ -257,6 +264,7 @@ impl KnowledgeStore {
     ///
     /// Returns `(active, needs_review, retired)` counts.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn run_skill_decay(&self, nous_id: &str) -> crate::error::Result<(usize, usize, usize)> {
         let skills = self.find_skills_for_nous(nous_id, 10_000)?;
         let now_secs = jiff::Timestamp::now().as_second();
@@ -301,6 +309,7 @@ impl KnowledgeStore {
     /// Gather skill health metrics for a nous.
     #[instrument(skip(self))]
     #[expect(dead_code, reason = "skill operations for knowledge store")]
+    #[must_use]
     pub(crate) fn skill_quality_metrics(
         &self,
         nous_id: &str,
@@ -420,6 +429,7 @@ impl KnowledgeStore {
     /// using BM25 search. Returns the fact ID of the most similar existing
     /// skill if similarity is high enough to be considered a duplicate.
     #[instrument(skip(self, skill_content))]
+    #[must_use]
     pub fn find_duplicate_skill(
         &self,
         nous_id: &str,

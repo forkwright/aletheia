@@ -51,6 +51,7 @@ impl KeyringCredentialProvider {
     ///
     /// Returns the keyring error if the backend is unavailable or the
     /// write fails (e.g. user denied access).
+    #[must_use]
     pub(crate) fn store(&self, token: &str) -> Result<(), keyring::Error> {
         self.entry()?.set_password(token)
     }
@@ -62,6 +63,7 @@ impl KeyringCredentialProvider {
     /// Returns the keyring error if the backend is unavailable or deletion
     /// fails. `NoEntry` errors are mapped to `Ok(())` since the goal state
     /// (no credential present) is already achieved.
+    #[must_use]
     pub(crate) fn delete(&self) -> Result<(), keyring::Error> {
         match self.entry()?.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),

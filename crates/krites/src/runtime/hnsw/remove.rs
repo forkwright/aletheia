@@ -11,6 +11,7 @@ use crate::runtime::relation::RelationHandle;
 use crate::runtime::transact::SessionTx;
 
 impl<'a> SessionTx<'a> {
+    #[must_use]
     pub(crate) fn hnsw_remove(
         &mut self,
         orig_table: &RelationHandle,

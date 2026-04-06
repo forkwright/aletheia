@@ -4,6 +4,7 @@ type Result<T> = DataResult<T>;
 use super::arg;
 use crate::data::value::{DataValue, Num, Vector};
 
+#[must_use]
 pub(crate) fn op_sin(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => {
@@ -32,6 +33,7 @@ pub(crate) fn op_sin(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::Num(Num::Float(a.sin())))
 }
 
+#[must_use]
 pub(crate) fn op_cos(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => {
@@ -60,6 +62,7 @@ pub(crate) fn op_cos(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::Num(Num::Float(a.cos())))
 }
 
+#[must_use]
 pub(crate) fn op_tan(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => {
@@ -88,6 +91,7 @@ pub(crate) fn op_tan(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::Num(Num::Float(a.tan())))
 }
 
+#[must_use]
 pub(crate) fn op_asin(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => {
@@ -116,6 +120,7 @@ pub(crate) fn op_asin(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::Num(Num::Float(a.asin())))
 }
 
+#[must_use]
 pub(crate) fn op_acos(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => {
@@ -144,6 +149,7 @@ pub(crate) fn op_acos(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::Num(Num::Float(a.acos())))
 }
 
+#[must_use]
 pub(crate) fn op_atan(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => {
@@ -172,6 +178,7 @@ pub(crate) fn op_atan(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::Num(Num::Float(a.atan())))
 }
 
+#[must_use]
 pub(crate) fn op_atan2(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => {
@@ -213,6 +220,7 @@ pub(crate) fn op_atan2(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::Num(Num::Float(a.atan2(b))))
 }
 
+#[must_use]
 pub(crate) fn op_sinh(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => {
@@ -241,6 +249,7 @@ pub(crate) fn op_sinh(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::Num(Num::Float(a.sinh())))
 }
 
+#[must_use]
 pub(crate) fn op_cosh(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => {
@@ -269,6 +278,7 @@ pub(crate) fn op_cosh(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::Num(Num::Float(a.cosh())))
 }
 
+#[must_use]
 pub(crate) fn op_tanh(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => {
@@ -297,6 +307,7 @@ pub(crate) fn op_tanh(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::Num(Num::Float(a.tanh())))
 }
 
+#[must_use]
 pub(crate) fn op_asinh(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => {
@@ -325,6 +336,7 @@ pub(crate) fn op_asinh(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::Num(Num::Float(a.asinh())))
 }
 
+#[must_use]
 pub(crate) fn op_acosh(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => {
@@ -353,6 +365,7 @@ pub(crate) fn op_acosh(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::Num(Num::Float(a.acosh())))
 }
 
+#[must_use]
 pub(crate) fn op_atanh(args: &[DataValue]) -> Result<DataValue> {
     let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => {
@@ -381,6 +394,7 @@ pub(crate) fn op_atanh(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::Num(Num::Float(a.atanh())))
 }
 
+#[must_use]
 pub(crate) fn op_haversine(args: &[DataValue]) -> Result<DataValue> {
     let make_err = || {
         TypeMismatchSnafu {
@@ -401,6 +415,7 @@ pub(crate) fn op_haversine(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::from(ret))
 }
 
+#[must_use]
 pub(crate) fn op_haversine_deg_input(args: &[DataValue]) -> Result<DataValue> {
     let make_err = || {
         TypeMismatchSnafu {
@@ -421,6 +436,7 @@ pub(crate) fn op_haversine_deg_input(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::from(ret))
 }
 
+#[must_use]
 pub(crate) fn op_deg_to_rad(args: &[DataValue]) -> Result<DataValue> {
     let x = arg(args, 0)?.get_float().ok_or_else(|| {
         TypeMismatchSnafu {
@@ -432,6 +448,7 @@ pub(crate) fn op_deg_to_rad(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::from(x * std::f64::consts::PI / 180.))
 }
 
+#[must_use]
 pub(crate) fn op_rad_to_deg(args: &[DataValue]) -> Result<DataValue> {
     let x = arg(args, 0)?.get_float().ok_or_else(|| {
         TypeMismatchSnafu {

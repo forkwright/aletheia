@@ -308,6 +308,7 @@ fn parse_hop_rows(
 impl crate::knowledge_store::KnowledgeStore {
     #[expect(dead_code, reason = "called FROM schema setup, dead in lib test build")]
     /// Initialize the `graph_scores` relation. Called during schema setup.
+    #[must_use]
     pub(crate) fn init_graph_scores(&self) -> crate::error::Result<()> {
         self.run_mut_query(GRAPH_SCORES_DDL, std::collections::BTreeMap::new())?;
         Ok(())
@@ -317,6 +318,7 @@ impl crate::knowledge_store::KnowledgeStore {
     ///
     /// Populates pageranks and cluster assignments. Caller should then fill
     /// `context_clusters`, `proximity`, and `chain_lengths` based on query context.
+    #[must_use]
     pub(crate) fn load_graph_context(&self) -> crate::error::Result<GraphContext> {
         let result = self.run_query(LOAD_GRAPH_SCORES, std::collections::BTreeMap::new())?;
 
@@ -357,6 +359,7 @@ impl crate::knowledge_store::KnowledgeStore {
     ///
     /// Uses a 5ms timeout budget. Falls back to the existing 2-hop neighborhood
     /// query if the budget is exceeded.
+    #[must_use]
     pub(crate) fn compute_bfs_proximity(
         &self,
         seed_entity_ids: &[String],
@@ -415,6 +418,7 @@ impl crate::knowledge_store::KnowledgeStore {
     }
 
     /// Compute supersession chain lengths for all facts.
+    #[must_use]
     pub(crate) fn compute_chain_lengths(&self) -> crate::error::Result<HashMap<String, u32>> {
         let result = self.run_query(
             SUPERSESSION_CHAIN_LENGTHS,
@@ -424,6 +428,7 @@ impl crate::knowledge_store::KnowledgeStore {
     }
 
     /// Run the combined `PageRank` + `Louvain` recomputation and store to `graph_scores`.
+    #[must_use]
     pub(crate) fn recompute_graph_scores(&self) -> crate::error::Result<()> {
         let now = crate::knowledge::format_timestamp(&jiff::Timestamp::now());
         let mut params = std::collections::BTreeMap::new();
@@ -436,6 +441,7 @@ impl crate::knowledge_store::KnowledgeStore {
     ///
     /// Joins `facts`, `fact_entities`, and supersession chain data to produce
     /// `DomainVolatility` scores for all entities with linked facts.
+    #[must_use]
     pub(crate) fn compute_domain_volatility(
         &self,
     ) -> crate::error::Result<Vec<crate::succession::DomainVolatility>> {
@@ -488,6 +494,7 @@ impl crate::knowledge_store::KnowledgeStore {
     /// Intended for background scheduling: runs the volatility Datalog,
     /// computes scores, and upserts them into `graph_scores` with
     /// `score_type = "volatility"`.
+    #[must_use]
     pub(crate) fn compute_and_store_volatility(&self) -> crate::error::Result<()> {
         let volatilities = self.compute_domain_volatility()?;
         let now = crate::knowledge::format_timestamp(&jiff::Timestamp::now());
@@ -516,6 +523,7 @@ impl crate::knowledge_store::KnowledgeStore {
     ///
     /// Returns a map of `entity_id → volatility_score` for all entities
     /// that have stored volatility data.
+    #[must_use]
     pub(crate) fn load_volatility_scores(&self) -> crate::error::Result<HashMap<String, f64>> {
         let result = self.run_query(
             r"?[entity_id, score] := *graph_scores{entity_id, score_type, score}, score_type = 'volatility'",
@@ -539,6 +547,7 @@ impl crate::knowledge_store::KnowledgeStore {
     ///
     /// Returns the top entities by fact count, average stability, and
     /// volatility scores. Useful for understanding what each nous "knows about."
+    #[must_use]
     pub(crate) fn nous_knowledge_profile(
         &self,
         nous_id: &str,
@@ -604,6 +613,7 @@ impl crate::knowledge_store::KnowledgeStore {
     /// so the pipeline can skip all graph traversal when the weight is zero.
     /// Use [`RecallWeights::graph_recall_active`](crate::recall::RecallWeights::graph_recall_active)
     /// to pre-check.
+    #[must_use]
     pub(crate) fn build_graph_context(
         &self,
         seed_entity_ids: &[String],

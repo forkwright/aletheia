@@ -102,6 +102,7 @@ impl RecallStage {
     ///
     /// Used as a fallback when the embedding provider is in mock mode.
     /// Scores, ranks, and formats results the same way as [`run`](Self::run).
+    #[must_use]
     pub(crate) fn run_bm25(
         &self,
         query: &str,
@@ -135,6 +136,7 @@ impl RecallStage {
     ///
     /// Non-fatal errors are returned as `Err`: the caller should catch and continue.
     #[instrument(skip_all, fields(nous_id = %nous_id))]
+    #[must_use]
     pub fn run(
         &self,
         query: &str,

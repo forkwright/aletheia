@@ -19,6 +19,7 @@ use crate::{Expr, FixedRule};
 
 use super::{FtsIndexConfig, HnswDistance, HnswIndexConfig, MinHashLshConfig, SysOp};
 
+#[must_use]
 pub(crate) fn parse_sys(
     mut src: Pairs<'_>,
     param_pool: &BTreeMap<String, DataValue>,

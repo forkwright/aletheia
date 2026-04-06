@@ -4,6 +4,10 @@
     clippy::expect_used,
     reason = "metric registration is infallible at startup"
 )]
+#![expect(
+    clippy::unwrap_used,
+    reason = "metric registration is infallible at startup"
+)]
 
 use std::sync::LazyLock;
 

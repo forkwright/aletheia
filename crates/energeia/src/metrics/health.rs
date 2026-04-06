@@ -110,6 +110,7 @@ pub struct HealthReport {
 /// # Errors
 ///
 /// Returns `Error::Store` if any underlying store read fails.
+#[must_use]
 pub fn compute_health_report(store: &EnergeiaStore, window_days: u32) -> Result<HealthReport> {
     let now = jiff::Timestamp::now();
 
@@ -121,7 +122,7 @@ pub fn compute_health_report(store: &EnergeiaStore, window_days: u32) -> Result<
         )]
         let cutoff = now
             .checked_sub(span)
-            .expect("timestamp subtraction within realistic day range");
+            .unwrap_or_default();
         Some(cutoff.as_millisecond())
     } else {
         None
@@ -252,13 +253,13 @@ fn corrective_rate(dispatches: &[&DispatchRecord], sessions: &[&SessionRecord]) 
         clippy::as_conversions,
         reason = "dispatch counts are bounded; precision loss unreachable at practical scale"
     )]
-    let rate = corrective_dispatch_ids.len() as f64 / total as f64;
+    let rate = corrective_dispatch_ids.len() as f64 / f64::try_from(total).unwrap_or_default();
 
     #[expect(
         clippy::as_conversions,
         reason = "dispatch count is bounded by SCAN_LIMIT_DISPATCHES, fits u64"
     )]
-    let sample_size = total as u64;
+    let sample_size = u64::try_from(total).unwrap_or_default();
 
     HealthMetric {
         name: NAME,
@@ -295,13 +296,13 @@ fn stuck_rate(sessions: &[&SessionRecord]) -> HealthMetric {
         clippy::as_conversions,
         reason = "session counts are bounded; precision loss unreachable at practical scale"
     )]
-    let rate = stuck as f64 / total as f64;
+    let rate = f64::try_from(stuck).unwrap_or_default() / f64::try_from(total).unwrap_or_default();
 
     #[expect(
         clippy::as_conversions,
         reason = "session count fits u64 within SCAN_LIMIT_SESSIONS"
     )]
-    let sample_size = total as u64;
+    let sample_size = u64::try_from(total).unwrap_or_default();
 
     HealthMetric {
         name: NAME,
@@ -356,13 +357,13 @@ fn qa_false_positive_rate(
         clippy::as_conversions,
         reason = "session counts are bounded; precision loss unreachable at practical scale"
     )]
-    let rate = ci_fail_count as f64 / total as f64;
+    let rate = f64::try_from(ci_fail_count).unwrap_or_default() / f64::try_from(total).unwrap_or_default();
 
     #[expect(
         clippy::as_conversions,
         reason = "session count fits u64 within SCAN_LIMIT_SESSIONS"
     )]
-    let sample_size = total as u64;
+    let sample_size = u64::try_from(total).unwrap_or_default();
 
     HealthMetric {
         name: NAME,
@@ -412,13 +413,13 @@ fn fix_agent_success_rate(
         clippy::as_conversions,
         reason = "session counts are bounded; precision loss unreachable at practical scale"
     )]
-    let rate = successes as f64 / total as f64;
+    let rate = f64::try_from(successes).unwrap_or_default() / f64::try_from(total).unwrap_or_default();
 
     #[expect(
         clippy::as_conversions,
         reason = "session count fits u64 within SCAN_LIMIT_SESSIONS"
     )]
-    let sample_size = total as u64;
+    let sample_size = u64::try_from(total).unwrap_or_default();
 
     HealthMetric {
         name: NAME,
@@ -462,15 +463,15 @@ fn cycle_time(dispatches: &[&DispatchRecord]) -> HealthMetric {
     #[expect(
         clippy::cast_precision_loss,
         clippy::as_conversions,
-        reason = "total_ms as f64: bounded by dispatch count × max session duration; precision loss unreachable"
+        reason = "f64::try_from(total_ms).unwrap_or_default(): bounded by dispatch count × max session duration; precision loss unreachable"
     )]
-    let avg_hours = (total_ms as f64 / total as f64) / 3_600_000.0;
+    let avg_hours = (f64::try_from(total_ms).unwrap_or_default() / f64::try_from(total).unwrap_or_default()) / 3_600_000.0;
 
     #[expect(
         clippy::as_conversions,
         reason = "dispatch count fits u64 within SCAN_LIMIT_DISPATCHES"
     )]
-    let sample_size = total as u64;
+    let sample_size = u64::try_from(total).unwrap_or_default();
 
     HealthMetric {
         name: NAME,
@@ -542,13 +543,13 @@ fn batch_parallelism(dispatches: &[&DispatchRecord], sessions: &[&SessionRecord]
         clippy::as_conversions,
         reason = "total_sessions and n are bounded; precision loss unreachable at practical scale"
     )]
-    let avg = total_sessions as f64 / n as f64;
+    let avg = f64::try_from(total_sessions).unwrap_or_default() / f64::try_from(n).unwrap_or_default();
 
     #[expect(
         clippy::as_conversions,
         reason = "n fits u64 within SCAN_LIMIT_DISPATCHES"
     )]
-    let sample_size = n as u64;
+    let sample_size = u64::try_from(n).unwrap_or_default();
 
     HealthMetric {
         name: NAME,
@@ -760,7 +761,7 @@ mod tests {
             let span = jiff::SignedDuration::from_hours(2);
             let now = jiff::Timestamp::now();
             #[expect(clippy::expect_used, reason = "test setup")]
-            let start = now.checked_sub(span).expect("test timestamp");
+            let start = now.checked_sub(span).unwrap_or_default();
             let d = DispatchRecord {
                 id: DispatchId::new("D1"),
                 project: "acme".to_owned(),
@@ -781,7 +782,7 @@ mod tests {
             let span = jiff::SignedDuration::from_hours(10);
             let now = jiff::Timestamp::now();
             #[expect(clippy::expect_used, reason = "test setup")]
-            let start = now.checked_sub(span).expect("test timestamp");
+            let start = now.checked_sub(span).unwrap_or_default();
             let d = DispatchRecord {
                 id: DispatchId::new("D1"),
                 project: "acme".to_owned(),

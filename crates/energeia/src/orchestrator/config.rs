@@ -108,6 +108,7 @@ mod duration_ms_option {
         clippy::ref_option,
         reason = "serde(with) requires &T signature for the field type"
     )]
+    #[must_use]
     pub(crate) fn serialize<S: Serializer>(
         val: &Option<Duration>,
         serializer: S,
@@ -118,6 +119,7 @@ mod duration_ms_option {
         }
     }
 
+    #[must_use]
     pub(crate) fn deserialize<'de, D: Deserializer<'de>>(
         deserializer: D,
     ) -> Result<Option<Duration>, D::Error> {

@@ -3,6 +3,7 @@
 use std::fmt;
 use std::time::Duration;
 
+use aletheia_koina::secret::SecretString;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::error;
@@ -14,7 +15,7 @@ use crate::stream::TurnStreamEvent;
 pub(crate) enum NousMessage {
     /// Process a user message in a session.
     Turn {
-        session_key: String, // kanon:ignore RUST/plain-string-secret
+        session_key: SecretString,
         /// Database session ID from the session store. When `Some`, the actor
         /// adopts this ID for the in-memory `SessionState` instead of generating
         /// a new one, preventing FK constraint failures in finalize and tools.
@@ -26,7 +27,7 @@ pub(crate) enum NousMessage {
     },
     /// Process a user message with real-time streaming events.
     StreamingTurn {
-        session_key: String, // kanon:ignore RUST/plain-string-secret
+        session_key: SecretString,
         /// Database session ID from the session store. See `Turn::session_id`.
         session_id: Option<String>,
         content: String,

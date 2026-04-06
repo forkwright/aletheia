@@ -170,6 +170,7 @@ use aletheia_taxis::config::resolve_nous;
 use aletheia_taxis::loader::load_config;
 use aletheia_taxis::oikos::Oikos;
 
+#[must_use]
 pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -> Result<()> {
     let nous_id = &args.nous_id;
     let oikos = match instance_root {
@@ -258,6 +259,7 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
     Ok(())
 }
 
+#[must_use]
 pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -> Result<()> {
     let json = std::fs::read_to_string(&args.file)
         .with_whatever_context(|_| format!("failed to read {}", args.file.display()))?;
@@ -336,6 +338,7 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
     clippy::too_many_lines,
     reason = "CLI dispatch is inherently verbose — splitting would hurt readability"
 )]
+#[must_use]
 pub(crate) fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
     use aletheia_mneme::skill::{SkillContent, parse_skill_md, scan_skill_dir};
 
@@ -499,6 +502,7 @@ pub(crate) fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
 ///
 /// Reads skill facts from an in-process `KnowledgeStore`, converts them to
 /// `SkillContent`, and writes `.claude/skills/<slug>/SKILL.md` files.
+#[must_use]
 pub(crate) fn export_skills(
     instance_root: Option<&PathBuf>,
     args: &ExportSkillsArgs,
@@ -587,6 +591,7 @@ pub(crate) fn export_skills(
     }
 }
 
+#[must_use]
 pub(crate) fn review_skills(
     instance_root: Option<&PathBuf>,
     args: &ReviewSkillsArgs,

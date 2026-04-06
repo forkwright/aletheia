@@ -5,6 +5,7 @@ use crate::data::error::*;
 type Result<T> = DataResult<T>;
 use crate::data::value::{DataValue, Num, Vector};
 
+#[must_use]
 pub(crate) fn op_sub(args: &[DataValue]) -> Result<DataValue> {
     Ok(match (arg(args, 0)?, arg(args, 1)?) {
         (DataValue::Num(Num::Int(a)), DataValue::Num(Num::Int(b))) => {
@@ -99,6 +100,7 @@ pub(crate) fn op_sub(args: &[DataValue]) -> Result<DataValue> {
     })
 }
 
+#[must_use]
 pub(crate) fn op_mul(args: &[DataValue]) -> Result<DataValue> {
     let mut i_accum = 1i64;
     let mut f_accum = 1.0f64;
@@ -128,6 +130,7 @@ pub(crate) fn op_mul(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_div(args: &[DataValue]) -> Result<DataValue> {
     Ok(match (arg(args, 0)?, arg(args, 1)?) {
         (DataValue::Num(Num::Int(a)), DataValue::Num(Num::Int(b))) => {
@@ -228,6 +231,7 @@ pub(crate) fn op_div(args: &[DataValue]) -> Result<DataValue> {
     })
 }
 
+#[must_use]
 pub(crate) fn op_minus(args: &[DataValue]) -> Result<DataValue> {
     Ok(match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => DataValue::Num(Num::Int(-(*i))),
@@ -244,6 +248,7 @@ pub(crate) fn op_minus(args: &[DataValue]) -> Result<DataValue> {
     })
 }
 
+#[must_use]
 pub(crate) fn op_abs(args: &[DataValue]) -> Result<DataValue> {
     Ok(match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => DataValue::Num(Num::Int(i.abs())),
@@ -260,6 +265,7 @@ pub(crate) fn op_abs(args: &[DataValue]) -> Result<DataValue> {
     })
 }
 
+#[must_use]
 pub(crate) fn op_signum(args: &[DataValue]) -> Result<DataValue> {
     Ok(match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => DataValue::Num(Num::Int(i.signum())),
@@ -284,6 +290,7 @@ pub(crate) fn op_signum(args: &[DataValue]) -> Result<DataValue> {
     })
 }
 
+#[must_use]
 pub(crate) fn op_floor(args: &[DataValue]) -> Result<DataValue> {
     Ok(match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => DataValue::Num(Num::Int(*i)),
@@ -298,6 +305,7 @@ pub(crate) fn op_floor(args: &[DataValue]) -> Result<DataValue> {
     })
 }
 
+#[must_use]
 pub(crate) fn op_ceil(args: &[DataValue]) -> Result<DataValue> {
     Ok(match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => DataValue::Num(Num::Int(*i)),
@@ -312,6 +320,7 @@ pub(crate) fn op_ceil(args: &[DataValue]) -> Result<DataValue> {
     })
 }
 
+#[must_use]
 pub(crate) fn op_round(args: &[DataValue]) -> Result<DataValue> {
     Ok(match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => DataValue::Num(Num::Int(*i)),

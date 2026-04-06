@@ -135,7 +135,7 @@ impl Budget {
             clippy::as_conversions,
             reason = "cost value fits in f64 mantissa for any realistic dispatch"
         )]
-        let cost = raw as f64 / 10_000.0;
+        let cost = (raw as f64) / 10_000.0;
         cost
     }
 

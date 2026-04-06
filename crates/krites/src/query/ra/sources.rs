@@ -33,6 +33,7 @@ impl InlineFixedRA {
             span,
         }
     }
+    #[must_use]
     pub(crate) fn do_eliminate_temp_vars(&mut self, used: &BTreeSet<Symbol>) -> Result<()> {
         for binding in &self.bindings {
             if !used.contains(binding) {
@@ -53,6 +54,7 @@ impl InlineFixedRA {
             "fixed_join"
         }
     }
+    #[must_use]
     pub(crate) fn join<'a>(
         &'a self,
         left_iter: TupleIter<'a>,
@@ -125,6 +127,7 @@ pub(crate) struct StoredRA {
 }
 
 impl StoredRA {
+    #[must_use]
     pub(crate) fn fill_binding_indices_and_compile(&mut self) -> Result<()> {
         let bindings: BTreeMap<_, _> = self
             .bindings
@@ -187,6 +190,7 @@ impl StoredRA {
         })
     }
 
+    #[must_use]
     pub(crate) fn prefix_join<'a>(
         &'a self,
         tx: &'a SessionTx<'_>,
@@ -276,6 +280,7 @@ impl StoredRA {
         })
     }
 
+    #[must_use]
     pub(crate) fn neg_join<'a>(
         &'a self,
         tx: &'a SessionTx<'_>,
@@ -380,6 +385,7 @@ impl StoredRA {
         }
     }
 
+    #[must_use]
     pub(crate) fn iter<'a>(&'a self, tx: &'a SessionTx<'_>) -> Result<TupleIter<'a>> {
         let it = self.storage.scan_all(tx);
         Ok(if self.filters.is_empty() {
@@ -400,6 +406,7 @@ pub(crate) struct TempStoreRA {
 }
 
 impl TempStoreRA {
+    #[must_use]
     pub(crate) fn fill_binding_indices_and_compile(&mut self) -> Result<()> {
         let bindings: BTreeMap<_, _> = self
             .bindings
@@ -415,6 +422,7 @@ impl TempStoreRA {
         Ok(())
     }
 
+    #[must_use]
     pub(crate) fn iter<'a>(
         &'a self,
         delta_rule: Option<&MagicSymbol>,
@@ -439,6 +447,7 @@ impl TempStoreRA {
             Box::new(filter_iter(self.filters_bytecodes.clone(), it))
         })
     }
+    #[must_use]
     pub(crate) fn neg_join<'a>(
         &'a self,
         left_iter: TupleIter<'a>,
@@ -540,6 +549,7 @@ impl TempStoreRA {
             ))
         }
     }
+    #[must_use]
     pub(crate) fn prefix_join<'a>(
         &'a self,
         left_iter: TupleIter<'a>,
@@ -659,6 +669,7 @@ pub(crate) struct StoredWithValidityRA {
 }
 
 impl StoredWithValidityRA {
+    #[must_use]
     pub(crate) fn fill_binding_indices_and_compile(&mut self) -> Result<()> {
         let bindings: BTreeMap<_, _> = self
             .bindings
@@ -673,6 +684,7 @@ impl StoredWithValidityRA {
         }
         Ok(())
     }
+    #[must_use]
     pub(crate) fn iter<'a>(&'a self, tx: &'a SessionTx<'_>) -> Result<TupleIter<'a>> {
         let it = self.storage.skip_scan_all(tx, self.valid_at);
         Ok(if self.filters.is_empty() {
@@ -681,6 +693,7 @@ impl StoredWithValidityRA {
             Box::new(filter_iter(self.filters_bytecodes.clone(), it))
         })
     }
+    #[must_use]
     pub(crate) fn prefix_join<'a>(
         &'a self,
         tx: &'a SessionTx<'_>,

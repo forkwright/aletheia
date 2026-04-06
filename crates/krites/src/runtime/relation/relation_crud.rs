@@ -18,6 +18,7 @@ use crate::runtime::transact::SessionTx;
 use super::handles::{AccessLevel, InputRelationHandle, RelationHandle, RelationId};
 
 impl<'a> SessionTx<'a> {
+    #[must_use]
     pub(crate) fn relation_exists(&self, name: &str) -> Result<bool> {
         let key = DataValue::from(name);
         let encoded = vec![key].encode_as_key(RelationId::SYSTEM);
@@ -29,6 +30,7 @@ impl<'a> SessionTx<'a> {
             self.store_tx.exists(&encoded, false).map_err(Into::into)
         }
     }
+    #[must_use]
     pub(crate) fn set_relation_triggers(
         &mut self,
         name: &Symbol,
@@ -70,6 +72,7 @@ impl<'a> SessionTx<'a> {
 
         Ok(())
     }
+    #[must_use]
     pub(crate) fn create_relation(
         &mut self,
         input_meta: InputRelationHandle,
@@ -139,6 +142,7 @@ impl<'a> SessionTx<'a> {
 
         Ok(meta)
     }
+    #[must_use]
     pub(crate) fn get_relation(&self, name: &str, lock: bool) -> Result<RelationHandle> {
         let key = DataValue::from(name);
         let encoded = vec![key].encode_as_key(RelationId::SYSTEM);
@@ -167,6 +171,7 @@ impl<'a> SessionTx<'a> {
         let metadata = RelationHandle::decode(&found)?;
         Ok(metadata)
     }
+    #[must_use]
     pub(crate) fn describe_relation(&mut self, name: &str, description: &str) -> Result<()> {
         let mut meta = self.get_relation(name, true)?;
 
@@ -188,6 +193,7 @@ impl<'a> SessionTx<'a> {
 
         Ok(())
     }
+    #[must_use]
     pub(crate) fn destroy_relation(&mut self, name: &str) -> Result<Vec<(Vec<u8>, Vec<u8>)>> {
         let is_temp = name.starts_with('_');
         let mut to_clean = vec![];
@@ -224,6 +230,7 @@ impl<'a> SessionTx<'a> {
         to_clean.push((lower_bound, upper_bound));
         Ok(to_clean)
     }
+    #[must_use]
     pub(crate) fn set_access_level(&mut self, rel: &Symbol, level: AccessLevel) -> Result<()> {
         let mut meta = self.get_relation(rel, true)?;
         meta.access_level = level;

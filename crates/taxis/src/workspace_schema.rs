@@ -171,6 +171,7 @@ impl WorkspaceSchema {
     dead_code,
     reason = "validates all agent workspaces during startup preflight"
 )]
+#[must_use]
 pub(crate) fn validate_agent_workspaces(
     config: &AletheiaConfig,
     oikos: &Oikos,

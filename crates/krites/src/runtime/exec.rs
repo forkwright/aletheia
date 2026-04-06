@@ -35,6 +35,7 @@ use crate::storage::Storage;
 
 impl<'s, S: Storage<'s>> Db<S> {
     /// Run the DatalogScript passed in. The `params` argument is a map of parameters.
+    #[must_use]
     pub fn run_script(
         &'s self,
         payload: &str,
@@ -54,6 +55,7 @@ impl<'s, S: Storage<'s>> Db<S> {
     }
 
     /// Run the DatalogScript passed in. The `params` argument is a map of parameters.
+    #[must_use]
     pub fn run_script_read_only(
         &'s self,
         payload: &str,
@@ -63,6 +65,7 @@ impl<'s, S: Storage<'s>> Db<S> {
     }
 
     /// Run the AST DatalogScript passed in.
+    #[must_use]
     pub fn run_script_ast(
         &'s self,
         payload: DatalogScript,
@@ -77,6 +80,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         }
     }
 
+    #[must_use]
     pub(crate) fn execute_single_program(
         &'s self,
         p: InputProgram,
@@ -154,6 +158,7 @@ impl<'s, S: Storage<'s>> Db<S> {
 
         Ok(res)
     }
+    #[must_use]
     pub(crate) fn explain_compiled(&self, strata: &[CompiledProgram]) -> Result<NamedRows> {
         let mut ret: Vec<JsonValue> = vec![];
         const STRATUM: &str = "stratum";
@@ -385,6 +390,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         Ok(NamedRows::new(headers, rows))
     }
     /// This is the entry to query evaluation
+    #[must_use]
     pub(crate) fn run_query(
         &self,
         tx: &mut SessionTx<'_>,

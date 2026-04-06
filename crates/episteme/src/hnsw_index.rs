@@ -141,6 +141,7 @@ impl HnswIndex {
 
     /// Try to load an existing index from disk, or create a new one.
     #[instrument(skip_all, fields(dir = ?config.persist_dir))]
+    #[must_use]
     pub(crate) fn open_or_create(config: HnswConfig) -> crate::error::Result<Arc<Self>> {
         if let Some(ref dir) = config.persist_dir {
             let graph_path = dir.join(format!("{}.hnsw.graph", &config.persist_basename));
@@ -200,6 +201,7 @@ impl HnswIndex {
     /// The `data_id` is caller-assigned and returned in search results.
     /// Returns an error if the vector dimension does not match the configured dimension.
     #[instrument(skip(self, vector), fields(data_id))]
+    #[must_use]
     pub(crate) fn insert(&self, vector: &[f32], data_id: usize) -> crate::error::Result<()> {
         if vector.len() != self.config.dim {
             return Err(HnswIndexSnafu {
@@ -243,6 +245,7 @@ impl HnswIndex {
     ///
     /// Returns an error if any vector dimension does not match the configured dimension.
     #[instrument(skip(self, vectors))]
+    #[must_use]
     pub(crate) fn insert_batch(&self, vectors: &[(&Vec<f32>, usize)]) -> crate::error::Result<()> {
         for (vec, _) in vectors {
             if vec.len() != self.config.dim {
@@ -296,6 +299,7 @@ impl HnswIndex {
     ///
     /// Writes two files: `{basename}.hnsw.graph` and `{basename}.hnsw.data`.
     #[instrument(skip(self))]
+    #[must_use]
     pub(crate) fn dump(&self) -> crate::error::Result<()> {
         let dir = self.config.persist_dir.as_ref().context(HnswIndexSnafu {
             message: "no persist_dir configured for HNSW dump",

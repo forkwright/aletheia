@@ -54,6 +54,7 @@ pub struct HistoryResult {
 /// System-role messages are always skipped (they're in the system prompt).
 /// Tool-result messages are included or skipped based on `config.include_tool_messages`.
 #[expect(clippy::cast_possible_wrap, reason = "message length fits in i64")]
+#[must_use]
 pub(crate) fn load_history(
     store: &SessionStore,
     session_id: &str,

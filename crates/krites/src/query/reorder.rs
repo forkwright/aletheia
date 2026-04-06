@@ -7,6 +7,7 @@ use crate::error::InternalResult as Result;
 use crate::query::error::*;
 
 impl NormalFormInlineRule {
+    #[must_use]
     pub(crate) fn convert_to_well_ordered_rule(self) -> Result<Self> {
         let mut seen_variables = BTreeSet::default();
         let mut round_1_collected = vec![];

@@ -50,6 +50,7 @@ use crate::hyperlink::OscLink;
 /// Returns [`error::Error::WizardAborted`] if the user presses Esc or Ctrl+C.
 ///
 /// Call [`wizard::is_tty`] first to verify the terminal supports interactive input.
+#[must_use]
 pub fn run_wizard(
     root: Option<std::path::PathBuf>,
     api_key: Option<String>,

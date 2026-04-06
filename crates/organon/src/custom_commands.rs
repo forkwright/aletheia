@@ -84,6 +84,7 @@ fn max_reversibility(a: Reversibility, b: Reversibility) -> Reversibility {
 /// # Errors
 ///
 /// Returns an error string if the file cannot be read or parsed.
+#[must_use]
 pub(crate) fn parse_command_file(path: &Path) -> Result<CustomCommandDef, String> {
     let content = std::fs::read_to_string(path)
         .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
@@ -95,6 +96,7 @@ pub(crate) fn parse_command_file(path: &Path) -> Result<CustomCommandDef, String
 /// # Errors
 ///
 /// Returns an error string if the YAML is malformed or missing required fields.
+#[must_use]
 pub(crate) fn parse_command_yaml(content: &str) -> Result<CustomCommandDef, String> {
     let def: CustomCommandDef =
         serde_yaml::from_str(content).map_err(|e| format!("invalid command YAML: {e}"))?;

@@ -12,6 +12,7 @@ use crate::runtime::temp_store::EpochStore;
 use crate::runtime::transact::SessionTx;
 
 impl<'a> SessionTx<'a> {
+    #[must_use]
     pub(crate) fn sort_and_collect(
         &mut self,
         original: EpochStore,

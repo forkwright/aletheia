@@ -154,6 +154,7 @@ impl ToolExecutor for SessionsSendExecutor {
 }
 
 /// Register communication tools.
+#[must_use]
 pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(message_def(), Box::new(MessageExecutor))?;
     registry.register(sessions_ask_def(), Box::new(SessionsAskExecutor))?;

@@ -96,6 +96,7 @@ impl<'de> Deserialize<'de> for SecretString {
 /// Deserialize an `Option<SecretString>` that treats empty strings as `None`.
 ///
 /// Useful for config fields where an empty value means "not set."
+#[must_use]
 pub(crate) fn deserialize_option_secret_non_empty<'de, D>(
     deserializer: D,
 ) -> Result<Option<SecretString>, D::Error>
@@ -119,6 +120,7 @@ where
     reason = "serde serialize_with requires &Option<T> signature"
 )]
 /// This exists for symmetry with [`deserialize_option_secret_non_empty`].
+#[must_use]
 pub(crate) fn serialize_option_secret_redacted<S>(
     value: &Option<SecretString>,
     serializer: S,

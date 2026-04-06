@@ -313,6 +313,7 @@ impl Oikos {
         clippy::result_large_err,
         reason = "shared Error enum contains figment::Error; boxing would require a crate-wide change"
     )]
+    #[must_use]
     pub fn validate_workspace_path(&self, workspace: &str) -> crate::error::Result<()> {
         use crate::error::WorkspacePathInvalidSnafu;
 

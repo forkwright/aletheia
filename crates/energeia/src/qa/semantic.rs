@@ -415,28 +415,28 @@ mod tests {
     fn classifies_cargo_build_as_mechanical() {
         let criteria = vec!["`cargo build --workspace` succeeds with zero warnings".to_owned()];
         let result = classify_criteria(&criteria);
-        assert_eq!(result[0].1, CriterionType::Mechanical);
+        assert_eq!(result.get(0).copied().unwrap_or_default().1, CriterionType::Mechanical);
     }
 
     #[test]
     fn classifies_clippy_as_mechanical() {
         let criteria = vec!["`cargo clippy --workspace` passes".to_owned()];
         let result = classify_criteria(&criteria);
-        assert_eq!(result[0].1, CriterionType::Mechanical);
+        assert_eq!(result.get(0).copied().unwrap_or_default().1, CriterionType::Mechanical);
     }
 
     #[test]
     fn classifies_implements_as_semantic() {
         let criteria = vec!["Implements proper error handling with context".to_owned()];
         let result = classify_criteria(&criteria);
-        assert_eq!(result[0].1, CriterionType::Semantic);
+        assert_eq!(result.get(0).copied().unwrap_or_default().1, CriterionType::Semantic);
     }
 
     #[test]
     fn defaults_to_semantic_on_no_keyword() {
         let criteria = vec!["The module does its thing".to_owned()];
         let result = classify_criteria(&criteria);
-        assert_eq!(result[0].1, CriterionType::Semantic);
+        assert_eq!(result.get(0).copied().unwrap_or_default().1, CriterionType::Semantic);
     }
 
     #[test]
@@ -444,7 +444,7 @@ mod tests {
         // NOTE: Contains both "test" (mechanical) and "handles" (semantic).
         let criteria = vec!["Test handles edge cases correctly".to_owned()];
         let result = classify_criteria(&criteria);
-        assert_eq!(result[0].1, CriterionType::Mechanical);
+        assert_eq!(result.get(0).copied().unwrap_or_default().1, CriterionType::Mechanical);
     }
 
     #[test]
@@ -457,16 +457,16 @@ mod tests {
         let result = classify_criteria(&criteria);
 
         assert_eq!(result.len(), 3);
-        assert_eq!(result[0].1, CriterionType::Mechanical);
-        assert_eq!(result[1].1, CriterionType::Semantic);
-        assert_eq!(result[2].1, CriterionType::Semantic);
+        assert_eq!(result.get(0).copied().unwrap_or_default().1, CriterionType::Mechanical);
+        assert_eq!(result.get(1).copied().unwrap_or_default().1, CriterionType::Semantic);
+        assert_eq!(result.get(2).copied().unwrap_or_default().1, CriterionType::Semantic);
     }
 
     #[test]
     fn case_insensitive_matching() {
         let criteria = vec!["CARGO BUILD succeeds".to_owned()];
         let result = classify_criteria(&criteria);
-        assert_eq!(result[0].1, CriterionType::Mechanical);
+        assert_eq!(result.get(0).copied().unwrap_or_default().1, CriterionType::Mechanical);
     }
 
     // -----------------------------------------------------------------------
@@ -550,8 +550,8 @@ mod tests {
         let results = parse_qa_response(json, &criteria);
 
         assert_eq!(results.len(), 2);
-        assert!(results[0].passed);
-        assert!(!results[1].passed);
+        assert!(results.get(0).copied().unwrap_or_default().passed);
+        assert!(!results.get(1).copied().unwrap_or_default().passed);
     }
 
     #[test]
@@ -562,7 +562,7 @@ mod tests {
         let results = parse_qa_response(raw, &criteria);
 
         assert_eq!(results.len(), 1);
-        assert!(results[0].passed);
+        assert!(results.get(0).copied().unwrap_or_default().passed);
     }
 
     #[test]
@@ -588,9 +588,9 @@ mod tests {
         let results = parse_qa_response(response, &criteria);
 
         assert_eq!(results.len(), 2);
-        assert!(results[0].passed);
-        assert!(!results[1].passed);
-        assert!(results[1].evidence.contains("Missing error context"));
+        assert!(results.get(0).copied().unwrap_or_default().passed);
+        assert!(!results.get(1).copied().unwrap_or_default().passed);
+        assert!(results.get(1).copied().unwrap_or_default().evidence.contains("Missing error context"));
     }
 
     #[test]
@@ -599,7 +599,7 @@ mod tests {
         let results = parse_qa_response("", &criteria);
 
         assert_eq!(results.len(), 1);
-        assert!(!results[0].passed);
+        assert!(!results.get(0).copied().unwrap_or_default().passed);
     }
 
     #[test]
@@ -625,9 +625,9 @@ mod tests {
         let results = parse_qa_response(json, &criteria);
 
         assert_eq!(results.len(), 2);
-        assert!(results[0].passed);
-        assert!(!results[1].passed);
-        assert!(results[1].evidence.contains("not evaluated"));
+        assert!(results.get(0).copied().unwrap_or_default().passed);
+        assert!(!results.get(1).copied().unwrap_or_default().passed);
+        assert!(results.get(1).copied().unwrap_or_default().evidence.contains("not evaluated"));
     }
 
     #[test]

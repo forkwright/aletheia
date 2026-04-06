@@ -14,6 +14,7 @@ use crate::parse::error::InvalidQuerySnafu;
 use crate::parse::expr::build_expr;
 use crate::parse::{ExtractSpan, Pair, Rule};
 
+#[must_use]
 pub(crate) fn parse_schema(
     pair: Pair<'_>,
 ) -> Result<(StoredRelationMetadata, Vec<Symbol>, Vec<Symbol>)> {
@@ -95,6 +96,7 @@ fn parse_col(pair: Pair<'_>) -> Result<(ColumnDef, Symbol)> {
     ))
 }
 
+#[must_use]
 pub(crate) fn parse_nullable_type(pair: Pair<'_>) -> Result<NullableColType> {
     let nullable = pair.as_str().ends_with('?');
     let coltype = parse_type_inner(pair.into_inner().next().unwrap_or_else(|| unreachable!()))?;

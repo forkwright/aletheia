@@ -30,6 +30,7 @@ impl SandboxPolicy {
     /// Designed to run in a child process via `pre_exec`. Returns `io::Error`
     /// on failure; on unsupported kernels, logs and continues based on
     /// enforcement mode.
+    #[must_use]
     pub(crate) fn apply(&self) -> std::io::Result<()> {
         self.apply_egress()?;
         self.apply_landlock()?;
@@ -392,6 +393,7 @@ pub fn probe_landlock_abi() -> Option<i32> {
 /// heap allocations. See the inline `SAFETY` and `WARNING` comments for the
 /// full risk analysis.
 #[cfg(target_os = "linux")]
+#[must_use]
 pub fn apply_sandbox(
     // kanon:ignore RUST/pub-visibility
     cmd: &mut std::process::Command,
@@ -498,6 +500,7 @@ pub fn apply_sandbox(
 
 /// Apply sandbox restrictions to a command. No-op on non-Linux platforms.
 #[cfg(not(target_os = "linux"))]
+#[must_use]
 pub fn apply_sandbox(
     // kanon:ignore RUST/pub-visibility
     _cmd: &mut std::process::Command,

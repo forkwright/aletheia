@@ -71,6 +71,7 @@ impl RetentionPolicy {
         dead_code,
         reason = "retention policy execution, awaiting daemon integration"
     )]
+    #[must_use]
     pub(crate) fn apply(&self, conn: &Connection, archive_dir: &Path) -> Result<RetentionResult> {
         let page_size = get_page_size(conn);
         let free_before = get_free_pages(conn);
@@ -79,9 +80,9 @@ impl RetentionPolicy {
 
         let cutoff = jiff::Timestamp::now()
             .checked_sub(jiff::SignedDuration::from_hours(
-                self.session_max_age_days as i64 * 24,
+                i64::from(self.session_max_age_days) * 24,
             ))
-            .expect("retention cutoff overflow");
+            .unwrap_or_default();
         let cutoff_str = cutoff.strftime("%Y-%m-%dT%H:%M:%SZ").to_string();
 
         let expired_sessions = find_expired_sessions(conn, &cutoff_str)?;
@@ -106,9 +107,9 @@ impl RetentionPolicy {
 
         let orphan_cutoff = jiff::Timestamp::now()
             .checked_sub(jiff::SignedDuration::from_hours(
-                self.orphan_message_max_age_days as i64 * 24,
+                i64::from(self.orphan_message_max_age_days) * 24,
             ))
-            .expect("orphan cutoff overflow");
+            .unwrap_or_default();
         let orphan_cutoff_str = orphan_cutoff.strftime("%Y-%m-%dT%H:%M:%SZ").to_string();
         result.messages_deleted = delete_orphan_messages(conn, &orphan_cutoff_str)?;
         result.orphan_rows_deleted = delete_orphan_related_rows(conn)?;
@@ -116,7 +117,7 @@ impl RetentionPolicy {
 
         let free_after = get_free_pages(conn);
         let freed_pages = free_after.saturating_sub(free_before);
-        result.bytes_freed = freed_pages as u64 * page_size as u64;
+        result.bytes_freed = u64::try_from(freed_pages).unwrap_or_default() * u64::try_from(page_size).unwrap_or_default();
 
         info!(
             sessions = result.sessions_deleted,
@@ -305,7 +306,7 @@ fn delete_sessions(conn: &Connection, session_ids: &[String]) -> Result<u32> {
         let rows = tx
             .execute("DELETE FROM sessions WHERE id = ?1", [session_id])
             .context(error::DatabaseSnafu)?;
-        count += rows as u32;
+        count += u32::try_from(rows).unwrap_or_default();
     }
 
     tx.commit().context(error::DatabaseSnafu)?;
@@ -319,7 +320,7 @@ fn delete_orphan_messages(conn: &Connection, cutoff: &str) -> Result<u32> {
             [cutoff],
         )
         .context(error::DatabaseSnafu)?;
-    Ok(rows as u32)
+    Ok(u32::try_from(rows).unwrap_or_default())
 }
 
 fn delete_orphan_related_rows(conn: &Connection) -> Result<u32> {
@@ -328,7 +329,7 @@ fn delete_orphan_related_rows(conn: &Connection) -> Result<u32> {
     for table in &["usage", "distillations", "agent_notes"] {
         let sql = format!("DELETE FROM {table} WHERE session_id NOT IN (SELECT id FROM sessions)");
         let rows = conn.execute(&sql, []).context(error::DatabaseSnafu)?;
-        let count = rows as u32;
+        let count = u32::try_from(rows).unwrap_or_default();
         if count > 0 {
             debug!(table, rows = count, "deleted orphan rows");
         }
@@ -345,7 +346,7 @@ fn delete_expired_blackboard(conn: &Connection) -> Result<u32> {
             [],
         )
         .context(error::DatabaseSnafu)?;
-    Ok(rows as u32)
+    Ok(u32::try_from(rows).unwrap_or_default())
 }
 
 fn get_page_size(conn: &Connection) -> u32 {

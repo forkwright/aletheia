@@ -761,6 +761,7 @@ fn issue_approve_def() -> ToolDef {
 /// # Errors
 ///
 /// Returns an error if any tool name collides with an already-registered tool.
+#[must_use]
 pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(issue_scan_def(), Box::new(IssueScanExecutor))?;
     registry.register(issue_triage_def(), Box::new(IssueTriageExecutor))?;

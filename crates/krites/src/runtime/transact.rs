@@ -36,6 +36,7 @@ const STATUS_STR: &str = "status";
 const OK_STR: &str = "OK";
 
 impl<'a> SessionTx<'a> {
+    #[must_use]
     pub(crate) fn get_returning_rows(
         &self,
         callback_collector: &mut CallbackCollector,
@@ -93,6 +94,7 @@ impl<'a> SessionTx<'a> {
         Ok(returned_rows)
     }
 
+    #[must_use]
     pub(crate) fn init_storage(&mut self) -> Result<RelationId> {
         let tuple = vec![DataValue::Null];
         let t_encoded = tuple.encode_as_key(RelationId::SYSTEM);
@@ -160,6 +162,7 @@ use crate::runtime::relation::{AccessLevel, extend_tuple_from_v};
 use crate::storage::Storage;
 
 impl<'s, S: Storage<'s>> Db<S> {
+    #[must_use]
     pub(crate) fn load_last_ids(&'s self) -> Result<()> {
         let mut tx = self.transact_write()?;
         self.relation_store_id
@@ -167,6 +170,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         tx.commit_tx()?;
         Ok(())
     }
+    #[must_use]
     pub(crate) fn transact(&'s self) -> Result<SessionTx<'s>> {
         let ret = SessionTx {
             store_tx: Box::new(self.db.transact(false)?),
@@ -177,6 +181,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         };
         Ok(ret)
     }
+    #[must_use]
     pub(crate) fn transact_write(&'s self) -> Result<SessionTx<'s>> {
         let ret = SessionTx {
             store_tx: Box::new(self.db.transact(true)?),
@@ -195,6 +200,7 @@ impl<'s, S: Storage<'s>> Db<S> {
     ///
     /// Write transactions _may_ block other reads, but we guarantee that this does not happen
     /// for the RocksDB backend.
+    #[must_use]
     pub fn run_multi_transaction(
         &'s self,
         is_write: bool,

@@ -398,6 +398,7 @@ fn extract_module_name(path: &str) -> String {
     dead_code,
     reason = "post-merge lesson persistence, feature-gated behind mneme-engine"
 )]
+#[must_use]
 pub(crate) fn persist_lesson(
     lesson: &ExtractedLesson,
     store: &crate::knowledge_store::KnowledgeStore,

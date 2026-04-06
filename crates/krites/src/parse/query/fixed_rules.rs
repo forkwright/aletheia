@@ -22,6 +22,7 @@ use crate::parse::{ExtractSpan, Pair, Rule};
 
 use super::atoms::parse_rule_head;
 
+#[must_use]
 pub(crate) fn parse_fixed_rule(
     src: Pair<'_>,
     param_pool: &BTreeMap<String, DataValue>,
@@ -313,6 +314,7 @@ pub(crate) fn make_empty_const_rule(prog: &mut InputProgram, bindings: &[Symbol]
     );
 }
 
+#[must_use]
 pub(crate) fn expr2vld_spec(expr: Expr, cur_vld: ValidityTs) -> Result<ValidityTs> {
     let _vld_span = expr.span();
     match expr.eval_to_const()? {

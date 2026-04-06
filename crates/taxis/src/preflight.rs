@@ -52,6 +52,7 @@ pub struct PreconditionError {
 ///
 /// Returns [`PreconditionError`] with all collected failures when any check
 /// does not pass. The error message is human-readable and actionable.
+#[must_use]
 pub fn check_preconditions(
     config: &AletheiaConfig,
     oikos: &Oikos,

@@ -9,6 +9,7 @@ use crate::data::error::*;
 type Result<T> = DataResult<T>;
 use crate::data::value::DataValue;
 
+#[must_use]
 pub(crate) fn op_and(args: &[DataValue]) -> Result<DataValue> {
     for arg in args {
         if !arg.get_bool().ok_or_else(|| {
@@ -24,6 +25,7 @@ pub(crate) fn op_and(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::from(true))
 }
 
+#[must_use]
 pub(crate) fn op_or(args: &[DataValue]) -> Result<DataValue> {
     for arg in args {
         if arg.get_bool().ok_or_else(|| {
@@ -39,6 +41,7 @@ pub(crate) fn op_or(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::from(false))
 }
 
+#[must_use]
 pub(crate) fn op_negate(args: &[DataValue]) -> Result<DataValue> {
     if let DataValue::Bool(b) = arg(args, 0)? {
         Ok(DataValue::from(!*b))
@@ -51,6 +54,7 @@ pub(crate) fn op_negate(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_bit_and(args: &[DataValue]) -> Result<DataValue> {
     match (arg(args, 0)?, arg(args, 1)?) {
         (DataValue::Bytes(left), DataValue::Bytes(right)) => {
@@ -72,6 +76,7 @@ pub(crate) fn op_bit_and(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_bit_or(args: &[DataValue]) -> Result<DataValue> {
     match (arg(args, 0)?, arg(args, 1)?) {
         (DataValue::Bytes(left), DataValue::Bytes(right)) => {
@@ -93,6 +98,7 @@ pub(crate) fn op_bit_or(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_bit_not(args: &[DataValue]) -> Result<DataValue> {
     match arg(args, 0)? {
         DataValue::Bytes(arg) => {
@@ -110,6 +116,7 @@ pub(crate) fn op_bit_not(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_bit_xor(args: &[DataValue]) -> Result<DataValue> {
     match (arg(args, 0)?, arg(args, 1)?) {
         (DataValue::Bytes(left), DataValue::Bytes(right)) => {
@@ -131,6 +138,7 @@ pub(crate) fn op_bit_xor(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_unpack_bits(args: &[DataValue]) -> Result<DataValue> {
     if let DataValue::Bytes(bs) = arg(args, 0)? {
         let mut ret = vec![false; bs.len() * 8];
@@ -156,6 +164,7 @@ pub(crate) fn op_unpack_bits(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_pack_bits(args: &[DataValue]) -> Result<DataValue> {
     if let DataValue::List(v) = arg(args, 0)? {
         #[expect(

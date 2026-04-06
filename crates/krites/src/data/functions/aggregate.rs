@@ -28,6 +28,7 @@ pub(crate) fn deep_merge_json(value1: JsonValue, value2: JsonValue) -> JsonValue
     }
 }
 
+#[must_use]
 pub(crate) fn get_index(mut i: i64, total: usize, is_upper: bool) -> Result<usize> {
     if i < 0 {
         #[expect(clippy::cast_possible_wrap, reason = "length fits i64")]
@@ -116,6 +117,7 @@ fn get_json_path_immutable_local<'a>(
     Ok(pointer)
 }
 
+#[must_use]
 pub(crate) fn get_impl(args: &[DataValue]) -> Result<DataValue> {
     match arg(args, 0)? {
         DataValue::List(l) => {
@@ -184,10 +186,12 @@ pub(crate) fn get_impl(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_list(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::List(args.to_vec()))
 }
 
+#[must_use]
 pub(crate) fn op_concat(args: &[DataValue]) -> Result<DataValue> {
     match arg(args, 0)? {
         DataValue::Str(_) => {
@@ -245,6 +249,7 @@ pub(crate) fn op_concat(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_append(args: &[DataValue]) -> Result<DataValue> {
     match arg(args, 0)? {
         DataValue::List(l) => {
@@ -265,6 +270,7 @@ pub(crate) fn op_append(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_prepend(args: &[DataValue]) -> Result<DataValue> {
     match arg(args, 0)? {
         DataValue::List(pl) => {
@@ -285,6 +291,7 @@ pub(crate) fn op_prepend(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_union(args: &[DataValue]) -> Result<DataValue> {
     let mut ret = BTreeSet::new();
     for arg in args {
@@ -307,6 +314,7 @@ pub(crate) fn op_union(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::List(ret.into_iter().collect()))
 }
 
+#[must_use]
 pub(crate) fn op_difference(args: &[DataValue]) -> Result<DataValue> {
     let mut start: BTreeSet<_> = match arg(args, 0)? {
         DataValue::List(l) => l.iter().cloned().collect(),
@@ -343,6 +351,7 @@ pub(crate) fn op_difference(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::List(start.into_iter().collect()))
 }
 
+#[must_use]
 pub(crate) fn op_intersection(args: &[DataValue]) -> Result<DataValue> {
     let mut start: BTreeSet<_> = match arg(args, 0)? {
         DataValue::List(l) => l.iter().cloned().collect(),
@@ -374,6 +383,7 @@ pub(crate) fn op_intersection(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::List(start.into_iter().collect()))
 }
 
+#[must_use]
 pub(crate) fn op_length(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::from(match arg(args, 0)? {
         DataValue::Set(s) => {
@@ -411,6 +421,7 @@ pub(crate) fn op_length(args: &[DataValue]) -> Result<DataValue> {
     }))
 }
 
+#[must_use]
 pub(crate) fn op_first(args: &[DataValue]) -> Result<DataValue> {
     Ok(arg(args, 0)?
         .get_slice()
@@ -426,6 +437,7 @@ pub(crate) fn op_first(args: &[DataValue]) -> Result<DataValue> {
         .unwrap_or(DataValue::Null))
 }
 
+#[must_use]
 pub(crate) fn op_last(args: &[DataValue]) -> Result<DataValue> {
     Ok(arg(args, 0)?
         .get_slice()
@@ -441,6 +453,7 @@ pub(crate) fn op_last(args: &[DataValue]) -> Result<DataValue> {
         .unwrap_or(DataValue::Null))
 }
 
+#[must_use]
 pub(crate) fn op_sorted(args: &[DataValue]) -> Result<DataValue> {
     let mut a = arg(args, 0)?
         .get_slice()
@@ -456,6 +469,7 @@ pub(crate) fn op_sorted(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::List(a))
 }
 
+#[must_use]
 pub(crate) fn op_reverse(args: &[DataValue]) -> Result<DataValue> {
     let mut a = arg(args, 0)?
         .get_slice()
@@ -471,6 +485,7 @@ pub(crate) fn op_reverse(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::List(a))
 }
 
+#[must_use]
 pub(crate) fn op_chunks(args: &[DataValue]) -> Result<DataValue> {
     let a = arg(args, 0)?.get_slice().ok_or_else(|| {
         TypeMismatchSnafu {
@@ -505,6 +520,7 @@ pub(crate) fn op_chunks(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::List(res))
 }
 
+#[must_use]
 pub(crate) fn op_chunks_exact(args: &[DataValue]) -> Result<DataValue> {
     let a = arg(args, 0)?.get_slice().ok_or_else(|| {
         TypeMismatchSnafu {
@@ -539,6 +555,7 @@ pub(crate) fn op_chunks_exact(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::List(res))
 }
 
+#[must_use]
 pub(crate) fn op_windows(args: &[DataValue]) -> Result<DataValue> {
     let a = arg(args, 0)?.get_slice().ok_or_else(|| {
         TypeMismatchSnafu {
@@ -573,6 +590,7 @@ pub(crate) fn op_windows(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::List(res))
 }
 
+#[must_use]
 pub(crate) fn op_get(args: &[DataValue]) -> Result<DataValue> {
     match get_impl(args) {
         Ok(res) => Ok(res),
@@ -586,6 +604,7 @@ pub(crate) fn op_get(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_maybe_get(args: &[DataValue]) -> Result<DataValue> {
     match get_impl(args) {
         Ok(res) => Ok(res),
@@ -593,6 +612,7 @@ pub(crate) fn op_maybe_get(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_slice(args: &[DataValue]) -> Result<DataValue> {
     let l = arg(args, 0)?.get_slice().ok_or_else(|| {
         TypeMismatchSnafu {
@@ -624,6 +644,7 @@ pub(crate) fn op_slice(args: &[DataValue]) -> Result<DataValue> {
     ))
 }
 
+#[must_use]
 pub(crate) fn op_int_range(args: &[DataValue]) -> Result<DataValue> {
     let [start, end] = match args.len() {
         1 => {
@@ -701,6 +722,7 @@ pub(crate) fn op_int_range(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::List((start..end).map(DataValue::from).collect()))
 }
 
+#[must_use]
 pub(crate) fn op_assert(args: &[DataValue]) -> Result<DataValue> {
     match arg(args, 0)? {
         DataValue::Bool(true) => Ok(DataValue::from(true)),

@@ -35,6 +35,7 @@ impl RateLimiter {
     ///
     /// Returns `Ok(())` when permitted, or an MCP error when the bucket is
     /// exhausted.
+    #[must_use]
     pub(crate) fn check(&self, tier: Tier) -> Result<(), rmcp::ErrorData> {
         if !self.enabled {
             return Ok(());

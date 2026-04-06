@@ -120,6 +120,7 @@ pub(crate) fn no_implementation_err(op: &str) -> DataError {
 }
 
 impl Expr {
+    #[must_use]
     pub(crate) fn compile(&self) -> Result<Vec<Bytecode>> {
         let mut collector = vec![];
         expr2bytecode(self, &mut collector)?;
@@ -180,6 +181,7 @@ impl Expr {
             v => vec![v.clone()],
         }
     }
+    #[must_use]
     pub(crate) fn fill_binding_indices(
         &mut self,
         binding_map: &BTreeMap<Symbol, usize>,
@@ -215,6 +217,7 @@ impl Expr {
         }
         Ok(())
     }
+    #[must_use]
     pub(crate) fn binding_indices(&self) -> Result<BTreeSet<usize>> {
         let mut ret = BTreeSet::default();
         self.do_binding_indices(&mut ret)?;
@@ -259,6 +262,7 @@ impl Expr {
             .into()),
         }
     }
+    #[must_use]
     pub(crate) fn partial_eval(&mut self) -> Result<()> {
         if let Expr::Apply { args, span, .. } = self {
             let span = *span;
@@ -291,11 +295,13 @@ impl Expr {
         }
         Ok(())
     }
+    #[must_use]
     pub(crate) fn bindings(&self) -> Result<BTreeSet<Symbol>> {
         let mut ret = BTreeSet::new();
         self.collect_bindings(&mut ret)?;
         Ok(ret)
     }
+    #[must_use]
     pub(crate) fn collect_bindings(&self, coll: &mut BTreeSet<Symbol>) -> Result<()> {
         match self {
             Expr::Binding { var, .. } => {
@@ -320,6 +326,7 @@ impl Expr {
         }
         Ok(())
     }
+    #[must_use]
     pub(crate) fn eval(&self, bindings: impl AsRef<[DataValue]>) -> Result<DataValue> {
         match self {
             Expr::Binding { var, tuple_pos, .. } => match tuple_pos {
@@ -366,6 +373,7 @@ impl Expr {
             Expr::UnboundApply { op, .. } => Err(no_implementation_err(op).into()),
         }
     }
+    #[must_use]
     pub(crate) fn extract_bound(&self, target: &Symbol) -> Result<ValueRange> {
         Ok(match self {
             Expr::Binding { .. } | Expr::Const { .. } | Expr::Cond { .. } => ValueRange::default(),
@@ -451,6 +459,7 @@ impl Expr {
         dead_code,
         reason = "utility method for variable introspection, retained for future analysis"
     )]
+    #[must_use]
     pub(crate) fn get_variables(&self) -> Result<BTreeSet<String>> {
         let mut ret = BTreeSet::new();
         self.do_get_variables(&mut ret)?;
@@ -480,6 +489,7 @@ impl Expr {
         }
         Ok(())
     }
+    #[must_use]
     pub(crate) fn to_var_list(&self) -> Result<Vec<CompactString>> {
         match self {
             Expr::Apply { op, args, .. } => {
@@ -516,6 +526,7 @@ impl Expr {
     }
 }
 
+#[must_use]
 pub(crate) fn compute_bounds(
     filters: &[Expr],
     symbols: &[Symbol],

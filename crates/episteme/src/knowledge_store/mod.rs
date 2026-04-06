@@ -285,12 +285,14 @@ impl KnowledgeStore {
 
     /// Open an in-memory knowledge store with default configuration.
     #[instrument]
+    #[must_use]
     pub fn open_mem() -> crate::error::Result<std::sync::Arc<Self>> {
         Self::open_mem_with_config(KnowledgeConfig::default())
     }
 
     /// Open an in-memory knowledge store with custom configuration.
     #[instrument]
+    #[must_use]
     pub fn open_mem_with_config(
         config: KnowledgeConfig,
     ) -> crate::error::Result<std::sync::Arc<Self>> {
@@ -315,6 +317,7 @@ impl KnowledgeStore {
     /// native read-your-own-writes.
     #[cfg(feature = "storage-fjall")]
     #[instrument(skip(path))]
+    #[must_use]
     pub fn open_fjall(
         path: impl AsRef<std::path::Path>,
         config: KnowledgeConfig,
@@ -477,6 +480,7 @@ impl KnowledgeStore {
     }
 
     /// Query the stored schema version from the database.
+    #[must_use]
     pub fn schema_version(&self) -> crate::error::Result<i64> {
         use std::collections::BTreeMap;
 
@@ -503,6 +507,7 @@ impl KnowledgeStore {
     /// Returns a [`QueryResult`] rather than raw `NamedRows` to keep `CozoDB`
     /// internals encapsulated. Access row values via `result.rows[i][j]`.
     #[instrument(skip(self, params))]
+    #[must_use]
     pub fn run_query(
         &self,
         script: &str,
@@ -522,6 +527,7 @@ impl KnowledgeStore {
     /// Returns a [`QueryResult`] rather than raw `NamedRows` to keep `CozoDB` internals
     /// encapsulated.
     #[instrument(skip(self, params))]
+    #[must_use]
     pub fn run_query_with_timeout(
         &self,
         script: &str,
@@ -555,6 +561,7 @@ impl KnowledgeStore {
     /// Returns a [`QueryResult`] rather than raw `NamedRows` to keep `CozoDB` internals
     /// encapsulated.
     #[instrument(skip(self, params))]
+    #[must_use]
     pub fn run_mut_query(
         &self,
         script: &str,
@@ -577,6 +584,7 @@ impl KnowledgeStore {
     /// Delegates to the inner engine's `backup_db`. Currently returns an error
     /// for in-memory and redb backends (`SQLite` storage support was removed).
     #[instrument(skip(self, out_file))]
+    #[must_use]
     pub fn backup_db(&self, out_file: impl AsRef<std::path::Path>) -> crate::error::Result<()> {
         self.db.backup_db(out_file).map_err(|e| {
             crate::error::EngineQuerySnafu {
@@ -591,6 +599,7 @@ impl KnowledgeStore {
     /// Delegates to the inner engine's `restore_backup`. Currently returns an error
     /// for in-memory and redb backends (`SQLite` storage support was removed).
     #[instrument(skip(self, in_file))]
+    #[must_use]
     pub fn restore_backup(&self, in_file: impl AsRef<std::path::Path>) -> crate::error::Result<()> {
         self.db.restore_backup(in_file).map_err(|e| {
             crate::error::EngineQuerySnafu {
@@ -605,6 +614,7 @@ impl KnowledgeStore {
     /// Delegates to the inner engine's `import_from_backup`. Currently returns an error
     /// for in-memory and redb backends (`SQLite` storage support was removed).
     #[instrument(skip(self, in_file))]
+    #[must_use]
     pub fn import_from_backup(
         &self,
         in_file: impl AsRef<std::path::Path>,
@@ -626,6 +636,7 @@ impl KnowledgeStore {
     /// Returns a [`QueryResult`] rather than raw `NamedRows` to keep `CozoDB` internals
     /// encapsulated.
     #[instrument(skip(self, params))]
+    #[must_use]
     pub fn run_script_read_only(
         &self,
         script: &str,
@@ -636,6 +647,7 @@ impl KnowledgeStore {
 
     /// Read a single fact by its ID (all temporal records matching).
     /// Returns all fields; does not apply time/validity filters.
+    #[must_use]
     pub fn read_facts_by_id(&self, id: &str) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
         use std::collections::BTreeMap;
 

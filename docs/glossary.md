@@ -49,10 +49,10 @@ communication channels and the agent pipeline.
 **Etymology.** From *διά* (through, across) + *νοῦς* (mind). Plato's term for discursive
 reasoning: the mode of thought that works *through* problems step by step, as opposed to
 noesis (immediate insight). In the divided line of *Republic* VI, dianoia occupies the
-upper-sensible region - reasoning that still relies on hypotheses and images rather than
+upper-sensible region - reasoning that still relies on hypotheses and images instead of
 grasping Forms directly.
 
-**In this codebase.** The multi-phase planning orchestrator. Implements structured reasoning
+**In this codebase.** The multi-phase planning orchestrator implements structured reasoning
 that breaks complex tasks into steps, tracks project context, and coordinates sequential
 execution.
 
@@ -94,10 +94,10 @@ live Aletheia instance to verify agent behavior matches specification.
 **εἶδος** (*eí-dos*)
 
 **Etymology.** From *εἴδω* (to see, to know). The visible form: the essential shape that
-makes a thing *this kind* of thing rather than another. Plato's term for the intelligible
+makes a thing *this kind* of thing instead of another. Plato's term for the intelligible
 forms; Aristotle's term for the formal cause.
 
-**In this codebase.** The shared memory type library. Defines `Fact`, `Session`, `NousId`,
+**In this codebase.** The shared memory type library defines `Fact`, `Session`, `NousId`,
 and other domain types - the forms that make a fact a Fact, a session a Session.
 
 **Crate.** `eidos` (low layer) - shared memory types.

@@ -13,7 +13,7 @@ use regex::Regex;
 // through macro expansion on static items.
 macro_rules! static_regex {
     ($name:ident, $pattern:expr) => {
-        #[allow(clippy::expect_used)]
+        #[expect(clippy::expect_used, reason = "static regex pattern is compile-time constant")]
         static $name: LazyLock<Regex> = LazyLock::new(||
             Regex::new($pattern).expect("static regex must compile")
         );

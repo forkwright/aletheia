@@ -309,6 +309,7 @@ pub(crate) fn dijkstra<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal + Clone>(
         .collect_vec()
 }
 
+#[must_use]
 pub(crate) fn dijkstra_keep_ties<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal + Clone>(
     edges: &DirectedCsrGraph<f32>,
     start: u32,

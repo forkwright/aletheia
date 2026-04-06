@@ -277,14 +277,14 @@ Store images on disk in `$XDG_DATA_HOME/aletheia/attachments/<hash>.ext` and ref
 - Pro: SQLite stays small, filesystem handles binary well, deduplication by content hash
 - Con: Two storage systems to manage, orphan cleanup needed, backup complexity
 
-**Recommendation: Option B for phase 1.** SQLite handles BLOBs well up to moderate sizes. The message content column stores a placeholder (`[image:1]`) while the actual binary lives in the attachments table. This keeps existing text queries fast while supporting binary data. Option C is the right choice if images become large or frequent, but it adds operational complexity that is not justified until storage pressure is measured.
+**Recommendation: Option B for phase 1.** SQLite handles BLOBs well up to moderate sizes. The message content column stores a placeholder (`[image:1]`) while the actual binary lives in the attachments table. This keeps existing text queries fast while supporting binary data. Option C is the right choice if images become large or frequent, but it adds operational complexity that is not justified until measuring storage pressure.
 
 #### 3.6 TUI rendering
 
 The theatron image system renders from file paths detected in text. To render images from message content blocks:
 
 1. **History loading**: When loading history messages, parse content blocks and extract image attachments
-2. **Inline rendering**: Use the existing half-block renderer but from in-memory image data rather than file paths
+2. **Inline rendering**: Use the existing half-block renderer but from in-memory image data instead of file paths
 3. **Placeholder text**: For TextOnly terminals, show `[image: 800x600 jpeg, 340 KB]`
 4. **Streaming**: Image blocks in user messages are sent before streaming begins, so no streaming-specific handling is needed
 

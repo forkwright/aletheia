@@ -22,6 +22,7 @@ pub(crate) enum DataExtractor {
 }
 
 impl DataExtractor {
+    #[must_use]
     pub(crate) fn extract_data(&self, tuple: &Tuple, cur_vld: ValidityTs) -> Result<DataValue> {
         Ok(match self {
             DataExtractor::DefaultExtractor(expr, typ) => typ
@@ -44,6 +45,7 @@ impl DataExtractor {
     }
 }
 
+#[must_use]
 pub(crate) fn make_extractors(
     stored: &[ColumnDef],
     input: &[ColumnDef],
@@ -56,6 +58,7 @@ pub(crate) fn make_extractors(
         .try_collect()
 }
 
+#[must_use]
 pub(crate) fn make_update_extractors(
     stored: &[ColumnDef],
     input: &[ColumnDef],
@@ -74,6 +77,7 @@ pub(crate) fn make_update_extractors(
     Ok(extractors)
 }
 
+#[must_use]
 pub(crate) fn make_extractor(
     stored: &ColumnDef,
     input: &[ColumnDef],

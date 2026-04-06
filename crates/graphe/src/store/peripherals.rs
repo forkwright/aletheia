@@ -11,6 +11,7 @@ use crate::types::{AgentNote, BlackboardRow};
 impl SessionStore {
     /// Add an agent note.
     #[instrument(skip(self, content))]
+    #[must_use]
     pub fn add_note(
         &self,
         session_id: &str,
@@ -32,6 +33,7 @@ impl SessionStore {
 
     /// Get notes for a session.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn get_notes(&self, session_id: &str) -> Result<Vec<AgentNote>> {
         let mut stmt = self
             .conn
@@ -62,6 +64,7 @@ impl SessionStore {
 
     /// Delete a note by ID.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn delete_note(&self, note_id: i64) -> Result<bool> {
         self.require_writable()?;
         let rows = self
@@ -73,6 +76,7 @@ impl SessionStore {
 
     /// Write or update a blackboard entry. Upserts on key.
     #[instrument(skip(self, value), level = "debug")]
+    #[must_use]
     pub fn blackboard_write(
         &self,
         key: &str,
@@ -99,6 +103,7 @@ impl SessionStore {
 
     /// Read a blackboard entry by key, filtering expired entries.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn blackboard_read(&self, key: &str) -> Result<Option<BlackboardRow>> {
         let result = self
             .conn
@@ -125,6 +130,7 @@ impl SessionStore {
 
     /// List all non-expired blackboard entries.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn blackboard_list(&self) -> Result<Vec<BlackboardRow>> {
         let mut stmt = self
             .conn
@@ -162,6 +168,7 @@ impl SessionStore {
     /// reclaim space from entries whose TTL has elapsed.
     #[instrument(skip(self))]
     #[expect(dead_code, reason = "blackboard cleanup called by retention runner")]
+    #[must_use]
     pub(crate) fn cleanup_expired_entries(&self) -> Result<u64> {
         self.require_writable()?;
         let deleted = self
@@ -175,11 +182,12 @@ impl SessionStore {
             clippy::as_conversions,
             reason = "usize-to-u64 is always widening on supported targets"
         )]
-        Ok(deleted as u64)
+        Ok(u64::try_from(deleted).unwrap_or_default())
     }
 
     /// Delete a blackboard entry. Only the original author can delete.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn blackboard_delete(&self, key: &str, author: &str) -> Result<bool> {
         self.require_writable()?;
         let rows = self

@@ -41,6 +41,7 @@ fn save_err(reason: String) -> crate::error::InternalError {
 /// # Errors
 ///
 /// Returns an error if the write, fsync, or rename fails.
+#[must_use]
 pub(crate) fn atomic_write(target_path: &Path, data: &[u8]) -> Result<()> {
     let parent = target_path.parent().unwrap_or_else(|| Path::new("."));
     let temp_path = temp_path_for(target_path);
@@ -146,6 +147,7 @@ fn fsync_dir(path: &Path) -> Result<()> {
 /// # Errors
 ///
 /// Returns an error if serialization or the atomic write fails.
+#[must_use]
 pub(crate) fn atomic_save_state<T: serde::Serialize>(path: &Path, state: &T) -> Result<()> {
     let data = rmp_serde::to_vec(state).map_err(|e| save_err(format!("serialize: {e}")))?;
     atomic_write(path, &data)
@@ -156,6 +158,7 @@ pub(crate) fn atomic_save_state<T: serde::Serialize>(path: &Path, state: &T) -> 
 /// # Errors
 ///
 /// Returns an error if the file exists but cannot be read or deserialized.
+#[must_use]
 pub(crate) fn load_state<T: serde::de::DeserializeOwned>(path: &Path) -> Result<Option<T>> {
     #[expect(
         clippy::disallowed_methods,

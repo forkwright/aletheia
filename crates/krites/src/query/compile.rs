@@ -90,6 +90,7 @@ pub(crate) enum IndexPositionUse {
 }
 
 impl<'a> SessionTx<'a> {
+    #[must_use]
     pub(crate) fn stratified_magic_compile(
         &mut self,
         prog: StratifiedMagicProgram,
@@ -144,6 +145,7 @@ impl<'a> SessionTx<'a> {
             .try_collect()?;
         Ok(compiled)
     }
+    #[must_use]
     pub(crate) fn compile_magic_rule_body(
         &mut self,
         rule: &MagicInlineRule,

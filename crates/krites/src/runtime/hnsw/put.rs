@@ -444,6 +444,7 @@ impl<'a> SessionTx<'a> {
     ///
     /// Delegates to [`hnsw_search_level_pooled`](Self::hnsw_search_level_pooled)
     /// without a visited-list pool (fresh allocation per call).
+    #[must_use]
     pub(crate) fn hnsw_search_level(
         &self,
         q: &Vector,
@@ -463,6 +464,7 @@ impl<'a> SessionTx<'a> {
     ///
     /// When a [`VisitedPool`] is provided, the visited set is acquired from the
     /// pool and returned after use, eliminating per-search allocation.
+    #[must_use]
     pub(crate) fn hnsw_search_level_pooled(
         &self,
         q: &Vector,
@@ -635,6 +637,7 @@ impl<'a> SessionTx<'a> {
         idx_table.scan_prefix(self, &prefix).count()
     }
 
+    #[must_use]
     pub(crate) fn hnsw_put(
         &mut self,
         manifest: &HnswIndexManifest,
@@ -726,6 +729,7 @@ impl<'a> SessionTx<'a> {
         dead_code,
         reason = "entry point for maintenance tasks — not yet wired INTO scheduler"
     )]
+    #[must_use]
     pub(crate) fn hnsw_check_consistency(
         &self,
         manifest: &HnswIndexManifest,

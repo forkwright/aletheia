@@ -11,6 +11,7 @@ type Result<T> = DataResult<T>;
 use crate::data::relation::VecElementType;
 use crate::data::value::{DataValue, Vector};
 
+#[must_use]
 pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
     let t = match args.get(1) {
         Some(DataValue::Str(s)) => match s as &str {
@@ -206,6 +207,7 @@ pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_rand_vec(args: &[DataValue]) -> Result<DataValue> {
     let len_i64 = arg(args, 0)?.get_int().ok_or_else(|| {
         TypeMismatchSnafu {
@@ -265,6 +267,7 @@ pub(crate) fn op_rand_vec(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_l2_normalize(args: &[DataValue]) -> Result<DataValue> {
     let a = arg(args, 0)?;
     match a {
@@ -284,6 +287,7 @@ pub(crate) fn op_l2_normalize(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_l2_dist(args: &[DataValue]) -> Result<DataValue> {
     let a = arg(args, 0)?;
     let b = arg(args, 1)?;
@@ -318,6 +322,7 @@ pub(crate) fn op_l2_dist(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_ip_dist(args: &[DataValue]) -> Result<DataValue> {
     let a = arg(args, 0)?;
     let b = arg(args, 1)?;
@@ -352,6 +357,7 @@ pub(crate) fn op_ip_dist(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_cos_dist(args: &[DataValue]) -> Result<DataValue> {
     let a = arg(args, 0)?;
     let b = arg(args, 1)?;

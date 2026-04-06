@@ -23,6 +23,7 @@ use crate::wizard::state::{FieldKind, TOTAL_STEPS};
 ///
 /// The caller is responsible for checking whether the terminal supports a TUI
 /// (e.g., via [`std::io::IsTerminal`]) before calling this function.
+#[must_use]
 pub(crate) fn run(
     root: Option<PathBuf>,
     api_key: Option<String>,

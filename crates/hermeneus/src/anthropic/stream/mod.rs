@@ -55,6 +55,7 @@ mod accumulator;
 pub(crate) use accumulator::StreamAccumulator;
 
 #[cfg(test)]
+#[must_use]
 pub(crate) fn parse_sse_stream(
     mut reader: impl std::io::BufRead,
     accumulator: &mut StreamAccumulator,

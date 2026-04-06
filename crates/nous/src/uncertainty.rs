@@ -85,6 +85,7 @@ impl UncertaintyTracker {
         dead_code,
         reason = "WIP: uncertainty calibration for agent confidence tracking"
     )]
+    #[must_use]
     pub(crate) fn open(path: &std::path::Path) -> error::Result<Self> {
         let conn = Connection::open(path).context(error::UncertaintyStoreSnafu {
             message: "failed to open uncertainty database",
@@ -105,6 +106,7 @@ impl UncertaintyTracker {
         dead_code,
         reason = "WIP: uncertainty calibration for agent confidence tracking"
     )]
+    #[must_use]
     pub(crate) fn open_in_memory() -> error::Result<Self> {
         let conn = Connection::open_in_memory().context(error::UncertaintyStoreSnafu {
             message: "failed to open in-memory uncertainty database",
@@ -154,6 +156,7 @@ impl UncertaintyTracker {
         dead_code,
         reason = "WIP: uncertainty calibration for agent confidence tracking"
     )]
+    #[must_use]
     pub(crate) fn record(
         &self,
         nous_id: &str,
@@ -189,6 +192,7 @@ impl UncertaintyTracker {
     ///
     /// Returns `UncertaintyStore` on database read failure.
     #[expect(dead_code, reason = "WIP: agent pipeline infrastructure")]
+    #[must_use]
     pub(crate) fn calibration_curve(
         &self,
         nous_id: Option<&str>,
@@ -205,6 +209,7 @@ impl UncertaintyTracker {
     ///
     /// Returns `UncertaintyStore` on database read failure.
     #[expect(dead_code, reason = "WIP: agent pipeline infrastructure")]
+    #[must_use]
     pub(crate) fn brier_score(&self, nous_id: Option<&str>) -> error::Result<f64> {
         let points = self.load_points(nous_id)?;
         Ok(compute_brier_score(&points))
@@ -219,6 +224,7 @@ impl UncertaintyTracker {
     ///
     /// Returns `UncertaintyStore` on database read failure.
     #[expect(dead_code, reason = "WIP: agent pipeline infrastructure")]
+    #[must_use]
     pub(crate) fn ece(&self, nous_id: Option<&str>) -> error::Result<f64> {
         let points = self.load_points(nous_id)?;
         let curve = compute_calibration_curve(&points);
@@ -233,6 +239,7 @@ impl UncertaintyTracker {
     /// # Errors
     ///
     /// Returns `UncertaintyStore` on database read failure.
+    #[must_use]
     pub(crate) fn overconfidence_patterns(
         &self,
         nous_id: &str,
@@ -293,6 +300,7 @@ impl UncertaintyTracker {
         dead_code,
         reason = "WIP: uncertainty calibration for agent confidence tracking"
     )]
+    #[must_use]
     pub(crate) fn summary(&self, nous_id: &str) -> error::Result<CalibrationSummary> {
         let points = self.load_points(Some(nous_id))?;
         let curve = compute_calibration_curve(&points);
@@ -564,7 +572,7 @@ mod tests {
     fn ece_zero_for_perfectly_calibrated() {
         let points: Vec<(f64, bool)> = (0..NUM_BINS)
             .flat_map(|i| {
-                let midpoint = ((i as f64) * BIN_WIDTH) + (BIN_WIDTH / 2.0);
+                let midpoint = ((f64::try_from(i).unwrap_or_default()) * BIN_WIDTH) + (BIN_WIDTH / 2.0);
                 let correct_count = (midpoint * 10.0).round() as usize;
                 let wrong_count = 10 - correct_count;
                 let mut bin_points = Vec::new();
@@ -680,7 +688,7 @@ mod tests {
 
         let points = t.load_points(Some("syn")).unwrap();
         assert!(
-            points.len() <= (MAX_CALIBRATION_POINTS as usize),
+            points.len() <= (usize::try_from(MAX_CALIBRATION_POINTS).unwrap_or_default()),
             "should prune to at most {MAX_CALIBRATION_POINTS} points, got {}",
             points.len()
         );

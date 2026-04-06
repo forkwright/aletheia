@@ -53,6 +53,7 @@ impl Default for MagicRulesOrFixed {
 }
 
 impl MagicRulesOrFixed {
+    #[must_use]
     pub(crate) fn arity(&self) -> Result<usize> {
         Ok(match self {
             MagicRulesOrFixed::Rules { rules } => {

@@ -18,6 +18,7 @@ use aletheia_mneme::knowledge_store::KnowledgeStore;
 use aletheia_mneme::store::SessionStore;
 use aletheia_organon::registry::ToolRegistry;
 use aletheia_organon::types::ToolServices;
+use aletheia_koina::secret::SecretString;
 use aletheia_taxis::oikos::Oikos;
 
 use crate::bootstrap::BootstrapSection;
@@ -286,7 +287,7 @@ impl NousActor {
                                     panic_count: self.runtime.panic_count,
                                 }.build()));
                             } else {
-                                self.handle_turn(session_key, session_id, content, span, reply).await;
+                                self.handle_turn(SecretString::from(session_key), session_id, content, span, reply).await;
                             }
                         }
                         NousMessage::StreamingTurn {
@@ -304,7 +305,7 @@ impl NousActor {
                                 }.build()));
                                 drop(stream_tx);
                             } else {
-                                self.handle_streaming_turn(session_key, session_id, content, stream_tx, span, reply).await;
+                                self.handle_streaming_turn(SecretString::from(session_key), session_id, content, stream_tx, span, reply).await;
                             }
                         }
                         NousMessage::Status { reply } => {

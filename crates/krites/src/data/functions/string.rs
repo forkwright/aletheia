@@ -11,6 +11,7 @@ use crate::data::error::*;
 type Result<T> = DataResult<T>;
 use crate::data::value::{DataValue, RegexWrapper};
 
+#[must_use]
 pub(crate) fn op_str_includes(args: &[DataValue]) -> Result<DataValue> {
     match (arg(args, 0)?, arg(args, 1)?) {
         (DataValue::Str(l), DataValue::Str(r)) => Ok(DataValue::from(l.find(r as &str).is_some())),
@@ -22,6 +23,7 @@ pub(crate) fn op_str_includes(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_lowercase(args: &[DataValue]) -> Result<DataValue> {
     match arg(args, 0)? {
         DataValue::Str(s) => Ok(DataValue::from(s.to_lowercase())),
@@ -33,6 +35,7 @@ pub(crate) fn op_lowercase(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_uppercase(args: &[DataValue]) -> Result<DataValue> {
     match arg(args, 0)? {
         DataValue::Str(s) => Ok(DataValue::from(s.to_uppercase())),
@@ -44,6 +47,7 @@ pub(crate) fn op_uppercase(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_trim(args: &[DataValue]) -> Result<DataValue> {
     match arg(args, 0)? {
         DataValue::Str(s) => Ok(DataValue::from(s.trim())),
@@ -55,6 +59,7 @@ pub(crate) fn op_trim(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_trim_start(args: &[DataValue]) -> Result<DataValue> {
     match arg(args, 0)? {
         DataValue::Str(s) => Ok(DataValue::from(s.trim_start())),
@@ -66,6 +71,7 @@ pub(crate) fn op_trim_start(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_trim_end(args: &[DataValue]) -> Result<DataValue> {
     match arg(args, 0)? {
         DataValue::Str(s) => Ok(DataValue::from(s.trim_end())),
@@ -77,6 +83,7 @@ pub(crate) fn op_trim_end(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_starts_with(args: &[DataValue]) -> Result<DataValue> {
     match (arg(args, 0)?, arg(args, 1)?) {
         (DataValue::Str(l), DataValue::Str(r)) => Ok(DataValue::from(l.starts_with(r as &str))),
@@ -91,6 +98,7 @@ pub(crate) fn op_starts_with(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_ends_with(args: &[DataValue]) -> Result<DataValue> {
     match (arg(args, 0)?, arg(args, 1)?) {
         (DataValue::Str(l), DataValue::Str(r)) => Ok(DataValue::from(l.ends_with(r as &str))),
@@ -103,6 +111,7 @@ pub(crate) fn op_ends_with(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_regex(args: &[DataValue]) -> Result<DataValue> {
     Ok(match arg(args, 0)? {
         r @ DataValue::Regex(_) => r.clone(),
@@ -119,6 +128,7 @@ pub(crate) fn op_regex(args: &[DataValue]) -> Result<DataValue> {
     })
 }
 
+#[must_use]
 pub(crate) fn op_regex_matches(args: &[DataValue]) -> Result<DataValue> {
     match (arg(args, 0)?, arg(args, 1)?) {
         (DataValue::Str(s), DataValue::Regex(r)) => Ok(DataValue::from(r.0.is_match(s))),
@@ -130,6 +140,7 @@ pub(crate) fn op_regex_matches(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_regex_replace(args: &[DataValue]) -> Result<DataValue> {
     match (arg(args, 0)?, arg(args, 1)?, arg(args, 2)?) {
         (DataValue::Str(s), DataValue::Regex(r), DataValue::Str(rp)) => {
@@ -143,6 +154,7 @@ pub(crate) fn op_regex_replace(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_regex_replace_all(args: &[DataValue]) -> Result<DataValue> {
     match (arg(args, 0)?, arg(args, 1)?, arg(args, 2)?) {
         (DataValue::Str(s), DataValue::Regex(r), DataValue::Str(rp)) => {
@@ -156,6 +168,7 @@ pub(crate) fn op_regex_replace_all(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_regex_extract(args: &[DataValue]) -> Result<DataValue> {
     match (arg(args, 0)?, arg(args, 1)?) {
         (DataValue::Str(s), DataValue::Regex(r)) => {
@@ -173,6 +186,7 @@ pub(crate) fn op_regex_extract(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_regex_extract_first(args: &[DataValue]) -> Result<DataValue> {
     match (arg(args, 0)?, arg(args, 1)?) {
         (DataValue::Str(s), DataValue::Regex(r)) => {
@@ -187,6 +201,7 @@ pub(crate) fn op_regex_extract_first(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_unicode_normalize(args: &[DataValue]) -> Result<DataValue> {
     match (arg(args, 0)?, arg(args, 1)?) {
         (DataValue::Str(s), DataValue::Str(n)) => Ok(DataValue::Str(match n as &str {
@@ -209,6 +224,7 @@ pub(crate) fn op_unicode_normalize(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_encode_base64(args: &[DataValue]) -> Result<DataValue> {
     match arg(args, 0)? {
         DataValue::Bytes(b) => {
@@ -223,6 +239,7 @@ pub(crate) fn op_encode_base64(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_decode_base64(args: &[DataValue]) -> Result<DataValue> {
     match arg(args, 0)? {
         DataValue::Str(s) => {
@@ -242,6 +259,7 @@ pub(crate) fn op_decode_base64(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_chars(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::List(
         arg(args, 0)?
@@ -263,6 +281,7 @@ pub(crate) fn op_chars(args: &[DataValue]) -> Result<DataValue> {
     ))
 }
 
+#[must_use]
 pub(crate) fn op_slice_string(args: &[DataValue]) -> Result<DataValue> {
     let s = arg(args, 0)?.get_str().ok_or_else(|| {
         TypeMismatchSnafu {
@@ -302,6 +321,7 @@ pub(crate) fn op_slice_string(args: &[DataValue]) -> Result<DataValue> {
     ))
 }
 
+#[must_use]
 pub(crate) fn op_from_substrings(args: &[DataValue]) -> Result<DataValue> {
     let mut ret = String::new();
     match arg(args, 0)? {

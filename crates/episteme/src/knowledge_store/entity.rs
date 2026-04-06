@@ -15,6 +15,7 @@ use super::{KnowledgeStore, QueryResult, queries};
 impl KnowledgeStore {
     /// Insert or update an entity.
     #[instrument(skip(self, entity), fields(entity_id = %entity.id))]
+    #[must_use]
     pub fn insert_entity(&self, entity: &crate::knowledge::Entity) -> crate::error::Result<()> {
         use snafu::ensure;
         ensure!(!entity.name.is_empty(), crate::error::EmptyEntityNameSnafu);
@@ -24,6 +25,7 @@ impl KnowledgeStore {
 
     /// Insert a relationship.
     #[instrument(skip(self, rel))]
+    #[must_use]
     pub fn insert_relationship(
         &self,
         rel: &crate::knowledge::Relationship,
@@ -42,6 +44,7 @@ impl KnowledgeStore {
     /// Returns a [`QueryResult`] whose rows correspond to the Datalog output of
     /// `ENTITY_NEIGHBORHOOD`. Columns: `id`, `score`, `hops`.
     #[instrument(skip(self))]
+    #[must_use]
     pub(crate) fn entity_neighborhood(
         &self,
         entity_id: &crate::id::EntityId,
@@ -61,6 +64,7 @@ impl KnowledgeStore {
     /// Insert a fact-entity mapping.
     #[instrument(skip(self))]
     #[expect(dead_code, reason = "entity operations for knowledge store")]
+    #[must_use]
     pub(crate) fn insert_fact_entity(
         &self,
         fact_id: &crate::id::FactId,
@@ -85,6 +89,7 @@ impl KnowledgeStore {
 
     /// List all entities in the knowledge store.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn list_entities(&self) -> crate::error::Result<Vec<crate::knowledge::Entity>> {
         use std::collections::BTreeMap;
 
@@ -131,6 +136,7 @@ impl KnowledgeStore {
     /// Loads all entities, groups by type, and runs the 3-phase candidate
     /// generation + scoring pipeline. Returns all candidates (auto-merge + review).
     #[instrument(skip(self))]
+    #[must_use]
     pub fn find_duplicate_entities(
         &self,
         nous_id: &str,
@@ -144,6 +150,7 @@ impl KnowledgeStore {
     ///
     /// The entity with `canonical_id` survives; `merged_id` is removed.
     #[instrument(skip(self))]
+    #[must_use]
     pub(crate) fn execute_merge(
         &self,
         canonical_id: &crate::id::EntityId,
@@ -241,6 +248,7 @@ impl KnowledgeStore {
         clippy::used_underscore_binding,
         reason = "nous_id reserved for future filtering"
     )]
+    #[must_use]
     pub fn get_pending_merges(
         &self,
         _nous_id: &str,
@@ -278,6 +286,7 @@ impl KnowledgeStore {
     /// Approve a pending merge: execute it.
     #[instrument(skip(self))]
     #[expect(dead_code, reason = "entity operations for knowledge store")]
+    #[must_use]
     pub(crate) fn approve_merge(
         &self,
         canonical_id: &crate::id::EntityId,
@@ -293,6 +302,7 @@ impl KnowledgeStore {
         reason = "nous_id reserved for future filtering"
     )]
     #[expect(dead_code, reason = "entity operations for knowledge store")]
+    #[must_use]
     pub(crate) fn get_merge_history(
         &self,
         _nous_id: &str,
@@ -335,6 +345,7 @@ impl KnowledgeStore {
     ///
     /// Returns the list of completed merge records.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn run_entity_dedup(
         &self,
         nous_id: &str,

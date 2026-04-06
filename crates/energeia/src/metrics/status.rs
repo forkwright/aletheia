@@ -89,6 +89,7 @@ const RECENT_LIMIT: usize = 50;
 /// # Errors
 ///
 /// Returns `Error::Store` if any underlying store read fails.
+#[must_use]
 pub fn compute_status_dashboard(store: &EnergeiaStore) -> Result<StatusDashboard> {
     let now = jiff::Timestamp::now();
 
@@ -197,7 +198,7 @@ fn build_project_summaries(
             reason = "session count bounded, fits u64"
         )]
         {
-            acc.sessions += session_count as u64;
+            acc.sessions += u64::try_from(session_count).unwrap_or_default();
         }
     }
 
@@ -211,7 +212,7 @@ fn build_project_summaries(
                     reason = "counts bounded; precision loss unreachable"
                 )]
                 {
-                    acc.completed as f64 / acc.total as f64
+                    (acc.completed as f64) / (acc.total as f64)
                 }
             } else {
                 0.0

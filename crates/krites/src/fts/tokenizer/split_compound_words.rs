@@ -14,6 +14,7 @@ impl SplitCompoundWords {
     /// The dictionary will be used to construct an [`AhoCorasick`] automaton
     /// with reasonable defaults. See [`from_automaton`][Self::from_automaton] if
     /// more control over its construction is required.
+    #[must_use]
     pub(crate) fn from_dictionary<I, P>(dict: I) -> Result<Self>
     where
         I: IntoIterator<Item = P>,

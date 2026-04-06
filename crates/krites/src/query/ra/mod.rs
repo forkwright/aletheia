@@ -66,6 +66,7 @@ impl RelAlgebra {
     }
 }
 
+#[must_use]
 pub(crate) fn flatten_err<T>(
     v: std::result::Result<Result<T>, crate::error::InternalError>,
 ) -> Result<T> {
@@ -76,6 +77,7 @@ pub(crate) fn flatten_err<T>(
     }
 }
 
+#[must_use]
 pub(crate) fn invert_option_err<T>(v: Result<Option<T>>) -> Option<Result<T>> {
     match v {
         Err(e) => Some(Err(e)),
@@ -84,6 +86,7 @@ pub(crate) fn invert_option_err<T>(v: Result<Option<T>>) -> Option<Result<T>> {
     }
 }
 
+#[must_use]
 pub(crate) fn filter_iter(
     filters_bytecodes: Vec<(Vec<Bytecode>, SourceSpan)>,
     it: impl Iterator<Item = Result<crate::data::tuple::Tuple>>,
@@ -258,6 +261,7 @@ impl Debug for RelAlgebra {
 }
 
 impl RelAlgebra {
+    #[must_use]
     pub(crate) fn fill_binding_indices_and_compile(&mut self) -> Result<()> {
         match self {
             // NOTE: fixed relations have no binding indices to fill
@@ -327,6 +331,7 @@ impl RelAlgebra {
             span,
         })
     }
+    #[must_use]
     pub(crate) fn relation(
         bindings: Vec<Symbol>,
         storage: RelationHandle,
@@ -377,6 +382,7 @@ impl RelAlgebra {
             new_order,
         })
     }
+    #[must_use]
     pub(crate) fn filter(self, filter: Expr) -> Result<Self> {
         Ok(match self {
             s @ (RelAlgebra::Fixed(_)
@@ -526,6 +532,7 @@ impl RelAlgebra {
             span,
         })
     }
+    #[must_use]
     pub(crate) fn hnsw_search(
         self,
         hnsw_search: HnswSearch,
@@ -538,6 +545,7 @@ impl RelAlgebra {
             own_bindings,
         }))
     }
+    #[must_use]
     pub(crate) fn fts_search(
         self,
         fts_search: FtsSearch,
@@ -550,6 +558,7 @@ impl RelAlgebra {
             own_bindings,
         }))
     }
+    #[must_use]
     pub(crate) fn lsh_search(
         self,
         fts_search: LshSearch,
@@ -601,6 +610,7 @@ impl RelAlgebra {
 }
 
 impl RelAlgebra {
+    #[must_use]
     pub(crate) fn eliminate_temp_vars(&mut self, used: &BTreeSet<Symbol>) -> Result<()> {
         match self {
             RelAlgebra::Fixed(r) => r.do_eliminate_temp_vars(used),
@@ -678,6 +688,7 @@ impl RelAlgebra {
             }
         }
     }
+    #[must_use]
     pub(crate) fn iter<'a>(
         &'a self,
         tx: &'a SessionTx<'_>,

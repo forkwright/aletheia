@@ -115,6 +115,7 @@ impl MmapVectorStorage {
     ///
     /// Returns an error if the file size is not a multiple of `dim * 4` bytes,
     /// or if `dim` is zero.
+    #[must_use]
     pub(crate) fn open(path: impl AsRef<Path>, dim: usize) -> Result<Self> {
         if dim == 0 {
             return Err(InvalidOperationSnafu {
@@ -358,6 +359,7 @@ impl MmapVectorStorage {
     ///
     /// Returns an error if the vector dimension does not match, or if the write
     /// fails.
+    #[must_use]
     pub(crate) fn push(&mut self, vector: &[f32]) -> Result<usize> {
         if vector.len() != self.dim {
             return Err(InvalidOperationSnafu {
@@ -408,6 +410,7 @@ impl MmapVectorStorage {
     /// # Errors
     ///
     /// Returns an error if the flush fails.
+    #[must_use]
     pub(crate) fn flush(&self) -> Result<()> {
         #[cfg(unix)]
         if let StorageInner::Mmap { ptr, len } = self.inner

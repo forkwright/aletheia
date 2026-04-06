@@ -106,6 +106,7 @@ impl TarjanSccG {
             stack: vec![],
         }
     }
+    #[must_use]
     pub(crate) fn run(mut self, poison: Poison) -> Result<Vec<Vec<u32>>> {
         for i in 0..self.graph.node_count() {
             if self.ids[i as usize].is_none() {

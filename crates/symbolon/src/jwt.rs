@@ -128,6 +128,7 @@ impl JwtManager {
 
     /// Issue a refresh token.
     #[instrument(skip(self), fields(kind = "refresh"))]
+    #[must_use]
     pub fn issue_refresh(&self, sub: &str, role: Role) -> Result<String> {
         self.issue(sub, role, None, TokenKind::Refresh, self.config.refresh_ttl)
     }
@@ -218,6 +219,7 @@ impl JwtManager {
         )
     )]
     #[instrument(skip(self, refresh_token))]
+    #[must_use]
     pub(crate) fn refresh(&self, refresh_token: &str) -> Result<TokenPair> {
         let claims = self.validate(refresh_token)?;
 

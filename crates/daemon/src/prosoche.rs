@@ -298,6 +298,7 @@ fn read_process_rss_kb() -> std::io::Result<u64> {
 }
 
 /// Parse `VmRSS` value in kB from proc status content.
+#[must_use]
 pub(crate) fn parse_vmrss(contents: &str) -> std::io::Result<u64> {
     for line in contents.lines() {
         if let Some(rest) = line.strip_prefix("VmRSS:") {

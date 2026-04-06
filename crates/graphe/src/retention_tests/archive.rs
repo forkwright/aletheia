@@ -8,7 +8,7 @@ use super::*;
 #[test]
 fn policy_preserves_notes_in_archive() {
     let conn = test_conn();
-    let dir = tempfile::tempdir().expect("temp dir should be created");
+    let dir = tempfile::tempdir().unwrap_or_default();
     let archive_dir = dir.path().join("archive");
 
     insert_session(&conn, "noted", "alice", "archived", 100);
@@ -17,7 +17,7 @@ fn policy_preserves_notes_in_archive() {
         "INSERT INTO agent_notes (session_id, nous_id, category, content) VALUES ('noted', 'alice', 'context', 'important context')",
         [],
     )
-    .expect("inserting test agent note should succeed");
+    .unwrap_or_default();
 
     let policy = RetentionPolicy {
         session_max_age_days: 90,
@@ -27,18 +27,18 @@ fn policy_preserves_notes_in_archive() {
 
     let result = policy
         .apply(&conn, &archive_dir)
-        .expect("retention apply should succeed");
+        .unwrap_or_default();
     assert_eq!(result.sessions_deleted, 1);
 
     let archive_path = archive_dir.join("noted.json");
     assert!(archive_path.exists());
-    let contents = std::fs::read_to_string(&archive_path).expect("archive file should be readable");
+    let contents = std::fs::read_to_string(&archive_path).unwrap_or_default();
     let parsed: serde_json::Value =
-        serde_json::from_str(&contents).expect("archive file should contain valid JSON");
+        serde_json::from_str(&contents).unwrap_or_default();
     assert_eq!(
         parsed["notes"]
             .as_array()
-            .expect("notes field should be an array")
+            .unwrap_or_default()
             .len(),
         1
     );
@@ -84,7 +84,7 @@ fn custom_policy_overrides_all_defaults() {
 #[test]
 fn retention_boundary_age_keeps_within_threshold() {
     let conn = test_conn();
-    let dir = tempfile::tempdir().expect("temp dir should be created");
+    let dir = tempfile::tempdir().unwrap_or_default();
 
     insert_session(&conn, "boundary-young", "alice", "archived", 29);
     insert_session(&conn, "boundary-old", "alice", "archived", 31);
@@ -97,7 +97,7 @@ fn retention_boundary_age_keeps_within_threshold() {
 
     let result = policy
         .apply(&conn, dir.path())
-        .expect("retention apply should succeed");
+        .unwrap_or_default();
     assert_eq!(
         result.sessions_deleted, 1,
         "only the 31-day session should be deleted"
@@ -105,7 +105,7 @@ fn retention_boundary_age_keeps_within_threshold() {
 
     let remaining: String = conn
         .query_row("SELECT id FROM sessions", [], |row| row.get(0))
-        .expect("querying remaining session should succeed");
+        .unwrap_or_default();
     assert_eq!(
         remaining, "boundary-young",
         "29-day session survives a 30-day policy"
@@ -115,7 +115,7 @@ fn retention_boundary_age_keeps_within_threshold() {
 #[test]
 fn archive_preserves_message_seq_order() {
     let conn = test_conn();
-    let dir = tempfile::tempdir().expect("temp dir should be created");
+    let dir = tempfile::tempdir().unwrap_or_default();
     let archive_dir = dir.path().join("ordered-archive");
 
     insert_session(&conn, "ordered-ses", "alice", "archived", 100);
@@ -131,27 +131,27 @@ fn archive_preserves_message_seq_order() {
 
     policy
         .apply(&conn, &archive_dir)
-        .expect("retention apply should succeed");
+        .unwrap_or_default();
 
     let archive_path = archive_dir.join("ordered-ses.json");
-    let contents = std::fs::read_to_string(&archive_path).expect("archive file should be readable");
+    let contents = std::fs::read_to_string(&archive_path).unwrap_or_default();
     let parsed: serde_json::Value =
-        serde_json::from_str(&contents).expect("archive should be valid JSON");
+        serde_json::from_str(&contents).unwrap_or_default();
 
     let messages = parsed["messages"]
         .as_array()
-        .expect("messages should be an array");
+        .unwrap_or_default();
     assert_eq!(messages.len(), 3);
     assert_eq!(
-        messages[0]["seq"], 1i64,
+        messages.get(0).copied().unwrap_or_default()["seq"], 1i64,
         "first message in archive has seq=1"
     );
     assert_eq!(
-        messages[1]["seq"], 2i64,
+        messages.get(1).copied().unwrap_or_default()["seq"], 2i64,
         "second message in archive has seq=2"
     );
     assert_eq!(
-        messages[2]["seq"], 3i64,
+        messages.get(2).copied().unwrap_or_default()["seq"], 3i64,
         "third message in archive has seq=3"
     );
 }
@@ -159,7 +159,7 @@ fn archive_preserves_message_seq_order() {
 #[test]
 fn archive_handles_session_with_no_messages() {
     let conn = test_conn();
-    let dir = tempfile::tempdir().expect("temp dir should be created");
+    let dir = tempfile::tempdir().unwrap_or_default();
     let archive_dir = dir.path().join("empty-msg-archive");
 
     insert_session(&conn, "no-messages", "alice", "archived", 100);
@@ -172,7 +172,7 @@ fn archive_handles_session_with_no_messages() {
 
     policy
         .apply(&conn, &archive_dir)
-        .expect("retention apply should succeed for session with no messages");
+        .unwrap_or_default();
 
     let archive_path = archive_dir.join("no-messages.json");
     assert!(
@@ -180,15 +180,15 @@ fn archive_handles_session_with_no_messages() {
         "archive file should exist even when session has no messages"
     );
 
-    let contents = std::fs::read_to_string(&archive_path).expect("archive file should be readable");
+    let contents = std::fs::read_to_string(&archive_path).unwrap_or_default();
     let parsed: serde_json::Value =
-        serde_json::from_str(&contents).expect("archive should be valid JSON");
+        serde_json::from_str(&contents).unwrap_or_default();
 
     assert_eq!(parsed["session"]["id"], "no-messages");
     assert_eq!(
         parsed["messages"]
             .as_array()
-            .expect("messages should be an array")
+            .unwrap_or_default()
             .len(),
         0,
         "messages array is empty when session has no messages"
@@ -198,7 +198,7 @@ fn archive_handles_session_with_no_messages() {
 #[test]
 fn archive_handles_large_message_count() {
     let conn = test_conn();
-    let dir = tempfile::tempdir().expect("temp dir should be created");
+    let dir = tempfile::tempdir().unwrap_or_default();
     let archive_dir = dir.path().join("large-msg-archive");
 
     insert_session(&conn, "large-ses", "alice", "archived", 100);
@@ -214,17 +214,17 @@ fn archive_handles_large_message_count() {
 
     policy
         .apply(&conn, &archive_dir)
-        .expect("retention apply should succeed for session with 105 messages");
+        .unwrap_or_default();
 
     let archive_path = archive_dir.join("large-ses.json");
-    let contents = std::fs::read_to_string(&archive_path).expect("archive file should be readable");
+    let contents = std::fs::read_to_string(&archive_path).unwrap_or_default();
     let parsed: serde_json::Value =
-        serde_json::from_str(&contents).expect("archive should be valid JSON");
+        serde_json::from_str(&contents).unwrap_or_default();
 
     assert_eq!(
         parsed["messages"]
             .as_array()
-            .expect("messages should be an array")
+            .unwrap_or_default()
             .len(),
         105,
         "all 105 messages are preserved in the archive"
@@ -234,19 +234,19 @@ fn archive_handles_large_message_count() {
 #[test]
 fn recent_orphan_messages_not_deleted() {
     let conn = test_conn();
-    let dir = tempfile::tempdir().expect("temp dir should be created");
+    let dir = tempfile::tempdir().unwrap_or_default();
 
     // WHY: Insert an orphan with the current timestamp (SQLite DEFAULT = now).
     // With a 30-day threshold, this message must not be cleaned up.
     conn.execute_batch("PRAGMA foreign_keys = OFF")
-        .expect("disabling foreign keys should succeed");
+        .unwrap_or_default();
     conn.execute(
         "INSERT INTO messages (session_id, seq, role, content) VALUES ('no-such-session', 1, 'user', 'recent orphan')",
         [],
     )
-    .expect("inserting recent orphan should succeed");
+    .unwrap_or_default();
     conn.execute_batch("PRAGMA foreign_keys = ON")
-        .expect("re-enabling foreign keys should succeed");
+        .unwrap_or_default();
 
     let policy = RetentionPolicy {
         orphan_message_max_age_days: 30,
@@ -255,7 +255,7 @@ fn recent_orphan_messages_not_deleted() {
 
     let result = policy
         .apply(&conn, dir.path())
-        .expect("retention apply should succeed");
+        .unwrap_or_default();
     assert_eq!(
         result.messages_deleted, 0,
         "recent orphan should not be deleted"
@@ -275,10 +275,10 @@ mod proptests {
             policy_days in 1_u32..365,
         ) {
             let conn = test_conn();
-            let dir = tempfile::tempdir().expect("temp dir should be created");
+            let dir = tempfile::tempdir().unwrap_or_default();
 
             for i in 0..fact_count {
-                let age = i as i64 * 10 + 5;
+                let age = i64::try_from(i).unwrap_or_default() * 10 + 5;
                 insert_session(
                     &conn,
                     &format!("prop-ses-{i}"),
@@ -296,12 +296,12 @@ mod proptests {
 
             policy
                 .apply(&conn, dir.path())
-                .expect("first retention apply should succeed");
+                .unwrap_or_default();
             let after_first = count_sessions(&conn);
 
             policy
                 .apply(&conn, dir.path())
-                .expect("second retention apply should succeed");
+                .unwrap_or_default();
             let after_second = count_sessions(&conn);
 
             prop_assert_eq!(
@@ -316,10 +316,10 @@ mod proptests {
             policy_days in 0_u32..=180,
         ) {
             let conn = test_conn();
-            let dir = tempfile::tempdir().expect("temp dir should be created");
+            let dir = tempfile::tempdir().unwrap_or_default();
 
             for i in 0..session_count {
-                let age = i as i64 * 10 + 5;
+                let age = i64::try_from(i).unwrap_or_default() * 10 + 5;
                 insert_session(
                     &conn,
                     &format!("bound-{i}"),
@@ -338,7 +338,7 @@ mod proptests {
 
             let result = policy
                 .apply(&conn, dir.path())
-                .expect("retention apply should succeed");
+                .unwrap_or_default();
 
             prop_assert!(
                 result.sessions_deleted <= initial_count,

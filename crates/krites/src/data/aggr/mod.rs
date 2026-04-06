@@ -133,6 +133,7 @@ pub(crate) fn parse_aggr(name: &str) -> Option<&'static Aggregation> {
 }
 
 impl Aggregation {
+    #[must_use]
     pub(crate) fn meet_init(&mut self, _args: &[DataValue]) -> Result<()> {
         self.meet_op.replace(match self.name {
             name if name == AGGR_AND.name => Box::new(MeetAggrAnd),
@@ -150,6 +151,7 @@ impl Aggregation {
         });
         Ok(())
     }
+    #[must_use]
     pub(crate) fn normal_init(&mut self, args: &[DataValue]) -> Result<()> {
         self.normal_op.replace(match self.name {
             name if name == AGGR_AND.name => Box::new(AggrAnd::default()),

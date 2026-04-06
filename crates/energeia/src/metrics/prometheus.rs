@@ -26,7 +26,7 @@ static DISPATCHES_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         Opts::new("energeia_dispatches_total", "Total dispatch runs completed"),
         &["project", "status"]
     )
-    .expect("metric registration")
+    .expect("metric registration failed")
 });
 
 static SESSIONS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
@@ -34,7 +34,7 @@ static SESSIONS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         Opts::new("energeia_sessions_total", "Total agent sessions dispatched"),
         &["project", "status"]
     )
-    .expect("metric registration")
+    .expect("metric registration failed")
 });
 
 /// Float counter: USD is not integer-valued.
@@ -46,7 +46,7 @@ static COST_USD_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
         ),
         &["project", "model"]
     )
-    .expect("metric registration")
+    .expect("metric registration failed")
 });
 
 static SESSION_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
@@ -62,7 +62,7 @@ static SESSION_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
         ]),
         &["project"]
     )
-    .expect("metric registration")
+    .expect("metric registration failed")
 });
 
 static QA_VERDICTS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
@@ -73,7 +73,7 @@ static QA_VERDICTS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         ),
         &["project", "verdict"]
     )
-    .expect("metric registration")
+    .expect("metric registration failed")
 });
 
 // ---------------------------------------------------------------------------
@@ -115,7 +115,7 @@ pub fn record_session(project: &str, status: &str, cost_usd: f64, duration_ms: u
         clippy::as_conversions,
         reason = "duration_ms to f64: session durations are far below f64 precision threshold"
     )]
-    let duration_secs = duration_ms as f64 / 1_000.0;
+    let duration_secs = (duration_ms as f64) / 1_000.0;
     SESSION_DURATION_SECONDS
         .with_label_values(&[project])
         .observe(duration_secs);

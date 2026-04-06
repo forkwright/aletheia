@@ -18,6 +18,7 @@ use crate::runtime::transact::SessionTx;
 use crate::storage::Storage;
 
 impl<'s, S: Storage<'s>> Db<S> {
+    #[must_use]
     pub(crate) fn run_sys_op_with_tx(
         &'s self,
         tx: &mut SessionTx<'_>,
@@ -310,6 +311,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         }
     }
 
+    #[must_use]
     pub(crate) fn run_sys_op(&'s self, op: SysOp, read_only: bool) -> Result<NamedRows> {
         let mut tx = if read_only {
             self.transact()?
@@ -321,6 +323,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         Ok(res)
     }
 
+    #[must_use]
     pub(crate) fn list_running(&self) -> Result<NamedRows> {
         let rows = self
             .running_queries

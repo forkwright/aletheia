@@ -67,6 +67,7 @@ impl SkillCandidate {
     ///
     /// Returns a [`serde_json::Error`] if serialisation fails.
     #[expect(dead_code, reason = "skill candidate tracking for auto-extraction")]
+    #[must_use]
     pub(crate) fn to_json(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string(self)
     }
@@ -77,6 +78,7 @@ impl SkillCandidate {
     ///
     /// Returns a [`serde_json::Error`] if the JSON is malformed or the schema changed.
     #[expect(dead_code, reason = "skill candidate tracking for auto-extraction")]
+    #[must_use]
     pub(crate) fn from_json(json: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(json)
     }

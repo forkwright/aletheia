@@ -15,7 +15,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
 
 use snafu::ResultExt;
-use tracing::instrument;
+use tracing::{Instrument as _, instrument};
 
 use aletheia_hermeneus::provider::LlmProvider;
 use aletheia_hermeneus::types::Message;
@@ -208,12 +208,7 @@ impl DreamEngine {
             match jiff::Timestamp::now().since(ts) {
                 Ok(span) => {
                     let elapsed_secs = span.get_seconds();
-                    #[expect(
-                        clippy::as_conversions,
-                        clippy::cast_possible_wrap,
-                        reason = "u64→i64: min_hours * 3600 fits in i64 for any reasonable config"
-                    )]
-                    let min_secs_i64 = min_secs as i64;
+                    let min_secs_i64 = i64::try_from(min_secs).unwrap_or_default();
                     if elapsed_secs < min_secs_i64 {
                         tracing::debug!(
                             elapsed_secs,
@@ -305,9 +300,6 @@ impl DreamEngine {
         let provider = Arc::clone(provider);
 
         tokio::spawn(async move {
-            let span = tracing::info_span!("auto_dream_consolidation");
-            let _guard = span.enter();
-
             tracing::info!("auto-dream consolidation started");
             let start = std::time::Instant::now();
 
@@ -322,12 +314,7 @@ impl DreamEngine {
             {
                 Ok(report) => {
                     let duration_ms = start.elapsed().as_millis().min(u64::MAX.into());
-                    #[expect(
-                        clippy::as_conversions,
-                        clippy::cast_possible_truncation,
-                        reason = "u128→u64: clamped to u64::MAX by min() above"
-                    )]
-                    let duration_ms = duration_ms as u64;
+                    let duration_ms = u64::try_from(duration_ms).unwrap_or_default();
                     tracing::info!(
                         facts_added = report.facts_added,
                         facts_deduped = report.facts_deduped,
@@ -350,7 +337,8 @@ impl DreamEngine {
                     );
                 }
             }
-        });
+        }
+        .instrument(tracing::info_span!("auto_dream_consolidation")));
     }
 
     /// Execute the consolidation pipeline.

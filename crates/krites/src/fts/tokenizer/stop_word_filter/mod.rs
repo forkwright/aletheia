@@ -26,6 +26,7 @@ impl StopWordFilter {
     /// Creates a new [`StopWordFilter`] for the given ISO 639-1 language code.
     ///
     /// Supports 58 languages from the [stopwords-iso](https://github.com/stopwords-iso/stopwords-iso/) project.
+    #[must_use]
     pub(crate) fn for_lang(language: &str) -> Result<Self> {
         let words = match language {
             "af" => stopwords::AF,

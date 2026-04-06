@@ -20,6 +20,7 @@ pub(crate) struct FilteredRA {
 }
 
 impl FilteredRA {
+    #[must_use]
     pub(crate) fn do_eliminate_temp_vars(&mut self, used: &BTreeSet<Symbol>) -> Result<()> {
         for binding in self.parent.bindings_before_eliminate() {
             if !used.contains(&binding) {
@@ -34,6 +35,7 @@ impl FilteredRA {
         Ok(())
     }
 
+    #[must_use]
     pub(crate) fn fill_binding_indices_and_compile(&mut self) -> Result<()> {
         let parent_bindings: BTreeMap<_, _> = self
             .parent
@@ -48,6 +50,7 @@ impl FilteredRA {
         }
         Ok(())
     }
+    #[must_use]
     pub(crate) fn iter<'a>(
         &'a self,
         tx: &'a SessionTx<'_>,

@@ -70,6 +70,7 @@ impl SessionStore {
     /// # Errors
     /// Returns an error if the database cannot be opened or initialized.
     #[instrument(skip(path))]
+    #[must_use]
     pub fn open(path: &Path) -> Result<Self> {
         Self::open_with_recovery(path, &RecoveryConfig::default())
     }
@@ -79,6 +80,7 @@ impl SessionStore {
     /// # Errors
     /// Returns an error if the database cannot be opened or initialized.
     #[instrument(skip(path, recovery_config))]
+    #[must_use]
     pub fn open_with_recovery(path: &Path, recovery_config: &RecoveryConfig) -> Result<Self> {
         info!("Opening session store at {}", path.display());
         let conn = Connection::open(path).context(error::DatabaseSnafu)?;
@@ -147,6 +149,7 @@ impl SessionStore {
     /// # Errors
     /// Returns an error if the database cannot be opened or initialized.
     #[instrument(skip(path, hook))]
+    #[must_use]
     pub fn open_with_hook(path: &Path, hook: Box<dyn ConnectionHook>) -> Result<Self> {
         hook.before_acquire();
         let mut store = Self::open_with_recovery(path, &RecoveryConfig::default())?;
@@ -159,6 +162,7 @@ impl SessionStore {
     /// # Errors
     /// Returns an error if initialization fails.
     #[instrument]
+    #[must_use]
     pub fn open_in_memory() -> Result<Self> {
         let conn = Connection::open_in_memory().context(error::DatabaseSnafu)?;
         conn.execute_batch("PRAGMA foreign_keys = ON;")
@@ -182,6 +186,7 @@ impl SessionStore {
     /// # Errors
     /// Returns an error if initialization fails.
     #[instrument(skip(hook))]
+    #[must_use]
     pub fn open_in_memory_with_hook(hook: Box<dyn ConnectionHook>) -> Result<Self> {
         hook.before_acquire();
         let mut store = Self::open_in_memory()?;
@@ -224,6 +229,7 @@ impl SessionStore {
     ///
     /// # Errors
     /// Returns an error if the database connection is broken.
+    #[must_use]
     pub fn ping(&self) -> Result<()> {
         self.conn
             .query_row("SELECT 1", [], |_| Ok(()))
@@ -260,6 +266,7 @@ impl SessionStore {
     ///
     /// # Errors
     /// Returns an error if the checkpoint fails for a reason other than `SQLITE_BUSY`.
+    #[must_use]
     pub fn checkpoint_wal(&self) -> Result<()> {
         use aletheia_koina::retry::BackoffStrategy;
 
@@ -300,6 +307,7 @@ impl SessionStore {
     ///
     /// # Errors
     /// Returns [`error::Error::DatabaseDegraded`] when in read-only mode.
+    #[must_use]
     pub(crate) fn require_writable(&self) -> Result<()> {
         if self.mode == StoreMode::ReadOnly {
             return Err(error::DatabaseDegradedSnafu {

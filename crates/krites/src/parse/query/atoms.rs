@@ -21,6 +21,7 @@ use crate::parse::{ExtractSpan, Pair, Rule};
 
 use super::fixed_rules::expr2vld_spec;
 
+#[must_use]
 pub(crate) fn parse_rule(
     src: Pair<'_>,
     param_pool: &BTreeMap<String, DataValue>,
@@ -338,6 +339,7 @@ fn extract_named_apply_arg(
     Ok((name, arg))
 }
 
+#[must_use]
 pub(crate) fn parse_rule_head(
     src: Pair<'_>,
     param_pool: &BTreeMap<String, DataValue>,

@@ -36,6 +36,7 @@ pub(crate) const TERMINAL_VALIDITY: Validity = Validity {
     is_assert: Reverse(false),
 };
 
+#[must_use]
 pub(crate) fn str2vld(s: &str) -> Result<ValidityTs> {
     let ts: jiff::Timestamp = s.parse().map_err(|e| {
         BadTimeSnafu {
@@ -47,12 +48,14 @@ pub(crate) fn str2vld(s: &str) -> Result<ValidityTs> {
 }
 
 #[cfg(target_arch = "wasm32")]
+#[must_use]
 pub(crate) fn op_now(_args: &[DataValue]) -> Result<DataValue> {
     let d: f64 = Date::now() / 1000.;
     Ok(DataValue::from(d))
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+#[must_use]
 pub(crate) fn op_now(_args: &[DataValue]) -> Result<DataValue> {
     let now = SystemTime::now();
     Ok(DataValue::from(
@@ -62,6 +65,7 @@ pub(crate) fn op_now(_args: &[DataValue]) -> Result<DataValue> {
     ))
 }
 
+#[must_use]
 pub(crate) fn op_format_timestamp(args: &[DataValue]) -> Result<DataValue> {
     let millis = match arg(args, 0)? {
         DataValue::Validity(vld) => vld.timestamp.0.0 / 1000,
@@ -109,6 +113,7 @@ pub(crate) fn op_format_timestamp(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_parse_timestamp(args: &[DataValue]) -> Result<DataValue> {
     let s = arg(args, 0)?.get_str().ok_or_else(|| {
         TypeMismatchSnafu {
@@ -128,6 +133,7 @@ pub(crate) fn op_parse_timestamp(args: &[DataValue]) -> Result<DataValue> {
     ))
 }
 
+#[must_use]
 pub(crate) fn op_rand_uuid_v1(_args: &[DataValue]) -> Result<DataValue> {
     let mut rng = rand::rng();
     let uuid_ctx = uuid::ContextV1::new(rng.random());
@@ -150,11 +156,13 @@ pub(crate) fn op_rand_uuid_v1(_args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::uuid(id))
 }
 
+#[must_use]
 pub(crate) fn op_rand_uuid_v4(_args: &[DataValue]) -> Result<DataValue> {
     let id = uuid::Uuid::new_v4();
     Ok(DataValue::uuid(id))
 }
 
+#[must_use]
 pub(crate) fn op_uuid_timestamp(args: &[DataValue]) -> Result<DataValue> {
     Ok(match arg(args, 0)? {
         DataValue::Uuid(UuidWrapper(id)) => match id.get_timestamp() {
@@ -179,10 +187,12 @@ pub(crate) fn op_uuid_timestamp(args: &[DataValue]) -> Result<DataValue> {
     })
 }
 
+#[must_use]
 pub(crate) fn op_rand_float(_args: &[DataValue]) -> Result<DataValue> {
     Ok(rand::rng().random::<f64>().into())
 }
 
+#[must_use]
 pub(crate) fn op_rand_bernoulli(args: &[DataValue]) -> Result<DataValue> {
     let prob = match arg(args, 0)? {
         DataValue::Num(n) => {
@@ -206,6 +216,7 @@ pub(crate) fn op_rand_bernoulli(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::from(rand::rng().random_bool(prob)))
 }
 
+#[must_use]
 pub(crate) fn op_rand_int(args: &[DataValue]) -> Result<DataValue> {
     let lower = &arg(args, 0)?.get_int().ok_or_else(|| {
         TypeMismatchSnafu {
@@ -224,6 +235,7 @@ pub(crate) fn op_rand_int(args: &[DataValue]) -> Result<DataValue> {
     Ok(rand::rng().random_range(*lower..=*upper).into())
 }
 
+#[must_use]
 pub(crate) fn op_rand_choose(args: &[DataValue]) -> Result<DataValue> {
     match arg(args, 0)? {
         DataValue::List(l) => Ok(l
@@ -245,6 +257,7 @@ pub(crate) fn op_rand_choose(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
+#[must_use]
 pub(crate) fn op_validity(args: &[DataValue]) -> Result<DataValue> {
     let ts = arg(args, 0)?.get_int().ok_or_else(|| {
         TypeMismatchSnafu {

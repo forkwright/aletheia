@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Common issues and fixes. For setup, see [QUICKSTART.md](QUICKSTART.md). For config reference, see [CONFIGURATION.md](CONFIGURATION.md). For production deployment, see [DEPLOYMENT.md](DEPLOYMENT.md).
+Common issues and fixes. See [QUICKSTART.md](QUICKSTART.md) for setup, [CONFIGURATION.md](CONFIGURATION.md) for config reference, and [DEPLOYMENT.md](DEPLOYMENT.md) for production deployment.
 
 ---
 

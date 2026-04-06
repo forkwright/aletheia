@@ -20,6 +20,7 @@ type Result<T> = StorageResult<T>;
 /// Pure Rust, zero C dependencies, LSM-tree with LZ4 compression.
 /// Uses `SingleWriterTxDatabase` for serialized write transactions
 /// with native read-your-own-writes semantics.
+#[must_use]
 pub fn new_cozo_fjall(
     path: impl AsRef<Path>,
 ) -> crate::error::InternalResult<DbCore<FjallStorage>> {

@@ -194,6 +194,7 @@ impl ImperativeStmt {
 }
 
 impl DatalogScript {
+    #[must_use]
     pub(crate) fn get_single_program(self) -> Result<InputProgram> {
         match self {
             DatalogScript::Single(s) => Ok(s),
@@ -245,6 +246,7 @@ pub(crate) struct ParseError {
 /// * `fixed_rules` - a mapping of fixed rule names to their implementations. These are substituted into the syntax tree during parsing.
 ///
 /// * `cur_vld` - the current timestamp, substituted into expressions where validity is relevant.
+#[must_use]
 pub fn parse_script(
     src: &str,
     param_pool: &BTreeMap<String, DataValue>,

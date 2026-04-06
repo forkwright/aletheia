@@ -57,6 +57,7 @@ impl Default for ExportOptions {
 ///
 /// Returns an error if session store queries or workspace I/O fails.
 #[instrument(skip(store))]
+#[must_use]
 pub fn export_agent(
     nous_id: &str,
     agent_name: Option<&str>,
@@ -240,7 +241,7 @@ fn is_binary_content(path: &Path) -> bool {
         clippy::as_conversions,
         reason = "usize→u64: BINARY_PROBE_SIZE is a small constant, fits in u64"
     )]
-    let Ok(n) = file.take(BINARY_PROBE_SIZE as u64).read(&mut buf) else {
+    let Ok(n) = file.take(u64::try_from(BINARY_PROBE_SIZE).unwrap_or_default()).read(&mut buf) else {
         return true;
     };
 
@@ -305,7 +306,7 @@ fn get_all_messages(
 
     let rows = if max > 0 {
         stmt.query_map(
-            rusqlite::params![session_id, max as i64],
+            rusqlite::params![session_id, i64::try_from(max).unwrap_or_default()],
             map_exported_message,
         )
         .context(error::DatabaseSnafu)?

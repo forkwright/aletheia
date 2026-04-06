@@ -313,7 +313,7 @@ fn count_relation(
         .and_then(|r| r.first())
         .and_then(aletheia_mneme::engine::DataValue::get_int)
         .unwrap_or(0);
-    Ok(count as usize)
+    Ok(usize::try_from(count).unwrap_or_default())
 }
 
 #[cfg(feature = "recall")]

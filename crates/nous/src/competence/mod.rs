@@ -119,6 +119,7 @@ impl CompetenceTracker {
         clippy::disallowed_types,
         reason = "competence tracker owns its own isolated SQLite file; not part of the shared SessionStore pipeline"
     )]
+    #[must_use]
     pub fn open(path: &std::path::Path) -> error::Result<Self> {
         let conn = Connection::open(path).context(error::CompetenceStoreSnafu {
             message: "failed to open competence database",
@@ -135,6 +136,7 @@ impl CompetenceTracker {
         clippy::disallowed_types,
         reason = "competence tracker owns its own isolated SQLite file; not part of the shared SessionStore pipeline"
     )]
+    #[must_use]
     pub fn open_in_memory() -> error::Result<Self> {
         let conn = Connection::open_in_memory().context(error::CompetenceStoreSnafu {
             message: "failed to open in-memory competence database",
@@ -187,6 +189,7 @@ impl CompetenceTracker {
     /// # Errors
     ///
     /// Returns `CompetenceStore` on database write failure.
+    #[must_use]
     pub fn record_outcome(
         &self,
         nous_id: &str,
@@ -250,6 +253,7 @@ impl CompetenceTracker {
     /// # Errors
     ///
     /// Returns `CompetenceStore` on database write failure.
+    #[must_use]
     pub fn record_correction(&self, nous_id: &str, domain: &str) -> error::Result<()> {
         let now = Timestamp::now().to_string();
         Self::ensure_domain(&self.conn, nous_id, domain, &now)?;
@@ -276,6 +280,7 @@ impl CompetenceTracker {
     /// # Errors
     ///
     /// Returns `CompetenceStore` on database write failure.
+    #[must_use]
     pub fn record_disagreement(&self, nous_id: &str, domain: &str) -> error::Result<()> {
         let now = Timestamp::now().to_string();
         Self::ensure_domain(&self.conn, nous_id, domain, &now)?;
@@ -304,6 +309,7 @@ impl CompetenceTracker {
     /// # Errors
     ///
     /// Returns `CompetenceStore` on database read failure.
+    #[must_use]
     pub fn score(&self, nous_id: &str, domain: &str) -> error::Result<f64> {
         let result: Option<f64> = self
             .conn
@@ -327,6 +333,7 @@ impl CompetenceTracker {
     /// # Errors
     ///
     /// Returns `CompetenceStore` on database read failure.
+    #[must_use]
     pub fn agent_competence(&self, nous_id: &str) -> error::Result<AgentCompetence> {
         let mut stmt = self
             .conn
@@ -391,6 +398,7 @@ impl CompetenceTracker {
     /// # Errors
     ///
     /// Returns `CompetenceStore` on database read failure.
+    #[must_use]
     pub fn rolling_stats(
         &self,
         nous_id: &str,
@@ -447,6 +455,7 @@ impl CompetenceTracker {
     /// # Errors
     ///
     /// Returns `CompetenceStore` on database read failure.
+    #[must_use]
     pub fn escalation_recommendation(
         &self,
         nous_id: &str,

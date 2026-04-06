@@ -42,6 +42,7 @@ static PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
         .op(Op::infix(Rule::op_field_access, Left))
 });
 
+#[must_use]
 pub(crate) fn expr2bytecode(expr: &Expr, collector: &mut Vec<Bytecode>) -> Result<()> {
     match expr {
         Expr::Binding { var, tuple_pos } => collector.push(Bytecode::Binding {
@@ -98,6 +99,7 @@ pub(crate) fn expr2bytecode(expr: &Expr, collector: &mut Vec<Bytecode>) -> Resul
     Ok(())
 }
 
+#[must_use]
 pub(crate) fn build_expr(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Result<Expr> {
     if pair.as_rule() != Rule::expr {
         return Err(InvalidQuerySnafu {
@@ -410,6 +412,7 @@ pub(crate) fn parse_int(s: &str, radix: u32) -> i64 {
         .unwrap_or_else(|_| unreachable!())
 }
 
+#[must_use]
 pub(crate) fn parse_string(pair: Pair<'_>) -> Result<CompactString> {
     match pair.as_rule() {
         Rule::quoted_string => Ok(parse_quoted_string(pair)?),

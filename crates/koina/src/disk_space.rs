@@ -83,6 +83,7 @@ impl fmt::Display for DiskStatus {
 ///
 /// Returns an I/O error if the `statvfs` syscall fails (e.g. path does not
 /// exist or is not accessible).
+#[must_use]
 pub fn available_space(path: &Path) -> std::io::Result<u64> {
     use std::ffi::CString;
     use std::os::unix::ffi::OsStrExt;
@@ -104,6 +105,7 @@ pub fn available_space(path: &Path) -> std::io::Result<u64> {
 
 #[expect(dead_code, reason = "daemon disk monitor integration pending")]
 /// Check disk space and classify against thresholds.
+#[must_use]
 pub(crate) fn check_disk_space(
     path: &Path,
     warning_bytes: u64,

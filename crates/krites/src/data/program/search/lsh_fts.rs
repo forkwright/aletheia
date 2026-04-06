@@ -14,6 +14,7 @@ use super::super::types::*;
 use super::{FtsScoreKind, FtsSearch, SearchInput, Unification};
 
 impl SearchInput {
+    #[must_use]
     pub(crate) fn normalize_lsh(
         mut self,
         base_handle: RelationHandle,
@@ -155,6 +156,7 @@ impl SearchInput {
 
         Ok(Disjunction::conj(conj))
     }
+    #[must_use]
     pub(crate) fn normalize_fts(
         mut self,
         base_handle: RelationHandle,

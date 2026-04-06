@@ -56,10 +56,12 @@ pub struct FixedRuleInputRelation<'a, 'b> {
 
 impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
     /// The arity of the input relation
+    #[must_use]
     pub fn arity(&self) -> Result<usize> {
         self.arg_manifest.arity(self.tx, self.stores)
     }
     /// Ensure the input relation contains tuples of the given minimal length.
+    #[must_use]
     pub fn ensure_min_len(self, len: usize) -> Result<Self> {
         let arity = self.arg_manifest.arity(self.tx, self.stores)?;
         if arity < len {
@@ -77,6 +79,7 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
         self.arg_manifest.get_binding_map(offset)
     }
     /// Iterate the input relation
+    #[must_use]
     pub fn iter(&self) -> Result<TupleIter<'a>> {
         Ok(match &self.arg_manifest {
             MagicFixedRuleRuleArg::InMem { name, .. } => {
@@ -100,6 +103,7 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
         })
     }
     /// Iterate the relation with the given single-value prefix
+    #[must_use]
     pub fn prefix_iter(&self, prefix: &DataValue) -> Result<TupleIter<'_>> {
         Ok(match self.arg_manifest {
             MagicFixedRuleRuleArg::InMem { name, .. } => {
@@ -135,6 +139,7 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
     /// Returns the graph, the vertices in a vector with the index the same as used in the graph,
     /// and the inverse vertex mapping.
     #[cfg(feature = "graph-algo")]
+    #[must_use]
     pub fn as_directed_graph(
         &self,
         undirected: bool,
@@ -218,6 +223,7 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
     /// Returns the graph, the vertices in a vector with the index the same as used in the graph,
     /// and the inverse vertex mapping.
     #[cfg(feature = "graph-algo")]
+    #[must_use]
     pub fn as_directed_weighted_graph(
         &self,
         undirected: bool,
@@ -365,6 +371,7 @@ impl<'a, 'b> FixedRulePayload<'a, 'b> {
         self.manifest.relations_count()
     }
     /// Get the input relation at `idx`.
+    #[must_use]
     pub fn get_input(&self, idx: usize) -> Result<FixedRuleInputRelation<'a, 'b>> {
         let arg_manifest = self.manifest.relation(idx)?;
         Ok(FixedRuleInputRelation {
@@ -382,6 +389,7 @@ impl<'a, 'b> FixedRulePayload<'a, 'b> {
         self.manifest.span
     }
     /// Extract an expression option
+    #[must_use]
     pub fn expr_option(&self, name: &str, default: Option<Expr>) -> Result<Expr> {
         match self.manifest.options.get(name) {
             Some(ex) => Ok(ex.clone()),
@@ -398,6 +406,7 @@ impl<'a, 'b> FixedRulePayload<'a, 'b> {
     }
 
     /// Extract a string option
+    #[must_use]
     pub fn string_option(&self, name: &str, default: Option<&str>) -> Result<CompactString> {
         match self.manifest.options.get(name) {
             Some(ex) => match ex.clone().eval_to_const()? {
@@ -423,6 +432,7 @@ impl<'a, 'b> FixedRulePayload<'a, 'b> {
     }
 
     /// Get the source span of the named option. Useful for generating informative error messages.
+    #[must_use]
     pub fn option_span(&self, name: &str) -> Result<SourceSpan> {
         match self.manifest.options.get(name) {
             None => Err(FixedRuleOptionNotFoundError {
@@ -435,6 +445,7 @@ impl<'a, 'b> FixedRulePayload<'a, 'b> {
         }
     }
     /// Extract an integer option
+    #[must_use]
     pub fn integer_option(&self, name: &str, default: Option<i64>) -> Result<i64> {
         match self.manifest.options.get(name) {
             Some(v) => match v.clone().eval_to_const() {
@@ -467,6 +478,7 @@ impl<'a, 'b> FixedRulePayload<'a, 'b> {
         }
     }
     /// Extract a positive integer option
+    #[must_use]
     pub fn pos_integer_option(&self, name: &str, default: Option<usize>) -> Result<usize> {
         #[expect(clippy::cast_possible_wrap, reason = "value fits i64")]
         let i = self.integer_option(name, default.map(|i| i as i64))?;
@@ -482,6 +494,7 @@ impl<'a, 'b> FixedRulePayload<'a, 'b> {
         Ok(i as usize)
     }
     /// Extract a non-negative integer option
+    #[must_use]
     pub fn non_neg_integer_option(&self, name: &str, default: Option<usize>) -> Result<usize> {
         #[expect(clippy::cast_possible_wrap, reason = "value fits i64")]
         let i = self.integer_option(name, default.map(|i| i as i64))?;
@@ -497,6 +510,7 @@ impl<'a, 'b> FixedRulePayload<'a, 'b> {
         Ok(i as usize)
     }
     /// Extract a floating point option
+    #[must_use]
     pub fn float_option(&self, name: &str, default: Option<f64>) -> Result<f64> {
         match self.manifest.options.get(name) {
             Some(v) => match v.clone().eval_to_const() {
@@ -524,6 +538,7 @@ impl<'a, 'b> FixedRulePayload<'a, 'b> {
         }
     }
     /// Extract a floating point option between 0. and 1.
+    #[must_use]
     pub fn unit_interval_option(&self, name: &str, default: Option<f64>) -> Result<f64> {
         let f = self.float_option(name, default)?;
         if !(0. ..=1.).contains(&f) {
@@ -538,6 +553,7 @@ impl<'a, 'b> FixedRulePayload<'a, 'b> {
         Ok(f)
     }
     /// Extract a boolean option
+    #[must_use]
     pub fn bool_option(&self, name: &str, default: Option<bool>) -> Result<bool> {
         match self.manifest.options.get(name) {
             Some(v) => match v.clone().eval_to_const() {
@@ -769,6 +785,7 @@ impl std::fmt::Display for BadExprValueError {
 impl std::error::Error for BadExprValueError {}
 
 impl MagicFixedRuleRuleArg {
+    #[must_use]
     pub(crate) fn arity(
         &self,
         tx: &SessionTx<'_>,

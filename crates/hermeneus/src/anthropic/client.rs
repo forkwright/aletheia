@@ -158,6 +158,7 @@ impl AnthropicProvider {
     /// enabling mid-session token rotation and background OAuth refresh.
     /// When using OAuth credentials against the first-party API, CC mimicry
     /// is automatically enabled so requests match Claude Code's fingerprint.
+    #[must_use]
     pub fn with_credential_provider(
         // kanon:ignore RUST/pub-visibility
         provider: Arc<dyn CredentialProvider>,

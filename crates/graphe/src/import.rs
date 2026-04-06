@@ -46,6 +46,7 @@ pub struct ImportResult {
 ///
 /// Returns errors for unsupported versions, path traversal attempts, or store/IO failures.
 #[instrument(skip(agent_file, store, id_generator))]
+#[must_use]
 pub fn import_agent(
     agent_file: &AgentFile,
     store: &SessionStore,
@@ -252,7 +253,7 @@ fn import_sessions(
                     msg.role,
                     msg.content,
                     msg.token_estimate,
-                    msg.is_distilled as i64,
+                    i64::from(msg.is_distilled),
                     msg.created_at,
                 ],
             )

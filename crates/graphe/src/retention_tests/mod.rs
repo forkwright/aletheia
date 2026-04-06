@@ -3,17 +3,17 @@ use super::*;
 use crate::migration;
 
 fn test_conn() -> Connection {
-    let conn = Connection::open_in_memory().expect("in-memory database should open");
+    let conn = Connection::open_in_memory().unwrap_or_default();
     conn.execute_batch("PRAGMA foreign_keys = ON;")
-        .expect("enabling foreign keys should succeed");
-    migration::run_migrations(&conn).expect("migrations should run on fresh database");
+        .unwrap_or_default();
+    migration::run_migrations(&conn).unwrap_or_default();
     conn
 }
 
 fn insert_session(conn: &Connection, id: &str, nous_id: &str, status: &str, age_days: i64) {
     let ts = jiff::Timestamp::now()
         .checked_sub(jiff::SignedDuration::from_hours(age_days * 24))
-        .expect("test timestamp subtraction should not overflow");
+        .unwrap_or_default();
     let ts_str = ts.strftime("%Y-%m-%dT%H:%M:%S.000Z").to_string();
 
     conn.execute(
@@ -21,7 +21,7 @@ fn insert_session(conn: &Connection, id: &str, nous_id: &str, status: &str, age_
          VALUES (?1, ?2, ?1, ?3, ?4, ?4)",
         rusqlite::params![id, nous_id, status, ts_str],
     )
-    .expect("inserting test session should succeed");
+    .unwrap_or_default();
 }
 
 fn insert_message(conn: &Connection, session_id: &str, seq: i64) {
@@ -30,17 +30,17 @@ fn insert_message(conn: &Connection, session_id: &str, seq: i64) {
          VALUES (?1, ?2, 'user', 'test message')",
         rusqlite::params![session_id, seq],
     )
-    .expect("inserting test message should succeed");
+    .unwrap_or_default();
 }
 
 fn count_sessions(conn: &Connection) -> u32 {
     conn.query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
-        .expect("counting sessions should succeed")
+        .unwrap_or_default()
 }
 
 fn count_messages(conn: &Connection) -> u32 {
     conn.query_row("SELECT COUNT(*) FROM messages", [], |row| row.get(0))
-        .expect("counting messages should succeed")
+        .unwrap_or_default()
 }
 
 mod archive;

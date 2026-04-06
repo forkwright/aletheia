@@ -121,6 +121,7 @@ Rules:
         clippy::unused_self,
         reason = "method signature kept for API consistency"
     )]
+    #[must_use]
     pub(crate) fn parse_response(&self, response: &str) -> Result<Extraction, ExtractionError> {
         let trimmed = strip_code_fences(response);
         serde_json::from_str(trimmed).context(ParseResponseSnafu)
@@ -241,6 +242,7 @@ Rules:
         clippy::too_many_lines,
         reason = "sequential extraction pipeline: entities → relationships → facts"
     )]
+    #[must_use]
     pub fn persist(
         &self,
         extraction: &Extraction,

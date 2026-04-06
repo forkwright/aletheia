@@ -131,6 +131,7 @@ impl TaskRegistry {
     /// Register a new task and return its ID and cancellation token.
     ///
     /// The task starts in [`TaskStatus::Pending`].
+    #[must_use]
     pub fn register(
         &self,
         task_type: TaskType,
@@ -152,6 +153,7 @@ impl TaskRegistry {
     ///
     /// Returns an error if the transition is invalid (e.g. terminal -> running)
     /// or the task doesn't exist.
+    #[must_use]
     pub fn update_status(
         &self,
         task_id: TaskId,
@@ -214,6 +216,7 @@ impl TaskRegistry {
     }
 
     /// Record a tool call for a task's rolling activity window.
+    #[must_use]
     pub fn record_tool_call(
         &self,
         task_id: TaskId,
@@ -236,6 +239,7 @@ impl TaskRegistry {
     }
 
     /// Record an error snapshot for a task.
+    #[must_use]
     pub fn record_error(&self, task_id: TaskId, error: String) -> Result<(), RegistryError> {
         let mut tasks = self.tasks.write().map_err(lock_poisoned)?;
 
@@ -251,6 +255,7 @@ impl TaskRegistry {
     }
 
     /// Set the output file path for a task.
+    #[must_use]
     pub fn set_output_path(
         &self,
         task_id: TaskId,
@@ -270,6 +275,7 @@ impl TaskRegistry {
     ///
     /// WHY: This only sends the progress event. The actual disk write is done
     /// by the `OutputWriter` that the task owns -- keeping I/O outside the lock.
+    #[must_use]
     pub fn broadcast_output_chunk(
         &self,
         task_id: TaskId,
@@ -286,6 +292,7 @@ impl TaskRegistry {
     }
 
     /// Get a snapshot of a task.
+    #[must_use]
     pub fn get(&self, task_id: TaskId) -> Result<TaskSnapshot, RegistryError> {
         let tasks = self.tasks.read().map_err(lock_poisoned)?;
 
@@ -297,6 +304,7 @@ impl TaskRegistry {
     }
 
     /// List snapshots of all tasks, optionally filtered by status.
+    #[must_use]
     pub fn list(
         &self,
         status_filter: Option<TaskStatus>,
@@ -317,6 +325,7 @@ impl TaskRegistry {
     /// WHY: Returns a `broadcast::Receiver` so the subscriber sees all future
     /// events. Past events are not replayed -- subscribers joining late only
     /// see events from their subscription point forward.
+    #[must_use]
     pub fn subscribe(
         &self,
         task_id: TaskId,
@@ -334,6 +343,7 @@ impl TaskRegistry {
     ///
     /// Sets the task status to `Killed` and cancels the token so the task's
     /// execution loop can observe the cancellation at yield points.
+    #[must_use]
     pub fn kill(&self, task_id: TaskId) -> Result<(), RegistryError> {
         let mut tasks = self.tasks.write().map_err(lock_poisoned)?;
 
@@ -365,6 +375,7 @@ impl TaskRegistry {
     ///
     /// Returns the IDs and output paths of evicted tasks so the caller can
     /// clean up output files outside the lock.
+    #[must_use]
     pub(crate) fn gc_sweep(
         &self,
     ) -> Result<Vec<(TaskId, Option<std::path::PathBuf>)>, RegistryError> {
@@ -392,12 +403,14 @@ impl TaskRegistry {
     }
 
     /// Number of tasks currently in the registry.
+    #[must_use]
     pub fn len(&self) -> Result<usize, RegistryError> {
         let tasks = self.tasks.read().map_err(lock_poisoned)?;
         Ok(tasks.len())
     }
 
     /// Whether the registry is empty.
+    #[must_use]
     pub fn is_empty(&self) -> Result<bool, RegistryError> {
         Ok(self.len()? == 0)
     }

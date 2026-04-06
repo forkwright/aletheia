@@ -128,6 +128,7 @@ impl InputProgram {
         }
     }
 
+    #[must_use]
     pub(crate) fn get_entry_arity(&self) -> Result<usize> {
         if let Some(entry) = self.prog.get(&Symbol::new(PROG_ENTRY, SourceSpan(0, 0))) {
             return match entry {
@@ -140,6 +141,7 @@ impl InputProgram {
 
         Err(NoEntryError.into())
     }
+    #[must_use]
     pub(crate) fn get_entry_out_head_or_default(&self) -> Result<Vec<Symbol>> {
         match self.get_entry_out_head() {
             Ok(r) => Ok(r),
@@ -151,6 +153,7 @@ impl InputProgram {
             }
         }
     }
+    #[must_use]
     pub(crate) fn get_entry_out_head(&self) -> Result<Vec<Symbol>> {
         if let Some(entry) = self.prog.get(&Symbol::new(PROG_ENTRY, SourceSpan(0, 0))) {
             return match entry {
@@ -197,6 +200,7 @@ impl InputProgram {
 
         Err(NoEntryError.into())
     }
+    #[must_use]
     pub(crate) fn into_normalized_program(
         self,
         tx: &SessionTx<'_>,

@@ -92,6 +92,7 @@ pub(crate) fn load_or_create_key(credential_path: &Path) -> std::io::Result<[u8;
 ///
 /// Returns `(key, needs_persist)` -- the caller must call [`write_key_file_atomic`]
 /// after both the key and credential temp files are ready.
+#[must_use]
 pub(crate) fn load_or_generate_key(
     credential_path: &Path,
 ) -> std::io::Result<([u8; KEY_LEN], bool)> {
@@ -141,6 +142,7 @@ pub(crate) fn prepare_key_file(
 /// # Errors
 ///
 /// Returns an `io::Error` if the rename or permission set fails.
+#[must_use]
 pub(crate) fn commit_key_file(credential_path: &Path, tmp: &Path) -> std::io::Result<()> {
     let key_path = key_file_path(credential_path);
     std::fs::rename(tmp, &key_path)?;
@@ -159,6 +161,7 @@ pub(crate) fn commit_key_file(credential_path: &Path, tmp: &Path) -> std::io::Re
 /// # Errors
 ///
 /// Returns an `io::Error` if the RNG or the AEAD primitive fails.
+#[must_use]
 pub(crate) fn encrypt(key: &[u8; KEY_LEN], plaintext: &[u8]) -> std::io::Result<String> {
     let nonce_bytes: [u8; NONCE_LEN] = generate_nonce()?;
 
@@ -188,6 +191,7 @@ pub(crate) fn encrypt(key: &[u8; KEY_LEN], plaintext: &[u8]) -> std::io::Result<
 /// # Errors
 ///
 /// Returns an `io::Error` if base64 decoding or AES-GCM authentication fails.
+#[must_use]
 pub(crate) fn decrypt(key: &[u8; KEY_LEN], encoded: &str) -> std::io::Result<Vec<u8>> {
     use ring::aead::{LessSafeKey, Nonce as AeadNonce, UnboundKey as AeadUnbound};
 
