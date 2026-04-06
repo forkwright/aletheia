@@ -1,5 +1,7 @@
 //! Session manager: creates, finds, and manages agent sessions.
 
+use std::time::Instant;
+
 use tracing::{info, instrument};
 use ulid::Ulid;
 
@@ -28,6 +30,8 @@ pub struct SessionState {
     pub cumulative_tokens: u64,
     pub distillation_count: u32,
     pub bootstrap_hash: Option<String>,
+    /// Last time the session was accessed. Used for LRU eviction.
+    pub last_accessed: Instant,
 }
 
 impl SessionState {
@@ -47,6 +51,7 @@ impl SessionState {
             thinking_budget: config.generation.thinking_budget,
             bootstrap_hash: None,
             cumulative_tokens: 0,
+            last_accessed: Instant::now(),
         }
     }
 
