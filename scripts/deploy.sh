@@ -185,8 +185,9 @@ check_health() {
 # --- Smoke test ---
 
 smoke_test() {
-    log "Running smoke test (check-config)..."
-    if "$BINARY_DST" -r "$INSTANCE_ROOT" check-config; then
+    local binary_path="${1:-$BINARY_DST}"
+    log "Running smoke test (check-config) against ${binary_path}..."
+    if "$binary_path" -r "$INSTANCE_ROOT" check-config; then
         log "Smoke test passed"
     else
         die "Smoke test failed — config is invalid, deploy aborted"
@@ -394,20 +395,29 @@ if systemctl --user is-active "$SERVICE" &>/dev/null; then
     fi
 fi
 
-# Copy binary
+# Copy binary to temp location on same filesystem for validation
 if [[ "$DRY_RUN" == true ]]; then
-    log "[dry-run] Would copy ${BINARY_SRC} to ${BINARY_DST}"
+    log "[dry-run] Would copy ${BINARY_SRC} to temp location, validate, then atomic move to ${BINARY_DST}"
+    log "[dry-run] Would run smoke test (check-config) against temp binary"
 else
     mkdir -p "$(dirname "$BINARY_DST")"
-    cp -- "$BINARY_SRC" "$BINARY_DST"
-    log "Deployed: ${BINARY_DST}"
-fi
 
-# Smoke test: validate config with the newly deployed binary
-if [[ "$DRY_RUN" == true ]]; then
-    log "[dry-run] Would run smoke test (check-config)"
-else
-    smoke_test
+    # Create temp file in same directory as destination for atomic mv
+    BINARY_TMP=$(mktemp -p "$(dirname "$BINARY_DST")" aletheia.XXXXXXXXXX) \
+        || die "Failed to create temp file for binary validation (mktemp failed)"
+
+    # Copy to temp location
+    cp -- "$BINARY_SRC" "$BINARY_TMP"
+
+    # Smoke test: validate config with the temp binary
+    if ! smoke_test "$BINARY_TMP"; then
+        rm -f -- "$BINARY_TMP"
+        die "Smoke test failed — production binary unchanged"
+    fi
+
+    # Atomic move to production location
+    mv -- "$BINARY_TMP" "$BINARY_DST"
+    log "Deployed: ${BINARY_DST}"
 fi
 
 # Refresh token
