@@ -15,6 +15,8 @@
 //! - **Streamable HTTP**: Mounted into pylon's Axum router at `/mcp`.
 //! - **stdio**: For `aletheia mcp` subcommand (Claude Code / local agent).
 
+/// Bearer token authentication middleware for MCP transport.
+pub mod auth;
 /// Diaporeia-specific error types and result alias.
 pub mod error;
 pub(crate) mod rate_limit;

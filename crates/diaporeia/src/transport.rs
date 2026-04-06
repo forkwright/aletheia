@@ -2,10 +2,12 @@
 
 use std::sync::Arc;
 
+use axum::middleware;
 use rmcp::ServiceExt;
 use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
 use rmcp::transport::streamable_http_server::tower::StreamableHttpService;
 
+use crate::auth;
 use crate::error::{self, Result};
 use crate::server::DiaporeiaServer;
 use crate::state::DiaporeiaState;
@@ -13,14 +15,21 @@ use crate::state::DiaporeiaState;
 /// Build an Axum Router that serves MCP over streamable HTTP.
 ///
 /// Mount this into the main application router to expose MCP at `/mcp`.
+/// The auth middleware validates Bearer JWT tokens (or passes through
+/// anonymous claims when `auth_mode == "none"`).
 pub fn streamable_http_router(state: Arc<DiaporeiaState>) -> axum::Router {
+    let auth_state = Arc::clone(&state);
     let service = StreamableHttpService::new(
         move || Ok(DiaporeiaServer::with_state(Arc::clone(&state))),
         LocalSessionManager::default().into(),
         rmcp::transport::streamable_http_server::StreamableHttpServerConfig::default(),
     );
 
-    axum::Router::new().nest_service("/mcp", service)
+    axum::Router::new()
+        .nest_service("/mcp", service)
+        .layer(middleware::from_fn(move |req, next| {
+            auth::mcp_auth(Arc::clone(&auth_state), req, next)
+        }))
 }
 
 /// Run MCP over stdio (blocking: intended for `aletheia mcp` subcommand).
