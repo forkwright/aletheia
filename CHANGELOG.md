@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.13.60](https://github.com/forkwright/aletheia/compare/v0.13.59...v0.13.60) (2026-04-06)
+
+
+### Documentation
+
+* add build feature matrix across all crates ([#2516](https://github.com/forkwright/aletheia/issues/2516)) ([93e5017](https://github.com/forkwright/aletheia/commit/93e50176ca6b4be84e4283a81f99f8fae9d7abaa))
+* add build feature matrix across all crates ([#2518](https://github.com/forkwright/aletheia/issues/2518)) ([d578db7](https://github.com/forkwright/aletheia/commit/d578db7cf724051135de00b6220075ef35e0771b))
+* refresh overview, daemon spec, ergon status, Wayland limitations ([#2513](https://github.com/forkwright/aletheia/issues/2513)) ([cc17692](https://github.com/forkwright/aletheia/commit/cc176925f9f970be9f31edb6c71293f094e18f70))
+
 ## [0.13.59](https://github.com/forkwright/aletheia/compare/v0.13.58...v0.13.59) (2026-04-06)
 
 
