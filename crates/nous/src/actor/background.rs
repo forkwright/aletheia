@@ -33,15 +33,9 @@ impl NousActor {
                 Ok(()) => {}
                 Err(e) => {
                     if e.is_panic() {
-                        // WHY: Background tasks run outside the main panic boundary.
-                        // Counting them ensures degraded mode triggers correctly if
-                        // background tasks are repeatedly panicking.
-                        self.record_panic();
-                        warn!(
-                            nous_id = %self.id,
-                            panic_count = self.runtime.panic_count,
-                            "background task panicked"
-                        );
+                        // WHY: Background task panics are tracked separately from
+                        // pipeline panics. They do not trigger degraded mode.
+                        self.record_background_panic();
                     } else {
                         warn!(nous_id = %self.id, error = %e, "background task failed");
                     }
