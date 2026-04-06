@@ -7,14 +7,99 @@ pub(crate) mod params;
 
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
+use rmcp::service::RequestContext;
 use rmcp::{tool, tool_router};
 use snafu::{OptionExt as _, ResultExt as _};
 
+use aletheia_koina::http::BEARER_PREFIX;
 use aletheia_koina::id::SessionId;
+use aletheia_symbolon::types::Role;
 
 use crate::error::{NousNotFoundSnafu, PipelineSnafu, SerializationSnafu, SessionStoreSnafu};
 use crate::rate_limit::Tier;
 use crate::server::DiaporeiaServer;
+
+/// Extract role from request context by validating the Bearer token.
+///
+/// Returns `None` if auth info is unavailable or token is invalid.
+/// In single-operator mode (`auth.mode = "none"`), returns the configured
+/// `none_role` (defaults to admin).
+async fn extract_role(
+    server: &DiaporeiaServer,
+    context: &RequestContext<rmcp::RoleServer>,
+) -> Option<Role> {
+    let config = server.state.config.read().await;
+
+    // Single-operator mode: no auth configured, use the default role
+    if config.gateway.auth.mode == "none" {
+        return config
+            .gateway
+            .auth
+            .none_role
+            .parse::<Role>()
+            .ok()
+            .or(Some(Role::Admin));
+    }
+
+    // Try to get HTTP request parts from extensions
+    let parts = context.extensions.get::<http::request::Parts>()?;
+
+    // Extract Bearer token from Authorization header
+    let header = parts
+        .headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())?;
+
+    let token = header.strip_prefix(BEARER_PREFIX)?;
+
+    // Parse role from JWT token payload (best-effort, token already validated at gateway)
+    parse_role_from_token(token)
+}
+
+/// Parse role from a JWT token payload without signature verification.
+///
+/// This is a best-effort parse to extract the role claim. Full validation
+/// is handled at the gateway layer; by the time the request reaches the
+/// MCP tool, the token has already been validated.
+fn parse_role_from_token(token: &str) -> Option<Role> {
+    // JWT structure: header.payload.signature
+    let mut parts = token.split('.');
+    let _header = parts.next()?;
+    let payload = parts.next()?;
+
+    // Base64 decode payload (URL-safe, no padding)
+    let payload_bytes = base64_decode_urlsafe(payload).ok()?;
+    let claims: serde_json::Value = serde_json::from_slice(&payload_bytes).ok()?;
+
+    // Extract role from claims
+    claims
+        .get("role")
+        .and_then(|r| r.as_str())
+        .and_then(|r| r.parse::<Role>().ok())
+}
+
+/// Base64 decode with URL-safe alphabet and no padding.
+fn base64_decode_urlsafe(input: &str) -> Result<Vec<u8>, base64::DecodeError> {
+    use base64::{alphabet, engine::GeneralPurpose, Engine};
+    let engine =
+        GeneralPurpose::new(&alphabet::URL_SAFE, base64::engine::GeneralPurposeConfig::new());
+    engine.decode(input.trim_end_matches('='))
+}
+
+/// Check if the caller has operator-level access or above.
+///
+/// Returns `true` if:
+/// - Auth mode is "none" (single-operator mode)
+/// - Caller has Role::Operator or Role::Admin
+async fn is_operator_or_above(
+    server: &DiaporeiaServer,
+    context: &RequestContext<rmcp::RoleServer>,
+) -> bool {
+    match extract_role(server, context).await {
+        Some(role) => role >= Role::Operator,
+        None => false,
+    }
+}
 
 /// Register all tools on the server via the `#[tool_router]` macro.
 ///
@@ -161,21 +246,35 @@ impl DiaporeiaServer {
 
     /// List all registered nous agents with their current status.
     #[tool(description = "List all registered nous agents with their current status")]
-    async fn nous_list(&self) -> Result<CallToolResult, rmcp::ErrorData> {
+    async fn nous_list(
+        &self,
+        context: RequestContext<rmcp::RoleServer>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
+        let show_reliability = is_operator_or_above(self, &context).await;
         let statuses = self.state.nous_manager.list().await;
 
         let list: Vec<serde_json::Value> = statuses
             .iter()
             .map(|s| {
-                serde_json::json!({
-                    "id": s.id,
-                    "lifecycle": s.lifecycle.to_string(),
-                    "session_count": s.session_count,
-                    "active_session": s.active_session,
-                    "panic_count": s.panic_count,
-                    "uptime_secs": s.uptime.as_secs(),
-                })
+                if show_reliability {
+                    serde_json::json!({
+                        "id": s.id,
+                        "lifecycle": s.lifecycle.to_string(),
+                        "session_count": s.session_count,
+                        "active_session": s.active_session,
+                        "panic_count": s.panic_count,
+                        "uptime_secs": s.uptime.as_secs(),
+                    })
+                } else {
+                    serde_json::json!({
+                        "id": s.id,
+                        "lifecycle": s.lifecycle.to_string(),
+                        "session_count": s.session_count,
+                        "active_session": s.active_session,
+                        "uptime_secs": s.uptime.as_secs(),
+                    })
+                }
             })
             .collect();
 
@@ -193,8 +292,10 @@ impl DiaporeiaServer {
     async fn nous_status(
         &self,
         Parameters(params): Parameters<params::NousIdParam>,
+        context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
+        let show_reliability = is_operator_or_above(self, &context).await;
         let handle = self
             .state
             .nous_manager
@@ -215,14 +316,24 @@ impl DiaporeiaServer {
             })
             .map_err(rmcp::ErrorData::from)?;
 
-        let json = serde_json::to_string_pretty(&serde_json::json!({
-            "id": status.id,
-            "lifecycle": status.lifecycle.to_string(),
-            "session_count": status.session_count,
-            "active_session": status.active_session,
-            "panic_count": status.panic_count,
-            "uptime_secs": status.uptime.as_secs(),
-        }))
+        let json = if show_reliability {
+            serde_json::to_string_pretty(&serde_json::json!({
+                "id": status.id,
+                "lifecycle": status.lifecycle.to_string(),
+                "session_count": status.session_count,
+                "active_session": status.active_session,
+                "panic_count": status.panic_count,
+                "uptime_secs": status.uptime.as_secs(),
+            }))
+        } else {
+            serde_json::to_string_pretty(&serde_json::json!({
+                "id": status.id,
+                "lifecycle": status.lifecycle.to_string(),
+                "session_count": status.session_count,
+                "active_session": status.active_session,
+                "uptime_secs": status.uptime.as_secs(),
+            }))
+        }
         .context(SerializationSnafu {})
         .map_err(rmcp::ErrorData::from)?;
 
@@ -319,22 +430,36 @@ impl DiaporeiaServer {
 
     /// System health check with uptime, actor health, and version info.
     #[tool(description = "System health check with uptime, actor health, and version info")]
-    async fn system_health(&self) -> Result<CallToolResult, rmcp::ErrorData> {
+    async fn system_health(
+        &self,
+        context: RequestContext<rmcp::RoleServer>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
+        let show_reliability = is_operator_or_above(self, &context).await;
         let health = self.state.nous_manager.check_health().await;
         let uptime = self.state.start_time.elapsed();
 
         let actors: serde_json::Value = health
             .iter()
             .map(|(id, h)| {
-                (
-                    id.clone(),
-                    serde_json::json!({
-                        "alive": h.alive,
-                        "panic_count": h.panic_count,
-                        "uptime_secs": h.uptime.as_secs(),
-                    }),
-                )
+                if show_reliability {
+                    (
+                        id.clone(),
+                        serde_json::json!({
+                            "alive": h.alive,
+                            "panic_count": h.panic_count,
+                            "uptime_secs": h.uptime.as_secs(),
+                        }),
+                    )
+                } else {
+                    (
+                        id.clone(),
+                        serde_json::json!({
+                            "alive": h.alive,
+                            "uptime_secs": h.uptime.as_secs(),
+                        }),
+                    )
+                }
             })
             .collect::<serde_json::Map<String, serde_json::Value>>()
             .into();
