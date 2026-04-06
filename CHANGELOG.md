@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.13.52](https://github.com/forkwright/aletheia/compare/v0.13.51...v0.13.52) (2026-04-06)
+
+
+### Bug Fixes
+
+* **nous:** increase restart drain timeout to 30s with observability ([#2486](https://github.com/forkwright/aletheia/issues/2486)) ([d0ade0b](https://github.com/forkwright/aletheia/commit/d0ade0b4634d6e804fedfed636ac5658d959ec62)), closes [#2436](https://github.com/forkwright/aletheia/issues/2436)
+* **ops:** distinguish expected vs unexpected token refresh failures ([#2488](https://github.com/forkwright/aletheia/issues/2488)) ([49acc06](https://github.com/forkwright/aletheia/commit/49acc061c0d99ba8198da8e29b9c39612e373474)), closes [#2439](https://github.com/forkwright/aletheia/issues/2439)
+
 ## [0.13.51](https://github.com/forkwright/aletheia/compare/v0.13.50...v0.13.51) (2026-04-06)
 
 
