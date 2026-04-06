@@ -173,6 +173,18 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Database schema is newer than this binary supports.
+    #[cfg(feature = "sqlite")]
+    #[snafu(display(
+        "Database schema version {current} is newer than this binary supports (max {max}). Upgrade the binary or restore from backup."
+    ))]
+    SchemaTooNew {
+        current: u32,
+        max: u32,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Spawned blocking task failed.
     #[cfg(feature = "mneme-engine")]
     #[snafu(display("spawned task failed: {source}"))]
