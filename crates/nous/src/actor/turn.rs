@@ -205,6 +205,9 @@ impl NousActor {
                 SessionState::new(id, session_key.to_owned(), &self.config)
             });
 
+        // Update last_accessed on every session access for LRU eviction
+        session.last_accessed = std::time::Instant::now();
+
         session.next_turn();
 
         // WHY(#2160): persist session to store BEFORE spawning the pipeline task.
@@ -397,7 +400,9 @@ impl NousActor {
             clippy::as_conversions,
             reason = "u32→usize: DEGRADED_PANIC_THRESHOLD is a small constant, fits in usize"
         )]
-        if self.runtime.panic_timestamps.len() >= usize::try_from(DEGRADED_PANIC_THRESHOLD).unwrap_or_default() {
+        if self.runtime.panic_timestamps.len()
+            >= usize::try_from(DEGRADED_PANIC_THRESHOLD).unwrap_or_default()
+        {
             warn!(
                 nous_id = %self.id,
                 panic_count = self.runtime.panic_count,
@@ -436,6 +441,9 @@ impl NousActor {
                 }
                 state
             });
+
+        // Update last_accessed on every session access for LRU eviction
+        session.last_accessed = std::time::Instant::now();
 
         session.next_turn();
 

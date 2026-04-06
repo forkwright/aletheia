@@ -470,17 +470,17 @@ impl NousActor {
         true
     }
 
-    /// Evict the oldest session (by `turn_id`, which is a `ULID` encoding creation time)
-    /// when the session count reaches `MAX_SESSIONS`. Prevents unbounded memory growth.
+    /// Evict the oldest session (by `last_accessed`) when the session count reaches
+    /// `MAX_SESSIONS`. Prevents unbounded memory growth using LRU eviction.
     fn evict_oldest_session_if_needed(&mut self) {
         if self.sessions.len() < MAX_SESSIONS {
             return;
         }
-        // WHY: turn_id is a ULID (time-ordered); the smallest ULID is the oldest session.
+        // WHY: last_accessed tracks actual session activity; least recently used is evicted.
         let oldest_key = self
             .sessions
             .iter()
-            .min_by_key(|(_, state)| state.turn_id)
+            .min_by_key(|(_, state)| state.last_accessed)
             .map(|(key, _)| key.clone());
         if let Some(key) = oldest_key {
             warn!(
