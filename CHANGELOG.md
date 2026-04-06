@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.59](https://github.com/forkwright/aletheia/compare/v0.13.58...v0.13.59) (2026-04-06)
+
+
+### Bug Fixes
+
+* **nous:** decay restart_count after stable operation window ([#2482](https://github.com/forkwright/aletheia/issues/2482)) ([31b45db](https://github.com/forkwright/aletheia/commit/31b45db4e6d648b1d9d70a569e5f56d9f47dea08)), closes [#2440](https://github.com/forkwright/aletheia/issues/2440)
+
 ## [0.13.58](https://github.com/forkwright/aletheia/compare/v0.13.57...v0.13.58) (2026-04-06)
 
 
