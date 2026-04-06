@@ -12,7 +12,7 @@ use aletheia_mneme::store::SessionStore;
 
 use aletheia_hermeneus::provider::ProviderRegistry;
 
-use super::{MAX_SPAWNED_TASKS, NousActor};
+use super::{DEGRADED_WINDOW, MAX_SPAWNED_TASKS, NousActor};
 
 /// Drop guard that clears the distillation-in-progress flag on drop.
 /// Prevents the flag from being stuck if the background task panics.
@@ -34,20 +34,34 @@ impl NousActor {
                 Err(e) => {
                     if e.is_panic() {
                         // WHY: Background tasks run outside the main panic boundary.
-                        // Counting them ensures degraded mode triggers correctly if
-                        // background tasks are repeatedly panicking.
-                        self.record_panic();
-                        warn!(
-                            nous_id = %self.id,
-                            panic_count = self.runtime.panic_count,
-                            "background task panicked"
-                        );
+                        // They are logged but do NOT trigger degraded mode.
+                        self.record_background_panic();
                     } else {
                         warn!(nous_id = %self.id, error = %e, "background task failed");
                     }
                 }
             }
         }
+    }
+
+    /// Record a background task panic occurrence. Logs a warning but does NOT trigger degraded mode.
+    pub(super) fn record_background_panic(&mut self) {
+        self.runtime.background_panic_count += 1;
+        let now = std::time::Instant::now();
+        self.runtime.background_panic_timestamps.push(now);
+
+        // Clean up old timestamps outside the window (for accurate logging/monitoring)
+        let cutoff = std::time::Instant::now()
+            .checked_sub(DEGRADED_WINDOW)
+            .unwrap_or(self.runtime.started_at);
+        self.runtime.background_panic_timestamps.retain(|t| *t > cutoff);
+
+        warn!(
+            nous_id = %self.id,
+            background_panic_count = self.runtime.background_panic_count,
+            recent_background_panics = self.runtime.background_panic_timestamps.len(),
+            "background task panicked"
+        );
     }
 
     pub(super) fn maybe_spawn_extraction(&mut self, user_content: &str, assistant_content: &str) {
