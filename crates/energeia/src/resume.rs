@@ -63,11 +63,11 @@ impl ResumePolicy {
     /// # Example
     /// ```ignore
     /// let policy = ResumePolicy::default();
-    /// assert!(policy.next_stage(0).is_some());    // stage 0
-    /// assert!(policy.next_stage(79).is_some());   // still stage 0
-    /// assert!(policy.next_stage(80).is_some());   // stage 1
-    /// assert!(policy.next_stage(229).is_some());  // stage 2 (80+100+49)
-    /// assert!(policy.next_stage(230).is_none());  // exhausted
+    /// assert!(policy.next_stage(0).is_some(), "stage 0 should exist for turn 0");    // stage 0
+    /// assert!(policy.next_stage(79).is_some(), "stage 0 should still exist at turn 79");   // still stage 0
+    /// assert!(policy.next_stage(80).is_some(), "stage 1 should exist at turn 80");   // stage 1
+    /// assert!(policy.next_stage(229).is_some(), "stage 2 should exist at turn 229");  // stage 2 (80+100+49)
+    /// assert!(policy.next_stage(230).is_none(), "all stages should be exhausted at turn 230");  // exhausted
     /// ```
     #[must_use]
     pub fn next_stage(&self, current_turns: u32) -> Option<&ResumeStage> {

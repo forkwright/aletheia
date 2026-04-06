@@ -202,11 +202,11 @@ impl RetryConfig {
 /// ```
 /// use aletheia_koina::retry::exponential_steps;
 ///
-/// assert_eq!(exponential_steps(0, 2, 8), 1); // 2^0 = 1
-/// assert_eq!(exponential_steps(1, 2, 8), 2); // 2^1 = 2
-/// assert_eq!(exponential_steps(2, 2, 8), 4); // 2^2 = 4
-/// assert_eq!(exponential_steps(3, 2, 8), 8); // 2^3 = 8
-/// assert_eq!(exponential_steps(4, 2, 8), 8); // capped
+/// assert_eq!(exponential_steps(0, 2, 8), 1, "exponential step at attempt 0 should be factor^0 = 1"); // 2^0 = 1
+/// assert_eq!(exponential_steps(1, 2, 8), 2, "exponential step at attempt 1 should be factor^1 = 2"); // 2^1 = 2
+/// assert_eq!(exponential_steps(2, 2, 8), 4, "exponential step at attempt 2 should be factor^2 = 4"); // 2^2 = 4
+/// assert_eq!(exponential_steps(3, 2, 8), 8, "exponential step at attempt 3 should be factor^3 = 8"); // 2^3 = 8
+/// assert_eq!(exponential_steps(4, 2, 8), 8, "exponential step should be capped at maximum value"); // capped
 /// ```
 #[must_use]
 pub fn exponential_steps(attempt: u32, factor: u32, cap: u32) -> u32 {

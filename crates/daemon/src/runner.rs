@@ -20,6 +20,7 @@ use crate::schedule::{
 ///
 /// WHY: daemon logs should be scannable; full model responses and tool results
 /// flood the log when running in production.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DaemonOutputMode {
     /// Full output  -  all tool results and model responses logged verbatim.

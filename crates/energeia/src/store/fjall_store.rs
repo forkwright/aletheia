@@ -579,7 +579,7 @@ mod tests {
         (temp_dir, store)
     }
 
-    fn test_dispatch_spec() -> DispatchSpec {
+    fn sample_dispatch_spec() -> DispatchSpec {
         DispatchSpec {
             prompt_numbers: vec![1, 2, 3],
             project: "acme".to_owned(),
@@ -595,7 +595,7 @@ mod tests {
     #[test]
     fn create_and_get_dispatch() {
         let (_dir, store) = setup_test_store();
-        let spec = test_dispatch_spec();
+        let spec = sample_dispatch_spec();
 
         let id = store.create_dispatch("acme", &spec).unwrap();
         let record = store.get_dispatch(&id).unwrap().unwrap();
@@ -616,7 +616,7 @@ mod tests {
     #[test]
     fn finish_dispatch_aggregates_sessions() {
         let (_dir, store) = setup_test_store();
-        let spec = test_dispatch_spec();
+        let spec = sample_dispatch_spec();
         let dispatch_id = store.create_dispatch("acme", &spec).unwrap();
 
         let sess1 = store.create_session(&dispatch_id, 1).unwrap();
@@ -671,7 +671,7 @@ mod tests {
     #[test]
     fn create_and_list_sessions() {
         let (_dir, store) = setup_test_store();
-        let spec = test_dispatch_spec();
+        let spec = sample_dispatch_spec();
         let dispatch_id = store.create_dispatch("acme", &spec).unwrap();
 
         store.create_session(&dispatch_id, 1).unwrap();
@@ -688,7 +688,7 @@ mod tests {
     #[test]
     fn sessions_isolated_between_dispatches() {
         let (_dir, store) = setup_test_store();
-        let spec = test_dispatch_spec();
+        let spec = sample_dispatch_spec();
 
         let d1 = store.create_dispatch("project-a", &spec).unwrap();
         let d2 = store.create_dispatch("project-b", &spec).unwrap();
@@ -704,7 +704,7 @@ mod tests {
     #[test]
     fn update_session_partial() {
         let (_dir, store) = setup_test_store();
-        let spec = test_dispatch_spec();
+        let spec = sample_dispatch_spec();
         let dispatch_id = store.create_dispatch("acme", &spec).unwrap();
         let session_id = store.create_session(&dispatch_id, 1).unwrap();
 
@@ -865,7 +865,7 @@ mod tests {
     #[test]
     fn add_and_list_ci_validations() {
         let (_dir, store) = setup_test_store();
-        let spec = test_dispatch_spec();
+        let spec = sample_dispatch_spec();
         let dispatch_id = store.create_dispatch("acme", &spec).unwrap();
         let session_id = store.create_session(&dispatch_id, 1).unwrap();
 
@@ -895,7 +895,7 @@ mod tests {
     #[test]
     fn record_training_data_produces_fact() {
         let (_dir, store) = setup_test_store();
-        let spec = test_dispatch_spec();
+        let spec = sample_dispatch_spec();
         let dispatch_id = store.create_dispatch("acme", &spec).unwrap();
         let session_id = store.create_session(&dispatch_id, 1).unwrap();
 
@@ -943,7 +943,7 @@ mod tests {
             .unwrap();
         let store = EnergeiaStore::from_keyspace(Arc::new(ks));
 
-        let spec = test_dispatch_spec();
+        let spec = sample_dispatch_spec();
         let id = store.create_dispatch("acme", &spec).unwrap();
         assert!(store.get_dispatch(&id).unwrap().is_some());
     }

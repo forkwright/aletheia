@@ -439,7 +439,7 @@ mod tests {
     use crate::http::mock::{MockEngine, MockOutcome};
     use crate::resume::ResumeStage;
 
-    fn test_prompt(number: u32) -> PromptSpec {
+    fn sample_prompt_spec(number: u32) -> PromptSpec {
         PromptSpec {
             number,
             description: format!("test prompt {number}"),
@@ -531,7 +531,7 @@ mod tests {
         let mgr = SessionManager::new(engine, budget.clone(), ResumePolicy::default());
 
         let outcome = mgr
-            .execute(&test_prompt(1), &default_config())
+            .execute(&sample_prompt_spec(1), &default_config())
             .await
             .unwrap();
 
@@ -558,7 +558,7 @@ mod tests {
         let mgr = SessionManager::new(engine, budget, ResumePolicy::default());
 
         let outcome = mgr
-            .execute(&test_prompt(1), &default_config())
+            .execute(&sample_prompt_spec(1), &default_config())
             .await
             .unwrap();
 
@@ -584,7 +584,7 @@ mod tests {
         let mgr = SessionManager::new(engine, budget.clone(), two_stage_policy());
 
         let outcome = mgr
-            .execute(&test_prompt(1), &default_config())
+            .execute(&sample_prompt_spec(1), &default_config())
             .await
             .unwrap();
 
@@ -611,7 +611,7 @@ mod tests {
         let mgr = SessionManager::new(engine, budget, two_stage_policy());
 
         let outcome = mgr
-            .execute(&test_prompt(1), &default_config())
+            .execute(&sample_prompt_spec(1), &default_config())
             .await
             .unwrap();
 
@@ -630,7 +630,7 @@ mod tests {
         let mgr = SessionManager::new(engine, budget, two_stage_policy());
 
         let outcome = mgr
-            .execute(&test_prompt(1), &default_config())
+            .execute(&sample_prompt_spec(1), &default_config())
             .await
             .unwrap();
 
@@ -651,7 +651,7 @@ mod tests {
         let mgr = SessionManager::new(engine, budget, two_stage_policy());
 
         let outcome = mgr
-            .execute(&test_prompt(1), &default_config())
+            .execute(&sample_prompt_spec(1), &default_config())
             .await
             .unwrap();
 
@@ -670,7 +670,7 @@ mod tests {
 
         let mgr = SessionManager::new(engine, budget, ResumePolicy::default());
 
-        let result = mgr.execute(&test_prompt(1), &default_config()).await;
+        let result = mgr.execute(&sample_prompt_spec(1), &default_config()).await;
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.to_string().contains("auth expired"));
@@ -701,7 +701,7 @@ mod tests {
         let mgr = SessionManager::new(engine, budget, two_stage_policy());
 
         let outcome = mgr
-            .execute(&test_prompt(1), &default_config())
+            .execute(&sample_prompt_spec(1), &default_config())
             .await
             .unwrap();
         assert_eq!(outcome.status, SessionStatus::Success);
@@ -722,7 +722,7 @@ mod tests {
         let mgr = SessionManager::new(engine, budget, two_stage_policy());
 
         let outcome = mgr
-            .execute(&test_prompt(1), &default_config())
+            .execute(&sample_prompt_spec(1), &default_config())
             .await
             .unwrap();
         assert_eq!(outcome.status, SessionStatus::BudgetExceeded);

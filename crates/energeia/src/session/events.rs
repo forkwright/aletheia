@@ -177,7 +177,7 @@ pub(crate) fn extract_pr_url(text: &str) -> Option<&str> {
 /// rate-limit variant (pending Agent SDK integration).
 // NOTE: Will be consumed by the session manager once `SessionEvent` gains a
 // rate-limit variant (pending Agent SDK integration). Used in tests only for now.
-#[allow(
+#[expect(
     dead_code,
     reason = "constant defined for use once SessionEvent gains rate-limit events"
 )]
