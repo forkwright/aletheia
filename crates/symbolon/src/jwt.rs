@@ -1,20 +1,23 @@
 //! HS256 JWT token issuance and validation.
 //!
-//! Owned implementation using `ring::hmac` for HMAC-SHA256 signing.
-//! Replaces the `jsonwebtoken` crate to eliminate its CVE-flagged transitive
-//! dependencies and `rand` version duplication.
+//! Owned implementation using `hmac` + `sha2` (RustCrypto) for HMAC-SHA256
+//! signing. Replaces the `jsonwebtoken` crate to eliminate its CVE-flagged
+//! transitive dependencies and `rand` version duplication.
 
 use std::time::Duration;
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use ring::hmac;
+use hmac::{Hmac, Mac};
+use sha2::Sha256;
 use tracing::instrument;
 
 use aletheia_koina::secret::SecretString;
 
 use crate::error::{self, Result};
 use crate::types::{Claims, Role, TokenKind, TokenPair};
+
+type HmacSha256 = Hmac<Sha256>;
 
 /// Base64url-encoded HS256 JWT header (constant, never changes).
 const HS256_HEADER_B64: &str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9";
@@ -91,7 +94,8 @@ impl JwtConfig {
 
 /// Manages JWT issuance and validation.
 pub struct JwtManager {
-    signing_key: hmac::Key,
+    /// Raw secret bytes for HMAC-SHA256 signing.
+    signing_key_bytes: Vec<u8>,
     config: JwtConfig,
 }
 
@@ -99,12 +103,9 @@ impl JwtManager {
     /// Create a new JWT manager from the given config.
     #[must_use]
     pub fn new(config: JwtConfig) -> Self {
-        let signing_key = hmac::Key::new(
-            hmac::HMAC_SHA256,
-            config.signing_key.expose_secret().as_bytes(),
-        );
+        let signing_key_bytes = config.signing_key.expose_secret().as_bytes().to_vec();
         Self {
-            signing_key,
+            signing_key_bytes,
             config,
         }
     }
@@ -156,7 +157,14 @@ impl JwtManager {
             .build()
         })?;
 
-        hmac::verify(&self.signing_key, header_payload.as_bytes(), &sig_bytes).map_err(|_err| {
+        let mut mac = HmacSha256::new_from_slice(&self.signing_key_bytes).map_err(|_err| {
+            error::TokenDecodeSnafu {
+                message: "HMAC key initialization failed".to_owned(),
+            }
+            .build()
+        })?;
+        mac.update(header_payload.as_bytes());
+        mac.verify_slice(&sig_bytes).map_err(|_err| {
             error::TokenDecodeSnafu {
                 message: "signature verification failed".to_owned(),
             }
@@ -252,8 +260,17 @@ impl JwtManager {
         })?;
         let payload_b64 = URL_SAFE_NO_PAD.encode(&payload_json);
         let signing_input = format!("{HS256_HEADER_B64}.{payload_b64}");
-        let tag = hmac::sign(&self.signing_key, signing_input.as_bytes());
-        let signature = URL_SAFE_NO_PAD.encode(tag.as_ref());
+        // WHY: new_from_slice only fails if the key length is incompatible with
+        // the hash block size, which cannot happen for HMAC-SHA256 (any length accepted).
+        let mut mac = HmacSha256::new_from_slice(&self.signing_key_bytes).map_err(|e| {
+            error::TokenEncodeSnafu {
+                message: format!("HMAC key initialization failed: {e}"),
+            }
+            .build()
+        })?;
+        mac.update(signing_input.as_bytes());
+        let tag = mac.finalize().into_bytes();
+        let signature = URL_SAFE_NO_PAD.encode(&tag);
 
         Ok(format!("{signing_input}.{signature}"))
     }

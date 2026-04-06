@@ -9,8 +9,9 @@
 use std::path::{Path, PathBuf};
 
 use base64::Engine as _;
-use ring::aead::{Aad, CHACHA20_POLY1305, LessSafeKey, NONCE_LEN, Nonce, UnboundKey};
-use ring::rand::{SecureRandom, SystemRandom};
+use chacha20poly1305::aead::generic_array::GenericArray;
+use chacha20poly1305::aead::{Aead, AeadCore, OsRng};
+use chacha20poly1305::{ChaCha20Poly1305, KeyInit};
 use snafu::ResultExt;
 use tracing::warn;
 
@@ -21,6 +22,9 @@ pub(crate) const ENCRYPTED_PREFIX: &str = "enc:";
 
 /// Length of the ChaCha20-Poly1305 key in bytes.
 const KEY_LEN: usize = 32;
+
+/// ChaCha20-Poly1305 nonce length (96 bits / 12 bytes).
+const NONCE_LEN: usize = 12;
 
 /// Default path for the primary key file.
 fn default_key_path() -> Option<PathBuf> {
@@ -168,15 +172,8 @@ pub fn generate_primary_key(path: &Path) -> Result<()> {
         .build());
     }
 
-    let rng = SystemRandom::new();
     let mut key = [0u8; KEY_LEN];
-    // WHY: ring::error::Unspecified has no useful fields to propagate
-    rng.fill(&mut key).map_err(|_unspecified| {
-        error::EncryptSnafu {
-            reason: "failed to generate random key".to_owned(),
-        }
-        .build()
-    })?;
+    rand::fill(&mut key);
 
     let hex = to_hex(&key);
     aletheia_koina::fs::write_restricted(path, hex.as_bytes()).context(
@@ -211,26 +208,18 @@ pub(crate) fn is_encrypted(value: &str) -> bool {
     reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
 )]
 pub(crate) fn encrypt_value(plaintext: &str, primary_key: &[u8; KEY_LEN]) -> Result<String> {
-    // WHY: ring::error::Unspecified has no useful fields to propagate
-    let unbound = UnboundKey::new(&CHACHA20_POLY1305, primary_key)
-        .map_err(|_unspecified| build_encrypt_error())?;
-    let key = LessSafeKey::new(unbound);
+    let cipher =
+        ChaCha20Poly1305::new(GenericArray::from_slice(primary_key));
+    let nonce = ChaCha20Poly1305::generate_nonce(&mut OsRng);
 
-    let rng = SystemRandom::new();
-    let mut nonce_bytes = [0u8; NONCE_LEN];
-    rng.fill(&mut nonce_bytes)
-        .map_err(|_unspecified| build_encrypt_error())?;
-
-    let nonce = Nonce::assume_unique_for_key(nonce_bytes);
-
-    let mut in_out = plaintext.as_bytes().to_vec();
-    key.seal_in_place_append_tag(nonce, Aad::empty(), &mut in_out)
-        .map_err(|_unspecified| build_encrypt_error())?;
+    let ciphertext_with_tag = cipher
+        .encrypt(&nonce, plaintext.as_bytes())
+        .map_err(|_aead_err| build_encrypt_error())?;
 
     // NOTE: nonce || ciphertext+tag
-    let mut payload = Vec::with_capacity(NONCE_LEN + in_out.len());
-    payload.extend_from_slice(&nonce_bytes);
-    payload.extend_from_slice(&in_out);
+    let mut payload = Vec::with_capacity(NONCE_LEN + ciphertext_with_tag.len());
+    payload.extend_from_slice(&nonce);
+    payload.extend_from_slice(&ciphertext_with_tag);
 
     let encoded = base64::engine::general_purpose::STANDARD.encode(&payload);
     Ok(format!("{ENCRYPTED_PREFIX}{encoded}"))
@@ -260,27 +249,25 @@ pub(crate) fn decrypt_value(encrypted: &str, primary_key: &[u8; KEY_LEN]) -> Res
         .decode(encoded)
         .map_err(|_decode_err| build_decrypt_error("invalid base64"))?;
 
-    if payload.len() < NONCE_LEN + CHACHA20_POLY1305.tag_len() {
+    // ChaCha20-Poly1305 tag is 16 bytes
+    const TAG_LEN: usize = 16;
+    if payload.len() < NONCE_LEN + TAG_LEN {
         return Err(build_decrypt_error("ciphertext too short"));
     }
 
     let (nonce_bytes, ciphertext) = payload.split_at(NONCE_LEN);
-    // WHY: ring::error::Unspecified has no useful fields to propagate
-    let nonce = Nonce::try_assume_unique_for_key(nonce_bytes)
-        .map_err(|_unspecified| build_decrypt_error("invalid nonce"))?;
 
-    let unbound = UnboundKey::new(&CHACHA20_POLY1305, primary_key)
-        .map_err(|_unspecified| build_decrypt_error("invalid key"))?;
-    let key = LessSafeKey::new(unbound);
+    let cipher =
+        ChaCha20Poly1305::new(GenericArray::from_slice(primary_key));
+    let nonce = GenericArray::from_slice(nonce_bytes);
 
-    let mut in_out = ciphertext.to_vec();
-    let plaintext = key
-        .open_in_place(nonce, Aad::empty(), &mut in_out)
-        .map_err(|_unspecified| {
+    let plaintext = cipher
+        .decrypt(nonce, ciphertext)
+        .map_err(|_aead_err| {
             build_decrypt_error("decryption failed (wrong key or corrupted data)")
         })?;
 
-    String::from_utf8(plaintext.to_vec())
+    String::from_utf8(plaintext)
         .map_err(|_utf8_err| build_decrypt_error("decrypted value is not valid UTF-8"))
 }
 
