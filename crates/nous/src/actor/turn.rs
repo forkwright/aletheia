@@ -349,7 +349,7 @@ impl NousActor {
         match result {
             Ok(inner) => inner,
             Err(join_error) => {
-                self.record_panic();
+                self.record_pipeline_panic();
 
                 let panic_msg = if join_error.is_panic() {
                     let panic_payload = join_error.into_panic();
@@ -367,7 +367,7 @@ impl NousActor {
                 error!(
                     nous_id = %self.id,
                     session_key = %session_key,
-                    panic_count = self.runtime.panic_count,
+                    panic_count = self.runtime.pipeline_panic_count,
                     message = %panic_msg,
                     "pipeline panicked — actor continues"
                 );
@@ -381,27 +381,27 @@ impl NousActor {
         }
     }
 
-    /// Record a panic occurrence. Enters degraded mode if too many panics in the window.
-    pub(super) fn record_panic(&mut self) {
-        self.runtime.panic_count += 1;
+    /// Record a pipeline panic occurrence. Enters degraded mode if too many panics in the window.
+    pub(super) fn record_pipeline_panic(&mut self) {
+        self.runtime.pipeline_panic_count += 1;
         let now = std::time::Instant::now();
-        self.runtime.panic_timestamps.push(now);
+        self.runtime.pipeline_panic_timestamps.push(now);
         self.runtime.last_panic_at = Some(now);
 
         let cutoff = std::time::Instant::now()
             .checked_sub(DEGRADED_WINDOW)
             .unwrap_or(self.runtime.started_at);
-        self.runtime.panic_timestamps.retain(|t| *t > cutoff);
+        self.runtime.pipeline_panic_timestamps.retain(|t| *t > cutoff);
 
         #[expect(
             clippy::as_conversions,
             reason = "u32→usize: DEGRADED_PANIC_THRESHOLD is a small constant, fits in usize"
         )]
-        if self.runtime.panic_timestamps.len() >= DEGRADED_PANIC_THRESHOLD as usize {
+        if self.runtime.pipeline_panic_timestamps.len() >= DEGRADED_PANIC_THRESHOLD as usize {
             warn!(
                 nous_id = %self.id,
-                panic_count = self.runtime.panic_count,
-                recent_panics = self.runtime.panic_timestamps.len(),
+                panic_count = self.runtime.pipeline_panic_count,
+                recent_panics = self.runtime.pipeline_panic_timestamps.len(),
                 "entering degraded mode — too many panics in window"
             );
             self.channel.status = NousLifecycle::Degraded;

@@ -103,13 +103,17 @@ pub(crate) struct ActorRuntime {
     /// WHY: Background distillation is async; a second turn can finish while the
     /// first turn's distillation task is still running, triggering a duplicate.
     distillation_in_progress: Arc<AtomicBool>,
-    /// Number of panics caught by the panic boundary since start.
-    panic_count: u32,
-    /// Timestamps of recent panics for degraded-mode window calculation.
-    panic_timestamps: Vec<Instant>,
+    /// Number of pipeline panics caught by the panic boundary since start.
+    pipeline_panic_count: u32,
+    /// Timestamps of recent pipeline panics for degraded-mode window calculation.
+    pipeline_panic_timestamps: Vec<Instant>,
+    /// Number of background task panics since start.
+    background_panic_count: u32,
+    /// Timestamps of recent background task panics (for logging/monitoring only).
+    background_panic_timestamps: Vec<Instant>,
     /// When the actor started running.
     started_at: Instant,
-    /// Timestamp of the most recent panic, used for auto-recovery from degraded mode.
+    /// Timestamp of the most recent pipeline panic, used for auto-recovery from degraded mode.
     last_panic_at: Option<Instant>,
     /// Consecutive inbox recv timeouts without a successful message. (#2159)
     consecutive_timeouts: u32,
@@ -205,8 +209,10 @@ impl NousActor {
                 background_tasks: JoinSet::new(),
                 active_turn,
                 distillation_in_progress: Arc::new(AtomicBool::new(false)),
-                panic_count: 0,
-                panic_timestamps: Vec::new(),
+                pipeline_panic_count: 0,
+                pipeline_panic_timestamps: Vec::new(),
+                background_panic_count: 0,
+                background_panic_timestamps: Vec::new(),
                 started_at: Instant::now(),
                 last_panic_at: None,
                 consecutive_timeouts: 0,
@@ -283,7 +289,7 @@ impl NousActor {
                             if self.channel.status == NousLifecycle::Degraded {
                                 let _ = reply.send(Err(crate::error::ServiceDegradedSnafu {
                                     nous_id: self.id.clone(),
-                                    panic_count: self.runtime.panic_count,
+                                    panic_count: self.runtime.pipeline_panic_count,
                                 }.build()));
                             } else {
                                 self.handle_turn(session_key, session_id, content, span, reply).await;
@@ -300,7 +306,7 @@ impl NousActor {
                             if self.channel.status == NousLifecycle::Degraded {
                                 let _ = reply.send(Err(crate::error::ServiceDegradedSnafu {
                                     nous_id: self.id.clone(),
-                                    panic_count: self.runtime.panic_count,
+                                    panic_count: self.runtime.pipeline_panic_count,
                                 }.build()));
                                 drop(stream_tx);
                             } else {
@@ -357,7 +363,7 @@ impl NousActor {
 
         while self.runtime.background_tasks.join_next().await.is_some() {}
 
-        info!(lifecycle = %self.channel.status, panic_count = self.runtime.panic_count, "actor stopped");
+        info!(lifecycle = %self.channel.status, panic_count = self.runtime.pipeline_panic_count, "actor stopped");
     }
 
     /// # Cancel safety
@@ -390,7 +396,7 @@ impl NousActor {
             lifecycle: self.channel.status,
             session_count: self.sessions.len(),
             active_session: self.active_session.clone(),
-            panic_count: self.runtime.panic_count,
+            panic_count: self.runtime.pipeline_panic_count,
             uptime: self.runtime.started_at.elapsed(),
         };
         let _ = reply.send(status);
@@ -441,12 +447,12 @@ impl NousActor {
         if last_panic.elapsed() >= DEGRADED_WINDOW {
             info!(
                 nous_id = %self.id,
-                panic_count = self.runtime.panic_count,
+                panic_count = self.runtime.pipeline_panic_count,
                 elapsed_secs = last_panic.elapsed().as_secs(),
                 "auto-recovering from degraded mode: no panics in recovery window"
             );
-            self.runtime.panic_count = 0;
-            self.runtime.panic_timestamps.clear();
+            self.runtime.pipeline_panic_count = 0;
+            self.runtime.pipeline_panic_timestamps.clear();
             self.runtime.last_panic_at = None;
             self.channel.status = NousLifecycle::Idle;
         }
@@ -460,11 +466,11 @@ impl NousActor {
         }
         info!(
             nous_id = %self.id,
-            panic_count = self.runtime.panic_count,
+            panic_count = self.runtime.pipeline_panic_count,
             "manual recovery from degraded mode"
         );
-        self.runtime.panic_count = 0;
-        self.runtime.panic_timestamps.clear();
+        self.runtime.pipeline_panic_count = 0;
+        self.runtime.pipeline_panic_timestamps.clear();
         self.runtime.last_panic_at = None;
         self.channel.status = NousLifecycle::Idle;
         true
