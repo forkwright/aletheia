@@ -15,7 +15,7 @@ One binary without containers, external databases, or cloud dependencies beyond 
 Download the tarball from [releases](https://github.com/forkwright/aletheia/releases), extract, and run `init`:
 
 ```bash
-VERSION=v0.13.13
+VERSION=v0.13.48
 curl -L "https://github.com/forkwright/aletheia/releases/download/${VERSION}/aletheia-linux-x86_64-${VERSION}.tar.gz" \
   -o aletheia.tar.gz
 tar xzf aletheia.tar.gz
@@ -41,7 +41,7 @@ The tarball contains `instance.example/` with the reference config layout. See [
 
 ## Architecture
 
-Rust workspace with 24 crates (23 in default workspace build, theatron-desktop excluded). Single binary deployment. See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full dependency graph and trait boundaries.
+Rust workspace with 23 crates (22 in default workspace build, theatron-desktop and integration-tests excluded). Single binary deployment. See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full dependency graph and trait boundaries.
 
 ---
 
@@ -74,6 +74,10 @@ Each agent has a workspace under `nous/` with character, operations, and memory 
 The binary sends no telemetry, phone-home requests, analytics, crash reports, or beacon traffic.
 
 The only outbound connections are to services you explicitly configure (LLM provider, Signal). Everything else stays on your machine. See [DATA.md](docs/DATA.md) for the data inventory, [NETWORK.md](docs/NETWORK.md) for every network call the binary makes.
+
+## Project history
+
+Aletheia was forked from **ergon** (the original project name) in early 2025. The `ergon` paths in backup and deployment scripts are maintained for backward compatibility with existing installations.
 
 ## License
 

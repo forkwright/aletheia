@@ -184,7 +184,7 @@ This displays the current token or a way to generate one. Tokens are managed by 
 
 ### POST/PUT/DELETE CSRF protection
 
-By default, CSRF protection is **disabled**. Enable it in `aletheia.toml`:
+State-changing requests (POST, PUT, DELETE, PATCH) require a CSRF token when this protection is enabled. By default, CSRF protection is **disabled**. Enable it in `aletheia.toml`:
 
 ```toml
 [gateway.csrf]

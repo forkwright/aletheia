@@ -75,7 +75,7 @@ cd <repo>
 git pull origin main
 cargo build --release
 systemctl --user stop aletheia
-cp target/release/aletheia ~/ergon/bin/aletheia
+cp target/release/aletheia ~/.local/bin/aletheia
 systemctl --user start aletheia
 curl -sf http://localhost:18789/api/health | jq .
 ```
@@ -634,7 +634,7 @@ Ephemeral sessions use keys prefixed with `spawn:`, `ask:`, or `dispatch:`. They
 
 ### Denied tool calls
 
-If the LLM attempts a tool outside its role's allowlist, the call is blocked and the agent receives a denied result, not an error. When an agent reports it cannot perform an action, verify the requested tool is in its role's allowlist.
+The system blocks any tool call that falls outside the agent's role allowlist. The agent receives a denied result (not an error) and continues. When an agent reports it cannot perform an action, verify the requested tool is in its role's allowlist.
 
 ---
 

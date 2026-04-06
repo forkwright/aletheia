@@ -214,7 +214,7 @@ pub struct PipelineMessage {
 }
 ```
 
-**Recommendation: Option A.** Keeping raw bytes in the pipeline and encoding at the wire boundary follows the "format at the boundary" principle from STANDARDS.md. It also avoids coupling the pipeline to the hermeneus wire format.
+**Recommendation: Option A.** Keeping raw bytes in the pipeline and encoding at the wire boundary follows the "format at the boundary" principle from standards/README.md. It also avoids coupling the pipeline to the hermeneus wire format.
 
 #### 3.3 token estimation
 

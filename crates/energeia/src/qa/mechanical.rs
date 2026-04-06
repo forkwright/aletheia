@@ -17,7 +17,10 @@ use crate::types::{MechanicalIssue, MechanicalIssueKind};
 /// added line in non-test files.
 #[expect(
     clippy::disallowed_types,
-    clippy::unwrap_used,
+    clippy::allow_attributes,
+    clippy::print_stdout,
+    clippy::todo,
+    clippy::unimplemented,
     reason = "string literals for anti-pattern detection, not actual code"
 )]
 const ANTI_PATTERNS: &[(&str, &str)] = &[

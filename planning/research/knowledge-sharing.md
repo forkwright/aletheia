@@ -135,7 +135,7 @@ recall_federated(query, options) -> Vec<RecallResult>
 | Approach | Pro | Con |
 |----------|-----|-----|
 | Current model (soft scoring) | Already works, no changes needed | No opt-out, privacy is scoring-based |
-| Explicit whitelist/blacklist | Agents control who sees their facts | Requires registration, maintenance |
+| Explicit allowlist/denylist | Agents control who sees their facts | Requires registration, maintenance |
 | Per-fact visibility flags | Granular control | Schema change, extraction complexity |
 
 **Recommendation.** Extend the existing model with per-fact visibility instead of building a separate federation layer. Add a `visibility` field to facts with these levels:

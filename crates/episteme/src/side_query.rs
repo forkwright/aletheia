@@ -196,7 +196,7 @@ impl RelevanceCache {
 /// caching. Designed to run as a pre-filter stage before the 6-factor
 /// recall scoring in [`RecallEngine`](crate::recall::RecallEngine).
 #[expect(
-    clippy::disallowed_types,
+    clippy::std_mutex_atomic,
     reason = "std::sync::Mutex is used because locks are never held across await points"
 )]
 pub struct SideQuerySelector {

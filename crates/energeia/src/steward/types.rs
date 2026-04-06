@@ -116,6 +116,10 @@ pub struct SuppressionFinding {
 /// Classification of suppression attributes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
+#[expect(
+    clippy::allow_attributes,
+    reason = "doc comments explain #[allow] vs #[expect] distinction"
+)]
 pub enum SuppressionKind {
     /// `#[allow(...)]` attribute — discouraged, use `#[expect]` instead.
     Allow,

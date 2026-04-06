@@ -60,6 +60,7 @@ pub(crate) fn run(args: &DesktopArgs) -> anyhow::Result<()> {
 
     if !status.success() {
         #[expect(
+            clippy::exit,
             clippy::disallowed_methods,
             reason = "desktop is a binary-like entry point that exits on subprocess failure"
         )]

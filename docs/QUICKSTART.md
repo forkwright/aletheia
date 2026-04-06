@@ -52,7 +52,7 @@ aletheia --version
 Download the tarball from the [releases page](https://github.com/forkwright/aletheia/releases) instead of building from source:
 
 ```bash
-VERSION=v0.13.37
+VERSION=v0.13.48
 curl -L "https://github.com/forkwright/aletheia/releases/download/${VERSION}/aletheia-linux-x86_64-${VERSION}.tar.gz" \
   -o aletheia.tar.gz
 tar xzf aletheia.tar.gz

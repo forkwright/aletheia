@@ -8,8 +8,12 @@ set -euo pipefail
 #   scripts/backup-cron.sh [--keep N] [--output-dir DIR]
 #
 # Environment:
-#   ALETHEIA_ROOT       Instance root directory (default: ~/ergon/instance)
-#   ALETHEIA_BINARY     Path to the aletheia binary  (default: ~/ergon/bin/aletheia)
+#   ALETHEIA_ROOT       Instance root directory (default: ~/aletheia/instance)
+#   ALETHEIA_BINARY     Path to the aletheia binary  (default: ~/.local/bin/aletheia)
+#
+# Note: The ergon paths (~/ergon/instance, ~/ergon/bin) in the fallback logic
+# below are for backward compatibility. Ergon was the original project name
+# before the fork to aletheia.
 #   BACKUP_KEEP         Number of backup files to retain (default: 7)
 #   BACKUP_OUTPUT_DIR   Directory for backup files (default: "$ALETHEIA_ROOT/backups")
 #

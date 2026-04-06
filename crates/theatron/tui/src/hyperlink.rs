@@ -118,7 +118,7 @@ fn probe_hyperlink_support() -> bool {
 /// those contexts should not be passed to this function.
 pub(crate) fn detect_urls(text: &str) -> Vec<(usize, usize, &str)> {
     #[expect(
-        clippy::expect_used,
+        clippy::unwrap_used,
         reason = "regex is a compile-time string literal and is always valid"
     )]
     static URL_RE: LazyLock<Regex> = LazyLock::new(|| {

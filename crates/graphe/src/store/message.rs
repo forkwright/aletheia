@@ -68,6 +68,14 @@ impl SessionStore {
     /// then operates on that already-filtered set.
     #[instrument(skip(self))]
     #[must_use]
+    #[expect(
+        clippy::format_in_format_args,
+        reason = "SQL structure is built dynamically but values use parameterized queries (?N placeholders)"
+    )]
+    #[expect(
+        clippy::format_push_string,
+        reason = "SQL WHERE clause built dynamically with parameterized placeholders, not user values"
+    )]
     pub fn get_history_filtered(
         &self,
         session_id: &str,

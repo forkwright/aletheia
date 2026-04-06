@@ -9,7 +9,7 @@
    ```
 3. Download the tarball from [GitHub Releases](https://github.com/forkwright/aletheia/releases):
    ```bash
-   VERSION=v0.13.0
+   VERSION=v0.13.48
    curl -L "https://github.com/forkwright/aletheia/releases/download/${VERSION}/aletheia-linux-x86_64-${VERSION}.tar.gz" \
      -o aletheia.tar.gz
    ```

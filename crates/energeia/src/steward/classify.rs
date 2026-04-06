@@ -171,20 +171,20 @@ pub(crate) fn extract_prompt_number_from_text(text: &str) -> Option<u32> {
     None
 }
 
-/// Parse a diff for suppression attributes and structural bypass patterns.
-///
-/// WHY: Uses regex to detect `#[allow(...)]`, `#[expect(...)]`,
-/// `#[cfg_attr(..., allow(...))]`, lint-ignore file additions,
-/// `// lint-ignore` inline comments, and `// SAFETY:` / `// INVARIANT:`
-/// comments added to bypass skip patterns.
 #[expect(
     clippy::too_many_lines,
     reason = "suppression detection branches are individually simple; splitting would obscure the diff-walking state machine"
 )]
 #[expect(
     clippy::allow_attributes,
-    reason = "function contains string literals with #[allow] patterns for detection, not actual attributes"
+    reason = "function contains doc comments and strings with #[allow] patterns for detection"
 )]
+/// Parse a diff for suppression attributes and structural bypass patterns.
+///
+/// WHY: Uses regex to detect `#[allow(...)]`, `#[expect(...)]`,
+/// `#[cfg_attr(..., allow(...))]`, lint-ignore file additions,
+/// `// lint-ignore` inline comments, and `// SAFETY:` / `// INVARIANT:`
+/// comments added to bypass skip patterns.
 #[must_use]
 pub fn parse_suppressions(diff: &str) -> Vec<SuppressionFinding> {
     let mut findings = Vec::new();

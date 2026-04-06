@@ -128,6 +128,8 @@ mod tests {
         );
 
         // WHY: Advance time enough for at least one sweep.
+        #[expect(clippy::disallowed_methods, reason = "test uses tokio::time::advance for deterministic timing")]
+        #[expect(clippy::disallowed_methods, reason = "test uses tokio::time::advance for deterministic timing")]
         tokio::time::advance(Duration::from_millis(200)).await;
 
         shutdown.cancel();
@@ -214,6 +216,7 @@ mod tests {
             Duration::from_millis(50),
         );
 
+        #[expect(clippy::disallowed_methods, reason = "test uses tokio::time::advance for deterministic timing")]
         tokio::time::advance(Duration::from_millis(200)).await;
 
         shutdown.cancel();

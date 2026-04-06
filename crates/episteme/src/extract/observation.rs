@@ -5,6 +5,11 @@
 //! optional tags inferred from the text (crate names, file paths) and
 //! a classified `ObservationType`.
 
+#![expect(
+    clippy::expect_used,
+    reason = "regex patterns are compile-time constants and cannot fail"
+)]
+
 use std::fmt;
 use std::sync::LazyLock;
 

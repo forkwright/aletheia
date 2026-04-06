@@ -56,7 +56,7 @@ aletheia/                          # git root  -  the platform
 ├── instance/                      # GITIGNORED  -  all instance state
 │   ├── theke/                     # Tier 0: human + nous collaborative space
 │   │   ├── USER.md               #   Canonical user profile (one copy)
-│   │   ├── AGENTS.md             #   Team topology
+│   │   ├── CLAUDE.md             #   Team topology
 │   │   ├── tools/                #   Tools for human + all nous
 │   │   ├── research/             #   Shared research
 │   │   ├── deliberations/        #   Multi-agent deliberations

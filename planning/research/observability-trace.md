@@ -197,7 +197,7 @@ Separate from tracing, Prometheus metrics are exposed at `/metrics` (`crates/pyl
 
 ### R1: install a structured panic handler (high priority)
 
-`RUST.md` mandates a custom panic hook that logs to the structured log file. No panic handler is installed today. A panic in any async task silently disappears unless the `JoinHandle` is awaited and the `JoinError` explicitly logged. The daemon runner catches task panics, but a panic on the main thread or in non-runner tasks would only hit stderr.
+Install a custom panic hook that logs panics to the structured log file (as mandated by `RUST.md`). Today, no panic handler is installed. A panic in any async task silently disappears unless the `JoinHandle` is awaited and the `JoinError` explicitly logged. The daemon runner catches task panics, but a panic on the main thread or in non-runner tasks would only hit stderr.
 
 ```rust
 std::panic::set_hook(Box::new(|info| {
@@ -283,4 +283,4 @@ These spans carry no identifying fields, making them hard to correlate in multi-
 | Dispatcher spans | `crates/aletheia/src/dispatch.rs:24-47` |
 | Config reference doc | `docs/CONFIGURATION.md:372-388` |
 | Rust tracing standard | `standards/RUST.md` (Logging section) |
-| Universal logging standard | `standards/STANDARDS.md` (Logging and Observability section) |
+| Universal logging standard | `standards/LOGGING.md` |

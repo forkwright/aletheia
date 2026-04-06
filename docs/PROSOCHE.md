@@ -126,7 +126,7 @@ The `TaskRunner` accepts arbitrary tasks via `TaskAction`:
 
 ### Bridge pattern
 
-Communication between the daemon and nous actors flows through the `DaemonBridge` trait. This keeps the daemon crate decoupled from nous internals; the bridge is wired in the binary crate (`crates/aletheia/src/daemon_bridge.rs`).
+The `DaemonBridge` trait mediates all communication between the daemon and nous actors. This keeps the daemon crate decoupled from nous internals; the bridge is wired in the binary crate (`crates/aletheia/src/daemon_bridge.rs`).
 
 ```rust
 pub trait DaemonBridge: Send + Sync {

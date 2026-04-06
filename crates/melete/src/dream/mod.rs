@@ -881,6 +881,7 @@ mod tests {
         engine.on_turn_complete(&source, &target, &provider);
 
         // NOTE: advance time to allow the background task to complete.
+        #[expect(clippy::disallowed_methods, reason = "test uses tokio::time::advance for deterministic timing")]
         tokio::time::advance(std::time::Duration::from_millis(100)).await;
     }
 

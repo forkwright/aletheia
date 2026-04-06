@@ -10,7 +10,7 @@ Each nous has a workspace directory (`instance/nous/<name>/`) with up to 10 mark
 |------|----------|----------|--------|---------|
 | SOUL.md | 1 | Yes | Hand-written | Core identity, principles, communication style, boundaries |
 | USER.md | 2 | No | Hand-written | Operator profile, preferences, goals, constraints |
-| AGENTS.md | 3 | No | Hand-written | Other nous in the system, collaboration protocols, routing |
+| CLAUDE.md | 3 | No | Hand-written | Operational rules, delegation, output quality |
 | GOALS.md | 4 | No | Hand-written | Active, completed, and deferred goals |
 | TOOLS.md | 5 | No | Auto-generated | Tool inventory and profiles. Regenerated when tool set changes |
 | MEMORY.md | 6 | No | Nous-maintained | Long-term curated knowledge: facts, preferences, patterns, lessons |
@@ -37,14 +37,14 @@ Only one file is truly required for a nous to function:
 
 - **SOUL.md** - Without it, the nous has no identity or behavioral guidance. The actor fails to spawn if this file is missing from the cascade.
 
-All other files are optional. A minimal nous needs only SOUL.md. In practice, most nous also have IDENTITY.md (for display name and routing), AGENTS.md (for multi-agent coordination), and MEMORY.md (for session continuity).
+All other files are optional. A minimal nous needs only SOUL.md. In practice, most nous also have IDENTITY.md (for display name and routing), CLAUDE.md (for operational rules and output quality), and MEMORY.md (for session continuity).
 
 ---
 
 ## Hand-written vs auto-generated
 
 **Hand-written by the operator:**
-- SOUL.md, USER.md, AGENTS.md, IDENTITY.md, GOALS.md
+- SOUL.md, USER.md, CLAUDE.md, IDENTITY.md, GOALS.md
 
 **Maintained by the nous itself:**
 - MEMORY.md - The nous reads and updates this file across sessions to build persistent knowledge. The template instructs the nous: "Your workspace files are your memory. Update them proactively."
@@ -93,7 +93,7 @@ Agent workspaces (`instance/nous/{id}/`) hold **identity files and session memor
 
 ### What stays in `nous/{id}/`
 
-- Bootstrap files: SOUL.md, USER.md, AGENTS.md, GOALS.md, TOOLS.md, MEMORY.md, IDENTITY.md, PROSOCHE.md, CONTEXT.md
+- Bootstrap files: SOUL.md, USER.md, CLAUDE.md, GOALS.md, TOOLS.md, MEMORY.md, IDENTITY.md, PROSOCHE.md, CONTEXT.md
 - Session logs: `memory/YYYY-MM-DD.md`
 
 ### What goes in `theke/`
@@ -114,4 +114,4 @@ Files organized by **subject**, not by agent. This prevents:
 - Files that can't be found because you don't know which agent created them
 - Maintenance overhead from managing N separate file trees
 
-The `_example/AGENTS.md` template includes this rule, so every newly scaffolded agent learns it during onboarding. See `instance.example/README.md` for the full directory structure.
+The `_example/CLAUDE.md` template includes this rule, so every newly scaffolded agent learns it during onboarding. See `instance.example/README.md` for the full directory structure.

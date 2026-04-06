@@ -10,7 +10,7 @@ This directory is the reference template for new Aletheia agents. Copy it with `
 ├── IDENTITY.md      # Runtime-required: name and emoji
 ├── GOALS.md         # Active and completed goals
 ├── MEMORY.md        # Curated operational memory
-├── AGENTS.md        # Operational rules, delegation, output quality
+├── CLAUDE.md        # Operational rules, delegation, output quality
 ├── CONTEXT.md       # Session-scoped state (runtime-written)
 ├── PROSOCHE.md      # Attention and heartbeat directives
 ├── TOOLS.md         # Tool inventory (auto-generated)
