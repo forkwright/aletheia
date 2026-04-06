@@ -391,13 +391,17 @@ impl NousActor {
         let cutoff = std::time::Instant::now()
             .checked_sub(DEGRADED_WINDOW)
             .unwrap_or(self.runtime.started_at);
-        self.runtime.pipeline_panic_timestamps.retain(|t| *t > cutoff);
+        self.runtime
+            .pipeline_panic_timestamps
+            .retain(|t| *t > cutoff);
 
         #[expect(
             clippy::as_conversions,
             reason = "u32→usize: DEGRADED_PANIC_THRESHOLD is a small constant, fits in usize"
         )]
-        if self.runtime.pipeline_panic_timestamps.len() >= usize::try_from(DEGRADED_PANIC_THRESHOLD).unwrap_or_default() {
+        if self.runtime.pipeline_panic_timestamps.len()
+            >= usize::try_from(DEGRADED_PANIC_THRESHOLD).unwrap_or_default()
+        {
             warn!(
                 nous_id = %self.id,
                 panic_count = self.runtime.pipeline_panic_count,
@@ -419,7 +423,9 @@ impl NousActor {
         let cutoff = std::time::Instant::now()
             .checked_sub(DEGRADED_WINDOW)
             .unwrap_or(self.runtime.started_at);
-        self.runtime.background_panic_timestamps.retain(|t| *t > cutoff);
+        self.runtime
+            .background_panic_timestamps
+            .retain(|t| *t > cutoff);
 
         warn!(
             nous_id = %self.id,

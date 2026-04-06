@@ -191,10 +191,10 @@ pub(crate) fn finalize(
         let record = UsageRecord {
             session_id: session.id.clone(),
             turn_seq,
-            input_tokens: result.usage.i64::try_from(input_tokens).unwrap_or_default(), // kanon:ignore RUST/as-cast
-            output_tokens: result.usage.i64::try_from(output_tokens).unwrap_or_default(), // kanon:ignore RUST/as-cast
-            cache_read_tokens: result.usage.i64::try_from(cache_read_tokens).unwrap_or_default(), // kanon:ignore RUST/as-cast
-            cache_write_tokens: result.usage.i64::try_from(cache_write_tokens).unwrap_or_default(), // kanon:ignore RUST/as-cast
+            input_tokens: i64::try_from(result.usage.input_tokens).unwrap_or_default(), // kanon:ignore RUST/as-cast
+            output_tokens: i64::try_from(result.usage.output_tokens).unwrap_or_default(), // kanon:ignore RUST/as-cast
+            cache_read_tokens: i64::try_from(result.usage.cache_read_tokens).unwrap_or_default(), // kanon:ignore RUST/as-cast
+            cache_write_tokens: i64::try_from(result.usage.cache_write_tokens).unwrap_or_default(), // kanon:ignore RUST/as-cast
             model: Some(session.model.clone()),
         };
         store.record_usage(&record).context(error::StoreSnafu)?;
@@ -284,9 +284,18 @@ mod tests {
         let history = store.get_history("ses-1", None).unwrap_or_default();
         assert_eq!(history.len(), 2);
         assert_eq!(history.get(0).copied().unwrap_or_default().role, Role::User);
-        assert_eq!(history.get(0).copied().unwrap_or_default().content, "Hi there");
-        assert_eq!(history.get(1).copied().unwrap_or_default().role, Role::Assistant);
-        assert_eq!(history.get(1).copied().unwrap_or_default().content, "Hello!");
+        assert_eq!(
+            history.get(0).copied().unwrap_or_default().content,
+            "Hi there"
+        );
+        assert_eq!(
+            history.get(1).copied().unwrap_or_default().role,
+            Role::Assistant
+        );
+        assert_eq!(
+            history.get(1).copied().unwrap_or_default().content,
+            "Hello!"
+        );
     }
 
     #[test]
@@ -301,12 +310,39 @@ mod tests {
         // NOTE: user + tool_call(assistant) + tool_result + assistant = 4
         assert_eq!(history.len(), 4);
         assert_eq!(history.get(0).copied().unwrap_or_default().role, Role::User);
-        assert_eq!(history.get(1).copied().unwrap_or_default().role, Role::Assistant);
-        assert!(history.get(1).copied().unwrap_or_default().tool_call_id.is_some());
-        assert_eq!(history.get(1).copied().unwrap_or_default().tool_name.as_deref(), Some("read_file"));
-        assert_eq!(history.get(2).copied().unwrap_or_default().role, Role::ToolResult);
-        assert_eq!(history.get(2).copied().unwrap_or_default().content, "file contents here");
-        assert_eq!(history.get(3).copied().unwrap_or_default().role, Role::Assistant);
+        assert_eq!(
+            history.get(1).copied().unwrap_or_default().role,
+            Role::Assistant
+        );
+        assert!(
+            history
+                .get(1)
+                .copied()
+                .unwrap_or_default()
+                .tool_call_id
+                .is_some()
+        );
+        assert_eq!(
+            history
+                .get(1)
+                .copied()
+                .unwrap_or_default()
+                .tool_name
+                .as_deref(),
+            Some("read_file")
+        );
+        assert_eq!(
+            history.get(2).copied().unwrap_or_default().role,
+            Role::ToolResult
+        );
+        assert_eq!(
+            history.get(2).copied().unwrap_or_default().content,
+            "file contents here"
+        );
+        assert_eq!(
+            history.get(3).copied().unwrap_or_default().role,
+            Role::Assistant
+        );
         assert_eq!(history.get(3).copied().unwrap_or_default().content, "Done.");
     }
 
@@ -362,7 +398,10 @@ mod tests {
         let history = store.get_history("ses-orphan", None).unwrap_or_default();
         assert_eq!(history.len(), 2);
         assert_eq!(history.get(0).copied().unwrap_or_default().role, Role::User);
-        assert_eq!(history.get(1).copied().unwrap_or_default().role, Role::Assistant);
+        assert_eq!(
+            history.get(1).copied().unwrap_or_default().role,
+            Role::Assistant
+        );
     }
 
     #[test]
@@ -453,8 +492,7 @@ mod tests {
         let finalize_config = FinalizeConfig::default();
 
         // NOTE: This must succeed: no FK violation because IDs match.
-        let fr = finalize(&store, &session, "Hello", &result, &finalize_config)
-            .unwrap_or_default();
+        let fr = finalize(&store, &session, "Hello", &result, &finalize_config).unwrap_or_default();
         assert_eq!(fr.messages_persisted, 2);
         assert!(fr.usage_recorded);
 
@@ -462,8 +500,14 @@ mod tests {
         assert_eq!(history.len(), 2);
         assert_eq!(history.get(0).copied().unwrap_or_default().role, Role::User);
         assert_eq!(history.get(0).copied().unwrap_or_default().content, "Hello");
-        assert_eq!(history.get(1).copied().unwrap_or_default().role, Role::Assistant);
-        assert_eq!(history.get(1).copied().unwrap_or_default().content, "Hello!");
+        assert_eq!(
+            history.get(1).copied().unwrap_or_default().role,
+            Role::Assistant
+        );
+        assert_eq!(
+            history.get(1).copied().unwrap_or_default().content,
+            "Hello!"
+        );
     }
 
     /// Regression test for #758: verify that when the actor uses a divergent
