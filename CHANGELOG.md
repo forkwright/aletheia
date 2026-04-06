@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.13.51](https://github.com/forkwright/aletheia/compare/v0.13.50...v0.13.51) (2026-04-06)
+
+
+### Bug Fixes
+
+* **nous:** increase restart drain timeout to 30s with observability ([#2484](https://github.com/forkwright/aletheia/issues/2484)) ([09a5672](https://github.com/forkwright/aletheia/commit/09a5672bb3075b51650e4745e5bebadb7eebac7c)), closes [#2436](https://github.com/forkwright/aletheia/issues/2436)
+
+## [0.13.50](https://github.com/forkwright/aletheia/compare/v0.13.49...v0.13.50) (2026-04-06)
+
+
+### Bug Fixes
+
+* **nous:** evict sessions by last-access time instead of creation time ([#2480](https://github.com/forkwright/aletheia/issues/2480)) ([2f5f7c2](https://github.com/forkwright/aletheia/commit/2f5f7c2ead97642fa5aadf669aeedc8b0e114d01)), closes [#2441](https://github.com/forkwright/aletheia/issues/2441)
+
 ## [0.13.49](https://github.com/forkwright/aletheia/compare/v0.13.48...v0.13.49) (2026-04-06)
 
 
