@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.56](https://github.com/forkwright/aletheia/compare/v0.13.55...v0.13.56) (2026-04-06)
+
+
+### Bug Fixes
+
+* **diaporeia:** use streaming turn execution to avoid transport timeout ([#2500](https://github.com/forkwright/aletheia/issues/2500)) ([bd28617](https://github.com/forkwright/aletheia/commit/bd2861766147ddecacef6456a5b2d0173aee9792))
+
 ## [0.13.55](https://github.com/forkwright/aletheia/compare/v0.13.54...v0.13.55) (2026-04-06)
 
 
