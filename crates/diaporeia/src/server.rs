@@ -12,7 +12,7 @@ use rmcp::model::{
 };
 use rmcp::tool_handler;
 
-use crate::rate_limit::RateLimiter;
+use crate::rate_limit::{RateLimiter, Tier};
 use crate::resources;
 use crate::state::DiaporeiaState;
 
@@ -102,6 +102,7 @@ impl rmcp::handler::server::ServerHandler for DiaporeiaServer {
         params: ReadResourceRequestParams,
         _context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> Result<ReadResourceResult, rmcp::ErrorData> {
+        self.rate_limiter.check(Tier::Cheap)?;
         let uri = params.uri.as_str();
 
         let contents = if uri.starts_with("aletheia://nous/") {
