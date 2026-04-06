@@ -241,7 +241,7 @@ data: {\"type\":\"message_stop\"}\n\
         assert_eq!(response.id, "msg_1");
         assert_eq!(response.stop_reason, StopReason::EndTurn);
         assert_eq!(response.content.len(), 1);
-        match &response.content.get(0).copied().unwrap_or_default() {
+        match &response.content[0] {
             ContentBlock::Text { text, .. } => assert_eq!(text, "Hello world"),
             _ => panic!("expected Text block"),
         }
@@ -275,7 +275,7 @@ data: {\"type\":\"message_stop\"}\n\
         let (_, response) = collect_events(sse);
 
         assert_eq!(response.stop_reason, StopReason::ToolUse);
-        match &response.content.get(0).copied().unwrap_or_default() {
+        match &response.content[0] {
             ContentBlock::ToolUse { id, name, input } => {
                 assert_eq!(id, "toolu_1");
                 assert_eq!(name, "exec");
@@ -319,13 +319,13 @@ data: {\"type\":\"message_stop\"}\n\
         let (_, response) = collect_events(sse);
 
         assert_eq!(response.content.len(), 2);
-        match &response.content.get(0).copied().unwrap_or_default() {
+        match &response.content[0] {
             ContentBlock::Thinking { thinking, .. } => {
                 assert_eq!(thinking, "Let me think about this.");
             }
             _ => panic!("expected Thinking block"),
         }
-        match &response.content.get(1).copied().unwrap_or_default() {
+        match &response.content[1] {
             ContentBlock::Text { text, .. } => assert_eq!(text, "The answer is 42."),
             _ => panic!("expected Text block"),
         }
@@ -478,7 +478,7 @@ data: {\"type\":\"message_stop\"}\n\
         );
 
         assert_eq!(response.content.len(), 3);
-        match &response.content.get(0).copied().unwrap_or_default() {
+        match &response.content[0] {
             ContentBlock::ServerToolUse { id, name, input } => {
                 assert_eq!(id, "srvtoolu_1");
                 assert_eq!(name, "web_search");
@@ -487,10 +487,10 @@ data: {\"type\":\"message_stop\"}\n\
             _ => panic!("expected ServerToolUse"),
         }
         assert!(matches!(
-            &response.content.get(1).copied().unwrap_or_default(),
+            &response.content[1],
             ContentBlock::WebSearchToolResult { .. }
         ));
-        match &response.content.get(2).copied().unwrap_or_default() {
+        match &response.content[2] {
             ContentBlock::Text { text, .. } => assert_eq!(text, "Based on my search..."),
             _ => panic!("expected Text"),
         }
@@ -499,7 +499,7 @@ data: {\"type\":\"message_stop\"}\n\
     #[test]
     fn empty_stream_returns_ok_with_defaults() {
         let (events, response) = collect_events("");
-        assert!(events.is_empty(), "no events FROM empty stream");
+        assert!(events.is_empty(), "no events from empty stream");
         assert_eq!(response.stop_reason, StopReason::EndTurn);
         assert!(response.content.is_empty());
     }
@@ -528,7 +528,7 @@ data: {\"type\":\"message_stop\"}\n\
 
         let (_, response) = collect_events(sse);
         assert_eq!(response.stop_reason, StopReason::ToolUse);
-        match &response.content.get(0).copied().unwrap_or_default() {
+        match &response.content[0] {
             ContentBlock::ToolUse { id, name, input } => {
                 assert_eq!(id, "toolu_noop");
                 assert_eq!(name, "get_time");

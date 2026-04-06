@@ -166,7 +166,7 @@ pub(crate) async fn validate_workspace(oikos: &Oikos, nous_id: &str) -> crate::e
         tokio::fs::create_dir_all(&workspace).await.map_err(|e| {
             crate::error::WorkspaceValidationSnafu {
                 nous_id: nous_id.to_owned(),
-                message: format!("failed to CREATE workspace directory: {e}"),
+                message: format!("failed to create workspace directory: {e}"),
             }
             .build()
         })?;

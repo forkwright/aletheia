@@ -50,7 +50,7 @@ fn client_commands() -> Vec<Command> {
         },
         Command {
             name: "disconnect".to_string(),
-            description: "Disconnect FROM the server".to_string(),
+            description: "Disconnect from the server".to_string(),
             usage: "/disconnect".to_string(),
             source: CommandSource::Client,
             agent_specific: false,
@@ -189,7 +189,7 @@ mod tests {
         let mut store = CommandStore::new();
         store.filter_by_prefix("hel");
         assert_eq!(store.filtered.len(), 1);
-        assert_eq!(store.filtered.get(0).copied().unwrap_or_default().name, "help");
+        assert_eq!(store.filtered[0].name, "help");
     }
 
     #[test]
@@ -244,7 +244,7 @@ mod tests {
     fn selected_returns_highlighted_command() {
         let store = CommandStore::new();
         let sel = store.selected().unwrap();
-        assert_eq!(sel.name, store.filtered.get(0).copied().unwrap_or_default().name);
+        assert_eq!(sel.name, store.filtered[0].name);
     }
 
     #[test]

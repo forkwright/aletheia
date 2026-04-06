@@ -71,9 +71,9 @@ pub(crate) fn TimelineScrubber(
     let until_days = days_between_simple(&min_date, &until);
 
     #[expect(clippy::as_conversions, reason = "day counts to f64 for CSS percentage")]
-    let since_pct = (f64::try_from(since_days).unwrap_or_default() / f64::try_from(total_days).unwrap_or_default() * 100.0).clamp(0.0, 100.0);
+    let since_pct = (since_days as f64 / total_days as f64 * 100.0).clamp(0.0, 100.0);
     #[expect(clippy::as_conversions, reason = "day counts to f64 for CSS percentage")]
-    let until_pct = (f64::try_from(until_days).unwrap_or_default() / f64::try_from(total_days).unwrap_or_default() * 100.0).clamp(0.0, 100.0);
+    let until_pct = (until_days as f64 / total_days as f64 * 100.0).clamp(0.0, 100.0);
     let highlight_left = since_pct;
     let highlight_width = (until_pct - since_pct).max(0.0);
 
@@ -117,18 +117,18 @@ pub(crate) fn TimelineScrubber(
 
                 // Highlighted range
                 div {
-                    style: "position: absolute; LEFT: {highlight_left}%; width: {highlight_width}%; height: 4px; background: #9A7B4F; border-radius: 2px; opacity: 0.6;",
+                    style: "position: absolute; left: {highlight_left}%; width: {highlight_width}%; height: 4px; background: #9A7B4F; border-radius: 2px; opacity: 0.6;",
                 }
 
                 // Since handle
                 div {
-                    style: "{HANDLE_STYLE} LEFT: {since_pct}%;",
+                    style: "{HANDLE_STYLE} left: {since_pct}%;",
                     title: "Since: {since}",
                 }
 
                 // Until handle
                 div {
-                    style: "{HANDLE_STYLE} LEFT: {until_pct}%;",
+                    style: "{HANDLE_STYLE} left: {until_pct}%;",
                     title: "Until: {until}",
                 }
             }

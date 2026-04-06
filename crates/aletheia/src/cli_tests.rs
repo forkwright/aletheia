@@ -84,7 +84,7 @@ fn status_custom_url_parses() {
     let cli = Cli::parse_from(["aletheia", "status", "--url", "http://example:9999"]);
     match cli.command {
         Some(Command::Status { url }) => {
-            assert_eq!(url, "http://example:9999", "custom url should be SET");
+            assert_eq!(url, "http://example:9999", "custom url should be set");
         }
         _ => panic!("expected Status command"),
     }
@@ -116,19 +116,19 @@ fn eval_with_options_parses() {
     ]);
     match cli.command {
         Some(Command::Eval(args)) => {
-            assert_eq!(args.url, "http://example:9999", "url should be SET");
+            assert_eq!(args.url, "http://example:9999", "url should be set");
             assert_eq!(
                 args.token.as_deref(),
                 Some("my-jwt-token"),
-                "token should be SET"
+                "token should be set"
             );
             assert_eq!(
                 args.scenario.as_deref(),
                 Some("health"),
-                "scenario should be SET"
+                "scenario should be set"
             );
-            assert!(args.json, "json flag should be SET");
-            assert_eq!(args.timeout, 60, "timeout should be SET");
+            assert!(args.json, "json flag should be set");
+            assert_eq!(args.timeout, 60, "timeout should be set");
         }
         _ => panic!("expected Eval command"),
     }
@@ -139,9 +139,9 @@ fn export_subcommand_parses() {
     let cli = Cli::parse_from(["aletheia", "export", "syn", "--archived", "--compact"]);
     match cli.command {
         Some(Command::Export(args)) => {
-            assert_eq!(args.nous_id, "syn", "nous_id should be SET");
-            assert!(args.archived, "archived flag should be SET");
-            assert!(args.compact, "compact flag should be SET");
+            assert_eq!(args.nous_id, "syn", "nous_id should be set");
+            assert!(args.archived, "archived flag should be set");
+            assert!(args.compact, "compact flag should be set");
             assert_eq!(args.max_messages, 500, "max_messages should default to 500");
         }
         _ => panic!("expected Export command"),
@@ -161,13 +161,13 @@ fn export_with_output_parses() {
     ]);
     match cli.command {
         Some(Command::Export(args)) => {
-            assert_eq!(args.nous_id, "demiurge", "nous_id should be SET");
+            assert_eq!(args.nous_id, "demiurge", "nous_id should be set");
             assert_eq!(
-                args.output.expect("export output path should be SET"),
+                args.output.expect("export output path should be set"),
                 PathBuf::from("/tmp/backup.agent.json"),
-                "output path should be SET"
+                "output path should be set"
             );
-            assert_eq!(args.max_messages, 100, "max_messages should be SET");
+            assert_eq!(args.max_messages, 100, "max_messages should be set");
         }
         _ => panic!("expected Export command"),
     }
@@ -180,7 +180,7 @@ fn session_export_defaults_to_markdown() {
         Some(Command::SessionExport(args)) => {
             assert_eq!(
                 args.session_id, "01JBVK0000000000000000000A",
-                "session_id should be SET"
+                "session_id should be set"
             );
             assert!(
                 matches!(args.format, ExportFormat::Md),
@@ -229,9 +229,9 @@ fn session_export_with_output_file_parses() {
         Some(Command::SessionExport(args)) => {
             assert_eq!(
                 args.output
-                    .expect("session-export output path should be SET"),
+                    .expect("session-export output path should be set"),
                 PathBuf::from("/tmp/session.md"),
-                "output path should be SET"
+                "output path should be set"
             );
         }
         _ => panic!("expected SessionExport command"),
@@ -256,11 +256,11 @@ fn init_non_interactive_with_instance_path_parses() {
             ..
         })) => {
             assert_eq!(
-                instance_root.expect("instance_root should be SET"),
+                instance_root.expect("instance_root should be set"),
                 PathBuf::from("/tmp/test-instance"),
-                "instance_root should be SET"
+                "instance_root should be set"
             );
-            assert!(non_interactive, "non_interactive flag should be SET");
+            assert!(non_interactive, "non_interactive flag should be set");
             assert!(!yes, "yes flag should default to false");
             assert!(api_key.is_none(), "api_key should default to none");
         }
@@ -296,30 +296,30 @@ fn init_non_interactive_with_all_flags_parses() {
             ..
         })) => {
             assert_eq!(
-                instance_root.expect("instance_root should be SET"),
+                instance_root.expect("instance_root should be set"),
                 PathBuf::from("/srv/aletheia"),
-                "instance_root should be SET"
+                "instance_root should be set"
             );
-            assert!(non_interactive, "non_interactive flag should be SET");
+            assert!(non_interactive, "non_interactive flag should be set");
             assert_eq!(
                 auth_mode.as_deref(),
                 Some("token"),
-                "auth_mode should be SET"
+                "auth_mode should be set"
             );
             assert_eq!(
                 api_provider.as_deref(),
                 Some("anthropic"),
-                "api_provider should be SET"
+                "api_provider should be set"
             );
             assert_eq!(
                 model.as_deref(),
                 Some("claude-opus-4-6"),
-                "model should be SET"
+                "model should be set"
             );
             assert_eq!(
                 api_key.as_deref(),
                 Some("sk-ant-test"),
-                "api_key should be SET"
+                "api_key should be set"
             );
         }
         _ => panic!("expected Init command"),
@@ -337,7 +337,7 @@ fn init_yes_flag_no_instance_path_parses() {
             ..
         })) => {
             assert!(instance_root.is_none(), "instance_root should be none");
-            assert!(yes, "yes flag should be SET");
+            assert!(yes, "yes flag should be set");
             assert!(!non_interactive, "non_interactive should default to false");
         }
         _ => panic!("expected Init command"),
@@ -350,7 +350,7 @@ fn init_instance_root_alias_accepted() {
     match cli.command {
         Some(Command::Init(InitArgs { instance_root, .. })) => {
             assert_eq!(
-                instance_root.expect("instance_root alias should be SET"),
+                instance_root.expect("instance_root alias should be set"),
                 PathBuf::from("/custom/path"),
                 "instance_root alias should be accepted"
             );
@@ -381,7 +381,7 @@ fn backup_default_parses() {
 fn backup_list_flag_parses() {
     let cli = Cli::parse_from(["aletheia", "backup", "--list"]);
     match cli.command {
-        Some(Command::Backup(args)) => assert!(args.list, "list flag should be SET"),
+        Some(Command::Backup(args)) => assert!(args.list, "list flag should be set"),
         _ => panic!("expected Backup command"),
     }
 }
@@ -391,8 +391,8 @@ fn backup_list_with_json_flag_parses() {
     let cli = Cli::parse_from(["aletheia", "backup", "--list", "--json"]);
     match cli.command {
         Some(Command::Backup(args)) => {
-            assert!(args.list, "list flag should be SET");
-            assert!(args.json, "json flag should be SET");
+            assert!(args.list, "list flag should be set");
+            assert!(args.json, "json flag should be set");
         }
         _ => panic!("expected Backup command"),
     }
@@ -403,9 +403,9 @@ fn backup_prune_with_keep_parses() {
     let cli = Cli::parse_from(["aletheia", "backup", "--prune", "--keep", "3", "--yes"]);
     match cli.command {
         Some(Command::Backup(args)) => {
-            assert!(args.prune, "prune flag should be SET");
-            assert_eq!(args.keep, 3, "keep count should be SET");
-            assert!(args.yes, "yes flag should be SET");
+            assert!(args.prune, "prune flag should be set");
+            assert_eq!(args.keep, 3, "keep count should be set");
+            assert!(args.yes, "yes flag should be set");
         }
         _ => panic!("expected Backup command"),
     }
@@ -415,7 +415,7 @@ fn backup_prune_with_keep_parses() {
 fn backup_export_json_flag_parses() {
     let cli = Cli::parse_from(["aletheia", "backup", "--export-json"]);
     match cli.command {
-        Some(Command::Backup(args)) => assert!(args.export_json, "export_json flag should be SET"),
+        Some(Command::Backup(args)) => assert!(args.export_json, "export_json flag should be set"),
         _ => panic!("expected Backup command"),
     }
 }
@@ -500,14 +500,14 @@ fn tls_generate_custom_options_parses() {
             assert_eq!(
                 output_dir,
                 PathBuf::from("/tmp/certs"),
-                "output_dir should be SET"
+                "output_dir should be set"
             );
-            assert_eq!(days, 90, "days should be SET");
+            assert_eq!(days, 90, "days should be set");
             assert!(
                 san.contains(&"example.com".to_owned()),
                 "san should contain example.com"
             );
-            assert!(force, "force flag should be SET");
+            assert!(force, "force flag should be set");
         }
         _ => panic!("expected Tls Generate command"),
     }
@@ -521,7 +521,7 @@ fn import_minimal_parses() {
             assert_eq!(
                 args.file,
                 PathBuf::from("/tmp/agent.agent.json"),
-                "file path should be SET"
+                "file path should be set"
             );
             assert!(args.target_id.is_none(), "target_id should default to none");
             assert!(!args.skip_sessions, "skip_sessions should default to false");
@@ -554,12 +554,12 @@ fn import_with_all_flags_parses() {
             assert_eq!(
                 args.target_id.as_deref(),
                 Some("new-agent"),
-                "target_id should be SET"
+                "target_id should be set"
             );
-            assert!(args.skip_sessions, "skip_sessions flag should be SET");
-            assert!(args.skip_workspace, "skip_workspace flag should be SET");
-            assert!(args.force, "force flag should be SET");
-            assert!(args.dry_run, "dry_run flag should be SET");
+            assert!(args.skip_sessions, "skip_sessions flag should be set");
+            assert!(args.skip_workspace, "skip_workspace flag should be set");
+            assert!(args.force, "force flag should be set");
+            assert!(args.dry_run, "dry_run flag should be set");
         }
         _ => panic!("expected Import command"),
     }
@@ -611,7 +611,7 @@ fn add_nous_defaults_parses() {
             provider,
             model,
         })) => {
-            assert_eq!(name, "alice", "name should be SET");
+            assert_eq!(name, "alice", "name should be set");
             assert_eq!(
                 provider, "anthropic",
                 "provider should default to anthropic"
@@ -635,8 +635,8 @@ fn add_nous_with_custom_model_parses() {
     ]);
     match cli.command {
         Some(Command::AddNous(AddNousArgs { name, model, .. })) => {
-            assert_eq!(name, "bob", "name should be SET");
-            assert_eq!(model, "claude-opus-4-20250514", "model should be SET");
+            assert_eq!(name, "bob", "name should be set");
+            assert_eq!(model, "claude-opus-4-20250514", "model should be set");
         }
         _ => panic!("expected AddNous command"),
     }

@@ -316,8 +316,8 @@ mod tests {
     #[test]
     fn relevance_capability_match() {
         let cards = sample_model_cards();
-        let vision_score_a = cards.get(0).copied().unwrap_or_default().relevance("which model supports vision");
-        let vision_score_b = cards.get(1).copied().unwrap_or_default().relevance("which model supports vision");
+        let vision_score_a = cards[0].relevance("which model supports vision");
+        let vision_score_b = cards[1].relevance("which model supports vision");
         assert!(
             vision_score_b > vision_score_a,
             "model with vision should score higher: a={vision_score_a}, b={vision_score_b}"
@@ -327,8 +327,8 @@ mod tests {
     #[test]
     fn relevance_context_window_query() {
         let cards = sample_model_cards();
-        let score_a = cards.get(0).copied().unwrap_or_default().relevance("model with 256k context");
-        let score_b = cards.get(1).copied().unwrap_or_default().relevance("model with 256k context");
+        let score_a = cards[0].relevance("model with 256k context");
+        let score_b = cards[1].relevance("model with 256k context");
         assert!(
             score_b > score_a,
             "256K model should rank higher for 256K query: a={score_a}, b={score_b}"
@@ -362,7 +362,7 @@ mod tests {
             .unwrap_or_default();
         assert!(!results.is_empty());
         // Model Beta supports vision, should appear first.
-        assert_eq!(results.get(0).copied().unwrap_or_default().source_id, "model-b");
+        assert_eq!(results[0].source_id, "model-b");
     }
 
     #[tokio::test]
@@ -390,7 +390,7 @@ mod tests {
             .models
             .iter()
             .find(|m| m.id == "claude-sonnet-4-20250514")
-            .unwrap_or_default();
+            .expect("sonnet model should exist in pricing data");
         assert!((sonnet.input_cost_per_mtok.unwrap() - 99.0).abs() < f64::EPSILON);
         assert!((sonnet.output_cost_per_mtok.unwrap() - 199.0).abs() < f64::EPSILON);
     }

@@ -119,7 +119,7 @@ pub(crate) fn parse_command_yaml(content: &str) -> Result<CustomCommandDef, Stri
 /// Reads all `.yaml` and `.yml` files in the directory. Malformed files
 /// are logged and skipped.
 #[must_use]
-#[expect(dead_code, reason = "custom YAML command loading FROM oikos cascade")]
+#[expect(dead_code, reason = "custom YAML command loading from oikos cascade")]
 pub(crate) fn load_commands_from_dir(dir: &Path) -> Vec<CustomCommandDef> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
@@ -150,7 +150,7 @@ pub(crate) fn load_commands_from_dir(dir: &Path) -> Vec<CustomCommandDef> {
 /// Searches the three-tier hierarchy (nous → shared → theke) in the
 /// `commands/` subdirectory. Most-specific definition wins on name collision.
 #[must_use]
-#[expect(dead_code, reason = "custom YAML command loading FROM oikos cascade")]
+#[expect(dead_code, reason = "custom YAML command loading from oikos cascade")]
 pub(crate) fn load_commands_cascade(oikos: &Oikos, nous_id: &str) -> Vec<CustomCommandDef> {
     let mut seen = std::collections::HashSet::new();
     let mut commands = Vec::new();
@@ -226,17 +226,17 @@ steps:
       command: "./deploy.sh"
 confirm: true
 "#;
-        let cmd = parse_command_yaml(yaml).unwrap_or_default();
+        let cmd = parse_command_yaml(yaml).expect("valid yaml");
         assert_eq!(cmd.name, "deploy", "command name should be 'deploy'");
         assert_eq!(cmd.steps.len(), 2, "should have 2 steps");
         assert!(cmd.confirm, "confirm should be true");
         assert_eq!(
-            cmd.steps.get(0).copied().unwrap_or_default().tool,
+            cmd.steps[0].tool,
             "exec",
             "first step tool should be 'exec'"
         );
         assert_eq!(
-            cmd.steps.get(0).copied().unwrap_or_default().args["command"],
+            cmd.steps[0].args["command"],
             "cargo build --release",
             "first step args should contain command"
         );
@@ -252,7 +252,7 @@ steps:
     args:
       command: "cargo test"
 "#;
-        let cmd = parse_command_yaml(yaml).unwrap_or_default();
+        let cmd = parse_command_yaml(yaml).expect("valid yaml");
         assert_eq!(cmd.name, "test", "command name should be 'test'");
         assert!(!cmd.confirm, "confirm should default to false");
         assert!(
@@ -328,7 +328,7 @@ steps:
       command: "echo hello"
 reversibility: reversible
 "#;
-        let cmd = parse_command_yaml(yaml).unwrap_or_default();
+        let cmd = parse_command_yaml(yaml).expect("valid yaml");
         assert_eq!(
             cmd.reversibility,
             Some(Reversibility::Reversible),
@@ -431,7 +431,7 @@ reversibility: reversible
         let invalid = validate_step_tools(&cmd);
         assert_eq!(invalid.len(), 1, "should find one invalid tool name");
         assert_eq!(
-            invalid.get(0).copied().unwrap_or_default(),
+            invalid[0],
             "INVALID TOOL NAME!",
             "should report the invalid name"
         );
@@ -439,7 +439,7 @@ reversibility: reversible
 
     #[test]
     fn load_commands_from_dir_skips_non_yaml() {
-        let dir = tempfile::tempdir().unwrap_or_default();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let yaml_path = dir.path().join("deploy.yaml");
         let txt_path = dir.path().join("readme.txt");
 
@@ -449,14 +449,14 @@ reversibility: reversible
                 &yaml_path,
                 "name: deploy\ndescription: Deploy\nsteps:\n  - tool: exec\n    args:\n      command: echo",
             )
-            .unwrap_or_default();
-            std::fs::write(&txt_path, "not a command").unwrap_or_default();
+            .expect("write yaml");
+            std::fs::write(&txt_path, "not a command").expect("write txt");
         }
 
         let cmds = load_commands_from_dir(dir.path());
         assert_eq!(cmds.len(), 1, "should load only the yaml file");
         assert_eq!(
-            cmds.get(0).copied().unwrap_or_default().name,
+            cmds[0].name,
             "deploy",
             "loaded command should be 'deploy'"
         );
@@ -473,24 +473,24 @@ reversibility: reversible
 
     #[test]
     fn load_commands_from_dir_skips_malformed_yaml() {
-        let dir = tempfile::tempdir().unwrap_or_default();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let bad_path = dir.path().join("bad.yaml");
         let good_path = dir.path().join("good.yaml");
 
         #[expect(clippy::disallowed_methods, reason = "test: creating fixture files")]
         {
-            std::fs::write(&bad_path, "not: valid: yaml: {{{{").unwrap_or_default();
+            std::fs::write(&bad_path, "not: valid: yaml: {{{{").expect("write bad");
             std::fs::write(
                 &good_path,
                 "name: good\ndescription: Good\nsteps:\n  - tool: exec\n    args:\n      command: echo",
             )
-            .unwrap_or_default();
+            .expect("write good");
         }
 
         let cmds = load_commands_from_dir(dir.path());
         assert_eq!(cmds.len(), 1, "should skip malformed and load good one");
         assert_eq!(
-            cmds.get(0).copied().unwrap_or_default().name,
+            cmds[0].name,
             "good",
             "loaded command should be 'good'"
         );
@@ -512,20 +512,20 @@ steps:
     args:
       command: "cargo clippy"
 "#;
-        let cmd = parse_command_yaml(yaml).unwrap_or_default();
+        let cmd = parse_command_yaml(yaml).expect("valid yaml");
         assert_eq!(cmd.steps.len(), 3, "should have 3 steps");
         assert_eq!(
-            cmd.steps.get(0).copied().unwrap_or_default().args["command"],
+            cmd.steps[0].args["command"],
             "cargo build",
             "first step should be build"
         );
         assert_eq!(
-            cmd.steps.get(1).copied().unwrap_or_default().args["command"],
+            cmd.steps[1].args["command"],
             "cargo test",
             "second step should be test"
         );
         assert_eq!(
-            cmd.steps.get(2).copied().unwrap_or_default().args["command"],
+            cmd.steps[2].args["command"],
             "cargo clippy",
             "third step should be clippy"
         );

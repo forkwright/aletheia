@@ -86,7 +86,7 @@ impl TokenBudget {
             clippy::as_conversions,
             reason = "u64→f64→u64: context_window fits in f64 mantissa for practical model sizes"
         )]
-        let reserved_for_history = (f64::try_from(context_window).unwrap_or_default() * history_ratio) as u64; // kanon:ignore RUST/as-cast
+        let reserved_for_history = (context_window as f64 * history_ratio) as u64; // kanon:ignore RUST/as-cast
         let computed = context_window
             .saturating_sub(turn_reserve)
             .saturating_sub(reserved_for_history);
@@ -197,13 +197,13 @@ pub(crate) struct TimeBudget {
 #[derive(Debug, Clone)]
 #[cfg_attr(
     not(test),
-    expect(dead_code, reason = "time budget not yet wired INTO pipeline stages")
+    expect(dead_code, reason = "time budget not yet wired into pipeline stages")
 )]
 pub(crate) struct StageTimingRecord {
     /// Stage name (e.g. "context", "execute").
     pub name: String,
     /// Wall-clock time the stage consumed.
-    #[expect(dead_code, reason = "time budget not yet wired INTO pipeline stages")]
+    #[expect(dead_code, reason = "time budget not yet wired into pipeline stages")]
     pub elapsed: Duration,
     /// Whether the stage completed normally, timed out, or was skipped.
     pub status: StageTimingStatus,
@@ -214,21 +214,21 @@ pub(crate) struct StageTimingRecord {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(
     not(test),
-    expect(dead_code, reason = "time budget not yet wired INTO pipeline stages")
+    expect(dead_code, reason = "time budget not yet wired into pipeline stages")
 )]
 pub(crate) enum StageTimingStatus {
     Completed,
     /// Stage exceeded its time limit and was cut short.
-    #[expect(dead_code, reason = "time budget not yet wired INTO pipeline stages")]
+    #[expect(dead_code, reason = "time budget not yet wired into pipeline stages")]
     TimedOut,
     /// Stage was not executed (e.g. total budget exhausted).
-    #[expect(dead_code, reason = "time budget not yet wired INTO pipeline stages")]
+    #[expect(dead_code, reason = "time budget not yet wired into pipeline stages")]
     Skipped,
 }
 
 #[cfg_attr(
     not(test),
-    expect(dead_code, reason = "time budget not yet wired INTO pipeline stages")
+    expect(dead_code, reason = "time budget not yet wired into pipeline stages")
 )]
 impl TimeBudget {
     /// Create a new time budget from per-stage limits.
@@ -311,7 +311,7 @@ impl TimeBudget {
 
     /// Total wall-clock time since the pipeline started.
     #[must_use]
-    #[expect(dead_code, reason = "time budget not yet wired INTO pipeline stages")]
+    #[expect(dead_code, reason = "time budget not yet wired into pipeline stages")]
     pub(crate) fn total_elapsed(&self) -> Duration {
         self.pipeline_start.elapsed()
     }

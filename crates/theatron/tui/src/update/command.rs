@@ -108,7 +108,7 @@ pub(crate) fn handle_up(app: &mut App) {
 
 #[expect(
     clippy::indexing_slicing,
-    reason = "idx = i - 1 WHERE Some(i) was a previously stored history index, so reverse-index is valid"
+    reason = "idx = i - 1 where Some(i) was a previously stored history index, so reverse-index is valid"
 )]
 pub(crate) fn handle_down(app: &mut App) {
     if app.interaction.command_history_index.is_some() {
@@ -525,7 +525,7 @@ fn execute_export(app: &mut App) {
     let exports_dir = app::exports_dir(&app.config);
     if let Err(e) = std::fs::create_dir_all(&exports_dir) {
         app.viewport.error_toast = Some(ErrorToast::new(format!(
-            "Failed to CREATE exports dir: {e}"
+            "Failed to create exports dir: {e}"
         )));
         return;
     }
@@ -580,7 +580,7 @@ fn execute_export(app: &mut App) {
 
     #[expect(
         clippy::disallowed_methods,
-        reason = "theatron TUI reads configuration and exports FROM disk in synchronous initialization paths"
+        reason = "theatron TUI reads configuration and exports from disk in synchronous initialization paths"
     )]
     match std::fs::write(&path, &md) {
         Ok(()) => {
@@ -592,7 +592,7 @@ fn execute_export(app: &mut App) {
                     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
                 {
                     app.viewport.error_toast =
-                        Some(ErrorToast::new(format!("Failed to SET permissions: {e}")));
+                        Some(ErrorToast::new(format!("Failed to set permissions: {e}")));
                     return;
                 }
             }

@@ -9,7 +9,7 @@ use super::super::*;
 
 fn test_ctx(dir: &Path) -> ToolContext {
     ToolContext {
-        nous_id: NousId::new("test-agent").unwrap_or_default(),
+        nous_id: NousId::new("test-agent").expect("valid"),
         session_id: SessionId::new(),
         workspace: dir.to_path_buf(),
         allowed_roots: vec![dir.to_path_buf()],
@@ -20,7 +20,7 @@ fn test_ctx(dir: &Path) -> ToolContext {
 
 fn tool_input(name: &str, args: serde_json::Value) -> ToolInput {
     ToolInput {
-        name: ToolName::new(name).unwrap_or_default(),
+        name: ToolName::new(name).expect("valid"),
         tool_use_id: "toolu_test".to_owned(),
         arguments: args,
     }
@@ -28,16 +28,16 @@ fn tool_input(name: &str, args: serde_json::Value) -> ToolInput {
 
 #[tokio::test]
 async fn read_existing_file() {
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("create temp dir");
     #[expect(
         clippy::disallowed_methods,
         reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
     )]
-    std::fs::write(dir.path().join("hello.txt"), "hello world").unwrap_or_default();
+    std::fs::write(dir.path().join("hello.txt"), "hello world").expect("write");
 
     let ctx = test_ctx(dir.path());
     let input = tool_input("read", serde_json::json!({ "path": "hello.txt" }));
-    let result = ReadExecutor.execute(&input, &ctx).await.unwrap_or_default();
+    let result = ReadExecutor.execute(&input, &ctx).await.expect("execute");
     assert_eq!(
         result.content.text_summary(),
         "hello world",
@@ -51,19 +51,19 @@ async fn read_existing_file() {
 
 #[tokio::test]
 async fn read_with_max_lines() {
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("create temp dir");
     #[expect(
         clippy::disallowed_methods,
         reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
     )]
-    std::fs::write(dir.path().join("lines.txt"), "a\nb\nc\nd\ne\n").unwrap_or_default();
+    std::fs::write(dir.path().join("lines.txt"), "a\nb\nc\nd\ne\n").expect("write");
 
     let ctx = test_ctx(dir.path());
     let input = tool_input(
         "read",
         serde_json::json!({ "path": "lines.txt", "maxLines": 2 }),
     );
-    let result = ReadExecutor.execute(&input, &ctx).await.unwrap_or_default();
+    let result = ReadExecutor.execute(&input, &ctx).await.expect("execute");
     assert_eq!(result.content.text_summary(), "a\nb",);
 }
 
@@ -81,7 +81,7 @@ fn test_normalize_handles_multiple_parent_traversals() {
 #[test]
 fn test_extract_str_missing_field_returns_invalid_input_error() {
     use aletheia_koina::id::ToolName;
-    let name = ToolName::new("test").unwrap_or_default();
+    let name = ToolName::new("test").expect("valid");
     let args = serde_json::json!({ "other": "value" });
     let err = extract_str(&args, "path", &name).expect_err("missing should fail");
     assert!(
@@ -93,7 +93,7 @@ fn test_extract_str_missing_field_returns_invalid_input_error() {
 #[test]
 fn test_extract_str_non_string_value_returns_error() {
     use aletheia_koina::id::ToolName;
-    let name = ToolName::new("test").unwrap_or_default();
+    let name = ToolName::new("test").expect("valid");
     let args = serde_json::json!({ "path": 42 });
     let err = extract_str(&args, "path", &name).expect_err("wrong type should fail");
     assert!(
@@ -145,9 +145,9 @@ fn test_extract_opt_bool_returns_value_when_field_present() {
 #[tokio::test]
 async fn test_all_workspace_tools_registered() {
     let mut reg = crate::registry::ToolRegistry::new();
-    register(&mut reg, crate::sandbox::SandboxConfig::disabled()).unwrap_or_default();
+    register(&mut reg, crate::sandbox::SandboxConfig::disabled()).expect("register");
     for name in ["read", "write", "edit", "exec"] {
-        let tn = aletheia_koina::id::ToolName::new(name).unwrap_or_default();
+        let tn = aletheia_koina::id::ToolName::new(name).expect("valid");
         assert!(reg.get_def(&tn).is_some(), "{name} should be registered");
     }
 }
@@ -155,9 +155,9 @@ async fn test_all_workspace_tools_registered() {
 #[test]
 fn test_read_tool_def_has_path_as_required() {
     let mut reg = crate::registry::ToolRegistry::new();
-    register(&mut reg, crate::sandbox::SandboxConfig::disabled()).unwrap_or_default();
-    let tn = aletheia_koina::id::ToolName::new("read").unwrap_or_default();
-    let def = reg.get_def(&tn).unwrap_or_default();
+    register(&mut reg, crate::sandbox::SandboxConfig::disabled()).expect("register");
+    let tn = aletheia_koina::id::ToolName::new("read").expect("valid");
+    let def = reg.get_def(&tn).expect("read registered");
     assert!(
         def.input_schema.required.contains(&"path".to_owned()),
         "read tool schema should require the path field"
@@ -167,9 +167,9 @@ fn test_read_tool_def_has_path_as_required() {
 #[test]
 fn test_write_tool_def_has_path_and_content_as_required() {
     let mut reg = crate::registry::ToolRegistry::new();
-    register(&mut reg, crate::sandbox::SandboxConfig::disabled()).unwrap_or_default();
-    let tn = aletheia_koina::id::ToolName::new("write").unwrap_or_default();
-    let def = reg.get_def(&tn).unwrap_or_default();
+    register(&mut reg, crate::sandbox::SandboxConfig::disabled()).expect("register");
+    let tn = aletheia_koina::id::ToolName::new("write").expect("valid");
+    let def = reg.get_def(&tn).expect("write registered");
     assert!(
         def.input_schema.required.contains(&"path".to_owned()),
         "write tool schema should require the path field"
@@ -183,7 +183,7 @@ fn test_write_tool_def_has_path_and_content_as_required() {
 #[cfg(target_os = "linux")]
 #[tokio::test]
 async fn exec_permissive_sandbox_runs_tool_regardless_of_landlock_availability() {
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("create temp dir");
     let ctx = test_ctx(dir.path());
     let input = tool_input(
         "exec",
@@ -198,7 +198,7 @@ async fn exec_permissive_sandbox_runs_tool_regardless_of_landlock_availability()
     }
     .execute(&input, &ctx)
     .await
-    .unwrap_or_default();
+    .expect("execute");
     assert!(
         !result.is_error,
         "tool must run in permissive mode: {:?}",
@@ -216,7 +216,7 @@ async fn exec_permissive_sandbox_runs_tool_regardless_of_landlock_availability()
 async fn exec_enforcing_sandbox_returns_clear_error_when_landlock_unavailable() {
     use crate::sandbox::probe_landlock_abi;
 
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("create temp dir");
     let ctx = test_ctx(dir.path());
     let input = tool_input("exec", serde_json::json!({ "command": "echo unreachable" }));
     let result = ExecExecutor {
@@ -228,7 +228,7 @@ async fn exec_enforcing_sandbox_returns_clear_error_when_landlock_unavailable() 
     }
     .execute(&input, &ctx)
     .await
-    .unwrap_or_default();
+    .expect("execute");
 
     match probe_landlock_abi() {
         None => {
@@ -257,7 +257,7 @@ async fn exec_enforcing_sandbox_returns_clear_error_when_landlock_unavailable() 
 
 #[test]
 fn parse_command_args_splits_simple_command() {
-    let (prog, args) = parse_command_args("echo hello world").unwrap_or_default();
+    let (prog, args) = parse_command_args("echo hello world").expect("parse");
     assert_eq!(prog, "echo", "program should be the first token");
     assert_eq!(
         args,
@@ -268,7 +268,7 @@ fn parse_command_args_splits_simple_command() {
 
 #[test]
 fn parse_command_args_handles_single_quoted_string() {
-    let (prog, args) = parse_command_args("echo 'hello world'").unwrap_or_default();
+    let (prog, args) = parse_command_args("echo 'hello world'").expect("parse");
     assert_eq!(
         prog, "echo",
         "program should be parsed correctly with quoted args"
@@ -282,7 +282,7 @@ fn parse_command_args_handles_single_quoted_string() {
 
 #[test]
 fn parse_command_args_handles_double_quoted_string() {
-    let (prog, args) = parse_command_args("echo \"hello world\"").unwrap_or_default();
+    let (prog, args) = parse_command_args("echo \"hello world\"").expect("parse");
     assert_eq!(
         prog, "echo",
         "program should be parsed correctly with double-quoted args"
@@ -296,7 +296,7 @@ fn parse_command_args_handles_double_quoted_string() {
 
 #[test]
 fn parse_command_args_handles_backslash_escape_in_double_quotes() {
-    let (prog, args) = parse_command_args("echo \"a\\\"b\"").unwrap_or_default();
+    let (prog, args) = parse_command_args("echo \"a\\\"b\"").expect("parse");
     assert_eq!(
         prog, "echo",
         "program should be parsed correctly with escaped quotes"
@@ -340,7 +340,7 @@ fn parse_command_args_treats_shell_metacharacters_as_literals() {
     // WHY: Shell injection prevention: semicolons, pipes, and ampersands must
     // not be interpreted as command separators or operators when the LLM
     // includes them in a command string.
-    let (prog, args) = parse_command_args("echo hello; rm -rf /").unwrap_or_default();
+    let (prog, args) = parse_command_args("echo hello; rm -rf /").expect("parse");
     assert_eq!(
         prog, "echo",
         "program should be the first token even with shell metacharacters present"
@@ -354,7 +354,7 @@ fn parse_command_args_treats_shell_metacharacters_as_literals() {
 
 #[test]
 fn parse_command_args_treats_dollar_sign_as_literal() {
-    let (prog, args) = parse_command_args("echo $HOME").unwrap_or_default();
+    let (prog, args) = parse_command_args("echo $HOME").expect("parse");
     assert_eq!(
         prog, "echo",
         "program should be parsed correctly when args include dollar signs"
@@ -368,7 +368,7 @@ fn parse_command_args_treats_dollar_sign_as_literal() {
 
 #[test]
 fn parse_command_args_program_only() {
-    let (prog, args) = parse_command_args("ls").unwrap_or_default();
+    let (prog, args) = parse_command_args("ls").expect("parse");
     assert_eq!(
         prog, "ls",
         "single-token command should be parsed as the program"
@@ -381,16 +381,13 @@ fn parse_command_args_program_only() {
 
 #[tokio::test]
 async fn write_blocks_identity_md() {
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("create temp dir");
     let ctx = test_ctx(dir.path());
     let input = tool_input(
         "write",
         serde_json::json!({ "path": "IDENTITY.md", "content": "tampered" }),
     );
-    let result = WriteExecutor
-        .execute(&input, &ctx)
-        .await
-        .unwrap_or_default();
+    let result = WriteExecutor.execute(&input, &ctx).await.expect("execute");
     assert!(
         result.is_error,
         "writing to IDENTITY.md should produce an error result"
@@ -404,16 +401,13 @@ async fn write_blocks_identity_md() {
 
 #[tokio::test]
 async fn write_blocks_soul_md() {
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("create temp dir");
     let ctx = test_ctx(dir.path());
     let input = tool_input(
         "write",
         serde_json::json!({ "path": "SOUL.md", "content": "overwritten" }),
     );
-    let result = WriteExecutor
-        .execute(&input, &ctx)
-        .await
-        .unwrap_or_default();
+    let result = WriteExecutor.execute(&input, &ctx).await.expect("execute");
     assert!(
         result.is_error,
         "writing to SOUL.md should produce an error result"
@@ -426,16 +420,13 @@ async fn write_blocks_soul_md() {
 
 #[tokio::test]
 async fn write_blocks_goals_md() {
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("create temp dir");
     let ctx = test_ctx(dir.path());
     let input = tool_input(
         "write",
         serde_json::json!({ "path": "GOALS.md", "content": "replaced" }),
     );
-    let result = WriteExecutor
-        .execute(&input, &ctx)
-        .await
-        .unwrap_or_default();
+    let result = WriteExecutor.execute(&input, &ctx).await.expect("execute");
     assert!(
         result.is_error,
         "writing to GOALS.md should produce an error result"
@@ -448,15 +439,12 @@ async fn write_blocks_goals_md() {
 
 #[tokio::test]
 async fn write_allows_non_protected_file() {
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("create temp dir");
     let ctx = test_ctx(dir.path());
     let input = tool_input(
         "write",
         serde_json::json!({ "path": "notes.txt", "content": "safe" }),
     );
-    let result = WriteExecutor
-        .execute(&input, &ctx)
-        .await
-        .unwrap_or_default();
+    let result = WriteExecutor.execute(&input, &ctx).await.expect("execute");
     assert!(!result.is_error, "non-protected file must be writable");
 }

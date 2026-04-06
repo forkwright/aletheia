@@ -107,7 +107,7 @@ pub(crate) async fn run(
             .unwrap_or_else(|| oikos.knowledge_db());
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
-                .whatever_context("failed to CREATE knowledge store directory")?;
+                .whatever_context("failed to create knowledge store directory")?;
         }
         info!(path = %path.display(), "opening persistent knowledge store");
         KnowledgeStore::open_fjall(&path, knowledge_config)
@@ -115,7 +115,7 @@ pub(crate) async fn run(
     };
 
     let all_records = fetch_from_qdrant(&client, collection).await?;
-    info!(total = all_records.len(), "fetched memories FROM Qdrant");
+    info!(total = all_records.len(), "fetched memories from Qdrant");
 
     let mut by_agent: HashMap<String, Vec<MemoryRecord>> = HashMap::new();
     for record in all_records {
@@ -287,7 +287,7 @@ fn import_fact(
     let valid_from = parse_timestamp(&record.created_at).unwrap_or(now);
 
     let fact = Fact {
-        id: FactId::new(&fact_id).unwrap_or_default(),
+        id: FactId::new(&fact_id).expect("ULID fact_id is always valid"),
         nous_id: agent_id.to_owned(),
         content: record.content.clone(),
         fact_type: String::new(),
@@ -315,12 +315,12 @@ fn import_fact(
     };
     knowledgedb
         .insert_fact(&fact)
-        .whatever_context("failed to INSERT fact")?;
+        .whatever_context("failed to insert fact")?;
 
     if let Ok(embedding) = embedder.embed(&record.content) {
         let chunk = EmbeddedChunk {
             id: EmbeddingId::new(&format!("emb-{fact_id}"))
-                .unwrap_or_default(),
+                .expect("emb- prefix + ULID is always valid"),
             content: record.content.clone(),
             source_type: "fact".to_owned(),
             source_id: fact_id,
@@ -330,7 +330,7 @@ fn import_fact(
         };
         knowledgedb
             .insert_embedding(&chunk)
-            .whatever_context("failed to INSERT embedding")?;
+            .whatever_context("failed to insert embedding")?;
     }
 
     Ok(())
@@ -345,7 +345,7 @@ fn content_hash(content: &str) -> String {
 
 fn write_review_file(path: &Path, flagged: &[String]) -> Result<()> {
     use std::io::Write;
-    let mut f = std::fs::File::create(path).whatever_context("failed to CREATE review file")?;
+    let mut f = std::fs::File::create(path).whatever_context("failed to create review file")?;
     writeln!(f, "# Memory Migration Review").whatever_context("failed to write review file")?;
     writeln!(f).whatever_context("failed to write review file")?;
     writeln!(f, "The following facts were flagged during migration:")

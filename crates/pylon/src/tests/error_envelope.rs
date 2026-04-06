@@ -377,14 +377,14 @@ async fn list_facts_invalid_order_returns_400_with_envelope() {
     let (app, _dir) = app().await;
     let resp = app
         .oneshot(authed_get(
-            "/api/v1/knowledge/facts?sort=confidence&ORDER=upward",
+            "/api/v1/knowledge/facts?sort=confidence&order=upward",
         ))
         .await
         .expect("GET /knowledge/facts request should succeed");
     assert_eq!(
         resp.status(),
         StatusCode::BAD_REQUEST,
-        "invalid ORDER value should return 400"
+        "invalid order value should return 400"
     );
     let body = body_json(resp).await;
     assert_error_envelope(&body, "bad_request");
@@ -392,8 +392,8 @@ async fn list_facts_invalid_order_returns_400_with_envelope() {
         body["error"]["message"]
             .as_str()
             .expect("error message should be a string")
-            .contains("invalid ORDER"),
-        "message should describe invalid ORDER"
+            .contains("invalid order"),
+        "message should describe invalid order"
     );
 }
 
@@ -465,7 +465,7 @@ async fn update_confidence_valid_range_without_store_returns_503() {
     assert_eq!(
         resp.status(),
         StatusCode::SERVICE_UNAVAILABLE,
-        "valid confidence UPDATE without knowledge store should return 503"
+        "valid confidence update without knowledge store should return 503"
     );
     let body = body_json(resp).await;
     assert_error_envelope(&body, "service_unavailable");
@@ -625,7 +625,7 @@ async fn config_update_unknown_section_returns_404_with_envelope() {
     assert_eq!(
         resp.status(),
         StatusCode::NOT_FOUND,
-        "UPDATE of unknown config section should return 404"
+        "update of unknown config section should return 404"
     );
     let body = body_json(resp).await;
     assert_error_envelope(&body, "not_found");

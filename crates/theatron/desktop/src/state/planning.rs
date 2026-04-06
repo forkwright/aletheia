@@ -630,8 +630,8 @@ mod tests {
     #[test]
     fn status_badge_style_returns_pair() {
         let (bg, fg) = status_badge_style(ProjectStatus::InProgress);
-        assert!(!bg.is_empty(), "background color SET");
-        assert!(!fg.is_empty(), "foreground color SET");
+        assert!(!bg.is_empty(), "background color set");
+        assert!(!fg.is_empty(), "foreground color set");
     }
 
     #[test]

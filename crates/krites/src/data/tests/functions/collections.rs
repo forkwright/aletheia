@@ -152,7 +152,7 @@ fn test_prepend_append() {
             DataValue::from(1),
             DataValue::from(2),
         ]),
-        "prepend should INSERT element at front of list"
+        "prepend should insert element at front of list"
     );
     assert_eq!(
         op_append(&[
@@ -214,7 +214,7 @@ fn test_sort_reverse() {
             DataValue::from(2),
             DataValue::from(2.0),
         ]),
-        "sorted should ORDER Null < int < float ascending"
+        "sorted should order Null < int < float ascending"
     );
     assert_eq!(
         op_reverse(&[DataValue::List(vec![
@@ -230,7 +230,7 @@ fn test_sort_reverse() {
             DataValue::from(1),
             DataValue::from(2.0),
         ]),
-        "reverse should reverse the list ORDER"
+        "reverse should reverse the list order"
     )
 }
 
@@ -344,7 +344,7 @@ fn test_chunks() {
             DataValue::List(vec![DataValue::from(3), DataValue::from(4)]),
             DataValue::List(vec![DataValue::from(5)]),
         ]),
-        "chunks of size 2 FROM 5 elements should produce two full and one partial chunk"
+        "chunks of size 2 from 5 elements should produce two full and one partial chunk"
     );
     assert_eq!(
         op_chunks_exact(&[
@@ -362,7 +362,7 @@ fn test_chunks() {
             DataValue::List(vec![DataValue::from(1), DataValue::from(2)]),
             DataValue::List(vec![DataValue::from(3), DataValue::from(4)]),
         ]),
-        "chunks_exact of size 2 FROM 5 elements should DROP remainder"
+        "chunks_exact of size 2 from 5 elements should drop remainder"
     );
     assert_eq!(
         op_windows(&[
@@ -393,7 +393,7 @@ fn test_chunks() {
                 DataValue::from(5),
             ]),
         ]),
-        "windows of size 3 FROM 5 elements should produce 3 overlapping windows"
+        "windows of size 3 from 5 elements should produce 3 overlapping windows"
     )
 }
 
@@ -401,7 +401,7 @@ fn test_chunks() {
 fn test_get() {
     assert!(
         op_get(&[DataValue::List(vec![]), DataValue::from(0)]).is_err(),
-        "getting index 0 FROM empty list should error"
+        "getting index 0 from empty list should error"
     );
     assert_eq!(
         op_get(&[
@@ -659,12 +659,12 @@ fn test_rand() {
     assert_eq!(
         op_rand_choose(&[DataValue::List(vec![])]).expect("test assertion"),
         DataValue::Null,
-        "choosing FROM empty list should return Null"
+        "choosing from empty list should return Null"
     );
     assert_eq!(
         op_rand_choose(&[DataValue::List(vec![DataValue::from(123)])]).expect("test assertion"),
         DataValue::from(123),
-        "choosing FROM single-element list should return that element"
+        "choosing from single-element list should return that element"
     );
 }
 
@@ -678,7 +678,7 @@ fn test_set_ops() {
         ])
         .expect("test assertion"),
         DataValue::List([1, 2, 3, 4, 5].into_iter().map(DataValue::from).collect()),
-        "UNION of overlapping sets should contain all unique elements"
+        "union of overlapping sets should contain all unique elements"
     );
     assert_eq!(
         op_intersection(&[
@@ -708,7 +708,7 @@ fn test_set_ops() {
         ])
         .expect("test assertion"),
         DataValue::List([1, 6].into_iter().map(DataValue::from).collect()),
-        "difference should contain elements in first SET but not in others"
+        "difference should contain elements in first set but not in others"
     );
 }
 

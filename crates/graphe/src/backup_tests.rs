@@ -17,12 +17,12 @@ fn json_export_produces_valid_files() {
     let store = test_store();
     store
         .create_session("ses-1", "syn", "main", None, None)
-        .expect("CREATE session ses-1");
+        .expect("create session ses-1");
     store
         .append_message("ses-1", Role::User, "hello", None, None, 10)
         .expect("append user message");
 
-    let dir = tempfile::tempdir().expect("CREATE temp dir");
+    let dir = tempfile::tempdir().expect("create temp dir");
     let export_dir = dir.path().join("export");
     let manager = BackupManager::new(store.conn(), dir.path().join("backups"));
 
@@ -49,12 +49,12 @@ fn json_export_produces_valid_files() {
 
 #[test]
 fn backup_creates_valid_sqlite_database() {
-    let dir = tempfile::tempdir().expect("CREATE temp dir");
+    let dir = tempfile::tempdir().expect("create temp dir");
     let db_path = dir.path().join("sessions.db");
 
     let conn = Connection::open(&db_path).expect("open file-based SQLite connection");
     conn.busy_timeout(std::time::Duration::from_secs(5))
-        .expect("SET busy timeout");
+        .expect("set busy timeout");
     conn.execute_batch("PRAGMA foreign_keys = ON;")
         .expect("enable foreign keys");
     migration::run_migrations(&conn).expect("run migrations");
@@ -62,13 +62,13 @@ fn backup_creates_valid_sqlite_database() {
         "INSERT INTO sessions (id, nous_id, session_key) VALUES ('s1', 'syn', 'main')",
         [],
     )
-    .expect("INSERT test session");
+    .expect("insert test session");
 
     let backup_dir = dir.path().join("backups");
     let manager = BackupManager::new(&conn, &backup_dir);
     let result = manager
         .create_backup()
-        .expect("CREATE backup")
+        .expect("create backup")
         .expect("backup should not be skipped without disk monitor");
 
     assert!(result.path.exists());
@@ -78,18 +78,18 @@ fn backup_creates_valid_sqlite_database() {
     let backup_conn = Connection::open(&result.path).expect("open backup SQLite database");
     backup_conn
         .busy_timeout(std::time::Duration::from_secs(5))
-        .expect("SET busy timeout");
+        .expect("set busy timeout");
     let count: u32 = backup_conn
         .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
-        .expect("query session count FROM backup");
+        .expect("query session count from backup");
     assert_eq!(count, 1);
 }
 
 #[test]
 fn prune_keeps_correct_number() {
-    let dir = tempfile::tempdir().expect("CREATE temp dir");
+    let dir = tempfile::tempdir().expect("create temp dir");
     let backup_dir = dir.path().join("backups");
-    std::fs::create_dir_all(&backup_dir).expect("CREATE backup dir");
+    std::fs::create_dir_all(&backup_dir).expect("create backup dir");
 
     for i in 0..5 {
         std::fs::write(
@@ -101,7 +101,7 @@ fn prune_keeps_correct_number() {
 
     let conn = Connection::open_in_memory().expect("open in-memory SQLite connection");
     conn.busy_timeout(std::time::Duration::from_secs(5))
-        .expect("SET busy timeout");
+        .expect("set busy timeout");
     let manager = BackupManager::new(&conn, &backup_dir);
 
     let backups = manager.list_backups().expect("list backups");
@@ -116,9 +116,9 @@ fn prune_keeps_correct_number() {
 
 #[test]
 fn list_backups_returns_correct_metadata() {
-    let dir = tempfile::tempdir().expect("CREATE temp dir");
+    let dir = tempfile::tempdir().expect("create temp dir");
     let backup_dir = dir.path().join("backups");
-    std::fs::create_dir_all(&backup_dir).expect("CREATE backup dir");
+    std::fs::create_dir_all(&backup_dir).expect("create backup dir");
 
     std::fs::write(backup_dir.join("sessions_20260101T120000.db"), "test data")
         .expect("write backup file");
@@ -126,7 +126,7 @@ fn list_backups_returns_correct_metadata() {
 
     let conn = Connection::open_in_memory().expect("open in-memory SQLite connection");
     conn.busy_timeout(std::time::Duration::from_secs(5))
-        .expect("SET busy timeout");
+        .expect("set busy timeout");
     let manager = BackupManager::new(&conn, &backup_dir);
 
     let backups = manager.list_backups().expect("list backups");
@@ -139,7 +139,7 @@ fn list_backups_returns_correct_metadata() {
 fn list_backups_empty_when_no_dir() {
     let conn = Connection::open_in_memory().expect("open in-memory SQLite connection");
     conn.busy_timeout(std::time::Duration::from_secs(5))
-        .expect("SET busy timeout");
+        .expect("set busy timeout");
     let manager = BackupManager::new(&conn, "/nonexistent/path");
     let backups = manager
         .list_backups()
@@ -191,12 +191,12 @@ fn validate_accepts_dotted_path() {
 
 #[test]
 fn restore_backup_preserves_data() {
-    let dir = tempfile::tempdir().expect("CREATE temp dir");
+    let dir = tempfile::tempdir().expect("create temp dir");
     let db_path = dir.path().join("sessions.db");
 
     let conn = Connection::open(&db_path).expect("open file-based SQLite connection");
     conn.busy_timeout(std::time::Duration::from_secs(5))
-        .expect("SET busy timeout");
+        .expect("set busy timeout");
     conn.execute_batch("PRAGMA foreign_keys = ON;")
         .expect("enable foreign keys");
     migration::run_migrations(&conn).expect("run migrations");
@@ -205,46 +205,46 @@ fn restore_backup_preserves_data() {
         "INSERT INTO sessions (id, nous_id, session_key) VALUES ('s1', 'alice', 'main')",
         [],
     )
-    .expect("INSERT test session");
+    .expect("insert test session");
     conn.execute(
         "INSERT INTO messages (session_id, seq, role, content, token_estimate)
          VALUES ('s1', 1, 'user', 'hello world', 10)",
         [],
     )
-    .expect("INSERT first test message");
+    .expect("insert first test message");
     conn.execute(
         "INSERT INTO messages (session_id, seq, role, content, token_estimate)
          VALUES ('s1', 2, 'assistant', 'hi there', 8)",
         [],
     )
-    .expect("INSERT second test message");
+    .expect("insert second test message");
 
     let backup_dir = dir.path().join("backups");
     let manager = BackupManager::new(&conn, &backup_dir);
     let result = manager
         .create_backup()
-        .expect("CREATE backup")
+        .expect("create backup")
         .expect("backup should not be skipped without disk monitor");
 
     let backup_conn = Connection::open(&result.path).expect("open backup SQLite database");
     backup_conn
         .busy_timeout(std::time::Duration::from_secs(5))
-        .expect("SET busy timeout");
+        .expect("set busy timeout");
     let session_count: u32 = backup_conn
         .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
-        .expect("query session count FROM backup");
+        .expect("query session count from backup");
     assert_eq!(session_count, 1);
 
     let msg_count: u32 = backup_conn
         .query_row("SELECT COUNT(*) FROM messages", [], |row| row.get(0))
-        .expect("query message count FROM backup");
+        .expect("query message count from backup");
     assert_eq!(msg_count, 2);
 
     let content: String = backup_conn
         .query_row("SELECT content FROM messages WHERE seq = 1", [], |row| {
             row.get(0)
         })
-        .expect("query first message content FROM backup");
+        .expect("query first message content from backup");
     assert_eq!(content, "hello world");
 }
 
@@ -431,7 +431,7 @@ fn json_export_is_valid_json() {
     let store = test_store();
     store
         .create_session("ses-export", "bob", "main", None, None)
-        .expect("CREATE session ses-export");
+        .expect("create session ses-export");
     store
         .append_message("ses-export", Role::User, "test content", None, None, 5)
         .expect("append user message");
@@ -439,7 +439,7 @@ fn json_export_is_valid_json() {
         .append_message("ses-export", Role::Assistant, "response", None, None, 7)
         .expect("append assistant message");
 
-    let dir = tempfile::tempdir().expect("CREATE temp dir");
+    let dir = tempfile::tempdir().expect("create temp dir");
     let export_dir = dir.path().join("export");
     let manager = BackupManager::new(store.conn(), dir.path().join("backups"));
     let result = manager
@@ -470,12 +470,12 @@ fn json_export_is_valid_json() {
 
 #[test]
 fn backup_empty_store() {
-    let dir = tempfile::tempdir().expect("CREATE temp dir");
+    let dir = tempfile::tempdir().expect("create temp dir");
     let db_path = dir.path().join("empty.db");
 
     let conn = Connection::open(&db_path).expect("open file-based SQLite connection");
     conn.busy_timeout(std::time::Duration::from_secs(5))
-        .expect("SET busy timeout");
+        .expect("set busy timeout");
     conn.execute_batch("PRAGMA foreign_keys = ON;")
         .expect("enable foreign keys");
     migration::run_migrations(&conn).expect("run migrations");
@@ -484,7 +484,7 @@ fn backup_empty_store() {
     let manager = BackupManager::new(&conn, &backup_dir);
     let result = manager
         .create_backup()
-        .expect("CREATE backup of empty store")
+        .expect("create backup of empty store")
         .expect("backup should not be skipped without disk monitor");
 
     assert!(result.path.exists());
@@ -495,10 +495,10 @@ fn backup_empty_store() {
     let backup_conn = Connection::open(&result.path).expect("open backup SQLite database");
     backup_conn
         .busy_timeout(std::time::Duration::from_secs(5))
-        .expect("SET busy timeout");
+        .expect("set busy timeout");
     let count: u32 = backup_conn
         .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
-        .expect("query session count FROM backup");
+        .expect("query session count from backup");
     assert_eq!(count, 0);
 }
 
@@ -540,9 +540,9 @@ fn backup_path_empty_string() {
 
 #[test]
 fn prune_keeps_zero() {
-    let dir = tempfile::tempdir().expect("CREATE temp dir");
+    let dir = tempfile::tempdir().expect("create temp dir");
     let backup_dir = dir.path().join("backups");
-    std::fs::create_dir_all(&backup_dir).expect("CREATE backup dir");
+    std::fs::create_dir_all(&backup_dir).expect("create backup dir");
 
     for i in 0..4 {
         std::fs::write(
@@ -554,7 +554,7 @@ fn prune_keeps_zero() {
 
     let conn = Connection::open_in_memory().expect("open in-memory SQLite connection");
     conn.busy_timeout(std::time::Duration::from_secs(5))
-        .expect("SET busy timeout");
+        .expect("set busy timeout");
     let manager = BackupManager::new(&conn, &backup_dir);
 
     let removed = manager.prune_backups(0).expect("prune all backups");
@@ -568,13 +568,13 @@ fn prune_keeps_zero() {
 
 #[test]
 fn list_backups_empty_dir() {
-    let dir = tempfile::tempdir().expect("CREATE temp dir");
+    let dir = tempfile::tempdir().expect("create temp dir");
     let backup_dir = dir.path().join("backups");
-    std::fs::create_dir_all(&backup_dir).expect("CREATE backup dir");
+    std::fs::create_dir_all(&backup_dir).expect("create backup dir");
 
     let conn = Connection::open_in_memory().expect("open in-memory SQLite connection");
     conn.busy_timeout(std::time::Duration::from_secs(5))
-        .expect("SET busy timeout");
+        .expect("set busy timeout");
     let manager = BackupManager::new(&conn, &backup_dir);
 
     let backups = manager.list_backups().expect("list backups in empty dir");
@@ -587,7 +587,7 @@ fn list_backups_empty_dir() {
 #[test]
 fn export_sessions_json_empty_store() {
     let store = test_store();
-    let dir = tempfile::tempdir().expect("CREATE temp dir");
+    let dir = tempfile::tempdir().expect("create temp dir");
     let export_dir = dir.path().join("export");
     let manager = BackupManager::new(store.conn(), dir.path().join("backups"));
 
@@ -610,13 +610,13 @@ fn export_sessions_json_empty_store() {
 
 #[test]
 fn restore_from_corrupt_file_errors() {
-    let dir = tempfile::tempdir().expect("CREATE temp dir");
+    let dir = tempfile::tempdir().expect("create temp dir");
     let corrupt_path = dir.path().join("corrupt.db");
     std::fs::write(&corrupt_path, b"this is not a sqlite database").expect("write corrupt file");
 
     if let Ok(c) = Connection::open(&corrupt_path) {
         c.busy_timeout(std::time::Duration::from_secs(5))
-            .expect("SET busy timeout");
+            .expect("set busy timeout");
         let result = c.query_row("SELECT COUNT(*) FROM sessions", [], |row| {
             row.get::<_, u32>(0)
         });

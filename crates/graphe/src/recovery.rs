@@ -389,7 +389,7 @@ pub(crate) fn recover_database(
                         "failed to swap recovered database, falling back to read-only"
                     );
                 } else {
-                    info!(path = %path_display, "recovered database swapped INTO place");
+                    info!(path = %path_display, "recovered database swapped into place");
 
                     let conn = Connection::open(path).context(error::DatabaseSnafu)?;
                     // WHY: busy_timeout prevents SQLITE_BUSY errors under concurrent writes.
@@ -431,9 +431,9 @@ mod tests {
 
     #[test]
     fn healthy_database_passes_integrity_check() {
-        let conn = Connection::open_in_memory().unwrap_or_default();
+        let conn = Connection::open_in_memory().expect("open in-memory");
         assert!(
-            check_integrity(&conn).unwrap_or_default(),
+            check_integrity(&conn).expect("integrity check should succeed"),
             "fresh database should pass integrity check"
         );
     }
@@ -506,16 +506,16 @@ mod tests {
 
     #[test]
     fn backup_corrupt_file_creates_copy() {
-        let tmp = tempfile::tempdir().unwrap_or_default();
+        let tmp = tempfile::tempdir().expect("create temp dir");
         let db_path = tmp.path().join("test.db");
 
-        std::fs::write(&db_path, b"corrupt data").unwrap_or_default();
+        std::fs::write(&db_path, b"corrupt data").expect("write test file");
 
-        let backup_path = backup_corrupt_file(&db_path).unwrap_or_default();
+        let backup_path = backup_corrupt_file(&db_path).expect("backup should succeed");
 
         assert!(backup_path.exists(), "backup file should exist");
 
-        let backup_contents = std::fs::read(&backup_path).unwrap_or_default();
+        let backup_contents = std::fs::read(&backup_path).expect("read backup");
         assert_eq!(
             backup_contents, b"corrupt data",
             "backup contents should match original"
@@ -523,7 +523,7 @@ mod tests {
 
         let backup_name = backup_path
             .file_name()
-            .unwrap_or_default()
+            .expect("has filename")
             .to_string_lossy();
         assert!(
             backup_name.starts_with("test.db.corrupt."),
@@ -533,62 +533,62 @@ mod tests {
 
     #[test]
     fn recovery_from_valid_database() {
-        let tmp = tempfile::tempdir().unwrap_or_default();
+        let tmp = tempfile::tempdir().expect("create temp dir");
         let src_path = tmp.path().join("source.db");
         let dst_path = tmp.path().join("recovered.db");
 
         {
-            let conn = Connection::open(&src_path).unwrap_or_default();
+            let conn = Connection::open(&src_path).expect("open source");
             conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;")
-                .unwrap_or_default();
-            crate::migration::run_migrations(&conn).unwrap_or_default();
+                .expect("set pragmas");
+            crate::migration::run_migrations(&conn).expect("run migrations");
             conn.execute(
                 "INSERT INTO sessions (id, nous_id, session_key) VALUES ('s1', 'test', 'main')",
                 [],
             )
-            .unwrap_or_default();
+            .expect("insert session");
         }
 
-        let recovered = attempt_recovery(&src_path, &dst_path).unwrap_or_default();
-        assert!(recovered, "recovery FROM valid database should succeed");
+        let recovered = attempt_recovery(&src_path, &dst_path).expect("recovery should succeed");
+        assert!(recovered, "recovery from valid database should succeed");
         assert!(dst_path.exists(), "recovered database file should exist");
 
-        let conn = Connection::open(&dst_path).unwrap_or_default();
+        let conn = Connection::open(&dst_path).expect("open recovered");
         let count: i64 = conn
             .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
-            .unwrap_or_default();
+            .expect("count sessions");
         assert_eq!(count, 1, "recovered database should contain the session");
     }
 
     #[test]
     fn recovery_from_garbage_file_returns_false() {
-        let tmp = tempfile::tempdir().unwrap_or_default();
+        let tmp = tempfile::tempdir().expect("create temp dir");
         let corrupt_path = tmp.path().join("garbage.db");
         let new_path = tmp.path().join("recovered.db");
 
         std::fs::write(&corrupt_path, b"this is not a database at all")
-            .unwrap_or_default();
+            .expect("write garbage file");
 
         let recovered =
-            attempt_recovery(&corrupt_path, &new_path).unwrap_or_default();
+            attempt_recovery(&corrupt_path, &new_path).expect("recovery should not error");
         assert!(
             !recovered,
-            "recovery FROM total garbage should return false"
+            "recovery from total garbage should return false"
         );
     }
 
     #[test]
     fn open_read_only_prevents_writes() {
-        let tmp = tempfile::tempdir().unwrap_or_default();
+        let tmp = tempfile::tempdir().expect("create temp dir");
         let db_path = tmp.path().join("readonly.db");
 
         {
-            let conn = Connection::open(&db_path).unwrap_or_default();
+            let conn = Connection::open(&db_path).expect("create db");
             conn.execute_batch("CREATE TABLE t (id INTEGER PRIMARY KEY)")
-                .unwrap_or_default();
+                .expect("create table");
         }
 
-        let ro_conn = open_read_only(&db_path).unwrap_or_default();
+        let ro_conn = open_read_only(&db_path).expect("open read-only");
         let result = ro_conn.execute("INSERT INTO t VALUES (1)", []);
         assert!(
             result.is_err(),
@@ -598,19 +598,19 @@ mod tests {
 
     #[test]
     fn full_recovery_workflow_with_valid_db() {
-        let tmp = tempfile::tempdir().unwrap_or_default();
+        let tmp = tempfile::tempdir().expect("create temp dir");
         let db_path = tmp.path().join("sessions.db");
 
         {
-            let conn = Connection::open(&db_path).unwrap_or_default();
+            let conn = Connection::open(&db_path).expect("open db");
             conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;")
-                .unwrap_or_default();
-            crate::migration::run_migrations(&conn).unwrap_or_default();
+                .expect("set pragmas");
+            crate::migration::run_migrations(&conn).expect("run migrations");
             conn.execute(
                 "INSERT INTO sessions (id, nous_id, session_key) VALUES ('s1', 'test', 'main')",
                 [],
             )
-            .unwrap_or_default();
+            .expect("insert session");
         }
 
         let config = RecoveryConfig {
@@ -620,16 +620,16 @@ mod tests {
             backup_corrupt: true,
         };
 
-        let (conn, mode) = recover_database(&db_path, &config).unwrap_or_default();
+        let (conn, mode) = recover_database(&db_path, &config).expect("recovery should succeed");
         assert_eq!(mode, StoreMode::Normal, "should recover to normal mode");
 
         let count: i64 = conn
             .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
-            .unwrap_or_default();
+            .expect("count sessions");
         assert_eq!(count, 1, "session should survive recovery");
 
         let backups: Vec<_> = std::fs::read_dir(tmp.path())
-            .unwrap_or_default()
+            .expect("read dir")
             .filter_map(std::result::Result::ok)
             .filter(|e| e.file_name().to_string_lossy().contains(".corrupt."))
             .collect();

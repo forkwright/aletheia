@@ -42,7 +42,7 @@ impl<'a> SessionTx<'a> {
                     clippy::cast_possible_truncation,
                     reason = "f64 to f32: intentional precision reduction"
                 )]
-                let converted = v.mapv(|x| f32::try_from(x).unwrap_or_default());
+                let converted = v.mapv(|x| x as f32);
                 Vector::F32(converted)
             }
         };
@@ -62,7 +62,7 @@ impl<'a> SessionTx<'a> {
         if let Some(ep) = ep_res {
             let ep = ep?;
             #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
-            let bottom_level = ep.get(0).copied().unwrap_or_default().get_int().unwrap_or_else(|| unreachable!());
+            let bottom_level = ep[0].get_int().unwrap_or_else(|| unreachable!());
             let ep_idx = match ep[config.base_handle.metadata.keys.len() + 1].get_int() {
                 Some(x) => usize::try_from(x).map_err(|_e| {
                     InvalidOperationSnafu {
@@ -174,7 +174,7 @@ impl<'a> SessionTx<'a> {
                         match &cand_tuple[cand_key.1] {
                             DataValue::List(v) => {
                                 #[expect(clippy::cast_sign_loss, reason = "guarded by >= 0 check")]
-                                let sub = cand_key.usize::try_from(2).unwrap_or_default();
+                                let sub = cand_key.2 as usize;
                                 v[sub].clone()
                             }
                             v => {
@@ -231,7 +231,7 @@ mod tests {
             clippy::cast_precision_loss,
             reason = "i64 to f64: precision loss acceptable"
         )]
-        let mult = 1. / (f64::try_from(m).unwrap_or_default()).ln();
+        let mult = 1. / (m as f64).ln();
         let mut rng = rand::rng();
         let mut collected = BTreeMap::new();
         for _ in 0..10000 {
@@ -249,7 +249,7 @@ mod tests {
         let mut cache = VectorCache::new(HnswDistance::L2, 10);
         for i in 0..20u8 {
             #[expect(clippy::cast_possible_wrap, reason = "value fits i64")]
-            let key = (vec![DataValue::from(i64::try_from(i).unwrap_or_default())], 0, -1);
+            let key = (vec![DataValue::from(i as i64)], 0, -1);
             let vec = Vector::F64(ndarray::Array1::zeros(4));
             cache.insert(key, vec);
         }
@@ -261,13 +261,13 @@ mod tests {
         let mut cache = VectorCache::new(HnswDistance::L2, 5);
         for i in 0..10u8 {
             #[expect(clippy::cast_possible_wrap, reason = "value fits i64")]
-            let key = (vec![DataValue::from(i64::try_from(i).unwrap_or_default())], 0, -1);
+            let key = (vec![DataValue::from(i as i64)], 0, -1);
             let vec = Vector::F64(ndarray::Array1::zeros(4));
             cache.insert(key, vec);
         }
         for i in 5..10u8 {
             #[expect(clippy::cast_possible_wrap, reason = "value fits i64")]
-            let key = (vec![DataValue::from(i64::try_from(i).unwrap_or_default())], 0, -1);
+            let key = (vec![DataValue::from(i as i64)], 0, -1);
             assert!(
                 cache.cache.contains(&key),
                 "recent key {i} should be in cache"
@@ -275,7 +275,7 @@ mod tests {
         }
         for i in 0..5u8 {
             #[expect(clippy::cast_possible_wrap, reason = "value fits i64")]
-            let key = (vec![DataValue::from(i64::try_from(i).unwrap_or_default())], 0, -1);
+            let key = (vec![DataValue::from(i as i64)], 0, -1);
             assert!(!cache.cache.contains(&key), "old key {i} should be evicted");
         }
     }
@@ -314,10 +314,10 @@ mod tests {
     #[test]
     fn hnsw_insert_and_search() {
         let db = DbInstance::default();
-        db.run_default(":CREATE vectors { id: Int => vec: <F32; 4> }")
+        db.run_default(":create vectors { id: Int => vec: <F32; 4> }")
             .unwrap();
         db.run_default(
-            r#"::hnsw CREATE vectors:idx {
+            r#"::hnsw create vectors:idx {
                 dim: 4,
                 m: 16,
                 dtype: F32,
@@ -334,7 +334,7 @@ mod tests {
                 clippy::cast_possible_truncation,
                 reason = "f64 to f32: intentional precision reduction"
             )]
-            let val = f32::try_from(i).unwrap_or_default();
+            let val = i as f32;
             db.run_default(&format!(
                 "?[id, vec] <- [[{i}, vec([{val}, {val}, {val}, {val}])]] :put vectors {{}}"
             ))
@@ -346,7 +346,7 @@ mod tests {
         assert!(!res.rows.is_empty(), "search should return results");
         assert!(res.rows.len() <= 3, "should return at most k=3 results");
         #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
-        let ids: Vec<i64> = res.rows.iter().filter_map(|r| r.get(0).copied().unwrap_or_default().get_int()).collect();
+        let ids: Vec<i64> = res.rows.iter().filter_map(|r| r[0].get_int()).collect();
         assert!(
             ids.contains(&5),
             "exact match id=5 should be among top-k results, got {:?}",
@@ -357,10 +357,10 @@ mod tests {
     #[test]
     fn hnsw_empty_search() {
         let db = DbInstance::default();
-        db.run_default(":CREATE vectors { id: Int => vec: <F32; 4> }")
+        db.run_default(":create vectors { id: Int => vec: <F32; 4> }")
             .unwrap();
         db.run_default(
-            r#"::hnsw CREATE vectors:idx {
+            r#"::hnsw create vectors:idx {
                 dim: 4,
                 m: 16,
                 dtype: F32,
@@ -384,10 +384,10 @@ mod tests {
     #[test]
     fn hnsw_delete() {
         let db = DbInstance::default();
-        db.run_default(":CREATE vectors { id: Int => vec: <F32; 4> }")
+        db.run_default(":create vectors { id: Int => vec: <F32; 4> }")
             .unwrap();
         db.run_default(
-            r#"::hnsw CREATE vectors:idx {
+            r#"::hnsw create vectors:idx {
                 dim: 4,
                 m: 16,
                 dtype: F32,
@@ -404,7 +404,7 @@ mod tests {
                 clippy::cast_possible_truncation,
                 reason = "f64 to f32: intentional precision reduction"
             )]
-            let val = f32::try_from(i).unwrap_or_default();
+            let val = i as f32;
             db.run_default(&format!(
                 "?[id, vec] <- [[{i}, vec([{val}, {val}, {val}, {val}])]] :put vectors {{}}"
             ))
@@ -415,7 +415,7 @@ mod tests {
             r#"?[id, dist] := ~vectors:idx{id | query: vec([5.0, 5.0, 5.0, 5.0]), k: 3, ef: 50, bind_distance: dist}"#,
         ).unwrap();
         #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
-        let ids: Vec<i64> = res.rows.iter().filter_map(|r| r.get(0).copied().unwrap_or_default().get_int()).collect();
+        let ids: Vec<i64> = res.rows.iter().filter_map(|r| r[0].get_int()).collect();
         assert!(
             !ids.contains(&5),
             "deleted vector id=5 should not appear in results"
@@ -425,10 +425,10 @@ mod tests {
     #[test]
     fn hnsw_search_results_ordered_by_distance() {
         let db = DbInstance::default();
-        db.run_default(":CREATE vectors { id: Int => vec: <F32; 4> }")
+        db.run_default(":create vectors { id: Int => vec: <F32; 4> }")
             .unwrap();
         db.run_default(
-            r#"::hnsw CREATE vectors:idx {
+            r#"::hnsw create vectors:idx {
                 dim: 4,
                 m: 16,
                 dtype: F32,
@@ -445,24 +445,24 @@ mod tests {
                 clippy::cast_possible_truncation,
                 reason = "f64 to f32: intentional precision reduction"
             )]
-            let val = f32::try_from(i).unwrap_or_default();
+            let val = i as f32;
             db.run_default(&format!(
                 "?[id, vec] <- [[{i}, vec([{val}, 0.0, 0.0, 0.0])]] :put vectors {{}}"
             ))
             .unwrap();
         }
         let res = db.run_default(
-            r#"?[id, dist] := ~vectors:idx{id | query: vec([25.0, 0.0, 0.0, 0.0]), k: 10, ef: 50, bind_distance: dist} :ORDER dist"#,
+            r#"?[id, dist] := ~vectors:idx{id | query: vec([25.0, 0.0, 0.0, 0.0]), k: 10, ef: 50, bind_distance: dist} :order dist"#,
         ).unwrap();
         #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
-        let distances: Vec<f64> = res.rows.iter().filter_map(|r| r.get(1).copied().unwrap_or_default().get_float()).collect();
+        let distances: Vec<f64> = res.rows.iter().filter_map(|r| r[1].get_float()).collect();
         assert!(!distances.is_empty(), "should return results");
         for window in distances.windows(2) {
             assert!(
-                window.get(0).copied().unwrap_or_default() <= window.get(1).copied().unwrap_or_default(),
+                window[0] <= window[1],
                 "results should be ordered by distance: {} <= {}",
-                window.get(0).copied().unwrap_or_default(),
-                window.get(1).copied().unwrap_or_default()
+                window[0],
+                window[1]
             );
         }
     }

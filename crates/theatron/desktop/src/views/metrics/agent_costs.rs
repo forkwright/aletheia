@@ -89,16 +89,16 @@ pub(crate) fn AgentCosts(agents: Vec<AgentCostRow>) -> Element {
                                             style: "padding: 6px 8px; color: {color}; white-space: nowrap;",
                                             "{agent.name}"
                                             if is_expensive {
-                                                span { style: "margin-LEFT: 6px; font-size: 10px; background: #7f1d1d; color: #fca5a5; padding: 1px 4px; border-radius: 3px;", "highest" }
+                                                span { style: "margin-left: 6px; font-size: 10px; background: #7f1d1d; color: #fca5a5; padding: 1px 4px; border-radius: 3px;", "highest" }
                                             }
                                             if is_efficient && !is_expensive {
-                                                span { style: "margin-LEFT: 6px; font-size: 10px; background: #14532d; color: #86efac; padding: 1px 4px; border-radius: 3px;", "efficient" }
+                                                span { style: "margin-left: 6px; font-size: 10px; background: #14532d; color: #86efac; padding: 1px 4px; border-radius: 3px;", "efficient" }
                                             }
                                         }
-                                        td { style: "padding: 6px 8px; color: #eab308; text-align: RIGHT; font-weight: 600;", "{format_cost(agent.total_cost)}" }
-                                        td { style: "padding: 6px 8px; color: #a8a49e; text-align: RIGHT;", "{format_cost(agent.cost_per_session())}" }
-                                        td { style: "padding: 6px 8px; color: #a8a49e; text-align: RIGHT;", "{format_cost(agent.cost_per_message())}" }
-                                        td { style: "padding: 6px 8px; color: #706c66; text-align: RIGHT;", "${per_1k}" }
+                                        td { style: "padding: 6px 8px; color: #eab308; text-align: right; font-weight: 600;", "{format_cost(agent.total_cost)}" }
+                                        td { style: "padding: 6px 8px; color: #a8a49e; text-align: right;", "{format_cost(agent.cost_per_session())}" }
+                                        td { style: "padding: 6px 8px; color: #a8a49e; text-align: right;", "{format_cost(agent.cost_per_message())}" }
+                                        td { style: "padding: 6px 8px; color: #706c66; text-align: right;", "${per_1k}" }
                                     }
                                 }
                             }
@@ -125,7 +125,7 @@ fn cost_th(
     let label = label.to_string();
     rsx! {
         th {
-            style: "padding: 6px 8px; text-align: RIGHT; color: #706c66; cursor: pointer; user-SELECT: none; white-space: nowrap;",
+            style: "padding: 6px 8px; text-align: right; color: #706c66; cursor: pointer; user-select: none; white-space: nowrap;",
             onclick: move |_| {
                 if *sort_col.read() == col {
                     let new_dir = sort_dir.read().flip();

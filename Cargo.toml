@@ -105,6 +105,7 @@ serde_yaml = "0.9"
 toml = "1.1"
 
 # HTTP
+http = "1"
 axum = "0.8"
 utoipa = { version = "5", features = ["axum_extras"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json", "http2", "query"] }

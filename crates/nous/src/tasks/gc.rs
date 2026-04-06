@@ -110,14 +110,14 @@ mod tests {
                 },
                 "stale task".into(),
             )
-            .unwrap_or_default();
+            .expect("register");
 
         registry
             .update_status(id, crate::tasks::TaskStatus::Running)
-            .unwrap_or_default();
+            .expect("to running");
         registry
             .update_status(id, crate::tasks::TaskStatus::Completed)
-            .unwrap_or_default();
+            .expect("to completed");
 
         let handle = spawn_gc_task_with_interval(
             registry.clone(),
@@ -129,7 +129,7 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         shutdown.cancel();
-        handle.await.unwrap_or_default();
+        handle.await.expect("gc task join");
 
         assert!(registry.get(id).is_err(), "task should have been evicted");
     }
@@ -147,11 +147,11 @@ mod tests {
                 },
                 "active task".into(),
             )
-            .unwrap_or_default();
+            .expect("register");
 
         registry
             .update_status(id, crate::tasks::TaskStatus::Running)
-            .unwrap_or_default();
+            .expect("to running");
 
         let handle = spawn_gc_task_with_interval(
             registry.clone(),
@@ -162,14 +162,14 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         shutdown.cancel();
-        handle.await.unwrap_or_default();
+        handle.await.expect("gc task join");
 
         assert!(registry.get(id).is_ok(), "running task should be preserved");
     }
 
     #[tokio::test]
     async fn gc_cleans_up_output_files() {
-        let dir = tempfile::tempdir().unwrap_or_default();
+        let dir = tempfile::tempdir().expect("tempdir");
         let registry = TaskRegistry::new(Duration::from_secs(0));
         let shutdown = CancellationToken::new();
 
@@ -180,25 +180,25 @@ mod tests {
                 },
                 "with output".into(),
             )
-            .unwrap_or_default();
+            .expect("register");
 
         // Create an output file and register its path.
         let mut writer = crate::tasks::OutputWriter::new(dir.path())
             .await
-            .unwrap_or_default();
-        writer.write_chunk(b"output data").await.unwrap_or_default();
+            .expect("create writer");
+        writer.write_chunk(b"output data").await.expect("write");
         let output_path = writer.path().to_path_buf();
 
         registry
             .set_output_path(id, output_path.clone())
-            .unwrap_or_default();
+            .expect("set output path");
 
         registry
             .update_status(id, crate::tasks::TaskStatus::Running)
-            .unwrap_or_default();
+            .expect("to running");
         registry
             .update_status(id, crate::tasks::TaskStatus::Completed)
-            .unwrap_or_default();
+            .expect("to completed");
 
         assert!(output_path.exists(), "output file should exist before GC");
 
@@ -211,7 +211,7 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         shutdown.cancel();
-        handle.await.unwrap_or_default();
+        handle.await.expect("gc task join");
 
         assert!(
             !output_path.exists(),
@@ -231,7 +231,7 @@ mod tests {
         // WHY: Should complete promptly without hanging.
         tokio::time::timeout(Duration::from_secs(1), handle)
             .await
-            .unwrap_or_default()
-            .unwrap_or_default();
+            .expect("gc task should shut down within 1s")
+            .expect("gc task join");
     }
 }

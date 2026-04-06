@@ -93,7 +93,7 @@ impl Drop for StorageInner {
         {
             // SAFETY: ptr and len are from a successful mmap call.
             unsafe {
-                if let Err(e) = rustix::mm::munmap(ptr.cast(), len) { tracing::warn!(error = %e, "operation failed"); }
+                rustix::mm::munmap(ptr.cast(), len).ok(); // WHY: munmap failure during Drop is non-recoverable
             }
         }
     }
@@ -155,7 +155,7 @@ impl MmapVectorStorage {
             clippy::cast_possible_truncation,
             reason = "file size bounded by available memory"
         )]
-        let file_len_usize = usize::try_from(file_len).unwrap_or_default();
+        let file_len_usize = file_len as usize;
 
         if !file_len_usize.is_multiple_of(stride) {
             return Err(InvalidOperationSnafu {
@@ -171,7 +171,7 @@ impl MmapVectorStorage {
 
         let count = file_len_usize / stride;
         let inner = Self::create_inner(&file, file_len_usize)?;
-        let hint = AtomicU8::new(AccessHint::u8::try_from(Random).unwrap_or_default());
+        let hint = AtomicU8::new(AccessHint::Random as u8);
 
         debug!(path = %path.display(), dim, count, "opened mmap vector storage");
 
@@ -274,7 +274,7 @@ impl MmapVectorStorage {
     /// On Unix this calls `madvise` to inform the kernel. On other platforms
     /// this is a no-op (the hint is recorded but not applied).
     pub(crate) fn set_access_hint(&self, hint: AccessHint) {
-        self.hint.store(u8::try_from(hint).unwrap_or_default(), Ordering::Relaxed);
+        self.hint.store(hint as u8, Ordering::Relaxed);
         self.apply_madvise(hint);
     }
 
@@ -290,7 +290,7 @@ impl MmapVectorStorage {
             };
             // SAFETY: ptr and len are from a valid mmap region.
             unsafe {
-                if let Err(e) = rustix::mm::madvise(ptr.cast(), len, advice) { tracing::warn!(error = %e, "operation failed"); }
+                rustix::mm::madvise(ptr.cast(), len, advice).ok(); // WHY: madvise is a hint; failure does not affect correctness
             }
         }
     }
@@ -386,7 +386,7 @@ impl MmapVectorStorage {
                 .map_err(|e| io_err("mmap_storage", format!("write failed: {e}")))?;
             let new_len = (self.count + 1) * stride;
             self.file
-                .set_len(u64::try_from(new_len).unwrap_or_default())
+                .set_len(new_len as u64)
                 .map_err(|e| io_err("mmap_storage", format!("set_len failed: {e}")))?;
             self.remap(new_len)?;
         }
@@ -424,7 +424,7 @@ impl MmapVectorStorage {
         if let StorageInner::Heap(buf) = &self.inner {
             use std::io::Write;
             let mut file = File::create(&self.path)
-                .map_err(|e| io_err("mmap_storage", format!("CREATE failed: {e}")))?;
+                .map_err(|e| io_err("mmap_storage", format!("create failed: {e}")))?;
             file.write_all(buf)
                 .map_err(|e| io_err("mmap_storage", format!("write failed: {e}")))?;
         }

@@ -239,7 +239,7 @@ fn check_db_sizes(paths: &[PathBuf]) -> Vec<AttentionItem> {
                     clippy::as_conversions,
                     reason = "u64→f64: file sizes don't need exact precision for display"
                 )]
-                let size_gb = meta.len() as f64 / f64::try_from(ONE_GB).unwrap_or_default();
+                let size_gb = meta.len() as f64 / ONE_GB as f64;
                 // NOTE: single threshold — any file over 1 GB is High urgency.
                 items.extend(check_threshold(size_gb, 1.0, f64::INFINITY, |gb| {
                     format!("Database file large: {} is {gb:.1} GB", path.display())
@@ -270,9 +270,9 @@ fn check_memory() -> Vec<AttentionItem> {
             let rss_mb = resident_kb / 1024;
             #[expect(
                 clippy::cast_precision_loss,
-                reason = "u64→f64: MB VALUES are small enough for exact representation"
+                reason = "u64→f64: MB values are small enough for exact representation"
             )]
-            let rss_f64 = f64::try_from(rss_mb).unwrap_or_default();
+            let rss_f64 = rss_mb as f64;
             let label = if rss_mb >= 2048 {
                 "critical"
             } else {
@@ -321,7 +321,7 @@ mod tests {
     #[tokio::test]
     async fn prosoche_returns_items_for_default() {
         let check = ProsocheCheck::new("test-nous");
-        let result = check.run().await.unwrap_or_default();
+        let result = check.run().await.expect("should succeed");
         assert!(!result.checked_at.is_empty());
     }
 
@@ -392,8 +392,8 @@ mod tests {
             }],
             checked_at: "2026-01-01T00:00:00Z".to_owned(),
         };
-        let json = serde_json::to_string(&result).unwrap_or_default();
-        let back: ProsocheResult = serde_json::from_str(&json).unwrap_or_default();
+        let json = serde_json::to_string(&result).expect("serialize");
+        let back: ProsocheResult = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(back.items.len(), 1);
         assert_eq!(back.checked_at, "2026-01-01T00:00:00Z");
     }
@@ -405,7 +405,7 @@ mod tests {
             summary: "standup".to_owned(),
             urgency: Urgency::Medium,
         };
-        let json = serde_json::to_string(&item).unwrap_or_default();
+        let json = serde_json::to_string(&item).expect("serialize");
         assert!(json.contains("Calendar"));
         assert!(json.contains("standup"));
         assert!(json.contains("Medium"));
@@ -419,7 +419,7 @@ VmPeak:   500000 kB
 VmRSS:   123456 kB
 Threads:  8
 ";
-        let rss = parse_vmrss(content).unwrap_or_default();
+        let rss = parse_vmrss(content).expect("should parse");
         assert_eq!(rss, 123_456);
     }
 
@@ -455,13 +455,13 @@ Threads:  8
 
     #[test]
     fn check_db_sizes_small_file() {
-        let dir = tempfile::tempdir().unwrap_or_default();
+        let dir = tempfile::tempdir().expect("create tempdir");
         let db_path = dir.path().join("test.db");
         #[expect(
             clippy::disallowed_methods,
             reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
         )]
-        std::fs::write(&db_path, b"small content").unwrap_or_default();
+        std::fs::write(&db_path, b"small content").expect("write test file");
 
         let items = check_db_sizes(&[db_path]);
         assert!(items.is_empty(), "small file should not trigger warning");
@@ -469,30 +469,30 @@ Threads:  8
 
     #[tokio::test]
     async fn prosoche_with_data_dir_runs_disk_check() {
-        let dir = tempfile::tempdir().unwrap_or_default();
+        let dir = tempfile::tempdir().expect("create tempdir");
         let check = ProsocheCheck::new("test-nous").with_data_dir(dir.path());
-        let result = check.run().await.unwrap_or_default();
+        let result = check.run().await.expect("should succeed");
         assert!(!result.checked_at.is_empty());
     }
 
     #[tokio::test]
     async fn prosoche_with_db_paths_runs_size_check() {
-        let dir = tempfile::tempdir().unwrap_or_default();
+        let dir = tempfile::tempdir().expect("create tempdir");
         let db_path = dir.path().join("test.db");
         #[expect(
             clippy::disallowed_methods,
             reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
         )]
-        std::fs::write(&db_path, b"data").unwrap_or_default();
+        std::fs::write(&db_path, b"data").expect("write");
         let check = ProsocheCheck::new("test-nous").with_db_paths(vec![db_path]);
-        let result = check.run().await.unwrap_or_default();
+        let result = check.run().await.expect("should succeed");
         assert!(!result.checked_at.is_empty());
     }
 
     #[test]
     fn parse_df_percent_valid() {
         let output = "Use%\n 42%\n";
-        let percent = parse_df_percent(output).unwrap_or_default();
+        let percent = parse_df_percent(output).expect("should parse");
         assert!((percent - 42.0).abs() < f64::EPSILON);
     }
 

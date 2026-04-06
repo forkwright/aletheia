@@ -506,7 +506,7 @@ mod tests {
 
     #[test]
     fn config_file_defaults_to_json() {
-        let dir = tempfile::tempdir().unwrap_or_default();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let oikos = Oikos::from_root(dir.path());
         let cf = oikos.config_file();
         assert!(
@@ -517,7 +517,7 @@ mod tests {
 
     #[test]
     fn config_file_prefers_toml() {
-        let dir = tempfile::tempdir().unwrap_or_default();
+        let dir = tempfile::tempdir().expect("create temp dir");
         std::fs::create_dir_all(dir.path().join("config")).unwrap();
         #[expect(
             clippy::disallowed_methods,
@@ -534,7 +534,7 @@ mod tests {
     }
 
     fn make_valid_instance() -> tempfile::TempDir {
-        let dir = tempfile::tempdir().unwrap_or_default();
+        let dir = tempfile::tempdir().expect("create temp dir");
         std::fs::create_dir_all(dir.path().join("config")).unwrap();
         std::fs::create_dir_all(dir.path().join("data")).unwrap();
         std::fs::create_dir_all(dir.path().join("nous")).unwrap();
@@ -568,7 +568,7 @@ mod tests {
 
     #[test]
     fn validate_fails_when_config_dir_missing() {
-        let dir = tempfile::tempdir().unwrap_or_default();
+        let dir = tempfile::tempdir().expect("create temp dir");
         std::fs::create_dir_all(dir.path().join("data")).unwrap();
         let oikos = Oikos::from_root(dir.path());
         let err = oikos.validate().unwrap_err();
@@ -589,7 +589,7 @@ mod tests {
 
     #[test]
     fn validate_fails_when_data_dir_missing() {
-        let dir = tempfile::tempdir().unwrap_or_default();
+        let dir = tempfile::tempdir().expect("create temp dir");
         std::fs::create_dir_all(dir.path().join("config")).unwrap();
         let oikos = Oikos::from_root(dir.path());
         let err = oikos.validate().unwrap_err();
@@ -606,7 +606,7 @@ mod tests {
 
     #[test]
     fn validate_warns_but_passes_without_nous_dir() {
-        let dir = tempfile::tempdir().unwrap_or_default();
+        let dir = tempfile::tempdir().expect("create temp dir");
         std::fs::create_dir_all(dir.path().join("config")).unwrap();
         std::fs::create_dir_all(dir.path().join("data")).unwrap();
         let oikos = Oikos::from_root(dir.path());
@@ -622,7 +622,7 @@ mod tests {
     fn validate_fails_when_data_not_writable() {
         use std::os::unix::fs::PermissionsExt;
 
-        let dir = tempfile::tempdir().unwrap_or_default();
+        let dir = tempfile::tempdir().expect("create temp dir");
         std::fs::create_dir_all(dir.path().join("config")).unwrap();
         let data = dir.path().join("data");
         std::fs::create_dir_all(&data).unwrap();
@@ -695,14 +695,14 @@ mod tests {
             "expected workspace error in: {msg}"
         );
         assert!(
-            msg.contains("aletheia init") || msg.contains("UPDATE the workspace path"),
+            msg.contains("aletheia init") || msg.contains("update the workspace path"),
             "expected help hint in: {msg}"
         );
     }
 
     #[test]
     fn init_layout_passes_validation() {
-        let dir = tempfile::tempdir().unwrap_or_default();
+        let dir = tempfile::tempdir().expect("create temp dir");
         for sub in &["config", "data", "nous", "logs", "shared"] {
             std::fs::create_dir_all(dir.path().join(sub)).unwrap();
         }

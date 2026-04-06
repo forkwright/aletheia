@@ -316,7 +316,7 @@ mod tests {
             .unwrap()
             .value
             .clone();
-        assert_ne!(initial, after, "Enter on SELECT should cycle");
+        assert_ne!(initial, after, "Enter on select should cycle");
     }
 
     #[test]

@@ -149,7 +149,7 @@ impl EvalClient {
         let mut req = self.http.get(&base).query(&[
             ("q", query),
             ("nous_id", nous_id),
-            ("LIMIT", &limit.to_string()),
+            ("limit", &limit.to_string()),
         ]);
         if let Some(ref token) = self.token {
             req = req.header("authorization", format!("Bearer {}", token.expose_secret()));
@@ -364,7 +364,7 @@ pub struct NousStatus {
 pub struct SessionResponse {
     pub id: String,
     pub nous_id: String,
-    pub session_key: SecretString,
+    pub session_key: String,
     pub status: SessionStatus,
     pub model: Option<String>,
     pub message_count: i64,
@@ -477,19 +477,19 @@ mod tests {
 
     #[test]
     fn instance_status_deserializes_healthy() {
-        let status: InstanceStatus = serde_json::from_str("\"healthy\"").unwrap_or_default();
+        let status: InstanceStatus = serde_json::from_str("\"healthy\"").expect("deserialize");
         assert_eq!(status, InstanceStatus::Healthy);
     }
 
     #[test]
     fn instance_status_deserializes_degraded() {
-        let status: InstanceStatus = serde_json::from_str("\"degraded\"").unwrap_or_default();
+        let status: InstanceStatus = serde_json::from_str("\"degraded\"").expect("deserialize");
         assert_eq!(status, InstanceStatus::Degraded);
     }
 
     #[test]
     fn instance_status_deserializes_unknown() {
-        let status: InstanceStatus = serde_json::from_str("\"starting\"").unwrap_or_default();
+        let status: InstanceStatus = serde_json::from_str("\"starting\"").expect("deserialize");
         assert!(matches!(status, InstanceStatus::Unknown(_)));
     }
 
@@ -500,16 +500,16 @@ mod tests {
             (SessionStatus::Archived, "\"archived\""),
         ];
         for (variant, expected_json) in &cases {
-            let json = serde_json::to_string(variant).unwrap_or_default();
+            let json = serde_json::to_string(variant).expect("serialize");
             assert_eq!(json, *expected_json);
-            let back: SessionStatus = serde_json::from_str(&json).unwrap_or_default();
+            let back: SessionStatus = serde_json::from_str(&json).expect("deserialize");
             assert_eq!(&back, variant);
         }
     }
 
     #[test]
     fn session_status_unknown_passthrough() {
-        let status: SessionStatus = serde_json::from_str("\"suspended\"").unwrap_or_default();
+        let status: SessionStatus = serde_json::from_str("\"suspended\"").expect("deserialize");
         assert!(matches!(status, SessionStatus::Unknown(_)));
         if let SessionStatus::Unknown(s) = status {
             assert_eq!(s, "suspended");
@@ -524,16 +524,16 @@ mod tests {
             (MessageRole::Tool, "\"tool\""),
         ];
         for (variant, expected_json) in &cases {
-            let json = serde_json::to_string(variant).unwrap_or_default();
+            let json = serde_json::to_string(variant).expect("serialize");
             assert_eq!(json, *expected_json);
-            let back: MessageRole = serde_json::from_str(&json).unwrap_or_default();
+            let back: MessageRole = serde_json::from_str(&json).expect("deserialize");
             assert_eq!(&back, variant);
         }
     }
 
     #[test]
     fn message_role_unknown_passthrough() {
-        let role: MessageRole = serde_json::from_str("\"system\"").unwrap_or_default();
+        let role: MessageRole = serde_json::from_str("\"system\"").expect("deserialize");
         assert!(matches!(role, MessageRole::Unknown(_)));
         if let MessageRole::Unknown(s) = role {
             assert_eq!(s, "system");

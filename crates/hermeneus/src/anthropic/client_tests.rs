@@ -25,6 +25,7 @@ fn test_config_with(base_url: &str) -> ProviderConfig {
         default_model: None,
         max_retries: Some(0),
         pricing: HashMap::new(),
+        cc_mimicry: None,
     }
 }
 
@@ -50,7 +51,7 @@ fn valid_wire_response_json() -> serde_json::Value {
         "id": "msg_test",
         "type": "message",
         "role": "assistant",
-        "content": [{"type": "text", "text": "Hello FROM test"}],
+        "content": [{"type": "text", "text": "Hello from test"}],
         "model": "claude-opus-4-20250514",
         "stop_reason": "end_turn",
         "usage": {"input_tokens": 10, "output_tokens": 5}
@@ -361,7 +362,7 @@ fn estimate_cost_default_pricing_resolves_haiku() {
     let cost = estimate_cost(&pricing, "claude-haiku-4-5-20251001", 1_000_000, 1_000_000);
     assert!(
         (cost - 4.8).abs() < 0.0001,
-        "expected ~$4.80 for haiku FROM default pricing, got {cost}"
+        "expected ~$4.80 for haiku from default pricing, got {cost}"
     );
 
     for model in SUPPORTED_MODELS {
@@ -439,7 +440,7 @@ fn merge_pricing_fills_defaults_for_unconfigured_models() {
     let haiku = provider
         .pricing
         .get("claude-haiku-4-5-20251001")
-        .expect("haiku pricing must be present FROM defaults");
+        .expect("haiku pricing must be present from defaults");
     assert!(
         (haiku.input_cost_per_mtok - 0.8).abs() < f64::EPSILON,
         "haiku input price should be $0.80/MTok"
@@ -479,7 +480,7 @@ fn backoff_delay_respects_retry_after() {
     assert_eq!(
         delay,
         Duration::from_millis(5000),
-        "should use retry-after FROM rate LIMIT error"
+        "should use retry-after from rate limit error"
     );
 }
 

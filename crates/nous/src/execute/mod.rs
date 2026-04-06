@@ -354,7 +354,7 @@ pub async fn execute(
             debug!(
                 consecutive_tool_only,
                 limit = tool_only_limit,
-                "tool-only iteration LIMIT reached, injecting reasoning prompt"
+                "tool-only iteration limit reached, injecting reasoning prompt"
             );
             blocks.push(ContentBlock::Text {
                 text: "[System: You have made several consecutive tool calls without explaining \
@@ -627,7 +627,7 @@ pub async fn execute_streaming(
             debug!(
                 consecutive_tool_only,
                 limit = tool_only_limit,
-                "tool-only iteration LIMIT reached, injecting reasoning prompt"
+                "tool-only iteration limit reached, injecting reasoning prompt"
             );
             blocks.push(ContentBlock::Text {
                 text: "[System: You have made several consecutive tool calls without explaining \

@@ -308,14 +308,14 @@ async fn note_delete() {
     let add = ToolInput {
         name: ToolName::new("note").expect("valid"),
         tool_use_id: "tu_1".to_owned(),
-        arguments: serde_json::json!({"action": "add", "content": "to DELETE"}),
+        arguments: serde_json::json!({"action": "add", "content": "to delete"}),
     };
     reg.execute(&add, &ctx).await.expect("execute");
 
     let del = ToolInput {
         name: ToolName::new("note").expect("valid"),
         tool_use_id: "tu_2".to_owned(),
-        arguments: serde_json::json!({"action": "DELETE", "id": 1}),
+        arguments: serde_json::json!({"action": "delete", "id": 1}),
     };
     let r = reg.execute(&del, &ctx).await.expect("execute");
     assert!(!r.is_error, "expected r.is_error to be false");
@@ -461,7 +461,7 @@ async fn blackboard_delete_only_author() {
     let del = ToolInput {
         name: ToolName::new("blackboard").expect("valid"),
         tool_use_id: "tu_2".to_owned(),
-        arguments: serde_json::json!({"action": "DELETE", "key": "secret"}),
+        arguments: serde_json::json!({"action": "delete", "key": "secret"}),
     };
     let r = reg.execute(&del, &other_ctx).await.expect("execute");
     assert!(
@@ -472,7 +472,7 @@ async fn blackboard_delete_only_author() {
     let del2 = ToolInput {
         name: ToolName::new("blackboard").expect("valid"),
         tool_use_id: "tu_3".to_owned(),
-        arguments: serde_json::json!({"action": "DELETE", "key": "secret"}),
+        arguments: serde_json::json!({"action": "delete", "key": "secret"}),
     };
     let r2 = reg.execute(&del2, &ctx).await.expect("execute");
     assert!(
@@ -621,7 +621,7 @@ async fn datalog_query_rejects_mutation_keywords() {
         (":put facts {}", ":put"),
         (":rm facts {}", ":rm"),
         (":replace facts {}", ":replace"),
-        (":CREATE facts {}", ":CREATE"),
+        (":create facts {}", ":create"),
         (":ensure facts {}", ":ensure"),
     ];
 

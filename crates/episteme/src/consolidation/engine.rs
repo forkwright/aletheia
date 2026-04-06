@@ -446,7 +446,7 @@ impl KnowledgeStore {
         let script = r"
 ?[consolidated_at] := *consolidation_audit{consolidated_at}
 :sort -consolidated_at
-:LIMIT 1
+:limit 1
 ";
         let result = self.run_query(script, BTreeMap::new()).map_err(|e| {
             StoreSnafu {
@@ -518,9 +518,9 @@ impl KnowledgeStore {
                 #[expect(
                     clippy::as_conversions,
                     clippy::cast_precision_loss,
-                    reason = "total_minutes is an elapsed time value; precision loss is acceptable for rate-LIMIT comparison"
+                    reason = "total_minutes is an elapsed time value; precision loss is acceptable for rate-limit comparison"
                 )]
-                let elapsed_hours = (f64::try_from(total_minutes).unwrap_or_default()) / 60.0;
+                let elapsed_hours = (total_minutes as f64) / 60.0;
                 if elapsed_hours < config.rate_limit_hours {
                     return Err(RateLimitedSnafu {
                         elapsed_hours,

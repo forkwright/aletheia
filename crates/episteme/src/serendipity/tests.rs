@@ -60,7 +60,7 @@ fn random_walk_visits_reachable_nodes() {
     );
     assert!(
         !visits.contains_key("rust"),
-        "seeds should be excluded FROM walk results"
+        "seeds should be excluded from walk results"
     );
 }
 
@@ -131,7 +131,7 @@ fn score_discoveries_balances_relevance_and_novelty() {
 
     let discoveries = score_discoveries(&graph, &seeds, &distances, &config);
 
-    assert!(!discoveries.is_empty(), "should find discoveries FROM rust");
+    assert!(!discoveries.is_empty(), "should find discoveries from rust");
 
     for d in &discoveries {
         assert!(d.serendipity_score > 0.0, "score should be positive");
@@ -167,7 +167,7 @@ fn find_path_between_connected_entities() {
     let graph = build_test_graph();
 
     let path = find_path(&graph, "rust", "ml", 6);
-    assert!(path.is_some(), "should find path FROM rust to ml");
+    assert!(path.is_some(), "should find path from rust to ml");
 
     let path = path.expect("path exists");
     assert!(path.length >= 2, "rust→ml requires at least 2 hops");
@@ -206,7 +206,7 @@ fn explore_from_returns_interesting_entities() {
 
     let paths = explore_from(&graph, "rust", &config);
 
-    assert!(!paths.is_empty(), "should find exploration paths FROM rust");
+    assert!(!paths.is_empty(), "should find exploration paths from rust");
 
     for path in &paths {
         assert!(path.length > 0, "path should have non-zero length");
@@ -266,7 +266,7 @@ fn select_injection_picks_surprising_fact() {
     let config = SerendipityConfig::default();
     let injection = select_injection(&discoveries, &fact_contents, &config);
 
-    assert!(injection.is_some(), "should SELECT an injection");
+    assert!(injection.is_some(), "should select an injection");
     let injection = injection.expect("injection exists");
     assert_eq!(injection.fact_id, "fact-ml-1");
     assert!(injection.surprise_score > 0.0);
@@ -328,17 +328,17 @@ fn bfs_distances_correct() {
     assert_eq!(
         distances.get("python").copied(),
         Some(1),
-        "python is 1 hop FROM rust"
+        "python is 1 hop from rust"
     );
     assert_eq!(
         distances.get("wasm").copied(),
         Some(1),
-        "wasm is 1 hop FROM rust"
+        "wasm is 1 hop from rust"
     );
     assert_eq!(
         distances.get("ml").copied(),
         Some(2),
-        "ml is 2 hops FROM rust"
+        "ml is 2 hops from rust"
     );
 }
 

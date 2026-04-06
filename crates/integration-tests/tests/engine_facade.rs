@@ -9,17 +9,17 @@ use aletheia_mneme::engine::{DataValue, Db, ScriptMutability};
 fn run_read_only_returns_data() {
     let db = Db::open_mem().expect("open mem");
     db.run(
-        ":CREATE test { k: String => v: Int }",
+        ":create test { k: String => v: Int }",
         BTreeMap::new(),
         ScriptMutability::Mutable,
     )
-    .expect("CREATE relation");
+    .expect("create relation");
     db.run(
         "?[k, v] <- [['alice', 42]] :put test { k => v }",
         BTreeMap::new(),
         ScriptMutability::Mutable,
     )
-    .expect("INSERT");
+    .expect("insert");
 
     let result = db
         .run_read_only("?[k, v] := *test[k, v]", BTreeMap::new())

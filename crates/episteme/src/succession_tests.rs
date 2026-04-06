@@ -306,7 +306,7 @@ fn chain_length_non_superseded_fact_is_zero() {
     assert_eq!(
         ctx.chain_length("standalone"),
         0,
-        "chain length non superseded fact is zero: VALUES should be equal"
+        "chain length non superseded fact is zero: values should be equal"
     );
 }
 

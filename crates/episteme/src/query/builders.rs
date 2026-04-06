@@ -248,11 +248,11 @@ impl ScanBuilder {
 
         if let Some(ref ord) = self.order {
             use std::fmt::Write;
-            let _ = write!(line, "\n:ORDER {ord}");
+            let _ = write!(line, "\n:order {ord}");
         }
         if let Some(ref lim) = self.limit {
             use std::fmt::Write;
-            let _ = write!(line, "\n:LIMIT {lim}");
+            let _ = write!(line, "\n:limit {lim}");
         }
 
         self.parent.lines.push(line);

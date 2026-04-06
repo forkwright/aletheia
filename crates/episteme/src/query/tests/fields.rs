@@ -227,14 +227,14 @@ fn scan_builder_produces_valid_datalog() {
         .done()
         .build_script();
 
-    assert!(script.contains("?[src, dst, relation]"), "SELECT clause");
+    assert!(script.contains("?[src, dst, relation]"), "select clause");
     assert!(
         script.contains("*relationships{src, dst, relation, weight}"),
         "scan clause"
     );
     assert!(script.contains("weight > 0.5"), "filter present");
-    assert!(script.contains(":ORDER -weight"), "ORDER directive");
-    assert!(script.contains(":LIMIT 10"), "LIMIT directive");
+    assert!(script.contains(":order -weight"), "order directive");
+    assert!(script.contains(":limit 10"), "limit directive");
 }
 
 #[test]
@@ -245,13 +245,13 @@ fn query_builder_limit_applied() {
         .select(&[Id, Content])
         .bind(Id)
         .bind(Content)
-        .limit("$LIMIT")
+        .limit("$limit")
         .done()
         .build_script();
 
     assert!(
-        script.contains(":LIMIT $LIMIT"),
-        "LIMIT directive must appear in output"
+        script.contains(":limit $limit"),
+        "limit directive must appear in output"
     );
 }
 
@@ -268,8 +268,8 @@ fn query_builder_order_by() {
         .build_script();
 
     assert!(
-        script.contains(":ORDER -confidence"),
-        "ORDER directive must appear in output"
+        script.contains(":order -confidence"),
+        "order directive must appear in output"
     );
 }
 

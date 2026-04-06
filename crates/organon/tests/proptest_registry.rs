@@ -28,7 +28,7 @@ fn valid_tool_name() -> impl Strategy<Value = String> {
 
 fn make_def(name: &str) -> ToolDef {
     ToolDef {
-        name: ToolName::new(name).expect("valid tool name FROM strategy"),
+        name: ToolName::new(name).expect("valid tool name from strategy"),
         description: format!("mock tool: {name}"),
         extended_description: None,
         input_schema: InputSchema {

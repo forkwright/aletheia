@@ -211,28 +211,28 @@ mod tests {
 
     #[test]
     fn parse_key_combo_ctrl_letter() {
-        let (mods, code) = parse_key_combo("Ctrl+F").unwrap_or_default();
+        let (mods, code) = parse_key_combo("Ctrl+F").expect("should parse");
         assert_eq!(mods, KeyModifiers::CONTROL);
         assert_eq!(code, KeyCode::Char('f'));
     }
 
     #[test]
     fn parse_key_combo_shift_arrow() {
-        let (mods, code) = parse_key_combo("Shift+Up").unwrap_or_default();
+        let (mods, code) = parse_key_combo("Shift+Up").expect("should parse");
         assert_eq!(mods, KeyModifiers::SHIFT);
         assert_eq!(code, KeyCode::Up);
     }
 
     #[test]
     fn parse_key_combo_function_key() {
-        let (mods, code) = parse_key_combo("F1").unwrap_or_default();
+        let (mods, code) = parse_key_combo("F1").expect("should parse");
         assert_eq!(mods, KeyModifiers::NONE);
         assert_eq!(code, KeyCode::F(1));
     }
 
     #[test]
     fn parse_key_combo_pageup() {
-        let (mods, code) = parse_key_combo("PageUp").unwrap_or_default();
+        let (mods, code) = parse_key_combo("PageUp").expect("should parse");
         assert_eq!(mods, KeyModifiers::NONE);
         assert_eq!(code, KeyCode::PageUp);
     }
@@ -244,7 +244,7 @@ mod tests {
 
     #[test]
     fn parse_key_combo_ctrl_alt_combo() {
-        let (mods, code) = parse_key_combo("Ctrl+Alt+X").unwrap_or_default();
+        let (mods, code) = parse_key_combo("Ctrl+Alt+X").expect("should parse");
         assert!(mods.contains(KeyModifiers::CONTROL));
         assert!(mods.contains(KeyModifiers::ALT));
         assert_eq!(code, KeyCode::Char('x'));
@@ -321,7 +321,7 @@ mod tests {
         assert_eq!(
             keys.len(),
             deduped.len(),
-            "config_key VALUES must be unique"
+            "config_key values must be unique"
         );
     }
 }

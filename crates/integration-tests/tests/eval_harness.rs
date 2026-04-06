@@ -54,7 +54,7 @@ async fn start_test_server() -> (String, String, tempfile::TempDir) {
 
     let mut provider_registry = ProviderRegistry::new();
     provider_registry.register(Box::new(
-        MockProvider::new("Hello FROM eval harness!").models(&["mock-model"]),
+        MockProvider::new("Hello from eval harness!").models(&["mock-model"]),
     ));
     let provider_registry = Arc::new(provider_registry);
     let tool_registry = Arc::new(ToolRegistry::new());

@@ -208,7 +208,7 @@ impl CompetenceTracker {
             params![nous_id, domain, outcome.as_str(), now],
         )
         .context(error::CompetenceStoreSnafu {
-            message: "failed to INSERT outcome",
+            message: "failed to insert outcome",
         })?;
 
         Self::ensure_domain(&tx, nous_id, domain, &now)?;
@@ -235,7 +235,7 @@ impl CompetenceTracker {
             params![score_delta, now, nous_id, domain],
         )
         .context(error::CompetenceStoreSnafu {
-            message: "failed to UPDATE domain score",
+            message: "failed to update domain score",
         })?;
 
         tx.commit().context(error::CompetenceStoreSnafu {

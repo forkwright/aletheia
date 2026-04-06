@@ -697,7 +697,7 @@ fn find_entity_cooccurrence(
             cnt >= 2
 
         :sort -cnt
-        :LIMIT {LIMIT}
+        :limit {limit}
         "
     );
     let result = store
@@ -729,7 +729,7 @@ fn find_relationship_chains(
             *relationships{{src, relation}}
 
         :sort -count(src)
-        :LIMIT {LIMIT}
+        :limit {limit}
         "
     );
     let result = store
@@ -767,7 +767,7 @@ fn find_hub_entities(
             *entities{{id: eid, name}}
 
         :sort -total
-        :LIMIT {LIMIT}
+        :limit {limit}
         "
     );
     let result = store

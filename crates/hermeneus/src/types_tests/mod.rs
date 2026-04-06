@@ -1,6 +1,6 @@
 #![expect(
     clippy::expect_used,
-    reason = "test assertions use .unwrap_or_default() for descriptive panic messages"
+    reason = "test assertions use .expect() for descriptive panic messages"
 )]
 #![expect(
     clippy::indexing_slicing,
@@ -11,8 +11,8 @@ use super::*;
 #[test]
 fn role_serde_roundtrip() {
     for role in [Role::System, Role::User, Role::Assistant] {
-        let json = serde_json::to_string(&role).unwrap_or_default();
-        let back: Role = serde_json::from_str(&json).unwrap_or_default();
+        let json = serde_json::to_string(&role).expect("Role should serialize to JSON");
+        let back: Role = serde_json::from_str(&json).expect("Role should deserialize from JSON");
         assert_eq!(role, back, "Role should round-trip through JSON unchanged");
     }
 }
@@ -25,8 +25,9 @@ fn stop_reason_serde_roundtrip() {
         StopReason::MaxTokens,
         StopReason::StopSequence,
     ] {
-        let json = serde_json::to_string(&reason).unwrap_or_default();
-        let back: StopReason = serde_json::from_str(&json).unwrap_or_default();
+        let json = serde_json::to_string(&reason).expect("StopReason should serialize to JSON");
+        let back: StopReason =
+            serde_json::from_str(&json).expect("StopReason should deserialize from JSON");
         assert_eq!(
             reason, back,
             "StopReason should round-trip through JSON unchanged"
@@ -70,7 +71,7 @@ fn tool_use_block_serde() {
         name: "exec".to_owned(),
         input: serde_json::json!({"command": "ls"}),
     };
-    let json = serde_json::to_string(&block).unwrap_or_default();
+    let json = serde_json::to_string(&block).expect("ToolUse block should serialize to JSON");
     assert!(
         json.contains("tool_use"),
         "serialized ToolUse should contain type tag 'tool_use'"
@@ -80,7 +81,8 @@ fn tool_use_block_serde() {
         "serialized ToolUse should contain tool name 'exec'"
     );
 
-    let back: ContentBlock = serde_json::from_str(&json).unwrap_or_default();
+    let back: ContentBlock =
+        serde_json::from_str(&json).expect("ToolUse block should deserialize from JSON");
     match back {
         ContentBlock::ToolUse { id, name, .. } => {
             assert_eq!(id, "tool_123", "ToolUse id should round-trip unchanged");
@@ -97,8 +99,9 @@ fn tool_result_block_serde() {
         content: ToolResultContent::text("file.txt\ndir/"),
         is_error: Some(false),
     };
-    let json = serde_json::to_string(&block).unwrap_or_default();
-    let back: ContentBlock = serde_json::from_str(&json).unwrap_or_default();
+    let json = serde_json::to_string(&block).expect("ToolResult block should serialize to JSON");
+    let back: ContentBlock =
+        serde_json::from_str(&json).expect("ToolResult block should deserialize from JSON");
     match back {
         ContentBlock::ToolResult {
             tool_use_id,
@@ -131,8 +134,9 @@ fn tool_result_text_serializes_as_string() {
         content: ToolResultContent::text("hello"),
         is_error: None,
     };
-    let json = serde_json::to_string(&block).unwrap_or_default();
-    let v: serde_json::Value = serde_json::from_str(&json).unwrap_or_default();
+    let json = serde_json::to_string(&block).expect("ToolResult block should serialize to JSON");
+    let v: serde_json::Value =
+        serde_json::from_str(&json).expect("ToolResult JSON should parse as serde_json::Value");
     assert!(
         v["content"].is_string(),
         "Text should serialize as bare string"
@@ -161,11 +165,15 @@ fn tool_result_blocks_serializes_as_array() {
         ]),
         is_error: None,
     };
-    let json = serde_json::to_string(&block).unwrap_or_default();
-    let v: serde_json::Value = serde_json::from_str(&json).unwrap_or_default();
+    let json = serde_json::to_string(&block).expect("ToolResult blocks should serialize to JSON");
+    let v: serde_json::Value = serde_json::from_str(&json)
+        .expect("ToolResult blocks JSON should parse as serde_json::Value");
     assert!(v["content"].is_array(), "Blocks should serialize as array");
     assert_eq!(
-        v["content"].as_array().unwrap_or_default().len(),
+        v["content"]
+            .as_array()
+            .expect("content should be a JSON array")
+            .len(),
         2,
         "content array should have exactly 2 elements"
     );
@@ -182,13 +190,14 @@ fn tool_result_blocks_serializes_as_array() {
 #[test]
 fn tool_result_content_text_deserializes_from_string() {
     let json = r#"{"type":"tool_result","tool_use_id":"t1","content":"hello"}"#;
-    let block: ContentBlock = serde_json::from_str(json).unwrap_or_default();
+    let block: ContentBlock =
+        serde_json::from_str(json).expect("ToolResult with string content should deserialize");
     match block {
         ContentBlock::ToolResult { content, .. } => {
             assert_eq!(
                 content.text_summary(),
                 "hello",
-                "ToolResult text content should deserialize FROM string"
+                "ToolResult text content should deserialize from string"
             );
         }
         _ => panic!("expected ToolResult"),
@@ -198,7 +207,8 @@ fn tool_result_content_text_deserializes_from_string() {
 #[test]
 fn tool_result_content_blocks_deserializes_from_array() {
     let json = r#"{"type":"tool_result","tool_use_id":"t1","content":[{"type":"text","text":"hi"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"abc"}}]}"#;
-    let block: ContentBlock = serde_json::from_str(json).unwrap_or_default();
+    let block: ContentBlock =
+        serde_json::from_str(json).expect("ToolResult with array content should deserialize");
     match block {
         ContentBlock::ToolResult { content, .. } => {
             assert_eq!(
@@ -218,8 +228,9 @@ fn image_source_serde_roundtrip() {
         media_type: "image/png".to_owned(),
         data: "iVBOR".to_owned(),
     };
-    let json = serde_json::to_string(&source).unwrap_or_default();
-    let back: ImageSource = serde_json::from_str(&json).unwrap_or_default();
+    let json = serde_json::to_string(&source).expect("ImageSource should serialize to JSON");
+    let back: ImageSource =
+        serde_json::from_str(&json).expect("ImageSource should deserialize from JSON");
     assert_eq!(
         back.source_type, "base64",
         "ImageSource source_type should round-trip unchanged"
@@ -241,8 +252,9 @@ fn document_source_serde_roundtrip() {
         media_type: "application/pdf".to_owned(),
         data: "JVBERi0".to_owned(),
     };
-    let json = serde_json::to_string(&source).unwrap_or_default();
-    let back: DocumentSource = serde_json::from_str(&json).unwrap_or_default();
+    let json = serde_json::to_string(&source).expect("DocumentSource should serialize to JSON");
+    let back: DocumentSource =
+        serde_json::from_str(&json).expect("DocumentSource should deserialize from JSON");
     assert_eq!(
         back.source_type, "base64",
         "DocumentSource source_type should round-trip unchanged"
@@ -263,7 +275,7 @@ fn tool_result_content_from_string() {
     assert_eq!(
         content.text_summary(),
         "hello",
-        "ToolResultContent created FROM String should report correct text summary"
+        "ToolResultContent created from String should report correct text summary"
     );
 }
 
@@ -379,8 +391,10 @@ fn tool_result_type_serde_roundtrip() {
         ToolResultType::WebResult,
         ToolResultType::Other,
     ] {
-        let json = serde_json::to_string(&tool_type).unwrap_or_default();
-        let back: ToolResultType = serde_json::from_str(&json).unwrap_or_default();
+        let json =
+            serde_json::to_string(&tool_type).expect("ToolResultType should serialize to JSON");
+        let back: ToolResultType =
+            serde_json::from_str(&json).expect("ToolResultType should deserialize from JSON");
         assert_eq!(
             tool_type, back,
             "ToolResultType should round-trip through JSON unchanged"

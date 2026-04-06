@@ -12,11 +12,11 @@ fn test_timestamp(s: &str) -> jiff::Timestamp {
 #[test]
 fn entity_id_from_str() {
     let id = EntityId::new("alice").expect("valid test id");
-    assert_eq!(id.as_str(), "alice", "as_str should return INNER value");
+    assert_eq!(id.as_str(), "alice", "as_str should return inner value");
     assert_eq!(
         id.to_string(),
         "alice",
-        "to_string should return INNER value"
+        "to_string should return inner value"
     );
 }
 
@@ -26,7 +26,7 @@ fn entity_id_from_string() {
     assert_eq!(
         id.as_str(),
         "bob",
-        "EntityId FROM owned String should store INNER value"
+        "EntityId from owned String should store inner value"
     );
 }
 
@@ -39,7 +39,7 @@ fn entity_id_serde_transparent() {
         "EntityId must serialize as plain string"
     );
     let back: EntityId =
-        serde_json::from_str(&json).expect("EntityId should deserialize FROM its own JSON");
+        serde_json::from_str(&json).expect("EntityId should deserialize from its own JSON");
     assert_eq!(id, back, "EntityId should survive serde roundtrip");
 }
 
@@ -60,7 +60,7 @@ fn entity_id_display_matches_inner_string() {
     assert_eq!(
         format!("{id}"),
         "project-aletheia",
-        "Display should render INNER string value"
+        "Display should render inner string value"
     );
 }
 
@@ -85,7 +85,7 @@ fn epistemic_tier_serde_roundtrip() {
     ] {
         let json = serde_json::to_string(&tier).expect("EpistemicTier serialization is infallible");
         let back: EpistemicTier = serde_json::from_str(&json)
-            .expect("EpistemicTier should deserialize FROM its own JSON");
+            .expect("EpistemicTier should deserialize from its own JSON");
         assert_eq!(tier, back, "EpistemicTier should survive serde roundtrip");
     }
 }
@@ -122,7 +122,7 @@ fn fact_serde_roundtrip() {
     };
     let json = serde_json::to_string(&fact).expect("Fact serialization is infallible");
     let back: Fact =
-        serde_json::from_str(&json).expect("Fact should deserialize FROM its own JSON");
+        serde_json::from_str(&json).expect("Fact should deserialize from its own JSON");
     assert_eq!(
         fact.content, back.content,
         "fact content should survive serde roundtrip"
@@ -145,7 +145,7 @@ fn entity_serde_roundtrip() {
     };
     let json = serde_json::to_string(&entity).expect("Entity serialization is infallible");
     let back: Entity =
-        serde_json::from_str(&json).expect("Entity should deserialize FROM its own JSON");
+        serde_json::from_str(&json).expect("Entity should deserialize from its own JSON");
     assert_eq!(
         entity.name, back.name,
         "entity name should survive serde roundtrip"
@@ -167,7 +167,7 @@ fn relationship_serde_roundtrip() {
     };
     let json = serde_json::to_string(&rel).expect("Relationship serialization is infallible");
     let back: Relationship =
-        serde_json::from_str(&json).expect("Relationship should deserialize FROM its own JSON");
+        serde_json::from_str(&json).expect("Relationship should deserialize from its own JSON");
     assert_eq!(
         rel.src, back.src,
         "relationship src should survive serde roundtrip"
@@ -195,7 +195,7 @@ fn embedded_chunk_serde_roundtrip() {
     };
     let json = serde_json::to_string(&chunk).expect("EmbeddedChunk serialization is infallible");
     let back: EmbeddedChunk =
-        serde_json::from_str(&json).expect("EmbeddedChunk should deserialize FROM its own JSON");
+        serde_json::from_str(&json).expect("EmbeddedChunk should deserialize from its own JSON");
     assert_eq!(
         chunk.content, back.content,
         "chunk content should survive serde roundtrip"
@@ -217,7 +217,7 @@ fn recall_result_serde_roundtrip() {
     };
     let json = serde_json::to_string(&result).expect("RecallResult serialization is infallible");
     let back: RecallResult =
-        serde_json::from_str(&json).expect("RecallResult should deserialize FROM its own JSON");
+        serde_json::from_str(&json).expect("RecallResult should deserialize from its own JSON");
     assert_eq!(
         result.content, back.content,
         "recall result content should survive serde roundtrip"
@@ -261,7 +261,7 @@ fn fact_with_empty_content() {
     let json =
         serde_json::to_string(&fact).expect("Fact with empty content serializes successfully");
     let back: Fact = serde_json::from_str(&json)
-        .expect("Fact with empty content should deserialize FROM its own JSON");
+        .expect("Fact with empty content should deserialize from its own JSON");
     assert!(
         back.content.is_empty(),
         "empty fact content should survive serde roundtrip"
@@ -301,7 +301,7 @@ fn fact_with_unicode_content() {
     let json =
         serde_json::to_string(&fact).expect("Fact with unicode content serializes successfully");
     let back: Fact = serde_json::from_str(&json)
-        .expect("Fact with unicode content should deserialize FROM its own JSON");
+        .expect("Fact with unicode content should deserialize from its own JSON");
     assert_eq!(
         fact.content, back.content,
         "unicode fact content should survive serde roundtrip"
@@ -321,7 +321,7 @@ fn entity_empty_aliases() {
     let json =
         serde_json::to_string(&entity).expect("Entity with empty aliases serializes successfully");
     let back: Entity = serde_json::from_str(&json)
-        .expect("Entity with empty aliases should deserialize FROM its own JSON");
+        .expect("Entity with empty aliases should deserialize from its own JSON");
     assert!(
         back.aliases.is_empty(),
         "empty aliases should survive serde roundtrip"
@@ -424,7 +424,7 @@ fn forget_reason_serde_roundtrip() {
         let json =
             serde_json::to_string(&reason).expect("ForgetReason serialization is infallible");
         let back: ForgetReason =
-            serde_json::from_str(&json).expect("ForgetReason should deserialize FROM its own JSON");
+            serde_json::from_str(&json).expect("ForgetReason should deserialize from its own JSON");
         assert_eq!(reason, back, "ForgetReason should survive serde roundtrip");
     }
 }
@@ -512,7 +512,7 @@ fn epistemic_tier_display_roundtrip() {
         let s = tier.as_str();
         let json_str = format!("\"{s}\"");
         let parsed: EpistemicTier = serde_json::from_str(&json_str)
-            .expect("EpistemicTier should deserialize FROM its as_str() representation");
+            .expect("EpistemicTier should deserialize from its as_str() representation");
         assert_eq!(tier, parsed, "roundtrip failed for {s}");
     }
 }
@@ -571,7 +571,7 @@ fn fact_diff_empty() {
     assert!(diff.removed.is_empty(), "removed list should be empty");
     let json = serde_json::to_string(&diff).expect("FactDiff serialization is infallible");
     let back: FactDiff =
-        serde_json::from_str(&json).expect("FactDiff should deserialize FROM its own JSON");
+        serde_json::from_str(&json).expect("FactDiff should deserialize from its own JSON");
     assert!(
         back.added.is_empty(),
         "added list should be empty after roundtrip"
@@ -597,11 +597,11 @@ fn embedded_chunk_fields() {
         embedding: vec![1.0, 2.0, 3.0, 4.0],
         created_at: test_timestamp("2026-03-01T00:00:00Z"),
     };
-    assert_eq!(chunk.id.as_str(), "emb-42", "chunk id should be SET");
-    assert_eq!(chunk.content, "test content", "chunk content should be SET");
-    assert_eq!(chunk.source_type, "note", "chunk source_type should be SET");
-    assert_eq!(chunk.source_id, "note-7", "chunk source_id should be SET");
-    assert_eq!(chunk.nous_id, "syn", "chunk nous_id should be SET");
+    assert_eq!(chunk.id.as_str(), "emb-42", "chunk id should be set");
+    assert_eq!(chunk.content, "test content", "chunk content should be set");
+    assert_eq!(chunk.source_type, "note", "chunk source_type should be set");
+    assert_eq!(chunk.source_id, "note-7", "chunk source_id should be set");
+    assert_eq!(chunk.nous_id, "syn", "chunk nous_id should be set");
     assert_eq!(
         chunk.embedding.len(),
         4,
@@ -677,7 +677,7 @@ fn fact_with_supersession() {
     let json = serde_json::to_string(&fact)
         .expect("Fact with superseded_by field serializes successfully");
     let back: Fact = serde_json::from_str(&json)
-        .expect("Fact with superseded_by should deserialize FROM its own JSON");
+        .expect("Fact with superseded_by should deserialize from its own JSON");
     assert_eq!(
         back.lifecycle.superseded_by.as_ref().map(FactId::as_str),
         Some("f-new"),
@@ -690,7 +690,7 @@ fn fact_with_session_source() {
     let fact = Fact {
         id: FactId::new("f-src").expect("valid test id"),
         nous_id: "syn".to_owned(),
-        content: "extracted FROM conversation".to_owned(),
+        content: "extracted from conversation".to_owned(),
         fact_type: "relationship".to_owned(),
         scope: Some(MemoryScope::Project),
         temporal: FactTemporal {
@@ -718,12 +718,12 @@ fn fact_with_session_source() {
     assert_eq!(
         fact.provenance.source_session_id.as_deref(),
         Some("ses-abc-123"),
-        "source_session_id should be SET"
+        "source_session_id should be set"
     );
     let json =
         serde_json::to_string(&fact).expect("Fact with source_session_id serializes successfully");
     let back: Fact = serde_json::from_str(&json)
-        .expect("Fact with source_session_id should deserialize FROM its own JSON");
+        .expect("Fact with source_session_id should deserialize from its own JSON");
     assert_eq!(
         back.provenance.source_session_id.as_deref(),
         Some("ses-abc-123"),
@@ -801,7 +801,7 @@ fn memory_scope_serde_roundtrip() {
     for scope in MemoryScope::ALL {
         let json = serde_json::to_string(&scope).expect("MemoryScope serialization is infallible");
         let back: MemoryScope =
-            serde_json::from_str(&json).expect("MemoryScope should deserialize FROM its own JSON");
+            serde_json::from_str(&json).expect("MemoryScope should deserialize from its own JSON");
         assert_eq!(scope, back, "MemoryScope should survive serde roundtrip");
     }
 }
@@ -1021,10 +1021,10 @@ fn fact_scope_none_omitted_in_json() {
     let json = serde_json::to_string(&fact).expect("Fact serialization is infallible");
     assert!(
         !json.contains("\"scope\""),
-        "scope: None should be omitted FROM serialized JSON"
+        "scope: None should be omitted from serialized JSON"
     );
     let back: Fact =
-        serde_json::from_str(&json).expect("Fact should deserialize FROM its own JSON");
+        serde_json::from_str(&json).expect("Fact should deserialize from its own JSON");
     assert_eq!(
         back.scope, None,
         "deserialized scope should be None when omitted"
@@ -1067,7 +1067,7 @@ fn fact_scope_some_included_in_json() {
         "scope: Some(Project) should appear in serialized JSON"
     );
     let back: Fact =
-        serde_json::from_str(&json).expect("Fact should deserialize FROM its own JSON");
+        serde_json::from_str(&json).expect("Fact should deserialize from its own JSON");
     assert_eq!(
         back.scope,
         Some(MemoryScope::Project),
@@ -1082,7 +1082,7 @@ fn fact_backward_compat_no_scope_field() {
         "id": "f-legacy",
         "nous_id": "syn",
         "fact_type": "observation",
-        "content": "old fact FROM before team memory",
+        "content": "old fact from before team memory",
         "valid_from": "2026-01-01T00:00:00Z",
         "valid_to": "9999-01-01T00:00:00Z",
         "recorded_at": "2026-01-01T00:00:00Z",
@@ -1138,7 +1138,7 @@ fn fact_scope_all_variants_roundtrip() {
         };
         let json = serde_json::to_string(&fact).expect("Fact serialization is infallible");
         let back: Fact =
-            serde_json::from_str(&json).expect("Fact should deserialize FROM its own JSON");
+            serde_json::from_str(&json).expect("Fact should deserialize from its own JSON");
         assert_eq!(
             back.scope,
             Some(scope),
@@ -1157,7 +1157,7 @@ fn path_validation_layer_serde_roundtrip() {
         let json =
             serde_json::to_string(&layer).expect("PathValidationLayer serialization is infallible");
         let back: PathValidationLayer = serde_json::from_str(&json)
-            .expect("PathValidationLayer should deserialize FROM its own JSON");
+            .expect("PathValidationLayer should deserialize from its own JSON");
         assert_eq!(
             layer, back,
             "PathValidationLayer should survive serde roundtrip"
@@ -1285,7 +1285,7 @@ fn path_validation_fs_layers_constant() {
 fn symlink_hop_limit_matches_linux_eloop() {
     assert_eq!(
         SYMLINK_HOP_LIMIT, 40,
-        "SYMLINK_HOP_LIMIT should match Linux ELOOP LIMIT of 40"
+        "SYMLINK_HOP_LIMIT should match Linux ELOOP limit of 40"
     );
 }
 
@@ -1444,7 +1444,7 @@ fn validated_path_into_path_buf() {
     assert_eq!(
         pb,
         PathBuf::from("/test/memory/user/file.md"),
-        "into_path_buf should return the INNER PathBuf"
+        "into_path_buf should return the inner PathBuf"
     );
 }
 
@@ -1757,16 +1757,16 @@ fn rejects_symlink_escaping_root() {
     let tmp = tempfile::tempdir().expect("tempdir should succeed");
     let root = tmp.path().join("memory");
     let scope_dir = root.join("project");
-    std::fs::create_dir_all(&scope_dir).expect("CREATE scope dir");
+    std::fs::create_dir_all(&scope_dir).expect("create scope dir");
 
     // Create a target outside root
     let outside = tmp.path().join("outside");
-    std::fs::create_dir_all(&outside).expect("CREATE outside dir");
+    std::fs::create_dir_all(&outside).expect("create outside dir");
     std::fs::write(outside.join("secret.txt"), b"secret").expect("write secret");
 
     // Create symlink inside scope pointing outside root
     let link = scope_dir.join("escape");
-    std::os::unix::fs::symlink(&outside, &link).expect("CREATE symlink");
+    std::os::unix::fs::symlink(&outside, &link).expect("create symlink");
 
     let result = validate_memory_path(Path::new("escape"), &root, MemoryScope::Project);
     assert!(result.is_err(), "symlink escaping root should be rejected");
@@ -1787,11 +1787,11 @@ fn rejects_dangling_symlink() {
     let tmp = tempfile::tempdir().expect("tempdir should succeed");
     let root = tmp.path().join("memory");
     let scope_dir = root.join("project");
-    std::fs::create_dir_all(&scope_dir).expect("CREATE scope dir");
+    std::fs::create_dir_all(&scope_dir).expect("create scope dir");
 
     // Create symlink to nonexistent target
     let link = scope_dir.join("dangling");
-    std::os::unix::fs::symlink("/nonexistent/target", &link).expect("CREATE symlink");
+    std::os::unix::fs::symlink("/nonexistent/target", &link).expect("create symlink");
 
     let result = validate_memory_path(Path::new("dangling"), &root, MemoryScope::Project);
     assert!(result.is_err(), "dangling symlink should be rejected");
@@ -1809,13 +1809,13 @@ fn accepts_valid_symlink_within_scope() {
     let root = tmp.path().join("memory");
     let scope_dir = root.join("project");
     let sub = scope_dir.join("sub");
-    std::fs::create_dir_all(&sub).expect("CREATE sub dir");
+    std::fs::create_dir_all(&sub).expect("create sub dir");
 
     // Create a real file and a symlink to it within the same scope
     let real_file = sub.join("real.md");
     std::fs::write(&real_file, b"content").expect("write real file");
     let link = scope_dir.join("alias.md");
-    std::os::unix::fs::symlink(&real_file, &link).expect("CREATE symlink");
+    std::os::unix::fs::symlink(&real_file, &link).expect("create symlink");
 
     let result = validate_memory_path(Path::new("alias.md"), &root, MemoryScope::Project);
     assert!(
@@ -1898,7 +1898,7 @@ fn scope_containment_catches_cross_scope_access() {
         let result = validate_memory_path(path, Path::new("/test/memory"), MemoryScope::Project);
         assert!(
             result.is_err(),
-            "accessing {wrong_scope} FROM project scope should fail"
+            "accessing {wrong_scope} from project scope should fail"
         );
         assert_eq!(
             result.unwrap_err().layer(),
@@ -1977,7 +1977,7 @@ fn verification_fact_type_serde_roundtrip() {
         "should serialize as snake_case string"
     );
     let back: FactType =
-        serde_json::from_str(&json).expect("FactType should deserialize FROM its own JSON");
+        serde_json::from_str(&json).expect("FactType should deserialize from its own JSON");
     assert_eq!(
         ft, back,
         "FactType::Verification should survive serde roundtrip"
@@ -2022,7 +2022,7 @@ fn verification_source_serde_roundtrip() {
         let json =
             serde_json::to_string(&src).expect("VerificationSource serialization is infallible");
         let back: VerificationSource = serde_json::from_str(&json)
-            .expect("VerificationSource should deserialize FROM its own JSON");
+            .expect("VerificationSource should deserialize from its own JSON");
         assert_eq!(
             src, back,
             "VerificationSource should survive serde roundtrip"
@@ -2066,7 +2066,7 @@ fn verification_status_serde_roundtrip() {
         let json =
             serde_json::to_string(&status).expect("VerificationStatus serialization is infallible");
         let back: VerificationStatus = serde_json::from_str(&json)
-            .expect("VerificationStatus should deserialize FROM its own JSON");
+            .expect("VerificationStatus should deserialize from its own JSON");
         assert_eq!(
             status, back,
             "VerificationStatus should survive serde roundtrip"
@@ -2088,7 +2088,7 @@ fn verification_record_serde_roundtrip() {
     let json =
         serde_json::to_string(&record).expect("VerificationRecord serialization is infallible");
     let back: VerificationRecord = serde_json::from_str(&json)
-        .expect("VerificationRecord should deserialize FROM its own JSON");
+        .expect("VerificationRecord should deserialize from its own JSON");
     assert_eq!(back.claim, record.claim, "claim should survive roundtrip");
     assert_eq!(
         back.source, record.source,

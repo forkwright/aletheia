@@ -13,7 +13,7 @@ pub(crate) fn op_sqrt(args: &[DataValue]) -> Result<DataValue> {
                 clippy::cast_precision_loss,
                 reason = "i64 to f64: precision loss acceptable for numeric ops"
             )]
-            let v = *f64::try_from(i).unwrap_or_default();
+            let v = *i as f64;
             v
         }
         DataValue::Num(Num::Float(f)) => *f,
@@ -41,7 +41,7 @@ pub(crate) fn op_exp(args: &[DataValue]) -> Result<DataValue> {
                 clippy::cast_precision_loss,
                 reason = "i64 to f64: precision loss acceptable for numeric ops"
             )]
-            let v = *f64::try_from(i).unwrap_or_default();
+            let v = *i as f64;
             v
         }
         DataValue::Num(Num::Float(f)) => *f,
@@ -69,7 +69,7 @@ pub(crate) fn op_exp2(args: &[DataValue]) -> Result<DataValue> {
                 clippy::cast_precision_loss,
                 reason = "i64 to f64: precision loss acceptable for numeric ops"
             )]
-            let v = *f64::try_from(i).unwrap_or_default();
+            let v = *i as f64;
             v
         }
         DataValue::Num(Num::Float(f)) => *f,
@@ -97,7 +97,7 @@ pub(crate) fn op_ln(args: &[DataValue]) -> Result<DataValue> {
                 clippy::cast_precision_loss,
                 reason = "i64 to f64: precision loss acceptable for numeric ops"
             )]
-            let v = *f64::try_from(i).unwrap_or_default();
+            let v = *i as f64;
             v
         }
         DataValue::Num(Num::Float(f)) => *f,
@@ -125,7 +125,7 @@ pub(crate) fn op_log2(args: &[DataValue]) -> Result<DataValue> {
                 clippy::cast_precision_loss,
                 reason = "i64 to f64: precision loss acceptable for numeric ops"
             )]
-            let v = *f64::try_from(i).unwrap_or_default();
+            let v = *i as f64;
             v
         }
         DataValue::Num(Num::Float(f)) => *f,
@@ -153,7 +153,7 @@ pub(crate) fn op_log10(args: &[DataValue]) -> Result<DataValue> {
                 clippy::cast_precision_loss,
                 reason = "i64 to f64: precision loss acceptable for numeric ops"
             )]
-            let v = *f64::try_from(i).unwrap_or_default();
+            let v = *i as f64;
             v
         }
         DataValue::Num(Num::Float(f)) => *f,
@@ -181,7 +181,7 @@ pub(crate) fn op_pow(args: &[DataValue]) -> Result<DataValue> {
                 clippy::cast_precision_loss,
                 reason = "i64 to f64: precision loss acceptable for numeric ops"
             )]
-            let v = *f64::try_from(i).unwrap_or_default();
+            let v = *i as f64;
             v
         }
         DataValue::Num(Num::Float(f)) => *f,
@@ -197,7 +197,7 @@ pub(crate) fn op_pow(args: &[DataValue]) -> Result<DataValue> {
                 clippy::cast_possible_truncation,
                 reason = "f64 to f32: intentional precision reduction"
             )]
-            let b = f32::try_from(b).unwrap_or_default();
+            let b = b as f32;
             return Ok(DataValue::Vec(Vector::F32(v.mapv(|x| x.powf(b)))));
         }
         DataValue::Vec(Vector::F64(v)) => {
@@ -224,7 +224,7 @@ pub(crate) fn op_pow(args: &[DataValue]) -> Result<DataValue> {
                 clippy::cast_precision_loss,
                 reason = "i64 to f64: precision loss acceptable for numeric ops"
             )]
-            let v = *f64::try_from(i).unwrap_or_default();
+            let v = *i as f64;
             v
         }
         DataValue::Num(Num::Float(f)) => *f,
@@ -255,10 +255,10 @@ pub(crate) fn op_mod(args: &[DataValue]) -> Result<DataValue> {
             DataValue::Num(Num::Float(a.rem(*b)))
         }
         (DataValue::Num(Num::Int(a)), DataValue::Num(Num::Float(b))) => {
-            DataValue::Num(Num::Float((*f64::try_from(a).unwrap_or_default()).rem(b)))
+            DataValue::Num(Num::Float((*a as f64).rem(b)))
         }
         (DataValue::Num(Num::Float(a)), DataValue::Num(Num::Int(b))) => {
-            DataValue::Num(Num::Float(a.rem(*f64::try_from(b).unwrap_or_default())))
+            DataValue::Num(Num::Float(a.rem(*b as f64)))
         }
         _ => {
             return TypeMismatchSnafu {
@@ -275,7 +275,7 @@ pub(crate) fn op_is_in(args: &[DataValue]) -> Result<DataValue> {
     let right = arg(args, 1)?.get_slice().ok_or_else(|| {
         TypeMismatchSnafu {
             op: "is_in",
-            expected: "a list as RIGHT hand side",
+            expected: "a list as right hand side",
         }
         .build()
     })?;

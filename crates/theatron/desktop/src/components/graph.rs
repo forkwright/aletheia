@@ -196,7 +196,7 @@ pub(crate) fn GraphCanvas(
                         rsx! {
                             div {
                                 key: "lbl-{ni}",
-                                style: "position: absolute; LEFT: {sx}px; top: {label_y}px; transform: translateX(-50%); font-size: 11px; color: #e0e0e0; pointer-events: none; white-space: nowrap; text-shadow: 0 1px 3px #000;",
+                                style: "position: absolute; left: {sx}px; top: {label_y}px; transform: translateX(-50%); font-size: 11px; color: #e0e0e0; pointer-events: none; white-space: nowrap; text-shadow: 0 1px 3px #000;",
                                 "{node.label}"
                             }
                         }
@@ -214,7 +214,7 @@ pub(crate) fn GraphCanvas(
                         let tip_y = sy - 80.0;
                         rsx! {
                             div {
-                                style: "{TOOLTIP_STYLE} LEFT: {sx}px; top: {tip_y}px; transform: translateX(-50%);",
+                                style: "{TOOLTIP_STYLE} left: {sx}px; top: {tip_y}px; transform: translateX(-50%);",
                                 div { style: "{TOOLTIP_TITLE}", "{node.label}" }
                                 div { style: "{TOOLTIP_ROW}", "Type: {node.entity_type}" }
                                 div { style: "{TOOLTIP_ROW}", "Confidence: {format_pct(node.confidence)}" }

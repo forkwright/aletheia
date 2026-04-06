@@ -263,10 +263,10 @@ impl InnerJoin {
                 "generic_mat_join"
             }
             RelAlgebra::Reorder(_) => {
-                unreachable!("query plan invariant: Reorder must be resolved before JOIN")
+                unreachable!("query plan invariant: Reorder must be resolved before join")
             }
             RelAlgebra::NegJoin(_) => {
-                unreachable!("query plan invariant: NegJoin cannot appear as JOIN RHS")
+                unreachable!("query plan invariant: NegJoin cannot appear as join RHS")
             }
         }
     }
@@ -366,7 +366,7 @@ impl InnerJoin {
         delta_rule: Option<&MagicSymbol>,
         stores: &'a BTreeMap<MagicSymbol, EpochStore>,
     ) -> Result<TupleIter<'a>> {
-        debug!("using materialized JOIN");
+        debug!("using materialized join");
         let right_bindings = self.right.bindings_after_eliminate();
         let (left_join_indices, right_join_indices) = self
             .joiner

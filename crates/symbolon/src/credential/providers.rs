@@ -62,7 +62,7 @@ impl CredentialProvider for EnvCredentialProvider {
                                 exp_secs,
                                 now_secs,
                                 leeway_secs = CLOCK_SKEW_LEEWAY_SECS,
-                                "OAuth token FROM environment variable expired \
+                                "OAuth token from environment variable expired \
                                  (exp + leeway < now), falling through to next provider"
                             );
                             return None;

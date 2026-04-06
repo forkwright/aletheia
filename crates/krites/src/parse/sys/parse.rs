@@ -39,7 +39,7 @@ pub(crate) fn parse_sys(
                 }
                 .build()
             })?;
-            SysOp::KillRunning(u64::try_from(i_val).unwrap_or_default())
+            SysOp::KillRunning(i_val as u64)
         }
         Rule::explain_op => {
             let prog = parse_query(
@@ -559,7 +559,7 @@ pub(crate) fn parse_sys(
                                     .build()
                                     .into());
                                 }
-                                vec_dim = usize::try_from(v).unwrap_or_default();
+                                vec_dim = v as usize;
                             }
                             "ef_construction" | "ef" => {
                                 let v = build_expr(opt_val, param_pool)?
@@ -580,7 +580,7 @@ pub(crate) fn parse_sys(
                                     .build()
                                     .into());
                                 }
-                                ef_construction = usize::try_from(v).unwrap_or_default();
+                                ef_construction = v as usize;
                             }
                             "m_neighbours" | "m" => {
                                 let v = build_expr(opt_val, param_pool)?
@@ -599,7 +599,7 @@ pub(crate) fn parse_sys(
                                     .build()
                                     .into());
                                 }
-                                m_neighbours = usize::try_from(v).unwrap_or_default();
+                                m_neighbours = v as usize;
                             }
                             "dtype" => {
                                 dtype = match opt_val.as_str() {
@@ -652,14 +652,14 @@ pub(crate) fn parse_sys(
                     }
                     if ef_construction == 0 {
                         return Err(InvalidQuerySnafu {
-                            message: "ef_construction must be SET".to_string(),
+                            message: "ef_construction must be set".to_string(),
                         }
                         .build()
                         .into());
                     }
                     if m_neighbours == 0 {
                         return Err(InvalidQuerySnafu {
-                            message: "m_neighbours must be SET".to_string(),
+                            message: "m_neighbours must be set".to_string(),
                         }
                         .build()
                         .into());

@@ -324,7 +324,7 @@ fn access_frequency_logarithmic() {
     );
     assert!(
         s50 - s10 > s100 - s50,
-        "logarithmic growth: gain FROM 10→50 ({}) should exceed gain FROM 50→100 ({})",
+        "logarithmic growth: gain from 10→50 ({}) should exceed gain from 50→100 ({})",
         s50 - s10,
         s100 - s50
     );

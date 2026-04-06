@@ -36,7 +36,7 @@ impl<'a> SessionTx<'a> {
         let mut canary_tuple = vec![DataValue::from(0)];
         for _ in 0..2 {
             canary_tuple.extend_from_slice(tuple_key);
-            canary_tuple.push(DataValue::from(i64::try_from(idx).unwrap_or_default()));
+            canary_tuple.push(DataValue::from(idx as i64));
             canary_tuple.push(DataValue::from(i64::from(subidx)));
         }
         if let Some(v) = idx_table.get(self, &canary_tuple)? {
@@ -59,7 +59,7 @@ impl<'a> SessionTx<'a> {
         if let Some(ep) = ep_res {
             let ep = ep?;
             #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
-            let bottom_level = ep.get(0).copied().unwrap_or_default().get_int().unwrap_or_else(|| unreachable!());
+            let bottom_level = ep[0].get_int().unwrap_or_else(|| unreachable!());
             let ep_t_key = ep[1..orig_table.metadata.keys.len() + 1].to_vec();
             let ep_idx = usize::try_from(
                 ep[orig_table.metadata.keys.len() + 1]
@@ -118,7 +118,7 @@ impl<'a> SessionTx<'a> {
             self_tuple_key.push(DataValue::from(0));
             for _ in 0..2 {
                 self_tuple_key.extend_from_slice(tuple_key);
-                self_tuple_key.push(DataValue::from(i64::try_from(idx).unwrap_or_default()));
+                self_tuple_key.push(DataValue::from(idx as i64));
                 self_tuple_key.push(DataValue::from(i64::from(subidx)));
             }
             let mut self_tuple_val = vec![
@@ -151,8 +151,8 @@ impl<'a> SessionTx<'a> {
                     orig_table,
                     vec_cache,
                 )?;
-                self_tuple_key.get(0).copied().unwrap_or_default() = DataValue::from(current_level);
-                self_tuple_val.get(0).copied().unwrap_or_default() = DataValue::from(neighbours.len() as f64);
+                self_tuple_key[0] = DataValue::from(current_level);
+                self_tuple_val[0] = DataValue::from(neighbours.len() as f64);
 
                 let self_tuple_key_bytes =
                     idx_table.encode_key_for_store(&self_tuple_key, Default::default())?;
@@ -170,10 +170,10 @@ impl<'a> SessionTx<'a> {
                     ];
                     out_key.push(DataValue::from(current_level));
                     out_key.extend_from_slice(tuple_key);
-                    out_key.push(DataValue::from(i64::try_from(idx).unwrap_or_default()));
+                    out_key.push(DataValue::from(idx as i64));
                     out_key.push(DataValue::from(i64::from(subidx)));
                     out_key.extend_from_slice(&neighbour.0);
-                    out_key.push(DataValue::from(neighbour.i64::try_from(1).unwrap_or_default()));
+                    out_key.push(DataValue::from(neighbour.1 as i64));
                     out_key.push(DataValue::from(i64::from(neighbour.2)));
                     let out_key_bytes =
                         idx_table.encode_key_for_store(&out_key, Default::default())?;
@@ -189,10 +189,10 @@ impl<'a> SessionTx<'a> {
                     ];
                     in_key.push(DataValue::from(current_level));
                     in_key.extend_from_slice(&neighbour.0);
-                    in_key.push(DataValue::from(neighbour.i64::try_from(1).unwrap_or_default()));
+                    in_key.push(DataValue::from(neighbour.1 as i64));
                     in_key.push(DataValue::from(i64::from(neighbour.2)));
                     in_key.extend_from_slice(tuple_key);
-                    in_key.push(DataValue::from(i64::try_from(idx).unwrap_or_default()));
+                    in_key.push(DataValue::from(idx as i64));
                     in_key.push(DataValue::from(i64::from(subidx)));
 
                     let in_key_bytes =
@@ -206,7 +206,7 @@ impl<'a> SessionTx<'a> {
                     target_self_key.push(DataValue::from(current_level));
                     for _ in 0..2 {
                         target_self_key.extend_from_slice(&neighbour.0);
-                        target_self_key.push(DataValue::from(neighbour.i64::try_from(1).unwrap_or_default()));
+                        target_self_key.push(DataValue::from(neighbour.1 as i64));
                         target_self_key.push(DataValue::from(i64::from(neighbour.2)));
                     }
                     let target_self_key_bytes =
@@ -233,10 +233,10 @@ impl<'a> SessionTx<'a> {
                     #[expect(
                         clippy::cast_possible_truncation,
                         clippy::cast_sign_loss,
-                        reason = "degree is a small non-negative integer f64::try_from(stored).unwrap_or_default()"
+                        reason = "degree is a small non-negative integer stored as f64"
                     )]
                     #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
-                    let mut target_degree = target_self_val.get(0).copied().unwrap_or_default()
+                    let mut target_degree = target_self_val[0]
                         .get_float()
                         .unwrap_or_else(|| unreachable!())
                         as usize
@@ -252,7 +252,7 @@ impl<'a> SessionTx<'a> {
                             vec_cache,
                         )?;
                     }
-                    target_self_val.get(0).copied().unwrap_or_default() = DataValue::from(f64::try_from(target_degree).unwrap_or_default());
+                    target_self_val[0] = DataValue::from(target_degree as f64);
                     self.store_tx.put(
                         &target_self_key_bytes,
                         &idx_table
@@ -322,10 +322,10 @@ impl<'a> SessionTx<'a> {
                 ];
                 new_key.push(DataValue::from(level));
                 new_key.extend_from_slice(&target_key.0);
-                new_key.push(DataValue::from(target_key.i64::try_from(1).unwrap_or_default()));
+                new_key.push(DataValue::from(target_key.1 as i64));
                 new_key.push(DataValue::from(i64::from(target_key.2)));
                 new_key.extend_from_slice(&new.0);
-                new_key.push(DataValue::from(new.i64::try_from(1).unwrap_or_default()));
+                new_key.push(DataValue::from(new.1 as i64));
                 new_key.push(DataValue::from(i64::from(new.2)));
                 let new_key_bytes = idx_table.encode_key_for_store(&new_key, Default::default())?;
                 let new_val_bytes =
@@ -338,10 +338,10 @@ impl<'a> SessionTx<'a> {
                 let mut old_key = Vec::with_capacity(orig_table.metadata.keys.len() * 2 + 5);
                 old_key.push(DataValue::from(level));
                 old_key.extend_from_slice(&target_key.0);
-                old_key.push(DataValue::from(target_key.i64::try_from(1).unwrap_or_default()));
+                old_key.push(DataValue::from(target_key.1 as i64));
                 old_key.push(DataValue::from(i64::from(target_key.2)));
                 old_key.extend_from_slice(&old.0);
-                old_key.push(DataValue::from(old.i64::try_from(1).unwrap_or_default()));
+                old_key.push(DataValue::from(old.1 as i64));
                 old_key.push(DataValue::from(i64::from(old.2)));
                 let old_key_bytes = idx_table.encode_key_for_store(&old_key, Default::default())?;
                 let old_existing_val = match self.store_tx.get(&old_key_bytes, false)? {
@@ -363,7 +363,7 @@ impl<'a> SessionTx<'a> {
                     }
                     .build(),
                 })?;
-                if old_existing_val.get(2).copied().unwrap_or_default()
+                if old_existing_val[2]
                     .get_bool()
                     .unwrap_or_else(|| unreachable!())
                 {
@@ -530,7 +530,7 @@ impl<'a> SessionTx<'a> {
         let mut start_tuple = Vec::with_capacity(cand_key.0.len() + 3);
         start_tuple.push(DataValue::from(level));
         start_tuple.extend_from_slice(&cand_key.0);
-        start_tuple.push(DataValue::from(cand_key.i64::try_from(1).unwrap_or_default()));
+        start_tuple.push(DataValue::from(cand_key.1 as i64));
         start_tuple.push(DataValue::from(i64::from(cand_key.2)));
         let key_len = cand_key.0.len();
         Ok(idx_handle
@@ -595,7 +595,7 @@ impl<'a> SessionTx<'a> {
                 target_key.push(tuple.get(i).unwrap_or_else(|| unreachable!()).clone());
                 canary_key.push(DataValue::Null);
             }
-            target_key.push(DataValue::from(i64::try_from(idx).unwrap_or_default()));
+            target_key.push(DataValue::from(idx as i64));
             target_key.push(DataValue::from(i64::from(subidx)));
             canary_key.push(DataValue::Null);
             canary_key.push(DataValue::Null);
@@ -619,7 +619,7 @@ impl<'a> SessionTx<'a> {
         self.store_tx.put(&canary_key_bytes, &canary_value_bytes)?;
 
         for cur_level in bottom_level..=top_level {
-            target_key.get(0).copied().unwrap_or_default() = DataValue::from(cur_level);
+            target_key[0] = DataValue::from(cur_level);
             let key = idx_table.encode_key_for_store(&target_key, Default::default())?;
             let val = idx_table.encode_val_only_for_store(&target_value, Default::default())?;
             self.store_tx.put(&key, &val)?;
@@ -689,7 +689,7 @@ impl<'a> SessionTx<'a> {
                             clippy::cast_possible_truncation,
                             reason = "HNSW layer indices bounded by m_max (< i32::MAX)"
                         )]
-                        let sidx_i32 = i32::try_from(sidx).unwrap_or_default();
+                        let sidx_i32 = sidx as i32;
                         extracted_vectors.push((v, *idx, sidx_i32));
                     }
                 }
@@ -724,7 +724,7 @@ impl<'a> SessionTx<'a> {
     /// Orphans are logged at `warn` level for each occurrence.
     #[expect(
         dead_code,
-        reason = "entry point for maintenance tasks — not yet wired INTO scheduler"
+        reason = "entry point for maintenance tasks — not yet wired into scheduler"
     )]
     pub(crate) fn hnsw_check_consistency(
         &self,

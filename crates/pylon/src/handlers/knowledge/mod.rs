@@ -235,7 +235,7 @@ fn validate_sort_order(sort: &str, order: &str) -> Result<(), ApiError> {
     }
     if !VALID_ORDER_VALUES.contains(&order.to_ascii_lowercase().as_str()) {
         return Err(BadRequestSnafu {
-            message: format!("invalid ORDER '{ORDER}': valid VALUES are asc, desc",),
+            message: format!("invalid order '{order}': valid values are asc, desc",),
         }
         .build());
     }
@@ -254,17 +254,17 @@ fn validate_sort_order(sort: &str, order: &str) -> Result<(), ApiError> {
     params(
         ("nous_id" = Option<String>, Query, description = "Filter by agent ID"),
         ("sort" = Option<String>, Query, description = "Sort field: confidence, recency, created, access_count, fsrs_review (default: confidence)"),
-        ("ORDER" = Option<String>, Query, description = "Sort direction: asc or desc (default: desc)"),
+        ("order" = Option<String>, Query, description = "Sort direction: asc or desc (default: desc)"),
         ("filter" = Option<String>, Query, description = "Text filter"),
         ("fact_type" = Option<String>, Query, description = "Fact type filter: knowledge, preference, skill, observation, etc."),
         ("tier" = Option<String>, Query, description = "Epistemic tier: verified, inferred, assumed"),
-        ("LIMIT" = Option<usize>, Query, description = "Maximum results (default: 100, max: 1000)"),
-        ("OFFSET" = Option<usize>, Query, description = "Pagination OFFSET"),
+        ("limit" = Option<usize>, Query, description = "Maximum results (default: 100, max: 1000)"),
+        ("offset" = Option<usize>, Query, description = "Pagination offset"),
         ("include_forgotten" = Option<bool>, Query, description = "Include forgotten facts (default: false)"),
     ),
     responses(
         (status = 200, description = "Fact list with total count"),
-        (status = 400, description = "Invalid sort or ORDER parameter", body = crate::error::ErrorResponse),
+        (status = 400, description = "Invalid sort or order parameter", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -651,9 +651,9 @@ mod tests {
             make_fact("c", "mid", 0.6),
         ];
         sort_facts(&mut facts, "confidence", "desc");
-        assert_eq!(facts.get(0).copied().unwrap_or_default().id.as_str(), "b");
-        assert_eq!(facts.get(1).copied().unwrap_or_default().id.as_str(), "c");
-        assert_eq!(facts.get(2).copied().unwrap_or_default().id.as_str(), "a");
+        assert_eq!(facts[0].id.as_str(), "b");
+        assert_eq!(facts[1].id.as_str(), "c");
+        assert_eq!(facts[2].id.as_str(), "a");
     }
 
     #[test]
@@ -664,9 +664,9 @@ mod tests {
             make_fact("c", "mid", 0.6),
         ];
         sort_facts(&mut facts, "confidence", "asc");
-        assert_eq!(facts.get(0).copied().unwrap_or_default().id.as_str(), "a");
-        assert_eq!(facts.get(1).copied().unwrap_or_default().id.as_str(), "c");
-        assert_eq!(facts.get(2).copied().unwrap_or_default().id.as_str(), "b");
+        assert_eq!(facts[0].id.as_str(), "a");
+        assert_eq!(facts[1].id.as_str(), "c");
+        assert_eq!(facts[2].id.as_str(), "b");
     }
 
     #[test]
@@ -675,11 +675,11 @@ mod tests {
             make_fact("a", "one access", 0.5),
             make_fact("b", "five accesses", 0.5),
         ];
-        facts.get(0).copied().unwrap_or_default().access.access_count = 1;
-        facts.get(1).copied().unwrap_or_default().access.access_count = 5;
+        facts[0].access.access_count = 1;
+        facts[1].access.access_count = 5;
         sort_facts(&mut facts, "access_count", "desc");
-        assert_eq!(facts.get(0).copied().unwrap_or_default().id.as_str(), "b");
-        assert_eq!(facts.get(1).copied().unwrap_or_default().id.as_str(), "a");
+        assert_eq!(facts[0].id.as_str(), "b");
+        assert_eq!(facts[1].id.as_str(), "a");
     }
 
     #[test]
@@ -757,7 +757,7 @@ mod tests {
     fn validate_sort_order_rejects_invalid_order() {
         let err = validate_sort_order("confidence", "upward").unwrap_err();
         let msg = err.to_string();
-        assert!(msg.contains("invalid ORDER 'upward'"), "{msg}");
+        assert!(msg.contains("invalid order 'upward'"), "{msg}");
     }
 
     #[test]
@@ -773,7 +773,7 @@ mod tests {
         let mut facts = vec![make_fact("a", "low", 0.3), make_fact("b", "high", 0.9)];
         // NOTE: After validation, order is normalized to lowercase before reaching sort_facts.
         sort_facts(&mut facts, "confidence", "desc");
-        assert_eq!(facts.get(0).copied().unwrap_or_default().id.as_str(), "b");
-        assert_eq!(facts.get(1).copied().unwrap_or_default().id.as_str(), "a");
+        assert_eq!(facts[0].id.as_str(), "b");
+        assert_eq!(facts[1].id.as_str(), "a");
     }
 }

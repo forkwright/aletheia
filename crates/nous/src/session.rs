@@ -16,7 +16,7 @@ use crate::config::NousConfig;
 pub struct SessionState {
     pub id: String,
     pub nous_id: String,
-    pub session_key: SecretString, // kanon:ignore RUST/plain-string-secret
+    pub session_key: String, // kanon:ignore RUST/plain-string-secret
 
     pub model: String,
     pub thinking_enabled: bool,
@@ -37,7 +37,7 @@ pub struct SessionState {
 impl SessionState {
     /// Create a new session state from config.
     #[must_use]
-    pub fn new(id: String, session_key: SecretString, config: &NousConfig) -> Self {
+    pub fn new(id: String, session_key: String, config: &NousConfig) -> Self {
         Self {
             id,
             nous_id: config.id.clone(),
@@ -180,7 +180,7 @@ mod tests {
         assert!(SessionManager::is_ephemeral("dispatch:task"));
         assert!(SessionManager::is_ephemeral("ephemeral:one-off"));
         assert!(!SessionManager::is_ephemeral("main"));
-        assert!(!SessionManager::is_ephemeral("signal-GROUP"));
+        assert!(!SessionManager::is_ephemeral("signal-group"));
     }
 
     #[test]

@@ -182,7 +182,7 @@ fn sessions_spawn_def() -> ToolDef {
         name: ToolName::from_static("sessions_spawn"), // kanon:ignore RUST/expect
         description: "Spawn an ephemeral sub-agent to execute a single task".to_owned(),
         extended_description: Some(
-            "Creates a temporary agent with a role-appropriate model and tool SET. \
+            "Creates a temporary agent with a role-appropriate model and tool set. \
              The sub-agent runs one turn against the task prompt and returns its response. \
              Use for delegating mechanical work: coding, reviewing, researching, exploring, \
              or running commands."
@@ -308,7 +308,7 @@ mod tests {
 
     fn mock_ctx() -> ToolContext {
         ToolContext {
-            nous_id: NousId::new("test-agent").unwrap_or_default(),
+            nous_id: NousId::new("test-agent").expect("valid"),
             session_id: SessionId::new(),
             workspace: PathBuf::from("/tmp/test"),
             allowed_roots: vec![PathBuf::from("/tmp")],
@@ -320,7 +320,7 @@ mod tests {
     fn mock_ctx_with_spawn(spawn: Arc<dyn SpawnService>) -> ToolContext {
         install_crypto_provider();
         ToolContext {
-            nous_id: NousId::new("test-agent").unwrap_or_default(),
+            nous_id: NousId::new("test-agent").expect("valid"),
             session_id: SessionId::new(),
             workspace: PathBuf::from("/tmp/test"),
             allowed_roots: vec![PathBuf::from("/tmp")],
@@ -363,7 +363,7 @@ mod tests {
     #[tokio::test]
     async fn register_agent_tools() {
         let mut reg = ToolRegistry::new();
-        super::register(&mut reg).unwrap_or_default();
+        super::register(&mut reg).expect("register");
         assert_eq!(
             reg.definitions().len(),
             2,
@@ -374,9 +374,9 @@ mod tests {
     #[tokio::test]
     async fn spawn_def_requires_role_and_task() {
         let mut reg = ToolRegistry::new();
-        super::register(&mut reg).unwrap_or_default();
+        super::register(&mut reg).expect("register");
         let name = ToolName::from_static("sessions_spawn");
-        let def = reg.get_def(&name).unwrap_or_default();
+        let def = reg.get_def(&name).expect("found");
         assert_eq!(
             def.input_schema.required,
             vec!["role", "task"],
@@ -392,9 +392,9 @@ mod tests {
     #[tokio::test]
     async fn dispatch_def_requires_tasks() {
         let mut reg = ToolRegistry::new();
-        super::register(&mut reg).unwrap_or_default();
+        super::register(&mut reg).expect("register");
         let name = ToolName::from_static("sessions_dispatch");
-        let def = reg.get_def(&name).unwrap_or_default();
+        let def = reg.get_def(&name).expect("found");
         assert_eq!(
             def.input_schema.required,
             vec!["tasks"],
@@ -405,13 +405,13 @@ mod tests {
     #[tokio::test]
     async fn spawn_missing_service_returns_error() {
         let mut reg = ToolRegistry::new();
-        super::register(&mut reg).unwrap_or_default();
+        super::register(&mut reg).expect("register");
         let input = ToolInput {
             name: ToolName::from_static("sessions_spawn"),
             tool_use_id: "tu_1".to_owned(),
             arguments: serde_json::json!({"role": "coder", "task": "write code"}),
         };
-        let result = reg.execute(&input, &mock_ctx()).await.unwrap_or_default();
+        let result = reg.execute(&input, &mock_ctx()).await.expect("execute");
         assert!(result.is_error, "expected result.is_error to be true");
         assert!(
             result.content.text_summary().contains("not available"),
@@ -424,18 +424,18 @@ mod tests {
         let spawn = Arc::new(MockSpawnService);
         let ctx = mock_ctx_with_spawn(spawn);
         let mut reg = ToolRegistry::new();
-        super::register(&mut reg).unwrap_or_default();
+        super::register(&mut reg).expect("register");
 
         let input = ToolInput {
             name: ToolName::from_static("sessions_spawn"),
             tool_use_id: "tu_1".to_owned(),
             arguments: serde_json::json!({"role": "coder", "task": "write code"}),
         };
-        let result = reg.execute(&input, &ctx).await.unwrap_or_default();
+        let result = reg.execute(&input, &ctx).await.expect("execute");
         assert!(!result.is_error, "expected result.is_error to be false");
 
         let json: serde_json::Value =
-            serde_json::from_str(&result.content.text_summary()).unwrap_or_default();
+            serde_json::from_str(&result.content.text_summary()).expect("json");
         assert_eq!(
             json["content"], "mock result",
             "expected json[\"content\"] to equal \"mock result\""
@@ -453,13 +453,13 @@ mod tests {
     #[tokio::test]
     async fn dispatch_missing_service_returns_error() {
         let mut reg = ToolRegistry::new();
-        super::register(&mut reg).unwrap_or_default();
+        super::register(&mut reg).expect("register");
         let input = ToolInput {
             name: ToolName::from_static("sessions_dispatch"),
             tool_use_id: "tu_1".to_owned(),
             arguments: serde_json::json!({"tasks": [{"role": "coder", "task": "write code"}]}),
         };
-        let result = reg.execute(&input, &mock_ctx()).await.unwrap_or_default();
+        let result = reg.execute(&input, &mock_ctx()).await.expect("execute");
         assert!(result.is_error, "expected result.is_error to be true");
     }
 
@@ -468,7 +468,7 @@ mod tests {
         let spawn = Arc::new(MockSpawnService);
         let ctx = mock_ctx_with_spawn(spawn);
         let mut reg = ToolRegistry::new();
-        super::register(&mut reg).unwrap_or_default();
+        super::register(&mut reg).expect("register");
 
         let tasks: Vec<serde_json::Value> = (0..11)
             .map(|i| serde_json::json!({"role": "coder", "task": format!("task {i}")}))
@@ -478,7 +478,7 @@ mod tests {
             tool_use_id: "tu_1".to_owned(),
             arguments: serde_json::json!({"tasks": tasks}),
         };
-        let result = reg.execute(&input, &ctx).await.unwrap_or_default();
+        let result = reg.execute(&input, &ctx).await.expect("execute");
         assert!(result.is_error, "expected result.is_error to be true");
         assert!(
             result.content.text_summary().contains("Too many tasks"),
@@ -491,7 +491,7 @@ mod tests {
         let spawn = Arc::new(MockSpawnService);
         let ctx = mock_ctx_with_spawn(spawn);
         let mut reg = ToolRegistry::new();
-        super::register(&mut reg).unwrap_or_default();
+        super::register(&mut reg).expect("register");
 
         let input = ToolInput {
             name: ToolName::from_static("sessions_dispatch"),
@@ -503,11 +503,11 @@ mod tests {
                 ]
             }),
         };
-        let result = reg.execute(&input, &ctx).await.unwrap_or_default();
+        let result = reg.execute(&input, &ctx).await.expect("execute");
         assert!(!result.is_error, "expected result.is_error to be false");
 
         let json: Vec<serde_json::Value> =
-            serde_json::from_str(&result.content.text_summary()).unwrap_or_default();
+            serde_json::from_str(&result.content.text_summary()).expect("json");
         assert_eq!(json.len(), 2, "expected json.len() to equal 2");
     }
 }

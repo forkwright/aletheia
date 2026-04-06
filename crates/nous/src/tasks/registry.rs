@@ -15,7 +15,7 @@ use super::types::{ProgressEvent, TaskEntry, TaskId, TaskStatus, TaskType, ToolC
 #[snafu(visibility(pub(crate)))]
 #[expect(
     missing_docs,
-    reason = "snafu error variant fields (task_id, FROM, to, source, location) are self-documenting via display format"
+    reason = "snafu error variant fields (task_id, from, to, source, location) are self-documenting via display format"
 )]
 #[non_exhaustive]
 pub enum RegistryError {
@@ -28,7 +28,7 @@ pub enum RegistryError {
     },
 
     /// Invalid status transition attempted.
-    #[snafu(display("invalid transition for task {task_id}: {FROM} -> {to}"))]
+    #[snafu(display("invalid transition for task {task_id}: {from} -> {to}"))]
     InvalidTransition {
         task_id: TaskId,
         from: TaskStatus,
@@ -434,9 +434,9 @@ mod tests {
                 },
                 "test shell".into(),
             )
-            .unwrap_or_default();
+            .expect("register");
 
-        let snap = reg.get(id).unwrap_or_default();
+        let snap = reg.get(id).expect("get");
         assert_eq!(snap.id, id);
         assert_eq!(snap.status, TaskStatus::Pending);
         assert_eq!(snap.description, "test shell");
@@ -453,15 +453,15 @@ mod tests {
                 },
                 "agent task".into(),
             )
-            .unwrap_or_default();
+            .expect("register");
 
         reg.update_status(id, TaskStatus::Running)
-            .unwrap_or_default();
-        assert_eq!(reg.get(id).unwrap_or_default().status, TaskStatus::Running);
+            .expect("to running");
+        assert_eq!(reg.get(id).expect("get").status, TaskStatus::Running);
 
         reg.update_status(id, TaskStatus::Completed)
-            .unwrap_or_default();
-        let snap = reg.get(id).unwrap_or_default();
+            .expect("to completed");
+        let snap = reg.get(id).expect("get");
         assert_eq!(snap.status, TaskStatus::Completed);
         assert!(snap.completed_at.is_some());
     }
@@ -476,14 +476,14 @@ mod tests {
                 },
                 "failing task".into(),
             )
-            .unwrap_or_default();
+            .expect("register");
 
         reg.update_status(id, TaskStatus::Running)
-            .unwrap_or_default();
+            .expect("to running");
         reg.update_status(id, TaskStatus::Failed)
-            .unwrap_or_default();
+            .expect("to failed");
 
-        let snap = reg.get(id).unwrap_or_default();
+        let snap = reg.get(id).expect("get");
         assert_eq!(snap.status, TaskStatus::Failed);
         assert!(snap.completed_at.is_some());
     }
@@ -498,12 +498,12 @@ mod tests {
                 },
                 "monitor".into(),
             )
-            .unwrap_or_default();
+            .expect("register");
 
         reg.update_status(id, TaskStatus::Running)
-            .unwrap_or_default();
+            .expect("to running");
         reg.update_status(id, TaskStatus::Completed)
-            .unwrap_or_default();
+            .expect("to completed");
 
         let result = reg.update_status(id, TaskStatus::Running);
         assert!(result.is_err());
@@ -519,7 +519,7 @@ mod tests {
                 },
                 "workflow".into(),
             )
-            .unwrap_or_default();
+            .expect("register");
 
         // WHY: Can't skip Running to reach Completed.
         let result = reg.update_status(id, TaskStatus::Completed);
@@ -536,12 +536,12 @@ mod tests {
                 },
                 "fail fast".into(),
             )
-            .unwrap_or_default();
+            .expect("register");
 
         // WHY: Tasks can fail before they start (e.g. validation failure).
         reg.update_status(id, TaskStatus::Failed)
-            .unwrap_or_default();
-        assert_eq!(reg.get(id).unwrap_or_default().status, TaskStatus::Failed);
+            .expect("to failed");
+        assert_eq!(reg.get(id).expect("get").status, TaskStatus::Failed);
     }
 
     #[test]
@@ -555,15 +555,15 @@ mod tests {
                 },
                 "killable".into(),
             )
-            .unwrap_or_default();
+            .expect("register");
 
         reg.update_status(id, TaskStatus::Running)
-            .unwrap_or_default();
+            .expect("to running");
         assert!(!token.is_cancelled());
 
-        reg.kill(id).unwrap_or_default();
+        reg.kill(id).expect("kill");
         assert!(token.is_cancelled());
-        assert_eq!(reg.get(id).unwrap_or_default().status, TaskStatus::Killed);
+        assert_eq!(reg.get(id).expect("get").status, TaskStatus::Killed);
     }
 
     #[test]
@@ -576,16 +576,16 @@ mod tests {
                 },
                 "done task".into(),
             )
-            .unwrap_or_default();
+            .expect("register");
 
         reg.update_status(id, TaskStatus::Running)
-            .unwrap_or_default();
+            .expect("to running");
         reg.update_status(id, TaskStatus::Completed)
-            .unwrap_or_default();
+            .expect("to completed");
 
         // WHY: Killing an already-completed task should be silently ignored.
-        reg.kill(id).unwrap_or_default();
-        assert_eq!(reg.get(id).unwrap_or_default().status, TaskStatus::Completed);
+        reg.kill(id).expect("kill noop");
+        assert_eq!(reg.get(id).expect("get").status, TaskStatus::Completed);
     }
 
     #[test]
@@ -605,16 +605,16 @@ mod tests {
             },
             "task a".into(),
         )
-        .unwrap_or_default();
+        .expect("register a");
         reg.register(
             TaskType::Shell {
                 command: "b".into(),
             },
             "task b".into(),
         )
-        .unwrap_or_default();
+        .expect("register b");
 
-        let all = reg.list(None).unwrap_or_default();
+        let all = reg.list(None).expect("list");
         assert_eq!(all.len(), 2);
     }
 
@@ -629,7 +629,7 @@ mod tests {
                 },
                 "task a".into(),
             )
-            .unwrap_or_default();
+            .expect("register a");
         let (_id_b, _) = reg
             .register(
                 TaskType::Shell {
@@ -637,16 +637,16 @@ mod tests {
                 },
                 "task b".into(),
             )
-            .unwrap_or_default();
+            .expect("register b");
 
         reg.update_status(id_a, TaskStatus::Running)
-            .unwrap_or_default();
+            .expect("to running");
 
-        let running = reg.list(Some(TaskStatus::Running)).unwrap_or_default();
+        let running = reg.list(Some(TaskStatus::Running)).expect("list running");
         assert_eq!(running.len(), 1);
-        assert_eq!(running.get(0).copied().unwrap_or_default().id, id_a);
+        assert_eq!(running[0].id, id_a);
 
-        let pending = reg.list(Some(TaskStatus::Pending)).unwrap_or_default();
+        let pending = reg.list(Some(TaskStatus::Pending)).expect("list pending");
         assert_eq!(pending.len(), 1);
     }
 
@@ -661,7 +661,7 @@ mod tests {
                 },
                 "agent".into(),
             )
-            .unwrap_or_default();
+            .expect("register");
 
         reg.record_tool_call(
             id,
@@ -670,11 +670,11 @@ mod tests {
                 elapsed: jiff::SignedDuration::from_millis(150),
             },
         )
-        .unwrap_or_default();
+        .expect("record");
 
-        let snap = reg.get(id).unwrap_or_default();
+        let snap = reg.get(id).expect("get");
         assert_eq!(snap.recent_activity.len(), 1);
-        assert_eq!(snap.recent_activity.get(0).copied().unwrap_or_default().tool_name, "read_file");
+        assert_eq!(snap.recent_activity[0].tool_name, "read_file");
     }
 
     #[test]
@@ -687,12 +687,12 @@ mod tests {
                 },
                 "erroring".into(),
             )
-            .unwrap_or_default();
+            .expect("register");
 
         reg.record_error(id, "something went wrong".into())
-            .unwrap_or_default();
+            .expect("record error");
 
-        let snap = reg.get(id).unwrap_or_default();
+        let snap = reg.get(id).expect("get");
         assert_eq!(snap.error_snapshot.as_deref(), Some("something went wrong"));
     }
 
@@ -704,14 +704,14 @@ mod tests {
                 TaskType::Consolidation { sessions_count: 5 },
                 "consolidate".into(),
             )
-            .unwrap_or_default();
+            .expect("register");
 
-        let mut rx = reg.subscribe(id).unwrap_or_default();
+        let mut rx = reg.subscribe(id).expect("subscribe");
 
         reg.update_status(id, TaskStatus::Running)
-            .unwrap_or_default();
+            .expect("to running");
 
-        let event = rx.recv().await.unwrap_or_default();
+        let event = rx.recv().await.expect("recv");
         match event {
             ProgressEvent::StatusChanged { from, to } => {
                 assert_eq!(from, TaskStatus::Pending);
@@ -732,9 +732,9 @@ mod tests {
                 },
                 "agent".into(),
             )
-            .unwrap_or_default();
+            .expect("register");
 
-        let mut rx = reg.subscribe(id).unwrap_or_default();
+        let mut rx = reg.subscribe(id).expect("subscribe");
 
         reg.record_tool_call(
             id,
@@ -743,9 +743,9 @@ mod tests {
                 elapsed: jiff::SignedDuration::from_millis(200),
             },
         )
-        .unwrap_or_default();
+        .expect("record");
 
-        let event = rx.recv().await.unwrap_or_default();
+        let event = rx.recv().await.expect("recv");
         match event {
             ProgressEvent::ToolActivity(summary) => {
                 assert_eq!(summary.tool_name, "search");
@@ -769,16 +769,16 @@ mod tests {
                         },
                         format!("task {i}"),
                     )
-                    .unwrap_or_default();
+                    .expect("register");
                 })
             })
             .collect();
 
         for h in handles {
-            h.join().unwrap_or_default();
+            h.join().expect("thread join");
         }
 
-        assert_eq!(reg.len().unwrap_or_default(), 10);
+        assert_eq!(reg.len().expect("len"), 10);
     }
 
     #[test]
@@ -793,16 +793,16 @@ mod tests {
                 },
                 "stale".into(),
             )
-            .unwrap_or_default();
+            .expect("register");
 
         reg.update_status(id, TaskStatus::Running)
-            .unwrap_or_default();
+            .expect("to running");
         reg.update_status(id, TaskStatus::Completed)
-            .unwrap_or_default();
+            .expect("to completed");
 
-        let evicted = reg.gc_sweep().unwrap_or_default();
+        let evicted = reg.gc_sweep().expect("gc sweep");
         assert_eq!(evicted.len(), 1);
-        assert_eq!(evicted.get(0).copied().unwrap_or_default().0, id);
+        assert_eq!(evicted[0].0, id);
 
         // WHY: After GC, the task should no longer be in the registry.
         assert!(reg.get(id).is_err());
@@ -819,12 +819,12 @@ mod tests {
                 },
                 "active".into(),
             )
-            .unwrap_or_default();
+            .expect("register");
 
         reg.update_status(id, TaskStatus::Running)
-            .unwrap_or_default();
+            .expect("to running");
 
-        let evicted = reg.gc_sweep().unwrap_or_default();
+        let evicted = reg.gc_sweep().expect("gc sweep");
         assert!(evicted.is_empty());
         assert!(reg.get(id).is_ok());
     }
@@ -832,8 +832,8 @@ mod tests {
     #[test]
     fn len_and_is_empty() {
         let reg = make_registry();
-        assert!(reg.is_empty().unwrap_or_default());
-        assert_eq!(reg.len().unwrap_or_default(), 0);
+        assert!(reg.is_empty().expect("is_empty"));
+        assert_eq!(reg.len().expect("len"), 0);
 
         reg.register(
             TaskType::Monitor {
@@ -841,9 +841,9 @@ mod tests {
             },
             "monitor".into(),
         )
-        .unwrap_or_default();
+        .expect("register");
 
-        assert!(!reg.is_empty().unwrap_or_default());
-        assert_eq!(reg.len().unwrap_or_default(), 1);
+        assert!(!reg.is_empty().expect("is_empty"));
+        assert_eq!(reg.len().expect("len"), 1);
     }
 }

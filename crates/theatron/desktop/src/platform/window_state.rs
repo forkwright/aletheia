@@ -26,7 +26,7 @@ pub(crate) enum WindowStateError {
     NoConfigDir,
 
     /// Failed to create the config directory.
-    #[snafu(display("failed to CREATE directory {}: {source}", path.display()))]
+    #[snafu(display("failed to create directory {}: {source}", path.display()))]
     CreateDir {
         /// Directory path that could not be created.
         path: PathBuf,
@@ -164,7 +164,7 @@ impl DebouncedWriter {
         // WHY: Spawn a tokio task (not Dioxus coroutine) so it runs independently
         // of component lifecycle and can flush on app shutdown.
         tokio::spawn({
-            let state = Arc::clone(&state.instrument(tracing::info_span!("spawned_task")));
+            let state = Arc::clone(&state);
             let dirty = Arc::clone(&dirty);
             let has_pending = Arc::clone(&has_pending);
             async move {

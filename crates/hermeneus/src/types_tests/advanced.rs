@@ -4,7 +4,7 @@ use super::*;
 #[test]
 fn tool_choice_serde() {
     let auto = ToolChoice::Auto;
-    let json = serde_json::to_string(&auto).unwrap_or_default();
+    let json = serde_json::to_string(&auto).expect("ToolChoice::Auto should serialize to JSON");
     assert!(
         json.contains("\"type\":\"auto\""),
         "serialized ToolChoice::Auto should contain '\"type\":\"auto\"'"
@@ -13,7 +13,7 @@ fn tool_choice_serde() {
     let tool = ToolChoice::Tool {
         name: "exec".to_owned(),
     };
-    let json = serde_json::to_string(&tool).unwrap_or_default();
+    let json = serde_json::to_string(&tool).expect("ToolChoice::Tool should serialize to JSON");
     assert!(
         json.contains("\"type\":\"tool\""),
         "serialized ToolChoice::Tool should contain '\"type\":\"tool\"'"
@@ -35,12 +35,16 @@ fn text_block_with_citations_serde() {
             cited_text: "source".to_owned(),
         }]),
     };
-    let json = serde_json::to_string(&block).unwrap_or_default();
-    let back: ContentBlock = serde_json::from_str(&json).unwrap_or_default();
+    let json =
+        serde_json::to_string(&block).expect("Text block with citations should serialize to JSON");
+    let back: ContentBlock = serde_json::from_str(&json)
+        .expect("Text block with citations should deserialize from JSON");
     match back {
         ContentBlock::Text { citations, .. } => {
             assert_eq!(
-                citations.unwrap_or_default().len(),
+                citations
+                    .expect("citations should be present after round-trip")
+                    .len(),
                 1,
                 "citations vec should contain exactly one entry"
             );
@@ -65,8 +69,10 @@ fn completion_response_serde() {
             ..Usage::default()
         },
     };
-    let json = serde_json::to_string(&response).unwrap_or_default();
-    let back: CompletionResponse = serde_json::from_str(&json).unwrap_or_default();
+    let json =
+        serde_json::to_string(&response).expect("CompletionResponse should serialize to JSON");
+    let back: CompletionResponse =
+        serde_json::from_str(&json).expect("CompletionResponse should deserialize from JSON");
     assert_eq!(
         back.id, "msg_123",
         "CompletionResponse id should round-trip unchanged"
@@ -81,12 +87,13 @@ fn completion_response_serde() {
 #[test]
 fn cache_control_type_serde() {
     let cc = CacheControl::ephemeral();
-    let json = serde_json::to_string(&cc).unwrap_or_default();
+    let json = serde_json::to_string(&cc).expect("CacheControl should serialize to JSON");
     assert!(
         json.contains("\"type\":\"ephemeral\""),
         "serialized CacheControl should contain '\"type\":\"ephemeral\"'"
     );
-    let back: CacheControl = serde_json::from_str(&json).unwrap_or_default();
+    let back: CacheControl =
+        serde_json::from_str(&json).expect("CacheControl should deserialize from JSON");
     assert_eq!(
         back.kind,
         CacheControlType::Ephemeral,
@@ -111,8 +118,10 @@ fn caching_config_defaults() {
 #[test]
 fn caching_strategy_serde_roundtrip() {
     for strategy in [CachingStrategy::Auto, CachingStrategy::Disabled] {
-        let json = serde_json::to_string(&strategy).unwrap_or_default();
-        let back: CachingStrategy = serde_json::from_str(&json).unwrap_or_default();
+        let json =
+            serde_json::to_string(&strategy).expect("CachingStrategy should serialize to JSON");
+        let back: CachingStrategy =
+            serde_json::from_str(&json).expect("CachingStrategy should deserialize from JSON");
         assert_eq!(
             strategy, back,
             "CachingStrategy should round-trip through JSON unchanged"
@@ -145,7 +154,8 @@ fn code_execution_result_block_serde() {
         stderr: String::new(),
         return_code: 0,
     };
-    let json = serde_json::to_string(&block).unwrap_or_default();
+    let json =
+        serde_json::to_string(&block).expect("CodeExecutionResult block should serialize to JSON");
     assert!(
         json.contains("code_execution_result"),
         "serialized CodeExecutionResult should contain type tag 'code_execution_result'"
@@ -154,7 +164,8 @@ fn code_execution_result_block_serde() {
         json.contains("print('hello')"),
         "serialized CodeExecutionResult should contain the code field"
     );
-    let back: ContentBlock = serde_json::from_str(&json).unwrap_or_default();
+    let back: ContentBlock = serde_json::from_str(&json)
+        .expect("CodeExecutionResult block should deserialize from JSON");
     match back {
         ContentBlock::CodeExecutionResult {
             code,
@@ -186,7 +197,8 @@ fn code_execution_result_block_serde() {
 #[test]
 fn code_execution_result_nonzero_return_code() {
     let json = r#"{"type":"code_execution_result","code":"exit(1)","stdout":"","stderr":"error","return_code":1}"#;
-    let block: ContentBlock = serde_json::from_str(json).unwrap_or_default();
+    let block: ContentBlock = serde_json::from_str(json)
+        .expect("CodeExecutionResult with nonzero return_code should deserialize");
     match block {
         ContentBlock::CodeExecutionResult {
             return_code,
@@ -214,12 +226,13 @@ fn tool_definition_disable_passthrough_serde() {
         input_schema: serde_json::json!({"type": "object"}),
         disable_passthrough: Some(true),
     };
-    let json = serde_json::to_string(&def).unwrap_or_default();
+    let json = serde_json::to_string(&def).expect("ToolDefinition should serialize to JSON");
     assert!(
         json.contains("\"disable_passthrough\":true"),
         "serialized ToolDefinition should contain '\"disable_passthrough\":true'"
     );
-    let back: ToolDefinition = serde_json::from_str(&json).unwrap_or_default();
+    let back: ToolDefinition =
+        serde_json::from_str(&json).expect("ToolDefinition should deserialize from JSON");
     assert_eq!(
         back.disable_passthrough,
         Some(true),
@@ -235,7 +248,7 @@ fn tool_definition_disable_passthrough_none_omitted() {
         input_schema: serde_json::json!({"type": "object"}),
         disable_passthrough: None,
     };
-    let json = serde_json::to_string(&def).unwrap_or_default();
+    let json = serde_json::to_string(&def).expect("ToolDefinition should serialize to JSON");
     assert!(
         !json.contains("disable_passthrough"),
         "None should be omitted"
@@ -252,12 +265,13 @@ fn code_execution_server_tool_definition_serde() {
         blocked_domains: None,
         user_location: None,
     };
-    let json = serde_json::to_string(&def).unwrap_or_default();
+    let json = serde_json::to_string(&def).expect("ServerToolDefinition should serialize to JSON");
     assert!(
         json.contains("code_execution_20250522"),
         "serialized ServerToolDefinition should contain tool_type 'code_execution_20250522'"
     );
-    let back: ServerToolDefinition = serde_json::from_str(&json).unwrap_or_default();
+    let back: ServerToolDefinition =
+        serde_json::from_str(&json).expect("ServerToolDefinition should deserialize from JSON");
     assert_eq!(
         back.tool_type, "code_execution_20250522",
         "ServerToolDefinition tool_type should round-trip unchanged"
@@ -281,8 +295,8 @@ mod proptests {
             Just(Role::User),
             Just(Role::Assistant),
         ]) {
-            let json = serde_json::to_string(&role).unwrap_or_default();
-            let back: Role = serde_json::from_str(&json).unwrap_or_default();
+            let json = serde_json::to_string(&role).expect("Role should serialize to JSON");
+            let back: Role = serde_json::from_str(&json).expect("Role JSON should deserialize back");
             prop_assert_eq!(role, back);
         }
 
@@ -294,8 +308,8 @@ mod proptests {
             Just(StopReason::MaxTokens),
             Just(StopReason::StopSequence),
         ]) {
-            let json = serde_json::to_string(&reason).unwrap_or_default();
-            let back: StopReason = serde_json::from_str(&json).unwrap_or_default();
+            let json = serde_json::to_string(&reason).expect("StopReason should serialize to JSON");
+            let back: StopReason = serde_json::from_str(&json).expect("StopReason JSON should deserialize back");
             prop_assert_eq!(reason, back);
         }
 
@@ -303,8 +317,8 @@ mod proptests {
         #[test]
         fn content_text_roundtrip(text in "\\PC{0,500}") {
             let content = Content::Text(text.clone());
-            let json = serde_json::to_string(&content).unwrap_or_default();
-            let back: Content = serde_json::from_str(&json).unwrap_or_default();
+            let json = serde_json::to_string(&content).expect("Content should serialize to JSON");
+            let back: Content = serde_json::from_str(&json).expect("Content JSON should deserialize back");
             match back {
                 Content::Text(s) => prop_assert_eq!(s, text),
                 Content::Blocks(_) => prop_assert!(false, "expected Text variant"),
@@ -321,8 +335,8 @@ mod proptests {
             text in "\\PC{0,200}",
         ) {
             let msg = Message { role, content: Content::Text(text) };
-            let json = serde_json::to_string(&msg).unwrap_or_default();
-            let back: Message = serde_json::from_str(&json).unwrap_or_default();
+            let json = serde_json::to_string(&msg).expect("Message should serialize to JSON");
+            let back: Message = serde_json::from_str(&json).expect("Message JSON should deserialize back");
             prop_assert_eq!(back.role, msg.role);
             prop_assert_eq!(back.content.text(), msg.content.text());
         }
@@ -348,8 +362,8 @@ mod proptests {
         #[test]
         fn tool_choice_auto_any_roundtrip(auto in proptest::bool::ANY) {
             let choice = if auto { ToolChoice::Auto } else { ToolChoice::Any };
-            let json = serde_json::to_string(&choice).unwrap_or_default();
-            let back: ToolChoice = serde_json::from_str(&json).unwrap_or_default();
+            let json = serde_json::to_string(&choice).expect("ToolChoice should serialize to JSON");
+            let back: ToolChoice = serde_json::from_str(&json).expect("ToolChoice JSON should deserialize back");
             if auto {
                 prop_assert!(json.contains("\"auto\""), "expected 'auto' in {json}");
                 prop_assert!(matches!(back, ToolChoice::Auto));
@@ -363,8 +377,8 @@ mod proptests {
         #[test]
         fn tool_choice_tool_roundtrip(name in "[a-zA-Z_]{1,50}") {
             let choice = ToolChoice::Tool { name: name.clone() };
-            let json = serde_json::to_string(&choice).unwrap_or_default();
-            let back: ToolChoice = serde_json::from_str(&json).unwrap_or_default();
+            let json = serde_json::to_string(&choice).expect("ToolChoice::Tool should serialize to JSON");
+            let back: ToolChoice = serde_json::from_str(&json).expect("ToolChoice::Tool JSON should deserialize back");
             match back {
                 ToolChoice::Tool { name: n } => prop_assert_eq!(n, name),
                 other => prop_assert!(false, "expected Tool variant, got {other:?}"),

@@ -299,7 +299,7 @@ pub fn store_audit_report(
         {
             Ok(id) => id,
             Err(e) => {
-                tracing::warn!(error = %e, "failed to CREATE audit fact ID");
+                tracing::warn!(error = %e, "failed to create audit fact ID");
                 return Ok(());
             }
         };
@@ -440,7 +440,7 @@ mod tests {
             3,
             "report should have one result per check"
         );
-        assert!(!report.checked_at.is_empty(), "checked_at should be SET");
+        assert!(!report.checked_at.is_empty(), "checked_at should be set");
     }
 
     #[test]
@@ -501,8 +501,8 @@ mod tests {
             }],
             checked_at: String::from("2026-03-19T00:00:00Z"),
         };
-        let json = serde_json::to_string(&report).unwrap_or_default();
-        let back: AuditReport = serde_json::from_str(&json).unwrap_or_default();
+        let json = serde_json::to_string(&report).expect("serialize should succeed");
+        let back: AuditReport = serde_json::from_str(&json).expect("deserialize should succeed");
         assert_eq!(back.nous_id, "test-nous");
         assert_eq!(back.results.len(), 1);
     }

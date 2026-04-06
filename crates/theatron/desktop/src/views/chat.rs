@@ -79,14 +79,14 @@ pub(crate) fn Chat() -> Element {
             .enumerate()
             .map(|(i, m)| ChatMessage {
                 #[expect(clippy::as_conversions, reason = "message index to u64 id")]
-                id: u64::try_from(i).unwrap_or_default() + 1,
+                id: i as u64 + 1,
                 role: match m.role {
                     MessageRole::User => Role::User,
                     MessageRole::Assistant => Role::Assistant,
                 },
                 content: m.content.clone(),
                 timestamp: {
-                    #[expect(clippy::as_conversions, reason = "message OFFSET to i64 for timestamp spacing")]
+                    #[expect(clippy::as_conversions, reason = "message offset to i64 for timestamp spacing")]
                     let offset = (state.messages.len() - 1 - i) as i64 * 30;
                     now_ts - offset
                 },

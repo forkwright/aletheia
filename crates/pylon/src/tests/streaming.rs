@@ -89,7 +89,7 @@ async fn sse_stream_text_delta_text_matches_mock_response() {
     let text_delta = find_sse_event(&events, "text_delta").expect("stream must contain text_delta");
     assert_eq!(
         text_delta["text"].as_str().unwrap(),
-        "Hello FROM mock!",
+        "Hello from mock!",
         "text_delta.text must equal the mock provider's response"
     );
 }
@@ -250,7 +250,7 @@ async fn sse_concurrent_connections_each_receive_complete_stream() {
                 let msg_req = authed_request(
                     "POST",
                     &format!("/api/v1/sessions/{id}/messages"),
-                    Some(serde_json::json!({ "content": format!("Hello FROM client {i}") })),
+                    Some(serde_json::json!({ "content": format!("Hello from client {i}") })),
                 );
                 let resp = router.oneshot(msg_req).await.unwrap();
                 assert_eq!(resp.status(), StatusCode::OK);

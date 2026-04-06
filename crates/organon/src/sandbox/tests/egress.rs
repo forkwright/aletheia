@@ -87,7 +87,7 @@ fn policy_inherits_egress_from_config() {
     assert_eq!(
         policy.egress,
         EgressPolicy::Deny,
-        "policy should inherit deny egress FROM config"
+        "policy should inherit deny egress from config"
     );
 }
 
@@ -124,7 +124,7 @@ fn egress_deny_blocks_network() {
         egress: EgressPolicy::Deny,
         ..SandboxConfig::default()
     };
-    let dir = tempfile::tempdir().expect("CREATE temp dir");
+    let dir = tempfile::tempdir().expect("create temp dir");
     let policy = config.build_policy(dir.path(), &[]);
 
     // WHY: Try to create a TCP connection to a TEST-NET address (RFC 5737).
@@ -162,7 +162,7 @@ fn egress_deny_allows_basic_commands() {
         egress: EgressPolicy::Deny,
         ..SandboxConfig::default()
     };
-    let dir = tempfile::tempdir().expect("CREATE temp dir");
+    let dir = tempfile::tempdir().expect("create temp dir");
     let policy = config.build_policy(dir.path(), &[]);
 
     let mut cmd = Command::new("echo");
@@ -199,7 +199,7 @@ fn egress_allowlist_loopback_permits_localhost() {
         egress_allowlist: vec!["127.0.0.1".to_owned()],
         ..SandboxConfig::default()
     };
-    let dir = tempfile::tempdir().expect("CREATE temp dir");
+    let dir = tempfile::tempdir().expect("create temp dir");
     let policy = config.build_policy(dir.path(), &[]);
 
     // WHY: Use sh -c with echo + /dev/tcp to test connectivity without
@@ -234,7 +234,7 @@ fn egress_allow_does_not_restrict() {
         egress: EgressPolicy::Allow,
         ..SandboxConfig::default()
     };
-    let dir = tempfile::tempdir().expect("CREATE temp dir");
+    let dir = tempfile::tempdir().expect("create temp dir");
     let policy = config.build_policy(dir.path(), &[]);
 
     let mut cmd = Command::new("echo");
@@ -266,7 +266,7 @@ fn egress_graceful_fallback() {
         enforcement: SandboxEnforcement::Permissive,
         ..SandboxConfig::default()
     };
-    let dir = tempfile::tempdir().expect("CREATE temp dir");
+    let dir = tempfile::tempdir().expect("create temp dir");
     let policy = config.build_policy(dir.path(), &[]);
 
     let mut cmd = Command::new("echo");

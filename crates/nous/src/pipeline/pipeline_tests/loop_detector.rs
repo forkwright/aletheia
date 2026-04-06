@@ -223,7 +223,7 @@ fn loop_detector_detects_consecutive_errors_same_tool() {
     let v = det.record("exec", "h4", true);
     assert!(
         is_warn(&v),
-        "4 consecutive errors FROM same tool should trigger"
+        "4 consecutive errors from same tool should trigger"
     );
     match v {
         LoopVerdict::Warn { pattern, .. } => {
@@ -246,7 +246,7 @@ fn consecutive_errors_different_tools() {
     let v = det.record("search", "h4", true);
     assert!(
         is_warn(&v),
-        "4 consecutive errors FROM mixed tools should trigger"
+        "4 consecutive errors from mixed tools should trigger"
     );
     match v {
         LoopVerdict::Warn { pattern, .. } => {

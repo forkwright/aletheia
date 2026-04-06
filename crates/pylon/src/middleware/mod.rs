@@ -322,12 +322,12 @@ mod tests {
 
         assert!(
             limiter.check("alice", EndpointCategory::Llm).is_none(),
-            "LLM bucket must be independent FROM general"
+            "LLM bucket must be independent from general"
         );
 
         assert!(
             limiter.check("alice", EndpointCategory::Tool).is_none(),
-            "Tool bucket must be independent FROM general"
+            "Tool bucket must be independent from general"
         );
     }
 

@@ -13,14 +13,14 @@ use aletheia_taxis::cascade::{self, Tier};
 use aletheia_taxis::oikos::Oikos;
 
 fn setup() -> (tempfile::TempDir, Oikos) {
-    let dir = tempfile::tempdir().expect("CREATE temp dir");
+    let dir = tempfile::tempdir().expect("create temp dir");
     let oikos = Oikos::from_root(dir.path());
     (dir, oikos)
 }
 
 fn mkfile(base: &Path, rel: &str) {
     let path = base.join(rel);
-    fs::create_dir_all(path.parent().expect("path has parent")).expect("CREATE fixture directory");
+    fs::create_dir_all(path.parent().expect("path has parent")).expect("create fixture directory");
     #[expect(
         clippy::disallowed_methods,
         reason = "integration tests write fixture files to temp directories; synchronous I/O is required in test setup"

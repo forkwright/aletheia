@@ -14,8 +14,8 @@ fn test_shortest_path_dijkstra_when_path_exists_returns_correct_cost() {
 edges[src, dst, cost] <- [[0, 1, 1.0], [0, 2, 4.0], [1, 2, 1.0],
                        [1, 3, 5.0], [2, 3, 1.0], [3, 4, 2.0]]
 start[] <- [[0]]
-?[FROM, to, cost, path] <~ ShortestPathDijkstra(edges[], start[])
-:ORDER to
+?[from, to, cost, path] <~ ShortestPathDijkstra(edges[], start[])
+:order to
 "#,
         )
         .expect("Dijkstra query should execute successfully")
@@ -53,7 +53,7 @@ fn test_shortest_path_dijkstra_when_disconnected_returns_no_path() {
 edges[src, dst, cost] <- [[0, 1, 1.0]]
 start[] <- [[0]]
 end[]   <- [[2]]
-?[FROM, to, cost, path] <~ ShortestPathDijkstra(edges[], start[], end[])
+?[from, to, cost, path] <~ ShortestPathDijkstra(edges[], start[], end[])
 "#,
         )
         .expect("Dijkstra disconnected query should execute successfully")
@@ -78,7 +78,7 @@ fn test_shortest_path_dijkstra_when_start_equals_end_cost_is_zero() {
 edges[src, dst, cost] <- [[0, 1, 1.0], [1, 2, 1.0]]
 start[] <- [[0]]
 end[]   <- [[0]]
-?[FROM, to, cost, path] <~ ShortestPathDijkstra(edges[], start[], end[])
+?[from, to, cost, path] <~ ShortestPathDijkstra(edges[], start[], end[])
 "#,
         )
         .expect("Dijkstra self-loop query should execute successfully")
@@ -93,7 +93,7 @@ end[]   <- [[0]]
     let cost = res[0][2].get_float().expect("cost field should be a float");
     assert!(
         cost.abs() < 1e-9,
-        "Cost FROM node to itself = 0, got {cost}"
+        "Cost from node to itself = 0, got {cost}"
     );
 }
 
@@ -106,7 +106,7 @@ fn test_shortest_path_dijkstra_when_multiple_starts_covers_all_targets() {
             r#"
 edges[src, dst, cost] <- [[0, 1, 1.0], [2, 3, 1.0]]
 start[] <- [[0], [2]]
-?[FROM, to, cost, path] <~ ShortestPathDijkstra(edges[], start[])
+?[from, to, cost, path] <~ ShortestPathDijkstra(edges[], start[])
 "#,
         )
         .expect("Dijkstra multi-start query should execute successfully")
@@ -128,7 +128,7 @@ fn test_betweenness_centrality_when_path_graph_interior_nodes_are_higher() {
 edges[src, dst, cost] <- [[0, 1, 1.0], [0, 2, 4.0], [1, 2, 1.0],
                        [1, 3, 5.0], [2, 3, 1.0], [3, 4, 2.0]]
 ?[node, bc] <~ BetweennessCentrality(edges[])
-:ORDER node
+:order node
 "#,
         )
         .expect("BetweennessCentrality query should execute successfully")
@@ -162,7 +162,7 @@ fn test_betweenness_centrality_when_star_graph_center_is_highest() {
             r#"
 edges[src, dst, cost] <- [[0, 1, 1.0], [0, 2, 1.0], [0, 3, 1.0], [0, 4, 1.0]]
 ?[node, bc] <~ BetweennessCentrality(edges[], undirected: true)
-:ORDER -bc
+:order -bc
 "#,
         )
         .expect("BetweennessCentrality star query should execute successfully")
@@ -220,7 +220,7 @@ fn test_closeness_centrality_when_path_graph_all_scores_non_negative() {
 edges[src, dst, cost] <- [[0, 1, 1.0], [0, 2, 4.0], [1, 2, 1.0],
                        [1, 3, 5.0], [2, 3, 1.0], [3, 4, 2.0]]
 ?[node, cc] <~ ClosenessCentrality(edges[])
-:ORDER node
+:order node
 "#,
         )
         .expect("ClosenessCentrality query should execute successfully")
@@ -274,7 +274,7 @@ edges[src, dst, cost] <- [[0, 1, 1.0], [0, 2, 4.0], [1, 2, 1.0],
 nodes[n] <- [[0], [1], [2], [3], [4]]
 start[] <- [[0]]
 goal[] <- [[4]]
-?[FROM, to, cost, path] <~ ShortestPathAStar(edges[], nodes[n], start[], goal[], heuristic: 0)
+?[from, to, cost, path] <~ ShortestPathAStar(edges[], nodes[n], start[], goal[], heuristic: 0)
 "#,
         )
         .expect("A* query should execute successfully")
@@ -307,7 +307,7 @@ edges[src, dst, cost] <- [[0, 1, 1.0]]
 nodes[n] <- [[0], [1], [2]]
 start[] <- [[0]]
 goal[] <- [[2]]
-?[FROM, to, cost, path] <~ ShortestPathAStar(edges[], nodes[n], start[], goal[], heuristic: 0)
+?[from, to, cost, path] <~ ShortestPathAStar(edges[], nodes[n], start[], goal[], heuristic: 0)
 "#,
         )
         .expect("A* no-path query should execute successfully")
@@ -336,7 +336,7 @@ edges[src, dst, cost] <- [[0, 1, 3.5]]
 nodes[n] <- [[0], [1]]
 start[] <- [[0]]
 goal[] <- [[1]]
-?[FROM, to, cost, path] <~ ShortestPathAStar(edges[], nodes[n], start[], goal[], heuristic: 0)
+?[from, to, cost, path] <~ ShortestPathAStar(edges[], nodes[n], start[], goal[], heuristic: 0)
 "#,
         )
         .expect("A* direct-edge query should execute successfully")
@@ -372,7 +372,7 @@ fn test_bfs_when_linear_chain_finds_target_at_depth_4() {
 edges[src, dst] <- [[0, 1], [1, 2], [2, 3], [3, 4]]
 nodes[n] <- [[0], [1], [2], [3], [4]]
 start[] <- [[0]]
-?[FROM, to, path] <~ BFS(edges[], nodes[n], start[], condition: n == 4, LIMIT: 1)
+?[from, to, path] <~ BFS(edges[], nodes[n], start[], condition: n == 4, limit: 1)
 "#,
         )
         .expect("BFS query should execute successfully")
@@ -400,7 +400,7 @@ fn test_bfs_when_condition_never_true_returns_empty() {
 edges[src, dst] <- [[0, 1], [1, 2]]
 nodes[n] <- [[0], [1], [2]]
 start[] <- [[0]]
-?[FROM, to, path] <~ BFS(edges[], nodes[n], start[], condition: n == 99, LIMIT: 1)
+?[from, to, path] <~ BFS(edges[], nodes[n], start[], condition: n == 99, limit: 1)
 "#,
         )
         .expect("BFS no-match query should execute successfully")
@@ -419,7 +419,7 @@ fn test_dfs_when_linear_chain_finds_target() {
 edges[src, dst] <- [[0, 1], [1, 2], [2, 3], [3, 4]]
 nodes[n] <- [[0], [1], [2], [3], [4]]
 start[] <- [[0]]
-?[FROM, to, path] <~ DFS(edges[], nodes[n], start[], condition: n == 4, LIMIT: 1)
+?[from, to, path] <~ DFS(edges[], nodes[n], start[], condition: n == 4, limit: 1)
 "#,
         )
         .expect("DFS query should execute successfully")
@@ -449,11 +449,11 @@ fn test_dfs_when_target_unreachable_returns_empty() {
 edges[src, dst] <- [[0, 1]]
 nodes[n] <- [[0], [1], [2]]
 start[] <- [[0]]
-?[FROM, to, path] <~ DFS(edges[], nodes[n], start[], condition: n == 2, LIMIT: 1)
+?[from, to, path] <~ DFS(edges[], nodes[n], start[], condition: n == 2, limit: 1)
 "#,
         )
         .expect("DFS unreachable-target query should execute successfully")
         .rows;
 
-    assert!(res.is_empty(), "Node 2 is unreachable FROM 0");
+    assert!(res.is_empty(), "Node 2 is unreachable from 0");
 }

@@ -196,7 +196,7 @@ fn computer_use_def() -> ToolDef {
                     "button".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::Integer,
-                        description: "Mouse button: 1=LEFT, 2=middle, 3=RIGHT (for click, default: 1)"
+                        description: "Mouse button: 1=left, 2=middle, 3=right (for click, default: 1)"
                             .to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(1)),

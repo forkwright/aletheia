@@ -154,7 +154,7 @@ mod tests {
             limit: usize,
         ) -> Pin<Box<dyn Future<Output = Result<Vec<SourceResult>, RecallSourceError>> + Send + 'a>>
         {
-            let results: Vec<SourceResult> = self.results.iter().take(LIMIT).cloned().collect();
+            let results: Vec<SourceResult> = self.results.iter().take(limit).cloned().collect();
             Box::pin(async move { Ok(results) })
         }
 
@@ -221,7 +221,7 @@ mod tests {
 
         let results = registry.query_all("test", 5).await;
         assert_eq!(results.len(), 1);
-        assert_eq!(results.get(0).copied().unwrap_or_default().0, "available");
+        assert_eq!(results[0].0, "available");
     }
 
     #[tokio::test]

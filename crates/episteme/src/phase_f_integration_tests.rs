@@ -117,11 +117,11 @@ fn dedup_candidate_generation_finds_duplicate_instinct_patterns() {
     );
     assert_eq!(
         candidates[0].name_a, "grep code preference",
-        "dedup candidate generation finds duplicate instinct patterns: VALUES should be equal"
+        "dedup candidate generation finds duplicate instinct patterns: values should be equal"
     );
     assert_eq!(
         candidates[0].name_b, "grep code preference",
-        "dedup candidate generation finds duplicate instinct patterns: VALUES should be equal"
+        "dedup candidate generation finds duplicate instinct patterns: values should be equal"
     );
     assert!(
         candidates[0].type_match,
@@ -156,7 +156,7 @@ fn conflict_detection_identifies_contradicting_behavioral_preferences() {
     assert_eq!(
         classification,
         ConflictClassification::Contradicts,
-        "conflict detection identifies contradicting behavioral preferences: VALUES should be equal"
+        "conflict detection identifies contradicting behavioral preferences: values should be equal"
     );
 
     let refines = ConflictClassification::parse("REFINES - more specific version")
@@ -164,7 +164,7 @@ fn conflict_detection_identifies_contradicting_behavioral_preferences() {
     assert_eq!(
         refines,
         ConflictClassification::Refines,
-        "conflict detection identifies contradicting behavioral preferences: VALUES should be equal"
+        "conflict detection identifies contradicting behavioral preferences: values should be equal"
     );
 
     let existing = ConflictCandidate {
@@ -227,17 +227,17 @@ fn graph_context_includes_instinct_generated_entities_in_pagerank() {
     assert_eq!(
         ctx.importance("tool:grep"),
         0.75,
-        "graph context includes instinct generated entities in pagerank: VALUES should be equal"
+        "graph context includes instinct generated entities in pagerank: values should be equal"
     );
     assert_eq!(
         ctx.importance("tool:web_search"),
         0.42,
-        "graph context includes instinct generated entities in pagerank: VALUES should be equal"
+        "graph context includes instinct generated entities in pagerank: values should be equal"
     );
     assert_eq!(
         ctx.importance("tool:read_file"),
         0.10,
-        "graph context includes instinct generated entities in pagerank: VALUES should be equal"
+        "graph context includes instinct generated entities in pagerank: values should be equal"
     );
     assert_eq!(
         ctx.importance("tool:nonexistent"),

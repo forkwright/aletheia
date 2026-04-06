@@ -86,11 +86,11 @@ pub(crate) fn AgentBreakdown(
                                             style: "padding: 6px 8px; color: {color}; white-space: nowrap;",
                                             "{agent.name}"
                                         }
-                                        td { style: "padding: 6px 8px; color: #a8a49e; text-align: RIGHT;", "{format_tokens(agent.input_tokens)}" }
-                                        td { style: "padding: 6px 8px; color: #a8a49e; text-align: RIGHT;", "{format_tokens(agent.output_tokens)}" }
-                                        td { style: "padding: 6px 8px; color: #e8e6e3; text-align: RIGHT; font-weight: 600;", "{format_tokens(agent.total())}" }
-                                        td { style: "padding: 6px 8px; color: #706c66; text-align: RIGHT;", "{pct:.1}%" }
-                                        td { style: "padding: 6px 8px; color: #706c66; text-align: RIGHT;", "{format_tokens(agent.avg_per_session())}" }
+                                        td { style: "padding: 6px 8px; color: #a8a49e; text-align: right;", "{format_tokens(agent.input_tokens)}" }
+                                        td { style: "padding: 6px 8px; color: #a8a49e; text-align: right;", "{format_tokens(agent.output_tokens)}" }
+                                        td { style: "padding: 6px 8px; color: #e8e6e3; text-align: right; font-weight: 600;", "{format_tokens(agent.total())}" }
+                                        td { style: "padding: 6px 8px; color: #706c66; text-align: right;", "{pct:.1}%" }
+                                        td { style: "padding: 6px 8px; color: #706c66; text-align: right;", "{format_tokens(agent.avg_per_session())}" }
                                     }
                                 }
                             }
@@ -118,7 +118,7 @@ fn sort_th(
     let label = label.to_string();
     rsx! {
         th {
-            style: "padding: 6px 8px; text-align: RIGHT; color: #706c66; cursor: pointer; user-SELECT: none; white-space: nowrap;",
+            style: "padding: 6px 8px; text-align: right; color: #706c66; cursor: pointer; user-select: none; white-space: nowrap;",
             onclick: move |_| {
                 if *sort_col.read() == col {
                     let new_dir = sort_dir.read().flip();

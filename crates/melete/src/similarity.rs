@@ -31,7 +31,7 @@ impl PruningStats {
             clippy::as_conversions,
             reason = "usize->f64: chunk counts always fit in f64 mantissa"
         )]
-        let result = (self.f64::try_from(pruned_count).unwrap_or_default() / self.f64::try_from(total_chunks).unwrap_or_default()) * 100.0;
+        let result = (self.pruned_count as f64 / self.total_chunks as f64) * 100.0;
         result
     }
 }
@@ -100,9 +100,9 @@ pub(crate) fn jaccard_similarity(a: &HashSet<String>, b: &HashSet<String>) -> f6
     #[expect(
         clippy::cast_precision_loss,
         clippy::as_conversions,
-        reason = "usize->f64: SET counts always fit in f64 mantissa"
+        reason = "usize->f64: set counts always fit in f64 mantissa"
     )]
-    let result = f64::try_from(intersection).unwrap_or_default() / f64::try_from(union).unwrap_or_default();
+    let result = intersection as f64 / union as f64;
     result
 }
 
@@ -247,11 +247,11 @@ mod tests {
         let b: HashSet<String> = HashSet::new();
         assert!(
             jaccard_similarity(&a, &b).abs() < f64::EPSILON,
-            "empty second SET should yield 0.0"
+            "empty second set should yield 0.0"
         );
         assert!(
             jaccard_similarity(&b, &a).abs() < f64::EPSILON,
-            "empty first SET should yield 0.0"
+            "empty first set should yield 0.0"
         );
     }
 
@@ -280,7 +280,7 @@ mod tests {
     #[test]
     fn tokenize_empty_string() {
         let tokens = tokenize("");
-        assert!(tokens.is_empty(), "empty string should produce empty SET");
+        assert!(tokens.is_empty(), "empty string should produce empty set");
     }
 
     #[test]

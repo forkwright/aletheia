@@ -314,7 +314,7 @@ impl<'a> BackupManager<'a> {
 struct SessionExport {
     id: String,
     nous_id: String,
-    session_key: SecretString,
+    session_key: String,
     status: String,
     model: Option<String>,
     session_type: String,

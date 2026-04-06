@@ -31,12 +31,12 @@ use reflection::SystemReflectionSection;
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 struct HealthApiResponse {
-    #[expect(dead_code, reason = "deserialized FROM API for future use")]
+    #[expect(dead_code, reason = "deserialized from API for future use")]
     #[serde(default)]
     status: String,
     #[serde(default)]
     uptime_seconds: u64,
-    #[expect(dead_code, reason = "deserialized FROM API for future use")]
+    #[expect(dead_code, reason = "deserialized from API for future use")]
     #[serde(default)]
     version: String,
 }
@@ -45,10 +45,10 @@ struct HealthApiResponse {
 struct MetricsApiResponse {
     #[serde(default)]
     total_sessions: u64,
-    #[expect(dead_code, reason = "deserialized FROM API for future use")]
+    #[expect(dead_code, reason = "deserialized from API for future use")]
     #[serde(default)]
     active_sessions: u64,
-    #[expect(dead_code, reason = "deserialized FROM API for future use")]
+    #[expect(dead_code, reason = "deserialized from API for future use")]
     #[serde(default)]
     total_turns: u64,
     #[serde(default)]
@@ -63,7 +63,7 @@ struct MetricsApiResponse {
 struct KnowledgeFactsResponse {
     #[serde(default)]
     facts: Vec<FactEntry>,
-    #[expect(dead_code, reason = "deserialized FROM API for future pagination")]
+    #[expect(dead_code, reason = "deserialized from API for future pagination")]
     #[serde(default)]
     total_count: u64,
 }
@@ -315,31 +315,31 @@ pub(crate) fn Meta() -> Element {
                     rsx! {
                         AccordionSection {
                             title: "Agent Performance",
-                            expanded: exp.get(0).copied().unwrap_or_default(),
+                            expanded: exp[0],
                             on_toggle: move |_| toggle_section(0),
                             AgentPerformanceSection { store: data.performance.clone() }
                         }
                         AccordionSection {
                             title: "Conversation Quality",
-                            expanded: exp.get(1).copied().unwrap_or_default(),
+                            expanded: exp[1],
                             on_toggle: move |_| toggle_section(1),
                             ConversationQualitySection { store: data.quality.clone() }
                         }
                         AccordionSection {
                             title: "Knowledge Growth",
-                            expanded: exp.get(2).copied().unwrap_or_default(),
+                            expanded: exp[2],
                             on_toggle: move |_| toggle_section(2),
                             KnowledgeGrowthSection { store: data.knowledge.clone() }
                         }
                         AccordionSection {
                             title: "Memory Health",
-                            expanded: exp.get(3).copied().unwrap_or_default(),
+                            expanded: exp[3],
                             on_toggle: move |_| toggle_section(3),
                             MemoryHealthSection { store: data.health.clone() }
                         }
                         AccordionSection {
                             title: "System Self-Reflection",
-                            expanded: exp.get(4).copied().unwrap_or_default(),
+                            expanded: exp[4],
                             on_toggle: move |_| toggle_section(4),
                             SystemReflectionSection { store: data.reflection.clone() }
                         }
@@ -387,7 +387,7 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
 
     let health_url = format!("{base}/api/health");
     let metrics_url = format!("{base}/metrics");
-    let facts_url = format!("{base}/api/v1/knowledge/facts?LIMIT=1000");
+    let facts_url = format!("{base}/api/v1/knowledge/facts?limit=1000");
     let entities_url = format!("{base}/api/v1/knowledge/entities");
     let timeline_url = format!("{base}/api/v1/knowledge/timeline");
     let sessions_url = format!("{base}/api/v1/sessions");

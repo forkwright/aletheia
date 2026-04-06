@@ -83,8 +83,8 @@ fn audit_all_facts_returns_forgotten() {
     let store = make_store();
     let f1 = make_fact("f1", "agent-a", "visible fact");
     let f2 = make_fact("f2", "agent-a", "forgotten fact");
-    store.insert_fact(&f1).expect("INSERT f1");
-    store.insert_fact(&f2).expect("INSERT f2");
+    store.insert_fact(&f1).expect("insert f1");
+    store.insert_fact(&f2).expect("insert f2");
     store
         .forget_fact(
             &crate::id::FactId::new("f2").expect("valid test id"),
@@ -118,7 +118,7 @@ fn audit_all_facts_empty_store() {
 fn forget_already_forgotten_is_idempotent() {
     let store = make_store();
     let f1 = make_fact("f1", "agent-a", "will be forgotten twice");
-    store.insert_fact(&f1).expect("INSERT f1");
+    store.insert_fact(&f1).expect("insert f1");
     store
         .forget_fact(
             &crate::id::FactId::new("f1").expect("valid test id"),
@@ -147,7 +147,7 @@ fn forget_already_forgotten_is_idempotent() {
 fn unforget_never_forgotten_is_noop() {
     let store = make_store();
     let f1 = make_fact("f1", "agent-a", "never forgotten");
-    store.insert_fact(&f1).expect("INSERT f1");
+    store.insert_fact(&f1).expect("insert f1");
     store
         .unforget_fact(&crate::id::FactId::new("f1").expect("valid test id"))
         .expect("unforget should succeed");
@@ -189,7 +189,7 @@ fn forget_with_all_reasons() {
     ];
     for (id, _) in &reasons {
         let fact = make_fact(id, "agent-a", &format!("fact {id}"));
-        store.insert_fact(&fact).expect("INSERT");
+        store.insert_fact(&fact).expect("insert");
     }
     for (id, reason) in &reasons {
         store
@@ -238,7 +238,7 @@ fn insert_fact_unicode_content() {
     let store = make_store();
     let mut fact = make_fact("fu", "agent-a", "placeholder");
     fact.content = "日本語のファクト 🦀".to_owned();
-    store.insert_fact(&fact).expect("INSERT unicode fact");
+    store.insert_fact(&fact).expect("insert unicode fact");
     let results = store
         .query_facts("agent-a", "2026-06-01", 10)
         .expect("query");
@@ -255,7 +255,7 @@ fn insert_fact_very_long_content() {
     let long_content = "x".repeat(10240);
     let mut fact = make_fact("fl", "agent-a", "placeholder");
     fact.content = long_content.clone();
-    store.insert_fact(&fact).expect("INSERT long fact");
+    store.insert_fact(&fact).expect("insert long fact");
     let results = store
         .query_facts("agent-a", "2026-06-01", 10)
         .expect("query");
@@ -279,7 +279,7 @@ fn insert_fact_confidence_zero() {
     let store = make_store();
     let mut fact = make_fact("fc0", "agent-a", "zero confidence");
     fact.provenance.confidence = 0.0;
-    store.insert_fact(&fact).expect("INSERT zero confidence");
+    store.insert_fact(&fact).expect("insert zero confidence");
     let results = store
         .query_facts("agent-a", "2026-06-01", 10)
         .expect("query");
@@ -298,7 +298,7 @@ fn insert_fact_confidence_one() {
     let store = make_store();
     let mut fact = make_fact("fc1", "agent-a", "full confidence");
     fact.provenance.confidence = 1.0;
-    store.insert_fact(&fact).expect("INSERT full confidence");
+    store.insert_fact(&fact).expect("insert full confidence");
     let results = store
         .query_facts("agent-a", "2026-06-01", 10)
         .expect("query");
@@ -317,11 +317,11 @@ fn query_facts_limit_zero() {
     let store = make_store();
     store
         .insert_fact(&make_fact("f1", "agent-a", "fact one"))
-        .expect("INSERT");
+        .expect("insert");
     let results = store
         .query_facts("agent-a", "2026-06-01", 0)
-        .expect("query with LIMIT 0");
-    assert!(results.is_empty(), "LIMIT 0 should return no facts");
+        .expect("query with limit 0");
+    assert!(results.is_empty(), "limit 0 should return no facts");
 }
 
 #[test]
@@ -329,20 +329,20 @@ fn query_facts_large_limit() {
     let store = make_store();
     store
         .insert_fact(&make_fact("f1", "agent-a", "one"))
-        .expect("INSERT f1");
+        .expect("insert f1");
     store
         .insert_fact(&make_fact("f2", "agent-a", "two"))
-        .expect("INSERT f2");
+        .expect("insert f2");
     store
         .insert_fact(&make_fact("f3", "agent-a", "three"))
-        .expect("INSERT f3");
+        .expect("insert f3");
     let results = store
         .query_facts("agent-a", "2026-06-01", 1000)
-        .expect("query large LIMIT");
+        .expect("query large limit");
     assert_eq!(
         results.len(),
         3,
-        "large LIMIT should return all three facts"
+        "large limit should return all three facts"
     );
 }
 
@@ -405,13 +405,13 @@ fn concurrent_inserts() {
                     },
                     scope: None,
                 };
-                s.insert_fact(&fact).expect("concurrent INSERT");
+                s.insert_fact(&fact).expect("concurrent insert");
             })
         })
         .collect();
 
     for h in handles {
-        h.join().expect("thread JOIN");
+        h.join().expect("thread join");
     }
 
     let results = store
@@ -442,7 +442,7 @@ fn run_mut_query_creates_and_reads() {
     let store = make_store();
     store
         .insert_fact(&make_fact("f1", "agent-a", "Mutable test"))
-        .expect("INSERT");
+        .expect("insert");
 
     let mut params = std::collections::BTreeMap::new();
     params.insert("id".to_owned(), crate::engine::DataValue::Str("f1".into()));
@@ -451,11 +451,11 @@ fn run_mut_query_creates_and_reads() {
             r"?[id, valid_from] := *facts{id, valid_from}, id = $id :rm facts {id, valid_from}",
             params,
         )
-        .expect("DELETE via run_mut_query");
+        .expect("delete via run_mut_query");
 
     let results = store
         .query_facts("agent-a", "2026-06-01", 10)
-        .expect("query after DELETE");
+        .expect("query after delete");
     assert!(
         results.is_empty(),
         "fact deleted via run_mut_query should not be retrievable"
@@ -466,22 +466,22 @@ fn run_mut_query_creates_and_reads() {
 fn list_all_facts_returns_facts_across_agents() {
     let store = make_store();
     store
-        .insert_fact(&make_fact("f1", "agent-a", "Fact FROM agent A"))
-        .expect("INSERT a");
+        .insert_fact(&make_fact("f1", "agent-a", "Fact from agent A"))
+        .expect("insert a");
     store
-        .insert_fact(&make_fact("f2", "agent-b", "Fact FROM agent B"))
-        .expect("INSERT b");
+        .insert_fact(&make_fact("f2", "agent-b", "Fact from agent B"))
+        .expect("insert b");
 
     let all = store.list_all_facts(100).expect("list_all_facts");
     assert_eq!(all.len(), 2, "both agents' facts must be returned");
     let ids: Vec<&str> = all.iter().map(|f| f.id.as_str()).collect();
     assert!(
         ids.contains(&"f1"),
-        "list_all_facts should include fact f1 FROM agent-a"
+        "list_all_facts should include fact f1 from agent-a"
     );
     assert!(
         ids.contains(&"f2"),
-        "list_all_facts should include fact f2 FROM agent-b"
+        "list_all_facts should include fact f2 from agent-b"
     );
     assert_eq!(
         all.iter()
@@ -515,13 +515,13 @@ fn list_all_facts_empty_store_returns_empty() {
 async fn insert_fact_async_works() {
     let store = make_store();
     let fact = make_fact("f-async", "agent-a", "Async inserted fact");
-    store.insert_fact_async(fact).await.expect("async INSERT");
+    store.insert_fact_async(fact).await.expect("async insert");
 
     let results = store
         .query_facts_async("agent-a".to_owned(), "2026-06-01".to_owned(), 10)
         .await
         .expect("async query");
-    assert_eq!(results.len(), 1, "async INSERT should make fact queryable");
+    assert_eq!(results.len(), 1, "async insert should make fact queryable");
     assert_eq!(
         results[0].id.as_str(),
         "f-async",
@@ -534,10 +534,10 @@ async fn query_facts_async_works() {
     let store = make_store();
     store
         .insert_fact(&make_fact("fa1", "agent-a", "async fact one"))
-        .expect("INSERT");
+        .expect("insert");
     store
         .insert_fact(&make_fact("fa2", "agent-a", "async fact two"))
-        .expect("INSERT");
+        .expect("insert");
     let results = store
         .query_facts_async("agent-a".to_owned(), "2026-06-01".to_owned(), 10)
         .await
@@ -554,10 +554,10 @@ async fn audit_all_facts_async_works() {
     let store = make_store();
     store
         .insert_fact(&make_fact("faa1", "agent-a", "audit async one"))
-        .expect("INSERT");
+        .expect("insert");
     store
         .insert_fact(&make_fact("faa2", "agent-a", "audit async two"))
-        .expect("INSERT");
+        .expect("insert");
     store
         .forget_fact(
             &crate::id::FactId::new("faa2").expect("valid test id"),
@@ -584,7 +584,7 @@ async fn audit_all_facts_async_works() {
 async fn forget_fact_async_works() {
     let store = make_store();
     let fact = make_fact("f-forget-async", "agent-a", "Async forget");
-    store.insert_fact_async(fact).await.expect("INSERT");
+    store.insert_fact_async(fact).await.expect("insert");
 
     let forgotten = store
         .forget_fact_async(
@@ -600,7 +600,7 @@ async fn forget_fact_async_works() {
     assert_eq!(
         forgotten.lifecycle.forget_reason,
         Some(ForgetReason::Incorrect),
-        "async forget should SET the correct reason"
+        "async forget should set the correct reason"
     );
 
     let all = store
@@ -621,7 +621,7 @@ async fn forget_fact_async_works() {
 async fn unforget_fact_async_works() {
     let store = make_store();
     let fact = make_fact("f-unforget-async", "agent-a", "Async unforget");
-    store.insert_fact_async(fact).await.expect("INSERT");
+    store.insert_fact_async(fact).await.expect("insert");
 
     store
         .forget_fact_async(
@@ -653,7 +653,7 @@ async fn unforget_fact_async_works() {
 async fn increment_access_async_works() {
     let store = make_store();
     let fact = make_fact("f-access-async", "agent-a", "Async access");
-    store.insert_fact_async(fact).await.expect("INSERT");
+    store.insert_fact_async(fact).await.expect("insert");
 
     store
         .increment_access_async(vec![
@@ -672,6 +672,6 @@ async fn increment_access_async_works() {
         .expect("found");
     assert_eq!(
         found.access.access_count, 1,
-        "async increment should UPDATE access count to 1"
+        "async increment should update access count to 1"
     );
 }

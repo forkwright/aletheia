@@ -167,7 +167,7 @@ fn check_data_writable(data_dir: &Path, failures: &mut Vec<String>) {
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 #[expect(
     clippy::indexing_slicing,
-    reason = "test assertions index INTO known-non-empty Vec"
+    reason = "test assertions index into known-non-empty Vec"
 )]
 mod tests {
     use super::*;
@@ -197,9 +197,9 @@ mod tests {
             "missing path should produce a disk space failure"
         );
         assert!(
-            failures.get(0).copied().unwrap_or_default().contains("cannot check disk space"),
+            failures[0].contains("cannot check disk space"),
             "failure message should describe the error: {}",
-            failures.get(0).copied().unwrap_or_default()
+            failures[0]
         );
     }
 
@@ -236,7 +236,7 @@ mod tests {
             !failures.is_empty(),
             "an occupied port should produce a failure"
         );
-        let msg = &failures.get(0).copied().unwrap_or_default();
+        let msg = &failures[0];
         assert!(
             msg.contains(&port.to_string()),
             "failure should mention the port number: {msg}"
@@ -269,9 +269,9 @@ mod tests {
         );
         assert!(!failures.is_empty(), "missing dir should fail");
         assert!(
-            failures.get(0).copied().unwrap_or_default().contains("not readable"),
+            failures[0].contains("not readable"),
             "failure should say not readable: {}",
-            failures.get(0).copied().unwrap_or_default()
+            failures[0]
         );
     }
 
@@ -317,9 +317,9 @@ mod tests {
             "read-only dir should produce a failure"
         );
         assert!(
-            failures.get(0).copied().unwrap_or_default().contains("not writable"),
+            failures[0].contains("not writable"),
             "failure should say not writable: {}",
-            failures.get(0).copied().unwrap_or_default()
+            failures[0]
         );
     }
 

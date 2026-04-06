@@ -372,11 +372,11 @@ mod tests {
 
         let loaded = store.load_all().unwrap();
         assert_eq!(loaded.len(), 1);
-        assert_eq!(loaded.get(0).copied().unwrap_or_default().task_id, "test-task");
-        assert_eq!(loaded.get(0).copied().unwrap_or_default().run_count, 42);
-        assert_eq!(loaded.get(0).copied().unwrap_or_default().consecutive_failures, 1);
+        assert_eq!(loaded[0].task_id, "test-task");
+        assert_eq!(loaded[0].run_count, 42);
+        assert_eq!(loaded[0].consecutive_failures, 1);
         assert_eq!(
-            loaded.get(0).copied().unwrap_or_default().last_run_ts.as_deref(),
+            loaded[0].last_run_ts.as_deref(),
             Some("2026-01-01T00:00:00Z")
         );
     }
@@ -404,7 +404,7 @@ mod tests {
 
         let loaded = store.load_all().unwrap();
         assert_eq!(loaded.len(), 1);
-        assert_eq!(loaded.get(0).copied().unwrap_or_default().run_count, 5);
+        assert_eq!(loaded[0].run_count, 5);
     }
 
     #[test]
@@ -435,9 +435,9 @@ mod tests {
         let store2 = TaskStateStore::open(&db_path).unwrap();
         let loaded = store2.load_all().unwrap();
         assert_eq!(loaded.len(), 1);
-        assert_eq!(loaded.get(0).copied().unwrap_or_default().task_id, "persistent");
-        assert_eq!(loaded.get(0).copied().unwrap_or_default().run_count, 7);
-        assert_eq!(loaded.get(0).copied().unwrap_or_default().consecutive_failures, 2);
+        assert_eq!(loaded[0].task_id, "persistent");
+        assert_eq!(loaded[0].run_count, 7);
+        assert_eq!(loaded[0].consecutive_failures, 2);
     }
 
     // -- DaemonConfig tests --
@@ -563,7 +563,7 @@ webhook = true
         // NOTE: after drop, lock file is removed (best-effort)
         assert!(
             !lock_path.exists(),
-            "lock file should be removed after guard DROP"
+            "lock file should be removed after guard drop"
         );
     }
 

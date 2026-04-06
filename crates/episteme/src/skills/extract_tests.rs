@@ -111,19 +111,19 @@ fn build_prompt_includes_candidate_metadata() {
 
     assert!(
         prompt.contains("Recurrence count: 3"),
-        "prompt should include recurrence count FROM candidate metadata"
+        "prompt should include recurrence count from candidate metadata"
     );
     assert!(
         prompt.contains("Diagnostic"),
-        "prompt should include pattern type FROM candidate metadata"
+        "prompt should include pattern type from candidate metadata"
     );
     assert!(
         prompt.contains("0.72"),
-        "prompt should include heuristic score FROM candidate metadata"
+        "prompt should include heuristic score from candidate metadata"
     );
     assert!(
         prompt.contains("Grep → Read → Edit → Bash"),
-        "prompt should include normalized tool sequence FROM candidate"
+        "prompt should include normalized tool sequence from candidate"
     );
 }
 
@@ -201,22 +201,22 @@ fn parse_valid_json_response() {
 
     assert_eq!(
         skill.name, "test-driven-bug-fix",
-        "parsed skill should have the name FROM the JSON response"
+        "parsed skill should have the name from the JSON response"
     );
     assert_eq!(
         skill.steps.len(),
         4,
-        "parsed skill should have all 4 steps FROM the JSON response"
+        "parsed skill should have all 4 steps from the JSON response"
     );
     assert_eq!(
         skill.tools_used,
         vec!["Grep", "Read", "Edit", "Bash"],
-        "parsed skill should have tools in ORDER FROM the JSON response"
+        "parsed skill should have tools in order from the JSON response"
     );
     assert_eq!(
         skill.domain_tags,
         vec!["testing", "debugging"],
-        "parsed skill should have domain tags FROM the JSON response"
+        "parsed skill should have domain tags from the JSON response"
     );
     assert!(
         !skill.when_to_use.is_empty(),
@@ -230,7 +230,7 @@ fn parse_json_in_markdown_fences() {
     let skill = parse_skill_response(&response).expect("json in markdown fences should parse");
     assert_eq!(
         skill.name, "test-driven-bug-fix",
-        "skill name should be extracted correctly FROM JSON in markdown fences"
+        "skill name should be extracted correctly from JSON in markdown fences"
     );
 }
 
@@ -240,7 +240,7 @@ fn parse_json_in_bare_fences() {
     let skill = parse_skill_response(&response).expect("json in bare fences should parse");
     assert_eq!(
         skill.name, "test-driven-bug-fix",
-        "skill name should be extracted correctly FROM JSON in bare fences"
+        "skill name should be extracted correctly from JSON in bare fences"
     );
 }
 
@@ -302,7 +302,7 @@ fn parse_empty_fields_succeeds() {
     let skill = parse_skill_response(response).expect("minimal skill JSON should parse");
     assert_eq!(
         skill.name, "minimal-skill",
-        "parsed skill should have the name FROM the minimal JSON"
+        "parsed skill should have the name from the minimal JSON"
     );
     assert!(
         skill.steps.is_empty(),
@@ -323,7 +323,7 @@ async fn extractor_returns_skill_on_valid_response() {
         .expect("mock provider returns valid response");
     assert_eq!(
         skill.name, "test-driven-bug-fix",
-        "extractor should return skill with name parsed FROM provider response"
+        "extractor should return skill with name parsed from provider response"
     );
 }
 
@@ -368,7 +368,7 @@ fn to_skill_content_sets_origin_extracted() {
     let content = extracted.to_skill_content();
     assert_eq!(
         content.origin, "extracted",
-        "skill content origin should be SET to 'extracted' for LLM-extracted skills"
+        "skill content origin should be set to 'extracted' for LLM-extracted skills"
     );
 }
 
@@ -451,7 +451,7 @@ fn pending_skill_serialization_roundtrip() {
     };
     let pending = PendingSkill::new(&extracted, "cand-002");
     let json = pending.to_json().expect("pending skill serializes to JSON");
-    let back = PendingSkill::from_json(&json).expect("pending skill deserializes FROM JSON");
+    let back = PendingSkill::from_json(&json).expect("pending skill deserializes from JSON");
     assert_eq!(
         back.skill.name, "roundtrip-skill",
         "deserialized skill should preserve the original skill name"

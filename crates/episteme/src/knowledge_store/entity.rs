@@ -89,7 +89,7 @@ impl KnowledgeStore {
 
         let script = r"?[id, name, entity_type, aliases, created_at, updated_at] :=
             *entities{id, name, entity_type, aliases, created_at, updated_at}
-            :ORDER name";
+            :order name";
         let rows = self.run_read(script, BTreeMap::new())?;
 
         let mut entities = Vec::new();
@@ -97,7 +97,7 @@ impl KnowledgeStore {
             if row.len() < 6 {
                 continue;
             }
-            let aliases_str = extract_str(&row.get(3).copied().unwrap_or_default())?;
+            let aliases_str = extract_str(&row[3])?;
             let aliases: Vec<String> = if aliases_str.is_empty() {
                 Vec::new()
             } else {
@@ -106,17 +106,17 @@ impl KnowledgeStore {
                     .map(|s| s.trim().to_owned())
                     .collect()
             };
-            let created_at = crate::knowledge::parse_timestamp(&extract_str(&row.get(4).copied().unwrap_or_default())?)
+            let created_at = crate::knowledge::parse_timestamp(&extract_str(&row[4])?)
                 .unwrap_or_else(jiff::Timestamp::now);
-            let updated_at = crate::knowledge::parse_timestamp(&extract_str(&row.get(5).copied().unwrap_or_default())?)
+            let updated_at = crate::knowledge::parse_timestamp(&extract_str(&row[5])?)
                 .unwrap_or_else(jiff::Timestamp::now);
 
-            let id = crate::id::EntityId::new(extract_str(&row.get(0).copied().unwrap_or_default())?)
+            let id = crate::id::EntityId::new(extract_str(&row[0])?)
                 .context(crate::error::InvalidIdSnafu)?;
             entities.push(crate::knowledge::Entity {
                 id,
-                name: extract_str(&row.get(1).copied().unwrap_or_default())?,
-                entity_type: extract_str(&row.get(2).copied().unwrap_or_default())?,
+                name: extract_str(&row[1])?,
+                entity_type: extract_str(&row[2])?,
                 aliases,
                 created_at,
                 updated_at,
@@ -255,20 +255,20 @@ impl KnowledgeStore {
             if row.len() < 9 {
                 continue;
             }
-            let entity_a = crate::id::EntityId::new(extract_str(&row.get(0).copied().unwrap_or_default())?)
+            let entity_a = crate::id::EntityId::new(extract_str(&row[0])?)
                 .context(crate::error::InvalidIdSnafu)?;
-            let entity_b = crate::id::EntityId::new(extract_str(&row.get(1).copied().unwrap_or_default())?)
+            let entity_b = crate::id::EntityId::new(extract_str(&row[1])?)
                 .context(crate::error::InvalidIdSnafu)?;
             results.push(crate::dedup::EntityMergeCandidate {
                 entity_a,
                 entity_b,
-                name_a: extract_str(&row.get(2).copied().unwrap_or_default())?,
-                name_b: extract_str(&row.get(3).copied().unwrap_or_default())?,
-                name_similarity: extract_float(&row.get(4).copied().unwrap_or_default())?,
-                embed_similarity: extract_float(&row.get(5).copied().unwrap_or_default())?,
-                type_match: extract_bool(&row.get(6).copied().unwrap_or_default())?,
-                alias_overlap: extract_bool(&row.get(7).copied().unwrap_or_default())?,
-                merge_score: extract_float(&row.get(8).copied().unwrap_or_default())?,
+                name_a: extract_str(&row[2])?,
+                name_b: extract_str(&row[3])?,
+                name_similarity: extract_float(&row[4])?,
+                embed_similarity: extract_float(&row[5])?,
+                type_match: extract_bool(&row[6])?,
+                alias_overlap: extract_bool(&row[7])?,
+                merge_score: extract_float(&row[8])?,
             });
         }
         Ok(results)
@@ -307,19 +307,19 @@ impl KnowledgeStore {
             if row.len() < 7 {
                 continue;
             }
-            let merged_at = crate::knowledge::parse_timestamp(&extract_str(&row.get(6).copied().unwrap_or_default())?)
+            let merged_at = crate::knowledge::parse_timestamp(&extract_str(&row[6])?)
                 .unwrap_or_else(jiff::Timestamp::now);
-            let canonical_entity_id = crate::id::EntityId::new(extract_str(&row.get(0).copied().unwrap_or_default())?)
+            let canonical_entity_id = crate::id::EntityId::new(extract_str(&row[0])?)
                 .context(crate::error::InvalidIdSnafu)?;
-            let merged_entity_id = crate::id::EntityId::new(extract_str(&row.get(1).copied().unwrap_or_default())?)
+            let merged_entity_id = crate::id::EntityId::new(extract_str(&row[1])?)
                 .context(crate::error::InvalidIdSnafu)?;
             results.push(crate::dedup::MergeRecord {
                 canonical_entity_id,
                 merged_entity_id,
-                merged_entity_name: extract_str(&row.get(2).copied().unwrap_or_default())?,
-                merge_score: extract_float(&row.get(3).copied().unwrap_or_default())?,
-                facts_transferred: u32::try_from(extract_int(&row.get(4).copied().unwrap_or_default())?).unwrap_or(0),
-                relationships_redirected: u32::try_from(extract_int(&row.get(5).copied().unwrap_or_default())?).unwrap_or(0),
+                merged_entity_name: extract_str(&row[2])?,
+                merge_score: extract_float(&row[3])?,
+                facts_transferred: u32::try_from(extract_int(&row[4])?).unwrap_or(0),
+                relationships_redirected: u32::try_from(extract_int(&row[5])?).unwrap_or(0),
                 merged_at,
             });
         }
@@ -404,10 +404,10 @@ impl KnowledgeStore {
             if row.len() < 5 {
                 continue;
             }
-            let id_str = extract_str(&row.get(0).copied().unwrap_or_default())?;
-            let name = extract_str(&row.get(1).copied().unwrap_or_default())?;
-            let entity_type = extract_str(&row.get(2).copied().unwrap_or_default())?;
-            let aliases_str = extract_str(&row.get(3).copied().unwrap_or_default())?;
+            let id_str = extract_str(&row[0])?;
+            let name = extract_str(&row[1])?;
+            let entity_type = extract_str(&row[2])?;
+            let aliases_str = extract_str(&row[3])?;
             let aliases: Vec<String> = if aliases_str.is_empty() {
                 Vec::new()
             } else {
@@ -416,7 +416,7 @@ impl KnowledgeStore {
                     .map(|s| s.trim().to_owned())
                     .collect()
             };
-            let created_at = crate::knowledge::parse_timestamp(&extract_str(&row.get(4).copied().unwrap_or_default())?)
+            let created_at = crate::knowledge::parse_timestamp(&extract_str(&row[4])?)
                 .unwrap_or_else(jiff::Timestamp::now);
 
             let rel_count = self.count_relationships(&id_str)?;
@@ -455,7 +455,7 @@ impl KnowledgeStore {
             .build()
         })?;
 
-        let aliases_str = extract_str(&row.get(3).copied().unwrap_or_default())?;
+        let aliases_str = extract_str(&row[3])?;
         let aliases: Vec<String> = if aliases_str.is_empty() {
             Vec::new()
         } else {
@@ -465,15 +465,15 @@ impl KnowledgeStore {
                 .collect()
         };
 
-        let created_at = crate::knowledge::parse_timestamp(&extract_str(&row.get(4).copied().unwrap_or_default())?)
+        let created_at = crate::knowledge::parse_timestamp(&extract_str(&row[4])?)
             .unwrap_or_else(jiff::Timestamp::now);
-        let updated_at = crate::knowledge::parse_timestamp(&extract_str(&row.get(5).copied().unwrap_or_default())?)
+        let updated_at = crate::knowledge::parse_timestamp(&extract_str(&row[5])?)
             .unwrap_or_else(jiff::Timestamp::now);
 
         Ok(crate::knowledge::Entity {
             id: entity_id.clone(),
-            name: extract_str(&row.get(1).copied().unwrap_or_default())?,
-            entity_type: extract_str(&row.get(2).copied().unwrap_or_default())?,
+            name: extract_str(&row[1])?,
+            entity_type: extract_str(&row[2])?,
             aliases,
             created_at,
             updated_at,
@@ -523,10 +523,10 @@ impl KnowledgeStore {
             if row.len() < 5 {
                 continue;
             }
-            let dst = extract_str(&row.get(1).copied().unwrap_or_default())?;
-            let relation = extract_str(&row.get(2).copied().unwrap_or_default())?;
-            let weight = extract_float(&row.get(3).copied().unwrap_or_default())?;
-            let created_at = extract_str(&row.get(4).copied().unwrap_or_default())?;
+            let dst = extract_str(&row[1])?;
+            let relation = extract_str(&row[2])?;
+            let weight = extract_float(&row[3])?;
+            let created_at = extract_str(&row[4])?;
 
             if dst == to_id.as_str() {
                 let mut rm_params = BTreeMap::new();
@@ -548,7 +548,7 @@ impl KnowledgeStore {
             rm_params.insert("src".to_owned(), DataValue::Str(from_id.as_str().into()));
             rm_params.insert(
                 "dst".to_owned(),
-                DataValue::Str(extract_str(&row.get(1).copied().unwrap_or_default())?.into()),
+                DataValue::Str(extract_str(&row[1])?.into()),
             );
             let _ = self.run_mut(&queries::rm_relationship(), rm_params);
         }
@@ -580,10 +580,10 @@ impl KnowledgeStore {
             if row.len() < 5 {
                 continue;
             }
-            let src = extract_str(&row.get(0).copied().unwrap_or_default())?;
-            let relation = extract_str(&row.get(2).copied().unwrap_or_default())?;
-            let weight = extract_float(&row.get(3).copied().unwrap_or_default())?;
-            let created_at = extract_str(&row.get(4).copied().unwrap_or_default())?;
+            let src = extract_str(&row[0])?;
+            let relation = extract_str(&row[2])?;
+            let weight = extract_float(&row[3])?;
+            let created_at = extract_str(&row[4])?;
 
             if src == to_id.as_str() {
                 let mut rm_params = BTreeMap::new();
@@ -604,7 +604,7 @@ impl KnowledgeStore {
             let mut rm_params = BTreeMap::new();
             rm_params.insert(
                 "src".to_owned(),
-                DataValue::Str(extract_str(&row.get(0).copied().unwrap_or_default())?.into()),
+                DataValue::Str(extract_str(&row[0])?.into()),
             );
             rm_params.insert("dst".to_owned(), DataValue::Str(from_id.as_str().into()));
             let _ = self.run_mut(&queries::rm_relationship(), rm_params);
@@ -637,8 +637,8 @@ impl KnowledgeStore {
             if row.len() < 3 {
                 continue;
             }
-            let fact_id = extract_str(&row.get(0).copied().unwrap_or_default())?;
-            let created_at = extract_str(&row.get(2).copied().unwrap_or_default())?;
+            let fact_id = extract_str(&row[0])?;
+            let created_at = extract_str(&row[2])?;
 
             let mut put_params = BTreeMap::new();
             put_params.insert(

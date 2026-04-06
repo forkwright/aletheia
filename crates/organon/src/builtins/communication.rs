@@ -40,7 +40,7 @@ impl ToolExecutor for MessageExecutor {
 
             if text.len() > MESSAGE_MAX_LEN {
                 return Ok(ToolResult::error(format!(
-                    "Message exceeds {MESSAGE_MAX_LEN} character LIMIT ({} chars)",
+                    "Message exceeds {MESSAGE_MAX_LEN} character limit ({} chars)",
                     text.len()
                 )));
             }
@@ -74,7 +74,7 @@ impl ToolExecutor for SessionsAskExecutor {
 
             if message.len() > INTER_SESSION_MAX_MESSAGE_LEN {
                 return Ok(ToolResult::error(format!(
-                    "Message exceeds {INTER_SESSION_MAX_MESSAGE_LEN} byte LIMIT ({} bytes)",
+                    "Message exceeds {INTER_SESSION_MAX_MESSAGE_LEN} byte limit ({} bytes)",
                     message.len()
                 )));
             }
@@ -127,7 +127,7 @@ impl ToolExecutor for SessionsSendExecutor {
 
             if message.len() > INTER_SESSION_MAX_MESSAGE_LEN {
                 return Ok(ToolResult::error(format!(
-                    "Message exceeds {INTER_SESSION_MAX_MESSAGE_LEN} byte LIMIT ({} bytes)",
+                    "Message exceeds {INTER_SESSION_MAX_MESSAGE_LEN} byte limit ({} bytes)",
                     message.len()
                 )));
             }
@@ -164,7 +164,7 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
 fn message_def() -> ToolDef {
     ToolDef {
         name: ToolName::from_static("message"), // kanon:ignore RUST/expect
-        description: "Send a message to a user or GROUP via Signal".to_owned(),
+        description: "Send a message to a user or group via Signal".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
             properties: IndexMap::from([
@@ -172,7 +172,7 @@ fn message_def() -> ToolDef {
                     "to".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::String,
-                        description: "Recipient: phone (+1234567890), GROUP (GROUP:ID), or username (u:handle)".to_owned(),
+                        description: "Recipient: phone (+1234567890), group (group:ID), or username (u:handle)".to_owned(),
                         enum_values: None,
                         default: None,
                     },
@@ -319,7 +319,7 @@ mod tests {
 
     fn mock_ctx() -> ToolContext {
         ToolContext {
-            nous_id: NousId::new("test-agent").unwrap_or_default(),
+            nous_id: NousId::new("test-agent").expect("valid"),
             session_id: SessionId::new(),
             workspace: PathBuf::from("/tmp/test"),
             allowed_roots: vec![PathBuf::from("/tmp")],
@@ -331,7 +331,7 @@ mod tests {
     fn mock_ctx_with_services(services: ToolServices) -> ToolContext {
         install_crypto_provider();
         ToolContext {
-            nous_id: NousId::new("test-agent").unwrap_or_default(),
+            nous_id: NousId::new("test-agent").expect("valid"),
             session_id: SessionId::new(),
             workspace: PathBuf::from("/tmp/test"),
             allowed_roots: vec![PathBuf::from("/tmp")],
@@ -405,7 +405,7 @@ mod tests {
     #[tokio::test]
     async fn register_communication_tools() {
         let mut reg = ToolRegistry::new();
-        super::register(&mut reg).unwrap_or_default();
+        super::register(&mut reg).expect("register");
         assert_eq!(
             reg.definitions().len(),
             3,
@@ -417,9 +417,9 @@ mod tests {
     async fn message_def_requires_to_and_text() {
         install_crypto_provider();
         let mut reg = ToolRegistry::new();
-        super::register(&mut reg).unwrap_or_default();
+        super::register(&mut reg).expect("register");
         let name = ToolName::from_static("message");
-        let def = reg.get_def(&name).unwrap_or_default();
+        let def = reg.get_def(&name).expect("found");
         assert_eq!(
             def.input_schema.required,
             vec!["to", "text"],
@@ -431,9 +431,9 @@ mod tests {
     async fn sessions_ask_def_requires_agent_and_message() {
         install_crypto_provider();
         let mut reg = ToolRegistry::new();
-        super::register(&mut reg).unwrap_or_default();
+        super::register(&mut reg).expect("register");
         let name = ToolName::from_static("sessions_ask");
-        let def = reg.get_def(&name).unwrap_or_default();
+        let def = reg.get_def(&name).expect("found");
         assert_eq!(
             def.input_schema.required,
             vec!["agentId", "message"],
@@ -445,9 +445,9 @@ mod tests {
     async fn sessions_send_def_requires_agent_and_message() {
         install_crypto_provider();
         let mut reg = ToolRegistry::new();
-        super::register(&mut reg).unwrap_or_default();
+        super::register(&mut reg).expect("register");
         let name = ToolName::from_static("sessions_send");
-        let def = reg.get_def(&name).unwrap_or_default();
+        let def = reg.get_def(&name).expect("found");
         assert_eq!(
             def.input_schema.required,
             vec!["agentId", "message"],
@@ -459,13 +459,13 @@ mod tests {
     async fn message_missing_service_returns_error() {
         install_crypto_provider();
         let mut reg = ToolRegistry::new();
-        super::register(&mut reg).unwrap_or_default();
+        super::register(&mut reg).expect("register");
         let input = ToolInput {
             name: ToolName::from_static("message"),
             tool_use_id: "tu_1".to_owned(),
             arguments: serde_json::json!({"to": "+1234567890", "text": "hello"}),
         };
-        let result = reg.execute(&input, &mock_ctx()).await.unwrap_or_default();
+        let result = reg.execute(&input, &mock_ctx()).await.expect("execute");
         assert!(result.is_error, "expected result.is_error to be true");
         assert!(
             result.content.text_summary().contains("not available"),
@@ -477,13 +477,13 @@ mod tests {
     async fn sessions_send_missing_service_returns_error() {
         install_crypto_provider();
         let mut reg = ToolRegistry::new();
-        super::register(&mut reg).unwrap_or_default();
+        super::register(&mut reg).expect("register");
         let input = ToolInput {
             name: ToolName::from_static("sessions_send"),
             tool_use_id: "tu_1".to_owned(),
             arguments: serde_json::json!({"agentId": "syn", "message": "hello"}),
         };
-        let result = reg.execute(&input, &mock_ctx()).await.unwrap_or_default();
+        let result = reg.execute(&input, &mock_ctx()).await.expect("execute");
         assert!(result.is_error, "expected result.is_error to be true");
         assert!(
             result.content.text_summary().contains("not available"),
@@ -495,13 +495,13 @@ mod tests {
     async fn sessions_ask_missing_service_returns_error() {
         install_crypto_provider();
         let mut reg = ToolRegistry::new();
-        super::register(&mut reg).unwrap_or_default();
+        super::register(&mut reg).expect("register");
         let input = ToolInput {
             name: ToolName::from_static("sessions_ask"),
             tool_use_id: "tu_1".to_owned(),
             arguments: serde_json::json!({"agentId": "syn", "message": "hello"}),
         };
-        let result = reg.execute(&input, &mock_ctx()).await.unwrap_or_default();
+        let result = reg.execute(&input, &mock_ctx()).await.expect("execute");
         assert!(result.is_error, "expected result.is_error to be true");
         assert!(
             result.content.text_summary().contains("not available"),
@@ -526,13 +526,13 @@ mod tests {
             messenger: Some(messenger),
         });
         let mut reg = ToolRegistry::new();
-        super::register(&mut reg).unwrap_or_default();
+        super::register(&mut reg).expect("register");
         let input = ToolInput {
             name: ToolName::from_static("message"),
             tool_use_id: "tu_1".to_owned(),
             arguments: serde_json::json!({"to": "+1234567890", "text": "x".repeat(4001)}),
         };
-        let result = reg.execute(&input, &ctx).await.unwrap_or_default();
+        let result = reg.execute(&input, &ctx).await.expect("execute");
         assert!(result.is_error, "expected result.is_error to be true");
         assert!(
             result.content.text_summary().contains("4000"),
@@ -558,13 +558,13 @@ mod tests {
             messenger: Some(messenger),
         });
         let mut reg = ToolRegistry::new();
-        super::register(&mut reg).unwrap_or_default();
+        super::register(&mut reg).expect("register");
         let input = ToolInput {
             name: ToolName::from_static("message"),
             tool_use_id: "tu_1".to_owned(),
             arguments: serde_json::json!({"to": "+1234567890", "text": "hello world"}),
         };
-        let result = reg.execute(&input, &ctx).await.unwrap_or_default();
+        let result = reg.execute(&input, &ctx).await.expect("execute");
         assert!(!result.is_error, "expected result.is_error to be false");
         assert!(
             result.content.text_summary().contains("sent"),
@@ -574,19 +574,19 @@ mod tests {
         let calls = messenger_ref.send_calls.lock().unwrap();
         assert_eq!(calls.len(), 1, "expected calls.len() to equal 1");
         assert_eq!(
-            calls.get(0).copied().unwrap_or_default().0,
+            calls[0].0,
             "+1234567890",
-            "expected calls.get(0).copied().unwrap_or_default().0 to equal \"+1234567890\""
+            "expected calls[0].0 to equal \"+1234567890\""
         );
         assert_eq!(
-            calls.get(0).copied().unwrap_or_default().1,
+            calls[0].1,
             "hello world",
-            "expected calls.get(0).copied().unwrap_or_default().1 to equal \"hello world\""
+            "expected calls[0].1 to equal \"hello world\""
         );
         assert_eq!(
-            calls.get(0).copied().unwrap_or_default().2,
+            calls[0].2,
             "test-agent",
-            "expected calls.get(0).copied().unwrap_or_default().2 to equal \"test-agent\""
+            "expected calls[0].2 to equal \"test-agent\""
         );
     }
 
@@ -608,13 +608,13 @@ mod tests {
             server_tool_config: ServerToolConfig::default(),
         });
         let mut reg = ToolRegistry::new();
-        super::register(&mut reg).unwrap_or_default();
+        super::register(&mut reg).expect("register");
         let input = ToolInput {
             name: ToolName::from_static("sessions_send"),
             tool_use_id: "tu_1".to_owned(),
             arguments: serde_json::json!({"agentId": "syn", "message": "do the thing"}),
         };
-        let result = reg.execute(&input, &ctx).await.unwrap_or_default();
+        let result = reg.execute(&input, &ctx).await.expect("execute");
         assert!(!result.is_error, "expected result.is_error to be false");
         assert!(
             result.content.text_summary().contains("sent"),
@@ -624,24 +624,24 @@ mod tests {
         let calls = cross_ref.send_calls.lock().unwrap();
         assert_eq!(calls.len(), 1, "expected calls.len() to equal 1");
         assert_eq!(
-            calls.get(0).copied().unwrap_or_default().0,
+            calls[0].0,
             "test-agent",
-            "expected calls.get(0).copied().unwrap_or_default().0 to equal \"test-agent\""
+            "expected calls[0].0 to equal \"test-agent\""
         );
         assert_eq!(
-            calls.get(0).copied().unwrap_or_default().1,
+            calls[0].1,
             "syn",
-            "expected calls.get(0).copied().unwrap_or_default().1 to equal \"syn\""
+            "expected calls[0].1 to equal \"syn\""
         );
         assert_eq!(
-            calls.get(0).copied().unwrap_or_default().2,
+            calls[0].2,
             "main",
-            "expected calls.get(0).copied().unwrap_or_default().2 to equal \"main\""
+            "expected calls[0].2 to equal \"main\""
         );
         assert_eq!(
-            calls.get(0).copied().unwrap_or_default().3,
+            calls[0].3,
             "do the thing",
-            "expected calls.get(0).copied().unwrap_or_default().3 to equal \"do the thing\""
+            "expected calls[0].3 to equal \"do the thing\""
         );
     }
 
@@ -663,20 +663,20 @@ mod tests {
             server_tool_config: ServerToolConfig::default(),
         });
         let mut reg = ToolRegistry::new();
-        super::register(&mut reg).unwrap_or_default();
+        super::register(&mut reg).expect("register");
         let input = ToolInput {
             name: ToolName::from_static("sessions_send"),
             tool_use_id: "tu_1".to_owned(),
             arguments: serde_json::json!({"agentId": "syn", "message": "hi", "sessionKey": "custom"}),
         };
-        let result = reg.execute(&input, &ctx).await.unwrap_or_default();
+        let result = reg.execute(&input, &ctx).await.expect("execute");
         assert!(!result.is_error, "expected result.is_error to be false");
 
         let calls = cross_ref.send_calls.lock().unwrap();
         assert_eq!(
-            calls.get(0).copied().unwrap_or_default().2,
+            calls[0].2,
             "custom",
-            "expected calls.get(0).copied().unwrap_or_default().2 to equal \"custom\""
+            "expected calls[0].2 to equal \"custom\""
         );
     }
 
@@ -698,13 +698,13 @@ mod tests {
             server_tool_config: ServerToolConfig::default(),
         });
         let mut reg = ToolRegistry::new();
-        super::register(&mut reg).unwrap_or_default();
+        super::register(&mut reg).expect("register");
         let input = ToolInput {
             name: ToolName::from_static("sessions_ask"),
             tool_use_id: "tu_1".to_owned(),
             arguments: serde_json::json!({"agentId": "syn", "message": "what is the answer?"}),
         };
-        let result = reg.execute(&input, &ctx).await.unwrap_or_default();
+        let result = reg.execute(&input, &ctx).await.expect("execute");
         assert!(!result.is_error, "expected result.is_error to be false");
         assert_eq!(
             result.content.text_summary(),
@@ -731,13 +731,13 @@ mod tests {
             server_tool_config: ServerToolConfig::default(),
         });
         let mut reg = ToolRegistry::new();
-        super::register(&mut reg).unwrap_or_default();
+        super::register(&mut reg).expect("register");
         let input = ToolInput {
             name: ToolName::from_static("sessions_ask"),
             tool_use_id: "tu_1".to_owned(),
             arguments: serde_json::json!({"agentId": "syn", "message": "hello?"}),
         };
-        let result = reg.execute(&input, &ctx).await.unwrap_or_default();
+        let result = reg.execute(&input, &ctx).await.expect("execute");
         assert!(result.is_error, "expected result.is_error to be true");
         assert!(
             result.content.text_summary().contains("timed out"),

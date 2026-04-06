@@ -18,7 +18,7 @@ pub(crate) fn op_sub(args: &[DataValue]) -> Result<DataValue> {
                 clippy::cast_precision_loss,
                 reason = "i64 to f64: precision loss acceptable"
             )]
-            let lhs = *f64::try_from(a).unwrap_or_default();
+            let lhs = *a as f64;
             DataValue::Num(Num::Float(lhs - b))
         }
         (DataValue::Num(Num::Float(a)), DataValue::Num(Num::Int(b))) => {
@@ -26,7 +26,7 @@ pub(crate) fn op_sub(args: &[DataValue]) -> Result<DataValue> {
                 clippy::cast_precision_loss,
                 reason = "i64 to f64: precision loss acceptable"
             )]
-            let rhs = *f64::try_from(b).unwrap_or_default();
+            let rhs = *b as f64;
             DataValue::Num(Num::Float(a - rhs))
         }
         (DataValue::Vec(a), DataValue::Vec(b)) => match (a, b) {
@@ -45,7 +45,7 @@ pub(crate) fn op_sub(args: &[DataValue]) -> Result<DataValue> {
             let b = b.get_float().ok_or_else(|| {
                 TypeMismatchSnafu {
                     op: "sub",
-                    expected: "numbers to subtract FROM vectors",
+                    expected: "numbers to subtract from vectors",
                 }
                 .build()
             })?;
@@ -55,7 +55,7 @@ pub(crate) fn op_sub(args: &[DataValue]) -> Result<DataValue> {
                         clippy::cast_possible_truncation,
                         reason = "f64 to f32: intentional precision reduction"
                     )]
-                    let b = f32::try_from(b).unwrap_or_default();
+                    let b = b as f32;
                     v -= b;
                     DataValue::Vec(Vector::F32(v))
                 }
@@ -69,7 +69,7 @@ pub(crate) fn op_sub(args: &[DataValue]) -> Result<DataValue> {
             let a = a.get_float().ok_or_else(|| {
                 TypeMismatchSnafu {
                     op: "sub",
-                    expected: "vectors to subtract FROM numbers",
+                    expected: "vectors to subtract from numbers",
                 }
                 .build()
             })?;
@@ -79,7 +79,7 @@ pub(crate) fn op_sub(args: &[DataValue]) -> Result<DataValue> {
                         clippy::cast_possible_truncation,
                         reason = "f64 to f32: intentional precision reduction"
                     )]
-                    let a = f32::try_from(a).unwrap_or_default();
+                    let a = a as f32;
                     v -= a;
                     DataValue::Vec(Vector::F32(-v))
                 }
@@ -123,7 +123,7 @@ pub(crate) fn op_mul(args: &[DataValue]) -> Result<DataValue> {
             clippy::cast_precision_loss,
             reason = "i64 to f64: precision loss acceptable"
         )]
-        let acc = f64::try_from(i_accum).unwrap_or_default();
+        let acc = i_accum as f64;
         Ok(DataValue::Num(Num::Float(acc * f_accum)))
     }
 }
@@ -135,12 +135,12 @@ pub(crate) fn op_div(args: &[DataValue]) -> Result<DataValue> {
                 clippy::cast_precision_loss,
                 reason = "i64 to f64: precision loss acceptable"
             )]
-            let lhs = *f64::try_from(a).unwrap_or_default();
+            let lhs = *a as f64;
             #[expect(
                 clippy::cast_precision_loss,
                 reason = "i64 to f64: precision loss acceptable"
             )]
-            let rhs = *f64::try_from(b).unwrap_or_default();
+            let rhs = *b as f64;
             DataValue::Num(Num::Float(lhs / rhs))
         }
         (DataValue::Num(Num::Float(a)), DataValue::Num(Num::Float(b))) => {
@@ -151,7 +151,7 @@ pub(crate) fn op_div(args: &[DataValue]) -> Result<DataValue> {
                 clippy::cast_precision_loss,
                 reason = "i64 to f64: precision loss acceptable"
             )]
-            let lhs = *f64::try_from(a).unwrap_or_default();
+            let lhs = *a as f64;
             DataValue::Num(Num::Float(lhs / b))
         }
         (DataValue::Num(Num::Float(a)), DataValue::Num(Num::Int(b))) => {
@@ -159,7 +159,7 @@ pub(crate) fn op_div(args: &[DataValue]) -> Result<DataValue> {
                 clippy::cast_precision_loss,
                 reason = "i64 to f64: precision loss acceptable"
             )]
-            let rhs = *f64::try_from(b).unwrap_or_default();
+            let rhs = *b as f64;
             DataValue::Num(Num::Float(a / rhs))
         }
         (DataValue::Vec(a), DataValue::Vec(b)) => match (a, b) {
@@ -178,7 +178,7 @@ pub(crate) fn op_div(args: &[DataValue]) -> Result<DataValue> {
             let b = b.get_float().ok_or_else(|| {
                 TypeMismatchSnafu {
                     op: "sub",
-                    expected: "numbers to subtract FROM vectors",
+                    expected: "numbers to subtract from vectors",
                 }
                 .build()
             })?;
@@ -188,7 +188,7 @@ pub(crate) fn op_div(args: &[DataValue]) -> Result<DataValue> {
                         clippy::cast_possible_truncation,
                         reason = "f64 to f32: intentional precision reduction"
                     )]
-                    let b = f32::try_from(b).unwrap_or_default();
+                    let b = b as f32;
                     v /= b;
                     DataValue::Vec(Vector::F32(v))
                 }
@@ -202,7 +202,7 @@ pub(crate) fn op_div(args: &[DataValue]) -> Result<DataValue> {
             let a = a.get_float().ok_or_else(|| {
                 TypeMismatchSnafu {
                     op: "sub",
-                    expected: "vectors to subtract FROM numbers",
+                    expected: "vectors to subtract from numbers",
                 }
                 .build()
             })?;
@@ -212,7 +212,7 @@ pub(crate) fn op_div(args: &[DataValue]) -> Result<DataValue> {
                         clippy::cast_possible_truncation,
                         reason = "f64 to f32: intentional precision reduction"
                     )]
-                    let a = f32::try_from(a).unwrap_or_default();
+                    let a = a as f32;
                     DataValue::Vec(Vector::F32(a / v))
                 }
                 Vector::F64(v) => DataValue::Vec(Vector::F64(a / v)),

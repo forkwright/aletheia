@@ -156,7 +156,7 @@ pub(crate) fn EntityList(
                     }
                 }
                 span {
-                    style: "margin-LEFT: auto;",
+                    style: "margin-left: auto;",
                     "{count} entities"
                 }
             }

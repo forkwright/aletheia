@@ -114,7 +114,7 @@ pub async fn create(
     path = "/api/v1/sessions",
     params(
         ("nous_id" = Option<String>, Query, description = "Filter sessions by agent ID"),
-        ("LIMIT" = Option<u32>, Query, description = "Maximum number of sessions to return"),
+        ("limit" = Option<u32>, Query, description = "Maximum number of sessions to return"),
     ),
     responses(
         (status = 200, description = "Session list", body = ListSessionsResponse),
@@ -397,7 +397,7 @@ const DEFAULT_HISTORY_LIMIT: u32 = 50;
     path = "/api/v1/sessions/{id}/history",
     params(
         ("id" = String, Path, description = "Session ID"),
-        ("LIMIT" = Option<u32>, Query, description = "Maximum messages to return"),
+        ("limit" = Option<u32>, Query, description = "Maximum messages to return"),
         ("before" = Option<i64>, Query, description = "Return messages before this sequence number"),
     ),
     responses(

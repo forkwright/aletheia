@@ -9,7 +9,7 @@ use super::super::*;
 
 fn test_ctx(dir: &Path) -> ToolContext {
     ToolContext {
-        nous_id: NousId::new("test-agent").unwrap_or_default(),
+        nous_id: NousId::new("test-agent").expect("valid"),
         session_id: SessionId::new(),
         workspace: dir.to_path_buf(),
         allowed_roots: vec![dir.to_path_buf()],
@@ -20,7 +20,7 @@ fn test_ctx(dir: &Path) -> ToolContext {
 
 fn tool_input(name: &str, args: serde_json::Value) -> ToolInput {
     ToolInput {
-        name: ToolName::new(name).unwrap_or_default(),
+        name: ToolName::new(name).expect("valid"),
         tool_use_id: "toolu_test".to_owned(),
         arguments: args,
     }
@@ -28,16 +28,16 @@ fn tool_input(name: &str, args: serde_json::Value) -> ToolInput {
 
 #[tokio::test]
 async fn read_existing_file() {
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("create temp dir");
     #[expect(
         clippy::disallowed_methods,
         reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
     )]
-    std::fs::write(dir.path().join("hello.txt"), "hello world").unwrap_or_default();
+    std::fs::write(dir.path().join("hello.txt"), "hello world").expect("write");
 
     let ctx = test_ctx(dir.path());
     let input = tool_input("read", serde_json::json!({ "path": "hello.txt" }));
-    let result = ReadExecutor.execute(&input, &ctx).await.unwrap_or_default();
+    let result = ReadExecutor.execute(&input, &ctx).await.expect("execute");
     assert_eq!(
         result.content.text_summary(),
         "hello world",
@@ -51,19 +51,19 @@ async fn read_existing_file() {
 
 #[tokio::test]
 async fn read_with_max_lines() {
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("create temp dir");
     #[expect(
         clippy::disallowed_methods,
         reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
     )]
-    std::fs::write(dir.path().join("lines.txt"), "a\nb\nc\nd\ne\n").unwrap_or_default();
+    std::fs::write(dir.path().join("lines.txt"), "a\nb\nc\nd\ne\n").expect("write");
 
     let ctx = test_ctx(dir.path());
     let input = tool_input(
         "read",
         serde_json::json!({ "path": "lines.txt", "maxLines": 2 }),
     );
-    let result = ReadExecutor.execute(&input, &ctx).await.unwrap_or_default();
+    let result = ReadExecutor.execute(&input, &ctx).await.expect("execute");
     assert_eq!(
         result.content.text_summary(),
         "a\nb",
@@ -77,10 +77,10 @@ async fn read_with_max_lines() {
 
 #[tokio::test]
 async fn read_missing_file() {
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("create temp dir");
     let ctx = test_ctx(dir.path());
     let input = tool_input("read", serde_json::json!({ "path": "nope.txt" }));
-    let result = ReadExecutor.execute(&input, &ctx).await.unwrap_or_default();
+    let result = ReadExecutor.execute(&input, &ctx).await.expect("execute");
     assert!(
         result.is_error,
         "reading a missing file should produce an error result"
@@ -93,7 +93,7 @@ async fn read_missing_file() {
 
 #[tokio::test]
 async fn write_creates_file() {
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("create temp dir");
     let ctx = test_ctx(dir.path());
     let input = tool_input(
         "write",
@@ -102,7 +102,7 @@ async fn write_creates_file() {
     let result = WriteExecutor
         .execute(&input, &ctx)
         .await
-        .unwrap_or_default();
+        .expect("execute");
     assert!(
         !result.is_error,
         "writing a new file should not produce an error"
@@ -111,7 +111,7 @@ async fn write_creates_file() {
         result.content.text_summary().contains("wrote 4 bytes"),
         "success message should report bytes written"
     );
-    let on_disk = std::fs::read_to_string(dir.path().join("out.txt")).unwrap_or_default();
+    let on_disk = std::fs::read_to_string(dir.path().join("out.txt")).expect("read");
     assert_eq!(
         on_disk, "data",
         "file content should match what was written"
@@ -120,7 +120,7 @@ async fn write_creates_file() {
 
 #[tokio::test]
 async fn write_creates_parent_dirs() {
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("create temp dir");
     let ctx = test_ctx(dir.path());
     let input = tool_input(
         "write",
@@ -129,12 +129,12 @@ async fn write_creates_parent_dirs() {
     let result = WriteExecutor
         .execute(&input, &ctx)
         .await
-        .unwrap_or_default();
+        .expect("execute");
     assert!(
         !result.is_error,
-        "writing to a nested path should CREATE parent directories"
+        "writing to a nested path should create parent directories"
     );
-    let on_disk = std::fs::read_to_string(dir.path().join("sub/deep/file.txt")).unwrap_or_default();
+    let on_disk = std::fs::read_to_string(dir.path().join("sub/deep/file.txt")).expect("read");
     assert_eq!(
         on_disk, "nested",
         "nested file content should match what was written"
@@ -143,12 +143,12 @@ async fn write_creates_parent_dirs() {
 
 #[tokio::test]
 async fn write_append_mode() {
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("create temp dir");
     #[expect(
         clippy::disallowed_methods,
         reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
     )]
-    std::fs::write(dir.path().join("log.txt"), "first\n").unwrap_or_default();
+    std::fs::write(dir.path().join("log.txt"), "first\n").expect("write");
 
     let ctx = test_ctx(dir.path());
     let input = tool_input(
@@ -158,9 +158,9 @@ async fn write_append_mode() {
     let result = WriteExecutor
         .execute(&input, &ctx)
         .await
-        .unwrap_or_default();
+        .expect("execute");
     assert!(!result.is_error, "append write should not produce an error");
-    let on_disk = std::fs::read_to_string(dir.path().join("log.txt")).unwrap_or_default();
+    let on_disk = std::fs::read_to_string(dir.path().join("log.txt")).expect("read");
     assert_eq!(
         on_disk, "first\nsecond\n",
         "append mode should add content after existing data"
@@ -169,12 +169,12 @@ async fn write_append_mode() {
 
 #[tokio::test]
 async fn edit_single_match() {
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("create temp dir");
     #[expect(
         clippy::disallowed_methods,
         reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
     )]
-    std::fs::write(dir.path().join("code.rs"), "fn old_name() {}").unwrap_or_default();
+    std::fs::write(dir.path().join("code.rs"), "fn old_name() {}").expect("write");
 
     let ctx = test_ctx(dir.path());
     let input = tool_input(
@@ -185,7 +185,7 @@ async fn edit_single_match() {
             "new_text": "new_name"
         }),
     );
-    let result = EditExecutor.execute(&input, &ctx).await.unwrap_or_default();
+    let result = EditExecutor.execute(&input, &ctx).await.expect("execute");
     assert!(
         !result.is_error,
         "editing a file with a single match should not produce an error"
@@ -194,7 +194,7 @@ async fn edit_single_match() {
         result.content.text_summary().contains("edited"),
         "success message should indicate the file was edited"
     );
-    let on_disk = std::fs::read_to_string(dir.path().join("code.rs")).unwrap_or_default();
+    let on_disk = std::fs::read_to_string(dir.path().join("code.rs")).expect("read");
     assert_eq!(
         on_disk, "fn new_name() {}",
         "file should contain the replacement text"
@@ -203,12 +203,12 @@ async fn edit_single_match() {
 
 #[tokio::test]
 async fn edit_not_found() {
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("create temp dir");
     #[expect(
         clippy::disallowed_methods,
         reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
     )]
-    std::fs::write(dir.path().join("code.rs"), "fn hello() {}").unwrap_or_default();
+    std::fs::write(dir.path().join("code.rs"), "fn hello() {}").expect("write");
 
     let ctx = test_ctx(dir.path());
     let input = tool_input(
@@ -219,7 +219,7 @@ async fn edit_not_found() {
             "new_text": "whatever"
         }),
     );
-    let result = EditExecutor.execute(&input, &ctx).await.unwrap_or_default();
+    let result = EditExecutor.execute(&input, &ctx).await.expect("execute");
     assert!(
         result.is_error,
         "editing with a non-existent old_text should produce an error result"
@@ -232,12 +232,12 @@ async fn edit_not_found() {
 
 #[tokio::test]
 async fn edit_multiple_matches() {
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("create temp dir");
     #[expect(
         clippy::disallowed_methods,
         reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
     )]
-    std::fs::write(dir.path().join("dup.txt"), "aaa bbb aaa").unwrap_or_default();
+    std::fs::write(dir.path().join("dup.txt"), "aaa bbb aaa").expect("write");
 
     let ctx = test_ctx(dir.path());
     let input = tool_input(
@@ -248,7 +248,7 @@ async fn edit_multiple_matches() {
             "new_text": "ccc"
         }),
     );
-    let result = EditExecutor.execute(&input, &ctx).await.unwrap_or_default();
+    let result = EditExecutor.execute(&input, &ctx).await.expect("execute");
     assert!(
         result.is_error,
         "editing with multiple matches should produce an error result"
@@ -261,7 +261,7 @@ async fn edit_multiple_matches() {
 
 #[tokio::test]
 async fn exec_simple_command() {
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("create temp dir");
     let ctx = test_ctx(dir.path());
     let input = tool_input("exec", serde_json::json!({ "command": "echo hello" }));
     let result = ExecExecutor {
@@ -269,7 +269,7 @@ async fn exec_simple_command() {
     }
     .execute(&input, &ctx)
     .await
-    .unwrap_or_default();
+    .expect("execute");
     assert!(
         !result.is_error,
         "executing a simple echo command should not produce an error"
@@ -286,7 +286,7 @@ async fn exec_simple_command() {
 
 #[tokio::test]
 async fn exec_timeout() {
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("create temp dir");
     let ctx = test_ctx(dir.path());
     let input = tool_input(
         "exec",
@@ -297,7 +297,7 @@ async fn exec_timeout() {
     }
     .execute(&input, &ctx)
     .await
-    .unwrap_or_default();
+    .expect("execute");
     assert!(
         result.is_error,
         "a command exceeding its timeout should produce an error result"
@@ -310,7 +310,7 @@ async fn exec_timeout() {
 
 #[tokio::test]
 async fn path_traversal_blocked() {
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("create temp dir");
     let ctx = test_ctx(dir.path());
     let input = tool_input("read", serde_json::json!({ "path": "../../etc/passwd" }));
     let err = ReadExecutor
@@ -325,7 +325,7 @@ async fn path_traversal_blocked() {
 
 #[tokio::test]
 async fn test_read_when_path_argument_missing_returns_invalid_input_error() {
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("create temp dir");
     let ctx = test_ctx(dir.path());
     let input = tool_input("read", serde_json::json!({}));
     let err = ReadExecutor
@@ -340,7 +340,7 @@ async fn test_read_when_path_argument_missing_returns_invalid_input_error() {
 
 #[tokio::test]
 async fn test_write_when_path_argument_missing_returns_error() {
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("create temp dir");
     let ctx = test_ctx(dir.path());
     let input = tool_input("write", serde_json::json!({ "content": "data" }));
     let err = WriteExecutor
@@ -355,7 +355,7 @@ async fn test_write_when_path_argument_missing_returns_error() {
 
 #[tokio::test]
 async fn test_write_when_content_argument_missing_returns_error() {
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("create temp dir");
     let ctx = test_ctx(dir.path());
     let input = tool_input("write", serde_json::json!({ "path": "out.txt" }));
     let err = WriteExecutor
@@ -370,12 +370,12 @@ async fn test_write_when_content_argument_missing_returns_error() {
 
 #[tokio::test]
 async fn test_edit_when_old_text_argument_missing_returns_error() {
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("create temp dir");
     #[expect(
         clippy::disallowed_methods,
         reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
     )]
-    std::fs::write(dir.path().join("f.txt"), "hello world").unwrap_or_default();
+    std::fs::write(dir.path().join("f.txt"), "hello world").expect("write");
     let ctx = test_ctx(dir.path());
     let input = tool_input(
         "edit",
@@ -393,7 +393,7 @@ async fn test_edit_when_old_text_argument_missing_returns_error() {
 
 #[tokio::test]
 async fn test_exec_when_command_argument_missing_returns_error() {
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("create temp dir");
     let ctx = test_ctx(dir.path());
     let input = tool_input("exec", serde_json::json!({}));
     let err = (ExecExecutor {
@@ -410,18 +410,18 @@ async fn test_exec_when_command_argument_missing_returns_error() {
 
 #[tokio::test]
 async fn test_read_ignores_unknown_extra_fields() {
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("create temp dir");
     #[expect(
         clippy::disallowed_methods,
         reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
     )]
-    std::fs::write(dir.path().join("hi.txt"), "hello").unwrap_or_default();
+    std::fs::write(dir.path().join("hi.txt"), "hello").expect("write");
     let ctx = test_ctx(dir.path());
     let input = tool_input(
         "read",
         serde_json::json!({ "path": "hi.txt", "unknownField": "ignored" }),
     );
-    let result = ReadExecutor.execute(&input, &ctx).await.unwrap_or_default();
+    let result = ReadExecutor.execute(&input, &ctx).await.expect("execute");
     assert!(
         !result.is_error,
         "read with unknown extra fields should not produce an error"
@@ -435,16 +435,13 @@ async fn test_read_ignores_unknown_extra_fields() {
 
 #[tokio::test]
 async fn test_write_reports_byte_count_in_success_message() {
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("create temp dir");
     let ctx = test_ctx(dir.path());
     let input = tool_input(
         "write",
         serde_json::json!({ "path": "out.txt", "content": "hello" }),
     );
-    let result = WriteExecutor
-        .execute(&input, &ctx)
-        .await
-        .unwrap_or_default();
+    let result = WriteExecutor.execute(&input, &ctx).await.expect("execute");
     assert!(
         !result.is_error,
         "writing a file should not produce an error"
@@ -457,26 +454,23 @@ async fn test_write_reports_byte_count_in_success_message() {
 
 #[tokio::test]
 async fn test_write_overwrite_replaces_existing_content() {
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("create temp dir");
     #[expect(
         clippy::disallowed_methods,
         reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
     )]
-    std::fs::write(dir.path().join("out.txt"), "old content").unwrap_or_default();
+    std::fs::write(dir.path().join("out.txt"), "old content").expect("write");
     let ctx = test_ctx(dir.path());
     let input = tool_input(
         "write",
         serde_json::json!({ "path": "out.txt", "content": "new content" }),
     );
-    let result = WriteExecutor
-        .execute(&input, &ctx)
-        .await
-        .unwrap_or_default();
+    let result = WriteExecutor.execute(&input, &ctx).await.expect("execute");
     assert!(
         !result.is_error,
         "overwrite write should not produce an error"
     );
-    let on_disk = std::fs::read_to_string(dir.path().join("out.txt")).unwrap_or_default();
+    let on_disk = std::fs::read_to_string(dir.path().join("out.txt")).expect("read");
     assert_eq!(
         on_disk, "new content",
         "overwrite should replace existing file content"
@@ -485,23 +479,20 @@ async fn test_write_overwrite_replaces_existing_content() {
 
 #[tokio::test]
 async fn test_write_append_creates_file_when_absent() {
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("create temp dir");
     let ctx = test_ctx(dir.path());
     let input = tool_input(
         "write",
         serde_json::json!({ "path": "new.txt", "content": "data", "append": true }),
     );
-    let result = WriteExecutor
-        .execute(&input, &ctx)
-        .await
-        .unwrap_or_default();
+    let result = WriteExecutor.execute(&input, &ctx).await.expect("execute");
     assert!(
         !result.is_error,
-        "append to non-existent file should CREATE it without error"
+        "append to non-existent file should create it without error"
     );
-    let on_disk = std::fs::read_to_string(dir.path().join("new.txt")).unwrap_or_default();
+    let on_disk = std::fs::read_to_string(dir.path().join("new.txt")).expect("read");
     assert_eq!(
         on_disk, "data",
-        "append mode should CREATE the file with the provided content"
+        "append mode should create the file with the provided content"
     );
 }

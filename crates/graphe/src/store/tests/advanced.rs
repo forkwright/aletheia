@@ -16,7 +16,7 @@ fn get_history_empty_session() {
     let store = test_store();
     store
         .create_session("empty-ses", "syn", "main", None, None)
-        .expect("CREATE session");
+        .expect("create session");
     let history = store.get_history("empty-ses", None).expect("get history");
     assert!(
         history.is_empty(),
@@ -27,7 +27,7 @@ fn get_history_empty_session() {
         .expect("get history");
     assert!(
         history_limited.is_empty(),
-        "get_history with LIMIT on empty session should return empty vec"
+        "get_history with limit on empty session should return empty vec"
     );
 }
 
@@ -81,7 +81,7 @@ fn blackboard_write_read_delete_cycle() {
 
     let deleted = store
         .blackboard_delete("cycle-key", "agent-alice")
-        .expect("blackboard DELETE");
+        .expect("blackboard delete");
     assert!(
         deleted,
         "blackboard_delete should return true when cycle-key entry was removed"
@@ -89,7 +89,7 @@ fn blackboard_write_read_delete_cycle() {
 
     let after_delete = store
         .blackboard_read("cycle-key")
-        .expect("blackboard DELETE");
+        .expect("blackboard delete");
     assert!(
         after_delete.is_none(),
         "cycle-key should not be readable after deletion"
@@ -107,7 +107,7 @@ fn add_note_invalid_category() {
     let store = test_store();
     store
         .create_session("ses-cat", "syn", "main", None, None)
-        .expect("CREATE session");
+        .expect("create session");
     let result = store.add_note("ses-cat", "syn", "totally_bogus_category", "some content");
     assert!(
         result.is_err(),
@@ -120,7 +120,7 @@ fn session_status_transitions() {
     let store = test_store();
     store
         .create_session("ses-status", "syn", "main", None, None)
-        .expect("CREATE session");
+        .expect("create session");
 
     let session = store
         .find_session_by_id("ses-status")
@@ -134,7 +134,7 @@ fn session_status_transitions() {
 
     store
         .update_session_status("ses-status", SessionStatus::Archived)
-        .expect("UPDATE session status");
+        .expect("update session status");
     let session = store
         .find_session_by_id("ses-status")
         .expect("query succeeds")
@@ -147,7 +147,7 @@ fn session_status_transitions() {
 
     store
         .update_session_status("ses-status", SessionStatus::Distilled)
-        .expect("UPDATE session status");
+        .expect("update session status");
     let session = store
         .find_session_by_id("ses-status")
         .expect("query succeeds")
@@ -160,7 +160,7 @@ fn session_status_transitions() {
 
     store
         .update_session_status("ses-status", SessionStatus::Active)
-        .expect("UPDATE session status");
+        .expect("update session status");
     let session = store
         .find_session_by_id("ses-status")
         .expect("query succeeds")
@@ -177,7 +177,7 @@ fn insert_distillation_summary_and_cleanup() {
     let store = test_store();
     store
         .create_session("ses-1", "syn", "main", None, None)
-        .expect("CREATE session");
+        .expect("create session");
 
     store
         .append_message("ses-1", Role::User, "msg1", None, None, 100)
@@ -195,7 +195,7 @@ fn insert_distillation_summary_and_cleanup() {
 
     store
         .insert_distillation_summary("ses-1", "[Distillation #1]\n\nSummary text")
-        .expect("INSERT distillation summary");
+        .expect("insert distillation summary");
 
     let history = store.get_history("ses-1", None).expect("get history");
     assert_eq!(
@@ -236,7 +236,7 @@ fn insert_distillation_summary_consecutive_undistilled_no_conflict() {
     let store = test_store();
     store
         .create_session("ses-cd", "syn", "main", None, None)
-        .expect("CREATE session");
+        .expect("create session");
 
     for i in 1..=5_u8 {
         store
@@ -289,7 +289,7 @@ fn insert_distillation_summary_twice_succeeds() {
     let store = test_store();
     store
         .create_session("ses-2d", "syn", "main", None, None)
-        .expect("CREATE session");
+        .expect("create session");
 
     for i in 1..=4_u8 {
         store
@@ -361,7 +361,7 @@ fn update_usage_creates_record() {
     let store = test_store();
     store
         .create_session("ses-usage", "syn", "main", None, None)
-        .expect("CREATE session");
+        .expect("create session");
 
     store
         .record_usage(&UsageRecord {
@@ -406,7 +406,7 @@ fn get_history_with_limit_respected() {
     let store = test_store();
     store
         .create_session("ses-lim", "syn", "main", None, None)
-        .expect("CREATE session");
+        .expect("create session");
 
     for i in 1..=10 {
         store
@@ -425,22 +425,22 @@ fn get_history_with_limit_respected() {
     assert_eq!(
         history_3.len(),
         3,
-        "LIMIT of 3 FROM 10 messages should return exactly 3 messages"
+        "limit of 3 from 10 messages should return exactly 3 messages"
     );
     assert_eq!(
         history_3[0].content, "message 8",
-        "with LIMIT 3 FROM 10 messages, first result should be message 8"
+        "with limit 3 from 10 messages, first result should be message 8"
     );
     assert_eq!(
         history_3[2].content, "message 10",
-        "with LIMIT 3 FROM 10 messages, last result should be message 10"
+        "with limit 3 from 10 messages, last result should be message 10"
     );
 
     let history_all = store.get_history("ses-lim", None).expect("get history");
     assert_eq!(
         history_all.len(),
         10,
-        "no LIMIT should return all 10 messages"
+        "no limit should return all 10 messages"
     );
 }
 
@@ -449,17 +449,17 @@ fn create_multiple_sessions_same_nous() {
     let store = test_store();
     store
         .create_session("ses-a", "agent-x", "main", None, None)
-        .expect("CREATE session");
+        .expect("create session");
     store
         .create_session("ses-b", "agent-x", "secondary", None, None)
-        .expect("CREATE session");
+        .expect("create session");
     store
         .create_session("ses-c", "agent-x", "prosoche-wake", None, None)
-        .expect("CREATE session");
+        .expect("create session");
 
     let sessions = store
         .list_sessions(Some("agent-x"))
-        .expect("CREATE session");
+        .expect("create session");
     assert_eq!(
         sessions.len(),
         3,
@@ -498,9 +498,9 @@ fn list_notes_empty() {
     let store = test_store();
     store
         .create_session("ses-no-notes", "syn", "main", None, None)
-        .expect("CREATE session");
+        .expect("create session");
 
-    let notes = store.get_notes("ses-no-notes").expect("CREATE session");
+    let notes = store.get_notes("ses-no-notes").expect("create session");
     assert!(
         notes.is_empty(),
         "session with no notes added should return empty list"
@@ -512,7 +512,7 @@ fn message_ordering_preserved() {
     let store = test_store();
     store
         .create_session("ses-ord", "syn", "main", None, None)
-        .expect("CREATE session");
+        .expect("create session");
 
     store
         .append_message("ses-ord", Role::User, "first", None, None, 10)
@@ -544,11 +544,11 @@ fn message_ordering_preserved() {
     );
     assert!(
         history[0].seq < history[1].seq,
-        "message seq VALUES must be strictly increasing: first < second"
+        "message seq values must be strictly increasing: first < second"
     );
     assert!(
         history[1].seq < history[2].seq,
-        "message seq VALUES must be strictly increasing: second < third"
+        "message seq values must be strictly increasing: second < third"
     );
 }
 
@@ -557,7 +557,7 @@ fn distill_marks_messages() {
     let store = test_store();
     store
         .create_session("ses-dist", "syn", "main", None, None)
-        .expect("CREATE session");
+        .expect("create session");
 
     store
         .append_message("ses-dist", Role::User, "to distill 1", None, None, 50)
@@ -574,7 +574,7 @@ fn distill_marks_messages() {
         .expect("mark messages distilled");
 
     let history = store.get_history("ses-dist", None).expect("get history");
-    assert_eq!(history.len(), 1, "distilled messages excluded FROM history");
+    assert_eq!(history.len(), 1, "distilled messages excluded from history");
     assert_eq!(
         history[0].content, "keep me",
         "the single undistilled message content should be 'keep me'"
@@ -609,15 +609,15 @@ fn session_timestamps_set() {
     let store = test_store();
     let session = store
         .create_session("ses-ts", "syn", "main", None, None)
-        .expect("CREATE session");
+        .expect("create session");
 
     assert!(
         !session.created_at.is_empty(),
-        "created_at must be SET on creation"
+        "created_at must be set on creation"
     );
     assert!(
         !session.updated_at.is_empty(),
-        "updated_at must be SET on creation"
+        "updated_at must be set on creation"
     );
 }
 
@@ -639,7 +639,7 @@ fn blackboard_overwrite() {
 
     let list = store.blackboard_list().expect("blackboard list");
     let matching: Vec<_> = list.iter().filter(|e| e.key == "overwrite-key").collect();
-    assert_eq!(matching.len(), 1, "upsert must not CREATE duplicates");
+    assert_eq!(matching.len(), 1, "upsert must not create duplicates");
 }
 
 #[test]
@@ -647,7 +647,7 @@ fn note_list_multiple() {
     let store = test_store();
     store
         .create_session("ses-notes", "syn", "main", None, None)
-        .expect("CREATE session");
+        .expect("create session");
 
     store
         .add_note("ses-notes", "syn", "task", "note alpha")
@@ -680,7 +680,7 @@ fn update_display_name_sets_name() {
     let store = test_store();
     store
         .create_session("ses-1", "syn", "main", None, None)
-        .expect("CREATE session");
+        .expect("create session");
 
     let session = store
         .find_session_by_id("ses-1")
@@ -688,7 +688,7 @@ fn update_display_name_sets_name() {
         .expect("entry must exist");
     assert!(
         session.origin.display_name.is_none(),
-        "display_name should be None before any UPDATE"
+        "display_name should be None before any update"
     );
 
     store
@@ -702,7 +702,7 @@ fn update_display_name_sets_name() {
     assert_eq!(
         session.origin.display_name.as_deref(),
         Some("My Chat"),
-        "display_name should be 'My Chat' after UPDATE"
+        "display_name should be 'My Chat' after update"
     );
 }
 
@@ -711,11 +711,11 @@ fn display_name_round_trip_via_list() {
     let store = test_store();
     store
         .create_session("ses-1", "syn", "main", None, None)
-        .expect("CREATE session");
+        .expect("create session");
 
     store
         .update_display_name("ses-1", "Research Chat")
-        .expect("UPDATE display name");
+        .expect("update display name");
 
     let sessions = store.list_sessions(Some("syn")).expect("list sessions");
     assert_eq!(
@@ -726,7 +726,7 @@ fn display_name_round_trip_via_list() {
     assert_eq!(
         sessions[0].origin.display_name.as_deref(),
         Some("Research Chat"),
-        "display_name should be returned by list_sessions after UPDATE"
+        "display_name should be returned by list_sessions after update"
     );
 }
 
@@ -735,14 +735,14 @@ fn update_display_name_overwrites_previous() {
     let store = test_store();
     store
         .create_session("ses-1", "syn", "main", None, None)
-        .expect("CREATE session");
+        .expect("create session");
 
     store
         .update_display_name("ses-1", "First")
-        .expect("CREATE session");
+        .expect("create session");
     store
         .update_display_name("ses-1", "Second")
-        .expect("UPDATE display name");
+        .expect("update display name");
 
     let session = store
         .find_session_by_id("ses-1")

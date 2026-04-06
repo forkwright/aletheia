@@ -20,7 +20,7 @@ static DISTILLATION_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         ),
         &["nous_id", "status"]
     )
-    .unwrap_or_default()
+    .expect("metric registration")
 });
 
 static DISTILLATION_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
@@ -32,7 +32,7 @@ static DISTILLATION_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| 
         .buckets(vec![1.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0]),
         &["nous_id"]
     )
-    .unwrap_or_default()
+    .expect("metric registration")
 });
 
 static TOKENS_SAVED_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
@@ -43,14 +43,14 @@ static TOKENS_SAVED_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         ),
         &["nous_id"]
     )
-    .unwrap_or_default()
+    .expect("metric registration")
 });
 
 #[cfg_attr(
     not(test),
     expect(
         dead_code,
-        reason = "called FROM server startup, not FROM within the crate"
+        reason = "called from server startup, not from within the crate"
     )
 )]
 /// Force-initialize all lazy metric statics.

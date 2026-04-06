@@ -20,7 +20,7 @@ static KNOWLEDGE_FACTS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         ),
         &["nous_id"]
     )
-    .unwrap_or_default()
+    .expect("metric registration")
 });
 
 static KNOWLEDGE_EXTRACTIONS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
@@ -31,7 +31,7 @@ static KNOWLEDGE_EXTRACTIONS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         ),
         &["nous_id", "status"]
     )
-    .unwrap_or_default()
+    .expect("metric registration")
 });
 
 static RECALL_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
@@ -43,7 +43,7 @@ static RECALL_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
         .buckets(vec![0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0]),
         &["nous_id"]
     )
-    .unwrap_or_default()
+    .expect("metric registration")
 });
 
 static EMBEDDING_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
@@ -55,10 +55,10 @@ static EMBEDDING_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
         .buckets(vec![0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0]),
         &["provider"]
     )
-    .unwrap_or_default()
+    .expect("metric registration")
 });
 
-#[expect(dead_code, reason = "metric init called FROM server startup")]
+#[expect(dead_code, reason = "metric init called from server startup")]
 /// Force-initialize all lazy metric statics.
 pub(crate) fn init() {
     LazyLock::force(&KNOWLEDGE_FACTS_TOTAL);
@@ -74,7 +74,7 @@ pub(crate) fn record_fact_inserted(nous_id: &str) {
 }
 
 /// Record a knowledge extraction operation.
-#[expect(dead_code, reason = "metric recording called FROM extraction pipeline")]
+#[expect(dead_code, reason = "metric recording called from extraction pipeline")]
 pub(crate) fn record_extraction(nous_id: &str, success: bool) {
     let status = if success { "ok" } else { "error" };
     KNOWLEDGE_EXTRACTIONS_TOTAL
@@ -90,7 +90,7 @@ pub(crate) fn record_recall_duration(nous_id: &str, duration_secs: f64) {
 }
 
 /// Record embedding computation duration.
-#[expect(dead_code, reason = "metric recording called FROM embedding pipeline")]
+#[expect(dead_code, reason = "metric recording called from embedding pipeline")]
 pub(crate) fn record_embedding_duration(provider: &str, duration_secs: f64) {
     EMBEDDING_DURATION_SECONDS
         .with_label_values(&[provider])

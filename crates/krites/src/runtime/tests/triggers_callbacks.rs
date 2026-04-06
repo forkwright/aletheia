@@ -21,9 +21,9 @@ use crate::runtime::temp_store::RegularTempStore;
 #[test]
 fn when_trigger_set_on_put_reverse_relation_synced() {
     let db = DbInstance::default();
-    db.run_default(":CREATE friends {fr: Int, to: Int => data: Any}")
+    db.run_default(":create friends {fr: Int, to: Int => data: Any}")
         .expect("creating friends relation should succeed");
-    db.run_default(":CREATE friends.rev {to: Int, fr: Int => data: Any}")
+    db.run_default(":create friends.rev {to: Int, fr: Int => data: Any}")
         .expect("creating friends.rev relation should succeed");
     db.run_default(
         r#"
@@ -43,7 +43,7 @@ fn when_trigger_set_on_put_reverse_relation_synced() {
     )
     .expect("setting triggers on friends should succeed");
     db.run_default(r"?[fr, to, data] <- [[1,2,3]] :put friends {fr, to => data}")
-        .expect("inserting INTO friends should succeed");
+        .expect("inserting into friends should succeed");
     let ret = db
         .export_relations(["friends", "friends.rev"].into_iter())
         .expect("exporting friends and friends.rev should succeed");
@@ -65,7 +65,7 @@ fn when_trigger_set_on_put_reverse_relation_synced() {
         "friends.rev trigger should reverse fr and to"
     );
     db.run_default(r"?[fr, to] <- [[1,2], [2,3]] :rm friends {fr, to}")
-        .expect("removing FROM friends should succeed");
+        .expect("removing from friends should succeed");
     let ret = db
         .export_relations(["friends", "friends.rev"].into_iter())
         .expect("re-exporting relations after removal should succeed");
@@ -83,14 +83,14 @@ fn when_callback_registered_receives_all_operation_events() {
     let db = DbInstance::default();
     let mut collected = vec![];
     let (_id, receiver) = db.register_callback("friends", None);
-    db.run_default(":CREATE friends {fr: Int, to: Int => data: Any}")
+    db.run_default(":create friends {fr: Int, to: Int => data: Any}")
         .expect("creating friends relation should succeed");
     db.run_default(r"?[fr, to, data] <- [[1,2,3],[4,5,6]] :put friends {fr, to => data}")
-        .expect("initial put INTO friends should succeed");
+        .expect("initial put into friends should succeed");
     db.run_default(r"?[fr, to, data] <- [[1,2,4],[4,7,6]] :put friends {fr, to => data}")
-        .expect("second put INTO friends should succeed");
+        .expect("second put into friends should succeed");
     db.run_default(r"?[fr, to] <- [[1,9],[4,5]] :rm friends {fr, to}")
-        .expect("removing FROM friends should succeed");
+        .expect("removing from friends should succeed");
     // kanon:ignore TESTING/sleep-in-test reason = "sync test; callback delivery uses a cross-thread channel with no async runtime available for pause+advance"
     std::thread::sleep(Duration::from_secs_f64(0.01));
     while let Ok(d) = receiver.try_recv() {
@@ -172,10 +172,10 @@ fn when_callback_registered_receives_all_operation_events() {
 #[test]
 fn when_partial_update_issued_only_specified_columns_changed() {
     let db = DbInstance::default();
-    db.run_default(":CREATE friends {fr: Int, to: Int => a: Any, b: Any, c: Any}")
+    db.run_default(":create friends {fr: Int, to: Int => a: Any, b: Any, c: Any}")
         .expect("creating friends relation should succeed");
     db.run_default("?[fr, to, a, b, c] <- [[1,2,3,4,5]] :put friends {fr, to => a, b, c}")
-        .expect("inserting initial row INTO friends should succeed");
+        .expect("inserting initial row into friends should succeed");
     let res = db
         .run_default("?[fr, to, a, b, c] := *friends{fr, to, a, b, c}")
         .expect("querying friends should succeed")
@@ -185,11 +185,11 @@ fn when_partial_update_issued_only_specified_columns_changed() {
         json!([1, 2, 3, 4, 5]),
         "initial row should be [1, 2, 3, 4, 5]"
     );
-    db.run_default("?[fr, to, b] <- [[1, 2, 100]] :UPDATE friends {fr, to => b}")
-        .expect("partial UPDATE of friends should succeed");
+    db.run_default("?[fr, to, b] <- [[1, 2, 100]] :update friends {fr, to => b}")
+        .expect("partial update of friends should succeed");
     let res = db
         .run_default("?[fr, to, a, b, c] := *friends{fr, to, a, b, c}")
-        .expect("querying friends after UPDATE should succeed")
+        .expect("querying friends after update should succeed")
         .into_json();
     assert_eq!(
         res["rows"][0],
@@ -201,24 +201,24 @@ fn when_partial_update_issued_only_specified_columns_changed() {
 #[test]
 fn when_secondary_index_created_query_planner_uses_index() {
     let db = DbInstance::default();
-    db.run_default(":CREATE friends {fr: Int, to: Int => data: Any}")
+    db.run_default(":create friends {fr: Int, to: Int => data: Any}")
         .expect("creating friends relation should succeed");
 
     db.run_default(r"?[fr, to, data] <- [[1,2,3],[4,5,6]] :put friends {fr, to, data}")
-        .expect("inserting initial rows INTO friends should succeed");
+        .expect("inserting initial rows into friends should succeed");
 
     assert!(
-        db.run_default("::index CREATE friends:rev {to, no}")
+        db.run_default("::index create friends:rev {to, no}")
             .is_err(),
         "creating index with non-existent column should fail"
     );
-    db.run_default("::index CREATE friends:rev {to, data}")
+    db.run_default("::index create friends:rev {to, data}")
         .expect("creating index on valid columns should succeed");
 
     db.run_default(r"?[fr, to, data] <- [[1,2,5],[6,5,7]] :put friends {fr, to => data}")
         .expect("updating rows in friends should succeed");
     db.run_default(r"?[fr, to] <- [[4,5]] :rm friends {fr, to}")
-        .expect("removing row FROM friends should succeed");
+        .expect("removing row from friends should succeed");
 
     let rels_data = db
         .export_relations(["friends", "friends:rev"].into_iter())
@@ -297,7 +297,7 @@ fn when_secondary_index_created_query_planner_uses_index() {
         joins.contains(&json!(":friends:rev")),
         "query plan should use the friends:rev index"
     );
-    db.run_default("::index DROP friends:rev")
+    db.run_default("::index drop friends:rev")
         .expect("dropping friends:rev index should succeed");
 }
 
@@ -371,19 +371,19 @@ fn when_custom_fixed_rule_registered_executes_with_correct_output() {
 #[test]
 fn when_short_index_created_on_single_column_query_planner_uses_it() {
     let db = DbInstance::default();
-    db.run_default(":CREATE friends {fr: Int, to: Int => data: Any}")
+    db.run_default(":create friends {fr: Int, to: Int => data: Any}")
         .expect("creating friends relation should succeed");
 
     db.run_default(r"?[fr, to, data] <- [[1,2,3],[4,5,6]] :put friends {fr, to => data}")
-        .expect("inserting initial rows INTO friends should succeed");
+        .expect("inserting initial rows into friends should succeed");
 
-    db.run_default("::index CREATE friends:rev {to}")
+    db.run_default("::index create friends:rev {to}")
         .expect("creating short index on 'to' should succeed");
 
     db.run_default(r"?[fr, to, data] <- [[1,2,5],[6,5,7]] :put friends {fr, to => data}")
         .expect("updating rows in friends should succeed");
     db.run_default(r"?[fr, to] <- [[4,5]] :rm friends {fr, to}")
-        .expect("removing row FROM friends should succeed");
+        .expect("removing row from friends should succeed");
 
     let rels_data = db
         .export_relations(["friends", "friends:rev"].into_iter())
@@ -468,12 +468,12 @@ fn when_short_index_created_on_single_column_query_planner_uses_it() {
 fn when_multi_transaction_committed_all_rows_persisted() {
     let db = DbInstance::default();
     let tx = db.multi_transaction_test(true);
-    tx.run_script(":CREATE a {a}", Default::default())
+    tx.run_script(":create a {a}", Default::default())
         .expect("creating relation in tx should succeed");
     tx.run_script("?[a] <- [[1]] :put a {a}", Default::default())
         .expect("inserting row 1 in tx should succeed");
     assert!(
-        tx.run_script(":CREATE a {a}", Default::default()).is_err(),
+        tx.run_script(":create a {a}", Default::default()).is_err(),
         "re-creating existing relation in tx should fail"
     );
     tx.run_script("?[a] <- [[2]] :put a {a}", Default::default())
@@ -491,12 +491,12 @@ fn when_multi_transaction_committed_all_rows_persisted() {
 
     let db = DbInstance::default();
     let tx = db.multi_transaction_test(true);
-    tx.run_script(":CREATE a {a}", Default::default())
+    tx.run_script(":create a {a}", Default::default())
         .expect("creating relation in tx should succeed");
     tx.run_script("?[a] <- [[1]] :put a {a}", Default::default())
         .expect("inserting row 1 in tx should succeed");
     assert!(
-        tx.run_script(":CREATE a {a}", Default::default()).is_err(),
+        tx.run_script(":create a {a}", Default::default()).is_err(),
         "re-creating existing relation in tx should fail"
     );
     tx.run_script("?[a] <- [[2]] :put a {a}", Default::default())
@@ -513,7 +513,7 @@ fn when_multi_transaction_committed_all_rows_persisted() {
 #[test]
 fn when_vector_column_stored_roundtrip_returns_float_values() {
     let db = DbInstance::default();
-    db.run_default(":CREATE a {k: String => v: <F32; 8>}")
+    db.run_default(":create a {k: String => v: <F32; 8>}")
         .expect("creating relation with F32 vector column should succeed");
     db.run_default("?[k, v] <- [['k', [1,2,3,4,5,6,7,8]]] :put a {k => v}")
         .expect("inserting row with vector value should succeed");

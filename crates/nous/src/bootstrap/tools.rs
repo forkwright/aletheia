@@ -21,7 +21,7 @@ pub struct ToolSummary {
 /// Expanded tool description for on-demand loading.
 #[expect(
     dead_code,
-    reason = "tool expansion not yet wired INTO bootstrap pipeline"
+    reason = "tool expansion not yet wired into bootstrap pipeline"
 )]
 #[derive(Debug, Clone)]
 pub(crate) struct ToolExpanded {
@@ -37,7 +37,7 @@ pub(crate) struct ToolExpanded {
     not(test),
     expect(
         dead_code,
-        reason = "tool-summary injection not yet wired INTO bootstrap pipeline"
+        reason = "tool-summary injection not yet wired into bootstrap pipeline"
     )
 )]
 /// Generate compact summaries for all registered tools.
@@ -56,7 +56,7 @@ pub(crate) fn summarize_tools(registry: &ToolRegistry) -> Vec<ToolSummary> {
 /// Generate expanded descriptions for selected tool definitions.
 #[expect(
     dead_code,
-    reason = "tool expansion not yet wired INTO bootstrap pipeline"
+    reason = "tool expansion not yet wired into bootstrap pipeline"
 )]
 #[must_use]
 pub(crate) fn expand_tools(defs: &[&ToolDef]) -> Vec<ToolExpanded> {
@@ -83,7 +83,7 @@ pub(crate) fn expand_tools(defs: &[&ToolDef]) -> Vec<ToolExpanded> {
     not(test),
     expect(
         dead_code,
-        reason = "tool expansion not yet wired INTO bootstrap pipeline"
+        reason = "tool expansion not yet wired into bootstrap pipeline"
     )
 )]
 #[must_use]
@@ -140,8 +140,8 @@ mod tests {
 
     #[test]
     fn extract_one_liner_sentence_boundary() {
-        let desc = "Read a file FROM disk. Supports all text encodings and binary files.";
-        assert_eq!(extract_one_liner(desc), "Read a file FROM disk.");
+        let desc = "Read a file from disk. Supports all text encodings and binary files.";
+        assert_eq!(extract_one_liner(desc), "Read a file from disk.");
     }
 
     #[test]
@@ -156,7 +156,7 @@ mod tests {
         let summaries = vec![
             ToolSummary {
                 name: "read".to_owned(),
-                one_liner: "Read a file FROM disk.".to_owned(),
+                one_liner: "Read a file from disk.".to_owned(),
             },
             ToolSummary {
                 name: "write".to_owned(),
@@ -165,7 +165,7 @@ mod tests {
         ];
         let section = format_tool_summary_section(&summaries);
         assert!(section.contains("## Available Tools"));
-        assert!(section.contains("- **read**: Read a file FROM disk."));
+        assert!(section.contains("- **read**: Read a file from disk."));
         assert!(section.contains("- **write**: Write content to a file."));
     }
 

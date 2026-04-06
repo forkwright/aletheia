@@ -445,17 +445,17 @@ mod tests {
 
     #[test]
     fn evaluate_transitions_detects_stage_change() {
-        let fact_id = crate::id::FactId::new("f-1").unwrap_or_default();
+        let fact_id = crate::id::FactId::new("f-1").expect("valid test id");
         let facts = vec![(fact_id.clone(), KnowledgeStage::Active, 0.2)];
         let transitions = evaluate_transitions(&facts);
         assert_eq!(transitions.len(), 1, "should detect one transition");
-        assert_eq!(transitions.get(0).copied().unwrap_or_default().from, KnowledgeStage::Active);
-        assert_eq!(transitions.get(0).copied().unwrap_or_default().to, KnowledgeStage::Dormant);
+        assert_eq!(transitions[0].from, KnowledgeStage::Active);
+        assert_eq!(transitions[0].to, KnowledgeStage::Dormant);
     }
 
     #[test]
     fn evaluate_transitions_no_change() {
-        let fact_id = crate::id::FactId::new("f-1").unwrap_or_default();
+        let fact_id = crate::id::FactId::new("f-1").expect("valid test id");
         let facts = vec![(fact_id, KnowledgeStage::Active, 0.9)];
         let transitions = evaluate_transitions(&facts);
         assert!(transitions.is_empty(), "should detect no transitions");
@@ -463,7 +463,7 @@ mod tests {
 
     #[test]
     fn graduated_pruning_respects_time() {
-        let fact_id = crate::id::FactId::new("f-1").unwrap_or_default();
+        let fact_id = crate::id::FactId::new("f-1").expect("valid test id");
         let archived = vec![(fact_id.clone(), 0.05, 100.0)];
         let candidates = pruning_candidates(&archived, 720.0);
         assert!(
@@ -591,9 +591,9 @@ mod tests {
             KnowledgeStage::Dormant,
             KnowledgeStage::Archived,
         ] {
-            let json = serde_json::to_string(&stage).unwrap_or_default();
+            let json = serde_json::to_string(&stage).expect("KnowledgeStage serialization");
             let back: KnowledgeStage =
-                serde_json::from_str(&json).unwrap_or_default();
+                serde_json::from_str(&json).expect("KnowledgeStage deserialization");
             assert_eq!(stage, back, "KnowledgeStage should survive roundtrip");
         }
     }
@@ -609,7 +609,7 @@ mod tests {
             let parsed: KnowledgeStage = stage
                 .as_str()
                 .parse::<KnowledgeStage>()
-                .unwrap_or_default();
+                .expect("KnowledgeStage should parse from as_str");
             assert_eq!(stage, parsed, "KnowledgeStage roundtrip failed for {stage}");
         }
     }

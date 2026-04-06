@@ -257,7 +257,7 @@ pub(crate) fn DriftView() -> Element {
                                     "{warning.current_count}"
                                 }
                                 span { style: trend_style(&warning.trend),
-                                    "{trend_arrow(&warning.trend)} FROM {warning.previous_count}"
+                                    "{trend_arrow(&warning.trend)} from {warning.previous_count}"
                                 }
                             }
                         }
@@ -304,7 +304,7 @@ fn HealthCard(value: u32, label: &'static str) -> Element {
 fn action_badge_color(action: &str) -> String {
     match action.to_lowercase().as_str() {
         "connect" => "background: #1a2a3a; color: #4a9aff;".to_string(),
-        "DELETE" | "remove" => "background: #2a1a1a; color: #ef4444;".to_string(),
+        "delete" | "remove" => "background: #2a1a1a; color: #ef4444;".to_string(),
         "archive" => "background: #2a2a3a; color: #888;".to_string(),
         _ => "background: #2a2a1a; color: #f59e0b;".to_string(),
     }

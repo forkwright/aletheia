@@ -707,7 +707,7 @@ fn test_days_to_ymd_known_date_2000_01_01() {
     assert_eq!(
         (y, m, d),
         (2000, 1, 1),
-        "day 10957 FROM epoch should correspond to 2000-01-01"
+        "day 10957 from epoch should correspond to 2000-01-01"
     );
 }
 
@@ -731,7 +731,7 @@ fn test_truncate_output_long_string_appends_truncation_marker() {
     );
     assert!(
         result.len() <= MAX_OUTPUT_BYTES + 20,
-        "truncated result should be close to LIMIT"
+        "truncated result should be close to limit"
     );
 }
 
@@ -739,7 +739,7 @@ fn test_truncate_output_long_string_appends_truncation_marker() {
 fn test_truncate_output_exactly_at_limit_unchanged() {
     let exactly = "y".repeat(MAX_OUTPUT_BYTES);
     let result = truncate_output(exactly.clone());
-    assert_eq!(result, exactly, "exactly at LIMIT should be unchanged");
+    assert_eq!(result, exactly, "exactly at limit should be unchanged");
 }
 
 #[test]
@@ -785,7 +785,7 @@ fn test_find_def_type_field_has_enum_values() {
     let tn = ToolName::new("find").expect("valid");
     let def = reg.get_def(&tn).expect("find registered");
     let type_prop = def.input_schema.properties.get("type").expect("type prop");
-    let enum_vals = type_prop.enum_values.as_ref().expect("enum VALUES");
+    let enum_vals = type_prop.enum_values.as_ref().expect("enum values");
     assert!(
         enum_vals.contains(&"f".to_owned()),
         "find type field should include 'f' for file"

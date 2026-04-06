@@ -18,7 +18,7 @@ use crate::builtins::workspace::extract_str;
 
 use super::require_services;
 
-const MUTATION_KEYWORDS: &[&str] = &[":put", ":rm", ":replace", ":CREATE", ":ensure"];
+const MUTATION_KEYWORDS: &[&str] = &[":put", ":rm", ":replace", ":create", ":ensure"];
 const DEFAULT_ROW_LIMIT: usize = 100;
 const DEFAULT_TIMEOUT_SECS: f64 = 5.0;
 

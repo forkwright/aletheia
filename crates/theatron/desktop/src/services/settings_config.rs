@@ -23,7 +23,7 @@ pub(crate) enum SettingsConfigError {
     NoConfigDir,
 
     /// Failed to create the config directory.
-    #[snafu(display("failed to CREATE config directory: {source}"))]
+    #[snafu(display("failed to create config directory: {source}"))]
     CreateDir { source: std::io::Error },
 
     /// Failed to read the settings file.
@@ -155,7 +155,7 @@ struct SerializedCombo {
     alt: bool,
     #[serde(default)]
     shift: bool,
-    key: SecretString,
+    key: String,
 }
 
 impl From<&KeyCombo> for SerializedCombo {
@@ -368,8 +368,8 @@ mod tests {
 
         assert_eq!(restored.active_id, store.active_id);
         assert_eq!(restored.servers.len(), 1);
-        assert_eq!(restored.servers.get(0).copied().unwrap_or_default().name, "Test");
-        assert_eq!(restored.servers.get(0).copied().unwrap_or_default().auth_token.as_deref(), Some("tok"));
+        assert_eq!(restored.servers[0].name, "Test");
+        assert_eq!(restored.servers[0].auth_token.as_deref(), Some("tok"));
     }
 
     #[test]
@@ -418,7 +418,7 @@ mod tests {
         let restored: SettingsConfig = toml::from_str(&toml_str).unwrap();
 
         assert_eq!(restored.servers.len(), 1);
-        assert_eq!(restored.servers.get(0).copied().unwrap_or_default().name, "Local");
+        assert_eq!(restored.servers[0].name, "Local");
         assert_eq!(restored.appearance.theme, "dark");
     }
 
