@@ -220,7 +220,7 @@ pub(crate) fn compute_jitter(
 
     // NOTE: extract lower 32 bits → [0, 1) fraction
     #[expect(clippy::cast_precision_loss, clippy::as_conversions, reason = "u32/i128 to f64: values within f64 mantissa range for practical jitter")]
-    let frac = (u32::try_from(hash).unwrap_or_default()) as f64 / f64::from(u32::MAX);
+    let frac = (hash as u32) as f64 / f64::from(u32::MAX);
 
     let max_nanos = max_jitter.as_nanos();
     // NOTE: f64 multiplication then truncate back to i128 → i64
