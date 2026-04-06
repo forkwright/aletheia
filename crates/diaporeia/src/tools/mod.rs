@@ -349,17 +349,29 @@ impl DiaporeiaServer {
         Parameters(params): Parameters<params::NousIdParam>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
-        let _handle = self
+        let config = self
             .state
             .nous_manager
-            .get(&params.nous_id)
+            .get_config(&params.nous_id)
             .context(NousNotFoundSnafu {
                 id: params.nous_id.clone(),
             })
             .map_err(rmcp::ErrorData::from)?;
 
         let defs = self.state.tool_registry.definitions();
-        let tools: Vec<serde_json::Value> = defs
+
+        // Filter tools by allowlist if configured for this agent
+        let filtered_defs: Vec<_> = if let Some(allowlist) = &config.tool_allowlist {
+            let allow_set: std::collections::HashSet<&str> =
+                allowlist.iter().map(String::as_str).collect();
+            defs.iter()
+                .filter(|d| allow_set.contains(d.name.as_str()))
+                .collect()
+        } else {
+            defs.iter().collect()
+        };
+
+        let tools: Vec<serde_json::Value> = filtered_defs
             .iter()
             .map(|d| {
                 serde_json::json!({
