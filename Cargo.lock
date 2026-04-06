@@ -33,7 +33,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia"
-version = "0.13.46"
+version = "0.13.49"
 dependencies = [
  "aletheia-agora",
  "aletheia-dianoia",
@@ -85,7 +85,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-agora"
-version = "0.13.46"
+version = "0.13.49"
 dependencies = [
  "aletheia-koina",
  "aletheia-taxis",
@@ -106,7 +106,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-dianoia"
-version = "0.13.46"
+version = "0.13.49"
 dependencies = [
  "aletheia-koina",
  "jiff",
@@ -121,7 +121,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-diaporeia"
-version = "0.13.46"
+version = "0.13.49"
 dependencies = [
  "aletheia-koina",
  "aletheia-mneme",
@@ -143,7 +143,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-dokimion"
-version = "0.13.46"
+version = "0.13.49"
 dependencies = [
  "aletheia-koina",
  "owo-colors",
@@ -162,7 +162,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-eidos"
-version = "0.13.46"
+version = "0.13.49"
 dependencies = [
  "jiff",
  "serde",
@@ -172,7 +172,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-energeia"
-version = "0.13.46"
+version = "0.13.49"
 dependencies = [
  "aletheia-eidos",
  "aletheia-koina",
@@ -195,7 +195,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-episteme"
-version = "0.13.46"
+version = "0.13.49"
 dependencies = [
  "aletheia-eidos",
  "aletheia-graphe",
@@ -226,7 +226,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-graphe"
-version = "0.13.46"
+version = "0.13.49"
 dependencies = [
  "aletheia-eidos",
  "aletheia-koina",
@@ -247,7 +247,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-hermeneus"
-version = "0.13.46"
+version = "0.13.49"
 dependencies = [
  "aletheia-koina",
  "jiff",
@@ -271,7 +271,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-integration-tests"
-version = "0.13.46"
+version = "0.13.49"
 dependencies = [
  "aletheia-dokimion",
  "aletheia-hermeneus",
@@ -297,7 +297,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-koina"
-version = "0.13.46"
+version = "0.13.49"
 dependencies = [
  "compact_str",
  "jiff",
@@ -318,7 +318,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-krites"
-version = "0.13.46"
+version = "0.13.49"
 dependencies = [
  "aho-corasick",
  "aletheia-eidos",
@@ -362,7 +362,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-melete"
-version = "0.13.46"
+version = "0.13.49"
 dependencies = [
  "aletheia-hermeneus",
  "aletheia-koina",
@@ -381,7 +381,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-mneme"
-version = "0.13.46"
+version = "0.13.49"
 dependencies = [
  "aletheia-eidos",
  "aletheia-episteme",
@@ -396,7 +396,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-nous"
-version = "0.13.46"
+version = "0.13.49"
 dependencies = [
  "aletheia-dianoia",
  "aletheia-hermeneus",
@@ -425,7 +425,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-oikonomos"
-version = "0.13.46"
+version = "0.13.49"
 dependencies = [
  "aletheia-koina",
  "axum 0.8.8",
@@ -450,7 +450,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-organon"
-version = "0.13.46"
+version = "0.13.49"
 dependencies = [
  "aletheia-energeia",
  "aletheia-hermeneus",
@@ -479,7 +479,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-pylon"
-version = "0.13.46"
+version = "0.13.49"
 dependencies = [
  "aletheia-hermeneus",
  "aletheia-koina",
@@ -513,7 +513,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-symbolon"
-version = "0.13.46"
+version = "0.13.49"
 dependencies = [
  "aletheia-koina",
  "argon2",
@@ -540,7 +540,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-taxis"
-version = "0.13.46"
+version = "0.13.49"
 dependencies = [
  "aletheia-koina",
  "base64 0.22.1",
@@ -558,7 +558,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-thesauros"
-version = "0.13.46"
+version = "0.13.49"
 dependencies = [
  "aletheia-koina",
  "aletheia-organon",
@@ -2247,9 +2247,9 @@ checksum = "0ce7134b9999ecaf8bcd65542e436736ef32ddca1b3e06094cb6ec5755203b80"
 
 [[package]]
 name = "fjall"
-version = "3.1.2"
+version = "3.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a9530ff159bc3ad3a15da746da0f6e95375c2ac64708cbb85ec1ebd26761a84"
+checksum = "fdf46551c9abc5fb0e0d540da36c875197285af2a29833892d7d3434b8617343"
 dependencies = [
  "byteorder-lite",
  "byteview",
@@ -3528,9 +3528,9 @@ checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
 
 [[package]]
 name = "lsm-tree"
-version = "3.1.2"
+version = "3.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d67f95fd716870329c30aaeedf87f23d426564e6ce46efa045a91444faf2a19"
+checksum = "f38ed727e0965f218f4e419231b9ecacc1db8fb5066cf1df0d2bafeef88459d4"
 dependencies = [
  "byteorder-lite",
  "byteview",
@@ -6067,7 +6067,7 @@ dependencies = [
 
 [[package]]
 name = "theatron-core"
-version = "0.13.46"
+version = "0.13.49"
 dependencies = [
  "aletheia-koina",
  "bytes",
@@ -6086,7 +6086,7 @@ dependencies = [
 
 [[package]]
 name = "theatron-tui"
-version = "0.13.46"
+version = "0.13.49"
 dependencies = [
  "aletheia-koina",
  "arboard",
