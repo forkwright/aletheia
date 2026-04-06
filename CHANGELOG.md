@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.54](https://github.com/forkwright/aletheia/compare/v0.13.53...v0.13.54) (2026-04-06)
+
+
+### Bug Fixes
+
+* **pylon:** skip cold config changes during hot reload ([#2495](https://github.com/forkwright/aletheia/issues/2495)) ([cb971f1](https://github.com/forkwright/aletheia/commit/cb971f16bff2d7606ca651a1972d42b8b67f2dc5))
+
 ## [0.13.53](https://github.com/forkwright/aletheia/compare/v0.13.52...v0.13.53) (2026-04-06)
 
 
