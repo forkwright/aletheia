@@ -29,7 +29,7 @@ tracing = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
-rustls = { workspace = true }
+aletheia-organon = { path = "../organon", features = ["test-support"] }
 static_assertions = { workspace = true }
 tokio = { workspace = true }
 wiremock = { workspace = true }

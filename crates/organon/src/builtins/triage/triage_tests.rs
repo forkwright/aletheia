@@ -8,10 +8,11 @@ use std::sync::{Arc, RwLock};
 use aletheia_koina::id::{NousId, SessionId, ToolName};
 
 use super::*;
+use crate::testing::install_crypto_provider;
 use crate::types::{ServerToolConfig, ToolContext, ToolInput, ToolServices};
 
 fn test_ctx() -> ToolContext {
-    let _ = rustls::crypto::ring::default_provider().install_default();
+    install_crypto_provider();
     ToolContext {
         nous_id: NousId::new("test-agent").expect("valid"),
         session_id: SessionId::new(),

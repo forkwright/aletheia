@@ -26,6 +26,28 @@ use crate::error::Result;
 use crate::registry::ToolExecutor;
 use crate::types::{ToolContext, ToolInput, ToolResult};
 
+// ── Crypto provider helper ───────────────────────────────────────────────────
+
+/// Install the default rustls crypto provider for tests.
+///
+/// Safe to call multiple times (uses `try_install_default`). This helper prevents
+/// the "no crypto provider installed" panic when tests use TLS connections.
+///
+/// # Example
+///
+/// ```ignore
+/// use aletheia_organon::testing::install_crypto_provider;
+///
+/// #[test]
+/// fn test_with_tls() {
+///     install_crypto_provider();
+///     // ... test code that uses TLS
+/// }
+/// ```
+pub fn install_crypto_provider() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+}
+
 // ── Mock executor ────────────────────────────────────────────────────────────
 
 /// Configurable mock [`ToolExecutor`] for use in tests.

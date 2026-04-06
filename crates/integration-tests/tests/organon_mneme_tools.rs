@@ -32,14 +32,11 @@ use aletheia_nous::adapters::{SessionBlackboardAdapter, SessionNoteAdapter};
 use aletheia_organon::builtins;
 use aletheia_organon::error::KnowledgeAdapterError;
 use aletheia_organon::registry::ToolRegistry;
+use aletheia_organon::testing::install_crypto_provider;
 use aletheia_organon::types::{
     FactSummary, KnowledgeSearchService, MemoryResult, ServerToolConfig, ToolContext, ToolInput,
     ToolServices,
 };
-
-fn install_crypto_provider() {
-    let _ = rustls::crypto::ring::default_provider().install_default();
-}
 
 // ---------------------------------------------------------------------------
 // Helpers

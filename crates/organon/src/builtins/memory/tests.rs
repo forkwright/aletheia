@@ -16,10 +16,7 @@ use crate::types::{
 };
 
 use crate::error::StoreError;
-
-fn install_crypto_provider() {
-    let _ = rustls::crypto::ring::default_provider().install_default();
-}
+use crate::testing::install_crypto_provider;
 
 struct MockNoteStore {
     notes: Mutex<Vec<NoteEntry>>,
