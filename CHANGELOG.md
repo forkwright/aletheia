@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.55](https://github.com/forkwright/aletheia/compare/v0.13.54...v0.13.55) (2026-04-06)
+
+
+### Bug Fixes
+
+* complete restoration of as-casts and expect() broken by lint --fix ([#2498](https://github.com/forkwright/aletheia/issues/2498)) ([1c23a73](https://github.com/forkwright/aletheia/commit/1c23a7310888d09b4f826f5f4d0778cc89960552))
+
 ## [0.13.54](https://github.com/forkwright/aletheia/compare/v0.13.53...v0.13.54) (2026-04-06)
 
 
