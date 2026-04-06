@@ -17,7 +17,7 @@ use crate::actor;
 use crate::config::{NousConfig, PipelineConfig, StageBudget};
 use crate::roles::Role;
 
-const SONNET_MODEL: &str = "claude-sonnet-4-20250514";
+const SONNET_MODEL: &str = aletheia_koina::defaults::DEFAULT_MODEL;
 
 /// Resolve role from string, returning typed role or falling back to model heuristic.
 fn resolve_role(role_str: &str) -> Option<Role> {
