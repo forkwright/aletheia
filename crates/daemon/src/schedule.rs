@@ -2,13 +2,10 @@
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::str::FromStr;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use snafu::ResultExt;
-
-use crate::error::{self, Result};
+use crate::error::Result;
 
 /// When a task should run.
 #[non_exhaustive]
@@ -126,22 +123,11 @@ impl Schedule {
     /// Calculate the next run time FROM now.
     ///
     /// Returns `None` for `Startup` (already ran) or `Once` with a past timestamp.
-    #[expect(
-        clippy::expect_used,
-        reason = "timestamp conversions are within valid ranges; interval durations fit in i64 nanos for any reasonable schedule"
-    )]
     pub(crate) fn next_run(&self) -> Result<Option<jiff::Timestamp>> {
         match self {
             Self::Cron(expr) => {
-                let schedule = cron::Schedule::from_str(expr).context(error::InvalidCronSnafu {
-                    expression: expr.clone(),
-                })?;
-                // WHY: chrono::Utc is required by the cron crate's iterator API.
-                let next = schedule.upcoming(chrono::Utc).next();
-                Ok(next.map(|dt| {
-                    jiff::Timestamp::from_second(dt.timestamp())
-                        .unwrap_or_default()
-                }))
+                let parsed = crate::cron_expr::CronExpr::parse(expr)?;
+                Ok(parsed.next_after(jiff::Timestamp::now()))
             }
             Self::Interval(duration) => {
                 let span = jiff::SignedDuration::from_nanos(
@@ -167,10 +153,6 @@ impl Schedule {
     ///
     /// Returns `true` if there was at least one scheduled run between `last_run`
     /// and `now` that was missed, and it's within the last 24 hours.
-    #[expect(
-        clippy::expect_used,
-        reason = "timestamp conversions within valid ranges; 24h subtraction from current time cannot overflow"
-    )]
     pub(crate) fn missed_since(&self, last_run: jiff::Timestamp) -> Result<bool> {
         let Self::Cron(expr) = self else {
             return Ok(false);
@@ -185,18 +167,8 @@ impl Schedule {
             return Ok(false);
         }
 
-        let schedule = cron::Schedule::from_str(expr).context(error::InvalidCronSnafu {
-            expression: expr.clone(),
-        })?;
-
-        // WHY: chrono::DateTime is required by the cron crate's after() API.
-        let last_run_dt = chrono::DateTime::from_timestamp(last_run.as_second(), 0)
-            .unwrap_or_default();
-
-        let next_after_last = schedule.after(&last_run_dt).next();
-        if let Some(next) = next_after_last {
-            let next_ts = jiff::Timestamp::from_second(next.timestamp())
-                .unwrap_or_default();
+        let parsed = crate::cron_expr::CronExpr::parse(expr)?;
+        if let Some(next_ts) = parsed.next_after(last_run) {
             Ok(next_ts < now)
         } else {
             Ok(false)

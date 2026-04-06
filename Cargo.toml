@@ -136,10 +136,6 @@ indexmap = { version = "2", features = ["serde"] }
 ulid = { version = "1", features = ["serde"] }
 
 # Time
-# chrono required by the `cron` crate's iterator API; versioned here for
-# consistency. All direct time work should use jiff.
-chrono = "0.4"
-cron = "0.16"
 jiff = "0.2"
 
 # Async utilities
