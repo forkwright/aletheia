@@ -4,7 +4,6 @@ use snafu::OptionExt as _;
 use tracing::Instrument;
 
 use crate::client::{EvalClient, SessionStatus};
-use aletheia_koina::secret::SecretString;
 use crate::scenario::{Scenario, ScenarioFuture, ScenarioMeta, assert_eq_eval, assert_eval};
 
 #[tracing::instrument(skip_all)]

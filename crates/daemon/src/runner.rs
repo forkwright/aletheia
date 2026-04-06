@@ -35,6 +35,7 @@ const BRIEF_HEAD_LINES: usize = 5;
 /// Maximum lines FROM the tail of tool output in brief mode.
 const BRIEF_TAIL_LINES: usize = 3;
 /// Maximum character length for model response summaries in brief mode.
+#[cfg(test)]
 const BRIEF_RESPONSE_MAX_CHARS: usize = 200;
 
 /// Truncate output for brief mode.
@@ -61,6 +62,7 @@ pub(crate) fn truncate_output(output: &str) -> String {
 }
 
 /// Truncate a model response for brief-mode logging.
+#[cfg(test)]
 pub(crate) fn truncate_response(response: &str) -> String {
     if response.len() <= BRIEF_RESPONSE_MAX_CHARS {
         return response.to_owned();
@@ -185,6 +187,7 @@ impl TaskRunner {
     /// State is loaded on the first call to [`Self::run`] (before catch-up),
     /// and saved after every task completion or failure.
     #[must_use]
+    #[cfg(test)]
     pub(crate) fn with_state_store(mut self, store: crate::state::TaskStateStore) -> Self {
         self.state_store = Some(store);
         self

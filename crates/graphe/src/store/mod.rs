@@ -20,7 +20,6 @@ use snafu::ResultExt;
 use tracing::{error, info, instrument, warn};
 
 use aletheia_koina::disk_space::{DiskSpaceMonitor, DiskStatus};
-use aletheia_koina::secret::SecretString;
 
 use crate::error::{self, Result};
 use crate::migration;

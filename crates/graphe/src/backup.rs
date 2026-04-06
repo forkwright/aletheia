@@ -7,7 +7,6 @@ use snafu::ResultExt;
 use tracing::{info, instrument, warn};
 
 use aletheia_koina::disk_space::DiskSpaceMonitor;
-use aletheia_koina::secret::SecretString;
 
 use crate::error::{self, Result};
 

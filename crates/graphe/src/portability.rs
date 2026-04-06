@@ -9,7 +9,6 @@
 
 use std::collections::HashMap;
 
-use aletheia_koina::secret::SecretString;
 use serde::{Deserialize, Serialize};
 
 /// Agent file format version.

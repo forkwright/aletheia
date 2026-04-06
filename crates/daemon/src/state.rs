@@ -35,6 +35,7 @@ pub(crate) struct TaskStateStore {
 
 impl TaskStateStore {
     /// Open (or create) the task state database at `path`.
+    #[cfg(test)]
     pub(crate) fn open(path: &Path) -> Result<Self> {
         let conn = rusqlite::Connection::open(path).map_err(|e| {
             crate::error::TaskFailedSnafu {
@@ -55,6 +56,7 @@ impl TaskStateStore {
         Ok(Self { conn })
     }
 
+    #[cfg(test)]
     fn create_schema(conn: &rusqlite::Connection) -> Result<()> {
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS task_state (
