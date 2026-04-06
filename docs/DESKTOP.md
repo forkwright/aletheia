@@ -49,3 +49,26 @@ theatron-desktop  (Dioxus desktop app)
 ```
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the full crate dependency graph.
+
+## Platform limitations
+
+### Wayland: no remote launch over SSH
+
+The desktop app cannot be launched over SSH on Wayland compositors. WebKitWebProcess spawns as a subprocess that cannot inherit the Wayland display socket from an SSH session — the compositor only allows processes from the local session to connect.
+
+Symptom:
+```
+(WebKitWebProcess:95849): Gtk-WARNING: cannot open display:
+** (aletheia-desktop:95722): ERROR: readPIDFromPeer: Unexpected short read from PID socket.
+```
+
+Workarounds:
+1. **Run locally, point at remote server.** Launch the desktop app on the machine with the display, configure it to connect to the remote Aletheia instance via the server URL.
+2. **Use X11 forwarding.** `ssh -X` works with X11/Xwayland, though performance is limited.
+3. **Use the TUI.** The terminal interface works over any SSH session.
+
+This is a WebKit/GTK limitation, not an Aletheia issue. Global hotkey registration is also unavailable on Wayland without the portal API — the app handles this gracefully by falling back to in-window shortcuts.
+
+### Global hotkeys
+
+On Wayland, the `KeyRegistration::Unavailable` path activates because Wayland security prevents applications from registering global hotkeys without portal support. The app continues to function; only the global shortcut is unavailable.

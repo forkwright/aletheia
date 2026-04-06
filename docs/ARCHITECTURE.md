@@ -229,7 +229,7 @@ strip = "symbols"
 ## Structural properties
 
 - **koina, eidos, and dianoia are true leaf nodes.** No workspace deps in Rust.
-- **symbolon depends only on koina** (plus external crates: reqwest, rusqlite, ring, argon2).
+- **symbolon depends only on koina** (plus external crates: reqwest, rusqlite, hmac/sha2/aes-gcm, argon2).
 - **mneme is a thin facade.** It re-exports from eidos (types), graphe (session store), episteme (knowledge pipeline), and krites (Datalog engine). No logic of its own.
 - **krites contains the Datalog+HNSW engine**, gated behind the `mneme-engine` feature.
 - **EmbeddingProvider lives in episteme**, not mneme.
@@ -238,3 +238,7 @@ strip = "symbols"
 - **dianoia has no workspace dependencies** - planning context fully decoupled from the agent pipeline. No other application crate imports it.
 - **thesauros loads domain packs** - knowledge, tools, config overlays bundled as portable extensions. Depends on koina + organon.
 - **nous requires a multi-thread Tokio runtime** (`rt-multi-thread`). The actor model and spawn-based timeout machinery depend on multiple OS threads. Single-thread runtime will deadlock.
+
+## Ergon
+
+Ergon is a strategic fork of aletheia maintained in a separate repository. It tracks aletheia's main branch with zero divergence — no custom code, no feature additions. It exists as a client-deliverable identity: same runtime, different branding. Changes flow from aletheia to ergon, never the reverse. Do not add ergon-specific code to this repository.
