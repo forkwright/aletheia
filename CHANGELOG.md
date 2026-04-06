@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.13.53](https://github.com/forkwright/aletheia/compare/v0.13.52...v0.13.53) (2026-04-06)
+
+
+### Bug Fixes
+
+* **diaporeia:** add rate limit check to MCP read_resource ([#2494](https://github.com/forkwright/aletheia/issues/2494)) ([e7cfb53](https://github.com/forkwright/aletheia/commit/e7cfb53aec3b1a22d32ad923a32ac4b3c1b707b3))
+* **diaporeia:** filter nous_tools output by per-agent tool allowlist ([#2487](https://github.com/forkwright/aletheia/issues/2487)) ([2cda606](https://github.com/forkwright/aletheia/commit/2cda6063bbbca450f1aeb25ffb24645d2a2cd2c6)), closes [#2443](https://github.com/forkwright/aletheia/issues/2443)
+* **diaporeia:** gate reliability metrics behind operator auth level ([#2490](https://github.com/forkwright/aletheia/issues/2490)) ([0eeae9a](https://github.com/forkwright/aletheia/commit/0eeae9aa53f14022cf52a27deda22981b01cb41a)), closes [#2444](https://github.com/forkwright/aletheia/issues/2444)
+* **graphe:** add forward-only schema version guard to migrations ([#2492](https://github.com/forkwright/aletheia/issues/2492)) ([26ea3c7](https://github.com/forkwright/aletheia/commit/26ea3c78f69cc5b926c14c39bdd402c71476bc71)), closes [#2438](https://github.com/forkwright/aletheia/issues/2438)
+* **ops:** validate binary before swap during deploy ([#2491](https://github.com/forkwright/aletheia/issues/2491)) ([3c8c462](https://github.com/forkwright/aletheia/commit/3c8c46206b96bf06cbf8b1297b3cd40d881b0c88)), closes [#2437](https://github.com/forkwright/aletheia/issues/2437)
+
 ## [0.13.52](https://github.com/forkwright/aletheia/compare/v0.13.51...v0.13.52) (2026-04-06)
 
 
