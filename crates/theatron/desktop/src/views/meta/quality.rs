@@ -12,7 +12,7 @@ const HISTOGRAM_BAR_STYLE: &str = "\
     margin-bottom: 6px;\
 ";
 
-const BAR_LABEL_STYLE: &str = "font-size: 12px; color: #aaa; width: 80px; text-align: RIGHT;";
+const BAR_LABEL_STYLE: &str = "font-size: 12px; color: #aaa; width: 80px; text-align: right;";
 
 const BAR_BG_STYLE: &str = "\
     flex: 1; \

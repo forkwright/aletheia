@@ -173,7 +173,7 @@ pub async fn update_confidence(
     }
     #[cfg(not(feature = "knowledge-store"))]
     let _ = (state, body);
-    tracing::info!(fact_id = %id, "confidence UPDATE requested but knowledge store not available");
+    tracing::info!(fact_id = %id, "confidence update requested but knowledge store not available");
     Err(ApiError::ServiceUnavailable {
         message: "knowledge store not available".to_owned(),
         location: snafu::location!(),

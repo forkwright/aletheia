@@ -168,7 +168,7 @@ impl NousManager {
             warn!(nous_id = %id, "replacing existing actor");
             let _ = old.handle.shutdown().await;
             // WHY: take join handle before awaiting: must not hold MutexGuard across .await
-            let join_opt = old.join.lock().unwrap_or_default().take(); // kanon:ignore RUST/expect
+            let join_opt = old.join.lock().expect("join mutex not poisoned").take(); // kanon:ignore RUST/expect
             if let Some(join) = join_opt {
                 let _ = join.await;
             }
@@ -369,7 +369,7 @@ impl NousManager {
 
         if let Some(old) = self.actors.remove(id) {
             // WHY: take join handle before awaiting: must not hold MutexGuard across .await
-            let join_opt = old.join.lock().unwrap_or_default().take(); // kanon:ignore RUST/expect
+            let join_opt = old.join.lock().expect("join mutex not poisoned").take(); // kanon:ignore RUST/expect
             if let Some(join) = join_opt {
                 match tokio::time::timeout(RESTART_DRAIN_TIMEOUT, join).await {
                     Ok(_) => {

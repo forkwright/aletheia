@@ -143,7 +143,7 @@ impl KnowledgeStore {
         let script = r"
             ?[cause, effect, ordering, confidence, created_at] :=
                 *causal_edges{cause, effect, ordering, confidence, created_at}
-            :ORDER created_at
+            :order created_at
         ";
         let rows = self.run_read(script, BTreeMap::new())?;
         rows_to_causal_edges(&rows)
@@ -229,11 +229,11 @@ fn rows_to_causal_edges(
         if row.len() < 5 {
             continue;
         }
-        let cause_str = extract_str(&row.get(0).copied().unwrap_or_default())?;
-        let effect_str = extract_str(&row.get(1).copied().unwrap_or_default())?;
-        let ordering_str = extract_str(&row.get(2).copied().unwrap_or_default())?;
-        let confidence = extract_float(&row.get(3).copied().unwrap_or_default())?;
-        let created_at_str = extract_str(&row.get(4).copied().unwrap_or_default())?;
+        let cause_str = extract_str(&row[0])?;
+        let effect_str = extract_str(&row[1])?;
+        let ordering_str = extract_str(&row[2])?;
+        let confidence = extract_float(&row[3])?;
+        let created_at_str = extract_str(&row[4])?;
 
         let ordering = ordering_str
             .parse::<crate::knowledge::TemporalOrdering>()

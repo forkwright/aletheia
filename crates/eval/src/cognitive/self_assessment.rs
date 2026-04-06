@@ -112,7 +112,7 @@ impl Scenario for SelfAssessmentScenario {
                     None => {
                         tracing::warn!(
                             response_len = text.len(),
-                            "failed to parse self-assessment JSON FROM response"
+                            "failed to parse self-assessment JSON from response"
                         );
                     }
                 }
@@ -143,7 +143,7 @@ mod tests {
             r#"{"strengths": ["a", "b"], "weaknesses": ["c"], "improvement_areas": ["d"]}"#;
         let result = parse_self_assessment(response);
         assert!(result.is_some(), "valid JSON should parse");
-        let assessment = result.unwrap_or_default();
+        let assessment = result.expect("just asserted Some");
         assert_eq!(assessment.strengths.len(), 2, "should have 2 strengths");
         assert_eq!(assessment.weaknesses.len(), 1, "should have 1 weakness");
         assert_eq!(
@@ -276,8 +276,8 @@ mod tests {
             weaknesses: vec!["c".to_owned()],
             improvement_areas: vec!["d".to_owned()],
         };
-        let json = serde_json::to_string(&assessment).unwrap_or_default();
-        let back: SelfAssessment = serde_json::from_str(&json).unwrap_or_default();
+        let json = serde_json::to_string(&assessment).expect("should serialize");
+        let back: SelfAssessment = serde_json::from_str(&json).expect("should deserialize");
         assert_eq!(assessment.strengths, back.strengths, "strengths roundtrip");
         assert_eq!(
             assessment.weaknesses, back.weaknesses,

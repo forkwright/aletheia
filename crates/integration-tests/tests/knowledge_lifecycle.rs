@@ -120,7 +120,7 @@ fn correct_fact(
     };
     store
         .insert_fact(&new_fact)
-        .expect("correct: INSERT new fact");
+        .expect("correct: insert new fact");
 }
 
 /// Replicates the adapter's `retract_fact` logic at the store level.
@@ -153,7 +153,7 @@ fn audit_all_facts(store: &Arc<KnowledgeStore>, nous_id: &str) -> Vec<AuditRow> 
             *facts{id, valid_from, content, nous_id, confidence, tier, valid_to, superseded_by, recorded_at,
                    is_forgotten, forgotten_at, forget_reason},
             nous_id = $nous_id
-        :ORDER recorded_at
+        :order recorded_at
     ";
     let mut params = BTreeMap::new();
     params.insert(String::from("nous_id"), DataValue::Str(nous_id.into()));

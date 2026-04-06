@@ -64,7 +64,7 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
                 clippy::as_conversions,
                 reason = "u64→f64: age in seconds is well within f64 precision for practical retention windows"
             )]
-            let age_hours = (f64::try_from(age_secs).unwrap_or_default() / 3600.0).max(0.0);
+            let age_hours = (age_secs as f64 / 3600.0).max(0.0);
 
             let fact_type = FactType::from_str_lossy(&fact.fact_type);
             let decay_score = engine.score_decay(
@@ -81,7 +81,7 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
                     tracing::warn!(
                         fact_id = %fact.id,
                         error = %e,
-                        "decay refresh: failed to UPDATE fact confidence"
+                        "decay refresh: failed to update fact confidence"
                     );
                     errors += 1;
                 } else {
@@ -228,7 +228,7 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
         #[expect(clippy::as_conversions, reason = "usize→u64: skill counts fit in u64")]
         Ok(MaintenanceReport {
             items_processed: (active + retired) as u64,
-            items_modified: u64::try_from(retired).unwrap_or_default(),
+            items_modified: retired as u64,
             detail: Some(detail),
             ..Default::default()
         })

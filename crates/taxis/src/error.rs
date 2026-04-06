@@ -33,7 +33,7 @@ pub enum Error {
     },
 
     /// Failed to read a configuration file.
-    #[snafu(display("failed to read config FROM {}", path.display()))]
+    #[snafu(display("failed to read config from {}", path.display()))]
     ReadConfig {
         path: PathBuf,
         source: std::io::Error,
@@ -77,7 +77,7 @@ pub enum Error {
 
     /// The instance root directory does not exist (startup validation).
     #[snafu(display(
-        "instance root not found: {}\n  help: SET ALETHEIA_ROOT or run `aletheia init`",
+        "instance root not found: {}\n  help: set ALETHEIA_ROOT or run `aletheia init`",
         path.display()
     ))]
     InstanceRootNotFound {
@@ -88,7 +88,7 @@ pub enum Error {
 
     /// A required subdirectory (config/ or data/) is missing from the instance root.
     #[snafu(display(
-        "required directory missing: {}\n  help: run `aletheia init` to CREATE the instance layout",
+        "required directory missing: {}\n  help: run `aletheia init` to create the instance layout",
         path.display()
     ))]
     RequiredDirMissing {
@@ -111,7 +111,7 @@ pub enum Error {
 
     /// A workspace path from agent config does not resolve to a directory.
     #[snafu(display(
-        "agent workspace path does not exist: {}\n  help: CREATE the directory or UPDATE the workspace path in config",
+        "agent workspace path does not exist: {}\n  help: create the directory or update the workspace path in config",
         path.display()
     ))]
     WorkspacePathInvalid {
@@ -131,7 +131,7 @@ pub enum Error {
 
     /// The primary key file already exists.
     #[snafu(display(
-        "primary key already exists at {}\n  help: DELETE the file first if you want to regenerate",
+        "primary key already exists at {}\n  help: delete the file first if you want to regenerate",
         path.display()
     ))]
     PrimaryKeyExists {
@@ -170,7 +170,7 @@ pub enum Error {
     ///
     /// Emitted when the TOML config contains `${VAR:?some message}` and `VAR`
     /// is not present in the environment. Startup aborts with the user-supplied message.
-    #[snafu(display("required env var `{var}` is not SET: {message}"))]
+    #[snafu(display("required env var `{var}` is not set: {message}"))]
     EnvVarRequired {
         var: String,
         message: String,

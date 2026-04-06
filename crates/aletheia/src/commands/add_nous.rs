@@ -112,7 +112,7 @@ fn scaffold_directory(oikos: &Oikos, args: &AddNousArgs) -> Result<()> {
 
     for dir in &subdirs {
         std::fs::create_dir_all(dir)
-            .with_whatever_context(|_| format!("failed to CREATE directory: {}", dir.display()))?;
+            .with_whatever_context(|_| format!("failed to create directory: {}", dir.display()))?;
     }
 
     write_file(
@@ -255,7 +255,7 @@ fn update_config(oikos: &Oikos, args: &AddNousArgs) -> Result<()> {
 /// Reads `gateway.bind` and `gateway.port` from the instance config to
 /// construct the URL dynamically instead of assuming the default address.
 async fn try_register(oikos: &Oikos, name: &str) {
-    if let Err(e) = let config = aletheia_taxis::loader::load_config(oikos) { tracing::warn!(error = %e, "operation failed"); }
+    let config = aletheia_taxis::loader::load_config(oikos).ok(); // WHY: best-effort; fallback to defaults if instance config unavailable
     let (bind, port) = config.as_ref().map_or(("127.0.0.1", 18789), |c| {
         (c.gateway.bind.as_str(), c.gateway.port)
     });

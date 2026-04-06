@@ -106,7 +106,7 @@ pub(crate) fn CommandPaletteView(is_open: bool, on_execute: EventHandler<String>
         div {
             style: "{PALETTE_OVERLAY_STYLE}",
 
-            div { style: "{PALETTE_HEADER_STYLE}", "Commands — ↑↓ navigate · Enter SELECT · Esc dismiss" }
+            div { style: "{PALETTE_HEADER_STYLE}", "Commands — ↑↓ navigate · Enter select · Esc dismiss" }
 
             if rows.is_empty() {
                 div { style: "{EMPTY_STYLE}", "No matching commands" }

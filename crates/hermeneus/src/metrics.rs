@@ -100,7 +100,7 @@ static LLM_CIRCUIT_BREAKER_TRANSITIONS_TOTAL: LazyLock<IntCounterVec> = LazyLock
             "aletheia_llm_circuit_breaker_transitions_total",
             "Circuit breaker state transitions per provider"
         ),
-        &["provider", "FROM", "to"]
+        &["provider", "from", "to"]
     )
     .expect("metric registration fails only on name/label collision, a startup-time programming error that must not be silently ignored") // kanon:ignore RUST/expect
 });
@@ -113,7 +113,7 @@ static LLM_CONCURRENCY_LIMIT: LazyLock<IntGaugeVec> = LazyLock::new(|| {
     register_int_gauge_vec!(
         Opts::new(
             "aletheia_llm_concurrency_limit",
-            "Current adaptive concurrency LIMIT per provider"
+            "Current adaptive concurrency limit per provider"
         ),
         &["provider"]
     )

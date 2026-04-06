@@ -266,19 +266,19 @@ mod tests {
     use super::*;
 
     fn setup_oikos() -> (tempfile::TempDir, Oikos) {
-        let dir = tempfile::tempdir().unwrap_or_default();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let oikos = Oikos::from_root(dir.path());
         (dir, oikos)
     }
 
     fn mkfile(base: &Path, rel: &str) {
         let path = base.join(rel);
-        fs::create_dir_all(path.parent().unwrap()).unwrap_or_default();
+        fs::create_dir_all(path.parent().unwrap()).expect("create parent dirs");
         #[expect(
             clippy::disallowed_methods,
             reason = "taxis config operations are CLI-invoked and require synchronous filesystem access"
         )]
-        fs::write(&path, format!("content of {rel}")).unwrap_or_default();
+        fs::write(&path, format!("content of {rel}")).expect("write file");
     }
 
     #[test]
@@ -292,7 +292,7 @@ mod tests {
         assert_eq!(
             results.len(),
             3,
-            "should discover files FROM all three tiers"
+            "should discover files from all three tiers"
         );
 
         let names: Vec<&str> = results.iter().map(|r| r.name.as_str()).collect();
@@ -324,7 +324,7 @@ mod tests {
             "duplicate filename should resolve to single entry"
         );
         assert_eq!(
-            results.get(0).copied().unwrap_or_default().tier,
+            results[0].tier,
             Tier::Nous,
             "nous tier should win over shared and theke"
         );
@@ -343,7 +343,7 @@ mod tests {
             "duplicate filename should resolve to single entry"
         );
         assert_eq!(
-            results.get(0).copied().unwrap_or_default().tier,
+            results[0].tier,
             Tier::Shared,
             "shared tier should win over theke"
         );
@@ -358,14 +358,14 @@ mod tests {
         let md = discover(&oikos, "syn", "tools", Some("md"));
         assert_eq!(md.len(), 1, "md filter should match exactly one file");
         assert_eq!(
-            md.get(0).copied().unwrap_or_default().name, "tool.md",
+            md[0].name, "tool.md",
             "md filter should return the .md file"
         );
 
         let yaml = discover(&oikos, "syn", "tools", Some("yaml"));
         assert_eq!(yaml.len(), 1, "yaml filter should match exactly one file");
         assert_eq!(
-            yaml.get(0).copied().unwrap_or_default().name, "tool.yaml",
+            yaml[0].name, "tool.yaml",
             "yaml filter should return the .yaml file"
         );
     }
@@ -389,7 +389,7 @@ mod tests {
         let results = discover(&oikos, "syn", "tools", Some("md"));
         assert_eq!(results.len(), 1, "hidden files should be excluded");
         assert_eq!(
-            results.get(0).copied().unwrap_or_default().name, "visible.md",
+            results[0].name, "visible.md",
             "only visible file should be returned"
         );
     }
@@ -445,17 +445,17 @@ mod tests {
             "resolve_all should find file in all three tiers"
         );
         assert_eq!(
-            results.get(0).copied().unwrap_or_default().tier,
+            results[0].tier,
             Tier::Nous,
             "first result should be nous tier"
         );
         assert_eq!(
-            results.get(1).copied().unwrap_or_default().tier,
+            results[1].tier,
             Tier::Shared,
             "second result should be shared tier"
         );
         assert_eq!(
-            results.get(2).copied().unwrap_or_default().tier,
+            results[2].tier,
             Tier::Theke,
             "third result should be theke tier"
         );
@@ -544,12 +544,12 @@ mod tests {
             "resolve_all should find file in two tiers"
         );
         assert_eq!(
-            results.get(0).copied().unwrap_or_default().tier,
+            results[0].tier,
             Tier::Nous,
             "first result should be nous tier"
         );
         assert_eq!(
-            results.get(1).copied().unwrap_or_default().tier,
+            results[1].tier,
             Tier::Theke,
             "second result should be theke tier"
         );
@@ -635,7 +635,7 @@ mod tests {
             "duplicate name should resolve to one entry"
         );
         assert_eq!(
-            results.get(0).copied().unwrap_or_default().tier,
+            results[0].tier,
             Tier::Nous,
             "nous tier should win in-memory"
         );
@@ -657,7 +657,7 @@ mod tests {
             "hidden files should be excluded in-memory"
         );
         assert_eq!(
-            results.get(0).copied().unwrap_or_default().name, "visible.md",
+            results[0].name, "visible.md",
             "only visible file should be returned"
         );
     }
@@ -674,10 +674,10 @@ mod tests {
         let md = discover_with(&fs, &oikos, "syn", "tools", Some("md"));
         let yaml = discover_with(&fs, &oikos, "syn", "tools", Some("yaml"));
         assert_eq!(md.len(), 1, "md filter should match one file");
-        assert_eq!(md.get(0).copied().unwrap_or_default().name, "tool.md", "md filter should return .md file");
+        assert_eq!(md[0].name, "tool.md", "md filter should return .md file");
         assert_eq!(yaml.len(), 1, "yaml filter should match one file");
         assert_eq!(
-            yaml.get(0).copied().unwrap_or_default().name, "tool.yaml",
+            yaml[0].name, "tool.yaml",
             "yaml filter should return .yaml file"
         );
     }
@@ -747,13 +747,13 @@ mod tests {
             3,
             "resolve_all_with should find all three tiers"
         );
-        assert_eq!(results.get(0).copied().unwrap_or_default().tier, Tier::Nous, "first result should be nous");
+        assert_eq!(results[0].tier, Tier::Nous, "first result should be nous");
         assert_eq!(
-            results.get(1).copied().unwrap_or_default().tier,
+            results[1].tier,
             Tier::Shared,
             "second result should be shared"
         );
-        assert_eq!(results.get(2).copied().unwrap_or_default().tier, Tier::Theke, "third result should be theke");
+        assert_eq!(results[2].tier, Tier::Theke, "third result should be theke");
     }
 
     #[test]

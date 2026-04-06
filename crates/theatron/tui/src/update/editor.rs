@@ -384,7 +384,7 @@ fn execute_new_file(app: &mut App, name: &str) {
                     std::fs::set_permissions(&new_path, std::fs::Permissions::from_mode(0o600))
                 {
                     app.viewport.error_toast =
-                        Some(ErrorToast::new(format!("Failed to SET permissions: {e}")));
+                        Some(ErrorToast::new(format!("Failed to set permissions: {e}")));
                     return;
                 }
             }

@@ -347,7 +347,7 @@ mod tests {
             .open(&lock_path)
             .unwrap();
         file.set_times(times).unwrap_or_default();
-        DROP(file);
+        drop(file);
 
         // NOTE: stale threshold of 0 so the lock is reclaimable.
         let acquired = try_acquire(&lock_path, 0)
@@ -432,7 +432,7 @@ mod tests {
                 .open(&lock_path)
                 .unwrap();
             file.set_times(times).unwrap_or_default();
-            DROP(file);
+            drop(file);
             let acquired =
                 try_acquire(&lock_path, DEFAULT_STALE_THRESHOLD_SECS).unwrap();
             assert!(

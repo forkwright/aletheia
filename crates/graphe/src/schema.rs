@@ -110,16 +110,16 @@ mod tests {
 
     #[test]
     fn fresh_database_initializes_via_migration() {
-        let conn = Connection::open_in_memory().unwrap_or_default();
-        let result = migration::run_migrations(&conn).unwrap_or_default();
+        let conn = Connection::open_in_memory().expect("in-memory SQLite opens");
+        let result = migration::run_migrations(&conn).expect("initial migration succeeds");
         assert_eq!(result.current_version, 5);
     }
 
     #[test]
     fn idempotent_initialization() {
-        let conn = Connection::open_in_memory().unwrap_or_default();
-        migration::run_migrations(&conn).unwrap_or_default();
-        migration::run_migrations(&conn).unwrap_or_default();
+        let conn = Connection::open_in_memory().expect("in-memory SQLite opens");
+        migration::run_migrations(&conn).expect("first migration succeeds");
+        migration::run_migrations(&conn).expect("idempotent second migration succeeds");
 
         let version = migration::get_schema_version(&conn);
         assert_eq!(version, 5);
@@ -127,8 +127,8 @@ mod tests {
 
     #[test]
     fn tables_exist_after_init() {
-        let conn = Connection::open_in_memory().unwrap_or_default();
-        migration::run_migrations(&conn).unwrap_or_default();
+        let conn = Connection::open_in_memory().expect("in-memory SQLite opens");
+        migration::run_migrations(&conn).expect("migration succeeds");
 
         for table in &[
             "sessions",
@@ -144,7 +144,7 @@ mod tests {
                     [table],
                     |row| row.get(0),
                 )
-                .unwrap_or_default();
+                .expect("table existence query succeeds");
             assert!(exists, "table {table} should exist");
         }
     }
@@ -198,17 +198,17 @@ mod tests {
         let marker = "CHECK(category IN (";
         let start = DDL
             .find(marker)
-            .unwrap_or_default();
+            .expect("CHECK constraint for category exists in DDL");
         let inner_start = start + marker.len();
         let inner_end = DDL
             .get(inner_start..)
-            .unwrap_or_default()
+            .expect("inner_start within DDL bounds")
             .find("))")
-            .unwrap_or_default()
+            .expect("closing parens for CHECK constraint")
             + inner_start;
         let inner = DDL
             .get(inner_start..inner_end)
-            .unwrap_or_default();
+            .expect("inner_start..inner_end within DDL bounds");
 
         let ddl_cats: Vec<&str> = inner.split(", ").map(|s| s.trim_matches('\'')).collect();
 
@@ -223,7 +223,7 @@ mod tests {
         for cat in VALID_CATEGORIES {
             assert!(
                 ddl_cats.contains(cat),
-                "VALID_CATEGORIES has '{cat}' but it is missing FROM DDL CHECK constraint"
+                "VALID_CATEGORIES has '{cat}' but it is missing from DDL CHECK constraint"
             );
         }
     }

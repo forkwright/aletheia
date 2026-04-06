@@ -154,12 +154,12 @@ pub(crate) fn Memory() -> Element {
                 let base = cfg.server_url.trim_end_matches('/');
 
                 let mut url = format!(
-                    "{base}/api/v1/knowledge/entities?LIMIT={}",
+                    "{base}/api/v1/knowledge/entities?limit={}",
                     EntityListStore::PAGE_SIZE
                 );
 
                 if page > 0 {
-                    url.push_str(&format!("&OFFSET={}", page * EntityListStore::PAGE_SIZE));
+                    url.push_str(&format!("&offset={}", page * EntityListStore::PAGE_SIZE));
                 }
 
                 if !search.is_empty() {
@@ -175,7 +175,7 @@ pub(crate) fn Memory() -> Element {
                     EntitySort::LastUpdated => "updated_at",
                     EntitySort::Alphabetical => "name",
                 };
-                url.push_str(&format!("&sort={sort_param}&ORDER=desc"));
+                url.push_str(&format!("&sort={sort_param}&order=desc"));
 
                 if sort == EntitySort::Alphabetical {
                     // NOTE: alphabetical sorts ascending.

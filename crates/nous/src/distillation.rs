@@ -87,7 +87,7 @@ pub fn should_trigger_distillation(
         clippy::as_conversions,
         reason = "i64→u64: token counts are non-negative in practice"
     )]
-    let actual_context_u64 = u64::try_from(actual_context).unwrap_or_default();
+    let actual_context_u64 = actual_context as u64;
 
     if actual_context_u64 >= CONTEXT_TOKEN_TRIGGER {
         return Some(format!("context={actual_context} >= 120K"));
@@ -130,7 +130,7 @@ pub fn should_trigger_distillation(
         clippy::as_conversions,
         reason = "u64→f64→u64: context_window * ratio is a rough threshold; precision/truncation acceptable"
     )]
-    let threshold = (f64::try_from(context_window).unwrap_or_default() * config.max_history_share) as u64;
+    let threshold = (context_window as f64 * config.max_history_share) as u64;
     if actual_context_u64 >= threshold
         && session.metrics.message_count >= LEGACY_THRESHOLD_MIN_MESSAGES
     {
@@ -203,7 +203,7 @@ pub async fn maybe_distill(
         clippy::as_conversions,
         reason = "i64→u32: distillation_count is small non-negative"
     )]
-    let distill_count = session.metrics.u32::try_from(distillation_count).unwrap_or_default();
+    let distill_count = session.metrics.distillation_count as u32;
     let result = engine
         .distill(&messages, nous_id, provider, distill_count + 1)
         .await
@@ -256,10 +256,10 @@ pub fn apply_distillation(
     store
         .record_distillation(
             session_id,
-            i64::try_from(distill_count).unwrap_or_default(),
+            distill_count as i64,
             (history.len() - distill_count) as i64,
-            result.i64::try_from(tokens_before).unwrap_or_default(),
-            result.i64::try_from(tokens_after).unwrap_or_default(),
+            result.tokens_before as i64,
+            result.tokens_after as i64,
             None,
         )
         .context(error::StoreSnafu)?;
@@ -367,7 +367,7 @@ mod tests {
     fn trigger_on_stale_session() {
         let eight_days_ago = jiff::Timestamp::now()
             .checked_sub(jiff::SignedDuration::from_hours(8 * 24))
-            .unwrap_or_default();
+            .expect("valid timestamp");
         let session = make_session(|s| {
             s.metrics.message_count = 25;
             s.metrics.distillation_count = 1;
@@ -461,10 +461,10 @@ mod tests {
         use aletheia_mneme::store::SessionStore;
         use aletheia_mneme::types::Role as MnemeRole;
 
-        let store = SessionStore::open_in_memory().unwrap_or_default();
+        let store = SessionStore::open_in_memory().expect("in-memory store");
         store
             .create_session("ses-1", "agent-1", "main", None, None)
-            .unwrap_or_default();
+            .expect("create session");
 
         for i in 0..5_i64 {
             store
@@ -476,10 +476,10 @@ mod tests {
                     None,
                     100,
                 )
-                .unwrap_or_default();
+                .expect("append");
         }
 
-        let history = store.get_history("ses-1", None).unwrap_or_default();
+        let history = store.get_history("ses-1", None).expect("history");
         assert_eq!(history.len(), 5);
 
         // WHY: Distill all 5 messages: avoids the seq-shift conflict that occurs when
@@ -502,9 +502,9 @@ mod tests {
             contradiction_log: aletheia_melete::contradiction::ContradictionLog::empty(),
         };
 
-        apply_distillation(&store, "ses-1", &result, &history).unwrap_or_default();
+        apply_distillation(&store, "ses-1", &result, &history).expect("apply distillation");
 
-        let history_after = store.get_history("ses-1", None).unwrap_or_default();
+        let history_after = store.get_history("ses-1", None).expect("history after");
         let has_summary = history_after
             .iter()
             .any(|m| m.content.contains("[Distillation #1]"));
@@ -512,8 +512,8 @@ mod tests {
 
         let session = store
             .find_session_by_id("ses-1")
-            .unwrap_or_default()
-            .unwrap_or_default();
+            .expect("find session")
+            .expect("session exists");
         assert_eq!(
             session.metrics.distillation_count, 1,
             "distillation_count should be incremented"
@@ -562,8 +562,8 @@ mod tests {
         ];
         let converted = convert_to_hermeneus_messages(&messages);
         assert_eq!(converted.len(), 3);
-        assert_eq!(converted.get(0).copied().unwrap_or_default().role, HermeneusRole::System);
-        assert_eq!(converted.get(1).copied().unwrap_or_default().role, HermeneusRole::User);
-        assert_eq!(converted.get(2).copied().unwrap_or_default().role, HermeneusRole::User);
+        assert_eq!(converted[0].role, HermeneusRole::System);
+        assert_eq!(converted[1].role, HermeneusRole::User);
+        assert_eq!(converted[2].role, HermeneusRole::User);
     }
 }

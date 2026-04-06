@@ -23,7 +23,7 @@ fn binary_path_detection() {
 
 #[test]
 fn binary_content_detection() {
-    let dir = tempfile::tempdir().expect("CREATE tempdir");
+    let dir = tempfile::tempdir().expect("create tempdir");
     let text_path = dir.path().join("text.txt");
     let bin_path = dir.path().join("data.bin");
 
@@ -36,7 +36,7 @@ fn binary_content_detection() {
 
 #[test]
 fn scan_empty_workspace() {
-    let dir = tempfile::tempdir().expect("CREATE tempdir");
+    let dir = tempfile::tempdir().expect("create tempdir");
     let ws = scan_workspace(dir.path()).expect("scan empty workspace");
     assert!(ws.files.is_empty());
     assert!(ws.binary_files.is_empty());
@@ -52,10 +52,10 @@ fn scan_missing_workspace() {
 
 #[test]
 fn scan_classifies_files() {
-    let dir = tempfile::tempdir().expect("CREATE tempdir");
+    let dir = tempfile::tempdir().expect("create tempdir");
     std::fs::write(dir.path().join("notes.md"), "# Notes").expect("write notes.md");
     std::fs::write(dir.path().join("data.bin"), b"\x00binary\x00").expect("write data.bin");
-    std::fs::create_dir(dir.path().join(".git")).expect("CREATE .git dir");
+    std::fs::create_dir(dir.path().join(".git")).expect("create .git dir");
     std::fs::write(dir.path().join(".git/HEAD"), "ref: refs/heads/main").expect("write .git/HEAD");
 
     let ws = scan_workspace(dir.path()).expect("scan workspace");
@@ -67,8 +67,8 @@ fn scan_classifies_files() {
 
 #[test]
 fn scan_skips_ignored_dirs() {
-    let dir = tempfile::tempdir().expect("CREATE tempdir");
-    std::fs::create_dir(dir.path().join("node_modules")).expect("CREATE node_modules dir");
+    let dir = tempfile::tempdir().expect("create tempdir");
+    std::fs::create_dir(dir.path().join("node_modules")).expect("create node_modules dir");
     std::fs::write(dir.path().join("node_modules/package.json"), "{}").expect("write package.json");
     std::fs::write(dir.path().join("readme.md"), "hello").expect("write readme.md");
 
@@ -82,7 +82,7 @@ fn export_with_sessions() {
     let store = test_store();
     store
         .create_session("ses-1", "alice", "main", None, None)
-        .expect("CREATE session");
+        .expect("create session");
     store
         .append_message("ses-1", Role::User, "hello", None, None, 50)
         .expect("append user message");
@@ -93,7 +93,7 @@ fn export_with_sessions() {
         .add_note("ses-1", "alice", "task", "testing")
         .expect("add note");
 
-    let dir = tempfile::tempdir().expect("CREATE tempdir");
+    let dir = tempfile::tempdir().expect("create tempdir");
     std::fs::write(dir.path().join("notes.md"), "# Test").expect("write notes.md");
 
     let opts = ExportOptions::default();
@@ -122,15 +122,15 @@ fn export_filters_archived_by_default() {
     let store = test_store();
     store
         .create_session("ses-active", "bob", "main", None, None)
-        .expect("CREATE active session");
+        .expect("create active session");
     store
         .create_session("ses-archived", "bob", "old", None, None)
-        .expect("CREATE archived session");
+        .expect("create archived session");
     store
         .update_session_status("ses-archived", SessionStatus::Archived)
         .expect("archive session");
 
-    let dir = tempfile::tempdir().expect("CREATE tempdir");
+    let dir = tempfile::tempdir().expect("create tempdir");
     let opts = ExportOptions::default();
     let agent = export_agent(
         "bob",
@@ -166,7 +166,7 @@ fn export_includes_distilled_messages() {
     let store = test_store();
     store
         .create_session("ses-1", "carol", "main", None, None)
-        .expect("CREATE session");
+        .expect("create session");
     store
         .append_message("ses-1", Role::User, "old", None, None, 100)
         .expect("append old message");
@@ -177,7 +177,7 @@ fn export_includes_distilled_messages() {
         .mark_messages_distilled("ses-1", &[1])
         .expect("mark messages distilled");
 
-    let dir = tempfile::tempdir().expect("CREATE tempdir");
+    let dir = tempfile::tempdir().expect("create tempdir");
     let opts = ExportOptions::default();
     let agent = export_agent(
         "carol",
@@ -200,14 +200,14 @@ fn export_message_limit() {
     let store = test_store();
     store
         .create_session("ses-1", "dave", "main", None, None)
-        .expect("CREATE session");
+        .expect("create session");
     for i in 1..=10 {
         store
             .append_message("ses-1", Role::User, &format!("msg {i}"), None, None, 10)
             .expect("append message");
     }
 
-    let dir = tempfile::tempdir().expect("CREATE tempdir");
+    let dir = tempfile::tempdir().expect("create tempdir");
     let opts = ExportOptions {
         max_messages_per_session: 3,
         include_archived: false,
@@ -221,7 +221,7 @@ fn export_message_limit() {
         dir.path(),
         &opts,
     )
-    .expect("export agent with message LIMIT");
+    .expect("export agent with message limit");
 
     assert_eq!(agent.sessions[0].messages.len(), 3);
     assert_eq!(agent.sessions[0].messages[0].content, "msg 1");
@@ -230,7 +230,7 @@ fn export_message_limit() {
 #[test]
 fn export_empty_agent() {
     let store = test_store();
-    let dir = tempfile::tempdir().expect("CREATE tempdir");
+    let dir = tempfile::tempdir().expect("create tempdir");
     let opts = ExportOptions::default();
 
     let agent = export_agent(
@@ -260,12 +260,12 @@ fn export_preserves_timestamps() {
     let store = test_store();
     store
         .create_session("ses-ts", "ts-agent", "main", None, None)
-        .expect("CREATE session");
+        .expect("create session");
     store
         .append_message("ses-ts", Role::User, "time test", None, None, 30)
         .expect("append message");
 
-    let dir = tempfile::tempdir().expect("CREATE tempdir");
+    let dir = tempfile::tempdir().expect("create tempdir");
     let agent = export_agent(
         "ts-agent",
         None,
@@ -278,16 +278,16 @@ fn export_preserves_timestamps() {
     .expect("export agent");
 
     let session = &agent.sessions[0];
-    assert!(!session.created_at.is_empty(), "created_at must be SET");
-    assert!(!session.updated_at.is_empty(), "updated_at must be SET");
+    assert!(!session.created_at.is_empty(), "created_at must be set");
+    assert!(!session.updated_at.is_empty(), "updated_at must be set");
     assert!(
         !session.messages[0].created_at.is_empty(),
-        "message created_at must be SET"
+        "message created_at must be set"
     );
 
     let json = serde_json::to_string(&agent).expect("serialize agent to JSON");
     let restored: crate::portability::AgentFile =
-        serde_json::from_str(&json).expect("deserialize agent FROM JSON");
+        serde_json::from_str(&json).expect("deserialize agent from JSON");
     assert_eq!(restored.sessions[0].created_at, session.created_at);
     assert_eq!(restored.sessions[0].updated_at, session.updated_at);
     assert_eq!(
@@ -301,7 +301,7 @@ fn export_preserves_unicode() {
     let store = test_store();
     store
         .create_session("ses-uni", "uni-agent", "main", None, None)
-        .expect("CREATE session");
+        .expect("create session");
 
     let emoji = "Hello 🌍🔥 world";
     let cjk = "你好世界 こんにちは";
@@ -315,7 +315,7 @@ fn export_preserves_unicode() {
         .add_note("ses-uni", "uni-agent", "context", &mixed)
         .expect("add unicode note");
 
-    let dir = tempfile::tempdir().expect("CREATE tempdir");
+    let dir = tempfile::tempdir().expect("create tempdir");
     let unicode_file = "日本語.txt";
     std::fs::write(dir.path().join(unicode_file), &mixed).expect("write unicode file");
 
@@ -336,7 +336,7 @@ fn export_preserves_unicode() {
 
     let json = serde_json::to_string_pretty(&agent).expect("serialize unicode agent to JSON");
     let restored: crate::portability::AgentFile =
-        serde_json::from_str(&json).expect("deserialize unicode agent FROM JSON");
+        serde_json::from_str(&json).expect("deserialize unicode agent from JSON");
     assert_eq!(restored.sessions[0].messages[0].content, mixed);
     assert_eq!(restored.sessions[0].notes[0].content, mixed);
 }
@@ -344,7 +344,7 @@ fn export_preserves_unicode() {
 #[test]
 fn export_empty_store() {
     let store = test_store();
-    let dir = tempfile::tempdir().expect("CREATE tempdir");
+    let dir = tempfile::tempdir().expect("create tempdir");
     let opts = ExportOptions::default();
 
     let agent = export_agent(
@@ -363,7 +363,7 @@ fn export_empty_store() {
 
     let json = serde_json::to_string(&agent).expect("serialize agent to JSON");
     let restored: crate::portability::AgentFile =
-        serde_json::from_str(&json).expect("deserialize agent FROM JSON");
+        serde_json::from_str(&json).expect("deserialize agent from JSON");
     assert_eq!(restored.sessions.len(), 0);
 }
 
@@ -372,14 +372,14 @@ fn export_with_message_limit() {
     let store = test_store();
     store
         .create_session("ses-lim", "limiter", "main", None, None)
-        .expect("CREATE session");
+        .expect("create session");
     for i in 1..=20 {
         store
             .append_message("ses-lim", Role::User, &format!("msg {i}"), None, None, 10)
             .expect("append message");
     }
 
-    let dir = tempfile::tempdir().expect("CREATE tempdir");
+    let dir = tempfile::tempdir().expect("create tempdir");
 
     let opts_limited = ExportOptions {
         max_messages_per_session: 5,
@@ -394,7 +394,7 @@ fn export_with_message_limit() {
         dir.path(),
         &opts_limited,
     )
-    .expect("export agent with LIMIT of 5");
+    .expect("export agent with limit of 5");
     assert_eq!(agent.sessions[0].messages.len(), 5);
 
     let opts_unlimited = ExportOptions {
@@ -410,7 +410,7 @@ fn export_with_message_limit() {
         dir.path(),
         &opts_unlimited,
     )
-    .expect("export agent with no message LIMIT");
+    .expect("export agent with no message limit");
     assert_eq!(agent_all.sessions[0].messages.len(), 20);
 }
 
@@ -459,7 +459,7 @@ fn export_preserves_session_metadata() {
     let store = test_store();
     store
         .create_session("ses-meta", "meta-agent", "main", None, None)
-        .expect("CREATE session");
+        .expect("create session");
     store
         .append_message("ses-meta", Role::User, "hello", None, None, 42)
         .expect("append message");
@@ -467,7 +467,7 @@ fn export_preserves_session_metadata() {
         .add_note("ses-meta", "meta-agent", "context", "important note")
         .expect("add note");
 
-    let dir = tempfile::tempdir().expect("CREATE tempdir");
+    let dir = tempfile::tempdir().expect("create tempdir");
     let agent = export_agent(
         "meta-agent",
         Some("Meta"),
@@ -496,15 +496,15 @@ fn export_filters_archived_sessions() {
     let store = test_store();
     store
         .create_session("ses-a", "filter-agent", "main", None, None)
-        .expect("CREATE active session");
+        .expect("create active session");
     store
         .create_session("ses-b", "filter-agent", "old", None, None)
-        .expect("CREATE session to archive");
+        .expect("create session to archive");
     store
         .update_session_status("ses-b", SessionStatus::Archived)
         .expect("archive session");
 
-    let dir = tempfile::tempdir().expect("CREATE tempdir");
+    let dir = tempfile::tempdir().expect("create tempdir");
 
     let opts_default = ExportOptions::default();
     let agent = export_agent(
@@ -547,9 +547,9 @@ fn export_filters_archived_sessions() {
 
 #[test]
 fn scan_workspace_nested_structure() {
-    let dir = tempfile::tempdir().expect("CREATE tempdir");
+    let dir = tempfile::tempdir().expect("create tempdir");
     let sub = dir.path().join("sub/deep");
-    std::fs::create_dir_all(&sub).expect("CREATE nested directories");
+    std::fs::create_dir_all(&sub).expect("create nested directories");
     std::fs::write(dir.path().join("root.txt"), "root").expect("write root.txt");
     std::fs::write(sub.join("nested.md"), "nested").expect("write nested.md");
 

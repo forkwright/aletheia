@@ -13,12 +13,12 @@ mod engine_tests {
     use crate::knowledge_store::KnowledgeStore;
 
     fn test_store() -> std::sync::Arc<KnowledgeStore> {
-        KnowledgeStore::open_mem().unwrap_or_default()
+        KnowledgeStore::open_mem().expect("open_mem")
     }
 
     fn make_entity(id: &str, name: &str) -> Entity {
         Entity {
-            id: crate::id::EntityId::new(id).unwrap_or_default(),
+            id: crate::id::EntityId::new(id).expect("valid test id"),
             name: name.to_owned(),
             entity_type: "person".to_owned(),
             aliases: vec![],
@@ -29,8 +29,8 @@ mod engine_tests {
 
     fn make_relationship(src: &str, dst: &str, relation: &str, weight: f64) -> Relationship {
         Relationship {
-            src: crate::id::EntityId::new(src).unwrap_or_default(),
-            dst: crate::id::EntityId::new(dst).unwrap_or_default(),
+            src: crate::id::EntityId::new(src).expect("valid test id"),
+            dst: crate::id::EntityId::new(dst).expect("valid test id"),
             relation: relation.to_owned(),
             weight,
             created_at: jiff::Timestamp::now(),
@@ -40,7 +40,7 @@ mod engine_tests {
     #[test]
     fn graph_scores_relation_created_by_init_schema() {
         let store = test_store();
-        let ctx = store.load_graph_context().unwrap_or_default();
+        let ctx = store.load_graph_context().expect("load_graph_context");
         assert!(
             ctx.is_empty(),
             "freshly created store should have empty graph context"
@@ -53,29 +53,29 @@ mod engine_tests {
 
         store
             .insert_entity(&make_entity("alice", "Alice"))
-            .unwrap_or_default();
+            .expect("insert alice");
         store
             .insert_entity(&make_entity("bob", "Bob"))
-            .unwrap_or_default();
+            .expect("insert bob");
         store
             .insert_entity(&make_entity("charlie", "Charlie"))
-            .unwrap_or_default();
+            .expect("insert charlie");
 
         store
             .insert_relationship(&make_relationship("alice", "bob", "KNOWS", 0.8))
-            .unwrap_or_default();
+            .expect("insert rel 1");
         store
             .insert_relationship(&make_relationship("alice", "charlie", "KNOWS", 0.7))
-            .unwrap_or_default();
+            .expect("insert rel 2");
         store
             .insert_relationship(&make_relationship("bob", "alice", "KNOWS", 0.8))
-            .unwrap_or_default();
+            .expect("insert rel 3");
 
         store
             .recompute_graph_scores()
-            .unwrap_or_default();
+            .expect("recompute_graph_scores");
 
-        let ctx = store.load_graph_context().unwrap_or_default();
+        let ctx = store.load_graph_context().expect("load_graph_context");
         assert!(
             !ctx.is_empty(),
             "graph context should be populated after recompute"
@@ -103,15 +103,15 @@ mod engine_tests {
         for (id, name) in [("a", "A"), ("b", "B"), ("c", "C"), ("d", "D"), ("e", "E")] {
             store
                 .insert_entity(&make_entity(id, name))
-                .unwrap_or_default();
+                .expect("insert entity");
         }
         for (src, dst) in [("a", "b"), ("b", "c"), ("c", "d"), ("d", "e")] {
             store
                 .insert_relationship(&make_relationship(src, dst, "NEXT", 0.5))
-                .unwrap_or_default();
+                .expect("insert rel");
         }
 
-        let proximity = store.compute_bfs_proximity(&["a".to_owned()]).unwrap_or_default();
+        let proximity = store.compute_bfs_proximity(&["a".to_owned()]).expect("bfs");
 
         assert_eq!(
             proximity.get("a").copied(),
@@ -143,10 +143,10 @@ mod engine_tests {
     #[test]
     fn bfs_proximity_empty_seeds() {
         let store = test_store();
-        let proximity = store.compute_bfs_proximity(&[]).unwrap_or_default();
+        let proximity = store.compute_bfs_proximity(&[]).expect("bfs empty");
         assert!(
             proximity.is_empty(),
-            "empty seed SET should produce empty proximity map"
+            "empty seed set should produce empty proximity map"
         );
     }
 
@@ -155,10 +155,10 @@ mod engine_tests {
         let store = test_store();
         store
             .insert_entity(&make_entity("lonely", "Lonely"))
-            .unwrap_or_default();
+            .expect("insert");
         let proximity = store
             .compute_bfs_proximity(&["lonely".to_owned()])
-            .unwrap_or_default();
+            .expect("bfs");
         assert_eq!(
             proximity.get("lonely").copied(),
             Some(0),
@@ -178,29 +178,29 @@ mod engine_tests {
         for (id, name) in [("a1", "A1"), ("a2", "A2"), ("b1", "B1"), ("b2", "B2")] {
             store
                 .insert_entity(&make_entity(id, name))
-                .unwrap_or_default();
+                .expect("insert entity");
         }
         store
             .insert_relationship(&make_relationship("a1", "a2", "WORKS_WITH", 0.9))
-            .unwrap_or_default();
+            .expect("insert");
         store
             .insert_relationship(&make_relationship("a2", "a1", "WORKS_WITH", 0.9))
-            .unwrap_or_default();
+            .expect("insert");
         store
             .insert_relationship(&make_relationship("b1", "b2", "WORKS_WITH", 0.9))
-            .unwrap_or_default();
+            .expect("insert");
         store
             .insert_relationship(&make_relationship("b2", "b1", "WORKS_WITH", 0.9))
-            .unwrap_or_default();
+            .expect("insert");
         store
             .insert_relationship(&make_relationship("a2", "b1", "KNOWS", 0.1))
-            .unwrap_or_default();
+            .expect("insert");
 
-        store.recompute_graph_scores().unwrap_or_default();
+        store.recompute_graph_scores().expect("recompute");
 
         let ctx = store
             .build_graph_context(&["a1".to_owned()], 0.10)
-            .unwrap_or_default();
+            .expect("build_graph_context");
 
         assert!(
             !ctx.context_clusters.is_empty(),
@@ -219,16 +219,16 @@ mod engine_tests {
         for (id, name) in [("x1", "X1"), ("x2", "X2")] {
             store
                 .insert_entity(&make_entity(id, name))
-                .unwrap_or_default();
+                .expect("insert entity");
         }
         store
             .insert_relationship(&make_relationship("x1", "x2", "LINKED", 0.8))
-            .unwrap_or_default();
-        store.recompute_graph_scores().unwrap_or_default();
+            .expect("insert relationship");
+        store.recompute_graph_scores().expect("recompute");
 
         let ctx = store
             .build_graph_context(&["x1".to_owned()], 0.0)
-            .unwrap_or_default();
+            .expect("build_graph_context with zero weight");
         assert!(
             ctx.is_empty(),
             "graph context must be empty when weight is zero"
@@ -244,7 +244,7 @@ mod engine_tests {
 
         let ctx_active = store
             .build_graph_context(&["x1".to_owned()], 0.10)
-            .unwrap_or_default();
+            .expect("build_graph_context with nonzero weight");
         assert!(
             !ctx_active.is_empty(),
             "graph context should have data when weight is nonzero"
@@ -256,8 +256,8 @@ mod engine_tests {
         let store = test_store();
         store
             .recompute_graph_scores()
-            .unwrap_or_default();
-        let ctx = store.load_graph_context().unwrap_or_default();
+            .expect("recompute empty graph");
+        let ctx = store.load_graph_context().expect("load");
         assert!(
             ctx.is_empty(),
             "recomputing empty graph should produce empty context"
@@ -270,26 +270,26 @@ mod engine_tests {
 
         store
             .insert_entity(&make_entity("hub", "Hub"))
-            .unwrap_or_default();
+            .expect("insert");
         store
             .insert_entity(&make_entity("leaf1", "Leaf1"))
-            .unwrap_or_default();
+            .expect("insert");
         store
             .insert_entity(&make_entity("leaf2", "Leaf2"))
-            .unwrap_or_default();
+            .expect("insert");
         store
             .insert_entity(&make_entity("leaf3", "Leaf3"))
-            .unwrap_or_default();
+            .expect("insert");
 
         for leaf in ["leaf1", "leaf2", "leaf3"] {
             store
                 .insert_relationship(&make_relationship(leaf, "hub", "KNOWS", 0.8))
-                .unwrap_or_default();
+                .expect("insert rel");
         }
 
-        store.recompute_graph_scores().unwrap_or_default();
+        store.recompute_graph_scores().expect("recompute");
 
-        let ctx = store.load_graph_context().unwrap_or_default();
+        let ctx = store.load_graph_context().expect("load");
         let hub_importance = ctx.importance("hub");
         let leaf_importance = ctx.importance("leaf1");
 
@@ -310,21 +310,21 @@ mod engine_tests {
         for (id, name) in [("alice", "Alice"), ("bob", "Bob"), ("charlie", "Charlie")] {
             store
                 .insert_entity(&make_entity(id, name))
-                .unwrap_or_default();
+                .expect("insert entity");
         }
         store
             .insert_relationship(&make_relationship("alice", "bob", "KNOWS", 0.5))
-            .unwrap_or_default();
+            .expect("insert");
         store
             .insert_relationship(&make_relationship("bob", "charlie", "KNOWS", 0.5))
-            .unwrap_or_default();
+            .expect("insert");
         store
             .insert_relationship(&make_relationship("charlie", "alice", "KNOWS", 0.5))
-            .unwrap_or_default();
+            .expect("insert");
 
         let proximity = store
             .compute_bfs_proximity(&["alice".to_owned()])
-            .unwrap_or_default();
+            .expect("bfs with cycle terminates");
 
         assert_eq!(
             proximity.get("alice").copied(),
@@ -357,15 +357,15 @@ mod engine_tests {
         ] {
             store
                 .insert_entity(&make_entity(id, name))
-                .unwrap_or_default();
+                .expect("insert entity");
         }
         for (src, dst) in [("a", "b"), ("b", "c"), ("c", "d"), ("d", "e"), ("e", "f")] {
             store
                 .insert_relationship(&make_relationship(src, dst, "NEXT", 0.5))
-                .unwrap_or_default();
+                .expect("insert rel");
         }
 
-        let proximity = store.compute_bfs_proximity(&["a".to_owned()]).unwrap_or_default();
+        let proximity = store.compute_bfs_proximity(&["a".to_owned()]).expect("bfs");
 
         assert_eq!(
             proximity.get("a").copied(),
@@ -381,7 +381,7 @@ mod engine_tests {
         assert_eq!(
             proximity.get("f").copied(),
             None,
-            "hop-5 node must be excluded FROM results"
+            "hop-5 node must be excluded from results"
         );
     }
 }
@@ -627,7 +627,7 @@ fn graph_dirty_flag_take_clears_dirty_state() {
     let flag = GraphDirtyFlag::new();
     flag.mark_dirty();
     let was_dirty = flag.take_dirty();
-    assert!(was_dirty, "take_dirty must return true when flag was SET");
+    assert!(was_dirty, "take_dirty must return true when flag was set");
     assert!(
         !flag.is_dirty(),
         "flag must be clean immediately after take_dirty"
@@ -651,11 +651,11 @@ fn graph_dirty_flag_concurrent_marks_remain_dirty() {
         })
         .collect();
     for h in handles {
-        h.join().unwrap_or_default();
+        h.join().expect("thread must not panic");
     }
     assert!(
         flag.is_dirty(),
-        "flag must be dirty after concurrent marks FROM 8 threads"
+        "flag must be dirty after concurrent marks from 8 threads"
     );
 }
 

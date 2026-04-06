@@ -285,7 +285,7 @@ impl_from_error!(aletheia_nous::error::Error, |err| {
 impl From<tokio::task::JoinError> for ApiError {
     fn from(err: tokio::task::JoinError) -> Self {
         InternalSnafu {
-            message: format!("task JOIN failed: {err}"),
+            message: format!("task join failed: {err}"),
         }
         .build()
     }
@@ -315,7 +315,7 @@ mod tests {
         let retry = response
             .headers()
             .get(axum::http::header::RETRY_AFTER)
-            .unwrap_or_default();
+            .expect("should have Retry-After header");
         assert_eq!(retry.to_str().unwrap(), "5");
     }
 
@@ -330,7 +330,7 @@ mod tests {
         let retry = response
             .headers()
             .get(axum::http::header::RETRY_AFTER)
-            .unwrap_or_default();
+            .expect("should have Retry-After header");
         assert_eq!(retry.to_str().unwrap(), "0");
     }
 

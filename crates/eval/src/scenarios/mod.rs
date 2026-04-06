@@ -41,8 +41,8 @@ mod tests {
 
     #[test]
     fn unique_key_contains_prefix_and_suffix() {
-        let key = unique_key("session", "CREATE");
-        assert!(key.starts_with("eval-session-CREATE-"), "key: {key}");
+        let key = unique_key("session", "create");
+        assert!(key.starts_with("eval-session-create-"), "key: {key}");
     }
 
     #[test]

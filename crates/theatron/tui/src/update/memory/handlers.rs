@@ -240,7 +240,7 @@ pub(crate) async fn handle_confidence_submit(app: &mut App) {
         match client.knowledge_update_confidence(&id, conf).await {
             Ok(()) => {
                 app.viewport.error_toast =
-                    Some(ErrorToast::new(format!("Confidence SET to {conf:.2}")));
+                    Some(ErrorToast::new(format!("Confidence set to {conf:.2}")));
             }
             Err(e) => {
                 // NOTE: revert the optimistic update on failure
@@ -255,7 +255,7 @@ pub(crate) async fn handle_confidence_submit(app: &mut App) {
                     f.confidence = prev_conf;
                 }
                 app.viewport.error_toast =
-                    Some(ErrorToast::new(format!("Confidence UPDATE failed: {e}")));
+                    Some(ErrorToast::new(format!("Confidence update failed: {e}")));
             }
         }
     }

@@ -318,8 +318,8 @@ mod tests {
 
         handle_sse_init(&mut app, active_turns);
 
-        assert_eq!(app.dashboard.agents.get(0).copied().unwrap_or_default().status, AgentStatus::Working);
-        assert_eq!(app.dashboard.agents.get(1).copied().unwrap_or_default().status, AgentStatus::Idle);
+        assert_eq!(app.dashboard.agents[0].status, AgentStatus::Working);
+        assert_eq!(app.dashboard.agents[1].status, AgentStatus::Idle);
     }
 
     #[test]
@@ -329,8 +329,8 @@ mod tests {
 
         handle_sse_turn_before(&mut app, "syn".into());
 
-        assert_eq!(app.dashboard.agents.get(0).copied().unwrap_or_default().status, AgentStatus::Working);
-        assert!(app.dashboard.agents.get(0).copied().unwrap_or_default().active_tool.is_none());
+        assert_eq!(app.dashboard.agents[0].status, AgentStatus::Working);
+        assert!(app.dashboard.agents[0].active_tool.is_none());
     }
 
     #[test]
@@ -340,10 +340,10 @@ mod tests {
 
         handle_sse_tool_called(&mut app, "syn".into(), "read_file".to_string());
 
-        let tool = app.dashboard.agents.get(0).copied().unwrap_or_default()
+        let tool = app.dashboard.agents[0]
             .active_tool
             .as_ref()
-            .unwrap_or_default();
+            .expect("active_tool should be set");
         assert_eq!(tool.name, "read_file");
         // started_at should be very recent
         assert!(tool.started_at.elapsed().as_secs() < 5);
@@ -353,14 +353,14 @@ mod tests {
     fn sse_tool_failed_clears_tool() {
         let mut app = test_app();
         app.dashboard.agents.push(test_agent("syn", "Syn"));
-        app.dashboard.agents.get(0).copied().unwrap_or_default().active_tool = Some(ActiveTool {
+        app.dashboard.agents[0].active_tool = Some(ActiveTool {
             name: "read_file".to_string(),
             started_at: std::time::Instant::now(),
         });
 
         handle_sse_tool_failed(&mut app, "syn".into());
 
-        assert!(app.dashboard.agents.get(0).copied().unwrap_or_default().active_tool.is_none());
+        assert!(app.dashboard.agents[0].active_tool.is_none());
     }
 
     #[test]
@@ -369,7 +369,7 @@ mod tests {
         app.dashboard.agents.push(test_agent("syn", "Syn"));
 
         handle_sse_status_update(&mut app, "syn".into(), "working".to_string());
-        assert_eq!(app.dashboard.agents.get(0).copied().unwrap_or_default().status, AgentStatus::Working);
+        assert_eq!(app.dashboard.agents[0].status, AgentStatus::Working);
     }
 
     #[test]
@@ -378,7 +378,7 @@ mod tests {
         app.dashboard.agents.push(test_agent("syn", "Syn"));
 
         handle_sse_status_update(&mut app, "syn".into(), "streaming".to_string());
-        assert_eq!(app.dashboard.agents.get(0).copied().unwrap_or_default().status, AgentStatus::Streaming);
+        assert_eq!(app.dashboard.agents[0].status, AgentStatus::Streaming);
     }
 
     #[test]
@@ -387,24 +387,24 @@ mod tests {
         app.dashboard.agents.push(test_agent("syn", "Syn"));
 
         handle_sse_status_update(&mut app, "syn".into(), "compacting".to_string());
-        assert_eq!(app.dashboard.agents.get(0).copied().unwrap_or_default().status, AgentStatus::Compacting);
+        assert_eq!(app.dashboard.agents[0].status, AgentStatus::Compacting);
     }
 
     #[test]
     fn sse_status_update_unknown_defaults_to_idle() {
         let mut app = test_app();
         app.dashboard.agents.push(test_agent("syn", "Syn"));
-        app.dashboard.agents.get(0).copied().unwrap_or_default().status = AgentStatus::Working;
+        app.dashboard.agents[0].status = AgentStatus::Working;
 
         handle_sse_status_update(&mut app, "syn".into(), "unknown_status".to_string());
-        assert_eq!(app.dashboard.agents.get(0).copied().unwrap_or_default().status, AgentStatus::Idle);
+        assert_eq!(app.dashboard.agents[0].status, AgentStatus::Idle);
     }
 
     #[test]
     fn sse_session_archived_removes_session() {
         let mut app = test_app();
         app.dashboard.agents.push(test_agent("syn", "Syn"));
-        app.dashboard.agents.get(0).copied().unwrap_or_default()
+        app.dashboard.agents[0]
             .sessions
             .push(crate::api::types::Session {
                 id: "s1".into(),
@@ -419,7 +419,7 @@ mod tests {
 
         handle_sse_session_archived(&mut app, "syn".into(), "s1".into());
 
-        assert!(app.dashboard.agents.get(0).copied().unwrap_or_default().sessions.is_empty());
+        assert!(app.dashboard.agents[0].sessions.is_empty());
     }
 
     #[test]
@@ -429,9 +429,9 @@ mod tests {
 
         handle_sse_distill_before(&mut app, "syn".into());
 
-        assert_eq!(app.dashboard.agents.get(0).copied().unwrap_or_default().status, AgentStatus::Compacting);
+        assert_eq!(app.dashboard.agents[0].status, AgentStatus::Compacting);
         assert_eq!(
-            app.dashboard.agents.get(0).copied().unwrap_or_default().compaction_stage.as_deref(),
+            app.dashboard.agents[0].compaction_stage.as_deref(),
             Some("starting")
         );
     }
@@ -440,12 +440,12 @@ mod tests {
     fn sse_distill_stage_updates_stage() {
         let mut app = test_app();
         app.dashboard.agents.push(test_agent("syn", "Syn"));
-        app.dashboard.agents.get(0).copied().unwrap_or_default().status = AgentStatus::Compacting;
+        app.dashboard.agents[0].status = AgentStatus::Compacting;
 
         handle_sse_distill_stage(&mut app, "syn".into(), "extracting".to_string());
 
         assert_eq!(
-            app.dashboard.agents.get(0).copied().unwrap_or_default().compaction_stage.as_deref(),
+            app.dashboard.agents[0].compaction_stage.as_deref(),
             Some("extracting")
         );
     }
@@ -489,7 +489,7 @@ mod tests {
             1,
             "optimistic message must survive"
         );
-        assert_eq!(app.dashboard.messages.get(0).copied().unwrap_or_default().text, "hello");
+        assert_eq!(app.dashboard.messages[0].text, "hello");
     }
 
     #[tokio::test]
@@ -517,7 +517,7 @@ mod tests {
             1,
             "messages must survive during active turn"
         );
-        assert_eq!(app.dashboard.messages.get(0).copied().unwrap_or_default().text, "hello");
+        assert_eq!(app.dashboard.messages[0].text, "hello");
     }
 
     #[tokio::test]
@@ -548,6 +548,6 @@ mod tests {
             1,
             "optimistic message must survive reconnect"
         );
-        assert_eq!(app.dashboard.messages.get(0).copied().unwrap_or_default().text, "hello");
+        assert_eq!(app.dashboard.messages[0].text, "hello");
     }
 }

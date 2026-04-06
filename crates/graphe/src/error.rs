@@ -50,7 +50,7 @@ pub enum Error {
 
     /// Session creation failed.
     #[cfg(feature = "sqlite")]
-    #[snafu(display("failed to CREATE session for nous {nous_id}"))]
+    #[snafu(display("failed to create session for nous {nous_id}"))]
     SessionCreate {
         nous_id: String,
         #[snafu(implicit)]

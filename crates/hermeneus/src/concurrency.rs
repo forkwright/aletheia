@@ -287,7 +287,7 @@ impl AdaptiveConcurrencyLimiter {
                         clippy::cast_possible_truncation,
                         clippy::cast_sign_loss,
                         clippy::as_conversions,
-                        reason = "decreased_f64 is non-negative and bounded by INNER.LIMIT (a u32)"
+                        reason = "decreased_f64 is non-negative and bounded by inner.limit (a u32)"
                     )]
                     let decreased = decreased_f64 as u32; // kanon:ignore RUST/as-cast
                     inner.limit = decreased.max(self.config.min_limit);
@@ -656,13 +656,13 @@ mod tests {
         // First request: latency 2s (below threshold) → success → limit increases.
         let permit = l.acquire().await;
         permit.finish_with_latency(RequestOutcome::Success, Duration::from_secs(2));
-        assert_eq!(l.limit(), 11, "below threshold: LIMIT should increase");
+        assert_eq!(l.limit(), 11, "below threshold: limit should increase");
 
         // Second request: latency 10s (above threshold) → treated as overload.
         let permit = l.acquire().await;
         permit.finish_with_latency(RequestOutcome::Success, Duration::from_secs(10));
         // 11 * 0.5 = 5 (floor)
-        assert_eq!(l.limit(), 5, "above threshold: LIMIT should decrease");
+        assert_eq!(l.limit(), 5, "above threshold: limit should decrease");
     }
 
     #[tokio::test]
@@ -676,7 +676,7 @@ mod tests {
         let after_backoff = l.limit();
         assert!(
             after_backoff < 10,
-            "LIMIT should have decreased: got {after_backoff}"
+            "limit should have decreased: got {after_backoff}"
         );
 
         // Latency drops below threshold → additive increase resumes.
@@ -685,7 +685,7 @@ mod tests {
         assert_eq!(
             l.limit(),
             after_backoff + 1,
-            "below threshold: LIMIT should increase FROM {after_backoff}"
+            "below threshold: limit should increase from {after_backoff}"
         );
     }
 
@@ -695,7 +695,7 @@ mod tests {
         let l = limiter_with_threshold(10, 100.0);
         let permit = l.acquire().await;
         permit.finish_with_latency(RequestOutcome::Overload, Duration::from_secs(1));
-        assert_eq!(l.limit(), 5, "explicit overload must decrease LIMIT");
+        assert_eq!(l.limit(), 5, "explicit overload must decrease limit");
     }
 
     // -----------------------------------------------------------------------
@@ -752,7 +752,7 @@ mod tests {
         let resp = svc.call("hello".to_owned()).await.unwrap();
         assert_eq!(resp, "hello");
         // Success should have increased the limit.
-        assert!(lim.limit() > 5, "LIMIT should increase after success");
+        assert!(lim.limit() > 5, "limit should increase after success");
     }
 
     #[tokio::test]
@@ -770,7 +770,7 @@ mod tests {
 
         let result: Result<String, String> = svc.call("hello".to_owned()).await;
         assert!(result.is_err());
-        assert_eq!(lim.limit(), 5, "error should decrease LIMIT");
+        assert_eq!(lim.limit(), 5, "error should decrease limit");
     }
 
     #[test]

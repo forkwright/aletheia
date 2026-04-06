@@ -200,7 +200,7 @@ fn plain_url_trailing_punctuation_stripped() {
     assert!(!links.is_empty(), "plain url must produce a link");
     assert_eq!(
         links[0].url, "https://example.com",
-        "trailing punctuation must be stripped FROM url"
+        "trailing punctuation must be stripped from url"
     );
 }
 

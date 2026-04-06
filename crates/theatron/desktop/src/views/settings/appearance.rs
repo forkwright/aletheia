@@ -110,7 +110,7 @@ pub(crate) fn AppearancePanel() -> Element {
                         "20"
                     }
                     span {
-                        style: "font-size: 13px; color: var(--text-primary); width: 36px; text-align: RIGHT;",
+                        style: "font-size: 13px; color: var(--text-primary); width: 36px; text-align: right;",
                         "{current.font_size}px"
                     }
                 }

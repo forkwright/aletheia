@@ -17,7 +17,7 @@ When you need to comprehensively understand a company's offerings and reputation
 3. Search for independent reviews and discussions
 
 ## Tools Used
-- web_fetch: to retrieve complete content FROM official company pages
+- web_fetch: to retrieve complete content from official company pages
 - web_search: to locate independent reviews and discussions
 ";
 
@@ -89,7 +89,7 @@ fn parse_skill_derives_domain_tags_from_slug() {
     assert_eq!(
         skill.domain_tags,
         vec!["docker", "network", "diagnostics"],
-        "domain tags should be derived FROM slug tokens"
+        "domain tags should be derived from slug tokens"
     );
 }
 
@@ -146,7 +146,7 @@ fn skill_content_serde_roundtrip() {
     };
     let json = serde_json::to_string(&skill).expect("SkillContent serializes to JSON");
     let back: SkillContent =
-        serde_json::from_str(&json).expect("SkillContent deserializes FROM JSON");
+        serde_json::from_str(&json).expect("SkillContent deserializes from JSON");
     assert_eq!(
         skill, back,
         "SkillContent should round-trip through JSON unchanged"
@@ -198,9 +198,9 @@ fn split_frontmatter_absent() {
 
 #[test]
 fn scan_skill_dir_with_tempdir() {
-    let dir = tempfile::tempdir().expect("CREATE temp dir");
+    let dir = tempfile::tempdir().expect("create temp dir");
     let skill_dir = dir.path().join("my-skill");
-    std::fs::create_dir(&skill_dir).expect("CREATE skill subdir");
+    std::fs::create_dir(&skill_dir).expect("create skill subdir");
     #[expect(
         clippy::disallowed_methods,
         reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
@@ -221,16 +221,16 @@ fn scan_skill_dir_with_tempdir() {
 
 #[test]
 fn scan_skill_dir_empty() {
-    let dir = tempfile::tempdir().expect("CREATE temp dir");
+    let dir = tempfile::tempdir().expect("create temp dir");
     let skills = scan_skill_dir(dir.path()).expect("scan empty skill dir");
     assert!(skills.is_empty(), "empty directory should yield no skills");
 }
 
 #[test]
 fn scan_skill_dir_ignores_non_skill_dirs() {
-    let dir = tempfile::tempdir().expect("CREATE temp dir");
+    let dir = tempfile::tempdir().expect("create temp dir");
     let sub = dir.path().join("not-a-skill");
-    std::fs::create_dir(&sub).expect("CREATE non-skill subdir");
+    std::fs::create_dir(&sub).expect("create non-skill subdir");
     #[expect(
         clippy::disallowed_methods,
         reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
@@ -463,7 +463,7 @@ fn format_skill_md_description_with_colon_is_quoted() {
 
 #[test]
 fn export_creates_correct_directory_structure() {
-    let dir = tempfile::tempdir().expect("CREATE temp dir");
+    let dir = tempfile::tempdir().expect("create temp dir");
     let skills = vec![export_skill()];
     let exported = export_skills_to_cc(&skills, dir.path(), None).expect("export skills to cc");
 
@@ -483,7 +483,7 @@ fn export_creates_correct_directory_structure() {
 
 #[test]
 fn export_skill_md_contains_valid_frontmatter() {
-    let dir = tempfile::tempdir().expect("CREATE temp dir");
+    let dir = tempfile::tempdir().expect("create temp dir");
     let skills = vec![export_skill()];
     export_skills_to_cc(&skills, dir.path(), None).expect("export skills to cc");
 
@@ -509,7 +509,7 @@ fn export_skill_md_contains_valid_frontmatter() {
 
 #[test]
 fn export_domain_filtering_excludes_non_matching() {
-    let dir = tempfile::tempdir().expect("CREATE temp dir");
+    let dir = tempfile::tempdir().expect("create temp dir");
     let rust_skill = export_skill();
     let mut python_skill = export_skill();
     python_skill.name = "python-testing".to_owned();
@@ -532,7 +532,7 @@ fn export_domain_filtering_excludes_non_matching() {
 
 #[test]
 fn export_no_skills_produces_empty_result() {
-    let dir = tempfile::tempdir().expect("CREATE temp dir");
+    let dir = tempfile::tempdir().expect("create temp dir");
     let exported = export_skills_to_cc(&[], dir.path(), None).expect("export empty skills list");
     assert!(
         exported.is_empty(),
@@ -542,7 +542,7 @@ fn export_no_skills_produces_empty_result() {
 
 #[test]
 fn export_multiple_skills_creates_separate_directories() {
-    let dir = tempfile::tempdir().expect("CREATE temp dir");
+    let dir = tempfile::tempdir().expect("create temp dir");
     let mut docker_skill = export_skill();
     docker_skill.name = "docker-diagnostics".to_owned();
     docker_skill.domain_tags = vec!["docker".to_owned()];
@@ -569,7 +569,7 @@ fn export_multiple_skills_creates_separate_directories() {
 
 #[test]
 fn export_roundtrip_content_preserved() {
-    let dir = tempfile::tempdir().expect("CREATE temp dir");
+    let dir = tempfile::tempdir().expect("create temp dir");
     let original = export_skill();
     export_skills_to_cc(std::slice::from_ref(&original), dir.path(), None)
         .expect("export skill for roundtrip");
@@ -600,7 +600,7 @@ fn export_roundtrip_content_preserved() {
 
 #[test]
 fn export_special_chars_in_name_slugified() {
-    let dir = tempfile::tempdir().expect("CREATE temp dir");
+    let dir = tempfile::tempdir().expect("create temp dir");
     let mut skill = export_skill();
     skill.name = "C++ Template (Meta)".to_owned();
     let exported = export_skills_to_cc(&[skill], dir.path(), None)
@@ -618,9 +618,9 @@ fn export_special_chars_in_name_slugified() {
 
 #[test]
 fn export_overwrites_existing_file() {
-    let dir = tempfile::tempdir().expect("CREATE temp dir");
+    let dir = tempfile::tempdir().expect("create temp dir");
     let skill_dir = dir.path().join("rust-error-handling");
-    std::fs::create_dir_all(&skill_dir).expect("CREATE pre-existing skill dir");
+    std::fs::create_dir_all(&skill_dir).expect("create pre-existing skill dir");
     #[expect(
         clippy::disallowed_methods,
         reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
@@ -644,7 +644,7 @@ fn export_overwrites_existing_file() {
 
 #[test]
 fn export_domain_filter_with_no_matches_returns_empty() {
-    let dir = tempfile::tempdir().expect("CREATE temp dir");
+    let dir = tempfile::tempdir().expect("create temp dir");
     let skills = vec![export_skill()]; // domain_tags: ["rust", "errors"]
     let exported = export_skills_to_cc(&skills, dir.path(), Some(&["python"]))
         .expect("export with non-matching domain filter");

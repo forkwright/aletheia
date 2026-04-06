@@ -205,7 +205,7 @@ mod tests {
         let resp: SearchResponse = serde_json::from_str(json).unwrap();
         assert_eq!(resp.total, 1);
         assert_eq!(resp.data.len(), 1);
-        assert_eq!(resp.data.get(0).copied().unwrap_or_default().title, "Test Paper");
-        assert_eq!(resp.data.get(0).copied().unwrap_or_default().year, Some(2024));
+        assert_eq!(resp.data[0].title, "Test Paper");
+        assert_eq!(resp.data[0].year, Some(2024));
     }
 }

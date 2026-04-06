@@ -85,7 +85,7 @@ fn build_prompt_when_distillation_model_set_uses_it() {
     let request = engine.build_prompt(&n_messages(4), "test");
     assert_eq!(
         request.model, "claude-haiku-4-5-20251001",
-        "prompt should use distillation_model when SET"
+        "prompt should use distillation_model when set"
     );
 }
 
@@ -115,7 +115,7 @@ fn build_prompt_downshift_does_not_affect_max_tokens() {
     let request = engine.build_prompt(&n_messages(4), "test");
     assert_eq!(
         request.max_tokens, 8192,
-        "max_tokens should come FROM config with downshift model"
+        "max_tokens should come from config with downshift model"
     );
 }
 
@@ -152,12 +152,12 @@ fn build_prompt_downshift_opus_to_sonnet() {
 #[tokio::test]
 async fn full_pipeline_preserves_tool_results() {
     let messages = vec![
-        text_msg(Role::User, "Run the database schema UPDATE tool"),
+        text_msg(Role::User, "Run the database schema update tool"),
         text_msg(Role::Assistant, "Running migrate_db({\"version\": \"v2\"})"),
         text_msg(Role::User, "What was the result?"),
         text_msg(
             Role::Assistant,
-            "Schema UPDATE completed. 3 tables updated.",
+            "Schema update completed. 3 tables updated.",
         ),
         text_msg(Role::User, "Verify"),
         text_msg(Role::Assistant, "Verification passed."),
@@ -172,15 +172,15 @@ async fn full_pipeline_preserves_tool_results() {
     let result = engine
         .distill(&messages, "syn", &provider, 1)
         .await
-        .unwrap_or_default(); // WHY: test assertion
+        .expect("distill should succeed for tool-result pipeline"); // WHY: test assertion
 
     assert!(
         result.summary.contains("migrate_db"),
         "summary should contain the tool call name 'migrate_db'"
     );
     assert!(
-        result.summary.contains("database schema UPDATE"),
-        "summary should mention database schema UPDATE"
+        result.summary.contains("database schema update"),
+        "summary should mention database schema update"
     );
 }
 
@@ -207,7 +207,7 @@ async fn full_pipeline_preserves_decisions() {
     let result = engine
         .distill(&messages, "syn", &provider, 1)
         .await
-        .unwrap_or_default(); // WHY: test assertion
+        .expect("distill should succeed for decisions pipeline"); // WHY: test assertion
 
     assert!(
         result.summary.contains("Decision: Add null check"),
@@ -242,7 +242,7 @@ async fn full_pipeline_preserves_corrections() {
     let result = engine
         .distill(&messages, "syn", &provider, 1)
         .await
-        .unwrap_or_default(); // WHY: test assertion
+        .expect("distill should succeed for corrections pipeline"); // WHY: test assertion
 
     assert!(
         result.summary.contains("CORRECTION"),
@@ -263,7 +263,7 @@ async fn full_pipeline_reduces_token_count() {
     let result = engine
         .distill(&messages, "syn", &provider, 1)
         .await
-        .unwrap_or_default(); // WHY: test assertion
+        .expect("distill should succeed for token reduction pipeline"); // WHY: test assertion
 
     let (after, before) = (result.tokens_after, result.tokens_before);
     assert!(
@@ -281,7 +281,7 @@ async fn full_pipeline_summary_contains_all_sections() {
     let result = engine
         .distill(&messages, "syn", &provider, 1)
         .await
-        .unwrap_or_default(); // WHY: test assertion
+        .expect("distill should succeed for all-sections pipeline"); // WHY: test assertion
 
     for section in DistillSection::all_standard() {
         let heading = section.heading();
@@ -311,13 +311,13 @@ async fn full_pipeline_verbatim_tail_integrity() {
     let result = engine
         .distill(&messages, "syn", &provider, 1)
         .await
-        .unwrap_or_default(); // WHY: test assertion
+        .expect("distill should succeed for verbatim tail integrity check"); // WHY: test assertion
 
     let vm = &result.verbatim_messages;
     assert_eq!(vm.len(), 3, "last 3 messages should be kept verbatim");
-    let m0 = vm.first().unwrap_or_default(); // WHY: test assertion
-    let m1 = vm.get(1).unwrap_or_default(); // WHY: test assertion
-    let m2 = vm.get(2).unwrap_or_default(); // WHY: test assertion
+    let m0 = vm.first().expect("verbatim msg 0"); // WHY: test assertion
+    let m1 = vm.get(1).expect("verbatim msg 1"); // WHY: test assertion
+    let m2 = vm.get(2).expect("verbatim msg 2"); // WHY: test assertion
     assert_eq!(
         m0.content.text(),
         "Golf — preserved",
@@ -381,7 +381,7 @@ async fn distill_when_single_message_all_verbatim() {
     let result = engine
         .distill(&messages, "test", &provider, 1)
         .await
-        .unwrap_or_default(); // WHY: test assertion
+        .expect("distill should succeed with a single message"); // WHY: test assertion
 
     assert_eq!(
         result.verbatim_messages.len(),
@@ -415,7 +415,7 @@ async fn distill_when_oversized_input_handles_gracefully() {
     let result = engine
         .distill(&messages, "test", &provider, 1)
         .await
-        .unwrap_or_default(); // WHY: test assertion
+        .expect("distill should succeed with oversized input"); // WHY: test assertion
 
     // NOTE: 100 - 3 verbatim = 97
     assert_eq!(
@@ -480,7 +480,7 @@ async fn distill_when_all_tool_call_messages() {
     let result = engine
         .distill(&messages, "test", &provider, 1)
         .await
-        .unwrap_or_default(); // WHY: test assertion
+        .expect("distill should succeed with mixed tool-call messages"); // WHY: test assertion
 
     assert_eq!(
         result.messages_distilled, 3,
@@ -510,7 +510,7 @@ async fn distill_when_two_messages_with_tail_three() {
     let result = engine
         .distill(&messages, "test", &provider, 1)
         .await
-        .unwrap_or_default(); // WHY: test assertion
+        .expect("distill should succeed when message count is less than verbatim_tail"); // WHY: test assertion
 
     assert_eq!(
         result.verbatim_messages.len(),
@@ -596,7 +596,7 @@ fn build_prompt_includes_message_count() {
     let first_msg = request
         .messages
         .first()
-        .unwrap_or_default(); // WHY: test assertion
+        .expect("request should have messages"); // WHY: test assertion
     let text = first_msg.content.text();
     assert!(
         text.contains("8 messages"),
@@ -630,7 +630,7 @@ fn build_prompt_with_system_message() {
     let first_msg = request
         .messages
         .first()
-        .unwrap_or_default(); // WHY: test assertion
+        .expect("request should have messages"); // WHY: test assertion
     let text = first_msg.content.text();
     assert!(
         text.contains("[SYSTEM]"),

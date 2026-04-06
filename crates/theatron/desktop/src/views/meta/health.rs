@@ -113,7 +113,7 @@ pub(super) fn MemoryHealthSection(store: MemoryHealthStore) -> Element {
                     style: "{TABLE_HEADER_STYLE}",
                     span { style: "flex: 2;", "Entity" }
                     span { style: "flex: 1;", "Last Updated" }
-                    span { style: "flex: 1; text-align: RIGHT;", "Days Stale" }
+                    span { style: "flex: 1; text-align: right;", "Days Stale" }
                 }
                 for entity in &store.stale_entities {
                     {
@@ -130,7 +130,7 @@ pub(super) fn MemoryHealthSection(store: MemoryHealthStore) -> Element {
                                 span { style: "flex: 2;", "{entity.name}" }
                                 span { style: "flex: 1; color: #888;", "{entity.last_updated}" }
                                 span {
-                                    style: "flex: 1; text-align: RIGHT; color: {staleness_color};",
+                                    style: "flex: 1; text-align: right; color: {staleness_color};",
                                     "{entity.days_stale}d"
                                 }
                             }

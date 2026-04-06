@@ -27,14 +27,14 @@ pub(crate) fn run(action: &Action, instance_root: Option<&PathBuf>) -> Result<()
 
 fn run_init_key() -> Result<()> {
     let key_path = encrypt::primary_key_path()
-        .ok_or_else(|| crate::error::Error::msg("cannot determine key path: HOME not SET"))?;
+        .ok_or_else(|| crate::error::Error::msg("cannot determine key path: HOME not set"))?;
 
     println!("Generating primary key at {}", key_path.display());
     encrypt::generate_primary_key(&key_path).whatever_context("failed to generate primary key")?;
     println!("Primary key generated.");
     println!("  Permissions: 0600 (owner read/write only)");
     println!(
-        "  Back up this file securely. Without it, encrypted config VALUES cannot be recovered."
+        "  Back up this file securely. Without it, encrypted config values cannot be recovered."
     );
     Ok(())
 }
@@ -46,7 +46,7 @@ fn run_encrypt(instance_root: Option<&PathBuf>) -> Result<()> {
     };
 
     let key_path = encrypt::primary_key_path()
-        .ok_or_else(|| crate::error::Error::msg("cannot determine key path: HOME not SET"))?;
+        .ok_or_else(|| crate::error::Error::msg("cannot determine key path: HOME not set"))?;
 
     let primary_key = encrypt::load_primary_key(&key_path)
         .whatever_context("failed to load primary key")?
@@ -66,7 +66,7 @@ fn run_encrypt(instance_root: Option<&PathBuf>) -> Result<()> {
         .whatever_context("failed to encrypt config file")?;
 
     if count == 0 {
-        println!("No plaintext sensitive VALUES found to encrypt.");
+        println!("No plaintext sensitive values found to encrypt.");
     } else {
         println!(
             "Encrypted {count} sensitive value(s) in {}",

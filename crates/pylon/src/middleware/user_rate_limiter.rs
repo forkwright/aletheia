@@ -216,7 +216,7 @@ pub async fn per_user_rate_limit(request: Request, next: Next) -> Response {
             user = %user,
             category = ?category,
             retry_after_secs,
-            "per-user rate LIMIT exceeded"
+            "per-user rate limit exceeded"
         );
         let mut response = (
             StatusCode::TOO_MANY_REQUESTS,
@@ -224,7 +224,7 @@ pub async fn per_user_rate_limit(request: Request, next: Next) -> Response {
                 error: ErrorBody {
                     code: "rate_limited".to_owned(),
                     message: format!(
-                        "per-user rate LIMIT exceeded, retry after {retry_after_secs}s"
+                        "per-user rate limit exceeded, retry after {retry_after_secs}s"
                     ),
                     request_id: None,
                     details: Some(serde_json::json!({
@@ -271,7 +271,7 @@ pub fn spawn_stale_cleanup(
                     () = tokio::time::sleep(interval) => {
                         let evicted = limiter.cleanup_stale();
                         if evicted > 0 {
-                            debug!(evicted, "cleaned up stale rate LIMIT entries");
+                            debug!(evicted, "cleaned up stale rate limit entries");
                         }
                     }
                 }

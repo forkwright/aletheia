@@ -247,7 +247,7 @@ async fn list_sessions_limit_param_returns_n_sessions() {
             "/api/v1/sessions",
             Some(serde_json::json!({
                 "nous_id": "syn",
-                "session_key": format!("LIMIT-test-{i}")
+                "session_key": format!("limit-test-{i}")
             })),
         );
         let resp = router.clone().oneshot(req).await.unwrap();
@@ -255,7 +255,7 @@ async fn list_sessions_limit_param_returns_n_sessions() {
     }
 
     let resp = router
-        .oneshot(authed_get("/api/v1/sessions?LIMIT=3"))
+        .oneshot(authed_get("/api/v1/sessions?limit=3"))
         .await
         .unwrap();
 
@@ -264,7 +264,7 @@ async fn list_sessions_limit_param_returns_n_sessions() {
     assert_eq!(
         body["sessions"].as_array().unwrap().len(),
         3,
-        "LIMIT=3 must return exactly 3 sessions"
+        "limit=3 must return exactly 3 sessions"
     );
 }
 
@@ -437,7 +437,7 @@ async fn history_with_limit() {
     let resp = router
         .clone()
         .oneshot(authed_get(&format!(
-            "/api/v1/sessions/{id}/history?LIMIT=3"
+            "/api/v1/sessions/{id}/history?limit=3"
         )))
         .await
         .unwrap();

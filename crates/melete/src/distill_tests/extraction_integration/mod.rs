@@ -155,7 +155,7 @@ fn extract_summary_trims_whitespace() {
     let text = extract_summary_text(&blocks);
     assert_eq!(
         text, "summary",
-        "leading and trailing whitespace should be trimmed FROM extracted summary"
+        "leading and trailing whitespace should be trimmed from extracted summary"
     );
 }
 
@@ -169,37 +169,37 @@ fn config_default_sections() {
     );
     let s = &config.sections;
     assert_eq!(
-        *s.first().unwrap_or_default(),
+        *s.first().expect("idx 0"),
         DistillSection::Summary,
         "first section should be Summary"
     ); // WHY: test assertion
     assert_eq!(
-        *s.get(1).unwrap_or_default(),
+        *s.get(1).expect("idx 1"),
         DistillSection::TaskContext,
         "second section should be TaskContext"
     ); // WHY: test assertion
     assert_eq!(
-        *s.get(2).unwrap_or_default(),
+        *s.get(2).expect("idx 2"),
         DistillSection::CompletedWork,
         "third section should be CompletedWork"
     ); // WHY: test assertion
     assert_eq!(
-        *s.get(3).unwrap_or_default(),
+        *s.get(3).expect("idx 3"),
         DistillSection::KeyDecisions,
         "fourth section should be KeyDecisions"
     ); // WHY: test assertion
     assert_eq!(
-        *s.get(4).unwrap_or_default(),
+        *s.get(4).expect("idx 4"),
         DistillSection::CurrentState,
         "fifth section should be CurrentState"
     ); // WHY: test assertion
     assert_eq!(
-        *s.get(5).unwrap_or_default(),
+        *s.get(5).expect("idx 5"),
         DistillSection::OpenThreads,
         "sixth section should be OpenThreads"
     ); // WHY: test assertion
     assert_eq!(
-        *s.get(6).unwrap_or_default(),
+        *s.get(6).expect("idx 6"),
         DistillSection::Corrections,
         "seventh section should be Corrections"
     ); // WHY: test assertion
@@ -230,7 +230,7 @@ fn build_prompt_uses_distillation_model_when_set() {
     let request = engine.build_prompt(&sample_conversation(), "test");
     assert_eq!(
         request.model, "claude-haiku-4-5-20251001",
-        "build_prompt should use distillation_model when SET"
+        "build_prompt should use distillation_model when set"
     );
 }
 
@@ -259,7 +259,7 @@ fn build_prompt_uses_dynamic_system_prompt() {
     let request = engine.build_prompt(&sample_conversation(), "test");
     let system = request
         .system
-        .unwrap_or_default(); // WHY: test assertion
+        .expect("build_prompt should produce a system prompt"); // WHY: test assertion
     assert!(
         system.contains("## Summary"),
         "system prompt should include the Summary section when configured"
@@ -289,7 +289,7 @@ async fn distill_preserves_verbatim_messages() {
     let result = engine
         .distill(&messages, "test-nous", &provider, 1)
         .await
-        .unwrap_or_default(); // WHY: test assertion
+        .expect("distill should succeed with a valid provider"); // WHY: test assertion
 
     assert_eq!(
         result.messages_distilled, 4,
@@ -364,7 +364,7 @@ fn backoff_activates_after_failure_and_expires_after_one_turn() {
     engine
         .retry_state
         .lock()
-        .unwrap_or_default() // WHY: test assertion
+        .expect("retry_state mutex should not be poisoned") // WHY: test assertion
         .record_failure();
     assert!(
         engine.in_backoff(),
@@ -392,7 +392,7 @@ fn backoff_resets_on_success() {
         let mut state = engine
             .retry_state
             .lock()
-            .unwrap_or_default(); // WHY: test assertion
+            .expect("retry_state mutex should not be poisoned"); // WHY: test assertion
         state.record_failure();
         state.record_failure();
     }
@@ -403,7 +403,7 @@ fn backoff_resets_on_success() {
     engine
         .retry_state
         .lock()
-        .unwrap_or_default() // WHY: test assertion
+        .expect("retry_state mutex should not be poisoned") // WHY: test assertion
         .record_success();
     assert!(
         !engine.in_backoff(),
@@ -425,7 +425,7 @@ fn backoff_schedule_is_exponential() {
             let mut state = engine
                 .retry_state
                 .lock()
-                .unwrap_or_default(); // WHY: test assertion
+                .expect("retry_state mutex should not be poisoned"); // WHY: test assertion
             for _ in 0..failures {
                 state.record_failure();
             }
@@ -433,7 +433,7 @@ fn backoff_schedule_is_exponential() {
         let actual = engine
             .retry_state
             .lock()
-            .unwrap_or_default() // WHY: test assertion
+            .expect("retry_state mutex should not be poisoned") // WHY: test assertion
             .turns_to_skip;
         assert_eq!(
             actual, expected_skip,
@@ -462,7 +462,7 @@ async fn distill_records_success_and_clears_backoff() {
     engine
         .retry_state
         .lock()
-        .unwrap_or_default() // WHY: test assertion
+        .expect("retry_state mutex should not be poisoned") // WHY: test assertion
         .record_failure();
     assert!(
         engine.in_backoff(),
@@ -474,7 +474,7 @@ async fn distill_records_success_and_clears_backoff() {
     engine
         .distill(&messages, "test", &provider, 1)
         .await
-        .unwrap_or_default(); // WHY: test assertion
+        .expect("distill should succeed with a valid provider"); // WHY: test assertion
 
     assert!(
         !engine.in_backoff(),

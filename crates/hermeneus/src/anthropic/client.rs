@@ -533,7 +533,7 @@ impl AnthropicProvider {
     fn build_headers(&self) -> Result<HeaderMap> {
         let credential = self.credential_provider.get_credential().ok_or_else(|| {
             error::AuthFailedSnafu {
-                message: "no credential available FROM provider".to_owned(),
+                message: "no credential available from provider".to_owned(),
             }
             .build()
         })?;

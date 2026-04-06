@@ -225,7 +225,7 @@ fn timeline_step_advance_month() {
 #[test]
 fn initial_positions_creates_correct_count() {
     let positions = initial_positions(10);
-    assert_eq!(positions.len(), 10, "should CREATE 10 positions");
+    assert_eq!(positions.len(), 10, "should create 10 positions");
     let zero = initial_positions(0);
     assert!(zero.is_empty(), "zero nodes, zero positions");
 }

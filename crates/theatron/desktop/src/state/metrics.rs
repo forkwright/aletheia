@@ -167,7 +167,7 @@ impl AgentTokenRow {
         if grand_total == 0 {
             0.0
         } else {
-            self.total() as f64 / f64::try_from(grand_total).unwrap_or_default() * 100.0
+            self.total() as f64 / grand_total as f64 * 100.0
         }
     }
 }
@@ -199,7 +199,7 @@ impl ModelTokenRow {
         if grand_total == 0 {
             0.0
         } else {
-            self.total() as f64 / f64::try_from(grand_total).unwrap_or_default() * 100.0
+            self.total() as f64 / grand_total as f64 * 100.0
         }
     }
 }
@@ -305,7 +305,7 @@ impl AgentCostRow {
         } else {
             {
             #[expect(clippy::as_conversions, reason = "session count to f64 for cost ratio")]
-            let ratio = self.total_cost / self.f64::try_from(session_count).unwrap_or_default();
+            let ratio = self.total_cost / self.session_count as f64;
             ratio
         }
     }
@@ -316,7 +316,7 @@ impl AgentCostRow {
         } else {
             {
             #[expect(clippy::as_conversions, reason = "message count to f64 for cost ratio")]
-            let ratio = self.total_cost / self.f64::try_from(message_count).unwrap_or_default();
+            let ratio = self.total_cost / self.message_count as f64;
             ratio
         }
     }
@@ -327,7 +327,7 @@ impl AgentCostRow {
         } else {
             {
             #[expect(clippy::as_conversions, reason = "token count to f64 for cost ratio")]
-            let ratio = self.total_cost / (self.f64::try_from(output_tokens).unwrap_or_default() / 1000.0);
+            let ratio = self.total_cost / (self.output_tokens as f64 / 1000.0);
             ratio
         }
     }
@@ -382,7 +382,7 @@ pub(crate) struct SummaryDelta {
 )]
 #[expect(clippy::as_conversions, reason = "u64 to f64 for delta comparison")]
 pub(crate) fn compute_delta_u64(current: u64, previous: u64) -> SummaryDelta {
-    compute_delta_f64(f64::try_from(current).unwrap_or_default(), f64::try_from(previous).unwrap_or_default())
+    compute_delta_f64(current as f64, previous as f64)
 }
 
 /// Compute a summary delta from current and previous float values.
@@ -446,9 +446,9 @@ pub(crate) fn format_tokens(count: u64) -> String {
     const K: u64 = 1_000;
     const M: u64 = 1_000_000;
     if count >= M {
-        format!("{:.1}M", f64::try_from(count).unwrap_or_default() / f64::try_from(M).unwrap_or_default())
+        format!("{:.1}M", count as f64 / M as f64)
     } else if count >= K {
-        format!("{:.1}K", f64::try_from(count).unwrap_or_default() / f64::try_from(K).unwrap_or_default())
+        format!("{:.1}K", count as f64 / K as f64)
     } else {
         count.to_string()
     }
@@ -513,7 +513,7 @@ fn epoch_secs_to_ymd(secs: u64) -> (u32, u32, u32) {
     let y = if m <= 2 { y + 1 } else { y };
     {
         #[expect(clippy::as_conversions, reason = "calendar components fit u32 for valid dates")]
-        let result = (u32::try_from(y).unwrap_or_default(), u32::try_from(m).unwrap_or_default(), u32::try_from(d).unwrap_or_default());
+        let result = (y as u32, m as u32, d as u32);
         result
     }
 }
@@ -686,7 +686,7 @@ mod tests {
     #[test]
     fn budget_progress_zero_limit() {
         let pct = budget_progress_pct(50.0, 0.0);
-        assert_eq!(pct, 0.0, "zero LIMIT must return 0%");
+        assert_eq!(pct, 0.0, "zero limit must return 0%");
     }
 
     #[test]

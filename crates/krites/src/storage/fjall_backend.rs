@@ -461,8 +461,8 @@ mod tests {
         let db = new_cozo_fjall(temp_dir.path())?;
         db.run_script(
             r#"
-            {:CREATE plain {k: Int => v}}
-            {:CREATE tt_test {k: Int, vld: Validity => v}}
+            {:create plain {k: Int => v}}
+            {:create tt_test {k: Int, vld: Validity => v}}
             "#,
             Default::default(),
             ScriptMutability::Mutable,
@@ -493,7 +493,7 @@ mod tests {
             ScriptMutability::Immutable,
         )?;
         assert_eq!(result.rows.len(), 1);
-        assert_eq!(result.rows.get(0).copied().unwrap_or_default()[0], DataValue::from(10));
+        assert_eq!(result.rows[0][0], DataValue::from(10));
 
         Ok(())
     }
@@ -529,14 +529,14 @@ mod tests {
             Default::default(),
             ScriptMutability::Immutable,
         )?;
-        assert_eq!(result.rows.get(0).copied().unwrap_or_default()[0], DataValue::from(100));
+        assert_eq!(result.rows[0][0], DataValue::from(100));
 
         let result = db.run_script(
             "?[v] := *tt_test{k: 1, v @ 1}",
             Default::default(),
             ScriptMutability::Immutable,
         )?;
-        assert_eq!(result.rows.get(0).copied().unwrap_or_default()[0], DataValue::from(200));
+        assert_eq!(result.rows[0][0], DataValue::from(200));
 
         Ok(())
     }
@@ -564,8 +564,8 @@ mod tests {
             ScriptMutability::Immutable,
         )?;
         assert_eq!(result.rows.len(), 4);
-        assert_eq!(result.rows.get(0).copied().unwrap_or_default()[0], DataValue::from(3));
-        assert_eq!(result.rows.get(3).copied().unwrap_or_default()[0], DataValue::from(6));
+        assert_eq!(result.rows[0][0], DataValue::from(3));
+        assert_eq!(result.rows[3][0], DataValue::from(6));
 
         Ok(())
     }
@@ -577,7 +577,7 @@ mod tests {
         {
             let db = new_cozo_fjall(dir.path())?;
             db.run_script(
-                "{:CREATE persist_test {k: Int => v: String}}",
+                "{:create persist_test {k: Int => v: String}}",
                 Default::default(),
                 ScriptMutability::Mutable,
             )?;
@@ -596,10 +596,10 @@ mod tests {
                 ScriptMutability::Immutable,
             )?;
             assert_eq!(result.rows.len(), 2);
-            assert_eq!(result.rows.get(0).copied().unwrap_or_default()[0], DataValue::from(1));
-            assert_eq!(result.rows.get(0).copied().unwrap_or_default()[1], DataValue::Str("hello".into()));
-            assert_eq!(result.rows.get(1).copied().unwrap_or_default()[0], DataValue::from(2));
-            assert_eq!(result.rows.get(1).copied().unwrap_or_default()[1], DataValue::Str("world".into()));
+            assert_eq!(result.rows[0][0], DataValue::from(1));
+            assert_eq!(result.rows[0][1], DataValue::Str("hello".into()));
+            assert_eq!(result.rows[1][0], DataValue::from(2));
+            assert_eq!(result.rows[1][1], DataValue::Str("world".into()));
         }
 
         Ok(())

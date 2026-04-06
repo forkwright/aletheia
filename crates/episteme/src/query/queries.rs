@@ -71,7 +71,7 @@ pub(crate) fn current_facts() -> String {
         .filter("is_null(superseded_by)")
         .filter("is_forgotten == false")
         .order("-confidence")
-        .limit("$LIMIT")
+        .limit("$limit")
         .done()
         .build_script()
 }
@@ -125,7 +125,7 @@ pub(crate) fn full_current_facts() -> String {
         .filter("is_null(superseded_by)")
         .filter("is_forgotten == false")
         .order("-confidence")
-        .limit("$LIMIT")
+        .limit("$limit")
         .done()
         .build_script()
 }
@@ -269,7 +269,7 @@ pub(crate) const ENTITY_NEIGHBORHOOD: &str = r"
         hop1[id, relation], *entities{id, name, entity_type}, hop = 1
     ?[id, name, entity_type, relation, hop] :=
         hop2[id, relation], *entities{id, name, entity_type}, hop = 2
-    :ORDER hop, name
+    :order hop, name
 ";
 
 /// BM25 full-text recall (no vector embeddings required).
@@ -287,8 +287,8 @@ pub(crate) const BM25_RECALL: &str = r"
         source_type = 'fact',
         source_id = id,
         dist = 1.0 / bm25_score
-    :ORDER dist
-    :LIMIT $k
+    :order dist
+    :limit $k
 ";
 
 /// KNN vector search. Params: `$query_vec`, `$k`, `$ef`.
@@ -307,7 +307,7 @@ pub(crate) const SEARCH_ENTITIES: &str = r"
     ?[id, name, entity_type] :=
         *entities{id, name, entity_type, aliases},
         contains(aliases, $prefix)
-    :LIMIT $LIMIT
+    :limit $limit
 ";
 
 /// Hybrid search: BM25 + HNSW vector + graph neighborhood fused via RRF.
@@ -325,8 +325,8 @@ pub(crate) const HYBRID_SEARCH_BASE: &str = r"
     ?[id, rrf_score, bm25_rank, vec_rank, graph_rank] <~
         ReciprocalRankFusion(bm25[], vec[], graph[])
 
-    :ORDER -rrf_score
-    :LIMIT $LIMIT
+    :order -rrf_score
+    :limit $limit
 ";
 
 /// Bi-temporal point-in-time query with all fields. Params: `$nous_id`, `$at_time`.
@@ -397,7 +397,7 @@ pub(crate) const TEMPORAL_FACTS_FILTERED: &str = r"
         valid_from <= $at_time,
         valid_to > $at_time,
         str_includes(content, $filter)
-    :ORDER -confidence
+    :order -confidence
 ";
 
 /// Facts that changed (became valid or expired) in an interval.
@@ -482,7 +482,7 @@ pub(crate) fn forgotten_facts() -> String {
         .filter("nous_id = $nous_id")
         .filter("is_forgotten == true")
         .order("-forgotten_at")
-        .limit("$LIMIT")
+        .limit("$limit")
         .done()
         .build_script()
 }
@@ -532,7 +532,7 @@ pub(crate) fn audit_all_facts() -> String {
         .bind(ForgetReason)
         .filter("nous_id = $nous_id")
         .order("-recorded_at")
-        .limit("$LIMIT")
+        .limit("$limit")
         .done()
         .build_script()
 }

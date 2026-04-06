@@ -168,7 +168,7 @@ fn test_group_count() {
 
 #[test]
 fn test_union() {
-    let mut aggr = parse_aggr("UNION").expect("test assertion").clone();
+    let mut aggr = parse_aggr("union").expect("test assertion").clone();
     aggr.normal_init(&[]).expect("test assertion");
     aggr.meet_init(&[]).expect("test assertion");
 

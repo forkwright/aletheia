@@ -233,7 +233,7 @@ mod tests {
         let state = ProjectState::Created;
         let state = state
             .transition(Transition::StartQuestioning)
-            .unwrap_or_default();
+            .expect("Created -> StartQuestioning should succeed");
         assert_eq!(
             state,
             ProjectState::Questioning,
@@ -241,7 +241,7 @@ mod tests {
         );
         let state = state
             .transition(Transition::StartResearch)
-            .unwrap_or_default();
+            .expect("Questioning -> StartResearch should succeed");
         assert_eq!(
             state,
             ProjectState::Researching,
@@ -249,7 +249,7 @@ mod tests {
         );
         let state = state
             .transition(Transition::StartScoping)
-            .unwrap_or_default();
+            .expect("Researching -> StartScoping should succeed");
         assert_eq!(
             state,
             ProjectState::Scoping,
@@ -257,7 +257,7 @@ mod tests {
         );
         let state = state
             .transition(Transition::StartPlanning)
-            .unwrap_or_default();
+            .expect("Scoping -> StartPlanning should succeed");
         assert_eq!(
             state,
             ProjectState::Planning,
@@ -265,7 +265,7 @@ mod tests {
         );
         let state = state
             .transition(Transition::StartDiscussion)
-            .unwrap_or_default();
+            .expect("Planning -> StartDiscussion should succeed");
         assert_eq!(
             state,
             ProjectState::Discussing,
@@ -273,7 +273,7 @@ mod tests {
         );
         let state = state
             .transition(Transition::StartExecution)
-            .unwrap_or_default();
+            .expect("Discussing -> StartExecution should succeed");
         assert_eq!(
             state,
             ProjectState::Executing,
@@ -281,7 +281,7 @@ mod tests {
         );
         let state = state
             .transition(Transition::StartVerification)
-            .unwrap_or_default();
+            .expect("Executing -> StartVerification should succeed");
         assert_eq!(
             state,
             ProjectState::Verifying,
@@ -289,7 +289,7 @@ mod tests {
         );
         let state = state
             .transition(Transition::Complete)
-            .unwrap_or_default();
+            .expect("Verifying -> Complete should succeed");
         assert_eq!(
             state,
             ProjectState::Complete,
@@ -302,11 +302,11 @@ mod tests {
         let state = ProjectState::Created;
         let state = state
             .transition(Transition::SkipToResearch)
-            .unwrap_or_default();
+            .expect("Created -> SkipToResearch should succeed");
         assert_eq!(
             state,
             ProjectState::Scoping,
-            "SkipToResearch FROM Created should reach Scoping"
+            "SkipToResearch from Created should reach Scoping"
         );
     }
 
@@ -315,7 +315,7 @@ mod tests {
         let state = ProjectState::Planning;
         let state = state
             .transition(Transition::StartExecution)
-            .unwrap_or_default();
+            .expect("Planning -> StartExecution should succeed");
         assert_eq!(
             state,
             ProjectState::Executing,
@@ -329,7 +329,7 @@ mod tests {
         let result = state.transition(Transition::StartQuestioning);
         assert!(
             result.is_err(),
-            "StartQuestioning FROM Executing should return an error"
+            "StartQuestioning from Executing should return an error"
         );
     }
 
@@ -338,18 +338,18 @@ mod tests {
         let state = ProjectState::Executing;
         let state = state
             .transition(Transition::Pause)
-            .unwrap_or_default();
+            .expect("Executing -> Pause should succeed");
         assert!(
             matches!(state, ProjectState::Paused { .. }),
             "Pausing Executing should produce a Paused state"
         );
         let state = state
             .transition(Transition::Resume)
-            .unwrap_or_default();
+            .expect("Paused -> Resume should succeed");
         assert_eq!(
             state,
             ProjectState::Executing,
-            "Resuming FROM Paused(Executing) should return to Executing"
+            "Resuming from Paused(Executing) should return to Executing"
         );
     }
 
@@ -358,7 +358,7 @@ mod tests {
         let state = ProjectState::Scoping;
         let state = state
             .transition(Transition::Pause)
-            .unwrap_or_default();
+            .expect("Scoping -> Pause should succeed");
         assert_eq!(
             state,
             ProjectState::Paused {
@@ -377,7 +377,7 @@ mod tests {
         ] {
             let state = start
                 .transition(Transition::Abandon)
-                .unwrap_or_default();
+                .expect("Abandon should succeed from any non-terminal state");
             assert_eq!(
                 state,
                 ProjectState::Abandoned,
@@ -394,15 +394,15 @@ mod tests {
                     .clone()
                     .transition(Transition::StartQuestioning)
                     .is_err(),
-                "StartQuestioning FROM terminal state {terminal:?} should return an error"
+                "StartQuestioning from terminal state {terminal:?} should return an error"
             );
             assert!(
                 terminal.clone().transition(Transition::Abandon).is_err(),
-                "Abandon FROM terminal state {terminal:?} should return an error"
+                "Abandon from terminal state {terminal:?} should return an error"
             );
             assert!(
                 terminal.clone().transition(Transition::Pause).is_err(),
-                "Pause FROM terminal state {terminal:?} should return an error"
+                "Pause from terminal state {terminal:?} should return an error"
             );
         }
     }
@@ -464,11 +464,11 @@ mod tests {
             .transition(Transition::Revert {
                 to: ProjectState::Executing,
             })
-            .unwrap_or_default() should succeed");
+            .expect("Verifying -> Revert(Executing) should succeed");
         assert_eq!(
             state,
             ProjectState::Executing,
-            "Reverting FROM Verifying to Executing should reach Executing"
+            "Reverting from Verifying to Executing should reach Executing"
         );
 
         let state = ProjectState::Verifying;
@@ -476,11 +476,11 @@ mod tests {
             .transition(Transition::Revert {
                 to: ProjectState::Planning,
             })
-            .unwrap_or_default() should succeed");
+            .expect("Verifying -> Revert(Planning) should succeed");
         assert_eq!(
             state,
             ProjectState::Planning,
-            "Reverting FROM Verifying to Planning should reach Planning"
+            "Reverting from Verifying to Planning should reach Planning"
         );
 
         let state = ProjectState::Verifying;
@@ -488,11 +488,11 @@ mod tests {
             .transition(Transition::Revert {
                 to: ProjectState::Scoping,
             })
-            .unwrap_or_default() should succeed");
+            .expect("Verifying -> Revert(Scoping) should succeed");
         assert_eq!(
             state,
             ProjectState::Scoping,
-            "Reverting FROM Verifying to Scoping should reach Scoping"
+            "Reverting from Verifying to Scoping should reach Scoping"
         );
     }
 
@@ -548,11 +548,11 @@ mod tests {
         let state = ProjectState::Questioning;
         let state = state
             .transition(Transition::SkipResearch)
-            .unwrap_or_default();
+            .expect("Questioning -> SkipResearch should succeed");
         assert_eq!(
             state,
             ProjectState::Scoping,
-            "SkipResearch FROM Questioning should reach Scoping"
+            "SkipResearch from Questioning should reach Scoping"
         );
     }
 
@@ -561,7 +561,7 @@ mod tests {
         let state = ProjectState::Researching;
         let state = state
             .transition(Transition::StartScoping)
-            .unwrap_or_default();
+            .expect("Researching -> StartScoping should succeed");
         assert_eq!(
             state,
             ProjectState::Scoping,
@@ -581,7 +581,7 @@ mod tests {
             let paused = start
                 .clone()
                 .transition(Transition::Pause)
-                .unwrap_or_default();
+                .expect("Pause should succeed from a pausable state");
             assert!(
                 matches!(paused, ProjectState::Paused { .. }),
                 "Pausing should produce a Paused state"
@@ -598,7 +598,7 @@ mod tests {
     #[test]
     fn cannot_pause_from_created() {
         let result = ProjectState::Created.transition(Transition::Pause);
-        assert!(result.is_err(), "Pause FROM Created should return an error");
+        assert!(result.is_err(), "Pause from Created should return an error");
     }
 
     #[test]
@@ -606,7 +606,7 @@ mod tests {
         let result = ProjectState::Questioning.transition(Transition::Pause);
         assert!(
             result.is_err(),
-            "Pause FROM Questioning should return an error"
+            "Pause from Questioning should return an error"
         );
     }
 
@@ -618,7 +618,7 @@ mod tests {
         });
         assert!(
             result.is_err(),
-            "Revert to Researching FROM Verifying should return an error"
+            "Revert to Researching from Verifying should return an error"
         );
     }
 
@@ -629,11 +629,11 @@ mod tests {
         };
         let state = state
             .transition(Transition::Abandon)
-            .unwrap_or_default();
+            .expect("Paused -> Abandon should succeed");
         assert_eq!(
             state,
             ProjectState::Abandoned,
-            "Abandon FROM Paused should reach Abandoned"
+            "Abandon from Paused should reach Abandoned"
         );
     }
 
@@ -672,9 +672,9 @@ mod tests {
             ProjectState::Abandoned,
         ] {
             let json = serde_json::to_string(&state)
-                .unwrap_or_default();
+                .expect("serializing ProjectState to JSON should succeed");
             let back: ProjectState = serde_json::from_str(&json)
-                .unwrap_or_default();
+                .expect("deserializing ProjectState from JSON should succeed");
             assert_eq!(back, state, "roundtrip failed for {state:?}");
         }
     }
@@ -685,9 +685,9 @@ mod tests {
             previous: Box::new(ProjectState::Executing),
         };
         let json = serde_json::to_string(&paused)
-            .unwrap_or_default();
+            .expect("serializing Paused state to JSON should succeed");
         let back: ProjectState = serde_json::from_str(&json)
-            .unwrap_or_default();
+            .expect("deserializing Paused state from JSON should succeed");
         assert_eq!(
             back,
             ProjectState::Paused {
@@ -704,7 +704,7 @@ mod tests {
             .transition(Transition::Revert {
                 to: ProjectState::Executing,
             })
-            .unwrap_or_default() should succeed");
+            .expect("Verifying -> Revert(Executing) should succeed");
         assert_eq!(
             state,
             ProjectState::Executing,
@@ -712,19 +712,19 @@ mod tests {
         );
         let state = state
             .transition(Transition::StartVerification)
-            .unwrap_or_default();
+            .expect("Executing -> StartVerification should succeed");
         assert_eq!(
             state,
             ProjectState::Verifying,
-            "StartVerification FROM Executing should reach Verifying"
+            "StartVerification from Executing should reach Verifying"
         );
         let state = state
             .transition(Transition::Complete)
-            .unwrap_or_default();
+            .expect("Verifying -> Complete should succeed");
         assert_eq!(
             state,
             ProjectState::Complete,
-            "Complete FROM Verifying should reach Complete"
+            "Complete from Verifying should reach Complete"
         );
     }
 
@@ -736,7 +736,7 @@ mod tests {
         });
         assert!(
             result.is_err(),
-            "Revert FROM Executing (non-Verifying) should return an error"
+            "Revert from Executing (non-Verifying) should return an error"
         );
     }
 
@@ -757,11 +757,11 @@ mod tests {
         ];
         for state in states {
             let result = state.clone().transition(Transition::Abandon);
-            assert!(result.is_ok(), "Abandon should succeed FROM {state:?}");
+            assert!(result.is_ok(), "Abandon should succeed from {state:?}");
             assert_eq!(
-                result.unwrap_or_default(),
+                result.expect("Abandon transition result should be Ok"),
                 ProjectState::Abandoned,
-                "Abandon FROM {state:?} should reach Abandoned"
+                "Abandon from {state:?} should reach Abandoned"
             );
         }
     }

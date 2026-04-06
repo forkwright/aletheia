@@ -69,7 +69,7 @@ impl EditorTab {
         {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(&self.path, std::fs::Permissions::from_mode(0o600))
-                .map_err(|e| format!("Failed to SET permissions: {e}"))?;
+                .map_err(|e| format!("Failed to set permissions: {e}"))?;
         }
         self.dirty = false;
         self.last_saved_at = Some(std::time::Instant::now());

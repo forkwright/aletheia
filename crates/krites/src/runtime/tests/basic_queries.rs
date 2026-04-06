@@ -10,40 +10,40 @@ use crate::data::value::DataValue;
 fn when_limit_offset_applied_query_returns_correct_slice() {
     let db = DbInstance::default();
     let res = db
-        .run_default("?[a] := a in [5,3,1,2,4] :LIMIT 2")
-        .expect("LIMIT query should succeed")
+        .run_default("?[a] := a in [5,3,1,2,4] :limit 2")
+        .expect("limit query should succeed")
         .into_json();
     assert_eq!(
         res["rows"],
         json!([[3], [5]]),
-        "LIMIT 2 should return first 2 sorted rows"
+        "limit 2 should return first 2 sorted rows"
     );
     let res = db
-        .run_default("?[a] := a in [5,3,1,2,4] :LIMIT 2 :OFFSET 1")
-        .expect("LIMIT+OFFSET query should succeed")
+        .run_default("?[a] := a in [5,3,1,2,4] :limit 2 :offset 1")
+        .expect("limit+offset query should succeed")
         .into_json();
     assert_eq!(
         res["rows"],
         json!([[1], [3]]),
-        "LIMIT 2 OFFSET 1 should skip first row"
+        "limit 2 offset 1 should skip first row"
     );
     let res = db
-        .run_default("?[a] := a in [5,3,1,2,4] :LIMIT 2 :OFFSET 4")
-        .expect("LIMIT+OFFSET at end should succeed")
+        .run_default("?[a] := a in [5,3,1,2,4] :limit 2 :offset 4")
+        .expect("limit+offset at end should succeed")
         .into_json();
     assert_eq!(
         res["rows"],
         json!([[4]]),
-        "LIMIT 2 OFFSET 4 should return one remaining row"
+        "limit 2 offset 4 should return one remaining row"
     );
     let res = db
-        .run_default("?[a] := a in [5,3,1,2,4] :LIMIT 2 :OFFSET 5")
-        .expect("LIMIT+OFFSET past end should succeed")
+        .run_default("?[a] := a in [5,3,1,2,4] :limit 2 :offset 5")
+        .expect("limit+offset past end should succeed")
         .into_json();
     assert_eq!(
         res["rows"],
         json!([]),
-        "LIMIT 2 OFFSET 5 should return empty result"
+        "limit 2 offset 5 should return empty result"
     );
 }
 
@@ -52,12 +52,12 @@ fn when_count_aggregation_over_empty_set_returns_zero() {
     let db = DbInstance::default();
     let res = db
         .run_default("?[count(a)] := a in []")
-        .expect("count over empty SET should succeed")
+        .expect("count over empty set should succeed")
         .rows;
     assert_eq!(
         res,
         vec![vec![DataValue::from(0)]],
-        "count over empty SET should return 0"
+        "count over empty set should return 0"
     );
 }
 
@@ -66,22 +66,22 @@ fn when_min_aggregation_over_empty_set_returns_null() {
     let db = DbInstance::default();
     let res = db
         .run_default("?[min(a)] := a in []")
-        .expect("min over empty SET should succeed")
+        .expect("min over empty set should succeed")
         .rows;
     assert_eq!(
         res,
         vec![vec![DataValue::Null]],
-        "min over empty SET should return Null"
+        "min over empty set should return Null"
     );
 
     let res = db
         .run_default("?[min(a), count(a)] := a in []")
-        .expect("min and count over empty SET should succeed")
+        .expect("min and count over empty set should succeed")
         .rows;
     assert_eq!(
         res,
         vec![vec![DataValue::Null, DataValue::from(0)]],
-        "min should be Null and count should be 0 for empty SET"
+        "min should be Null and count should be 0 for empty set"
     );
 }
 
@@ -112,11 +112,11 @@ fn when_filter_conditions_applied_only_matching_rows_returned() {
         r#"
         {
             ?[code] <- [['a'],['b'],['c']]
-            :CREATE airport {code}
+            :create airport {code}
         }
         {
             ?[fr, to, dist] <- [['a', 'b', 1.1], ['a', 'c', 0.5], ['b', 'c', 9.1]]
-            :CREATE route {fr, to => dist}
+            :create route {fr, to => dist}
         }
         "#,
     )
@@ -167,7 +167,7 @@ fn default_columns() {
 
     db.run_default(
         r#"
-            :CREATE status {uid: String, ts default now() => quitted: Bool, mood: String}
+            :create status {uid: String, ts default now() => quitted: Bool, mood: String}
             "#,
     )
     .expect("creating status relation with default columns should succeed");
@@ -178,13 +178,13 @@ fn default_columns() {
             :put status {uid => quitted, mood}
         "#,
     )
-    .expect("inserting row INTO status should succeed");
+    .expect("inserting row into status should succeed");
 }
 
 #[test]
 fn rm_does_not_need_all_keys() {
     let db = DbInstance::default();
-    db.run_default(":CREATE status {uid => mood}")
+    db.run_default(":create status {uid => mood}")
         .expect("creating status relation should succeed");
     assert!(
         db.run_default("?[uid, mood] <- [[1, 2]] :put status {uid => mood}",)
@@ -296,7 +296,7 @@ fn returning_relations() {
     let res = db
         .run_default(
             r#"
-        {:CREATE _xxz {a}}
+        {:create _xxz {a}}
         {?[a] := a in [5,4,1,2,3] :put _xxz {a}}
         {?[a] := *_xxz[a], a % 2 == 0 :rm _xxz {a}}
         {?[a] := *_xxz[b], a = b * 2}
@@ -306,7 +306,7 @@ fn returning_relations() {
     assert_eq!(
         res.into_json()["rows"],
         json!([[2], [6], [10]]),
-        "doubled odd VALUES 1,3,5 should be 2,6,10"
+        "doubled odd values 1,3,5 should be 2,6,10"
     );
     let res = db.run_default(
         r#"

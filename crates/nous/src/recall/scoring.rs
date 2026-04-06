@@ -122,7 +122,7 @@ pub(crate) fn format_section(results: &[&ScoredResult]) -> String {
     use std::fmt::Write;
 
     let mut out = String::from(
-        "## Recalled Knowledge\n\nThe following facts were recalled FROM memory (relevance score in brackets):\n",
+        "## Recalled Knowledge\n\nThe following facts were recalled from memory (relevance score in brackets):\n",
     );
 
     for r in results {

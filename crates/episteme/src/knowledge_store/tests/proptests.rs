@@ -86,7 +86,7 @@ proptest! {
         let store = make_store();
         let mut fact = make_fact("prop-rt", "agent-prop", &content);
         fact.provenance.confidence = confidence;
-        store.insert_fact(&fact).expect("INSERT");
+        store.insert_fact(&fact).expect("insert");
         let results = store.query_facts("agent-prop", "2026-06-01", 10).expect("query");
         prop_assert_eq!(results.len(), 1);
         prop_assert_eq!(&results[0].content, &content);
@@ -129,7 +129,7 @@ proptest! {
                     &format!("Entity {i}"),
                     "concept",
                 ))
-                .expect("INSERT entity");
+                .expect("insert entity");
         }
 
         let relations = ["works_on", "knows", "depends_on", "uses"];
@@ -148,7 +148,7 @@ proptest! {
                     relations[rel_idx],
                     0.7,
                 ))
-                .expect("INSERT relationship");
+                .expect("insert relationship");
         }
 
         let count_rels = |s: &Arc<KnowledgeStore>| -> i64 {
@@ -217,7 +217,7 @@ proptest! {
             .expect("check no orphan edges");
         prop_assert!(
             orphan_rows.rows.is_empty(),
-            "no relationship should reference the merged-FROM entity"
+            "no relationship should reference the merged-from entity"
         );
 
         // INVARIANT: 5. Relationship count does not increase; may decrease due to
@@ -327,7 +327,7 @@ mod merge {
                     created_at: now,
                     updated_at: now,
                 };
-                store.insert_entity(&entity).expect("INSERT entity");
+                store.insert_entity(&entity).expect("insert entity");
             }
 
             for (s, d, rel_type_idx) in &raw_rels {
@@ -343,7 +343,7 @@ mod merge {
                     weight: 0.8,
                     created_at: now,
                 };
-                store.insert_relationship(&rel).expect("INSERT relationship");
+                store.insert_relationship(&rel).expect("insert relationship");
             }
 
             let entity_count_before = count_entities(&store);

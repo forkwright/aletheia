@@ -49,12 +49,12 @@ fn parse_classification_contradicts() {
     assert_eq!(
         ConflictClassification::parse("CONTRADICTS"),
         Some(ConflictClassification::Contradicts),
-        "parse classification contradicts: VALUES should be equal"
+        "parse classification contradicts: values should be equal"
     );
     assert_eq!(
         ConflictClassification::parse("  contradicts  "),
         Some(ConflictClassification::Contradicts),
-        "parse classification contradicts: VALUES should be equal"
+        "parse classification contradicts: values should be equal"
     );
 }
 
@@ -63,7 +63,7 @@ fn parse_classification_refines() {
     assert_eq!(
         ConflictClassification::parse("REFINES"),
         Some(ConflictClassification::Refines),
-        "parse classification refines: VALUES should be equal"
+        "parse classification refines: values should be equal"
     );
 }
 
@@ -72,7 +72,7 @@ fn parse_classification_supplements() {
     assert_eq!(
         ConflictClassification::parse("SUPPLEMENTS"),
         Some(ConflictClassification::Supplements),
-        "parse classification supplements: VALUES should be equal"
+        "parse classification supplements: values should be equal"
     );
 }
 
@@ -81,7 +81,7 @@ fn parse_classification_unrelated() {
     assert_eq!(
         ConflictClassification::parse("UNRELATED"),
         Some(ConflictClassification::Unrelated),
-        "parse classification unrelated: VALUES should be equal"
+        "parse classification unrelated: values should be equal"
     );
 }
 
@@ -90,12 +90,12 @@ fn parse_classification_invalid() {
     assert_eq!(
         ConflictClassification::parse("UNKNOWN_TYPE"),
         None,
-        "parse classification invalid: VALUES should be equal"
+        "parse classification invalid: values should be equal"
     );
     assert_eq!(
         ConflictClassification::parse(""),
         None,
-        "parse classification invalid: VALUES should be equal"
+        "parse classification invalid: values should be equal"
     );
 }
 
@@ -177,11 +177,11 @@ fn intra_batch_dedup_exact_string_match() {
     assert_eq!(
         kept.len(),
         1,
-        "intra batch dedup exact string match: VALUES should be equal"
+        "intra batch dedup exact string match: values should be equal"
     );
     assert_eq!(
         dropped, 1,
-        "intra batch dedup exact string match: VALUES should be equal"
+        "intra batch dedup exact string match: values should be equal"
     );
     assert!(
         (kept[0].confidence - 0.9).abs() < f64::EPSILON,
@@ -199,11 +199,11 @@ fn intra_batch_dedup_cosine_similar() {
     assert_eq!(
         kept.len(),
         1,
-        "intra batch dedup cosine similar: VALUES should be equal"
+        "intra batch dedup cosine similar: values should be equal"
     );
     assert_eq!(
         dropped, 1,
-        "intra batch dedup cosine similar: VALUES should be equal"
+        "intra batch dedup cosine similar: values should be equal"
     );
     assert!(
         (kept[0].confidence - 0.85).abs() < f64::EPSILON,
@@ -221,11 +221,11 @@ fn intra_batch_dedup_different_facts_preserved() {
     assert_eq!(
         kept.len(),
         2,
-        "intra batch dedup different facts preserved: VALUES should be equal"
+        "intra batch dedup different facts preserved: values should be equal"
     );
     assert_eq!(
         dropped, 0,
-        "intra batch dedup different facts preserved: VALUES should be equal"
+        "intra batch dedup different facts preserved: values should be equal"
     );
 }
 
@@ -235,7 +235,7 @@ fn intra_batch_dedup_empty() {
     assert!(kept.is_empty(), "intra batch dedup empty: expected empty");
     assert_eq!(
         dropped, 0,
-        "intra batch dedup empty: VALUES should be equal"
+        "intra batch dedup empty: values should be equal"
     );
 }
 
@@ -246,11 +246,11 @@ fn intra_batch_dedup_single() {
     assert_eq!(
         kept.len(),
         1,
-        "intra batch dedup single: VALUES should be equal"
+        "intra batch dedup single: values should be equal"
     );
     assert_eq!(
         dropped, 0,
-        "intra batch dedup single: VALUES should be equal"
+        "intra batch dedup single: values should be equal"
     );
 }
 
@@ -264,7 +264,7 @@ fn resolve_contradicts_new_higher_confidence() {
         ConflictAction::Supersede {
             old_id: FactId::new("f-old").expect("valid test id")
         },
-        "resolve contradicts new higher confidence: VALUES should be equal"
+        "resolve contradicts new higher confidence: values should be equal"
     );
 }
 
@@ -276,7 +276,7 @@ fn resolve_contradicts_new_lower_confidence() {
     assert_eq!(
         action,
         ConflictAction::Drop,
-        "resolve contradicts new lower confidence: VALUES should be equal"
+        "resolve contradicts new lower confidence: values should be equal"
     );
 }
 
@@ -290,7 +290,7 @@ fn resolve_contradicts_equal_confidence_new_wins() {
         ConflictAction::Supersede {
             old_id: FactId::new("f-old").expect("valid test id")
         },
-        "resolve contradicts equal confidence new wins: VALUES should be equal"
+        "resolve contradicts equal confidence new wins: values should be equal"
     );
 }
 
@@ -304,7 +304,7 @@ fn resolve_refines_supersedes() {
         ConflictAction::Supersede {
             old_id: FactId::new("f-old").expect("valid test id")
         },
-        "resolve refines supersedes: VALUES should be equal"
+        "resolve refines supersedes: values should be equal"
     );
 }
 
@@ -316,7 +316,7 @@ fn resolve_supplements_inserts() {
     assert_eq!(
         action,
         ConflictAction::Insert,
-        "resolve supplements inserts: VALUES should be equal"
+        "resolve supplements inserts: values should be equal"
     );
 }
 
@@ -334,7 +334,7 @@ fn resolve_unrelated_inserts() {
     assert_eq!(
         action,
         ConflictAction::Insert,
-        "resolve unrelated inserts: VALUES should be equal"
+        "resolve unrelated inserts: values should be equal"
     );
 }
 
@@ -357,7 +357,7 @@ fn verified_not_superseded_by_assumed_contradicts() {
     assert_eq!(
         action,
         ConflictAction::Drop,
-        "verified not superseded by assumed contradicts: VALUES should be equal"
+        "verified not superseded by assumed contradicts: values should be equal"
     );
 }
 
@@ -375,7 +375,7 @@ fn verified_not_superseded_by_assumed_refines() {
     assert_eq!(
         action,
         ConflictAction::Drop,
-        "verified not superseded by assumed refines: VALUES should be equal"
+        "verified not superseded by assumed refines: values should be equal"
     );
 }
 
@@ -389,7 +389,7 @@ fn verified_can_be_superseded_by_verified() {
         ConflictAction::Supersede {
             old_id: FactId::new("f-old").expect("valid test id")
         },
-        "verified can be superseded by verified: VALUES should be equal"
+        "verified can be superseded by verified: values should be equal"
     );
 }
 
@@ -403,7 +403,7 @@ fn verified_can_be_superseded_by_inferred() {
         ConflictAction::Supersede {
             old_id: FactId::new("f-old").expect("valid test id")
         },
-        "verified can be superseded by inferred: VALUES should be equal"
+        "verified can be superseded by inferred: values should be equal"
     );
 }
 
@@ -482,7 +482,7 @@ fn correction_fact_wins_contradiction_regardless_of_confidence() {
         ConflictAction::Supersede {
             old_id: FactId::new("f-old").expect("valid test id")
         },
-        "correction fact wins contradiction regardless of confidence: VALUES should be equal"
+        "correction fact wins contradiction regardless of confidence: values should be equal"
     );
 }
 
@@ -541,11 +541,11 @@ fn classify_returns_classification() {
     assert_eq!(
         classification,
         ConflictClassification::Refines,
-        "classify returns classification: VALUES should be equal"
+        "classify returns classification: values should be equal"
     );
     assert_eq!(
         idx, 0,
-        "classify returns classification: VALUES should be equal"
+        "classify returns classification: values should be equal"
     );
 }
 
@@ -601,7 +601,7 @@ fn no_candidates_results_in_insert() {
     .expect("classify must succeed with empty candidates");
     assert!(
         result.is_none(),
-        "no candidates should return None (INSERT)"
+        "no candidates should return None (insert)"
     );
 }
 
@@ -654,12 +654,12 @@ fn conflict_action_equality() {
     assert_eq!(
         ConflictAction::Insert,
         ConflictAction::Insert,
-        "conflict action equality: VALUES should be equal"
+        "conflict action equality: values should be equal"
     );
     assert_eq!(
         ConflictAction::Drop,
         ConflictAction::Drop,
-        "conflict action equality: VALUES should be equal"
+        "conflict action equality: values should be equal"
     );
     assert_eq!(
         ConflictAction::Supersede {
@@ -668,12 +668,12 @@ fn conflict_action_equality() {
         ConflictAction::Supersede {
             old_id: FactId::new("a").expect("valid test id")
         },
-        "conflict action equality: VALUES should be equal"
+        "conflict action equality: values should be equal"
     );
     assert_ne!(
         ConflictAction::Insert,
         ConflictAction::Drop,
-        "conflict action equality: VALUES should differ"
+        "conflict action equality: values should differ"
     );
 }
 
@@ -690,7 +690,7 @@ fn classification_serde_roundtrip() {
             serde_json::from_str(&json).expect("deserialization must succeed");
         assert_eq!(
             class, back,
-            "classification serde roundtrip: VALUES should be equal"
+            "classification serde roundtrip: values should be equal"
         );
     }
 }

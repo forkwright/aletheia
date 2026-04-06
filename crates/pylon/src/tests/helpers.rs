@@ -77,7 +77,7 @@ pub(super) async fn test_state_with_provider(
     let mut provider_registry = ProviderRegistry::new();
     if with_provider {
         provider_registry.register(Box::new(
-            MockProvider::new("Hello FROM mock!").models(&["mock-model", "claude-opus-4-20250514"]),
+            MockProvider::new("Hello from mock!").models(&["mock-model", "claude-opus-4-20250514"]),
         ));
     }
     let provider_registry = Arc::new(provider_registry);

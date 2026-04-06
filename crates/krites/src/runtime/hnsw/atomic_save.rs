@@ -95,7 +95,7 @@ fn temp_path_for(target: &Path) -> PathBuf {
 
 fn write_temp(path: &Path, data: &[u8]) -> Result<()> {
     let mut file =
-        File::create(path).map_err(|e| save_err(format!("CREATE {}: {e}", path.display())))?;
+        File::create(path).map_err(|e| save_err(format!("create {}: {e}", path.display())))?;
     file.write_all(data)
         .map_err(|e| save_err(format!("write {}: {e}", path.display())))?;
     #[cfg(unix)]

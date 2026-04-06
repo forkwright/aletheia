@@ -72,7 +72,7 @@ impl ScenarioRunner {
             None => all_scenarios,
         };
 
-        if let Err(e) = let health = self.client.health().await { tracing::warn!(error = %e, "operation failed"); }
+        let health = self.client.health().await.ok(); // WHY: best-effort; scenarios self-skip when server is unreachable
         let has_token = self.client.has_token();
 
         let has_nous = if has_token {
@@ -193,7 +193,7 @@ impl ScenarioRunner {
         if let Some(remaining_start) = fail_fast_idx {
             #[expect(
                 clippy::indexing_slicing,
-                reason = "remaining_start is i+1 WHERE i < scenarios.len(); slice is empty when i is last"
+                reason = "remaining_start is i+1 where i < scenarios.len(); slice is empty when i is last"
             )]
             for scenario in &scenarios[remaining_start..] {
                 results.push(ScenarioResult {

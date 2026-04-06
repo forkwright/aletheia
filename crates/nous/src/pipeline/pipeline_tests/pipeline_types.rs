@@ -31,12 +31,12 @@ fn turn_usage_total() {
 #[test]
 fn interaction_signal_serde() {
     let signal = InteractionSignal::CodeGeneration;
-    let json = serde_json::to_string(&signal).unwrap_or_default();
+    let json = serde_json::to_string(&signal).expect("serialize signal");
     assert_eq!(
         json, "\"code_generation\"",
         "signal should serialize to snake_case"
     );
-    let back: InteractionSignal = serde_json::from_str(&json).unwrap_or_default();
+    let back: InteractionSignal = serde_json::from_str(&json).expect("deserialize signal");
     assert_eq!(back, signal, "roundtrip should preserve signal");
 }
 
@@ -114,8 +114,8 @@ fn all_interaction_signals_serde_roundtrip() {
         InteractionSignal::ErrorRecovery,
     ];
     for signal in signals {
-        let json = serde_json::to_string(&signal).unwrap_or_default();
-        let back: InteractionSignal = serde_json::from_str(&json).unwrap_or_default();
+        let json = serde_json::to_string(&signal).expect("serialize signal");
+        let back: InteractionSignal = serde_json::from_str(&json).expect("deserialize signal");
         assert_eq!(
             signal, back,
             "serde roundtrip should preserve signal variant"
@@ -143,8 +143,8 @@ fn turn_usage_serde_roundtrip() {
         cache_write_tokens: 20,
         llm_calls: 2,
     };
-    let json = serde_json::to_string(&usage).unwrap_or_default();
-    let back: TurnUsage = serde_json::from_str(&json).unwrap_or_default();
+    let json = serde_json::to_string(&usage).expect("serialize usage");
+    let back: TurnUsage = serde_json::from_str(&json).expect("deserialize usage");
     assert_eq!(
         usage.total_tokens(),
         back.total_tokens(),
@@ -162,21 +162,21 @@ async fn assemble_context_populates_pipeline() {
 
     use crate::config::{NousConfig, PipelineConfig};
 
-    let dir = TempDir::new().unwrap_or_default();
+    let dir = TempDir::new().expect("create temp dir");
     let root = dir.path();
-    fs::create_dir_all(root.join("nous/test-agent")).unwrap_or_default();
-    fs::create_dir_all(root.join("shared")).unwrap_or_default();
-    fs::create_dir_all(root.join("theke")).unwrap_or_default();
+    fs::create_dir_all(root.join("nous/test-agent")).expect("create nous dir");
+    fs::create_dir_all(root.join("shared")).expect("create shared dir");
+    fs::create_dir_all(root.join("theke")).expect("create theke dir");
     #[expect(
         clippy::disallowed_methods,
         reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
     )]
-    fs::write(root.join("nous/test-agent/SOUL.md"), "I am a test agent.").unwrap_or_default();
+    fs::write(root.join("nous/test-agent/SOUL.md"), "I am a test agent.").expect("write SOUL.md");
     #[expect(
         clippy::disallowed_methods,
         reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
     )]
-    fs::write(root.join("theke/USER.md"), "Test user.").unwrap_or_default();
+    fs::write(root.join("theke/USER.md"), "Test user.").expect("write USER.md");
 
     let oikos = Oikos::from_root(root);
     let nous_config = NousConfig {
@@ -188,13 +188,13 @@ async fn assemble_context_populates_pipeline() {
 
     assemble_context(&oikos, &nous_config, &pipeline_config, &mut ctx)
         .await
-        .unwrap_or_default();
+        .expect("assemble_context should succeed");
 
     assert!(
         ctx.system_prompt.is_some(),
         "system prompt should be populated"
     );
-    let prompt = ctx.system_prompt.unwrap_or_default();
+    let prompt = ctx.system_prompt.expect("system prompt present");
     assert!(
         prompt.contains("I am a test agent."),
         "prompt should contain SOUL.md content"
@@ -224,16 +224,16 @@ async fn run_pipeline_simple() {
     use aletheia_organon::registry::ToolRegistry;
     use aletheia_organon::types::ToolContext;
 
-    let dir = TempDir::new().unwrap_or_default();
+    let dir = TempDir::new().expect("create temp dir");
     let root = dir.path();
-    fs::create_dir_all(root.join("nous/test-agent")).unwrap_or_default();
-    fs::create_dir_all(root.join("shared")).unwrap_or_default();
-    fs::create_dir_all(root.join("theke")).unwrap_or_default();
+    fs::create_dir_all(root.join("nous/test-agent")).expect("create nous dir");
+    fs::create_dir_all(root.join("shared")).expect("create shared dir");
+    fs::create_dir_all(root.join("theke")).expect("create theke dir");
     #[expect(
         clippy::disallowed_methods,
         reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
     )]
-    fs::write(root.join("nous/test-agent/SOUL.md"), "I am a test agent.").unwrap_or_default();
+    fs::write(root.join("nous/test-agent/SOUL.md"), "I am a test agent.").expect("write SOUL.md");
 
     let oikos = Oikos::from_root(root);
     let nous_config = NousConfig {
@@ -248,12 +248,12 @@ async fn run_pipeline_simple() {
 
     let mut providers = ProviderRegistry::new();
     providers.register(Box::new(
-        MockProvider::new("Hello FROM pipeline!").models(&["test-model"]),
+        MockProvider::new("Hello from pipeline!").models(&["test-model"]),
     ));
 
     let tools = ToolRegistry::new();
     let tool_ctx = ToolContext {
-        nous_id: NousId::new("test-agent").unwrap_or_default(),
+        nous_id: NousId::new("test-agent").expect("valid"),
         session_id: SessionId::new(),
         workspace: PathBuf::from("/tmp/test"),
         allowed_roots: vec![PathBuf::from("/tmp")],
@@ -290,10 +290,10 @@ async fn run_pipeline_simple() {
         None,
     )
     .await
-    .unwrap_or_default();
+    .expect("pipeline should succeed");
 
     assert_eq!(
-        result.content, "Hello FROM pipeline!",
+        result.content, "Hello from pipeline!",
         "pipeline should return mock response"
     );
     assert!(
@@ -316,11 +316,11 @@ async fn assemble_context_missing_soul_returns_error() {
 
     use aletheia_taxis::oikos::Oikos;
 
-    let dir = TempDir::new().unwrap_or_default();
+    let dir = TempDir::new().expect("create temp dir");
     let root = dir.path();
-    std::fs::create_dir_all(root.join("nous/test-agent")).unwrap_or_default();
-    std::fs::create_dir_all(root.join("shared")).unwrap_or_default();
-    std::fs::create_dir_all(root.join("theke")).unwrap_or_default();
+    std::fs::create_dir_all(root.join("nous/test-agent")).expect("create nous dir");
+    std::fs::create_dir_all(root.join("shared")).expect("create shared dir");
+    std::fs::create_dir_all(root.join("theke")).expect("create theke dir");
 
     let oikos = Oikos::from_root(root);
     let config = crate::config::NousConfig {
@@ -343,8 +343,8 @@ fn pipeline_message_serde_roundtrip() {
         content: "Hello world".to_owned(),
         token_estimate: 3,
     };
-    let json = serde_json::to_string(&msg).unwrap_or_default();
-    let back: PipelineMessage = serde_json::from_str(&json).unwrap_or_default();
+    let json = serde_json::to_string(&msg).expect("serialize message");
+    let back: PipelineMessage = serde_json::from_str(&json).expect("deserialize message");
     assert_eq!(msg.role, back.role, "role should roundtrip");
     assert_eq!(msg.content, back.content, "content should roundtrip");
     assert_eq!(
@@ -363,8 +363,8 @@ fn tool_call_serde_roundtrip() {
         is_error: false,
         duration_ms: 42,
     };
-    let json = serde_json::to_string(&tc).unwrap_or_default();
-    let back: ToolCall = serde_json::from_str(&json).unwrap_or_default();
+    let json = serde_json::to_string(&tc).expect("serialize tool call");
+    let back: ToolCall = serde_json::from_str(&json).expect("deserialize tool call");
     assert_eq!(tc.id, back.id, "id should roundtrip");
     assert_eq!(tc.name, back.name, "name should roundtrip");
     assert_eq!(

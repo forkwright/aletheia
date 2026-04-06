@@ -434,7 +434,7 @@ pub(crate) fn watchdog_backoff(attempt: u32) -> Duration {
 )]
 #[expect(
     clippy::unchecked_time_subtraction,
-    reason = "test: subtracting small millis FROM now cannot underflow"
+    reason = "test: subtracting small millis from now cannot underflow"
 )]
 mod tests {
     use std::sync::Arc;
@@ -513,8 +513,8 @@ mod tests {
 
         let statuses = wd.status();
         assert_eq!(statuses.len(), 1);
-        assert_eq!(statuses.get(0).copied().unwrap_or_default().id, "agent-1");
-        assert_eq!(statuses.get(0).copied().unwrap_or_default().state, ProcessState::Healthy);
+        assert_eq!(statuses[0].id, "agent-1");
+        assert_eq!(statuses[0].state, ProcessState::Healthy);
     }
 
     #[test]
@@ -529,7 +529,7 @@ mod tests {
 
         let statuses = wd.status();
         assert!(
-            statuses.get(0).copied().unwrap_or_default().last_heartbeat_secs < 1,
+            statuses[0].last_heartbeat_secs < 1,
             "heartbeat should reset the timer"
         );
     }
@@ -563,11 +563,11 @@ mod tests {
 
         let statuses = wd.status();
         assert_eq!(
-            statuses.get(0).copied().unwrap_or_default().state,
+            statuses[0].state,
             ProcessState::Healthy,
             "process should be healthy after successful restart"
         );
-        assert_eq!(statuses.get(0).copied().unwrap_or_default().restart_count, 1);
+        assert_eq!(statuses[0].restart_count, 1);
     }
 
     #[tokio::test]
@@ -592,7 +592,7 @@ mod tests {
         assert_eq!(internal.state, ProcessState::Hung);
         assert!(
             internal.backoff_until.is_some(),
-            "failed restart should SET backoff"
+            "failed restart should set backoff"
         );
     }
 
@@ -616,7 +616,7 @@ mod tests {
 
         let statuses = wd.status();
         assert_eq!(
-            statuses.get(0).copied().unwrap_or_default().state,
+            statuses[0].state,
             ProcessState::Abandoned,
             "should be abandoned after exceeding max restarts"
         );
@@ -709,8 +709,8 @@ mod tests {
 
         let log = wd.restart_log();
         assert_eq!(log.len(), 1, "should have one restart event");
-        assert_eq!(log.get(0).copied().unwrap_or_default().process_id, "agent-1");
-        assert_eq!(log.get(0).copied().unwrap_or_default().attempt, 1);
+        assert_eq!(log[0].process_id, "agent-1");
+        assert_eq!(log[0].attempt, 1);
     }
 
     #[test]
@@ -723,7 +723,7 @@ mod tests {
         wd.report_exit("agent-1", "segfault");
 
         let statuses = wd.status();
-        assert_eq!(statuses.get(0).copied().unwrap_or_default().state, ProcessState::Hung);
+        assert_eq!(statuses[0].state, ProcessState::Hung);
     }
 
     #[test]
@@ -738,9 +738,9 @@ mod tests {
 
         let statuses = wd.status();
         assert_eq!(
-            statuses.get(0).copied().unwrap_or_default().state,
+            statuses[0].state,
             ProcessState::Healthy,
-            "heartbeat should recover FROM hung state"
+            "heartbeat should recover from hung state"
         );
     }
 
@@ -761,8 +761,8 @@ mod tests {
     #[test]
     fn process_state_serialization_roundtrip() {
         let state = ProcessState::Healthy;
-        let json = serde_json::to_string(&state).unwrap_or_default();
-        let back: ProcessState = serde_json::from_str(&json).unwrap_or_default();
+        let json = serde_json::to_string(&state).expect("serialize");
+        let back: ProcessState = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(back, ProcessState::Healthy);
     }
 
@@ -774,8 +774,8 @@ mod tests {
             attempt: 2,
             timestamp: "2026-03-22T10:00:00Z".to_owned(),
         };
-        let json = serde_json::to_string(&event).unwrap_or_default();
-        let back: RestartEvent = serde_json::from_str(&json).unwrap_or_default();
+        let json = serde_json::to_string(&event).expect("serialize");
+        let back: RestartEvent = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(back.process_id, "agent-1");
         assert_eq!(back.attempt, 2);
     }

@@ -62,7 +62,7 @@ fn complex_intent_boosts_score() {
 #[test]
 fn multi_step_boosts_score() {
     let result = score_complexity(&input(
-        "First refactor the config module, then UPDATE the tests, and finally fix the CI",
+        "First refactor the config module, then update the tests, and finally fix the CI",
     ));
     assert!(
         result.score >= 50,

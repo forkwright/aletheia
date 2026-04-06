@@ -344,7 +344,7 @@ Some text
 
 #[test]
 fn strip_code_fences_nested() {
-    let input = "```json\n```INNER```\n```";
+    let input = "```json\n```inner```\n```";
     let result = utils::strip_code_fences(input);
     assert!(
         !result.is_empty(),

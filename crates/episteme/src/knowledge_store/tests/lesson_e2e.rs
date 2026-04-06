@@ -61,14 +61,14 @@ fn end_to_end_lesson_extraction_and_persist() {
     // Step 2: Persist to knowledge store.
     let result = persist_lesson(&lesson, &store, &config).expect("persist_lesson should succeed");
 
-    assert!(result.facts_inserted > 0, "should INSERT at least one fact");
+    assert!(result.facts_inserted > 0, "should insert at least one fact");
     assert!(
         result.entities_inserted > 0,
-        "should INSERT at least one entity"
+        "should insert at least one entity"
     );
     assert!(
         result.relationships_inserted > 0,
-        "should INSERT at least one relationship"
+        "should insert at least one relationship"
     );
 
     // Step 3: Verify facts appear in the knowledge store.
@@ -126,5 +126,5 @@ fn empty_diff_produces_no_facts() {
 
     let result =
         persist_lesson(&lesson, &store, &config).expect("persist of empty lesson should succeed");
-    assert_eq!(result.facts_inserted, 0, "no facts to INSERT");
+    assert_eq!(result.facts_inserted, 0, "no facts to insert");
 }

@@ -54,7 +54,7 @@ pub(crate) fn generate_prompt(issue: &GitHubIssue, repo: &str) -> String {
 
     // Include original issue body as context if present
     if !issue.body.is_empty() {
-        prompt.push_str("### Context FROM issue\n\n");
+        prompt.push_str("### Context from issue\n\n");
         let max_body = 2000;
         if issue.body.len() > max_body {
             let truncated = issue.body.get(..max_body).unwrap_or(&issue.body);
@@ -109,7 +109,7 @@ pub(crate) fn generate_prompt(issue: &GitHubIssue, repo: &str) -> String {
     );
     let _ = writeln!(
         prompt,
-        "4. Create a PR with `gh pr CREATE` — include \"Closes #{number}\" in the body"
+        "4. Create a PR with `gh pr create` — include \"Closes #{number}\" in the body"
     );
     prompt.push_str("5. Do NOT merge the PR\n\n");
 
@@ -122,7 +122,7 @@ pub(crate) fn generate_prompt(issue: &GitHubIssue, repo: &str) -> String {
     // Source metadata comment
     let _ = write!(
         prompt,
-        "\n<!-- Auto-generated FROM {repo}#{number} by issue_triage -->\n"
+        "\n<!-- Auto-generated from {repo}#{number} by issue_triage -->\n"
     );
 
     prompt
@@ -258,9 +258,9 @@ fn infer_task(issue: &GitHubIssue) -> String {
         "implement ",
         "refactor ",
         "remove ",
-        "UPDATE ",
-        "CREATE ",
-        "DELETE ",
+        "update ",
+        "create ",
+        "delete ",
         "improve ",
         "migrate ",
         "replace ",
@@ -588,7 +588,7 @@ mod tests {
         let paths = infer_blast_radius(&issue, "general");
         assert!(
             paths.iter().any(|p| p.contains("crates/pylon")),
-            "should extract path FROM backticks: {paths:?}"
+            "should extract path from backticks: {paths:?}"
         );
     }
 

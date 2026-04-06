@@ -141,7 +141,7 @@ fn EntityTypeBreakdown(slices: Vec<crate::state::meta::EntityTypeSlice>) -> Elem
                                 }
                             }
                             span {
-                                style: "font-size: 11px; color: #888; width: 70px; text-align: RIGHT;",
+                                style: "font-size: 11px; color: #888; width: 70px; text-align: right;",
                                 "{slice.count} ({pct:.0}%)"
                             }
                         }

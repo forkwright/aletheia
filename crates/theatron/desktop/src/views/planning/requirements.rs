@@ -609,11 +609,11 @@ fn send_edit(
                 fetch_trigger.set(next);
             }
             Ok(resp) => {
-                tracing::warn!("requirement UPDATE returned {}", resp.status());
+                tracing::warn!("requirement update returned {}", resp.status());
                 editing.set(None);
             }
             Err(e) => {
-                tracing::warn!("requirement UPDATE error: {e}");
+                tracing::warn!("requirement update error: {e}");
                 editing.set(None);
             }
         }

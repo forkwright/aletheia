@@ -118,7 +118,7 @@ pub(crate) struct HnswIndex {
 
 const _: () = assert!(
     std::mem::offset_of!(HnswIndex, _loader) < std::mem::offset_of!(HnswIndex, inner),
-    "_loader must be declared before INNER; see safety comment on HnswIndex"
+    "_loader must be declared before inner; see safety comment on HnswIndex"
 );
 
 impl HnswIndex {
@@ -147,7 +147,7 @@ impl HnswIndex {
             let data_path = dir.join(format!("{}.hnsw.data", &config.persist_basename));
 
             if graph_path.exists() && data_path.exists() {
-                tracing::info!("loading existing HNSW index FROM {:?}", dir);
+                tracing::info!("loading existing HNSW index from {:?}", dir);
                 let mut loader = Box::new(HnswIo::new(dir, &config.persist_basename));
                 let hnsw: Hnsw<'_, f32, DistCosine> =
                     loader.load_hnsw::<f32, DistCosine>().map_err(|e| {
@@ -219,7 +219,7 @@ impl HnswIndex {
             tracing::warn!(
                 current = current_len,
                 max = self.config.max_elements,
-                "HNSW index at capacity, skipping INSERT"
+                "HNSW index at capacity, skipping insert"
             );
             return Err(HnswIndexSnafu {
                 message: format!(
@@ -303,7 +303,7 @@ impl HnswIndex {
 
         std::fs::create_dir_all(dir).map_err(|e| {
             HnswIndexSnafu {
-                message: format!("failed to CREATE HNSW dump directory: {e}"),
+                message: format!("failed to create HNSW dump directory: {e}"),
             }
             .build()
         })?;
@@ -373,9 +373,9 @@ mod tests {
         let v2 = vec![0.0, 1.0, 0.0, 0.0];
         let v3 = vec![0.9, 0.1, 0.0, 0.0];
 
-        index.insert(&v1, 0).unwrap_or_default();
-        index.insert(&v2, 1).unwrap_or_default();
-        index.insert(&v3, 2).unwrap_or_default();
+        index.insert(&v1, 0).expect("insert v1");
+        index.insert(&v2, 1).expect("insert v2");
+        index.insert(&v3, 2).expect("insert v3");
 
         let query = vec![0.95, 0.05, 0.0, 0.0];
         let results = index.search(&query, 2, 16);
@@ -401,8 +401,8 @@ mod tests {
                 clippy::cast_precision_loss,
                 reason = "test data: small indices fit in f32"
             )]
-            let v = vec![f32::try_from(i).unwrap_or_default(), 0.0, 0.0, 0.0];
-            index.insert(&v, i).unwrap_or_default();
+            let v = vec![i as f32, 0.0, 0.0, 0.0];
+            index.insert(&v, i).expect("insert test vector");
         }
 
         let results = index.search(&[10.0, 0.0, 0.0, 0.0], 5, 20);
@@ -419,7 +419,7 @@ mod tests {
 
     #[test]
     fn dump_and_load_roundtrip() {
-        let dir = tempfile::TempDir::new().unwrap_or_default();
+        let dir = tempfile::TempDir::new().expect("temp dir creation succeeds");
         let config = HnswConfig {
             dim: 4,
             persist_dir: Some(dir.path().to_path_buf()),
@@ -428,20 +428,20 @@ mod tests {
 
         {
             let index = HnswIndex::new(config.clone());
-            index.insert(&[1.0, 0.0, 0.0, 0.0], 0).unwrap_or_default();
-            index.insert(&[0.0, 1.0, 0.0, 0.0], 1).unwrap_or_default();
-            index.insert(&[0.0, 0.0, 1.0, 0.0], 2).unwrap_or_default();
+            index.insert(&[1.0, 0.0, 0.0, 0.0], 0).expect("insert v1");
+            index.insert(&[0.0, 1.0, 0.0, 0.0], 1).expect("insert v2");
+            index.insert(&[0.0, 0.0, 1.0, 0.0], 2).expect("insert v3");
             assert_eq!(index.len(), 3);
-            index.dump().unwrap_or_default();
+            index.dump().expect("dump should succeed");
         }
 
         {
-            let index = HnswIndex::open_or_create(config).unwrap_or_default();
+            let index = HnswIndex::open_or_create(config).expect("reload should succeed");
             assert_eq!(index.len(), 3);
 
             let results = index.search(&[1.0, 0.0, 0.0, 0.0], 1, 16);
             assert_eq!(results.len(), 1);
-            assert_eq!(results.get(0).copied().unwrap_or_default().data_id, 0);
+            assert_eq!(results[0].data_id, 0);
         }
     }
 
@@ -451,7 +451,7 @@ mod tests {
         assert!(index.is_empty());
         assert_eq!(index.len(), 0);
 
-        index.insert(&[1.0, 0.0, 0.0, 0.0], 0).unwrap_or_default();
+        index.insert(&[1.0, 0.0, 0.0, 0.0], 0).expect("insert");
         assert!(!index.is_empty());
         assert_eq!(index.len(), 1);
     }
@@ -464,10 +464,10 @@ mod tests {
     #[test]
     #[expect(
         clippy::indexing_slicing,
-        reason = "test code: index INTO known-length search results"
+        reason = "test code: index into known-length search results"
     )]
     fn transmute_safety_repeated_load_drop_cycles() {
-        let dir = tempfile::TempDir::new().unwrap_or_default();
+        let dir = tempfile::TempDir::new().expect("temp dir creation succeeds");
         let config = HnswConfig {
             dim: 4,
             persist_dir: Some(dir.path().to_path_buf()),
@@ -477,10 +477,10 @@ mod tests {
         // NOTE: seed the index with initial data
         {
             let index = HnswIndex::new(config.clone());
-            index.insert(&[1.0, 0.0, 0.0, 0.0], 0).unwrap_or_default();
-            index.insert(&[0.0, 1.0, 0.0, 0.0], 1).unwrap_or_default();
-            index.insert(&[0.0, 0.0, 1.0, 0.0], 2).unwrap_or_default();
-            index.dump().unwrap_or_default();
+            index.insert(&[1.0, 0.0, 0.0, 0.0], 0).expect("insert v1");
+            index.insert(&[0.0, 1.0, 0.0, 0.0], 1).expect("insert v2");
+            index.insert(&[0.0, 0.0, 1.0, 0.0], 2).expect("insert v3");
+            index.dump().expect("initial dump should succeed");
         }
 
         // NOTE: reload -> search -> drop across 3 cycles to exercise the
@@ -488,18 +488,18 @@ mod tests {
         // (with transmute), uses it, then drops it.
         for cycle in 0..3_u32 {
             let index = HnswIndex::open_or_create(config.clone())
-                .unwrap_or_default();
+                .expect("reload should succeed on each cycle");
             assert_eq!(index.len(), 3, "point count must be 3 after cycle {cycle}");
 
             // NOTE: search the original point to verify data integrity
             let results = index.search(&[1.0, 0.0, 0.0, 0.0], 1, 16);
             assert_eq!(results.len(), 1, "search must return 1 result after reload");
-            assert_eq!(results.get(0).copied().unwrap_or_default().data_id, 0, "nearest neighbour must be data_id 0");
+            assert_eq!(results[0].data_id, 0, "nearest neighbour must be data_id 0");
 
             // NOTE: verify all three original vectors are findable
             let results = index.search(&[0.0, 1.0, 0.0, 0.0], 1, 16);
             assert_eq!(
-                results.get(0).copied().unwrap_or_default().data_id, 1,
+                results[0].data_id, 1,
                 "second vector must be findable after reload cycle {cycle}"
             );
         }
@@ -515,7 +515,7 @@ mod tests {
             let mut v = vec![0.0f32; 384];
             v[i % 384] = 1.0;
             v[(i * 7) % 384] += 0.5;
-            index.insert(&v, i).unwrap_or_default();
+            index.insert(&v, i).expect("insert test vector");
         }
 
         let query = vec![0.5f32; 384];

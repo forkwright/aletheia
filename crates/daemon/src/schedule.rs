@@ -589,7 +589,7 @@ mod tests {
         let offset = result.since(base).unwrap();
         assert!(
             offset.get_seconds() <= 300,
-            "jitter OFFSET must be <= max_jitter"
+            "jitter offset must be <= max_jitter"
         );
     }
 }

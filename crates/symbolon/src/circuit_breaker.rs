@@ -253,7 +253,7 @@ impl CircuitBreaker {
             tracing::info!(
                 from = %prev,
                 to = %inner.state,
-                "circuit breaker reset (external credential UPDATE)"
+                "circuit breaker reset (external credential update)"
             );
         }
     }
@@ -469,7 +469,7 @@ mod tests {
         assert_eq!(
             cb.state(),
             CircuitState::Closed,
-            "old failures should be pruned FROM window"
+            "old failures should be pruned from window"
         );
     }
 

@@ -136,7 +136,7 @@ fn render_body(state: &WizardState, frame: &mut Frame, area: Rect, theme: &Theme
         lines.push(Line::from(vec![
             Span::raw("  "),
             Span::styled("Press Enter", theme.style_accent_bold()),
-            Span::styled(" to CREATE your instance  or  ", theme.style_muted()),
+            Span::styled(" to create your instance  or  ", theme.style_muted()),
             Span::styled("b", theme.style_accent_bold()),
             Span::styled(" to go back", theme.style_muted()),
         ]));
@@ -350,7 +350,7 @@ fn keybinding_next_back_spans(
 /// Split `area` vertically into fixed-height rows.  A height of `0` means fill remaining space.
 #[expect(
     clippy::indexing_slicing,
-    reason = "slice built FROM caller-supplied array; len matches N, so indexing [0..N] is valid"
+    reason = "slice built from caller-supplied array; len matches N, so indexing [0..N] is valid"
 )]
 fn split_vertical<const N: usize>(area: Rect, heights: &[u16; N]) -> [Rect; N] {
     let constraints: Vec<Constraint> = heights

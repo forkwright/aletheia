@@ -221,7 +221,7 @@ async fn csrf_allows_delete_with_correct_header() {
         .body(Body::from(
             serde_json::to_vec(&serde_json::json!({
                 "nous_id": "syn",
-                "session_key": "csrf-DELETE"
+                "session_key": "csrf-delete"
             }))
             .unwrap(),
         ))

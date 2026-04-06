@@ -62,7 +62,7 @@ fn parse_confidence_preserves_out_of_range() {
     }"#;
     let extraction = engine
         .parse_response(json)
-        .expect("out-of-range confidence VALUES should parse without error");
+        .expect("out-of-range confidence values should parse without error");
     assert!(
         (extraction.relationships[0].confidence - 1.5).abs() < f64::EPSILON,
         "confidence > 1.0 is not clamped at parse time"
@@ -306,16 +306,16 @@ fn persist_round_trip() {
     let result = engine
         .persist(&extraction, &store, "session:test:main:2026-03-02", "syn")
         .expect("persist should succeed with valid entities, relationships, and facts");
-    assert_eq!(result.entities_inserted, 2, "should INSERT 2 entities");
+    assert_eq!(result.entities_inserted, 2, "should insert 2 entities");
     assert_eq!(
         result.relationships_inserted, 1,
-        "should INSERT 1 relationship"
+        "should insert 1 relationship"
     );
     assert_eq!(
         result.relationships_skipped, 0,
         "no relationships should be skipped"
     );
-    assert_eq!(result.facts_inserted, 1, "should INSERT 1 fact");
+    assert_eq!(result.facts_inserted, 1, "should insert 1 fact");
 
     let neighborhood = store
         .entity_neighborhood(&crate::id::EntityId::new("dr-chen").expect("valid test id"))

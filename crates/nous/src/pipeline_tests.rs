@@ -198,11 +198,11 @@ async fn assemble_context_populates_pipeline() {
 
     use crate::config::{NousConfig, PipelineConfig};
 
-    let dir = TempDir::new().expect("CREATE temp dir");
+    let dir = TempDir::new().expect("create temp dir");
     let root = dir.path();
-    fs::create_dir_all(root.join("nous/test-agent")).expect("CREATE nous dir");
-    fs::create_dir_all(root.join("shared")).expect("CREATE shared dir");
-    fs::create_dir_all(root.join("theke")).expect("CREATE theke dir");
+    fs::create_dir_all(root.join("nous/test-agent")).expect("create nous dir");
+    fs::create_dir_all(root.join("shared")).expect("create shared dir");
+    fs::create_dir_all(root.join("theke")).expect("create theke dir");
     #[expect(
         clippy::disallowed_methods,
         reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
@@ -248,11 +248,11 @@ async fn run_pipeline_simple() {
     use aletheia_organon::registry::ToolRegistry;
     use aletheia_organon::types::ToolContext;
 
-    let dir = TempDir::new().expect("CREATE temp dir");
+    let dir = TempDir::new().expect("create temp dir");
     let root = dir.path();
-    fs::create_dir_all(root.join("nous/test-agent")).expect("CREATE nous dir");
-    fs::create_dir_all(root.join("shared")).expect("CREATE shared dir");
-    fs::create_dir_all(root.join("theke")).expect("CREATE theke dir");
+    fs::create_dir_all(root.join("nous/test-agent")).expect("create nous dir");
+    fs::create_dir_all(root.join("shared")).expect("create shared dir");
+    fs::create_dir_all(root.join("theke")).expect("create theke dir");
     #[expect(
         clippy::disallowed_methods,
         reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
@@ -269,7 +269,7 @@ async fn run_pipeline_simple() {
 
     let mut providers = ProviderRegistry::new();
     providers.register(Box::new(
-        MockProvider::new("Hello FROM pipeline!").models(&["test-model"]),
+        MockProvider::new("Hello from pipeline!").models(&["test-model"]),
     ));
 
     let tools = ToolRegistry::new();
@@ -313,7 +313,7 @@ async fn run_pipeline_simple() {
     .await
     .expect("pipeline should succeed");
 
-    assert_eq!(result.content, "Hello FROM pipeline!", "pipeline should return mock response");
+    assert_eq!(result.content, "Hello from pipeline!", "pipeline should return mock response");
     assert!(result.tool_calls.is_empty(), "simple pipeline should have no tool calls");
     assert_eq!(result.usage.llm_calls, 1, "should have exactly one LLM call");
     assert_eq!(result.stop_reason, "end_turn", "stop reason should be end_turn");
@@ -462,11 +462,11 @@ async fn assemble_context_missing_soul_returns_error() {
 
     use aletheia_taxis::oikos::Oikos;
 
-    let dir = TempDir::new().expect("CREATE temp dir");
+    let dir = TempDir::new().expect("create temp dir");
     let root = dir.path();
-    std::fs::create_dir_all(root.join("nous/test-agent")).expect("CREATE nous dir");
-    std::fs::create_dir_all(root.join("shared")).expect("CREATE shared dir");
-    std::fs::create_dir_all(root.join("theke")).expect("CREATE theke dir");
+    std::fs::create_dir_all(root.join("nous/test-agent")).expect("create nous dir");
+    std::fs::create_dir_all(root.join("shared")).expect("create shared dir");
+    std::fs::create_dir_all(root.join("theke")).expect("create theke dir");
 
     let oikos = Oikos::from_root(root);
     let config = crate::config::NousConfig {

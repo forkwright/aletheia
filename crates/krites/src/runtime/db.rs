@@ -512,7 +512,7 @@ impl Poison {
     #[cfg(target_arch = "wasm32")]
     pub(crate) fn set_timeout(&self, _secs: f64) -> Result<()> {
         UnsupportedSnafu {
-            operation: "SET timeout",
+            operation: "set timeout",
             reason: "threading is disallowed on this platform",
         }
         .fail()?

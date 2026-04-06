@@ -75,7 +75,7 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
                         println!("Expires:       EXPIRED");
                     }
                 } else {
-                    println!("Expires:       no expiry SET");
+                    println!("Expires:       no expiry set");
                 }
                 println!(
                     "Refresh token: {}",
@@ -130,9 +130,9 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
                 println!("Checked: {} (not found)", cred_path.display());
                 #[cfg(feature = "keyring")]
                 println!("Checked: OS keyring (empty)");
-                println!("Checked: ANTHROPIC_AUTH_TOKEN (not SET)");
-                println!("Checked: ANTHROPIC_API_KEY (not SET)");
-                println!("Checked: OPENAI_API_KEY (not SET)");
+                println!("Checked: ANTHROPIC_AUTH_TOKEN (not set)");
+                println!("Checked: ANTHROPIC_API_KEY (not set)");
+                println!("Checked: OPENAI_API_KEY (not set)");
             }
         }
         Action::Refresh => {
@@ -168,7 +168,7 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
                     use std::io::Read;
                     let mut buf = String::new();
                     std::io::stdin().read_to_string(&mut buf).map_err(|e| {
-                        crate::error::Error::msg(format!("failed to read token FROM stdin: {e}"))
+                        crate::error::Error::msg(format!("failed to read token from stdin: {e}"))
                     })?;
                     buf.trim().to_owned()
                 }
@@ -189,10 +189,10 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
             let keyring = aletheia_symbolon::credential::KeyringCredentialProvider::new();
             keyring.delete().map_err(|e| {
                 crate::error::Error::msg(format!(
-                    "failed to DELETE credential FROM OS keyring: {e}"
+                    "failed to delete credential from OS keyring: {e}"
                 ))
             })?;
-            println!("Credential removed FROM OS keyring");
+            println!("Credential removed from OS keyring");
         }
     }
     Ok(())

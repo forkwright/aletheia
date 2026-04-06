@@ -62,7 +62,7 @@ CREATE INDEX IF NOT EXISTS idx_blackboard_expires ON blackboard(expires_at);",
     },
     Migration {
         version: 3,
-        description: "sessions display_name — user-SET friendly name for sessions",
+        description: "sessions display_name — user-set friendly name for sessions",
         up: "ALTER TABLE sessions ADD COLUMN display_name TEXT;",
         down: "ALTER TABLE sessions DROP COLUMN display_name;",
     },
@@ -436,7 +436,7 @@ fn reconcile_user_version(conn: &Connection, table_version: u32) -> Result<()> {
     if pragma_version != table_version {
         warn!(
             pragma_version,
-            table_version, "PRAGMA user_version diverged FROM schema_version table, reconciling"
+            table_version, "PRAGMA user_version diverged from schema_version table, reconciling"
         );
         conn.pragma_update(None, "user_version", table_version)
             .context(error::DatabaseSnafu)?;
@@ -466,13 +466,13 @@ mod tests {
     use super::*;
 
     fn fresh_conn() -> Connection {
-        Connection::open_in_memory().unwrap_or_default()
+        Connection::open_in_memory().expect("in-memory SQLite connection should always open")
     }
 
     #[test]
     fn fresh_database_gets_all_migrations() {
         let conn = fresh_conn();
-        let result = run_migrations(&conn).unwrap_or_default();
+        let result = run_migrations(&conn).expect("second migration run on same DB should succeed");
 
         assert!(
             result.was_fresh,
@@ -492,9 +492,9 @@ mod tests {
     #[test]
     fn already_migrated_skips_applied() {
         let conn = fresh_conn();
-        run_migrations(&conn).unwrap_or_default();
+        run_migrations(&conn).expect("first migration run should succeed");
 
-        let result = run_migrations(&conn).unwrap_or_default();
+        let result = run_migrations(&conn).expect("migrations should apply to fresh DB");
         assert!(
             !result.was_fresh,
             "second run should not report the database as fresh"
@@ -512,7 +512,7 @@ mod tests {
     #[test]
     fn version_recorded_in_schema_version() {
         let conn = fresh_conn();
-        run_migrations(&conn).unwrap_or_default();
+        run_migrations(&conn).expect("migrations should apply successfully");
 
         let (version, description): (u32, String) = conn
             .query_row(
@@ -520,7 +520,7 @@ mod tests {
                 [],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
-            .unwrap_or_default();
+            .expect("schema_version row for version 1 should exist after migration");
         assert_eq!(version, 1, "version 1 should be recorded");
         assert!(!description.is_empty(), "description should be non-empty");
     }
@@ -529,7 +529,7 @@ mod tests {
     fn dry_run_reports_pending_without_applying() {
         let conn = fresh_conn();
         // NOTE: Bootstrap table but don't apply migrations
-        bootstrap_version_table(&conn).unwrap_or_default();
+        bootstrap_version_table(&conn).expect("bootstrap_version_table should succeed");
 
         let pending = check_migrations(&conn).unwrap_or_default();
         assert_eq!(
@@ -538,8 +538,7 @@ mod tests {
             "all 5 migrations should be pending on a fresh database"
         );
         assert_eq!(
-            pending.get(0).copied().unwrap_or_default().version,
-            1,
+            pending[0].version, 1,
             "first pending migration should be version 1"
         );
 
@@ -550,7 +549,7 @@ mod tests {
     #[test]
     fn dry_run_empty_when_current() {
         let conn = fresh_conn();
-        run_migrations(&conn).unwrap_or_default();
+        run_migrations(&conn).expect("migrations should apply successfully");
 
         let pending = check_migrations(&conn).unwrap_or_default();
         assert!(
@@ -563,11 +562,10 @@ mod tests {
     fn migration_order_enforced() {
         for window in MIGRATIONS.windows(2) {
             assert!(
-                window.get(0).copied().unwrap_or_default().version
-                    < window.get(1).copied().unwrap_or_default().version,
+                window[0].version < window[1].version,
                 "migration {} must come before {}",
-                window.get(0).copied().unwrap_or_default().version,
-                window.get(1).copied().unwrap_or_default().version,
+                window[0].version,
+                window[1].version,
             );
         }
     }
@@ -575,7 +573,7 @@ mod tests {
     #[test]
     fn tables_exist_after_migration() {
         let conn = fresh_conn();
-        run_migrations(&conn).unwrap_or_default();
+        run_migrations(&conn).expect("migrations should apply successfully");
 
         for table in &[
             "sessions",
@@ -591,7 +589,7 @@ mod tests {
                     [table],
                     |row| row.get(0),
                 )
-                .unwrap_or_default();
+                .expect("check_migrations should return pending list without applying");
             assert!(exists, "table {table} should exist after migration");
         }
     }
@@ -599,7 +597,7 @@ mod tests {
     #[test]
     fn run_migrations_fresh_db_schema_version() {
         let conn = fresh_conn();
-        let result = run_migrations(&conn).unwrap_or_default();
+        let result = run_migrations(&conn).expect("second migration run on same DB should succeed");
         assert_eq!(
             result.current_version, 5,
             "current_version should be 5 after full migration"
@@ -614,8 +612,8 @@ mod tests {
     #[test]
     fn run_migrations_idempotent() {
         let conn = fresh_conn();
-        let first = run_migrations(&conn).unwrap_or_default();
-        let second = run_migrations(&conn).unwrap_or_default();
+        let first = run_migrations(&conn).expect("first migration run should succeed");
+        let second = run_migrations(&conn).expect("second migration run should succeed idempotently");
         assert_eq!(
             first.current_version, second.current_version,
             "version should be the same across idempotent runs"
@@ -636,8 +634,7 @@ mod tests {
             "all migrations should be pending on a fresh database"
         );
         assert_eq!(
-            pending.get(0).copied().unwrap_or_default().version,
-            1,
+            pending[0].version, 1,
             "first pending migration should be version 1"
         );
     }
@@ -645,7 +642,7 @@ mod tests {
     #[test]
     fn get_schema_version_fresh_db() {
         let conn = fresh_conn();
-        bootstrap_version_table(&conn).unwrap_or_default();
+        bootstrap_version_table(&conn).expect("bootstrap_version_table should succeed on fresh DB");
         let version = get_schema_version(&conn);
         assert_eq!(version, 0, "schema version should be 0 on a fresh database");
     }
@@ -653,11 +650,11 @@ mod tests {
     #[test]
     fn pragma_user_version_tracks_schema_version() {
         let conn = fresh_conn();
-        run_migrations(&conn).unwrap_or_default();
+        run_migrations(&conn).expect("migrations should apply successfully");
 
         let pragma_version: u32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
-            .unwrap_or_default();
+            .expect("check_migrations should succeed on a fully migrated DB");
         assert_eq!(
             pragma_version, 5,
             "PRAGMA user_version should match latest migration version"
@@ -670,7 +667,7 @@ mod tests {
 
         let pragma_version: u32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
-            .unwrap_or_default();
+            .expect("check_migrations should return all pending on fresh DB");
         assert_eq!(
             pragma_version, 0,
             "PRAGMA user_version should be 0 on a fresh database"
@@ -688,12 +685,12 @@ mod tests {
                 applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
             )",
         )
-        .unwrap_or_default();
+        .expect("creating legacy schema_version table should succeed");
         conn.execute_batch(DDL).unwrap_or_default();
         conn.execute("INSERT INTO schema_version (version) VALUES (1)", [])
-            .unwrap_or_default();
+            .expect("PRAGMA user_version should be readable");
 
-        let result = run_migrations(&conn).unwrap_or_default();
+        let result = run_migrations(&conn).expect("migrations should apply to fresh DB");
         assert!(!result.was_fresh, "upgraded database should not be fresh");
         assert_eq!(
             result.applied,
@@ -718,7 +715,7 @@ mod tests {
     #[test]
     fn checksum_stored_for_new_migrations() {
         let conn = fresh_conn();
-        run_migrations(&conn).unwrap_or_default();
+        run_migrations(&conn).expect("migrations should apply successfully");
 
         for migration in MIGRATIONS {
             let stored: String = conn
@@ -727,7 +724,7 @@ mod tests {
                     rusqlite::params![migration.version],
                     |row| row.get(0),
                 )
-                .unwrap_or_default();
+                .expect("sqlite_master query should succeed for table existence check");
             assert!(
                 !stored.is_empty(),
                 "checksum for migration v{} should be non-empty",
@@ -745,7 +742,7 @@ mod tests {
     #[test]
     fn verify_checksums_passes_on_intact_db() {
         let conn = fresh_conn();
-        run_migrations(&conn).unwrap_or_default();
+        run_migrations(&conn).expect("migrations should apply successfully");
 
         verify_migration_checksums(&conn, get_schema_version(&conn)).unwrap_or_default();
     }
@@ -753,14 +750,14 @@ mod tests {
     #[test]
     fn verify_checksums_detects_tampered_checksum() {
         let conn = fresh_conn();
-        run_migrations(&conn).unwrap_or_default();
+        run_migrations(&conn).expect("migrations should apply successfully");
 
         // Tamper with the stored checksum for v1.
         conn.execute(
             "UPDATE schema_version SET checksum = 'deadbeef' WHERE version = 1",
             [],
         )
-        .unwrap_or_default();
+        .expect("tampering with checksum should succeed");
 
         let err = verify_migration_checksums(&conn, get_schema_version(&conn))
             .expect_err("verification should fail when checksum is tampered");
@@ -780,13 +777,13 @@ mod tests {
     fn verify_checksums_skips_empty_checksum_legacy_rows() {
         let conn = fresh_conn();
         // Simulate legacy rows: schema_version with empty checksum.
-        bootstrap_version_table(&conn).unwrap_or_default();
+        bootstrap_version_table(&conn).expect("bootstrap should succeed");
         conn.execute_batch(DDL).unwrap_or_default();
         conn.execute(
             "INSERT INTO schema_version (version, description, checksum) VALUES (1, 'base', '')",
             [],
         )
-        .unwrap_or_default();
+        .expect("inserting legacy row should succeed");
 
         // Verification should skip the empty-checksum row without error.
         verify_migration_checksums(&conn, 1).unwrap_or_default();
@@ -797,15 +794,15 @@ mod tests {
         let conn = fresh_conn();
 
         // Simulate a database with a newer schema version than the binary supports.
-        bootstrap_version_table(&conn).unwrap_or_default();
+        bootstrap_version_table(&conn).expect("bootstrap_version_table should succeed");
         let future_version = MIGRATIONS.last().map_or(1, |m| m.version + 1);
         conn.execute(
             "INSERT INTO schema_version (version, description, checksum) VALUES (?1, 'future migration', '')",
             rusqlite::params![future_version],
         )
-        .unwrap_or_default();
+        .expect("creating legacy schema_version table should succeed");
         conn.pragma_update(None, "user_version", future_version)
-            .unwrap_or_default();
+            .expect("PRAGMA user_version should be readable on fresh DB");
 
         // Running migrations should fail with SchemaTooNew error.
         let err = run_migrations(&conn)

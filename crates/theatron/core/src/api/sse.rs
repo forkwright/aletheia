@@ -182,7 +182,7 @@ fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
                 .unwrap_or("unknown")
                 .to_string(),
         }),
-        "status:UPDATE" => Some(SseEvent::StatusUpdate {
+        "status:update" => Some(SseEvent::StatusUpdate {
             nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
             status: str_field(&json, "status", event_type)?.to_string(),
         }),
@@ -325,7 +325,7 @@ mod tests {
         assert!(result.is_some());
         if let Some(SseEvent::Init { active_turns }) = result {
             assert_eq!(active_turns.len(), 1);
-            assert_eq!(&*active_turns.get(0).copied().unwrap_or_default().nous_id, "syn");
+            assert_eq!(&*active_turns[0].nous_id, "syn");
         } else {
             panic!("expected Init");
         }

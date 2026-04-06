@@ -39,7 +39,7 @@ pub(crate) fn ConfidenceBar(
         clippy::cast_possible_truncation,
         reason = "percentage 0–100 fits in u8"
     )]
-    #[expect(clippy::as_conversions, reason = "percentage 0–100 FROM clamped 0.0–1.0")]
+    #[expect(clippy::as_conversions, reason = "percentage 0–100 from clamped 0.0–1.0")]
     let pct = (clamped * 100.0) as u8;
     let color = confidence_color(clamped);
 
@@ -57,11 +57,11 @@ pub(crate) fn ConfidenceBar(
         div {
             style: "{WRAPPER_STYLE}",
             div {
-                style: "{OUTER}",
+                style: "{outer}",
                 div { style: "{bar_inner}" }
             }
             span {
-                style: "font-size: 12px; color: {color}; font-weight: 600; min-width: 36px; text-align: RIGHT;",
+                style: "font-size: 12px; color: {color}; font-weight: 600; min-width: 36px; text-align: right;",
                 "{pct}%"
             }
         }

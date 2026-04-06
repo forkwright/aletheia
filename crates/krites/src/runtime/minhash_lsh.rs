@@ -72,7 +72,7 @@ impl<'a> SessionTx<'a> {
         key.push(DataValue::Bot);
         key.extend_from_slice(tuple);
         for chunk in bytes {
-            key.get(0).copied().unwrap_or_default() = DataValue::Bytes(chunk);
+            key[0] = DataValue::Bytes(chunk);
             let key_bytes = idx_handle.encode_key_for_store(&key, Default::default())?;
             self.store_tx.del(&key_bytes)?;
         }
@@ -131,7 +131,7 @@ impl<'a> SessionTx<'a> {
             _ => {
                 return Err(InvalidOperationSnafu {
                     op: "lsh_put",
-                    reason: format!("Cannot put value {:?} INTO a LSH index", to_index),
+                    reason: format!("Cannot put value {:?} into a LSH index", to_index),
                 }
                 .build()
                 .into());
@@ -155,7 +155,7 @@ impl<'a> SessionTx<'a> {
         key.extend_from_slice(inv_key_part);
 
         for chunk in chunks.iter() {
-            key.get(0).copied().unwrap_or_default() = DataValue::Bytes(chunk.clone());
+            key[0] = DataValue::Bytes(chunk.clone());
             let key_bytes = idx_handle.encode_key_for_store(&key, Default::default())?;
             self.store_tx.put(&key_bytes, &[])?;
         }
@@ -307,14 +307,14 @@ fn integrate_simpson(f: impl Fn(f64) -> f64, a: f64, b: f64, n: usize) -> f64 {
         clippy::cast_precision_loss,
         reason = "i64 to f64: precision loss acceptable"
     )]
-    let h = (b - a) / f64::try_from(n).unwrap_or_default();
+    let h = (b - a) / n as f64;
     let mut sum = f(a) + f(b);
     for i in 1..n {
         #[expect(
             clippy::cast_precision_loss,
             reason = "i64 to f64: precision loss acceptable"
         )]
-        let x = a + f64::try_from(i).unwrap_or_default() * h;
+        let x = a + i as f64 * h;
         sum += if i % 2 == 0 { 2.0 } else { 4.0 } * f(x);
     }
     sum * h / 3.0
@@ -349,7 +349,7 @@ impl LshParams {
             clippy::cast_precision_loss,
             reason = "i64 to f64: precision loss acceptable"
         )]
-        let probability = |s| -> f64 { 1. - f64::powf(1. - f64::powi(s, i32::try_from(r).unwrap_or_default()), f64::try_from(b).unwrap_or_default()) };
+        let probability = |s| -> f64 { 1. - f64::powf(1. - f64::powi(s, r as i32), b as f64) };
         integrate_simpson(probability, 0.0, threshold, 100)
     }
 
@@ -359,7 +359,7 @@ impl LshParams {
             reason = "r is bounded by num_perm which fits in i32 for practical hash sizes"
         )]
         let probability =
-            |s| -> f64 { 1. - (1. - f64::powf(1. - f64::powi(s, i32::try_from(r).unwrap_or_default()), f64::try_from(b).unwrap_or_default())) };
+            |s| -> f64 { 1. - (1. - f64::powf(1. - f64::powi(s, r as i32), b as f64)) };
         integrate_simpson(probability, threshold, 1.0, 100)
     }
 }
@@ -427,7 +427,7 @@ impl HashValues {
             reason = "minhash vector lengths are small; precision loss is negligible"
         )]
         {
-            f32::try_from(matches).unwrap_or_default() / self.0.len() as f32
+            matches as f32 / self.0.len() as f32
         }
     }
     pub(crate) fn get_bytes(&self) -> &[u8] {

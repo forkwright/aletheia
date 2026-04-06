@@ -300,7 +300,7 @@ fn text_delta_defers_markdown_cache() {
     // once per frame in App::refresh_streaming_markdown_cache.
     assert!(
         app.viewport.render.markdown_cache.text.is_empty(),
-        "cache must not UPDATE on delta (deferred to frame boundary)"
+        "cache must not update on delta (deferred to frame boundary)"
     );
     assert_eq!(app.connection.streaming_text, "hello\n");
 }

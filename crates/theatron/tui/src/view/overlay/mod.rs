@@ -447,7 +447,7 @@ fn render_context_actions(
                 .fg(theme.colors.accent)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(" SELECT  ", theme.style_muted()),
+        Span::styled(" select  ", theme.style_muted()),
         Span::styled(
             "Esc",
             Style::default()
@@ -527,7 +527,7 @@ fn render_context_budget(app: &App, frame: &mut Frame, area: Rect, theme: &Theme
 
     let warn_badge = if pct > WARN_THRESHOLD {
         if pct > CRITICAL_THRESHOLD {
-            "  ⚠ approaching LIMIT"
+            "  ⚠ approaching limit"
         } else {
             "  ⚠ high usage"
         }
@@ -704,5 +704,5 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
             Constraint::Percentage(percent_x),
             Constraint::Percentage((100 - percent_x) / 2),
         ])
-        .split(popup_layout.get(1).copied().unwrap_or_default())[1]
+        .split(popup_layout[1])[1]
 }

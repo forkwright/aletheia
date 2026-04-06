@@ -15,7 +15,7 @@ fn supersession_chain() {
         0.8,
         EpistemicTier::Inferred,
     );
-    store.insert_fact(&v1).expect("INSERT v1");
+    store.insert_fact(&v1).expect("insert v1");
 
     // v1 -> v2: first correction
     correct_fact(
@@ -96,7 +96,7 @@ fn forget_excludes_from_recall() {
         0.9,
         EpistemicTier::Verified,
     );
-    store.insert_fact(&fact).expect("INSERT");
+    store.insert_fact(&fact).expect("insert");
 
     // Visible before forget
     let results = store
@@ -115,7 +115,7 @@ fn forget_excludes_from_recall() {
         .expect("query after forget");
     assert!(
         results.is_empty(),
-        "forgotten fact should be excluded FROM recall"
+        "forgotten fact should be excluded from recall"
     );
 }
 
@@ -133,7 +133,7 @@ fn forget_preserves_for_audit() {
         0.9,
         EpistemicTier::Verified,
     );
-    store.insert_fact(&fact).expect("INSERT");
+    store.insert_fact(&fact).expect("insert");
 
     let fid = FactId::new("f-audit").expect("valid test id");
     store
@@ -171,7 +171,7 @@ fn unforget_restores_to_search() {
         0.9,
         EpistemicTier::Verified,
     );
-    store.insert_fact(&fact).expect("INSERT");
+    store.insert_fact(&fact).expect("insert");
 
     let fid = FactId::new("f-unforget").expect("valid test id");
     store
@@ -229,7 +229,7 @@ fn forget_with_each_reason() {
             0.9,
             EpistemicTier::Verified,
         );
-        store.insert_fact(&fact).expect("INSERT");
+        store.insert_fact(&fact).expect("insert");
         let fid = FactId::new(&id).expect("valid test id");
         store.forget_fact(&fid, *reason).expect("forget");
     }
@@ -265,7 +265,7 @@ fn full_forget_lifecycle() {
         0.95,
         EpistemicTier::Verified,
     );
-    store.insert_fact(&fact).expect("INSERT");
+    store.insert_fact(&fact).expect("insert");
 
     // 2. Search: found
     let results = store.query_facts(nous, query_time, 10).expect("query");

@@ -293,7 +293,7 @@ mod tests {
         let resp = ToolsResponse {
             tools: vec![ToolSummary {
                 name: "read_file".to_owned(),
-                description: "Read a file FROM disk".to_owned(),
+                description: "Read a file from disk".to_owned(),
                 category: "Builtin".to_owned(),
                 auto_activate: true,
             }],

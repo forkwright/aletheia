@@ -89,7 +89,7 @@ pub enum Error {
     },
 
     /// Failed to register a pack tool in the registry.
-    #[snafu(display("failed to register tool '{tool_name}' FROM pack '{pack_name}': {reason}"))]
+    #[snafu(display("failed to register tool '{tool_name}' from pack '{pack_name}': {reason}"))]
     ToolRegistration {
         tool_name: String,
         pack_name: String,
@@ -140,7 +140,7 @@ mod tests {
     fn read_file_chains_source() {
         #[expect(
             clippy::disallowed_methods,
-            reason = "thesauros pack loader reads binary assets FROM disk; synchronous I/O is inherent to asset loading"
+            reason = "thesauros pack loader reads binary assets from disk; synchronous I/O is inherent to asset loading"
         )]
         let result: Result<Vec<u8>> = std::fs::read("/nonexistent/path").context(ReadFileSnafu {
             path: PathBuf::from("/nonexistent/path"),

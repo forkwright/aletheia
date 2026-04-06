@@ -79,7 +79,7 @@ impl ToolExecutor for BlackboardExecutor {
                     }
                     Err(e) => Ok(ToolResult::error(format!("Failed to list blackboard: {e}"))),
                 },
-                "DELETE" => {
+                "delete" => {
                     let key = extract_str(&input.arguments, "key", &input.name)?;
                     match bb_store.delete(key, ctx.nous_id.as_str()) {
                         Ok(true) => Ok(ToolResult::text(format!("Blackboard [{key}] deleted."))), // kanon:ignore STORAGE/sql-string-concat
@@ -87,7 +87,7 @@ impl ToolExecutor for BlackboardExecutor {
                             "No entry for key: {key} (or not your entry)"
                         ))),
                         Err(e) => Ok(ToolResult::error(format!(
-                            "Failed to DELETE blackboard entry: {e}"
+                            "Failed to delete blackboard entry: {e}"
                         ))),
                     }
                 }
@@ -108,7 +108,7 @@ fn blackboard_def() -> ToolDef {
                     "action".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::String,
-                        description: "Action: 'write', 'read', 'list', 'DELETE'".to_owned(),
+                        description: "Action: 'write', 'read', 'list', 'delete'".to_owned(),
                         enum_values: None,
                         default: None,
                     },
@@ -117,7 +117,7 @@ fn blackboard_def() -> ToolDef {
                     "key".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::String,
-                        description: "Blackboard key (required for write/read/DELETE)".to_owned(),
+                        description: "Blackboard key (required for write/read/delete)".to_owned(),
                         enum_values: None,
                         default: None,
                     },

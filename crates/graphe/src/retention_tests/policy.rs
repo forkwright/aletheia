@@ -4,14 +4,14 @@ use super::*;
 #[test]
 fn retention_empty_store() {
     let conn = test_conn();
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("temp dir should be created");
 
     assert_eq!(count_sessions(&conn), 0);
 
     let policy = RetentionPolicy::default();
     let result = policy
         .apply(&conn, dir.path())
-        .unwrap_or_default();
+        .expect("retention apply should succeed");
 
     assert_eq!(result.sessions_deleted, 0);
     assert_eq!(result.messages_deleted, 0);
@@ -20,7 +20,7 @@ fn retention_empty_store() {
 #[test]
 fn retention_preserves_active_facts() {
     let conn = test_conn();
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("temp dir should be created");
 
     for i in 0..7 {
         insert_session(
@@ -49,7 +49,7 @@ fn retention_preserves_active_facts() {
 
     let result = policy
         .apply(&conn, dir.path())
-        .unwrap_or_default();
+        .expect("retention apply should succeed");
     assert_eq!(result.sessions_deleted, 3, "only archived sessions deleted");
     assert_eq!(count_sessions(&conn), 7, "active sessions untouched");
 }
@@ -57,7 +57,7 @@ fn retention_preserves_active_facts() {
 #[test]
 fn apply_empty_policy_is_noop() {
     let conn = test_conn();
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("temp dir should be created");
 
     insert_session(&conn, "s1", "alice", "active", 10);
     insert_session(&conn, "s2", "alice", "archived", 30);
@@ -68,7 +68,7 @@ fn apply_empty_policy_is_noop() {
     let policy = RetentionPolicy::default();
     let result = policy
         .apply(&conn, dir.path())
-        .unwrap_or_default();
+        .expect("retention apply should succeed");
 
     assert_eq!(
         result.sessions_deleted, 0,
@@ -82,7 +82,7 @@ fn apply_empty_policy_is_noop() {
 #[test]
 fn apply_preserves_recent_sessions() {
     let conn = test_conn();
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("temp dir should be created");
 
     insert_session(&conn, "recent-a", "alice", "archived", 5);
     insert_session(&conn, "recent-b", "alice", "archived", 15);
@@ -96,7 +96,7 @@ fn apply_preserves_recent_sessions() {
 
     let result = policy
         .apply(&conn, dir.path())
-        .unwrap_or_default();
+        .expect("retention apply should succeed");
     assert_eq!(result.sessions_deleted, 0, "all sessions are recent enough");
     assert_eq!(count_sessions(&conn), 3);
 }
@@ -104,7 +104,7 @@ fn apply_preserves_recent_sessions() {
 #[test]
 fn apply_removes_old_sessions() {
     let conn = test_conn();
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("temp dir should be created");
 
     insert_session(&conn, "keep", "alice", "archived", 10);
     insert_session(&conn, "remove-1", "alice", "archived", 60);
@@ -120,20 +120,20 @@ fn apply_removes_old_sessions() {
 
     let result = policy
         .apply(&conn, dir.path())
-        .unwrap_or_default();
+        .expect("retention apply should succeed");
     assert_eq!(result.sessions_deleted, 2);
     assert_eq!(count_sessions(&conn), 1);
 
     let remaining: String = conn
         .query_row("SELECT id FROM sessions", [], |row| row.get(0))
-        .unwrap_or_default();
+        .expect("querying remaining session should succeed");
     assert_eq!(remaining, "keep");
 }
 
 #[test]
 fn apply_twice_is_idempotent() {
     let conn = test_conn();
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("temp dir should be created");
 
     for i in 0..8 {
         let age = 10 + i64::from(i) * 15;
@@ -149,13 +149,13 @@ fn apply_twice_is_idempotent() {
 
     let first = policy
         .apply(&conn, dir.path())
-        .unwrap_or_default();
+        .expect("first retention apply should succeed");
     let count_after_first = count_sessions(&conn);
     let msg_after_first = count_messages(&conn);
 
     let second = policy
         .apply(&conn, dir.path())
-        .unwrap_or_default();
+        .expect("second retention apply should succeed");
     let count_after_second = count_sessions(&conn);
     let msg_after_second = count_messages(&conn);
 
@@ -170,14 +170,14 @@ fn apply_twice_is_idempotent() {
     assert_eq!(second.sessions_deleted, 0, "second pass should be a no-op");
     assert!(
         first.sessions_deleted > 0,
-        "first pass should DELETE something"
+        "first pass should delete something"
     );
 }
 
 #[test]
 fn apply_skips_active_sessions() {
     let conn = test_conn();
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("temp dir should be created");
 
     insert_session(&conn, "active-ancient", "alice", "active", 500);
     insert_session(&conn, "active-old", "bob", "active", 200);
@@ -191,17 +191,17 @@ fn apply_skips_active_sessions() {
 
     let result = policy
         .apply(&conn, dir.path())
-        .unwrap_or_default();
+        .expect("retention apply should succeed");
     assert_eq!(result.sessions_deleted, 1, "only archived session removed");
     assert_eq!(count_sessions(&conn), 2, "both active sessions survive");
 
     let ids: Vec<String> = conn
         .prepare("SELECT id FROM sessions ORDER BY id")
-        .unwrap_or_default()
+        .expect("preparing session id query should succeed")
         .query_map([], |row| row.get(0))
-        .unwrap_or_default()
+        .expect("querying session ids should succeed")
         .collect::<std::result::Result<Vec<_>, _>>()
-        .unwrap_or_default();
+        .expect("collecting session ids should succeed");
     assert!(ids.contains(&"active-ancient".to_owned()));
     assert!(ids.contains(&"active-old".to_owned()));
 }
@@ -209,7 +209,7 @@ fn apply_skips_active_sessions() {
 #[test]
 fn policy_max_sessions_respected() {
     let conn = test_conn();
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("temp dir should be created");
 
     for i in 0..10 {
         insert_session(
@@ -230,7 +230,7 @@ fn policy_max_sessions_respected() {
 
     let result = policy
         .apply(&conn, dir.path())
-        .unwrap_or_default();
+        .expect("retention apply should succeed");
     assert_eq!(result.sessions_deleted, 7);
     assert_eq!(count_sessions(&conn), 3, "only 3 most recent kept");
 }
@@ -238,7 +238,7 @@ fn policy_max_sessions_respected() {
 #[test]
 fn retention_with_zero_max_age() {
     let conn = test_conn();
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("temp dir should be created");
 
     insert_session(&conn, "closed-1", "alice", "archived", 1);
     insert_session(&conn, "closed-2", "alice", "distilled", 2);
@@ -252,23 +252,23 @@ fn retention_with_zero_max_age() {
 
     let result = policy
         .apply(&conn, dir.path())
-        .unwrap_or_default();
+        .expect("retention apply should succeed");
     assert_eq!(
         result.sessions_deleted, 2,
-        "max_age=0 should DELETE all non-active sessions"
+        "max_age=0 should delete all non-active sessions"
     );
     assert_eq!(count_sessions(&conn), 1, "active session survives");
 
     let remaining: String = conn
         .query_row("SELECT id FROM sessions", [], |row| row.get(0))
-        .unwrap_or_default();
+        .expect("querying remaining session should succeed");
     assert_eq!(remaining, "active-1");
 }
 
 #[test]
 fn retention_respects_keep_minimum() {
     let conn = test_conn();
-    let dir = tempfile::tempdir().unwrap_or_default();
+    let dir = tempfile::tempdir().expect("temp dir should be created");
 
     for i in 0..6 {
         insert_session(
@@ -289,7 +289,7 @@ fn retention_respects_keep_minimum() {
 
     let result = policy
         .apply(&conn, dir.path())
-        .unwrap_or_default();
+        .expect("retention apply should succeed");
     assert!(
         result.sessions_deleted >= 3,
         "at least the excess sessions should be deleted"
@@ -297,6 +297,6 @@ fn retention_respects_keep_minimum() {
     let remaining = count_sessions(&conn);
     assert!(
         remaining <= 3,
-        "per-nous LIMIT of 3 should be respected, got {remaining}"
+        "per-nous limit of 3 should be respected, got {remaining}"
     );
 }

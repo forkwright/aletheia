@@ -14,14 +14,14 @@ use super::*;
 use crate::manifest::{PackInputSchema, PackManifest, PackPropertyDef, PackToolDef};
 
 fn setup_pack_dir(files: &[(&str, &str)]) -> TempDir {
-    let dir = TempDir::new().expect("CREATE temp dir");
+    let dir = TempDir::new().expect("create temp dir");
     for (name, content) in files {
         let path = dir.path().join(name);
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).expect("CREATE parent dir");
+            fs::create_dir_all(parent).expect("create parent dir");
         }
         // WHY: explicit File ensures fd is closed before chmod/exec: avoids ETXTBSY
-        let file = std::fs::File::create(&path).expect("CREATE pack file");
+        let file = std::fs::File::create(&path).expect("create pack file");
         std::io::Write::write_all(&mut &file, content.as_bytes()).expect("write pack file content");
         file.sync_all().expect("sync pack file");
         drop(file);
@@ -35,7 +35,7 @@ fn make_executable(dir: &TempDir, path: &str) {
         .expect("get file metadata")
         .permissions();
     perms.set_mode(0o755);
-    fs::set_permissions(&full, perms).expect("SET executable permissions");
+    fs::set_permissions(&full, perms).expect("set executable permissions");
 }
 
 fn minimal_loaded_pack(dir: &TempDir, tools: Vec<PackToolDef>) -> LoadedPack {
@@ -133,10 +133,10 @@ fn convert_input_schema_success() {
                 },
             ),
             (
-                "LIMIT".to_owned(),
+                "limit".to_owned(),
                 PackPropertyDef {
                     property_type: "integer".to_owned(),
-                    description: "Row LIMIT".to_owned(),
+                    description: "Row limit".to_owned(),
                     enum_values: None,
                     default: Some(serde_json::json!(100)),
                 },
@@ -149,11 +149,11 @@ fn convert_input_schema_success() {
     assert_eq!(result.properties.len(), 2);
     assert_eq!(result.properties["sql"].property_type, PropertyType::String);
     assert_eq!(
-        result.properties["LIMIT"].property_type,
+        result.properties["limit"].property_type,
         PropertyType::Integer
     );
     assert_eq!(
-        result.properties["LIMIT"].default,
+        result.properties["limit"].default,
         Some(serde_json::json!(100))
     );
     assert_eq!(result.required, vec!["sql"]);
@@ -346,7 +346,7 @@ fn error_count_per_pack_not_cumulative() {
     assert_eq!(
         errors.len(),
         1,
-        "expected one error FROM pack A, got: {errors:?}"
+        "expected one error from pack A, got: {errors:?}"
     );
     assert_eq!(
         registry.definitions().len(),
@@ -435,7 +435,7 @@ fn validate_command_path_rejects_dotdot_traversal() {
 fn validate_command_path_rejects_symlink_escape() {
     let dir = setup_pack_dir(&[("tools/legit.sh", "#!/bin/sh")]);
     let symlink_path = dir.path().join("tools/escape");
-    std::os::unix::fs::symlink("/etc", &symlink_path).expect("CREATE symlink for escape test");
+    std::os::unix::fs::symlink("/etc", &symlink_path).expect("create symlink for escape test");
 
     let result = validate_command_path(dir.path(), "tools/escape/passwd");
     let err = result.expect_err("symlink escape must be rejected");

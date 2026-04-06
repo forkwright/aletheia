@@ -107,7 +107,7 @@ impl ApiClient {
 
     /// Replace the authentication token.
     #[expect(dead_code, reason = "API client methods for TUI/desktop integration")]
-    pub(crate) fn set_token(&mut self, token: SecretString) {
+    pub(crate) fn set_token(&mut self, token: String) {
         // kanon:ignore RUST/pub-visibility RUST/plain-string-secret
         self.token = Some(SecretString::from(token));
     }
@@ -266,12 +266,12 @@ impl ApiClient {
             .send()
             .await
             .context(HttpSnafu {
-                operation: "CREATE session",
+                operation: "create session",
             })?;
         Self::check_auth(&resp)?;
-        let resp = Self::check_status(resp, "CREATE session request").await?;
+        let resp = Self::check_status(resp, "create session request").await?;
         resp.json().await.context(HttpSnafu {
-            operation: "CREATE session response",
+            operation: "create session response",
         })
     }
 
@@ -445,7 +445,7 @@ impl ApiClient {
             clippy::as_conversions,
             reason = "clamped to [0, u32::MAX] above; kanon:ignore RUST/as-cast"
         )]
-        let cents = u32::try_from(cents_f).unwrap_or_default();
+        let cents = cents_f as u32;
         Ok(cents)
     }
 
@@ -553,12 +553,12 @@ impl ApiClient {
             .send()
             .await
             .context(HttpSnafu {
-                operation: "UPDATE config",
+                operation: "update config",
             })?;
         Self::check_auth(&resp)?;
-        let resp = Self::check_status(resp, "config UPDATE request").await?;
+        let resp = Self::check_status(resp, "config update request").await?;
         resp.json().await.context(HttpSnafu {
-            operation: "config UPDATE response",
+            operation: "config update response",
         })
     }
 
@@ -573,7 +573,7 @@ impl ApiClient {
         let resp = self
             .request(
                 reqwest::Method::GET,
-                &format!("/api/v1/knowledge/facts?sort={sort}&ORDER={ORDER}&LIMIT={LIMIT}"),
+                &format!("/api/v1/knowledge/facts?sort={sort}&order={order}&limit={limit}"),
             )
             .send()
             .await
@@ -710,7 +710,7 @@ impl ApiClient {
             .send()
             .await
             .context(HttpSnafu {
-                operation: "UPDATE confidence",
+                operation: "update confidence",
             })?;
         Self::check_status(resp, "confidence request").await?;
         Ok(())

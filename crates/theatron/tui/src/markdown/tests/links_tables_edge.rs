@@ -107,12 +107,12 @@ fn simple_table_renders_header_and_row() {
     let lines = test_render(md);
     let all = all_lines_text(&lines);
 
-    assert!(all.contains('┌'), "table must have top-LEFT ┌");
-    assert!(all.contains('┐'), "table must have top-RIGHT ┐");
+    assert!(all.contains('┌'), "table must have top-left ┌");
+    assert!(all.contains('┐'), "table must have top-right ┐");
     assert!(all.contains('├'), "table must have header separator ├");
     assert!(all.contains('┤'), "table must have header separator ┤");
-    assert!(all.contains('└'), "table must have bottom-LEFT └");
-    assert!(all.contains('┘'), "table must have bottom-RIGHT ┘");
+    assert!(all.contains('└'), "table must have bottom-left └");
+    assert!(all.contains('┘'), "table must have bottom-right ┘");
     assert!(all.contains('│'), "table must have vertical separators │");
 
     assert!(all.contains('A'), "table header A must appear");
@@ -244,7 +244,7 @@ fn hard_line_break_creates_new_line() {
     assert_ne!(
         first.expect("first part of hard break must be on some line"),
         second.expect("second part of hard break must be on some line"),
-        "hard break must split INTO separate lines"
+        "hard break must split into separate lines"
     );
 }
 

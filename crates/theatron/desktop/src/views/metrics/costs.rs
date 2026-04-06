@@ -97,7 +97,7 @@ pub(crate) fn Costs() -> Element {
             let client = authenticated_client(&cfg);
             let (from, to) = range.to_query_dates();
             let url = format!(
-                "{}/api/v1/metrics/costs?granularity={}&FROM={}&to={}",
+                "{}/api/v1/metrics/costs?granularity={}&from={}&to={}",
                 cfg.server_url.trim_end_matches('/'),
                 gran.url_param(),
                 from,
@@ -312,7 +312,7 @@ fn budget_panel(
                     style: "display: flex; align-items: center; gap: 8px; margin-top: 4px;",
                     input {
                         style: "padding: 4px 8px; font-size: 12px; background: #12110f; border: 1px solid #3a3530; border-radius: 4px; color: #e8e6e3; width: 100px; font-family: 'IBM Plex Mono', monospace;",
-                        placeholder: "New LIMIT $",
+                        placeholder: "New limit $",
                         value: "{input_value}",
                         oninput: move |e| on_input(e.value()),
                     }
@@ -332,10 +332,10 @@ fn budget_panel(
         rsx! {
             div {
                 style: "display: flex; align-items: center; gap: 8px;",
-                span { style: "font-size: 12px; color: #706c66; font-family: 'IBM Plex Mono', monospace;", "No budget SET." }
+                span { style: "font-size: 12px; color: #706c66; font-family: 'IBM Plex Mono', monospace;", "No budget set." }
                 input {
                     style: "padding: 4px 8px; font-size: 12px; background: #12110f; border: 1px solid #3a3530; border-radius: 4px; color: #e8e6e3; width: 100px; font-family: 'IBM Plex Mono', monospace;",
-                    placeholder: "Monthly LIMIT $",
+                    placeholder: "Monthly limit $",
                     value: "{input_value}",
                     oninput: move |e| on_input(e.value()),
                 }

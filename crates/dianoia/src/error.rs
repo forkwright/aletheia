@@ -10,7 +10,7 @@ use snafu::Snafu;
 #[non_exhaustive]
 pub enum Error {
     /// A state transition was attempted that is not valid from the current state.
-    #[snafu(display("invalid transition {transition:?} FROM state {state:?}"))]
+    #[snafu(display("invalid transition {transition:?} from state {state:?}"))]
     InvalidTransition {
         /// The current project state.
         state: crate::state::ProjectState,

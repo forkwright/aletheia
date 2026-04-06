@@ -250,7 +250,7 @@ pub async fn update_section(
     let _ = state.config_tx.send(new_config);
 
     let section_value = redacted.get(&section).cloned().unwrap_or_else(|| {
-        tracing::debug!(section = %section, "config section absent after UPDATE, returning null");
+        tracing::debug!(section = %section, "config section absent after update, returning null");
         Value::Null
     });
 
@@ -300,10 +300,10 @@ mod tests {
 
     #[test]
     fn deep_merge_merges_nested_objects_without_replacing() {
-        let mut base = json!({"OUTER": {"a": 1, "b": 2}});
-        deep_merge(&mut base, json!({"OUTER": {"b": 99}}));
-        assert_eq!(base["OUTER"]["a"], 1);
-        assert_eq!(base["OUTER"]["b"], 99);
+        let mut base = json!({"outer": {"a": 1, "b": 2}});
+        deep_merge(&mut base, json!({"outer": {"b": 99}}));
+        assert_eq!(base["outer"]["a"], 1);
+        assert_eq!(base["outer"]["b"], 99);
     }
 
     #[test]
@@ -327,7 +327,7 @@ mod tests {
         deep_merge(&mut base, json!({"items": [4, 5]}));
         let items = base["items"].as_array().unwrap();
         assert_eq!(items.len(), 2);
-        assert_eq!(items.get(0).copied().unwrap_or_default(), 4);
+        assert_eq!(items[0], 4);
     }
 
     #[test]

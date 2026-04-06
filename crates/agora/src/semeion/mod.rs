@@ -51,7 +51,7 @@ pub enum SignalTarget {
 /// - anything else (e.g., `"+1234567890"`) → `Phone`
 #[must_use]
 pub fn parse_target(to: &str) -> SignalTarget {
-    if let Some(group_id) = to.strip_prefix("GROUP:") {
+    if let Some(group_id) = to.strip_prefix("group:") {
         SignalTarget::Group(group_id.to_owned())
     } else {
         SignalTarget::Phone(to.to_owned())
@@ -162,12 +162,12 @@ impl SignalProvider {
             let token = cancel.clone();
             #[expect(
                 clippy::expect_used,
-                reason = "account_states and clients share the same key SET; state is always inserted alongside the client in add_account"
+                reason = "account_states and clients share the same key set; state is always inserted alongside the client in add_account"
             )]
             let state = self
                 .account_states
                 .get(&account_id)
-                .unwrap_or_default()
+                .expect("state initialized in add_account")
                 .clone();
             let span = tracing::info_span!(
                 "signal_poll",
@@ -517,13 +517,13 @@ mod tests {
 
     #[test]
     fn parse_target_group() {
-        let target = parse_target("GROUP:YWJjMTIz");
+        let target = parse_target("group:YWJjMTIz");
         assert_eq!(target, SignalTarget::Group("YWJjMTIz".to_owned()));
     }
 
     #[test]
     fn parse_target_group_empty_id() {
-        let target = parse_target("GROUP:");
+        let target = parse_target("group:");
         assert_eq!(target, SignalTarget::Group(String::new()));
     }
 
@@ -584,7 +584,7 @@ mod tests {
             .await;
 
         let mut provider = SignalProvider::new();
-        let signal_client = client::SignalClient::new(&server.uri()).unwrap_or_default();
+        let signal_client = client::SignalClient::new(&server.uri()).expect("client");
         provider.add_account("+1111111111".to_owned(), signal_client, true);
 
         let token = CancellationToken::new();
@@ -616,8 +616,8 @@ mod tests {
             .await;
 
         let mut provider = SignalProvider::new();
-        let client_a = client::SignalClient::new(&server.uri()).unwrap_or_default();
-        let client_b = client::SignalClient::new(&server.uri()).unwrap_or_default();
+        let client_a = client::SignalClient::new(&server.uri()).expect("client");
+        let client_b = client::SignalClient::new(&server.uri()).expect("client");
         provider.add_account("+1111111111".to_owned(), client_a, true);
         provider.add_account("+2222222222".to_owned(), client_b, false);
 
@@ -661,7 +661,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let signal_client = client::SignalClient::new(&server.uri()).unwrap_or_default();
+        let signal_client = client::SignalClient::new(&server.uri()).expect("client");
         let (tx, mut rx) = mpsc::channel(16);
         let account_state = Arc::new(Mutex::new(AccountState::new(100)));
         let token = CancellationToken::new();
@@ -679,8 +679,8 @@ mod tests {
 
         let msg = tokio::time::timeout(Duration::from_secs(5), rx.recv())
             .await
-            .unwrap_or_default()
-            .unwrap_or_default();
+            .expect("timeout")
+            .expect("message");
         assert_eq!(msg.text, "test msg");
 
         drop(rx);
@@ -696,11 +696,11 @@ mod tests {
         install_crypto_provider();
         let mut provider = SignalProvider::with_buffer_capacity(50);
         let server = wiremock::MockServer::start().await;
-        let signal_client = client::SignalClient::new(&server.uri()).unwrap_or_default();
+        let signal_client = client::SignalClient::new(&server.uri()).expect("client");
         provider.add_account("+1111111111".to_owned(), signal_client, true);
 
         let health = provider.connection_health().await;
-        let report = health.get("+1111111111").unwrap_or_default();
+        let report = health.get("+1111111111").expect("account present");
         assert_eq!(report.state, ConnectionState::Connected);
         assert_eq!(report.buffered_messages, 0);
         assert_eq!(report.dropped_count, 0);

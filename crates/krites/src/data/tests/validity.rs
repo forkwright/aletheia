@@ -16,7 +16,7 @@ fn temporal_validity_ranges_assert_retract_and_query_correctly() {
     println!("Using {} engine", db_kind);
     let db = DbInstance::default();
 
-    db.run_default(":CREATE vld {a, v: Validity => d}")
+    db.run_default(":create vld {a, v: Validity => d}")
         .expect("test assertion");
 
     assert!(

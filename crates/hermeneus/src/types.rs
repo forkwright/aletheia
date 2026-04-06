@@ -424,7 +424,7 @@ pub(crate) enum CachingStrategy {
     not(test),
     expect(
         dead_code,
-        reason = "prompt caching wire types; not yet wired INTO provider"
+        reason = "prompt caching wire types; not yet wired into provider"
     )
 )]
 pub(crate) struct CachingConfig {

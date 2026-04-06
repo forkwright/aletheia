@@ -253,7 +253,7 @@ impl RecallStage {
 
         debug!(
             unique_candidates = merged.len(),
-            "merged results FROM 2 cycles"
+            "merged results from 2 cycles"
         );
 
         let candidates = self.build_candidates(merged, nous_id);

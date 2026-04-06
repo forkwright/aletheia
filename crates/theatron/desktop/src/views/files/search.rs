@@ -74,7 +74,7 @@ pub(crate) fn FileSearch(
             let client = authenticated_client(&cfg);
             let base = cfg.server_url.trim_end_matches('/');
             let encoded: String = form_urlencoded::byte_serialize(q.as_bytes()).collect();
-            let url = format!("{base}/api/v1/workspace/search?q={encoded}&LIMIT=50");
+            let url = format!("{base}/api/v1/workspace/search?q={encoded}&limit=50");
 
             if let Ok(resp) = client.get(&url).send().await {
                 if resp.status().is_success() {

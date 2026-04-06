@@ -112,7 +112,7 @@ fn shortest_path_linear_chain_distances_are_exact() {
     ctx.proximity.insert("d".to_owned(), Some(3));
     ctx.proximity.insert("e".to_owned(), Some(4));
 
-    assert_eq!(ctx.hops("a"), Some(0), "seed is 0 hops FROM itself");
+    assert_eq!(ctx.hops("a"), Some(0), "seed is 0 hops from itself");
     assert_eq!(ctx.hops("b"), Some(1), "direct neighbour is 1 hop");
     assert_eq!(ctx.hops("c"), Some(2), "second hop is 2");
     assert_eq!(ctx.hops("d"), Some(3), "third hop is 3");
@@ -121,8 +121,8 @@ fn shortest_path_linear_chain_distances_are_exact() {
     assert_eq!(ctx.hops("f"), None, "node beyond BFS radius is unreachable");
     assert_eq!(ctx.hops("z"), None, "completely absent node is unreachable");
 
-    let close = ctx.hops("b").unwrap_or_default();
-    let far = ctx.hops("d").unwrap_or_default();
+    let close = ctx.hops("b").expect("entity b must be in the hop map");
+    let far = ctx.hops("d").expect("entity d must be in the hop map");
     assert!(
         close < far,
         "closer node ({close}) must have fewer hops than farther ({far})"

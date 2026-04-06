@@ -121,7 +121,7 @@ impl DriftDetector {
             let path = entry.path();
             let relative = path
                 .strip_prefix(&self.config.example_root)
-                .unwrap_or_default();
+                .expect("path is under example root");
 
             if self.is_ignored(relative) {
                 continue;
@@ -197,12 +197,12 @@ mod tests {
             clippy::disallowed_methods,
             reason = "test fixture: synchronous write in non-async test context"
         )]
-        fs::write(path.as_ref(), content).unwrap_or_default();
+        fs::write(path.as_ref(), content).expect("write fixture");
         let mut perms = fs::metadata(path.as_ref())
-            .unwrap_or_default()
+            .expect("read fixture metadata")
             .permissions();
         perms.set_mode(0o644);
-        fs::set_permissions(path.as_ref(), perms).unwrap_or_default();
+        fs::set_permissions(path.as_ref(), perms).expect("set fixture permissions");
     }
 
     fn make_config(tmp: &Path) -> DriftDetectionConfig {
@@ -228,7 +228,7 @@ mod tests {
 
     #[test]
     fn detects_missing_file() {
-        let tmp = tempfile::tempdir().unwrap_or_default();
+        let tmp = tempfile::tempdir().expect("tempdir");
         let config = make_config(tmp.path());
 
         fs::create_dir_all(config.example_root.join("config")).unwrap();
@@ -237,7 +237,7 @@ mod tests {
         fs::create_dir_all(config.instance_root.join("config")).unwrap();
 
         let detector = DriftDetector::new(config);
-        let report = detector.check().unwrap_or_default();
+        let report = detector.check().expect("check succeeds");
 
         assert!(
             report
@@ -249,7 +249,7 @@ mod tests {
 
     #[test]
     fn detects_missing_directory() {
-        let tmp = tempfile::tempdir().unwrap_or_default();
+        let tmp = tempfile::tempdir().expect("tempdir");
         let config = make_config(tmp.path());
 
         fs::create_dir_all(config.example_root.join("nous")).unwrap();
@@ -258,7 +258,7 @@ mod tests {
         fs::create_dir_all(&config.instance_root).unwrap();
 
         let detector = DriftDetector::new(config);
-        let report = detector.check().unwrap_or_default();
+        let report = detector.check().expect("check succeeds");
 
         assert!(report.missing_files.contains(&PathBuf::from("nous")));
         assert!(
@@ -270,7 +270,7 @@ mod tests {
 
     #[test]
     fn ignored_patterns_are_skipped() {
-        let tmp = tempfile::tempdir().unwrap_or_default();
+        let tmp = tempfile::tempdir().expect("tempdir");
         let config = make_config(tmp.path());
 
         fs::create_dir_all(config.example_root.join("data")).unwrap();
@@ -283,7 +283,7 @@ mod tests {
         fs::create_dir_all(&config.instance_root).unwrap();
 
         let detector = DriftDetector::new(config);
-        let report = detector.check().unwrap_or_default();
+        let report = detector.check().expect("check succeeds");
 
         for path in &report.missing_files {
             let path_str = path.to_string_lossy();
@@ -308,21 +308,21 @@ mod tests {
 
     #[test]
     fn missing_example_dir_returns_empty() {
-        let tmp = tempfile::tempdir().unwrap_or_default();
+        let tmp = tempfile::tempdir().expect("tempdir");
         let config = DriftDetectionConfig {
             example_root: tmp.path().join("nonexistent"),
             ..make_config(tmp.path())
         };
 
         let detector = DriftDetector::new(config);
-        let report = detector.check().unwrap_or_default();
+        let report = detector.check().expect("should not error");
         assert!(report.missing_files.is_empty());
         assert!(report.checked_at.is_some());
     }
 
     #[test]
     fn matching_instance_reports_no_missing() {
-        let tmp = tempfile::tempdir().unwrap_or_default();
+        let tmp = tempfile::tempdir().expect("tempdir");
         let config = make_config(tmp.path());
 
         fs::create_dir_all(config.example_root.join("config")).unwrap();
@@ -331,7 +331,7 @@ mod tests {
         write_fixture(config.instance_root.join("config/aletheia.toml"), "");
 
         let detector = DriftDetector::new(config);
-        let report = detector.check().unwrap_or_default();
+        let report = detector.check().expect("check succeeds");
         assert!(report.missing_files.is_empty());
     }
 
@@ -362,7 +362,7 @@ mod tests {
 
     #[test]
     fn optional_patterns_go_to_optional_missing_not_missing() {
-        let tmp = tempfile::tempdir().unwrap_or_default();
+        let tmp = tempfile::tempdir().expect("tempdir");
         let config = make_config(tmp.path());
 
         fs::create_dir_all(config.example_root.join("config")).unwrap();
@@ -375,7 +375,7 @@ mod tests {
         fs::create_dir_all(&config.instance_root).unwrap();
 
         let detector = DriftDetector::new(config);
-        let report = detector.check().unwrap_or_default();
+        let report = detector.check().expect("check succeeds");
 
         assert!(
             report
@@ -401,21 +401,21 @@ mod tests {
 
     #[test]
     fn empty_example_and_instance() {
-        let tmp = tempfile::tempdir().unwrap_or_default();
+        let tmp = tempfile::tempdir().expect("tempdir");
         let config = make_config(tmp.path());
 
         fs::create_dir_all(&config.example_root).unwrap();
         fs::create_dir_all(&config.instance_root).unwrap();
 
         let detector = DriftDetector::new(config);
-        let report = detector.check().unwrap_or_default();
+        let report = detector.check().expect("check succeeds");
         assert!(report.missing_files.is_empty());
         assert!(report.extra_files.is_empty());
     }
 
     #[test]
     fn nested_directory_missing_detected() {
-        let tmp = tempfile::tempdir().unwrap_or_default();
+        let tmp = tempfile::tempdir().expect("tempdir");
         let config = make_config(tmp.path());
 
         fs::create_dir_all(config.example_root.join("level1/level2/level3")).unwrap();
@@ -427,7 +427,7 @@ mod tests {
         fs::create_dir_all(&config.instance_root).unwrap();
 
         let detector = DriftDetector::new(config);
-        let report = detector.check().unwrap_or_default();
+        let report = detector.check().expect("check succeeds");
 
         assert!(
             report

@@ -108,7 +108,7 @@ impl DistillSection {
                  - Format: \"Decision: X. Reason: Y.\""
             }
             Self::CurrentState => {
-                "Where things stand RIGHT now. What is done, what is in progress, what is half-finished."
+                "Where things stand right now. What is done, what is in progress, what is half-finished."
             }
             Self::OpenThreads => {
                 "- Unfinished items, pending questions, next steps\n\
@@ -315,7 +315,7 @@ impl DistillEngine {
 
         let safe_nous_id = sanitize_nous_id(nous_id);
         let user_content = format!(
-            "Distill the following conversation FROM nous \"{safe_nous_id}\" \
+            "Distill the following conversation from nous \"{safe_nous_id}\" \
              (distillation context: {msg_count} messages).\n\n\
              ---\n\n{formatted}",
             msg_count = messages.len(),
@@ -366,7 +366,7 @@ impl DistillEngine {
         // split_at == messages.len() - tail where tail <= messages.len(), so split_at <= messages.len()
         #[expect(
             clippy::indexing_slicing,
-            reason = "split_at = messages.len() - tail WHERE tail ≤ messages.len()"
+            reason = "split_at = messages.len() - tail where tail ≤ messages.len()"
         )]
         let to_summarize = &messages[..split_at]; // WHY: slice, not string; split_at ≤ len by construction
         #[expect(

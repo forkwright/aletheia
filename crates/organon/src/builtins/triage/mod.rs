@@ -107,7 +107,7 @@ impl ToolExecutor for IssueScanExecutor {
             let repo = extract_str(&input.arguments, "repo", &input.name)?;
             let label_filter = extract_opt_str(&input.arguments, "label");
             let milestone_filter = extract_opt_str(&input.arguments, "milestone");
-            let limit = extract_opt_u64(&input.arguments, "LIMIT").unwrap_or(30);
+            let limit = extract_opt_u64(&input.arguments, "limit").unwrap_or(30);
 
             let issues = match fetch_issues(
                 &services.http_client,
@@ -153,7 +153,7 @@ impl ToolExecutor for IssueTriageExecutor {
             let threshold = extract_opt_f64(&input.arguments, "threshold").unwrap_or(0.3);
             let context_keywords =
                 extract_opt_str(&input.arguments, "context_keywords").unwrap_or("");
-            let limit = extract_opt_u64(&input.arguments, "LIMIT").unwrap_or(30);
+            let limit = extract_opt_u64(&input.arguments, "limit").unwrap_or(30);
 
             // 1. Fetch issues
             let issues = match fetch_issues(
@@ -210,7 +210,7 @@ impl ToolExecutor for IssueTriageExecutor {
             let staging = std::path::Path::new(staging_dir);
             if let Err(e) = tokio::fs::create_dir_all(staging).await {
                 return Ok(ToolResult::error(format!(
-                    "failed to CREATE staging directory: {e}"
+                    "failed to create staging directory: {e}"
                 )));
             }
 
@@ -286,7 +286,7 @@ impl ToolExecutor for IssueApproveExecutor {
             // Ensure queue directory exists
             if let Err(e) = tokio::fs::create_dir_all(queue).await {
                 return Ok(ToolResult::error(format!(
-                    "failed to CREATE queue directory: {e}"
+                    "failed to create queue directory: {e}"
                 )));
             }
 
@@ -597,7 +597,7 @@ fn issue_scan_def() -> ToolDef {
         name: ToolName::from_static("issue_scan"), // kanon:ignore RUST/expect
         description: "Fetch open GitHub issues filtered by labels or milestone. Returns issue metadata for triage.".to_owned(),
         extended_description: Some(
-            "Fetches open issues FROM a GitHub repository via the REST API. \
+            "Fetches open issues from a GitHub repository via the REST API. \
              Filters by label and milestone. Returns title, body, labels, priority, \
              and creation date for each issue. Use before `issue_triage` to preview \
              available work.".to_owned()
@@ -622,7 +622,7 @@ fn issue_scan_def() -> ToolDef {
                     enum_values: None,
                     default: None,
                 }),
-                ("LIMIT".to_owned(), PropertyDef {
+                ("limit".to_owned(), PropertyDef {
                     property_type: PropertyType::Integer,
                     description: "Maximum number of issues to fetch (default: 30)".to_owned(),
                     enum_values: None,
@@ -685,7 +685,7 @@ fn issue_triage_def() -> ToolDef {
                     enum_values: None,
                     default: None,
                 }),
-                ("LIMIT".to_owned(), PropertyDef {
+                ("limit".to_owned(), PropertyDef {
                     property_type: PropertyType::Integer,
                     description: "Maximum number of issues to fetch (default: 30)".to_owned(),
                     enum_values: None,
@@ -704,10 +704,10 @@ fn issue_approve_def() -> ToolDef {
     ToolDef {
         name: ToolName::from_static("issue_approve"), // kanon:ignore RUST/expect
         description:
-            "Move a staged prompt FROM staging to the dispatch queue. Human approval gate."
+            "Move a staged prompt from staging to the dispatch queue. Human approval gate."
                 .to_owned(),
         extended_description: Some(
-            "Moves a previously staged prompt FROM the staging directory to the dispatch \
+            "Moves a previously staged prompt from the staging directory to the dispatch \
              queue. This is the human approval gate — prompts only become dispatchable \
              after explicit approval. Logs the approver identity and timestamp."
                 .to_owned(),

@@ -55,8 +55,8 @@ fn test_builder_matches_current_facts() {
         valid_to > $now,
         is_null(superseded_by),
         is_forgotten == false
-    :ORDER -confidence
-    :LIMIT $LIMIT
+    :order -confidence
+    :limit $limit
 ";
     let built = queries::current_facts();
     assert_eq!(
@@ -173,8 +173,8 @@ fn test_builder_matches_full_current_facts() {
     valid_to > $now,
     is_null(superseded_by),
     is_forgotten == false
-:ORDER -confidence
-:LIMIT $LIMIT
+:order -confidence
+:limit $limit
 ";
     let built = queries::full_current_facts();
     assert_eq!(
@@ -245,15 +245,15 @@ fn query_builder_all_field_types() {
 
     assert!(
         !script.contains("hello"),
-        "string literal must not leak INTO script"
+        "string literal must not leak into script"
     );
     assert!(
         !script.contains("42"),
-        "int literal must not leak INTO script"
+        "int literal must not leak into script"
     );
     assert!(
         !script.contains("3.14"),
-        "float literal must not leak INTO script"
+        "float literal must not leak into script"
     );
 }
 
@@ -296,8 +296,8 @@ fn query_builder_empty_filter() {
         .done()
         .build_script();
 
-    assert!(script.contains("?[id, content]"), "SELECT list present");
+    assert!(script.contains("?[id, content]"), "select list present");
     assert!(script.contains("*facts{id, content}"), "scan present");
-    assert!(!script.contains(":ORDER"), "no ORDER when not specified");
-    assert!(!script.contains(":LIMIT"), "no LIMIT when not specified");
+    assert!(!script.contains(":order"), "no order when not specified");
+    assert!(!script.contains(":limit"), "no limit when not specified");
 }

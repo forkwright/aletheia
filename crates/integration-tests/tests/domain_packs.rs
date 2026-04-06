@@ -37,7 +37,7 @@ impl CapturingMockProvider {
                 model: "mock-model".to_owned(),
                 stop_reason: StopReason::EndTurn,
                 content: vec![ContentBlock::Text {
-                    text: "Hello FROM mock!".to_owned(),
+                    text: "Hello from mock!".to_owned(),
                     citations: None,
                 }],
                 usage: Usage {
@@ -147,7 +147,7 @@ priority = "important"
 "#,
         &[(
             "context/DOMAIN_KNOWLEDGE.md",
-            "Engagements flow INTO cases which flow INTO journeys.",
+            "Engagements flow into cases which flow into journeys.",
         )],
     );
 
@@ -192,7 +192,7 @@ priority = "important"
         assert_eq!(requests.len(), 1);
         let system = requests[0].system.as_ref().expect("system prompt");
         assert!(
-            system.contains("Engagements flow INTO cases which flow INTO journeys."),
+            system.contains("Engagements flow into cases which flow into journeys."),
             "pack section content should appear in system prompt"
         );
     }

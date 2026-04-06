@@ -73,7 +73,7 @@ impl NousActor {
         let knowledge_store = self.stores.knowledge_store.clone();
 
         if self.runtime.background_tasks.len() >= MAX_SPAWNED_TASKS {
-            warn!(nous_id = %self.id, limit = MAX_SPAWNED_TASKS, current = self.runtime.background_tasks.len(), task_type = "extraction", "background task LIMIT reached, skipping");
+            warn!(nous_id = %self.id, limit = MAX_SPAWNED_TASKS, current = self.runtime.background_tasks.len(), task_type = "extraction", "background task limit reached, skipping");
             return;
         }
 
@@ -169,7 +169,7 @@ impl NousActor {
         let span = tracing::info_span!("skill_extraction", nous.id = %nous_id, candidate.id = %candidate_id);
 
         if self.runtime.background_tasks.len() >= MAX_SPAWNED_TASKS {
-            warn!(nous_id = %self.id, limit = MAX_SPAWNED_TASKS, current = self.runtime.background_tasks.len(), task_type = "skill_extraction", "background task LIMIT reached, skipping");
+            warn!(nous_id = %self.id, limit = MAX_SPAWNED_TASKS, current = self.runtime.background_tasks.len(), task_type = "skill_extraction", "background task limit reached, skipping");
             return;
         }
 
@@ -261,7 +261,7 @@ impl NousActor {
             tracing::info_span!("distillation", nous.id = %nous_id, session.id = %session_id);
 
         if self.runtime.background_tasks.len() >= MAX_SPAWNED_TASKS {
-            warn!(nous_id = %self.id, limit = MAX_SPAWNED_TASKS, current = self.runtime.background_tasks.len(), task_type = "distillation", "background task LIMIT reached, skipping");
+            warn!(nous_id = %self.id, limit = MAX_SPAWNED_TASKS, current = self.runtime.background_tasks.len(), task_type = "distillation", "background task limit reached, skipping");
             return false;
         }
 
@@ -384,7 +384,7 @@ async fn run_skill_extraction(
                 steps = extracted.steps.len(),
                 tools = extracted.tools_used.len(),
                 domains = ?extracted.domain_tags,
-                "skill extracted FROM promoted candidate"
+                "skill extracted from promoted candidate"
             );
 
             #[cfg(feature = "knowledge-store")]
@@ -416,7 +416,7 @@ async fn run_skill_extraction(
                             match aletheia_mneme::id::FactId::new(ulid::Ulid::new().to_string()) {
                                 Ok(id) => id,
                                 Err(e) => {
-                                    warn!(error = %e, "failed to CREATE fact ID for skill");
+                                    warn!(error = %e, "failed to create fact ID for skill");
                                     return;
                                 }
                             };
@@ -528,7 +528,7 @@ async fn run_background_distillation(
         clippy::as_conversions,
         reason = "i64→u32: distillation count is small non-negative"
     )]
-    let distill_count = session.metrics.u32::try_from(distillation_count).unwrap_or_default(); // kanon:ignore RUST/as-cast
+    let distill_count = session.metrics.distillation_count as u32; // kanon:ignore RUST/as-cast
     let result = match engine
         .distill(&messages, &nous_id, provider, distill_count + 1)
         .await
