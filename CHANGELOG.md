@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.57](https://github.com/forkwright/aletheia/compare/v0.13.56...v0.13.57) (2026-04-06)
+
+
+### Bug Fixes
+
+* **nous:** separate background and pipeline panic counters ([#2503](https://github.com/forkwright/aletheia/issues/2503)) ([4aecf41](https://github.com/forkwright/aletheia/commit/4aecf41c1e7a024b4562056cca151ad9280799e9))
+
 ## [0.13.56](https://github.com/forkwright/aletheia/compare/v0.13.55...v0.13.56) (2026-04-06)
 
 
