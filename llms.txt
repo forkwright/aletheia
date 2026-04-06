@@ -21,7 +21,7 @@ Rust workspace with 23 crates. TUI client.
 
 ## Standards
 
-- [STANDARDS](standards/STANDARDS.md): Coding standards
+- [STANDARDS](standards/README.md): Coding standards
 - [CLAUDE](CLAUDE.md): AI agent workspace rules and conventions
 
 ## Agents
