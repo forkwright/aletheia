@@ -202,7 +202,7 @@ dependencies = [
  "aletheia-koina",
  "aletheia-krites",
  "candle-core 0.10.2",
- "candle-nn",
+ "candle-nn 0.10.2",
  "candle-transformers",
  "hf-hub",
  "hnsw_rs",
@@ -1222,6 +1222,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "candle-nn"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a9317a09d6530b758990ed7f625ac69ff43653bc9ee28b0464644ad1169ada87"
+dependencies = [
+ "candle-core 0.10.2",
+ "half",
+ "libc",
+ "num-traits",
+ "rayon",
+ "safetensors",
+ "serde",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "candle-transformers"
 version = "0.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1229,7 +1245,7 @@ checksum = "b538ec4aa807c416a2ddd3621044888f188827862e2a6fcacba4738e89795d01"
 dependencies = [
  "byteorder",
  "candle-core 0.9.2",
- "candle-nn",
+ "candle-nn 0.9.2",
  "fancy-regex 0.17.0",
  "num-traits",
  "rand 0.9.2",
