@@ -179,6 +179,9 @@ impl DiaporeiaServer {
     }
 
     /// Send a message to a nous agent session and get the response.
+    ///
+    /// Uses streaming execution so long-running turns emit events progressively
+    /// instead of blocking until the full turn completes (avoids transport timeout).
     #[tool(description = "Send a message to a nous agent session and get the response")]
     async fn session_message(
         &self,
@@ -194,8 +197,21 @@ impl DiaporeiaServer {
             })
             .map_err(rmcp::ErrorData::from)?;
 
+        // WHY(#2446): send_turn blocks until the full turn completes. Long
+        // reasoning turns with many tool iterations can exceed transport timeout.
+        // send_turn_streaming keeps the connection alive via event flow while
+        // still returning the final TurnResult.
+        let (stream_tx, mut stream_rx) =
+            tokio::sync::mpsc::channel::<aletheia_nous::stream::TurnStreamEvent>(64);
+
+        // Drain stream events in background so the channel doesn't back-pressure
+        // the actor. MCP doesn't support server-push, so events are discarded.
+        let drain = tokio::spawn(async move {
+            while stream_rx.recv().await.is_some() {}
+        });
+
         let result = handle
-            .send_turn(&params.session_key, &params.content)
+            .send_turn_streaming(&params.session_key, &params.content, stream_tx)
             .await
             .map_err(|e| {
                 PipelineSnafu {
@@ -204,6 +220,9 @@ impl DiaporeiaServer {
                 .build()
             })
             .map_err(rmcp::ErrorData::from)?;
+
+        // Wait for drain to finish (fast — channel closes when actor completes)
+        let _ = drain.await;
 
         Ok(CallToolResult::success(vec![rmcp::model::Content::text(
             result.content,
