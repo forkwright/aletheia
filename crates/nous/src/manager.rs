@@ -43,6 +43,9 @@ struct ActorEntry {
     restart_count: u32,
     /// When the actor was last (re)started.
     last_start: std::time::Instant,
+    /// When the actor was last restarted. `None` until first restart.
+    /// Used to determine if restart_count should decay after stable operation.
+    last_restart: Option<std::time::Instant>,
     /// Shared with the actor task. `true` while the actor is processing a turn.
     /// Readable without queuing through the inbox: used by `check_health` to
     /// distinguish a busy (healthy) actor from an unresponsive (dead) one.
@@ -63,6 +66,9 @@ const MAX_RESTART_BACKOFF: Duration = Duration::from_secs(300);
 
 /// Timeout for waiting for an actor to drain during restart (30 seconds).
 const RESTART_DRAIN_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Window of stable operation after which restart_count decays to 0 (1 hour).
+const RESTART_DECAY_WINDOW: Duration = Duration::from_secs(3600);
 
 /// Manages the lifecycle of all nous actors.
 // NOTE: 14 fields: runtime dependency injection (providers, tools, stores) plus
@@ -235,6 +241,7 @@ impl NousManager {
                 consecutive_misses: 0,
                 restart_count: 0,
                 last_start: std::time::Instant::now(),
+                last_restart: None,
                 active_turn,
             },
         );
@@ -351,7 +358,17 @@ impl NousManager {
             return;
         };
 
-        let restart_count = entry.restart_count;
+        // Decay restart_count if actor has been stable since last restart
+        let restart_count = if let Some(last_restart) = entry.last_restart {
+            if last_restart.elapsed() >= RESTART_DECAY_WINDOW {
+                0
+            } else {
+                entry.restart_count
+            }
+        } else {
+            entry.restart_count
+        };
+
         let backoff = calculate_backoff(restart_count);
 
         info!(
@@ -387,7 +404,8 @@ impl NousManager {
             .await;
 
         if let Some(entry) = self.actors.get_mut(id) {
-            entry.restart_count = prev_restart_count + 1;
+            entry.restart_count = restart_count + 1;
+            entry.last_restart = Some(std::time::Instant::now());
             entry.consecutive_misses = 0;
         }
 
