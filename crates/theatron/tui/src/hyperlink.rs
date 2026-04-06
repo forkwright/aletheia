@@ -128,7 +128,7 @@ pub(crate) fn detect_urls(text: &str) -> Vec<(usize, usize, &str)> {
     let mut out = Vec::new();
     for m in URL_RE.find_iter(text) {
         let start = m.start();
-        let trimmed_len = trim_trailing_punct(text.get(start..m.end()).unwrap_or(""));
+        let trimmed_len = trim_trailing_punct(text.get(start..m.end()).unwrap_or_default());
         let end = start + trimmed_len;
         if end > start {
             out.push((start, end, text.get(start..end).unwrap_or("")));

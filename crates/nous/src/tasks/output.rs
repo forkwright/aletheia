@@ -20,6 +20,7 @@ use tokio::io::{AsyncRead, AsyncWriteExt as _, ReadBuf};
     missing_docs,
     reason = "snafu error variant fields (source, location, path) are self-documenting via display format"
 )]
+#[non_exhaustive]
 pub enum OutputError {
     /// Failed to create the output temp file.
     #[snafu(display("failed to CREATE output file: {source}"))]

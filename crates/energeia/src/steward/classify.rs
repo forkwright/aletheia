@@ -181,6 +181,10 @@ pub(crate) fn extract_prompt_number_from_text(text: &str) -> Option<u32> {
     clippy::too_many_lines,
     reason = "suppression detection branches are individually simple; splitting would obscure the diff-walking state machine"
 )]
+#[expect(
+    clippy::allow_attributes,
+    reason = "function contains string literals with #[allow] patterns for detection, not actual attributes"
+)]
 #[must_use]
 pub fn parse_suppressions(diff: &str) -> Vec<SuppressionFinding> {
     let mut findings = Vec::new();
@@ -230,7 +234,7 @@ pub fn parse_suppressions(diff: &str) -> Vec<SuppressionFinding> {
                     || current_file.ends_with("tests.rs");
 
                 if !is_test_file && !is_lint_ignore {
-                    // Check for #[allow(...)]
+                    // Check for `#[allow(...)]` pattern
                     if let Some(caps) = ALLOW_RE.captures(added) {
                         let lint_name = caps.get(1).map(|m| m.as_str().trim().to_string());
                         findings.push(SuppressionFinding {

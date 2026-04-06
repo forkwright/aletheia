@@ -179,9 +179,21 @@ fn parse_tool_result_metadata(msg: &PipelineMessage) -> Option<(ToolResultType, 
         return None;
     }
     let end_bracket = content.find(']')?;
+    #[expect(
+        clippy::string_slice,
+        reason = "6 is a constant ASCII prefix length, end_bracket is from find on ASCII char"
+    )]
     let metadata = &content[6..end_bracket];
     let at_pos = metadata.find('@')?;
+    #[expect(
+        clippy::string_slice,
+        reason = "at_pos is from find on ASCII char, always a valid UTF-8 boundary"
+    )]
     let tool_name = &metadata[..at_pos];
+    #[expect(
+        clippy::string_slice,
+        reason = "at_pos + 1 is after ASCII @, always a valid UTF-8 boundary"
+    )]
     let timestamp_str = &metadata[at_pos + 1..];
     let created_at: jiff::Timestamp = timestamp_str.parse().ok()?;
     let tool_type = ToolResultType::classify(tool_name);

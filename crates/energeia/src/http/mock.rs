@@ -6,7 +6,7 @@
 use std::collections::VecDeque;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Mutex;
+use tokio::sync::Mutex;
 
 use crate::engine::{
     AgentOptions, DispatchEngine, SessionEvent, SessionHandle, SessionResult, SessionSpec,
@@ -26,6 +26,7 @@ pub struct MockEngine {
 }
 
 /// Pre-configured outcome for a mock session.
+#[non_exhaustive]
 pub enum MockOutcome {
     /// Session completes successfully with the given events and result.
     Success {
@@ -51,10 +52,10 @@ impl MockEngine {
     }
 
     /// Pop the next configured outcome.
-    fn next_outcome(&self) -> Result<MockOutcome> {
+    async fn next_outcome(&self) -> Result<MockOutcome> {
         self.outcomes
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .await
             .pop_front()
             .ok_or_else(|| {
                 error::EngineSnafu {
@@ -72,7 +73,7 @@ impl DispatchEngine for MockEngine {
         _options: &'a AgentOptions,
     ) -> Pin<Box<dyn Future<Output = Result<Box<dyn SessionHandle>>> + Send + 'a>> {
         Box::pin(async move {
-            let outcome = self.next_outcome()?;
+            let outcome = self.next_outcome().await?;
             match outcome {
                 MockOutcome::Success { events, result } => {
                     let handle = MockSessionHandle::new(result.session_id.clone(), events, result);
@@ -93,7 +94,7 @@ impl DispatchEngine for MockEngine {
         // WHY: Resume uses the same outcome queue as spawn. The mock doesn't
         // distinguish between spawn and resume for simplicity.
         Box::pin(async move {
-            let outcome = self.next_outcome()?;
+            let outcome = self.next_outcome().await?;
             match outcome {
                 MockOutcome::Success { events, result } => {
                     let handle = MockSessionHandle::new(result.session_id.clone(), events, result);

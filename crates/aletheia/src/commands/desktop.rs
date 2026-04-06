@@ -24,6 +24,10 @@ pub(crate) struct DesktopArgs {
 
 /// Search PATH for `theatron-desktop` and exec it with forwarded flags.
 #[must_use]
+#[expect(
+    clippy::disallowed_types,
+    reason = "desktop is a binary-like entry point that needs anyhow for ergonomic error handling"
+)]
 pub(crate) fn run(args: &DesktopArgs) -> anyhow::Result<()> {
     let binary = find_in_path().ok_or_else(|| {
         anyhow::anyhow!(
@@ -55,6 +59,10 @@ pub(crate) fn run(args: &DesktopArgs) -> anyhow::Result<()> {
         .map_err(|e| anyhow::anyhow!("failed to exec `{}`: {e}", binary.display()))?;
 
     if !status.success() {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "desktop is a binary-like entry point that exits on subprocess failure"
+        )]
         std::process::exit(status.code().unwrap_or(1));
     }
 

@@ -117,7 +117,7 @@ pub struct SuppressionFinding {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum SuppressionKind {
-    /// `#[allow(...)]` attribute -- discouraged, use `#[expect]` instead.
+    /// `#[allow(...)]` attribute — discouraged, use `#[expect]` instead.
     Allow,
 
     /// `#[expect(...)]` attribute without a reason -- should include justification.

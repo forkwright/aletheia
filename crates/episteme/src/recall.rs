@@ -324,7 +324,8 @@ impl RecallEngine {
     /// otherwise return the base score unchanged.
     ///
     /// PERF: skips the `enhance` closure entirely when the relationship
-    /// proximity weight is zero.
+    /// proximity weight is zero (graph recall inactive).
+    #[expect(clippy::doc_trope, reason = "enhance is a valid verb in this context")]
     #[must_use]
     fn graph_enhanced(&self, base: f64, enhance: impl FnOnce(f64) -> f64) -> f64 {
         if self.weights.graph_recall_active() {

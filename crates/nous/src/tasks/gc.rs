@@ -99,6 +99,8 @@ mod tests {
 
     #[tokio::test]
     async fn gc_evicts_completed_tasks_after_deadline() {
+        tokio::time::pause();
+
         // WHY: Zero deadline + short interval = immediate eviction on first sweep.
         let registry = TaskRegistry::new(Duration::from_secs(0));
         let shutdown = CancellationToken::new();
@@ -125,8 +127,8 @@ mod tests {
             Duration::from_millis(50),
         );
 
-        // WHY: Wait long enough for at least one sweep.
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        // WHY: Advance time enough for at least one sweep.
+        tokio::time::advance(Duration::from_millis(200)).await;
 
         shutdown.cancel();
         handle.await.unwrap_or_default();
@@ -136,6 +138,8 @@ mod tests {
 
     #[tokio::test]
     async fn gc_preserves_running_tasks() {
+        tokio::time::pause();
+
         let registry = TaskRegistry::new(Duration::from_secs(0));
         let shutdown = CancellationToken::new();
 
@@ -159,7 +163,7 @@ mod tests {
             Duration::from_millis(50),
         );
 
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        tokio::time::advance(Duration::from_millis(200)).await;
 
         shutdown.cancel();
         handle.await.unwrap_or_default();
@@ -169,6 +173,8 @@ mod tests {
 
     #[tokio::test]
     async fn gc_cleans_up_output_files() {
+        tokio::time::pause();
+
         let dir = tempfile::tempdir().unwrap_or_default();
         let registry = TaskRegistry::new(Duration::from_secs(0));
         let shutdown = CancellationToken::new();
@@ -208,7 +214,7 @@ mod tests {
             Duration::from_millis(50),
         );
 
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        tokio::time::advance(Duration::from_millis(200)).await;
 
         shutdown.cancel();
         handle.await.unwrap_or_default();

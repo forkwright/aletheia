@@ -19,11 +19,11 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Instance root: env var, then common locations, then fail
-if [ -n "${ALETHEIA_ROOT:-}" ]; then
+if [[ -n "${ALETHEIA_ROOT:-}" ]]; then
     INSTANCE_ROOT="$ALETHEIA_ROOT"
-elif [ -d "$HOME/ergon/instance" ]; then
+elif [[ -d "$HOME/ergon/instance" ]]; then
     INSTANCE_ROOT="$HOME/ergon/instance"
-elif [ -d "$HOME/aletheia/instance" ]; then
+elif [[ -d "$HOME/aletheia/instance" ]]; then
     INSTANCE_ROOT="$HOME/aletheia/instance"
 else
     echo "[deploy] ERROR: No instance root found. Set ALETHEIA_ROOT or create ~/ergon/instance/" >&2
@@ -33,9 +33,9 @@ fi
 BINARY_SRC="$REPO_ROOT/target/release/aletheia"
 
 # Binary destination: env var, then common locations
-if [ -n "${ALETHEIA_BINARY:-}" ]; then
+if [[ -n "${ALETHEIA_BINARY:-}" ]]; then
     BINARY_DST="$ALETHEIA_BINARY"
-elif [ -d "$HOME/ergon/bin" ]; then
+elif [[ -d "$HOME/ergon/bin" ]]; then
     BINARY_DST="$HOME/ergon/bin/aletheia"
 else
     BINARY_DST="$HOME/.local/bin/aletheia"

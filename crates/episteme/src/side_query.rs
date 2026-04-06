@@ -195,6 +195,10 @@ impl RelevanceCache {
 /// Wraps a [`SideQueryRanker`] with `already_surfaced` tracking and LRU
 /// caching. Designed to run as a pre-filter stage before the 6-factor
 /// recall scoring in [`RecallEngine`](crate::recall::RecallEngine).
+#[expect(
+    clippy::disallowed_types,
+    reason = "std::sync::Mutex is used because locks are never held across await points"
+)]
 pub struct SideQuerySelector {
     config: SideQueryConfig,
     // WHY: std::sync::Mutex — lock never held across .await.

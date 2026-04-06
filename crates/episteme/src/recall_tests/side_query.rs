@@ -145,7 +145,7 @@ fn select_returns_empty_when_disabled() {
 
     let result = selector.select("query", &manifest, &ranker);
     assert!(result.is_ok(), "disabled selector should return Ok");
-    let result = result.unwrap_or_else(|_| unreachable!());
+    let result = result.unwrap_or_else(|_| unreachable!("result should be Ok after is_ok assertion: test expects specific match"));
     assert!(
         result.selected_ids.is_empty(),
         "disabled selector should return empty ids"
@@ -166,7 +166,7 @@ fn select_returns_empty_when_manifest_empty() {
     assert!(result.is_ok(), "empty manifest should return Ok");
     assert!(
         result
-            .unwrap_or_else(|_| unreachable!())
+            .unwrap_or_else(|_| unreachable!("result should be Ok after is_ok assertion"))
             .selected_ids
             .is_empty(),
         "empty manifest should yield empty selection"
@@ -181,7 +181,7 @@ fn select_calls_ranker_and_returns_results() {
 
     let result = selector
         .select("what is alpha?", &manifest, &ranker)
-        .unwrap_or_else(|_| unreachable!());
+        .unwrap_or_else(|_| unreachable!("select should succeed with valid inputs: test expects specific match"));
     assert_eq!(result.selected_ids, vec!["a", "c"], "should select IDs a and c based on ranker ordering");
     assert!(!result.from_cache, "first call should not be cached");
 }
@@ -197,7 +197,7 @@ fn select_respects_max_results() {
 
     let result = selector
         .select("query", &manifest, &ranker)
-        .unwrap_or_else(|_| unreachable!());
+        .unwrap_or_else(|_| unreachable!("select should succeed with valid inputs: test expects specific match"));
     assert_eq!(result.selected_ids.len(), 2, "should respect max_results=2");
 }
 
@@ -229,7 +229,7 @@ fn mark_surfaced_prevents_reselection() {
     let ranker = CapturingRanker::new(vec!["b"]);
     let result = selector
         .select("query", &manifest, &ranker)
-        .unwrap_or_else(|_| unreachable!());
+        .unwrap_or_else(|_| unreachable!("select should succeed with valid inputs: test expects specific match"));
 
     // WHY: "a" was surfaced, so the manifest sent to the ranker should not contain it.
     let manifests = ranker.captured_manifests();
@@ -267,7 +267,7 @@ fn all_surfaced_returns_empty_without_calling_ranker() {
     let ranker = CapturingRanker::new(vec!["a"]);
     let result = selector
         .select("query", &manifest, &ranker)
-        .unwrap_or_else(|_| unreachable!());
+        .unwrap_or_else(|_| unreachable!("select should succeed with valid inputs: test expects specific match"));
 
     assert!(
         result.selected_ids.is_empty(),
@@ -290,13 +290,13 @@ fn second_identical_call_uses_cache() {
     // NOTE: first call — cache miss.
     let r1 = selector
         .select("query", &manifest, &ranker)
-        .unwrap_or_else(|_| unreachable!());
+        .unwrap_or_else(|_| unreachable!("select should succeed with valid inputs: test expects specific match"));
     assert!(!r1.from_cache, "first call should not be cached");
 
     // NOTE: second call — cache hit.
     let r2 = selector
         .select("query", &manifest, &ranker)
-        .unwrap_or_else(|_| unreachable!());
+        .unwrap_or_else(|_| unreachable!("select should succeed with valid inputs: test expects specific match"));
     assert!(r2.from_cache, "second identical call should use cache");
     assert_eq!(
         r2.selected_ids, r1.selected_ids,
@@ -313,7 +313,7 @@ fn different_query_causes_cache_miss() {
     let _ = selector.select("query-1", &manifest, &ranker);
     let r2 = selector
         .select("query-2", &manifest, &ranker)
-        .unwrap_or_else(|_| unreachable!());
+        .unwrap_or_else(|_| unreachable!("select should succeed with valid inputs: test expects specific match"));
     assert!(!r2.from_cache, "different query should cause cache miss");
 }
 
@@ -341,7 +341,7 @@ fn cache_evicts_lru_at_capacity() {
     // NOTE: q1 should be evicted (LRU), q2 and q3 remain.
     let r1_retry = selector
         .select("q1", &m1, &ranker)
-        .unwrap_or_else(|_| unreachable!());
+        .unwrap_or_else(|_| unreachable!("select should succeed with valid inputs: test expects specific match"));
     assert!(
         !r1_retry.from_cache,
         "evicted entry q1 should cause cache miss"

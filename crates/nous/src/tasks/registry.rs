@@ -17,6 +17,7 @@ use super::types::{ProgressEvent, TaskEntry, TaskId, TaskStatus, TaskType, ToolC
     missing_docs,
     reason = "snafu error variant fields (task_id, FROM, to, source, location) are self-documenting via display format"
 )]
+#[non_exhaustive]
 pub enum RegistryError {
     /// Task not found in the registry.
     #[snafu(display("task {task_id} not found"))]

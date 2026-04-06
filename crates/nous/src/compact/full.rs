@@ -224,8 +224,16 @@ fn extract_file_path(content: &str) -> Option<String> {
         return None;
     }
     let end_bracket = content.find(']')?;
+    #[expect(
+        clippy::string_slice,
+        reason = "6 is a constant ASCII prefix length, end_bracket is from find on ASCII char"
+    )]
     let metadata = &content[6..end_bracket];
     let at_pos = metadata.find('@')?;
+    #[expect(
+        clippy::string_slice,
+        reason = "at_pos is from find on ASCII char, always a valid UTF-8 boundary"
+    )]
     let tool_name = &metadata[..at_pos];
 
     // NOTE: only extract paths FROM file operations

@@ -559,7 +559,7 @@ mod tests {
     /// Write bytes to a file (test helper).
     ///
     /// WHY: `std::fs::write` is disallowed by melete's clippy.toml.
-    fn test_write_file(path: &std::path::Path, content: &[u8]) {
+    fn write_test_file(path: &std::path::Path, content: &[u8]) {
         use std::io::Write;
         let mut f = std::fs::File::options()
             .write(true)
@@ -634,7 +634,7 @@ mod tests {
         let lock_path = dir.path().join(".consolidate-lock");
 
         // NOTE: CREATE lock file with current mtime (just consolidated).
-        test_write_file(&lock_path, b"");
+        write_test_file(&lock_path, b"");
 
         let mut config = make_config(lock_path);
         config.min_hours = 24;
@@ -774,7 +774,7 @@ mod tests {
         let lock_path = dir.path().join(".consolidate-lock");
 
         // NOTE: CREATE lock file with current mtime.
-        test_write_file(&lock_path, b"");
+        write_test_file(&lock_path, b"");
 
         let mut config = make_config(lock_path);
         config.min_hours = 24;
@@ -860,6 +860,8 @@ mod tests {
 
     #[tokio::test]
     async fn on_turn_complete_spawns_background_task() {
+        tokio::time::pause();
+
         let dir = tempfile::tempdir().unwrap();
         let lock_path = dir.path().join(".consolidate-lock");
 
@@ -878,8 +880,8 @@ mod tests {
         // NOTE: on_turn_complete is fire-and-forget; it spawns a background task.
         engine.on_turn_complete(&source, &target, &provider);
 
-        // NOTE: give the background task time to complete.
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        // NOTE: advance time to allow the background task to complete.
+        tokio::time::advance(std::time::Duration::from_millis(100)).await;
     }
 
     #[test]
