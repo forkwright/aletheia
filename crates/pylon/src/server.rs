@@ -271,20 +271,43 @@ fn serve_tls(
 /// Apply a prepared config reload to the live state.
 ///
 /// Acquires the config write lock, swaps the config, logs the diff,
-/// and notifies subscribers via the watch channel.
+/// and notifies subscribers via the watch channel. Cold changes
+/// (fields that require a process restart) are excluded from the
+/// applied config — subscribers only see hot-reloadable values.
 pub(crate) async fn apply_reload(
     config_state: &ConfigState,
     outcome: aletheia_taxis::reload::ReloadOutcome,
 ) {
     aletheia_taxis::reload::log_diff(&outcome.diff);
 
+    let cold = outcome.diff.cold_changes();
+
+    // WHY: Cold changes (gateway.port, gateway.bind, gateway.tls,
+    // gateway.auth.mode, channels, etc.) take effect only after restart.
+    // Writing them to in-memory config misleads subscribers into seeing
+    // values the runtime is not actually using.
+    let config_to_apply = if cold.is_empty() {
+        outcome.new_config
+    } else {
+        tracing::warn!(
+            count = cold.len(),
+            "cold config changes deferred until restart"
+        );
+        let current = config_state.config.read().await;
+        let mut merged = outcome.new_config.clone();
+        // Restore cold-change sections from current running config
+        merged.gateway = current.gateway.clone();
+        merged.channels = current.channels.clone();
+        merged
+    };
+
     let mut config = config_state.config.write().await;
-    *config = outcome.new_config.clone();
+    *config = config_to_apply.clone();
     drop(config);
 
     // WHY: send can only fail if all receivers are dropped, which means
     // no actors are listening. Safe to ignore.
-    let _ = config_state.config_tx.send(outcome.new_config);
+    let _ = config_state.config_tx.send(config_to_apply);
 }
 
 /// Spawn a background task that listens for SIGHUP and triggers config reload.
