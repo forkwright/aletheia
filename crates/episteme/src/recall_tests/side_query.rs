@@ -182,7 +182,11 @@ fn select_calls_ranker_and_returns_results() {
     let result = selector
         .select("what is alpha?", &manifest, &ranker)
         .unwrap_or_else(|_| unreachable!());
-    assert_eq!(result.selected_ids, vec!["a", "c"]);
+    assert_eq!(
+        result.selected_ids,
+        vec!["a", "c"],
+        "selector should return IDs ranked by the ranker"
+    );
     assert!(!result.from_cache, "first call should not be cached");
 }
 
@@ -239,7 +243,11 @@ fn mark_surfaced_prevents_reselection() {
         "surfaced entry 'a' should not appear in manifest sent to ranker"
     );
 
-    assert_eq!(result.selected_ids, vec!["b"]);
+    assert_eq!(
+        result.selected_ids,
+        vec!["b"],
+        "only non-surfaced entry 'b' should be selected"
+    );
 }
 
 #[test]
@@ -390,7 +398,11 @@ fn pre_filter_removes_unselected_candidates() {
 
     let filtered = pre_filter_by_side_query(candidates, &selected);
     assert_eq!(filtered.len(), 1, "only 'a' should remain");
-    assert_eq!(filtered.first().map(|r| r.source_id.as_str()), Some("a"));
+    assert_eq!(
+        filtered.first().map(|r| r.source_id.as_str()),
+        Some("a"),
+        "pre-filter should keep only selected source 'a'"
+    );
 }
 
 #[test]

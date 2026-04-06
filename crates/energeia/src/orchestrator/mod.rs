@@ -661,7 +661,7 @@ mod tests {
     // Test helpers
     // -----------------------------------------------------------------------
 
-    fn test_prompt(number: u32, depends_on: Vec<u32>) -> PromptSpec {
+    fn sample_prompt_spec(number: u32, depends_on: Vec<u32>) -> PromptSpec {
         PromptSpec {
             number,
             description: format!("test prompt {number}"),
@@ -700,7 +700,7 @@ mod tests {
         }
     }
 
-    fn test_spec(prompt_numbers: Vec<u32>) -> DispatchSpec {
+    fn sample_dispatch_spec(prompt_numbers: Vec<u32>) -> DispatchSpec {
         DispatchSpec {
             prompt_numbers,
             project: "acme".to_owned(),
@@ -720,8 +720,8 @@ mod tests {
         let config = OrchestratorConfig::new().max_concurrent(4);
 
         let orchestrator = Orchestrator::new(engine, qa, config);
-        let prompts = vec![test_prompt(1, vec![])];
-        let spec = test_spec(vec![1]);
+        let prompts = vec![sample_prompt_spec(1, vec![])];
+        let spec = sample_dispatch_spec(vec![1]);
 
         let result = orchestrator.dispatch(spec, &prompts).await.unwrap();
 
@@ -746,12 +746,12 @@ mod tests {
 
         let orchestrator = Orchestrator::new(engine, qa, config);
         let prompts = vec![
-            test_prompt(1, vec![]),
-            test_prompt(2, vec![1]),
-            test_prompt(3, vec![1]),
-            test_prompt(4, vec![2, 3]),
+            sample_prompt_spec(1, vec![]),
+            sample_prompt_spec(2, vec![1]),
+            sample_prompt_spec(3, vec![1]),
+            sample_prompt_spec(4, vec![2, 3]),
         ];
-        let spec = test_spec(vec![1, 2, 3, 4]);
+        let spec = sample_dispatch_spec(vec![1, 2, 3, 4]);
 
         let result = orchestrator.dispatch(spec, &prompts).await.unwrap();
 
@@ -782,11 +782,11 @@ mod tests {
 
         let orchestrator = Orchestrator::new(engine, qa, config);
         let prompts = vec![
-            test_prompt(1, vec![]),
-            test_prompt(2, vec![1]),
-            test_prompt(3, vec![2]),
+            sample_prompt_spec(1, vec![]),
+            sample_prompt_spec(2, vec![1]),
+            sample_prompt_spec(3, vec![2]),
         ];
-        let spec = test_spec(vec![1, 2, 3]);
+        let spec = sample_dispatch_spec(vec![1, 2, 3]);
 
         let result = orchestrator.dispatch(spec, &prompts).await.unwrap();
 
@@ -827,8 +827,8 @@ mod tests {
             .default_budget_usd(0.15);
 
         let orchestrator = Orchestrator::new(engine, qa, config);
-        let prompts = vec![test_prompt(1, vec![]), test_prompt(2, vec![1])];
-        let spec = test_spec(vec![1, 2]);
+        let prompts = vec![sample_prompt_spec(1, vec![]), sample_prompt_spec(2, vec![1])];
+        let spec = sample_dispatch_spec(vec![1, 2]);
 
         let result = orchestrator.dispatch(spec, &prompts).await.unwrap();
 
@@ -848,7 +848,7 @@ mod tests {
         let config = OrchestratorConfig::default();
 
         let orchestrator = Orchestrator::new(engine, qa, config);
-        let result = orchestrator.dispatch(test_spec(vec![]), &[]).await;
+        let result = orchestrator.dispatch(sample_dispatch_spec(vec![]), &[]).await;
 
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("no prompts"));
@@ -867,11 +867,11 @@ mod tests {
 
         let orchestrator = Orchestrator::new(engine, qa, config);
         let prompts = vec![
-            test_prompt(1, vec![]),
-            test_prompt(2, vec![]),
-            test_prompt(3, vec![]),
+            sample_prompt_spec(1, vec![]),
+            sample_prompt_spec(2, vec![]),
+            sample_prompt_spec(3, vec![]),
         ];
-        let spec = test_spec(vec![1, 2, 3]);
+        let spec = sample_dispatch_spec(vec![1, 2, 3]);
 
         let result = orchestrator.dispatch(spec, &prompts).await.unwrap();
 
@@ -899,10 +899,10 @@ mod tests {
 
         let orchestrator = Orchestrator::new(engine, qa, config);
         let prompts = vec![
-            test_prompt(1, vec![]),
-            test_prompt(2, vec![1]),
-            test_prompt(3, vec![1]),
-            test_prompt(4, vec![2, 3]),
+            sample_prompt_spec(1, vec![]),
+            sample_prompt_spec(2, vec![1]),
+            sample_prompt_spec(3, vec![1]),
+            sample_prompt_spec(4, vec![2, 3]),
         ];
 
         let plan = orchestrator.dry_run(&prompts).unwrap();
@@ -944,7 +944,7 @@ mod tests {
         let config = OrchestratorConfig::default();
 
         let orchestrator = Orchestrator::new(engine, qa, config);
-        let prompts = vec![test_prompt(1, vec![]), test_prompt(2, vec![1])];
+        let prompts = vec![sample_prompt_spec(1, vec![]), sample_prompt_spec(2, vec![1])];
 
         let plan = orchestrator.dry_run(&prompts).unwrap();
         let json = serde_json::to_string(&plan).unwrap();

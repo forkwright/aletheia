@@ -57,6 +57,7 @@ impl fmt::Display for TaskId {
 /// WHY: Task display and lifecycle differ by type. Shell tasks carry a command
 /// string, agent tasks carry an agent ID and prompt, etc. Discriminating at the
 /// type level lets callers match exhaustively.
+#[non_exhaustive]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TaskType {
     /// A shell command execution.
@@ -113,6 +114,7 @@ impl fmt::Display for TaskType {
 ///                    -> Failed
 ///                    -> Killed
 /// ```
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TaskStatus {
     /// Registered but not yet started.
@@ -167,6 +169,7 @@ pub struct ToolCallSummary {
 ///
 /// WHY: Subscribers (UI, logging, parent agents) need typed events to decide
 /// what to display. A single enum keeps the channel monomorphic.
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub enum ProgressEvent {
     /// Task transitioned between statuses.

@@ -26,6 +26,7 @@ pub struct MockEngine {
 }
 
 /// Pre-configured outcome for a mock session.
+#[non_exhaustive]
 pub enum MockOutcome {
     /// Session completes successfully with the given events and result.
     Success {

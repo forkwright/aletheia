@@ -11,15 +11,15 @@ set -euo pipefail
 #   No flags:    build + copy + restart (full deploy)
 #
 # Path discovery (first match wins):
-#   Instance root:  $ALETHEIA_ROOT > ~/ergon/instance > ~/aletheia/instance
-#   Binary dest:    $ALETHEIA_BINARY > ~/ergon/bin/aletheia > ~/.local/bin/aletheia
+#   Instance root:  "$ALETHEIA_ROOT" > ~/ergon/instance > ~/aletheia/instance
+#   Binary dest:    "$ALETHEIA_BINARY" > ~/ergon/bin/aletheia > ~/.local/bin/aletheia
 #
 # Prerequisites: cargo, curl, jq, systemctl
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Instance root: env var, then common locations, then fail
-if [ -n "${ALETHEIA_ROOT:-}" ]; then
+if [[ -n "${ALETHEIA_ROOT:-}" ]]; then
     INSTANCE_ROOT="$ALETHEIA_ROOT"
 elif [ -d "$HOME/ergon/instance" ]; then
     INSTANCE_ROOT="$HOME/ergon/instance"
@@ -33,7 +33,7 @@ fi
 BINARY_SRC="$REPO_ROOT/target/release/aletheia"
 
 # Binary destination: env var, then common locations
-if [ -n "${ALETHEIA_BINARY:-}" ]; then
+if [[ -n "${ALETHEIA_BINARY:-}" ]]; then
     BINARY_DST="$ALETHEIA_BINARY"
 elif [ -d "$HOME/ergon/bin" ]; then
     BINARY_DST="$HOME/ergon/bin/aletheia"

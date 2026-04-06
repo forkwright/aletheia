@@ -167,7 +167,7 @@ mod tests {
 
     use super::execute_group;
 
-    fn test_prompt(number: u32) -> PromptSpec {
+    fn sample_prompt_spec(number: u32) -> PromptSpec {
         PromptSpec {
             number,
             description: format!("test prompt {number}"),
@@ -206,7 +206,7 @@ mod tests {
         let budget = Arc::new(Budget::new(Some(10.0), Some(500), None));
         let cancel = CancellationToken::new();
 
-        let prompts = vec![test_prompt(1), test_prompt(2), test_prompt(3)];
+        let prompts = vec![sample_prompt_spec(1), sample_prompt_spec(2), sample_prompt_spec(3)];
 
         let outcomes = execute_group(
             &prompts,
@@ -239,7 +239,7 @@ mod tests {
         let budget = Arc::new(Budget::new(None, None, None));
         let cancel = CancellationToken::new();
 
-        let prompts = vec![test_prompt(1), test_prompt(2), test_prompt(3)];
+        let prompts = vec![sample_prompt_spec(1), sample_prompt_spec(2), sample_prompt_spec(3)];
 
         let outcomes = execute_group(
             &prompts,
@@ -265,7 +265,7 @@ mod tests {
         let cancel = CancellationToken::new();
         cancel.cancel();
 
-        let prompts = vec![test_prompt(1), test_prompt(2)];
+        let prompts = vec![sample_prompt_spec(1), sample_prompt_spec(2)];
 
         let outcomes = execute_group(
             &prompts,
@@ -290,7 +290,7 @@ mod tests {
         let budget = Arc::new(Budget::new(Some(0.05), None, None));
         let cancel = CancellationToken::new();
 
-        let prompts = vec![test_prompt(1), test_prompt(2)];
+        let prompts = vec![sample_prompt_spec(1), sample_prompt_spec(2)];
 
         let outcomes = execute_group(
             &prompts,
@@ -319,7 +319,7 @@ mod tests {
         let budget = Arc::new(Budget::new(None, None, None));
         let cancel = CancellationToken::new();
 
-        let prompts = vec![test_prompt(1), test_prompt(2)];
+        let prompts = vec![sample_prompt_spec(1), sample_prompt_spec(2)];
 
         let outcomes = execute_group(
             &prompts,

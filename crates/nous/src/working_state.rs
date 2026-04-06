@@ -610,7 +610,7 @@ mod tests {
 
     // -- Forked agent cache coherence tests --
 
-    fn test_tool(name: &str) -> ToolDefinition {
+    fn sample_tool_definition(name: &str) -> ToolDefinition {
         ToolDefinition {
             name: name.to_owned(),
             description: format!("Test tool {name}"),
@@ -619,19 +619,19 @@ mod tests {
         }
     }
 
-    fn test_message(text: &str) -> Message {
+    fn sample_message(text: &str) -> Message {
         Message {
             role: aletheia_hermeneus::types::Role::User,
             content: aletheia_hermeneus::types::Content::Text(text.to_owned()),
         }
     }
 
-    fn test_cache_params() -> Arc<CacheSafeParams> {
+    fn sample_cache_params() -> Arc<CacheSafeParams> {
         let messages: Arc<[Message]> =
-            Arc::from(vec![test_message("hello"), test_message("world")]);
+            Arc::from(vec![sample_message("hello"), sample_message("world")]);
         Arc::new(CacheSafeParams::new(
             "You are a test agent.",
-            vec![test_tool("zeta_tool"), test_tool("alpha_tool")],
+            vec![sample_tool_definition("zeta_tool"), sample_tool_definition("alpha_tool")],
             "claude-opus-4-20250514",
             messages,
             Some(ThinkingConfig {
@@ -643,7 +643,7 @@ mod tests {
 
     #[test]
     fn cache_safe_params_preserves_all_fields() {
-        let params = test_cache_params();
+        let params = sample_cache_params();
         assert_eq!(params.model, "claude-opus-4-20250514");
         assert_eq!(params.system_prompt.as_ref(), "You are a test agent.");
         assert_eq!(params.tools.len(), 2);
@@ -655,7 +655,7 @@ mod tests {
 
     #[test]
     fn cache_safe_params_sorts_tools_deterministically() {
-        let params = test_cache_params();
+        let params = sample_cache_params();
         // WHY: tools were provided as [zeta, alpha] but must be sorted [alpha, zeta]
         assert_eq!(params.tools.get(0).copied().unwrap_or_default().name, "alpha_tool");
         assert_eq!(params.tools.get(1).copied().unwrap_or_default().name, "zeta_tool");
@@ -664,7 +664,7 @@ mod tests {
     #[test]
     fn clone_for_fork_shares_cache_params_via_arc() {
         let mut parent = WorkingState::new();
-        let params = test_cache_params();
+        let params = sample_cache_params();
         parent.set_cache_params(Arc::clone(&params));
         parent.push_task("parent work");
 
@@ -690,7 +690,7 @@ mod tests {
     #[test]
     fn clone_for_fork_deep_clones_mutable_state() {
         let mut parent = WorkingState::new();
-        parent.set_cache_params(test_cache_params());
+        parent.set_cache_params(sample_cache_params());
         parent.push_task("shared context");
         parent.set_focus(Some("src/lib.rs".to_owned()), None, None);
 
@@ -765,14 +765,14 @@ mod tests {
     #[test]
     fn shared_prefix_immutability() {
         let messages: Arc<[Message]> = Arc::from(vec![
-            test_message("context message 1"),
-            test_message("context message 2"),
+            sample_message("context message 1"),
+            sample_message("context message 2"),
         ]);
         let prefix_clone = Arc::clone(&messages);
 
         let params = Arc::new(CacheSafeParams::new(
             "system prompt",
-            vec![test_tool("tool_a")],
+            vec![sample_tool_definition("tool_a")],
             "model-v1",
             messages,
             None,
@@ -788,7 +788,7 @@ mod tests {
     fn cache_params_serde_roundtrip_skips_field() {
         let mut state = WorkingState::new();
         state.push_task("test task");
-        state.set_cache_params(test_cache_params());
+        state.set_cache_params(sample_cache_params());
 
         let json = state.to_json().unwrap();
         let restored = WorkingState::from_json(&json).unwrap();

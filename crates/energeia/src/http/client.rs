@@ -246,7 +246,7 @@ mod tests {
         HttpEngine::new("test-model").binary(dir.join("claude").display().to_string())
     }
 
-    fn test_spec(prompt: &str) -> SessionSpec {
+    fn sample_session_spec(prompt: &str) -> SessionSpec {
         SessionSpec {
             prompt: prompt.to_owned(),
             system_prompt: None,
@@ -266,7 +266,7 @@ mod tests {
 
         let engine = mock_engine(tmp.path());
         let handle = engine
-            .spawn_session(&test_spec("test prompt"), &AgentOptions::new())
+            .spawn_session(&sample_session_spec("test prompt"), &AgentOptions::new())
             .await
             .unwrap();
         let result = handle.wait().await.unwrap();
@@ -288,7 +288,7 @@ mod tests {
 
         let engine = mock_engine(tmp.path());
         let handle = engine
-            .spawn_session(&test_spec("bad prompt"), &AgentOptions::new())
+            .spawn_session(&sample_session_spec("bad prompt"), &AgentOptions::new())
             .await
             .unwrap();
         let result = handle.wait().await.unwrap();
@@ -329,7 +329,7 @@ mod tests {
 
         let engine = mock_engine(tmp.path());
         let mut handle = engine
-            .spawn_session(&test_spec("test"), &AgentOptions::new())
+            .spawn_session(&sample_session_spec("test"), &AgentOptions::new())
             .await
             .unwrap();
 
@@ -354,7 +354,7 @@ mod tests {
 
         let engine = mock_engine(tmp.path());
         let handle = engine
-            .spawn_session(&test_spec("test"), &AgentOptions::new())
+            .spawn_session(&sample_session_spec("test"), &AgentOptions::new())
             .await
             .unwrap();
         let err = handle.wait().await.unwrap_err();
@@ -371,7 +371,7 @@ mod tests {
 
         let engine = mock_engine(tmp.path());
         let handle = engine
-            .spawn_session(&test_spec("test"), &AgentOptions::new())
+            .spawn_session(&sample_session_spec("test"), &AgentOptions::new())
             .await
             .unwrap();
         let err = handle.wait().await.unwrap_err();
@@ -394,7 +394,7 @@ mod tests {
 
         let engine = HttpEngine::new("test-model").binary(script_path.display().to_string());
         let mut handle = engine
-            .spawn_session(&test_spec("test"), &AgentOptions::new())
+            .spawn_session(&sample_session_spec("test"), &AgentOptions::new())
             .await
             .unwrap();
         let result = handle.abort().await;

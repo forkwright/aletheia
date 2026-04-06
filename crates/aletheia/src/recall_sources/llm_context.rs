@@ -266,7 +266,7 @@ fn anthropic_model_cards() -> Vec<ModelCard> {
 mod tests {
     use super::*;
 
-    fn test_models() -> Vec<ModelCard> {
+    fn sample_model_cards() -> Vec<ModelCard> {
         vec![
             ModelCard {
                 id: "model-a".to_owned(),
@@ -297,7 +297,7 @@ mod tests {
 
     #[test]
     fn model_card_content_formatting() {
-        let card = &test_models()[0];
+        let card = &sample_model_cards()[0];
         let content = card.to_content();
         assert!(content.contains("Model Alpha (TestCorp)"));
         assert!(content.contains("128K tokens"));
@@ -308,14 +308,14 @@ mod tests {
 
     #[test]
     fn relevance_name_match() {
-        let card = &test_models()[0];
+        let card = &sample_model_cards()[0];
         let score = card.relevance("tell me about model alpha");
         assert!(score > 0.5, "name match should score high: {score}");
     }
 
     #[test]
     fn relevance_capability_match() {
-        let cards = test_models();
+        let cards = sample_model_cards();
         let vision_score_a = cards.get(0).copied().unwrap_or_default().relevance("which model supports vision");
         let vision_score_b = cards.get(1).copied().unwrap_or_default().relevance("which model supports vision");
         assert!(
@@ -326,7 +326,7 @@ mod tests {
 
     #[test]
     fn relevance_context_window_query() {
-        let cards = test_models();
+        let cards = sample_model_cards();
         let score_a = cards.get(0).copied().unwrap_or_default().relevance("model with 256k context");
         let score_b = cards.get(1).copied().unwrap_or_default().relevance("model with 256k context");
         assert!(
@@ -345,7 +345,7 @@ mod tests {
 
     #[test]
     fn relevance_no_match() {
-        let card = &test_models()[0];
+        let card = &sample_model_cards()[0];
         let score = card.relevance("unrelated query about cooking");
         assert!(
             score < f64::EPSILON,
@@ -355,7 +355,7 @@ mod tests {
 
     #[tokio::test]
     async fn llm_context_source_query() {
-        let source = LlmContextSource::new(test_models());
+        let source = LlmContextSource::new(sample_model_cards());
         let results = source
             .query("model with vision support", 10)
             .await
@@ -367,7 +367,7 @@ mod tests {
 
     #[tokio::test]
     async fn llm_context_source_empty_on_no_match() {
-        let source = LlmContextSource::new(test_models());
+        let source = LlmContextSource::new(sample_model_cards());
         let results = source
             .query("quantum entanglement recipes", 10)
             .await

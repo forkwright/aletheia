@@ -571,7 +571,7 @@ mod tests {
     /// Write bytes to a file (test helper).
     ///
     /// WHY: `std::fs::write` is disallowed by melete's clippy.toml.
-    fn test_write_file(path: &std::path::Path, content: &[u8]) {
+    fn write_test_file(path: &std::path::Path, content: &[u8]) {
         use std::io::Write;
         let mut f = std::fs::File::options()
             .write(true)
@@ -646,7 +646,7 @@ mod tests {
         let lock_path = dir.path().join(".consolidate-lock");
 
         // NOTE: CREATE lock file with current mtime (just consolidated).
-        test_write_file(&lock_path, b"");
+        write_test_file(&lock_path, b"");
 
         let mut config = make_config(lock_path);
         config.min_hours = 24;
@@ -786,7 +786,7 @@ mod tests {
         let lock_path = dir.path().join(".consolidate-lock");
 
         // NOTE: CREATE lock file with current mtime.
-        test_write_file(&lock_path, b"");
+        write_test_file(&lock_path, b"");
 
         let mut config = make_config(lock_path);
         config.min_hours = 24;
