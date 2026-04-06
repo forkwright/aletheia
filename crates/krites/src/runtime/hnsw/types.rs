@@ -188,7 +188,7 @@ impl VectorCache {
                         match field {
                             DataValue::List(l) => {
                                 #[expect(clippy::cast_sign_loss, reason = "guarded by >= 0 check")]
-                                let sub = key.usize::try_from(2).unwrap_or_default();
+                                let sub = key.2 as usize;
                                 field = &l[sub];
                             }
                             _ => {

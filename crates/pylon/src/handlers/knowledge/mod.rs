@@ -235,7 +235,7 @@ fn validate_sort_order(sort: &str, order: &str) -> Result<(), ApiError> {
     }
     if !VALID_ORDER_VALUES.contains(&order.to_ascii_lowercase().as_str()) {
         return Err(BadRequestSnafu {
-            message: format!("invalid ORDER '{ORDER}': valid VALUES are asc, desc",),
+            message: format!("invalid ORDER '{order}': valid values are asc, desc"),
         }
         .build());
     }

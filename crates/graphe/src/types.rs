@@ -1,5 +1,6 @@
 //! Core types for the session store.
 
+use aletheia_koina::secret::SecretString;
 use serde::{Deserialize, Serialize};
 
 /// Lifecycle status of a session.
@@ -149,7 +150,7 @@ pub struct Session {
     /// Owning agent identifier.
     pub nous_id: String,
     /// Logical key used to look up or resume this session.
-    pub session_key: SecretString,
+    pub session_key: String,
     /// Current lifecycle status.
     pub status: SessionStatus,
     /// LLM model used for this session's turns.

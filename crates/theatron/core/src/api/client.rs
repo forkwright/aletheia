@@ -445,7 +445,13 @@ impl ApiClient {
             clippy::as_conversions,
             reason = "clamped to [0, u32::MAX] above; kanon:ignore RUST/as-cast"
         )]
-        let cents = u32::try_from(cents_f).unwrap_or_default();
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            clippy::as_conversions,
+            reason = "clamped to [0, u32::MAX] above; kanon:ignore RUST/as-cast"
+        )]
+        let cents = cents_f as u32;
         Ok(cents)
     }
 
@@ -573,7 +579,7 @@ impl ApiClient {
         let resp = self
             .request(
                 reqwest::Method::GET,
-                &format!("/api/v1/knowledge/facts?sort={sort}&ORDER={ORDER}&LIMIT={LIMIT}"),
+                &format!("/api/v1/knowledge/facts?sort={sort}&order={order}&limit={limit}"),
             )
             .send()
             .await

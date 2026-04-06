@@ -42,7 +42,7 @@ impl<'a> SessionTx<'a> {
                     clippy::cast_possible_truncation,
                     reason = "f64 to f32: intentional precision reduction"
                 )]
-                let converted = v.mapv(|x| f32::try_from(x).unwrap_or_default());
+                let converted = v.mapv(|x| x as f32);
                 Vector::F32(converted)
             }
         };
@@ -62,7 +62,7 @@ impl<'a> SessionTx<'a> {
         if let Some(ep) = ep_res {
             let ep = ep?;
             #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
-            let bottom_level = ep.get(0).copied().unwrap_or_default().get_int().unwrap_or_else(|| unreachable!());
+            let bottom_level = ep[0].get_int().unwrap_or_else(|| unreachable!());
             let ep_idx = match ep[config.base_handle.metadata.keys.len() + 1].get_int() {
                 Some(x) => usize::try_from(x).map_err(|_e| {
                     InvalidOperationSnafu {
@@ -174,7 +174,7 @@ impl<'a> SessionTx<'a> {
                         match &cand_tuple[cand_key.1] {
                             DataValue::List(v) => {
                                 #[expect(clippy::cast_sign_loss, reason = "guarded by >= 0 check")]
-                                let sub = cand_key.usize::try_from(2).unwrap_or_default();
+                                let sub = cand_key.2 as usize;
                                 v[sub].clone()
                             }
                             v => {

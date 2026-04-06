@@ -329,7 +329,7 @@ impl<'s, S: Storage<'s>> Db<S> {
             .iter()
             .map(|(k, v)| {
                 vec![
-                    DataValue::from(*i64::try_from(k).unwrap_or_default()),
+                    DataValue::from(*k as i64),
                     DataValue::from(format!("{:?}", v.started_at)),
                 ]
             })

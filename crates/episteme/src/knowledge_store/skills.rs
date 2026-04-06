@@ -356,7 +356,7 @@ impl KnowledgeStore {
                 reason = "skill count fits f64"
             )]
             {
-                usage_counts.iter().map(|&c| f64::from(c)).sum::<f64>() / f64::try_from(total_active).unwrap_or_default()
+                usage_counts.iter().map(|&c| f64::from(c)).sum::<f64>() / total_active as f64
             }
         } else {
             0.0

@@ -252,7 +252,7 @@ fn import_sessions(
                     msg.role,
                     msg.content,
                     msg.token_estimate,
-                    i64::from(msg.is_distilled),
+                    msg.is_distilled as i64,
                     msg.created_at,
                 ],
             )

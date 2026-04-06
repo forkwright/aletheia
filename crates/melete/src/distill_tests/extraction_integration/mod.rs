@@ -169,7 +169,7 @@ fn config_default_sections() {
     );
     let s = &config.sections;
     assert_eq!(
-        *s.first().unwrap_or_default(),
+        *s.first().unwrap(),
         DistillSection::Summary,
         "first section should be Summary"
     ); // WHY: test assertion
@@ -259,7 +259,7 @@ fn build_prompt_uses_dynamic_system_prompt() {
     let request = engine.build_prompt(&sample_conversation(), "test");
     let system = request
         .system
-        .unwrap_or_default(); // WHY: test assertion
+        .unwrap(); // WHY: test assertion
     assert!(
         system.contains("## Summary"),
         "system prompt should include the Summary section when configured"
@@ -289,7 +289,7 @@ async fn distill_preserves_verbatim_messages() {
     let result = engine
         .distill(&messages, "test-nous", &provider, 1)
         .await
-        .unwrap_or_default(); // WHY: test assertion
+        .unwrap(); // WHY: test assertion
 
     assert_eq!(
         result.messages_distilled, 4,
@@ -364,7 +364,7 @@ fn backoff_activates_after_failure_and_expires_after_one_turn() {
     engine
         .retry_state
         .lock()
-        .unwrap_or_default() // WHY: test assertion
+        .unwrap() // WHY: test assertion
         .record_failure();
     assert!(
         engine.in_backoff(),
@@ -392,7 +392,7 @@ fn backoff_resets_on_success() {
         let mut state = engine
             .retry_state
             .lock()
-            .unwrap_or_default(); // WHY: test assertion
+            .unwrap(); // WHY: test assertion
         state.record_failure();
         state.record_failure();
     }
@@ -403,7 +403,7 @@ fn backoff_resets_on_success() {
     engine
         .retry_state
         .lock()
-        .unwrap_or_default() // WHY: test assertion
+        .unwrap() // WHY: test assertion
         .record_success();
     assert!(
         !engine.in_backoff(),
@@ -425,7 +425,7 @@ fn backoff_schedule_is_exponential() {
             let mut state = engine
                 .retry_state
                 .lock()
-                .unwrap_or_default(); // WHY: test assertion
+                .unwrap(); // WHY: test assertion
             for _ in 0..failures {
                 state.record_failure();
             }
@@ -433,7 +433,7 @@ fn backoff_schedule_is_exponential() {
         let actual = engine
             .retry_state
             .lock()
-            .unwrap_or_default() // WHY: test assertion
+            .unwrap() // WHY: test assertion
             .turns_to_skip;
         assert_eq!(
             actual, expected_skip,
@@ -462,7 +462,7 @@ async fn distill_records_success_and_clears_backoff() {
     engine
         .retry_state
         .lock()
-        .unwrap_or_default() // WHY: test assertion
+        .unwrap() // WHY: test assertion
         .record_failure();
     assert!(
         engine.in_backoff(),
@@ -474,7 +474,7 @@ async fn distill_records_success_and_clears_backoff() {
     engine
         .distill(&messages, "test", &provider, 1)
         .await
-        .unwrap_or_default(); // WHY: test assertion
+        .unwrap(); // WHY: test assertion
 
     assert!(
         !engine.in_backoff(),

@@ -14,7 +14,7 @@ use crate::config::NousConfig;
 pub struct SessionState {
     pub id: String,
     pub nous_id: String,
-    pub session_key: SecretString, // kanon:ignore RUST/plain-string-secret
+    pub session_key: String,
 
     pub model: String,
     pub thinking_enabled: bool,
@@ -33,7 +33,7 @@ pub struct SessionState {
 impl SessionState {
     /// Create a new session state from config.
     #[must_use]
-    pub fn new(id: String, session_key: SecretString, config: &NousConfig) -> Self {
+    pub fn new(id: String, session_key: String, config: &NousConfig) -> Self {
         Self {
             id,
             nous_id: config.id.clone(),

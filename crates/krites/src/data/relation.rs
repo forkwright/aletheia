@@ -428,9 +428,9 @@ impl NullableColType {
                 DataValue::List(l) => {
                     if l.len() == 2 {
                         #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
-                        let o_ts = l.get(0).copied().unwrap_or_default().get_int();
+                        let o_ts = l[0].get_int();
                         #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
-                        let o_is_assert = l.get(1).copied().unwrap_or_default().get_bool();
+                        let o_is_assert = l[1].get_bool();
                         if let (Some(ts), Some(is_assert)) = (o_ts, o_is_assert) {
                             if ts == i64::MAX || ts == i64::MIN {
                                 return BadTimeSnafu {

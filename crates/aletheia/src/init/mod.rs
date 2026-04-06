@@ -347,7 +347,7 @@ fn collect_credential() -> Result<Option<SecretString>, InitError> {
 
     match cred_choice {
         "paste" => {
-            let key: SecretString = cliclack::password("API key")
+            let key: String = cliclack::password("API key")
                 .mask('*')
                 .validate(|input: &String| {
                     if input.is_empty() {
@@ -358,7 +358,7 @@ fn collect_credential() -> Result<Option<SecretString>, InitError> {
                 })
                 .interact()
                 .context(PromptSnafu)?;
-            Ok(Some(SecretString::from(key)))
+            Ok(Some(key.into()))
         }
         "env" => {
             let key = std::env::var("ANTHROPIC_API_KEY").context(MissingApiKeySnafu)?;

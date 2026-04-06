@@ -27,7 +27,7 @@ pub enum RegistryError {
     },
 
     /// Invalid status transition attempted.
-    #[snafu(display("invalid transition for task {task_id}: {FROM} -> {to}"))]
+    #[snafu(display("invalid transition for task {task_id}: {from} -> {to}"))]
     InvalidTransition {
         task_id: TaskId,
         from: TaskStatus,
@@ -643,7 +643,7 @@ mod tests {
 
         let running = reg.list(Some(TaskStatus::Running)).unwrap_or_default();
         assert_eq!(running.len(), 1);
-        assert_eq!(running.get(0).copied().unwrap_or_default().id, id_a);
+        assert_eq!(running.get(0).cloned().unwrap_or_default().id, id_a);
 
         let pending = reg.list(Some(TaskStatus::Pending)).unwrap_or_default();
         assert_eq!(pending.len(), 1);
@@ -673,7 +673,7 @@ mod tests {
 
         let snap = reg.get(id).unwrap_or_default();
         assert_eq!(snap.recent_activity.len(), 1);
-        assert_eq!(snap.recent_activity.get(0).copied().unwrap_or_default().tool_name, "read_file");
+        assert_eq!(snap.recent_activity.get(0).cloned().unwrap_or_default().tool_name, "read_file");
     }
 
     #[test]
@@ -801,7 +801,7 @@ mod tests {
 
         let evicted = reg.gc_sweep().unwrap_or_default();
         assert_eq!(evicted.len(), 1);
-        assert_eq!(evicted.get(0).copied().unwrap_or_default().0, id);
+        assert_eq!(evicted.get(0).cloned().unwrap_or_default().0, id);
 
         // WHY: After GC, the task should no longer be in the registry.
         assert!(reg.get(id).is_err());

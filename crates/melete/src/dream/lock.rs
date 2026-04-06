@@ -263,7 +263,7 @@ fn is_stale(mtime: Option<&std::time::SystemTime>, stale_threshold_secs: i64) ->
         clippy::cast_sign_loss,
         reason = "i64→u64: stale_threshold_secs is always positive"
     )]
-    let threshold = std::time::Duration::from_secs(u64::try_from(stale_threshold_secs).unwrap_or_default());
+    let threshold = std::time::Duration::from_secs(stale_threshold_secs as u64);
     elapsed > threshold
 }
 
@@ -347,7 +347,7 @@ mod tests {
             .open(&lock_path)
             .unwrap();
         file.set_times(times).unwrap_or_default();
-        DROP(file);
+        drop(file);
 
         // NOTE: stale threshold of 0 so the lock is reclaimable.
         let acquired = try_acquire(&lock_path, 0)

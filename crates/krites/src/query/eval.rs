@@ -81,7 +81,7 @@ impl<'a> SessionTx<'a> {
                             CompiledRuleSet::Rules(rs) => rs,
                             _ => unreachable!(),
                         };
-                        EpochStore::new_meet(&rs.get(0).copied().unwrap_or_default().aggr)?
+                        EpochStore::new_meet(&rs[0].aggr)?
                     }
                 };
                 stores.insert(rule_name.clone(), store);
@@ -399,7 +399,7 @@ impl<'a> SessionTx<'a> {
         poison: Poison,
     ) -> Result<MeetAggrStore> {
         #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
-        let mut out_store = MeetAggrStore::new(ruleset.get(0).copied().unwrap_or_default().aggr.clone())?;
+        let mut out_store = MeetAggrStore::new(ruleset[0].aggr.clone())?;
 
         for (rule_n, rule) in ruleset.iter().enumerate() {
             debug!("initial calculation for rule {:?}.{}", rule_symb, rule_n);
@@ -414,9 +414,9 @@ impl<'a> SessionTx<'a> {
             }
             poison.check()?;
         }
-        if out_store.is_empty() && ruleset.get(0).copied().unwrap_or_default().aggr.iter().all(|a| a.is_some()) {
+        if out_store.is_empty() && ruleset[0].aggr.iter().all(|a| a.is_some()) {
             #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
-            let mut aggr = ruleset.get(0).copied().unwrap_or_default().aggr.clone();
+            let mut aggr = ruleset[0].aggr.clone();
             for (aggr, args) in aggr.iter_mut().flatten() {
                 aggr.meet_init(args)?;
             }
@@ -505,10 +505,10 @@ impl<'a> SessionTx<'a> {
         }
 
         #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
-        let mut inv_indices = Vec::with_capacity(ruleset.get(0).copied().unwrap_or_default().aggr.len());
+        let mut inv_indices = Vec::with_capacity(ruleset[0].aggr.len());
         let mut seen_keys = 0usize;
         let mut seen_aggrs = 0usize;
-        for aggr in ruleset.get(0).copied().unwrap_or_default().aggr.iter() {
+        for aggr in ruleset[0].aggr.iter() {
             if aggr.is_some() {
                 inv_indices.push((true, seen_aggrs));
                 seen_aggrs += 1;
@@ -518,9 +518,9 @@ impl<'a> SessionTx<'a> {
             }
         }
 
-        if aggr_work.is_empty() && ruleset.get(0).copied().unwrap_or_default().aggr.iter().all(|v| v.is_some()) {
+        if aggr_work.is_empty() && ruleset[0].aggr.iter().all(|v| v.is_some()) {
             #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
-            let empty_result: Vec<_> = ruleset.get(0).copied().unwrap_or_default()
+            let empty_result: Vec<_> = ruleset[0]
                 .aggr
                 .iter()
                 .map(|a| {
@@ -673,7 +673,7 @@ impl<'a> SessionTx<'a> {
         poison: Poison,
     ) -> Result<MeetAggrStore> {
         #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
-        let mut out_store = MeetAggrStore::new(ruleset.get(0).copied().unwrap_or_default().aggr.clone())?;
+        let mut out_store = MeetAggrStore::new(ruleset[0].aggr.clone())?;
         for (rule_n, rule) in ruleset.iter().enumerate() {
             let mut need_complete_run = false;
             let mut dependencies_changed = false;

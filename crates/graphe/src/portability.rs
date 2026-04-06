@@ -9,6 +9,7 @@
 
 use std::collections::HashMap;
 
+use aletheia_koina::secret::SecretString;
 use serde::{Deserialize, Serialize};
 
 /// Agent file format version.
@@ -70,7 +71,7 @@ pub struct WorkspaceData {
 )]
 pub struct ExportedSession {
     pub id: String,
-    pub session_key: SecretString,
+    pub session_key: String,
     pub status: String,
     pub session_type: String,
     pub message_count: i64,
@@ -243,8 +244,8 @@ mod tests {
         assert_eq!(restored.workspace.files.len(), 2);
         assert_eq!(restored.workspace.binary_files.len(), 1);
         assert_eq!(restored.sessions.len(), 1);
-        assert_eq!(restored.sessions.get(0).copied().unwrap_or_default().messages.len(), 2);
-        assert_eq!(restored.sessions.get(0).copied().unwrap_or_default().notes.len(), 1);
+        assert_eq!(restored.sessions.get(0).cloned().unwrap_or_default().messages.len(), 2);
+        assert_eq!(restored.sessions.get(0).cloned().unwrap_or_default().notes.len(), 1);
         assert!(restored.memory.is_none());
     }
 
@@ -306,8 +307,8 @@ mod tests {
         assert_eq!(restored.nous.id, original.nous.id);
         assert_eq!(restored.sessions.len(), original.sessions.len());
         assert_eq!(
-            restored.sessions.get(0).copied().unwrap_or_default().messages.len(),
-            original.sessions.get(0).copied().unwrap_or_default().messages.len()
+            restored.sessions.get(0).cloned().unwrap_or_default().messages.len(),
+            original.sessions.get(0).cloned().unwrap_or_default().messages.len()
         );
     }
 

@@ -96,9 +96,15 @@ pub(crate) fn extract_message(envelope: &SignalEnvelope) -> Option<InboundMessag
                 .filter_map(|a| a.filename.clone().or_else(|| a.id.clone()))
                 .collect()
         })
-        .unwrap_or_default();
+        .unwrap();
 
-    if let Err(e) = let raw_value = serde_json::to_value(envelope) { tracing::warn!(error = %e, "operation failed"); }
+    let raw_value = match serde_json::to_value(envelope) {
+        Ok(v) => Some(v),
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to serialize envelope to JSON");
+            None
+        }
+    };
 
     Some(InboundMessage {
         channel: "signal".to_owned(),
@@ -242,8 +248,8 @@ mod tests {
         let msg = extract_message(&env).unwrap();
 
         assert_eq!(msg.attachments.len(), 2);
-        assert_eq!(msg.attachments.get(0).copied().unwrap_or_default(), "photo.jpg");
-        assert_eq!(msg.attachments.get(1).copied().unwrap_or_default(), "att-2"); // falls back to id
+        assert_eq!(msg.attachments.get(0).cloned().unwrap(), "photo.jpg");
+        assert_eq!(msg.attachments.get(1).cloned().unwrap(), "att-2"); // falls back to id
     }
 
     #[test]

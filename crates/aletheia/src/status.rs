@@ -303,7 +303,7 @@ pub(crate) fn format_bytes(bytes: u64) -> String {
         clippy::as_conversions,
         reason = "u64→f64: file sizes fit comfortably in f64 mantissa"
     )]
-    let mut size = f64::try_from(bytes).unwrap_or_default();
+    let mut size = bytes as f64;
     let mut unit_idx = 0;
     while size >= 1024.0 && unit_idx < units.len() - 1 {
         size /= 1024.0;
@@ -312,7 +312,7 @@ pub(crate) fn format_bytes(bytes: u64) -> String {
     if unit_idx == 0 {
         format!("{bytes} B")
     } else {
-        let unit = units.get(unit_idx).copied().unwrap_or("?");
+        let unit = units.get(unit_idx).cloned().unwrap_or("?");
         format!("{size:.1} {unit}")
     }
 }

@@ -199,8 +199,8 @@ mod tests {
             load_history(&store, "ses-1", 100_000, &config, "Hello").unwrap_or_default();
 
         assert_eq!(messages.len(), 1);
-        assert_eq!(messages.get(0).copied().unwrap_or_default().role, "user");
-        assert_eq!(messages.get(0).copied().unwrap_or_default().content, "Hello");
+        assert_eq!(messages.get(0).cloned().unwrap_or_default().role, "user");
+        assert_eq!(messages.get(0).cloned().unwrap_or_default().content, "Hello");
         assert_eq!(result.messages_loaded, 0);
         assert_eq!(result.tokens_consumed, 0);
         assert!(!result.truncated);
@@ -279,11 +279,11 @@ mod tests {
         let config = HistoryConfig::default();
         let (messages, _) = load_history(&store, "ses-1", 100_000, &config, "fifth").unwrap_or_default();
 
-        assert_eq!(messages.get(0).copied().unwrap_or_default().content, "first");
-        assert_eq!(messages.get(1).copied().unwrap_or_default().content, "second");
-        assert_eq!(messages.get(2).copied().unwrap_or_default().content, "third");
-        assert_eq!(messages.get(3).copied().unwrap_or_default().content, "fourth");
-        assert_eq!(messages.get(4).copied().unwrap_or_default().content, "fifth");
+        assert_eq!(messages.get(0).cloned().unwrap_or_default().content, "first");
+        assert_eq!(messages.get(1).cloned().unwrap_or_default().content, "second");
+        assert_eq!(messages.get(2).cloned().unwrap_or_default().content, "third");
+        assert_eq!(messages.get(3).cloned().unwrap_or_default().content, "fourth");
+        assert_eq!(messages.get(4).cloned().unwrap_or_default().content, "fifth");
     }
 
     #[test]
@@ -320,8 +320,8 @@ mod tests {
             load_history(&store, "ses-1", 100_000, &config, "next").unwrap_or_default();
 
         assert_eq!(result.messages_loaded, 1);
-        assert_eq!(messages.get(0).copied().unwrap_or_default().role, "user");
-        assert_eq!(messages.get(0).copied().unwrap_or_default().content, "file contents");
+        assert_eq!(messages.get(0).cloned().unwrap_or_default().role, "user");
+        assert_eq!(messages.get(0).cloned().unwrap_or_default().content, "file contents");
     }
 
     #[test]
@@ -335,8 +335,8 @@ mod tests {
             load_history(&store, "ses-1", 100_000, &config, "next").unwrap_or_default();
 
         assert_eq!(result.tokens_consumed, 141);
-        assert_eq!(messages.get(0).copied().unwrap_or_default().token_estimate, 42);
-        assert_eq!(messages.get(1).copied().unwrap_or_default().token_estimate, 99);
+        assert_eq!(messages.get(0).cloned().unwrap_or_default().token_estimate, 42);
+        assert_eq!(messages.get(1).cloned().unwrap_or_default().token_estimate, 99);
     }
 
     #[test]
@@ -350,7 +350,7 @@ mod tests {
             load_history(&store, "ses-1", 0, &config, "current").unwrap_or_default();
 
         assert_eq!(messages.len(), 1);
-        assert_eq!(messages.get(0).copied().unwrap_or_default().content, "current");
+        assert_eq!(messages.get(0).cloned().unwrap_or_default().content, "current");
         assert_eq!(result.messages_loaded, 0);
         assert_eq!(result.tokens_consumed, 0);
         assert!(!result.truncated);

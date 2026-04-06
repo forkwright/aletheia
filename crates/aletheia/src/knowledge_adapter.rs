@@ -84,7 +84,7 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
                 .to_string();
             let facts = self
                 .store
-                .query_facts_async(nous_id, now, i64::try_from(limit).unwrap_or(i64::MAX))
+                .query_facts_async(nous_id, now, limit as i64)
                 .await
                 .unwrap_or_else(|e| {
                     tracing::warn!(error = %e, "fact query failed, returning empty results");
@@ -291,7 +291,7 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
             let agent = nous_id.as_deref().unwrap_or("");
             let facts = self
                 .store
-                .audit_all_facts_async(agent.to_owned(), i64::try_from(limit).unwrap_or(i64::MAX))
+                .audit_all_facts_async(agent.to_owned(), limit as i64)
                 .await
                 .map_err(|e| {
                     FactQuerySnafu {

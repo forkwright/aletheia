@@ -101,7 +101,7 @@ async fn dispatch_one(
         "dispatching turn"
     );
 
-    let turn_result = match handle.send_turn(&decision.session_key, &msg.text).await {
+    let turn_result = match handle.send_turn(decision.session_key.expose_secret(), &msg.text).await {
         Ok(result) => result,
         Err(e) => {
             warn!(error = %e, nous_id = %decision.nous_id, "turn failed");

@@ -528,7 +528,7 @@ async fn run_background_distillation(
         clippy::as_conversions,
         reason = "i64→u32: distillation count is small non-negative"
     )]
-    let distill_count = session.metrics.u32::try_from(distillation_count).unwrap_or_default(); // kanon:ignore RUST/as-cast
+    let distill_count = session.metrics.distillation_count as u32; // kanon:ignore RUST/as-cast
     let result = match engine
         .distill(&messages, &nous_id, provider, distill_count + 1)
         .await

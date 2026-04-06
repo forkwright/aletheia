@@ -239,7 +239,7 @@ fn check_db_sizes(paths: &[PathBuf]) -> Vec<AttentionItem> {
                     clippy::as_conversions,
                     reason = "u64→f64: file sizes don't need exact precision for display"
                 )]
-                let size_gb = meta.len() as f64 / f64::try_from(ONE_GB).unwrap_or_default();
+                let size_gb = meta.len() as f64 / ONE_GB as f64;
                 // NOTE: single threshold — any file over 1 GB is High urgency.
                 items.extend(check_threshold(size_gb, 1.0, f64::INFINITY, |gb| {
                     format!("Database file large: {} is {gb:.1} GB", path.display())
@@ -272,7 +272,7 @@ fn check_memory() -> Vec<AttentionItem> {
                 clippy::cast_precision_loss,
                 reason = "u64→f64: MB VALUES are small enough for exact representation"
             )]
-            let rss_f64 = f64::try_from(rss_mb).unwrap_or_default();
+            let rss_f64 = rss_mb as f64;
             let label = if rss_mb >= 2048 {
                 "critical"
             } else {

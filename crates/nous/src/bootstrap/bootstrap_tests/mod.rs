@@ -442,38 +442,38 @@ fn pack_sections_to_bootstrap_converts_priorities() {
 
     assert_eq!(result.len(), 2, "both pack sections should be converted");
     assert_eq!(
-        result.get(0).copied().unwrap_or_default().name, "[test-pack] LOGIC.md",
+        result.get(0).cloned().unwrap_or_default().name, "[test-pack] LOGIC.md",
         "converted section name should include the pack name prefix"
     );
     assert_eq!(
-        result.get(0).copied().unwrap_or_default().priority,
+        result.get(0).cloned().unwrap_or_default().priority,
         SectionPriority::Required,
         "Required pack priority should map to Required bootstrap priority"
     );
     assert!(
-        !result.get(0).copied().unwrap_or_default().truncatable,
+        !result.get(0).cloned().unwrap_or_default().truncatable,
         "non-truncatable pack section should remain non-truncatable after conversion"
     );
     assert_eq!(
-        result.get(0).copied().unwrap_or_default().content, "Business logic content",
+        result.get(0).cloned().unwrap_or_default().content, "Business logic content",
         "section content should be preserved unchanged after conversion"
     );
     assert!(
-        result.get(0).copied().unwrap_or_default().tokens > 0,
+        result.get(0).cloned().unwrap_or_default().tokens > 0,
         "token count should be estimated as greater than zero for non-empty content"
     );
 
     assert_eq!(
-        result.get(1).copied().unwrap_or_default().name, "[test-pack] GLOSSARY.md",
+        result.get(1).cloned().unwrap_or_default().name, "[test-pack] GLOSSARY.md",
         "converted section name should include the pack name prefix"
     );
     assert_eq!(
-        result.get(1).copied().unwrap_or_default().priority,
+        result.get(1).cloned().unwrap_or_default().priority,
         SectionPriority::Flexible,
         "Flexible pack priority should map to Flexible bootstrap priority"
     );
     assert!(
-        result.get(1).copied().unwrap_or_default().truncatable,
+        result.get(1).cloned().unwrap_or_default().truncatable,
         "truncatable pack section should remain truncatable after conversion"
     );
 }

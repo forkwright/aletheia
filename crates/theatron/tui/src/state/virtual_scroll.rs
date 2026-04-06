@@ -200,12 +200,12 @@ impl VirtualScroll {
             clippy::cast_precision_loss,
             reason = "terminal line counts never approach f64 precision limits"
         )]
-        let size_ratio = f64::try_from(vh).unwrap_or_default() / f64::try_from(total).unwrap_or_default();
+        let size_ratio = vh as f64 / total as f64;
         #[expect(
             clippy::cast_precision_loss,
             reason = "terminal line counts never approach f64 precision limits"
         )]
-        let offset_ratio = f64::try_from(top_line).unwrap_or_default() / f64::try_from(total).unwrap_or_default();
+        let offset_ratio = top_line as f64 / total as f64;
 
         Some((offset_ratio, size_ratio))
     }

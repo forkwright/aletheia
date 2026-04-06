@@ -129,7 +129,7 @@ fn max_sessions_per_nous_limit_works() {
             &format!("ses-{i}"),
             "syn",
             "archived",
-            i64::from(5 - i), // ses-0 is oldest
+            (5 - i) as i64, // ses-0 is oldest
         );
     }
 
@@ -268,7 +268,7 @@ fn retention_concurrent_access() {
             &format!("ses-{i}"),
             "charlie",
             "archived",
-            100 + i64::from(i),
+            100 + i as i64,
         );
     }
 

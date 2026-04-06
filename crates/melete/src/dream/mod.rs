@@ -213,7 +213,7 @@ impl DreamEngine {
                         clippy::cast_possible_wrap,
                         reason = "u64→i64: min_hours * 3600 fits in i64 for any reasonable config"
                     )]
-                    let min_secs_i64 = i64::try_from(min_secs).unwrap_or_default();
+                    let min_secs_i64 = min_secs as i64;
                     if elapsed_secs < min_secs_i64 {
                         tracing::debug!(
                             elapsed_secs,
@@ -305,7 +305,7 @@ impl DreamEngine {
         let provider = Arc::clone(provider);
 
         tokio::spawn(async move {
-            let span = tracing::info_span!("auto_dream_consolidation".instrument(tracing::info_span!("spawned_task")));
+            let span = tracing::info_span!("auto_dream_consolidation");
             let _guard = span.enter();
 
             tracing::info!("auto-dream consolidation started");
@@ -327,7 +327,7 @@ impl DreamEngine {
                         clippy::cast_possible_truncation,
                         reason = "u128→u64: clamped to u64::MAX by min() above"
                     )]
-                    let duration_ms = u64::try_from(duration_ms).unwrap_or_default();
+                    let duration_ms = duration_ms as u64;
                     tracing::info!(
                         facts_added = report.facts_added,
                         facts_deduped = report.facts_deduped,

@@ -85,7 +85,7 @@ impl RecallSource for AcademicSource {
                     // Semantic Scholar returns results in relevance order.
                     let denominator = (clamped_limit.max(1)) as f64;
                     #[expect(clippy::cast_precision_loss, reason = "rank index is small enough that f64 precision is sufficient")]
-                    let relevance = 1.0 - (f64::try_from(rank).unwrap_or_default() / denominator);
+                    let relevance = 1.0 - ((rank as f64) / denominator);
                     SourceResult {
                         content,
                         relevance,
@@ -205,7 +205,7 @@ mod tests {
         let resp: SearchResponse = serde_json::from_str(json).unwrap();
         assert_eq!(resp.total, 1);
         assert_eq!(resp.data.len(), 1);
-        assert_eq!(resp.data.get(0).copied().unwrap_or_default().title, "Test Paper");
-        assert_eq!(resp.data.get(0).copied().unwrap_or_default().year, Some(2024));
+        assert_eq!(resp.data.get(0).cloned().unwrap_or_default().title, "Test Paper");
+        assert_eq!(resp.data.get(0).cloned().unwrap_or_default().year, Some(2024));
     }
 }

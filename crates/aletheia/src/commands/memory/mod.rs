@@ -313,7 +313,7 @@ fn count_relation(
         .and_then(|r| r.first())
         .and_then(aletheia_mneme::engine::DataValue::get_int)
         .unwrap_or(0);
-    Ok(usize::try_from(count).unwrap_or(0))
+    Ok(count as usize)
 }
 
 #[cfg(feature = "recall")]
@@ -697,7 +697,7 @@ fn find_entity_cooccurrence(
             cnt >= 2
 
         :sort -cnt
-        :LIMIT {LIMIT}
+        :LIMIT {limit}
         "
     );
     let result = store
@@ -729,7 +729,7 @@ fn find_relationship_chains(
             *relationships{{src, relation}}
 
         :sort -count(src)
-        :LIMIT {LIMIT}
+        :LIMIT {limit}
         "
     );
     let result = store
@@ -767,7 +767,7 @@ fn find_hub_entities(
             *entities{{id: eid, name}}
 
         :sort -total
-        :LIMIT {LIMIT}
+        :LIMIT {limit}
         "
     );
     let result = store

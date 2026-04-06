@@ -17,7 +17,7 @@ static SESSIONS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         Opts::new("aletheia_sessions_total", "Total sessions created"),
         &["nous_id", "session_type"]
     )
-    .unwrap_or_default()
+    .expect("metric registration is infallible at startup")
 });
 
 static BACKUP_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
@@ -29,7 +29,7 @@ static BACKUP_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
         .buckets(vec![0.1, 0.5, 1.0, 5.0, 10.0, 30.0, 60.0, 300.0]),
         &["status"]
     )
-    .unwrap_or_default()
+    .expect("metric registration is infallible at startup")
 });
 
 #[expect(dead_code, reason = "metric init called FROM server startup")]

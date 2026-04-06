@@ -376,7 +376,7 @@ impl NormalAggrObj for AggrChoiceRand {
             clippy::cast_precision_loss,
             reason = "i64 to f64: precision loss acceptable"
         )]
-        let prob = 1. / (self.f64::try_from(count).unwrap_or_default());
+        let prob = 1. / (self.count as f64);
         let rd = rand::rng().random::<f64>();
         if rd < prob {
             self.value = value.clone();

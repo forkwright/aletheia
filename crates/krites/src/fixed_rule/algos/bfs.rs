@@ -42,7 +42,7 @@ impl FixedRule for Bfs {
         'outer: for node_tuple in starting_nodes.iter()? {
             let node_tuple = node_tuple?;
             #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
-            let starting_node = &node_tuple.get(0).copied().unwrap_or_default();
+            let starting_node = &node_tuple[0];
             if visited.contains(starting_node) {
                 continue;
             }
@@ -55,7 +55,7 @@ impl FixedRule for Bfs {
                 for edge in edges.prefix_iter(&candidate)? {
                     let edge = edge?;
                     #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
-                    let to_node = &edge.get(1).copied().unwrap_or_default();
+                    let to_node = &edge[1];
                     if visited.contains(to_node) {
                         continue;
                     }

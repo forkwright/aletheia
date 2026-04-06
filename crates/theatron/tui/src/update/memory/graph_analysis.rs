@@ -49,7 +49,7 @@ pub(super) fn compute_graph_stats(app: &mut App) {
     let community_count = community_sizes.len();
     let avg_cluster_size = if community_count > 0 {
         let total: usize = community_sizes.values().sum();
-        f64::try_from(total).unwrap_or_default() / f64::try_from(community_count).unwrap_or_default()
+        total as f64 / community_count as f64
     } else {
         0.0
     };
@@ -154,7 +154,7 @@ pub(super) fn compute_pagerank(
     }
 
     let n = entities.len();
-    let initial = 1.0 / f64::try_from(n).unwrap_or_default();
+    let initial = 1.0 / n as f64;
     let mut scores: HashMap<String, f64> =
         entities.iter().map(|e| (e.id.clone(), initial)).collect();
 
@@ -169,7 +169,7 @@ pub(super) fn compute_pagerank(
     for _ in 0..PAGERANK_ITERATIONS {
         let mut new_scores: HashMap<String, f64> = entities
             .iter()
-            .map(|e| (e.id.clone(), (1.0 - PAGERANK_DAMPING) / f64::try_from(n).unwrap_or_default()))
+            .map(|e| (e.id.clone(), (1.0 - PAGERANK_DAMPING) / n as f64))
             .collect();
 
         for entity in entities {

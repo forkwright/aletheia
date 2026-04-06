@@ -4,6 +4,7 @@ use snafu::OptionExt as _;
 use tracing::Instrument;
 
 use crate::client::{EvalClient, SessionStatus};
+use aletheia_koina::secret::SecretString;
 use crate::scenario::{Scenario, ScenarioFuture, ScenarioMeta, assert_eq_eval, assert_eval};
 
 #[tracing::instrument(skip_all)]
@@ -40,7 +41,7 @@ impl Scenario for SessionCreateAndGet {
                 let session = client.create_session(nous_id, &key).await?;
                 assert_eval(!session.id.is_empty(), "session id should not be empty")?;
                 assert_eq_eval(&session.nous_id, nous_id, "nous_id should match")?;
-                assert_eq_eval(&session.session_key, &key, "session_key should match")?;
+                assert_eq_eval(&session.session_key.expose_secret().to_string(), &key, "session_key should match")?;
                 assert_eq_eval(
                     &session.status,
                     &SessionStatus::Active,

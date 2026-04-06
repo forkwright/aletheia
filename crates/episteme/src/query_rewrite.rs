@@ -295,7 +295,7 @@ pub(crate) fn rrf_merge<T: HasId + HasRrfScore + Clone>(
                 clippy::as_conversions,
                 reason = "usize→f64: rank index fits in f64"
             )]
-            let rrf_contribution = 1.0 / (k + f64::try_from(rank).unwrap_or_default() + 1.0);
+            let rrf_contribution = 1.0 / (k + rank as f64 + 1.0);
             let normalized = rrf_contribution / max_single_rrf;
             let entry = score_map
                 .entry(result.id().to_owned())
@@ -311,7 +311,7 @@ pub(crate) fn rrf_merge<T: HasId + HasRrfScore + Clone>(
         clippy::as_conversions,
         reason = "usize→f64: variant count fits in f64"
     )]
-    let divisor = f64::try_from(num_variants).unwrap_or_default();
+    let divisor = num_variants as f64;
 
     let mut merged: Vec<(f64, T)> = score_map.into_values().collect();
     for entry in &mut merged {

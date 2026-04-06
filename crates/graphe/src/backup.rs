@@ -7,6 +7,7 @@ use snafu::ResultExt;
 use tracing::{info, instrument, warn};
 
 use aletheia_koina::disk_space::DiskSpaceMonitor;
+use aletheia_koina::secret::SecretString;
 
 use crate::error::{self, Result};
 
@@ -241,7 +242,7 @@ impl<'a> BackupManager<'a> {
             files_written += 1;
         }
 
-        let count = u32::try_from(session_ids.len()).unwrap_or(u32::MAX);
+        let count = session_ids.len() as u32;
         info!(sessions = count, dir = %output_dir.display(), "JSON export complete");
 
         Ok(Some(ExportResult {
@@ -314,7 +315,7 @@ impl<'a> BackupManager<'a> {
 struct SessionExport {
     id: String,
     nous_id: String,
-    session_key: SecretString,
+    session_key: String,
     status: String,
     model: Option<String>,
     session_type: String,

@@ -72,7 +72,13 @@ impl ScenarioRunner {
             None => all_scenarios,
         };
 
-        if let Err(e) = let health = self.client.health().await { tracing::warn!(error = %e, "operation failed"); }
+        let health = match self.client.health().await {
+            Ok(h) => Some(h),
+            Err(e) => {
+                tracing::warn!(error = %e, "health check failed");
+                None
+            }
+        };
         let has_token = self.client.has_token();
 
         let has_nous = if has_token {

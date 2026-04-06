@@ -278,7 +278,7 @@ mod proptests {
             let dir = tempfile::tempdir().expect("temp dir should be created");
 
             for i in 0..fact_count {
-                let age = i64::try_from(i).expect("test index fits i64") * 10 + 5;
+                let age = i as i64 * 10 + 5;
                 insert_session(
                     &conn,
                     &format!("prop-ses-{i}"),
@@ -319,7 +319,7 @@ mod proptests {
             let dir = tempfile::tempdir().expect("temp dir should be created");
 
             for i in 0..session_count {
-                let age = i64::try_from(i).expect("test index fits i64") * 10 + 5;
+                let age = i as i64 * 10 + 5;
                 insert_session(
                     &conn,
                     &format!("bound-{i}"),

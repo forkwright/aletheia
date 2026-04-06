@@ -281,10 +281,10 @@ pub(crate) fn get_op(name: &str) -> Option<&'static Op> {
 impl Op {
     pub(crate) fn post_process_args(&self, args: &mut [Expr]) {
         if self.name.starts_with("OP_REGEX_") {
-            args.get(1).copied().unwrap_or_default() = Expr::Apply {
+            args[1] = Expr::Apply {
                 op: &OP_REGEX,
-                args: [args.get(1).copied().unwrap_or_default().clone()].into(),
-                span: args.get(1).copied().unwrap_or_default().span(),
+                args: [args[1].clone()].into(),
+                span: args[1].span(),
             }
         }
     }

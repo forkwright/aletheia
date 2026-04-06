@@ -130,7 +130,7 @@ impl BlackboardStore for SessionBlackboardAdapter {
         with_store(&self.0, |store| {
             let row = store.blackboard_read(key).map_err(store_err)?;
             Ok(row.map(|r| BlackboardEntry {
-                key: r.key,
+                key: r.key.expose_secret().to_string(),
                 value: r.value,
                 author_nous_id: r.author_nous_id,
                 ttl_seconds: r.ttl_seconds,
@@ -146,7 +146,7 @@ impl BlackboardStore for SessionBlackboardAdapter {
             Ok(rows
                 .into_iter()
                 .map(|r| BlackboardEntry {
-                    key: r.key,
+                    key: r.key.expose_secret().to_string(),
                     value: r.value,
                     author_nous_id: r.author_nous_id,
                     ttl_seconds: r.ttl_seconds,
@@ -206,7 +206,7 @@ mod tests {
 
         let notes = adapter.get_notes("sess-1").unwrap_or_default();
         assert_eq!(notes.len(), 1);
-        assert_eq!(notes.get(0).copied().unwrap_or_default().content, "buy oat milk");
+        assert_eq!(notes.get(0).cloned().unwrap_or_default().content, "buy oat milk");
 
         let deleted = adapter.delete_note(id).unwrap_or_default();
         assert!(deleted);

@@ -9,6 +9,8 @@ use tracing::instrument;
 
 use super::{KnowledgeStore, queries};
 
+use crate::engine::DataValue;
+
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
     /// Insert a causal edge between two fact nodes.
@@ -229,11 +231,11 @@ fn rows_to_causal_edges(
         if row.len() < 5 {
             continue;
         }
-        let cause_str = extract_str(&row.get(0).copied().unwrap_or_default())?;
-        let effect_str = extract_str(&row.get(1).copied().unwrap_or_default())?;
-        let ordering_str = extract_str(&row.get(2).copied().unwrap_or_default())?;
-        let confidence = extract_float(&row.get(3).copied().unwrap_or_default())?;
-        let created_at_str = extract_str(&row.get(4).copied().unwrap_or_default())?;
+        let cause_str = extract_str(&row.get(0).cloned().unwrap_or(DataValue::Null))?;
+        let effect_str = extract_str(&row.get(1).cloned().unwrap_or(DataValue::Null))?;
+        let ordering_str = extract_str(&row.get(2).cloned().unwrap_or(DataValue::Null))?;
+        let confidence = extract_float(&row.get(3).cloned().unwrap_or(DataValue::Null))?;
+        let created_at_str = extract_str(&row.get(4).cloned().unwrap_or(DataValue::Null))?;
 
         let ordering = ordering_str
             .parse::<crate::knowledge::TemporalOrdering>()

@@ -255,11 +255,15 @@ fn update_config(oikos: &Oikos, args: &AddNousArgs) -> Result<()> {
 /// Reads `gateway.bind` and `gateway.port` from the instance config to
 /// construct the URL dynamically instead of assuming the default address.
 async fn try_register(oikos: &Oikos, name: &str) {
-    if let Err(e) = let config = aletheia_taxis::loader::load_config(oikos) { tracing::warn!(error = %e, "operation failed"); }
-    let (bind, port) = config.as_ref().map_or(("127.0.0.1", 18789), |c| {
-        (c.gateway.bind.as_str(), c.gateway.port)
-    });
-    let host = match bind {
+    let config = match aletheia_taxis::loader::load_config(oikos) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!(error = %e, "operation failed");
+            return;
+        }
+    };
+    let (bind, port) = (&config.gateway.bind, config.gateway.port);
+    let host = match bind.as_str() {
         "lan" | "0.0.0.0" | "localhost" => "127.0.0.1",
         other => other,
     };

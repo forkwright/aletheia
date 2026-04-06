@@ -82,7 +82,7 @@ impl TokenBucket {
 
     #[expect(clippy::expect_used, reason = "mutex poisoning is unrecoverable")]
     fn try_acquire(&self) -> bool {
-        let mut state = self.inner.lock().unwrap_or_default();
+        let mut state = self.inner.lock().expect("mutex should not be poisoned");
         let now = Instant::now();
         let elapsed = now.duration_since(state.last_refill).as_secs_f64();
         state.tokens = (state.tokens + elapsed * state.refill_rate).min(state.capacity);

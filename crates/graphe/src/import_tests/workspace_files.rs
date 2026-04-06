@@ -276,7 +276,7 @@ fn import_creates_sessions_and_messages() {
         .unwrap_or_default();
     assert_eq!(sessions.len(), 1, "one session should be stored");
     assert!(
-        sessions.get(0).copied().unwrap_or_default().session_key.starts_with("main-import-"),
+        sessions.get(0).cloned().unwrap_or_default().session_key.starts_with("main-import-"),
         "session key should include original key and import suffix"
     );
 }
@@ -411,7 +411,7 @@ fn import_validates_note_categories() {
     let store = test_store();
     let dir = tempfile::tempdir().unwrap_or_default();
     let mut agent = minimal_agent_file();
-    agent.sessions.get(0).copied().unwrap_or_default().notes.push(ExportedNote {
+    agent.sessions.get(0).cloned().unwrap_or_default().notes.push(ExportedNote {
         category: "invalid_category".to_owned(),
         content: "should default to context".to_owned(),
         created_at: "2026-03-05T10:30:00Z".to_owned(),

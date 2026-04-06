@@ -370,7 +370,7 @@ impl NousActor {
         envelope: CrossNousEnvelope,
     ) -> crate::error::Result<()> {
         let from = &envelope.message.from;
-        let session_key = format!("cross:{FROM}");
+        let session_key = format!("cross:{from}");
         let content = envelope.message.content.clone();
 
         debug!(from = %from, session_key = %session_key, "processing cross-nous message");

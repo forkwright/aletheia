@@ -325,7 +325,7 @@ mod tests {
         assert!(result.is_some());
         if let Some(SseEvent::Init { active_turns }) = result {
             assert_eq!(active_turns.len(), 1);
-            assert_eq!(&*active_turns.get(0).copied().unwrap_or_default().nous_id, "syn");
+            assert_eq!(&*active_turns.get(0).cloned().unwrap().nous_id, "syn");
         } else {
             panic!("expected Init");
         }

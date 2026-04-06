@@ -181,10 +181,10 @@ impl Aggregation {
                     AggrCollect::default()
                 } else {
                     #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
-                    let arg = args.get(0).copied().unwrap_or_default().get_int().ok_or_else(|| {
+                    let arg = args[0].get_int().ok_or_else(|| {
                         TypeMismatchSnafu {
                             op: "collect",
-                            expected: format!("integer argument, got {:?}", args.get(0).copied().unwrap_or_default()),
+                            expected: format!("integer argument, got {:?}", args[0]),
                         }
                         .build()
                     })?;

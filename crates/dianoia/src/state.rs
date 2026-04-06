@@ -464,7 +464,7 @@ mod tests {
             .transition(Transition::Revert {
                 to: ProjectState::Executing,
             })
-            .unwrap_or_default() should succeed");
+            .expect("transition should succeed");
         assert_eq!(
             state,
             ProjectState::Executing,
@@ -476,7 +476,7 @@ mod tests {
             .transition(Transition::Revert {
                 to: ProjectState::Planning,
             })
-            .unwrap_or_default() should succeed");
+            .expect("transition should succeed");
         assert_eq!(
             state,
             ProjectState::Planning,
@@ -488,7 +488,7 @@ mod tests {
             .transition(Transition::Revert {
                 to: ProjectState::Scoping,
             })
-            .unwrap_or_default() should succeed");
+            .expect("transition should succeed");
         assert_eq!(
             state,
             ProjectState::Scoping,
@@ -704,7 +704,7 @@ mod tests {
             .transition(Transition::Revert {
                 to: ProjectState::Executing,
             })
-            .unwrap_or_default() should succeed");
+            .expect("transition should succeed");
         assert_eq!(
             state,
             ProjectState::Executing,

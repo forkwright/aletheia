@@ -178,9 +178,9 @@ fn export_import_preserves_timestamps() {
     )
     .unwrap_or_default();
 
-    let orig_created = exported.sessions.get(0).copied().unwrap_or_default().created_at.clone();
-    let orig_updated = exported.sessions.get(0).copied().unwrap_or_default().updated_at.clone();
-    let orig_msg_ts = exported.sessions.get(0).copied().unwrap_or_default().messages.get(0).copied().unwrap_or_default().created_at.clone();
+    let orig_created = exported.sessions.get(0).cloned().unwrap_or_default().created_at.clone();
+    let orig_updated = exported.sessions.get(0).cloned().unwrap_or_default().updated_at.clone();
+    let orig_msg_ts = exported.sessions.get(0).cloned().unwrap_or_default().messages.get(0).cloned().unwrap_or_default().created_at.clone();
 
     let json = serde_json::to_string(&exported).unwrap_or_default();
     let restored: AgentFile = serde_json::from_str(&json).unwrap_or_default();
@@ -202,19 +202,19 @@ fn export_import_preserves_timestamps() {
         .unwrap_or_default();
     assert_eq!(sessions.len(), 1, "one session should be imported");
     assert_eq!(
-        sessions.get(0).copied().unwrap_or_default().created_at, orig_created,
+        sessions.get(0).cloned().unwrap_or_default().created_at, orig_created,
         "session created_at should be preserved"
     );
     assert_eq!(
-        sessions.get(0).copied().unwrap_or_default().updated_at, orig_updated,
+        sessions.get(0).cloned().unwrap_or_default().updated_at, orig_updated,
         "session updated_at should be preserved"
     );
 
     let messages = import_store
-        .get_history(&sessions.get(0).copied().unwrap_or_default().id, None)
+        .get_history(&sessions.get(0).cloned().unwrap_or_default().id, None)
         .unwrap_or_default();
     assert_eq!(
-        messages.get(0).copied().unwrap_or_default().created_at, orig_msg_ts,
+        messages.get(0).cloned().unwrap_or_default().created_at, orig_msg_ts,
         "message timestamp should be preserved"
     );
 }
@@ -279,10 +279,10 @@ fn export_import_preserves_unicode() {
         .list_sessions(Some("uni"))
         .unwrap_or_default();
     let messages = import_store
-        .get_history(&sessions.get(0).copied().unwrap_or_default().id, None)
+        .get_history(&sessions.get(0).cloned().unwrap_or_default().id, None)
         .unwrap_or_default();
     assert_eq!(
-        messages.get(0).copied().unwrap_or_default().content, combined,
+        messages.get(0).cloned().unwrap_or_default().content, combined,
         "unicode message content should survive export/import roundtrip"
     );
 }
@@ -365,15 +365,15 @@ fn category_validation_uses_shared_constant() {
     let valid_categories = crate::schema::VALID_CATEGORIES;
 
     let mut agent = minimal_agent_file();
-    agent.sessions.get(0).copied().unwrap_or_default().notes.clear();
+    agent.sessions.get(0).cloned().unwrap_or_default().notes.clear();
     for cat in valid_categories {
-        agent.sessions.get(0).copied().unwrap_or_default().notes.push(ExportedNote {
+        agent.sessions.get(0).cloned().unwrap_or_default().notes.push(ExportedNote {
             category: (*cat).to_owned(),
             content: format!("note for {cat}"),
             created_at: "2026-03-05T10:30:00Z".to_owned(),
         });
     }
-    agent.sessions.get(0).copied().unwrap_or_default().notes.push(ExportedNote {
+    agent.sessions.get(0).cloned().unwrap_or_default().notes.push(ExportedNote {
         category: "bogus_category".to_owned(),
         content: "should default to context".to_owned(),
         created_at: "2026-03-05T10:30:00Z".to_owned(),
@@ -457,7 +457,7 @@ fn import_preserves_note_content() {
         .list_sessions(Some("alice"))
         .unwrap_or_default();
     let notes = store
-        .get_notes(&sessions.get(0).copied().unwrap_or_default().id)
+        .get_notes(&sessions.get(0).cloned().unwrap_or_default().id)
         .unwrap_or_default();
     assert_eq!(notes.len(), 2, "two notes should be stored");
     let contents: Vec<&str> = notes.iter().map(|n| n.content.as_str()).collect();
@@ -705,9 +705,9 @@ mod proptests {
                 .list_sessions(Some("prop-agent"))
                 .unwrap_or_default();
             let messages = import_store
-                .get_history(&sessions.get(0).copied().unwrap_or_default().id, None)
+                .get_history(&sessions.get(0).cloned().unwrap_or_default().id, None)
                 .unwrap_or_default();
-            prop_assert_eq!(&messages.get(0).copied().unwrap_or_default().content, &content);
+            prop_assert_eq!(&messages.get(0).cloned().unwrap_or_default().content, &content);
         }
     }
 }

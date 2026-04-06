@@ -158,7 +158,7 @@ fn jaro_winkler(s1: &str, s2: &str) -> f64 {
         clippy::cast_precision_loss,
         reason = "prefix_len is at most 4, well within f64 mantissa"
     )]
-    let prefix_f = f64::try_from(prefix_len).unwrap_or_default();
+    let prefix_f = prefix_len as f64;
     jaro + (prefix_f * 0.1 * (1.0 - jaro))
 }
 
@@ -212,12 +212,12 @@ fn jaro(s1: &str, s2: &str) -> f64 {
         clippy::cast_precision_loss,
         reason = "string lengths won't exceed 2^52 in practice"
     )]
-    let s1_f = f64::try_from(s1_len).unwrap_or_default();
+    let s1_f = s1_len as f64;
     #[expect(
         clippy::cast_precision_loss,
         reason = "string lengths won't exceed 2^52 in practice"
     )]
-    let s2_f = f64::try_from(s2_len).unwrap_or_default();
+    let s2_f = s2_len as f64;
     (matches / s1_f + matches / s2_f + (matches - transpositions / 2.0) / matches) / 3.0
 }
 

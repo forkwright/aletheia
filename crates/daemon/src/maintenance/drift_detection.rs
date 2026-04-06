@@ -121,7 +121,7 @@ impl DriftDetector {
             let path = entry.path();
             let relative = path
                 .strip_prefix(&self.config.example_root)
-                .unwrap_or_default();
+                .unwrap_or(&path);
 
             if self.is_ignored(relative) {
                 continue;

@@ -360,7 +360,7 @@ mod tests {
     #[test]
     fn client_creation() {
         install_crypto_provider();
-        let client = SignalClient::new("localhost:8080").unwrap_or_default();
+        let client = SignalClient::new("localhost:8080").unwrap();
         assert_eq!(client.rpc_url(), "http://localhost:8080/api/v1/rpc");
     }
 
@@ -394,13 +394,13 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = SignalClient::new(&server.uri()).unwrap_or_default();
-        let envelopes = client.receive(None).await.unwrap_or_default();
+        let client = SignalClient::new(&server.uri()).unwrap();
+        let envelopes = client.receive(None).await.unwrap();
 
         assert_eq!(envelopes.len(), 1);
-        assert_eq!(envelopes.get(0).copied().unwrap_or_default().source_number.as_deref(), Some("+1234567890"));
+        assert_eq!(envelopes.get(0).cloned().unwrap().source_number.as_deref(), Some("+1234567890"));
         assert_eq!(
-            envelopes.get(0).copied().unwrap_or_default()
+            envelopes.get(0).cloned().unwrap()
                 .data_message
                 .as_ref()
                 .and_then(|d| d.message.as_deref()),
@@ -425,8 +425,8 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = SignalClient::new(&server.uri()).unwrap_or_default();
-        let envelopes = client.receive(None).await.unwrap_or_default();
+        let client = SignalClient::new(&server.uri()).unwrap();
+        let envelopes = client.receive(None).await.unwrap();
         assert!(envelopes.is_empty());
     }
 
@@ -447,7 +447,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = SignalClient::new(&server.uri()).unwrap_or_default();
+        let client = SignalClient::new(&server.uri()).unwrap();
         let err = client.receive(None).await.expect_err("should fail");
         let msg = err.to_string();
         assert!(msg.contains("method not found"), "got: {msg}");
@@ -486,11 +486,11 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = SignalClient::new(&server.uri()).unwrap_or_default();
-        let envelopes = client.receive(None).await.unwrap_or_default();
+        let client = SignalClient::new(&server.uri()).unwrap();
+        let envelopes = client.receive(None).await.unwrap();
 
         assert_eq!(envelopes.len(), 2);
-        assert_eq!(envelopes.get(0).copied().unwrap_or_default().source_number.as_deref(), Some("+1111111111"));
-        assert_eq!(envelopes.get(1).copied().unwrap_or_default().source_number.as_deref(), Some("+2222222222"));
+        assert_eq!(envelopes.get(0).cloned().unwrap().source_number.as_deref(), Some("+1111111111"));
+        assert_eq!(envelopes.get(1).cloned().unwrap().source_number.as_deref(), Some("+2222222222"));
     }
 }

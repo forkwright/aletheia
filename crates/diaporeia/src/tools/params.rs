@@ -27,7 +27,7 @@ pub(crate) struct SessionMessageParams {
     /// The nous agent ID.
     pub nous_id: String,
     /// The session key identifying the conversation.
-    pub session_key: SecretString,
+    pub session_key: String,
     /// The message content to send.
     pub content: String,
 }

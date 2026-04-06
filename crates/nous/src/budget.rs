@@ -86,7 +86,7 @@ impl TokenBudget {
             clippy::as_conversions,
             reason = "u64→f64→u64: context_window fits in f64 mantissa for practical model sizes"
         )]
-        let reserved_for_history = (f64::try_from(context_window).unwrap_or_default() * history_ratio) as u64; // kanon:ignore RUST/as-cast
+        let reserved_for_history = (context_window as f64 * history_ratio) as u64; // kanon:ignore RUST/as-cast
         let computed = context_window
             .saturating_sub(turn_reserve)
             .saturating_sub(reserved_for_history);

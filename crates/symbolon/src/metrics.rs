@@ -17,7 +17,7 @@ static AUTH_ATTEMPTS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         ),
         &["method", "status"]
     )
-    .unwrap_or_default()
+    .expect("metric registration must succeed at startup")
 });
 
 static TOKEN_REFRESHES_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
@@ -28,7 +28,7 @@ static TOKEN_REFRESHES_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         ),
         &["status"]
     )
-    .unwrap_or_default()
+    .expect("metric registration must succeed at startup")
 });
 
 static CREDENTIAL_WRITE_FAILURES_TOTAL: LazyLock<prometheus::IntCounter> = LazyLock::new(|| {
@@ -36,7 +36,7 @@ static CREDENTIAL_WRITE_FAILURES_TOTAL: LazyLock<prometheus::IntCounter> = LazyL
         "aletheia_credential_write_failures_total",
         "Total credential file write failures"
     )
-    .unwrap_or_default()
+    .expect("metric registration must succeed at startup")
 });
 
 #[expect(dead_code, reason = "metric init called FROM server startup")]

@@ -122,7 +122,7 @@ pub(crate) fn detect_urls(text: &str) -> Vec<(usize, usize, &str)> {
         reason = "regex is a compile-time string literal and is always valid"
     )]
     static URL_RE: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r#"https?://[^\s<>{}|\\^`\[\]'"]+"#).unwrap_or_default()
+        Regex::new(r#"https?://[^\s<>{}|\\^`\[\]'"]+"#).unwrap()
     });
 
     let mut out = Vec::new();

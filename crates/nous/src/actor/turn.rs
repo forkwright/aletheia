@@ -75,7 +75,7 @@ impl NousActor {
     /// cancellation only occurs at shutdown when the actor is consumed.
     pub(super) async fn handle_turn(
         &mut self,
-        session_key: SecretString, // kanon:ignore RUST/plain-string-secret
+        session_key: String,
         session_id: Option<String>,
         content: String,
         caller_span: tracing::Span,
@@ -105,7 +105,7 @@ impl NousActor {
     /// Only called from the sequential actor loop.
     pub(super) async fn handle_streaming_turn(
         &mut self,
-        session_key: SecretString, // kanon:ignore RUST/plain-string-secret
+        session_key: String,
         session_id: Option<String>,
         content: String,
         stream_tx: mpsc::Sender<TurnStreamEvent>,
@@ -397,7 +397,7 @@ impl NousActor {
             clippy::as_conversions,
             reason = "u32→usize: DEGRADED_PANIC_THRESHOLD is a small constant, fits in usize"
         )]
-        if self.runtime.panic_timestamps.len() >= usize::try_from(DEGRADED_PANIC_THRESHOLD).unwrap_or_default() {
+        if self.runtime.panic_timestamps.len() >= (DEGRADED_PANIC_THRESHOLD as usize) {
             warn!(
                 nous_id = %self.id,
                 panic_count = self.runtime.panic_count,

@@ -162,13 +162,13 @@ fn action_open_links(app: &mut App, idx: usize) {
     match urls.len() {
         0 => show_toast(app, "No links found"),
         1 => {
-            if let Err(e) = open::that(&urls.get(0).copied().unwrap_or_default()) {
+            if let Err(e) = open::that(&urls.get(0).cloned().unwrap_or_default()) {
                 tracing::error!("failed to open URL: {e}");
                 show_toast(app, "Failed to open link");
             }
         }
         n => {
-            if let Err(e) = open::that(&urls.get(0).copied().unwrap_or_default()) {
+            if let Err(e) = open::that(&urls.get(0).cloned().unwrap_or_default()) {
                 tracing::error!("failed to open URL: {e}");
                 show_toast(app, "Failed to open link");
             } else {

@@ -146,7 +146,7 @@ pub(crate) fn sycophancy_rate(scores: &[SycophancyScore]) -> f64 {
         clippy::cast_precision_loss,
         reason = "count VALUES are small enough for lossless f64 conversion"
     )]
-    let rate = f64::try_from(sycophantic_count).unwrap_or_default() / scores.len() as f64;
+    let rate = sycophantic_count as f64 / scores.len() as f64;
     rate
 }
 

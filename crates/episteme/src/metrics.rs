@@ -20,7 +20,7 @@ static KNOWLEDGE_FACTS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         ),
         &["nous_id"]
     )
-    .unwrap_or_default()
+    .expect("metric registration should not fail")
 });
 
 static KNOWLEDGE_EXTRACTIONS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
@@ -31,7 +31,7 @@ static KNOWLEDGE_EXTRACTIONS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         ),
         &["nous_id", "status"]
     )
-    .unwrap_or_default()
+    .expect("metric registration should not fail")
 });
 
 static RECALL_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
@@ -43,7 +43,7 @@ static RECALL_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
         .buckets(vec![0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0]),
         &["nous_id"]
     )
-    .unwrap_or_default()
+    .expect("metric registration should not fail")
 });
 
 static EMBEDDING_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
@@ -55,7 +55,7 @@ static EMBEDDING_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
         .buckets(vec![0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0]),
         &["provider"]
     )
-    .unwrap_or_default()
+    .expect("metric registration should not fail")
 });
 
 #[expect(dead_code, reason = "metric init called FROM server startup")]

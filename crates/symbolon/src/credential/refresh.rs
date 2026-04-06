@@ -377,8 +377,8 @@ async fn refresh_loop(
                     .as_deref()
                     .map(|s| s.split_whitespace().map(String::from).collect());
                 let cred_file = CredentialFile {
-                    token: resp.access_token.clone(),
-                    refresh_token: Some(resp.refresh_token.clone()),
+                    token: resp.access_token.expose_secret().to_owned(),
+                    refresh_token: Some(resp.refresh_token.expose_secret().to_owned()),
                     expires_at: Some(new_expires_at_ms),
                     scopes,
                     subscription_type: subscription_type.clone(),
@@ -529,8 +529,8 @@ pub async fn force_refresh(path: &Path) -> Result<CredentialFile, String> {
         .scope
         .map(|s| s.split_whitespace().map(String::from).collect());
     let updated = CredentialFile {
-        token: resp.access_token,
-        refresh_token: Some(resp.refresh_token),
+        token: resp.access_token.expose_secret().to_owned(),
+        refresh_token: Some(resp.refresh_token.expose_secret().to_owned()),
         expires_at: Some(expires_at_ms),
         scopes,
         subscription_type: cred.subscription_type,

@@ -459,7 +459,7 @@ impl<'a> SessionTx<'a> {
             m_neighbours: config.m_neighbours,
             m_max: config.m_neighbours,
             m_max0: config.m_neighbours * 2,
-            level_multiplier: 1. / (config.f64::try_from(m_neighbours).unwrap_or_default()).ln(),
+            level_multiplier: 1. / ((config.m_neighbours as f64).ln()),
             index_filter: config.index_filter.clone(),
             extend_candidates: config.extend_candidates,
             keep_pruned_connections: config.keep_pruned_connections,

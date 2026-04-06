@@ -130,7 +130,7 @@ pub fn should_trigger_distillation(
         clippy::as_conversions,
         reason = "u64→f64→u64: context_window * ratio is a rough threshold; precision/truncation acceptable"
     )]
-    let threshold = (f64::try_from(context_window).unwrap_or_default() * config.max_history_share) as u64;
+    let threshold = (context_window as f64 * config.max_history_share) as u64;
     if actual_context_u64 >= threshold
         && session.metrics.message_count >= LEGACY_THRESHOLD_MIN_MESSAGES
     {
@@ -203,7 +203,7 @@ pub async fn maybe_distill(
         clippy::as_conversions,
         reason = "i64→u32: distillation_count is small non-negative"
     )]
-    let distill_count = session.metrics.u32::try_from(distillation_count).unwrap_or_default();
+    let distill_count = session.metrics.distillation_count as u32;
     let result = engine
         .distill(&messages, nous_id, provider, distill_count + 1)
         .await
@@ -256,10 +256,10 @@ pub fn apply_distillation(
     store
         .record_distillation(
             session_id,
-            i64::try_from(distill_count).unwrap_or_default(),
+            distill_count as i64,
             (history.len() - distill_count) as i64,
-            result.i64::try_from(tokens_before).unwrap_or_default(),
-            result.i64::try_from(tokens_after).unwrap_or_default(),
+            result.tokens_before as i64,
+            result.tokens_after as i64,
             None,
         )
         .context(error::StoreSnafu)?;
@@ -562,8 +562,8 @@ mod tests {
         ];
         let converted = convert_to_hermeneus_messages(&messages);
         assert_eq!(converted.len(), 3);
-        assert_eq!(converted.get(0).copied().unwrap_or_default().role, HermeneusRole::System);
-        assert_eq!(converted.get(1).copied().unwrap_or_default().role, HermeneusRole::User);
-        assert_eq!(converted.get(2).copied().unwrap_or_default().role, HermeneusRole::User);
+        assert_eq!(converted.get(0).cloned().unwrap_or_default().role, HermeneusRole::System);
+        assert_eq!(converted.get(1).cloned().unwrap_or_default().role, HermeneusRole::User);
+        assert_eq!(converted.get(2).cloned().unwrap_or_default().role, HermeneusRole::User);
     }
 }

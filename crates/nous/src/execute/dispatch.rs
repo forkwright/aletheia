@@ -44,7 +44,7 @@ pub(crate) fn truncate_tool_result(
         clippy::as_conversions,
         reason = "u32→usize: max_bytes always fits in usize"
     )]
-    let limit = usize::try_from(max_bytes).unwrap_or_default(); // kanon:ignore RUST/as-cast
+    let limit = max_bytes as usize; // kanon:ignore RUST/as-cast
 
     match content {
         ToolResultContent::Text(text) => {
@@ -120,7 +120,7 @@ pub(crate) fn truncate_tool_result(
                     }
                 }
             }
-            let indicator = format!("\n[truncated: {total} -> {LIMIT} bytes]");
+            let indicator = format!("\n[truncated: {total} -> {limit} bytes]");
             out.push(ToolResultBlock::Text { text: indicator });
             ToolResultContent::Blocks(out)
         }
@@ -541,7 +541,7 @@ mod tests {
         let limit = 80 + image_size + 10;
         let content = ToolResultContent::Blocks(blocks);
         #[expect(clippy::as_conversions, reason = "usize→u32: test value fits")]
-        let result = truncate_tool_result(content, u32::try_from(limit).unwrap_or_default()); // kanon:ignore RUST/as-cast
+        let result = truncate_tool_result(content, limit as u32); // kanon:ignore RUST/as-cast
         match result {
             ToolResultContent::Blocks(bs) => {
                 let has_image = bs

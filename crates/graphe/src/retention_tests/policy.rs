@@ -28,7 +28,7 @@ fn retention_preserves_active_facts() {
             &format!("active-{i}"),
             "alice",
             "active",
-            100 + i64::from(i),
+            100 + i as i64,
         );
     }
     for i in 0..3 {
@@ -37,7 +37,7 @@ fn retention_preserves_active_facts() {
             &format!("expired-{i}"),
             "alice",
             "archived",
-            100 + i64::from(i),
+            100 + i as i64,
         );
     }
 
@@ -136,7 +136,7 @@ fn apply_twice_is_idempotent() {
     let dir = tempfile::tempdir().unwrap_or_default();
 
     for i in 0..8 {
-        let age = 10 + i64::from(i) * 15;
+        let age = 10 + i as i64 * 15;
         insert_session(&conn, &format!("idem-{i}"), "alice", "archived", age);
         insert_message(&conn, &format!("idem-{i}"), 1);
     }
@@ -217,7 +217,7 @@ fn policy_max_sessions_respected() {
             &format!("max-{i}"),
             "alice",
             "archived",
-            i64::from(i),
+            i as i64,
         );
     }
 
@@ -276,7 +276,7 @@ fn retention_respects_keep_minimum() {
             &format!("keep-{i}"),
             "bob",
             "archived",
-            i64::from(i) + 1,
+            i as i64 + 1,
         );
     }
 

@@ -1,5 +1,6 @@
 //! Agent notes and blackboard operations.
 
+use aletheia_koina::secret::SecretString;
 use snafu::ResultExt;
 use tracing::instrument;
 
@@ -108,7 +109,7 @@ impl SessionStore {
                 [key],
                 |row| {
                     Ok(BlackboardRow {
-                        key: row.get(0)?,
+                        key: SecretString::from(row.get::<_, String>(0)?),
                         value: row.get(1)?,
                         author_nous_id: row.get(2)?,
                         ttl_seconds: row.get(3)?,
@@ -138,7 +139,7 @@ impl SessionStore {
         let rows = stmt
             .query_map([], |row| {
                 Ok(BlackboardRow {
-                    key: row.get(0)?,
+                    key: SecretString::from(row.get::<_, String>(0)?),
                     value: row.get(1)?,
                     author_nous_id: row.get(2)?,
                     ttl_seconds: row.get(3)?,

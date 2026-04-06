@@ -171,7 +171,7 @@ impl MmapVectorStorage {
 
         let count = file_len_usize / stride;
         let inner = Self::create_inner(&file, file_len_usize)?;
-        let hint = AtomicU8::new(AccessHint::u8::try_from(Random).unwrap_or_default());
+        let hint = AtomicU8::new(AccessHint::Random as u8);
 
         debug!(path = %path.display(), dim, count, "opened mmap vector storage");
 
@@ -274,7 +274,7 @@ impl MmapVectorStorage {
     /// On Unix this calls `madvise` to inform the kernel. On other platforms
     /// this is a no-op (the hint is recorded but not applied).
     pub(crate) fn set_access_hint(&self, hint: AccessHint) {
-        self.hint.store(u8::try_from(hint).unwrap_or_default(), Ordering::Relaxed);
+        self.hint.store(hint as u8, Ordering::Relaxed);
         self.apply_madvise(hint);
     }
 

@@ -9,6 +9,7 @@ use serde::Deserialize;
 use snafu::prelude::*;
 
 use aletheia_koina::http::{API_V1, BEARER_PREFIX};
+use aletheia_koina::secret::SecretString;
 
 use crate::error::Result;
 

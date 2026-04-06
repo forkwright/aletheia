@@ -520,7 +520,7 @@ impl KnowledgeStore {
                     clippy::cast_precision_loss,
                     reason = "total_minutes is an elapsed time value; precision loss is acceptable for rate-LIMIT comparison"
                 )]
-                let elapsed_hours = (f64::try_from(total_minutes).unwrap_or_default()) / 60.0;
+                let elapsed_hours = (total_minutes as f64) / 60.0;
                 if elapsed_hours < config.rate_limit_hours {
                     return Err(RateLimitedSnafu {
                         elapsed_hours,

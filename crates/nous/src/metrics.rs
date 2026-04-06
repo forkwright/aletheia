@@ -21,7 +21,7 @@ static PIPELINE_TURNS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         ),
         &["nous_id"]
     )
-    .unwrap_or_default() // kanon:ignore RUST/expect
+    .expect("metric registration should not fail")
 });
 
 static PIPELINE_STAGE_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
@@ -35,7 +35,7 @@ static PIPELINE_STAGE_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|
         ]),
         &["nous_id", "stage"]
     )
-    .unwrap_or_default() // kanon:ignore RUST/expect
+    .expect("metric registration should not fail")
 });
 
 static PIPELINE_ERRORS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
@@ -43,7 +43,7 @@ static PIPELINE_ERRORS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         Opts::new("aletheia_pipeline_errors_total", "Total pipeline errors"),
         &["nous_id", "stage", "error_type"]
     )
-    .unwrap_or_default() // kanon:ignore RUST/expect
+    .expect("metric registration should not fail")
 });
 
 static CACHE_READ_TOKENS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
@@ -54,7 +54,7 @@ static CACHE_READ_TOKENS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         ),
         &["nous_id"]
     )
-    .unwrap_or_default() // kanon:ignore RUST/expect
+    .expect("metric registration should not fail")
 });
 
 static CACHE_CREATION_TOKENS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
@@ -65,7 +65,7 @@ static CACHE_CREATION_TOKENS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
         ),
         &["nous_id"]
     )
-    .unwrap_or_default() // kanon:ignore RUST/expect
+    .expect("metric registration should not fail")
 });
 
 #[cfg_attr(

@@ -145,7 +145,7 @@ impl Schedule {
             }
             Self::Interval(duration) => {
                 let span = jiff::SignedDuration::from_nanos(
-                    i64::try_from(duration.as_nanos()).unwrap_or_default(),
+                    duration.as_nanos() as i64,
                 );
                 let next = jiff::Timestamp::now()
                     .checked_add(span)
@@ -216,7 +216,7 @@ impl Schedule {
         };
 
         let now = jiff::Zoned::now();
-        let hour = u8::try_from(now.hour()).unwrap_or_default();
+        let hour = now.hour() as u8;
 
         if start <= end {
             hour >= start && hour < end
@@ -248,15 +248,15 @@ pub(crate) fn compute_jitter(
 
     // NOTE: extract lower 32 bits → [0, 1) fraction
     #[expect(clippy::cast_precision_loss, clippy::as_conversions, reason = "u32/i128 to f64: VALUES within f64 mantissa range for practical jitter")]
-    let frac = (u32::try_from(hash).unwrap_or_default()) as f64 / f64::from(u32::MAX);
+    let frac = (hash as u32) as f64 / f64::from(u32::MAX);
 
     let max_nanos = max_jitter.as_nanos();
     // NOTE: f64 multiplication then truncate back to i128 → i64
     #[expect(clippy::cast_precision_loss, clippy::as_conversions, reason = "i128 to f64: duration nanos within practical range")]
-    let jitter_nanos = (f64::try_from(max_nanos).unwrap_or_default() * frac) as i128;
+    let jitter_nanos = ((max_nanos as f64) * frac) as i128;
 
     // SAFETY: jitter_nanos ≤ max_jitter nanos, which fits in the input SignedDuration
-    jiff::SignedDuration::from_nanos(i64::try_from(jitter_nanos).unwrap_or_default())
+    jiff::SignedDuration::from_nanos(jitter_nanos as i64)
 }
 
 /// Apply jitter to a computed next-run timestamp.

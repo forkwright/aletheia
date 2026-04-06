@@ -657,8 +657,8 @@ mod tests {
     fn cache_safe_params_sorts_tools_deterministically() {
         let params = test_cache_params();
         // WHY: tools were provided as [zeta, alpha] but must be sorted [alpha, zeta]
-        assert_eq!(params.tools.get(0).copied().unwrap_or_default().name, "alpha_tool");
-        assert_eq!(params.tools.get(1).copied().unwrap_or_default().name, "zeta_tool");
+        assert_eq!(params.tools.get(0).cloned().unwrap_or_default().name, "alpha_tool");
+        assert_eq!(params.tools.get(1).cloned().unwrap_or_default().name, "zeta_tool");
     }
 
     #[test]

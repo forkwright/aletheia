@@ -13,7 +13,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use tracing::{debug, warn};
+use tracing::{Instrument, debug, warn};
 
 use error::RecallSourceError;
 
@@ -92,30 +92,36 @@ impl RecallSourceRegistry {
 
             let source = Arc::clone(source);
             let query = query.to_owned();
-            handles.push(tokio::spawn(async move {
-                let source_type = source.source_type(.instrument(tracing::info_span!("spawned_task"))).to_owned();
-                match source.query(&query, limit_per_source).await {
-                    Ok(results) => {
-                        debug!(
-                            source_type = %source_type,
-                            count = results.len(),
-                            "recall source returned results"
-                        );
-                        results
-                            .into_iter()
-                            .map(|r| (source_type.clone(), r))
-                            .collect::<Vec<_>>()
-                    }
-                    Err(e) => {
-                        warn!(
-                            source_type = %source_type,
-                            error = %e,
-                            "recall source query failed, skipping"
-                        );
-                        Vec::new()
+            let source_type = source.source_type().to_owned();
+            handles.push(tokio::spawn(
+                {
+                    let source_type = source_type.clone();
+                    async move {
+                        match source.query(&query, limit_per_source).await {
+                            Ok(results) => {
+                                debug!(
+                                    source_type = %source_type,
+                                    count = results.len(),
+                                    "recall source returned results"
+                                );
+                                results
+                                    .into_iter()
+                                    .map(|r| (source_type.clone(), r))
+                                    .collect::<Vec<_>>()
+                            }
+                            Err(e) => {
+                                warn!(
+                                    source_type = %source_type,
+                                    error = %e,
+                                    "recall source query failed, skipping"
+                                );
+                                Vec::new()
+                            }
+                        }
                     }
                 }
-            }));
+                .instrument(tracing::info_span!("recall_source_query", source_type = %source_type)),
+            ));
         }
 
         let mut all_results = Vec::new();
@@ -221,7 +227,7 @@ mod tests {
 
         let results = registry.query_all("test", 5).await;
         assert_eq!(results.len(), 1);
-        assert_eq!(results.get(0).copied().unwrap_or_default().0, "available");
+        assert_eq!(results.get(0).cloned().unwrap_or_default().0, "available");
     }
 
     #[tokio::test]
