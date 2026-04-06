@@ -377,7 +377,7 @@ pub struct ModelSpec {
 impl Default for ModelSpec {
     fn default() -> Self {
         Self {
-            primary: "claude-sonnet-4-6".to_owned(),
+            primary: aletheia_koina::defaults::DEFAULT_MODEL_SHORT.to_owned(),
             fallbacks: Vec::new(),
             retries_before_fallback: 2,
         }

@@ -99,7 +99,7 @@ impl Default for Answers {
             root: PathBuf::from("./instance"),
             api_key: None,
             api_provider: "anthropic".to_owned(),
-            model: "claude-sonnet-4-6".to_owned(),
+            model: aletheia_koina::defaults::DEFAULT_MODEL_SHORT.to_owned(),
             agent_id: "pronoea".to_owned(),
             agent_name: "Pronoea".to_owned(),
             bind: "localhost".to_owned(),
@@ -133,7 +133,7 @@ fn build_non_interactive_answers(
         root,
         api_key,
         api_provider: api_provider.unwrap_or_else(|| "anthropic".to_owned()),
-        model: model.unwrap_or_else(|| "claude-sonnet-4-6".to_owned()),
+        model: model.unwrap_or_else(|| aletheia_koina::defaults::DEFAULT_MODEL_SHORT.to_owned()),
         auth_mode: auth_mode.unwrap_or_else(|| "none".to_owned()),
         credential_source,
         ..Answers::default()
@@ -203,7 +203,7 @@ fn run_inner(args: RunArgs, env_root: Option<PathBuf>) -> Result<(), InitError> 
                 .build()
             })?;
             let root_path = wa.root.clone();
-            let config_path = root_path.join("config/aletheia.toml");
+            let config_path = root_path.join(aletheia_koina::defaults::DEFAULT_CONFIG_PATH);
             if config_path.exists() {
                 let overwrite: bool = cliclack::confirm("Instance already exists. Overwrite?")
                     .initial_value(false)
@@ -228,12 +228,13 @@ fn run_inner(args: RunArgs, env_root: Option<PathBuf>) -> Result<(), InitError> 
         })?
     };
 
-    let config_path = answers.root.join("config/aletheia.toml");
+    let config_path = answers.root.join(aletheia_koina::defaults::DEFAULT_CONFIG_PATH);
     if config_path.exists() {
         if is_non_interactive {
             tracing::info!(
                 path = %answers.root.display(),
-                "instance already exists — skipping (delete config/aletheia.toml to re-initialize)"
+                "instance already exists — skipping (delete {} to re-initialize)",
+                aletheia_koina::defaults::DEFAULT_CONFIG_PATH
             );
             return Ok(());
         }

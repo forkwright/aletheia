@@ -84,7 +84,7 @@ mod tests {
                 .and_then(|v| v.get("model"))
                 .and_then(|v| v.get("primary"))
                 .and_then(toml::Value::as_str),
-            Some("claude-sonnet-4-6")
+            Some(aletheia_koina::defaults::DEFAULT_MODEL_SHORT)
         );
         let list = agents
             .get("list")
