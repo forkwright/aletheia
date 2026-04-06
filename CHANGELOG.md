@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.58](https://github.com/forkwright/aletheia/compare/v0.13.57...v0.13.58) (2026-04-06)
+
+
+### Documentation
+
+* C footprint and dependency audit ([#2506](https://github.com/forkwright/aletheia/issues/2506)) ([eea9897](https://github.com/forkwright/aletheia/commit/eea989783c212086eb133051e8db033faacbe911))
+
 ## [0.13.57](https://github.com/forkwright/aletheia/compare/v0.13.56...v0.13.57) (2026-04-06)
 
 
