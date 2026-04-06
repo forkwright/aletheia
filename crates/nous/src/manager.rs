@@ -61,6 +61,9 @@ const DEAD_THRESHOLD: u32 = 3;
 /// Maximum backoff between restart attempts (5 minutes).
 const MAX_RESTART_BACKOFF: Duration = Duration::from_secs(300);
 
+/// Timeout for waiting for an actor to drain during restart (30 seconds).
+const RESTART_DRAIN_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// Manages the lifecycle of all nous actors.
 // NOTE: 14 fields: runtime dependency injection (providers, tools, stores) plus
 // actor state. Kept flat because splitting would scatter logically-paired fields.
@@ -368,7 +371,14 @@ impl NousManager {
             // WHY: take join handle before awaiting: must not hold MutexGuard across .await
             let join_opt = old.join.lock().unwrap_or_default().take(); // kanon:ignore RUST/expect
             if let Some(join) = join_opt {
-                let _ = tokio::time::timeout(Duration::from_secs(2), join).await;
+                match tokio::time::timeout(RESTART_DRAIN_TIMEOUT, join).await {
+                    Ok(_) => {
+                        tracing::debug!(nous_id = %id, "old actor drained cleanly before restart");
+                    }
+                    Err(_) => {
+                        tracing::warn!(nous_id = %id, "actor did not drain within {RESTART_DRAIN_TIMEOUT:?}, spawning replacement — concurrent store access possible");
+                    }
+                }
             }
         }
 
