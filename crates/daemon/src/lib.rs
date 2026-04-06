@@ -15,6 +15,8 @@ pub mod bridge;
 pub mod coordination;
 /// Periodic cron tasks: evolution, reflection, and graph cleanup.
 pub mod cron;
+/// Minimal jiff-native cron expression parser (replaces external `cron` + `chrono` crates).
+pub(crate) mod cron_expr;
 /// Error types for task execution, scheduling, and maintenance operations.
 pub mod error;
 /// Task action execution: commands, builtins, prompts, and knowledge maintenance.

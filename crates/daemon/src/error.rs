@@ -12,10 +12,10 @@ use snafu::Snafu;
 )]
 pub enum Error {
     /// Invalid cron expression.
-    #[snafu(display("invalid cron expression: {expression}"))]
-    InvalidCron {
+    #[snafu(display("invalid cron expression '{expression}': {reason}"))]
+    CronParse {
         expression: String,
-        source: cron::error::Error,
+        reason: String,
         #[snafu(implicit)]
         location: snafu::Location,
     },

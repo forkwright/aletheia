@@ -18,9 +18,6 @@ test-full = []
 aletheia-koina = { path = "../koina" }
 # WHY: axum for webhook trigger listener
 axum = { workspace = true }
-# Required by the `cron` crate API for schedule parsing
-chrono = { workspace = true }
-cron = { workspace = true }
 # WHY: single-instance enforcement per workspace
 fd-lock = { workspace = true }
 flate2 = { workspace = true }
