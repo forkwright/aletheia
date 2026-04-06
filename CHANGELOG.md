@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.49](https://github.com/forkwright/aletheia/compare/v0.13.48...v0.13.49) (2026-04-06)
+
+
+### Bug Fixes
+
+* **lint:** resolve 40 mechanical lint violations across 19 files ([#2472](https://github.com/forkwright/aletheia/issues/2472)) ([b34c8dc](https://github.com/forkwright/aletheia/commit/b34c8dca2e75f1b1f4bc1d543835efc5fd9674a6))
+
 ## [0.13.48](https://github.com/forkwright/aletheia/compare/v0.13.47...v0.13.48) (2026-04-05)
 
 
