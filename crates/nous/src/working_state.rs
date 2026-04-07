@@ -6,6 +6,7 @@
 
 use std::sync::Arc;
 
+use aletheia_koina::defaults::CHARS_PER_TOKEN;
 use serde::{Deserialize, Serialize};
 
 use aletheia_hermeneus::types::{Message, ThinkingConfig, ToolDefinition};
@@ -354,7 +355,7 @@ impl WorkingState {
         }
 
         let content = parts.join("\n");
-        let token_estimate = u64::try_from(content.len() / 4).unwrap_or(0);
+        let token_estimate = u64::try_from(content.len() / CHARS_PER_TOKEN as usize).unwrap_or(0);
 
         Some(BootstrapSection {
             name: "WORKING_STATE".to_owned(),

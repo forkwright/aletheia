@@ -7,7 +7,8 @@ use similar::{ChangeTag, TextDiff};
 
 use crate::theme::Theme;
 
-use super::parse::{pad_to, truncate_str};
+use super::parse::pad_to;
+use super::truncate_str;
 use super::types::{DiffChange, DiffMode, DiffViewState, FileDiff, collapse_to_replacements};
 
 pub(crate) fn render_unified(file: &FileDiff, theme: &Theme) -> Vec<Line<'static>> {

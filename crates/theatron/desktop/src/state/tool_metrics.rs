@@ -2,6 +2,8 @@
 
 use std::collections::HashMap;
 
+pub(crate) use theatron_core::format::format_duration as format_duration_ms;
+
 // -- API response types -------------------------------------------------------
 
 /// Top-level response from `/api/tool-stats`.
@@ -147,17 +149,6 @@ pub(crate) fn format_delta(delta: i64) -> String {
         format!("+{delta}")
     } else {
         format!("{delta}")
-    }
-}
-
-/// Formats a duration in milliseconds as a human-readable string.
-pub(crate) fn format_duration_ms(ms: u64) -> String {
-    if ms >= 60_000 {
-        format!("{:.1}m", ms as f64 / 60_000.0)
-    } else if ms >= 1_000 {
-        format!("{:.1}s", ms as f64 / 1_000.0)
-    } else {
-        format!("{ms}ms")
     }
 }
 

@@ -5,6 +5,7 @@ use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::Modifier;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use theatron_core::format::truncate_str;
 
 use crate::app::App;
 use crate::state::metrics::{MetricsState, sparkline};
@@ -275,50 +276,8 @@ fn render_status_bar(frame: &mut Frame, area: Rect, theme: &Theme) {
     frame.render_widget(paragraph, area);
 }
 
-fn truncate_str(s: &str, max_chars: usize) -> String {
-    let mut chars = s.chars();
-    let mut result = String::with_capacity(max_chars + 1);
-    let mut count = 0;
-    while count < max_chars {
-        match chars.next() {
-            Some(c) => {
-                result.push(c);
-                count += 1;
-            }
-            None => break,
-        }
-    }
-    if chars.next().is_some() {
-        // Replace last char with ellipsis indicator.
-        result.pop();
-        result.push('…');
-    }
-    result
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn truncate_str_short() {
-        assert_eq!(truncate_str("hello", 10), "hello");
-    }
-
-    #[test]
-    fn truncate_str_exact() {
-        assert_eq!(truncate_str("hello", 5), "hello");
-    }
-
-    #[test]
-    fn truncate_str_long() {
-        let result = truncate_str("hello world", 8);
-        assert!(result.ends_with('…'));
-        assert_eq!(result.chars().count(), 8);
-    }
-
-    #[test]
-    fn truncate_str_empty() {
-        assert_eq!(truncate_str("", 5), "");
-    }
 }

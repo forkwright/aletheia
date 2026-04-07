@@ -1,6 +1,7 @@
 //! Helper functions for tool categorization, argument extraction, and diff parsing.
 
 use super::types::{OpsDiffEntry, ToolCategory};
+use theatron_core::format::truncate_str;
 
 /// Maximum length for the inline primary arg display.
 const PRIMARY_ARG_MAX_LEN: usize = 40;
@@ -54,16 +55,6 @@ pub(crate) fn extract_primary_arg(json_str: &str, _tool_name: &str) -> Option<St
         }
     }
     None
-}
-
-/// Truncate a string to `max_len` chars, appending ellipsis if truncated.
-pub(super) fn truncate_str(s: &str, max_len: usize) -> String {
-    if s.chars().count() <= max_len {
-        s.to_string()
-    } else {
-        let truncated: String = s.chars().take(max_len.saturating_sub(1)).collect();
-        format!("{truncated}\u{2026}")
-    }
 }
 
 /// Extract a one-line error summary from tool result text.
