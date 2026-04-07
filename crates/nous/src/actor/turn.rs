@@ -1,7 +1,32 @@
 //! Turn execution: handles individual turns with panic boundary protection.
 
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// Drop guard that resets `active_turn` to false when the turn future
+/// is dropped mid-execution (shutdown, cancellation). Defuse after
+/// finalize_turn to avoid a redundant store on the happy path.
+struct ActiveTurnGuard(Arc<AtomicBool>, bool);
+
+impl ActiveTurnGuard {
+    fn new(flag: Arc<AtomicBool>) -> Self {
+        Self(flag, true)
+    }
+
+    /// Prevent the guard from resetting on drop (already handled by finalize).
+    fn defuse(mut self) {
+        self.1 = false;
+    }
+}
+
+impl Drop for ActiveTurnGuard {
+    fn drop(&mut self) {
+        if self.1 {
+            self.0.store(false, Ordering::Release);
+            tracing::debug!("active turn guard: reset active_turn on drop");
+        }
+    }
+}
 
 use tokio::sync::mpsc;
 use tracing::{Instrument, debug, error, warn};
@@ -113,11 +138,11 @@ impl NousActor {
 
     /// # Cancel safety
     ///
-    /// Not cancel-safe in isolation. Sets `lifecycle = Active` and
-    /// `active_session` before awaiting `execute_turn`. If the future
-    /// were dropped mid-await, those fields would not be reset. In
-    /// practice this is only called from the sequential actor loop, so
-    /// cancellation only occurs at shutdown when the actor is consumed.
+    /// The active_turn atomic is reset via a drop guard, so even if the
+    /// future is dropped mid-await (e.g., shutdown), the "busy" signal
+    /// is cleared. The `active_session` and `lifecycle` fields are reset
+    /// in `finalize_turn` on the happy path, and by the actor's cleanup
+    /// on shutdown.
     pub(super) async fn handle_turn(
         &mut self,
         session_key: String, // kanon:ignore RUST/plain-string-secret
@@ -127,6 +152,11 @@ impl NousActor {
         reply: tokio::sync::oneshot::Sender<crate::error::Result<TurnResult>>,
     ) {
         self.mark_turn_active(&session_key);
+
+        // WHY: drop guard ensures active_turn is reset even if this future
+        // is dropped mid-await (shutdown, cancellation). Without this,
+        // health checks see stale "busy" and block dormancy transitions (#2732).
+        let active_guard = ActiveTurnGuard::new(self.runtime.active_turn.clone());
 
         let result = self
             .execute_turn_with_panic_boundary(
@@ -138,6 +168,10 @@ impl NousActor {
             .await;
 
         self.finalize_turn(&session_key, &content, &result).await;
+
+        // WHY: finalize_turn already resets active_turn. Defuse the guard
+        // to avoid a redundant store.
+        active_guard.defuse();
 
         // WHY: ignore send error: caller may have dropped the receiver
         let _ = reply.send(result);
@@ -163,6 +197,7 @@ impl NousActor {
         let _stream_guard = StreamSenderGuard(Some(stream_tx.clone()));
 
         self.mark_turn_active(&session_key);
+        let active_guard = ActiveTurnGuard::new(self.runtime.active_turn.clone());
 
         let result = self
             .execute_streaming_turn_with_panic_boundary(
@@ -175,6 +210,7 @@ impl NousActor {
             .await;
 
         self.finalize_turn(&session_key, &content, &result).await;
+        active_guard.defuse();
 
         // WHY: ignore send error: caller may have dropped the receiver
         let _ = reply.send(result);
