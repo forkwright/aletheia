@@ -351,20 +351,4 @@ fn format_cost(value: f64) -> String {
     }
 }
 
-#[expect(
-    clippy::cast_precision_loss,
-    reason = "display-only: sub-token precision irrelevant"
-)]
-#[expect(clippy::as_conversions, reason = "u64 to f64 for human-readable formatting")]
-fn format_tokens(count: u64) -> String {
-    const K: u64 = 1_000;
-    const M: u64 = 1_000_000;
-
-    if count >= M {
-        format!("{:.1}M", count as f64 / M as f64)
-    } else if count >= K {
-        format!("{:.1}K", count as f64 / K as f64)
-    } else {
-        count.to_string()
-    }
-}
+use theatron_core::format::format_tokens;

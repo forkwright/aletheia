@@ -8,6 +8,9 @@
 /// HTTP client, SSE connection, and per-message streaming.
 pub mod api;
 
+/// Shared formatting utilities (token counts, etc.) used by all frontends.
+pub mod format;
+
 /// Auto-discover a running aletheia server on the local network.
 pub mod discovery;
 
