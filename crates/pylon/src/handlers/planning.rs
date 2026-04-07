@@ -4,7 +4,7 @@
 //! component. The Re-verify button triggers `POST .../verification/refresh`
 //! which acknowledges the request and returns the current verification snapshot.
 //!
-//! # TODO(#2034)
+//! # TODO(#2604)
 //! Wire to the actual `dianoia` verification engine once a `PlanningService`
 //! is exposed in pylon's `AppState`. Current handlers return stub data so the
 //! desktop UI flow completes without error.
@@ -25,7 +25,7 @@ use crate::error::{ErrorBody, ErrorResponse};
     not(test),
     expect(
         dead_code,
-        reason = "API contract types: variants used in tests, production use pending #2034"
+        reason = "API contract types: variants used in tests, production use pending #2604"
     )
 )]
 pub(crate) enum VerificationStatus {
@@ -48,7 +48,7 @@ pub(crate) enum VerificationStatus {
     not(test),
     expect(
         dead_code,
-        reason = "API contract types: variants used in tests, production use pending #2034"
+        reason = "API contract types: variants used in tests, production use pending #2604"
     )
 )]
 pub(crate) enum RequirementPriority {
@@ -108,7 +108,7 @@ pub(crate) struct RequirementVerification {
     not(test),
     expect(
         dead_code,
-        reason = "API contract types: used in tests, production use pending #2034"
+        reason = "API contract types: used in tests, production use pending #2604"
     )
 )]
 pub(crate) struct VerificationResult {
@@ -122,7 +122,7 @@ pub(crate) struct VerificationResult {
 
 /// Response for `POST .../verification/refresh`.
 #[derive(Debug, Serialize)]
-#[expect(dead_code, reason = "API contract type: production use pending #2034")]
+#[expect(dead_code, reason = "API contract type: production use pending #2604")]
 pub(crate) struct RefreshResponse {
     /// Refresh status: `"accepted"`.
     pub(crate) status: &'static str,

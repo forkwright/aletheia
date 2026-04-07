@@ -120,7 +120,7 @@ impl ChannelProvider for MatrixProvider {
         params: &'a SendParams,
     ) -> Pin<Box<dyn Future<Output = SendResult> + Send + 'a>> {
         Box::pin(async move {
-            // TODO(#2313): replace with matrix-sdk Client::send_message()
+            // TODO(#2602): replace with matrix-sdk Client::send_message()
             // once the dependency is added and conduwuit is deployed.
             warn!(
                 to = %params.to,
@@ -136,7 +136,7 @@ impl ChannelProvider for MatrixProvider {
 
     fn probe<'a>(&'a self) -> Pin<Box<dyn Future<Output = ProbeResult> + Send + 'a>> {
         Box::pin(async move {
-            // TODO(#2313): replace with matrix-sdk health check
+            // TODO(#2602): replace with matrix-sdk health check
             // (client.homeserver_url() + /_matrix/client/versions)
             ProbeResult {
                 ok: false,
