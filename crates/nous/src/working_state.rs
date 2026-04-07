@@ -378,7 +378,7 @@ impl WorkingState {
 pub(crate) const WORKING_STATE_TTL_SECS: i64 = 604_800;
 
 fn now_iso8601() -> String {
-    jiff::Timestamp::now().to_string()
+    aletheia_koina::time::now_iso8601()
 }
 
 #[cfg(test)]
