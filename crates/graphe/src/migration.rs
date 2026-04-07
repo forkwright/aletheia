@@ -66,7 +66,7 @@ DROP TABLE IF EXISTS sessions;",
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     expires_at TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_blackboard_key ON blackboard(key);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_blackboard_key ON blackboard(key);
 CREATE INDEX IF NOT EXISTS idx_blackboard_expires ON blackboard(expires_at);",
         down: "DROP TABLE IF EXISTS blackboard;",
     },
