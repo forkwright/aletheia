@@ -63,6 +63,27 @@ pub struct PipelineContext {
     pub working_state: Option<WorkingState>,
     /// Compaction metrics from the most recent compaction pass.
     pub compaction_metrics: Option<CompactionMetrics>,
+    /// Channel for requesting background LLM-based summary improvement.
+    ///
+    /// WHY: The pipeline runs synchronously with structural summaries (fast).
+    /// When this channel is set, the compaction stage also queues an LLM
+    /// summarization request that runs asynchronously after the pipeline
+    /// completes. The improved summary replaces the structural one in the
+    /// session store when ready.
+    pub summary_improvement_tx: Option<tokio::sync::mpsc::Sender<SummaryImprovementRequest>>,
+}
+
+/// Request for background LLM-based summary improvement.
+#[derive(Debug, Clone)]
+pub struct SummaryImprovementRequest {
+    /// Session ID to update.
+    pub session_id: String,
+    /// Messages that need summarization.
+    pub messages: Vec<PipelineMessage>,
+    /// Model to use for summarization.
+    pub model: String,
+    /// Maximum tokens for the summary output.
+    pub max_tokens: u32,
 }
 
 impl Default for PipelineContext {
@@ -79,6 +100,7 @@ impl Default for PipelineContext {
             history_result: None,
             working_state: None,
             compaction_metrics: None,
+            summary_improvement_tx: None,
         }
     }
 }
