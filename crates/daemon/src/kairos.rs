@@ -159,6 +159,7 @@ pub async fn run_cycle(
                             result.skipped += 1;
                             continue;
                         }
+                        // NOTE: Same wave - continue processing.
                         _ => {}
                     }
                 }

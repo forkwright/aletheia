@@ -496,9 +496,13 @@ fn handle_callback_connection(
     expected_state: &str,
 ) -> Result<CallbackData> {
     // Set a timeout for accepting connections
+    #[expect(
+        clippy::expect_used,
+        reason = "set_nonblocking on a freshly bound listener should not fail"
+    )]
     listener
         .set_nonblocking(false)
-        .expect("should be able to set blocking mode");
+        .expect("set_nonblocking on a freshly bound listener should not fail");
 
     let (stream, addr) = listener.accept().context(AcceptConnectionSnafu)?;
     info!("received OAuth callback from {}", addr);

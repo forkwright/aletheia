@@ -209,6 +209,7 @@ impl<'a> Lexer<'a> {
                 self.string()?;
                 return Ok(());
             }
+            // NOTE: Other characters fall through to multi-character operator matching.
             _ => {}
         }
 
