@@ -12,6 +12,7 @@ use tokio_util::sync::CancellationToken;
 use aletheia_mneme::store::SessionStore;
 use aletheia_nous::manager::NousManager;
 use aletheia_organon::registry::ToolRegistry;
+use aletheia_symbolon::jwt::JwtManager;
 use aletheia_taxis::config::AletheiaConfig;
 use aletheia_taxis::oikos::Oikos;
 
@@ -28,10 +29,18 @@ pub struct DiaporeiaState {
     pub tool_registry: Arc<ToolRegistry>,
     /// Instance directory layout for file resolution.
     pub oikos: Arc<Oikos>,
+    /// JWT token validation (shared with pylon).
+    ///
+    /// `None` when `auth_mode == "none"` (no signing key available).
+    pub jwt_manager: Option<Arc<JwtManager>>,
     /// Server start instant for uptime calculation.
     pub start_time: Instant,
     /// Runtime configuration, updatable via config API.
     pub config: Arc<tokio::sync::RwLock<AletheiaConfig>>,
+    /// Auth mode from gateway config (`"token"`, `"none"`, etc.).
+    pub auth_mode: String,
+    /// Role assigned to anonymous requests when auth mode is `"none"`.
+    pub none_role: String,
     /// Root shutdown token.
     pub shutdown: CancellationToken,
 }

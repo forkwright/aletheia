@@ -74,13 +74,23 @@ pub(crate) async fn run(args: Args) -> Result<()> {
 
     #[cfg(feature = "mcp")]
     let app = {
+        // WHY: auth_mode == "none" means no signing key; pass None so the
+        // middleware skips JWT validation and injects anonymous claims.
+        let mcp_jwt = if runtime.state.auth_mode == "none" {
+            None
+        } else {
+            Some(Arc::clone(&runtime.state.jwt_manager))
+        };
         let diaporeia_state = Arc::new(aletheia_diaporeia::state::DiaporeiaState {
             session_store: Arc::clone(&runtime.state.session_store),
             nous_manager: Arc::clone(&runtime.state.nous_manager),
             tool_registry: Arc::clone(&runtime.state.tool_registry),
             oikos: Arc::clone(&runtime.state.oikos),
+            jwt_manager: mcp_jwt,
             start_time: runtime.state.start_time,
             config: Arc::clone(&runtime.state.config),
+            auth_mode: runtime.state.auth_mode.clone(),
+            none_role: runtime.state.none_role.clone(),
             shutdown: runtime.shutdown_token.clone(),
         });
         let mcp_router = aletheia_diaporeia::transport::streamable_http_router(diaporeia_state);
