@@ -10,13 +10,12 @@
 //! 3. Intent-aware scheduling (operator directives influence allocation)
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
 use aletheia_dianoia::attention::{AttentionAllocator, AttentionBudget};
-use aletheia_dianoia::intent::IntentStore;
 
 use crate::bridge::DaemonBridge;
 use crate::error::Result;

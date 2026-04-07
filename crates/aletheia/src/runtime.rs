@@ -7,7 +7,7 @@ use snafu::prelude::*;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
-use tracing::{Instrument, debug, info, warn};
+use tracing::{Instrument, info, warn};
 
 use aletheia_agora::listener::ChannelListener;
 use aletheia_agora::registry::ChannelRegistry;
@@ -768,6 +768,7 @@ impl RuntimeBuilder {
             shutdown: shutdown_token.clone(),
             #[cfg(feature = "recall")]
             knowledge_store,
+            planning_service: None,
         });
 
         Ok(Runtime {

@@ -8,7 +8,6 @@
 //! pure Rust E2E crypto (vodozemac), no dependency on external servers.
 //! Signal requires Signal Inc. servers for message routing.
 
-use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 

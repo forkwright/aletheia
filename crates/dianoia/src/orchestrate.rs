@@ -16,7 +16,6 @@ use crate::intent::IntentStore;
 use crate::phase::{Phase, PhaseState};
 use crate::plan::{Plan, PlanState};
 use crate::project::Project;
-use crate::state::ProjectState;
 use crate::stuck::StuckDetector;
 use crate::workspace::ProjectWorkspace;
 

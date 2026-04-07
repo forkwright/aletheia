@@ -156,8 +156,8 @@ flate2 = "1"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "logging", "tls12"] }
 
 # Cryptography (RustCrypto)
-hmac = "0.12"
-sha2 = "0.10"
+hmac = "0.13"
+sha2 = "0.11"
 aes-gcm = "0.10"
 chacha20poly1305 = "0.10"
 rcgen = "0.14"
