@@ -301,6 +301,18 @@ impl TaskRunner {
             true,
         );
 
+        if config.propose_rules.enabled {
+            // WHY: weekly cadence balances freshness with noise — daily would flood
+            // the operator with near-identical proposals.
+            self.register_builtin(
+                "propose-rules",
+                "Rule proposal generation from observed patterns",
+                Schedule::Cron("0 0 3 * * SUN".to_owned()),
+                BuiltinTask::ProposeRules,
+                false,
+            );
+        }
+
         self.register_cron_tasks(&config.cron);
     }
 

@@ -304,6 +304,41 @@ pub(crate) async fn execute_builtin(
                 ),
             })
         }
+        BuiltinTask::ProposeRules => {
+            let data_dir = maintenance
+                .map(|m| m.propose_rules.data_dir.clone())
+                .unwrap_or_else(|| {
+                    let root = std::env::var("ALETHEIA_ROOT")
+                        .map(std::path::PathBuf::from)
+                        .unwrap_or_else(|_| std::path::PathBuf::from("instance"));
+                    root.join("data")
+                });
+            tokio::task::spawn_blocking(move || {
+                // WHY: no live observation stream is wired here yet.
+                // propose_rules operates on an empty slice, writing an empty
+                // (but valid) proposals file. Future work: wire a serialized
+                // observation snapshot from the knowledge store (#2296 follow-up).
+                let proposals = aletheia_episteme::rule_proposals::propose_rules(&[]);
+                aletheia_episteme::rule_proposals::write_proposals(
+                    &proposals,
+                    0,
+                    &data_dir,
+                )
+                .map_err(|e| crate::error::TaskFailedSnafu {
+                    task_id: "propose-rules".to_owned(),
+                    reason: e.to_string(),
+                }.build())
+            })
+            .await
+            .context(error::BlockingJoinSnafu {
+                context: "propose-rules",
+            })??;
+
+            Ok(ExecutionResult {
+                success: true,
+                output: Some("rule proposals written to instance/data/rule_proposals.toml".to_owned()),
+            })
+        }
         BuiltinTask::RetentionExecution => {
             let Some(executor) = retention_executor else {
                 tracing::info!("retention execution skipped — no executor configured");

@@ -75,6 +75,8 @@ pub(crate) mod succession;
 pub mod trace_ingest;
 /// Relationship type normalization and validation for knowledge graph extraction.
 pub mod vocab;
+/// Steward rule proposal generation from observed tool-usage patterns.
+pub mod rule_proposals;
 
 #[cfg(test)]
 mod phase_f_integration_tests;
