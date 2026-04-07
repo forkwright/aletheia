@@ -97,7 +97,7 @@ pub(crate) fn parse_command_file(path: &Path) -> Result<CustomCommandDef, String
 /// Returns an error string if the YAML is malformed or missing required fields.
 pub(crate) fn parse_command_yaml(content: &str) -> Result<CustomCommandDef, String> {
     let def: CustomCommandDef =
-        serde_yaml::from_str(content).map_err(|e| format!("invalid command YAML: {e}"))?;
+        serde_yml::from_str(content).map_err(|e| format!("invalid command YAML: {e}"))?;
 
     if def.name.is_empty() {
         return Err("command name must not be empty".to_owned());
