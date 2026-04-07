@@ -134,7 +134,7 @@ struct CacheEntry {
 /// Keys are a combined hash of (query, `manifest_text`). Entries expire
 /// after a configurable TTL. Front = LRU, back = MRU.
 pub(crate) struct RelevanceCache {
-    // PERF: linear scan is acceptable for default capacity (64 entries).
+    // NOTE: linear scan is fine for small capacity (default 64).
     entries: Vec<(u64, CacheEntry)>,
     capacity: usize,
     ttl: Duration,

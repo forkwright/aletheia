@@ -323,7 +323,7 @@ impl RecallEngine {
     /// Apply a graph-enhanced scorer when graph recall is active,
     /// otherwise return the base score unchanged.
     ///
-    /// PERF: skips the `enhance` closure entirely when the relationship
+    /// NOTE: skips the `enhance` closure entirely when the relationship
     /// proximity weight is zero.
     #[must_use]
     fn graph_enhanced(&self, base: f64, enhance: impl FnOnce(f64) -> f64) -> f64 {

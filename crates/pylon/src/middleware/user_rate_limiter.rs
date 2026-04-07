@@ -88,7 +88,7 @@ impl TokenBucket {
         } else {
             let deficit = 1.0 - self.tokens;
             let wait_secs = deficit / self.fill_rate;
-            // SAFETY: ceil() of a positive f64 ratio is always non-negative.
+            // NOTE: ceil() of a positive f64 ratio is always non-negative.
             #[expect(
                 clippy::cast_possible_truncation,
                 clippy::cast_sign_loss,
