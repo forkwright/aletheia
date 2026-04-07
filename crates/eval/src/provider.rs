@@ -91,6 +91,16 @@ impl EvalProvider for CompositeProvider {
     }
 }
 
+impl EvalProvider for Box<dyn EvalProvider> {
+    fn provide(&self) -> Vec<Box<dyn crate::scenario::Scenario>> {
+        (**self).provide()
+    }
+
+    fn name(&self) -> &str {
+        (**self).name()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
