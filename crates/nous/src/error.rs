@@ -224,6 +224,14 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Role contract loading failed.
+    #[snafu(display("role contract error: {message}"))]
+    RoleContract {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Competence store error.
     #[snafu(display("competence store error: {message}: {source}"))]
     CompetenceStore {

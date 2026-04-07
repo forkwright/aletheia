@@ -1,5 +1,8 @@
 //! Specialized role templates for ephemeral sub-agents.
 
+/// Versioned role-behavior contracts for QA validation.
+pub mod contract;
+
 use std::fmt;
 
 /// Sub-agent role determining system prompt, tool access, and model preference.
@@ -36,7 +39,6 @@ impl Role {
 
     /// All defined roles.
     #[must_use]
-    #[expect(dead_code, reason = "role enumeration for sub-agent dispatch")]
     pub(crate) fn all() -> &'static [Role] {
         &[
             Self::Coder,
