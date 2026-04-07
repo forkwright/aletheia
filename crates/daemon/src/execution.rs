@@ -397,6 +397,10 @@ async fn execute_knowledge_task(
 /// into `Fact` values via `OpsFactExtractor`. The facts are logged for
 /// now; insertion into the knowledge store happens when the caller has
 /// a store handle (daemon bridge integration).
+#[expect(
+    clippy::unused_async,
+    reason = "async signature required by execute_builtin dispatch which awaits all arms"
+)]
 async fn execute_ops_fact_extraction(nous_id: &str) -> Result<ExecutionResult> {
     use aletheia_episteme::ops_facts::{OpsFactExtractor, OpsSnapshot};
 
@@ -457,12 +461,15 @@ async fn execute_ops_fact_extraction(nous_id: &str) -> Result<ExecutionResult> {
 fn read_prometheus_counter(name: &str) -> u64 {
     let families = prometheus::default_registry().gather();
     for family in &families {
-        if family.get_name() == name {
+        if family.name() == name {
             let mut total = 0.0_f64;
             for metric in family.get_metric() {
-                total += metric.get_counter().get_value();
+                // WHY: `get_counter()` returns `&MessageField<Counter>`;
+                // protobuf's `.value()` on `Counter` gives the f64 count.
+                total += metric.get_counter().value();
             }
             #[expect(
+                clippy::as_conversions,
                 clippy::cast_sign_loss,
                 clippy::cast_possible_truncation,
                 reason = "Prometheus counter values are non-negative and within u64 range for practical counts"
@@ -479,18 +486,19 @@ fn read_prometheus_counter(name: &str) -> u64 {
 fn read_prometheus_counter_with_label(name: &str, label_name: &str, label_value: &str) -> u64 {
     let families = prometheus::default_registry().gather();
     for family in &families {
-        if family.get_name() == name {
+        if family.name() == name {
             let mut total = 0.0_f64;
             for metric in family.get_metric() {
                 let matches = metric
                     .get_label()
                     .iter()
-                    .any(|lp| lp.get_name() == label_name && lp.get_value() == label_value);
+                    .any(|lp| lp.name() == label_name && lp.value() == label_value);
                 if matches {
-                    total += metric.get_counter().get_value();
+                    total += metric.get_counter().value();
                 }
             }
             #[expect(
+                clippy::as_conversions,
                 clippy::cast_sign_loss,
                 clippy::cast_possible_truncation,
                 reason = "Prometheus counter values are non-negative and within u64 range for practical counts"

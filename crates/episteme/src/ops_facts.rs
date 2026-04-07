@@ -79,6 +79,7 @@ impl OpsFactExtractor {
         // 2. Tool success rate (only if enough data)
         if snapshot.tool_call_total >= MIN_TOOL_CALLS {
             #[expect(
+                clippy::as_conversions,
                 clippy::cast_precision_loss,
                 reason = "u64->f64: metric counts are far below f64 precision limits"
             )]
