@@ -24,8 +24,6 @@ const COMPACT_POPUP_HEIGHT_PCT: u16 = 50;
 const DIFF_POPUP_WIDTH_PCT: u16 = 80;
 /// Height percentage for the diff view overlay.
 const DIFF_POPUP_HEIGHT_PCT: u16 = 85;
-/// Column width reserved for the key label in the help overlay keybinding list.
-const HELP_KEY_COLUMN_WIDTH: usize = 13;
 /// Maximum number of tool-input lines shown in the tool approval overlay before truncating.
 const TOOL_APPROVAL_INPUT_LINES: usize = 10;
 
@@ -103,6 +101,11 @@ fn overlay_block_accent(
         .style(Style::default().bg(theme.colors.surface))
 }
 
+/// Margin around the help overlay in columns.
+const HELP_OVERLAY_MARGIN: u16 = 4; // 2 chars each side
+/// Width reserved for the key column in the help overlay.
+const HELP_KEY_COLUMN_WIDTH: usize = 13;
+
 fn render_help(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let key_style = Style::default()
         .fg(theme.colors.accent)
@@ -117,6 +120,10 @@ fn render_help(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
 
     let mut lines: Vec<Line> = Vec::new();
 
+    // Calculate max available width for descriptions with margins
+    let max_width = area.width.saturating_sub(HELP_OVERLAY_MARGIN).max(1) as usize;
+    let desc_max_width = max_width.saturating_sub(HELP_KEY_COLUMN_WIDTH + 2); // +2 for padding
+
     for (section_label, bindings) in &groups {
         lines.push(Line::raw(""));
         lines.push(Line::from(Span::styled(
@@ -125,10 +132,14 @@ fn render_help(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         )));
         lines.push(Line::raw(""));
         for kb in bindings {
-            lines.push(Line::from(vec![
-                Span::styled(format!("  {:<HELP_KEY_COLUMN_WIDTH$}", kb.keys), key_style),
-                Span::styled(kb.description, desc_style),
-            ]));
+            let key_span = Span::styled(format!("  {:<HELP_KEY_COLUMN_WIDTH$}", kb.keys), key_style);
+            // Truncate description if too long, with ellipsis
+            let desc = if kb.description.len() > desc_max_width && desc_max_width > 3 {
+                format!("{}...", &kb.description[..desc_max_width.saturating_sub(3)])
+            } else {
+                kb.description.to_string()
+            };
+            lines.push(Line::from(vec![key_span, Span::styled(desc, desc_style)]));
         }
     }
 

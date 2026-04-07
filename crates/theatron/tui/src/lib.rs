@@ -155,6 +155,9 @@ async fn run_loop(mut terminal: DefaultTerminal, app: &mut App) -> error::Result
             })?;
         }
 
+        // Update cursor style: solid at rest, blinking when flashing on input
+        update_cursor_style(&app);
+
         let mut sse_rx = app.take_sse();
         let mut stream_rx = app.take_stream();
 
@@ -264,6 +267,18 @@ fn emit_osc8_links<W: std::io::Write>(writer: &mut W, links: &[OscLink]) -> std:
     }
     writer.flush()?;
     Ok(())
+}
+
+/// Update terminal cursor style based on input state.
+/// Cursor is solid at rest, blinking briefly after input activity.
+fn update_cursor_style(app: &App) {
+    use crossterm::cursor::SetCursorStyle;
+    let style = if app.interaction.input.is_cursor_flashing() {
+        SetCursorStyle::BlinkingBlock
+    } else {
+        SetCursorStyle::SteadyBlock
+    };
+    let _ = crossterm::execute!(std::io::stderr(), style);
 }
 
 async fn recv_sse(sse: &mut Option<api::sse::SseConnection>) -> Option<api::types::SseEvent> {

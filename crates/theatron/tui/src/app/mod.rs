@@ -397,6 +397,9 @@ impl App {
             })
             .collect();
 
+        // Sort agents alphabetically by name for consistent default selection
+        self.dashboard.agents.sort_by(|a, b| a.name.cmp(&b.name));
+
         self.dashboard.focused_agent = self
             .config
             .default_agent
