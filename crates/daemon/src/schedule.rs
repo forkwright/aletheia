@@ -128,6 +128,8 @@ pub enum BuiltinTask {
     LessonExtraction,
     /// Self-prompt: daemon-initiated follow-up action from a prosoche check.
     SelfPrompt,
+    /// Analyze recent session observations and write candidate lint rule proposals.
+    ProposeRules,
 }
 
 impl Schedule {
