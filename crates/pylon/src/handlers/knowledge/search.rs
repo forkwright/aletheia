@@ -3,7 +3,10 @@
 use axum::Json;
 use axum::extract::{Query, State};
 
+use aletheia_symbolon::types::Role;
+
 use crate::error::ApiError;
+use crate::extract::{Claims, require_nous_access, require_role};
 use crate::state::KnowledgeState;
 
 #[cfg(feature = "knowledge-store")]
@@ -30,8 +33,13 @@ use super::{
 )]
 pub async fn search(
     State(state): State<KnowledgeState>,
+    claims: Claims,
     Query(mut query): Query<SearchQuery>,
 ) -> Result<Json<SearchResponse>, ApiError> {
+    require_role(&claims, Role::Operator)?;
+    if let Some(ref nous_id) = query.nous_id {
+        require_nous_access(&claims, nous_id)?;
+    }
     if query.q.trim().is_empty() {
         return Err(crate::error::BadRequestSnafu {
             message: "search query 'q' must not be empty",
@@ -118,8 +126,13 @@ pub async fn search(
 )]
 pub async fn timeline(
     State(state): State<KnowledgeState>,
+    claims: Claims,
     Query(query): Query<FactsQuery>,
 ) -> Result<Json<TimelineResponse>, ApiError> {
+    require_role(&claims, Role::Operator)?;
+    if let Some(ref nous_id) = query.nous_id {
+        require_nous_access(&claims, nous_id)?;
+    }
     // WHY: Pass the caller-supplied nous_id so get_stored_facts can query the store.
     // The previous call to get_all_facts hardcoded nous_id: None, causing the store
     // to return empty even when facts were persisted under a specific agent (Bug #1252).

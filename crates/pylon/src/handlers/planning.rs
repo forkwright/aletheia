@@ -14,7 +14,10 @@ use axum::extract::Path;
 use axum::http::StatusCode;
 use serde::Serialize;
 
+use aletheia_symbolon::types::Role;
+
 use crate::error::{ErrorBody, ErrorResponse};
+use crate::extract::{Claims, require_role};
 
 /// Verification status for a single requirement.
 // NOTE: variants are constructed in tests and will be used in production once
@@ -149,8 +152,24 @@ pub(crate) struct RefreshResponse {
 pub(crate) async fn get_verification(
     Path(project_id): Path<String>,
     axum::extract::State(state): axum::extract::State<std::sync::Arc<crate::state::AppState>>,
+    claims: Claims,
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
+
+    if let Err(e) = require_role(&claims, Role::Operator) {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: ErrorBody {
+                    code: "forbidden".to_owned(),
+                    message: e.to_string(),
+                    request_id: None,
+                    details: None,
+                },
+            }),
+        )
+            .into_response();
+    }
 
     let Some(ref service) = state.planning_service else {
         return (
@@ -228,8 +247,24 @@ pub(crate) async fn get_verification(
 pub(crate) async fn refresh_verification(
     Path(project_id): Path<String>,
     axum::extract::State(state): axum::extract::State<std::sync::Arc<crate::state::AppState>>,
+    claims: Claims,
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
+
+    if let Err(e) = require_role(&claims, Role::Operator) {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: ErrorBody {
+                    code: "forbidden".to_owned(),
+                    message: e.to_string(),
+                    request_id: None,
+                    details: None,
+                },
+            }),
+        )
+            .into_response();
+    }
 
     let Some(ref service) = state.planning_service else {
         return (
