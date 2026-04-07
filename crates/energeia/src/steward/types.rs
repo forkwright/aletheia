@@ -117,6 +117,7 @@ pub struct SuppressionFinding {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum SuppressionKind {
+    #[expect(clippy::allow_attributes, reason = "doc comment describing the Allow variant")]
     /// `#[allow(...)]` attribute -- discouraged, use `#[expect]` instead.
     Allow,
 

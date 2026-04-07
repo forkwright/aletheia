@@ -351,7 +351,7 @@ async fn poll_token_endpoint(
 /// ```no_run
 /// use aletheia_symbolon::credential::device_code::{DeviceOAuthProvider, device_code_login};
 ///
-/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// # async fn example() -> Result<(), DeviceCodeError> {
 /// let provider = DeviceOAuthProvider::new(
 ///     "my-client-id",
 ///     "https://auth.example.com/authorize",

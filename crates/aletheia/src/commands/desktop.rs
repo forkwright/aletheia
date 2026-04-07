@@ -1,10 +1,44 @@
 //! `aletheia desktop` subcommand — PATH-based discovery and exec of the desktop app.
 
+use std::path::PathBuf;
 use std::process::Command;
 
 use clap::Args;
+use snafu::{ResultExt, Snafu};
 
 const BINARY_NAME: &str = "theatron-desktop";
+
+/// Errors that can occur when running the desktop command.
+#[derive(Debug, Snafu)]
+#[snafu(visibility(pub(crate)))]
+pub(crate) enum DesktopError {
+    #[snafu(display(
+        "`{BINARY_NAME}` not found in PATH\n\n\
+             Build and install it from the workspace:\n  \
+             cd crates/theatron/desktop && cargo build --release\n  \
+             cp target/release/{BINARY_NAME} ~/.cargo/bin/\n\n\
+             Or add its build directory to PATH."
+    ))]
+    BinaryNotFound {
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    #[snafu(display("failed to exec `{binary:?}`: {source}"))]
+    ExecFailed {
+        binary: PathBuf,
+        source: std::io::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    #[snafu(display("`{BINARY_NAME}` exited with status {code}"))]
+    ExitStatus {
+        code: i32,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+}
 
 #[derive(Debug, Clone, Args)]
 pub(crate) struct DesktopArgs {
@@ -23,16 +57,8 @@ pub(crate) struct DesktopArgs {
 }
 
 /// Search PATH for `theatron-desktop` and exec it with forwarded flags.
-pub(crate) fn run(args: &DesktopArgs) -> anyhow::Result<()> {
-    let binary = find_in_path().ok_or_else(|| {
-        anyhow::anyhow!(
-            "`{BINARY_NAME}` not found in PATH\n\n\
-             Build and install it from the workspace:\n  \
-             cd crates/theatron/desktop && cargo build --release\n  \
-             cp target/release/{BINARY_NAME} ~/.cargo/bin/\n\n\
-             Or add its build directory to PATH."
-        )
-    })?;
+pub(crate) fn run(args: &DesktopArgs) -> Result<(), DesktopError> {
+    let binary = find_in_path().ok_or_else(|| BinaryNotFoundSnafu.build())?;
 
     let mut cmd = Command::new(&binary);
 
@@ -51,13 +77,11 @@ pub(crate) fn run(args: &DesktopArgs) -> anyhow::Result<()> {
 
     let status = cmd
         .status()
-        .map_err(|e| anyhow::anyhow!("failed to exec `{}`: {e}", binary.display()))?;
+        .context(ExecFailedSnafu { binary: binary.clone() })?;
 
     if !status.success() {
         let code = status.code().unwrap_or(1);
-        return Err(anyhow::anyhow!(
-            "`{BINARY_NAME}` exited with status {code}"
-        ));
+        return Err(ExitStatusSnafu { code }.build());
     }
 
     Ok(())

@@ -643,7 +643,7 @@ async fn exchange_code(
 /// ```no_run
 /// use aletheia_symbolon::credential::pkce::{OAuthProvider, pkce_login};
 ///
-/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// # async fn example() -> Result<(), PkceError> {
 /// let provider = OAuthProvider::new(
 ///     "my-client-id",
 ///     "https://auth.example.com/authorize",

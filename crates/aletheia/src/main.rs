@@ -229,7 +229,7 @@ async fn dispatch_command(cmd: Command, instance_root: Option<&PathBuf>) -> Resu
             .map_err(anyhow::Error::from),
         #[cfg(not(feature = "tui"))]
         Command::Tui(_) => anyhow::bail!("TUI not available - rebuild with `--features tui`"),
-        Command::Desktop(a) => commands::desktop::run(&a),
+        Command::Desktop(a) => commands::desktop::run(&a).map_err(|e| anyhow::anyhow!(e)),
         Command::Eval(a) => commands::eval::run(a).await.map_err(Into::into),
         Command::EvalEmbeddings(a) => {
             commands::eval_embeddings::run(a).map_err(Into::into)

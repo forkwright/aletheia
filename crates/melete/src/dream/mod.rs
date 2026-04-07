@@ -15,6 +15,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
 
 use snafu::ResultExt;
+use tracing::Instrument;
 use tracing::instrument;
 
 use aletheia_hermeneus::provider::LlmProvider;
@@ -304,9 +305,8 @@ impl DreamEngine {
         let target = Arc::clone(target);
         let provider = Arc::clone(provider);
 
+        let span = tracing::info_span!("auto_dream_consolidation");
         tokio::spawn(async move {
-            let span = tracing::info_span!("auto_dream_consolidation");
-            let _guard = span.enter();
 
             tracing::info!("auto-dream consolidation started");
             let start = std::time::Instant::now();
@@ -350,7 +350,7 @@ impl DreamEngine {
                     );
                 }
             }
-        });
+        }.instrument(span));
     }
 
     /// Execute the consolidation pipeline.

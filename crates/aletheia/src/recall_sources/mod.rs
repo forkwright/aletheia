@@ -13,7 +13,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use tracing::{debug, warn};
+use tracing::{Instrument, debug, warn};
 
 use error::RecallSourceError;
 
@@ -92,6 +92,7 @@ impl RecallSourceRegistry {
 
             let source = Arc::clone(source);
             let query = query.to_owned();
+            let span = tracing::debug_span!("recall_source_query", source_type = source.source_type());
             handles.push(tokio::spawn(async move {
                 let source_type = source.source_type().to_owned();
                 match source.query(&query, limit_per_source).await {
@@ -115,7 +116,7 @@ impl RecallSourceRegistry {
                         Vec::new()
                     }
                 }
-            }));
+            }.instrument(span)));
         }
 
         let mut all_results = Vec::new();

@@ -62,9 +62,10 @@ pub enum VectorValue {
 // ---------------------------------------------------------------------------
 
 mod serde_impl {
-    use super::*;
     use serde::de::{self, Deserializer, MapAccess, SeqAccess, Visitor};
     use serde::ser::{SerializeMap, Serializer};
+
+    use super::*;
 
     impl Serialize for Value {
         fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {

@@ -716,6 +716,7 @@ impl TaskRunner {
         // WHY: spawn as a detached task. Self-prompt execution should not block
         // the main scheduler loop. Failures are logged but do not affect the
         // originating task's status.
+        let span = tracing::info_span!("self_prompt_dispatch", nous_id = %nous_id, source_task = %task_id_owned);
         tokio::spawn(async move {
             tracing::info!(
                 nous_id = %nous_id,
@@ -754,7 +755,7 @@ impl TaskRunner {
                     );
                 }
             }
-        });
+        }.instrument(span));
     }
 
     /// Record a successful task completion and UPDATE scheduling.

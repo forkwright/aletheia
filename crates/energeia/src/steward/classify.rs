@@ -172,6 +172,7 @@ pub(crate) fn extract_prompt_number_from_text(text: &str) -> Option<u32> {
 }
 
 /// Parse a diff for suppression attributes and structural bypass patterns.
+#[expect(clippy::allow_attributes, reason = "doc comment explaining detection of allow patterns")]
 ///
 /// WHY: Uses regex to detect `#[allow(...)]`, `#[expect(...)]`,
 /// `#[cfg_attr(..., allow(...))]`, lint-ignore file additions,
@@ -230,6 +231,7 @@ pub fn parse_suppressions(diff: &str) -> Vec<SuppressionFinding> {
                     || current_file.ends_with("tests.rs");
 
                 if !is_test_file && !is_lint_ignore {
+                    #[expect(clippy::allow_attributes, reason = "comment describing what the code checks for")]
                     // Check for #[allow(...)]
                     if let Some(caps) = ALLOW_RE.captures(added) {
                         let lint_name = caps.get(1).map(|m| m.as_str().trim().to_string());
