@@ -156,7 +156,7 @@ impl RelevanceCache {
         // PERF: linear scan is fine for small capacity (default 64).
         let pos = self.entries.iter().position(|(k, _)| *k == key)?;
 
-        if now.duration_since(self.entries.get(pos)?.1.created_at) > self.ttl {
+        if now.saturating_duration_since(self.entries.get(pos)?.1.created_at) > self.ttl {
             self.entries.remove(pos);
             return None;
         }

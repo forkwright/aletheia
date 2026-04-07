@@ -80,7 +80,7 @@ impl FileChangeTracker {
 
                 let now = Instant::now();
                 if let Some(last) = self.last_notified.get(&path) {
-                    if now.duration_since(*last) < DEDUP_WINDOW {
+                    if now.saturating_duration_since(*last) < DEDUP_WINDOW {
                         return None;
                     }
                 }

@@ -78,7 +78,7 @@ impl TokenBucket {
     /// Try to consume one token. Returns `Ok(())` if allowed, or
     /// `Err(retry_after_secs)` if the bucket is empty.
     pub(super) fn try_acquire(&mut self, now: Instant) -> Result<(), u64> {
-        let elapsed = now.duration_since(self.last_fill).as_secs_f64();
+        let elapsed = now.saturating_duration_since(self.last_fill).as_secs_f64();
         self.tokens = (self.tokens + elapsed * self.fill_rate).min(self.capacity);
         self.last_fill = now;
 
@@ -166,7 +166,7 @@ impl UserRateLimiter {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
 
         let before = state.len();
-        state.retain(|_, buckets| now.duration_since(buckets.last_access) < stale_threshold);
+        state.retain(|_, buckets| now.saturating_duration_since(buckets.last_access) < stale_threshold);
         before - state.len()
     }
 
