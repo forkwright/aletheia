@@ -11,6 +11,8 @@ pub mod observation;
 /// Context-dependent extraction refinement: turn classification, correction
 /// detection, quality filters, and fact type classification.
 pub mod refinement;
+/// PR lesson extraction from training data (violations/lint JSONL) with quality gates.
+pub mod training;
 
 mod engine;
 mod error;
