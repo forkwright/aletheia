@@ -6,6 +6,12 @@ mod keyring_provider;
 mod providers;
 mod refresh;
 
+/// OAuth 2.0 PKCE Authorization Code Flow (RFC 7636 + RFC 8252).
+pub mod pkce;
+
+/// OAuth 2.0 Device Code Flow (RFC 8628).
+pub mod device_code;
+
 use std::time::{Duration, SystemTime};
 
 pub use file_ops::CredentialFile;
@@ -16,6 +22,9 @@ pub use refresh::{
     RefreshingCredentialProvider, claude_code_default_path, claude_code_provider,
     claude_code_provider_with_config, force_refresh,
 };
+
+// Re-export OAuth provider configuration from pkce module
+pub use pkce::OAuthProvider;
 
 /// Return current time as milliseconds since UNIX epoch, warning if the clock
 /// is before epoch rather than silently returning zero.
