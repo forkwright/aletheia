@@ -254,7 +254,9 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    // WHY: single-threaded runtime prevents non-deterministic event ordering
+    // when workspace tests run in parallel and CPU pressure delays subprocess I/O.
+    #[tokio::test(flavor = "current_thread")]
     async fn spawn_session_successful() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let lines = &[
@@ -277,7 +279,7 @@ mod tests {
         assert!((result.cost_usd - 0.10).abs() < f64::EPSILON);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn spawn_session_error_result() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let lines = &[
@@ -296,7 +298,7 @@ mod tests {
         assert!(!result.success);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn resume_session_works() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let lines = &[
@@ -316,7 +318,7 @@ mod tests {
         assert!(result.success);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn spawn_session_event_streaming() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let lines = &[
