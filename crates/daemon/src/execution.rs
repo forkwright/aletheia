@@ -291,6 +291,7 @@ pub(crate) async fn execute_builtin(
         BuiltinTask::GraphCleanup => {
             graph_cleanup::execute_graph_cleanup(nous_id, knowledge_executor).await
         }
+        BuiltinTask::OpsFactExtraction => execute_ops_fact_extraction(nous_id).await,
         BuiltinTask::LessonExtraction => execute_lesson_extraction().await,
         BuiltinTask::SelfPrompt => {
             // NOTE: SelfPrompt is dispatched inline by the runner after
@@ -589,4 +590,128 @@ async fn execute_lesson_extraction() -> Result<ExecutionResult> {
     })??;
 
     Ok(result)
+}
+
+/// Extract operational metrics into knowledge graph facts.
+///
+/// Collects a snapshot of current Prometheus counters and converts them
+/// into `Fact` values via `OpsFactExtractor`. The facts are logged for
+/// now; insertion into the knowledge store happens when the caller has
+/// a store handle (daemon bridge integration).
+#[expect(
+    clippy::unused_async,
+    reason = "async signature required by execute_builtin dispatch which awaits all arms"
+)]
+async fn execute_ops_fact_extraction(nous_id: &str) -> Result<ExecutionResult> {
+    use aletheia_episteme::ops_facts::{OpsFactExtractor, OpsSnapshot};
+
+    // WHY: Prometheus global registry is the source of truth for runtime
+    // counters. We read the current values to build a point-in-time snapshot.
+    let snapshot = OpsSnapshot {
+        nous_id: nous_id.to_owned(),
+        active_session_count: 0, // NOTE: populated by caller when session store is available
+        tool_call_total: read_prometheus_counter("aletheia_cron_executions_total"),
+        tool_call_successes: read_prometheus_counter_with_label(
+            "aletheia_cron_executions_total",
+            "status",
+            "ok",
+        ),
+        error_count: read_prometheus_counter_with_label(
+            "aletheia_cron_executions_total",
+            "status",
+            "error",
+        ),
+        avg_task_latency_ms: 0,
+        task_sample_count: 0,
+    };
+
+    let facts = OpsFactExtractor::extract(&snapshot).map_err(|e| {
+        error::TaskFailedSnafu {
+            task_id: String::from("ops-fact-extraction"),
+            reason: e.to_string(),
+        }
+        .build()
+    })?;
+
+    let count = facts.len();
+    for ops_fact in &facts {
+        tracing::debug!(
+            nous_id = %nous_id,
+            fact_type = %ops_fact.fact.fact_type,
+            content = %ops_fact.fact.content,
+            confidence = ops_fact.fact.provenance.confidence,
+            "operational fact extracted"
+        );
+    }
+
+    tracing::info!(
+        nous_id = %nous_id,
+        facts_extracted = count,
+        "operational fact extraction complete"
+    );
+
+    Ok(ExecutionResult {
+        success: true,
+        output: Some(format!("{count} operational facts extracted")),
+    })
+}
+
+/// Read the total value of a Prometheus counter by metric name.
+///
+/// Returns 0 if the metric is not found or not readable.
+fn read_prometheus_counter(name: &str) -> u64 {
+    let families = prometheus::default_registry().gather();
+    for family in &families {
+        if family.name() == name {
+            let mut total = 0.0_f64;
+            for metric in family.get_metric() {
+                // WHY: `get_counter()` returns `&MessageField<Counter>`;
+                // protobuf's `.value()` on `Counter` gives the f64 count.
+                total += metric.get_counter().value();
+            }
+            // SAFETY: Prometheus counter values are non-negative f64 totals from
+            // monotonically increasing counters; practical counts are well within
+            // u64 range and f64 mantissa (2^53). Truncation is intentional.
+            #[expect(
+                clippy::as_conversions,
+                clippy::cast_sign_loss,
+                clippy::cast_possible_truncation,
+                reason = "f64->u64: counter is non-negative and fits in u64 for practical values"
+            )]
+            return total as u64;
+        }
+    }
+    0
+}
+
+/// Read a Prometheus counter filtered by a specific label value.
+///
+/// Returns 0 if the metric or label is not found.
+fn read_prometheus_counter_with_label(name: &str, label_name: &str, label_value: &str) -> u64 {
+    let families = prometheus::default_registry().gather();
+    for family in &families {
+        if family.name() == name {
+            let mut total = 0.0_f64;
+            for metric in family.get_metric() {
+                let matches = metric
+                    .get_label()
+                    .iter()
+                    .any(|lp| lp.name() == label_name && lp.value() == label_value);
+                if matches {
+                    total += metric.get_counter().value();
+                }
+            }
+            // SAFETY: Prometheus counter values are non-negative f64 totals from
+            // monotonically increasing counters; practical counts are well within
+            // u64 range and f64 mantissa (2^53). Truncation is intentional.
+            #[expect(
+                clippy::as_conversions,
+                clippy::cast_sign_loss,
+                clippy::cast_possible_truncation,
+                reason = "f64->u64: counter is non-negative and fits in u64 for practical values"
+            )]
+            return total as u64;
+        }
+    }
+    0
 }

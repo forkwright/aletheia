@@ -301,6 +301,17 @@ impl TaskRunner {
             true,
         );
 
+        // WHY: operational fact extraction runs on a short interval to keep
+        // the knowledge graph current with system health metrics. Agents
+        // recall these facts during bootstrap for situational awareness.
+        self.register_builtin(
+            "ops-fact-extraction",
+            "Operational fact extraction",
+            Schedule::Interval(Duration::from_secs(15 * 60)),
+            BuiltinTask::OpsFactExtraction,
+            false,
+        );
+
         if config.propose_rules.enabled {
             // WHY: weekly cadence balances freshness with noise — daily would flood
             // the operator with near-identical proposals.
