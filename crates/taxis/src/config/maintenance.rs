@@ -427,6 +427,10 @@ pub struct WatchdogSettings {
     pub check_interval_secs: u64,
     /// Maximum restart attempts before abandoning a process.
     pub max_restarts: u32,
+    /// Base delay in seconds for exponential backoff between restart attempts.
+    pub backoff_base_secs: u64,
+    /// Maximum delay in seconds for exponential backoff cap.
+    pub backoff_cap_secs: u64,
 }
 
 impl Default for WatchdogSettings {
@@ -436,6 +440,8 @@ impl Default for WatchdogSettings {
             heartbeat_timeout_secs: 60,
             check_interval_secs: 10,
             max_restarts: 5,
+            backoff_base_secs: 2,
+            backoff_cap_secs: 300,
         }
     }
 }
