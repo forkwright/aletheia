@@ -2,6 +2,12 @@
     clippy::indexing_slicing,
     reason = "test: vec/JSON indices valid after asserting len or known structure"
 )]
+#![expect(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "test assertions: panics on failure produce clear test output"
+)]
+
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -24,7 +30,7 @@ fn send_message_req(session_id: &str, idempotency_key: Option<&str>) -> Request<
     }
     builder
         .body(Body::from(
-            serde_json::to_vec(&serde_json::json!({ "content": "Hello!" })).unwrap(),
+            serde_json::to_vec(&serde_json::json!({ "content": "Hello!" })).expect("JSON serialization should not fail"),
         ))
         .unwrap()
 }
@@ -34,7 +40,7 @@ async fn idempotency_key_absent_works_normally() {
     let (state, _dir) = test_state().await;
     let router = build_router(Arc::clone(&state), &test_security_config());
     let created = create_test_session(&router).await;
-    let id = created["id"].as_str().unwrap();
+    let id = created["id"].as_str().expect("created session must have a string id");
 
     let req = send_message_req(id, None);
     let resp = router.clone().oneshot(req).await.unwrap();
@@ -46,7 +52,7 @@ async fn idempotency_key_first_request_succeeds() {
     let (state, _dir) = test_state().await;
     let router = build_router(Arc::clone(&state), &test_security_config());
     let created = create_test_session(&router).await;
-    let id = created["id"].as_str().unwrap();
+    let id = created["id"].as_str().expect("created session must have a string id");
 
     let req = send_message_req(id, Some("unique-key-001"));
     let resp = router.clone().oneshot(req).await.unwrap();
@@ -63,7 +69,7 @@ async fn idempotency_key_replay_returns_cached_completion() {
     let (state, _dir) = test_state().await;
     let router = build_router(Arc::clone(&state), &test_security_config());
     let created = create_test_session(&router).await;
-    let id = created["id"].as_str().unwrap();
+    let id = created["id"].as_str().expect("created session must have a string id");
 
     let req1 = send_message_req(id, Some("replay-key-001"));
     let resp1 = router.clone().oneshot(req1).await.unwrap();
@@ -100,7 +106,7 @@ async fn idempotency_key_in_flight_returns_409() {
     let (state, _dir) = test_state().await;
     let router = build_router(Arc::clone(&state), &test_security_config());
     let created = create_test_session(&router).await;
-    let id = created["id"].as_str().unwrap();
+    let id = created["id"].as_str().expect("created session must have a string id");
 
     // WHY: cache keys are scoped by user sub claim (PR #2609).
     // The test auth token uses "test-user" as the subject.
@@ -120,7 +126,7 @@ async fn idempotency_key_too_long_returns_400() {
     let (state, _dir) = test_state().await;
     let router = build_router(Arc::clone(&state), &test_security_config());
     let created = create_test_session(&router).await;
-    let id = created["id"].as_str().unwrap();
+    let id = created["id"].as_str().expect("created session must have a string id");
 
     let long_key = "x".repeat(65);
     let req = send_message_req(id, Some(&long_key));
@@ -133,7 +139,7 @@ async fn idempotency_key_empty_returns_400() {
     let (state, _dir) = test_state().await;
     let router = build_router(Arc::clone(&state), &test_security_config());
     let created = create_test_session(&router).await;
-    let id = created["id"].as_str().unwrap();
+    let id = created["id"].as_str().expect("created session must have a string id");
 
     let req = send_message_req(id, Some(""));
     let resp = router.clone().oneshot(req).await.unwrap();
@@ -145,7 +151,7 @@ async fn idempotency_key_64_chars_accepted() {
     let (state, _dir) = test_state().await;
     let router = build_router(Arc::clone(&state), &test_security_config());
     let created = create_test_session(&router).await;
-    let id = created["id"].as_str().unwrap();
+    let id = created["id"].as_str().expect("created session must have a string id");
 
     let key = "a".repeat(64);
     let req = send_message_req(id, Some(&key));

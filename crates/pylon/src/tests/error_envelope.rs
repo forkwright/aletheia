@@ -2,6 +2,12 @@
     clippy::indexing_slicing,
     reason = "test: vec/JSON indices valid after asserting len or known structure"
 )]
+#![expect(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "test assertions: panics on failure produce clear test output"
+)]
+
 use std::sync::Arc;
 
 use axum::http::StatusCode;

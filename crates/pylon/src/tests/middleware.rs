@@ -2,6 +2,12 @@
     clippy::indexing_slicing,
     reason = "test: vec/JSON indices valid after asserting len or known structure"
 )]
+#![expect(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "test assertions: panics on failure produce clear test output"
+)]
+
 use std::sync::Arc;
 
 use axum::body::Body;
@@ -19,18 +25,18 @@ async fn security_headers_present_on_response() {
         .unwrap();
 
     assert_eq!(resp.status(), StatusCode::OK);
-    assert_eq!(resp.headers().get("x-frame-options").unwrap(), "DENY");
+    assert_eq!(resp.headers().get("x-frame-options").expect("x-frame-options header must be present"), "DENY");
     assert_eq!(
-        resp.headers().get("x-content-type-options").unwrap(),
+        resp.headers().get("x-content-type-options").expect("x-content-type-options header must be present"),
         "nosniff"
     );
-    assert_eq!(resp.headers().get("x-xss-protection").unwrap(), "0");
+    assert_eq!(resp.headers().get("x-xss-protection").expect("x-xss-protection header must be present"), "0");
     assert_eq!(
-        resp.headers().get("referrer-policy").unwrap(),
+        resp.headers().get("referrer-policy").expect("referrer-policy header must be present"),
         "strict-origin-when-cross-origin"
     );
     assert_eq!(
-        resp.headers().get("content-security-policy").unwrap(),
+        resp.headers().get("content-security-policy").expect("content-security-policy header must be present"),
         "default-src 'self'"
     );
     assert!(resp.headers().get("strict-transport-security").is_none());
@@ -54,7 +60,7 @@ async fn hsts_header_present_when_tls_enabled() {
         .unwrap();
 
     assert_eq!(
-        resp.headers().get("strict-transport-security").unwrap(),
+        resp.headers().get("strict-transport-security").expect("HSTS header must be present when TLS is enabled"),
         "max-age=31536000; includeSubDomains"
     );
 }
@@ -230,7 +236,7 @@ async fn csrf_allows_delete_with_correct_header() {
     let resp = router.clone().oneshot(create_req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::CREATED);
     let session = body_json(resp).await;
-    let id = session["id"].as_str().unwrap();
+    let id = session["id"].as_str().expect("created session must have a string id");
 
     let delete_req = Request::builder()
         .method("DELETE")
@@ -284,7 +290,7 @@ async fn cors_rejects_unlisted_origin() {
 
     let resp = router.oneshot(req).await.unwrap();
     let allow_origin = resp.headers().get("access-control-allow-origin");
-    assert!(allow_origin.is_none() || allow_origin.unwrap() != "http://evil.example.com");
+    assert!(allow_origin.is_none() || allow_origin.expect("allow_origin should be Some here") != "http://evil.example.com");
 }
 
 #[test]
@@ -333,7 +339,7 @@ async fn request_id_present_in_error_responses() {
         .unwrap();
 
     let body = body_json(resp).await;
-    let request_id = body["error"]["request_id"].as_str().unwrap();
+    let request_id = body["error"]["request_id"].as_str().expect("error response must have a string request_id");
     assert!(!request_id.is_empty());
     assert!(request_id.len() >= 20, "request_id should be a ULID");
 }
@@ -379,7 +385,7 @@ async fn malformed_create_body_returns_400() {
 async fn malformed_send_body_returns_error() {
     let (router, _dir) = app().await;
     let created = create_test_session(&router).await;
-    let id = created["id"].as_str().unwrap();
+    let id = created["id"].as_str().expect("created session must have a string id");
 
     let token = default_token();
     let req = Request::builder()
@@ -425,7 +431,7 @@ async fn old_api_nous_path_returns_gone() {
     assert!(
         body["error"]["message"]
             .as_str()
-            .unwrap()
+            .expect("error message must be a string")
             .contains("/api/v1/nous")
     );
 }
@@ -448,7 +454,7 @@ async fn fallback_404_returns_json_error() {
     assert!(
         body["error"]["message"]
             .as_str()
-            .unwrap()
+            .expect("error message must be a string")
             .contains("/totally/unknown/path")
     );
     assert!(body["error"]["request_id"].is_string());

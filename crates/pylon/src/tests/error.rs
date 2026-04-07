@@ -2,6 +2,12 @@
     clippy::indexing_slicing,
     reason = "test: vec/JSON indices valid after asserting len or known structure"
 )]
+#![expect(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "test assertions: panics on failure produce clear test output"
+)]
+
 use axum::http::StatusCode;
 
 #[test]
@@ -142,12 +148,12 @@ fn api_error_rate_limited_includes_details() {
     let response = err.into_response();
     let rt = tokio::runtime::Builder::new_current_thread()
         .build()
-        .unwrap();
+        .expect("tokio runtime should build");
     let body = rt.block_on(async {
         let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
-            .unwrap();
-        serde_json::from_slice::<serde_json::Value>(&bytes).unwrap()
+            .expect("body bytes should be readable");
+        serde_json::from_slice::<serde_json::Value>(&bytes).expect("response body should be valid JSON")
     });
     assert_eq!(body["error"]["details"]["retry_after_secs"], 5);
 }
@@ -165,14 +171,14 @@ fn api_error_validation_failed_includes_errors() {
     let response = err.into_response();
     let rt = tokio::runtime::Builder::new_current_thread()
         .build()
-        .unwrap();
+        .expect("tokio runtime should build");
     let body = rt.block_on(async {
         let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
-            .unwrap();
-        serde_json::from_slice::<serde_json::Value>(&bytes).unwrap()
+            .expect("body bytes should be readable");
+        serde_json::from_slice::<serde_json::Value>(&bytes).expect("response body should be valid JSON")
     });
-    let errors = body["error"]["details"]["errors"].as_array().unwrap();
+    let errors = body["error"]["details"]["errors"].as_array().expect("error details must have an 'errors' array");
     assert_eq!(errors.len(), 2);
 }
 

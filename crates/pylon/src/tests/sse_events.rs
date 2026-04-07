@@ -1,4 +1,10 @@
 #![expect(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "test assertions: panics on failure produce clear test output"
+)]
+
+#![expect(
     clippy::indexing_slicing,
     reason = "test: vec/JSON indices valid after asserting len or known structure"
 )]
@@ -65,7 +71,7 @@ fn sse_event_serialization_roundtrip() {
     let event = crate::stream::SseEvent::TextDelta {
         text: "hello".to_owned(),
     };
-    let json = serde_json::to_value(&event).unwrap();
+    let json = serde_json::to_value(&event).expect("SseEvent serialization must not fail");
     assert_eq!(json["type"], "text_delta");
     assert_eq!(json["text"], "hello");
 }
@@ -79,7 +85,7 @@ fn sse_event_message_complete_serialization() {
             output_tokens: 50,
         },
     };
-    let json = serde_json::to_value(&event).unwrap();
+    let json = serde_json::to_value(&event).expect("SseEvent serialization must not fail");
     assert_eq!(json["type"], "message_complete");
     assert_eq!(json["stop_reason"], "end_turn");
     assert_eq!(json["usage"]["input_tokens"], 100);
@@ -92,7 +98,7 @@ fn sse_event_error_serialization() {
         code: "turn_failed".to_owned(),
         message: "provider error".to_owned(),
     };
-    let json = serde_json::to_value(&event).unwrap();
+    let json = serde_json::to_value(&event).expect("SseEvent serialization must not fail");
     assert_eq!(json["type"], "error");
     assert_eq!(json["code"], "turn_failed");
     assert_eq!(json["message"], "provider error");
@@ -179,7 +185,7 @@ fn tui_event_turn_start_serialization() {
         nous_id: "syn".to_owned(),
         turn_id: "t1".to_owned(),
     };
-    let json = serde_json::to_value(&event).unwrap();
+    let json = serde_json::to_value(&event).expect("SseEvent serialization must not fail");
     assert_eq!(json["type"], "turn_start");
     assert_eq!(json["sessionId"], "s1");
     assert_eq!(json["nousId"], "syn");
@@ -201,7 +207,7 @@ fn tui_event_turn_complete_serialization() {
             cache_write_tokens: 20,
         },
     };
-    let json = serde_json::to_value(&event).unwrap();
+    let json = serde_json::to_value(&event).expect("SseEvent serialization must not fail");
     assert_eq!(json["type"], "turn_complete");
     let outcome = &json["outcome"];
     assert_eq!(outcome["text"], "response");
