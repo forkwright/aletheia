@@ -271,6 +271,7 @@ pub async fn send_message(
                 aletheia_nous::handle::DEFAULT_SEND_TIMEOUT,
             );
             let result = tokio::select! {
+                biased;
                 r = turn_fut => r,
                 () = shutdown_token.cancelled() => {
                     tracing::info!("shutdown: cancelling in-flight SSE turn");
@@ -503,6 +504,7 @@ pub async fn stream_turn(
                 aletheia_nous::handle::DEFAULT_SEND_TIMEOUT,
             );
             let result = tokio::select! {
+                biased;
                 r = turn_fut => r,
                 () = shutdown_token.cancelled() => {
                     tracing::info!("shutdown: cancelling in-flight streaming turn");
