@@ -669,7 +669,7 @@ fn read_prometheus_counter(name: &str) -> u64 {
                 // protobuf's `.value()` on `Counter` gives the f64 count.
                 total += metric.get_counter().value();
             }
-            // SAFETY: Prometheus counter values are non-negative f64 totals from
+            // NOTE: Prometheus counter values are non-negative f64 totals from
             // monotonically increasing counters; practical counts are well within
             // u64 range and f64 mantissa (2^53). Truncation is intentional.
             #[expect(
@@ -701,7 +701,7 @@ fn read_prometheus_counter_with_label(name: &str, label_name: &str, label_value:
                     total += metric.get_counter().value();
                 }
             }
-            // SAFETY: Prometheus counter values are non-negative f64 totals from
+            // NOTE: Prometheus counter values are non-negative f64 totals from
             // monotonically increasing counters; practical counts are well within
             // u64 range and f64 mantissa (2^53). Truncation is intentional.
             #[expect(

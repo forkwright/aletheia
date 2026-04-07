@@ -190,7 +190,7 @@ pub async fn send_message(
         .build());
     }
 
-    // SAFETY: enforce max message size to prevent memory exhaustion from oversized payloads.
+    // NOTE: enforce max message size to prevent memory exhaustion from oversized payloads.
     if content.len() > MAX_MESSAGE_BYTES {
         return Err(BadRequestSnafu {
             message: format!("content exceeds maximum size of {MAX_MESSAGE_BYTES} bytes"),
@@ -374,7 +374,7 @@ pub async fn stream_turn(
         .build());
     }
 
-    // SAFETY: enforce max message size to prevent memory exhaustion from oversized payloads.
+    // NOTE: enforce max message size to prevent memory exhaustion from oversized payloads.
     if message.len() > MAX_MESSAGE_BYTES {
         return Err(BadRequestSnafu {
             message: format!("message exceeds maximum size of {MAX_MESSAGE_BYTES} bytes"),

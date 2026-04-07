@@ -279,7 +279,7 @@ impl AdaptiveConcurrencyLimiter {
                         (inner.limit + self.config.increase_step).min(self.config.max_limit);
                 }
                 RequestOutcome::Overload => {
-                    // SAFETY: f64::from(u32) is lossless; all u32 values fit in
+                    // NOTE: f64::from(u32) is lossless; all u32 values fit in
                     // f64 mantissa.
                     let limit_f64 = f64::from(inner.limit);
                     let decreased_f64 = (limit_f64 * self.config.decrease_factor).floor();

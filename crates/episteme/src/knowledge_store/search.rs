@@ -351,7 +351,7 @@ impl KnowledgeStore {
             };
             graph_results.push(HybridResult {
                 id: fact_id,
-                rrf_score: 1.0 / (60.0 + rank as f64 + 1.0), // SAFETY: rank fits f64
+                rrf_score: 1.0 / (60.0 + rank as f64 + 1.0), // NOTE: rank fits f64
                 bm25_rank: -1,
                 vec_rank: -1,
                 graph_rank: i64::try_from(rank + 1).unwrap_or(i64::MAX),

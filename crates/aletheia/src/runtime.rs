@@ -642,6 +642,7 @@ impl RuntimeBuilder {
                     recall: resolved.recall.into(),
                     tool_allowlist: None,
                     hooks: Default::default(),
+                    distillation: Default::default(),
                 };
                 nous_manager
                     .spawn(
