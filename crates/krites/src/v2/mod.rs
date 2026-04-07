@@ -13,6 +13,7 @@
 
 pub mod error;
 pub mod eval;
+pub mod index;
 pub mod parse;
 pub mod rows;
 pub mod schema;
