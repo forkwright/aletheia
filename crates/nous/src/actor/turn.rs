@@ -312,6 +312,7 @@ impl NousActor {
         };
 
         let mut extra_bootstrap = self.extra_bootstrap.clone();
+        extra_bootstrap.extend(self.resolve_intent_sections());
         extra_bootstrap.extend(self.resolve_skill_sections(content).await);
 
         // WHY: create hook registry from config so hooks run inside the spawned pipeline task
@@ -521,6 +522,7 @@ impl NousActor {
         };
 
         let mut extra_bootstrap = self.extra_bootstrap.clone();
+        extra_bootstrap.extend(self.resolve_intent_sections());
         extra_bootstrap.extend(self.resolve_skill_sections(content).await);
 
         // WHY: create hook registry for the direct (non-spawned) execute_turn path

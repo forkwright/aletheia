@@ -539,6 +539,48 @@ impl NousActor {
 
         vec![]
     }
+
+    /// Resolve intent sections for injection into the bootstrap system prompt.
+    ///
+    /// Reads active intents from `instance/nous/<id>/intents.json` and returns a
+    /// single [`BootstrapSection`] when there are active intents. Returns an empty
+    /// vec when no intents are active (file absent or all resolved/expired).
+    ///
+    /// Degrades gracefully: any I/O or deserialization error is logged and
+    /// returns an empty vec so the pipeline is never blocked by intent load failures.
+    pub(crate) fn resolve_intent_sections(&self) -> Vec<BootstrapSection> {
+        use crate::bootstrap::{BootstrapSection, SectionPriority};
+        use crate::budget::{CharEstimator, TokenEstimator as _};
+        use aletheia_dianoia::intent::IntentStore;
+        use tracing::warn;
+
+        let agent_dir = self.services.oikos.nous_dir(&self.id);
+        let store = IntentStore::new(agent_dir);
+
+        match store.render_for_bootstrap() {
+            Ok(Some(content)) => {
+                let tokens = CharEstimator::default().estimate(&content);
+                vec![BootstrapSection {
+                    name: "operator-intents".to_owned(),
+                    // WHY: Important so intents survive token budget pressure — they must be
+                    // consulted before every autonomous decision (per issue #2332).
+                    priority: SectionPriority::Important,
+                    content,
+                    tokens,
+                    truncatable: false,
+                }]
+            }
+            Ok(None) => vec![],
+            Err(e) => {
+                warn!(
+                    nous_id = %self.id,
+                    error = %e,
+                    "failed to load operator intents for bootstrap, continuing without"
+                );
+                vec![]
+            }
+        }
+    }
 }
 
 #[cfg(test)]
