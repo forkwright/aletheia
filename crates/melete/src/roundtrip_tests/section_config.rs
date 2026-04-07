@@ -80,9 +80,9 @@ Bug is fixed, schema applied, all tests passing.
 fn distill_section_summary_roundtrip() {
     let section = DistillSection::Summary;
     let json =
-        serde_json::to_string(&section).expect("DistillSection::Summary should serialize to JSON"); // WHY: test assertion
+        serde_json::to_string(&section).expect("DistillSection::Summary should serialize to JSON");
     let back: DistillSection =
-        serde_json::from_str(&json).expect("serialized DistillSection::Summary should deserialize"); // WHY: test assertion
+        serde_json::from_str(&json).expect("serialized DistillSection::Summary should deserialize");
     assert_eq!(
         section, back,
         "DistillSection::Summary should survive a JSON roundtrip"
@@ -93,9 +93,9 @@ fn distill_section_summary_roundtrip() {
 fn distill_section_task_context_roundtrip() {
     let section = DistillSection::TaskContext;
     let json = serde_json::to_string(&section)
-        .expect("DistillSection::TaskContext should serialize to JSON"); // WHY: test assertion
+        .expect("DistillSection::TaskContext should serialize to JSON");
     let back: DistillSection = serde_json::from_str(&json)
-        .expect("serialized DistillSection::TaskContext should deserialize"); // WHY: test assertion
+        .expect("serialized DistillSection::TaskContext should deserialize");
     assert_eq!(
         section, back,
         "DistillSection::TaskContext should survive a JSON roundtrip"
@@ -106,9 +106,9 @@ fn distill_section_task_context_roundtrip() {
 fn distill_section_completed_work_roundtrip() {
     let section = DistillSection::CompletedWork;
     let json = serde_json::to_string(&section)
-        .expect("DistillSection::CompletedWork should serialize to JSON"); // WHY: test assertion
+        .expect("DistillSection::CompletedWork should serialize to JSON");
     let back: DistillSection = serde_json::from_str(&json)
-        .expect("serialized DistillSection::CompletedWork should deserialize"); // WHY: test assertion
+        .expect("serialized DistillSection::CompletedWork should deserialize");
     assert_eq!(
         section, back,
         "DistillSection::CompletedWork should survive a JSON roundtrip"
@@ -119,9 +119,9 @@ fn distill_section_completed_work_roundtrip() {
 fn distill_section_key_decisions_roundtrip() {
     let section = DistillSection::KeyDecisions;
     let json = serde_json::to_string(&section)
-        .expect("DistillSection::KeyDecisions should serialize to JSON"); // WHY: test assertion
+        .expect("DistillSection::KeyDecisions should serialize to JSON");
     let back: DistillSection = serde_json::from_str(&json)
-        .expect("serialized DistillSection::KeyDecisions should deserialize"); // WHY: test assertion
+        .expect("serialized DistillSection::KeyDecisions should deserialize");
     assert_eq!(
         section, back,
         "DistillSection::KeyDecisions should survive a JSON roundtrip"
@@ -132,9 +132,9 @@ fn distill_section_key_decisions_roundtrip() {
 fn distill_section_current_state_roundtrip() {
     let section = DistillSection::CurrentState;
     let json = serde_json::to_string(&section)
-        .expect("DistillSection::CurrentState should serialize to JSON"); // WHY: test assertion
+        .expect("DistillSection::CurrentState should serialize to JSON");
     let back: DistillSection = serde_json::from_str(&json)
-        .expect("serialized DistillSection::CurrentState should deserialize"); // WHY: test assertion
+        .expect("serialized DistillSection::CurrentState should deserialize");
     assert_eq!(
         section, back,
         "DistillSection::CurrentState should survive a JSON roundtrip"
@@ -145,9 +145,9 @@ fn distill_section_current_state_roundtrip() {
 fn distill_section_open_threads_roundtrip() {
     let section = DistillSection::OpenThreads;
     let json = serde_json::to_string(&section)
-        .expect("DistillSection::OpenThreads should serialize to JSON"); // WHY: test assertion
+        .expect("DistillSection::OpenThreads should serialize to JSON");
     let back: DistillSection = serde_json::from_str(&json)
-        .expect("serialized DistillSection::OpenThreads should deserialize"); // WHY: test assertion
+        .expect("serialized DistillSection::OpenThreads should deserialize");
     assert_eq!(
         section, back,
         "DistillSection::OpenThreads should survive a JSON roundtrip"
@@ -158,9 +158,9 @@ fn distill_section_open_threads_roundtrip() {
 fn distill_section_corrections_roundtrip() {
     let section = DistillSection::Corrections;
     let json = serde_json::to_string(&section)
-        .expect("DistillSection::Corrections should serialize to JSON"); // WHY: test assertion
+        .expect("DistillSection::Corrections should serialize to JSON");
     let back: DistillSection = serde_json::from_str(&json)
-        .expect("serialized DistillSection::Corrections should deserialize"); // WHY: test assertion
+        .expect("serialized DistillSection::Corrections should deserialize");
     assert_eq!(
         section, back,
         "DistillSection::Corrections should survive a JSON roundtrip"
@@ -174,9 +174,9 @@ fn distill_section_custom_roundtrip() {
         description: "Record architectural decisions.".to_owned(),
     };
     let json =
-        serde_json::to_string(&section).expect("DistillSection::Custom should serialize to JSON"); // WHY: test assertion
+        serde_json::to_string(&section).expect("DistillSection::Custom should serialize to JSON");
     let back: DistillSection =
-        serde_json::from_str(&json).expect("serialized DistillSection::Custom should deserialize"); // WHY: test assertion
+        serde_json::from_str(&json).expect("serialized DistillSection::Custom should deserialize");
     assert_eq!(
         section, back,
         "DistillSection::Custom should survive a JSON roundtrip"
@@ -190,9 +190,9 @@ fn distill_section_custom_with_special_chars_roundtrip() {
         description: "Contains special chars: \\ / \n newline".to_owned(),
     };
     let json = serde_json::to_string(&section)
-        .expect("DistillSection::Custom with special chars should serialize to JSON"); // WHY: test assertion
+        .expect("DistillSection::Custom with special chars should serialize to JSON");
     let back: DistillSection = serde_json::from_str(&json)
-        .expect("serialized DistillSection::Custom with special chars should deserialize"); // WHY: test assertion
+        .expect("serialized DistillSection::Custom with special chars should deserialize");
     assert_eq!(
         section, back,
         "DistillSection::Custom with special chars should survive a JSON roundtrip"
@@ -203,9 +203,9 @@ fn distill_section_custom_with_special_chars_roundtrip() {
 fn distill_config_default_roundtrip() {
     let config = DistillConfig::default();
     let json =
-        serde_json::to_string(&config).expect("DistillConfig::default() should serialize to JSON"); // WHY: test assertion
+        serde_json::to_string(&config).expect("DistillConfig::default() should serialize to JSON");
     let back: DistillConfig =
-        serde_json::from_str(&json).expect("serialized DistillConfig should deserialize"); // WHY: test assertion
+        serde_json::from_str(&json).expect("serialized DistillConfig should deserialize");
     assert_eq!(back.model, config.model, "model should survive roundtrip");
     assert_eq!(
         back.max_output_tokens, config.max_output_tokens,
@@ -240,9 +240,9 @@ fn distill_config_with_downshift_roundtrip() {
         ..DistillConfig::default()
     };
     let json = serde_json::to_string(&config)
-        .expect("DistillConfig with distillation_model should serialize to JSON"); // WHY: test assertion
+        .expect("DistillConfig with distillation_model should serialize to JSON");
     let back: DistillConfig = serde_json::from_str(&json)
-        .expect("serialized DistillConfig with distillation_model should deserialize"); // WHY: test assertion
+        .expect("serialized DistillConfig with distillation_model should deserialize");
     let right = Some("claude-haiku-4-5-20251001".to_owned());
     assert_eq!(
         back.distillation_model, right,
@@ -263,9 +263,9 @@ fn distill_config_custom_sections_roundtrip() {
         ..DistillConfig::default()
     };
     let json = serde_json::to_string(&config)
-        .expect("DistillConfig with custom sections should serialize to JSON"); // WHY: test assertion
+        .expect("DistillConfig with custom sections should serialize to JSON");
     let back: DistillConfig = serde_json::from_str(&json)
-        .expect("serialized DistillConfig with custom sections should deserialize"); // WHY: test assertion
+        .expect("serialized DistillConfig with custom sections should deserialize");
     assert_eq!(
         back.sections.len(),
         2,
@@ -275,16 +275,16 @@ fn distill_config_custom_sections_roundtrip() {
         *back.sections.first().expect("idx 0"),
         DistillSection::Summary,
         "first section should be Summary after roundtrip"
-    ); // WHY: test assertion
+    );
 }
 
 #[test]
 fn flush_source_extracted_roundtrip() {
     let source = FlushSource::Extracted;
     let json =
-        serde_json::to_string(&source).expect("FlushSource::Extracted should serialize to JSON"); // WHY: test assertion
+        serde_json::to_string(&source).expect("FlushSource::Extracted should serialize to JSON");
     let back: FlushSource =
-        serde_json::from_str(&json).expect("serialized FlushSource::Extracted should deserialize"); // WHY: test assertion
+        serde_json::from_str(&json).expect("serialized FlushSource::Extracted should deserialize");
     assert!(
         matches!(back, FlushSource::Extracted),
         "deserialized value should be FlushSource::Extracted"
@@ -295,9 +295,9 @@ fn flush_source_extracted_roundtrip() {
 fn flush_source_agent_note_roundtrip() {
     let source = FlushSource::AgentNote;
     let json =
-        serde_json::to_string(&source).expect("FlushSource::AgentNote should serialize to JSON"); // WHY: test assertion
+        serde_json::to_string(&source).expect("FlushSource::AgentNote should serialize to JSON");
     let back: FlushSource =
-        serde_json::from_str(&json).expect("serialized FlushSource::AgentNote should deserialize"); // WHY: test assertion
+        serde_json::from_str(&json).expect("serialized FlushSource::AgentNote should deserialize");
     assert!(
         matches!(back, FlushSource::AgentNote),
         "deserialized value should be FlushSource::AgentNote"
@@ -308,9 +308,9 @@ fn flush_source_agent_note_roundtrip() {
 fn flush_source_tool_pattern_roundtrip() {
     let source = FlushSource::ToolPattern;
     let json =
-        serde_json::to_string(&source).expect("FlushSource::ToolPattern should serialize to JSON"); // WHY: test assertion
+        serde_json::to_string(&source).expect("FlushSource::ToolPattern should serialize to JSON");
     let back: FlushSource = serde_json::from_str(&json)
-        .expect("serialized FlushSource::ToolPattern should deserialize"); // WHY: test assertion
+        .expect("serialized FlushSource::ToolPattern should deserialize");
     assert!(
         matches!(back, FlushSource::ToolPattern),
         "deserialized value should be FlushSource::ToolPattern"
@@ -320,9 +320,9 @@ fn flush_source_tool_pattern_roundtrip() {
 #[test]
 fn flush_item_roundtrip() {
     let item = sample_flush_item("Use snafu for errors", FlushSource::Extracted);
-    let json = serde_json::to_string(&item).expect("FlushItem should serialize to JSON"); // WHY: test assertion
+    let json = serde_json::to_string(&item).expect("FlushItem should serialize to JSON");
     let back: FlushItem =
-        serde_json::from_str(&json).expect("serialized FlushItem should deserialize"); // WHY: test assertion
+        serde_json::from_str(&json).expect("serialized FlushItem should deserialize");
     assert_eq!(
         back.content, item.content,
         "FlushItem content should survive roundtrip"
@@ -336,9 +336,9 @@ fn flush_item_roundtrip() {
 #[test]
 fn memory_flush_empty_roundtrip() {
     let flush = MemoryFlush::empty();
-    let json = serde_json::to_string(&flush).expect("empty MemoryFlush should serialize to JSON"); // WHY: test assertion
+    let json = serde_json::to_string(&flush).expect("empty MemoryFlush should serialize to JSON");
     let back: MemoryFlush =
-        serde_json::from_str(&json).expect("serialized empty MemoryFlush should deserialize"); // WHY: test assertion
+        serde_json::from_str(&json).expect("serialized empty MemoryFlush should deserialize");
     assert!(
         back.is_empty(),
         "deserialized MemoryFlush should still be empty"
@@ -357,9 +357,9 @@ fn memory_flush_full_roundtrip() {
         task_state: Some("Implementing pipeline".to_owned()),
     };
     let json =
-        serde_json::to_string(&flush).expect("populated MemoryFlush should serialize to JSON"); // WHY: test assertion
+        serde_json::to_string(&flush).expect("populated MemoryFlush should serialize to JSON");
     let back: MemoryFlush =
-        serde_json::from_str(&json).expect("serialized populated MemoryFlush should deserialize"); // WHY: test assertion
+        serde_json::from_str(&json).expect("serialized populated MemoryFlush should deserialize");
     assert_eq!(
         back.decisions.len(),
         1,
@@ -390,9 +390,9 @@ fn memory_flush_full_roundtrip() {
 fn all_standard_sections_roundtrip() {
     let sections = DistillSection::all_standard();
     let json = serde_json::to_string(&sections)
-        .expect("all standard DistillSections should serialize to JSON"); // WHY: test assertion
+        .expect("all standard DistillSections should serialize to JSON");
     let back: Vec<DistillSection> = serde_json::from_str(&json)
-        .expect("serialized standard DistillSections should deserialize"); // WHY: test assertion
+        .expect("serialized standard DistillSections should deserialize");
     assert_eq!(
         sections, back,
         "all standard sections should survive a JSON roundtrip"
@@ -413,7 +413,7 @@ async fn split_when_verbatim_tail_zero_summarizes_all() {
     let result = engine
         .distill(&messages, "test", &provider, 1)
         .await
-        .expect("distill should succeed with verbatim_tail=0"); // WHY: test assertion
+        .expect("distill should succeed with verbatim_tail=0");
 
     assert_eq!(
         result.messages_distilled, 6,
@@ -439,7 +439,7 @@ async fn split_when_verbatim_tail_equals_messages_distills_none() {
     let result = engine
         .distill(&messages, "test", &provider, 1)
         .await
-        .expect("distill should succeed when verbatim_tail equals message count"); // WHY: test assertion
+        .expect("distill should succeed when verbatim_tail equals message count");
 
     assert_eq!(
         result.messages_distilled, 0,
@@ -466,7 +466,7 @@ async fn split_when_verbatim_tail_exceeds_messages_clamps() {
     let result = engine
         .distill(&messages, "test", &provider, 1)
         .await
-        .expect("distill should succeed when verbatim_tail exceeds message count"); // WHY: test assertion
+        .expect("distill should succeed when verbatim_tail exceeds message count");
 
     assert_eq!(
         result.messages_distilled, 0,
@@ -498,7 +498,7 @@ async fn split_preserves_exact_tail_content() {
     let result = engine
         .distill(&messages, "test", &provider, 1)
         .await
-        .expect("distill should succeed when preserving exact tail content"); // WHY: test assertion
+        .expect("distill should succeed when preserving exact tail content");
 
     assert_eq!(
         result.messages_distilled, 2,
@@ -510,10 +510,10 @@ async fn split_preserves_exact_tail_content() {
         vm.first().expect("msg 0").content.text(),
         "Third",
         "first verbatim message should be 'Third'"
-    ); // WHY: test assertion
+    );
     assert_eq!(
         vm.get(1).expect("msg 1").content.text(),
         "Fourth",
         "second verbatim message should be 'Fourth'"
-    ); // WHY: test assertion
+    );
 }

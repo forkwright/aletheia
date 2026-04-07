@@ -321,7 +321,7 @@ impl WorkspaceGuard {
 
         // WHY: LOCK_EX | LOCK_NB = exclusive + non-blocking.
         // Returns EWOULDBLOCK if another process holds the lock.
-        // The lock is held until the file descriptor is closed (struct drop).
+        // NOTE: The guard drops immediately; flock remains held via the open fd.
         use rustix::fs::{FlockOperation, flock};
         use std::os::fd::AsFd;
         flock(&file.as_fd(), FlockOperation::NonBlockingLockExclusive).map_err(|e| {

@@ -95,7 +95,7 @@ impl CircuitBreaker {
     /// Current circuit state.
     #[must_use]
     pub(crate) fn state(&self) -> CircuitState {
-        // WHY: Mutex poisoning means a thread panicked; no recovery path exists
+        // WHY: Mutex poisoning means a thread panicked; recover with into_inner()
         self.inner
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)

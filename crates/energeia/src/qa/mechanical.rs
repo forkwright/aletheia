@@ -1,4 +1,4 @@
-// WHY: Mechanical pre-screening catches structural issues before spending LLM
+// PERF: Mechanical pre-screening catches structural issues before spending LLM
 // tokens on semantic evaluation. Blast radius, anti-patterns, lint, and format
 // checks run deterministically on the diff or via cargo commands.
 

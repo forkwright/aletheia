@@ -85,7 +85,7 @@ impl AcquiredLock {
 
 /// Write bytes to a file (CREATE + truncate).
 ///
-/// WHY: `std::fs::write` is disallowed by melete's `clippy.toml`; this uses
+/// NOTE: `std::fs::write` is disallowed by melete's `clippy.toml`; this uses
 /// `File::options()` which is permitted.
 fn write_file(path: &Path, content: &[u8]) -> Result<()> {
     let mut file = std::fs::File::options()
@@ -104,7 +104,7 @@ fn write_file(path: &Path, content: &[u8]) -> Result<()> {
 
 /// Read the entire contents of a file as a string.
 ///
-/// WHY: `std::fs::File::open` is disallowed by melete's `clippy.toml`; this
+/// NOTE: `std::fs::File::open` is disallowed by melete's `clippy.toml`; this
 /// uses `File::options().read(true).open()` which is permitted.
 fn read_file_string(path: &Path) -> Option<String> {
     let mut file = std::fs::File::options().read(true).open(path).ok()?;

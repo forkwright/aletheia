@@ -533,7 +533,7 @@ impl NousActor {
                     .await;
             }
         }
-        // WHY: suppress unused-variable warning when tui feature is off
+        // WHY: suppress unused-variable warning when knowledge-store feature is off
         #[cfg(not(feature = "knowledge-store"))]
         let _ = content;
 

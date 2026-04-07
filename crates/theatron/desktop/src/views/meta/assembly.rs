@@ -97,7 +97,7 @@ pub(super) fn assemble_meta_data(
     let cumulative_values: Vec<f64> = cumulative_entities.iter().map(|p| p.value).collect();
     let acceleration = crate::state::meta::compute_acceleration(&cumulative_values);
 
-    // WHY: Entity type distribution from entity list.
+    // NOTE: Entity type distribution from entity list.
     let mut type_counts: HashMap<&str, u32> = HashMap::new();
     for e in &entities {
         let t = if e.entity_type.is_empty() {
@@ -159,7 +159,7 @@ pub(super) fn assemble_meta_data(
         orphan_count as f64 / entities.len() as f64
     };
 
-    // WHY: Approximate staleness from facts with empty updated_at or old dates.
+    // NOTE: Approximate staleness from facts with empty updated_at or old dates.
     let stale_count = facts.iter().filter(|f| f.updated_at.is_empty()).count();
     let staleness_ratio = if facts.is_empty() {
         0.0
@@ -170,7 +170,7 @@ pub(super) fn assemble_meta_data(
     let health_score =
         crate::state::meta::compute_health_score(avg_confidence, orphan_ratio, staleness_ratio);
 
-    // WHY: Build confidence distribution histogram (10 buckets of 0.1 width).
+    // NOTE: Build confidence distribution histogram (10 buckets of 0.1 width).
     let mut confidence_buckets = vec![0u32; 10];
     for f in &facts {
         let idx = ((f.confidence * 10.0).floor() as usize).min(9);
@@ -233,7 +233,7 @@ pub(super) fn assemble_meta_data(
         cost_per_entity_trend: crate::state::meta::TrendDirection::Flat,
     };
 
-    // WHY: Build heatmap from session created_at timestamps.
+    // NOTE: Build heatmap from session created_at timestamps.
     // Parse "YYYY-MM-DDTHH:MM:SS" -> (day_of_week, hour).
     let timestamps: Vec<(u8, u8)> = sessions
         .iter()
@@ -261,7 +261,7 @@ pub(super) fn assemble_meta_data(
 ///
 /// Uses a basic parser -- no external date library dependency needed.
 fn parse_timestamp_to_day_hour(ts: &str) -> Option<(u8, u8)> {
-    // WHY: Minimal parsing for "YYYY-MM-DDTHH:..." format.
+    // NOTE: Minimal parsing for "YYYY-MM-DDTHH:..." format.
     if ts.len() < 13 {
         return None;
     }
@@ -270,7 +270,7 @@ fn parse_timestamp_to_day_hour(ts: &str) -> Option<(u8, u8)> {
         return None;
     }
 
-    // WHY: Approximate day-of-week using Tomohiko Sakamoto's algorithm.
+    // NOTE: Approximate day-of-week using Tomohiko Sakamoto's algorithm.
     let year: i32 = ts.get(0..4)?.parse().ok()?;
     let month: u32 = ts.get(5..7)?.parse().ok()?;
     let day: u32 = ts.get(8..10)?.parse().ok()?;
@@ -295,7 +295,7 @@ fn day_of_week(mut year: i32, month: u32, day: u32) -> u8 {
         let dow_raw = (year + year / 4 - year / 100 + year / 400 + T[month as usize - 1] + day as i32) % 7;
         dow_raw
     };
-    // WHY: Sakamoto returns 0=Sun, convert to 0=Mon.
+    // NOTE: Sakamoto returns 0=Sun, convert to 0=Mon.
     {
         #[expect(clippy::as_conversions, reason = "day-of-week 0–6 fits u8")]
         let result = ((dow + 6) % 7) as u8;

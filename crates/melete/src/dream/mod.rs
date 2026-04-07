@@ -570,7 +570,7 @@ mod tests {
 
     /// Write bytes to a file (test helper).
     ///
-    /// WHY: `std::fs::write` is disallowed by melete's clippy.toml.
+    /// NOTE: `std::fs::write` is disallowed by melete's clippy.toml.
     fn write_test_file(path: &std::path::Path, content: &[u8]) {
         use std::io::Write;
         let mut f = std::fs::File::options()

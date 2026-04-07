@@ -1,4 +1,4 @@
-// WHY: Wraps AgentOptions into session-level configuration with additional
+// NOTE: Wraps AgentOptions into session-level configuration with additional
 // fields needed by the session manager (idle timeout, additional directories).
 // Separates session config concerns from the raw engine options.
 

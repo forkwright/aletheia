@@ -1,4 +1,4 @@
-// WHY: Resume policy defines escalating intervention messages injected into
+// NOTE: Resume policy defines escalating intervention messages injected into
 // stuck sessions. Each stage has a turn budget; when the session exhausts all
 // stages it is marked Stuck.
 

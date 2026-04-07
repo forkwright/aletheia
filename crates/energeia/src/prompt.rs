@@ -1,4 +1,4 @@
-// WHY: Prompt loading and DAG construction from YAML frontmatter files.
+// NOTE: Prompt loading and DAG construction from YAML frontmatter files.
 // Separates I/O (loading from disk) from graph logic (DAG construction),
 // keeping each concern testable in isolation.
 

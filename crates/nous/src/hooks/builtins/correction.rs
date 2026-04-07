@@ -68,16 +68,9 @@ impl TurnHook for CorrectionDetector {
         context: &'a TurnContext<'_>,
     ) -> Pin<Box<dyn Future<Output = HookResult> + Send + 'a>> {
         Box::pin(async move {
-            // WHY: Extract the user message from the turn result content is not
-            // available in TurnContext. Instead, scan the assistant response for
-            // correction acknowledgment patterns. However, the user message is
-            // what we need to scan. The pipeline passes the user message in
-            // QueryContext (before_query), not TurnContext (on_turn_complete).
-            //
-            // Design decision: scan the assistant's response for signs it
-            // acknowledged a correction. This is less reliable than scanning the
-            // user message directly, so we use a different approach: the
-            // CorrectionInjector in before_query detects corrections from the
+            // NOTE: This hook is currently a no-op; correction detection is handled
+            // by CorrectionInjector in before_query. This function is retained for
+            // future expansion if turn-complete analysis is needed.
             // user message and persists them immediately. The detector hook is
             // kept as a secondary path for corrections embedded in multi-turn
             // context.

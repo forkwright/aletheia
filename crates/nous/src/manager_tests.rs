@@ -267,7 +267,7 @@ async fn drain_stops_all_actors() {
         .spawn(demiurge_config(), PipelineConfig::default())
         .await;
 
-    // WHY: drain() takes &self: no mutable access needed.
+    // NOTE: drain() takes &self: no mutable access needed.
     mgr.drain(Duration::from_secs(5)).await;
 
     assert!(
@@ -288,7 +288,7 @@ async fn cancel_token_propagates_to_actors() {
 
     let handle = mgr.spawn(syn_config(), PipelineConfig::default()).await;
 
-    // WHY: Cancel via manager's root token directly (as drain() would do internally).
+    // NOTE: Cancel via manager's root token directly (as drain() would do internally).
     mgr.cancel.cancel();
 
     tokio::time::timeout(Duration::from_secs(5), async {

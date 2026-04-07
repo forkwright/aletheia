@@ -1,4 +1,4 @@
-// WHY: Processes the SessionEvent stream from a SessionHandle, accumulating
+// NOTE: Processes the SessionEvent stream from a SessionHandle, accumulating
 // cost and turn metrics while detecting timeouts and PR URLs.
 // Separated from the manager so event logic is testable without the full
 // resume loop.

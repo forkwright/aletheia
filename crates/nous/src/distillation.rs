@@ -3,9 +3,6 @@
 use snafu::ResultExt;
 use tracing::{info, instrument};
 
-// WHY: these constants are now fields on DistillTriggerConfig so they can
-// be tuned via aletheia.toml [behavioral.distillation]. The defaults here
-// match the original hardcoded values for zero behavior change.
 
 use aletheia_hermeneus::provider::LlmProvider;
 use aletheia_hermeneus::types::{Content, Message as HermeneusMessage, Role as HermeneusRole};

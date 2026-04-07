@@ -424,7 +424,7 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
 
     let facts: Vec<FactEntry> = match facts_res {
         Ok(resp) if resp.status().is_success() => {
-            // WHY: API may return bare array or wrapped in { facts: [...] }.
+            // NOTE: API may return bare array or wrapped in { facts: [...] }.
             let text = resp.text().await.unwrap_or_default();
             serde_json::from_str::<Vec<FactEntry>>(&text)
                 .or_else(|_| {

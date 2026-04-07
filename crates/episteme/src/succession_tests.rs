@@ -258,7 +258,7 @@ fn adaptive_stability_verified_two_times_inferred_at_same_volatility() {
     );
 }
 
-// WHY: Pure GraphContext tests: no engine required. Chain lengths are injected
+// NOTE: Pure GraphContext tests: no engine required. Chain lengths are injected
 // directly into the context, matching how the engine populates them at runtime.
 
 #[test]
