@@ -248,7 +248,7 @@ pub type Result<T> = std::result::Result<T, Error>; // kanon:ignore RUST/pub-vis
 
 impl aletheia_koina::error_class::Classifiable for Error {
     fn class(&self) -> aletheia_koina::error_class::ErrorClass {
-        use aletheia_koina::error_class::{Classifiable, ErrorClass};
+        use aletheia_koina::error_class::ErrorClass;
         match self {
             // Delegate to the inner error's own classification where possible.
             Error::Llm { source, .. } => source.class(),
@@ -288,7 +288,7 @@ impl aletheia_koina::error_class::Classifiable for Error {
     }
 
     fn action(&self) -> aletheia_koina::error_class::ErrorAction {
-        use aletheia_koina::error_class::{Classifiable as _, ErrorAction, ErrorClass};
+        use aletheia_koina::error_class::{ErrorAction, ErrorClass};
         match self {
             // Delegate LLM errors to hermeneus — it carries retry-after hints.
             Error::Llm { source, .. } => source.action(),
@@ -298,7 +298,7 @@ impl aletheia_koina::error_class::Classifiable for Error {
                 max_attempts: 3,
                 backoff_base_ms: 200,
             },
-            Error::AskTimeout { nous_id, .. } => ErrorAction::Retry {
+            Error::AskTimeout { .. } => ErrorAction::Retry {
                 max_attempts: 2,
                 backoff_base_ms: 500,
             },
