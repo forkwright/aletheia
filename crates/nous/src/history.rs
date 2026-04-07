@@ -111,7 +111,7 @@ pub(crate) fn load_history(
             Role::System => continue,
             Role::ToolResult if !config.include_tool_messages => continue,
             _ => {
-                // NOTE: User and Assistant roles pass through for inclusion
+                // NOTE: User, Assistant, and ToolResult roles pass through for inclusion
             }
         }
 

@@ -506,9 +506,9 @@ mod proptests {
         #[test]
         fn slugify_never_panics(input in "\\PC{0,200}") {
             let result = utils::slugify(&input);
-            // NOTE: BUG: slugify uses char::is_alphanumeric() which is Unicode-aware,
+            // FIXME(#2633): slugify uses char::is_alphanumeric() which is Unicode-aware,
             // so non-ASCII alphanumeric chars (Tamil, Cyrillic, etc.) pass through.
-            // Slugs should ideally be ASCII-only. Documented for fix in a separate PR.
+            // Slugs should ideally be ASCII-only.
             assert!(
                 result.chars().all(|c| c.is_alphanumeric() || c == '-'),
                 "slugify produced unexpected character in: {result:?}"

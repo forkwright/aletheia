@@ -93,7 +93,7 @@ fn looks_like_id(s: &str) -> bool {
     if s.is_empty() {
         return false;
     }
-    // NOTE: ULIDs are 26 alphanumeric chars; UUIDs are 36 chars with hyphens.
+    // NOTE: ULIDs are 26 alphanumeric chars (heuristic: ≥20); UUIDs are 36 chars with hyphens.
     let len = s.len();
     (len >= 20 && s.chars().all(|c| c.is_ascii_alphanumeric()))
         || (len == 36 && s.contains('-') && s.chars().all(|c| c.is_ascii_hexdigit() || c == '-'))

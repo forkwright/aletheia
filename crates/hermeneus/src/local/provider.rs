@@ -139,7 +139,7 @@ impl LocalProvider {
 
         let tool_choice = request.tool_choice.as_ref().map(|tc| match tc {
             ToolChoice::Any => "required",
-            // NOTE: OpenAI's specific-tool format differs from Anthropic's; fall back to auto.
+            // WHY: OpenAI's specific-tool format differs from Anthropic's; fall back to auto.
             ToolChoice::Auto | ToolChoice::Tool { .. } => "auto",
         });
 

@@ -288,9 +288,7 @@ fn extract_json_array(s: &str) -> Option<&str> {
                     return s.get(start..=start + i);
                 }
             }
-            _ => {
-                // NOTE: non-bracket character, no depth change
-            }
+            _ => {}
         }
     }
     None

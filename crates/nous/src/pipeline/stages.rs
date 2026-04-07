@@ -108,7 +108,7 @@ pub(super) async fn run_recall_stage(
     )]
     let budget = ctx.remaining_tokens.max(0) as u64; // kanon:ignore RUST/as-cast
 
-    // NOTE: BM25-only fallback when mock embedding provider is in use.
+    // WHY: BM25-only fallback when mock embedding provider is in use.
     // Vector recall would produce meaningless results from hash-based embeddings.
     if is_mock_embedding {
         if let Some(ts) = text_search {
