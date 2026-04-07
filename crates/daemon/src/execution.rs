@@ -11,6 +11,7 @@ use crate::maintenance::{
     DbMonitor, DriftDetector, KnowledgeMaintenanceExecutor, MaintenanceConfig, RetentionExecutor,
     TraceRotator,
 };
+use crate::probe::{ProbeAuditSummary, ProbeSet, build_probe_audit_prompt};
 use crate::runner::ExecutionResult;
 use crate::schedule::{BuiltinTask, TaskAction};
 
@@ -284,6 +285,7 @@ pub(crate) async fn execute_builtin(
                 })
             }
         }
+        BuiltinTask::ProbeAudit => execute_probe_audit(nous_id, bridge).await,
         BuiltinTask::EvolutionSearch => evolution::execute_evolution(nous_id, bridge).await,
         BuiltinTask::SelfReflection => reflection::execute_reflection(nous_id, bridge).await,
         BuiltinTask::GraphCleanup => {
@@ -327,6 +329,96 @@ pub(crate) async fn execute_builtin(
                     "{} sessions, {} messages cleaned, {} bytes freed",
                     summary.sessions_cleaned, summary.messages_cleaned, summary.bytes_freed
                 )),
+            })
+        }
+    }
+}
+
+/// Dispatch the adversarial probe audit via the bridge.
+///
+/// WHY: the daemon cannot call the LLM directly. We build a structured prompt
+/// from the default probe set, dispatch it to the nous, then parse the response
+/// to evaluate each probe's constraints locally (no extra round-trip needed).
+///
+/// Results are logged at INFO level. The nous is instructed (via the prompt) to
+/// store the audit outcome as an operational fact in the knowledge graph.
+async fn execute_probe_audit(
+    nous_id: &str,
+    bridge: Option<&dyn DaemonBridge>,
+) -> Result<ExecutionResult> {
+    let Some(bridge) = bridge else {
+        return Ok(ExecutionResult {
+            success: false,
+            output: Some("no bridge configured".to_owned()),
+        });
+    };
+
+    let probe_set = ProbeSet::default_probes();
+    let prompt = build_probe_audit_prompt(&probe_set);
+
+    match bridge
+        .send_prompt(nous_id, "daemon:probe-audit", &prompt)
+        .await
+    {
+        Ok(dispatch_result) => {
+            // Evaluate the returned text against each probe's constraints.
+            // The bridge returns the full response text in `output`; if absent,
+            // treat as empty (all probes that require patterns will fail).
+            let response_text = dispatch_result
+                .output
+                .as_deref()
+                .unwrap_or_default();
+
+            let results = probe_set.evaluate_all(|probe_id| {
+                // WHY: the response contains all probe answers in a single block.
+                // We check the full text for each probe's required/forbidden
+                // patterns rather than trying to parse per-probe sections.
+                // This is robust against formatting variation in the LLM response.
+                if response_text.to_lowercase().contains(probe_id) || !response_text.is_empty() {
+                    Some(response_text)
+                } else {
+                    None
+                }
+            });
+
+            let summary = ProbeAuditSummary::from_results(results);
+
+            tracing::info!(
+                nous_id = %nous_id,
+                total = summary.total,
+                passed = summary.passed,
+                failed = summary.failed,
+                avg_confidence = summary.avg_confidence,
+                "probe-audit complete"
+            );
+
+            for result in &summary.results {
+                if !result.passed {
+                    tracing::warn!(
+                        probe_id = result.probe_id,
+                        category = ?result.category,
+                        confidence = result.confidence,
+                        violations = ?result.violations,
+                        missing_required = ?result.missing_required,
+                        "probe-audit: probe failed"
+                    );
+                }
+            }
+
+            Ok(ExecutionResult {
+                success: dispatch_result.success,
+                output: Some(summary.one_line()),
+            })
+        }
+        Err(e) => {
+            tracing::warn!(
+                nous_id = %nous_id,
+                error = %e,
+                "probe-audit dispatch failed"
+            );
+            Ok(ExecutionResult {
+                success: false,
+                output: Some(format!("probe-audit dispatch failed: {e}")),
             })
         }
     }

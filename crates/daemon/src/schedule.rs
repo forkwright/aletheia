@@ -111,6 +111,13 @@ pub enum BuiltinTask {
     SkillDecay,
     /// Run self-audit checks and store results in the knowledge graph.
     SelfAudit,
+    /// Run adversarial self-probing: consistency, boundary, and recall probes.
+    ///
+    /// WHY: SelfAudit dispatches a generic introspection prompt to the nous;
+    /// ProbeAudit dispatches a structured probe set that evaluates specific
+    /// behavioral invariants (injection resistance, factual consistency, recall
+    /// fidelity). Silent capability drift is detected before QA surfaces it.
+    ProbeAudit,
     /// Periodic configuration variant search: mutate and benchmark agent pipeline configs.
     EvolutionSearch,
     /// Periodic self-reflection: agent evaluates recent performance.

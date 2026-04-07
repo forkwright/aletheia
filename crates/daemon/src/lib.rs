@@ -27,6 +27,11 @@ pub mod maintenance;
 pub mod metrics;
 /// Prosoche (directed attention) periodic check-in for calendar, tasks, and system health.
 pub mod prosoche;
+/// Adversarial self-probing: consistency, boundary, and recall probe evaluation.
+///
+/// Dokimion (δοκίμιον): "test, assay, proof." Periodic pipeline health checks
+/// that detect capability drift before external QA surfaces it.
+pub mod probe;
 /// Per-nous background task runner with cron scheduling, failure tracking, and graceful shutdown.
 pub mod runner;
 /// Self-prompting: daemon-initiated follow-up actions with rate limiting.
