@@ -151,9 +151,7 @@ skip = [
     { name = "toml", version = "=0.8.23" },
     { name = "toml_datetime", version = "=0.6.11" },
 
-    # WHY: cron crate pins winnow 0.6; toml_edit pins winnow 0.7.
-    # Canonical: winnow 1.0 (toml 1.x). Blocked until cron and toml_edit update.
-    { name = "winnow", version = "=0.6.26" },
+    # WHY: toml_edit pins winnow 0.7. Canonical: winnow 1.0 (toml 1.x).
     { name = "winnow", version = "=0.7.15" },
 ]
 
