@@ -61,8 +61,8 @@ async fn assemble_with_required_only() {
     );
     assert_eq!(
         result.sections_included,
-        vec!["SOUL.md"],
-        "only SOUL.md should be included when it is the only file"
+        vec!["SOUL.md", "output-style"],
+        "SOUL.md and output-style should be included when it is the only file"
     );
     assert!(
         result.sections_dropped.is_empty(),
@@ -99,8 +99,8 @@ async fn assemble_missing_optional_skips() {
         .expect("assemble should succeed");
     assert_eq!(
         result.sections_included,
-        vec!["SOUL.md"],
-        "only SOUL.md should be included when optional files are absent"
+        vec!["SOUL.md", "output-style"],
+        "SOUL.md and output-style should be included when optional files are absent"
     );
     assert!(
         result.sections_dropped.is_empty(),
@@ -176,8 +176,8 @@ async fn assemble_all_files_present() {
         .expect("assemble should succeed");
     assert_eq!(
         result.sections_included.len(),
-        9,
-        "all 9 sections should be included when budget allows"
+        10,
+        "all 9 workspace sections + output-style should be included when budget allows"
     );
     assert!(
         result.total_tokens > 0,
@@ -204,8 +204,8 @@ async fn assemble_empty_file_skipped() {
         .expect("assemble should succeed");
     assert_eq!(
         result.sections_included,
-        vec!["SOUL.md"],
-        "empty and whitespace-only sections should be skipped"
+        vec!["SOUL.md", "output-style"],
+        "empty and whitespace-only sections should be skipped, output-style always present"
     );
 }
 
@@ -517,8 +517,8 @@ async fn assemble_with_extra_includes_pack_sections() {
     );
     assert_eq!(
         result.sections_included.len(),
-        2,
-        "both SOUL.md and the extra pack section should be included"
+        3,
+        "SOUL.md, output-style, and the extra pack section should be included"
     );
 }
 
@@ -643,5 +643,201 @@ fn task_hint_default_is_general() {
         TaskHint::default(),
         TaskHint::General,
         "TaskHint default should be General for backward compatibility"
+    );
+}
+
+// --- Output-style extraction tests ---
+
+#[test]
+fn extract_output_style_from_communication_section() {
+    let user_md = "\
+# User Profile
+
+## Who
+- Name: Alice
+
+## Communication
+- Direct and concise preferred
+- Structure over prose
+
+## Domains
+- code: Syn
+";
+    let style = extract_output_style(user_md);
+    assert!(style.is_some(), "should extract Communication section");
+    let style = style.expect("just asserted Some");
+    assert!(
+        style.contains("Direct and concise"),
+        "extracted style should contain Communication content: {style}"
+    );
+    assert!(
+        !style.contains("## Domains"),
+        "extracted style should not bleed into next section: {style}"
+    );
+    assert!(
+        !style.contains("Alice"),
+        "extracted style should not contain content from other sections: {style}"
+    );
+}
+
+#[test]
+fn extract_output_style_from_output_section() {
+    let user_md = "\
+# User
+
+## Output
+- Answer-first
+- No filler
+";
+    let style = extract_output_style(user_md);
+    assert!(style.is_some(), "should extract Output section");
+    let style = style.expect("just asserted Some");
+    assert!(
+        style.contains("Answer-first"),
+        "extracted style should contain Output content: {style}"
+    );
+}
+
+#[test]
+fn extract_output_style_none_when_absent() {
+    let user_md = "\
+# User Profile
+
+## Who
+- Name: Bob
+
+## Domains
+- research
+";
+    assert!(
+        extract_output_style(user_md).is_none(),
+        "should return None when no Communication or Output section exists"
+    );
+}
+
+#[test]
+fn extract_output_style_case_insensitive() {
+    let user_md = "\
+# User
+
+## COMMUNICATION
+- Be terse
+";
+    let style = extract_output_style(user_md);
+    assert!(
+        style.is_some(),
+        "heading match should be case-insensitive"
+    );
+    let style = style.expect("just asserted Some");
+    assert!(
+        style.contains("Be terse"),
+        "should extract content from case-variant heading: {style}"
+    );
+}
+
+#[test]
+fn extract_output_style_empty_section_returns_none() {
+    let user_md = "\
+# User
+
+## Communication
+
+## Domains
+- code
+";
+    assert!(
+        extract_output_style(user_md).is_none(),
+        "empty Communication section should return None"
+    );
+}
+
+#[tokio::test]
+async fn assemble_output_style_uses_user_communication() {
+    let user_content = "\
+# User
+
+## Who
+- Name: Test
+
+## Communication
+- Bullet points only
+- No prose";
+    let (_dir, oikos) = setup_oikos(
+        "test",
+        &[("SOUL.md", "identity"), ("USER.md", user_content)],
+    );
+    let assembler = BootstrapAssembler::new(&oikos);
+    let mut budget = default_budget();
+
+    let result = assembler
+        .assemble("test", &mut budget)
+        .await
+        .expect("assemble should succeed");
+    assert!(
+        result
+            .sections_included
+            .contains(&"output-style".to_owned()),
+        "output-style section should be included"
+    );
+    assert!(
+        result.system_prompt.contains("Bullet points only"),
+        "output-style should contain USER.md Communication content"
+    );
+    assert!(
+        result.system_prompt.contains("No prose"),
+        "output-style should contain full Communication content"
+    );
+}
+
+#[tokio::test]
+async fn assemble_output_style_defaults_without_user() {
+    let (_dir, oikos) = setup_oikos("test", &[("SOUL.md", "identity")]);
+    let assembler = BootstrapAssembler::new(&oikos);
+    let mut budget = default_budget();
+
+    let result = assembler
+        .assemble("test", &mut budget)
+        .await
+        .expect("assemble should succeed");
+    assert!(
+        result
+            .sections_included
+            .contains(&"output-style".to_owned()),
+        "output-style section should be present even without USER.md"
+    );
+    assert!(
+        result.system_prompt.contains("Answer-first"),
+        "output-style should contain default directives when USER.md is absent"
+    );
+    assert!(
+        result.system_prompt.contains("Structure over prose"),
+        "output-style should contain default directives"
+    );
+}
+
+#[tokio::test]
+async fn assemble_output_style_defaults_when_no_communication_section() {
+    let user_content = "\
+# User
+
+## Who
+- Name: Test
+
+## Domains
+- code";
+    let (_dir, oikos) = setup_oikos(
+        "test",
+        &[("SOUL.md", "identity"), ("USER.md", user_content)],
+    );
+    let assembler = BootstrapAssembler::new(&oikos);
+    let mut budget = default_budget();
+
+    let result = assembler
+        .assemble("test", &mut budget)
+        .await
+        .expect("assemble should succeed");
+    assert!(
+        result.system_prompt.contains("Answer-first"),
+        "output-style should use defaults when USER.md has no Communication section"
     );
 }

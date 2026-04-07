@@ -187,8 +187,8 @@ async fn assemble_conditional_conversation_loads_identity_only() {
     );
     assert_eq!(
         result.sections_included.len(),
-        4,
-        "only 4 identity-tier files should be included for Conversation"
+        5,
+        "4 identity-tier files + output-style should be included for Conversation"
     );
     // WHY: all operational files should be filtered
     assert_eq!(
@@ -224,8 +224,8 @@ async fn assemble_conditional_general_loads_all() {
 
     assert_eq!(
         result.sections_included.len(),
-        9,
-        "General hint should load all 9 present workspace files"
+        10,
+        "General hint should load all 9 workspace files + output-style"
     );
     assert!(
         result.sections_filtered.is_empty(),
@@ -291,8 +291,8 @@ async fn assemble_backward_compat_loads_all() {
 
     assert_eq!(
         result.sections_included.len(),
-        5,
-        "assemble() without hint should load all present files"
+        6,
+        "assemble() without hint should load all present files + output-style"
     );
     assert!(
         result.sections_filtered.is_empty(),

@@ -9,6 +9,11 @@
 //!   who the agent is and load unconditionally.
 //! - **Conditionally-loaded (operational):** AGENTS, GOALS, TOOLS, CHECKLIST,
 //!   MEMORY, CONTEXT — loaded only when relevant to the [`TaskHint`].
+//!
+//! An `output-style` section is always injected, derived from the
+//! `## Communication` section in USER.md (or defaults if absent).
+//! This shapes response formatting to match the operator's cognitive
+//! preferences from the first turn.
 
 /// Tool summary generation for inclusion in the bootstrap system prompt.
 pub mod tools;
@@ -200,6 +205,16 @@ const WORKSPACE_FILES: &[WorkspaceFileSpec] = &[
 
 /// Minimum tokens remaining before attempting truncation (below this, just drop).
 const MIN_TRUNCATION_BUDGET: u64 = 200;
+
+/// Default output-style directives when USER.md has no `## Communication` section.
+///
+/// These encode the project operator's cognitive preferences so that the
+/// system prompt shapes output formatting from the first turn.
+const DEFAULT_OUTPUT_STYLE: &str = "\
+- Direct, not performative. Answer-first.
+- Structure over prose. Trust processing capacity.
+- No forced linearity, no basics when the bigger picture is visible.
+- If you can say it in one sentence, don't use three.";
 
 /// Assembles the bootstrap system prompt from oikos workspace files.
 ///
@@ -444,6 +459,29 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
             }
         }
 
+        // WHY: inject output-style directives derived from USER.md's Communication
+        // section (or defaults). This shapes formatting to match the operator's
+        // cognitive preferences from the first turn. Always-tier because it applies
+        // to every response regardless of task type.
+        let style_content = sections
+            .iter()
+            .find(|s| s.name == "USER.md")
+            .and_then(|s| extract_output_style(&s.content))
+            .unwrap_or_else(|| DEFAULT_OUTPUT_STYLE.to_owned());
+
+        let style_section = format!(
+            "Format all output according to the operator's communication preferences:\n\n{style_content}"
+        );
+        let style_tokens = self.estimator.estimate(&style_section);
+        sections.push(BootstrapSection {
+            name: "output-style".to_owned(),
+            priority: SectionPriority::Flexible,
+            content: style_section,
+            tokens: style_tokens,
+            truncatable: false,
+        });
+        debug!("injected output-style section ({style_tokens} tokens)");
+
         Ok((sections, filtered))
     }
 
@@ -568,6 +606,48 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
             tokens: final_tokens,
             truncatable: section.truncatable,
         }
+    }
+}
+
+/// Extract the `## Communication` section from USER.md content.
+///
+/// Looks for a `## Communication` or `## Output` heading and returns
+/// everything up to the next `## ` heading (or end of content). Returns
+/// `None` if no such section exists.
+fn extract_output_style(user_content: &str) -> Option<String> {
+    // WHY: headings are case-insensitive to match operator variation
+    let lower = user_content.to_lowercase();
+
+    let start = lower
+        .find("\n## communication")
+        .or_else(|| lower.find("\n## output"));
+
+    let start = match start {
+        Some(pos) => pos + 1, // skip the leading newline
+        None => {
+            // NOTE: check if the content starts with the heading (no leading newline)
+            if lower.starts_with("## communication") || lower.starts_with("## output") {
+                0
+            } else {
+                return None;
+            }
+        }
+    };
+
+    // NOTE: find the end of this section (next ## heading or end of content)
+    let section_body_start = user_content[start..]
+        .find('\n')
+        .map_or(user_content.len(), |nl| start + nl + 1);
+
+    let end = user_content[section_body_start..]
+        .find("\n## ")
+        .map_or(user_content.len(), |pos| section_body_start + pos);
+
+    let body = user_content[section_body_start..end].trim();
+    if body.is_empty() {
+        None
+    } else {
+        Some(body.to_owned())
     }
 }
 

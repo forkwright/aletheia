@@ -8,6 +8,8 @@
 - **Timezone:** 
 
 ## Communication
+<!-- Injected into the system prompt as output-style directives.
+     These shape how every response is formatted. -->
 - Direct and concise preferred
 - Structure over prose
 
