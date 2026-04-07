@@ -13,8 +13,8 @@ use aletheia_koina::secret::SecretString;
 use super::*;
 use crate::anthropic::pricing::{backoff_delay, estimate_cost, model_family};
 use crate::error::Error;
-use crate::models::BACKOFF_MAX_MS;
-use crate::provider::{LlmProvider, ProviderConfig};
+use crate::models::{BACKOFF_MAX_MS, BACKOFF_BASE_MS, BACKOFF_FACTOR};
+use crate::provider::{LlmProvider, ProviderConfig, RetrySettings};
 use crate::types::{CompletionRequest, Content, Message, Role};
 
 fn test_config_with(base_url: &str) -> ProviderConfig {
@@ -23,9 +23,15 @@ fn test_config_with(base_url: &str) -> ProviderConfig {
         api_key: Some(SecretString::from("test-key")),
         base_url: Some(base_url.to_owned()),
         default_model: None,
-        max_retries: Some(0),
+        max_retries: None,
         pricing: HashMap::new(),
         cc_mimicry: None,
+        retry_settings: RetrySettings {
+            max_retries: 0,
+            backoff_base_ms: BACKOFF_BASE_MS,
+            backoff_factor: BACKOFF_FACTOR as u32,
+            backoff_max_ms: BACKOFF_MAX_MS,
+        },
     }
 }
 
@@ -476,7 +482,8 @@ fn backoff_delay_respects_retry_after() {
         retry_after_ms: 5000_u64,
     }
     .build();
-    let delay = backoff_delay(1, Some(&err));
+    let settings = RetrySettings::default();
+    let delay = backoff_delay(1, Some(&err), &settings);
     assert_eq!(
         delay,
         Duration::from_millis(5000),
@@ -486,9 +493,10 @@ fn backoff_delay_respects_retry_after() {
 
 #[test]
 fn backoff_delay_exponential_growth() {
-    let d1 = backoff_delay(1, None);
-    let d2 = backoff_delay(2, None);
-    let d3 = backoff_delay(3, None);
+    let settings = RetrySettings::default();
+    let d1 = backoff_delay(1, None, &settings);
+    let d2 = backoff_delay(2, None, &settings);
+    let d3 = backoff_delay(3, None, &settings);
     assert!(d1 < d2, "attempt 2 delay should exceed attempt 1");
     assert!(d2 < d3, "attempt 3 delay should exceed attempt 2");
     assert!(

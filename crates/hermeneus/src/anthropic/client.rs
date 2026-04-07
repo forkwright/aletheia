@@ -16,13 +16,13 @@ use aletheia_koina::secret::SecretString;
 
 use crate::error::{self, Result};
 use crate::health::{HealthConfig, ProviderHealthTracker};
-use crate::provider::{LlmProvider, ModelPricing, ProviderConfig};
+use crate::provider::{LlmProvider, ModelPricing, ProviderConfig, RetrySettings};
 use crate::types::{CompletionRequest, CompletionResponse};
 
 use super::stream::{StreamAccumulator, StreamEvent, parse_sse_response};
 use super::wire::WireRequest;
 
-use crate::models::{DEFAULT_API_VERSION, DEFAULT_BASE_URL, DEFAULT_MAX_RETRIES, SUPPORTED_MODELS};
+use crate::models::{DEFAULT_API_VERSION, DEFAULT_BASE_URL, SUPPORTED_MODELS};
 
 use super::pricing::{backoff_delay, estimate_cost_with_cache};
 
@@ -38,6 +38,8 @@ pub struct AnthropicProvider {
     health: Arc<ProviderHealthTracker>,
     /// CC profile for request mimicry. `Some` when using OAuth credentials.
     cc_profile: Option<super::cc_profile::CcProfile>,
+    /// Retry and backoff settings.
+    retry_settings: RetrySettings,
 }
 
 /// Static credential provider for backward-compatible `from_config()`.
@@ -133,7 +135,8 @@ impl AnthropicProvider {
                 .clone()
                 .unwrap_or_else(|| DEFAULT_BASE_URL.to_owned()),
             api_version: DEFAULT_API_VERSION.to_owned(),
-            max_retries: config.max_retries.unwrap_or(DEFAULT_MAX_RETRIES),
+            max_retries: config.retry_settings.max_retries,
+            retry_settings: config.retry_settings.clone(),
             pricing: Self::merge_pricing(config),
             health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
             cc_profile: None, // API key mode — no mimicry needed
@@ -183,10 +186,11 @@ impl AnthropicProvider {
                 .clone()
                 .unwrap_or_else(|| DEFAULT_BASE_URL.to_owned()),
             api_version: DEFAULT_API_VERSION.to_owned(),
-            max_retries: config.max_retries.unwrap_or(DEFAULT_MAX_RETRIES),
+            max_retries: config.retry_settings.max_retries,
             pricing: Self::merge_pricing(config),
             health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
             cc_profile,
+            retry_settings: config.retry_settings.clone(),
         };
         if !provider.base_url.starts_with("https://") && !is_loopback_url(&provider.base_url) {
             return Err(error::ProviderInitSnafu {
@@ -264,7 +268,7 @@ impl AnthropicProvider {
                     max = self.max_retries,
                     "retrying streaming request after transient error"
                 );
-                tokio::time::sleep(backoff_delay(attempt, last_error.as_ref())).await;
+                tokio::time::sleep(backoff_delay(attempt, last_error.as_ref(), &self.retry_settings)).await;
             }
 
             let (token_prefix, credential_source) = self.credential_log_info();
@@ -679,7 +683,7 @@ impl AnthropicProvider {
 
         for attempt in 0..=self.max_retries {
             if attempt > 0 {
-                tokio::time::sleep(backoff_delay(attempt, last_error.as_ref())).await;
+                tokio::time::sleep(backoff_delay(attempt, last_error.as_ref(), &self.retry_settings)).await;
             }
 
             let (token_prefix, credential_source) = self.credential_log_info();

@@ -6,8 +6,7 @@ use std::time::Duration;
 use aletheia_koina::retry::BackoffStrategy;
 
 use crate::error;
-use crate::models::{BACKOFF_BASE_MS, BACKOFF_MAX_MS};
-use crate::provider::ModelPricing;
+use crate::provider::{ModelPricing, RetrySettings};
 
 /// Derive the model family name by stripping the last dash-separated segment.
 ///
@@ -120,17 +119,23 @@ pub(crate) fn estimate_cost_with_cache(
     }
 }
 
-pub(crate) fn backoff_delay(attempt: u32, last_error: Option<&error::Error>) -> Duration {
+pub(crate) fn backoff_delay(
+    attempt: u32,
+    last_error: Option<&error::Error>,
+    settings: &RetrySettings,
+) -> Duration {
     if let Some(error::Error::RateLimited { retry_after_ms, .. }) = last_error {
         return Duration::from_millis(*retry_after_ms);
     }
 
     let strategy = BackoffStrategy::ExponentialJitter {
-        base: Duration::from_millis(BACKOFF_BASE_MS),
-        factor: 2,
-        max_delay: Duration::from_millis(BACKOFF_MAX_MS),
+        base: Duration::from_millis(settings.backoff_base_ms),
+        factor: settings.backoff_factor,
+        max_delay: Duration::from_millis(settings.backoff_max_ms),
     };
     // WHY: call site passes 1-indexed attempt; delay_for_attempt is 0-indexed
     let delay = strategy.delay_for_attempt(attempt.saturating_sub(1));
     delay.max(Duration::from_millis(100))
 }
+
+
