@@ -1,23 +1,7 @@
-# Task: Fix formatting issues (#2773)
-
-## Standards
-Read AGENTS.md. Skip Setup.
-
-## What to fix
-Read: `gh issue view 2773 --json body`
-
-Fix consecutive blank lines, trailing blank lines. These are mechanical — just delete the extra blank lines.
-
-DO NOT change any code logic, only whitespace formatting.
-
-## Validation
+# Task: Fix stale model constant (#2777)
+Read: `gh issue view 2777 --json body`
+Replace hardcoded dated model snapshot with the SONNET alias constant from koina defaults.
 cargo check --workspace
-
-## Completion
-git add -A && git commit -m "chore: fix formatting — consecutive blank lines, trailing blanks
-
-Part of #2773
-
-Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>"
-git push origin chore/formatting-fixes
-gh pr create --title "chore: formatting fixes" --body "Part of #2773"
+git add -A && git commit -m "fix: use model alias constant instead of dated snapshot
+Closes #2777
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>" && git push origin fix/stale-model && gh pr create --title "fix: stale model constant" --body "Closes #2777"
