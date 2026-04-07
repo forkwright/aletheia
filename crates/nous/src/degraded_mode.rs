@@ -94,64 +94,61 @@ pub fn build_degraded_response(
         "LLM provider unavailable — entering degraded mode"
     );
 
-    match recent_distillation {
-        Some(summary) => {
-            let banner =
-                "Operating in degraded mode — LLM unavailable. \
-                 Showing response based on previous conversation context."
-                    .to_owned();
-
-            info!(
-                nous_id,
-                session_id,
-                "degraded mode: returning cached distillation summary"
-            );
-
-            let content = format!(
-                "[Degraded mode — LLM unavailable]\n\n\
-                 I can't reach the LLM right now, but based on our recent conversation:\n\n\
-                 {summary}\n\n\
-                 Your message has been noted. Full responses will resume when the provider recovers."
-            );
-
-            TurnResult {
-                content,
-                tool_calls: vec![],
-                usage: TurnUsage::default(),
-                signals: vec![InteractionSignal::ErrorRecovery],
-                stop_reason: "degraded".to_owned(),
-                degraded: Some(crate::pipeline::DegradedMode::DistillationCache {
-                    status_banner: banner,
-                }),
-            }
-        }
-        None => {
-            let banner =
-                "Operating in degraded mode — LLM unavailable. \
-                 No cached context available for this session."
-                    .to_owned();
-
-            info!(
-                nous_id,
-                session_id,
-                "degraded mode: no distillation cache, returning unavailable message"
-            );
-
-            let content = "I can't reach the LLM right now and have no cached context \
-                           for this session. Your message has been noted and full responses \
-                           will resume when the provider recovers."
+    if let Some(summary) = recent_distillation {
+        let banner =
+            "Operating in degraded mode — LLM unavailable. \
+             Showing response based on previous conversation context."
                 .to_owned();
 
-            TurnResult {
-                content,
-                tool_calls: vec![],
-                usage: TurnUsage::default(),
-                signals: vec![InteractionSignal::ErrorRecovery],
-                stop_reason: "degraded".to_owned(),
-                degraded: Some(crate::pipeline::DegradedMode::Unavailable {
-                    status_banner: banner,
-                }),
-            }
+        info!(
+            nous_id,
+            session_id,
+            "degraded mode: returning cached distillation summary"
+        );
+
+        let content = format!(
+            "[Degraded mode — LLM unavailable]\n\n\
+             I can't reach the LLM right now, but based on our recent conversation:\n\n\
+             {summary}\n\n\
+             Your message has been noted. Full responses will resume when the provider recovers."
+        );
+
+        TurnResult {
+            content,
+            tool_calls: vec![],
+            usage: TurnUsage::default(),
+            signals: vec![InteractionSignal::ErrorRecovery],
+            stop_reason: "degraded".to_owned(),
+            degraded: Some(crate::pipeline::DegradedMode::DistillationCache {
+                status_banner: banner,
+            }),
+        }
+    } else {
+        let banner =
+            "Operating in degraded mode — LLM unavailable. \
+             No cached context available for this session."
+                .to_owned();
+
+        info!(
+            nous_id,
+            session_id,
+            "degraded mode: no distillation cache, returning unavailable message"
+        );
+
+        let content = "I can't reach the LLM right now and have no cached context \
+                       for this session. Your message has been noted and full responses \
+                       will resume when the provider recovers."
+            .to_owned();
+
+        TurnResult {
+            content,
+            tool_calls: vec![],
+            usage: TurnUsage::default(),
+            signals: vec![InteractionSignal::ErrorRecovery],
+            stop_reason: "degraded".to_owned(),
+            degraded: Some(crate::pipeline::DegradedMode::Unavailable {
+                status_banner: banner,
+            }),
         }
     }
 }

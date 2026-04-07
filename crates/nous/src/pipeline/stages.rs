@@ -479,6 +479,10 @@ pub(super) fn run_guard_stage(
     clippy::too_many_arguments,
     reason = "stage receives all pipeline dependencies"
 )]
+#[expect(
+    clippy::too_many_lines,
+    reason = "execute stage orchestrates timeout, streaming, and degraded-mode fallback — splitting adds indirection"
+)]
 pub(super) async fn run_execute_stage(
     config: &NousConfig,
     pipeline_config: &PipelineConfig,
