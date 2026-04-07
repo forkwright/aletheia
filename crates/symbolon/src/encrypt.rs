@@ -12,6 +12,8 @@
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
+use tempfile::NamedTempFile;
+
 use aes_gcm::aead::generic_array::GenericArray;
 use aes_gcm::aead::{Aead, AeadCore, OsRng};
 use aes_gcm::{Aes256Gcm, KeyInit};
@@ -98,33 +100,38 @@ pub(crate) fn load_or_generate_key(
 
 /// Write a key to a temp file, fsync, and return the temp path for later rename.
 ///
+/// Uses `NamedTempFile` for RAII cleanup on error (#2745).
+///
 /// # Errors
 ///
 /// Returns an `io::Error` if temp file creation or write fails.
 pub(crate) fn prepare_key_file(
     credential_path: &Path,
     key: &[u8; KEY_LEN],
-) -> std::io::Result<PathBuf> {
+) -> std::io::Result<NamedTempFile> {
     let key_path = key_file_path(credential_path);
-    let tmp = key_path.with_extension("key.tmp");
     if let Some(parent) = key_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let mut f = std::fs::File::create(&tmp)?;
-    f.write_all(key)?;
-    f.flush()?;
-    f.sync_all()?;
+    // Create temp file in the same directory as the final key file for atomic rename
+    let mut tmp = NamedTempFile::new_in(
+        key_path.parent().unwrap_or_else(|| Path::new(".")),
+    )?;
+    tmp.write_all(key)?;
+    tmp.flush()?;
+    tmp.as_file().sync_all()?;
     Ok(tmp)
 }
 
-/// Rename a prepared key temp file to its final path with mode 0600.
+/// Persist a prepared key temp file to its final path with mode 0600.
 ///
 /// # Errors
 ///
 /// Returns an `io::Error` if the rename or permission set fails.
-pub(crate) fn commit_key_file(credential_path: &Path, tmp: &Path) -> std::io::Result<()> {
+pub(crate) fn commit_key_file(credential_path: &Path, tmp: NamedTempFile) -> std::io::Result<()> {
     let key_path = key_file_path(credential_path);
-    std::fs::rename(tmp, &key_path)?;
+    // Persist the temp file to the final path
+    tmp.persist(&key_path).map_err(|e| e.error)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -201,17 +208,21 @@ fn generate_key() -> std::io::Result<[u8; KEY_LEN]> {
 }
 
 /// Write the encryption key to disk with restrictive permissions.
+///
+/// Uses `NamedTempFile` for RAII cleanup on error (#2745).
 fn write_key_file(path: &Path, key: &[u8; KEY_LEN]) -> std::io::Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
+    let parent = path.parent();
+    if let Some(p) = parent {
+        std::fs::create_dir_all(p)?;
     }
 
-    let tmp = path.with_extension("key.tmp");
-    let mut f = std::fs::File::create(&tmp)?;
-    f.write_all(key)?;
-    f.flush()?;
-    f.sync_all()?;
-    std::fs::rename(&tmp, path)?;
+    // Create temp file in the same directory for atomic rename
+    let mut tmp = NamedTempFile::new_in(parent.unwrap_or_else(|| Path::new(".")))?;
+    tmp.write_all(key)?;
+    tmp.flush()?;
+    tmp.as_file().sync_all()?;
+    // Persist atomically renames the temp file to the final path
+    tmp.persist(path).map_err(|e| e.error)?;
 
     #[cfg(unix)]
     {
