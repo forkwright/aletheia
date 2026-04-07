@@ -30,7 +30,7 @@ async fn extract_role(
 ) -> Option<Role> {
     let config = server.state.config.read().await;
 
-    // Single-operator mode: no auth configured, use the default role
+    // NOTE: Single-operator mode has no auth; use the default role.
     if config.gateway.auth.mode == "none" {
         return config
             .gateway
@@ -41,10 +41,8 @@ async fn extract_role(
             .or(Some(Role::Admin));
     }
 
-    // Try to get HTTP request parts from extensions
     let parts = context.extensions.get::<http::request::Parts>()?;
 
-    // Extract Bearer token from Authorization header
     let header = parts
         .headers
         .get("authorization")
@@ -52,7 +50,6 @@ async fn extract_role(
 
     let token = header.strip_prefix(BEARER_PREFIX)?;
 
-    // Parse role from JWT token payload (best-effort, token already validated at gateway)
     parse_role_from_token(token)
 }
 
@@ -62,16 +59,13 @@ async fn extract_role(
 /// is handled at the gateway layer; by the time the request reaches the
 /// MCP tool, the token has already been validated.
 fn parse_role_from_token(token: &str) -> Option<Role> {
-    // JWT structure: header.payload.signature
     let mut parts = token.split('.');
     let _header = parts.next()?;
     let payload = parts.next()?;
 
-    // Base64 decode payload (URL-safe, no padding)
     let payload_bytes = base64_decode_urlsafe(payload).ok()?;
     let claims: serde_json::Value = serde_json::from_slice(&payload_bytes).ok()?;
 
-    // Extract role from claims
     claims
         .get("role")
         .and_then(|r| r.as_str())

@@ -172,10 +172,8 @@ impl KnowledgeStore {
             return Ok(Some(1.0));
         }
 
-        // BFS through causal edges, tracking confidence at each edge.
         let mut visited: HashSet<String> = HashSet::new();
         let mut queue: VecDeque<(String, f64)> = VecDeque::new();
-        // parent map: child -> (parent, edge_confidence)
         let mut parent: HashMap<String, (String, f64)> = HashMap::new();
 
         visited.insert(start.as_str().to_owned());

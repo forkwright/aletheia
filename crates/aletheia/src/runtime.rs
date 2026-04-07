@@ -306,7 +306,7 @@ impl RuntimeBuilder {
 
         info!(root = %self.oikos.root().display(), "instance discovered");
 
-        // Startup validation: fail fast before any actors or stores initialise
+        // WHY: Fail fast before any actors or stores initialise.
         self.oikos
             .validate()
             .whatever_context("instance layout invalid")?;

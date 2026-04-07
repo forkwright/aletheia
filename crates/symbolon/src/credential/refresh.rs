@@ -158,8 +158,8 @@ impl RefreshingCredentialProvider {
             .instrument(tracing::info_span!("credential_refresh")),
         );
 
-        // Register cleanup at spawn time so the task is cancelled+aborted on
-        // drop even if construction is only partially completed in the caller.
+        // WHY: Register cleanup at spawn time so the task is cancelled+aborted
+        // on drop even if construction is only partially completed in the caller.
         let mut cleanup = aletheia_koina::cleanup::CleanupRegistry::new();
         let shutdown_for_cleanup = shutdown.clone();
         let abort_handle = task.abort_handle();
@@ -319,7 +319,7 @@ async fn refresh_loop(
             () = tokio::time::sleep(check_interval) => {}
         }
 
-        // FIX 4: when circuit is open, poll file for external credential updates
+        // WHY: When circuit is open, poll file for external credential updates.
         if !circuit_breaker.check_allowed() {
             if mtime_tracker.has_changed(&path) {
                 try_reload_from_file(&state, &path, &circuit_breaker);

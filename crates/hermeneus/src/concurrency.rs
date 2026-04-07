@@ -256,8 +256,8 @@ impl AdaptiveConcurrencyLimiter {
                 });
             }
 
-            // Determine effective outcome: if EWMA latency exceeds threshold,
-            // treat success as overload to trigger back-off.
+            // WHY: If EWMA latency exceeds threshold, treat success as overload
+            // to trigger back-off.
             let effective_outcome = match outcome {
                 RequestOutcome::Success => {
                     if let Some(ewma) = inner.latency_ewma {
@@ -279,8 +279,8 @@ impl AdaptiveConcurrencyLimiter {
                         (inner.limit + self.config.increase_step).min(self.config.max_limit);
                 }
                 RequestOutcome::Overload => {
-                    // AIMD multiplicative decrease: floor(limit * decrease_factor).
-                    // f64::from(u32) is lossless; all u32 values fit in f64 mantissa.
+                    // SAFETY: f64::from(u32) is lossless; all u32 values fit in
+                    // f64 mantissa.
                     let limit_f64 = f64::from(inner.limit);
                     let decreased_f64 = (limit_f64 * self.config.decrease_factor).floor();
                     #[expect(

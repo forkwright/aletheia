@@ -118,7 +118,7 @@ pub async fn send_message(
                 tracing::info!(idempotency_key = %key, "idempotency cache hit — returning cached completion");
                 // NOTE: Decode the cached turn summary stored by the original request.
                 let cached: serde_json::Value = serde_json::from_str(&body).unwrap_or_default();
-                // serde_json::Value::Index returns Value::Null for absent keys (no panic)
+                // SAFETY: serde_json::Value::Index returns Value::Null for absent keys (no panic)
                 #[expect(
                     clippy::indexing_slicing,
                     reason = "serde_json::Value Index returns Null for absent keys, never panics"

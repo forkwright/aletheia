@@ -729,9 +729,7 @@ pub struct RecallResult {
     pub source_id: String,
 }
 
-// ---------------------------------------------------------------------------
-// Team memory: scopes, access policies, and path validation layers
-// ---------------------------------------------------------------------------
+// ── Team memory: scopes, access policies, and path validation layers ─────
 
 /// Memory sharing scope for multi-agent team memory.
 ///
@@ -1216,14 +1214,14 @@ pub fn validate_memory_path(
 ) -> std::result::Result<ValidatedPath, PathValidationError> {
     let path_str = path.to_string_lossy();
 
-    // Layer 1: NullByte — reject null bytes that truncate C-level syscalls.
+    // SAFETY: Layer 1 — reject null bytes that truncate C-level syscalls.
     if path_str.contains('\0') {
         return Err(PathValidationError::NullByte {
             path: path_str.into_owned(),
         });
     }
 
-    // Layer 2: Canonicalization — reject `..` components and backslashes.
+    // SAFETY: Layer 2 — reject `..` components and backslashes.
     for component in path.components() {
         if matches!(component, Component::ParentDir) {
             return Err(PathValidationError::Canonicalization {
@@ -1239,7 +1237,7 @@ pub fn validate_memory_path(
         });
     }
 
-    // Layer 3: URL-encoded traversal — detect percent-encoded separators.
+    // SAFETY: Layer 3 — detect percent-encoded traversal separators.
     let lower = path_str.to_ascii_lowercase();
     for pattern in &["%2e", "%2f", "%5c"] {
         if lower.contains(pattern) {
@@ -1250,7 +1248,7 @@ pub fn validate_memory_path(
         }
     }
 
-    // Layer 4: Unicode normalization — detect fullwidth characters that
+    // SAFETY: Layer 4 — detect fullwidth characters that
     // normalize to ASCII separators under NFKC (U+FF0E → '.', U+FF0F → '/',
     // U+FF3C → '\').
     for ch in path_str.chars() {
@@ -1262,7 +1260,6 @@ pub fn validate_memory_path(
         }
     }
 
-    // Resolve the full path: relative paths are joined with scope_dir.
     let scope_dir = root.join(scope.as_dir_name());
     let full_path = if path.is_absolute() {
         path.to_path_buf()
@@ -1271,7 +1268,7 @@ pub fn validate_memory_path(
     };
     let normalized = normalize_path_components(&full_path);
 
-    // Layer 5: Scope containment — resolved path must stay within scope_dir.
+    // SAFETY: Layer 5 — resolved path must stay within scope_dir.
     if !normalized.starts_with(&scope_dir) {
         return Err(PathValidationError::ScopeContainment {
             path: normalized,
@@ -1280,7 +1277,7 @@ pub fn validate_memory_path(
         });
     }
 
-    // Layers 6–7: Symlink resolution, dangling symlink, loop detection (I/O).
+    // SAFETY: Layers 6–7 — symlink resolution, dangling symlink, loop detection.
     // WHY: Only checked when the path exists on the filesystem. Pure string
     // layers above have already validated the path structure for paths that
     // don't yet exist.

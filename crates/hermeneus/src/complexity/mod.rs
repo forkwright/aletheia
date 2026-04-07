@@ -393,7 +393,7 @@ fn score_dimensions(input: &ComplexityInput<'_>) -> (i32, Vec<&'static str>) {
         factors.push("multi-sentence");
     }
 
-    // Conversation depth: deeper conversations tend toward complexity
+    // WHY: Deeper conversations tend toward complexity.
     if input.message_count > 20 {
         score += 10;
         factors.push("deep conversation");
@@ -411,7 +411,6 @@ fn score_dimensions(input: &ComplexityInput<'_>) -> (i32, Vec<&'static str>) {
 /// disabled, returns the configured sonnet (primary) model.
 #[must_use]
 pub fn route_model(input: &ComplexityInput<'_>, config: &ComplexityConfig) -> RoutingDecision {
-    // User override always wins
     if let Some(model) = input.model_override {
         let complexity = score_complexity(input);
         tracing::info!(
@@ -427,7 +426,6 @@ pub fn route_model(input: &ComplexityInput<'_>, config: &ComplexityConfig) -> Ro
         };
     }
 
-    // Disabled routing: use the configured sonnet model (primary)
     if !config.enabled {
         let complexity = score_complexity(input);
         return RoutingDecision {

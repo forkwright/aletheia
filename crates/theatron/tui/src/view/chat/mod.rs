@@ -43,7 +43,7 @@ struct MessageCtx<'a> {
 pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) -> Vec<OscLink> {
     let inner_width = usize::from(area.width.saturating_sub(2));
     let wrap_width = area.width.saturating_sub(2).max(1);
-    // With Borders::NONE the paragraph has the full area height available.
+    // NOTE: With Borders::NONE the paragraph has the full area height available.
     let visible_height = area.height;
     // Para-relative link data collected from all messages.
     let mut para_links: Vec<(usize, u16, String, String)> = Vec::new(); // (line_idx, col, text, url)
@@ -80,9 +80,8 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) ->
     if static_cache_valid {
         lines.extend(app.viewport.render.static_lines.iter().cloned());
     } else if filter_active {
-        // Filtered path: iterate all messages, skip non-matching.
-        // This is acceptable because filtering is interactive and users rarely
-        // have 15K messages with a filter active.
+        // PERF: Iterates all messages; acceptable because filtering is
+        // interactive and users rarely have 15K messages with a filter active.
         render_filtered_messages(
             app,
             &mut lines,
@@ -94,7 +93,7 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) ->
             &mut para_links,
         );
     } else {
-        // Virtual scroll path: only render viewport + buffer items.
+        // PERF: Only render viewport + buffer items.
         render_virtual_messages(
             app,
             &mut lines,
@@ -107,7 +106,6 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) ->
         );
     }
 
-    // Empty state: no messages and not streaming: show helpful placeholder.
     if app.dashboard.messages.is_empty()
         && app.connection.active_turn_id.is_none()
         && !filter_active
@@ -143,14 +141,12 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) ->
         streaming::render_streaming(app, &mut lines, inner_width, theme, agent_name_lower);
     }
 
-    // Queued messages: shown below streaming with dimmed "queued" badge
     if !app.interaction.queued_messages.is_empty() {
         streaming::render_queued_messages(app, &mut lines, theme);
     }
 
-    // Bottom alignment: when total content is shorter than the pane, push it to
-    // the bottom by prepending empty lines.  Only applies when not scrolled
-    // (content fits in the viewport).
+    // WHY: When total content is shorter than the pane, push it to the bottom
+    // by prepending empty lines so chat feels anchored to the input bar.
     {
         let w = usize::from(wrap_width.max(1));
         let total_visual: usize = lines
@@ -172,15 +168,12 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) ->
         }
     }
 
-    // Pre-compute per-line widths: needed for resolve_osc_links and scroll calc.
+    // PERF: Pre-compute per-line widths for resolve_osc_links and scroll calc.
     let line_widths: Vec<usize> = lines
         .iter()
         .map(|line| line.spans.iter().map(|s| s.content.len()).sum())
         .collect();
 
-    // Total visual rows of the final rendered lines vector (after padding + streaming).
-    // Used for auto-scroll so that streaming content appended after virtual render is
-    // always visible when the user is at the bottom.
     let w = usize::from(wrap_width.max(1));
     let total_visual: usize = line_widths
         .iter()
@@ -199,16 +192,12 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) ->
                 && !app.dashboard.messages.is_empty()));
 
     let scroll = if app.viewport.render.auto_scroll {
-        // Pin to the very bottom of whatever was rendered (committed + streaming).
         total_visual.saturating_sub(vh)
     } else if filter_active || needs_fallback {
-        // Filtered / fallback path: all messages are in `lines`; use the pre-computed total.
         total_visual
             .saturating_sub(vh)
             .saturating_sub(app.viewport.render.scroll_offset)
     } else {
-        // Virtual scroll path with manual offset: line_offset already positions us
-        // correctly within the rendered (viewport-only) items.
         let slice = app.viewport.render.virtual_scroll.visible_slice(
             app.viewport.render.scroll_offset,
             app.viewport.render.auto_scroll,
