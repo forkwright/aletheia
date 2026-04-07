@@ -27,6 +27,7 @@ use crate::views::metrics::Metrics;
 use crate::views::metrics::tool_detail::ToolDetailView;
 use crate::views::ops::Ops;
 use crate::views::planning::{Planning, PlanningProject};
+use crate::views::reference::Reference;
 use crate::views::sessions::Sessions;
 use crate::views::settings::Settings;
 use crate::views::settings::wizard::SetupWizard;
@@ -57,6 +58,8 @@ pub(crate) enum Route {
         Meta {},
         #[route("/settings")]
         Settings {},
+        #[route("/reference")]
+        Reference {},
 }
 
 /// Route component for `/metrics/tools/:tool_name`.
