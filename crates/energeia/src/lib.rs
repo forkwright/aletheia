@@ -18,6 +18,8 @@
 //! - [`types`] — dispatch specs, outcomes, QA results
 //! - [`error`] — snafu error types with location tracking
 
+/// High-level dispatch backend trait for control plane integration.
+pub mod backend;
 /// Atomic budget tracking for dispatch runs.
 pub mod budget;
 /// Prompt dependency DAG and parallel frontier computation.
