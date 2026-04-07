@@ -12,6 +12,7 @@ pub(crate) mod eval;
 pub(crate) mod health;
 pub(crate) mod maintenance;
 pub(crate) mod memory;
+pub(crate) mod repl;
 pub(crate) mod server;
 pub(crate) mod session_export;
 pub(crate) mod tls;
