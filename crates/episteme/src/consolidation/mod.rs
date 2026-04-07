@@ -288,6 +288,7 @@ fn extract_json_array(s: &str) -> Option<&str> {
                     return s.get(start..=start + i);
                 }
             }
+            // NOTE: Non-bracket characters are ignored while searching for matching brackets.
             _ => {}
         }
     }
