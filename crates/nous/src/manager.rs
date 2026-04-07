@@ -393,10 +393,18 @@ impl NousManager {
                         tracing::debug!(nous_id = %id, "old actor drained cleanly before restart");
                     }
                     Err(_) => {
-                        tracing::warn!(nous_id = %id, "actor did not drain within {RESTART_DRAIN_TIMEOUT:?}, spawning replacement — concurrent store access possible");
+                        tracing::warn!(nous_id = %id, "actor did not drain within {RESTART_DRAIN_TIMEOUT:?}, spawning replacement");
                     }
                 }
             }
+        }
+
+        // WHY: check if another path (concurrent health check, manual spawn) already
+        // re-inserted this actor while we were draining the old one. If so, don't
+        // double-spawn — the existing actor is already running (#2744).
+        if self.actors.contains_key(id) {
+            tracing::info!(nous_id = %id, "actor already re-spawned by concurrent path, skipping restart");
+            return;
         }
 
         let handle = self
