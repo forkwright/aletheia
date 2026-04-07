@@ -248,6 +248,67 @@ pub struct BehavioralConfig {
     pub models: ModelRoutingConfig,
 }
 
+impl BehavioralConfig {
+    /// Validate all parameters are within sensible bounds.
+    ///
+    /// Returns a list of validation error messages. Empty = valid.
+    #[must_use]
+    pub fn validate(&self) -> Vec<String> {
+        let mut errors = Vec::new();
+
+        // Distillation
+        if self.distillation.context_token_trigger == 0 {
+            errors.push("distillation.context_token_trigger must be > 0".to_owned());
+        }
+        if self.distillation.message_count_trigger <= 0 {
+            errors.push("distillation.message_count_trigger must be > 0".to_owned());
+        }
+        if !(0.0..=1.0).contains(&self.distillation.max_history_share) {
+            errors.push("distillation.max_history_share must be 0.0–1.0".to_owned());
+        }
+        if self.distillation.verbatim_tail == 0 {
+            errors.push("distillation.verbatim_tail must be > 0".to_owned());
+        }
+
+        // Agent health
+        if self.agent_health.health_interval_secs == 0 {
+            errors.push("agent_health.health_interval_secs must be > 0".to_owned());
+        }
+        if self.agent_health.dead_threshold == 0 {
+            errors.push("agent_health.dead_threshold must be > 0".to_owned());
+        }
+
+        // Capacity
+        if self.capacity.max_sessions == 0 {
+            errors.push("capacity.max_sessions must be > 0".to_owned());
+        }
+        if self.capacity.max_spawned_tasks == 0 {
+            errors.push("capacity.max_spawned_tasks must be > 0".to_owned());
+        }
+        if self.capacity.inbox_capacity == 0 {
+            errors.push("capacity.inbox_capacity must be > 0".to_owned());
+        }
+
+        // Retry
+        if self.retry.max_retries == 0 {
+            errors.push("retry.max_retries must be > 0".to_owned());
+        }
+        if self.retry.backoff_base_ms == 0 {
+            errors.push("retry.backoff_base_ms must be > 0".to_owned());
+        }
+        if self.retry.backoff_max_ms < self.retry.backoff_base_ms {
+            errors.push("retry.backoff_max_ms must be >= backoff_base_ms".to_owned());
+        }
+
+        // Models
+        if self.models.default_model.is_empty() {
+            errors.push("models.default_model must not be empty".to_owned());
+        }
+
+        errors
+    }
+}
+
 impl Default for BehavioralConfig {
     fn default() -> Self {
         Self {
