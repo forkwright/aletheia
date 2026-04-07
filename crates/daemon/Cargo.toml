@@ -35,6 +35,7 @@ tokio-util = { workspace = true }
 # WHY: daemon.toml workspace opt-in config
 toml = { workspace = true }
 rusqlite = { workspace = true }
+rustix = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
