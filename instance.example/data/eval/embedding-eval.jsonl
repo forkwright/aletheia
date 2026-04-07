@@ -1,0 +1,15 @@
+{"query":"alice tea coffee morning preference","relevant_ids":["fact-001"],"description":"Preference recall: beverage choice for a named person"}
+{"query":"kubernetes version deployment acme","relevant_ids":["fact-002"],"description":"Technical fact recall: infrastructure version at an org"}
+{"query":"bob cycling commute bicycle","relevant_ids":["fact-003"],"description":"Person-activity recall: named person and their commute habit"}
+{"query":"carol distributed systems research team","relevant_ids":["fact-004"],"description":"Role recall: academic research leadership"}
+{"query":"primary database server IP address replica","relevant_ids":["fact-005"],"description":"Infrastructure recall: IP address and role"}
+{"query":"project deadline fiscal quarter timeline","relevant_ids":["fact-006"],"description":"Temporal fact recall: project schedule"}
+{"query":"dave recall pipeline implementation author","relevant_ids":["fact-007"],"description":"Attribution recall: who wrote a component"}
+{"query":"knowledge store vector search cosine similarity","relevant_ids":["fact-008"],"description":"Technical recall: algorithm used in search"}
+{"query":"eve email asynchronous communication meeting preference","relevant_ids":["fact-009"],"description":"Communication style recall: named person preferences"}
+{"query":"backup job daily schedule snapshot retention","relevant_ids":["fact-010"],"description":"Operational recall: scheduled task and retention policy"}
+{"query":"frank peanut allergy epinephrine medical","relevant_ids":["fact-011"],"description":"Medical fact recall: allergy and emergency medication"}
+{"query":"grace on-call rotation infrastructure team schedule","relevant_ids":["fact-012"],"description":"Organizational recall: on-call responsibility"}
+{"query":"HNSW index parameters ef_construction m dimension","relevant_ids":["fact-013"],"description":"Configuration recall: vector index tuning parameters"}
+{"query":"heidi onboarding first day month","relevant_ids":["fact-014"],"description":"Personnel fact recall: onboarding date"}
+{"query":"staging environment TLS certificate production mirror","relevant_ids":["fact-015"],"description":"Infrastructure recall: environment parity and exception"}

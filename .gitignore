@@ -20,6 +20,9 @@ data/
 !crates/*/src/data/**
 !crates/mneme/src/engine/data/
 !crates/mneme/src/engine/data/**
+# Seed eval datasets are part of the shipped example instance
+!instance.example/data/
+!instance.example/data/**
 
 # === Cargo build output ===
 /target/
