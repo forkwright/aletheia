@@ -118,7 +118,7 @@ fn run_repl(instance_root: Option<&PathBuf>) -> Result<()> {
                     continue;
                 }
                 ".tables" => {
-                    run_query_and_print(&store, "::relations")?;
+                    run_query_and_print(&store, "::relations");
                     continue;
                 }
                 _ => {}
@@ -152,7 +152,7 @@ fn run_repl(instance_root: Option<&PathBuf>) -> Result<()> {
             // Strip trailing semicolon if present (engine does not require it).
             let script = script.trim_end_matches(';').trim().to_owned();
             if !script.is_empty() {
-                run_query_and_print(&store, &script)?;
+                run_query_and_print(&store, &script);
             }
         }
     }
@@ -162,11 +162,14 @@ fn run_repl(instance_root: Option<&PathBuf>) -> Result<()> {
 }
 
 /// Execute a single Datalog script and print the result as a formatted table.
+///
+/// Errors are printed to stderr and swallowed: a bad query should not abort
+/// the REPL session.
 #[cfg(feature = "recall")]
 fn run_query_and_print(
     store: &std::sync::Arc<aletheia_mneme::knowledge_store::KnowledgeStore>,
     script: &str,
-) -> Result<()> {
+) {
     match store.run_query(script, BTreeMap::new()) {
         Ok(result) => {
             print_table(&result.headers, &result.rows);
@@ -175,15 +178,18 @@ fn run_query_and_print(
             eprintln!("Error: {e}");
         }
     }
-    Ok(())
 }
 
 /// Print rows as a plain ASCII table with column headers.
 ///
 /// WHY: No external pretty-print dependency. The table is functional for
-/// debugging; polish is secondary. Each cell is formatted with `{:?}` via
+/// debugging; polish is secondary. Each cell is formatted via
 /// [`aletheia_mneme::engine::DataValue`]'s `Display` impl.
 #[cfg(feature = "recall")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "bounds are verified: i < widths.len() checked before index, and header enumeration is bounded"
+)]
 fn print_table(headers: &[String], rows: &[Vec<aletheia_mneme::engine::DataValue>]) {
     if headers.is_empty() && rows.is_empty() {
         println!("(no results)");
@@ -192,7 +198,7 @@ fn print_table(headers: &[String], rows: &[Vec<aletheia_mneme::engine::DataValue
 
     // Compute column widths: max of header width and each cell's display width.
     let ncols = headers.len();
-    let mut widths: Vec<usize> = headers.iter().map(|h| h.len()).collect();
+    let mut widths: Vec<usize> = headers.iter().map(String::len).collect();
 
     let rendered: Vec<Vec<String>> = rows
         .iter()
@@ -211,7 +217,7 @@ fn print_table(headers: &[String], rows: &[Vec<aletheia_mneme::engine::DataValue
         .collect();
 
     // Ensure widths covers all columns that may appear in rows but not headers.
-    let max_row_cols = rows.iter().map(|r| r.len()).max().unwrap_or(0);
+    let max_row_cols = rows.iter().map(Vec::len).max().unwrap_or(0);
     while widths.len() < max_row_cols {
         widths.push(1);
     }
@@ -230,7 +236,7 @@ fn print_table(headers: &[String], rows: &[Vec<aletheia_mneme::engine::DataValue
         let header_row: String = headers
             .iter()
             .enumerate()
-            .map(|(i, h)| format!(" {:width$} ", h, width = widths[i]))
+            .map(|(i, h)| format!(" {h:width$} ", width = widths[i]))
             .collect::<Vec<_>>()
             .join("|");
         println!("|{header_row}|");
@@ -244,7 +250,7 @@ fn print_table(headers: &[String], rows: &[Vec<aletheia_mneme::engine::DataValue
             .enumerate()
             .map(|(i, cell)| {
                 let w = widths.get(i).copied().unwrap_or(cell.len());
-                format!(" {:width$} ", cell, width = w)
+                format!(" {cell:w$} ")
             })
             .collect::<Vec<_>>()
             .join("|");
@@ -257,35 +263,30 @@ fn print_table(headers: &[String], rows: &[Vec<aletheia_mneme::engine::DataValue
 }
 
 /// Format a single [`DataValue`] for display.
+///
+/// WHY: Delegates to the engine's own `Display` impl so new variant additions
+/// never cause a compile error here. `Str` values are stripped of engine-style
+/// quoting (the `Display` impl wraps strings in `"..."`) to improve readability
+/// in table cells.
 #[cfg(feature = "recall")]
 fn format_value(v: &aletheia_mneme::engine::DataValue) -> String {
     use aletheia_mneme::engine::DataValue;
     match v {
-        DataValue::Null => "null".to_owned(),
-        DataValue::Bool(b) => b.to_string(),
+        // WHY: engine Display wraps Str in `"..."` quotes; strip them for
+        // cleaner table output.
+        DataValue::Str(s) => s.to_string(),
+        // WHY: Num has a public get_int(); use it to avoid decimal points on
+        // integer values, which the engine Display also does.
         DataValue::Num(n) => {
-            // Display integers without decimal point for readability.
             if let Some(i) = n.get_int() {
                 format!("{i}")
             } else {
-                format!("{}", n.get_float())
+                // WHY: fall back to engine Display for floats — it handles
+                // NaN/Inf correctly.
+                format!("{v}")
             }
         }
-        DataValue::Str(s) => s.to_string(),
-        DataValue::Bytes(b) => format!("<bytes:{}>", b.len()),
-        DataValue::Uuid(u) => u.0.to_string(),
-        DataValue::Regex(r) => format!("/{}/", r.0.as_str()),
-        DataValue::Json(j) => j.0.to_string(),
-        DataValue::List(items) => {
-            let inner: Vec<String> = items.iter().map(format_value).collect();
-            format!("[{}]", inner.join(", "))
-        }
-        DataValue::Set(items) => {
-            let inner: Vec<String> = items.iter().map(format_value).collect();
-            format!("{{{}}}", inner.join(", "))
-        }
-        DataValue::Vec(_) => "<vector>".to_owned(),
-        DataValue::Validity(val) => format!("{val:?}"),
-        DataValue::Bot => "\u{22a5}".to_owned(),
+        // All other variants: use the engine's Display impl as source of truth.
+        _ => format!("{v}"),
     }
 }
