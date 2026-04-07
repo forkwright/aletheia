@@ -3,23 +3,9 @@
 use snafu::ResultExt;
 use tracing::{info, instrument};
 
-/// Context token count that unconditionally triggers distillation.
-const CONTEXT_TOKEN_TRIGGER: u64 = 120_000;
-
-/// Message count that unconditionally triggers distillation.
-const MESSAGE_COUNT_TRIGGER: i64 = 150;
-
-/// Days since last distillation before a session is considered stale.
-const STALE_SESSION_DAYS: i64 = 7;
-
-/// Minimum message count required for the stale-session trigger to fire.
-const STALE_SESSION_MIN_MESSAGES: i64 = 20;
-
-/// Message count that triggers distillation when a session has never been distilled.
-const NEVER_DISTILLED_MESSAGE_TRIGGER: i64 = 30;
-
-/// Minimum message count required for the legacy ratio-based trigger to fire.
-const LEGACY_THRESHOLD_MIN_MESSAGES: i64 = 10;
+// WHY: these constants are now fields on DistillTriggerConfig so they can
+// be tuned via aletheia.toml [behavioral.distillation]. The defaults here
+// match the original hardcoded values for zero behavior change.
 
 use aletheia_hermeneus::provider::LlmProvider;
 use aletheia_hermeneus::types::{Content, Message as HermeneusMessage, Role as HermeneusRole};
@@ -32,19 +18,40 @@ use aletheia_mneme::types::{SessionMetrics, SessionOrigin};
 use crate::error;
 
 /// Configuration for distillation triggers.
+///
+/// All thresholds were previously hardcoded constants. Now configurable
+/// via `aletheia.toml [behavioral.distillation]`.
 #[derive(Debug, Clone)]
 pub struct DistillTriggerConfig {
-    /// Fraction of context window that triggers legacy threshold (default 0.7).
+    /// Context token count that unconditionally triggers distillation.
+    pub context_token_trigger: u64,
+    /// Message count that unconditionally triggers distillation.
+    pub message_count_trigger: i64,
+    /// Days since last distillation before a session is considered stale.
+    pub stale_session_days: i64,
+    /// Minimum message count required for the stale-session trigger.
+    pub stale_session_min_messages: i64,
+    /// Message count that triggers distillation for never-distilled sessions.
+    pub never_distilled_message_trigger: i64,
+    /// Minimum message count for the legacy ratio-based trigger.
+    pub legacy_threshold_min_messages: i64,
+    /// Fraction of context window that triggers legacy threshold.
     pub max_history_share: f64,
     /// Model to use for distillation.
     pub model: String,
-    /// Messages to preserve verbatim at the tail (default 3).
+    /// Messages to preserve verbatim at the tail.
     pub verbatim_tail: usize,
 }
 
 impl Default for DistillTriggerConfig {
     fn default() -> Self {
         Self {
+            context_token_trigger: 120_000,
+            message_count_trigger: 150,
+            stale_session_days: 7,
+            stale_session_min_messages: 20,
+            never_distilled_message_trigger: 30,
+            legacy_threshold_min_messages: 10,
             max_history_share: 0.7,
             model: "claude-sonnet-4-20250514".to_owned(),
             verbatim_tail: 3,
@@ -89,14 +96,17 @@ pub fn should_trigger_distillation(
     )]
     let actual_context_u64 = actual_context as u64;
 
-    if actual_context_u64 >= CONTEXT_TOKEN_TRIGGER {
-        return Some(format!("context={actual_context} >= 120K"));
+    if actual_context_u64 >= config.context_token_trigger {
+        return Some(format!(
+            "context={actual_context} >= {}",
+            config.context_token_trigger
+        ));
     }
 
-    if session.metrics.message_count >= MESSAGE_COUNT_TRIGGER {
+    if session.metrics.message_count >= config.message_count_trigger {
         return Some(format!(
-            "message_count={} >= {MESSAGE_COUNT_TRIGGER}",
-            session.metrics.message_count
+            "message_count={} >= {}",
+            session.metrics.message_count, config.message_count_trigger
         ));
     }
 
@@ -105,7 +115,7 @@ pub fn should_trigger_distillation(
     {
         let age = jiff::Timestamp::now().duration_since(last_ts);
         let days = age.as_secs() / 86_400;
-        if days >= STALE_SESSION_DAYS && session.metrics.message_count >= STALE_SESSION_MIN_MESSAGES
+        if days >= config.stale_session_days && session.metrics.message_count >= config.stale_session_min_messages
         {
             return Some(format!(
                 "stale ({days}d) + {} msgs",
@@ -115,7 +125,7 @@ pub fn should_trigger_distillation(
     }
 
     if session.metrics.distillation_count == 0
-        && session.metrics.message_count >= NEVER_DISTILLED_MESSAGE_TRIGGER
+        && session.metrics.message_count >= config.never_distilled_message_trigger
     {
         return Some(format!(
             "never distilled + {} msgs",
@@ -132,7 +142,7 @@ pub fn should_trigger_distillation(
     )]
     let threshold = (context_window as f64 * config.max_history_share) as u64;
     if actual_context_u64 >= threshold
-        && session.metrics.message_count >= LEGACY_THRESHOLD_MIN_MESSAGES
+        && session.metrics.message_count >= config.legacy_threshold_min_messages
     {
         return Some(format!(
             "legacy threshold ({actual_context} >= {threshold})"
@@ -337,7 +347,7 @@ mod tests {
         let config = DistillTriggerConfig::default();
         let result = should_trigger_distillation(&session, 200_000, &config);
         assert!(result.is_some());
-        assert!(result.unwrap().contains("120K"));
+        assert!(result.unwrap().contains("120000"));
     }
 
     #[test]

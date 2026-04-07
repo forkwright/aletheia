@@ -799,6 +799,7 @@ mod tests {
             usage: crate::pipeline::TurnUsage::default(),
             signals: Vec::new(),
             stop_reason: "end_turn".to_owned(),
+            degraded: None,
         };
         let ctx = crate::hooks::TurnContext {
             result: &turn_result,
