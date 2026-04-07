@@ -37,6 +37,7 @@ use commands::eval_embeddings::EvalEmbeddingsArgs;
 use commands::health::HealthArgs;
 use commands::maintenance;
 use commands::memory;
+use commands::repl::ReplArgs;
 use commands::session_export::SessionExportArgs;
 use commands::tls;
 
@@ -146,6 +147,8 @@ enum Command {
     },
     /// Scaffold a new nous agent directory
     AddNous(AddNousArgs),
+    /// Interactive Datalog REPL for querying the knowledge graph
+    Repl(ReplArgs),
 }
 
 #[tokio::main]
@@ -264,6 +267,9 @@ async fn dispatch_command(cmd: Command, instance_root: Option<&PathBuf>) -> Resu
         Command::AddNous(a) => commands::add_nous::run(instance_root, &a)
             .await
             .map_err(Into::into),
+        Command::Repl(a) => {
+            commands::repl::run(instance_root, &a).map_err(Into::into)
+        }
         // NOTE: Serve is intercepted in main() before dispatch_command is called.
         // This arm exists only for match exhaustiveness.
         Command::Serve => unreachable!("Serve handled in main"),
