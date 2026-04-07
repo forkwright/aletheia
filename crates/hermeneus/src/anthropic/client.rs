@@ -78,10 +78,9 @@ fn build_http_client() -> Result<Client> {
     // install_default() is idempotent: subsequent calls return Err and are ignored.
     let _ = rustls::crypto::ring::default_provider().install_default();
 
-    // TODO(#2181): separate streaming timeout. The client-level timeout applies
-    // to the full response lifecycle. Streaming requests set no per-request
-    // timeout (relying on the SSE parser's idle detection instead); non-streaming
-    // requests override with NON_STREAMING_TIMEOUT.
+    // NOTE: no client-level timeout. Streaming requests rely on the SSE parser's
+    // idle detection; non-streaming requests override with NON_STREAMING_TIMEOUT.
+    // TODO(#2601): add a separate configurable streaming timeout.
     Client::builder()
         .connect_timeout(Duration::from_secs(10))
         .build()
@@ -139,7 +138,6 @@ impl AnthropicProvider {
             health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
             cc_profile: None, // API key mode — no mimicry needed
         };
-        // TODO(#2178): add allow_insecure config field
         if !provider.base_url.starts_with("https://") && !is_loopback_url(&provider.base_url) {
             return Err(error::ProviderInitSnafu {
                 message: format!(
@@ -190,7 +188,6 @@ impl AnthropicProvider {
             health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
             cc_profile,
         };
-        // TODO(#2178): add allow_insecure config field
         if !provider.base_url.starts_with("https://") && !is_loopback_url(&provider.base_url) {
             return Err(error::ProviderInitSnafu {
                 message: format!(

@@ -194,7 +194,6 @@ pub(crate) async fn run(args: Args) -> Result<()> {
 
     runtime.state.nous_manager.drain(shutdown_timeout).await;
 
-    // FIXME(#1723): Flush the SQLite session-store WAL explicitly.
     match runtime.state.session_store.try_lock() {
         Ok(store) => {
             if let Err(e) = store.checkpoint_wal() {

@@ -1,6 +1,6 @@
 //! Credential management panel: display, validate, rotate, add, and remove credentials.
 //!
-//! TODO(#107): move CredentialApiEntry and related request types to theatron-core
+//! TODO(#2606): move CredentialApiEntry and related request types to theatron-core
 //! when /api/system/credentials is implemented in pylon.
 
 use dioxus::prelude::*;

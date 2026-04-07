@@ -507,7 +507,7 @@ pub(crate) fn Sessions() -> Element {
                         SessionDetail {
                             detail_state,
                             on_open_chat: move |_id: SessionId| {
-                                // TODO(#108): set active agent and session in chat state before navigating.
+                                // TODO(#2605): set active agent and session in chat state before navigating.
                                 let nav = navigator();
                                 nav.push(crate::app::Route::Chat {});
                             },

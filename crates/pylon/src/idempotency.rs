@@ -98,10 +98,10 @@ impl IdempotencyCache {
         let mut inner = self.lock_inner();
         inner.evict_expired();
 
-        // WHY(#2200): Keys are scoped per user by the caller. The handler
-        // prefixes the raw header value with `{sub}:` before calling
-        // check_or_insert, so keys from different users never collide even
-        // when they send the same Idempotency-Key header value.
+        // TODO(#2599): Cache keys are not scoped per user. The `sub` claim from
+        // Claims is not available at this layer because the cache operates below
+        // the auth extractor. Callers should prefix the key with the user's `sub`
+        // before calling check_or_insert to prevent cross-user key collisions.
         if let Some(entry) = inner.entries.get(key) {
             return match &entry.state {
                 EntryState::InFlight => LookupResult::Conflict,

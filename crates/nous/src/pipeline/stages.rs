@@ -346,7 +346,7 @@ pub(super) fn run_full_compact_stage(
     let (_request, preserved) =
         crate::compact::full::build_summary_request(&ctx.messages, &compact_config);
 
-    // TODO(#2261): spawn background task via task registry for model summarization.
+    // TODO(#2603): spawn background task via task registry for model summarization.
     // For now, build a structural summary from message roles and content snippets.
     let summary = build_structural_summary(&ctx.messages, &compact_config);
 
