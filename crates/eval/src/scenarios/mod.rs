@@ -1,12 +1,15 @@
 //! Scenario registry: all built-in behavioral scenarios.
 
 mod auth;
+mod canary;
 mod conversation;
 mod health;
 mod nous;
 mod session;
 
 use crate::scenario::Scenario;
+
+pub use canary::{CanaryProvider, canary_scenarios};
 
 /// Return all built-in scenarios in execution order.
 #[tracing::instrument(skip_all)]
@@ -18,6 +21,7 @@ pub fn all_scenarios() -> Vec<Box<dyn Scenario>> {
     scenarios.extend(session::scenarios());
     scenarios.extend(conversation::scenarios());
     scenarios.extend(crate::cognitive::cognitive_scenarios());
+    scenarios.extend(canary::canary_scenarios());
     scenarios
 }
 
