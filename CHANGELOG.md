@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.63](https://github.com/forkwright/aletheia/compare/v0.13.62...v0.13.63) (2026-04-07)
+
+
+### Bug Fixes
+
+* **graphe:** reconstruct migrations 6-31 from deployed schema ([#2523](https://github.com/forkwright/aletheia/issues/2523)) ([5ddc4e5](https://github.com/forkwright/aletheia/commit/5ddc4e599fcf5fdb54196daeb59be7e654682ae8))
+
 ## [0.13.62](https://github.com/forkwright/aletheia/compare/v0.13.61...v0.13.62) (2026-04-07)
 
 
