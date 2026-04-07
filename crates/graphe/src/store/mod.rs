@@ -185,14 +185,41 @@ impl SessionStore {
         Ok(store)
     }
 
-    /// Emit tracing diagnostics based on current disk status.
+    /// Check disk space before writes. Essential writes (message append)
+    /// always proceed but emit warnings. Non-essential writes can be
+    /// skipped if disk is critical.
     ///
-    /// Database writes are essential and always proceed, but warnings and
-    /// errors are emitted so operators can respond before the disk fills.
-    pub(crate) fn check_disk(&self, _operation: &str) {
-        // NOTE: DiskSpaceMonitor removed; disk monitoring is handled by the
-        // daemon's prosoche module. This method retained as a call-site marker
-        // for when per-store disk checks are re-wired.
+    /// WHY: SQLite SQLITE_FULL errors lose data silently. Pre-checking
+    /// disk space lets us warn before the failure (#2726).
+    pub(crate) fn check_disk(&self, operation: &str) {
+        // WHY: use the database path's filesystem for the check.
+        let Some(ref db_path) = self.path else { return };
+        if let Ok(status) = aletheia_koina::disk_space::check_disk_space(
+            db_path,
+            aletheia_koina::disk_space::DEFAULT_WARNING_BYTES,
+            aletheia_koina::disk_space::DEFAULT_CRITICAL_BYTES,
+        ) {
+            match status {
+                aletheia_koina::disk_space::DiskStatus::Warning { available_bytes } => {
+                    let mb = available_bytes / (1024 * 1024);
+                    tracing::warn!(
+                        available_mb = mb,
+                        operation,
+                        "disk space low, database write proceeding"
+                    );
+                }
+                aletheia_koina::disk_space::DiskStatus::Critical { available_bytes } => {
+                    let mb = available_bytes / (1024 * 1024);
+                    tracing::error!(
+                        available_mb = mb,
+                        operation,
+                        "disk space critical — database write may fail with SQLITE_FULL"
+                    );
+                }
+                aletheia_koina::disk_space::DiskStatus::Ok { .. } => {}
+                _ => {}
+            }
+        }
     }
 
     /// Lightweight liveness check: executes `SELECT 1` against the connection.
