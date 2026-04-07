@@ -33,7 +33,8 @@ pub struct MatrixConfig {
     /// Default room for escalation messages.
     pub escalation_room: Option<String>,
     /// Password for login (stored in credentials, not config).
-    pub password: Option<String>,
+    #[serde(skip)]
+    pub password: Option<aletheia_koina::secret::SecretString>,
     /// Path to the crypto store (E2E encryption keys).
     pub crypto_store_path: Option<String>,
     /// Enable E2E encryption (default: true).
