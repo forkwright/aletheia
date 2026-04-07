@@ -18,6 +18,8 @@
 //! - [`types`] — dispatch specs, outcomes, QA results
 //! - [`error`] — snafu error types with location tracking
 
+/// Agent SDK configuration and engine for CC subprocess dispatch.
+pub mod agent_sdk;
 /// High-level dispatch backend trait for control plane integration.
 pub mod backend;
 /// Atomic budget tracking for dispatch runs.
