@@ -9,8 +9,10 @@
 //! - [`value`] — runtime values with eidos-native types at boundary
 //! - [`rows`] — query result container
 //! - [`error`] — v2-specific error types
+//! - [`eval`] — query and mutation evaluator
 
 pub mod error;
+pub mod eval;
 pub mod parse;
 pub mod rows;
 pub mod schema;
