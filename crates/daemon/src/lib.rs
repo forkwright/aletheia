@@ -23,6 +23,8 @@ pub mod error;
 mod execution;
 /// KAIROS autonomous dispatch: reads dianoia directives, dispatches via bridge.
 pub mod kairos;
+/// KAIROS multi-project dispatch with attention allocation and trust boundaries.
+pub mod kairos_multi;
 /// Instance maintenance services: trace rotation, drift detection, DB monitoring, retention.
 pub mod maintenance;
 /// Prometheus metric definitions for daemon task execution and watchdog monitoring.
