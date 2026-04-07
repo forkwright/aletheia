@@ -44,6 +44,8 @@ pub mod schedule;
 pub mod state;
 /// Event-driven activation: file watchers and webhook receiver.
 pub mod triggers;
+/// Trust boundaries for KAIROS autonomous operation.
+pub mod trust;
 /// Watchdog process monitor with heartbeat tracking and auto-recovery.
 pub mod watchdog;
 
