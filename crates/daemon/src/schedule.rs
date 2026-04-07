@@ -117,6 +117,8 @@ pub enum BuiltinTask {
     SelfReflection,
     /// Periodic knowledge graph cleanup: orphan removal and stale entity pruning.
     GraphCleanup,
+    /// Self-prompt: daemon-initiated follow-up action from a prosoche check.
+    SelfPrompt,
 }
 
 impl Schedule {

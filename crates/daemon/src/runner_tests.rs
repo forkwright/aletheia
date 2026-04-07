@@ -819,3 +819,136 @@ fn with_state_store_persists_across_restarts() {
         );
     }
 }
+
+// -- Self-prompt integration tests --
+
+#[test]
+fn with_self_prompt_builder_configures_limiter() {
+    let token = CancellationToken::new();
+    let config = crate::self_prompt::SelfPromptConfig {
+        enabled: true,
+        max_per_hour: 5,
+    };
+    let runner = TaskRunner::new("test-nous", token).with_self_prompt(config);
+    assert!(runner.self_prompt_config.enabled);
+    assert_eq!(runner.self_prompt_config.max_per_hour, 5);
+}
+
+#[test]
+fn self_prompt_disabled_by_default() {
+    let token = CancellationToken::new();
+    let runner = TaskRunner::new("test-nous", token);
+    assert!(
+        !runner.self_prompt_config.enabled,
+        "self-prompting must be disabled by default"
+    );
+}
+
+#[tokio::test]
+async fn self_prompt_not_queued_when_disabled() {
+    let token = CancellationToken::new();
+    let bridge: Arc<dyn DaemonBridge> = Arc::new(crate::bridge::NoopBridge);
+    let mut runner = TaskRunner::with_bridge("test-nous", token, bridge);
+    runner.register(make_echo_task("test-task"));
+
+    // Simulate a result with a follow-up section
+    let result = ExecutionResult {
+        success: true,
+        output: Some("## Follow-up\nInvestigate disk usage.\n".to_owned()),
+    };
+    runner.maybe_queue_self_prompt("test-task", &result);
+
+    // Give a moment for any spawned task (there should be none)
+    // kanon:ignore TESTING/sleep-in-test reason = "verifying no async task was spawned; brief yield to confirm absence"
+    tokio::time::sleep(Duration::from_millis(10)).await;
+
+    // No way to directly inspect spawned tasks, but we verify the limiter
+    // was not invoked (count stays 0)
+    assert_eq!(
+        runner.self_prompt_limiter.count("test-nous"),
+        0,
+        "limiter should not be touched when disabled"
+    );
+}
+
+#[tokio::test]
+async fn self_prompt_queued_when_enabled_with_follow_up() {
+    let token = CancellationToken::new();
+    let bridge: Arc<dyn DaemonBridge> = Arc::new(crate::bridge::NoopBridge);
+    let config = crate::self_prompt::SelfPromptConfig {
+        enabled: true,
+        max_per_hour: 3,
+    };
+    let mut runner =
+        TaskRunner::with_bridge("test-nous", token, bridge).with_self_prompt(config);
+    runner.register(make_echo_task("test-task"));
+
+    let result = ExecutionResult {
+        success: true,
+        output: Some("## Follow-up\nCheck /data disk usage.\n".to_owned()),
+    };
+    runner.maybe_queue_self_prompt("test-task", &result);
+
+    assert_eq!(
+        runner.self_prompt_limiter.count("test-nous"),
+        1,
+        "limiter should record the dispatched self-prompt"
+    );
+}
+
+#[tokio::test]
+async fn self_prompt_rate_limited_after_max() {
+    let token = CancellationToken::new();
+    let bridge: Arc<dyn DaemonBridge> = Arc::new(crate::bridge::NoopBridge);
+    let config = crate::self_prompt::SelfPromptConfig {
+        enabled: true,
+        max_per_hour: 1,
+    };
+    let mut runner =
+        TaskRunner::with_bridge("test-nous", token, bridge).with_self_prompt(config);
+    runner.register(make_echo_task("test-task"));
+
+    let result = ExecutionResult {
+        success: true,
+        output: Some("## Follow-up\nFirst action.\n".to_owned()),
+    };
+    runner.maybe_queue_self_prompt("test-task", &result);
+    assert_eq!(runner.self_prompt_limiter.count("test-nous"), 1);
+
+    // Second attempt should be rate-limited
+    let result2 = ExecutionResult {
+        success: true,
+        output: Some("## Follow-up\nSecond action.\n".to_owned()),
+    };
+    runner.maybe_queue_self_prompt("test-task", &result2);
+    assert_eq!(
+        runner.self_prompt_limiter.count("test-nous"),
+        1,
+        "second self-prompt should be rate-limited"
+    );
+}
+
+#[test]
+fn self_prompt_no_follow_up_no_dispatch() {
+    let token = CancellationToken::new();
+    let bridge: Arc<dyn DaemonBridge> = Arc::new(crate::bridge::NoopBridge);
+    let config = crate::self_prompt::SelfPromptConfig {
+        enabled: true,
+        max_per_hour: 5,
+    };
+    let mut runner =
+        TaskRunner::with_bridge("test-nous", token, bridge).with_self_prompt(config);
+    runner.register(make_echo_task("test-task"));
+
+    let result = ExecutionResult {
+        success: true,
+        output: Some("Everything is fine. No issues.".to_owned()),
+    };
+    runner.maybe_queue_self_prompt("test-task", &result);
+
+    assert_eq!(
+        runner.self_prompt_limiter.count("test-nous"),
+        0,
+        "no follow-up section should mean no dispatch"
+    );
+}
