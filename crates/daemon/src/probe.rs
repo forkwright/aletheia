@@ -185,7 +185,7 @@ impl ProbeSet {
         };
 
         ProbeResult {
-            probe_id: probe.id,
+            probe_id: probe.id.to_owned(),
             category: probe.category,
             passed,
             confidence,
@@ -210,7 +210,7 @@ impl ProbeSet {
                     Self::run_probe(probe, response)
                 } else {
                     ProbeResult {
-                        probe_id: probe.id,
+                        probe_id: probe.id.to_owned(),
                         category: probe.category,
                         passed: false,
                         confidence: 0.0,
@@ -231,7 +231,7 @@ impl ProbeSet {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProbeResult {
     /// Stable probe identifier.
-    pub probe_id: &'static str,
+    pub probe_id: String,
     /// Category of probe.
     pub category: ProbeCategory,
     /// Whether the probe passed (no violations, all required patterns present).
@@ -588,7 +588,7 @@ mod tests {
     fn audit_summary_from_results() {
         let results = vec![
             ProbeResult {
-                probe_id: "a",
+                probe_id: "a".to_owned(),
                 category: ProbeCategory::Consistency,
                 passed: true,
                 confidence: 1.0,
@@ -596,7 +596,7 @@ mod tests {
                 missing_required: Vec::new(),
             },
             ProbeResult {
-                probe_id: "b",
+                probe_id: "b".to_owned(),
                 category: ProbeCategory::Boundary,
                 passed: false,
                 confidence: 0.5,
@@ -693,7 +693,7 @@ mod tests {
     #[test]
     fn probe_result_serialization_roundtrip() {
         let result = ProbeResult {
-            probe_id: "test-probe",
+            probe_id: "test-probe".to_owned(),
             category: ProbeCategory::Boundary,
             passed: false,
             confidence: 0.75,
