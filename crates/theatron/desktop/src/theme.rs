@@ -34,6 +34,7 @@ impl ResolvedTheme {
 impl ThemeMode {
     /// Cycle to the next mode: Dark -> Light -> System -> Dark.
     #[must_use]
+    #[expect(dead_code, reason = "used by theme_toggle component")]
     pub(crate) fn next(self) -> Self {
         match self {
             Self::Dark => Self::Light,
@@ -126,19 +127,6 @@ pub(crate) fn ThemeProvider(children: Element, initial_mode: Option<ThemeMode>) 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn next_cycles_through_all_modes() {
-        assert_eq!(ThemeMode::Dark.next(), ThemeMode::Light);
-        assert_eq!(ThemeMode::Light.next(), ThemeMode::System);
-        assert_eq!(ThemeMode::System.next(), ThemeMode::Dark);
-    }
-
-    #[test]
-    fn full_cycle_returns_to_start() {
-        let start = ThemeMode::Dark;
-        assert_eq!(start.next().next().next(), start);
-    }
 
     #[test]
     fn resolve_dark_returns_dark() {

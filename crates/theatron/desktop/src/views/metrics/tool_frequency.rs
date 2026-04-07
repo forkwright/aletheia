@@ -5,9 +5,28 @@ use dioxus::prelude::*;
 use crate::components::chart::{
     BarEntry, HorizontalBarChart, LineChart, LinePoint, LineSeries, SERIES_COLORS,
 };
-use crate::state::tool_metrics::{TimeSeriesBucket, ToolStat, top_tools};
+use crate::state::tool_metrics::{TimeSeriesBucket, ToolStat};
 
-const TOP_N: usize = 10;
+/// Returns the top `limit` tools sorted by total invocations, plus an optional
+/// aggregated "Other" entry covering all remaining tools.
+fn top_tools(tools: &[ToolStat], limit: usize) -> (Vec<&ToolStat>, Option<ToolStat>) {
+    let mut sorted: Vec<&ToolStat> = tools.iter().collect();
+    sorted.sort_by(|a, b| b.total.cmp(&a.total));
+
+    if sorted.len() <= limit {
+        return (sorted, None);
+    }
+
+    let (top, rest) = sorted.split_at(limit);
+    let other = ToolStat {
+        name: "Other".to_string(),
+        total: rest.iter().map(|t| t.total).sum(),
+        succeeded: rest.iter().map(|t| t.succeeded).sum(),
+        failed: rest.iter().map(|t| t.failed).sum(),
+        ..Default::default()
+    };
+    (top.to_vec(), Some(other))
+}
 
 #[component]
 pub(crate) fn ToolFrequencyView(tools: Vec<ToolStat>, on_click: EventHandler<String>) -> Element {
@@ -17,7 +36,7 @@ pub(crate) fn ToolFrequencyView(tools: Vec<ToolStat>, on_click: EventHandler<Str
         };
     }
 
-    let (top, other) = top_tools(&tools, TOP_N);
+    let (top, other) = top_tools(&tools, 10);
 
     let mut bar_entries: Vec<BarEntry> = top
         .iter()
@@ -55,7 +74,7 @@ pub(crate) fn ToolFrequencyView(tools: Vec<ToolStat>, on_click: EventHandler<Str
             if let Some(ref o) = other {
                 div {
                     style: "font-size: 11px; color: #555; padding: 2px 0;",
-                    "\"Other\" groups {tools.len() - TOP_N} additional tools (total {o.total} calls). Click any named tool to drill down."
+                    "\"Other\" groups {tools.len() - 10} additional tools (total {o.total} calls). Click any named tool to drill down."
                 }
             }
         }
@@ -76,8 +95,8 @@ pub(crate) fn ToolTimeSeriesView(
         };
     }
 
-    // Top N tools by total invocations for the legend.
-    let (top_tools_ref, _) = top_tools(&tools, TOP_N);
+    // Top 10 tools by total invocations for the legend.
+    let (top_tools_ref, _) = top_tools(&tools, 10);
     let top_names: Vec<String> = top_tools_ref.iter().map(|t| t.name.clone()).collect();
 
     let series: Vec<LineSeries> = top_names

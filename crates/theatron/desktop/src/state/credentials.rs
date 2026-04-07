@@ -1,7 +1,5 @@
 //! Credential management state for the ops view.
 
-use std::collections::HashSet;
-
 /// Role of a credential relative to its provider.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -107,21 +105,6 @@ impl CredentialStore {
         has_primary && has_backup
     }
 
-    /// Providers present in the store (deduplicated, stable insertion order).
-    #[must_use]
-    pub(crate) fn providers(&self) -> Vec<&str> {
-        let mut seen = HashSet::new();
-        self.entries
-            .iter()
-            .filter_map(|e| {
-                if seen.insert(e.provider.as_str()) {
-                    Some(e.provider.as_str())
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
 }
 
 /// Masks a credential key to show only the last 4 characters.

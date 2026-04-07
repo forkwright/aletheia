@@ -20,13 +20,7 @@ pub enum ToolStatus {
     Error,
 }
 
-impl ToolStatus {
-    /// Whether the tool call has finished (success or error).
-    #[must_use]
-    pub(crate) fn is_terminal(&self) -> bool {
-        matches!(self, Self::Success | Self::Error)
-    }
-}
+
 
 /// Rich tool call state for the expandable panel display.
 ///
@@ -183,23 +177,6 @@ impl PlanCardState {
         matches!(self.status, PlanStatus::Complete { .. })
     }
 
-    /// Progress as a fraction in [0.0, 1.0].
-    #[must_use]
-    pub(crate) fn progress_fraction(&self) -> f64 {
-        let total = self.steps.len();
-        if total == 0 {
-            return 0.0;
-        }
-        let done = self.completed_count();
-        // SAFETY(numeric): both values are usize; division is exact for small counts.
-        #[expect(
-            clippy::cast_precision_loss,
-            reason = "step counts are small enough that f64 is exact"
-        )]
-        #[expect(clippy::as_conversions, reason = "small step counts for progress fraction")]
-        let fraction = done as f64 / total as f64;
-        fraction
-    }
 }
 
 #[cfg(test)]
@@ -229,14 +206,6 @@ mod tests {
     }
 
     #[test]
-    fn tool_status_is_terminal() {
-        assert!(!ToolStatus::Pending.is_terminal());
-        assert!(!ToolStatus::Running.is_terminal());
-        assert!(ToolStatus::Success.is_terminal());
-        assert!(ToolStatus::Error.is_terminal());
-    }
-
-    #[test]
     fn plan_card_progress_empty_steps() {
         let card = PlanCardState {
             plan_id: "p1".into(),
@@ -245,7 +214,6 @@ mod tests {
         };
         assert_eq!(card.completed_count(), 0);
         assert_eq!(card.total_steps(), 0);
-        assert!((card.progress_fraction() - 0.0).abs() < f64::EPSILON);
         assert!(!card.is_finished());
     }
 
@@ -277,7 +245,6 @@ mod tests {
         };
         assert_eq!(card.completed_count(), 1);
         assert_eq!(card.total_steps(), 3);
-        assert!((card.progress_fraction() - 1.0 / 3.0).abs() < 0.01);
         assert!(!card.is_finished());
     }
 
@@ -296,7 +263,6 @@ mod tests {
             },
         };
         assert!(card.is_finished());
-        assert!((card.progress_fraction() - 1.0).abs() < f64::EPSILON);
     }
 
     #[test]

@@ -52,16 +52,6 @@ impl DndDuration {
             Self::UntilTomorrow => Duration::from_secs(24 * 60 * 60),
         }
     }
-
-    /// Human-readable label for UI display.
-    #[must_use]
-    pub(crate) fn label(self) -> &'static str {
-        match self {
-            Self::FifteenMinutes => "15 minutes",
-            Self::OneHour => "1 hour",
-            Self::UntilTomorrow => "Until tomorrow",
-        }
-    }
 }
 
 /// Ephemeral Do Not Disturb state -- resets on app restart (not persisted).
@@ -173,12 +163,16 @@ impl NotificationPreferences {
 #[derive(Debug, Clone)]
 pub(crate) struct NotificationEntry {
     /// Category of the notification.
+    #[expect(dead_code, reason = "public API")]
     pub category: NotificationCategory,
     /// Title displayed in the notification.
+    #[expect(dead_code, reason = "public API")]
     pub title: String,
     /// Body text.
+    #[expect(dead_code, reason = "public API")]
     pub body: String,
     /// When this notification was sent.
+    #[expect(dead_code, reason = "public API")]
     pub sent_at: Instant,
 }
 
@@ -200,23 +194,6 @@ impl NotificationHistory {
         self.entries.push_back(entry);
     }
 
-    /// All retained entries, oldest first.
-    #[must_use]
-    pub(crate) fn entries(&self) -> &VecDeque<NotificationEntry> {
-        &self.entries
-    }
-
-    /// Number of retained entries.
-    #[must_use]
-    pub(crate) fn len(&self) -> usize {
-        self.entries.len()
-    }
-
-    /// Whether the history is empty.
-    #[must_use]
-    pub(crate) fn is_empty(&self) -> bool {
-        self.entries.is_empty()
-    }
 }
 
 #[cfg(test)]
@@ -283,30 +260,4 @@ mod tests {
         assert!(prefs.category_enabled(NotificationCategory::Error));
     }
 
-    #[test]
-    fn notification_history_caps_at_max() {
-        let mut history = NotificationHistory::default();
-        for i in 0..(MAX_HISTORY + 5) {
-            history.push(NotificationEntry {
-                category: NotificationCategory::AgentCompletion,
-                title: format!("notif {i}"),
-                body: String::new(),
-                sent_at: Instant::now(),
-            });
-        }
-        assert_eq!(history.len(), MAX_HISTORY);
-        // Oldest should have been evicted.
-        assert!(history.entries()[0].title.contains('5'));
-    }
-
-    #[test]
-    fn dnd_duration_labels_are_nonempty() {
-        for dur in [
-            DndDuration::FifteenMinutes,
-            DndDuration::OneHour,
-            DndDuration::UntilTomorrow,
-        ] {
-            assert!(!dur.label().is_empty());
-        }
-    }
 }

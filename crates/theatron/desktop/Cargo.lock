@@ -19,7 +19,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-koina"
-version = "0.13.64"
+version = "0.13.65"
 dependencies = [
  "compact_str",
  "jiff",
@@ -4529,7 +4529,7 @@ dependencies = [
 
 [[package]]
 name = "theatron-core"
-version = "0.13.64"
+version = "0.13.65"
 dependencies = [
  "aletheia-koina",
  "bytes",

@@ -44,35 +44,11 @@ pub enum ConnectionState {
 }
 
 impl ConnectionState {
-    /// Whether the connection is in the `Connected` state.
-    #[must_use]
-    pub(crate) fn is_connected(&self) -> bool {
-        matches!(self, Self::Connected)
-    }
-
-    /// Whether the connection is in the `Disconnected` state.
-    #[must_use]
-    pub(crate) fn is_disconnected(&self) -> bool {
-        matches!(self, Self::Disconnected)
-    }
-
     /// Whether the UI should show the connect form (not connected or actively
     /// trying to connect).
     #[must_use]
     pub(crate) fn needs_connect_view(&self) -> bool {
         !matches!(self, Self::Connected)
-    }
-
-    /// Short label for status bar display.
-    #[must_use]
-    pub(crate) fn label(&self) -> &str {
-        match self {
-            Self::Disconnected => "disconnected",
-            Self::Connecting => "connecting",
-            Self::Connected => "connected",
-            Self::Reconnecting { .. } => "reconnecting",
-            Self::Failed { .. } => "failed",
-        }
     }
 }
 

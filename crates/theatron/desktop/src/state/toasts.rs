@@ -157,21 +157,10 @@ impl ToastStore {
         self.toasts.retain(|t| t.id != id);
     }
 
-    /// Remove all toasts.
-    pub(crate) fn clear_all(&mut self) {
-        self.toasts.clear();
-    }
-
     /// Current visible toasts (oldest first).
     #[must_use]
     pub(crate) fn toasts(&self) -> &[Toast] {
         &self.toasts
-    }
-
-    /// Number of visible toasts.
-    #[must_use]
-    pub(crate) fn len(&self) -> usize {
-        self.toasts.len()
     }
 
     /// Whether the store is empty.
@@ -190,7 +179,7 @@ mod tests {
     fn push_and_dismiss() {
         let mut store = ToastStore::new();
         let id = store.push(Severity::Info, "hello");
-        assert_eq!(store.len(), 1);
+        assert_eq!(store.toasts().len(), 1);
         assert_eq!(store.toasts()[0].title, "hello");
 
         store.dismiss(id);
@@ -202,7 +191,7 @@ mod tests {
         let mut store = ToastStore::new();
         store.push(Severity::Info, "a");
         store.dismiss(999);
-        assert_eq!(store.len(), 1);
+        assert_eq!(store.toasts().len(), 1);
     }
 
     #[test]
@@ -211,18 +200,9 @@ mod tests {
         for i in 0..7 {
             store.push(Severity::Info, format!("toast {i}"));
         }
-        assert_eq!(store.len(), MAX_VISIBLE);
+        assert_eq!(store.toasts().len(), MAX_VISIBLE);
         assert_eq!(store.toasts()[0].title, "toast 2");
         assert_eq!(store.toasts()[4].title, "toast 6");
-    }
-
-    #[test]
-    fn clear_all() {
-        let mut store = ToastStore::new();
-        store.push(Severity::Info, "a");
-        store.push(Severity::Error, "b");
-        store.clear_all();
-        assert!(store.is_empty());
     }
 
     #[test]
@@ -290,6 +270,5 @@ mod tests {
     fn default_store_is_empty() {
         let store = ToastStore::default();
         assert!(store.is_empty());
-        assert_eq!(store.len(), 0);
     }
 }

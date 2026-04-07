@@ -141,12 +141,6 @@ impl PylonClient {
         }
     }
 
-    /// The underlying reqwest client, for use by SSE and streaming layers.
-    #[must_use]
-    pub(crate) fn raw_client(&self) -> &reqwest::Client {
-        &self.client
-    }
-
     /// The base URL this client is configured for.
     #[must_use]
     pub(crate) fn base_url(&self) -> &str {

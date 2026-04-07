@@ -14,8 +14,6 @@ pub(crate) mod coverage_bar;
 pub(crate) mod diff_hunk;
 pub(crate) mod diff_line;
 pub mod distillation;
-/// SVG-based knowledge graph canvas with zoom, pan, and node interaction.
-pub(crate) mod graph;
 pub(crate) mod input_bar;
 pub(crate) mod markdown;
 pub(crate) mod message;

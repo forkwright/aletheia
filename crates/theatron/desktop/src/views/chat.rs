@@ -47,7 +47,7 @@ pub(crate) fn Chat() -> Element {
     let mut cancel_token = use_signal(CancellationToken::new);
     let mut palette_open = use_signal(|| false);
     let config: Signal<ConnectionConfig> = use_context();
-    let mut cmd_store = use_context::<Signal<CommandStore>>();
+    let _cmd_store = use_context::<Signal<CommandStore>>();
     let agent_store = use_context::<Signal<AgentStore>>();
     let mut tab_bar = use_context::<Signal<TabBar>>();
     let mut routing_signal = use_context::<Signal<Option<RoutingState>>>();
@@ -554,7 +554,7 @@ pub(crate) fn Chat() -> Element {
 
             CommandPaletteView {
                 is_open: *palette_open.read(),
-                on_execute: move |cmd: String| {
+                on_execute: move |_cmd: String| {
                     palette_open.set(false);
                     // NOTE: Command execution feeds back into the input bar.
                 },

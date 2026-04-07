@@ -2,8 +2,6 @@
 
 use std::collections::HashMap;
 
-use crate::state::fetch::FetchState;
-
 // -- API response types -------------------------------------------------------
 
 /// Top-level response from `/api/tool-stats`.
@@ -119,7 +117,9 @@ pub(crate) struct ToolInvocation {
 pub(crate) enum DateRange {
     #[default]
     Last7Days,
+    #[expect(dead_code, reason = "reserved for future use")]
     Last30Days,
+    #[expect(dead_code, reason = "reserved for future use")]
     Last90Days,
 }
 
@@ -131,56 +131,6 @@ impl DateRange {
             Self::Last90Days => 90,
         }
     }
-
-    pub(crate) fn label(self) -> &'static str {
-        match self {
-            Self::Last7Days => "7d",
-            Self::Last30Days => "30d",
-            Self::Last90Days => "90d",
-        }
-    }
-}
-
-/// Combined store for the tool metrics view.
-#[derive(Debug, Clone)]
-pub(crate) struct ToolMetricsStore {
-    pub data: FetchState<ToolStatsResponse>,
-    pub date_range: DateRange,
-    /// Tool selected for drill-down; `None` means overview.
-    pub selected_tool: Option<String>,
-}
-
-impl Default for ToolMetricsStore {
-    fn default() -> Self {
-        Self {
-            data: FetchState::Loading,
-            date_range: DateRange::default(),
-            selected_tool: None,
-        }
-    }
-}
-
-// -- Aggregation helpers ------------------------------------------------------
-
-/// Returns the top `limit` tools sorted by total invocations, plus an optional
-/// aggregated "Other" entry covering all remaining tools.
-pub(crate) fn top_tools(tools: &[ToolStat], limit: usize) -> (Vec<&ToolStat>, Option<ToolStat>) {
-    let mut sorted: Vec<&ToolStat> = tools.iter().collect();
-    sorted.sort_by(|a, b| b.total.cmp(&a.total));
-
-    if sorted.len() <= limit {
-        return (sorted, None);
-    }
-
-    let (top, rest) = sorted.split_at(limit);
-    let other = ToolStat {
-        name: "Other".to_string(),
-        total: rest.iter().map(|t| t.total).sum(),
-        succeeded: rest.iter().map(|t| t.succeeded).sum(),
-        failed: rest.iter().map(|t| t.failed).sum(),
-        ..Default::default()
-    };
-    (top.to_vec(), Some(other))
 }
 
 /// Tools sorted by failure count (most failures first), for the results view.
@@ -197,21 +147,8 @@ pub(crate) fn tools_by_duration(tools: &[ToolStat]) -> Vec<&ToolStat> {
     sorted
 }
 
-/// Failure rate as a percentage [0.0, 100.0].
-pub(crate) fn failure_rate(stat: &ToolStat) -> f64 {
-    if stat.total == 0 {
-        return 0.0;
-    }
-    #[expect(
-        clippy::cast_precision_loss,
-        reason = "display-only: sub-percent precision irrelevant"
-    )]
-    #[expect(clippy::as_conversions, reason = "u64 to f64 for failure rate percentage")]
-    let rate = stat.failed as f64 / stat.total as f64 * 100.0;
-    rate
-}
-
 /// Trend arrow: ↑ if current is >1% above prev, ↓ if >1% below, → otherwise.
+#[expect(dead_code, reason = "reserved for future use")]
 pub(crate) fn trend_arrow(current: f64, prev: f64) -> &'static str {
     if prev == 0.0 {
         return "→";
@@ -238,9 +175,9 @@ pub(crate) fn format_delta(delta: i64) -> String {
 /// Formats a duration in milliseconds as a human-readable string.
 pub(crate) fn format_duration_ms(ms: u64) -> String {
     if ms >= 60_000 {
-        format!("{:.1}m", ms as f64 / 60_000.0) // kanon:ignore RUST/as-cast
+        format!("{:.1}m", ms as f64 / 60_000.0)
     } else if ms >= 1_000 {
-        format!("{:.1}s", ms as f64 / 1_000.0) // kanon:ignore RUST/as-cast
+        format!("{:.1}s", ms as f64 / 1_000.0)
     } else {
         format!("{ms}ms")
     }
@@ -289,87 +226,6 @@ pub(crate) fn percentile_nearest_rank(sorted_values: &[u64], p: f64) -> u64 {
 mod tests {
     use super::*;
 
-    fn make_stat(name: &str, total: u64, succeeded: u64, p50_ms: u64) -> ToolStat {
-        ToolStat {
-            name: name.to_string(),
-            total,
-            succeeded,
-            failed: total.saturating_sub(succeeded),
-            p50_ms,
-            ..Default::default()
-        }
-    }
-
-    #[test]
-    fn top_tools_within_limit_no_other() {
-        let tools = vec![
-            make_stat("bash", 500, 490, 200),
-            make_stat("read", 300, 295, 100),
-        ];
-        let (top, other) = top_tools(&tools, 10);
-        assert_eq!(top.len(), 2);
-        assert!(other.is_none());
-    }
-
-    #[test]
-    fn top_tools_beyond_limit_creates_other() {
-        let tools: Vec<ToolStat> = (0..12)
-            .map(|i| make_stat(&format!("tool_{i}"), (12 - i) as u64 * 10, 0, 0))
-            .collect();
-        let (top, other) = top_tools(&tools, 10);
-        assert_eq!(top.len(), 10);
-        let other = other.expect("should have Other entry");
-        assert_eq!(other.name, "Other");
-        // sum of ranks 10 and 11 (values 20 and 10)
-        assert_eq!(other.total, 30);
-    }
-
-    #[test]
-    fn top_tools_sorted_by_count_descending() {
-        let tools = vec![
-            make_stat("low", 10, 10, 0),
-            make_stat("high", 500, 490, 0),
-            make_stat("mid", 100, 90, 0),
-        ];
-        let (top, _) = top_tools(&tools, 10);
-        assert_eq!(top[0].name, "high");
-        assert_eq!(top[1].name, "mid");
-        assert_eq!(top[2].name, "low");
-    }
-
-    #[test]
-    fn failure_rate_zero_when_no_calls() {
-        let stat = make_stat("bash", 0, 0, 0);
-        assert_eq!(failure_rate(&stat), 0.0);
-    }
-
-    #[test]
-    fn failure_rate_percentage() {
-        let stat = make_stat("bash", 100, 75, 0);
-        assert!((failure_rate(&stat) - 25.0).abs() < 0.001);
-    }
-
-    #[test]
-    fn trend_arrow_directions() {
-        assert_eq!(trend_arrow(110.0, 100.0), "↑");
-        assert_eq!(trend_arrow(90.0, 100.0), "↓");
-        assert_eq!(trend_arrow(100.5, 100.0), "→");
-    }
-
-    #[test]
-    fn percentile_nearest_rank_median() {
-        let values = &[1u64, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-        // p50 of 10 values: ceil(0.5*10)=5, idx=4, value=5
-        assert_eq!(percentile_nearest_rank(values, 0.50), 5);
-    }
-
-    #[test]
-    fn percentile_nearest_rank_p95() {
-        let values: Vec<u64> = (1..=100).collect();
-        // p95 of 100: ceil(0.95*100)=95, idx=94, value=95
-        assert_eq!(percentile_nearest_rank(&values, 0.95), 95);
-    }
-
     #[test]
     fn paginate_first_page() {
         let items: Vec<u32> = (0..50).collect();
@@ -393,5 +249,19 @@ mod tests {
     #[test]
     fn page_count_partial_last_page() {
         assert_eq!(page_count(41, 20), 3);
+    }
+
+    #[test]
+    fn percentile_nearest_rank_median() {
+        let values = &[1u64, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        // p50 of 10 values: ceil(0.5*10)=5, idx=4, value=5
+        assert_eq!(percentile_nearest_rank(values, 0.50), 5);
+    }
+
+    #[test]
+    fn percentile_nearest_rank_p95() {
+        let values: Vec<u64> = (1..=100).collect();
+        // p95 of 100: ceil(0.95*100)=95, idx=94, value=95
+        assert_eq!(percentile_nearest_rank(&values, 0.95), 95);
     }
 }

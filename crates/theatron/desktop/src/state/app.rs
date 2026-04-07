@@ -125,23 +125,6 @@ impl TabBar {
         Some(entry)
     }
 
-    /// Number of open tabs.
-    #[must_use]
-    pub(crate) fn len(&self) -> usize {
-        self.tabs.len()
-    }
-
-    /// Whether the tab bar is empty.
-    #[must_use]
-    pub(crate) fn is_empty(&self) -> bool {
-        self.tabs.is_empty()
-    }
-
-    /// Get the active tab entry.
-    #[must_use]
-    pub(crate) fn active_tab(&self) -> Option<&TabEntry> {
-        self.tabs.get(self.active)
-    }
 }
 
 impl Default for TabBar {

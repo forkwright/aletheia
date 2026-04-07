@@ -65,8 +65,6 @@ fn client_commands() -> Vec<Command> {
 /// they call `filter_by_prefix`, `cursor_up`, `cursor_down` on write.
 #[derive(Debug, Clone)]
 pub struct CommandStore {
-    /// All registered commands (client + server).
-    all: Vec<Command>,
     /// Filtered subset currently shown in the palette.
     pub filtered: Vec<Command>,
     /// Highlighted row index into `filtered`.
@@ -80,50 +78,8 @@ impl CommandStore {
         let all = client_commands();
         let filtered = all.clone();
         Self {
-            all,
             filtered,
             cursor: 0,
-        }
-    }
-
-    /// Merge server-provided commands, replacing any previous server commands.
-    pub(crate) fn load_server_commands(&mut self, commands: Vec<Command>) {
-        self.all.retain(|c| c.source != CommandSource::Server);
-        self.all.extend(commands);
-        self.filter_by_prefix("");
-    }
-
-    /// Filter commands by prefix (without leading `/`).
-    ///
-    /// Empty prefix shows all commands. Matching is case-insensitive on the
-    /// command name.
-    pub(crate) fn filter_by_prefix(&mut self, prefix: &str) {
-        let lower = prefix.to_lowercase();
-        self.filtered = self
-            .all
-            .iter()
-            .filter(|c| lower.is_empty() || c.name.starts_with(lower.as_str()))
-            .cloned()
-            .collect();
-        // Clamp cursor to valid range.
-        if self.filtered.is_empty() {
-            self.cursor = 0;
-        } else if self.cursor >= self.filtered.len() {
-            self.cursor = self.filtered.len() - 1;
-        }
-    }
-
-    /// Move cursor up by one row (no-op at top).
-    pub(crate) fn cursor_up(&mut self) {
-        if self.cursor > 0 {
-            self.cursor -= 1;
-        }
-    }
-
-    /// Move cursor down by one row (no-op at bottom).
-    pub(crate) fn cursor_down(&mut self) {
-        if !self.filtered.is_empty() && self.cursor < self.filtered.len() - 1 {
-            self.cursor += 1;
         }
     }
 
@@ -131,12 +87,6 @@ impl CommandStore {
     #[must_use]
     pub(crate) fn selected(&self) -> Option<&Command> {
         self.filtered.get(self.cursor)
-    }
-
-    /// Whether the filtered list is empty.
-    #[must_use]
-    pub(crate) fn is_empty(&self) -> bool {
-        self.filtered.is_empty()
     }
 }
 
@@ -166,116 +116,9 @@ mod tests {
     }
 
     #[test]
-    fn command_store_has_client_commands() {
-        let store = CommandStore::new();
-        assert!(!store.is_empty());
-        assert!(
-            store
-                .filtered
-                .iter()
-                .all(|c| c.source == CommandSource::Client)
-        );
-    }
-
-    #[test]
-    fn filter_empty_prefix_shows_all() {
-        let mut store = CommandStore::new();
-        store.filter_by_prefix("");
-        assert_eq!(store.filtered.len(), store.all.len());
-    }
-
-    #[test]
-    fn filter_prefix_narrows_to_help() {
-        let mut store = CommandStore::new();
-        store.filter_by_prefix("hel");
-        assert_eq!(store.filtered.len(), 1);
-        assert_eq!(store.filtered[0].name, "help");
-    }
-
-    #[test]
-    fn filter_no_match_empties_list() {
-        let mut store = CommandStore::new();
-        store.filter_by_prefix("zzz");
-        assert!(store.is_empty());
-        assert_eq!(store.cursor, 0);
-    }
-
-    #[test]
-    fn filter_clamps_cursor_to_new_length() {
-        let mut store = CommandStore::new();
-        // Move to the last item then filter to a smaller set.
-        let last = store.filtered.len() - 1;
-        store.cursor = last;
-        store.filter_by_prefix("hel"); // 1 result
-        assert_eq!(store.cursor, 0);
-    }
-
-    #[test]
-    fn cursor_navigation_down_and_up() {
-        let mut store = CommandStore::new();
-        store.filter_by_prefix(""); // All commands
-        assert_eq!(store.cursor, 0);
-        store.cursor_down();
-        assert_eq!(store.cursor, 1);
-        store.cursor_down();
-        assert_eq!(store.cursor, 2);
-        store.cursor_up();
-        assert_eq!(store.cursor, 1);
-        store.cursor_up();
-        assert_eq!(store.cursor, 0);
-    }
-
-    #[test]
-    fn cursor_up_at_top_is_noop() {
-        let mut store = CommandStore::new();
-        store.cursor_up();
-        assert_eq!(store.cursor, 0);
-    }
-
-    #[test]
-    fn cursor_down_at_bottom_is_noop() {
-        let mut store = CommandStore::new();
-        store.filter_by_prefix("help"); // 1 result, cursor 0 = bottom
-        store.cursor_down();
-        assert_eq!(store.cursor, 0);
-    }
-
-    #[test]
     fn selected_returns_highlighted_command() {
         let store = CommandStore::new();
         let sel = store.selected().unwrap();
         assert_eq!(sel.name, store.filtered[0].name);
-    }
-
-    #[test]
-    fn selected_none_when_empty() {
-        let mut store = CommandStore::new();
-        store.filter_by_prefix("no-match-at-all");
-        assert!(store.selected().is_none());
-    }
-
-    #[test]
-    fn load_server_commands_appends() {
-        let mut store = CommandStore::new();
-        let initial = store.filtered.len();
-        store.load_server_commands(vec![server_cmd("recall")]);
-        assert_eq!(store.filtered.len(), initial + 1);
-    }
-
-    #[test]
-    fn load_server_commands_replaces_prior_server_set() {
-        let mut store = CommandStore::new();
-        let client_count = store.all.len();
-        store.load_server_commands(vec![server_cmd("cmd1"), server_cmd("cmd2")]);
-        store.load_server_commands(vec![server_cmd("cmd3")]);
-        // Only cmd3 should remain from server; client commands intact.
-        let server_names: Vec<&str> = store
-            .filtered
-            .iter()
-            .filter(|c| c.source == CommandSource::Server)
-            .map(|c| c.name.as_str())
-            .collect();
-        assert_eq!(server_names, vec!["cmd3"]);
-        assert_eq!(store.filtered.len(), client_count + 1);
     }
 }

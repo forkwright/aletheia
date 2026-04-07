@@ -87,17 +87,6 @@ impl SseConnectionState {
     pub(crate) fn is_connected(&self) -> bool {
         matches!(self, Self::Connected)
     }
-
-    /// Map to the API-layer [`ConnectionState`] for components that
-    /// consume the generic type.
-    #[must_use]
-    pub(crate) fn to_connection_state(&self) -> ConnectionState {
-        match self {
-            Self::Disconnected => ConnectionState::Disconnected,
-            Self::Connected => ConnectionState::Connected,
-            Self::Reconnecting { attempt } => ConnectionState::Reconnecting { attempt: *attempt },
-        }
-    }
 }
 
 /// Connection state for the global SSE stream.
@@ -187,12 +176,6 @@ impl DistillationProgress {
             Self::Stage { stage } => stage.as_str(),
             Self::Complete => "complete",
         }
-    }
-
-    /// Whether distillation is still in progress.
-    #[must_use]
-    pub(crate) fn is_active(&self) -> bool {
-        !matches!(self, Self::Complete)
     }
 }
 

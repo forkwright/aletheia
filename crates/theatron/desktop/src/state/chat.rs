@@ -1,7 +1,5 @@
 //! Chat session and message state for the desktop chat view.
 
-use std::collections::HashMap;
-
 use theatron_core::id::{NousId, SessionId};
 
 /// Role of a chat message sender.
@@ -16,17 +14,6 @@ pub enum Role {
     System,
 }
 
-impl Role {
-    /// Display label for the role.
-    #[must_use]
-    pub(crate) fn label(self) -> &'static str {
-        match self {
-            Self::User => "You",
-            Self::Assistant => "Assistant",
-            Self::System => "System",
-        }
-    }
-}
 
 /// A single chat message in the conversation history.
 #[derive(Debug, Clone, PartialEq)]
@@ -59,103 +46,34 @@ pub struct ChatMessage {
 #[derive(Debug, Clone)]
 pub struct ChatSession {
     /// Session identifier.
+    #[expect(dead_code, reason = "public API")]
     pub id: SessionId,
     /// Agent this session belongs to.
+    #[expect(dead_code, reason = "public API")]
     pub agent_id: NousId,
     /// Ordered message history (oldest first).
+    #[expect(dead_code, reason = "public API")]
     pub messages: Vec<ChatMessage>,
     /// Current scroll position (pixel offset from top of content).
+    #[expect(dead_code, reason = "public API")]
     pub scroll_position: f64,
     /// Whether older messages exist on the server.
+    #[expect(dead_code, reason = "public API")]
     pub has_more_history: bool,
-    /// Next message ID to assign.
+    #[expect(dead_code, reason = "public API")]
     next_id: u64,
 }
 
-impl ChatSession {
-    /// Create a new empty session.
-    #[must_use]
-    pub(crate) fn new(id: SessionId, agent_id: NousId) -> Self {
-        Self {
-            id,
-            agent_id,
-            messages: Vec::new(),
-            scroll_position: 0.0,
-            has_more_history: false,
-            next_id: 1,
-        }
-    }
-
-    /// Add a message and return the assigned ID.
-    pub(crate) fn push_message(&mut self, mut msg: ChatMessage) -> u64 {
-        let id = self.next_id;
-        self.next_id += 1;
-        msg.id = id;
-        self.messages.push(msg);
-        id
-    }
-
-    /// Get the last message, if any.
-    #[must_use]
-    pub(crate) fn last_message(&self) -> Option<&ChatMessage> {
-        self.messages.last()
-    }
-
-    /// Get a mutable reference to the last message.
-    pub(crate) fn last_message_mut(&mut self) -> Option<&mut ChatMessage> {
-        self.messages.last_mut()
-    }
-}
 
 /// Store managing all chat sessions.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ChatStore {
     /// Currently active session ID.
+    #[expect(dead_code, reason = "public API")]
     pub active_session: Option<SessionId>,
     /// All loaded sessions keyed by ID.
-    pub sessions: HashMap<SessionId, ChatSession>,
-}
-
-impl ChatStore {
-    /// Create an empty store.
-    #[must_use]
-    pub(crate) fn new() -> Self {
-        Self {
-            active_session: None,
-            sessions: HashMap::new(),
-        }
-    }
-
-    /// Get the active session, if any.
-    #[must_use]
-    pub(crate) fn active(&self) -> Option<&ChatSession> {
-        self.active_session
-            .as_ref()
-            .and_then(|id| self.sessions.get(id))
-    }
-
-    /// Get a mutable reference to the active session.
-    pub(crate) fn active_mut(&mut self) -> Option<&mut ChatSession> {
-        let id = self.active_session.clone()?;
-        self.sessions.get_mut(&id)
-    }
-
-    /// Create or activate a session. Returns whether it was newly created.
-    pub(crate) fn ensure_session(&mut self, id: SessionId, agent_id: NousId) -> bool {
-        let is_new = !self.sessions.contains_key(&id);
-        if is_new {
-            self.sessions
-                .insert(id.clone(), ChatSession::new(id.clone(), agent_id));
-        }
-        self.active_session = Some(id);
-        is_new
-    }
-}
-
-impl Default for ChatStore {
-    fn default() -> Self {
-        Self::new()
-    }
+    #[expect(dead_code, reason = "public API")]
+    pub sessions: std::collections::HashMap<SessionId, ChatSession>,
 }
 
 /// Format a Unix timestamp as a relative time string.
@@ -203,75 +121,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn role_labels() {
-        assert_eq!(Role::User.label(), "You");
-        assert_eq!(Role::Assistant.label(), "Assistant");
-        assert_eq!(Role::System.label(), "System");
-    }
-
-    #[test]
-    fn chat_session_push_assigns_sequential_ids() {
-        let mut session = ChatSession::new("s1".into(), NousId::from("agent-1"));
-        let msg1 = ChatMessage {
-            id: 0,
-            role: Role::User,
-            content: "hello".to_string(),
-            timestamp: 1000,
-            agent_id: None,
-            tool_calls: 0,
-            thinking_content: None,
-            is_streaming: false,
-            model: None,
-            input_tokens: 0,
-            output_tokens: 0,
-        };
-        let msg2 = ChatMessage {
-            id: 0,
-            role: Role::Assistant,
-            content: "hi".to_string(),
-            timestamp: 1001,
-            agent_id: Some(NousId::from("agent-1")),
-            tool_calls: 0,
-            thinking_content: None,
-            is_streaming: false,
-            model: Some("claude".to_string()),
-            input_tokens: 10,
-            output_tokens: 5,
-        };
-        let id1 = session.push_message(msg1);
-        let id2 = session.push_message(msg2);
-        assert_eq!(id1, 1);
-        assert_eq!(id2, 2);
-        assert_eq!(session.messages.len(), 2);
-    }
-
-    #[test]
-    fn chat_store_ensure_session_creates_and_activates() {
-        let mut store = ChatStore::new();
-        assert!(store.active().is_none());
-
-        let created = store.ensure_session("s1".into(), NousId::from("a1"));
-        assert!(created);
-        assert!(store.active().is_some());
-        assert_eq!(store.active().map(|s| s.id.as_ref()), Some("s1"));
-
-        // Second call doesn't re-create.
-        let created2 = store.ensure_session("s1".into(), NousId::from("a1"));
-        assert!(!created2);
-    }
-
-    #[test]
-    fn chat_store_switch_active_session() {
-        let mut store = ChatStore::new();
-        store.ensure_session("s1".into(), NousId::from("a1"));
-        store.ensure_session("s2".into(), NousId::from("a2"));
-        assert_eq!(store.active().map(|s| s.id.as_ref()), Some("s2"));
-
-        store.active_session = Some("s1".into());
-        assert_eq!(store.active().map(|s| s.id.as_ref()), Some("s1"));
-    }
-
-    #[test]
     fn relative_time_just_now() {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -307,35 +156,4 @@ mod tests {
         assert_eq!(relative_time(now + 600), "just now");
     }
 
-    #[test]
-    fn last_message_accessors() {
-        let mut session = ChatSession::new("s1".into(), NousId::from("a1"));
-        assert!(session.last_message().is_none());
-
-        session.push_message(ChatMessage {
-            id: 0,
-            role: Role::User,
-            content: "test".to_string(),
-            timestamp: 1000,
-            agent_id: None,
-            tool_calls: 0,
-            thinking_content: None,
-            is_streaming: false,
-            model: None,
-            input_tokens: 0,
-            output_tokens: 0,
-        });
-        assert_eq!(
-            session.last_message().map(|m| m.content.as_str()),
-            Some("test")
-        );
-
-        if let Some(msg) = session.last_message_mut() {
-            msg.content = "updated".to_string();
-        }
-        assert_eq!(
-            session.last_message().map(|m| m.content.as_str()),
-            Some("updated")
-        );
-    }
 }

@@ -15,8 +15,6 @@ use dioxus::prelude::*;
 pub(crate) enum ResizeDir {
     /// Horizontal split -- left/right panels.  Cursor: `col-resize`.
     Horizontal,
-    /// Vertical split -- top/bottom panels.  Cursor: `row-resize`.
-    Vertical,
 }
 
 /// All signals needed to drive a resize interaction.
@@ -43,7 +41,7 @@ pub(crate) struct ResizeState {
 
 impl ResizeState {
     /// Handle `onmousemove` on the outer container.
-    pub(crate) fn on_move(&self, client_x: f64, client_y: f64, dir: ResizeDir) {
+    pub(crate) fn on_move(&self, client_x: f64, _client_y: f64, dir: ResizeDir) {
         if !*self.is_dragging.read() {
             return;
         }
@@ -51,7 +49,6 @@ impl ResizeState {
         let start_size = *self.drag_start_size.read();
         let delta = match dir {
             ResizeDir::Horizontal => client_x - origin,
-            ResizeDir::Vertical => client_y - origin,
         };
         let new_size = (start_size + delta).clamp(self.min_size, self.max_size);
         self.size.clone().set(new_size);
@@ -95,17 +92,15 @@ pub(crate) fn ResizeHandle(
 ) -> Element {
     let cursor = match dir {
         ResizeDir::Horizontal => "col-resize",
-        ResizeDir::Vertical => "row-resize",
     };
     let (w, h) = match dir {
         ResizeDir::Horizontal => ("4px", "100%"),
-        ResizeDir::Vertical => ("100%", "4px"),
     };
 
     rsx! {
         div {
             role: "separator",
-            "aria-orientation": match dir { ResizeDir::Horizontal => "vertical", ResizeDir::Vertical => "horizontal" },
+            "aria-orientation": match dir { ResizeDir::Horizontal => "vertical" },
             "aria-label": "Resize panel",
             tabindex: "0",
             class: "resize-handle",
@@ -123,7 +118,6 @@ pub(crate) fn ResizeHandle(
                 let coords = evt.client_coordinates();
                 let origin = match dir {
                     ResizeDir::Horizontal => coords.x,
-                    ResizeDir::Vertical => coords.y,
                 };
                 state.is_dragging.clone().set(true);
                 state.drag_origin.clone().set(origin);
@@ -139,8 +133,6 @@ pub(crate) fn ResizeHandle(
                 let new_size = match (dir, evt.key().to_string().as_str()) {
                     (ResizeDir::Horizontal, "ArrowRight") => current + step,
                     (ResizeDir::Horizontal, "ArrowLeft") => current - step,
-                    (ResizeDir::Vertical, "ArrowDown") => current + step,
-                    (ResizeDir::Vertical, "ArrowUp") => current - step,
                     (_, "Home") => state.default_size,
                     _ => return,
                 };
@@ -179,11 +171,4 @@ mod tests {
         assert!((result - 320.0).abs() < f64::EPSILON);
     }
 
-    #[test]
-    fn vertical_resize_uses_y_delta() {
-        // For vertical direction, the y coordinate drives the resize.
-        // Simulate: drag_origin_y=200, current_y=350 → delta=150 → 400+150=550
-        let result = clamp_resize(400.0, 350.0 - 200.0, 100.0, 800.0);
-        assert!((result - 550.0).abs() < f64::EPSILON);
-    }
 }

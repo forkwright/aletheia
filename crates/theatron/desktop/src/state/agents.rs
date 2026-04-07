@@ -75,28 +75,6 @@ impl AgentStore {
         Self::default()
     }
 
-    /// Replace all agents from a fresh API fetch.
-    ///
-    /// Auto-selects the first agent if no agent is currently active.
-    pub(crate) fn load_agents(&mut self, agents: Vec<Agent>) {
-        self.agents.clear();
-        self.order.clear();
-        for agent in agents {
-            let id = agent.id.clone();
-            self.order.push(id.clone());
-            self.agents.insert(
-                id,
-                AgentRecord {
-                    agent,
-                    status: AgentStatus::Idle,
-                },
-            );
-        }
-        if self.active_id.is_none() {
-            self.active_id = self.order.first().cloned();
-        }
-    }
-
     /// Set the active agent. Returns `false` if the ID is unknown.
     pub(crate) fn set_active(&mut self, id: &NousId) -> bool {
         if self.agents.contains_key(id) {
@@ -104,13 +82,6 @@ impl AgentStore {
             true
         } else {
             false
-        }
-    }
-
-    /// Update an agent's runtime status from SSE events.
-    pub(crate) fn update_status(&mut self, id: &NousId, status: AgentStatus) {
-        if let Some(record) = self.agents.get_mut(id) {
-            record.status = status;
         }
     }
 

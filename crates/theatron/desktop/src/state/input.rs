@@ -5,24 +5,6 @@ use std::collections::VecDeque;
 /// Maximum number of messages retained in the input history ring buffer.
 const MAX_HISTORY: usize = 50;
 
-/// Tracks the current submission lifecycle.
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum SubmissionState {
-    /// Ready to accept input.
-    Idle,
-    /// A message is being sent and streamed.
-    Submitting,
-    /// The last submission failed.
-    Error(String),
-}
-
-impl Default for SubmissionState {
-    fn default() -> Self {
-        Self::Idle
-    }
-}
-
 /// Input state for the chat textarea.
 ///
 /// Manages the current text, submission lifecycle, and a ring buffer of
@@ -39,8 +21,6 @@ pub struct InputState {
     /// Stashed draft text saved when the user starts navigating history,
     /// restored when they return past the newest entry.
     draft: String,
-    /// Current submission lifecycle state.
-    pub submission: SubmissionState,
 }
 
 impl Default for InputState {
@@ -50,7 +30,6 @@ impl Default for InputState {
             history: VecDeque::with_capacity(MAX_HISTORY),
             history_index: None,
             draft: String::new(),
-            submission: SubmissionState::default(),
         }
     }
 }
@@ -129,18 +108,6 @@ impl InputState {
         } else {
             false
         }
-    }
-
-    /// Number of entries in the history buffer.
-    #[must_use]
-    pub(crate) fn history_len(&self) -> usize {
-        self.history.len()
-    }
-
-    /// Whether the user is currently browsing history.
-    #[must_use]
-    pub(crate) fn is_browsing_history(&self) -> bool {
-        self.history_index.is_some()
     }
 
     /// Clear the input text and reset history navigation.
@@ -234,8 +201,4 @@ mod tests {
         assert!(!input.is_browsing_history());
     }
 
-    #[test]
-    fn submission_state_default_is_idle() {
-        assert_eq!(SubmissionState::default(), SubmissionState::Idle);
-    }
 }

@@ -23,8 +23,6 @@ pub(crate) mod execution;
 pub(crate) mod fetch;
 /// Workspace file tree explorer state.
 pub(crate) mod files;
-/// Knowledge graph state: nodes, edges, force simulation, viewport, community filters, drift.
-pub(crate) mod graph;
 pub(crate) mod input;
 /// Entity list, detail, and navigation state for the memory explorer.
 pub(crate) mod memory;
