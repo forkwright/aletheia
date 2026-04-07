@@ -47,6 +47,10 @@ impl PartialOrd for State {
 /// BFS shortest path algorithm (unweighted).
 ///
 /// Output: `(node, distance, path)` where path is a list of nodes.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "f64 to i64: distance values are expected to be within i64 range"
+)]
 pub struct BfsPath;
 
 impl super::FixedRule for BfsPath {
@@ -118,6 +122,10 @@ impl super::FixedRule for BfsPath {
 /// Dijkstra's shortest path algorithm (weighted).
 ///
 /// Output: `(node, distance, path)` where path is a list of nodes.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "f64 to i64: distance values are expected to be within i64 range"
+)]
 pub struct DijkstraPath;
 
 impl super::FixedRule for DijkstraPath {
@@ -197,6 +205,10 @@ impl super::FixedRule for DijkstraPath {
 ///
 /// Uses Dijkstra fallback if no heuristic provided.
 /// Output: `(node, distance, path)` where path is a list of nodes.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "f64 to i64: distance values are expected to be within i64 range"
+)]
 pub struct AStarPath;
 
 impl super::FixedRule for AStarPath {
@@ -293,6 +305,11 @@ impl super::FixedRule for YenKShortest {
         Ok(4)
     }
 
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "usize→i64: path_id and step are bounded by graph size which is < i64::MAX"
+    )]
     fn run(
         &self,
         edges: &[(Value, Value, f64)],

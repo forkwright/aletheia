@@ -121,6 +121,10 @@ fn eval_binary_op(op: BinOp, left: &Value, right: &Value) -> Result<Value> {
     }
 }
 
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "i64 to f64: precision loss acceptable for expression evaluation mixed-type arithmetic"
+)]
 fn eval_add(left: &Value, right: &Value) -> Result<Value> {
     match (left, right) {
         (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a + b)),
@@ -138,6 +142,10 @@ fn eval_add(left: &Value, right: &Value) -> Result<Value> {
     }
 }
 
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "i64 to f64: precision loss acceptable for expression evaluation mixed-type arithmetic"
+)]
 fn eval_sub(left: &Value, right: &Value) -> Result<Value> {
     match (left, right) {
         (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a - b)),
@@ -155,6 +163,10 @@ fn eval_sub(left: &Value, right: &Value) -> Result<Value> {
     }
 }
 
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "i64 to f64: precision loss acceptable for expression evaluation mixed-type arithmetic"
+)]
 fn eval_mul(left: &Value, right: &Value) -> Result<Value> {
     match (left, right) {
         (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a * b)),
@@ -172,6 +184,10 @@ fn eval_mul(left: &Value, right: &Value) -> Result<Value> {
     }
 }
 
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "i64 to f64: precision loss acceptable for expression evaluation mixed-type arithmetic"
+)]
 fn eval_div(left: &Value, right: &Value) -> Result<Value> {
     match (left, right) {
         (Value::Int(a), Value::Int(b)) => {

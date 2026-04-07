@@ -220,7 +220,7 @@ impl EmbeddingSwapManager {
         let meets_threshold = recall_at_k >= config.eval_threshold_recall_at_k;
 
         if !meets_threshold {
-            let duration_ms = start.elapsed().as_millis() as u64;
+            let duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
             tracing::warn!(
                 old_model = %old_model_name,
                 new_model = %new_model_name,
@@ -250,7 +250,7 @@ impl EmbeddingSwapManager {
         // For now, we update our local reference
         self.active_provider = new_provider;
 
-        let duration_ms = start.elapsed().as_millis() as u64;
+        let duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
 
         tracing::info!(
             old_model = %old_model_name,
@@ -417,6 +417,10 @@ impl EmbeddingSwapManager {
 }
 
 /// Fast hash function for string IDs to usize.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "u64→usize: hash output truncated intentionally for index bucketing"
+)]
 fn fast_hash(s: &str) -> usize {
     let mut hash: u64 = 5381;
     for b in s.bytes() {

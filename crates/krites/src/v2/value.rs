@@ -356,6 +356,10 @@ impl Value {
 
     /// Coerce to f64 for numeric operations (Int → f64, Float → f64).
     #[must_use]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "i64 to f64: precision loss acceptable for numeric coercion"
+    )]
     pub fn to_f64(&self) -> Option<f64> {
         match self {
             Self::Int(n) => Some(*n as f64),
@@ -426,8 +430,14 @@ impl Ord for Value {
             (Self::Int(a), Self::Int(b)) => a.cmp(b),
             (Self::Float(a), Self::Float(b)) => a.total_cmp(b),
             // WHY: Int/Float cross-comparison for numeric joins.
-            (Self::Int(a), Self::Float(b)) => (*a as f64).total_cmp(b),
-            (Self::Float(a), Self::Int(b)) => a.total_cmp(&(*b as f64)),
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "i64 to f64: precision loss acceptable for cross-type numeric comparison"
+            )]
+            {
+                (Self::Int(a), Self::Float(b)) => (*a as f64).total_cmp(b),
+                (Self::Float(a), Self::Int(b)) => a.total_cmp(&(*b as f64)),
+            }
             (Self::Str(a), Self::Str(b)) => a.cmp(b),
             (Self::Bytes(a), Self::Bytes(b)) => a.cmp(b),
             (Self::Timestamp(a), Self::Timestamp(b)) => a.cmp(b),

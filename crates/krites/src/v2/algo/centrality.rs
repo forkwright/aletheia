@@ -16,6 +16,10 @@ use crate::v2::value::Value;
 ///
 /// Counts the number of edges incident to each node.
 /// Output: `(node, centrality_score)` pairs.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "usize→f64: degree count fits in f64 mantissa for reasonable graphs"
+)]
 pub struct DegreeCentrality;
 
 impl super::FixedRule for DegreeCentrality {
@@ -54,6 +58,10 @@ impl super::FixedRule for DegreeCentrality {
 ///
 /// Measures how close a node is to all other nodes (inverse of average shortest path).
 /// Output: `(node, centrality_score)` pairs.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "usize→f64: graph metrics fit in f64 mantissa"
+)]
 pub struct ClosenessCentrality;
 
 impl super::FixedRule for ClosenessCentrality {
@@ -98,6 +106,11 @@ impl super::FixedRule for ClosenessCentrality {
 ///
 /// Measures the fraction of shortest paths that pass through each node.
 /// Output: `(node, centrality_score)` pairs.
+#[expect(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    reason = "usize→f64: graph metrics fit in f64; usize multiplication fits in i64 range"
+)]
 pub struct BetweennessCentrality;
 
 impl super::FixedRule for BetweennessCentrality {

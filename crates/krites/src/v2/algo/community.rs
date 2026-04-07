@@ -30,6 +30,11 @@ impl super::FixedRule for Louvain {
         Ok(2)
     }
 
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "usize→i64: community IDs bounded by node count which is < i64::MAX"
+    )]
     fn run(
         &self,
         edges: &[(Value, Value, f64)],
@@ -192,6 +197,11 @@ impl super::FixedRule for LabelPropagation {
         Ok(2)
     }
 
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "usize→i64: labels bounded by node count which is < i64::MAX"
+    )]
     fn run(
         &self,
         edges: &[(Value, Value, f64)],

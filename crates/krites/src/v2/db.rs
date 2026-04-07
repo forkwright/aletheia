@@ -103,7 +103,7 @@ impl<S: Storage> Db<S> {
                 headers: vec!["relation".to_owned(), "rows_affected".to_owned()],
                 rows: vec![vec![
                     Value::from(relation.as_str()),
-                    Value::from(rows_affected as i64),
+                    Value::from(i64::try_from(rows_affected).unwrap_or(i64::MAX)),
                 ]],
             }),
         }

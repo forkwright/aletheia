@@ -517,6 +517,11 @@ fn apply_ordering(
 }
 
 /// Apply limit to result rows.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "usize::MAX bounds check ensures safe conversion for valid limit values"
+)]
 fn apply_limit(
     rows: &mut Vec<HashMap<String, Value>>,
     limit: Option<&Expr>,
