@@ -17,6 +17,10 @@ use crate::v2::value::Value;
 ///
 /// Depth-first search from a start node.
 /// Output: `(step, node)` pairs in visit order.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "usize→i64: step count bounded by max_steps parameter which is < i64::MAX"
+)]
 pub struct DfsTraversal;
 
 impl super::FixedRule for DfsTraversal {
@@ -77,6 +81,10 @@ impl super::FixedRule for DfsTraversal {
 ///
 /// Breadth-first search from a start node.
 /// Output: `(step, node)` pairs in visit order (by depth).
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "usize→i64: step count bounded by max_steps parameter which is < i64::MAX"
+)]
 pub struct BfsTraversal;
 
 impl super::FixedRule for BfsTraversal {
@@ -135,6 +143,11 @@ impl super::FixedRule for BfsTraversal {
 ///
 /// Random neighbor selection for N steps.
 /// Output: `(step, node)` pairs.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "usize→i64: step count bounded by steps parameter; i64→u64: seed is non-negative"
+)]
 pub struct RandomWalk;
 
 impl super::FixedRule for RandomWalk {

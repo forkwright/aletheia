@@ -352,6 +352,7 @@ impl<'a> Lexer<'a> {
                     b'.' => Token::Dot,
                     _ => {
                         return Err(error::ParseSnafu {
+                            #[expect(clippy::as_conversions, reason = "u8→char: ASCII bytes are valid char values")]
                             message: format!("unexpected character: '{}' (0x{:02x})", ch as char, ch),
                             span: self.span(start),
                         }
@@ -485,6 +486,7 @@ impl<'a> Lexer<'a> {
                     }
                 }
             } else {
+                #[expect(clippy::as_conversions, reason = "u8→char: ASCII bytes are valid char values")]
                 content.push(ch as char);
             }
         }

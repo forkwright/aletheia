@@ -783,7 +783,7 @@ impl Parser {
                 };
                 self.expect(Token::Comma)?;
                 let dim = match self.advance() {
-                    Token::Int(n) if n >= 0 => n as u32,
+                    Token::Int(n) if n >= 0 => u32::try_from(n).unwrap_or(u32::MAX),
                     Token::Float(f) if f >= 0.0 && f.fract() == 0.0 => f as u32,
                     other => {
                         return Err(crate::v2::error::ParseSnafu {

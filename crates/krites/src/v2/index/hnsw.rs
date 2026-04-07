@@ -224,7 +224,7 @@ fn extract_f32_vector(value: &Value, expected_dim: usize) -> Result<Vec<f32>> {
                 }
                 .build());
             }
-            Ok(data.iter().map(|&x| x as f32).collect())
+            Ok(data.iter().map(|&x| f32::from(x)).collect())
         }
         _ => Err(error::IndexSnafu {
             index_name: "hnsw",

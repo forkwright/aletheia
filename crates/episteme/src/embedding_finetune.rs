@@ -262,7 +262,7 @@ pub fn export_training_pairs(store: &KnowledgeStore, output: &Path) -> FinetuneR
     // Write to JSONL file
     write_training_pairs(output, &all_pairs)?;
 
-    let duration_ms = start.elapsed().as_millis() as u64;
+    let duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
 
     tracing::info!(
         total_pairs = all_pairs.len(),
@@ -313,7 +313,7 @@ pub fn export_training_pairs_with_stats(
     // Write to JSONL file
     write_training_pairs(output, &all_pairs)?;
 
-    let duration_ms = start.elapsed().as_millis() as u64;
+    let duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
 
     let stats = ExportStats {
         total_pairs: all_pairs.len(),
@@ -357,10 +357,12 @@ fn extract_entity_linked_pairs(store: &KnowledgeStore) -> FinetuneResult<Vec<Tra
         std::collections::HashMap::new();
 
     for row in &result.rows {
-        if row.len() >= 3 {
-            let fact_id = extract_string(&row[0]);
-            let entity_id = extract_string(&row[1]);
-            let content = extract_string(&row[2]);
+        if let (Some(fact_id_val), Some(entity_id_val), Some(content_val)) =
+            (row.get(0), row.get(1), row.get(2))
+        {
+            let fact_id = extract_string(fact_id_val);
+            let entity_id = extract_string(entity_id_val);
+            let content = extract_string(content_val);
             entity_facts
                 .entry(entity_id)
                 .or_default()
@@ -405,9 +407,9 @@ fn extract_same_session_pairs(store: &KnowledgeStore) -> FinetuneResult<Vec<Trai
         std::collections::HashMap::new();
 
     for row in &result.rows {
-        if row.len() >= 3 {
-            let content = extract_string(&row[1]);
-            let session_id = extract_string(&row[2]);
+        if let (Some(content_val), Some(session_id_val)) = (row.get(1), row.get(2)) {
+            let content = extract_string(content_val);
+            let session_id = extract_string(session_id_val);
             session_facts.entry(session_id).or_default().push(content);
         }
     }
@@ -446,9 +448,9 @@ fn extract_causal_pairs(store: &KnowledgeStore) -> FinetuneResult<Vec<TrainingPa
 
     let mut pairs = Vec::new();
     for row in &result.rows {
-        if row.len() >= 4 {
-            let cause_content = extract_string(&row[2]);
-            let effect_content = extract_string(&row[3]);
+        if let (Some(cause_val), Some(effect_val)) = (row.get(2), row.get(3)) {
+            let cause_content = extract_string(cause_val);
+            let effect_content = extract_string(effect_val);
             pairs.push(TrainingPair {
                 anchor: cause_content,
                 positive: effect_content,
@@ -687,7 +689,7 @@ impl TrainingPairExporter {
 
         write_training_pairs(output, &all_pairs)?;
 
-        let duration_ms = start.elapsed().as_millis() as u64;
+        let duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
 
         Ok(ExportStats {
             total_pairs: all_pairs.len(),

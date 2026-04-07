@@ -139,7 +139,7 @@ impl Index for FtsIndex {
         };
 
         let terms = self.tokenize(&text);
-        let doc_len = terms.len() as u32;
+        let doc_len = u32::try_from(terms.len()).unwrap_or(u32::MAX);
 
         let mut idx = self.index.write().map_err(|_| {
             error::IndexSnafu {
@@ -243,7 +243,7 @@ impl Index for FtsIndex {
                 continue;
             };
 
-            let df = postings.len() as f64;
+            let df = f64::from(postings.len() as u32);
             // IDF: log((N - df + 0.5) / (df + 0.5) + 1)
             let idf = ((n - df + 0.5) / (df + 0.5) + 1.0).ln();
 

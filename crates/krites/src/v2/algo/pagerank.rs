@@ -13,6 +13,11 @@ use crate::v2::value::Value;
 ///
 /// Computes the importance of nodes in a graph based on the link structure.
 /// Output: `(node, rank)` pairs.
+#[expect(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    reason = "usize→f64: node count for PageRank fits in f64 mantissa; usize→i64: iterations bounded"
+)]
 pub struct PageRank;
 
 impl PageRank {

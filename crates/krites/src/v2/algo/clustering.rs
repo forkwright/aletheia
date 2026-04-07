@@ -16,6 +16,10 @@ use crate::v2::value::Value;
 ///
 /// Finds the maximal subgraph where each node has degree at least k.
 /// Output: `(node, core_number)` pairs.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "usize→i64: core numbers bounded by node count which is < i64::MAX"
+)]
 pub struct KCore;
 
 impl super::FixedRule for KCore {
@@ -112,6 +116,10 @@ impl super::FixedRule for KCore {
 ///
 /// Computes the local clustering coefficient for each node.
 /// Output: `(node, clustering_coeff)` pairs.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "usize→f64: triangle counts bounded by graph size, precision loss acceptable"
+)]
 pub struct ClusteringCoefficients;
 
 impl super::FixedRule for ClusteringCoefficients {
@@ -195,6 +203,10 @@ impl super::FixedRule for ClusteringCoefficients {
 /// Linear ordering of nodes in a DAG such that for every edge (u,v),
 /// u comes before v.
 /// Output: `(node, position)` pairs.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "usize→i64: position bounded by node count which is < i64::MAX"
+)]
 pub struct TopSort;
 
 impl super::FixedRule for TopSort {
