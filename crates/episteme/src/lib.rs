@@ -69,6 +69,8 @@ pub mod recall;
     not(test),
     expect(dead_code, reason = "pub(crate) items used only in tests")
 )]
+/// Retroactive knowledge revision with provenance-based impact analysis.
+pub mod revision;
 pub mod serendipity;
 /// Side-query memory relevance selector with LRU caching and already-surfaced tracking.
 pub mod side_query;
