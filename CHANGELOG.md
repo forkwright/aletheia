@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.13.61](https://github.com/forkwright/aletheia/compare/v0.13.60...v0.13.61) (2026-04-07)
+
+
+### Bug Fixes
+
+* **diaporeia:** add Bearer token authentication to MCP endpoint ([#2502](https://github.com/forkwright/aletheia/issues/2502)) ([3db3f97](https://github.com/forkwright/aletheia/commit/3db3f97cb1d69e63689cd7201aff7eb1025a5db2))
+
+
+### Documentation
+
+* hot reload classification for all config parameters ([#2520](https://github.com/forkwright/aletheia/issues/2520)) ([0ee6c2b](https://github.com/forkwright/aletheia/commit/0ee6c2bc4993c18dd1ccd5e9279d707979280600))
+* theatron LOC audit ([#2517](https://github.com/forkwright/aletheia/issues/2517)) ([d6a4915](https://github.com/forkwright/aletheia/commit/d6a491514a5cddb327dbc023a3ed660841a3ec9f))
+
 ## [0.13.60](https://github.com/forkwright/aletheia/compare/v0.13.59...v0.13.60) (2026-04-06)
 
 
