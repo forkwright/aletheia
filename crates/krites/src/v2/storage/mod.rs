@@ -10,6 +10,10 @@
 //! Tests run against `MemStorage` (fast, no I/O). Production uses fjall.
 //! Same queries, same results — the trait boundary guarantees this.
 
+/// Fjall LSM-tree persistent backend (production).
+#[cfg(feature = "storage-fjall")]
+pub mod fjall;
+/// In-memory backend (tests and ephemeral instances).
 pub mod mem;
 
 use crate::v2::error::Result;
