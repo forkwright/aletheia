@@ -52,6 +52,35 @@ pub struct ToolCallRecord {
     pub success: bool,
 }
 
+/// Record of an operator correction during a session.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CorrectionRecord {
+    /// Session in which the correction occurred.
+    pub session_id: String,
+    /// Turn number where the operator corrected the nous.
+    pub turn_number: u32,
+}
+
+/// Summary of memory/knowledge-graph recall activity.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct MemoryRecallStats {
+    /// Number of recent turns that triggered a knowledge-graph recall.
+    pub recall_attempts: usize,
+    /// Number of recalls that returned at least one relevant fact.
+    pub recall_hits: usize,
+}
+
+/// Summary of session-level continuity signals.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SessionContinuityStats {
+    /// Total turns in the session window being evaluated.
+    pub total_turns: usize,
+    /// Turns where the nous referenced prior context (back-references).
+    pub context_carry_turns: usize,
+    /// Number of times the operator had to re-state something already said.
+    pub restatement_count: usize,
+}
+
 /// Context provided to audit checks during execution.
 ///
 /// The caller populates this from session and knowledge stores before
@@ -70,6 +99,14 @@ pub struct CheckContext {
     pub temporal_violation_count: usize,
     /// Count of broken supersession chains (`superseded_by` points to nonexistent fact).
     pub broken_chain_count: usize,
+    /// Operator corrections observed in recent sessions.
+    pub recent_corrections: Vec<CorrectionRecord>,
+    /// Total turns across the sessions covered by `recent_corrections`.
+    pub total_turns_in_window: usize,
+    /// Memory/knowledge-graph recall statistics.
+    pub memory_recall: MemoryRecallStats,
+    /// Session continuity statistics.
+    pub session_continuity: SessionContinuityStats,
 }
 
 /// What triggered an audit run.
@@ -203,11 +240,13 @@ impl SelfAuditor {
         self.checks.push(check);
     }
 
-    /// Register the three default checks.
+    /// Register the five default prosoche checks.
     pub fn register_defaults(&mut self) {
-        self.register(Box::new(checks::KnowledgeConsistencyCheck));
         self.register(Box::new(checks::ToolSuccessRateCheck));
-        self.register(Box::new(checks::ResponseQualityCheck));
+        self.register(Box::new(checks::ResponseCoherenceCheck));
+        self.register(Box::new(checks::CorrectionFrequencyCheck));
+        self.register(Box::new(checks::MemoryUtilizationCheck));
+        self.register(Box::new(checks::SessionContinuityCheck));
     }
 
     /// Record an agent action and return `true` if the event-based threshold
@@ -408,8 +447,8 @@ mod tests {
         auditor.register_defaults();
         assert_eq!(
             auditor.check_count(),
-            3,
-            "should register exactly three default checks"
+            5,
+            "should register exactly five default checks"
         );
     }
 
@@ -437,7 +476,7 @@ mod tests {
         assert_eq!(report.nous_id, "test-nous");
         assert_eq!(
             report.results.len(),
-            3,
+            5,
             "report should have one result per check"
         );
         assert!(!report.checked_at.is_empty(), "checked_at should be set");
