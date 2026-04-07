@@ -216,7 +216,7 @@ Semi-naive bottom-up evaluation (same as CozoDB):
 Feature flag `krites-v2` during development:
 - Default: existing CozoDB engine (current behavior)
 - `krites-v2`: new clean-room engine
-- Both share `Db` facade API — consumers don't change
+- Both share `Db` facade API  -  consumers don't change
 - Validation: run all 133 episteme queries on both engines, compare results
 - When parity confirmed: make `krites-v2` default, then remove CozoDB
 

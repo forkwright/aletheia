@@ -54,7 +54,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full crate dependency graph.
 
 ### Wayland: no remote launch over SSH
 
-The desktop app cannot be launched over SSH on Wayland compositors. WebKitWebProcess spawns as a subprocess that cannot inherit the Wayland display socket from an SSH session — the compositor only allows processes from the local session to connect.
+The desktop app cannot be launched over SSH on Wayland compositors. WebKitWebProcess spawns as a subprocess that cannot inherit the Wayland display socket from an SSH session  -  the compositor only allows processes from the local session to connect.
 
 Symptom:
 ```
@@ -67,7 +67,7 @@ Workarounds:
 2. **Use X11 forwarding.** `ssh -X` works with X11/Xwayland, though performance is limited.
 3. **Use the TUI.** The terminal interface works over any SSH session.
 
-This is a WebKit/GTK limitation, not an Aletheia issue. Global hotkey registration is also unavailable on Wayland without the portal API — the app handles this gracefully by falling back to in-window shortcuts.
+This is a WebKit/GTK limitation, not an Aletheia issue. Global hotkey registration is also unavailable on Wayland without the portal API  -  the app handles this gracefully by falling back to in-window shortcuts.
 
 ### Global hotkeys
 

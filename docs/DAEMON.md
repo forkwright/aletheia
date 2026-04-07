@@ -8,7 +8,7 @@
 
 **Oikonomos** (crate: `aletheia-oikonomos`, directory: `crates/daemon/`) is the per-nous background task runner. It manages scheduled tasks, periodic attention checks, maintenance cycles, and autonomous operation.
 
-**KAIROS** is the daemon's autonomous mode — an agent that operates continuously without human prompting. Named for the Greek concept of the opportune moment: the daemon observes, waits, and acts when the time is right.
+**KAIROS** is the daemon's autonomous mode  -  an agent that operates continuously without human prompting. Named for the Greek concept of the opportune moment: the daemon observes, waits, and acts when the time is right.
 
 ---
 
@@ -20,7 +20,7 @@
 |-----------|--------|---------|
 | Task runner | `runner.rs` | Cron/interval scheduling with failure tracking and graceful shutdown |
 | Scheduling | `schedule.rs` | Cron expressions (jiff-native parser), intervals, one-shots, jitter |
-| Prosoche | `prosoche.rs` | Periodic attention checks — agent surveys environment | 
+| Prosoche | `prosoche.rs` | Periodic attention checks  -  agent surveys environment | 
 | Maintenance | `maintenance/` | Trace rotation, drift detection, DB monitoring, retention |
 | Coordination | `coordination.rs` | Child agent spawning with concurrency limits |
 | Triggers | `triggers.rs` | Event-driven activation: file watchers, webhooks |
@@ -29,9 +29,9 @@
 
 ### What oikonomos does NOT do
 
-- **Dispatch orchestration** — energeia handles prompt dispatch, session management, and QA
-- **Cross-project coordination** — dianoia (#2291) handles attention allocation across projects
-- **Planning** — dianoia handles plan lifecycle, phase gates, stuck detection
+- **Dispatch orchestration**  -  energeia handles prompt dispatch, session management, and QA
+- **Cross-project coordination**  -  dianoia (#2291) handles attention allocation across projects
+- **Planning**  -  dianoia handles plan lifecycle, phase gates, stuck detection
 
 ### Relationship to dianoia
 
@@ -78,10 +78,10 @@ KAIROS mode composes the daemon subsystems into continuous autonomous operation:
 ### Scheduling
 
 Tasks use the `Schedule` enum:
-- `Cron(expr)` — standard 5/6-field cron expressions via jiff-native parser
-- `Interval(duration)` — fixed repeat
-- `Once(timestamp)` — fire-and-forget
-- `Startup` — run once at process start
+- `Cron(expr)`  -  standard 5/6-field cron expressions via jiff-native parser
+- `Interval(duration)`  -  fixed repeat
+- `Once(timestamp)`  -  fire-and-forget
+- `Startup`  -  run once at process start
 
 Jitter is deterministic per task ID (hash-based), preventing thundering herd when multiple tasks share the same cron expression.
 
@@ -119,6 +119,6 @@ Active windows restrict execution to time ranges (e.g., `active_window: Some((8,
 
 ## Status
 
-Oikonomos is implemented. KAIROS mode is scaffolded — the subsystems exist and are tested (185 tests), but full autonomous operation (prosoche → decision → action loop) is not yet wired end-to-end. Integration with dianoia for cross-project attention is planned for Phase 05e.
+Oikonomos is implemented. KAIROS mode is scaffolded  -  the subsystems exist and are tested (185 tests), but full autonomous operation (prosoche → decision → action loop) is not yet wired end-to-end. Integration with dianoia for cross-project attention is planned for Phase 05e.
 
 See [PROSOCHE.md](PROSOCHE.md) for the attention subsystem detail.
