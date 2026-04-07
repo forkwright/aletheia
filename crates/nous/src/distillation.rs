@@ -21,7 +21,8 @@ use crate::error;
 ///
 /// All thresholds were previously hardcoded constants. Now configurable
 /// via `aletheia.toml [behavioral.distillation]`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct DistillTriggerConfig {
     /// Context token count that unconditionally triggers distillation.
     pub context_token_trigger: u64,

@@ -128,6 +128,13 @@ pub struct NousConfig {
     /// Turn-level hook configuration.
     #[serde(default)]
     pub hooks: HookConfig,
+    /// Distillation trigger configuration.
+    ///
+    /// Controls when context distillation fires: token thresholds, message
+    /// counts, stale session windows. Defaults match the original hardcoded
+    /// values for zero behavior change.
+    #[serde(default)]
+    pub distillation: crate::distillation::DistillTriggerConfig,
 }
 
 /// Configuration for turn-level behavior hooks.
@@ -203,6 +210,7 @@ impl Default for NousConfig {
             recall: RecallConfig::default(),
             tool_allowlist: None,
             hooks: HookConfig::default(),
+            distillation: crate::distillation::DistillTriggerConfig::default(),
         }
     }
 }
