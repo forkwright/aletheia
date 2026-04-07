@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.64](https://github.com/forkwright/aletheia/compare/v0.13.63...v0.13.64) (2026-04-07)
+
+
+### Features
+
+* **hermeneus:** add Claude Code subprocess LLM provider ([#2528](https://github.com/forkwright/aletheia/issues/2528)) ([9984da2](https://github.com/forkwright/aletheia/commit/9984da230fb172f37a0b73533011bdc88645eaa4))
+
 ## [0.13.63](https://github.com/forkwright/aletheia/compare/v0.13.62...v0.13.63) (2026-04-07)
 
 
