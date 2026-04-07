@@ -75,9 +75,29 @@ fn derive_status(nous_id: &NousId, event_state: &EventState) -> AgentStatus {
 /// Reads `Signal<AgentStore>` and `Signal<EventState>` from context. Provides
 /// the section of the sidebar that lists agents with colored status indicators.
 #[component]
-pub(crate) fn AgentSidebarView() -> Element {
+pub(crate) fn AgentSidebarView(collapsed: bool) -> Element {
     let mut store = use_context::<Signal<AgentStore>>();
     let event_state = use_context::<Signal<EventState>>();
+
+    // When collapsed, just show a minimal indicator.
+    if collapsed {
+        let agent_count = store.read().all().len();
+        return rsx! {
+            div {
+                style: "display: flex; flex-direction: column; align-items: center; padding: 8px 0;",
+                span {
+                    style: "font-size: 10px; color: #555; writing-mode: vertical-rl; text-orientation: mixed;",
+                    "NOUS"
+                }
+                if agent_count > 0 {
+                    span {
+                        style: "font-size: 10px; color: #22c55e; margin-top: 4px;",
+                        "● {agent_count}"
+                    }
+                }
+            }
+        };
+    }
 
     let agents: Vec<(NousId, String, String, AgentStatus, bool)> = {
         let s = store.read();
@@ -101,9 +121,9 @@ pub(crate) fn AgentSidebarView() -> Element {
     rsx! {
         div {
             style: "{SIDEBAR_SECTION_STYLE}",
-            div { style: "{SECTION_LABEL_STYLE}", "Agents" }
+            div { style: "{SECTION_LABEL_STYLE}", "NOUS" }
             if agents.is_empty() {
-                div { style: "{EMPTY_AGENTS_STYLE}", "No agents" }
+                div { style: "{EMPTY_AGENTS_STYLE}", "No nous" }
             } else {
                 for (id , name , emoji , status , is_active) in agents {
                     {

@@ -5,14 +5,22 @@ use dioxus::prelude::*;
 use crate::app::Route;
 use crate::components::agent_sidebar::AgentSidebarView;
 use crate::components::connection_indicator::ConnectionIndicatorView;
-use crate::state::agents::AgentStore;
-use crate::state::app::TabBar;
-use crate::state::commands::CommandStore;
 use crate::state::navigation::NavAction;
 use crate::state::pipeline::RoutingState;
 use crate::state::view_preservation::ViewPreservationStore;
 
-const SIDEBAR_STYLE: &str = "\
+const SIDEBAR_COLLAPSED_STYLE: &str = "\
+    width: 48px; \
+    background: var(--bg-sidebar, #1a1a2e); \
+    color: var(--text-primary, #e0e0e0); \
+    padding: 16px 0; \
+    display: flex; \
+    flex-direction: column; \
+    gap: 4px; \
+    flex-shrink: 0;\
+";
+
+const SIDEBAR_EXPANDED_STYLE: &str = "\
     width: 220px; \
     background: var(--bg-sidebar, var(--bg-surface)); \
     color: var(--text-primary); \
@@ -48,6 +56,18 @@ const NAV_LINK_STYLE: &str = "\
     border-radius: var(--radius-md); \
     color: var(--text-primary); \
     text-decoration: none; \
+    font-size: var(--text-sm); \
+    white-space: nowrap;\
+";
+
+const NAV_LINK_ICON_ONLY_STYLE: &str = "\
+    display: flex; \
+    align-items: center; \
+    justify-content: center; \
+    padding: 8px 12px; \
+    border-radius: var(--radius-md); \
+    color: var(--text-primary, #e0e0e0); \
+    text-decoration: none; \
     font-size: var(--text-sm);\
 ";
 
@@ -59,18 +79,13 @@ const NAV_DIVIDER_STYLE: &str = "\
 
 /// Layout shell rendered around all routes.
 ///
-/// Provides `Signal<AgentStore>`, `Signal<CommandStore>`, and `Signal<TabBar>`
-/// as context so child views can access them. The agent sidebar is rendered
-/// here so it persists across route changes.
+/// Provides `Signal<NavAction>` as context so child views can access it.
+/// The agent sidebar is rendered here so it persists across route changes.
 ///
-/// Global keyboard shortcuts (Ctrl+1--7, Ctrl+K, Escape) are handled here
-/// via `onkeydown` on the root layout div.
+/// Global keyboard shortcuts (Ctrl+1--7, Ctrl+K, Ctrl+B, Escape) are handled
+/// here via `onkeydown` on the root layout div.
 #[component]
 pub(crate) fn Layout() -> Element {
-    // WHY: AgentStore is provided by ConnectedApp (app.rs) so tray sync and
-    // all routed views share the same store instance.
-    use_context_provider(|| Signal::new(CommandStore::new()));
-    use_context_provider(|| Signal::new(TabBar::new()));
     use_context_provider(|| Signal::new(Option::<NavAction>::None));
 
     // WHY: View preservation store survives route changes so views can
@@ -84,8 +99,17 @@ pub(crate) fn Layout() -> Element {
 
     // Command palette open state -- shared with the keyboard handler.
     let palette_open = use_signal(|| false);
+    // Sidebar collapsed state -- default to collapsed.
+    let sidebar_collapsed = use_signal(|| true);
 
-    let keyboard_handler = crate::services::keybindings::use_global_keyboard(palette_open);
+    let keyboard_handler =
+        crate::services::keybindings::use_global_keyboard(palette_open, sidebar_collapsed);
+
+    let sidebar_style = if *sidebar_collapsed.read() {
+        SIDEBAR_COLLAPSED_STYLE
+    } else {
+        SIDEBAR_EXPANDED_STYLE
+    };
 
     rsx! {
         div {
@@ -96,21 +120,28 @@ pub(crate) fn Layout() -> Element {
             "aria-label": "Aletheia application",
 
             nav {
-                style: "{SIDEBAR_STYLE}",
+                style: "{sidebar_style}",
                 role: "navigation",
                 "aria-label": "Main navigation",
-                div { style: "{BRAND_STYLE}", "Aletheia" }
-                NavItem { to: Route::Chat {}, icon: "[C]", label: "Chat", shortcut: "Ctrl+1" }
-                NavItem { to: Route::Files {}, icon: "[F]", label: "Files", shortcut: "Ctrl+2" }
-                NavItem { to: Route::Planning {}, icon: "[P]", label: "Planning", shortcut: "Ctrl+3" }
-                NavItem { to: Route::Memory {}, icon: "[M]", label: "Memory", shortcut: "Ctrl+4" }
-                NavItem { to: Route::Metrics {}, icon: "[X]", label: "Metrics", shortcut: "Ctrl+5" }
-                NavItem { to: Route::Ops {}, icon: "[O]", label: "Ops", shortcut: "Ctrl+6" }
-                NavItem { to: Route::Sessions {}, icon: "[T]", label: "Sessions", shortcut: "Ctrl+7" }
-                NavItem { to: Route::Meta {}, icon: "[I]", label: "Insights", shortcut: "" }
-                NavItem { to: Route::Settings {}, icon: "[S]", label: "Settings", shortcut: "" }
+                if !*sidebar_collapsed.read() {
+                    div { style: "{BRAND_STYLE}", "Aletheia" }
+                } else {
+                    div {
+                        style: "font-size: 18px; font-weight: bold; padding: 8px 0; margin-bottom: 8px; text-align: center; color: var(--text-heading, #ffffff);",
+                        "A"
+                    }
+                }
+                NavItem { to: Route::Chat {}, icon: "[C]", label: "Chat", shortcut: "Ctrl+1", collapsed: *sidebar_collapsed.read() }
+                NavItem { to: Route::Files {}, icon: "[F]", label: "Files", shortcut: "Ctrl+2", collapsed: *sidebar_collapsed.read() }
+                NavItem { to: Route::Planning {}, icon: "[P]", label: "Planning", shortcut: "Ctrl+3", collapsed: *sidebar_collapsed.read() }
+                NavItem { to: Route::Memory {}, icon: "[M]", label: "Memory", shortcut: "Ctrl+4", collapsed: *sidebar_collapsed.read() }
+                NavItem { to: Route::Metrics {}, icon: "[X]", label: "Metrics", shortcut: "Ctrl+5", collapsed: *sidebar_collapsed.read() }
+                NavItem { to: Route::Ops {}, icon: "[O]", label: "Ops", shortcut: "Ctrl+6", collapsed: *sidebar_collapsed.read() }
+                NavItem { to: Route::Sessions {}, icon: "[T]", label: "Sessions", shortcut: "Ctrl+7", collapsed: *sidebar_collapsed.read() }
+                NavItem { to: Route::Meta {}, icon: "[I]", label: "Insights", shortcut: "", collapsed: *sidebar_collapsed.read() }
+                NavItem { to: Route::Settings {}, icon: "[S]", label: "Settings", shortcut: "", collapsed: *sidebar_collapsed.read() }
                 div { style: "{NAV_DIVIDER_STYLE}", role: "separator" }
-                AgentSidebarView {}
+                AgentSidebarView { collapsed: *sidebar_collapsed.read() }
                 div { style: "flex: 1;" }
                 ConnectionIndicatorView {}
             }
@@ -130,20 +161,28 @@ fn NavItem(
     icon: &'static str,
     label: &'static str,
     shortcut: &'static str,
+    collapsed: bool,
 ) -> Element {
     let title = if shortcut.is_empty() {
         label.to_string()
     } else {
         format!("{label} ({shortcut})")
     };
+    let style = if collapsed {
+        NAV_LINK_ICON_ONLY_STYLE
+    } else {
+        NAV_LINK_STYLE
+    };
     rsx! {
         Link {
             to,
-            style: "{NAV_LINK_STYLE}",
+            style: "{style}",
             "aria-label": "{title}",
             title: "{title}",
             span { "aria-hidden": "true", "{icon}" }
-            span { "{label}" }
+            if !collapsed {
+                span { "{label}" }
+            }
         }
     }
 }

@@ -38,7 +38,10 @@ pub(crate) enum DateRange {
     Last7Days,
     Last30Days,
     Last90Days,
-    Custom { from: String, to: String },
+    Custom {
+        from: String,
+        to: String,
+    },
 }
 
 impl DateRange {
@@ -124,7 +127,10 @@ pub(crate) struct TokenSeriesPoint {
 }
 
 impl TokenSeriesPoint {
-    #[expect(dead_code, reason = "used when series filtering by agent/model is implemented")]
+    #[expect(
+        dead_code,
+        reason = "used when series filtering by agent/model is implemented"
+    )]
     pub(crate) fn total(&self) -> u64 {
         self.input_tokens.saturating_add(self.output_tokens)
     }
@@ -298,13 +304,13 @@ pub(crate) struct AgentCostRow {
     pub prev_period_cost: f64,
 }
 
+#[expect(clippy::as_conversions, reason = "count to f64 for cost ratio")]
 impl AgentCostRow {
     pub(crate) fn cost_per_session(&self) -> f64 {
         if self.session_count == 0 {
             0.0
         } else {
-            #[expect(clippy::as_conversions, reason = "session count to f64 for cost ratio")]
-            { self.total_cost / self.session_count as f64 }
+            self.total_cost / self.session_count as f64
         }
     }
 
@@ -312,8 +318,7 @@ impl AgentCostRow {
         if self.message_count == 0 {
             0.0
         } else {
-            #[expect(clippy::as_conversions, reason = "message count to f64 for cost ratio")]
-            { self.total_cost / self.message_count as f64 }
+            self.total_cost / self.message_count as f64
         }
     }
 
@@ -321,8 +326,7 @@ impl AgentCostRow {
         if self.output_tokens == 0 {
             0.0
         } else {
-            #[expect(clippy::as_conversions, reason = "token count to f64 for cost ratio")]
-            { self.total_cost / (self.output_tokens as f64 / 1000.0) }
+            self.total_cost / (self.output_tokens as f64 / 1000.0)
         }
     }
 }
@@ -416,11 +420,7 @@ pub(crate) fn budget_bar_color(pct: f64) -> &'static str {
 /// Project month-end spend via linear extrapolation.
 ///
 /// Returns 0.0 if `day_of_month` is 0 (guard against division by zero).
-pub(crate) fn project_month_end(
-    current_spend: f64,
-    day_of_month: u32,
-    days_in_month: u32,
-) -> f64 {
+pub(crate) fn project_month_end(current_spend: f64, day_of_month: u32, days_in_month: u32) -> f64 {
     if day_of_month == 0 || days_in_month == 0 {
         return 0.0;
     }
@@ -435,7 +435,10 @@ pub(crate) fn project_month_end(
     clippy::cast_precision_loss,
     reason = "display-only: sub-token precision irrelevant"
 )]
-#[expect(clippy::as_conversions, reason = "u64 to f64 for human-readable formatting")]
+#[expect(
+    clippy::as_conversions,
+    reason = "u64 to f64 for human-readable formatting"
+)]
 pub(crate) fn format_tokens(count: u64) -> String {
     const K: u64 = 1_000;
     const M: u64 = 1_000_000;
@@ -506,7 +509,10 @@ fn epoch_secs_to_ymd(secs: u64) -> (u32, u32, u32) {
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = if m <= 2 { y + 1 } else { y };
     {
-        #[expect(clippy::as_conversions, reason = "calendar components fit u32 for valid dates")]
+        #[expect(
+            clippy::as_conversions,
+            reason = "calendar components fit u32 for valid dates"
+        )]
         let result = (y as u32, m as u32, d as u32);
         result
     }
@@ -557,8 +563,7 @@ pub(crate) fn cost_per_1k_output(model: &str) -> f64 {
 /// Consistent accent color for an agent by list position.
 pub(crate) fn agent_color(index: usize) -> &'static str {
     const PALETTE: &[&str] = &[
-        "#5b6af0", "#10b981", "#f59e0b", "#f43f5e",
-        "#0ea5e9", "#8b5cf6", "#ec4899", "#14b8a6",
+        "#5b6af0", "#10b981", "#f59e0b", "#f43f5e", "#0ea5e9", "#8b5cf6", "#ec4899", "#14b8a6",
     ];
     PALETTE[index % PALETTE.len()]
 }
@@ -606,11 +611,7 @@ pub(crate) fn sort_agent_token_rows(
 }
 
 /// Sort agent cost rows in-place.
-pub(crate) fn sort_agent_cost_rows(
-    rows: &mut Vec<AgentCostRow>,
-    col: AgentCostSort,
-    dir: SortDir,
-) {
+pub(crate) fn sort_agent_cost_rows(rows: &mut Vec<AgentCostRow>, col: AgentCostSort, dir: SortDir) {
     rows.sort_by(|a, b| {
         let cmp = match col {
             AgentCostSort::Name => a.name.cmp(&b.name),
@@ -656,7 +657,10 @@ mod tests {
     fn compute_delta_down_direction() {
         let d = compute_delta_f64(80.0, 100.0);
         assert!(!d.is_up, "80 vs 100 should be down");
-        assert!((d.delta_pct - 20.0).abs() < 0.01, "delta magnitude must be 20%");
+        assert!(
+            (d.delta_pct - 20.0).abs() < 0.01,
+            "delta magnitude must be 20%"
+        );
     }
 
     #[test]
@@ -701,7 +705,10 @@ mod tests {
     #[test]
     fn project_month_end_linear() {
         let projected = project_month_end(15.0, 15, 30);
-        assert!((projected - 30.0).abs() < 0.01, "half-month should project to double");
+        assert!(
+            (projected - 30.0).abs() < 0.01,
+            "half-month should project to double"
+        );
     }
 
     #[test]
