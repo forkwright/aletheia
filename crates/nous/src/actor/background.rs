@@ -244,7 +244,7 @@ impl NousActor {
             let Ok(Some(session)) = store.find_session_by_id(&session_id) else {
                 return false;
             };
-            let config = crate::distillation::DistillTriggerConfig::default();
+            let config = self.config.distillation.clone();
             crate::distillation::should_trigger_distillation(
                 &session,
                 u64::from(self.config.generation.context_window),

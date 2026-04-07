@@ -443,7 +443,7 @@ fn compute_aggregation(
             let mut max: Option<&Value> = None;
             for b in bindings {
                 if let Some(val) = b.get(var_name) {
-                    if max.is_none() || val > max.unwrap() {
+                    if max.is_none_or(|m| val > m) {
                         max = Some(val);
                     }
                 }
@@ -454,7 +454,7 @@ fn compute_aggregation(
             let mut min: Option<&Value> = None;
             for b in bindings {
                 if let Some(val) = b.get(var_name) {
-                    if min.is_none() || val < min.unwrap() {
+                    if min.is_none_or(|m| val < m) {
                         min = Some(val);
                     }
                 }

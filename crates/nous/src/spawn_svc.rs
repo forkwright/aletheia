@@ -107,6 +107,7 @@ impl SpawnService for SpawnServiceImpl {
             recall: crate::recall::RecallConfig::default(),
             tool_allowlist,
             hooks: crate::config::HookConfig::default(),
+            distillation: crate::distillation::DistillTriggerConfig::default(),
         };
 
         // WHY: ephemeral sub-agents do not capture training data — their turns
