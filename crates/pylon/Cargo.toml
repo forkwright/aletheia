@@ -26,13 +26,16 @@ tower-http = { workspace = true }
 axum-server = { workspace = true, optional = true }
 
 # Async
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["process"] }
 tokio-stream = { workspace = true }
 tokio-util = { workspace = true }
 
 # Serialization
 serde = { workspace = true }
 serde_json = { workspace = true }
+
+# Time
+jiff = { workspace = true }
 
 # Error handling
 snafu = { workspace = true }

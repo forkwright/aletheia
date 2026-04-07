@@ -156,6 +156,13 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
 
     let app = build_router(state.clone(), &config.security);
 
+    // WHY: write the discovery file after bind succeeds so clients can locate
+    // the server. Best-effort: failure is logged but does not abort startup.
+    let data_dir = state.oikos.data();
+    if let Err(e) = crate::discovery::write_discovery_file(&data_dir, &config.bind_addr).await {
+        warn!(error = %e, "failed to write discovery file, clients may need manual URL");
+    }
+
     if config.security.tls.enabled {
         serve_tls(app, &config).await?;
     } else {
@@ -175,6 +182,11 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
             warn!("sighup handler did not exit within drain timeout");
         }
     }
+
+    // WHY: remove discovery file so clients do not attempt to connect to
+    // a stopped server. Best-effort: if removal fails, the file is stale
+    // but harmless (clients will get connection-refused).
+    crate::discovery::remove_discovery_file(&state.oikos.data()).await;
 
     state.nous_manager.shutdown_readonly().await;
     info!("pylon shutdown complete");
