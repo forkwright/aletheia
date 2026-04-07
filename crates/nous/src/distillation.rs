@@ -4,6 +4,7 @@ use snafu::ResultExt;
 use tracing::{info, instrument};
 
 
+use aletheia_hermeneus::models::names;
 use aletheia_hermeneus::provider::LlmProvider;
 use aletheia_hermeneus::types::{Content, Message as HermeneusMessage, Role as HermeneusRole};
 use aletheia_melete::distill::{DistillConfig, DistillEngine, DistillResult};
@@ -51,7 +52,7 @@ impl Default for DistillTriggerConfig {
             never_distilled_message_trigger: 30,
             legacy_threshold_min_messages: 10,
             max_history_share: 0.7,
-            model: "claude-sonnet-4-20250514".to_owned(),
+            model: names::SONNET.to_owned(),
             verbatim_tail: 3,
         }
     }
