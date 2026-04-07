@@ -374,13 +374,10 @@ mod tests {
 
     use aletheia_koina::id::{NousId, SessionId, ToolName};
 
+    use crate::testing::install_crypto_provider;
     use crate::types::{ServerToolConfig, ToolContext, ToolInput, ToolServices};
 
     use super::*;
-
-    fn install_crypto_provider() {
-        let _ = rustls::crypto::ring::default_provider().install_default();
-    }
 
     fn mock_ctx() -> ToolContext {
         install_crypto_provider();

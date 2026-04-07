@@ -302,11 +302,9 @@ fn normalize_url(url: &str) -> String {
     reason = "test: JSON key indexing on known-present keys"
 )]
 mod tests {
-    use super::*;
+    use aletheia_organon::testing::install_crypto_provider;
 
-    fn install_crypto_provider() {
-        let _ = rustls::crypto::ring::default_provider().install_default();
-    }
+    use super::*;
 
     #[test]
     fn url_normalization() {

@@ -18,7 +18,7 @@ computer-use = []
 # mathesis, prographe, schedion, metron). Wires to real energeia subsystem.
 energeia = ["dep:aletheia-energeia"]
 # Gates MockToolExecutor, ToolExecutorSpec, and other test helpers. No test code in release binaries.
-test-support = ["aletheia-hermeneus/test-support"]
+test-support = ["aletheia-hermeneus/test-support", "dep:rustls"]
 test-core = []
 test-full = []
 
@@ -43,6 +43,10 @@ tracing = { workspace = true }
 landlock = "0.4"
 rustix = { workspace = true, features = ["process", "thread"] }
 seccompiler = "0.5"
+
+[dependencies.rustls]
+workspace = true
+optional = true
 
 [dev-dependencies]
 aletheia-energeia = { path = "../energeia", features = ["storage-fjall"] }

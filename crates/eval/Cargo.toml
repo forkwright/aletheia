@@ -28,6 +28,6 @@ owo-colors = "4"
 supports-color = "3"
 
 [dev-dependencies]
-rustls = { workspace = true }
+aletheia-organon = { path = "../organon", features = ["test-support"] }
 wiremock = { workspace = true }
 static_assertions = { workspace = true }

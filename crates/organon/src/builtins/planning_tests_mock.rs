@@ -8,11 +8,8 @@ use std::sync::{Arc, Mutex, RwLock};
 use aletheia_koina::id::{NousId, SessionId};
 
 use crate::error::PlanningAdapterError;
+use crate::testing::install_crypto_provider;
 use crate::types::{PlanningService, ServerToolConfig, ToolContext, ToolServices};
-
-pub(super) fn install_crypto_provider() {
-    let _ = rustls::crypto::ring::default_provider().install_default();
-}
 
 pub(super) fn test_ctx() -> ToolContext {
     ToolContext {
