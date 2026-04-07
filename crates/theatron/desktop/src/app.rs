@@ -11,6 +11,8 @@ use crate::platform;
 use crate::services::toast::provide_toast_context;
 use crate::services::{config, settings_config};
 use crate::state::agents::AgentStore;
+use crate::state::app::TabBar;
+use crate::state::commands::CommandStore;
 use crate::state::connection::ConnectionState;
 use crate::state::notifications::{DndState, NotificationHistory};
 use crate::state::platform::{CloseBehavior, HotkeyState, QuickInputState, TrayState, WindowState};
@@ -20,12 +22,12 @@ use crate::views::chat::Chat;
 use crate::views::connect::ConnectView;
 use crate::views::files::Files;
 use crate::views::memory::Memory;
+use crate::views::meta::Meta;
 use crate::views::metrics::Metrics;
 use crate::views::metrics::tool_detail::ToolDetailView;
 use crate::views::ops::Ops;
 use crate::views::planning::{Planning, PlanningProject};
 use crate::views::sessions::Sessions;
-use crate::views::meta::Meta;
 use crate::views::settings::Settings;
 use crate::views::settings::wizard::SetupWizard;
 
@@ -86,7 +88,6 @@ fn MetricsToolDetail(tool_name: String) -> Element {
 pub(crate) fn App() -> Element {
     let loaded_settings = use_hook(settings_config::load_or_default);
     let loaded_config = use_hook(config::load_or_default);
-    let initial_theme = loaded_settings.appearance_settings().theme_mode();
     let first_run = use_hook(settings_config::is_first_run);
     let loaded_window_state = use_hook(platform::window_state::load_or_default);
 
@@ -96,6 +97,9 @@ pub(crate) fn App() -> Element {
     let appearance = use_signal(|| loaded_settings.appearance_settings());
     let keybindings = use_signal(|| loaded_settings.keybinding_store());
     let is_first_run = use_signal(|| first_run);
+
+    // NOTE: Force dark mode for theme consistency across all platforms.
+    let initial_theme = crate::theme::ThemeMode::Dark;
 
     // NOTE: Provide signals as context so all views can access them.
     use_context_provider(|| connection_state);
@@ -118,7 +122,7 @@ pub(crate) fn App() -> Element {
 
     rsx! {
         ThemeProvider {
-            initial_mode: Some(initial_theme),
+            initial_mode: Some(initial_theme), // Force dark mode
             if needs_wizard {
                 SetupWizard {}
             } else if needs_connect {
@@ -152,6 +156,10 @@ fn ConnectedApp() -> Element {
     // and before the Router (whose layout.rs also needs it). Providing here ensures
     // both the tray sync coroutine and all routed views see the same store.
     use_context_provider(|| Signal::new(AgentStore::new()));
+    // WHY: Provide here (not layout.rs) so they are scoped to the connected state
+    // and not the connect view.
+    use_context_provider(|| Signal::new(CommandStore::new()));
+    use_context_provider(|| Signal::new(TabBar::new()));
 
     // WHY: Start SSE coroutine here (not in App) so it only runs when connected
     // and has access to the finalized connection config.

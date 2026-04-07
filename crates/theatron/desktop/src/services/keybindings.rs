@@ -16,6 +16,7 @@
 //! | Ctrl+6        | Navigate → Ops                |
 //! | Ctrl+7        | Navigate → Sessions           |
 //! | Ctrl+K        | Open command palette          |
+//! | Ctrl+B        | Toggle sidebar                |
 //! | Ctrl+F or /   | Focus in-view search          |
 //! | Escape        | Dismiss modal / deselect      |
 //! | Arrow keys    | List navigation               |
@@ -33,6 +34,8 @@ pub(crate) enum KeyAction {
     NavigateTo(Route),
     /// Open the command palette.
     OpenPalette,
+    /// Toggle sidebar collapsed/expanded.
+    ToggleSidebar,
     /// Open / focus an in-view search bar.
     FocusSearch,
     /// Dismiss modal, close palette, deselect list item.
@@ -62,6 +65,7 @@ pub(crate) fn decode_key_raw(key: &str, ctrl: bool) -> KeyAction {
             "6" => KeyAction::NavigateTo(Route::Ops {}),
             "7" => KeyAction::NavigateTo(Route::Sessions {}),
             "k" | "K" => KeyAction::OpenPalette,
+            "b" | "B" => KeyAction::ToggleSidebar,
             "f" | "F" => KeyAction::FocusSearch,
             _ => KeyAction::Unhandled,
         };
@@ -91,6 +95,7 @@ pub(crate) fn decode_key(event: &KeyboardData) -> KeyAction {
 /// to attach to the root `div`.
 pub(crate) fn use_global_keyboard(
     mut palette_open: Signal<bool>,
+    mut sidebar_collapsed: Signal<bool>,
 ) -> impl FnMut(Event<KeyboardData>) {
     move |evt: Event<KeyboardData>| {
         match decode_key(&evt.data()) {
@@ -101,6 +106,10 @@ pub(crate) fn use_global_keyboard(
             KeyAction::OpenPalette => {
                 let current = *palette_open.read();
                 palette_open.set(!current);
+            }
+            KeyAction::ToggleSidebar => {
+                let current = *sidebar_collapsed.read();
+                sidebar_collapsed.set(!current);
             }
             KeyAction::FocusSearch => {
                 // NOTE: Each view handles search focus internally.
@@ -122,23 +131,38 @@ mod tests {
 
     #[test]
     fn ctrl_1_navigates_to_chat() {
-        assert_eq!(decode_key_raw("1", true), KeyAction::NavigateTo(Route::Chat {}));
+        assert_eq!(
+            decode_key_raw("1", true),
+            KeyAction::NavigateTo(Route::Chat {})
+        );
     }
 
     #[test]
     fn ctrl_2_navigates_to_files() {
-        assert_eq!(decode_key_raw("2", true), KeyAction::NavigateTo(Route::Files {}));
+        assert_eq!(
+            decode_key_raw("2", true),
+            KeyAction::NavigateTo(Route::Files {})
+        );
     }
 
     #[test]
     fn ctrl_7_navigates_to_sessions() {
-        assert_eq!(decode_key_raw("7", true), KeyAction::NavigateTo(Route::Sessions {}));
+        assert_eq!(
+            decode_key_raw("7", true),
+            KeyAction::NavigateTo(Route::Sessions {})
+        );
     }
 
     #[test]
     fn ctrl_k_opens_palette() {
         assert_eq!(decode_key_raw("k", true), KeyAction::OpenPalette);
         assert_eq!(decode_key_raw("K", true), KeyAction::OpenPalette);
+    }
+
+    #[test]
+    fn ctrl_b_toggles_sidebar() {
+        assert_eq!(decode_key_raw("b", true), KeyAction::ToggleSidebar);
+        assert_eq!(decode_key_raw("B", true), KeyAction::ToggleSidebar);
     }
 
     #[test]

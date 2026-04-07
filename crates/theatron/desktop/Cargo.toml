@@ -1,3 +1,7 @@
+# WHY: Explicit [workspace] prevents cargo from walking up to the root
+# workspace and failing with "not in workspace" when building standalone.
+[workspace]
+
 [package]
 name = "theatron-desktop"
 # WHY: explicit values instead of workspace inheritance because this crate
