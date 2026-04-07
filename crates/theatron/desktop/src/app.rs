@@ -148,6 +148,11 @@ fn ConnectedApp() -> Element {
     use_context_provider(|| Signal::new(NotificationHistory::default()));
     use_context_provider(|| Signal::new(DndState::default()));
 
+    // WHY: AgentStore must be provided before start_tray_sync (which consumes it)
+    // and before the Router (whose layout.rs also needs it). Providing here ensures
+    // both the tray sync coroutine and all routed views see the same store.
+    use_context_provider(|| Signal::new(AgentStore::new()));
+
     // WHY: Start SSE coroutine here (not in App) so it only runs when connected
     // and has access to the finalized connection config.
     crate::services::sse_coroutine::start_sse_coroutine(&config.read());

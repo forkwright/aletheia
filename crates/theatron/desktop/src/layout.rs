@@ -65,9 +65,8 @@ const NAV_DIVIDER_STYLE: &str = "\
 /// via `onkeydown` on the root layout div.
 #[component]
 pub(crate) fn Layout() -> Element {
-    // WHY: Provide these signals here (not app.rs) so they are scoped to the
-    // connected layout and not the connect view.
-    use_context_provider(|| Signal::new(AgentStore::new()));
+    // WHY: AgentStore is provided by ConnectedApp (app.rs) so tray sync and
+    // all routed views share the same store instance.
     use_context_provider(|| Signal::new(CommandStore::new()));
     use_context_provider(|| Signal::new(TabBar::new()));
     use_context_provider(|| Signal::new(Option::<NavAction>::None));
