@@ -247,7 +247,7 @@ impl TraceIngestLayer {
     pub fn flush(&self, store: &crate::knowledge_store::KnowledgeStore) {
         use std::collections::BTreeMap;
 
-        use crate::engine::{DataValue, ScriptMutability};
+        use crate::engine::DataValue;
 
         let events = self.drain();
         if events.is_empty() {
