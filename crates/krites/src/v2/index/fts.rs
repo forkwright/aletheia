@@ -319,8 +319,9 @@ fn is_stopword(word: &str) -> bool {
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
-    use super::*;
     use std::sync::Arc;
+
+    use super::*;
 
     fn text_val(s: &str) -> Value {
         Value::Str(Arc::from(s))

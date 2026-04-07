@@ -322,8 +322,9 @@ impl WorkspaceGuard {
         // WHY: LOCK_EX | LOCK_NB = exclusive + non-blocking.
         // Returns EWOULDBLOCK if another process holds the lock.
         // NOTE: The guard drops immediately; flock remains held via the open fd.
-        use rustix::fs::{FlockOperation, flock};
         use std::os::fd::AsFd;
+
+        use rustix::fs::{FlockOperation, flock};
         flock(&file.as_fd(), FlockOperation::NonBlockingLockExclusive).map_err(|e| {
             crate::error::TaskFailedSnafu {
                 task_id: "workspace-lock",

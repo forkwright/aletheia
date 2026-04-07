@@ -241,8 +241,9 @@ fn extract_f32_vector(value: &Value, expected_dim: usize) -> Result<Vec<f32>> {
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
-    use super::*;
     use std::sync::Arc;
+
+    use super::*;
 
     fn make_vec(values: &[f32]) -> Value {
         Value::Vector(VectorValue::F32(Arc::from(values)))

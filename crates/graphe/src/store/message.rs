@@ -90,9 +90,9 @@ impl SessionStore {
         let sql = if let Some(lim) = limit {
             params.push(Box::new(lim));
             format!(
-                "SELECT * FROM (\
-                   SELECT * FROM messages WHERE {where_clause} \
-                   ORDER BY seq DESC LIMIT ?{idx}\
+                "SELECT * FROM (
+                   SELECT * FROM messages WHERE {where_clause}
+                   ORDER BY seq DESC LIMIT ?{idx}
                  ) ORDER BY seq ASC"
             )
         } else {

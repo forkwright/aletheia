@@ -20,6 +20,7 @@ const ANTI_PATTERNS: &[(&str, &str)] = &[
         ".unwrap()",
         "unwrap() call in library code — use ? operator with error context",
     ),
+    #[expect(clippy::allow_attributes, reason = "pattern string for anti-pattern detection, not an attribute")]
     (
         "#[allow(",
         "#[allow()] attribute — use #[expect(lint, reason = \"...\")] instead",
@@ -420,6 +421,7 @@ diff --git a/src/lib.rs b/src/lib.rs
 
         let issues = mechanical_check(diff, &prompt);
 
+        #[expect(clippy::allow_attributes, reason = "checking for pattern in test assertion string")]
         assert!(issues.iter().any(
             |i| i.kind == MechanicalIssueKind::AntiPattern && i.message.contains("#[allow()]")
         ));

@@ -580,9 +580,7 @@ impl Parser {
             }
             Token::Ident(name) if name == "!" => {
                 // WHY: `!` is not a standalone token; it appears as part of
-                // `!=`.  We handle logical NOT by checking for a `!` ident
-                // which can only happen if the lexer produced it... which it
-                // doesn't.  This branch is unreachable but kept for symmetry.
+                // `!=`.  We handle logical NOT by checking for a `!` ident.
                 self.advance();
                 let operand = self.unary_expr()?;
                 Ok(Expr::UnaryOp {

@@ -240,10 +240,11 @@ fn build_project_summaries(
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 #[expect(clippy::float_cmp, reason = "test assertions on exact float values")]
 mod tests {
-    use super::*;
     use tempfile::TempDir;
 
     use crate::store::EnergeiaStore;
+
+    use super::*;
     use crate::store::records::SessionUpdate;
     use crate::types::{DispatchSpec, SessionStatus};
 

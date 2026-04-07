@@ -18,8 +18,9 @@ use std::collections::{HashMap, HashSet};
 
 use snafu::Snafu;
 
-use crate::knowledge::{CausalEdge, CausalRelationType, TemporalOrdering};
 use aletheia_eidos::id::{CausalEdgeId, FactId};
+
+use crate::knowledge::{CausalEdge, CausalRelationType, TemporalOrdering};
 
 // ── Error type ────────────────────────────────────────────────────────────────
 

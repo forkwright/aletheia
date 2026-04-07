@@ -1,7 +1,8 @@
 //! Helper functions for tool categorization, argument extraction, and diff parsing.
 
-use super::types::{OpsDiffEntry, ToolCategory};
 use theatron_core::format::truncate_str;
+
+use super::types::{OpsDiffEntry, ToolCategory};
 
 /// Maximum length for the inline primary arg display.
 const PRIMARY_ARG_MAX_LEN: usize = 40;

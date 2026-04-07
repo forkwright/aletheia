@@ -238,7 +238,7 @@ fn EfficiencyPanel(
                 div { style: "{CARD_VALUE}", {
                     #[expect(clippy::as_conversions, reason = "f64 to u64 for token display formatting")]
                     let tokens = tokens_per_entity as u64;
-                    format!("{}", format_tokens(tokens))
+                    format_tokens(tokens).to_string()
                 } }
                 div { style: "{CARD_LABEL}", "Tokens / Entity" }
                 div { style: "{CARD_SUB}", "Conversation cost per knowledge node" }
