@@ -15,6 +15,23 @@ use crate::error::{self, Result};
 
 use super::parse::{self, CcEvent};
 
+/// Read the OAuth access token from CC's credential file.
+///
+/// WHY: CC's `--bare` mode disables OAuth. Instead of `--bare`, we inject
+/// the token via `CLAUDE_CODE_OAUTH_TOKEN` env var, which CC accepts as an
+/// override even without bare mode.
+fn read_oauth_token() -> std::io::Result<String> {
+    let home = std::env::var("HOME").map_err(|e| std::io::Error::other(e.to_string()))?;
+    let path = std::path::Path::new(&home).join(".claude/.credentials.json");
+    let content = std::fs::read_to_string(&path)?;
+    let parsed: serde_json::Value = serde_json::from_str(&content)
+        .map_err(|e| std::io::Error::other(e.to_string()))?;
+    parsed["claudeAiOauth"]["accessToken"]
+        .as_str()
+        .map(str::to_owned)
+        .ok_or_else(|| std::io::Error::other("no accessToken in credentials"))
+}
+
 /// Outcome of a CC subprocess invocation.
 #[expect(
     dead_code,
@@ -67,11 +84,23 @@ pub(crate) async fn run_completion(
         // WHY: max-budget-usd is a safety bound, not a billing limit.
         // Set generously to avoid premature abort on long completions.
         .arg("10.00")
-        .arg("--bare")
+        // WHY: --bare disables OAuth (isBareMode() → null). Instead, skip
+        // CC's agent context via --no-session-persistence and override its
+        // system prompt with aletheia's assembled prompt.
         .arg("--no-session-persistence")
+        .arg("--dangerously-skip-permissions")
+        .arg("--max-turns")
+        .arg("1")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+
+    // WHY: Inject OAuth token from the credential file so CC authenticates
+    // without needing its own login state. CLAUDE_CODE_OAUTH_TOKEN bypasses
+    // CC's secure storage check and works even when CC reports "not logged in".
+    if let Ok(token) = read_oauth_token() {
+        cmd.env("CLAUDE_CODE_OAUTH_TOKEN", &token);
+    }
 
     if let Some(sys) = system_prompt {
         cmd.arg("--system-prompt").arg(sys);
@@ -272,11 +301,18 @@ pub(crate) async fn run_streaming(
         .arg(model)
         .arg("--max-budget-usd")
         .arg("10.00")
-        .arg("--bare")
         .arg("--no-session-persistence")
+        .arg("--dangerously-skip-permissions")
+        .arg("--max-turns")
+        .arg("1")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+
+    // WHY: Same OAuth injection as run_completion.
+    if let Ok(token) = read_oauth_token() {
+        cmd.env("CLAUDE_CODE_OAUTH_TOKEN", &token);
+    }
 
     if let Some(sys) = system_prompt {
         cmd.arg("--system-prompt").arg(sys);
