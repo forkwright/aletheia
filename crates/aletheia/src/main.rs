@@ -33,6 +33,7 @@ use commands::config;
 use commands::credential;
 use commands::desktop::DesktopArgs;
 use commands::eval::EvalArgs;
+use commands::eval_embeddings::EvalEmbeddingsArgs;
 use commands::health::HealthArgs;
 use commands::maintenance;
 use commands::memory;
@@ -109,6 +110,8 @@ enum Command {
     },
     /// Run behavioral evaluation scenarios against a live instance
     Eval(EvalArgs),
+    /// Embedding quality gate: Recall@K and MRR before model upgrades
+    EvalEmbeddings(EvalEmbeddingsArgs),
     /// Export an agent to a portable .agent.json file
     Export(ExportArgs),
     /// Export a session as Markdown or JSON
@@ -225,6 +228,9 @@ async fn dispatch_command(cmd: Command, instance_root: Option<&PathBuf>) -> Resu
         Command::Tui(_) => anyhow::bail!("TUI not available - rebuild with `--features tui`"),
         Command::Desktop(a) => commands::desktop::run(&a),
         Command::Eval(a) => commands::eval::run(a).await.map_err(Into::into),
+        Command::EvalEmbeddings(a) => {
+            commands::eval_embeddings::run(a).map_err(Into::into)
+        }
         Command::Export(a) => {
             commands::agent_io::export_agent(instance_root, &a).map_err(Into::into)
         }

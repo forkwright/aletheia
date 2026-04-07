@@ -9,6 +9,7 @@ pub(crate) mod credential;
 pub(crate) mod daemon;
 pub(crate) mod desktop;
 pub(crate) mod eval;
+pub(crate) mod eval_embeddings;
 pub(crate) mod health;
 pub(crate) mod maintenance;
 pub(crate) mod memory;

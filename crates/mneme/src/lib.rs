@@ -80,6 +80,8 @@ pub use aletheia_episteme::consolidation;
 pub use aletheia_episteme::decay;
 /// Embedding provider trait and implementations (candle, mock).
 pub use aletheia_episteme::embedding;
+/// Embedding evaluation gate: Recall@K and MRR for model upgrade checks.
+pub use aletheia_episteme::embedding_eval;
 /// LLM-driven knowledge extraction pipeline (entities, relationships, facts).
 pub use aletheia_episteme::extract;
 /// In-memory HNSW vector index backed by `hnsw_rs`.

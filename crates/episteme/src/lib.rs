@@ -29,6 +29,8 @@ pub mod decay;
 pub(crate) mod dedup;
 /// Embedding provider trait and implementations (candle, mock).
 pub mod embedding;
+/// Embedding evaluation gate: Recall@K and MRR for model upgrade checks.
+pub mod embedding_eval;
 /// LLM-driven knowledge extraction pipeline (entities, relationships, facts).
 pub mod extract;
 /// Graph-enhanced recall scoring: PageRank boost, community proximity, supersession chains.
