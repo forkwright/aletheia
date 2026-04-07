@@ -4,15 +4,11 @@
 //! `verify_phase()` and `trace_goals()` ready — this service connects them.
 
 use std::path::PathBuf;
-use std::sync::Arc;
-
 use aletheia_dianoia::phase::Phase;
 use aletheia_dianoia::project::Project;
 use aletheia_dianoia::verify::{CriterionInput, VerificationResult, verify_phase};
 use aletheia_dianoia::workspace::ProjectWorkspace;
-use tracing::{info, warn};
-
-use crate::error::{ErrorBody, ErrorResponse};
+use tracing::info;
 
 // ---------------------------------------------------------------------------
 // PlanningService

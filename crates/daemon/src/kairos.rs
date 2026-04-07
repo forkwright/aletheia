@@ -14,8 +14,6 @@
 //! executed work.
 
 use std::path::PathBuf;
-use std::sync::Arc;
-
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 

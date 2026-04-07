@@ -4,17 +4,14 @@
 //! multi-file refactors, parallel knowledge graph updates) need controlled
 //! child agent spawning with backpressure and failure isolation.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use tokio::sync::Semaphore;
-use tokio::task::JoinHandle;
 use tracing::{info, warn};
 
 use crate::bridge::DaemonBridge;
-use crate::runner::ExecutionResult;
 
 // ---------------------------------------------------------------------------
 // Configuration
