@@ -13,7 +13,10 @@
 //! - Facts from same session as weak positives
 
 use std::path::Path;
+use std::time::Instant;
+
 use snafu::{ResultExt, Snafu};
+use tracing::instrument;
 
 #[cfg(feature = "mneme-engine")]
 use crate::knowledge_store::KnowledgeStore;
@@ -348,9 +351,7 @@ fn extract_entity_linked_pairs(store: &KnowledgeStore) -> FinetuneResult<Vec<Tra
 
     let result = store
         .run_query(script, BTreeMap::new())
-        .map_err(|e| FinetuneError::StoreQuery {
-            source: e,
-        })?;
+        .context(StoreQuerySnafu)?;
 
     let mut entity_facts: std::collections::HashMap<String, Vec<(String, String)>> =
         std::collections::HashMap::new();
@@ -398,9 +399,7 @@ fn extract_same_session_pairs(store: &KnowledgeStore) -> FinetuneResult<Vec<Trai
 
     let result = store
         .run_query(script, BTreeMap::new())
-        .map_err(|e| FinetuneError::StoreQuery {
-            source: e,
-        })?;
+        .context(StoreQuerySnafu)?;
 
     let mut session_facts: std::collections::HashMap<String, Vec<String>> =
         std::collections::HashMap::new();
@@ -443,9 +442,7 @@ fn extract_causal_pairs(store: &KnowledgeStore) -> FinetuneResult<Vec<TrainingPa
 
     let result = store
         .run_query(script, BTreeMap::new())
-        .map_err(|e| FinetuneError::StoreQuery {
-            source: e,
-        })?;
+        .context(StoreQuerySnafu)?;
 
     let mut pairs = Vec::new();
     for row in &result.rows {

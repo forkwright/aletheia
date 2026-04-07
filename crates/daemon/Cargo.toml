@@ -15,6 +15,7 @@ test-core = []
 test-full = []
 
 [dependencies]
+aletheia-dianoia = { path = "../dianoia" }
 aletheia-episteme = { path = "../episteme", default-features = false }
 aletheia-koina = { path = "../koina" }
 # WHY: axum for webhook trigger listener

@@ -121,8 +121,7 @@ pub struct StuckDetector {
 impl StuckDetector {
     /// Create a new detector with the given configuration.
     #[must_use]
-    #[expect(dead_code, reason = "WIP: stuck pattern detection")]
-    pub(crate) fn new(config: StuckConfig) -> Self {
+    pub fn new(config: StuckConfig) -> Self {
         let capacity = config.history_window;
         Self {
             config,
