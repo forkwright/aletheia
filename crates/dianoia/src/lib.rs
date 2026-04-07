@@ -8,6 +8,8 @@
 //!
 //! Depends on: koina
 
+/// Cross-project attention allocation: priority-weighted fair scheduling.
+pub mod attention;
 /// Errors from planning, state transitions, and workspace I/O.
 pub(crate) mod error;
 /// Intent persistence with conviction tiers for sustained autonomous governance.
