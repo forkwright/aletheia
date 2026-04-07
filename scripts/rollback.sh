@@ -8,10 +8,20 @@ set -euo pipefail
 # Prefer `scripts/deploy.sh --rollback` for integrated rollback with
 # logging and health verification.
 
-INSTANCE_ROOT="${ALETHEIA_ROOT:-$HOME/aletheia/instance}"
+# WHY: match deploy.sh resolution — derive project name from script location.
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT_NAME="${DEPLOY_PROJECT_NAME:-$(basename "$REPO_ROOT")}"
+
+if [ -n "${ALETHEIA_ROOT:-}" ]; then
+    INSTANCE_ROOT="$ALETHEIA_ROOT"
+elif [ -d "$HOME/$PROJECT_NAME/instance" ]; then
+    INSTANCE_ROOT="$HOME/$PROJECT_NAME/instance"
+else
+    INSTANCE_ROOT="$HOME/aletheia/instance"
+fi
 BINARY_DST="${ALETHEIA_BINARY:-$HOME/.local/bin/aletheia}"
 BACKUP_DIR="${INSTANCE_ROOT}/.deploy-backup"
-SERVICE="aletheia.service"
+SERVICE="${PROJECT_NAME}.service"
 HEALTH_URL="${ALETHEIA_HEALTH_URL:-http://localhost:18789/api/health}"
 
 log() { echo "[rollback] $(date -u +"%Y-%m-%dT%H:%M:%SZ") $*"; }
