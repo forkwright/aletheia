@@ -7,8 +7,8 @@ use tracing::{info, warn};
 use aletheia_koina::secret::SecretString;
 
 use crate::client::EvalClient;
+use crate::provider::{BuiltinProvider, EvalProvider};
 use crate::scenario::{Scenario, ScenarioOutcome, ScenarioResult};
-use crate::scenarios;
 
 /// Configuration for a scenario run.
 pub struct RunConfig {
@@ -44,25 +44,39 @@ pub struct RunReport {
 pub struct ScenarioRunner {
     config: RunConfig,
     client: EvalClient,
+    provider: Box<dyn EvalProvider>,
 }
 
 impl ScenarioRunner {
-    /// Create a new runner from the given configuration.
+    /// Create a new runner with the built-in scenario provider.
     #[must_use]
     pub fn new(config: RunConfig) -> Self {
+        Self::with_provider(config, Box::new(BuiltinProvider))
+    }
+
+    /// Create a runner with a custom scenario provider.
+    ///
+    /// Use this to supply canary suites, phase gate checks, or composed
+    /// scenario sets from multiple providers.
+    #[must_use]
+    pub fn with_provider(config: RunConfig, provider: Box<dyn EvalProvider>) -> Self {
         let client = EvalClient::new(
             &config.base_url,
             config.token.as_ref().map(|t| t.expose_secret().to_owned()),
         );
-        Self { config, client }
+        Self {
+            config,
+            client,
+            provider,
+        }
     }
 
     /// Run all scenarios matching the configured filter.
     #[expect(clippy::too_many_lines, reason = "sequential scenario orchestration")]
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self), fields(provider = self.provider.name()))]
     pub async fn run(&self) -> RunReport {
         let start = Instant::now();
-        let all_scenarios = scenarios::all_scenarios();
+        let all_scenarios = self.provider.provide();
 
         let scenarios: Vec<Box<dyn Scenario>> = match &self.config.filter {
             Some(filter) => all_scenarios
