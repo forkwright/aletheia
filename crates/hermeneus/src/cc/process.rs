@@ -76,6 +76,7 @@ pub(crate) async fn run_completion(
 ) -> Result<CcOutput> {
     let mut cmd = Command::new(cc_binary);
     cmd.arg("-p")
+        .arg("--verbose")
         .arg("--output-format")
         .arg("stream-json")
         .arg("--model")
@@ -295,6 +296,7 @@ pub(crate) async fn run_streaming(
 ) -> Result<CcOutput> {
     let mut cmd = Command::new(cc_binary);
     cmd.arg("-p")
+        .arg("--verbose")
         .arg("--output-format")
         .arg("stream-json")
         .arg("--model")
