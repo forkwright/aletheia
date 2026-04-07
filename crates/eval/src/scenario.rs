@@ -10,7 +10,7 @@ use crate::client::EvalClient;
 use crate::error::{self, Error, Result};
 
 /// Boxed future returned by scenario `run` methods.
-pub(crate) type ScenarioFuture<'a> = Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>>;
+pub type ScenarioFuture<'a> = Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>>;
 
 /// Metadata describing a scenario for display and filtering.
 #[derive(Debug, Clone)]
@@ -36,25 +36,34 @@ pub struct ScenarioMeta {
 #[non_exhaustive]
 pub enum ScenarioOutcome {
     /// Scenario completed within timeout without errors.
-    Passed { duration: Duration },
+    Passed {
+        /// Wall-clock execution time.
+        duration: Duration,
+    },
     /// Scenario returned an error or assertion failed.
-    Failed { duration: Duration, error: Error },
+    Failed {
+        /// Wall-clock execution time.
+        duration: Duration,
+        /// The error that caused failure.
+        error: Error,
+    },
     /// Scenario was not run (e.g. missing auth token or nous).
-    Skipped { reason: String },
+    Skipped {
+        /// Human-readable reason for skipping.
+        reason: String,
+    },
 }
 
 impl ScenarioOutcome {
     /// Returns `true` if the scenario passed.
     #[must_use]
-    #[expect(dead_code, reason = "eval scenario outcome query methods")]
-    pub(crate) fn is_passed(&self) -> bool {
+    pub fn is_passed(&self) -> bool {
         matches!(self, Self::Passed { .. })
     }
 
     /// Returns `true` if the scenario failed.
     #[must_use]
-    #[expect(dead_code, reason = "eval scenario outcome query methods")]
-    pub(crate) fn is_failed(&self) -> bool {
+    pub fn is_failed(&self) -> bool {
         matches!(self, Self::Failed { .. })
     }
 }

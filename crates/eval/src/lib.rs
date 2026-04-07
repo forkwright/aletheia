@@ -9,12 +9,14 @@ pub(crate) mod cognitive;
 pub(crate) mod error;
 /// JSONL persistence for evaluation results as training data.
 pub mod persistence;
+/// Evaluation provider trait: pluggable scenario sources for programmatic use.
+pub mod provider;
 /// Evaluation report types for summarizing scenario results.
 pub mod report;
 /// Evaluation scenario runner: executes scenarios and collects results.
 pub mod runner;
 /// Scenario definition types: steps, assertions, and expected outcomes.
-pub(crate) mod scenario;
+pub mod scenario;
 /// Built-in evaluation scenarios for validating Aletheia runtime behavior.
 pub mod scenarios;
 /// SSE stream consumer for real-time evaluation output.
