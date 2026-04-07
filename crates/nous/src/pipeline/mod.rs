@@ -777,6 +777,31 @@ pub(crate) async fn run_pipeline(
     run_finalize_stage(config, &input, &result, session_store, emitter).await;
     stages_completed += 1;
 
+    // WHY: training capture runs after finalize so only persisted, successful
+    // turns enter the training corpus. Errors are logged, never propagated:
+    // training capture must never block the pipeline.
+    if pipeline_config.training.enabled {
+        match aletheia_mneme::training::TrainingCapture::new(
+            oikos.root(),
+            &pipeline_config.training,
+        ) {
+            Ok(capture) => {
+                capture.maybe_capture(
+                    &input.session.id,
+                    &config.id,
+                    &input.content,
+                    &result.content,
+                    &config.generation.model,
+                    result.usage.total_tokens(),
+                    &result.stop_reason,
+                );
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "training capture initialization failed");
+            }
+        }
+    }
+
     // WHY: on_turn_complete hooks run after finalize so audit hooks see the
     // fully persisted state. Does not short-circuit: all hooks fire.
     if let Some(hook_registry) = hooks {

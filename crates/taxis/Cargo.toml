@@ -16,6 +16,7 @@ test-full = []
 
 [dependencies]
 aletheia-koina = { path = "../koina" }
+aletheia-mneme = { path = "../mneme", default-features = false }
 base64 = { workspace = true }
 figment = { workspace = true }
 rand = { workspace = true }

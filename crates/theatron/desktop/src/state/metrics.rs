@@ -303,10 +303,8 @@ impl AgentCostRow {
         if self.session_count == 0 {
             0.0
         } else {
-            {
             #[expect(clippy::as_conversions, reason = "session count to f64 for cost ratio")]
-            let ratio = self.total_cost / self.session_count as f64;
-            ratio
+            { self.total_cost / self.session_count as f64 }
         }
     }
 
@@ -314,10 +312,8 @@ impl AgentCostRow {
         if self.message_count == 0 {
             0.0
         } else {
-            {
             #[expect(clippy::as_conversions, reason = "message count to f64 for cost ratio")]
-            let ratio = self.total_cost / self.message_count as f64;
-            ratio
+            { self.total_cost / self.message_count as f64 }
         }
     }
 
@@ -325,10 +321,8 @@ impl AgentCostRow {
         if self.output_tokens == 0 {
             0.0
         } else {
-            {
             #[expect(clippy::as_conversions, reason = "token count to f64 for cost ratio")]
-            let ratio = self.total_cost / (self.output_tokens as f64 / 1000.0);
-            ratio
+            { self.total_cost / (self.output_tokens as f64 / 1000.0) }
         }
     }
 }

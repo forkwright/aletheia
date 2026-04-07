@@ -423,10 +423,14 @@ dependencies = [
  "aletheia-episteme",
  "aletheia-graphe",
  "aletheia-krites",
+ "jiff",
  "proptest",
+ "serde",
  "serde_json",
+ "snafu",
  "tempfile",
  "tokio",
+ "tracing",
  "tracing-subscriber",
 ]
 
@@ -579,6 +583,7 @@ name = "aletheia-taxis"
 version = "0.13.63"
 dependencies = [
  "aletheia-koina",
+ "aletheia-mneme",
  "base64 0.22.1",
  "chacha20poly1305",
  "figment",

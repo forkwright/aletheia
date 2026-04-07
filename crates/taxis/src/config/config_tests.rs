@@ -154,6 +154,14 @@ fn defaults_are_sensible() {
         config.mcp.rate_limit.read_requests_per_minute, 300,
         "default mcp read rate limit should be 300 rpm"
     );
+    assert!(
+        !config.training.enabled,
+        "training capture should be disabled by default"
+    );
+    assert_eq!(
+        config.training.path, "data/training",
+        "default training path should be data/training"
+    );
 }
 
 #[test]
