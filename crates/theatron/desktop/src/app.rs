@@ -11,6 +11,8 @@ use crate::platform;
 use crate::services::toast::provide_toast_context;
 use crate::services::{config, settings_config};
 use crate::state::agents::AgentStore;
+use crate::state::app::TabBar;
+use crate::state::commands::CommandStore;
 use crate::state::connection::ConnectionState;
 use crate::state::notifications::{DndState, NotificationHistory};
 use crate::state::platform::{CloseBehavior, HotkeyState, QuickInputState, TrayState, WindowState};
@@ -86,7 +88,6 @@ fn MetricsToolDetail(tool_name: String) -> Element {
 pub(crate) fn App() -> Element {
     let loaded_settings = use_hook(settings_config::load_or_default);
     let loaded_config = use_hook(config::load_or_default);
-    let initial_theme = loaded_settings.appearance_settings().theme_mode();
     let first_run = use_hook(settings_config::is_first_run);
     let loaded_window_state = use_hook(platform::window_state::load_or_default);
 
@@ -96,6 +97,9 @@ pub(crate) fn App() -> Element {
     let appearance = use_signal(|| loaded_settings.appearance_settings());
     let keybindings = use_signal(|| loaded_settings.keybinding_store());
     let is_first_run = use_signal(|| first_run);
+
+    // NOTE: Force dark mode for theme consistency across all platforms
+    let initial_theme = crate::theme::ThemeMode::Dark;
 
     // NOTE: Provide signals as context so all views can access them.
     use_context_provider(|| connection_state);
@@ -118,7 +122,7 @@ pub(crate) fn App() -> Element {
 
     rsx! {
         ThemeProvider {
-            initial_mode: Some(initial_theme),
+            initial_mode: Some(initial_theme), // Force dark mode
             if needs_wizard {
                 SetupWizard {}
             } else if needs_connect {
@@ -141,6 +145,12 @@ pub(crate) fn App() -> Element {
 #[component]
 fn ConnectedApp() -> Element {
     let config = use_context::<Signal<crate::state::connection::ConnectionConfig>>();
+
+    // WHY: Provide these signals here so they are scoped to the connected state
+    // and not the connect view. This ensures AgentStore is available for SSE updates.
+    use_context_provider(|| Signal::new(AgentStore::new()));
+    use_context_provider(|| Signal::new(CommandStore::new()));
+    use_context_provider(|| Signal::new(TabBar::new()));
 
     // Provide notification signals. Preferences are loaded from disk; DND and
     // history are ephemeral and reset on each app launch.
