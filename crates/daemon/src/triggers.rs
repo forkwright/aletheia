@@ -120,7 +120,7 @@ impl TriggerRouter {
 
                     // Dedup: skip if we saw this path within the window.
                     if let Some(last) = last_seen.get(&key) {
-                        if now.duration_since(*last) < dedup_window {
+                        if now.saturating_duration_since(*last) < dedup_window {
                             continue;
                         }
                     }
@@ -227,7 +227,7 @@ impl TriggerRouter {
     fn is_deduped(&mut self, key: &str) -> bool {
         let now = Instant::now();
         if let Some(last) = self.last_seen.get(key) {
-            if now.duration_since(*last) < self.dedup_window {
+            if now.saturating_duration_since(*last) < self.dedup_window {
                 return true;
             }
         }

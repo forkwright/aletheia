@@ -160,7 +160,7 @@ impl CacheInner {
         let now = Instant::now();
         while let Some(front_key) = self.order.front() {
             if let Some(entry) = self.entries.get(front_key) {
-                if now.duration_since(entry.created_at) > self.ttl {
+                if now.saturating_duration_since(entry.created_at) > self.ttl {
                     #[expect(clippy::expect_used, reason = "just peeked front()")]
                     let key = self.order.pop_front().expect("just peeked");
                     self.entries.remove(&key);

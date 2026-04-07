@@ -84,7 +84,7 @@ impl TokenBucket {
     fn try_acquire(&self) -> bool {
         let mut state = self.inner.lock().expect("rate limiter lock poisoned");
         let now = Instant::now();
-        let elapsed = now.duration_since(state.last_refill).as_secs_f64();
+        let elapsed = now.saturating_duration_since(state.last_refill).as_secs_f64();
         state.tokens = (state.tokens + elapsed * state.refill_rate).min(state.capacity);
         state.last_refill = now;
         if state.tokens >= 1.0 {
