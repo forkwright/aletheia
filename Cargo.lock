@@ -599,6 +599,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "aletheia-theatron"
+version = "0.13.63"
+dependencies = [
+ "theatron-core",
+]
+
+[[package]]
 name = "aletheia-thesauros"
 version = "0.13.63"
 dependencies = [

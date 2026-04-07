@@ -23,6 +23,7 @@ members = [
     "crates/symbolon",
     "crates/taxis",
     "crates/thesauros",
+    "crates/theatron",
     "crates/theatron/core",
     "crates/theatron/tui",
 ]
