@@ -247,6 +247,7 @@ mod tests {
             },
             stop_reason: "end_turn".to_owned(),
             signals: vec![],
+            degraded: None,
         }
     }
 
@@ -270,6 +271,7 @@ mod tests {
             },
             stop_reason: "end_turn".to_owned(),
             signals: vec![],
+            degraded: None,
         }
     }
 

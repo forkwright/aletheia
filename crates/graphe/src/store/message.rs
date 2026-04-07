@@ -193,6 +193,34 @@ impl SessionStore {
 
     // NOTE: Distillation marks old messages as `is_distilled=1` and replaces them with a summary.
 
+    /// Return the most recent distillation summary for a session, if any.
+    ///
+    /// The distillation summary is stored as a `system` message at `seq = 0`.
+    /// Returns `None` if no distillation has been performed for this session.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Database` if the query fails.
+    pub fn get_distillation_summary(&self, session_id: &str) -> Result<Option<String>> {
+        let mut stmt = self
+            .conn
+            .prepare_cached(
+                "SELECT content FROM messages \
+                 WHERE session_id = ?1 AND seq = 0 AND is_distilled = 0 \
+                 LIMIT 1",
+            )
+            .context(error::DatabaseSnafu)?;
+
+        let mut rows = stmt.query([session_id]).context(error::DatabaseSnafu)?;
+
+        if let Some(row) = rows.next().context(error::DatabaseSnafu)? {
+            let content: String = row.get(0).context(error::DatabaseSnafu)?;
+            Ok(Some(content))
+        } else {
+            Ok(None)
+        }
+    }
+
     /// Mark messages as distilled and recalculate session token count.
     #[instrument(skip(self, seqs), fields(count = seqs.len()))]
     pub fn mark_messages_distilled(&self, session_id: &str, seqs: &[i64]) -> Result<()> {

@@ -484,7 +484,17 @@ pub struct TurnResult {
     pub signals: Vec<InteractionSignal>,
     /// Stop reason.
     pub stop_reason: String,
+    /// Set when the pipeline is operating in degraded mode (LLM unavailable).
+    ///
+    /// `None` on all normal turns. `Some` only when the execute stage fell back
+    /// to a cached distillation or an honest "unavailable" message.
+    /// The TUI and API use this to render a warning banner instead of a normal
+    /// response bubble.
+    pub degraded: Option<crate::degraded_mode::DegradedMode>,
 }
+
+/// Re-export so callers can use `pipeline::DegradedMode` as the canonical path.
+pub use crate::degraded_mode::DegradedMode;
 
 /// A tool call made during a turn.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -759,6 +769,7 @@ pub(crate) async fn run_pipeline(
         total_timeout,
         emitter,
         hooks,
+        session_store,
     )
     .await?;
     stages_completed += 1;
