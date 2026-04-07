@@ -53,6 +53,8 @@ pub struct AppState {
     /// Shared knowledge store for fact/entity/relationship queries.
     #[cfg(feature = "knowledge-store")]
     pub knowledge_store: Option<Arc<KnowledgeStore>>,
+    /// Planning verification service backed by dianoia engine.
+    pub planning_service: Option<Arc<crate::planning_service::PlanningService>>,
 }
 
 impl AppState {

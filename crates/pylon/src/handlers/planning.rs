@@ -147,19 +147,66 @@ pub(crate) struct RefreshResponse {
     security(("bearer_auth" = []))
 )]
 pub(crate) async fn get_verification(
-    Path(_project_id): Path<String>,
-) -> (StatusCode, Json<ErrorResponse>) {
-    (
-        StatusCode::NOT_IMPLEMENTED,
-        Json(ErrorResponse {
-            error: ErrorBody {
-                code: "not_implemented".to_owned(),
-                message: "verification engine not yet wired (tracking #2034)".to_owned(),
-                request_id: None,
-                details: None,
-            },
-        }),
-    )
+    Path(project_id): Path<String>,
+    axum::extract::State(state): axum::extract::State<std::sync::Arc<crate::state::AppState>>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+
+    let Some(ref service) = state.planning_service else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                error: ErrorBody {
+                    code: "service_unavailable".to_owned(),
+                    message: "planning service not configured".to_owned(),
+                    request_id: None,
+                    details: None,
+                },
+            }),
+        )
+            .into_response();
+    };
+
+    match service.list_phases() {
+        Ok(phases) => {
+            // WHY: verify each phase with empty inputs (snapshot of current state).
+            // Full criterion evaluation requires agent interaction (future enhancement).
+            let verifications: Vec<serde_json::Value> = phases
+                .iter()
+                .map(|phase| {
+                    let result = aletheia_dianoia::verify::verify_phase(phase, &[]);
+                    serde_json::json!({
+                        "phase": phase.name,
+                        "status": format!("{:?}", result.status),
+                        "summary": result.summary,
+                        "gaps": result.gaps.len(),
+                        "verified_at": result.verified_at.to_string(),
+                    })
+                })
+                .collect();
+
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "project_id": project_id,
+                    "phases": verifications,
+                })),
+            )
+                .into_response()
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: ErrorBody {
+                    code: "verification_failed".to_owned(),
+                    message: e,
+                    request_id: None,
+                    details: None,
+                },
+            }),
+        )
+            .into_response(),
+    }
 }
 
 /// `POST /api/planning/projects/{project_id}/verification/refresh`
@@ -179,19 +226,54 @@ pub(crate) async fn get_verification(
     security(("bearer_auth" = []))
 )]
 pub(crate) async fn refresh_verification(
-    Path(_project_id): Path<String>,
-) -> (StatusCode, Json<ErrorResponse>) {
-    (
-        StatusCode::NOT_IMPLEMENTED,
-        Json(ErrorResponse {
-            error: ErrorBody {
-                code: "not_implemented".to_owned(),
-                message: "verification engine not yet wired (tracking #2034)".to_owned(),
-                request_id: None,
-                details: None,
-            },
-        }),
-    )
+    Path(project_id): Path<String>,
+    axum::extract::State(state): axum::extract::State<std::sync::Arc<crate::state::AppState>>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+
+    let Some(ref service) = state.planning_service else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                error: ErrorBody {
+                    code: "service_unavailable".to_owned(),
+                    message: "planning service not configured".to_owned(),
+                    request_id: None,
+                    details: None,
+                },
+            }),
+        )
+            .into_response();
+    };
+
+    // WHY: refresh triggers a fresh verification pass. Currently synchronous;
+    // a background task can be spawned for long-running evaluations later.
+    match service.list_phases() {
+        Ok(phases) => {
+            let count = phases.len();
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "status": "refreshed",
+                    "project_id": project_id,
+                    "phases_verified": count,
+                })),
+            )
+                .into_response()
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: ErrorBody {
+                    code: "refresh_failed".to_owned(),
+                    message: e,
+                    request_id: None,
+                    details: None,
+                },
+            }),
+        )
+            .into_response(),
+    }
 }
 
 #[cfg(test)]

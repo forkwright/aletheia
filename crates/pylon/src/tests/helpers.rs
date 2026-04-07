@@ -136,6 +136,7 @@ pub(super) async fn test_state_with_provider(
         shutdown: CancellationToken::new(),
         #[cfg(feature = "knowledge-store")]
         knowledge_store: None,
+        planning_service: None,
     });
 
     (state, dir)
