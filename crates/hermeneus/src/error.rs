@@ -131,6 +131,83 @@ impl Error {
 /// Convenience alias for `Result<T, Error>`.
 pub type Result<T> = std::result::Result<T, Error>; // kanon:ignore RUST/pub-visibility
 
+impl aletheia_koina::error_class::Classifiable for Error {
+    fn class(&self) -> aletheia_koina::error_class::ErrorClass {
+        use aletheia_koina::error_class::ErrorClass;
+        match self {
+            // Transient: safe to retry — rate limits, server errors, network issues
+            Error::RateLimited { .. } => ErrorClass::Transient,
+            Error::ApiError {
+                status: 500..=599, ..
+            } => ErrorClass::Transient,
+            Error::ApiRequest { message, .. } => {
+                let msg = message.to_lowercase();
+                if msg.contains("timeout")
+                    || msg.contains("connection")
+                    || msg.contains("reset")
+                    || msg.contains("broken pipe")
+                {
+                    ErrorClass::Transient
+                } else {
+                    ErrorClass::Permanent
+                }
+            }
+
+            // Permanent: retrying will not help
+            Error::AuthFailed { .. } => ErrorClass::Permanent,
+            Error::UnsupportedModel { .. } => ErrorClass::Permanent,
+            Error::ApiError { .. } => ErrorClass::Permanent,
+            Error::ParseResponse { .. } => ErrorClass::Permanent,
+
+            // Unknown: provider init failures may be transient (e.g. config
+            // not yet loaded) or permanent — escalate for operator visibility.
+            Error::ProviderInit { .. } => ErrorClass::Unknown,
+        }
+    }
+
+    fn action(&self) -> aletheia_koina::error_class::ErrorAction {
+        use aletheia_koina::error_class::ErrorAction;
+        match self {
+            Error::RateLimited { retry_after_ms, .. } => ErrorAction::Retry {
+                max_attempts: 4,
+                // WHY: respect provider's hint when available; fall back to 2 s
+                backoff_base_ms: (*retry_after_ms).max(2_000),
+            },
+            Error::ApiError {
+                status: 500..=599, ..
+            } => ErrorAction::Retry {
+                max_attempts: 3,
+                backoff_base_ms: 1_000,
+            },
+            Error::ApiRequest { message, .. } => {
+                let msg = message.to_lowercase();
+                if msg.contains("timeout")
+                    || msg.contains("connection")
+                    || msg.contains("reset")
+                    || msg.contains("broken pipe")
+                {
+                    ErrorAction::Retry {
+                        max_attempts: 3,
+                        backoff_base_ms: 500,
+                    }
+                } else {
+                    ErrorAction::Escalate
+                }
+            }
+            Error::AuthFailed { .. } => ErrorAction::Surface {
+                user_message: "Authentication failed — check your API credentials.".to_owned(),
+            },
+            Error::UnsupportedModel { model, .. } => ErrorAction::Surface {
+                user_message: format!("Model '{model}' is not supported by this provider."),
+            },
+            Error::ApiError { status, message, .. } => ErrorAction::Surface {
+                user_message: format!("API error {status}: {message}"),
+            },
+            Error::ParseResponse { .. } | Error::ProviderInit { .. } => ErrorAction::Escalate,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
