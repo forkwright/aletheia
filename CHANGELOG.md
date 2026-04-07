@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.62](https://github.com/forkwright/aletheia/compare/v0.13.61...v0.13.62) (2026-04-07)
+
+
+### Bug Fixes
+
+* daemon stderr logging and explicit serve subcommand ([#2522](https://github.com/forkwright/aletheia/issues/2522)) ([989b131](https://github.com/forkwright/aletheia/commit/989b131e5417c32c25ce4bd149e653c5265bb1d2))
+
 ## [0.13.61](https://github.com/forkwright/aletheia/compare/v0.13.60...v0.13.61) (2026-04-07)
 
 
