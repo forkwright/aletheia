@@ -393,6 +393,7 @@ pub async fn execute(
         usage: total_usage,
         signals,
         stop_reason: final_stop_reason,
+        degraded: None,
     })
 }
 
@@ -666,5 +667,6 @@ pub async fn execute_streaming(
         usage: total_usage,
         signals,
         stop_reason: final_stop_reason,
+        degraded: None,
     })
 }

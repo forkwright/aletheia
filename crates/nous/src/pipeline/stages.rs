@@ -471,9 +471,17 @@ pub(super) fn run_guard_stage(
 }
 
 /// Execute stage: call LLM with optional timeout and streaming.
+///
+/// On transient LLM failures (rate limit, timeout, 5xx) this stage falls back
+/// to [`crate::degraded_mode::build_degraded_response`] instead of propagating
+/// the error. The happy path is unchanged.
 #[expect(
     clippy::too_many_arguments,
     reason = "stage receives all pipeline dependencies"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "execute stage orchestrates timeout, streaming, and degraded-mode fallback — splitting adds indirection"
 )]
 pub(super) async fn run_execute_stage(
     config: &NousConfig,
@@ -488,6 +496,7 @@ pub(super) async fn run_execute_stage(
     total_timeout: Option<Duration>,
     emitter: &EventEmitter,
     hooks: Option<&HookRegistry>,
+    session_store: Option<&Mutex<SessionStore>>,
 ) -> error::Result<TurnResult> {
     let span = info_span!(
         "pipeline_stage",
@@ -540,16 +549,9 @@ pub(super) async fn run_execute_stage(
         }
     };
 
-    let result = if let Some(timeout_dur) = effective_execute_timeout {
+    let execute_result = if let Some(timeout_dur) = effective_execute_timeout {
         match tokio::time::timeout(timeout_dur, execute_fut).await {
-            Ok(res) => res.inspect_err(|_| {
-                crate::metrics::record_error(&config.id, "execute", "pipeline_error");
-                emitter.emit(&StageError {
-                    nous_id: config.id.clone(),
-                    stage: "execute",
-                    error_type: "pipeline_error".to_owned(),
-                });
-            })?,
+            Ok(res) => res,
             Err(_elapsed) => {
                 let secs = execute_secs.max(pipeline_config.stage_budget.total_secs);
                 span.record("status", "timeout");
@@ -567,21 +569,61 @@ pub(super) async fn run_execute_stage(
             }
         }
     } else {
-        execute_fut.await.inspect_err(|_| {
+        execute_fut.await
+    };
+
+    // WHY: transient LLM errors (rate limit, 5xx, timeout) must not surface as hard errors.
+    // The nous should degrade gracefully — returning cached distillation context or an honest
+    // "unavailable" message — so the user is never left with a raw error response. Non-transient
+    // errors (auth failure, config, panic) propagate normally because they require operator action.
+    let result = match execute_result {
+        Ok(turn_result) => turn_result,
+        Err(ref err) if crate::degraded_mode::is_transient_llm_error(err) => {
+            crate::metrics::record_error(&config.id, "execute", "degraded_mode");
+            emitter.emit(&StageError {
+                nous_id: config.id.clone(),
+                stage: "execute",
+                error_type: "degraded_mode".to_owned(),
+            });
+
+            // Fetch the most recent distillation summary for this session, if available.
+            // A None result means the session has never been distilled — the degraded
+            // response will acknowledge that honestly rather than serving stale context.
+            let recent_distillation = session_store.and_then(|store_mutex| {
+                store_mutex.try_lock().ok().and_then(|store| {
+                    store
+                        .get_distillation_summary(&input.session.id)
+                        .ok()
+                        .flatten()
+                })
+            });
+
+            span.record("status", "degraded");
+            crate::degraded_mode::build_degraded_response(
+                &config.id,
+                &input.session.id,
+                err,
+                recent_distillation.as_deref(),
+            )
+        }
+        Err(err) => {
             crate::metrics::record_error(&config.id, "execute", "pipeline_error");
             emitter.emit(&StageError {
                 nous_id: config.id.clone(),
                 stage: "execute",
                 error_type: "pipeline_error".to_owned(),
             });
-        })?
+            return Err(err);
+        }
     };
 
     let duration_secs = start.elapsed().as_secs_f64();
     record_stage_duration(&span, &start);
     span.record("tokens_in", result.usage.input_tokens);
     span.record("tokens_out", result.usage.output_tokens);
-    span.record("status", "ok");
+    if result.degraded.is_none() {
+        span.record("status", "ok");
+    }
     crate::metrics::record_stage(&config.id, "execute", duration_secs);
     emitter.emit(&StageCompleted {
         nous_id: config.id.clone(),

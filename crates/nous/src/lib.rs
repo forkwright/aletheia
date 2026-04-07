@@ -19,6 +19,8 @@ pub mod competence;
 pub mod config;
 /// Inter-agent messaging: fire-and-forget, request-response, and delivery audit.
 pub mod cross;
+/// Graceful degradation contracts when the LLM provider is unavailable.
+pub mod degraded_mode;
 /// Distillation trigger logic and orchestration.
 pub mod distillation;
 /// Nous-specific error types.
