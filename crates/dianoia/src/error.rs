@@ -9,6 +9,20 @@ use snafu::Snafu;
 #[snafu(visibility(pub))]
 #[non_exhaustive]
 pub enum Error {
+    /// A phase gate blocked a state transition because one or more conditions were not satisfied.
+    #[snafu(display(
+        "gate blocked transition from {state:?}: unsatisfied conditions: {conditions:?}"
+    ))]
+    GateBlocked {
+        /// The state from which the transition was attempted.
+        state: crate::state::ProjectState,
+        /// The condition keys that were not satisfied.
+        conditions: Vec<String>,
+        #[snafu(implicit)]
+        /// Source location captured by snafu.
+        location: snafu::Location,
+    },
+
     /// A state transition was attempted that is not valid from the current state.
     #[snafu(display("invalid transition {transition:?} from state {state:?}"))]
     InvalidTransition {
