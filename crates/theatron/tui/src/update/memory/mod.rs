@@ -7,7 +7,7 @@ mod handlers;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use data_loading::{handle_action_result, handle_detail_loaded, handle_facts_loaded};
+
 pub(crate) use handlers::{
     handle_close, handle_confidence_backspace, handle_confidence_cancel, handle_confidence_input,
     handle_confidence_submit, handle_drift_tab_next, handle_drift_tab_prev, handle_drill_in,

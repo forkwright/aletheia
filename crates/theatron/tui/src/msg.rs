@@ -1,7 +1,5 @@
-use aletheia_koina::secret::SecretString;
-
 use crate::api::types::*;
-use crate::id::{NousId, PlanId, SessionId, ToolId, TurnId};
+use crate::id::{NousId, SessionId, ToolId, TurnId};
 
 /// Every possible state transition in the application.
 /// No I/O happens here: only data describing what happened.
@@ -120,10 +118,6 @@ pub enum Msg {
     },
     SseTurnBefore {
         nous_id: NousId,
-        #[expect(dead_code, reason = "planned TUI feature")]
-        session_id: SessionId,
-        #[expect(dead_code, reason = "planned TUI feature")]
-        turn_id: TurnId,
     },
     SseTurnAfter {
         nous_id: NousId,
@@ -135,10 +129,6 @@ pub enum Msg {
     },
     SseToolFailed {
         nous_id: NousId,
-        #[expect(dead_code, reason = "planned TUI feature")]
-        tool_name: String,
-        #[expect(dead_code, reason = "planned TUI feature")]
-        error: String,
     },
     SseStatusUpdate {
         nous_id: NousId,
@@ -146,8 +136,6 @@ pub enum Msg {
     },
     SseSessionCreated {
         nous_id: NousId,
-        #[expect(dead_code, reason = "planned TUI feature")]
-        session_id: SessionId,
     },
     SseSessionArchived {
         nous_id: NousId,
@@ -165,8 +153,6 @@ pub enum Msg {
     },
 
     StreamTurnStart {
-        #[expect(dead_code, reason = "planned TUI feature")]
-        session_id: SessionId,
         nous_id: NousId,
         turn_id: TurnId,
     },
@@ -192,29 +178,18 @@ pub enum Msg {
         risk: String,
         reason: String,
     },
-    StreamToolApprovalResolved {
-        #[expect(dead_code, reason = "planned TUI feature")]
-        tool_id: ToolId,
-        #[expect(dead_code, reason = "planned TUI feature")]
-        decision: String,
-    },
+    StreamToolApprovalResolved,
     StreamPlanProposed {
         plan: Plan,
     },
     StreamPlanStepStart {
-        #[expect(dead_code, reason = "planned TUI feature")]
-        plan_id: PlanId,
         step_id: u32,
     },
     StreamPlanStepComplete {
-        #[expect(dead_code, reason = "planned TUI feature")]
-        plan_id: PlanId,
         step_id: u32,
         status: String,
     },
     StreamPlanComplete {
-        #[expect(dead_code, reason = "planned TUI feature")]
-        plan_id: PlanId,
         status: String,
     },
     StreamTurnComplete {
@@ -225,33 +200,14 @@ pub enum Msg {
     },
     StreamError(String),
 
-    #[expect(dead_code, reason = "planned TUI feature")]
-    AgentsLoaded(Vec<Agent>),
-    #[expect(dead_code, reason = "planned TUI feature")]
-    SessionsLoaded {
-        nous_id: NousId,
-        sessions: Vec<Session>,
-    },
-    #[expect(dead_code, reason = "planned TUI feature")]
-    HistoryLoaded {
-        session_id: SessionId,
-        messages: Vec<HistoryMessage>,
-    },
-    #[expect(dead_code, reason = "planned TUI feature")]
-    CostLoaded {
-        daily_total_cents: u32,
-    },
-    #[expect(dead_code, reason = "planned TUI feature")]
-    AuthResult(AuthOutcome),
-    #[expect(dead_code, reason = "planned TUI feature")]
-    ApiError(String),
 
-    #[expect(dead_code, reason = "planned TUI feature")]
-    SettingsLoaded(serde_json::Value),
-    #[expect(dead_code, reason = "planned TUI feature")]
-    SettingsSaved,
-    #[expect(dead_code, reason = "planned TUI feature")]
-    SettingsSaveError(String),
+
+
+
+
+
+
+
 
     MemoryOpen,
     MemoryClose,
@@ -280,30 +236,13 @@ pub enum Msg {
     MemorySearchBackspace,
     MemorySearchSubmit,
     MemorySearchClose,
-    #[expect(dead_code, reason = "planned TUI feature")]
-    MemoryFactsLoaded {
-        facts: Vec<crate::state::memory::MemoryFact>,
-        total: usize,
-    },
-    #[expect(dead_code, reason = "planned TUI feature")]
-    MemoryDetailLoaded(Box<crate::state::memory::FactDetail>),
-    #[expect(dead_code, reason = "planned TUI feature")]
-    MemoryEntitiesLoaded(Vec<crate::state::memory::MemoryEntity>),
-    #[expect(dead_code, reason = "planned TUI feature")]
-    MemoryRelationshipsLoaded(Vec<crate::state::memory::MemoryRelationship>),
-    #[expect(dead_code, reason = "planned TUI feature")]
-    MemoryTimelineLoaded(Vec<crate::state::memory::MemoryTimelineEvent>),
-    #[expect(dead_code, reason = "planned TUI feature")]
-    MemorySearchResults(Vec<crate::state::memory::MemorySearchResult>),
-    #[expect(dead_code, reason = "planned TUI feature")]
-    MemoryActionResult(String),
+
     MemoryPageDown,
     MemoryPageUp,
     MemoryDriftTabNext,
     MemoryDriftTabPrev,
 
-    #[expect(dead_code, reason = "opened via :editor command, not Msg pipeline")]
-    EditorOpen,
+
     EditorClose,
     EditorCharInput(char),
     EditorNewline,
@@ -323,8 +262,7 @@ pub enum Msg {
     EditorTabClose,
     EditorTreeToggle,
     EditorFocusToggle,
-    #[expect(dead_code, reason = "tree expand triggered via Enter on directory")]
-    EditorTreeExpand,
+
     EditorCut,
     EditorCopy,
     EditorPaste,
@@ -334,19 +272,12 @@ pub enum Msg {
     EditorConfirmDelete(bool),
     EditorModalCancel,
     EditorRefreshTree,
-    #[expect(dead_code, reason = "triggered by Tick handler, not keyboard")]
-    EditorAutosaveTick,
-    #[expect(dead_code, reason = "triggered by render, not keyboard")]
-    EditorScrollTree(usize),
+
 
     ShowError(String),
-    #[expect(dead_code, reason = "constructed by API event bridge, not yet wired")]
-    ShowSuccess(String),
-    #[expect(dead_code, reason = "constructed by API event bridge, not yet wired")]
-    DismissError,
 
-    #[expect(dead_code, reason = "planned TUI feature")]
-    ExportConversation,
+
+
 
     /// Cancel the active LLM turn immediately (Esc / Ctrl+C during streaming).
     CancelTurn,
@@ -359,16 +290,7 @@ pub enum Msg {
     SlashCompleteDown,
     SlashCompleteSelect,
 
-    #[expect(dead_code, reason = "sent by API event bridge; not yet wired")]
-    ToastPush {
-        message: String,
-        kind: NotificationKind,
-        duration_secs: u64,
-    },
-    #[expect(dead_code, reason = "sent by API event bridge; not yet wired")]
-    ErrorBannerSet(String),
-    #[expect(dead_code, reason = "sent by API event bridge; not yet wired")]
-    ErrorBannerDismiss,
+
 
     #[expect(
         dead_code,
@@ -378,17 +300,12 @@ pub enum Msg {
     SessionSearchClose,
     SessionSearchInput(char),
     SessionSearchBackspace,
-    #[expect(dead_code, reason = "planned TUI feature")]
-    SessionSearchSubmit,
+
     SessionSearchUp,
     SessionSearchDown,
     SessionSearchSelect,
 
-    #[expect(
-        dead_code,
-        reason = "metrics overlay entry point, keybinding not yet wired"
-    )]
-    MetricsOpen,
+
     #[cfg_attr(
         not(test),
         expect(
@@ -423,50 +340,13 @@ pub enum Msg {
     )]
     MetricsHealthLoaded(bool),
 
-    #[expect(
-        dead_code,
-        reason = "planning view entry point, keybinding not yet wired"
-    )]
-    PlanningOpen,
-    #[expect(dead_code, reason = "planning view close, wired in keybinding handler")]
-    PlanningClose,
 
-    #[expect(
-        dead_code,
-        reason = "retrospective view entry point, keybinding not yet wired"
-    )]
-    RetrospectiveOpen,
-    #[expect(
-        dead_code,
-        reason = "retrospective view close, wired in keybinding handler"
-    )]
-    RetrospectiveClose,
 
-    #[expect(dead_code, reason = "planned TUI feature")]
-    DiffOpen,
-    DiffClose,
-    DiffCycleMode,
-    DiffScrollUp,
-    DiffScrollDown,
-    DiffPageUp,
-    DiffPageDown,
-    /// Auto-triggered diff from file modification tool result.
-    #[expect(dead_code, reason = "planned TUI feature")]
-    DiffFromToolResult {
-        path: String,
-        old_content: String,
-        new_content: String,
-    },
 
-    #[expect(dead_code, reason = "planned TUI feature: key bindings not yet wired")]
-    DecisionCardNextField,
-    #[expect(dead_code, reason = "planned TUI feature: key bindings not yet wired")]
-    DecisionCardPrevField,
-    #[expect(dead_code, reason = "planned TUI feature")]
-    StreamDecisionRequired {
-        question: String,
-        options: Vec<(String, Option<String>, bool)>,
-    },
+
+
+
+
 
     Tick,
 }
@@ -512,45 +392,18 @@ pub enum OverlayKind {
     Help,
     AgentPicker,
     SessionPicker,
-    #[expect(dead_code, reason = "planned TUI feature")]
-    SessionPickerAll,
     SystemStatus,
     ContextBudget,
-    #[expect(dead_code, reason = "planned TUI feature")]
-    Settings,
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "opened programmatically; not yet wired to keyboard"
-        )
-    )]
-    NotificationHistory,
+
 }
 
 /// Severity / type of a notification or toast.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum NotificationKind {
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "API bridge sends these; not yet wired")
-    )]
     Info,
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "API bridge sends these; not yet wired")
-    )]
     Warning,
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "API bridge sends these; not yet wired")
-    )]
     Error,
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "API bridge sends these; not yet wired")
-    )]
     Success,
 }
 
@@ -575,16 +428,7 @@ impl ErrorToast {
     }
 }
 
-#[derive(Debug)]
-#[non_exhaustive]
-pub enum AuthOutcome {
-    #[expect(dead_code, reason = "planned TUI feature")]
-    Success { token: SecretString },
-    #[expect(dead_code, reason = "planned TUI feature")]
-    NoAuthRequired,
-    #[expect(dead_code, reason = "planned TUI feature")]
-    Failed(String),
-}
+
 
 #[cfg(test)]
 mod tests {

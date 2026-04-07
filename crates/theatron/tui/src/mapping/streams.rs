@@ -62,15 +62,7 @@ impl App {
             SseEvent::Connected => Msg::SseConnected,
             SseEvent::Disconnected => Msg::SseDisconnected,
             SseEvent::Init { active_turns } => Msg::SseInit { active_turns },
-            SseEvent::TurnBefore {
-                nous_id,
-                session_id,
-                turn_id,
-            } => Msg::SseTurnBefore {
-                nous_id,
-                session_id,
-                turn_id,
-            },
+            SseEvent::TurnBefore { nous_id, .. } => Msg::SseTurnBefore { nous_id },
             SseEvent::TurnAfter {
                 nous_id,
                 session_id,
@@ -81,23 +73,9 @@ impl App {
             SseEvent::ToolCalled { nous_id, tool_name } => {
                 Msg::SseToolCalled { nous_id, tool_name }
             }
-            SseEvent::ToolFailed {
-                nous_id,
-                tool_name,
-                error,
-            } => Msg::SseToolFailed {
-                nous_id,
-                tool_name,
-                error,
-            },
+            SseEvent::ToolFailed { nous_id, .. } => Msg::SseToolFailed { nous_id },
             SseEvent::StatusUpdate { nous_id, status } => Msg::SseStatusUpdate { nous_id, status },
-            SseEvent::SessionCreated {
-                nous_id,
-                session_id,
-            } => Msg::SseSessionCreated {
-                nous_id,
-                session_id,
-            },
+            SseEvent::SessionCreated { nous_id, .. } => Msg::SseSessionCreated { nous_id },
             SseEvent::SessionArchived {
                 nous_id,
                 session_id,
@@ -121,11 +99,10 @@ impl App {
     fn map_stream(&self, event: StreamEvent) -> Msg {
         match event {
             StreamEvent::TurnStart {
-                session_id,
                 nous_id,
                 turn_id,
+                ..
             } => Msg::StreamTurnStart {
-                session_id,
                 nous_id,
                 turn_id,
             },
@@ -168,24 +145,21 @@ impl App {
                 risk,
                 reason,
             },
-            StreamEvent::ToolApprovalResolved { tool_id, decision } => {
-                Msg::StreamToolApprovalResolved { tool_id, decision }
-            }
+            StreamEvent::ToolApprovalResolved { .. } => Msg::StreamToolApprovalResolved,
             StreamEvent::PlanProposed { plan } => Msg::StreamPlanProposed { plan },
-            StreamEvent::PlanStepStart { plan_id, step_id } => {
-                Msg::StreamPlanStepStart { plan_id, step_id }
+            StreamEvent::PlanStepStart { step_id, .. } => {
+                Msg::StreamPlanStepStart { step_id }
             }
             StreamEvent::PlanStepComplete {
-                plan_id,
                 step_id,
                 status,
+                ..
             } => Msg::StreamPlanStepComplete {
-                plan_id,
                 step_id,
                 status,
             },
-            StreamEvent::PlanComplete { plan_id, status } => {
-                Msg::StreamPlanComplete { plan_id, status }
+            StreamEvent::PlanComplete { status, .. } => {
+                Msg::StreamPlanComplete { status }
             }
             StreamEvent::TurnComplete { outcome } => Msg::StreamTurnComplete { outcome },
             StreamEvent::TurnAbort { reason } => Msg::StreamTurnAbort { reason },

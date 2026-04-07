@@ -40,15 +40,6 @@ fn n_messages(n: usize) -> Vec<Message> {
         .collect()
 }
 
-#[expect(dead_code, reason = "test helper available for future roundtrip tests")]
-fn sample_flush_item(content: &str, source: FlushSource) -> FlushItem {
-    FlushItem {
-        content: content.to_owned(),
-        timestamp: "2026-03-09T12:00:00Z".to_owned(),
-        source,
-    }
-}
-
 const FULL_SUMMARY: &str = "\
 ## Summary
 Fixed login bug and added tool-based database schema update.
