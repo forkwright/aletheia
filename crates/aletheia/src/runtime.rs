@@ -7,7 +7,7 @@ use snafu::prelude::*;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
-use tracing::{Instrument, info, warn};
+use tracing::{Instrument, debug, info, warn};
 
 use aletheia_agora::listener::ChannelListener;
 use aletheia_agora::registry::ChannelRegistry;
@@ -867,6 +867,26 @@ fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) -> ProviderRe
         pricing,
         ..ProviderConfig::default()
     };
+
+    // WHY: Register CC subprocess provider first when available. CC handles
+    // OAuth attestation correctly, so it takes priority over the direct
+    // Anthropic client for matching models. The Anthropic provider serves
+    // as fallback (e.g., when using API keys, which don't need attestation).
+    #[cfg(feature = "cc-provider")]
+    {
+        use aletheia_hermeneus::cc::{CcProvider, CcProviderConfig};
+        let cc_config = CcProviderConfig::default();
+        match CcProvider::new(&cc_config) {
+            Ok(provider) => {
+                registry.register(Box::new(provider));
+                info!("CC subprocess provider registered (preferred for OAuth)");
+            }
+            Err(e) => {
+                debug!(error = %e, "CC provider unavailable, falling back to direct API");
+            }
+        }
+    }
+
     match AnthropicProvider::with_credential_provider(credential_chain, &provider_config) {
         Ok(provider) => {
             registry.register(Box::new(provider));
