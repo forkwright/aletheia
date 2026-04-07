@@ -18,7 +18,7 @@ impl KnowledgeStore {
     /// Returns [`InvalidConfidence`](crate::error::Error::InvalidConfidence) if
     /// confidence is outside `[0.0, 1.0]`.
     /// Returns [`EngineQuery`](crate::error::Error::EngineQuery) if the write fails.
-    #[instrument(skip(self, edge), fields(cause = %edge.cause, effect = %edge.effect))]
+    #[instrument(skip(self, edge), fields(source = %edge.source_id, target = %edge.target_id))]
     pub(crate) fn insert_causal_edge(
         &self,
         edge: &crate::knowledge::CausalEdge,
@@ -36,15 +36,15 @@ impl KnowledgeStore {
             }
         );
 
-        let now = crate::knowledge::format_timestamp(&edge.created_at);
+        let now = crate::knowledge::format_timestamp(&edge.timestamp);
         let mut params = BTreeMap::new();
         params.insert(
             "cause".to_owned(),
-            DataValue::Str(edge.cause.as_str().into()),
+            DataValue::Str(edge.source_id.as_str().into()),
         );
         params.insert(
             "effect".to_owned(),
-            DataValue::Str(edge.effect.as_str().into()),
+            DataValue::Str(edge.target_id.as_str().into()),
         );
         params.insert(
             "ordering".to_owned(),
@@ -185,7 +185,7 @@ impl KnowledgeStore {
             let effects = self.query_effects(&current_id)?;
 
             for edge in effects {
-                let effect_str = edge.effect.as_str().to_owned();
+                let effect_str = edge.target_id.as_str().to_owned();
                 if visited.contains(&effect_str) {
                     continue;
                 }
@@ -237,19 +237,26 @@ fn rows_to_causal_edges(
             .parse::<crate::knowledge::TemporalOrdering>()
             .unwrap_or(crate::knowledge::TemporalOrdering::Before);
 
-        let created_at =
+        let timestamp =
             crate::knowledge::parse_timestamp(&created_at_str).unwrap_or_else(jiff::Timestamp::now);
 
-        let cause =
+        let source_id =
             crate::id::FactId::new(cause_str.as_str()).context(crate::error::InvalidIdSnafu)?;
-        let effect =
+        let target_id =
             crate::id::FactId::new(effect_str.as_str()).context(crate::error::InvalidIdSnafu)?;
+        // WHY: Datalog rows don't carry id/relationship_type/evidence_session_id;
+        // generate a fresh edge ID and default the optional fields.
+        let id = crate::id::CausalEdgeId::new(ulid::Ulid::new().to_string())
+            .context(crate::error::InvalidIdSnafu)?;
         edges.push(crate::knowledge::CausalEdge {
-            cause,
-            effect,
+            id,
+            source_id,
+            target_id,
+            relationship_type: crate::knowledge::CausalRelationType::Caused,
             ordering,
             confidence,
-            created_at,
+            evidence_session_id: None,
+            timestamp,
         });
     }
     Ok(edges)

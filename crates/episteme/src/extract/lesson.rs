@@ -540,11 +540,15 @@ pub(crate) fn persist_lesson(
             fact_ids.get(causal.effect_index),
         ) {
             let edge = CausalEdge {
-                cause: cause_id.clone(),
-                effect: effect_id.clone(),
+                id: crate::id::CausalEdgeId::new(ulid::Ulid::new().to_string())
+                    .map_err(|e| PersistSnafu { message: e.to_string() }.build())?,
+                source_id: cause_id.clone(),
+                target_id: effect_id.clone(),
+                relationship_type: crate::knowledge::CausalRelationType::Caused,
                 ordering: TemporalOrdering::Before,
                 confidence: causal.confidence,
-                created_at: now,
+                evidence_session_id: None,
+                timestamp: now,
             };
             store.insert_causal_edge(&edge).map_err(|e| {
                 PersistSnafu {

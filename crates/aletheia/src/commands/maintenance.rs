@@ -190,6 +190,7 @@ pub(crate) fn build_config(
             enabled: settings.knowledge_maintenance_enabled,
             auto_dream: Default::default(),
         },
+        propose_rules: Default::default(),
         cron: aletheia_oikonomos::cron::CronConfig {
             evolution: aletheia_oikonomos::cron::CronEvolutionConfig {
                 enabled: settings.cron_tasks.evolution.enabled,
