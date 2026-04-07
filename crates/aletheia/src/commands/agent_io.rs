@@ -2,6 +2,7 @@
 
 use std::path::PathBuf;
 
+use aletheia_koina::secret::SecretString;
 use clap::Args;
 use snafu::prelude::*;
 
@@ -153,7 +154,7 @@ pub(crate) struct InitArgs {
     /// Anthropic API key. Sets credential source to 'api-key'.
     /// Omit to use 'auto' resolution (api-key -> env -> claude-code)
     #[arg(long, env = "ANTHROPIC_API_KEY")]
-    pub api_key: Option<String>,
+    pub api_key: Option<SecretString>,
     /// Authentication mode: none, token (default: none)
     #[arg(long, env = "ALETHEIA_AUTH_MODE")]
     pub auth_mode: Option<String>,
