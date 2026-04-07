@@ -51,7 +51,10 @@ const MAX_PATTERN_LENGTH: usize = 1000;
 
 fn truncate_output(mut output: String) -> String {
     if output.len() > MAX_OUTPUT_BYTES {
-        output.truncate(MAX_OUTPUT_BYTES);
+        // WHY: floor_char_boundary avoids panic when MAX_OUTPUT_BYTES falls
+        // mid-codepoint (CJK, emoji, accented text). Plain .truncate() panics.
+        let safe_boundary = output.floor_char_boundary(MAX_OUTPUT_BYTES);
+        output.truncate(safe_boundary);
         output.push_str("\n[output truncated]");
     }
     output
