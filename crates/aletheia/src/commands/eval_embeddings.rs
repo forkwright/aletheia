@@ -35,10 +35,17 @@ pub(crate) struct EvalEmbeddingsArgs {
     #[arg(short = 'k', long, default_value_t = 5)]
     pub top_k: usize,
 
-    /// Candidate model provider for side-by-side comparison.
+    /// Baseline (current) embedding provider.
     ///
     /// Accepted values mirror the `embedding.provider` config key:
-    /// `mock`, `candle`, `voyage`.
+    /// `candle` (default, local pure-Rust), `voyage` (cloud, API key required).
+    #[arg(long, default_value = "candle")]
+    pub baseline_provider: String,
+
+    /// Candidate model provider for side-by-side comparison.
+    ///
+    /// When set, the candidate must match or exceed baseline Recall@K to pass.
+    /// Accepted values: `candle`, `voyage`.
     #[arg(long)]
     pub candidate_provider: Option<String>,
 
@@ -220,11 +227,15 @@ pub(crate) fn run(args: EvalEmbeddingsArgs) -> Result<()> {
         snafu::whatever!("corpus is empty — provide at least one (id, text) entry");
     }
 
-    // Build baseline provider (always mock for now; real providers need a
-    // running instance, which is outside the eval gate scope).
-    let baseline_config = EmbeddingConfig::default();
-    let baseline = create_provider(&baseline_config)
-        .whatever_context("failed to create baseline embedding provider")?;
+    // Build baseline provider.
+    let baseline_config = EmbeddingConfig {
+        provider: args.baseline_provider.clone(),
+        ..EmbeddingConfig::default()
+    };
+    let baseline = create_provider(&baseline_config).whatever_context(format!(
+        "failed to create baseline embedding provider '{}'",
+        args.baseline_provider
+    ))?;
 
     // Build optional candidate provider.
     let candidate_config = args.candidate_provider.as_deref().map(|p| EmbeddingConfig {

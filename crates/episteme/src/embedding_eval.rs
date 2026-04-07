@@ -137,7 +137,7 @@ impl EvalDataset {
     pub fn from_jsonl_file(path: &std::path::Path) -> EvalResult<Self> {
         let contents = std::fs::read_to_string(path).map_err(|e| {
             ParseFailedSnafu {
-                line: 0,
+                line: 0_usize,
                 message: format!("cannot read {}: {e}", path.display()),
             }
             .build()
