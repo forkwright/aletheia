@@ -28,6 +28,8 @@ pub mod sandbox;
 pub mod testing;
 /// Tool definition, parameter schema, and executor trait.
 pub mod types;
+/// Gnomon tool validation contracts for pre/post-dispatch validation.
+pub mod validation;
 
 #[cfg(test)]
 mod assertions {
