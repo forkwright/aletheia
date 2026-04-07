@@ -141,8 +141,6 @@ pub(crate) fn tools_by_duration(tools: &[ToolStat]) -> Vec<&ToolStat> {
     sorted
 }
 
-
-
 /// Formats a delta value with + or − prefix.
 pub(crate) fn format_delta(delta: i64) -> String {
     if delta >= 0 {

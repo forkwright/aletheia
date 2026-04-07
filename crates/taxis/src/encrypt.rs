@@ -130,8 +130,6 @@ fn hex_digit(b: u8) -> Option<u8> {
     }
 }
 
-
-
 /// Generate a new random primary key and write it to the given path.
 ///
 /// Creates parent directories and sets file permissions to 0600.

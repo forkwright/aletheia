@@ -6,8 +6,6 @@ use rusqlite::Connection;
 use snafu::ResultExt;
 use tracing::{info, instrument, warn};
 
-
-
 use crate::error::{self, Result};
 
 /// Validate a backup path for safe SQL interpolation and optional directory containment.

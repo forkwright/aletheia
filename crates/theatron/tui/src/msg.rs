@@ -200,15 +200,6 @@ pub enum Msg {
     },
     StreamError(String),
 
-
-
-
-
-
-
-
-
-
     MemoryOpen,
     MemoryClose,
     MemoryTabNext,
@@ -241,7 +232,6 @@ pub enum Msg {
     MemoryPageUp,
     MemoryDriftTabNext,
     MemoryDriftTabPrev,
-
 
     EditorClose,
     EditorCharInput(char),
@@ -276,9 +266,6 @@ pub enum Msg {
 
     ShowError(String),
 
-
-
-
     /// Cancel the active LLM turn immediately (Esc / Ctrl+C during streaming).
     CancelTurn,
 
@@ -289,8 +276,6 @@ pub enum Msg {
     SlashCompleteUp,
     SlashCompleteDown,
     SlashCompleteSelect,
-
-
 
     #[expect(
         dead_code,
@@ -304,7 +289,6 @@ pub enum Msg {
     SessionSearchUp,
     SessionSearchDown,
     SessionSearchSelect,
-
 
     #[cfg_attr(
         not(test),

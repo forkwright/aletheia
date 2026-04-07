@@ -52,9 +52,6 @@ pub struct ChatSession {
 #[derive(Debug, Clone, Default)]
 pub struct ChatStore;
 
-
-
-
 /// Format a Unix timestamp as a relative time string.
 #[must_use]
 pub(crate) fn relative_time(timestamp: i64) -> String {
