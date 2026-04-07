@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
-use snafu::Snafu;
+use snafu::{ResultExt, Snafu};
 use tracing::instrument;
 
 use crate::embedding::{create_provider, EmbeddingConfig, EmbeddingProvider};
@@ -70,6 +70,27 @@ pub enum SwapError {
 /// Result type for swap operations.
 pub type SwapResult<T> = std::result::Result<T, SwapError>;
 
+/// Outcome of a swap attempt.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SwapOutcome {
+    /// Name/identifier of the old model.
+    pub old_model: String,
+    /// Name/identifier of the new model.
+    pub new_model: String,
+    /// Achieved Recall@K score for the new model.
+    pub eval_recall_at_k: f64,
+    /// Whether the new model was promoted to active.
+    pub promoted: bool,
+    /// Duration of the swap operation in milliseconds.
+    pub duration_ms: u64,
+    /// Detailed metrics for the new model (if evaluation succeeded).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub new_model_metrics: Option<ModelMetrics>,
+    /// Failure reason (if swap failed).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure_reason: Option<String>,
+}
+
 /// Configuration for embedding model hot-swap.
 #[derive(Debug, Clone)]
 pub struct EmbeddingSwapConfig {
@@ -114,27 +135,6 @@ impl EmbeddingSwapConfig {
     }
 }
 
-/// Result of a swap attempt.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct SwapResult {
-    /// Name/identifier of the old model.
-    pub old_model: String,
-    /// Name/identifier of the new model.
-    pub new_model: String,
-    /// Achieved Recall@K score for the new model.
-    pub eval_recall_at_k: f64,
-    /// Whether the new model was promoted to active.
-    pub promoted: bool,
-    /// Duration of the swap operation in milliseconds.
-    pub duration_ms: u64,
-    /// Detailed metrics for the new model (if evaluation succeeded).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub new_model_metrics: Option<ModelMetrics>,
-    /// Failure reason (if swap failed).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub failure_reason: Option<String>,
-}
-
 /// A sample fact for re-embedding during swap evaluation.
 #[derive(Debug, Clone)]
 pub struct SampleFact {
@@ -158,7 +158,7 @@ pub struct EmbeddingSwapManager {
 
 impl EmbeddingSwapManager {
     /// Create a new swap manager with the given active provider and index.
-    pub fn new(
+    pub(crate) fn new(
         active_provider: Arc<dyn EmbeddingProvider>,
         hnsw_index: Arc<HnswIndex>,
         hnsw_config: HnswConfig,
@@ -186,13 +186,13 @@ impl EmbeddingSwapManager {
         &mut self,
         config: &EmbeddingSwapConfig,
         sample_facts: Vec<SampleFact>,
-    ) -> SwapResult<SwapResult> {
+    ) -> SwapResult<SwapOutcome> {
         let start = Instant::now();
         let old_model_name = self.active_provider.model_name().to_owned();
 
         // Check sample corpus
         if sample_facts.is_empty() {
-            return EmptySampleSnafu.fail();
+            return Err(EmptySampleSnafu.build());
         }
 
         // Step 1: Load new model into a temporary provider
@@ -211,9 +211,7 @@ impl EmbeddingSwapManager {
         // Step 2 & 3: Run evaluation comparing old vs new model
         let eval_result = self
             .run_evaluation(&*self.active_provider, &*new_provider, &dataset, &corpus, config.k)
-            .map_err(|e| SwapError::EvalFailed {
-                source: e,
-                })?;
+            .context(EvalFailedSnafu)?;
 
         let new_metrics = eval_result.candidate.clone();
         let recall_at_k = new_metrics.as_ref().map(|m| m.recall_at_k).unwrap_or(0.0);
@@ -228,7 +226,7 @@ impl EmbeddingSwapManager {
                 threshold = %config.eval_threshold_recall_at_k,
                 "new model failed evaluation threshold"
             );
-            return Ok(SwapResult {
+            return Ok(SwapOutcome {
                 old_model: old_model_name,
                 new_model: new_model_name,
                 eval_recall_at_k: recall_at_k,
@@ -260,7 +258,7 @@ impl EmbeddingSwapManager {
             "embedding model swap completed successfully"
         );
 
-        Ok(SwapResult {
+        Ok(SwapOutcome {
             old_model: old_model_name,
             new_model: new_model_name,
             eval_recall_at_k: recall_at_k,
@@ -283,10 +281,7 @@ impl EmbeddingSwapManager {
 
         create_provider(&embed_config)
             .map(Arc::from)
-            .map_err(|e| SwapError::InitFailed {
-                message: e.to_string(),
-                location: snafu::Location::new(),
-            })
+            .map_err(|e| InitFailedSnafu { message: e.to_string() }.build())
     }
 
     /// Load evaluation dataset from file or build from queries.
@@ -298,9 +293,7 @@ impl EmbeddingSwapManager {
         // If dataset path provided, load from file
         if let Some(ref path) = config.eval_dataset_path {
             let dataset = crate::embedding_eval::EvalDataset::from_jsonl_file(path)
-                .map_err(|e| SwapError::EvalFailed {
-                    source: e,
-                    })?;
+                .context(EvalFailedSnafu)?;
             return Ok(dataset);
         }
 
@@ -374,10 +367,7 @@ impl EmbeddingSwapManager {
         // Re-embed all sample facts with the new model and insert
         for fact in sample_facts {
             let new_embedding = new_provider.embed(&fact.content).map_err(|e| {
-                SwapError::EmbedFailed {
-                    message: e.to_string(),
-                    location: snafu::Location::new(),
-                }
+                EmbedFailedSnafu { message: e.to_string() }.build()
             })?;
 
             // Parse the fact ID as usize for HNSW data_id
@@ -387,10 +377,7 @@ impl EmbeddingSwapManager {
                 .unwrap_or_else(|_| fast_hash(&fact.id));
 
             new_index.insert(&new_embedding, data_id).map_err(|e| {
-                SwapError::HnswIndex {
-                    message: e.to_string(),
-                    location: snafu::Location::new(),
-                }
+                HnswIndexSnafu { message: e.to_string() }.build()
             })?;
         }
 
@@ -411,7 +398,7 @@ impl EmbeddingSwapManager {
     }
 
     /// Get a reference to the HNSW index.
-    pub fn hnsw_index(&self) -> &HnswIndex {
+    pub(crate) fn hnsw_index(&self) -> &HnswIndex {
         &self.hnsw_index
     }
 }
@@ -464,8 +451,8 @@ mod tests {
     }
 
     #[test]
-    fn swap_result_serialization() {
-        let result = SwapResult {
+    fn swap_outcome_serialization() {
+        let outcome = SwapOutcome {
             old_model: "old-model".to_owned(),
             new_model: "new-model".to_owned(),
             eval_recall_at_k: 0.85,
@@ -475,7 +462,7 @@ mod tests {
             failure_reason: None,
         };
 
-        let json = serde_json::to_string(&result).expect("serialize");
+        let json = serde_json::to_string(&outcome).expect("serialize");
         assert!(json.contains("old-model"));
         assert!(json.contains("new-model"));
         assert!(json.contains("0.85"));
