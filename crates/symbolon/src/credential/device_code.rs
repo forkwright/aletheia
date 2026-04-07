@@ -256,7 +256,10 @@ async fn poll_token_endpoint(
     let start_time = std::time::Instant::now();
     let expires_after = Duration::from_secs(expires_in_secs);
 
-    let mut current_interval = Duration::from_secs(interval_secs);
+    // WHY: clamp server-provided interval to prevent resource exhaustion
+    // from malicious servers returning interval: 0 (RFC 8628 §3.4, #2784).
+    let clamped_interval = interval_secs.clamp(5, 300);
+    let mut current_interval = Duration::from_secs(clamped_interval);
 
     loop {
         // Check if we've exceeded the expiration time
