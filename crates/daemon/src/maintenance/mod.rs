@@ -19,6 +19,29 @@ pub use knowledge::{
 pub use retention::{RetentionConfig, RetentionExecutor, RetentionSummary};
 pub use trace_rotation::{RotationReport, TraceRotationConfig, TraceRotator};
 
+/// Configuration for the rule proposal generation task.
+#[derive(Debug, Clone)]
+pub struct ProposeRulesConfig {
+    /// Whether the rule proposal task is enabled.
+    pub enabled: bool,
+    /// Directory where `rule_proposals.toml` is written.
+    ///
+    /// Defaults to `instance/data` resolved from `ALETHEIA_ROOT`.
+    pub data_dir: std::path::PathBuf,
+}
+
+impl Default for ProposeRulesConfig {
+    fn default() -> Self {
+        let root = std::env::var("ALETHEIA_ROOT")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|_| std::path::PathBuf::from("instance"));
+        Self {
+            enabled: false,
+            data_dir: root.join("data"),
+        }
+    }
+}
+
 /// Aggregated maintenance configuration for all daemon tasks.
 #[derive(Debug, Clone, Default)]
 pub struct MaintenanceConfig {
@@ -34,4 +57,6 @@ pub struct MaintenanceConfig {
     pub knowledge_maintenance: KnowledgeMaintenanceConfig,
     /// Cron task configuration (evolution, reflection, graph cleanup).
     pub cron: crate::cron::CronConfig,
+    /// Rule proposal generation from observed patterns.
+    pub propose_rules: ProposeRulesConfig,
 }

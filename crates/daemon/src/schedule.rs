@@ -117,6 +117,8 @@ pub enum BuiltinTask {
     SelfReflection,
     /// Periodic knowledge graph cleanup: orphan removal and stale entity pruning.
     GraphCleanup,
+    /// Analyze recent session observations and write candidate lint rule proposals.
+    ProposeRules,
 }
 
 impl Schedule {
