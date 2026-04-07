@@ -2,8 +2,14 @@
 //!
 //! Define once here. Never hardcode these values in another crate.
 
-/// Default LLM model identifier.
+/// Default configuration file path relative to instance root.
+pub const DEFAULT_CONFIG_PATH: &str = "config/aletheia.toml";
+
+/// Default LLM model identifier (full form).
 pub const DEFAULT_MODEL: &str = "claude-sonnet-4-20250514";
+
+/// Default LLM model identifier (short form used in config files).
+pub const DEFAULT_MODEL_SHORT: &str = "claude-sonnet-4-6";
 
 /// Default maximum output tokens per LLM response.
 pub const MAX_OUTPUT_TOKENS: u32 = 16_384;
