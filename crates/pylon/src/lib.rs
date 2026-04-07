@@ -15,6 +15,8 @@ pub mod idempotency;
 pub(crate) mod metrics;
 /// Custom Axum middleware layers (CSRF protection, request ID, error enrichment, HTTP metrics).
 pub mod middleware;
+/// Planning verification service backed by dianoia engine.
+pub mod planning_service;
 /// OpenAPI specification generation via utoipa.
 pub(crate) mod openapi;
 /// Axum router construction with CORS, auth, and body-limit layers.

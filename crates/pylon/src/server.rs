@@ -149,6 +149,7 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         shutdown: CancellationToken::new(),
         #[cfg(feature = "knowledge-store")]
         knowledge_store,
+        planning_service: None, // NOTE: initialized when a project workspace is configured
     });
 
     #[cfg(unix)]
