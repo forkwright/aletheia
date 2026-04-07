@@ -381,15 +381,8 @@ pub(crate) fn SessionDetail(
     }
 }
 
-/// Format a token count with K/M suffixes.
 fn format_tokens(count: u32) -> String {
-    if count >= 1_000_000 {
-        format!("{:.1}M", f64::from(count) / 1_000_000.0)
-    } else if count >= 1_000 {
-        format!("{:.1}K", f64::from(count) / 1_000.0)
-    } else {
-        count.to_string()
-    }
+    theatron_core::format::format_tokens(u64::from(count))
 }
 
 fn format_pct(ratio: f64) -> String {

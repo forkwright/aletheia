@@ -115,23 +115,9 @@ impl MetricsState {
         rate
     }
 
-    /// Format a token count as "1.2M", "34.5k", or "34".
+    /// Format a token count as "1.5M", "1.5K", or "34".
     pub(crate) fn format_tokens(tokens: u64) -> String {
-        if tokens >= 1_000_000 {
-            #[expect(
-                clippy::cast_precision_loss,
-                reason = "display formatting; sub-unit precision is not meaningful"
-            )]
-            return format!("{:.1}M", tokens as f64 / 1_000_000.0);
-        }
-        if tokens >= 1_000 {
-            #[expect(
-                clippy::cast_precision_loss,
-                reason = "display formatting; sub-unit precision is not meaningful"
-            )]
-            return format!("{:.1}k", tokens as f64 / 1_000.0);
-        }
-        tokens.to_string()
+        theatron_core::format::format_tokens(tokens)
     }
 
     /// Formatted uptime string: "2h 15m", "45m 30s", or "12s".
@@ -264,7 +250,7 @@ mod tests {
 
     #[test]
     fn format_tokens_kilo() {
-        assert_eq!(MetricsState::format_tokens(1500), "1.5k");
+        assert_eq!(MetricsState::format_tokens(1500), "1.5K");
     }
 
     #[test]
