@@ -190,24 +190,9 @@ impl SessionStore {
     /// Database writes are essential and always proceed, but warnings and
     /// errors are emitted so operators can respond before the disk fills.
     pub(crate) fn check_disk(&self, _operation: &str) {
-        // NOTE: DiskSpaceMonitor removed; this method is now a no-op.
-        // Disk monitoring can be re-added when the daemon integration is implemented.
-                    let mb = available_bytes / (1024 * 1024);
-                    warn!(
-                        available_mb = mb,
-                        operation, "disk space low, database write proceeding"
-                    );
-                }
-                DiskStatus::Critical { available_bytes } => {
-                    let mb = available_bytes / (1024 * 1024);
-                    error!(
-                        available_mb = mb,
-                        operation, "disk space critical, database write proceeding (essential)"
-                    );
-                }
-                _ => {}
-            }
-        }
+        // NOTE: DiskSpaceMonitor removed; disk monitoring is handled by the
+        // daemon's prosoche module. This method retained as a call-site marker
+        // for when per-store disk checks are re-wired.
     }
 
     /// Lightweight liveness check: executes `SELECT 1` against the connection.
