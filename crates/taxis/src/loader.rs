@@ -98,7 +98,20 @@ pub fn load_config_with(oikos: &Oikos, fs: &impl FileSystem) -> Result<AletheiaC
 
     figment = figment.merge(Env::prefixed("ALETHEIA_").split("__"));
 
-    figment.extract().context(FigmentSnafu)
+    // WHY: fall back to defaults if config parsing fails, rather than
+    // refusing to start. A typo in an optional section shouldn't prevent
+    // the server from booting (#2727). The error is logged at error level
+    // so the operator is alerted.
+    match figment.extract() {
+        Ok(config) => Ok(config),
+        Err(figment_err) => {
+            tracing::error!(
+                error = %figment_err,
+                "config parsing failed — falling back to defaults. Fix aletheia.toml to apply your settings."
+            );
+            Ok(AletheiaConfig::default())
+        }
+    }
 }
 
 /// Parse TOML content, decrypt any `enc:` values, and serialize back.
