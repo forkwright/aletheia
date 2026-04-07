@@ -211,6 +211,9 @@ pub struct PipelineConfig {
     /// Per-stage time budgets.
     #[serde(default)]
     pub stage_budget: StageBudget,
+    /// Training data capture configuration.
+    #[serde(default)]
+    pub training: aletheia_mneme::training::TrainingConfig,
 }
 
 impl Default for PipelineConfig {
@@ -219,6 +222,7 @@ impl Default for PipelineConfig {
             history_budget_ratio: 0.6,
             extraction: None,
             stage_budget: StageBudget::default(),
+            training: aletheia_mneme::training::TrainingConfig::default(),
         }
     }
 }
@@ -287,6 +291,8 @@ mod tests {
         let config = PipelineConfig::default();
         assert!((config.history_budget_ratio - 0.6).abs() < f64::EPSILON);
         assert!(config.extraction.is_none());
+        assert!(!config.training.enabled);
+        assert_eq!(config.training.path, "data/training");
     }
 
     #[test]
@@ -305,6 +311,7 @@ mod tests {
         let back: PipelineConfig = serde_json::from_str(&json).unwrap();
         assert!((back.history_budget_ratio - 0.6).abs() < f64::EPSILON);
         assert!(back.extraction.is_none());
+        assert!(!back.training.enabled);
     }
 
     #[test]

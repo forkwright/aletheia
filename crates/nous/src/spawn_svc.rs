@@ -109,10 +109,13 @@ impl SpawnService for SpawnServiceImpl {
             hooks: crate::config::HookConfig::default(),
         };
 
+        // WHY: ephemeral sub-agents do not capture training data — their turns
+        // are internal delegation, not user-facing conversation.
         let pipeline_config = PipelineConfig {
             history_budget_ratio: 0.6,
             extraction: None,
             stage_budget: StageBudget::default(),
+            training: aletheia_mneme::training::TrainingConfig::default(),
         };
 
         let providers = Arc::clone(&self.providers);

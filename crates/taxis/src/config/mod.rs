@@ -54,6 +54,8 @@ pub struct AletheiaConfig {
     pub mcp: McpConfig,
     /// Local LLM provider configuration (vLLM / OpenAI-compatible endpoint).
     pub local_provider: LocalProviderConfig,
+    /// Training data capture configuration.
+    pub training: aletheia_mneme::training::TrainingConfig,
 }
 
 /// Configuration for a local OpenAI-compatible LLM provider (vLLM, etc.).

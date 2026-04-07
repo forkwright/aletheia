@@ -70,6 +70,11 @@ pub use aletheia_graphe::store;
 /// Core types for sessions, messages, usage records, and agent notes.
 pub use aletheia_graphe::types;
 
+// ── Training data capture ─────────────────────────────────────────────
+
+/// Training data capture: append-only JSONL writer for conversation turns.
+pub mod training;
+
 // ── Knowledge pipeline (episteme) ──────────────────────────────────────────
 
 /// Conflict detection pipeline for fact insertion.

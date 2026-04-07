@@ -648,6 +648,7 @@ impl RuntimeBuilder {
                         nous_config,
                         PipelineConfig {
                             extraction: Some(aletheia_mneme::extract::ExtractionConfig::default()),
+                            training: self.config.training.clone(),
                             ..PipelineConfig::default()
                         },
                     )

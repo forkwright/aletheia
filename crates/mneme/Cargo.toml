@@ -30,6 +30,11 @@ aletheia-eidos = { path = "../eidos" }
 aletheia-graphe = { path = "../graphe", default-features = false }
 aletheia-episteme = { path = "../episteme", default-features = false }
 aletheia-krites = { path = "../krites", optional = true }
+jiff = { workspace = true, features = ["serde"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+snafu = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]
 aletheia-episteme = { path = "../episteme", features = ["test-support"] }
