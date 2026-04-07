@@ -7,7 +7,10 @@ use axum::Json;
 use axum::extract::{Path, Query, State};
 use serde::{Deserialize, Serialize};
 
+use aletheia_symbolon::types::Role;
+
 use crate::error::{ApiError, BadRequestSnafu};
+use crate::extract::{Claims, require_nous_access, require_role};
 use crate::state::KnowledgeState;
 
 /// Query parameters for listing facts.
@@ -271,8 +274,13 @@ fn validate_sort_order(sort: &str, order: &str) -> Result<(), ApiError> {
 )]
 pub async fn list_facts(
     State(state): State<KnowledgeState>,
+    claims: Claims,
     Query(mut query): Query<FactsQuery>,
 ) -> Result<Json<FactsResponse>, ApiError> {
+    require_role(&claims, Role::Operator)?;
+    if let Some(ref nous_id) = query.nous_id {
+        require_nous_access(&claims, nous_id)?;
+    }
     use aletheia_mneme::knowledge::EpistemicTier;
 
     query.limit = query.limit.min(MAX_FACTS_LIMIT);
@@ -345,8 +353,10 @@ pub async fn get_fact(
         )
     )]
     State(state): State<KnowledgeState>,
+    claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<FactDetailResponse>, ApiError> {
+    require_role(&claims, Role::Operator)?;
     // WHY: The previous implementation called get_all_facts which hardcoded
     // nous_id: None, causing get_stored_facts to always return an empty Vec
     // (it requires nous_id.is_some() to query the store). Bug #1252.
@@ -388,7 +398,9 @@ pub async fn get_fact(
 )]
 pub async fn list_entities(
     State(state): State<KnowledgeState>,
+    claims: Claims,
 ) -> Result<Json<EntitiesResponse>, ApiError> {
+    require_role(&claims, Role::Operator)?;
     let entities = get_stored_entities(&state);
     Ok(Json(EntitiesResponse { entities }))
 }
@@ -406,8 +418,10 @@ pub async fn list_entities(
 )]
 pub async fn entity_relationships(
     State(state): State<KnowledgeState>,
+    claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<RelationshipsResponse>, ApiError> {
+    require_role(&claims, Role::Operator)?;
     let relationships = get_entity_relationships(&state, &id);
     Ok(Json(RelationshipsResponse { relationships }))
 }
@@ -449,11 +463,30 @@ pub struct GraphCheckReport {
 ///
 /// Runs server-side; avoids the fjall exclusive-lock conflict that occurs when
 /// `aletheia memory check` tries to open the store while the server holds it.
+#[utoipa::path(
+    get,
+    path = "/api/v1/knowledge/check",
+    responses(
+        (status = 200, description = "Graph health check results"),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 503, description = "Knowledge store not available", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
 pub async fn check_graph_health(
     State(state): State<KnowledgeState>,
+    claims: Claims,
 ) -> impl axum::response::IntoResponse {
     use axum::http::StatusCode;
     use axum::response::IntoResponse as _;
+
+    if let Err(e) = require_role(&claims, Role::Operator) {
+        return (
+            axum::http::StatusCode::FORBIDDEN,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        )
+            .into_response();
+    }
 
     #[cfg(feature = "knowledge-store")]
     {

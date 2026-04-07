@@ -609,8 +609,11 @@ pub async fn stream_turn(
     security(("bearer_auth" = []))
 )]
 pub async fn events(
-    _claims: Claims,
+    claims: Claims,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
+    // NOTE: Claims extracted to enforce authentication; actual authorization
+    // checks would be added here if role-based access control is needed.
+    let _ = claims;
     // WHY: emit periodic comment-only events so the connection stays alive and
     // proxies do not close it. Real domain events require a broadcast channel
     // wired into AppState: deferred to issue #1248.
