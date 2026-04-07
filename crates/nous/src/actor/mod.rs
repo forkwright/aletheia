@@ -23,6 +23,7 @@ use aletheia_taxis::oikos::Oikos;
 use crate::bootstrap::BootstrapSection;
 use crate::config::{NousConfig, PipelineConfig};
 use crate::cross::CrossNousEnvelope;
+use crate::drift::DriftDetector;
 use crate::message::{NousLifecycle, NousMessage, NousStatus};
 use crate::session::SessionState;
 
@@ -134,6 +135,8 @@ pub struct NousActor {
     services: ActorServices,
     stores: ActorStores,
     runtime: ActorRuntime,
+    /// Per-session quality drift detectors keyed by session key.
+    drift_detectors: HashMap<String, DriftDetector>,
 }
 
 impl NousActor {
@@ -217,6 +220,7 @@ impl NousActor {
                 last_panic_at: None,
                 consecutive_timeouts: 0,
             },
+            drift_detectors: HashMap::new(),
         }
     }
 
