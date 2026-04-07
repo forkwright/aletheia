@@ -9,6 +9,7 @@ use tracing::{Instrument, debug, error, warn};
 use aletheia_koina::id::{NousId, SessionId};
 use aletheia_organon::types::ToolContext;
 
+use crate::drift::{DriftConfig, DriftDetector, TurnMetrics};
 use crate::pipeline::TurnResult;
 use crate::session::SessionState;
 use crate::stream::TurnStreamEvent;
@@ -39,7 +40,7 @@ impl NousActor {
         self.runtime.active_turn.store(true, Ordering::Release);
     }
 
-    /// Finalize turn: update session tokens, spawn side-effects, reset state.
+    /// Finalize turn: update session tokens, check drift, spawn side-effects, reset state.
     async fn finalize_turn(
         &mut self,
         session_key: &str,
@@ -53,6 +54,12 @@ impl NousActor {
                     .saturating_add(turn_result.usage.input_tokens)
                     .saturating_add(turn_result.usage.output_tokens);
             }
+
+            // WHY: drift detection runs after token accounting but before
+            // side-effect spawning so drift events are available for logging
+            // before any async work begins.
+            self.record_drift_metrics(session_key, turn_result);
+
             self.maybe_spawn_extraction(content, &turn_result.content);
             self.maybe_spawn_skill_analysis(&turn_result.tool_calls, session_key);
             self.maybe_spawn_distillation(session_key).await;
@@ -64,6 +71,44 @@ impl NousActor {
             self.channel.status = NousLifecycle::Idle;
         }
         self.runtime.active_turn.store(false, Ordering::Release);
+    }
+
+    /// Extract quality metrics from a turn result and feed them to the
+    /// per-session drift detector.
+    fn record_drift_metrics(&mut self, session_key: &str, turn_result: &TurnResult) {
+        let total_calls = turn_result.tool_calls.len();
+        let error_calls = turn_result.tool_calls.iter().filter(|tc| tc.is_error).count();
+
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "usize→f64: tool call counts are far below f64 precision limits"
+        )]
+        let tool_error_rate = if total_calls > 0 {
+            error_calls as f64 / total_calls as f64 // kanon:ignore RUST/as-cast
+        } else {
+            0.0
+        };
+
+        let metrics = TurnMetrics {
+            response_tokens: turn_result.usage.output_tokens,
+            tool_error_rate,
+            // WHY: user_correction detection requires classifying the *next*
+            // user message, which is not available at finalize time. Default
+            // to false; a future hook or the next turn's preprocessing can
+            // retroactively set this via `mark_correction`.
+            user_correction: false,
+            tool_call_count: u32::try_from(total_calls).unwrap_or(u32::MAX),
+            timestamp: jiff::Timestamp::now(),
+        };
+
+        let detector = self
+            .drift_detectors
+            .entry(session_key.to_owned())
+            .or_insert_with(|| DriftDetector::new(DriftConfig::default()));
+
+        let _drift_events = detector.record(metrics);
+        // NOTE: drift events are already logged at warn level by the detector.
+        // Future work: store drift_events in session metadata for API exposure.
     }
 
     /// # Cancel safety

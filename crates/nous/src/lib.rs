@@ -23,6 +23,8 @@ pub mod cross;
 pub mod degraded_mode;
 /// Distillation trigger logic and orchestration.
 pub mod distillation;
+/// Quality drift detection: rolling-window metrics with z-score deviation alerts.
+pub mod drift;
 /// Nous-specific error types.
 pub mod error;
 /// LLM execution stage: sends the assembled prompt to the provider.
