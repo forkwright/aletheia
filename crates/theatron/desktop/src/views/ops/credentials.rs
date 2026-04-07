@@ -1,7 +1,4 @@
 //! Credential management panel: display, validate, rotate, add, and remove credentials.
-//!
-//! TODO(#2606): move CredentialApiEntry and related request types to theatron-core
-//! when /api/system/credentials is implemented in pylon.
 
 use dioxus::prelude::*;
 
@@ -11,73 +8,37 @@ use crate::state::credentials::{
     CredentialEntry, CredentialRole, CredentialStore, ValidationStatus, mask_key,
 };
 use crate::state::fetch::FetchState;
+use theatron_core::api::types::{AddCredentialRequest, CredentialApiEntry, CredentialsListResponse};
 
-// --- API types (local until pylon implements the endpoint) ---
-
-#[derive(Debug, Clone, serde::Deserialize)]
-struct CredentialsListResponse {
-    #[serde(default)]
-    credentials: Vec<CredentialApiEntry>,
-}
-
-#[derive(Debug, Clone, serde::Deserialize)]
-struct CredentialApiEntry {
-    #[serde(default)]
-    id: String,
-    #[serde(default)]
-    provider: String,
-    #[serde(default)]
-    role: String,
-    /// Key value from API. Must be masked before use if it is not already masked.
-    #[serde(default)]
-    masked_key: String,
-    #[serde(default)]
-    status: String,
-    #[serde(default)]
-    last_validated: Option<String>,
-    #[serde(default)]
-    requests_today: u64,
-    #[serde(default)]
-    tokens_today: u64,
-}
-
-impl CredentialApiEntry {
-    fn into_entry(self) -> CredentialEntry {
-        let role = if self.role == "primary" {
+impl From<CredentialApiEntry> for CredentialEntry {
+    fn from(entry: CredentialApiEntry) -> Self {
+        let role = if entry.role == "primary" {
             CredentialRole::Primary
         } else {
             CredentialRole::Backup
         };
-        let status = match self.status.as_str() {
+        let status = match entry.status.as_str() {
             "valid" => ValidationStatus::Valid,
             "expired" => ValidationStatus::Expired,
             _ => ValidationStatus::Untested,
         };
         // SAFETY: mask any full key value before it enters reactive state.
-        let masked = if self.masked_key.starts_with("...") {
-            self.masked_key
+        let masked = if entry.masked_key.starts_with("...") {
+            entry.masked_key
         } else {
-            mask_key(&self.masked_key)
+            mask_key(&entry.masked_key)
         };
-        CredentialEntry {
-            id: self.id,
-            provider: self.provider,
+        Self {
+            id: entry.id,
+            provider: entry.provider,
             role,
             masked_key: masked,
             status,
-            last_validated: self.last_validated,
-            requests_today: self.requests_today,
-            tokens_today: self.tokens_today,
+            last_validated: entry.last_validated,
+            requests_today: entry.requests_today,
+            tokens_today: entry.tokens_today,
         }
     }
-}
-
-#[derive(Debug, Clone, serde::Serialize)]
-struct AddCredentialRequest {
-    provider: String,
-    /// Raw key -- cleared from reactive state immediately after spawn.
-    key: String,
-    role: String,
 }
 
 // --- Styles ---
@@ -291,7 +252,7 @@ pub(crate) fn CredentialsView() -> Element {
                             let entries = data
                                 .credentials
                                 .into_iter()
-                                .map(CredentialApiEntry::into_entry)
+                                .map(CredentialEntry::from)
                                 .collect();
                             fetch_state.set(FetchState::Loaded(CredentialStore { entries }));
                         }
