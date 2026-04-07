@@ -1,3 +1,9 @@
+#![expect(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "test assertions: panics on failure produce clear test output"
+)]
+
 use std::sync::Arc;
 
 use axum::body::Body;
@@ -46,7 +52,7 @@ async fn expired_token_rejected() {
         jti: "expired-jti".to_owned(),
         kind: TokenKind::Access,
     };
-    let token = test_jwt_manager().encode_claims(&claims).unwrap();
+    let token = test_jwt_manager().encode_claims(&claims).expect("encode_claims should succeed with valid claims");
 
     let req = Request::builder()
         .method("POST")

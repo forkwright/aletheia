@@ -1,3 +1,9 @@
+#![expect(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "test helpers: request builders and infallible setup; panics are acceptable test failures"
+)]
+
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -157,7 +163,7 @@ pub(super) fn json_request(
 
     match body {
         Some(b) => builder
-            .body(Body::from(serde_json::to_vec(&b).unwrap()))
+            .body(Body::from(serde_json::to_vec(&b).expect("JSON serialization should not fail")))
             .unwrap(),
         None => builder.body(Body::empty()).unwrap(),
     }
@@ -177,7 +183,7 @@ pub(super) fn authed_request(
 
     match body {
         Some(b) => builder
-            .body(Body::from(serde_json::to_vec(&b).unwrap()))
+            .body(Body::from(serde_json::to_vec(&b).expect("JSON serialization should not fail")))
             .unwrap(),
         None => builder.body(Body::empty()).unwrap(),
     }
@@ -202,15 +208,15 @@ pub(super) fn authed_delete(uri: &str) -> Request<Body> {
 pub(super) async fn body_json(response: axum::response::Response) -> serde_json::Value {
     let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
-        .unwrap();
-    serde_json::from_slice(&bytes).unwrap()
+        .expect("body bytes should be readable");
+    serde_json::from_slice(&bytes).expect("response body should be valid JSON")
 }
 
 pub(super) async fn body_string(response: axum::response::Response) -> String {
     let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
-        .unwrap();
-    String::from_utf8(bytes.to_vec()).unwrap()
+        .expect("body bytes should be readable");
+    String::from_utf8(bytes.to_vec()).expect("response body should be valid UTF-8")
 }
 
 pub(super) async fn create_test_session(app: &axum::Router) -> serde_json::Value {
@@ -222,7 +228,7 @@ pub(super) async fn create_test_session(app: &axum::Router) -> serde_json::Value
             "session_key": "test-session"
         })),
     );
-    let resp = app.clone().oneshot(req).await.unwrap();
+    let resp = app.clone().oneshot(req).await.expect("POST /sessions request should succeed");
     assert_eq!(resp.status(), StatusCode::CREATED);
     body_json(resp).await
 }

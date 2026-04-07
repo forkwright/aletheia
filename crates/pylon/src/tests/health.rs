@@ -2,6 +2,12 @@
     clippy::indexing_slicing,
     reason = "test: vec/JSON indices valid after asserting len or known structure"
 )]
+#![expect(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "test assertions: panics on failure produce clear test output"
+)]
+
 use std::sync::Arc;
 
 use axum::body::Body;
@@ -90,9 +96,9 @@ async fn metrics_returns_200_with_prometheus_content_type() {
     let content_type = resp
         .headers()
         .get("content-type")
-        .unwrap()
+        .expect("metrics response must have content-type header")
         .to_str()
-        .unwrap();
+        .expect("content-type header must be valid UTF-8");
     assert!(
         content_type.contains("text/plain"),
         "expected text/plain content type, got: {content_type}"
@@ -176,7 +182,7 @@ async fn openapi_spec_returns_valid_json() {
 
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
-    let version = body["openapi"].as_str().unwrap();
+    let version = body["openapi"].as_str().expect("openapi spec must have a string 'openapi' version field");
     assert!(
         version.starts_with("3."),
         "expected OpenAPI 3.x, got {version}"
@@ -196,7 +202,7 @@ async fn openapi_spec_has_all_paths() {
         .unwrap();
 
     let body = body_json(resp).await;
-    let paths = body["paths"].as_object().unwrap();
+    let paths = body["paths"].as_object().expect("openapi spec must have a 'paths' object");
     assert!(paths.contains_key("/api/health"));
     assert!(paths.contains_key("/api/v1/sessions"));
     assert!(paths.contains_key("/api/v1/sessions/{id}"));
@@ -235,7 +241,7 @@ async fn openapi_spec_has_schemas() {
         .unwrap();
 
     let body = body_json(resp).await;
-    let schemas = body["components"]["schemas"].as_object().unwrap();
+    let schemas = body["components"]["schemas"].as_object().expect("openapi spec must have components.schemas object");
     assert!(schemas.contains_key("SessionResponse"));
     assert!(schemas.contains_key("ErrorResponse"));
     assert!(schemas.contains_key("HealthResponse"));

@@ -2,6 +2,12 @@
     clippy::indexing_slicing,
     reason = "test: vec/JSON indices valid after asserting len or known structure"
 )]
+#![expect(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "test assertions: panics on failure produce clear test output"
+)]
+
 use std::sync::Arc;
 
 use axum::http::StatusCode;
@@ -14,7 +20,7 @@ async fn send_message_returns_sse_content_type() {
     let (state, _dir) = test_state().await;
     let router = build_router(Arc::clone(&state), &test_security_config());
     let created = create_test_session(&router).await;
-    let id = created["id"].as_str().unwrap();
+    let id = created["id"].as_str().expect("created session must have a string id");
 
     let req = authed_request(
         "POST",
@@ -39,7 +45,7 @@ async fn send_message_stream_contains_events() {
     let (state, _dir) = test_state().await;
     let router = build_router(Arc::clone(&state), &test_security_config());
     let created = create_test_session(&router).await;
-    let id = created["id"].as_str().unwrap();
+    let id = created["id"].as_str().expect("created session must have a string id");
 
     let req = authed_request(
         "POST",
@@ -81,7 +87,7 @@ async fn send_message_unknown_session_returns_404() {
 async fn send_empty_message_returns_400() {
     let (router, _dir) = app().await;
     let created = create_test_session(&router).await;
-    let id = created["id"].as_str().unwrap();
+    let id = created["id"].as_str().expect("created session must have a string id");
 
     let req = authed_request(
         "POST",
@@ -98,7 +104,7 @@ async fn send_message_stores_in_history() {
     let (state, _dir) = test_state().await;
     let router = build_router(Arc::clone(&state), &test_security_config());
     let created = create_test_session(&router).await;
-    let id = created["id"].as_str().unwrap();
+    let id = created["id"].as_str().expect("created session must have a string id");
 
     let req = authed_request(
         "POST",
@@ -117,7 +123,7 @@ async fn send_message_stores_in_history() {
         .unwrap();
 
     let body = body_json(resp).await;
-    let messages = body["messages"].as_array().unwrap();
+    let messages = body["messages"].as_array().expect("response must have a 'messages' array");
     assert!(messages.len() >= 2, "should have user + assistant messages");
 
     assert_eq!(messages[0]["role"], "user");
@@ -150,7 +156,7 @@ async fn send_message_no_provider_returns_error() {
     let (state, _dir) = test_state_with_provider(false).await;
     let router = build_router(Arc::clone(&state), &test_security_config());
     let created = create_test_session(&router).await;
-    let id = created["id"].as_str().unwrap();
+    let id = created["id"].as_str().expect("created session must have a string id");
 
     let req = authed_request(
         "POST",
@@ -167,7 +173,7 @@ async fn send_message_routes_through_actor() {
     let (state, _dir) = test_state().await;
     let router = build_router(Arc::clone(&state), &test_security_config());
     let created = create_test_session(&router).await;
-    let id = created["id"].as_str().unwrap();
+    let id = created["id"].as_str().expect("created session must have a string id");
 
     let req = authed_request(
         "POST",
