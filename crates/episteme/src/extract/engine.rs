@@ -18,6 +18,7 @@ use super::types::PersistResult;
 use super::types::{
     ConversationMessage, Extraction, ExtractionConfig, ExtractionPrompt, RefinedExtraction,
 };
+use crate::causal;
 #[cfg(feature = "mneme-engine")]
 use super::utils::slugify;
 use super::utils::strip_code_fences;
@@ -170,6 +171,7 @@ Rules:
                 },
                 turn_type: refinement::TurnType::Discussion,
                 facts_filtered: 0,
+                causal_signal: None,
             });
         }
 
@@ -220,10 +222,18 @@ Rules:
             })
             .collect();
 
+        // WHY: detect causal language in the combined session text so callers
+        // can trigger causal edge extraction without re-scanning the text.
+        let causal_signal = causal::detect_causal_cue(&combined);
+        if causal_signal.is_some() {
+            tracing::debug!("causal signal detected in session text during extraction refinement");
+        }
+
         Ok(RefinedExtraction {
             extraction,
             turn_type,
             facts_filtered: filtered_count,
+            causal_signal,
         })
     }
 

@@ -15,6 +15,8 @@ pub use aletheia_eidos::knowledge;
 /// Error types (re-exported from `graphe`).
 pub use aletheia_graphe::error;
 
+/// Causal edge store: directed graph of causal relationships between facts.
+pub mod causal;
 /// Conflict detection pipeline for fact insertion.
 pub mod conflict;
 /// LLM-driven fact consolidation for knowledge maintenance.
