@@ -144,6 +144,12 @@ pub struct HookConfig {
     pub turn_token_budget: u64,
     /// Enable the scope enforcement hook (priority 20).
     pub scope_enforcement_enabled: bool,
+    /// Enable the correction hooks (injector priority 30, detector priority 90).
+    ///
+    /// When enabled, operator corrections ("don't", "always", "never", etc.)
+    /// are detected, persisted to the agent workspace, and injected into
+    /// the system prompt on subsequent turns.
+    pub correction_hooks_enabled: bool,
     /// Enable the audit logging hook (priority 100).
     pub audit_logging_enabled: bool,
 }
@@ -154,6 +160,7 @@ impl Default for HookConfig {
             cost_control_enabled: true,
             turn_token_budget: 0,
             scope_enforcement_enabled: true,
+            correction_hooks_enabled: true,
             audit_logging_enabled: true,
         }
     }
