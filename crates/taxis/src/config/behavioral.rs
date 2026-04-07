@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 /// Controls when and how context distillation triggers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 #[non_exhaustive]
 pub struct DistillationConfig {
     /// Token count that triggers distillation.
@@ -62,6 +63,7 @@ impl Default for DistillationConfig {
 /// All durations are in seconds for TOML compatibility.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 #[non_exhaustive]
 pub struct AgentHealthConfig {
     /// Interval between health checks (seconds).
@@ -107,6 +109,7 @@ impl Default for AgentHealthConfig {
 /// Controls various capacity and size limits.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 #[non_exhaustive]
 pub struct CapacityConfig {
     /// Maximum number of concurrent agent sessions.
@@ -149,6 +152,7 @@ impl Default for CapacityConfig {
 /// Controls retry and backoff behavior for LLM calls and operations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 #[non_exhaustive]
 pub struct RetryConfig {
     /// Maximum retry attempts.
@@ -179,6 +183,7 @@ impl Default for RetryConfig {
 /// Default model identifiers for different task types.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 #[non_exhaustive]
 pub struct ModelRoutingConfig {
     /// Default model for standard operations.
@@ -229,6 +234,7 @@ impl Default for ModelRoutingConfig {
 /// default_model = "claude-sonnet-4-20250514"
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 #[non_exhaustive]
 pub struct BehavioralConfig {
     /// Distillation triggers and thresholds.

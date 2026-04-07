@@ -27,6 +27,7 @@ use aletheia_koina::secret::SecretString;
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct AletheiaConfig {
     /// Agent definitions and shared defaults.
     pub agents: AgentsConfig,
@@ -66,6 +67,7 @@ pub struct AletheiaConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct LocalProviderConfig {
     /// Whether the local provider is enabled.
     pub enabled: bool,
@@ -135,6 +137,7 @@ pub enum AgencyLevel {
 /// Per-model pricing rates for cost estimation in metrics.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct ModelPricing {
     /// Cost per million input tokens (USD).
     pub input_cost_per_mtok: f64,
@@ -145,6 +148,7 @@ pub struct ModelPricing {
 /// Maps a channel source to a nous agent.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct ChannelBinding {
     /// Channel type (e.g., "signal").
     pub channel: String,
@@ -165,6 +169,7 @@ fn default_session_pattern() -> String {
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct AgentsConfig {
     /// Shared defaults applied to every agent unless overridden per-agent.
     pub defaults: AgentDefaults,
@@ -179,6 +184,7 @@ pub struct AgentsConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct RecallWeights {
     /// Temporal decay weight (0.0--1.0).
     pub decay: f64,
@@ -213,6 +219,7 @@ impl Default for RecallWeights {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct RecallEngineWeights {
     /// Cosine-similarity weight. Default: 0.35
     pub vector_similarity: f64,
@@ -250,6 +257,7 @@ impl Default for RecallEngineWeights {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct RecallSettings {
     /// Whether semantic recall is enabled for this agent.
     pub enabled: bool,
@@ -291,6 +299,7 @@ impl Default for RecallSettings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct AgentModelDefaults {
     /// Primary model and fallback chain.
     pub model: ModelSpec,
@@ -333,6 +342,7 @@ impl Default for AgentModelDefaults {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct AgentDefaults {
     /// Model and generation settings.
     #[serde(flatten)]
@@ -371,6 +381,7 @@ impl Default for AgentDefaults {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct ModelSpec {
     /// Primary model identifier (e.g. `claude-sonnet-4-6`).
     pub primary: String,
@@ -394,6 +405,7 @@ impl Default for ModelSpec {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct CachingConfig {
     /// Whether prompt caching is enabled.
     pub enabled: bool,
@@ -413,6 +425,7 @@ impl Default for CachingConfig {
 /// Definition of a single nous agent.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct NousDefinition {
     /// Unique agent identifier (matches the `nous/{id}/` directory name).
     pub id: String,
@@ -448,6 +461,7 @@ pub struct NousDefinition {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct GatewayConfig {
     /// TCP port the gateway listens on.
     pub port: u16,
@@ -486,6 +500,7 @@ impl Default for GatewayConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct GatewayAuthConfig {
     /// Auth mode: `"token"` (bearer token), `"none"` (disabled), `"jwt"` (explicit JWT).
     pub mode: String,
@@ -513,6 +528,7 @@ impl Default for GatewayAuthConfig {
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct TlsConfig {
     /// Whether TLS termination is active.
     pub enabled: bool,
@@ -526,6 +542,7 @@ pub struct TlsConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct CorsConfig {
     /// Allowed origins. Empty or `["*"]` means permissive (dev mode).
     pub allowed_origins: Vec<String>,
@@ -546,6 +563,7 @@ impl Default for CorsConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct BodyLimitConfig {
     /// Maximum request body size in bytes.
     pub max_bytes: usize,
@@ -563,6 +581,7 @@ impl Default for BodyLimitConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct CsrfConfig {
     /// Whether CSRF header checking is active.
     pub enabled: bool,
@@ -589,6 +608,7 @@ impl Default for CsrfConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct RateLimitConfig {
     /// Whether rate limiting is active.
     pub enabled: bool,
@@ -615,6 +635,7 @@ impl Default for RateLimitConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct PerUserRateLimitConfig {
     /// Whether per-user rate limiting is active.
     pub enabled: bool,
@@ -653,6 +674,7 @@ impl Default for PerUserRateLimitConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct EmbeddingSettings {
     /// Provider type: "mock", "candle".
     pub provider: String,
@@ -676,6 +698,7 @@ impl Default for EmbeddingSettings {
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct ChannelsConfig {
     /// Signal messenger transport configuration.
     pub signal: SignalConfig,
@@ -685,6 +708,7 @@ pub struct ChannelsConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct SignalConfig {
     /// Whether the Signal channel is active.
     pub enabled: bool,
@@ -705,6 +729,7 @@ impl Default for SignalConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct SignalAccountConfig {
     /// Whether this account is active.
     pub enabled: bool,
@@ -731,6 +756,7 @@ impl Default for SignalAccountConfig {
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct DataConfig {
     /// Session and message retention policies.
     pub retention: RetentionConfig,
