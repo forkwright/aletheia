@@ -19,7 +19,7 @@ pub(crate) struct AddNousArgs {
     pub provider: String,
 
     /// Model identifier.
-    #[arg(long, default_value = "claude-sonnet-4-20250514")]
+    #[arg(long, default_value = aletheia_koina::defaults::DEFAULT_MODEL)]
     pub model: String,
 }
 

@@ -127,7 +127,7 @@ pub struct RoleTemplate {
 }
 
 const OPUS_MODEL: &str = "claude-opus-4-20250514";
-const SONNET_MODEL: &str = "claude-sonnet-4-20250514";
+const SONNET_MODEL: &str = aletheia_koina::defaults::DEFAULT_MODEL;
 const HAIKU_MODEL: &str = "claude-haiku-4-5-20251001";
 
 fn coder_template() -> RoleTemplate {

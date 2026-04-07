@@ -2,6 +2,9 @@
 //!
 //! Define once here. Never hardcode these values in another crate.
 
+/// Default LLM model identifier.
+pub const DEFAULT_MODEL: &str = "claude-sonnet-4-20250514";
+
 /// Default maximum output tokens per LLM response.
 pub const MAX_OUTPUT_TOKENS: u32 = 16_384;
 
