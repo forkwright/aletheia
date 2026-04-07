@@ -1,6 +1,6 @@
 # Aletheia C Footprint Audit
 
-> As of v0.13.57 (April 2026). Run `cargo tree --prefix none | grep -i 'sys '` to verify.
+> As of v0.13.66+ (April 2026). Run `cargo tree --prefix none | grep -i 'sys '` to verify.
 
 ## C Dependencies
 
