@@ -40,7 +40,7 @@ use commands::session_export::SessionExportArgs;
 use commands::tls;
 
 #[derive(Debug, Parser)]
-#[command(name = "aletheia", about = "Cognitive agent runtime", version)]
+#[command(name = "aletheia", about = "Cognitive agent runtime. Run with no subcommand to start the HTTP server.", version)]
 struct Cli {
     /// Path to instance root directory
     #[arg(short = 'r', long)]
@@ -72,6 +72,8 @@ struct Cli {
 
 #[derive(Debug, Clone, Subcommand)]
 enum Command {
+    /// Start the HTTP server (same as running with no subcommand)
+    Serve,
     /// Check if the server is running
     Health(HealthArgs),
     /// Manage database backups
@@ -158,8 +160,12 @@ async fn main() -> Result<()> {
 
     let cli = Cli::parse();
 
-    if let Some(cmd) = cli.command {
-        return dispatch_command(cmd, cli.instance_root.as_ref()).await;
+    // WHY: `Serve` is an explicit alias for running with no subcommand.
+    // Intercept it here before dispatch_command so it follows the same
+    // daemon/foreground code path as the default (no subcommand) case.
+    match cli.command {
+        Some(Command::Serve) | None => {}
+        Some(cmd) => return dispatch_command(cmd, cli.instance_root.as_ref()).await,
     }
 
     if cli.daemon && std::env::var("_ALETHEIA_DAEMON").is_err() {
@@ -252,6 +258,9 @@ async fn dispatch_command(cmd: Command, instance_root: Option<&PathBuf>) -> Resu
         Command::AddNous(a) => commands::add_nous::run(instance_root, &a)
             .await
             .map_err(Into::into),
+        // NOTE: Serve is intercepted in main() before dispatch_command is called.
+        // This arm exists only for match exhaustiveness.
+        Command::Serve => unreachable!("Serve handled in main"),
     }
 }
 

@@ -16,21 +16,32 @@ pub(crate) async fn do_daemon() -> Result<()> {
         .filter(|a| a != "--daemon")
         .collect();
 
+    // WHY: Redirect stderr to a crash log so daemon startup failures are
+    // visible. Previously stdout+stderr were both /dev/null, so if the child
+    // crashed (e.g., schema version mismatch), the error was lost entirely.
+    let instance_root = daemon_instance_root();
+    tokio::fs::create_dir_all(&instance_root)
+        .await
+        .with_context(|| format!("failed to create {}", instance_root.display()))?;
+    let crash_log_path = instance_root.join("logs").join("daemon-stderr.log");
+    if let Some(parent) = crash_log_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let stderr_file = std::fs::File::create(&crash_log_path)
+        .context("failed to create daemon stderr log")?;
+
     let child = std::process::Command::new(&exe)
         .args(&child_args)
         .env("_ALETHEIA_DAEMON", "1")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
+        .stderr(std::process::Stdio::from(stderr_file))
         .spawn()
         .context("failed to spawn background process")?;
 
     let pid = child.id();
 
-    let instance_root = daemon_instance_root();
-    tokio::fs::create_dir_all(&instance_root)
-        .await
-        .with_context(|| format!("failed to create {}", instance_root.display()))?;
+    // NOTE: instance_root already created above (before spawn, for stderr log).
     let pid_path = instance_root.join("aletheia.pid");
     tokio::fs::write(&pid_path, pid.to_string())
         .await
