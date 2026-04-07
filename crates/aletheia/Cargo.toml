@@ -84,8 +84,7 @@ rcgen = { workspace = true }
 # time::OffsetDateTime. rcgen already depends on time transitively, so this does
 # not add a new crate to the binary — it only pins our access to the same version.
 time = "0.3"
-owo-colors = "4"
-supports-color = "3"
+
 toml = { workspace = true }
 toml_edit = "0.25"
 

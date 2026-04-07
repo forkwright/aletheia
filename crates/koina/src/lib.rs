@@ -22,6 +22,7 @@ pub mod event;
 /// Restricted filesystem helpers for writing sensitive files.
 pub mod fs;
 /// Shared HTTP constants (content types, auth prefix, API paths).
+pub mod color;
 pub mod http;
 /// Newtype wrappers for domain identifiers ([`id::NousId`], [`id::SessionId`], [`id::TurnId`], [`id::ToolName`]).
 pub mod id;

@@ -72,8 +72,7 @@ jiff = { workspace = true }
 # Text diffing (patience, LCS, Myers algorithms)
 similar = "3"
 
-# Cross-platform URL/file opening
-open = "5"
+
 
 # Image loading and processing — used for inline image preview in tool results
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
