@@ -291,6 +291,16 @@ impl TaskRunner {
             self.register_knowledge_maintenance_tasks();
         }
 
+        // WHY: lesson extraction runs daily to learn from training data
+        // independently of knowledge maintenance (no executor required).
+        self.register_builtin(
+            "lesson-extraction",
+            "Lesson extraction from training data",
+            Schedule::Cron("0 0 5 * * *".to_owned()),
+            BuiltinTask::LessonExtraction,
+            true,
+        );
+
         self.register_cron_tasks(&config.cron);
     }
 

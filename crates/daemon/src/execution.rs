@@ -291,6 +291,7 @@ pub(crate) async fn execute_builtin(
         BuiltinTask::GraphCleanup => {
             graph_cleanup::execute_graph_cleanup(nous_id, knowledge_executor).await
         }
+        BuiltinTask::LessonExtraction => execute_lesson_extraction().await,
         BuiltinTask::SelfPrompt => {
             // NOTE: SelfPrompt is dispatched inline by the runner after
             // extracting a follow-up from prosoche output. This arm handles
@@ -490,4 +491,67 @@ async fn execute_knowledge_task(
             report.items_processed, report.items_modified, report.duration_ms
         )),
     })
+}
+
+/// Execute lesson extraction from training data JSONL files.
+///
+/// Reads `workflow/training/violations.jsonl` and `lint.jsonl`, extracts
+/// patterns from PR outcomes, and logs the results. The training data path
+/// is resolved relative to the current working directory.
+///
+/// WHY: blocking I/O (file reads + JSON parsing) is done on the blocking
+/// pool to avoid starving the async scheduler.
+async fn execute_lesson_extraction() -> Result<ExecutionResult> {
+    let result = tokio::task::spawn_blocking(|| {
+        // WHY: training data lives at repo root under workflow/training/.
+        // The daemon runs from the instance directory, so we look for the
+        // training dir relative to cwd first, then fall back to an absolute path.
+        let candidates = [
+            std::path::PathBuf::from("workflow/training"),
+            std::path::PathBuf::from("../workflow/training"),
+        ];
+
+        let training_dir = candidates.iter().find(|p| p.exists());
+
+        let Some(training_dir) = training_dir else {
+            return Ok(ExecutionResult {
+                success: true,
+                output: Some("skipped: no training data directory found".to_owned()),
+            });
+        };
+
+        let extraction =
+            aletheia_episteme::extract::training::extract_from_training_data(training_dir)
+                .context(error::MaintenanceIoSnafu {
+                    context: "lesson extraction",
+                })?;
+
+        let lesson_count = extraction.lessons.len();
+        let facts = aletheia_episteme::extract::training::lessons_to_facts(&extraction.lessons);
+
+        tracing::info!(
+            violations_read = extraction.violations_read,
+            lint_summaries_read = extraction.lint_summaries_read,
+            lessons_extracted = lesson_count,
+            facts_produced = facts.len(),
+            records_skipped = extraction.records_skipped,
+            "lesson extraction complete"
+        );
+
+        Ok(ExecutionResult {
+            success: true,
+            output: Some(format!(
+                "{lesson_count} lessons extracted, {} facts produced ({} violations, {} lint summaries read)",
+                facts.len(),
+                extraction.violations_read,
+                extraction.lint_summaries_read,
+            )),
+        })
+    })
+    .await
+    .context(error::BlockingJoinSnafu {
+        context: "lesson extraction",
+    })??;
+
+    Ok(result)
 }
