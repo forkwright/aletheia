@@ -12,13 +12,6 @@ fn test_render(md: &str) -> Vec<Line<'static>> {
     lines
 }
 
-#[expect(dead_code, reason = "test helper available for future code/list tests")]
-fn mk_render(md: &str) -> (Vec<Line<'static>>, Vec<MdLink>) {
-    let theme = Theme::detect();
-    let hl = Highlighter::new(theme.mode);
-    render(md, 80, &theme, &hl)
-}
-
 /// Render and return both the lines and the theme so callers can assert
 /// against theme-derived colors rather than hardcoding Rgb values.
 fn test_render_with_theme(md: &str) -> (Vec<Line<'static>>, Theme) {
@@ -36,15 +29,6 @@ fn line_text(line: &Line) -> String {
 /// Concatenate all lines with newlines as a single string.
 fn all_lines_text(lines: &[Line]) -> String {
     lines.iter().map(line_text).collect::<Vec<_>>().join("\n")
-}
-
-#[expect(dead_code, reason = "test helper available for future code/list tests")]
-fn all_text(lines: &[Line]) -> String {
-    lines
-        .iter()
-        .map(|l| line_text(l))
-        .collect::<Vec<_>>()
-        .join("\n")
 }
 
 /// True if any span in `line` whose content contains `text` also carries `modifier`.

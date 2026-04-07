@@ -28,9 +28,6 @@ pub(crate) struct ViolationRecord {
     /// Record type discriminator (always "violation").
     #[serde(rename = "type")]
     pub(crate) record_type: String,
-    /// Schema version for forward compatibility.
-    #[expect(dead_code, reason = "reserved for future schema migration")]
-    pub(crate) schema_version: u32,
     /// When the violation was detected.
     pub(crate) ts: String,
     /// Lint rule that was violated (e.g., "RUST/pub-visibility").
@@ -60,9 +57,6 @@ pub(crate) struct LintSummaryRecord {
     /// Record type discriminator (always "lint").
     #[serde(rename = "type")]
     pub(crate) record_type: String,
-    /// Schema version for forward compatibility.
-    #[expect(dead_code, reason = "reserved for future schema migration")]
-    pub(crate) schema_version: u32,
     /// When the lint run completed.
     pub(crate) ts: String,
     /// Repository or file path that was scanned.

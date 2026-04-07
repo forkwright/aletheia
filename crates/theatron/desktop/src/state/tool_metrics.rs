@@ -117,19 +117,11 @@ pub(crate) struct ToolInvocation {
 pub(crate) enum DateRange {
     #[default]
     Last7Days,
-    #[expect(dead_code, reason = "reserved for future use")]
-    Last30Days,
-    #[expect(dead_code, reason = "reserved for future use")]
-    Last90Days,
 }
 
 impl DateRange {
     pub(crate) fn days(self) -> u32 {
-        match self {
-            Self::Last7Days => 7,
-            Self::Last30Days => 30,
-            Self::Last90Days => 90,
-        }
+        7
     }
 }
 
@@ -147,21 +139,7 @@ pub(crate) fn tools_by_duration(tools: &[ToolStat]) -> Vec<&ToolStat> {
     sorted
 }
 
-/// Trend arrow: ↑ if current is >1% above prev, ↓ if >1% below, → otherwise.
-#[expect(dead_code, reason = "reserved for future use")]
-pub(crate) fn trend_arrow(current: f64, prev: f64) -> &'static str {
-    if prev == 0.0 {
-        return "→";
-    }
-    let ratio = current / prev;
-    if ratio > 1.01 {
-        "↑"
-    } else if ratio < 0.99 {
-        "↓"
-    } else {
-        "→"
-    }
-}
+
 
 /// Formats a delta value with + or − prefix.
 pub(crate) fn format_delta(delta: i64) -> String {

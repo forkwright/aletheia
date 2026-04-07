@@ -25,31 +25,6 @@ fn default_engine() -> DistillEngine {
     DistillEngine::new(DistillConfig::default())
 }
 
-#[expect(dead_code, reason = "test helper available for future threshold tests")]
-fn n_messages(n: usize) -> Vec<Message> {
-    (0..n)
-        .map(|i| {
-            text_msg(
-                if i % 2 == 0 {
-                    Role::User
-                } else {
-                    Role::Assistant
-                },
-                &format!("Message {i} with content for token estimation."),
-            )
-        })
-        .collect()
-}
-
-#[expect(dead_code, reason = "test helper available for future threshold tests")]
-fn sample_flush_item(content: &str, source: FlushSource) -> FlushItem {
-    FlushItem {
-        content: content.to_owned(),
-        timestamp: "2026-03-09T12:00:00Z".to_owned(),
-        source,
-    }
-}
-
 const FULL_SUMMARY: &str = "\
 ## Summary
 Fixed login bug and added tool-based database schema update.

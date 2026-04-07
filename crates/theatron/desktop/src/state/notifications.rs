@@ -163,16 +163,12 @@ impl NotificationPreferences {
 #[derive(Debug, Clone)]
 pub(crate) struct NotificationEntry {
     /// Category of the notification.
-    #[expect(dead_code, reason = "public API")]
     pub category: NotificationCategory,
     /// Title displayed in the notification.
-    #[expect(dead_code, reason = "public API")]
     pub title: String,
     /// Body text.
-    #[expect(dead_code, reason = "public API")]
     pub body: String,
     /// When this notification was sent.
-    #[expect(dead_code, reason = "public API")]
     pub sent_at: Instant,
 }
 

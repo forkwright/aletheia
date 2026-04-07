@@ -578,21 +578,6 @@ impl crate::app::App {
             return self.map_session_search_key(key);
         }
 
-        if self.is_diff_view_overlay() {
-            return match (key.modifiers, key.code) {
-                (_, KeyCode::Esc) | (KeyModifiers::CONTROL, KeyCode::Char('c')) => {
-                    Some(Msg::DiffClose)
-                }
-                (_, KeyCode::Char('m')) => Some(Msg::DiffCycleMode),
-                (_, KeyCode::Up) | (_, KeyCode::Char('k')) => Some(Msg::DiffScrollUp),
-                (_, KeyCode::Down) | (_, KeyCode::Char('j')) => Some(Msg::DiffScrollDown),
-                (_, KeyCode::PageUp) => Some(Msg::DiffPageUp),
-                (_, KeyCode::PageDown) => Some(Msg::DiffPageDown),
-                (KeyModifiers::CONTROL, KeyCode::Char('q')) => Some(Msg::Quit),
-                _ => None,
-            };
-        }
-
         // WHY: `?` toggles help overlay: pressing it again closes it.
         if matches!(&self.layout.overlay, Some(Overlay::Help))
             && matches!(
