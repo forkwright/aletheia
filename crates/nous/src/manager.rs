@@ -440,6 +440,7 @@ impl NousManager {
                 debug!(interval_secs = interval.as_secs(), "health poller started");
                 loop {
                     tokio::select! {
+                        biased;
                         // SAFETY: cancel-safe. `tokio::time::sleep` is cancel-safe:
                         // if dropped before it fires, the sleep is simply abandoned
                         // and a new one starts next iteration. The mutex lock and

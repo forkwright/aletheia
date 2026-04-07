@@ -527,6 +527,7 @@ impl TaskRunner {
 
         loop {
             tokio::select! {
+                biased;
                 // SAFETY: cancel-safe. `interval.tick()` is cancel-safe; dropping it
                 // before it fires simply delays the next tick without losing state.
                 // `check_in_flight` polls already-spawned handles and does not

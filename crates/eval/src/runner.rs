@@ -161,6 +161,7 @@ impl ScenarioRunner {
             tokio::pin!(scenario_fut);
 
             let outcome = tokio::select! {
+                biased;
                 result = &mut scenario_fut => {
                     match result {
                         Ok(()) => {

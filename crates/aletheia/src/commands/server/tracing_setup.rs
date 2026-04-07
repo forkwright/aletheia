@@ -199,6 +199,7 @@ pub(super) async fn shutdown_signal() {
     let terminate = std::future::pending::<()>();
 
     tokio::select! {
+        biased;
         () = ctrl_c => info!("received ctrl+c"),
         () = terminate => info!("received SIGTERM"),
     }

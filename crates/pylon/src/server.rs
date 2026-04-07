@@ -407,7 +407,8 @@ async fn shutdown_signal() {
     let terminate = std::future::pending::<()>();
 
     tokio::select! {
-        // SAFETY: cancel-safe. The `ctrl_c` future wraps `tokio::signal::ctrl_c()`,
+        biased;
+        // SAFETY: cancel-safe. The `ctrl_c` future wraps `tokio::signal::ctrl_c()',
         // which is cancel-safe: dropping it before it resolves simply re-arms the
         // handler; Ctrl+C will be caught by the next call.
         () = ctrl_c => info!("received ctrl+c"),
