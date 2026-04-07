@@ -205,6 +205,8 @@ pub struct SessionResult {
     pub success: bool,
     /// Final text output from the agent, if any.
     pub result_text: Option<String>,
+    /// LLM model used for this session, if known.
+    pub model: Option<String>,
 }
 
 impl SessionResult {
@@ -228,6 +230,7 @@ impl SessionResult {
             duration_ms,
             success,
             result_text,
+            model: None,
         }
     }
 }
@@ -290,6 +293,7 @@ mod tests {
             duration_ms: 30_000,
             success: true,
             result_text: Some("done".to_owned()),
+            model: Some("claude-3-5-sonnet".to_owned()),
         };
         let json = serde_json::to_string(&result).unwrap();
         let deserialized: SessionResult = serde_json::from_str(&json).unwrap();

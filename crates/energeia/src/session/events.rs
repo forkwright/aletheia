@@ -276,6 +276,7 @@ mod tests {
             duration_ms: 2000,
             success,
             result_text: Some("done".to_owned()),
+            model: Some("claude-3-5-sonnet".to_owned()),
         }
     }
 

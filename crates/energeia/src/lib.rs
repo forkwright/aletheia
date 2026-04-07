@@ -22,6 +22,8 @@
 pub mod backend;
 /// Atomic budget tracking for dispatch runs.
 pub mod budget;
+/// Per-blast-radius cost attribution ledger.
+pub mod cost_ledger;
 /// Prompt dependency DAG and parallel frontier computation.
 pub mod dag;
 /// Dispatch engine trait and session types.

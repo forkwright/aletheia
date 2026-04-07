@@ -100,6 +100,7 @@ impl SessionHandle for ProcessSessionHandle {
                     duration_ms,
                     success: !result.is_error,
                     result_text: result.result,
+                    model: None, // Model not tracked in subprocess response
                 })
             } else {
                 Err(error::EngineSnafu {

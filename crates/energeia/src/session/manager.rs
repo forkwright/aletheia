@@ -85,6 +85,9 @@ impl SessionManager {
         };
 
         let initial_opts = options.to_agent_options();
+        
+        // NOTE: Capture model for cost attribution
+        let model = initial_opts.model.clone();
 
         let mut handle = self
             .engine
@@ -105,8 +108,11 @@ impl SessionManager {
         // NOTE: Wait for the session to produce its final result.
         let session_result = handle.wait().await;
 
-        let (run_cost, run_turns, run_success, result_text) =
+        let (run_cost, run_turns, run_success, result_text, run_model) =
             extract_run_metrics(session_result, &stream_result);
+        
+        // Use model from result if available, otherwise from initial options
+        let effective_model = run_model.or_else(|| model.clone());
 
         total_cost += run_cost;
         total_turns += run_turns;
@@ -136,6 +142,8 @@ impl SessionManager {
                 resume_count,
                 None,
                 Some(format!("timeout: no events for {}s", elapsed.as_secs())),
+                effective_model.clone(),
+                prompt.blast_radius.clone(),
             ));
         }
 
@@ -163,6 +171,8 @@ impl SessionManager {
                 resume_count,
                 pr_url,
                 None,
+                effective_model.clone(),
+                prompt.blast_radius.clone(),
             ));
         }
 
@@ -184,6 +194,8 @@ impl SessionManager {
                 resume_count,
                 None,
                 Some(reason),
+                effective_model.clone(),
+                prompt.blast_radius.clone(),
             ));
         }
 
@@ -216,6 +228,8 @@ impl SessionManager {
                     resume_count,
                     None,
                     Some("resume policy exhausted".to_owned()),
+                    effective_model.clone(),
+                    prompt.blast_radius.clone(),
                 ));
             };
 
@@ -255,6 +269,8 @@ impl SessionManager {
                         resume_count,
                         None,
                         Some(format!("resume failed: {e}")),
+                        effective_model.clone(),
+                        prompt.blast_radius.clone(),
                     ));
                 }
             };
@@ -265,8 +281,11 @@ impl SessionManager {
 
             let session_result = handle.wait().await;
 
-            let (run_cost, run_turns, run_success, result_text) =
+            let (run_cost, run_turns, run_success, result_text, run_model) =
                 extract_run_metrics(session_result, &stream_result);
+            
+            // Use model from result if available, otherwise preserve existing
+            let effective_model = run_model.or_else(|| effective_model.clone());
 
             total_cost += run_cost;
             total_turns += run_turns;
@@ -299,6 +318,8 @@ impl SessionManager {
                         "timeout during resume: no events for {}s",
                         elapsed.as_secs()
                     )),
+                    effective_model.clone(),
+                    prompt.blast_radius.clone(),
                 ));
             }
 
@@ -315,6 +336,8 @@ impl SessionManager {
                     resume_count,
                     pr_url,
                     None,
+                    effective_model.clone(),
+                    prompt.blast_radius.clone(),
                 ));
             }
 
@@ -337,6 +360,8 @@ impl SessionManager {
                         resume_count,
                         None,
                         Some(reason),
+                        effective_model.clone(),
+                        prompt.blast_radius.clone(),
                     ));
                 }
                 BudgetStatus::Warning(msg) => {
@@ -364,17 +389,18 @@ impl SessionManager {
 fn extract_run_metrics(
     session_result: Result<crate::engine::SessionResult>,
     stream_result: &StreamOutcome,
-) -> (f64, u32, bool, Option<String>) {
+) -> (f64, u32, bool, Option<String>, Option<String>) {
     if let Ok(result) = session_result {
         (
             result.cost_usd,
             result.num_turns,
             result.success,
             result.result_text,
+            result.model,
         )
     } else {
         let acc = accumulator_from(stream_result);
-        (acc.cost_usd, acc.num_turns, false, None)
+        (acc.cost_usd, acc.num_turns, false, None, None)
     }
 }
 
@@ -403,6 +429,7 @@ fn collect_text(outcome: &StreamOutcome, result_text: Option<&str>) -> String {
 }
 
 /// Build a [`SessionOutcome`] from the accumulated session state.
+#[expect(clippy::too_many_arguments, reason = "session outcome has many fields")]
 fn build_outcome(
     prompt_number: u32,
     status: SessionStatus,
@@ -413,6 +440,8 @@ fn build_outcome(
     resume_count: u32,
     pr_url: Option<String>,
     error: Option<String>,
+    model: Option<String>,
+    blast_radius: Vec<String>,
 ) -> SessionOutcome {
     SessionOutcome {
         prompt_number,
@@ -424,6 +453,8 @@ fn build_outcome(
         resume_count,
         pr_url,
         error,
+        model,
+        blast_radius,
     }
 }
 
@@ -465,6 +496,7 @@ mod tests {
                 duration_ms: 1000,
                 success: true,
                 result_text: Some("task complete".to_owned()),
+                model: Some("claude-3-5-sonnet".to_owned()),
             },
         }
     }
@@ -479,6 +511,7 @@ mod tests {
                 duration_ms: 1000,
                 success: false,
                 result_text: Some("stuck".to_owned()),
+                model: Some("claude-3-5-sonnet".to_owned()),
             },
         }
     }
@@ -498,6 +531,7 @@ mod tests {
                 duration_ms: 1000,
                 success: true,
                 result_text: Some("PR: https://github.com/acme/repo/pull/42".to_owned()),
+                model: Some("claude-3-5-sonnet".to_owned()),
             },
         }
     }
@@ -692,6 +726,7 @@ mod tests {
                     duration_ms: 500,
                     success: false,
                     result_text: None,
+                    model: Some("claude-3-5-sonnet".to_owned()),
                 },
             },
             success_outcome("sess-err-r1", 0.10, 5),

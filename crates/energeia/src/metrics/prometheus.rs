@@ -42,9 +42,21 @@ static COST_USD_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
     register_counter_vec!(
         Opts::new(
             "energeia_cost_usd_total",
-            "Cumulative LLM cost in USD by project and model"
+            "Cumulative LLM cost in USD by project, model, and blast radius"
         ),
-        &["project", "model"]
+        &["project", "model", "blast_radius"]
+    )
+    .expect("metric registration")
+});
+
+/// Counter for total turns by blast radius and model.
+static TURNS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    register_int_counter_vec!(
+        Opts::new(
+            "energeia_turns_total",
+            "Total LLM turns by project, model, and blast radius"
+        ),
+        &["project", "model", "blast_radius"]
     )
     .expect("metric registration")
 });
@@ -88,6 +100,7 @@ pub fn init() {
     LazyLock::force(&DISPATCHES_TOTAL);
     LazyLock::force(&SESSIONS_TOTAL);
     LazyLock::force(&COST_USD_TOTAL);
+    LazyLock::force(&TURNS_TOTAL);
     LazyLock::force(&SESSION_DURATION_SECONDS);
     LazyLock::force(&QA_VERDICTS_TOTAL);
 }
@@ -107,7 +120,16 @@ pub fn record_dispatch(project: &str, status: &str) {
 ///
 /// - `cost_usd` — session cost; silently skipped when zero.
 /// - `duration_ms` — wall-clock duration in milliseconds.
-pub fn record_session(project: &str, status: &str, cost_usd: f64, duration_ms: u64) {
+/// - `model` — LLM model used (e.g., "claude-3-5-sonnet").
+/// - `blast_radius` — blast radius identifier for cost attribution.
+pub fn record_session(
+    project: &str,
+    status: &str,
+    cost_usd: f64,
+    duration_ms: u64,
+    model: &str,
+    blast_radius: &str,
+) {
     SESSIONS_TOTAL.with_label_values(&[project, status]).inc();
 
     #[expect(
@@ -121,12 +143,26 @@ pub fn record_session(project: &str, status: &str, cost_usd: f64, duration_ms: u
         .observe(duration_secs);
 
     if cost_usd > 0.0 {
-        // WHY: DispatchSpec carries no model field yet; use "unknown" until the
-        // store schema is extended to track per-session model selection.
         COST_USD_TOTAL
-            .with_label_values(&[project, "unknown"])
+            .with_label_values(&[project, model, blast_radius])
             .inc_by(cost_usd);
     }
+
+    // NOTE: turns are tracked separately via record_turns
+}
+
+/// Record turns consumed by a session.
+///
+/// Call this to update the `energeia_turns_total` metric.
+pub fn record_turns(project: &str, turns: u32, model: &str, blast_radius: &str) {
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::as_conversions,
+        reason = "turns fit in u64 for realistic session sizes"
+    )]
+    TURNS_TOTAL
+        .with_label_values(&[project, model, blast_radius])
+        .inc_by(u64::from(turns));
 }
 
 /// Record a QA evaluation verdict.
@@ -166,7 +202,7 @@ mod tests {
     #[test]
     fn record_session_increments_counter_and_histogram() {
         init();
-        record_session("acme", "success", 0.50, 30_000);
+        record_session("acme", "success", 0.50, 30_000, "claude-3-5-sonnet", "crates/foo/");
         let count = SESSIONS_TOTAL.with_label_values(&["acme", "success"]).get();
         assert!(count >= 1);
     }
@@ -176,17 +212,27 @@ mod tests {
         init();
         // Capture cost before
         let before = COST_USD_TOTAL
-            .with_label_values(&["nocost-project", "unknown"])
+            .with_label_values(&["nocost-project", "claude-3-5-sonnet", "crates/foo/"])
             .get();
-        record_session("nocost-project", "failed", 0.0, 5_000);
+        record_session("nocost-project", "failed", 0.0, 5_000, "claude-3-5-sonnet", "crates/foo/");
         let after = COST_USD_TOTAL
-            .with_label_values(&["nocost-project", "unknown"])
+            .with_label_values(&["nocost-project", "claude-3-5-sonnet", "crates/foo/"])
             .get();
         // Float comparison: should be unchanged
         assert!(
             (after - before).abs() < 1e-10,
             "zero-cost session must not increment cost counter"
         );
+    }
+
+    #[test]
+    fn record_turns_increments_counter() {
+        init();
+        record_turns("acme", 15, "claude-3-5-sonnet", "crates/foo/");
+        let count = TURNS_TOTAL
+            .with_label_values(&["acme", "claude-3-5-sonnet", "crates/foo/"])
+            .get();
+        assert!(count >= 15);
     }
 
     #[test]
