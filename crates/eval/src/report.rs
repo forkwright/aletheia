@@ -1,6 +1,6 @@
 //! Terminal output formatting for eval reports.
 
-use owo_colors::OwoColorize;
+use aletheia_koina::color::{supports_color, AnsiColorize};
 use serde::Serialize;
 use tracing::info;
 
@@ -10,10 +10,14 @@ use crate::scenario::ScenarioOutcome;
 /// Print a human-readable eval report to stdout.
 #[tracing::instrument(skip_all)]
 pub fn print_report(report: &RunReport, base_url: &str) {
-    let use_color = supports_color::on(supports_color::Stream::Stdout).is_some();
+    let use_color = supports_color();
 
     if use_color {
-        info!("{} — {}", "Behavioral Eval".bold(), base_url.dimmed());
+        info!(
+            "{} — {}",
+            "Behavioral Eval".bold(use_color),
+            base_url.dimmed(use_color)
+        );
     } else {
         info!("Behavioral Eval — {base_url}");
     }
@@ -26,7 +30,7 @@ pub fn print_report(report: &RunReport, base_url: &str) {
         if result.meta.category != current_category {
             current_category = result.meta.category;
             if use_color {
-                info!("  {}:", current_category.bold());
+                info!("  {}:", current_category.bold(use_color));
             } else {
                 info!("  {current_category}:");
             }
@@ -38,9 +42,9 @@ pub fn print_report(report: &RunReport, base_url: &str) {
                 if use_color {
                     info!(
                         "    {}  {:<40} {}",
-                        "PASS".green(),
+                        "PASS".green(use_color),
                         result.meta.id,
-                        format!("{ms}ms").dimmed()
+                        format!("{ms}ms").dimmed(use_color)
                     );
                 } else {
                     info!("    PASS  {:<40} {ms}ms", result.meta.id);
@@ -51,11 +55,11 @@ pub fn print_report(report: &RunReport, base_url: &str) {
                 if use_color {
                     info!(
                         "    {}  {:<40} {}",
-                        "FAIL".red(),
+                        "FAIL".red(use_color),
                         result.meta.id,
-                        format!("{ms}ms").dimmed()
+                        format!("{ms}ms").dimmed(use_color)
                     );
-                    info!("          {}", error.to_string().red());
+                    info!("          {}", error.to_string().red(use_color));
                 } else {
                     info!("    FAIL  {:<40} {ms}ms", result.meta.id);
                     info!("          {error}");
@@ -63,8 +67,12 @@ pub fn print_report(report: &RunReport, base_url: &str) {
             }
             ScenarioOutcome::Skipped { reason } => {
                 if use_color {
-                    info!("    {}  {}", "SKIP".yellow(), result.meta.id,);
-                    info!("          {}", reason.dimmed());
+                    info!(
+                        "    {}  {}",
+                        "SKIP".yellow(use_color),
+                        result.meta.id,
+                    );
+                    info!("          {}", reason.dimmed(use_color));
                 } else {
                     info!("    SKIP  {}", result.meta.id);
                     info!("          {reason}");
@@ -84,9 +92,9 @@ pub fn print_report(report: &RunReport, base_url: &str) {
 
     if use_color {
         if report.failed > 0 {
-            info!("{}", summary.red().bold());
+            info!("{}", summary.red(use_color).bold(use_color));
         } else {
-            info!("{}", summary.green().bold());
+            info!("{}", summary.green(use_color).bold(use_color));
         }
     } else {
         info!("{summary}");

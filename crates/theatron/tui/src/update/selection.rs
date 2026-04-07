@@ -162,13 +162,13 @@ fn action_open_links(app: &mut App, idx: usize) {
     match urls.len() {
         0 => show_toast(app, "No links found"),
         1 => {
-            if let Err(e) = open::that(&urls[0]) {
+            if let Err(e) = open_url(&urls[0]) {
                 tracing::error!("failed to open URL: {e}");
                 show_toast(app, "Failed to open link");
             }
         }
         n => {
-            if let Err(e) = open::that(&urls[0]) {
+            if let Err(e) = open_url(&urls[0]) {
                 tracing::error!("failed to open URL: {e}");
                 show_toast(app, "Failed to open link");
             } else {
@@ -176,6 +176,27 @@ fn action_open_links(app: &mut App, idx: usize) {
             }
         }
     }
+}
+
+/// Open a URL in the default browser using platform-specific commands.
+/// Uses `xdg-open` on Linux, `open` on macOS, and `cmd /C start` on Windows.
+fn open_url(url: &str) -> Result<(), std::io::Error> {
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open").arg(url).spawn()?.wait()?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open").arg(url).spawn()?.wait()?;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", url])
+            .spawn()?
+            .wait()?;
+    }
+    Ok(())
 }
 
 fn action_inspect(app: &mut App, idx: usize) {
