@@ -1,12 +1,12 @@
 //! Weighted shortest path (Dijkstra).
 use std::cmp::Reverse;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, BinaryHeap};
 use std::iter;
 
 use compact_str::CompactString;
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
-use priority_queue::PriorityQueue;
+
 use rayon::prelude::*;
 use smallvec::{SmallVec, smallvec};
 
@@ -253,13 +253,13 @@ pub(crate) fn dijkstra<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal + Clone>(
 ) -> Vec<(u32, f32, Vec<u32>)> {
     let graph_size = edges.node_count();
     let mut distance = vec![f32::INFINITY; graph_size as usize];
-    let mut pq = PriorityQueue::new();
+    let mut pq = BinaryHeap::new();
     let mut back_pointers = vec![u32::MAX; graph_size as usize];
     distance[start as usize] = 0.;
-    pq.push(start, Reverse(OrderedFloat(0.)));
+    pq.push((Reverse(OrderedFloat(0.)), start));
     let mut goals_remaining = goals.clone();
 
-    while let Some((node, Reverse(OrderedFloat(cost)))) = pq.pop() {
+    while let Some((Reverse(OrderedFloat(cost)), node)) = pq.pop() {
         if cost > distance[node as usize] {
             continue;
         }
@@ -276,7 +276,7 @@ pub(crate) fn dijkstra<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal + Clone>(
             }
             let nxt_cost = cost + path_weight;
             if nxt_cost < distance[nxt_node as usize] {
-                pq.push_increase(nxt_node, Reverse(OrderedFloat(nxt_cost)));
+                pq.push((Reverse(OrderedFloat(nxt_cost)), nxt_node));
                 distance[nxt_node as usize] = nxt_cost;
                 back_pointers[nxt_node as usize] = node;
             }
@@ -318,13 +318,13 @@ pub(crate) fn dijkstra_keep_ties<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal +
     poison: Poison,
 ) -> Result<Vec<(u32, f32, Vec<u32>)>> {
     let mut distance = vec![f32::INFINITY; edges.node_count() as usize];
-    let mut pq = PriorityQueue::new();
+    let mut pq = BinaryHeap::new();
     let mut back_pointers: Vec<SmallVec<[u32; 1]>> = vec![smallvec![]; edges.node_count() as usize];
     distance[start as usize] = 0.;
-    pq.push(start, Reverse(OrderedFloat(0.)));
+    pq.push((Reverse(OrderedFloat(0.)), start));
     let mut goals_remaining = goals.clone();
 
-    while let Some((node, Reverse(OrderedFloat(cost)))) = pq.pop() {
+    while let Some((Reverse(OrderedFloat(cost)), node)) = pq.pop() {
         if cost > distance[node as usize] {
             continue;
         }
@@ -341,12 +341,11 @@ pub(crate) fn dijkstra_keep_ties<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal +
             }
             let nxt_cost = cost + path_weight;
             if nxt_cost < distance[nxt_node as usize] {
-                pq.push_increase(nxt_node, Reverse(OrderedFloat(nxt_cost)));
+                pq.push((Reverse(OrderedFloat(nxt_cost)), nxt_node));
                 distance[nxt_node as usize] = nxt_cost;
                 back_pointers[nxt_node as usize].clear();
                 back_pointers[nxt_node as usize].push(node);
             } else if nxt_cost == distance[nxt_node as usize] {
-                pq.push_increase(nxt_node, Reverse(OrderedFloat(nxt_cost)));
                 back_pointers[nxt_node as usize].push(node);
             }
             poison.check()?;
