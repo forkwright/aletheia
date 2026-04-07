@@ -17,6 +17,7 @@ use crate::state::memory::{
     Entity, EntityDetailStore, EntityListStore, EntityMemory, EntityNavigationHistory, EntitySort,
     Relationship,
 };
+use crate::state::view_preservation::{PreservedViewState, ViewKey, ViewPreservationStore};
 use crate::views::memory::detail::EntityDetail;
 use crate::views::memory::list::EntityList;
 use crate::views::memory::search::EntitySearchBar;
@@ -25,7 +26,7 @@ const MEMORY_LAYOUT_STYLE: &str = "\
     display: flex; \
     flex-direction: column; \
     height: 100%; \
-    padding: 12px;\
+    padding: var(--space-3);\
 ";
 
 const PANELS_STYLE: &str = "\
@@ -46,8 +47,7 @@ const RESIZE_HANDLE_STYLE: &str = "\
     width: 4px; \
     cursor: col-resize; \
     background: transparent; \
-    flex-shrink: 0; \
-    transition: background 0.15s;\
+    flex-shrink: 0;\
 ";
 
 const DETAIL_PANEL_STYLE: &str = "\
@@ -59,52 +59,52 @@ const HEADER_STYLE: &str = "\
     display: flex; \
     align-items: center; \
     justify-content: space-between; \
-    padding-bottom: 8px;\
+    padding-bottom: var(--space-2);\
 ";
 
 const REFRESH_BTN: &str = "\
-    background: #2a2a4a; \
-    color: #e0e0e0; \
-    border: 1px solid #444; \
-    border-radius: 6px; \
-    padding: 4px 12px; \
-    font-size: 12px; \
+    background: var(--bg-surface); \
+    color: var(--text-primary); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-1) var(--space-3); \
+    font-size: var(--text-sm); \
     cursor: pointer;\
 ";
 
 const BREADCRUMB_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 4px; \
-    font-size: 12px; \
-    color: #888; \
-    padding: 4px 0; \
+    gap: var(--space-1); \
+    font-size: var(--text-sm); \
+    color: var(--text-muted); \
+    padding: var(--space-1) 0; \
     flex-wrap: wrap;\
 ";
 
 const BREADCRUMB_LINK_STYLE: &str = "\
-    color: #7a7aff; \
+    color: var(--accent); \
     cursor: pointer; \
     text-decoration: none;\
 ";
 
 const NAV_BTN_STYLE: &str = "\
-    background: #2a2a4a; \
-    color: #e0e0e0; \
-    border: 1px solid #444; \
-    border-radius: 4px; \
-    padding: 2px 8px; \
-    font-size: 12px; \
+    background: var(--bg-surface); \
+    color: var(--text-primary); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-sm); \
+    padding: var(--space-1) var(--space-2); \
+    font-size: var(--text-sm); \
     cursor: pointer;\
 ";
 
 const NAV_BTN_DISABLED_STYLE: &str = "\
-    background: #1a1a2e; \
-    color: #555; \
-    border: 1px solid #333; \
-    border-radius: 4px; \
-    padding: 2px 8px; \
-    font-size: 12px; \
+    background: var(--bg-surface-dim); \
+    color: var(--text-muted); \
+    border: 1px solid var(--border-separator); \
+    border-radius: var(--radius-sm); \
+    padding: var(--space-1) var(--space-2); \
+    font-size: var(--text-sm); \
     cursor: default;\
 ";
 
@@ -113,8 +113,8 @@ const EMPTY_DETAIL_STYLE: &str = "\
     align-items: center; \
     justify-content: center; \
     height: 100%; \
-    color: #555; \
-    font-size: 14px;\
+    color: var(--text-muted); \
+    font-size: var(--text-base);\
 ";
 
 const DEFAULT_LIST_WIDTH: f64 = 480.0;
@@ -136,6 +136,29 @@ pub(crate) fn Memory() -> Element {
     let mut is_resizing = use_signal(|| false);
     let mut resize_start_x = use_signal(|| 0.0f64);
     let mut resize_start_width = use_signal(|| 0.0f64);
+
+    // WHY: Restore preserved scroll and search state on mount (#2411).
+    let mut preservation = use_context::<Signal<ViewPreservationStore>>();
+    use_hook(|| {
+        if let Some(saved) = preservation.write().restore(&ViewKey::Memory) {
+            // Restore search query from the preserved input text.
+            if !saved.input_text.is_empty() {
+                list_store.write().search_query = saved.input_text;
+            }
+        }
+    });
+
+    // Save state on unmount.
+    use_drop(move || {
+        preservation.write().save(
+            ViewKey::Memory,
+            PreservedViewState {
+                scroll_top: 0.0,
+                input_text: list_store.read().search_query.clone(),
+                secondary_scroll: 0.0,
+            },
+        );
+    });
 
     let fetch_entities = {
         move || {
@@ -328,7 +351,7 @@ pub(crate) fn Memory() -> Element {
             div {
                 style: "{HEADER_STYLE}",
                 h2 {
-                    style: "font-size: 18px; margin: 0; color: #e0e0e0;",
+                    style: "font-size: var(--text-lg); margin: 0; color: var(--text-primary);",
                     "Memory Explorer"
                 }
                 div {
@@ -398,7 +421,7 @@ pub(crate) fn Memory() -> Element {
                             }
                         } else {
                             span {
-                                style: "color: #e0e0e0;",
+                                style: "color: var(--text-primary);",
                                 "{crumb}"
                             }
                         }

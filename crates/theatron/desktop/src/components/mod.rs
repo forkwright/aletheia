@@ -26,6 +26,8 @@ pub(crate) mod planning_card;
 pub(crate) mod quick_input;
 /// Reusable drag-to-resize panel divider.
 pub(crate) mod resize_handle;
+/// Transparent routing indicator for neurodivergent UX (#2411).
+pub(crate) mod routing_indicator;
 pub mod session_tabs;
 pub(crate) mod table;
 pub(crate) mod theme_toggle;

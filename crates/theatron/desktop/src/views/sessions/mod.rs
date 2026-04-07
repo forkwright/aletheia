@@ -18,6 +18,7 @@ use crate::state::sessions::{
     MessagePreview, SessionDetailStore, SessionListStore, SessionSelectionStore, SessionSort,
     StatusFilter,
 };
+use crate::state::view_preservation::{PreservedViewState, ViewKey, ViewPreservationStore};
 use crate::views::sessions::actions::BulkActionBar;
 use crate::views::sessions::detail::{SessionDetail, SessionDetailEmpty};
 use crate::views::sessions::list::SessionList;
@@ -27,7 +28,7 @@ const SESSIONS_LAYOUT_STYLE: &str = "\
     display: flex; \
     flex-direction: column; \
     height: 100%; \
-    padding: 12px;\
+    padding: var(--space-3);\
 ";
 
 const PANELS_STYLE: &str = "\
@@ -53,16 +54,16 @@ const HEADER_STYLE: &str = "\
     display: flex; \
     align-items: center; \
     justify-content: space-between; \
-    padding-bottom: 8px;\
+    padding-bottom: var(--space-2);\
 ";
 
 const REFRESH_BTN: &str = "\
-    background: #2a2a4a; \
-    color: #e0e0e0; \
-    border: 1px solid #444; \
-    border-radius: 6px; \
-    padding: 4px 12px; \
-    font-size: 12px; \
+    background: var(--bg-surface); \
+    color: var(--text-primary); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-1) var(--space-3); \
+    font-size: var(--text-sm); \
     cursor: pointer;\
 ";
 
@@ -82,6 +83,28 @@ pub(crate) fn Sessions() -> Element {
     let mut selected_session_id: Signal<Option<SessionId>> = use_signal(|| None);
 
     let resize = use_resize_state(DEFAULT_LIST_WIDTH, MIN_LIST_WIDTH, MAX_LIST_WIDTH);
+
+    // WHY: Restore preserved search state on mount (#2411 context preservation).
+    let mut preservation = use_context::<Signal<ViewPreservationStore>>();
+    use_hook(|| {
+        if let Some(saved) = preservation.write().restore(&ViewKey::Sessions) {
+            if !saved.input_text.is_empty() {
+                list_store.write().search_query = saved.input_text;
+            }
+        }
+    });
+
+    // Save state on unmount.
+    use_drop(move || {
+        preservation.write().save(
+            ViewKey::Sessions,
+            PreservedViewState {
+                scroll_top: 0.0,
+                input_text: list_store.read().search_query.clone(),
+                secondary_scroll: 0.0,
+            },
+        );
+    });
 
     // Fetch sessions on mount.
     let fetch_sessions = {

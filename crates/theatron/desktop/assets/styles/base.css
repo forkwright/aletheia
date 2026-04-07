@@ -162,15 +162,11 @@ pre {
 }
 
 /* ===================================================================== */
-/* Utility: smooth transitions for theme switching                       */
+/* Theme switching — instant, no decorative transition (#2411)           */
+/* WHY: Smooth theme transitions are decorative animation that adds      */
+/* visual noise without conveying information. Instant switch reduces    */
+/* cognitive load for neurodivergent operators.                          */
 /* ===================================================================== */
-
-[data-theme] {
-  transition:
-    background-color var(--transition-measured),
-    color var(--transition-measured),
-    border-color var(--transition-measured);
-}
 
 /* ===================================================================== */
 /* Streaming cursor                                                      */
@@ -189,6 +185,15 @@ pre {
   vertical-align: text-bottom;
   animation: cursor-blink 1s step-end infinite;
   margin-left: 1px;
+}
+
+/* ===================================================================== */
+/* Routing indicator pulse — informational, not decorative (#2411)       */
+/* ===================================================================== */
+
+@keyframes routing-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
 }
 
 /* ===================================================================== */

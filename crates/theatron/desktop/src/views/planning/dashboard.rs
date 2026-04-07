@@ -19,39 +19,38 @@ const CONTAINER_STYLE: &str = "\
     display: flex; \
     flex-direction: column; \
     height: 100%; \
-    padding: 16px; \
-    gap: 16px;\
+    padding: var(--space-4); \
+    gap: var(--space-4);\
 ";
 
 const GRID_STYLE: &str = "\
     display: grid; \
     grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); \
-    gap: 16px; \
+    gap: var(--space-4); \
     flex: 1; \
     overflow-y: auto; \
     align-content: start;\
 ";
 
 const CARD_STYLE: &str = "\
-    background: #1a1a2e; \
-    border: 1px solid #333; \
-    border-radius: 8px; \
-    padding: 16px 20px; \
-    cursor: pointer; \
-    transition: border-color 0.15s;\
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-lg); \
+    padding: var(--space-4); \
+    cursor: pointer;\
 ";
 
 const CARD_TITLE: &str = "\
-    font-size: 16px; \
-    font-weight: bold; \
-    color: #e0e0e0; \
-    margin-bottom: 4px;\
+    font-size: var(--text-md); \
+    font-weight: var(--weight-bold); \
+    color: var(--text-primary); \
+    margin-bottom: var(--space-1);\
 ";
 
 const CARD_DESC: &str = "\
-    font-size: 13px; \
-    color: #888; \
-    margin-bottom: 12px; \
+    font-size: var(--text-sm); \
+    color: var(--text-secondary); \
+    margin-bottom: var(--space-3); \
     display: -webkit-box; \
     -webkit-line-clamp: 2; \
     -webkit-box-orient: vertical; \
@@ -60,36 +59,36 @@ const CARD_DESC: &str = "\
 
 const BADGE_STYLE: &str = "\
     display: inline-block; \
-    padding: 2px 8px; \
-    border-radius: 4px; \
-    font-size: 11px; \
-    font-weight: 600;\
+    padding: var(--space-1) var(--space-2); \
+    border-radius: var(--radius-md); \
+    font-size: var(--text-xs); \
+    font-weight: var(--weight-semibold);\
 ";
 
 const PROGRESS_TRACK: &str = "\
-    background: #2a2a3a; \
+    background: var(--bg-surface-dim); \
     height: 4px; \
-    border-radius: 2px; \
+    border-radius: var(--radius-sm); \
     overflow: hidden; \
-    margin: 8px 0;\
+    margin: var(--space-2) 0;\
 ";
 
 const META_STYLE: &str = "\
-    font-size: 11px; \
-    color: #666; \
+    font-size: var(--text-xs); \
+    color: var(--text-muted); \
     display: flex; \
     align-items: center; \
-    gap: 12px; \
-    margin-top: 8px;\
+    gap: var(--space-3); \
+    margin-top: var(--space-2);\
 ";
 
 const REFRESH_BTN: &str = "\
-    background: #2a2a4a; \
-    color: #e0e0e0; \
-    border: 1px solid #444; \
-    border-radius: 6px; \
-    padding: 4px 12px; \
-    font-size: 12px; \
+    background: var(--bg-surface); \
+    color: var(--text-primary); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-1) var(--space-3); \
+    font-size: var(--text-sm); \
     cursor: pointer;\
 ";
 
@@ -99,8 +98,8 @@ const PLACEHOLDER_STYLE: &str = "\
     align-items: center; \
     justify-content: center; \
     flex: 1; \
-    gap: 12px; \
-    color: #555;\
+    gap: var(--space-3); \
+    color: var(--text-muted);\
 ";
 
 /// Project dashboard -- the default `/planning` view.
@@ -169,13 +168,13 @@ pub(crate) fn Planning() -> Element {
             match &*fetch_state.read() {
                 FetchState::Loading => rsx! {
                     div {
-                        style: "display: flex; align-items: center; justify-content: center; flex: 1; color: #888;",
+                        style: "display: flex; align-items: center; justify-content: center; flex: 1; color: var(--text-secondary);",
                         "Loading projects..."
                     }
                 },
                 FetchState::Error(err) => rsx! {
                     div {
-                        style: "display: flex; align-items: center; justify-content: center; flex: 1; color: #ef4444;",
+                        style: "display: flex; align-items: center; justify-content: center; flex: 1; color: var(--status-error);",
                         "Error: {err}"
                     }
                 },
@@ -249,7 +248,7 @@ fn render_project_card(project: &Project) -> Element {
     };
 
     let progress_fill =
-        format!("width: {pct}%; height: 100%; background: #22c55e; border-radius: 2px;");
+        format!("width: {pct}%; height: 100%; background: var(--status-success); border-radius: var(--radius-sm);");
 
     rsx! {
         div { style: "{CARD_TITLE}", "{project.name}" }
@@ -259,24 +258,24 @@ fn render_project_card(project: &Project) -> Element {
         }
 
         div {
-            style: "display: flex; align-items: center; gap: 8px; margin-bottom: 8px;",
+            style: "display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2);",
             span {
                 style: "{BADGE_STYLE} background: {badge_bg}; color: {badge_fg};",
                 "{label}"
             }
             if !phase_text.is_empty() {
-                span { style: "font-size: 12px; color: #888;", "{phase_text}" }
+                span { style: "font-size: var(--text-sm); color: var(--text-secondary);", "{phase_text}" }
             }
         }
 
         // Progress bar
         div {
-            style: "display: flex; align-items: center; gap: 8px;",
+            style: "display: flex; align-items: center; gap: var(--space-2);",
             div {
                 style: "{PROGRESS_TRACK} flex: 1;",
                 div { style: "{progress_fill}" }
             }
-            span { style: "font-size: 11px; color: #888; min-width: 32px;",
+            span { style: "font-size: var(--text-xs); color: var(--text-secondary); min-width: 32px;",
                 "{pct}%"
             }
         }
