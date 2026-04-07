@@ -424,74 +424,36 @@ where
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use tracing_subscriber::layer::SubscriberExt;
     use tracing_subscriber::util::SubscriberInitExt;
 
     use super::*;
 
-    fn with_layer<F: FnOnce(&TraceIngestLayer)>(f: F) {
-        // Use a thread-local subscriber to avoid global-subscriber conflicts
-        // across parallel tests.
-        let layer = TraceIngestLayer::new();
-        // SAFETY: layer ref lives for the duration of f() and the subscriber is
-        // only used within this scope.  We use an Arc-wrapped copy to satisfy
-        // the 'static bound required by tracing_subscriber.
-        let layer = std::sync::Arc::new(TraceIngestLayer::new());
-        let layer_ref: &TraceIngestLayer = &layer;
-        let subscriber = tracing_subscriber::registry().with(TraceIngestLayer::new());
-        // We can't easily set a scoped subscriber, so we exercise the visitor
-        // directly.
-        let _ = subscriber;
-        f(layer_ref);
+    fn push_event(layer: &TraceIngestLayer, event: TraceEvent) {
+        let mut buf = layer
+            .buffer
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        buf.push(event);
     }
 
     #[test]
     fn captures_turn_completed_event() {
         let layer = TraceIngestLayer::new();
 
-        // Simulate on_event by pushing directly via the public API path.
-        // We exercise the visitor parsing logic via a micro-subscriber.
-        let subscriber =
-            tracing_subscriber::registry().with(TraceIngestLayer::new());
-
-        // Build a synthetic event using the visitor directly.
-        let mut visitor = EventVisitor::new();
-        visitor.fields.insert(
-            "message".to_owned(),
-            FieldValue::Str("turn_completed".to_owned()),
+        push_event(
+            &layer,
+            TraceEvent::TurnCompleted {
+                session_id: "sess-1".to_owned(),
+                nous_id: "syn".to_owned(),
+                model: "claude-3".to_owned(),
+                tokens: 1024,
+                duration_ms: 500,
+                timestamp: now_iso8601(),
+            },
         );
-        visitor.fields.insert(
-            "session_id".to_owned(),
-            FieldValue::Str("sess-1".to_owned()),
-        );
-        visitor
-            .fields
-            .insert("nous_id".to_owned(), FieldValue::Str("syn".to_owned()));
-        visitor
-            .fields
-            .insert("model".to_owned(), FieldValue::Str("claude-3".to_owned()));
-        visitor
-            .fields
-            .insert("tokens".to_owned(), FieldValue::Int(1024));
-        visitor
-            .fields
-            .insert("duration_ms".to_owned(), FieldValue::Int(500));
-
-        // Directly push the parsed event to verify classification.
-        let event = TraceEvent::TurnCompleted {
-            session_id: visitor.get_str("session_id").unwrap_or("").to_owned(),
-            nous_id: visitor.get_str("nous_id").unwrap_or("").to_owned(),
-            model: visitor.get_str("model").unwrap_or("").to_owned(),
-            tokens: visitor.get_int("tokens").unwrap_or(0),
-            duration_ms: visitor.get_int("duration_ms").unwrap_or(0),
-            timestamp: now_iso8601(),
-        };
-
-        {
-            let mut buf = layer.buffer.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-            buf.push(event);
-        }
 
         let drained = layer.drain();
         assert_eq!(drained.len(), 1);
@@ -515,25 +477,22 @@ mod tests {
 
         // Buffer should be empty after drain.
         assert_eq!(layer.pending(), 0);
-        let _ = subscriber; // suppress unused warning
     }
 
     #[test]
     fn captures_tool_executed_event() {
         let layer = TraceIngestLayer::new();
 
-        let event = TraceEvent::ToolExecuted {
-            session_id: "sess-2".to_owned(),
-            tool_name: "web_search".to_owned(),
-            success: true,
-            duration_ms: 120,
-            timestamp: now_iso8601(),
-        };
-
-        {
-            let mut buf = layer.buffer.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-            buf.push(event);
-        }
+        push_event(
+            &layer,
+            TraceEvent::ToolExecuted {
+                session_id: "sess-2".to_owned(),
+                tool_name: "web_search".to_owned(),
+                success: true,
+                duration_ms: 120,
+                timestamp: now_iso8601(),
+            },
+        );
 
         let drained = layer.drain();
         assert_eq!(drained.len(), 1);
@@ -556,17 +515,15 @@ mod tests {
     fn captures_error_occurred_event() {
         let layer = TraceIngestLayer::new();
 
-        let event = TraceEvent::ErrorOccurred {
-            session_id: "sess-3".to_owned(),
-            error_class: "rate_limit".to_owned(),
-            message: "429 Too Many Requests".to_owned(),
-            timestamp: now_iso8601(),
-        };
-
-        {
-            let mut buf = layer.buffer.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-            buf.push(event);
-        }
+        push_event(
+            &layer,
+            TraceEvent::ErrorOccurred {
+                session_id: "sess-3".to_owned(),
+                error_class: "rate_limit".to_owned(),
+                message: "429 Too Many Requests".to_owned(),
+                timestamp: now_iso8601(),
+            },
+        );
 
         let drained = layer.drain();
         assert_eq!(drained.len(), 1);
@@ -599,14 +556,15 @@ mod tests {
         let layer = TraceIngestLayer::new();
 
         for i in 0..3_u32 {
-            let event = TraceEvent::ErrorOccurred {
-                session_id: format!("sess-{i}"),
-                error_class: "test".to_owned(),
-                message: "test".to_owned(),
-                timestamp: now_iso8601(),
-            };
-            let mut buf = layer.buffer.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-            buf.push(event);
+            push_event(
+                &layer,
+                TraceEvent::ErrorOccurred {
+                    session_id: format!("sess-{i}"),
+                    error_class: "test".to_owned(),
+                    message: "test".to_owned(),
+                    timestamp: now_iso8601(),
+                },
+            );
         }
 
         assert_eq!(layer.pending(), 3);
@@ -621,9 +579,7 @@ mod tests {
         // Clone an Arc handle so we can inspect the buffer after recording.
         let captured = std::sync::Arc::clone(&layer);
 
-        // Build a per-test subscriber that doesn't touch the global.
-        // We use `with_default` from tracing_subscriber to scope the subscriber.
-        let subscriber = tracing_subscriber::registry().with(TraceIngestLayer::new());
+        // Set a per-test default subscriber scoped to this thread.
         let _guard = tracing_subscriber::registry()
             .with(std::sync::Arc::clone(&layer))
             .set_default();
@@ -662,10 +618,9 @@ mod tests {
     #[cfg(feature = "mneme-engine")]
     mod engine_tests {
         use super::*;
-        use crate::knowledge_store::{KnowledgeStore, KnowledgeConfig};
+        use crate::knowledge_store::{KnowledgeConfig, KnowledgeStore};
 
         fn open_store_with_ops_schema() -> std::sync::Arc<KnowledgeStore> {
-            use crate::engine::ScriptMutability;
             let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig::default())
                 .expect("knowledge store init failed");
             for ddl in OPS_DDL {
@@ -681,17 +636,17 @@ mod tests {
             let store = open_store_with_ops_schema();
             let layer = TraceIngestLayer::new();
 
-            {
-                let mut buf = layer.buffer.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-                buf.push(TraceEvent::TurnCompleted {
+            super::push_event(
+                &layer,
+                TraceEvent::TurnCompleted {
                     session_id: "sess-a".to_owned(),
                     nous_id: "syn".to_owned(),
                     model: "claude-3".to_owned(),
                     tokens: 2048,
                     duration_ms: 800,
                     timestamp: "2026-04-06T12:00:00Z".to_owned(),
-                });
-            }
+                },
+            );
 
             layer.flush(&store);
 
@@ -709,16 +664,16 @@ mod tests {
             let store = open_store_with_ops_schema();
             let layer = TraceIngestLayer::new();
 
-            {
-                let mut buf = layer.buffer.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-                buf.push(TraceEvent::ToolExecuted {
+            super::push_event(
+                &layer,
+                TraceEvent::ToolExecuted {
                     session_id: "sess-b".to_owned(),
                     tool_name: "web_search".to_owned(),
                     success: false,
                     duration_ms: 300,
                     timestamp: "2026-04-06T12:01:00Z".to_owned(),
-                });
-            }
+                },
+            );
 
             layer.flush(&store);
 
@@ -736,15 +691,15 @@ mod tests {
             let store = open_store_with_ops_schema();
             let layer = TraceIngestLayer::new();
 
-            {
-                let mut buf = layer.buffer.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-                buf.push(TraceEvent::ErrorOccurred {
+            super::push_event(
+                &layer,
+                TraceEvent::ErrorOccurred {
                     session_id: "sess-c".to_owned(),
                     error_class: "timeout".to_owned(),
                     message: "connection timed out".to_owned(),
                     timestamp: "2026-04-06T12:02:00Z".to_owned(),
-                });
-            }
+                },
+            );
 
             layer.flush(&store);
 
