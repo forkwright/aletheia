@@ -69,6 +69,8 @@ pub mod skill;
 pub mod skills;
 /// Ecological succession: domain volatility tracking and adaptive decay rates.
 pub(crate) mod succession;
+/// Structured tracing subscriber that captures operational events as Datalog facts.
+pub mod trace_ingest;
 /// Relationship type normalization and validation for knowledge graph extraction.
 pub mod vocab;
 
