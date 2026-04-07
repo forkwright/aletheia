@@ -10,7 +10,9 @@
 //! - [`rows`] — query result container
 //! - [`error`] — v2-specific error types
 //! - [`eval`] — query and mutation evaluator
+//! - [`algo`] — graph algorithms for fixed rules
 
+pub mod algo;
 pub mod db;
 pub mod error;
 pub mod eval;

@@ -469,6 +469,7 @@ dependencies = [
 name = "aletheia-oikonomos"
 version = "0.13.65"
 dependencies = [
+ "aletheia-dianoia",
  "aletheia-episteme",
  "aletheia-koina",
  "axum 0.8.8",
