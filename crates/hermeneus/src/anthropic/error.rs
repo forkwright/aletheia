@@ -88,22 +88,21 @@ fn extract_retry_after(response: &Response) -> Option<u64> {
         .map(|secs| secs * 1000)
 }
 
-// TODO(#2183): SSE error events carry no retry-after header. This hardcoded
-// value is used when the stream reports overload/rate-limit inside a 200
-// response body. Consider parsing a retry delay from the SSE event payload
-// if Anthropic adds one, or deriving from the exponential backoff schedule.
-const SSE_DEFAULT_RETRY_MS: u64 = 1000;
-
 /// Map an SSE stream error event to a hermeneus error.
 ///
 /// Unlike HTTP errors, SSE errors arrive inside a 200 response body.
 /// The error type string determines retryability:
 /// - `overloaded_error` / `rate_limit_error` → `RateLimited` (retryable)
 /// - Everything else → `ApiError` (not retried)
+///
+/// WHY(#2600): SSE error events carry no retry-after header. Uses
+/// `BACKOFF_BASE_MS` from `models` as the initial retry delay so the
+/// backoff is consistent with the rest of the retry schedule rather than
+/// a separate hardcoded constant.
 pub(crate) fn map_sse_error(detail: super::wire::WireErrorDetail) -> crate::error::Error {
     match detail.error_type.as_str() {
         "overloaded_error" | "rate_limit_error" => crate::error::RateLimitedSnafu {
-            retry_after_ms: SSE_DEFAULT_RETRY_MS,
+            retry_after_ms: crate::models::BACKOFF_BASE_MS,
         }
         .build(),
         _ => crate::error::ApiSnafu {
