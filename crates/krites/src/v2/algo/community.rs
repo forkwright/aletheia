@@ -126,7 +126,9 @@ impl super::FixedRule for Louvain {
                     let gain = weight_to_comm / total_weight
                         - (node_deg * comm_deg) / (2.0 * total_weight * total_weight);
 
-                    if gain > best_gain {
+                    // WHY: tiebreak on community ID for deterministic assignment
+                    // when multiple communities have equal modularity gain (#2739).
+                    if gain > best_gain || (gain == best_gain && comm < best_comm) {
                         best_gain = gain;
                         best_comm = comm;
                         improved = true;
