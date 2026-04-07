@@ -6,6 +6,7 @@
 
 use std::time::Duration;
 
+use aletheia_koina::hex;
 use rand::Rng;
 use tracing::instrument;
 
@@ -137,26 +138,6 @@ fn parse_key(raw: &str) -> Result<(&str, &str, &str)> {
 
 fn now_iso() -> String {
     aletheia_koina::time::now_iso8601()
-}
-
-mod hex {
-    const HEX_CHARS: &[u8; 16] = b"0123456789abcdef";
-
-    pub(super) fn encode(bytes: &[u8]) -> String {
-        let mut s = String::with_capacity(bytes.len() * 2);
-        for &b in bytes {
-            // SAFETY: nibble is 0..=15, HEX_CHARS has exactly 16 elements
-            let hi = usize::from(b >> 4);
-            let lo = usize::from(b & 0x0f);
-            if let Some(&ch) = HEX_CHARS.get(hi) {
-                s.push(char::from(ch));
-            }
-            if let Some(&ch) = HEX_CHARS.get(lo) {
-                s.push(char::from(ch));
-            }
-        }
-        s
-    }
 }
 
 #[cfg(test)]

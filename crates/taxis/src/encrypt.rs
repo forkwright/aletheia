@@ -8,6 +8,7 @@
 
 use std::path::{Path, PathBuf};
 
+use aletheia_koina::hex;
 use base64::Engine as _;
 use chacha20poly1305::aead::generic_array::GenericArray;
 use chacha20poly1305::aead::{Aead, AeadCore, OsRng};
@@ -129,23 +130,7 @@ fn hex_digit(b: u8) -> Option<u8> {
     }
 }
 
-fn to_hex(bytes: &[u8]) -> String {
-    let mut s = String::with_capacity(bytes.len() * 2);
-    for &b in bytes {
-        // b >> 4 is 0..=15 and b & 0x0f is 0..=15; the array has exactly 16 elements
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "nibble value 0..=15 always indexes into 16-element array"
-        )]
-        s.push(char::from(b"0123456789abcdef"[usize::from(b >> 4)]));
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "nibble value 0..=15 always indexes into 16-element array"
-        )]
-        s.push(char::from(b"0123456789abcdef"[usize::from(b & 0x0f)]));
-    }
-    s
-}
+
 
 /// Generate a new random primary key and write it to the given path.
 ///
@@ -175,7 +160,7 @@ pub fn generate_primary_key(path: &Path) -> Result<()> {
     let mut key = [0u8; KEY_LEN];
     rand::fill(&mut key);
 
-    let hex = to_hex(&key);
+    let hex = hex::encode(&key);
     aletheia_koina::fs::write_restricted(path, hex.as_bytes()).context(
         error::WriteConfigSnafu {
             path: path.to_path_buf(),

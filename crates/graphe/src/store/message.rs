@@ -1,5 +1,6 @@
 //! Message operations, distillation pipeline, and usage recording.
 
+use aletheia_koina::defaults::CHARS_PER_TOKEN;
 use snafu::ResultExt;
 use tracing::{debug, info, instrument};
 
@@ -314,7 +315,7 @@ impl SessionStore {
             clippy::as_conversions,
             reason = "usize→i64: summary length fits in i64"
         )]
-        let token_estimate = (content.len() as i64 + 3) / 4;
+        let token_estimate = (content.len() as i64 + i64::from(CHARS_PER_TOKEN) - 1) / i64::from(CHARS_PER_TOKEN);
         tx.execute(
             "INSERT INTO messages (session_id, seq, role, content, is_distilled, token_estimate, created_at)
              VALUES (?1, 0, 'system', ?2, 0, ?3, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
