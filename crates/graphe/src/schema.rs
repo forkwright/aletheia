@@ -8,6 +8,13 @@ pub(crate) const VALID_CATEGORIES: &[&str] =
     &["task", "decision", "preference", "correction", "context"];
 
 /// Base DDL: creates all tables for a fresh database (migration v1).
+///
+/// WHY: This matches the original v1 schema that the deployed database was
+/// created with. Additional columns and tables are added by later migrations
+/// (v2-v31). The sessions table starts with only the 10 base columns; session
+/// feature columns (last_input_tokens, thread_id, etc.) are added
+/// incrementally via ALTER TABLE in later migrations to match the deployed
+/// column order.
 pub(crate) const DDL: &str = r"
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
@@ -18,18 +25,6 @@ CREATE TABLE IF NOT EXISTS sessions (
   model TEXT,
   token_count_estimate INTEGER DEFAULT 0,
   message_count INTEGER DEFAULT 0,
-  last_input_tokens INTEGER DEFAULT 0,
-  bootstrap_hash TEXT,
-  distillation_count INTEGER DEFAULT 0,
-  session_type TEXT DEFAULT 'primary',
-  last_distilled_at TEXT,
-  computed_context_tokens INTEGER DEFAULT 0,
-  thread_id TEXT,
-  transport TEXT,
-  working_state TEXT,
-  distillation_priming TEXT,
-  thinking_enabled INTEGER DEFAULT 0,
-  thinking_budget INTEGER DEFAULT 10000,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   UNIQUE(nous_id, session_key)
@@ -38,12 +33,10 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE INDEX IF NOT EXISTS idx_sessions_nous ON sessions(nous_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_key ON sessions(nous_id, session_key);
 CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
-CREATE INDEX IF NOT EXISTS idx_sessions_type ON sessions(session_type);
-CREATE INDEX IF NOT EXISTS idx_sessions_thread ON sessions(thread_id);
 
 CREATE TABLE IF NOT EXISTS messages (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  session_id TEXT NOT NULL REFERENCES sessions(id),
   seq INTEGER NOT NULL,
   role TEXT NOT NULL CHECK(role IN ('system', 'user', 'assistant', 'tool_result')),
   content TEXT NOT NULL,
@@ -56,26 +49,24 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, seq);
-CREATE INDEX IF NOT EXISTS idx_messages_distilled ON messages(session_id, is_distilled, seq);
 
 CREATE TABLE IF NOT EXISTS usage (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  session_id TEXT NOT NULL REFERENCES sessions(id),
   turn_seq INTEGER NOT NULL,
   input_tokens INTEGER DEFAULT 0,
   output_tokens INTEGER DEFAULT 0,
   cache_read_tokens INTEGER DEFAULT 0,
   cache_write_tokens INTEGER DEFAULT 0,
   model TEXT,
-  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-  UNIQUE(session_id, turn_seq)
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_usage_session ON usage(session_id);
 
 CREATE TABLE IF NOT EXISTS distillations (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  session_id TEXT NOT NULL REFERENCES sessions(id),
   messages_before INTEGER NOT NULL,
   messages_after INTEGER NOT NULL,
   tokens_before INTEGER NOT NULL,
@@ -85,11 +76,9 @@ CREATE TABLE IF NOT EXISTS distillations (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_distillations_session ON distillations(session_id);
-
 CREATE TABLE IF NOT EXISTS agent_notes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  session_id TEXT NOT NULL REFERENCES sessions(id),
   nous_id TEXT NOT NULL,
   category TEXT NOT NULL DEFAULT 'context' CHECK(category IN ('task', 'decision', 'preference', 'correction', 'context')),
   content TEXT NOT NULL,
@@ -112,7 +101,7 @@ mod tests {
     fn fresh_database_initializes_via_migration() {
         let conn = Connection::open_in_memory().expect("in-memory SQLite opens");
         let result = migration::run_migrations(&conn).expect("initial migration succeeds");
-        assert_eq!(result.current_version, 5);
+        assert_eq!(result.current_version, 31);
     }
 
     #[test]
@@ -122,7 +111,7 @@ mod tests {
         migration::run_migrations(&conn).expect("idempotent second migration succeeds");
 
         let version = migration::get_schema_version(&conn);
-        assert_eq!(version, 5);
+        assert_eq!(version, 31);
     }
 
     #[test]
@@ -137,6 +126,35 @@ mod tests {
             "distillations",
             "agent_notes",
             "blackboard",
+            "threads",
+            "thread_summaries",
+            "transport_bindings",
+            "auth_sessions",
+            "contact_requests",
+            "approved_contacts",
+            "tool_stats",
+            "interaction_signals",
+            "sub_agent_log",
+            "cross_agent_messages",
+            "routing_cache",
+            "message_queue",
+            "distillation_locks",
+            "distillation_log",
+            "reflection_log",
+            "plans",
+            "planning_projects",
+            "planning_phases",
+            "planning_requirements",
+            "planning_checkpoints",
+            "planning_research",
+            "planning_messages",
+            "planning_discussions",
+            "planning_decisions",
+            "planning_annotations",
+            "planning_edit_history",
+            "planning_spawn_records",
+            "planning_turn_counts",
+            "audit_log",
         ] {
             let exists: bool = conn
                 .query_row(
@@ -177,7 +195,7 @@ mod tests {
     }
 
     #[test]
-    fn ddl_contains_all_tables() {
+    fn ddl_contains_base_tables() {
         let expected_tables = [
             "sessions",
             "messages",

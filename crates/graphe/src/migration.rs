@@ -33,7 +33,16 @@ pub(crate) struct Migration {
 }
 
 /// All registered migrations, in version order.
+///
+/// WHY versions 1-31 are reconstructed: The deployed database (sessions.db)
+/// reached schema version 31 via a release binary whose migration source was
+/// never committed. The schema_version rows have empty checksums, so
+/// verification is skipped for deployed databases. These migrations
+/// reconstruct the incremental path so that:
+///   1. A fresh database reaches the same schema as the deployed one.
+///   2. The "schema too new" guard no longer blocks startup.
 pub(crate) static MIGRATIONS: &[Migration] = &[
+    // ── v1: base schema ─────────────────────────────────────────────────
     Migration {
         version: 1,
         description: "base schema — sessions, messages, usage, distillations, agent_notes",
@@ -44,12 +53,13 @@ DROP TABLE IF EXISTS usage;
 DROP TABLE IF EXISTS messages;
 DROP TABLE IF EXISTS sessions;",
     },
+    // ── v2: blackboard ──────────────────────────────────────────────────
     Migration {
         version: 2,
         description: "blackboard — shared agent state with TTL",
         up: "CREATE TABLE IF NOT EXISTS blackboard (
     id TEXT PRIMARY KEY,
-    key TEXT NOT NULL UNIQUE,
+    key TEXT NOT NULL,
     value TEXT NOT NULL,
     author_nous_id TEXT NOT NULL,
     ttl_seconds INTEGER DEFAULT 3600,
@@ -60,104 +70,570 @@ CREATE INDEX IF NOT EXISTS idx_blackboard_key ON blackboard(key);
 CREATE INDEX IF NOT EXISTS idx_blackboard_expires ON blackboard(expires_at);",
         down: "DROP TABLE IF EXISTS blackboard;",
     },
+    // ── v3-v9: session columns ──────────────────────────────────────────
     Migration {
         version: 3,
-        description: "sessions display_name — user-set friendly name for sessions",
-        up: "ALTER TABLE sessions ADD COLUMN display_name TEXT;",
-        down: "ALTER TABLE sessions DROP COLUMN display_name;",
+        description: "sessions — token tracking and bootstrap hash",
+        up: "ALTER TABLE sessions ADD COLUMN last_input_tokens INTEGER DEFAULT 0;
+ALTER TABLE sessions ADD COLUMN bootstrap_hash TEXT;
+ALTER TABLE sessions ADD COLUMN distillation_count INTEGER DEFAULT 0;",
+        down: "ALTER TABLE sessions DROP COLUMN last_input_tokens;
+ALTER TABLE sessions DROP COLUMN bootstrap_hash;
+ALTER TABLE sessions DROP COLUMN distillation_count;",
     },
     Migration {
         version: 4,
-        description: "add ON DELETE CASCADE to FK references, UNIQUE(session_id, turn_seq) on usage, hot-path indexes",
-        // WHY: SQLite cannot ALTER a table to add ON DELETE CASCADE or new UNIQUE
-        // constraints on existing columns. The standard workaround is to recreate
-        // the affected tables within a single transaction. DROP TABLE is DDL and
-        // does not trigger row-level FK enforcement, so PRAGMA foreign_keys = OFF
-        // is not required here.
-        up: "CREATE TABLE messages_new (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  seq INTEGER NOT NULL,
-  role TEXT NOT NULL CHECK(role IN ('system', 'user', 'assistant', 'tool_result')),
-  content TEXT NOT NULL,
-  tool_call_id TEXT,
-  tool_name TEXT,
-  token_estimate INTEGER DEFAULT 0,
-  is_distilled INTEGER DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-  UNIQUE(session_id, seq)
-);
-INSERT INTO messages_new
-  SELECT id, session_id, seq, role, content, tool_call_id, tool_name,
-         token_estimate, is_distilled, created_at
-  FROM messages;
-DROP TABLE messages;
-ALTER TABLE messages_new RENAME TO messages;
-CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, seq);
-CREATE INDEX IF NOT EXISTS idx_messages_distilled ON messages(session_id, is_distilled, seq);
-
-CREATE TABLE usage_new (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  turn_seq INTEGER NOT NULL,
-  input_tokens INTEGER DEFAULT 0,
-  output_tokens INTEGER DEFAULT 0,
-  cache_read_tokens INTEGER DEFAULT 0,
-  cache_write_tokens INTEGER DEFAULT 0,
-  model TEXT,
-  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-  UNIQUE(session_id, turn_seq)
-);
-INSERT INTO usage_new
-  SELECT id, session_id, turn_seq, input_tokens, output_tokens,
-         cache_read_tokens, cache_write_tokens, model, created_at
-  FROM usage;
-DROP TABLE usage;
-ALTER TABLE usage_new RENAME TO usage;
-CREATE INDEX IF NOT EXISTS idx_usage_session ON usage(session_id);
-
-CREATE TABLE distillations_new (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  messages_before INTEGER NOT NULL,
-  messages_after INTEGER NOT NULL,
-  tokens_before INTEGER NOT NULL,
-  tokens_after INTEGER NOT NULL,
-  facts_extracted INTEGER DEFAULT 0,
-  model TEXT,
-  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-);
-INSERT INTO distillations_new
-  SELECT id, session_id, messages_before, messages_after, tokens_before,
-         tokens_after, facts_extracted, model, created_at
-  FROM distillations;
-DROP TABLE distillations;
-ALTER TABLE distillations_new RENAME TO distillations;
-CREATE INDEX IF NOT EXISTS idx_distillations_session ON distillations(session_id);
-
-CREATE TABLE agent_notes_new (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  nous_id TEXT NOT NULL,
-  category TEXT NOT NULL DEFAULT 'context' CHECK(category IN ('task', 'decision', 'preference', 'correction', 'context')),
-  content TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-);
-INSERT INTO agent_notes_new
-  SELECT id, session_id, nous_id, category, content, created_at
-  FROM agent_notes;
-DROP TABLE agent_notes;
-ALTER TABLE agent_notes_new RENAME TO agent_notes;
-CREATE INDEX IF NOT EXISTS idx_notes_session ON agent_notes(session_id);
-CREATE INDEX IF NOT EXISTS idx_notes_nous ON agent_notes(nous_id);",
-        down: "DROP INDEX IF EXISTS idx_messages_distilled;
-DROP INDEX IF EXISTS idx_distillations_session;",
+        description: "sessions — thinking mode configuration",
+        up: "ALTER TABLE sessions ADD COLUMN thinking_enabled INTEGER DEFAULT 0;
+ALTER TABLE sessions ADD COLUMN thinking_budget INTEGER DEFAULT 10000;",
+        down: "ALTER TABLE sessions DROP COLUMN thinking_enabled;
+ALTER TABLE sessions DROP COLUMN thinking_budget;",
     },
     Migration {
         version: 5,
-        description: "index sessions.updated_at for hot-path ordering queries",
-        up: "CREATE INDEX IF NOT EXISTS idx_sessions_updated_at ON sessions(updated_at);",
-        down: "DROP INDEX IF EXISTS idx_sessions_updated_at;",
+        description: "sessions — thread binding and transport",
+        up: "ALTER TABLE sessions ADD COLUMN thread_id TEXT;
+ALTER TABLE sessions ADD COLUMN transport TEXT;
+ALTER TABLE sessions ADD COLUMN working_state TEXT;",
+        down: "ALTER TABLE sessions DROP COLUMN thread_id;
+ALTER TABLE sessions DROP COLUMN transport;
+ALTER TABLE sessions DROP COLUMN working_state;",
+    },
+    Migration {
+        version: 6,
+        description: "sessions — session type and distillation tracking",
+        up: "ALTER TABLE sessions ADD COLUMN session_type TEXT DEFAULT 'primary';
+ALTER TABLE sessions ADD COLUMN last_distilled_at TEXT;
+ALTER TABLE sessions ADD COLUMN computed_context_tokens INTEGER DEFAULT 0;
+ALTER TABLE sessions ADD COLUMN distillation_priming TEXT;",
+        down: "ALTER TABLE sessions DROP COLUMN session_type;
+ALTER TABLE sessions DROP COLUMN last_distilled_at;
+ALTER TABLE sessions DROP COLUMN computed_context_tokens;
+ALTER TABLE sessions DROP COLUMN distillation_priming;",
+    },
+    // ── v7-v8: session indexes ──────────────────────────────────────────
+    Migration {
+        version: 7,
+        description: "sessions — session_type and thread indexes",
+        up: "CREATE INDEX IF NOT EXISTS idx_sessions_type ON sessions(session_type);
+CREATE INDEX IF NOT EXISTS idx_sessions_thread ON sessions(thread_id);",
+        down: "DROP INDEX IF EXISTS idx_sessions_type;
+DROP INDEX IF EXISTS idx_sessions_thread;",
+    },
+    // ── v8-v10: threads, transport, thread summaries ────────────────────
+    Migration {
+        version: 8,
+        description: "threads — conversation thread identity tracking",
+        up: "CREATE TABLE IF NOT EXISTS threads (
+    id TEXT PRIMARY KEY,
+    nous_id TEXT NOT NULL,
+    identity TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    UNIQUE(nous_id, identity)
+);
+CREATE INDEX IF NOT EXISTS idx_threads_nous ON threads(nous_id);",
+        down: "DROP TABLE IF EXISTS threads;",
+    },
+    Migration {
+        version: 9,
+        description: "transport_bindings — channel-to-thread mapping",
+        up: "CREATE TABLE IF NOT EXISTS transport_bindings (
+    id TEXT PRIMARY KEY,
+    thread_id TEXT NOT NULL REFERENCES threads(id),
+    transport TEXT NOT NULL,
+    channel_key TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    UNIQUE(transport, channel_key)
+);
+CREATE INDEX IF NOT EXISTS idx_bindings_thread ON transport_bindings(thread_id);",
+        down: "DROP TABLE IF EXISTS transport_bindings;",
+    },
+    Migration {
+        version: 10,
+        description: "thread_summaries — cached thread context",
+        up: "CREATE TABLE IF NOT EXISTS thread_summaries (
+    thread_id TEXT PRIMARY KEY REFERENCES threads(id),
+    summary TEXT NOT NULL DEFAULT '',
+    key_facts TEXT NOT NULL DEFAULT '[]',
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);",
+        down: "DROP TABLE IF EXISTS thread_summaries;",
+    },
+    // ── v11-v12: auth and contacts ──────────────────────────────────────
+    Migration {
+        version: 11,
+        description: "auth_sessions — JWT refresh token tracking",
+        up: "CREATE TABLE IF NOT EXISTS auth_sessions (
+    id TEXT PRIMARY KEY,
+    username TEXT NOT NULL,
+    role TEXT NOT NULL,
+    refresh_token_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    last_used_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    expires_at TEXT NOT NULL,
+    revoked INTEGER NOT NULL DEFAULT 0,
+    ip_address TEXT,
+    user_agent TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_username ON auth_sessions(username);
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires ON auth_sessions(expires_at);",
+        down: "DROP TABLE IF EXISTS auth_sessions;",
+    },
+    Migration {
+        version: 12,
+        description: "contact_requests and approved_contacts — contact approval workflow",
+        up: "CREATE TABLE IF NOT EXISTS contact_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sender TEXT NOT NULL,
+    sender_name TEXT,
+    channel TEXT NOT NULL DEFAULT 'signal',
+    account_id TEXT,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'denied', 'expired')),
+    challenge_code TEXT,
+    approved_by TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    resolved_at TEXT,
+    UNIQUE(sender, channel, account_id)
+);
+CREATE INDEX IF NOT EXISTS idx_contacts_status ON contact_requests(status);
+
+CREATE TABLE IF NOT EXISTS approved_contacts (
+    sender TEXT NOT NULL,
+    channel TEXT NOT NULL DEFAULT 'signal',
+    account_id TEXT,
+    approved_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    approved_by TEXT,
+    UNIQUE(sender, channel, account_id)
+);
+CREATE INDEX IF NOT EXISTS idx_approved_sender ON approved_contacts(sender, channel);",
+        down: "DROP TABLE IF EXISTS approved_contacts;
+DROP TABLE IF EXISTS contact_requests;",
+    },
+    // ── v13-v15: observability tables ────────────────────────────────────
+    Migration {
+        version: 13,
+        description: "tool_stats — per-tool success/failure tracking",
+        up: "CREATE TABLE IF NOT EXISTS tool_stats (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nous_id TEXT NOT NULL,
+    tool_name TEXT NOT NULL,
+    success INTEGER NOT NULL DEFAULT 1,
+    error_message TEXT,
+    duration_ms INTEGER,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_tool_stats_lookup ON tool_stats(nous_id, tool_name, created_at);",
+        down: "DROP TABLE IF EXISTS tool_stats;",
+    },
+    Migration {
+        version: 14,
+        description: "interaction_signals — conversation quality signals",
+        up: "CREATE TABLE IF NOT EXISTS interaction_signals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    nous_id TEXT NOT NULL,
+    turn_seq INTEGER NOT NULL,
+    signal TEXT NOT NULL,
+    confidence REAL NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_signals_session ON interaction_signals(session_id);
+CREATE INDEX IF NOT EXISTS idx_signals_nous ON interaction_signals(nous_id);",
+        down: "DROP TABLE IF EXISTS interaction_signals;",
+    },
+    Migration {
+        version: 15,
+        description: "sub_agent_log — delegated agent execution tracking",
+        up: "CREATE TABLE IF NOT EXISTS sub_agent_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    parent_session_id TEXT NOT NULL,
+    parent_nous_id TEXT NOT NULL,
+    role TEXT,
+    agent_id TEXT NOT NULL,
+    task TEXT NOT NULL,
+    model TEXT,
+    input_tokens INTEGER DEFAULT 0,
+    output_tokens INTEGER DEFAULT 0,
+    total_cost_tokens INTEGER DEFAULT 0,
+    tool_calls INTEGER DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'completed',
+    error TEXT,
+    duration_ms INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_sub_agent_parent ON sub_agent_log(parent_session_id);",
+        down: "DROP TABLE IF EXISTS sub_agent_log;",
+    },
+    // ── v16-v18: cross-agent messaging ──────────────────────────────────
+    Migration {
+        version: 16,
+        description: "cross_agent_messages — inter-agent communication",
+        up: "CREATE TABLE IF NOT EXISTS cross_agent_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_session_id TEXT NOT NULL,
+    target_nous_id TEXT NOT NULL,
+    target_session_id TEXT,
+    kind TEXT NOT NULL CHECK(kind IN ('send', 'ask', 'spawn')),
+    content TEXT NOT NULL,
+    response TEXT,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'delivered', 'responded', 'timeout', 'error')),
+    timeout_ms INTEGER,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    responded_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_cam_target ON cross_agent_messages(target_nous_id, status);",
+        down: "DROP TABLE IF EXISTS cross_agent_messages;",
+    },
+    Migration {
+        version: 17,
+        description: "routing_cache — channel-to-nous routing",
+        up: "CREATE TABLE IF NOT EXISTS routing_cache (
+    channel TEXT NOT NULL,
+    peer_kind TEXT,
+    peer_id TEXT,
+    account_id TEXT,
+    nous_id TEXT NOT NULL,
+    priority INTEGER DEFAULT 0,
+    UNIQUE(channel, peer_kind, peer_id, account_id)
+);",
+        down: "DROP TABLE IF EXISTS routing_cache;",
+    },
+    Migration {
+        version: 18,
+        description: "message_queue — inbound message buffer for sessions",
+        up: "CREATE TABLE IF NOT EXISTS message_queue (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL REFERENCES sessions(id),
+    content TEXT NOT NULL,
+    sender TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_queue_session ON message_queue(session_id);",
+        down: "DROP TABLE IF EXISTS message_queue;",
+    },
+    // ── v19-v21: distillation and reflection ────────────────────────────
+    Migration {
+        version: 19,
+        description: "distillation_locks — prevent concurrent distillation",
+        up: "CREATE TABLE IF NOT EXISTS distillation_locks (
+    session_id TEXT PRIMARY KEY,
+    nous_id TEXT NOT NULL,
+    locked_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);",
+        down: "DROP TABLE IF EXISTS distillation_locks;",
+    },
+    Migration {
+        version: 20,
+        description: "distillation_log — detailed distillation history",
+        up: "CREATE TABLE IF NOT EXISTS distillation_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    nous_id TEXT NOT NULL,
+    distilled_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    messages_before INTEGER NOT NULL,
+    messages_after INTEGER NOT NULL,
+    tokens_before INTEGER NOT NULL,
+    tokens_after INTEGER NOT NULL,
+    facts_extracted INTEGER DEFAULT 0,
+    decisions_extracted INTEGER DEFAULT 0,
+    open_items_extracted INTEGER DEFAULT 0,
+    flush_succeeded INTEGER DEFAULT 1,
+    errors TEXT,
+    distillation_number INTEGER DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS idx_distill_log_session ON distillation_log(session_id);",
+        down: "DROP TABLE IF EXISTS distillation_log;",
+    },
+    Migration {
+        version: 21,
+        description: "reflection_log — periodic self-reflection results",
+        up: "CREATE TABLE IF NOT EXISTS reflection_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nous_id TEXT NOT NULL,
+    reflected_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    sessions_reviewed INTEGER NOT NULL DEFAULT 0,
+    messages_reviewed INTEGER NOT NULL DEFAULT 0,
+    patterns_found INTEGER NOT NULL DEFAULT 0,
+    contradictions_found INTEGER NOT NULL DEFAULT 0,
+    corrections_found INTEGER NOT NULL DEFAULT 0,
+    preferences_found INTEGER NOT NULL DEFAULT 0,
+    relationships_found INTEGER NOT NULL DEFAULT 0,
+    unresolved_threads_found INTEGER NOT NULL DEFAULT 0,
+    memories_stored INTEGER NOT NULL DEFAULT 0,
+    tokens_used INTEGER NOT NULL DEFAULT 0,
+    duration_ms INTEGER NOT NULL DEFAULT 0,
+    model TEXT,
+    findings TEXT NOT NULL DEFAULT '{}',
+    errors TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_reflection_nous ON reflection_log(nous_id);
+CREATE INDEX IF NOT EXISTS idx_reflection_date ON reflection_log(reflected_at);",
+        down: "DROP TABLE IF EXISTS reflection_log;",
+    },
+    // ── v22: plans ──────────────────────────────────────────────────────
+    Migration {
+        version: 22,
+        description: "plans — cost-gated execution plans",
+        up: "CREATE TABLE IF NOT EXISTS plans (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    nous_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'awaiting_approval',
+    steps TEXT NOT NULL,
+    total_estimated_cost_cents REAL NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    resolved_at TEXT,
+    FOREIGN KEY (session_id) REFERENCES sessions(id)
+);
+CREATE INDEX IF NOT EXISTS idx_plans_session ON plans(session_id, status);",
+        down: "DROP TABLE IF EXISTS plans;",
+    },
+    // ── v23-v25: planning engine core ───────────────────────────────────
+    Migration {
+        version: 23,
+        description: "planning_projects — top-level planning containers",
+        up: "CREATE TABLE IF NOT EXISTS planning_projects (
+    id TEXT PRIMARY KEY,
+    nous_id TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    goal TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT 'idle' CHECK(state IN ('idle', 'questioning', 'researching', 'requirements', 'roadmap', 'discussing', 'phase-planning', 'executing', 'verifying', 'complete', 'blocked', 'abandoned')),
+    config TEXT NOT NULL DEFAULT '{}',
+    context_hash TEXT NOT NULL,
+    project_context TEXT,
+    project_dir TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_planning_projects_nous ON planning_projects(nous_id);",
+        down: "DROP TABLE IF EXISTS planning_projects;",
+    },
+    Migration {
+        version: 24,
+        description: "planning_phases — project phase breakdown",
+        up: "CREATE TABLE IF NOT EXISTS planning_phases (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES planning_projects(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    goal TEXT NOT NULL,
+    requirements TEXT NOT NULL DEFAULT '[]',
+    success_criteria TEXT NOT NULL DEFAULT '[]',
+    plan TEXT,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'executing', 'complete', 'failed', 'skipped')),
+    phase_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_planning_phases_project ON planning_phases(project_id, phase_order);",
+        down: "DROP TABLE IF EXISTS planning_phases;",
+    },
+    Migration {
+        version: 25,
+        description: "planning_requirements — tiered requirement tracking",
+        up: "CREATE TABLE IF NOT EXISTS planning_requirements (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES planning_projects(id) ON DELETE CASCADE,
+    phase_id TEXT,
+    req_id TEXT NOT NULL,
+    description TEXT NOT NULL,
+    category TEXT NOT NULL,
+    tier TEXT NOT NULL DEFAULT 'v1' CHECK(tier IN ('v1', 'v2', 'out-of-scope')),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'validated', 'skipped')),
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_planning_requirements_project ON planning_requirements(project_id);",
+        down: "DROP TABLE IF EXISTS planning_requirements;",
+    },
+    // ── v26-v28: planning support tables ────────────────────────────────
+    Migration {
+        version: 26,
+        description: "planning_checkpoints and planning_research",
+        up: "CREATE TABLE IF NOT EXISTS planning_checkpoints (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES planning_projects(id) ON DELETE CASCADE,
+    type TEXT NOT NULL,
+    question TEXT NOT NULL,
+    decision TEXT,
+    context TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_planning_checkpoints_project ON planning_checkpoints(project_id);
+
+CREATE TABLE IF NOT EXISTS planning_research (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES planning_projects(id) ON DELETE CASCADE,
+    phase TEXT NOT NULL,
+    dimension TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_planning_research_project ON planning_research(project_id);",
+        down: "DROP TABLE IF EXISTS planning_research;
+DROP TABLE IF EXISTS planning_checkpoints;",
+    },
+    Migration {
+        version: 27,
+        description: "planning_messages and planning_discussions",
+        up: "CREATE TABLE IF NOT EXISTS planning_messages (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES planning_projects(id) ON DELETE CASCADE,
+    phase_id TEXT,
+    source TEXT NOT NULL CHECK(source IN ('user', 'agent', 'sub-agent', 'system')),
+    source_session_id TEXT,
+    content TEXT NOT NULL,
+    priority TEXT NOT NULL DEFAULT 'normal' CHECK(priority IN ('low', 'normal', 'high', 'critical')),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'delivered', 'expired')),
+    delivered_at TEXT,
+    expires_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_planning_messages_project ON planning_messages(project_id, status);
+CREATE INDEX IF NOT EXISTS idx_planning_messages_phase ON planning_messages(phase_id, status);
+
+CREATE TABLE IF NOT EXISTS planning_discussions (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES planning_projects(id) ON DELETE CASCADE,
+    phase_id TEXT NOT NULL,
+    question TEXT NOT NULL,
+    options TEXT NOT NULL DEFAULT '[]',
+    recommendation TEXT,
+    decision TEXT,
+    user_note TEXT,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'answered', 'skipped')),
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_planning_discussions_project ON planning_discussions(project_id);
+CREATE INDEX IF NOT EXISTS idx_planning_discussions_phase ON planning_discussions(phase_id);",
+        down: "DROP TABLE IF EXISTS planning_discussions;
+DROP TABLE IF EXISTS planning_messages;",
+    },
+    Migration {
+        version: 28,
+        description: "planning_decisions — decision audit trail",
+        up: "CREATE TABLE IF NOT EXISTS planning_decisions (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES planning_projects(id) ON DELETE CASCADE,
+    phase_id TEXT,
+    source TEXT NOT NULL CHECK(source IN ('user', 'agent', 'checkpoint', 'system')),
+    type TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    rationale TEXT,
+    context TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_planning_decisions_project ON planning_decisions(project_id);
+CREATE INDEX IF NOT EXISTS idx_planning_decisions_phase ON planning_decisions(phase_id);",
+        down: "DROP TABLE IF EXISTS planning_decisions;",
+    },
+    // ── v29: planning annotations and edit history ──────────────────────
+    Migration {
+        version: 29,
+        description: "planning_annotations and planning_edit_history",
+        up: "CREATE TABLE IF NOT EXISTS planning_annotations (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES planning_projects(id) ON DELETE CASCADE,
+    target_type TEXT NOT NULL CHECK(target_type IN ('requirement', 'phase', 'project', 'discussion')),
+    target_id TEXT NOT NULL,
+    author TEXT NOT NULL,
+    content TEXT NOT NULL,
+    resolved INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_annotations_target ON planning_annotations(project_id, target_type, target_id);
+
+CREATE TABLE IF NOT EXISTS planning_edit_history (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES planning_projects(id) ON DELETE CASCADE,
+    target_type TEXT NOT NULL CHECK(target_type IN ('requirement', 'phase', 'project', 'discussion', 'checkpoint')),
+    target_id TEXT NOT NULL,
+    field TEXT NOT NULL,
+    old_value TEXT,
+    new_value TEXT,
+    author TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_edit_history_target ON planning_edit_history(project_id, target_type, target_id);",
+        down: "DROP TABLE IF EXISTS planning_edit_history;
+DROP TABLE IF EXISTS planning_annotations;",
+    },
+    // ── v30: planning execution tracking ────────────────────────────────
+    Migration {
+        version: 30,
+        description: "planning_spawn_records and planning_turn_counts",
+        up: "CREATE TABLE IF NOT EXISTS planning_spawn_records (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES planning_projects(id) ON DELETE CASCADE,
+    phase_id TEXT NOT NULL REFERENCES planning_phases(id) ON DELETE CASCADE,
+    agent_session_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'running', 'complete', 'failed', 'done', 'skipped', 'zombie')),
+    result TEXT,
+    wave INTEGER NOT NULL DEFAULT 0,
+    started_at TEXT,
+    completed_at TEXT,
+    error_message TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_planning_spawn_records_project ON planning_spawn_records(project_id);
+CREATE INDEX IF NOT EXISTS idx_planning_spawn_records_phase ON planning_spawn_records(phase_id);
+
+CREATE TABLE IF NOT EXISTS planning_turn_counts (
+    project_id TEXT NOT NULL REFERENCES planning_projects(id) ON DELETE CASCADE,
+    phase_id TEXT NOT NULL,
+    nous_id TEXT NOT NULL,
+    turn_count INTEGER NOT NULL DEFAULT 0,
+    token_count INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    PRIMARY KEY (project_id, phase_id, nous_id)
+);",
+        down: "DROP TABLE IF EXISTS planning_turn_counts;
+DROP TABLE IF EXISTS planning_spawn_records;",
+    },
+    // ── v31: audit, display_name, cross-agent extras, planning extras ───
+    Migration {
+        version: 31,
+        description: "audit_log, sessions display_name, cross-agent extras, planning schema evolution",
+        up: "CREATE TABLE IF NOT EXISTS audit_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    actor TEXT NOT NULL,
+    role TEXT NOT NULL,
+    action TEXT NOT NULL,
+    target TEXT,
+    ip TEXT,
+    user_agent TEXT,
+    status INTEGER NOT NULL,
+    duration_ms INTEGER,
+    checksum TEXT,
+    previous_checksum TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_audit_actor ON audit_log(actor);
+CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp);
+
+ALTER TABLE sessions ADD COLUMN display_name TEXT;
+
+ALTER TABLE cross_agent_messages ADD COLUMN source_nous_id TEXT;
+ALTER TABLE cross_agent_messages ADD COLUMN surfaced_in_session TEXT;
+ALTER TABLE cross_agent_messages ADD COLUMN content_hash TEXT;
+CREATE INDEX IF NOT EXISTS idx_xagent_hash ON cross_agent_messages(content_hash, created_at);
+
+ALTER TABLE planning_phases ADD COLUMN verification_result TEXT;
+ALTER TABLE planning_phases ADD COLUMN dependencies TEXT NOT NULL DEFAULT '[]';
+
+ALTER TABLE planning_requirements ADD COLUMN rationale TEXT;
+ALTER TABLE planning_requirements ADD COLUMN depends_on TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE planning_requirements ADD COLUMN blocked_by TEXT NOT NULL DEFAULT '[]';
+
+ALTER TABLE planning_research ADD COLUMN status TEXT NOT NULL DEFAULT 'complete' CHECK(status IN ('complete', 'partial', 'failed'));",
+        down: "DROP INDEX IF EXISTS idx_xagent_hash;
+DROP INDEX IF EXISTS idx_audit_timestamp;
+DROP INDEX IF EXISTS idx_audit_actor;
+DROP TABLE IF EXISTS audit_log;",
     },
 ];
 
@@ -472,20 +948,20 @@ mod tests {
     #[test]
     fn fresh_database_gets_all_migrations() {
         let conn = fresh_conn();
-        let result = run_migrations(&conn).expect("second migration run on same DB should succeed");
+        let result = run_migrations(&conn).expect("migrations should apply to fresh DB");
 
         assert!(
             result.was_fresh,
             "fresh database should be reported as fresh"
         );
+        let expected: Vec<u32> = (1..=31).collect();
         assert_eq!(
-            result.applied,
-            vec![1, 2, 3, 4, 5],
-            "all five migrations should be applied to a fresh database"
+            result.applied, expected,
+            "all 31 migrations should be applied to a fresh database"
         );
         assert_eq!(
-            result.current_version, 5,
-            "current version should be 5 after all migrations"
+            result.current_version, 31,
+            "current version should be 31 after all migrations"
         );
     }
 
@@ -504,8 +980,8 @@ mod tests {
             "second run should apply no migrations"
         );
         assert_eq!(
-            result.current_version, 5,
-            "version should still be 5 after idempotent run"
+            result.current_version, 31,
+            "version should still be 31 after idempotent run"
         );
     }
 
@@ -534,8 +1010,8 @@ mod tests {
         let pending = check_migrations(&conn).unwrap_or_default();
         assert_eq!(
             pending.len(),
-            5,
-            "all 5 migrations should be pending on a fresh database"
+            31,
+            "all 31 migrations should be pending on a fresh database"
         );
         assert_eq!(
             pending[0].version, 1,
@@ -582,6 +1058,35 @@ mod tests {
             "distillations",
             "agent_notes",
             "blackboard",
+            "threads",
+            "thread_summaries",
+            "transport_bindings",
+            "auth_sessions",
+            "contact_requests",
+            "approved_contacts",
+            "tool_stats",
+            "interaction_signals",
+            "sub_agent_log",
+            "cross_agent_messages",
+            "routing_cache",
+            "message_queue",
+            "distillation_locks",
+            "distillation_log",
+            "reflection_log",
+            "plans",
+            "planning_projects",
+            "planning_phases",
+            "planning_requirements",
+            "planning_checkpoints",
+            "planning_research",
+            "planning_messages",
+            "planning_discussions",
+            "planning_decisions",
+            "planning_annotations",
+            "planning_edit_history",
+            "planning_spawn_records",
+            "planning_turn_counts",
+            "audit_log",
         ] {
             let exists: bool = conn
                 .query_row(
@@ -589,7 +1094,7 @@ mod tests {
                     [table],
                     |row| row.get(0),
                 )
-                .expect("check_migrations should return pending list without applying");
+                .expect("table existence query should succeed");
             assert!(exists, "table {table} should exist after migration");
         }
     }
@@ -597,15 +1102,15 @@ mod tests {
     #[test]
     fn run_migrations_fresh_db_schema_version() {
         let conn = fresh_conn();
-        let result = run_migrations(&conn).expect("second migration run on same DB should succeed");
+        let result = run_migrations(&conn).expect("migrations should apply to fresh DB");
         assert_eq!(
-            result.current_version, 5,
-            "current_version should be 5 after full migration"
+            result.current_version, 31,
+            "current_version should be 31 after full migration"
         );
         let version = get_schema_version(&conn);
         assert_eq!(
-            version, 5,
-            "get_schema_version should return 5 after full migration"
+            version, 31,
+            "get_schema_version should return 31 after full migration"
         );
     }
 
@@ -654,9 +1159,9 @@ mod tests {
 
         let pragma_version: u32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
-            .expect("check_migrations should succeed on a fully migrated DB");
+            .expect("PRAGMA user_version should be readable after migration");
         assert_eq!(
-            pragma_version, 5,
+            pragma_version, 31,
             "PRAGMA user_version should match latest migration version"
         );
     }
@@ -688,18 +1193,18 @@ mod tests {
         .expect("creating legacy schema_version table should succeed");
         conn.execute_batch(DDL).unwrap_or_default();
         conn.execute("INSERT INTO schema_version (version) VALUES (1)", [])
-            .expect("PRAGMA user_version should be readable");
+            .expect("inserting v1 row should succeed");
 
-        let result = run_migrations(&conn).expect("migrations should apply to fresh DB");
+        let result = run_migrations(&conn).expect("migrations should apply to v1 DB");
         assert!(!result.was_fresh, "upgraded database should not be fresh");
+        let expected: Vec<u32> = (2..=31).collect();
         assert_eq!(
-            result.applied,
-            vec![2, 3, 4, 5],
-            "only migrations 2, 3, 4, 5 should be applied to v1 database"
+            result.applied, expected,
+            "migrations 2-31 should be applied to v1 database"
         );
         assert_eq!(
-            result.current_version, 5,
-            "current version should be 5 after upgrade"
+            result.current_version, 31,
+            "current version should be 31 after upgrade"
         );
 
         assert!(
