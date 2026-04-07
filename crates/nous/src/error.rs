@@ -284,6 +284,7 @@ impl aletheia_koina::error_class::Classifiable for Error {
             Error::PipelinePanic { .. } => ErrorClass::Permanent,
             Error::CompetenceStore { .. } => ErrorClass::Permanent,
             Error::UncertaintyStore { .. } => ErrorClass::Permanent,
+            Error::RoleContract { .. } => ErrorClass::Permanent,
 
             // Unknown: incomplete information — escalate
             Error::DeliveryFailed { .. } => ErrorClass::Unknown,
