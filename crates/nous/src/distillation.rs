@@ -347,7 +347,7 @@ mod tests {
         let config = DistillTriggerConfig::default();
         let result = should_trigger_distillation(&session, 200_000, &config);
         assert!(result.is_some());
-        assert!(result.unwrap().contains("120K"));
+        assert!(result.unwrap().contains("120000"));
     }
 
     #[test]
