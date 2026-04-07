@@ -1,6 +1,8 @@
 #![deny(missing_docs)]
 //! Pylon (πυλών): "gateway." Routes HTTP and SSE requests to the agent pipeline.
 
+/// Service discovery file writer (Tailscale IP + file-based announcement).
+pub mod discovery;
 /// API error types with Axum HTTP status code mapping.
 pub(crate) mod error;
 /// JWT auth extractor for Bearer token validation.
