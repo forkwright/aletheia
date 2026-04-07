@@ -1,4 +1,6 @@
 const MAX_KILL_RING_ENTRIES: usize = 60;
+/// Duration the cursor flashes after input activity.
+const CURSOR_FLASH_DURATION_MS: u64 = 300;
 
 #[derive(Debug, Default, Clone)]
 pub struct InputState {
@@ -9,6 +11,24 @@ pub struct InputState {
     pub kill_ring: KillRing,
     pub history_search: Option<HistorySearchState>,
     pub image_attachments: Vec<ImageAttachment>,
+    /// When the cursor should stop flashing (after input activity).
+    pub cursor_flash_until: Option<std::time::Instant>,
+}
+
+impl InputState {
+    /// Trigger cursor flash on input activity.
+    pub fn trigger_cursor_flash(&mut self) {
+        self.cursor_flash_until = Some(
+            std::time::Instant::now()
+                + std::time::Duration::from_millis(CURSOR_FLASH_DURATION_MS),
+        );
+    }
+
+    /// Check if the cursor should be flashing (blinking) right now.
+    pub fn is_cursor_flashing(&self) -> bool {
+        self.cursor_flash_until
+            .is_some_and(|t| t > std::time::Instant::now())
+    }
 }
 
 #[derive(Debug)]

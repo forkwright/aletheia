@@ -14,6 +14,7 @@ pub(crate) fn handle_char_input(app: &mut App, c: char) {
         app.interaction.input.history_index = None;
         // WHY: any non-yank input invalidates the yank span so Alt+Y won't replace stale text
         app.interaction.input.kill_ring.last_yank = None;
+        app.interaction.input.trigger_cursor_flash();
     }
 }
 
@@ -25,6 +26,7 @@ pub(crate) fn handle_backspace(app: &mut App) {
             .text
             .drain(prev..app.interaction.input.cursor);
         app.interaction.input.cursor = prev;
+        app.interaction.input.trigger_cursor_flash();
     }
 }
 
@@ -35,27 +37,32 @@ pub(crate) fn handle_delete(app: &mut App) {
             .input
             .text
             .drain(app.interaction.input.cursor..next);
+        app.interaction.input.trigger_cursor_flash();
     }
 }
 
 pub(crate) fn handle_cursor_left(app: &mut App) {
     if app.interaction.input.cursor > 0 {
         app.interaction.input.cursor = app.prev_char_boundary(app.interaction.input.cursor);
+        app.interaction.input.trigger_cursor_flash();
     }
 }
 
 pub(crate) fn handle_cursor_right(app: &mut App) {
     if app.interaction.input.cursor < app.interaction.input.text.len() {
         app.interaction.input.cursor = app.next_char_boundary(app.interaction.input.cursor);
+        app.interaction.input.trigger_cursor_flash();
     }
 }
 
 pub(crate) fn handle_cursor_home(app: &mut App) {
     app.interaction.input.cursor = 0;
+    app.interaction.input.trigger_cursor_flash();
 }
 
 pub(crate) fn handle_cursor_end(app: &mut App) {
     app.interaction.input.cursor = app.interaction.input.text.len();
+    app.interaction.input.trigger_cursor_flash();
 }
 
 pub(crate) fn handle_delete_word(app: &mut App) {
@@ -101,6 +108,7 @@ pub(crate) fn handle_clear_line(app: &mut App) {
     let killed = std::mem::take(&mut app.interaction.input.text);
     app.interaction.input.cursor = 0;
     app.interaction.input.kill_ring.push(killed);
+    app.interaction.input.trigger_cursor_flash();
 }
 
 /// Ctrl+K: delete from cursor to end of line, storing killed text in the kill ring.
@@ -112,6 +120,7 @@ pub(crate) fn handle_delete_to_end(app: &mut App) {
         .drain(app.interaction.input.cursor..)
         .collect();
     app.interaction.input.kill_ring.push(killed);
+    app.interaction.input.trigger_cursor_flash();
 }
 
 /// Ctrl+Y: yank (paste) the most recent kill ring entry at the cursor.
@@ -136,6 +145,7 @@ pub(crate) fn handle_yank(app: &mut App) {
         end,
         ring_index,
     });
+    app.interaction.input.trigger_cursor_flash();
 }
 
 /// Alt+Y: cycle through kill ring entries, replacing the last yanked text.
@@ -155,6 +165,7 @@ pub(crate) fn handle_yank_cycle(app: &mut App) {
             end: new_end,
             ring_index: new_index,
         });
+        app.interaction.input.trigger_cursor_flash();
     }
 }
 
@@ -192,6 +203,7 @@ pub(crate) fn handle_word_forward(app: &mut App) {
     }
     app.interaction.input.cursor = pos;
     app.interaction.input.kill_ring.last_yank = None;
+    app.interaction.input.trigger_cursor_flash();
 }
 
 /// Alt+B: move cursor backward one word.
@@ -229,6 +241,7 @@ pub(crate) fn handle_word_backward(app: &mut App) {
     }
     app.interaction.input.cursor = pos;
     app.interaction.input.kill_ring.last_yank = None;
+    app.interaction.input.trigger_cursor_flash();
 }
 
 /// Ctrl+R: open reverse incremental history search.
@@ -311,6 +324,7 @@ pub(crate) fn handle_newline_insert(app: &mut App) {
     app.interaction.input.cursor += 1;
     app.interaction.input.history_index = None;
     app.interaction.input.kill_ring.last_yank = None;
+    app.interaction.input.trigger_cursor_flash();
 }
 
 /// Ctrl+L: clear the screen and request a full redraw.
@@ -330,6 +344,7 @@ pub(crate) fn handle_clipboard_paste(app: &mut App) {
             app.interaction.input.cursor += text.len();
             app.interaction.input.history_index = None;
             app.interaction.input.kill_ring.last_yank = None;
+            app.interaction.input.trigger_cursor_flash();
         }
         crate::clipboard::ClipboardContent::Image {
             png_data,
@@ -374,6 +389,7 @@ pub(crate) fn handle_history_up(app: &mut App) {
         app.interaction.input.text =
             app.interaction.input.history[app.interaction.input.history.len() - 1 - idx].clone();
         app.interaction.input.cursor = app.interaction.input.text.len();
+        app.interaction.input.trigger_cursor_flash();
     }
 }
 
@@ -387,6 +403,7 @@ pub(crate) fn handle_history_down(app: &mut App) {
             app.interaction.input.history_index = None;
             app.interaction.input.text.clear();
             app.interaction.input.cursor = 0;
+            app.interaction.input.trigger_cursor_flash();
         }
         Some(i) => {
             let idx = i - 1;
@@ -395,6 +412,7 @@ pub(crate) fn handle_history_down(app: &mut App) {
                 [app.interaction.input.history.len() - 1 - idx]
                 .clone();
             app.interaction.input.cursor = app.interaction.input.text.len();
+            app.interaction.input.trigger_cursor_flash();
         }
         // NOTE: already at latest input, no history to navigate
         None => {}

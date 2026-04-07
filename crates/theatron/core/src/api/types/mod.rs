@@ -291,6 +291,11 @@ pub enum SseEvent {
     },
     /// Server heartbeat.
     Ping,
+    /// Error event from the server.
+    Error {
+        /// Error message.
+        message: String,
+    },
 }
 
 /// A turn currently in progress, reported in the `init` SSE event.

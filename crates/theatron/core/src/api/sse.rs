@@ -214,6 +214,13 @@ fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
             status: str_field(&json, "status", event_type)?.to_string(),
         }),
         "ping" => Some(SseEvent::Ping),
+        "error" => Some(SseEvent::Error {
+            message: json
+                .get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("server error")
+                .to_string(),
+        }),
         other => {
             tracing::debug!("unknown SSE event type: {other}");
             None

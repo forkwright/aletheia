@@ -109,6 +109,7 @@ impl App {
             SseEvent::DistillStage { nous_id, stage } => Msg::SseDistillStage { nous_id, stage },
             SseEvent::DistillAfter { nous_id } => Msg::SseDistillAfter { nous_id },
             SseEvent::Ping => Msg::Tick,
+            SseEvent::Error { message } => Msg::ShowError(message),
             _ => Msg::Tick,
         }
     }
