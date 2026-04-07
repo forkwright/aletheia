@@ -13,6 +13,8 @@ pub mod credential;
 pub mod defaults;
 /// Disk space monitoring: threshold checks, cached monitor, write guards.
 pub mod disk_space;
+/// Error classification for intelligent retry and escalation decisions.
+pub mod error_class;
 /// Error types shared across all Aletheia crates (file I/O, JSON, identifiers).
 pub mod error;
 /// Internal event system coupling metrics and structured logs.

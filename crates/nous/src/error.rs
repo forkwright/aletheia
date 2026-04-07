@@ -254,6 +254,111 @@ pub enum Error {
 /// Convenience alias for results with [`Error`].
 pub type Result<T> = std::result::Result<T, Error>; // kanon:ignore RUST/pub-visibility
 
+impl aletheia_koina::error_class::Classifiable for Error {
+    fn class(&self) -> aletheia_koina::error_class::ErrorClass {
+        use aletheia_koina::error_class::ErrorClass;
+        match self {
+            // Delegate to the inner error's own classification where possible.
+            Error::Llm { source, .. } => source.class(),
+
+            // Transient: callers should retry after brief backoff
+            Error::Store { .. } => ErrorClass::Transient,
+            Error::AskTimeout { .. } => ErrorClass::Transient,
+            Error::PipelineTimeout { .. } => ErrorClass::Transient,
+            Error::InboxFull { .. } => ErrorClass::Transient,
+            Error::ActorSend { .. } => ErrorClass::Transient,
+            Error::ActorRecv { .. } => ErrorClass::Transient,
+            Error::RecallEmbedding { .. } => ErrorClass::Transient,
+            Error::RecallSearch { .. } => ErrorClass::Transient,
+
+            // Permanent: these will not succeed on retry
+            Error::Config { .. } => ErrorClass::Permanent,
+            Error::WorkspaceValidation { .. } => ErrorClass::Permanent,
+            Error::ContextAssembly { .. } => ErrorClass::Permanent,
+            Error::ContextAssemblyIo { .. } => ErrorClass::Permanent,
+            Error::NousNotFound { .. } => ErrorClass::Permanent,
+            Error::GuardRejected { .. } => ErrorClass::Permanent,
+            Error::LoopDetected { .. } => ErrorClass::Permanent,
+            Error::AskCycleDetected { .. } => ErrorClass::Permanent,
+            Error::MutexPoisoned { .. } => ErrorClass::Permanent,
+            Error::PipelinePanic { .. } => ErrorClass::Permanent,
+            Error::CompetenceStore { .. } => ErrorClass::Permanent,
+            Error::UncertaintyStore { .. } => ErrorClass::Permanent,
+
+            // Unknown: incomplete information — escalate
+            Error::DeliveryFailed { .. } => ErrorClass::Unknown,
+            Error::ReplyNotFound { .. } => ErrorClass::Unknown,
+            Error::ServiceDegraded { .. } => ErrorClass::Unknown,
+            Error::PipelineStage { .. } => ErrorClass::Unknown,
+            Error::Distillation { .. } => ErrorClass::Unknown,
+            Error::SelfAudit { .. } => ErrorClass::Unknown,
+        }
+    }
+
+    fn action(&self) -> aletheia_koina::error_class::ErrorAction {
+        use aletheia_koina::error_class::{ErrorAction, ErrorClass};
+        match self {
+            // Delegate LLM errors to hermeneus — it carries retry-after hints.
+            Error::Llm { source, .. } => source.action(),
+
+            // Transient pipeline errors: retry with backoff
+            Error::Store { .. } => ErrorAction::Retry {
+                max_attempts: 3,
+                backoff_base_ms: 200,
+            },
+            Error::AskTimeout { .. } => ErrorAction::Retry {
+                max_attempts: 2,
+                backoff_base_ms: 500,
+            },
+            Error::PipelineTimeout { .. } => ErrorAction::Retry {
+                max_attempts: 2,
+                backoff_base_ms: 1_000,
+            },
+            Error::InboxFull { .. } => ErrorAction::Retry {
+                max_attempts: 3,
+                backoff_base_ms: 500,
+            },
+            Error::ActorSend { .. } | Error::ActorRecv { .. } => ErrorAction::Retry {
+                max_attempts: 2,
+                backoff_base_ms: 200,
+            },
+            Error::RecallEmbedding { .. } | Error::RecallSearch { .. } => ErrorAction::Retry {
+                max_attempts: 2,
+                backoff_base_ms: 300,
+            },
+
+            // Permanent errors surfaced to the user
+            Error::GuardRejected { reason, .. } => ErrorAction::Surface {
+                user_message: format!("Request rejected: {reason}"),
+            },
+            Error::LoopDetected { pattern, .. } => ErrorAction::Surface {
+                user_message: format!(
+                    "Loop detected ({pattern}) — please rephrase your request."
+                ),
+            },
+            Error::NousNotFound { nous_id, .. } => ErrorAction::Surface {
+                user_message: format!("Agent '{nous_id}' not found."),
+            },
+
+            // Everything else: escalate for operator visibility
+            _ => {
+                // WHY: use class() to keep permanent vs unknown distinction explicit
+                // in logs, but escalate both since operator must inspect
+                match self.class() {
+                    ErrorClass::Transient => {
+                        // covered above — but avoid unreachable to stay non_exhaustive safe
+                        ErrorAction::Retry {
+                            max_attempts: 2,
+                            backoff_base_ms: 500,
+                        }
+                    }
+                    _ => ErrorAction::Escalate,
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use snafu::IntoError as _;
