@@ -487,10 +487,15 @@ impl NousActor {
             return;
         }
         // WHY: last_accessed tracks actual session activity; least recently used is evicted.
+        // Tiebreak on session key for deterministic eviction when timestamps match (#2737).
         let oldest_key = self
             .sessions
             .iter()
-            .min_by_key(|(_, state)| state.last_accessed)
+            .min_by(|(k_a, s_a), (k_b, s_b)| {
+                s_a.last_accessed
+                    .cmp(&s_b.last_accessed)
+                    .then_with(|| k_a.cmp(k_b))
+            })
             .map(|(key, _)| key.clone());
         if let Some(key) = oldest_key {
             warn!(
