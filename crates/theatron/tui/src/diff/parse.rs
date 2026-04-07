@@ -105,8 +105,6 @@ pub(crate) fn parse_hunk_header(line: &str) -> (usize, usize) {
     (old_start, new_start)
 }
 
-
-
 pub(super) fn pad_to(s: String, width: usize) -> String {
     if s.len() >= width {
         s.get(..width).unwrap_or(&s).to_string()

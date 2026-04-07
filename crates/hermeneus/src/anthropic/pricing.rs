@@ -137,5 +137,3 @@ pub(crate) fn backoff_delay(
     let delay = strategy.delay_for_attempt(attempt.saturating_sub(1));
     delay.max(Duration::from_millis(100))
 }
-
-

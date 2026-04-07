@@ -106,5 +106,3 @@ pub(crate) fn DurationTrendView(
         LineChart { series, height: 150 }
     }
 }
-
-
