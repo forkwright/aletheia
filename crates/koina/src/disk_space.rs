@@ -7,10 +7,10 @@ use std::path::Path;
 const BYTES_PER_MB: u64 = 1024 * 1024;
 
 /// Default warning threshold: 1 GB.
-pub(crate) const DEFAULT_WARNING_BYTES: u64 = 1024 * BYTES_PER_MB;
+pub const DEFAULT_WARNING_BYTES: u64 = 1024 * BYTES_PER_MB;
 
 /// Default critical threshold: 100 MB.
-pub(crate) const DEFAULT_CRITICAL_BYTES: u64 = 100 * BYTES_PER_MB;
+pub const DEFAULT_CRITICAL_BYTES: u64 = 100 * BYTES_PER_MB;
 
 /// Disk space status relative to configured thresholds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -100,7 +100,7 @@ pub fn available_space(path: &Path) -> std::io::Result<u64> {
 }
 
 /// Check disk space and classify against thresholds.
-pub(crate) fn check_disk_space(
+pub fn check_disk_space(
     path: &Path,
     warning_bytes: u64,
     critical_bytes: u64,
