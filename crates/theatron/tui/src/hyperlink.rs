@@ -360,7 +360,7 @@ mod tests {
         reason = "test-only env mutation in single-threaded test context"
     )]
     fn probe_detects_ghostty_resources_dir() {
-        // WHY: Use the raw probe (not cached) to test detection logic.
+        // NOTE: Use the raw probe (not cached) to test detection logic.
         // SAFETY: test-only env mutation; env vars are not read concurrently here.
         unsafe { std::env::set_var("GHOSTTY_RESOURCES_DIR", "/usr/share/ghostty") };
         let result = probe_hyperlink_support();

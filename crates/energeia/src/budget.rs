@@ -1,4 +1,4 @@
-// WHY: Shared budget tracking for a dispatch run. Uses atomics so concurrent
+// NOTE: Shared budget tracking for a dispatch run. Uses atomics so concurrent
 // sessions can record cost/turns without holding a mutex. Budget is checked
 // after each session result to trigger abort when limits are exceeded.
 

@@ -213,7 +213,7 @@ fn ConfidenceHistogram(
 
 /// Color for a confidence bucket based on its range.
 fn confidence_bucket_color(range_label: &str) -> &'static str {
-    // WHY: Higher confidence = greener, lower = redder.
+    // NOTE: Higher confidence = greener, lower = redder.
     match range_label {
         s if s.starts_with("0.8") || s.starts_with("0.9") => "#22c55e",
         s if s.starts_with("0.6") || s.starts_with("0.7") => "#4a9aff",

@@ -64,15 +64,15 @@ impl AgentScorecard {
     #[must_use]
     pub(crate) fn radar_axes(&self) -> [f64; 5] {
         [
-            // WHY: Lower tokens-per-response = more concise = higher quality score.
+            // NOTE: Lower tokens-per-response = more concise = higher quality score.
             // Normalize against 2000 tokens as a "verbose" baseline.
             (1.0 - (self.avg_tokens_per_response / 2000.0).min(1.0)).max(0.0),
             self.tool_success_rate.clamp(0.0, 1.0),
-            // WHY: Lower distillation frequency = better context management.
+            // NOTE: Lower distillation frequency = better context management.
             (1.0 - (self.distillation_frequency / 10.0).min(1.0)).max(0.0),
-            // WHY: More messages per session = more productive (capped at 50).
+            // NOTE: More messages per session = more productive (capped at 50).
             (self.messages_per_session / 50.0).clamp(0.0, 1.0),
-            // WHY: Fewer errors = more reliable (invert).
+            // NOTE: Fewer errors = more reliable (invert).
             (1.0 - (self.errors_per_session / 5.0).min(1.0)).max(0.0),
         ]
     }
@@ -313,7 +313,7 @@ pub(crate) fn compute_acceleration(values: &[f64]) -> TrendDirection {
     }
 
     let n = values.len();
-    // WHY: Second derivative approximation -- compare recent growth rate to prior.
+    // NOTE: Second derivative approximation -- compare recent growth rate to prior.
     let recent_growth = values[n - 1] - values[n - 2];
     let prior_growth = values[n - 2] - values[n - 3];
 

@@ -140,7 +140,7 @@ fn RadarChart(scorecards: Vec<AgentScorecard>) -> Element {
     #[expect(clippy::as_conversions, reason = "axis count to f64 for angle step")]
     let angle_step = std::f64::consts::TAU / axis_count as f64;
 
-    // WHY: Compute polygon vertices for each ring level.
+    // NOTE: Compute polygon vertices for each ring level.
     let ring_levels = [0.25, 0.5, 0.75, 1.0];
 
     let viewbox = format!("0 0 {RADAR_SIZE} {RADAR_SIZE}");

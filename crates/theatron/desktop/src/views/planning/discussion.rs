@@ -181,7 +181,7 @@ pub(crate) fn DiscussionView(project_id: String) -> Element {
                         }
                     }
                 }
-                // WHY: 404 means discussions endpoint not available on this pylon version.
+                // NOTE: 404 means discussions endpoint not available on this pylon version.
                 Ok(resp) if resp.status().as_u16() == 404 => {
                     fetch_state.set(DiscussionFetchState::NotAvailable);
                 }

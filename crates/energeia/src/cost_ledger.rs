@@ -1,4 +1,4 @@
-// WHY: Per-blast-radius cost attribution ledger. Tracks cumulative cost, turns,
+// NOTE: Per-blast-radius cost attribution ledger. Tracks cumulative cost, turns,
 // and session counts by blast radius to answer "how much did this feature cost?"
 //
 // Uses Arc<Mutex<HashMap>> for thread-safe accumulation. This is not a hot path

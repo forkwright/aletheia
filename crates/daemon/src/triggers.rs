@@ -102,8 +102,8 @@ impl TriggerRouter {
         let tx = self.tx.clone();
         let dedup_window = self.dedup_window;
 
-        // WHY: notify's debounced watcher handles OS-level event coalescing.
-        // We add application-level dedup on top for semantic deduplication
+        // NOTE: notify's recommended_watcher is not debounced; we add
+        // application-level dedup for semantic deduplication
         // (e.g., multiple saves to the same file within the window).
         let mut last_seen: HashMap<String, Instant> = HashMap::new();
 

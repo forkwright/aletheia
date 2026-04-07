@@ -13,7 +13,7 @@ use super::types::{
     CheckRun, CiStatus, PullRequest, QaVerdictStatus, SuppressionFinding, SuppressionKind,
 };
 
-// WHY: Pre-compile regex patterns once via LazyLock for performance.
+// PERF: Pre-compile regex patterns once via LazyLock for performance.
 // Using LazyLock instead of lazy_static per project convention.
 // INVARIANT: All patterns are compile-time constant strings, so Regex::new
 // will never fail. The expect() calls are safe.

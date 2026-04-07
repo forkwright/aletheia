@@ -219,7 +219,7 @@ pub fn exponential_steps(attempt: u32, factor: u32, cap: u32) -> u32 {
 
 /// Compute exponential backoff delay: `base * factor^attempt`, capped at `max_delay`.
 fn compute_exponential(base: Duration, factor: u32, max_delay: Duration, attempt: u32) -> Duration {
-    // WHY: cap exponent at 30 to prevent u64 overflow (2^31 * base_ms > u64::MAX for large bases)
+    // WHY: cap exponent at 30 to prevent u64 overflow (2^30 * base_ms could exceed u64::MAX)
     let exponent = attempt.min(30);
     let multiplier = u64::from(factor).checked_pow(exponent).unwrap_or(u64::MAX);
     let base_ms = u64::try_from(base.as_millis()).unwrap_or(u64::MAX);

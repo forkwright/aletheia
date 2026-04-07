@@ -199,7 +199,7 @@ fn build_prompt_has_system_prompt() {
         request.system.is_some(),
         "build_prompt should produce a system prompt"
     );
-    let system = request.system.expect("system prompt should be present"); // WHY: test assertion
+    let system = request.system.expect("system prompt should be present");
     assert!(
         system.contains("## Summary"),
         "system prompt should contain ## Summary section"
@@ -223,7 +223,7 @@ fn build_prompt_includes_nous_id() {
     let first_msg = request
         .messages
         .first()
-        .expect("request should have messages"); // WHY: test assertion
+        .expect("request should have messages");
     let user_text = first_msg.content.text();
     assert!(
         user_text.contains("my-agent"),
@@ -240,7 +240,7 @@ fn build_prompt_formats_messages_with_roles() {
     let first_msg = request
         .messages
         .first()
-        .expect("request should have messages"); // WHY: test assertion
+        .expect("request should have messages");
     let user_text = first_msg.content.text();
     assert!(
         user_text.contains("[USER]"),
@@ -302,7 +302,7 @@ async fn distill_success_returns_result() {
         "distill should succeed with a valid provider and messages"
     );
 
-    let result = result.expect("distill result should be Ok"); // WHY: test assertion
+    let result = result.expect("distill result should be Ok");
     assert!(
         result.summary.contains("Fixed login bug"),
         "distill result summary should contain the mock LLM output"
@@ -332,7 +332,7 @@ async fn distill_token_estimates_populated() {
     let result = engine
         .distill(&messages, "test-nous", &provider, 1)
         .await
-        .expect("distill should succeed with a valid provider"); // WHY: test assertion
+        .expect("distill should succeed with a valid provider");
 
     assert!(
         result.tokens_before > 0,
@@ -354,7 +354,7 @@ async fn distill_distillation_number_passed_through() {
     let result = engine
         .distill(&messages, "test-nous", &provider, 42)
         .await
-        .expect("distill should succeed with a valid provider"); // WHY: test assertion
+        .expect("distill should succeed with a valid provider");
     assert_eq!(
         result.distillation_number, 42,
         "distillation_number should be passed through unchanged"
@@ -370,7 +370,7 @@ async fn distill_timestamp_is_valid() {
     let result = engine
         .distill(&messages, "test-nous", &provider, 1)
         .await
-        .expect("distill should succeed with a valid provider"); // WHY: test assertion
+        .expect("distill should succeed with a valid provider");
 
     // NOTE: jiff::Timestamp::to_string() produces RFC 3339 / ISO 8601
     assert!(

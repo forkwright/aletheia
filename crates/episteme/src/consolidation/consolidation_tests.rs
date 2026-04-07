@@ -487,7 +487,7 @@ fn parse_empty_array_response_is_valid() {
 /// `content` is required (no `#[serde(default)]`). Omitting it must fail.
 #[test]
 fn parse_response_missing_required_content_field_errors() {
-    // WHY: Valid JSON structure but missing the required `content` field
+    // NOTE: Valid JSON structure but missing the required `content` field
     let response = r#"[{"entities": ["alice@example.com"]}]"#;
     let result = parse_consolidation_response(response);
     assert!(

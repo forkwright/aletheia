@@ -9,8 +9,8 @@ use regex::Regex;
 
 /// Compile a static regex from a literal pattern. Panics if the pattern is invalid
 /// (programming error caught at startup, not a runtime concern).
-// WHY: #[allow] instead of #[expect] because clippy cannot track lint suppression
-// through macro expansion on static items.
+// NOTE: #[expect] is used; clippy can track lint suppression through
+// macro expansion on static items.
 macro_rules! static_regex {
     ($name:ident, $pattern:expr) => {
         #[expect(clippy::expect_used, reason = "macro-generated static regex requires expect() for compilation failure")]

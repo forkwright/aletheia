@@ -69,7 +69,7 @@ pub(crate) fn DurationTrendView(
 
     // Use median duration (p50) as the series value. We only have per-bucket
     // invocation counts, so we use a constant p50 as a flat proxy.
-    // WHY: Until the server provides per-bucket duration stats, this chart shows
+    // NOTE: Until the server provides per-bucket duration stats, this chart shows
     // relative volume-weighted duration as an approximation. Swap when available.
     let series: Vec<LineSeries> = top5
         .iter()

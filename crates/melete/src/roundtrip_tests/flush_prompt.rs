@@ -209,10 +209,10 @@ fn engine_config_sections_match_input() {
         *s.first().expect("idx 0"),
         DistillSection::Summary,
         "first section should be Summary"
-    ); // WHY: test assertion
+    );
     assert_eq!(
         *s.get(1).expect("idx 1"),
         DistillSection::Corrections,
         "second section should be Corrections"
-    ); // WHY: test assertion
+    );
 }

@@ -124,7 +124,7 @@ fn build_prompt_sanitizes_backtick_in_nous_id() {
     let first_msg = request
         .messages
         .first()
-        .expect("request should have at least one message"); // WHY: test assertion
+        .expect("request should have at least one message");
     let user_text = first_msg.content.text();
     assert!(
         !user_text.contains('`'),
@@ -143,7 +143,7 @@ fn build_prompt_sanitizes_newline_in_nous_id() {
     let first_msg = request
         .messages
         .first()
-        .expect("request should have at least one message"); // WHY: test assertion
+        .expect("request should have at least one message");
     let user_text = first_msg.content.text();
     // NOTE: newline must be stripped from inside the nous_id quoted span
     assert!(
@@ -223,7 +223,7 @@ async fn distill_result_contains_memory_flush_field() {
     let result = engine
         .distill(&messages, "test", &provider, 1)
         .await
-        .expect("distill should succeed with a valid provider"); // WHY: test assertion
+        .expect("distill should succeed with a valid provider");
     // NOTE: assert the field exists: mock summary has no decisions to assert content on
     let _ = &result.memory_flush;
 }
@@ -247,13 +247,13 @@ Fixed login bug.
         2,
         "should extract exactly 2 decisions from the summary"
     );
-    let first = flush.decisions.first().expect("should have first decision"); // WHY: test assertion
+    let first = flush.decisions.first().expect("should have first decision");
     let check = first.content.contains("Decision: Use null check");
     assert!(
         check,
         "first extracted decision should contain the null check decision"
     );
-    let second = flush.decisions.get(1).expect("should have second decision"); // WHY: test assertion
+    let second = flush.decisions.get(1).expect("should have second decision");
     let check = second.content.contains("Decision: Keep auth module");
     assert!(
         check,
@@ -280,7 +280,7 @@ Fixed auth.
     let first = flush
         .corrections
         .first()
-        .expect("should have first correction"); // WHY: test assertion
+        .expect("should have first correction");
     let check = first.content.contains("Wrong file at first");
     assert!(
         check,
@@ -308,7 +308,7 @@ Done.
     );
     let state = flush
         .task_state
-        .expect("task_state should be Some when Task Context section is present"); // WHY: test assertion
+        .expect("task_state should be Some when Task Context section is present");
     assert!(
         state.contains("login flow"),
         "task_state should contain the login flow context from the summary"
@@ -342,7 +342,7 @@ fn parse_summary_flush_source_is_extracted() {
         1,
         "should extract exactly 1 decision from the summary"
     );
-    let first = flush.decisions.first().expect("should have first decision"); // WHY: test assertion
+    let first = flush.decisions.first().expect("should have first decision");
     let check = matches!(first.source, FlushSource::Extracted);
     assert!(
         check,

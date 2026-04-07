@@ -427,7 +427,7 @@ async fn send_timeout_fires_when_inbox_full() {
     let (tx, _rx) = mpsc::channel(1);
     let handle = NousHandle::new("test-agent".to_owned(), tx.clone());
 
-    // WHY: don't drop _rx -- dropping closes the channel and the send below would fail.
+    // NOTE: don't drop _rx -- dropping closes the channel and the send below would fail.
     let (reply_tx, _reply_rx) = tokio::sync::oneshot::channel();
     tx.send(NousMessage::Turn {
         session_key: "main".to_owned(),
@@ -548,7 +548,7 @@ fn spawn_test_actor_with_store(
 #[tokio::test]
 async fn session_id_adoption_prevents_fk_divergence() {
     let store = aletheia_mneme::store::SessionStore::open_in_memory().expect("in-memory store");
-    // WHY: SessionId requires UUID v4 format after security hardening (#1754)
+    // NOTE: SessionId requires UUID v4 format after security hardening (#1754)
     let db_session_id = "550e8400-e29b-41d4-a716-446655440000";
 
     // NOTE: Simulate pylon creating the session in the store
@@ -587,7 +587,7 @@ async fn session_id_adoption_prevents_fk_divergence() {
         history.len()
     );
 
-    // WHY: Verify no messages exist under a different session ID
+    // NOTE: Verify no messages exist under a different session ID
     // (if divergence occurred, messages would be under a random ULID)
     let all_sessions = store_guard
         .list_sessions(Some("test-agent"))

@@ -737,8 +737,7 @@ fn apply_recall_result(
                     prompt.push_str("\n\n");
                     prompt.push_str(section);
                 }
-                // WHY: saturating_sub followed by max(0) ensures remaining_tokens
-                // never goes negative regardless of recall token accounting.
+                // WHY: max(0) prevents negative values; saturating_sub caps at i64::MIN.
                 #[expect(
                     clippy::cast_possible_wrap,
                     clippy::as_conversions,

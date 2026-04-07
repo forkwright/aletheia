@@ -1,4 +1,4 @@
-// WHY: Verdict determination is pure logic that combines mechanical issues
+// NOTE: Verdict determination is pure logic that combines mechanical issues
 // and criterion results into a single QaVerdict. Separated from the
 // orchestrator so the rules are testable in isolation.
 

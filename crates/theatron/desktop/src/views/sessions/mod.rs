@@ -153,7 +153,7 @@ pub(crate) fn Sessions() -> Element {
 
                 match client.get(&url).send().await {
                     Ok(resp) if resp.status().is_success() => {
-                        // WHY: API may return {sessions: [...]} or bare [...].
+                        // NOTE: API may return {sessions: [...]} or bare [...].
                         let text = match resp.text().await {
                             Ok(t) => t,
                             Err(e) => {
@@ -227,7 +227,7 @@ pub(crate) fn Sessions() -> Element {
                             }
                         };
 
-                        // WHY: history response may be {messages: [...]} or bare [...].
+                        // NOTE: history response may be {messages: [...]} or bare [...].
                         let messages =
                             if let Ok(wrapper) = serde_json::from_str::<HistoryResponse>(&text) {
                                 wrapper.messages

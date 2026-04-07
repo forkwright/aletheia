@@ -92,8 +92,7 @@ pub fn append_jsonl(path: &Path, records: &[EvalRecord]) -> Result<()> {
 }
 
 fn now_iso8601() -> String {
-    // WHY: avoid pulling in jiff/chrono for a single timestamp format.
-    // Epoch seconds are unambiguous and lightweight.
+    // WHY: avoid pulling in jiff/chrono for a single timestamp; returns Unix epoch seconds
     let duration = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default();
