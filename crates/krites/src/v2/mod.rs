@@ -11,6 +11,7 @@
 //! - [`error`] — v2-specific error types
 //! - [`eval`] — query and mutation evaluator
 
+pub mod db;
 pub mod error;
 pub mod eval;
 pub mod index;
