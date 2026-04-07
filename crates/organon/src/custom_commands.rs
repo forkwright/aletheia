@@ -117,7 +117,8 @@ pub(crate) fn parse_command_yaml(content: &str) -> Result<CustomCommandDef, Stri
 /// Load all custom command definitions from a single directory.
 ///
 /// Reads all `.yaml` and `.yml` files in the directory. Malformed files
-/// are logged and skipped.
+/// are logged and skipped. Files are processed in alphabetical order to ensure
+/// deterministic loading.
 #[must_use]
 #[expect(dead_code, reason = "custom YAML command loading from oikos cascade")]
 pub(crate) fn load_commands_from_dir(dir: &Path) -> Vec<CustomCommandDef> {
@@ -125,13 +126,19 @@ pub(crate) fn load_commands_from_dir(dir: &Path) -> Vec<CustomCommandDef> {
         return Vec::new();
     };
 
+    // Collect and sort entries for deterministic processing (#2738)
+    let mut paths: Vec<_> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
+            ext == "yaml" || ext == "yml"
+        })
+        .collect();
+    paths.sort();
+
     let mut commands = Vec::new();
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-        if ext != "yaml" && ext != "yml" {
-            continue;
-        }
+    for path in paths {
         match parse_command_file(&path) {
             Ok(cmd) => {
                 debug!(name = %cmd.name, path = %path.display(), "loaded custom command");

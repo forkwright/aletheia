@@ -588,10 +588,9 @@ impl TaskRunner {
     }
 
     /// Check in-flight tasks for completion, timeout warnings, and hung task cancellation.
-    #[expect(
-        clippy::expect_used,
-        reason = "key existence verified by is_finished() check immediately before"
-    )]
+    ///
+    /// Ensures tasks are removed from the in-flight map before awaiting to prevent
+    /// stale entries on panic (#2745).
     async fn check_in_flight(&mut self) {
         let task_ids: Vec<String> = self.in_flight.keys().cloned().collect();
 
@@ -627,6 +626,9 @@ impl TaskRunner {
             }
 
             if in_flight.handle.is_finished() {
+                // Remove from map BEFORE awaiting to ensure cleanup on panic (#2745).
+                // The entry is removed here; even if the await panics (and task is not
+                // caught), the stale handle won't remain in the map.
                 let Some(in_flight) = self.in_flight.remove(&task_id) else {
                     continue;
                 };
