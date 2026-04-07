@@ -11,8 +11,8 @@ const GRID_STYLE: &str = "\
 ";
 
 const CARD_STYLE: &str = "\
-    background: #1a1a2e; \
-    border: 1px solid #333; \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
     border-radius: 8px; \
     padding: 16px 20px; \
     min-width: 200px; \
@@ -30,7 +30,7 @@ const CARD_HEADER: &str = "\
 const CARD_NAME: &str = "\
     font-size: 15px; \
     font-weight: bold; \
-    color: #e0e0e0;\
+    color: var(--text-primary);\
 ";
 
 const CARD_ROW: &str = "\
@@ -42,11 +42,11 @@ const CARD_ROW: &str = "\
 ";
 
 const CARD_LABEL: &str = "\
-    color: #888;\
+    color: var(--text-muted);\
 ";
 
 const CARD_VALUE: &str = "\
-    color: #e0e0e0;\
+    color: var(--text-primary);\
 ";
 
 const DOT_BASE: &str = "\
@@ -58,7 +58,7 @@ const DOT_BASE: &str = "\
 ";
 
 const EMPTY_STATE: &str = "\
-    color: #555; \
+    color: var(--text-muted); \
     font-size: 13px; \
     padding: 12px 0;\
 ";
@@ -88,11 +88,11 @@ fn render_card(card: &AgentCardData) -> Element {
     let dot_color = card.health.dot_color();
     let health_label = card.health.label();
     let turn_color = if card.active_turns > 0 {
-        "#4a4aff"
+        "var(--accent)"
     } else {
-        "#555"
+        "var(--text-muted)"
     };
-    let conn_color = if card.connected { "#22c55e" } else { "#ef4444" };
+    let conn_color = if card.connected { "var(--status-success)" } else { "var(--status-error)" };
     let conn_label = if card.connected {
         "connected"
     } else {
@@ -142,7 +142,7 @@ fn render_card(card: &AgentCardData) -> Element {
             div {
                 style: "{CARD_ROW}",
                 span { style: "{CARD_LABEL}", "Last activity" }
-                span { style: "color: #666;", "{last_activity}" }
+                span { style: "color: var(--text-muted);", "{last_activity}" }
             }
 
             div {

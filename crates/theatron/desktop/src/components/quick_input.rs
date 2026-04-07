@@ -16,7 +16,7 @@ const OVERLAY_BACKDROP: &str = "\
     left: 0; \
     right: 0; \
     bottom: 0; \
-    background: rgba(0, 0, 0, 0.5); \
+    background: var(--bg-overlay); \
     display: flex; \
     align-items: flex-start; \
     justify-content: center; \
@@ -26,10 +26,10 @@ const OVERLAY_BACKDROP: &str = "\
 
 const OVERLAY_PANEL: &str = "\
     width: 600px; \
-    background: #1a1a2e; \
-    border: 1px solid #333; \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
     border-radius: 12px; \
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5); \
+    box-shadow: var(--shadow-lg); \
     padding: 16px; \
     display: flex; \
     flex-direction: column; \
@@ -44,27 +44,27 @@ const INPUT_ROW: &str = "\
 
 const INPUT_STYLE: &str = "\
     flex: 1; \
-    background: #0f0f1a; \
-    border: 1px solid #444; \
+    background: var(--bg); \
+    border: 1px solid var(--border); \
     border-radius: 8px; \
     padding: 12px 16px; \
-    color: #e0e0e0; \
+    color: var(--text-primary); \
     font-size: 15px; \
     outline: none;\
 ";
 
 const SELECT_STYLE: &str = "\
-    background: #2a2a4a; \
-    border: 1px solid #444; \
+    background: var(--bg-surface-bright); \
+    border: 1px solid var(--border); \
     border-radius: 8px; \
     padding: 12px; \
-    color: #e0e0e0; \
+    color: var(--text-primary); \
     font-size: 13px; \
     cursor: pointer;\
 ";
 
 const HINT_STYLE: &str = "\
-    color: #555; \
+    color: var(--text-muted); \
     font-size: 12px; \
     text-align: center;\
 ";
