@@ -556,7 +556,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "nous may only add Suggestion-tier intents")]
     fn nous_cannot_add_directive() {
-        Intent::new(
+        let _ = Intent::new(
             "override operator".into(),
             ConvictionTier::Directive,
             IntentSource::Nous,
@@ -567,7 +567,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "nous may only add Suggestion-tier intents")]
     fn nous_cannot_add_preference() {
-        Intent::new(
+        let _ = Intent::new(
             "prefer X over Y".into(),
             ConvictionTier::Preference,
             IntentSource::Nous,
