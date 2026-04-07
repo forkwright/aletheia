@@ -394,7 +394,7 @@ impl Watchdog {
                 );
                 if let Some(proc) = self.processes.get_mut(id) {
                     proc.state = ProcessState::Hung;
-                    proc.backoff_until = Some(Instant::now() + watchdog_backoff(attempt));
+                    proc.backoff_until = Some(Instant::now() + watchdog_backoff(attempt, &self.config));
                 }
             }
         }
@@ -420,12 +420,12 @@ impl Watchdog {
 /// - attempt 3: 8s
 /// - attempt 4: 16s
 /// - attempt 5+: capped at 300s (5 min)
-pub(crate) fn watchdog_backoff(attempt: u32) -> Duration {
+pub(crate) fn watchdog_backoff(attempt: u32, config: &WatchdogConfig) -> Duration {
     use aletheia_koina::retry::BackoffStrategy;
     let strategy = BackoffStrategy::Exponential {
-        base: BACKOFF_BASE,
+        base: config.backoff_base,
         factor: 2,
-        max_delay: BACKOFF_CAP,
+        max_delay: config.backoff_cap,
     };
     // WHY: call site passes 1-indexed attempt; delay_for_attempt is 0-indexed
     strategy.delay_for_attempt(attempt.saturating_sub(1))
@@ -547,6 +547,7 @@ mod tests {
             heartbeat_timeout: Duration::from_millis(50),
             check_interval: Duration::from_millis(10),
             max_restarts: 5,
+            ..WatchdogConfig::default()
         };
         let mut wd = Watchdog::new(config, token);
         let proc = Arc::new(MockProcess::new("agent-1"));
@@ -583,6 +584,7 @@ mod tests {
             heartbeat_timeout: Duration::from_millis(50),
             check_interval: Duration::from_millis(10),
             max_restarts: 5,
+            ..WatchdogConfig::default()
         };
         let mut wd = Watchdog::new(config, token);
         let proc = Arc::new(MockProcess::new("agent-1"));
@@ -609,6 +611,7 @@ mod tests {
             heartbeat_timeout: Duration::from_millis(50),
             check_interval: Duration::from_millis(10),
             max_restarts: 2,
+            ..WatchdogConfig::default()
         };
         let mut wd = Watchdog::new(config, token);
         let proc = Arc::new(MockProcess::new("agent-1"));
@@ -635,6 +638,7 @@ mod tests {
             heartbeat_timeout: Duration::from_millis(50),
             check_interval: Duration::from_millis(10),
             max_restarts: 5,
+            ..WatchdogConfig::default()
         };
         let mut wd = Watchdog::new(config, token);
         let proc = Arc::new(MockProcess::new("agent-1"));
@@ -656,23 +660,23 @@ mod tests {
 
     #[test]
     fn watchdog_backoff_exponential_growth() {
-        assert_eq!(watchdog_backoff(1), Duration::from_secs(2));
-        assert_eq!(watchdog_backoff(2), Duration::from_secs(4));
-        assert_eq!(watchdog_backoff(3), Duration::from_secs(8));
-        assert_eq!(watchdog_backoff(4), Duration::from_secs(16));
-        assert_eq!(watchdog_backoff(5), Duration::from_secs(32));
+        assert_eq!(watchdog_backoff(1, &WatchdogConfig::default()), Duration::from_secs(2));
+        assert_eq!(watchdog_backoff(2, &WatchdogConfig::default()), Duration::from_secs(4));
+        assert_eq!(watchdog_backoff(3, &WatchdogConfig::default()), Duration::from_secs(8));
+        assert_eq!(watchdog_backoff(4, &WatchdogConfig::default()), Duration::from_secs(16));
+        assert_eq!(watchdog_backoff(5, &WatchdogConfig::default()), Duration::from_secs(32));
     }
 
     #[test]
     fn watchdog_backoff_capped_at_max() {
-        let delay = watchdog_backoff(20);
+        let delay = watchdog_backoff(20, &WatchdogConfig::default());
         assert_eq!(delay, BACKOFF_CAP, "backoff should be capped at 5 minutes");
     }
 
     #[test]
     fn watchdog_backoff_zero_attempt() {
         assert_eq!(
-            watchdog_backoff(0),
+            watchdog_backoff(0, &WatchdogConfig::default()),
             BACKOFF_BASE,
             "attempt 0 should return base delay"
         );
@@ -703,6 +707,7 @@ mod tests {
             heartbeat_timeout: Duration::from_millis(50),
             check_interval: Duration::from_millis(10),
             max_restarts: 5,
+            ..WatchdogConfig::default()
         };
         let mut wd = Watchdog::new(config, token);
         let proc = Arc::new(MockProcess::new("agent-1"));
