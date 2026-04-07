@@ -93,6 +93,11 @@ define_id!(
     EmbeddingId
 );
 
+define_id!(
+    /// Unique identifier for a [`CausalEdge`](crate::knowledge::CausalEdge).
+    CausalEdgeId
+);
+
 /// Validation errors for knowledge-domain identifiers.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
