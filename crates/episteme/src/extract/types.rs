@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::refinement;
+use crate::knowledge::CausalRelationType;
 
 /// Extracted knowledge from a conversation segment.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -120,6 +121,13 @@ pub struct RefinedExtraction {
     pub turn_type: refinement::TurnType,
     /// Number of facts filtered out by quality checks.
     pub facts_filtered: usize,
+    /// Causal signal detected in the session text, if any.
+    ///
+    /// `Some((relation_type, confidence))` when the combined message text
+    /// contains causal language ("because", "therefore", "caused by", etc.).
+    /// Callers can use this to trigger [`crate::causal::extract_causal_edges`]
+    /// with the relevant fact IDs.
+    pub causal_signal: Option<(CausalRelationType, f64)>,
 }
 
 /// Counts of knowledge items persisted to the store.
@@ -133,4 +141,6 @@ pub struct PersistResult {
     pub relationships_skipped: usize,
     /// Number of facts written.
     pub facts_inserted: usize,
+    /// Number of causal edges extracted and recorded.
+    pub causal_edges_inserted: usize,
 }

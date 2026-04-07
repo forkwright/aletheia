@@ -20,6 +20,8 @@ mod tests {
         let _ = id::FactId::new("f-1").expect("valid");
         let _ = id::EntityId::new("e-1").expect("valid");
         let _ = id::EmbeddingId::new("emb-1").expect("valid");
+        let _ = id::CausalEdgeId::new("ce-1").expect("valid");
         let _ = knowledge::EpistemicTier::Verified;
+        let _ = knowledge::CausalRelationType::Caused;
     }
 }
