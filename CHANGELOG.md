@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.13.65](https://github.com/forkwright/aletheia/compare/v0.13.64...v0.13.65) (2026-04-07)
+
+
+### Features
+
+* **aletheia:** Datalog REPL ([5e76623](https://github.com/forkwright/aletheia/commit/5e7662395c5d0baed9e8445d99eb0a798a3ff759))
+* **daemon:** self-prompting with rate-limited feedback loop ([8b67cc9](https://github.com/forkwright/aletheia/commit/8b67cc9b2afdab37844e9e4a54432a443952a0d8))
+* **dianoia:** intent persistence ([2554c3e](https://github.com/forkwright/aletheia/commit/2554c3ee09489994b62333fc403ff9bb2c8fa25c))
+* **dianoia:** phase boundary gates ([c76e234](https://github.com/forkwright/aletheia/commit/c76e234166f7f162e22e184f50d96505b9d36262)), closes [#2302](https://github.com/forkwright/aletheia/issues/2302)
+* **dokimion:** adversarial self-probing ([3a1f9f1](https://github.com/forkwright/aletheia/commit/3a1f9f18d9223b56d19f8551f7fce132d2fbd561))
+* **eidos:** causal edge table ([e4a7ecd](https://github.com/forkwright/aletheia/commit/e4a7ecd945e06460f421e61dd0a343b96998da09))
+* **episteme:** embedding evaluation gate with Recall@K metrics ([b9fbd08](https://github.com/forkwright/aletheia/commit/b9fbd08a5e5b0f468a028dd048278ccca44afd47))
+* **episteme:** operational metrics as knowledge graph facts ([e07d4e9](https://github.com/forkwright/aletheia/commit/e07d4e9687c4e7c124400a5142ce51f4c6c96667))
+* **episteme:** steward rule proposal generation ([78db048](https://github.com/forkwright/aletheia/commit/78db04868bab6f4786be6d1a544bfdb630898639))
+* **episteme:** structured tracing to Datalog ([7a00094](https://github.com/forkwright/aletheia/commit/7a000944e807d02d97bb46c2f771866d484135fa))
+* **koina:** error classification trait ([fd8a2ca](https://github.com/forkwright/aletheia/commit/fd8a2cac9422b325eb3d308172c205ea9e1b2013))
+* **mneme:** PR lesson extraction from training data ([e33ee62](https://github.com/forkwright/aletheia/commit/e33ee624b29e8a790522637f525935366a1d1952))
+* **mneme:** training data capture pipeline ([849a197](https://github.com/forkwright/aletheia/commit/849a197f3f55f00f204f733b401300d63dfce058))
+* **nous:** five-check self-audit ([36c618b](https://github.com/forkwright/aletheia/commit/36c618b5a83f5f75bce4c0e27b382783cbc1ea53)), closes [#2384](https://github.com/forkwright/aletheia/issues/2384)
+* **nous:** graceful degradation with cached responses when LLM unavailable ([01add5e](https://github.com/forkwright/aletheia/commit/01add5e6dc089ef5ee46c566cff9e0b84ae07b58))
+* **nous:** operator output style ([4a3bbf6](https://github.com/forkwright/aletheia/commit/4a3bbf645f332d19f4a9126588378ec4c9033839)), closes [#2373](https://github.com/forkwright/aletheia/issues/2373)
+* **nous:** quality drift detection ([b69ead7](https://github.com/forkwright/aletheia/commit/b69ead7dea594851de842fb404e13c649e11c0b9)), closes [#2297](https://github.com/forkwright/aletheia/issues/2297)
+* **nous:** turn-level correction hooks ([6d5a636](https://github.com/forkwright/aletheia/commit/6d5a63693786269be8137a0b74a499b29be65960)), closes [#2265](https://github.com/forkwright/aletheia/issues/2265)
+* **nous:** versioned role-behavior contracts ([8c55811](https://github.com/forkwright/aletheia/commit/8c55811454b75eb28410404dae208ecbb8020dbb)), closes [#2293](https://github.com/forkwright/aletheia/issues/2293)
+* **pylon:** discovery file + Tailscale ([b5c9959](https://github.com/forkwright/aletheia/commit/b5c9959de3a73a5d6617c956fc4dd524b3615589)), closes [#2398](https://github.com/forkwright/aletheia/issues/2398)
+* **theatron-desktop:** neurodivergent UX ([e71437b](https://github.com/forkwright/aletheia/commit/e71437b7f1a20fa1c0f952576a5f6be4a87e02bc))
+* **theatron:** auto-discover server ([7fb7fdc](https://github.com/forkwright/aletheia/commit/7fb7fdcc4dd3baf3b2cb8e3105e083f71feddc73)), closes [#2394](https://github.com/forkwright/aletheia/issues/2394)
+
+
+### Bug Fixes
+
+* **theatron-desktop:** QoL — nous naming, sidebar, theme, palette, collapse ([3967620](https://github.com/forkwright/aletheia/commit/39676203c160eff41402f96a90f424787a257df1))
+* **theatron-tui:** QoL fixes ([90bea4a](https://github.com/forkwright/aletheia/commit/90bea4a027494671545e23038d9813b6c46493d3)), closes [#2526](https://github.com/forkwright/aletheia/issues/2526)
+
+
+### Documentation
+
+* fjall evaluation ([37ee78b](https://github.com/forkwright/aletheia/commit/37ee78b7587c163950767babea3a34e7bb151600)), closes [#2290](https://github.com/forkwright/aletheia/issues/2290)
+
 ## [0.13.64](https://github.com/forkwright/aletheia/compare/v0.13.63...v0.13.64) (2026-04-07)
 
 
