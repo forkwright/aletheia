@@ -50,6 +50,8 @@ pub mod knowledge_store;
 pub mod manifest;
 /// Prometheus metric definitions for the knowledge pipeline.
 pub mod metrics;
+/// Operational fact extraction: runtime metrics as knowledge graph facts.
+pub mod ops_facts;
 /// Typed Datalog query builder for compile-time schema validation.
 #[cfg(feature = "mneme-engine")]
 pub mod query;
