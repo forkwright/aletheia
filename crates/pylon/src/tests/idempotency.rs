@@ -102,10 +102,13 @@ async fn idempotency_key_in_flight_returns_409() {
     let created = create_test_session(&router).await;
     let id = created["id"].as_str().unwrap();
 
-    let key = "inflight-key-001";
-    state.idempotency_cache.check_or_insert(key);
+    // WHY: cache keys are scoped by user sub claim (PR #2609).
+    // The test auth token uses "test-user" as the subject.
+    let raw_key = "inflight-key-001";
+    let scoped_key = format!("test-user:{raw_key}");
+    state.idempotency_cache.check_or_insert(&scoped_key);
 
-    let req = send_message_req(id, Some(key));
+    let req = send_message_req(id, Some(raw_key));
     let resp = router.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::CONFLICT);
     let body = body_json(resp).await;
