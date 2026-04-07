@@ -8,7 +8,7 @@ use figment::providers::{Env, Format, Serialized, Toml};
 use snafu::ResultExt;
 use tracing::{error, warn};
 
-use aletheia_koina::disk_space::{DiskSpaceMonitor, DiskStatus};
+use aletheia_koina::disk_space::DiskStatus;
 use aletheia_koina::system::{FileSystem, RealSystem};
 
 use crate::config::AletheiaConfig;
@@ -209,10 +209,10 @@ pub fn write_config(oikos: &Oikos, config: &AletheiaConfig) -> Result<()> {
 pub(crate) fn write_config_checked(
     oikos: &Oikos,
     config: &AletheiaConfig,
-    disk_monitor: Option<&DiskSpaceMonitor>,
+    disk_status: Option<DiskStatus>,
 ) -> Result<()> {
-    if let Some(monitor) = disk_monitor {
-        match monitor.status() {
+    if let Some(status) = disk_status {
+        match status {
             DiskStatus::Warning { available_bytes } => {
                 let mb = available_bytes / (1024 * 1024);
                 warn!(
