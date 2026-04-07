@@ -693,6 +693,10 @@ mod config_tests {
             "scope enforcement should be enabled by default"
         );
         assert!(
+            config.correction_hooks_enabled,
+            "correction hooks should be enabled by default"
+        );
+        assert!(
             config.audit_logging_enabled,
             "audit logging should be enabled by default"
         );
@@ -700,26 +704,29 @@ mod config_tests {
 
     #[test]
     fn register_all_builtins_from_default_config() {
+        let dir = tempfile::tempdir().expect("create temp dir");
         let mut registry = HookRegistry::new();
         let config = HookConfig::default();
-        register_builtin_hooks(&mut registry, &config);
+        register_builtin_hooks(&mut registry, &config, dir.path());
         assert_eq!(
             registry.len(),
-            3,
-            "default config should register 3 built-in hooks"
+            5,
+            "default config should register 5 built-in hooks (cost, scope, correction_injector, correction_detector, audit)"
         );
     }
 
     #[test]
     fn disabling_hooks_reduces_count() {
+        let dir = tempfile::tempdir().expect("create temp dir");
         let mut registry = HookRegistry::new();
         let config = HookConfig {
             cost_control_enabled: false,
             scope_enforcement_enabled: false,
+            correction_hooks_enabled: false,
             audit_logging_enabled: true,
             turn_token_budget: 0,
         };
-        register_builtin_hooks(&mut registry, &config);
+        register_builtin_hooks(&mut registry, &config, dir.path());
         assert_eq!(
             registry.len(),
             1,
@@ -729,14 +736,16 @@ mod config_tests {
 
     #[test]
     fn all_hooks_disabled_gives_empty_registry() {
+        let dir = tempfile::tempdir().expect("create temp dir");
         let mut registry = HookRegistry::new();
         let config = HookConfig {
             cost_control_enabled: false,
             scope_enforcement_enabled: false,
+            correction_hooks_enabled: false,
             audit_logging_enabled: false,
             turn_token_budget: 0,
         };
-        register_builtin_hooks(&mut registry, &config);
+        register_builtin_hooks(&mut registry, &config, dir.path());
         assert_eq!(
             registry.len(),
             0,
@@ -754,6 +763,10 @@ mod config_tests {
             config.scope_enforcement_enabled,
             back.scope_enforcement_enabled
         );
+        assert_eq!(
+            config.correction_hooks_enabled,
+            back.correction_hooks_enabled
+        );
         assert_eq!(config.audit_logging_enabled, back.audit_logging_enabled);
         assert_eq!(config.turn_token_budget, back.turn_token_budget);
     }
@@ -768,12 +781,14 @@ mod integration_tests {
 
     #[tokio::test]
     async fn full_hook_lifecycle_with_builtins() {
+        let dir = tempfile::tempdir().expect("create temp dir");
         let mut registry = HookRegistry::new();
-        register_builtin_hooks(&mut registry, &HookConfig::default());
+        register_builtin_hooks(&mut registry, &HookConfig::default(), dir.path());
 
         // before_query should succeed
         let mut pipeline = PipelineContext {
-            remaining_tokens: 10_000,
+            remaining_tokens: 100_000,
+            system_prompt: Some("Base prompt.".to_owned()),
             ..PipelineContext::default()
         };
         let mut query_ctx = QueryContext {
@@ -816,9 +831,10 @@ mod integration_tests {
 
     #[tokio::test]
     async fn scope_enforcement_denies_through_registry() {
+        let dir = tempfile::tempdir().expect("create temp dir");
         let allowlist = vec!["read".to_owned()];
         let mut registry = HookRegistry::new();
-        register_builtin_hooks(&mut registry, &HookConfig::default());
+        register_builtin_hooks(&mut registry, &HookConfig::default(), dir.path());
 
         let usage = TurnUsage::default();
         let tool_ctx = ToolHookContext {
@@ -838,14 +854,16 @@ mod integration_tests {
 
     #[tokio::test]
     async fn cost_control_denies_through_registry() {
+        let dir = tempfile::tempdir().expect("create temp dir");
         let config = HookConfig {
             cost_control_enabled: true,
             turn_token_budget: 100,
             scope_enforcement_enabled: false,
+            correction_hooks_enabled: false,
             audit_logging_enabled: false,
         };
         let mut registry = HookRegistry::new();
-        register_builtin_hooks(&mut registry, &config);
+        register_builtin_hooks(&mut registry, &config, dir.path());
 
         let usage = TurnUsage {
             input_tokens: 80,

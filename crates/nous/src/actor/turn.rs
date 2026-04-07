@@ -271,7 +271,12 @@ impl NousActor {
 
         // WHY: create hook registry from config so hooks run inside the spawned pipeline task
         let mut hook_registry = crate::hooks::registry::HookRegistry::new();
-        crate::hooks::builtins::register_builtin_hooks(&mut hook_registry, &self.config.hooks);
+        let workspace = self.services.oikos.nous_dir(&self.id);
+        crate::hooks::builtins::register_builtin_hooks(
+            &mut hook_registry,
+            &self.config.hooks,
+            &workspace,
+        );
 
         let oikos = Arc::clone(&self.services.oikos);
         let config = self.config.clone();
@@ -475,7 +480,12 @@ impl NousActor {
 
         // WHY: create hook registry for the direct (non-spawned) execute_turn path
         let mut hook_registry = crate::hooks::registry::HookRegistry::new();
-        crate::hooks::builtins::register_builtin_hooks(&mut hook_registry, &self.config.hooks);
+        let workspace = self.services.oikos.nous_dir(&self.id);
+        crate::hooks::builtins::register_builtin_hooks(
+            &mut hook_registry,
+            &self.config.hooks,
+            &workspace,
+        );
 
         #[cfg(feature = "knowledge-store")]
         let text_search_ref: Option<&dyn crate::recall::TextSearch> =
