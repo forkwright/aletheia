@@ -53,7 +53,7 @@ The fast path is already sub-100ms. Predictive recall targets the Tier 2/3 cases
 5. **Graph proximity** (0.10)  -  BFS hop count from query entities, community-boosted
 6. **Access frequency** (0.05)  -  log-normalized recall count with supersession chain bonus
 
-**Key observation:** Only vector similarity is computed from the actual query. The other five factors are either static per-fact properties or config defaults. This means the scoring function is mostly query-independent once candidates are retrieved  -  a property that makes pre-fetching viable.
+**Key observation:** Vector similarity is the only factor computed from the actual query. The other five factors are either static per-fact properties or config defaults. This means the scoring function is mostly query-independent once candidates are retrieved  -  a property that makes pre-fetching viable.
 
 ### 2. predictive recall strategies
 
@@ -95,7 +95,7 @@ The fast path is already sub-100ms. Predictive recall targets the Tier 2/3 cases
 - Works even when graph is sparse.
 
 **Weaknesses:**
-- Trajectory vector is a coarse signal  -  it averages over topics rather than predicting the next one.
+- Trajectory vector is a coarse signal  -  it averages over topics instead of predicting the next one.
 - Requires maintaining per-session embedding history (memory cost: ~1.5KB per turn at 384 dims).
 - Speculative search adds background CPU/IO load.
 
@@ -114,7 +114,7 @@ The fast path is already sub-100ms. Predictive recall targets the Tier 2/3 cases
 **Strengths:**
 - Uses dead time (user thinking/typing) productively.
 - No prediction model needed  -  the last assistant message is a reasonable proxy for what comes next.
-- Minimal architecture change  -  same search pipeline, just triggered earlier.
+- Minimal architecture change  -  same search pipeline, triggered earlier.
 
 **Weaknesses:**
 - Only useful when there is a significant gap between turns (>500ms).
@@ -156,7 +156,7 @@ The fast path is already sub-100ms. Predictive recall targets the Tier 2/3 cases
 - Bulk-load facts from those sessions into a warm cache.
 
 **Strengths:**
-- Low implementation cost  -  session embeddings likely already exist or are cheap to add.
+- Low implementation cost  -  session embeddings may already exist or are cheap to add.
 - Good for recurring tasks ("last time I worked on X, I needed Y").
 - Low false-positive rate  -  session-level similarity is a strong signal.
 
