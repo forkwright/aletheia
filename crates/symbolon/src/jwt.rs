@@ -210,7 +210,10 @@ impl JwtManager {
             .build());
         }
 
-        if claims.exp <= now_unix() {
+        // WHY: 10-second leeway for clock drift between server and client.
+        // RFC 7518 recommends tolerance for clock skew (#2783).
+        const CLOCK_SKEW_LEEWAY_SECS: i64 = 10;
+        if claims.exp + CLOCK_SKEW_LEEWAY_SECS <= now_unix() {
             return Err(error::ExpiredTokenSnafu.build());
         }
 
