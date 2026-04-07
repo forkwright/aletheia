@@ -99,6 +99,12 @@ pub struct ProviderConfig {
     /// using API keys).
     #[serde(default)]
     pub cc_mimicry: Option<bool>,
+    /// Timeout in seconds for streaming (SSE) requests. Defaults to 600s.
+    ///
+    /// Streaming responses accumulate over minutes, so a much longer timeout
+    /// than non-streaming requests (120s) is needed. Set to `0` to disable.
+    #[serde(default)]
+    pub streaming_timeout_secs: Option<u64>,
 }
 
 impl Default for ProviderConfig {
@@ -158,6 +164,7 @@ impl Default for ProviderConfig {
             max_retries: Some(3),
             pricing,
             cc_mimicry: None,
+            streaming_timeout_secs: None,
         }
     }
 }

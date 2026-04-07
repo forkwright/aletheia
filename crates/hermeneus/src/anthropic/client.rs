@@ -38,6 +38,8 @@ pub struct AnthropicProvider {
     health: Arc<ProviderHealthTracker>,
     /// CC profile for request mimicry. `Some` when using OAuth credentials.
     cc_profile: Option<super::cc_profile::CcProfile>,
+    /// Timeout for streaming (SSE) requests. `None` disables the timeout.
+    streaming_timeout: Option<Duration>,
 }
 
 /// Static credential provider for backward-compatible `from_config()`.
@@ -65,6 +67,26 @@ impl CredentialProvider for StaticCredentialProvider {
 /// Per-request timeout for non-streaming completions.
 const NON_STREAMING_TIMEOUT: Duration = Duration::from_secs(120);
 
+/// Default timeout for streaming (SSE) completions.
+///
+/// Streaming responses accumulate over minutes for long tasks, so a much
+/// longer timeout than non-streaming requests is needed. Operators can
+/// override via `ProviderConfig::streaming_timeout_secs`.
+const DEFAULT_STREAMING_TIMEOUT: Duration = Duration::from_secs(600);
+
+/// Resolve the streaming timeout from an optional override value.
+///
+/// - `None` → `DEFAULT_STREAMING_TIMEOUT` (600 s)
+/// - `Some(0)` → no timeout (`None`)
+/// - `Some(n)` → `Duration::from_secs(n)`
+fn resolve_streaming_timeout(secs: Option<u64>) -> Option<Duration> {
+    match secs {
+        None => Some(DEFAULT_STREAMING_TIMEOUT),
+        Some(0) => None,
+        Some(n) => Some(Duration::from_secs(n)),
+    }
+}
+
 /// Returns true when the URL is safe to use without TLS.
 ///
 /// Localhost addresses never leave the machine, so cleartext is acceptable
@@ -78,10 +100,11 @@ fn build_http_client() -> Result<Client> {
     // install_default() is idempotent: subsequent calls return Err and are ignored.
     let _ = rustls::crypto::ring::default_provider().install_default();
 
-    // TODO(#2181): separate streaming timeout. The client-level timeout applies
-    // to the full response lifecycle. Streaming requests set no per-request
-    // timeout (relying on the SSE parser's idle detection instead); non-streaming
-    // requests override with NON_STREAMING_TIMEOUT.
+    // WHY: No client-level timeout — streaming requests use a per-call
+    // tokio::time::timeout wrapping parse_sse_response; non-streaming requests
+    // use a per-request .timeout(NON_STREAMING_TIMEOUT). A client-level timeout
+    // would apply to the full response lifecycle and would incorrectly cut off
+    // long streaming responses.
     Client::builder()
         .connect_timeout(Duration::from_secs(10))
         .build()
@@ -138,6 +161,7 @@ impl AnthropicProvider {
             pricing: Self::merge_pricing(config),
             health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
             cc_profile: None, // API key mode — no mimicry needed
+            streaming_timeout: resolve_streaming_timeout(config.streaming_timeout_secs),
         };
         // TODO(#2178): add allow_insecure config field
         if !provider.base_url.starts_with("https://") && !is_loopback_url(&provider.base_url) {
@@ -189,6 +213,7 @@ impl AnthropicProvider {
             pricing: Self::merge_pricing(config),
             health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
             cc_profile,
+            streaming_timeout: resolve_streaming_timeout(config.streaming_timeout_secs),
         };
         // TODO(#2178): add allow_insecure config field
         if !provider.base_url.starts_with("https://") && !is_loopback_url(&provider.base_url) {
@@ -324,8 +349,7 @@ impl AnthropicProvider {
 
             let mut accumulator = StreamAccumulator::new();
             let mut content_started = false;
-
-            let stream_result = parse_sse_response(&mut response, &mut accumulator, &mut |event| {
+            let mut on_event_wrapper = |event: StreamEvent| {
                 if matches!(
                     event,
                     StreamEvent::TextDelta { .. }
@@ -338,8 +362,33 @@ impl AnthropicProvider {
                     content_started = true;
                 }
                 on_event(event);
-            })
-            .await;
+            };
+
+            let stream_result = if let Some(timeout_dur) = self.streaming_timeout {
+                match tokio::time::timeout(
+                    timeout_dur,
+                    parse_sse_response(&mut response, &mut accumulator, &mut on_event_wrapper),
+                )
+                .await
+                {
+                    Ok(result) => result,
+                    Err(_elapsed) => {
+                        tracing::warn!(
+                            timeout_secs = timeout_dur.as_secs(),
+                            "SSE streaming timed out"
+                        );
+                        Err(error::ApiRequestSnafu {
+                            message: format!(
+                                "streaming timeout after {}s",
+                                timeout_dur.as_secs()
+                            ),
+                        }
+                        .build())
+                    }
+                }
+            } else {
+                parse_sse_response(&mut response, &mut accumulator, &mut on_event_wrapper).await
+            };
 
             match stream_result {
                 Ok(()) => {
