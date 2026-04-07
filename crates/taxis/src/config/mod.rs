@@ -1,5 +1,7 @@
 //! Configuration types for an Aletheia instance.
 
+/// Behavioral tuning parameters (distillation, health, capacity, retry, models).
+pub mod behavioral;
 mod maintenance;
 mod resolved;
 
@@ -56,6 +58,8 @@ pub struct AletheiaConfig {
     pub local_provider: LocalProviderConfig,
     /// Training data capture configuration.
     pub training: aletheia_mneme::training::TrainingConfig,
+    /// Behavioral tuning parameters (distillation, health, capacity, retry, models).
+    pub behavioral: behavioral::BehavioralConfig,
 }
 
 /// Configuration for a local OpenAI-compatible LLM provider (vLLM, etc.).
