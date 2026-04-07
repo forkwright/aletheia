@@ -48,7 +48,7 @@ impl SpawnServiceImpl {
 }
 
 impl SpawnService for SpawnServiceImpl {
-    // NOTE: sequential ephemeral-actor lifecycle: build config, spawn actor, run single turn,
+    // WHY: sequential ephemeral-actor lifecycle: build config, spawn actor, run single turn,
     // teardown. Splitting would fragment a cohesive lifecycle.
     #[expect(clippy::too_many_lines, reason = "spawn setup requires many steps")]
     fn spawn_and_run(

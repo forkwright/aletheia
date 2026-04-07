@@ -203,7 +203,7 @@ impl TaskRegistry {
             entry.completed_at = Some(jiff::Timestamp::now());
         }
 
-        // NOTE: broadcast send failure is benign -- means no active subscribers.
+        // WHY: broadcast send failure is benign -- means no active subscribers.
         let _ = entry.progress_tx.send(ProgressEvent::StatusChanged {
             from: old_status,
             to: new_status,
@@ -226,7 +226,7 @@ impl TaskRegistry {
             .get_mut(&task_id)
             .ok_or_else(|| NotFoundSnafu { task_id }.build())?;
 
-        // NOTE: broadcast send failure is benign -- means no active subscribers.
+        // WHY: broadcast send failure is benign -- means no active subscribers.
         let _ = entry
             .progress_tx
             .send(ProgressEvent::ToolActivity(summary.clone()));

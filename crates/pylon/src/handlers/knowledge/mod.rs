@@ -694,7 +694,7 @@ mod tests {
 
     #[test]
     fn limit_is_capped_at_max() {
-        // NOTE: list_facts clamps query.limit to MAX_FACTS_LIMIT (1000) before use.
+        // NOTE: MAX_FACTS_LIMIT is 1000; the test validates the constant is correct.
         const { assert!(MAX_FACTS_LIMIT <= 1000) };
         assert_eq!(MAX_FACTS_LIMIT, 1000);
     }

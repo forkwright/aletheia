@@ -71,7 +71,7 @@ const RESTART_DRAIN_TIMEOUT: Duration = Duration::from_secs(30);
 const RESTART_DECAY_WINDOW: Duration = Duration::from_secs(3600);
 
 /// Manages the lifecycle of all nous actors.
-// NOTE: 14 fields: runtime dependency injection (providers, tools, stores) plus
+// WHY: 14 fields — runtime dependency injection (providers, tools, stores) plus
 // actor state. Kept flat because splitting would scatter logically-paired fields.
 pub struct NousManager {
     actors: HashMap<String, ActorEntry>,

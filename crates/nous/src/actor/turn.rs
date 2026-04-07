@@ -107,8 +107,8 @@ impl NousActor {
             .or_insert_with(|| DriftDetector::new(DriftConfig::default()));
 
         let _drift_events = detector.record(metrics);
-        // NOTE: drift events are already logged at warn level by the detector.
-        // Future work: store drift_events in session metadata for API exposure.
+        // WHY: drift events are already logged at warn level by the detector.
+        // TODO(#2634): store drift_events in session metadata for API exposure.
     }
 
     /// # Cancel safety
