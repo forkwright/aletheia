@@ -32,9 +32,11 @@ aletheia
 ├── pylon          -  Axum HTTP gateway, SSE streaming
 ├── diaporeia      -  MCP server interface for external AI agents
 ├── symbolon       -  JWT auth, sessions, RBAC
+├── energeia       -  dispatch orchestration: Agent SDK, session mgmt, QA, steward
 ├── agora          -  channel registry + ChannelProvider trait
-│   └── semeion    -  Signal (signal-cli subprocess)
-├── daemon         -  oikonomos: per-nous background tasks, cron, prosoche
+│   ├── semeion    -  Signal (signal-cli subprocess)
+│   └── matrix     -  Matrix (conduwuit + matrix-rust-sdk)
+├── daemon         -  oikonomos: per-nous background tasks, cron, KAIROS dispatch
 ├── melete         -  context distillation, compression, token budget management
 ├── thesauros      -  domain pack loader (knowledge, tools, config overlays)
 └── theatron       -  presentation umbrella (crates/theatron/)
@@ -105,7 +107,7 @@ The oikos hierarchy is described in [CONFIGURATION.md](CONFIGURATION.md).
 
 ## Rust crate workspace
 
-24 crates (23 in default workspace build, theatron-desktop excluded) in `crates/`.
+25 crates (24 in default workspace build, theatron-desktop excluded) in `crates/`.
 
 ### Crates
 
@@ -118,16 +120,17 @@ The oikos hierarchy is described in [CONFIGURATION.md](CONFIGURATION.md).
 | `episteme` | `crates/episteme` | Knowledge pipeline: extraction, recall, consolidation, embedding provider | eidos, koina, graphe, krites (opt) |
 | `krites` | `crates/krites` | Embedded Datalog engine with HNSW and graph support | eidos |
 | `mneme` | `crates/mneme` | Thin facade re-exporting eidos, graphe, episteme, krites | eidos, graphe, episteme, krites |
-| `hermeneus` | `crates/hermeneus` | Anthropic client, model routing, credential management, provider trait | koina, taxis |
-| `organon` | `crates/organon` | Tool registry, tool definitions, 38 built-in tools, sandbox | koina, hermeneus |
+| `hermeneus` | `crates/hermeneus` | Anthropic client, model routing, credential management, provider trait | koina |
+| `energeia` | `crates/energeia` | Dispatch orchestration: Agent SDK, session management, QA, steward | eidos, koina |
+| `organon` | `crates/organon` | Tool registry, tool definitions, 38+ built-in tools, sandbox | koina, hermeneus, taxis, energeia (opt) |
 | `symbolon` | `crates/symbolon` | JWT tokens, password hashing, RBAC policies | koina |
 | `melete` | `crates/melete` | Context distillation, compression strategies, token budget management | hermeneus |
-| `agora` | `crates/agora` | Channel registry, ChannelProvider trait, Signal JSON-RPC client | koina, taxis |
-| `daemon` (oikonomos) | `crates/daemon` | Per-nous background task scheduling, cron jobs, prosoche | koina |
-| `dianoia` | `crates/dianoia` | Multi-phase planning orchestrator, project context tracking | nothing (leaf) |
+| `agora` | `crates/agora` | Channel registry, ChannelProvider trait, Signal + Matrix providers | koina, taxis |
+| `daemon` (oikonomos) | `crates/daemon` | Per-nous background tasks, cron, prosoche, KAIROS dispatch | koina, dianoia, episteme |
+| `dianoia` | `crates/dianoia` | Planning orchestrator, attention allocation, stuck detection, intent system | koina |
 | `thesauros` | `crates/thesauros` | Domain pack loader: external knowledge, tools, config overlays | koina, organon |
-| `nous` | `crates/nous` | Agent pipeline, NousActor (tokio), bootstrap, recall, execute, finalize | koina, taxis, mneme, hermeneus, organon, melete, thesauros |
-| `pylon` | `crates/pylon` | Axum HTTP gateway, SSE streaming, auth middleware | koina, taxis, hermeneus, organon, mneme, nous, symbolon |
+| `nous` | `crates/nous` | Agent pipeline, NousActor (tokio), bootstrap, recall, execute, finalize | koina, taxis, mneme, hermeneus, organon, melete, thesauros, dianoia |
+| `pylon` | `crates/pylon` | Axum HTTP gateway, SSE streaming, auth middleware, planning verification | koina, taxis, hermeneus, organon, mneme, nous, symbolon, dianoia |
 | `diaporeia` | `crates/diaporeia` | MCP server interface for external AI agents | koina, taxis, nous, organon, mneme, symbolon |
 | `theatron-core` | `crates/theatron/core` | Shared API client, types, SSE infrastructure for UIs | koina |
 | `theatron-tui` | `crates/theatron/tui` | Terminal dashboard | koina, theatron-core |
@@ -171,12 +174,12 @@ Downstream crates depend on `mneme` and get the full API surface without knowing
 ```
 
 **Layer rules:**
-- **Leaf** (no workspace deps): `koina`, `eidos`, `dianoia`
-- **Low** (one workspace dep): `taxis`, `hermeneus`, `symbolon`, `krites` (eidos only), `daemon` (koina), `melete` (hermeneus), `theatron-core` (koina), `dokimion` (koina)
-- **Mid**: `graphe` (eidos + koina), `episteme` (eidos + koina + graphe + krites), `mneme` (facade), `organon` (koina + hermeneus), `agora` (koina + taxis), `thesauros` (koina + organon)
-- **High**: `nous` (multiple mid+low deps), `pylon` (multiple deps including nous), `diaporeia` (MCP server, multiple deps including nous)
-- **Top**: `aletheia` binary, `theatron-tui` (koina + theatron-core), `theatron-desktop` (Dioxus desktop, excluded from workspace)
-- **Support**: `integration-tests`
+- **Leaf** (no workspace deps): `koina`, `eidos`
+- **Low** (1-2 workspace deps): `taxis` (koina, mneme), `hermeneus` (koina), `symbolon` (koina), `krites` (eidos), `dianoia` (koina), `melete` (hermeneus, koina), `theatron-core` (koina), `dokimion` (koina), `energeia` (eidos, koina)
+- **Mid**: `graphe` (eidos + koina), `episteme` (eidos + koina + graphe + krites), `mneme` (facade), `organon` (koina + hermeneus + taxis + energeia), `agora` (koina + taxis), `thesauros` (koina + organon), `daemon` (koina + dianoia + episteme)
+- **High**: `nous` (8 deps), `pylon` (8 deps including nous + dianoia), `diaporeia` (6 deps including nous)
+- **Top**: `aletheia` binary (16 deps), `theatron-tui` (koina + theatron-core), `theatron-desktop` (excluded)
+- **Support**: `integration-tests`, `dokimion`
 
 Imports flow downward only. Lower-layer crates must not depend on higher layers.
 
