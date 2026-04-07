@@ -339,20 +339,10 @@ pub enum Msg {
     #[expect(dead_code, reason = "triggered by render, not keyboard")]
     EditorScrollTree(usize),
 
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "constructed by API event bridge, tested only")
-    )]
     ShowError(String),
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "constructed by API event bridge, tested only")
-    )]
+    #[expect(dead_code, reason = "constructed by API event bridge, not yet wired")]
     ShowSuccess(String),
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "constructed by API event bridge, tested only")
-    )]
+    #[expect(dead_code, reason = "constructed by API event bridge, not yet wired")]
     DismissError,
 
     #[expect(dead_code, reason = "planned TUI feature")]

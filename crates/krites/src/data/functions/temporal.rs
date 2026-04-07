@@ -130,7 +130,7 @@ pub(crate) fn op_parse_timestamp(args: &[DataValue]) -> Result<DataValue> {
 
 pub(crate) fn op_rand_uuid_v1(_args: &[DataValue]) -> Result<DataValue> {
     let mut rng = rand::rng();
-    let uuid_ctx = uuid::v1::Context::new(rng.random());
+    let uuid_ctx = uuid::v1::ContextV1::new(rng.random());
     #[cfg(target_arch = "wasm32")]
     let ts = {
         let since_epoch: f64 = Date::now();
