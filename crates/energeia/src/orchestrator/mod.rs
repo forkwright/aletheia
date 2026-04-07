@@ -12,6 +12,7 @@ use jiff::Timestamp;
 use tokio_util::sync::CancellationToken;
 
 use crate::budget::BudgetStatus;
+use crate::cost_ledger::CostLedger;
 use crate::dag::{PromptDag, PromptStatus, compute_frontier};
 use crate::engine::DispatchEngine;
 use crate::error::{self, Result};
@@ -159,6 +160,7 @@ impl Orchestrator {
                 .max_duration
                 .map(|d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX)),
         ));
+        let cost_ledger = Arc::new(CostLedger::new());
         let cancel = CancellationToken::new();
         let resume_policy = ResumePolicy::default();
         let engine_config = EngineConfig::new(crate::engine::AgentOptions::new())
@@ -210,6 +212,8 @@ impl Orchestrator {
                         resume_count: 0,
                         pr_url: None,
                         error: Some("dependency failed".to_owned()),
+                        model: None,
+                        blast_radius: prompt.blast_radius.clone(),
                     });
                     mark_dependents_blocked(n, &mut dag);
                 } else {
@@ -246,9 +250,45 @@ impl Orchestrator {
             )
             .await;
 
-            // --- Process outcomes: update DAG, run QA, generate correctives ---
+            // --- Process outcomes: update DAG, run QA, generate correctives, record cost ---
 
             for outcome in &outcomes {
+                let model = outcome.model.as_deref().unwrap_or("unknown");
+                let blast_radius = if outcome.blast_radius.is_empty() {
+                    "unknown"
+                } else {
+                    // Use first blast radius for Prometheus (or could join them)
+                    outcome.blast_radius[0].as_str()
+                };
+
+                // Record cost attribution for this outcome
+                if outcome.blast_radius.is_empty() {
+                    cost_ledger.record("unknown", outcome.cost_usd, outcome.num_turns, model);
+                } else {
+                    cost_ledger.record_multi(
+                        &outcome.blast_radius,
+                        outcome.cost_usd,
+                        outcome.num_turns,
+                        model,
+                    );
+                }
+
+                // Record Prometheus metrics
+                crate::metrics::prometheus::record_session(
+                    &spec.project,
+                    &outcome.status.to_string(),
+                    outcome.cost_usd,
+                    outcome.duration_ms,
+                    model,
+                    blast_radius,
+                );
+                crate::metrics::prometheus::record_turns(
+                    &spec.project,
+                    outcome.num_turns,
+                    model,
+                    blast_radius,
+                );
+
                 match outcome.status {
                     SessionStatus::Success => {
                         let _ = dag.set_status(outcome.prompt_number, PromptStatus::Done);
@@ -293,6 +333,8 @@ impl Orchestrator {
                 resume_count: 0,
                 pr_url: None,
                 error: Some("corrective prompt had no remaining group to execute in".to_owned()),
+                model: None,
+                blast_radius: c.blast_radius.clone(),
             });
         }
 
@@ -541,6 +583,8 @@ fn mark_remaining_skipped(
             resume_count: 0,
             pr_url: None,
             error: Some("dispatch aborted".to_owned()),
+            model: None,
+            blast_radius: vec![],
         });
     }
 }
@@ -682,6 +726,7 @@ mod tests {
                 duration_ms: 100,
                 success: true,
                 result_text: Some("done".to_owned()),
+                model: Some("claude-3-5-sonnet".to_owned()),
             },
         }
     }
@@ -696,6 +741,7 @@ mod tests {
                 duration_ms: 100,
                 success: false,
                 result_text: None,
+                model: Some("claude-3-5-sonnet".to_owned()),
             },
         }
     }

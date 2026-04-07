@@ -87,6 +87,14 @@ pub struct SessionOutcome {
     pub pr_url: Option<String>,
     /// Error message if the session failed.
     pub error: Option<String>,
+    /// LLM model used for this session (e.g., "claude-3-5-sonnet").
+    /// 
+    /// This is `None` if the model could not be determined from the session.
+    pub model: Option<String>,
+    /// Blast radius paths from the prompt spec.
+    /// 
+    /// Used for cost attribution to specific modules/features.
+    pub blast_radius: Vec<String>,
 }
 
 /// Terminal status of a dispatched session.
@@ -315,11 +323,15 @@ mod tests {
             resume_count: 0,
             pr_url: Some("https://github.com/acme/repo/pull/42".to_owned()),
             error: None,
+            model: Some("claude-3-5-sonnet".to_owned()),
+            blast_radius: vec!["crates/foo/".to_owned()],
         };
         let json = serde_json::to_string(&outcome).unwrap();
         let deserialized: SessionOutcome = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.prompt_number, 1);
         assert_eq!(deserialized.status, SessionStatus::Success);
+        assert_eq!(deserialized.model.as_deref(), Some("claude-3-5-sonnet"));
+        assert_eq!(deserialized.blast_radius, vec!["crates/foo/"]);
     }
 
     #[test]

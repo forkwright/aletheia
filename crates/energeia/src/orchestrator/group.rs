@@ -84,6 +84,8 @@ pub(crate) async fn execute_group(
                     resume_count: 0,
                     pr_url: None,
                     error: Some(e.to_string()),
+                    model: None,
+                    blast_radius: prompt.blast_radius.clone(),
                 },
             };
 
@@ -124,6 +126,8 @@ pub(crate) async fn execute_group(
                     resume_count: 0,
                     pr_url: None,
                     error: Some(format!("task join error: {join_err}")),
+                    model: None,
+                    blast_radius: vec![],
                 });
             }
         }
@@ -144,6 +148,8 @@ fn skipped_outcome(prompt: &PromptSpec, reason: &str) -> SessionOutcome {
         resume_count: 0,
         pr_url: None,
         error: Some(reason.to_owned()),
+        model: None,
+        blast_radius: prompt.blast_radius.clone(),
     }
 }
 
@@ -188,6 +194,7 @@ mod tests {
                 duration_ms: 100,
                 success: true,
                 result_text: Some("done".to_owned()),
+                model: Some("claude-3-5-sonnet".to_owned()),
             },
         }
     }
