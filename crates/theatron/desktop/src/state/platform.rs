@@ -40,17 +40,6 @@ impl TrayIconStatus {
         }
         Self::Normal
     }
-
-    /// Short label for the tray tooltip suffix.
-    #[must_use]
-    pub(crate) fn label(self) -> &'static str {
-        match self {
-            Self::Normal => "idle",
-            Self::Active => "processing",
-            Self::Error => "error",
-            Self::Disconnected => "disconnected",
-        }
-    }
 }
 
 /// Reactive state for the system tray.
@@ -66,26 +55,7 @@ pub struct TrayState {
     pub window_visible: bool,
 }
 
-impl TrayState {
-    /// Generate the tooltip text for the tray icon.
-    #[must_use]
-    pub(crate) fn tooltip(&self) -> String {
-        format!(
-            "Aletheia \u{2014} {} agents, {} processing",
-            self.agent_count, self.processing_count
-        )
-    }
 
-    /// Label for the show/hide toggle menu item.
-    #[must_use]
-    pub(crate) fn visibility_label(&self) -> &'static str {
-        if self.window_visible {
-            "Hide Window"
-        } else {
-            "Show Window"
-        }
-    }
-}
 
 /// Registration status for a global hotkey.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -114,33 +84,7 @@ pub enum HotkeyAction {
     AbortStreaming,
 }
 
-impl HotkeyAction {
-    /// Default key binding string for display.
-    #[must_use]
-    pub(crate) fn default_binding(self) -> &'static str {
-        match self {
-            Self::SummonWindow => "Ctrl+Shift+A",
-            Self::QuickInput => "Ctrl+Shift+Space",
-            Self::AbortStreaming => "Ctrl+Shift+Escape",
-        }
-    }
 
-    /// Human-readable action description.
-    #[must_use]
-    pub(crate) fn description(self) -> &'static str {
-        match self {
-            Self::SummonWindow => "Show/hide window",
-            Self::QuickInput => "Quick input overlay",
-            Self::AbortStreaming => "Abort all streaming",
-        }
-    }
-
-    /// All defined hotkey actions.
-    #[must_use]
-    pub(crate) fn all() -> &'static [Self] {
-        &[Self::SummonWindow, Self::QuickInput, Self::AbortStreaming]
-    }
-}
 
 /// Reactive state for global hotkey registration.
 #[derive(Debug, Clone, Default)]
@@ -149,32 +93,7 @@ pub struct HotkeyState {
     pub registrations: Vec<(HotkeyAction, HotkeyRegistration)>,
 }
 
-impl HotkeyState {
-    /// Whether any hotkey failed to register.
-    #[must_use]
-    pub(crate) fn has_failures(&self) -> bool {
-        self.registrations
-            .iter()
-            .any(|(_, s)| matches!(s, HotkeyRegistration::Failed { .. }))
-    }
 
-    /// Whether global hotkeys are unavailable on this platform.
-    #[must_use]
-    pub(crate) fn is_unavailable(&self) -> bool {
-        self.registrations
-            .iter()
-            .all(|(_, s)| matches!(s, HotkeyRegistration::Unavailable))
-    }
-
-    /// Count of successfully registered hotkeys.
-    #[must_use]
-    pub(crate) fn registered_count(&self) -> usize {
-        self.registrations
-            .iter()
-            .filter(|(_, s)| matches!(s, HotkeyRegistration::Registered))
-            .count()
-    }
-}
 
 /// Persisted window geometry and UI state.
 ///
@@ -248,21 +167,7 @@ impl Default for WindowState {
     }
 }
 
-impl WindowState {
-    /// Whether this state differs from `other` enough to warrant a save.
-    #[must_use]
-    pub(crate) fn differs_from(&self, other: &Self) -> bool {
-        self != other
-    }
 
-    /// Update geometry fields from window position and size.
-    pub(crate) fn update_geometry(&mut self, x: i32, y: i32, width: u32, height: u32) {
-        self.x = x;
-        self.y = y;
-        self.width = width;
-        self.height = height;
-    }
-}
 
 /// Reactive state for the quick input overlay.
 #[derive(Debug, Clone, Default)]
@@ -276,29 +181,10 @@ pub struct QuickInputState {
 }
 
 impl QuickInputState {
-    /// Open the overlay, optionally pre-selecting an agent.
-    pub(crate) fn open(&mut self, agent: Option<NousId>) {
-        self.visible = true;
-        self.input_text.clear();
-        if let Some(id) = agent {
-            self.selected_agent = Some(id);
-        }
-    }
-
     /// Close the overlay and clear input.
     pub(crate) fn close(&mut self) {
         self.visible = false;
         self.input_text.clear();
-    }
-
-    /// Take the current input text, clearing the field. Returns `None` if empty.
-    #[must_use]
-    pub(crate) fn take_input(&mut self) -> Option<String> {
-        if self.input_text.trim().is_empty() {
-            return None;
-        }
-        let text = std::mem::take(&mut self.input_text);
-        Some(text)
     }
 }
 
@@ -365,94 +251,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn tray_icon_labels() {
-        assert_eq!(TrayIconStatus::Normal.label(), "idle");
-        assert_eq!(TrayIconStatus::Active.label(), "processing");
-        assert_eq!(TrayIconStatus::Error.label(), "error");
-        assert_eq!(TrayIconStatus::Disconnected.label(), "disconnected");
-    }
-
-    // -- TrayState --
-
-    #[test]
-    fn tray_tooltip_format() {
-        let state = TrayState {
-            agent_count: 3,
-            processing_count: 1,
-            ..TrayState::default()
-        };
-        assert_eq!(state.tooltip(), "Aletheia \u{2014} 3 agents, 1 processing");
-    }
-
-    #[test]
-    fn tray_visibility_label() {
-        let mut state = TrayState::default();
-        state.window_visible = true;
-        assert_eq!(state.visibility_label(), "Hide Window");
-        state.window_visible = false;
-        assert_eq!(state.visibility_label(), "Show Window");
-    }
-
-    // -- HotkeyState --
-
-    #[test]
-    fn hotkey_state_no_failures_when_empty() {
-        let state = HotkeyState::default();
-        assert!(!state.has_failures());
-        assert_eq!(state.registered_count(), 0);
-    }
-
-    #[test]
-    fn hotkey_state_detects_failures() {
-        let state = HotkeyState {
-            registrations: vec![
-                (HotkeyAction::SummonWindow, HotkeyRegistration::Registered),
-                (
-                    HotkeyAction::QuickInput,
-                    HotkeyRegistration::Failed {
-                        reason: "taken".into(),
-                    },
-                ),
-            ],
-        };
-        assert!(state.has_failures());
-        assert_eq!(state.registered_count(), 1);
-    }
-
-    #[test]
-    fn hotkey_state_unavailable() {
-        let state = HotkeyState {
-            registrations: vec![
-                (HotkeyAction::SummonWindow, HotkeyRegistration::Unavailable),
-                (HotkeyAction::QuickInput, HotkeyRegistration::Unavailable),
-                (
-                    HotkeyAction::AbortStreaming,
-                    HotkeyRegistration::Unavailable,
-                ),
-            ],
-        };
-        assert!(state.is_unavailable());
-    }
-
-    #[test]
-    fn hotkey_action_defaults() {
-        assert_eq!(HotkeyAction::SummonWindow.default_binding(), "Ctrl+Shift+A");
-        assert_eq!(
-            HotkeyAction::QuickInput.default_binding(),
-            "Ctrl+Shift+Space"
-        );
-        assert_eq!(
-            HotkeyAction::AbortStreaming.default_binding(),
-            "Ctrl+Shift+Escape"
-        );
-    }
-
-    #[test]
-    fn hotkey_action_all_is_complete() {
-        assert_eq!(HotkeyAction::all().len(), 3);
-    }
-
     // -- WindowState --
 
     #[test]
@@ -494,79 +292,6 @@ mod tests {
         assert_eq!(state.active_view, "/files");
         assert_eq!(state.width, 1200);
         assert_eq!(state.height, 800);
-    }
-
-    #[test]
-    fn window_state_update_geometry() {
-        let mut state = WindowState::default();
-        state.update_geometry(50, 75, 1920, 1080);
-        assert_eq!(state.x, 50);
-        assert_eq!(state.y, 75);
-        assert_eq!(state.width, 1920);
-        assert_eq!(state.height, 1080);
-    }
-
-    #[test]
-    fn window_state_differs_from() {
-        let a = WindowState::default();
-        let mut b = a.clone();
-        assert!(!a.differs_from(&b));
-        b.width = 999;
-        assert!(a.differs_from(&b));
-    }
-
-    #[test]
-    fn window_state_omits_empty_sessions() {
-        let state = WindowState::default();
-        let serialized = toml::to_string(&state).unwrap();
-        assert!(!serialized.contains("active_sessions"));
-    }
-
-    // -- QuickInputState --
-
-    #[test]
-    fn quick_input_open_and_close() {
-        let mut state = QuickInputState::default();
-        state.open(Some(NousId::from("syn")));
-        assert!(state.visible);
-        assert_eq!(state.selected_agent.as_deref(), Some("syn"));
-        assert!(state.input_text.is_empty());
-
-        state.input_text = "hello".to_string();
-        state.close();
-        assert!(!state.visible);
-        assert!(state.input_text.is_empty());
-    }
-
-    #[test]
-    fn quick_input_take_input() {
-        let mut state = QuickInputState::default();
-        state.input_text = "  test query  ".to_string();
-        let taken = state.take_input();
-        assert_eq!(taken.as_deref(), Some("  test query  "));
-        assert!(state.input_text.is_empty());
-    }
-
-    #[test]
-    fn quick_input_take_input_empty_returns_none() {
-        let mut state = QuickInputState::default();
-        assert!(state.take_input().is_none());
-
-        state.input_text = "   ".to_string();
-        assert!(state.take_input().is_none());
-    }
-
-    #[test]
-    fn quick_input_open_preserves_existing_agent_when_none_given() {
-        let mut state = QuickInputState {
-            visible: false,
-            selected_agent: Some(NousId::from("arc")),
-            input_text: "old".to_string(),
-        };
-        state.open(None);
-        assert!(state.visible);
-        assert_eq!(state.selected_agent.as_deref(), Some("arc"));
-        assert!(state.input_text.is_empty());
     }
 
     // -- CloseBehavior --

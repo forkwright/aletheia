@@ -5,97 +5,31 @@ use dioxus::prelude::*;
 use crate::api::client::authenticated_client;
 use crate::state::connection::ConnectionConfig;
 use crate::state::fetch::FetchState;
-use crate::state::tool_metrics::{
-    DateRange, ToolMetricsStore, ToolStatsResponse, format_delta, format_duration_ms, trend_arrow,
-};
+use crate::state::tool_metrics::{DateRange, ToolStatsResponse, format_delta, format_duration_ms};
+
+/// Local store for the tools overview view.
+#[derive(Debug, Clone)]
+#[expect(dead_code, reason = "used by ToolsOverview component")]
+struct ToolsOverviewStore {
+    data: FetchState<ToolStatsResponse>,
+    date_range: DateRange,
+    selected_tool: Option<String>,
+}
 
 use super::tool_detail::ToolDetailView;
 use super::tool_duration::ToolDurationView;
 use super::tool_frequency::ToolFrequencyView;
 use super::tool_results::ToolResultsView;
 
-// -- Style constants ----------------------------------------------------------
-
-const CARD_STYLE: &str = "\
-    background: #1a1a2e; \
-    border: 1px solid #333; \
-    border-radius: 8px; \
-    padding: 16px 20px; \
-    min-width: 150px; \
-    flex: 1;\
-";
-
-const CARD_VALUE: &str = "\
-    font-size: 28px; \
-    font-weight: bold; \
-    color: #e0e0e0; \
-    margin-bottom: 2px;\
-";
-
-const CARD_LABEL: &str = "\
-    font-size: 11px; \
-    color: #888; \
-    text-transform: uppercase; \
-    letter-spacing: 0.5px;\
-";
-
-const CARD_DELTA: &str = "\
-    font-size: 11px; \
-    margin-top: 6px;\
-";
-
-const RANGE_BTN_ACTIVE: &str = "\
-    background: #2a2a4a; \
-    color: #e0e0e0; \
-    border: 1px solid #4a4aff; \
-    border-radius: 4px; \
-    padding: 2px 10px; \
-    font-size: 12px; \
-    cursor: pointer;\
-";
-
-const RANGE_BTN_INACTIVE: &str = "\
-    background: transparent; \
-    color: #666; \
-    border: 1px solid #333; \
-    border-radius: 4px; \
-    padding: 2px 10px; \
-    font-size: 12px; \
-    cursor: pointer;\
-";
-
-const SECTION_STYLE: &str = "\
-    background: #1a1a2e; \
-    border: 1px solid #333; \
-    border-radius: 8px; \
-    padding: 16px;\
-";
-
-const SECTION_TITLE: &str = "\
-    font-size: 14px; \
-    font-weight: bold; \
-    color: #aaa; \
-    margin-bottom: 12px;\
-";
-
-const REFRESH_BTN: &str = "\
-    background: #2a2a4a; \
-    color: #e0e0e0; \
-    border: 1px solid #444; \
-    border-radius: 6px; \
-    padding: 4px 12px; \
-    font-size: 12px; \
-    cursor: pointer;\
-";
-
 // -- Component ----------------------------------------------------------------
 
 #[component]
 pub(crate) fn ToolsOverview(date_range: DateRange) -> Element {
     let config: Signal<ConnectionConfig> = use_context();
-    let mut store = use_signal(|| ToolMetricsStore {
+    let mut store = use_signal(|| ToolsOverviewStore {
+        data: FetchState::Loading,
         date_range,
-        ..Default::default()
+        selected_tool: None,
     });
 
     let mut do_fetch = move || {
@@ -144,24 +78,29 @@ pub(crate) fn ToolsOverview(date_range: DateRange) -> Element {
             div {
                 style: "display: flex; align-items: center; gap: 8px;",
                 span { style: "font-size: 12px; color: #888;", "Range:" }
-                for range in [DateRange::Last7Days, DateRange::Last30Days, DateRange::Last90Days] {
+                for range in [DateRange::Last7Days] {
                     {
                         let is_active = store.read().date_range == range;
+                        let btn_style = if is_active {
+                            "background: #2a2a4a; color: #e0e0e0; border: 1px solid #4a4aff; border-radius: 4px; padding: 2px 10px; font-size: 12px; cursor: pointer;"
+                        } else {
+                            "background: transparent; color: #666; border: 1px solid #333; border-radius: 4px; padding: 2px 10px; font-size: 12px; cursor: pointer;"
+                        };
                         rsx! {
                             button {
-                                key: "{range.label()}",
-                                style: if is_active { RANGE_BTN_ACTIVE } else { RANGE_BTN_INACTIVE },
+                                key: "{range.days()}d",
+                                style: "{btn_style}",
                                 onclick: move |_| {
                                     store.write().date_range = range;
                                     do_fetch();
                                 },
-                                "{range.label()}"
+                                "{range.days()}d"
                             }
                         }
                     }
                 }
                 button {
-                    style: "{REFRESH_BTN}",
+                    style: "background: #2a2a4a; color: #e0e0e0; border: 1px solid #444; border-radius: 6px; padding: 4px 12px; font-size: 12px; cursor: pointer;",
                     onclick: move |_| do_fetch(),
                     "Refresh"
                 }
@@ -177,7 +116,7 @@ pub(crate) fn ToolsOverview(date_range: DateRange) -> Element {
                     },
                 }
             } else {
-                {render_overview(store, move |tool_name| {
+                {render_overview_content(store, move |tool_name| {
                     store.write().selected_tool = Some(tool_name);
                 })}
             }
@@ -185,8 +124,9 @@ pub(crate) fn ToolsOverview(date_range: DateRange) -> Element {
     }
 }
 
-fn render_overview(
-    store: Signal<ToolMetricsStore>,
+#[expect(dead_code, reason = "used by ToolsOverview component")]
+fn render_overview_content(
+    store: Signal<ToolsOverviewStore>,
     mut on_select_tool: impl FnMut(String) + 'static,
 ) -> Element {
     match store.read().data.clone() {
@@ -211,11 +151,11 @@ fn render_overview(
 
                     // Total invocations (weekly)
                     div {
-                        style: "{CARD_STYLE}",
-                        div { style: "{CARD_VALUE}", "{data.summary.total_invocations_week}" }
-                        div { style: "{CARD_LABEL}", "Invocations (7d)" }
+                        style: "background: #1a1a2e; border: 1px solid #333; border-radius: 8px; padding: 16px 20px; min-width: 150px; flex: 1;",
+                        div { style: "font-size: 28px; font-weight: bold; color: #e0e0e0; margin-bottom: 2px;", "{data.summary.total_invocations_week}" }
+                        div { style: "font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px;", "Invocations (7d)" }
                         div {
-                            style: "{CARD_DELTA} color: #888;",
+                            style: "font-size: 11px; margin-top: 6px; color: #888;",
                             "{format_delta(data.summary.delta_week)} vs prior"
                         }
                     }
@@ -224,16 +164,14 @@ fn render_overview(
                     {
                         #[expect(clippy::as_conversions, reason = "rate 0.0–1.0 to percentage for display")]
                         let rate_pct = (data.summary.success_rate * 100.0) as u64;
-                        let trend = trend_arrow(data.summary.success_rate, data.summary.success_rate_prev);
                         let rate_color = if data.summary.success_rate > 0.9 { "#22c55e" }
                             else if data.summary.success_rate > 0.7 { "#eab308" }
                             else { "#ef4444" };
                         rsx! {
                             div {
-                                style: "{CARD_STYLE}",
-                                div { style: "{CARD_VALUE} color: {rate_color};", "{rate_pct}%" }
-                                div { style: "{CARD_LABEL}", "Success Rate" }
-                                div { style: "{CARD_DELTA} color: #888;", "{trend} trend" }
+                                style: "background: #1a1a2e; border: 1px solid #333; border-radius: 8px; padding: 16px 20px; min-width: 150px; flex: 1;",
+                                div { style: "font-size: 28px; font-weight: bold; color: {rate_color}; margin-bottom: 2px;", "{rate_pct}%" }
+                                div { style: "font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px;", "Success Rate" }
                             }
                         }
                     }
@@ -241,24 +179,11 @@ fn render_overview(
                     // Average duration
                     {
                         let dur = format_duration_ms(data.summary.avg_duration_ms);
-                        let trend = trend_arrow(
-                            {
-                                #[expect(clippy::as_conversions, reason = "u64 ms to f64 for trend comparison")]
-                                let v = data.summary.avg_duration_ms as f64;
-                                v
-                            },
-                            {
-                                #[expect(clippy::as_conversions, reason = "u64 ms to f64 for trend comparison")]
-                                let v = data.summary.avg_duration_prev_ms as f64;
-                                v
-                            },
-                        );
                         rsx! {
                             div {
-                                style: "{CARD_STYLE}",
-                                div { style: "{CARD_VALUE}", "{dur}" }
-                                div { style: "{CARD_LABEL}", "Avg Duration" }
-                                div { style: "{CARD_DELTA} color: #888;", "{trend} trend" }
+                                style: "background: #1a1a2e; border: 1px solid #333; border-radius: 8px; padding: 16px 20px; min-width: 150px; flex: 1;",
+                                div { style: "font-size: 28px; font-weight: bold; color: #e0e0e0; margin-bottom: 2px;", "{dur}" }
+                                div { style: "font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px;", "Avg Duration" }
                             }
                         }
                     }
@@ -266,14 +191,14 @@ fn render_overview(
                     // Most used tool
                     if !data.summary.most_used_tool.is_empty() {
                         div {
-                            style: "{CARD_STYLE}",
+                            style: "background: #1a1a2e; border: 1px solid #333; border-radius: 8px; padding: 16px 20px; min-width: 150px; flex: 1;",
                             div {
                                 style: "font-size: 18px; font-weight: bold; color: #e0e0e0; margin-bottom: 2px; font-family: monospace;",
                                 "{data.summary.most_used_tool}"
                             }
-                            div { style: "{CARD_LABEL}", "Most Used Tool" }
+                            div { style: "font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px;", "Most Used Tool" }
                             div {
-                                style: "{CARD_DELTA} color: #888;",
+                                style: "font-size: 11px; margin-top: 6px; color: #888;",
                                 "{data.summary.most_used_count} calls"
                             }
                         }
@@ -282,8 +207,8 @@ fn render_overview(
 
                 // Frequency chart
                 div {
-                    style: "{SECTION_STYLE}",
-                    div { style: "{SECTION_TITLE}", "Usage Frequency" }
+                    style: "background: #1a1a2e; border: 1px solid #333; border-radius: 8px; padding: 16px;",
+                    div { style: "font-size: 14px; font-weight: bold; color: #aaa; margin-bottom: 12px;", "Usage Frequency" }
                     ToolFrequencyView {
                         tools: data.tools.clone(),
                         on_click: EventHandler::new(move |name| on_select(name)),
@@ -292,8 +217,8 @@ fn render_overview(
 
                 // Success/failure chart
                 div {
-                    style: "{SECTION_STYLE}",
-                    div { style: "{SECTION_TITLE}", "Success / Failure Rates" }
+                    style: "background: #1a1a2e; border: 1px solid #333; border-radius: 8px; padding: 16px;",
+                    div { style: "font-size: 14px; font-weight: bold; color: #aaa; margin-bottom: 12px;", "Success / Failure Rates" }
                     ToolResultsView {
                         tools: data.tools.clone(),
                         time_series: data.time_series.clone(),
@@ -302,8 +227,8 @@ fn render_overview(
 
                 // Duration distribution
                 div {
-                    style: "{SECTION_STYLE}",
-                    div { style: "{SECTION_TITLE}", "Duration Distribution" }
+                    style: "background: #1a1a2e; border: 1px solid #333; border-radius: 8px; padding: 16px;",
+                    div { style: "font-size: 14px; font-weight: bold; color: #aaa; margin-bottom: 12px;", "Duration Distribution" }
                     ToolDurationView { tools: data.tools.clone() }
                 }
             }

@@ -6,30 +6,8 @@ use crate::components::chart::{
     LineChart, LinePoint, LineSeries, PercentileBarChart, PercentileEntry, SERIES_COLORS,
 };
 use crate::state::tool_metrics::{
-    TimeSeriesBucket, ToolStat, format_duration_ms, tools_by_duration,
+    TimeSeriesBucket, ToolStat, tools_by_duration,
 };
-
-// -- Style constants ----------------------------------------------------------
-
-const TABLE_STYLE: &str = "\
-    width: 100%; \
-    border-collapse: collapse; \
-    font-size: 12px;\
-";
-
-const TH_STYLE: &str = "\
-    text-align: left; \
-    color: #888; \
-    font-weight: normal; \
-    padding: 4px 8px; \
-    border-bottom: 1px solid #333;\
-";
-
-const TD_STYLE: &str = "\
-    padding: 4px 8px; \
-    border-bottom: 1px solid #1e1e38; \
-    color: #ccc;\
-";
 
 // -- Component ----------------------------------------------------------------
 
@@ -62,12 +40,6 @@ pub(crate) fn ToolDurationView(tools: Vec<ToolStat>) -> Element {
             // Percentile bar chart
             PercentileBarChart { entries: perc_entries }
 
-            // Duration table
-            div {
-                style: "font-size: 13px; color: #aaa; margin-bottom: 4px;",
-                "Duration Summary"
-            }
-            {duration_table(&sorted)}
         }
     }
 }
@@ -135,52 +107,4 @@ pub(crate) fn DurationTrendView(
     }
 }
 
-fn duration_table(sorted: &[&ToolStat]) -> Element {
-    rsx! {
-        table {
-            style: "{TABLE_STYLE}",
-            thead {
-                tr {
-                    th { style: "{TH_STYLE}", "Tool" }
-                    th { style: "{TH_STYLE}", "Min" }
-                    th { style: "{TH_STYLE}", "Median" }
-                    th { style: "{TH_STYLE}", "p95" }
-                    th { style: "{TH_STYLE}", "Max" }
-                    th { style: "{TH_STYLE}", "Calls" }
-                }
-            }
-            tbody {
-                for stat in sorted.iter() {
-                    {
-                        let p95_color = if stat.p95_ms > 10_000 { "#ef4444" }
-                            else if stat.p95_ms > 5_000 { "#eab308" }
-                            else { "#ccc" };
-                        let row_highlight = if stat.p95_ms > 10_000 {
-                            "background: rgba(239,68,68,0.06);"
-                        } else if stat.p95_ms > 5_000 {
-                            "background: rgba(234,179,8,0.06);"
-                        } else {
-                            ""
-                        };
-                        let name = stat.name.clone();
 
-                        rsx! {
-                            tr {
-                                key: "{name}",
-                                style: "{row_highlight}",
-                                td { style: "{TD_STYLE} font-family: monospace;", "{name}" }
-                                td { style: "{TD_STYLE}", "{format_duration_ms(stat.min_ms)}" }
-                                td { style: "{TD_STYLE}", "{format_duration_ms(stat.p50_ms)}" }
-                                td { style: "{TD_STYLE} color: {p95_color};",
-                                    "{format_duration_ms(stat.p95_ms)}"
-                                }
-                                td { style: "{TD_STYLE}", "{format_duration_ms(stat.max_ms)}" }
-                                td { style: "{TD_STYLE}", "{stat.total}" }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}

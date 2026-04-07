@@ -126,12 +126,6 @@ fn syn_color_to_css(c: SynColor) -> String {
     format!("#{:02x}{:02x}{:02x}", c.r, c.g, c.b)
 }
 
-/// Detect language from fence info string (strip attributes after space).
-#[must_use]
-pub(crate) fn detect_language(info: &str) -> &str {
-    info.split_whitespace().next().unwrap_or("")
-}
-
 /// Render a syntax-highlighted code block.
 #[component]
 pub(crate) fn CodeBlock(code: String, language: String) -> Element {

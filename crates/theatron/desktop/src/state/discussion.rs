@@ -91,26 +91,6 @@ pub(crate) struct DiscussionStore {
 }
 
 impl DiscussionStore {
-    /// Count of discussions awaiting a human answer.
-    #[must_use]
-    pub(crate) fn open_count(&self) -> usize {
-        self.discussions
-            .iter()
-            .filter(|d| d.status == DiscussionStatus::Open)
-            .count()
-    }
-
-    /// Count of blocking discussions still open.
-    #[must_use]
-    pub(crate) fn blocking_count(&self) -> usize {
-        self.discussions
-            .iter()
-            .filter(|d| {
-                d.status == DiscussionStatus::Open && d.priority == DiscussionPriority::Blocking
-            })
-            .count()
-    }
-
     /// Discussions sorted: open first, then blocking before important before nice-to-have.
     #[must_use]
     pub(crate) fn sorted(&self) -> Vec<&Discussion> {

@@ -2,8 +2,6 @@
 
 use std::collections::HashMap;
 
-use crate::theme::ThemeMode;
-
 /// A single saved server connection entry.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ServerEntry {
@@ -95,7 +93,6 @@ pub(crate) enum ServerHealth {
     #[default]
     Unchecked,
     Healthy,
-    Degraded,
     Unreachable,
 }
 
@@ -104,7 +101,6 @@ impl ServerHealth {
         match self {
             Self::Unchecked => "—",
             Self::Healthy => "Healthy",
-            Self::Degraded => "Degraded",
             Self::Unreachable => "Unreachable",
         }
     }
@@ -113,7 +109,6 @@ impl ServerHealth {
         match self {
             Self::Unchecked => "var(--text-muted)",
             Self::Healthy => "var(--status-success)",
-            Self::Degraded => "var(--status-warning)",
             Self::Unreachable => "var(--status-error)",
         }
     }
@@ -134,15 +129,6 @@ impl UiDensity {
             Self::Compact => "Compact",
             Self::Comfortable => "Comfortable",
             Self::Spacious => "Spacious",
-        }
-    }
-
-    /// Base spacing unit in pixels.
-    pub(crate) fn spacing_px(self) -> u8 {
-        match self {
-            Self::Compact => 4,
-            Self::Comfortable => 8,
-            Self::Spacious => 12,
         }
     }
 }
@@ -168,15 +154,6 @@ impl Default for AppearanceSettings {
 }
 
 impl AppearanceSettings {
-    /// Resolve the theme string to a `ThemeMode`.
-    pub(crate) fn theme_mode(&self) -> ThemeMode {
-        match self.theme.as_str() {
-            "dark" => ThemeMode::Dark,
-            "light" => ThemeMode::Light,
-            _ => ThemeMode::System,
-        }
-    }
-
     /// Set font size, clamped to [12, 20].
     pub(crate) fn set_font_size(&mut self, size: u8) {
         self.font_size = size.clamp(12, 20);
@@ -209,10 +186,6 @@ impl KeyCombo {
             parts.push(self.key.as_str());
         }
         parts.join("+")
-    }
-
-    pub(crate) fn is_empty(&self) -> bool {
-        self.key.is_empty()
     }
 }
 
@@ -324,30 +297,6 @@ impl WizardStep {
 
     pub(crate) fn total() -> usize {
         3
-    }
-
-    pub(crate) fn next(self) -> Option<Self> {
-        match self {
-            Self::Server => Some(Self::Appearance),
-            Self::Appearance => Some(Self::Ready),
-            Self::Ready => None,
-        }
-    }
-
-    pub(crate) fn prev(self) -> Option<Self> {
-        match self {
-            Self::Server => None,
-            Self::Appearance => Some(Self::Server),
-            Self::Ready => Some(Self::Appearance),
-        }
-    }
-
-    pub(crate) fn label(self) -> &'static str {
-        match self {
-            Self::Server => "Server",
-            Self::Appearance => "Appearance",
-            Self::Ready => "Ready",
-        }
     }
 }
 
@@ -579,17 +528,6 @@ mod tests {
     }
 
     #[test]
-    fn appearance_theme_mode_round_trip() {
-        let mut s = AppearanceSettings::default();
-        s.theme = "dark".to_string();
-        assert_eq!(s.theme_mode(), ThemeMode::Dark);
-        s.theme = "light".to_string();
-        assert_eq!(s.theme_mode(), ThemeMode::Light);
-        s.theme = "system".to_string();
-        assert_eq!(s.theme_mode(), ThemeMode::System);
-    }
-
-    #[test]
     fn appearance_font_size_clamped() {
         let mut s = AppearanceSettings::default();
         s.set_font_size(10);
@@ -598,12 +536,6 @@ mod tests {
         assert_eq!(s.font_size, 20);
         s.set_font_size(16);
         assert_eq!(s.font_size, 16);
-    }
-
-    #[test]
-    fn ui_density_spacing_increases() {
-        assert!(UiDensity::Compact.spacing_px() < UiDensity::Comfortable.spacing_px());
-        assert!(UiDensity::Comfortable.spacing_px() < UiDensity::Spacious.spacing_px());
     }
 
     #[test]
@@ -651,14 +583,6 @@ mod tests {
     }
 
     #[test]
-    fn wizard_step_progression() {
-        assert_eq!(WizardStep::Server.next(), Some(WizardStep::Appearance));
-        assert_eq!(WizardStep::Server.prev(), None);
-        assert_eq!(WizardStep::Ready.next(), None);
-        assert_eq!(WizardStep::Ready.prev(), Some(WizardStep::Appearance));
-    }
-
-    #[test]
     fn wizard_step_index_bounds() {
         assert_eq!(WizardStep::Server.index(), 0);
         assert_eq!(WizardStep::Ready.index(), WizardStep::total() - 1);
@@ -675,13 +599,4 @@ mod tests {
         assert_eq!(combo.display(), "Ctrl+Shift+K");
     }
 
-    #[test]
-    fn key_combo_empty_check() {
-        assert!(KeyCombo::default().is_empty());
-        let full = KeyCombo {
-            key: "a".to_string(),
-            ..Default::default()
-        };
-        assert!(!full.is_empty());
-    }
 }

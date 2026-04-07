@@ -204,28 +204,6 @@ impl DebouncedWriter {
         self.dirty.notify_one();
     }
 
-    /// Flush any pending state to disk immediately (blocking).
-    pub(crate) fn flush(&self) {
-        if self
-            .has_pending
-            .swap(false, std::sync::atomic::Ordering::SeqCst)
-        {
-            let snapshot = {
-                let guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
-                guard.clone()
-            };
-            if let Err(e) = save_sync(&snapshot) {
-                tracing::warn!("failed to flush window state: {e}");
-            }
-        }
-    }
-
-    /// Get a snapshot of the current state.
-    #[must_use]
-    pub(crate) fn snapshot(&self) -> WindowState {
-        let guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        guard.clone()
-    }
 }
 
 #[cfg(test)]

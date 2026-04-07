@@ -168,18 +168,6 @@ pub(crate) fn OptionCard(
     }
 }
 
-/// Determine the card border style string based on state.
-#[must_use]
-pub(crate) fn card_style_for(recommended: bool, selected: bool) -> &'static str {
-    if selected {
-        CARD_SELECTED
-    } else if recommended {
-        CARD_RECOMMENDED
-    } else {
-        CARD_STYLE
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -68,18 +68,6 @@ pub(crate) fn ToolStatusIcon(status: ToolStatus) -> Element {
     }
 }
 
-/// Select the style for a status, for use in contexts where the full
-/// component is not needed (e.g. inline text styling).
-#[must_use]
-pub(crate) fn status_color(status: ToolStatus) -> &'static str {
-    match status {
-        ToolStatus::Pending => "#666",
-        ToolStatus::Running => "#4a4aff",
-        ToolStatus::Success => "#22c55e",
-        ToolStatus::Error => "#ef4444",
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

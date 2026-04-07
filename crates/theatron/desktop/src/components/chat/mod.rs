@@ -511,19 +511,5 @@ fn parse_step_status(s: &str) -> StepStatus {
     }
 }
 
-/// Apply a connection state change from the global SSE stream.
-pub(crate) fn apply_connection_event(state: &mut ChatState, connected: bool) {
-    state.connection = if connected {
-        ConnectionState::Connected
-    } else {
-        match &state.connection {
-            ConnectionState::Reconnecting { attempt } => ConnectionState::Reconnecting {
-                attempt: attempt + 1,
-            },
-            _ => ConnectionState::Reconnecting { attempt: 1 },
-        }
-    };
-}
-
 #[cfg(test)]
 mod tests;

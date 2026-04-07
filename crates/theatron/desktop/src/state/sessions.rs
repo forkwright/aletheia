@@ -213,10 +213,6 @@ impl SessionDetailStore {
         self.input_tokens > 0 || self.output_tokens > 0
     }
 
-    /// Reset to empty state.
-    pub(crate) fn clear(&mut self) {
-        *self = Self::default();
-    }
 }
 
 /// A distillation (context compaction) event.
@@ -257,6 +253,7 @@ pub(crate) struct MessagePreview {
     /// First line or truncated content.
     pub summary: String,
     /// Timestamp if available.
+    #[expect(dead_code, reason = "public API")]
     pub created_at: Option<String>,
 }
 
@@ -313,12 +310,6 @@ impl SessionSelectionStore {
     #[must_use]
     pub(crate) fn count(&self) -> usize {
         self.selected.len()
-    }
-
-    /// Whether any sessions are selected.
-    #[must_use]
-    pub(crate) fn has_selection(&self) -> bool {
-        !self.selected.is_empty()
     }
 
     /// Consume the selection, returning the IDs.

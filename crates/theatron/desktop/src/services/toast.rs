@@ -5,7 +5,7 @@
 
 use dioxus::prelude::*;
 
-use crate::state::toasts::{Severity, ToastAction, ToastId, ToastStore};
+use crate::state::toasts::{ToastId, ToastStore};
 
 /// Provide the toast store as a context signal.
 ///
@@ -30,45 +30,6 @@ pub(crate) struct ToastHandle {
 }
 
 impl ToastHandle {
-    /// Push an info toast.
-    pub(crate) fn info(&mut self, title: impl Into<String>) -> ToastId {
-        self.store.write().push(Severity::Info, title)
-    }
-
-    /// Push a success toast.
-    pub(crate) fn success(&mut self, title: impl Into<String>) -> ToastId {
-        self.store.write().push(Severity::Success, title)
-    }
-
-    /// Push a warning toast.
-    pub(crate) fn warning(&mut self, title: impl Into<String>) -> ToastId {
-        self.store.write().push(Severity::Warning, title)
-    }
-
-    /// Push an error toast.
-    pub(crate) fn error(&mut self, title: impl Into<String>) -> ToastId {
-        self.store.write().push(Severity::Error, title)
-    }
-
-    /// Push a toast with an action button.
-    pub(crate) fn with_action(
-        &mut self,
-        severity: Severity,
-        title: impl Into<String>,
-        label: impl Into<String>,
-        action_id: impl Into<String>,
-    ) -> ToastId {
-        self.store.write().push_full(
-            severity,
-            title.into(),
-            None,
-            Some(ToastAction {
-                label: label.into(),
-                action_id: action_id.into(),
-            }),
-        )
-    }
-
     /// Dismiss a toast by ID.
     pub(crate) fn dismiss(&mut self, id: ToastId) {
         self.store.write().dismiss(id);

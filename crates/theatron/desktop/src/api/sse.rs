@@ -54,7 +54,6 @@ const MAX_BACKOFF: std::time::Duration = std::time::Duration::from_secs(30);
 /// fires, the background task exits cleanly.
 pub(crate) struct SseConnection {
     rx: mpsc::Receiver<SseEvent>,
-    cancel: CancellationToken,
     _handle: tokio::task::JoinHandle<()>,
 }
 
@@ -164,11 +163,7 @@ impl SseConnection {
             .instrument(span),
         );
 
-        SseConnection {
-            rx,
-            cancel,
-            _handle: handle,
-        }
+        SseConnection { rx, _handle: handle }
     }
 
     /// Receive the next parsed SSE event. Returns `None` when the
@@ -177,10 +172,6 @@ impl SseConnection {
         self.rx.recv().await
     }
 
-    /// Signal the background task to shut down.
-    pub(crate) fn shutdown(&self) {
-        self.cancel.cancel();
-    }
 }
 
 /// Advance exponential backoff: double the interval, capped at `MAX_BACKOFF`.

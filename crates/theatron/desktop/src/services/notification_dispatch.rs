@@ -357,7 +357,7 @@ impl NotificationDispatch {
         body: String,
         urgency: NotificationUrgency,
         timeout_secs: Option<u32>,
-        prefs: &NotificationPreferences,
+        _prefs: &NotificationPreferences,
         dnd: &DndState,
         on_sent: &mut impl FnMut(NotificationEntry),
         fallback: &mut impl FnMut(Severity, &str),

@@ -99,11 +99,6 @@ impl FileChangeTracker {
         }
     }
 
-    /// Clean up stale entries older than the dedup window.
-    pub(crate) fn gc(&mut self) {
-        let cutoff = Instant::now() - DEDUP_WINDOW * 2;
-        self.last_notified.retain(|_, t| *t > cutoff);
-    }
 }
 
 impl Default for FileChangeTracker {

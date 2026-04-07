@@ -183,18 +183,6 @@ pub(crate) fn InputBar(props: InputBarProps) -> Element {
     }
 }
 
-/// Compute textarea row count from content for auto-grow.
-///
-/// Returns the number of visual rows (clamped to 1..=10), accounting
-/// for explicit newlines.
-#[must_use]
-pub(crate) fn compute_rows(text: &str) -> usize {
-    let line_count = text.lines().count().max(1);
-    // WHY: Add 1 for the trailing newline that .lines() drops.
-    let extra = if text.ends_with('\n') { 1 } else { 0 };
-    (line_count + extra).clamp(1, 10)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
