@@ -201,9 +201,12 @@ impl OAuthProvider {
 }
 
 /// PKCE code verifier (plaintext) and challenge (hashed).
+///
+/// WHY: verifier is wrapped in SecretString for zeroize-on-drop.
+/// The plaintext verifier is a bearer-equivalent credential (#2785).
 #[derive(Debug)]
 struct PkcePair {
-    verifier: String,
+    verifier: aletheia_koina::secret::SecretString,
     challenge: String,
 }
 
@@ -229,7 +232,7 @@ impl PkcePair {
         let challenge = URL_SAFE_NO_PAD.encode(hash);
 
         Ok(Self {
-            verifier,
+            verifier: aletheia_koina::secret::SecretString::from(verifier),
             challenge,
         })
     }
@@ -573,7 +576,7 @@ async fn exchange_code(
     client: &reqwest::Client,
     provider: &OAuthProvider,
     code: &str,
-    verifier: &str,
+    verifier: &aletheia_koina::secret::SecretString,
     redirect_port: u16,
 ) -> Result<TokenResponse> {
     let redirect_uri = provider
@@ -586,7 +589,7 @@ async fn exchange_code(
     params.insert("code", code);
     params.insert("redirect_uri", &redirect_uri);
     params.insert("client_id", &provider.client_id);
-    params.insert("code_verifier", verifier);
+    params.insert("code_verifier", verifier.expose_secret());
 
     let body = build_form_body(&params);
 
@@ -746,7 +749,7 @@ mod tests {
     fn test_pkce_pair_generation() {
         let pair = PkcePair::generate().unwrap();
         // Verifier should be base64url encoded
-        assert!(!pair.verifier.is_empty());
+        assert!(!pair.verifier.expose_secret().is_empty());
         assert!(!pair.challenge.is_empty());
 
         // Challenge should be base64url-encoded SHA256 hash (43 chars)
@@ -754,7 +757,7 @@ mod tests {
 
         // Verify challenge is correct
         let mut hasher = Sha256::new();
-        hasher.update(pair.verifier.as_bytes());
+        hasher.update(pair.verifier.expose_secret().as_bytes());
         let expected = URL_SAFE_NO_PAD.encode(hasher.finalize());
         assert_eq!(pair.challenge, expected);
     }
