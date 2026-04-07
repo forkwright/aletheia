@@ -8,6 +8,9 @@
 /// HTTP client, SSE connection, and per-message streaming.
 pub mod api;
 
+/// Auto-discover a running aletheia server on the local network.
+pub mod discovery;
+
 /// Parsed streaming events from the per-session SSE endpoint.
 pub mod events;
 
@@ -21,8 +24,9 @@ pub mod sse;
 mod tests {
     #[test]
     fn public_modules_exist() {
-        // WHY: smoke test verifying the four public modules compile and link
+        // WHY: smoke test verifying the five public modules compile and link
         let _ = std::any::type_name::<super::api::ApiClient>();
+        let _ = super::discovery::discover_server as fn() -> _;
         let _ = std::any::type_name::<super::id::NousId>();
     }
 }

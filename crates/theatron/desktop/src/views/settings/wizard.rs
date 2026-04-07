@@ -174,12 +174,28 @@ fn WizardProgress(current: usize, total: usize) -> Element {
 
 #[component]
 fn StepServer(wizard_data: Signal<WizardData>, on_next: EventHandler<()>) -> Element {
+    // WHY: Run auto-discovery once when the wizard's server step renders.
+    // If the URL field is empty (first-run default), fill it with the
+    // discovered server URL so the user can just click "Next".
+    let _discovery = use_resource(move || {
+        let current = wizard_data.read().server_url.clone();
+        async move {
+            if !current.is_empty() {
+                return; // User already typed something
+            }
+            if let Some(discovered) = theatron_core::discovery::discover_server().await {
+                tracing::info!(url = %discovered, "auto-discovered server for wizard");
+                wizard_data.write().server_url = discovered;
+            }
+        }
+    });
+
     rsx! {
         div {
             style: "display: flex; flex-direction: column; gap: 16px;",
             h2 { style: "font-size: 16px; color: var(--text-primary); margin: 0;", "Server Connection" }
             p { style: "font-size: 13px; color: var(--text-secondary); margin: 0;",
-                "Enter the URL of your Aletheia server instance."
+                "Enter the URL of your Aletheia server instance, or leave blank for auto-discovery."
             }
 
             div {
