@@ -22,6 +22,7 @@ keyring = { version = "3", optional = true }
 argon2 = { version = "0.5", features = ["std"] }
 base64 = { workspace = true }
 blake3 = "1"
+jiff = { workspace = true }
 prometheus = { workspace = true }
 rand = { workspace = true }
 hmac = { workspace = true }

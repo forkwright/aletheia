@@ -561,6 +561,7 @@ dependencies = [
  "base64 0.22.1",
  "blake3",
  "hmac",
+ "jiff",
  "keyring",
  "prometheus",
  "rand 0.9.2",

@@ -36,6 +36,8 @@ pub mod retry;
 pub mod secret;
 /// Trait abstractions for filesystem, clock, and environment operations.
 pub mod system;
+/// Time utilities: timestamp helpers shared across Aletheia crates ([`time::now_iso8601`]).
+pub mod time;
 /// Tracing subscriber initialization for human-readable and JSON log output.
 pub mod tracing_init;
 

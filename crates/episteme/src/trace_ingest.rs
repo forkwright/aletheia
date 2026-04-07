@@ -345,9 +345,7 @@ impl Default for TraceIngestLayer {
 }
 
 fn now_iso8601() -> String {
-    jiff::Timestamp::now()
-        .strftime("%Y-%m-%dT%H:%M:%SZ")
-        .to_string()
+    aletheia_koina::time::now_iso8601()
 }
 
 impl<S> Layer<S> for TraceIngestLayer
