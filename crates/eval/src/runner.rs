@@ -11,6 +11,7 @@ use crate::provider::{BuiltinProvider, EvalProvider};
 use crate::scenario::{Scenario, ScenarioOutcome, ScenarioResult};
 
 /// Configuration for a scenario run.
+#[derive(Clone)]
 pub struct RunConfig {
     /// Base URL of the target instance.
     pub base_url: String,
