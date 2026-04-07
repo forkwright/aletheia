@@ -1,0 +1,15 @@
+[package]
+name = "aletheia-theatron"
+version.workspace = true
+description = "Thin facade re-exporting theatron-core types for external consumers"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+theatron-core = { path = "core" }
