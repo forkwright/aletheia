@@ -10,6 +10,8 @@
 
 /// Errors from planning, state transitions, and workspace I/O.
 pub(crate) mod error;
+/// Intent persistence with conviction tiers for sustained autonomous governance.
+pub mod intent;
 /// Context handoff protocol: continuity across distillation, shutdown, and crash recovery.
 pub mod handoff;
 /// Prometheus metric definitions for planning and project orchestration.
