@@ -21,6 +21,12 @@ pub mod error;
 pub mod fallback;
 /// Provider health state machine (Up / Degraded / Down) with automatic recovery.
 pub mod health;
+/// Claude Code subprocess provider: delegates LLM calls to the `claude` CLI.
+///
+/// Bypasses attestation-based API blocking by routing through CC's own
+/// authentication. Gated behind the `cc-provider` feature flag.
+#[cfg(feature = "cc-provider")]
+pub mod cc;
 /// OpenAI-compatible local LLM provider for vLLM and similar servers.
 ///
 /// Gated behind the `local-llm` feature flag.

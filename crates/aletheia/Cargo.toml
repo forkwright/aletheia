@@ -30,6 +30,8 @@ migrate-qdrant = ["dep:qdrant-client", "aletheia-mneme/mneme-engine", "aletheia-
 tls = ["aletheia-pylon/tls"]
 keyring = ["aletheia-symbolon/keyring"]
 tui = ["dep:theatron-tui"]
+# Claude Code subprocess provider: delegates LLM calls to the `claude` CLI.
+cc-provider = ["aletheia-hermeneus/cc-provider"]
 # Dispatch orchestration (kanon phronesis port). Default off for incremental development.
 energeia = ["dep:aletheia-energeia"]
 # Test tiers (see docs/test-tiers.md)
