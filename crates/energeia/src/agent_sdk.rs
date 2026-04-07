@@ -38,7 +38,8 @@ pub struct AgentSdkConfig {
     pub default_model: String,
     /// OAuth token for CC authentication. Set via `CLAUDE_CODE_OAUTH_TOKEN`
     /// env var on the subprocess if present.
-    pub oauth_token: Option<String>,
+    #[serde(skip)]
+    pub oauth_token: Option<aletheia_koina::secret::SecretString>,
     /// Per-session wall-clock timeout.
     pub timeout: Duration,
     /// Maximum turns per session (default: 200).
@@ -155,7 +156,7 @@ impl AgentSdkEngine {
         let mut env = Vec::new();
 
         if let Some(ref token) = self.config.oauth_token {
-            env.push(("CLAUDE_CODE_OAUTH_TOKEN", token.clone()));
+            env.push(("CLAUDE_CODE_OAUTH_TOKEN", token.expose_secret().to_owned()));
         }
 
         if self.config.disable_plugins {
@@ -337,7 +338,7 @@ mod tests {
     #[test]
     fn build_env_sets_oauth_and_plugins() {
         let config = AgentSdkConfig {
-            oauth_token: Some("test-token".to_owned()),
+            oauth_token: Some(aletheia_koina::secret::SecretString::from("test-token")),
             disable_plugins: true,
             ..AgentSdkConfig::default()
         };
@@ -368,7 +369,7 @@ mod tests {
         let config = AgentSdkConfig {
             cc_binary: Some(PathBuf::from("/opt/claude")),
             default_model: "test-model".to_owned(),
-            oauth_token: Some("token".to_owned()),
+            oauth_token: Some(aletheia_koina::secret::SecretString::from("token")),
             timeout: Duration::from_secs(600),
             max_turns: 100,
             skip_permissions: false,
