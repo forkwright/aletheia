@@ -14,12 +14,12 @@ use crate::state::view_preservation::ViewPreservationStore;
 
 const SIDEBAR_STYLE: &str = "\
     width: 220px; \
-    background: var(--bg-sidebar, #1a1a2e); \
-    color: var(--text-primary, #e0e0e0); \
-    padding: 16px 0; \
+    background: var(--bg-sidebar, var(--bg-surface)); \
+    color: var(--text-primary); \
+    padding: var(--space-4) 0; \
     display: flex; \
     flex-direction: column; \
-    gap: 4px; \
+    gap: var(--space-1); \
     flex-shrink: 0;\
 ";
 
@@ -28,33 +28,33 @@ const CONTENT_STYLE: &str = "\
     display: flex; \
     flex-direction: column; \
     overflow: hidden; \
-    background: var(--bg, #0f0f1a); \
-    color: var(--text-primary, #e0e0e0);\
+    background: var(--bg); \
+    color: var(--text-primary);\
 ";
 
 const BRAND_STYLE: &str = "\
-    font-size: 18px; \
-    font-weight: bold; \
-    padding: 8px 16px; \
-    margin-bottom: 8px; \
-    color: var(--text-heading, #ffffff);\
+    font-size: var(--text-lg); \
+    font-weight: var(--weight-bold); \
+    padding: var(--space-2) var(--space-4); \
+    margin-bottom: var(--space-2); \
+    color: var(--text-heading, var(--text-primary));\
 ";
 
 const NAV_LINK_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: 8px; \
-    padding: 8px 16px; \
-    border-radius: 6px; \
-    color: var(--text-primary, #e0e0e0); \
+    gap: var(--space-2); \
+    padding: var(--space-2) var(--space-4); \
+    border-radius: var(--radius-md); \
+    color: var(--text-primary); \
     text-decoration: none; \
-    font-size: 13px;\
+    font-size: var(--text-sm);\
 ";
 
 const NAV_DIVIDER_STYLE: &str = "\
     height: 1px; \
-    background: var(--border-subtle, #2a2a3a); \
-    margin: 8px 16px;\
+    background: var(--border-separator); \
+    margin: var(--space-2) var(--space-4);\
 ";
 
 /// Layout shell rendered around all routes.
