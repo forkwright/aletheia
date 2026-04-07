@@ -507,7 +507,13 @@ pub(crate) fn Sessions() -> Element {
                         SessionDetail {
                             detail_state,
                             on_open_chat: move |_id: SessionId| {
-                                // TODO(#2605): set active agent and session in chat state before navigating.
+                                // Set active agent from the session before navigating to chat.
+                                if let FetchState::Loaded(detail) = &*detail_state.read() {
+                                    if let Some(ref session) = detail.session {
+                                        let mut agents: Signal<AgentStore> = use_context();
+                                        agents.write().set_active(&session.nous_id);
+                                    }
+                                }
                                 let nav = navigator();
                                 nav.push(crate::app::Route::Chat {});
                             },
