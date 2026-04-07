@@ -20,6 +20,7 @@ use crate::components::input_bar::InputBar;
 use crate::components::markdown::Markdown;
 use crate::components::message::{MessageBubble, should_group};
 use crate::components::planning_card::PlanningCard;
+use crate::components::routing_indicator::{RoutingIndicator, update_routing_stage};
 use crate::components::session_tabs::SessionTabsView;
 use crate::components::tool_approval::ToolApproval;
 use crate::components::tool_panel::ToolPanel;
@@ -30,7 +31,9 @@ use crate::state::chat::{ChatMessage, ChatStore, Role};
 use crate::state::commands::CommandStore;
 use crate::state::connection::ConnectionConfig;
 use crate::state::input::InputState;
+use crate::state::pipeline::{PipelineStage, RoutingState};
 use crate::state::toasts::{Severity, ToastStore};
+use crate::state::view_preservation::{PreservedViewState, ViewKey, ViewPreservationStore};
 
 /// Estimated message height in pixels for virtual scroll calculations.
 const ESTIMATED_MSG_HEIGHT: f64 = 80.0;
@@ -40,17 +43,41 @@ const ESTIMATED_MSG_HEIGHT: f64 = 80.0;
 pub(crate) fn Chat() -> Element {
     let mut legacy_state = use_signal(ChatState::default);
     let _store = use_signal(ChatStore::default);
-    let input_state = use_signal(InputState::default);
+    let mut input_state = use_signal(InputState::default);
     let mut cancel_token = use_signal(CancellationToken::new);
     let mut palette_open = use_signal(|| false);
     let config: Signal<ConnectionConfig> = use_context();
     let mut cmd_store = use_context::<Signal<CommandStore>>();
     let agent_store = use_context::<Signal<AgentStore>>();
     let mut tab_bar = use_context::<Signal<TabBar>>();
+    let mut routing_signal = use_context::<Signal<Option<RoutingState>>>();
 
     // Virtual scroll state
     let mut scroll_top = use_signal(|| 0.0_f64);
     let mut container_height = use_signal(|| 600.0_f64);
+
+    // WHY: Restore preserved view state on mount. Context switches cost
+    // ~23 minutes to recover from (#2411). Preserving scroll position and
+    // input drafts eliminates the UI-imposed context tax.
+    let mut preservation = use_context::<Signal<ViewPreservationStore>>();
+    use_hook(|| {
+        if let Some(saved) = preservation.write().restore(&ViewKey::Chat) {
+            scroll_top.set(saved.scroll_top);
+            input_state.write().text = saved.input_text;
+        }
+    });
+
+    // WHY: Save view state on unmount so it survives route changes.
+    use_drop(move || {
+        preservation.write().save(
+            ViewKey::Chat,
+            PreservedViewState {
+                scroll_top: scroll_top(),
+                input_text: input_state.read().text.clone(),
+                secondary_scroll: 0.0,
+            },
+        );
+    });
 
     // Derive the active agent ID from the agent store.
     let active_nous_id = agent_store.read().active_id.clone();
@@ -209,6 +236,25 @@ pub(crate) fn Chat() -> Element {
             let timeout = tokio::time::sleep(Duration::from_secs(600));
             tokio::pin!(timeout);
 
+            // WHY: Derive agent display name for the routing indicator.
+            // Resolve once at turn start to avoid repeated agent store reads.
+            let routing_agent_name = {
+                let store = agent_store.read();
+                store
+                    .get(&theatron_core::id::NousId::from(nous_id.as_str()))
+                    .map(|r| r.display_name().to_string())
+                    .unwrap_or_else(|| nous_id.clone())
+            };
+            let routing_agent_id = theatron_core::id::NousId::from(nous_id.as_str());
+
+            // Signal bootstrap stage at turn start.
+            update_routing_stage(
+                &mut routing_signal,
+                PipelineStage::Bootstrap,
+                &routing_agent_name,
+                &routing_agent_id,
+            );
+
             loop {
                 let event = tokio::select! {
                     biased;
@@ -248,9 +294,48 @@ pub(crate) fn Chat() -> Element {
                     }
                 }
 
+                // WHY: Update routing indicator stage from stream events.
+                // This gives the operator real-time visibility into what
+                // the pipeline is doing (#2411 transparent routing).
+                use theatron_core::events::StreamEvent;
+                let new_stage = match &event {
+                    StreamEvent::TurnStart { .. } => Some(PipelineStage::Recalling),
+                    StreamEvent::TextDelta(_) => Some(PipelineStage::Thinking),
+                    StreamEvent::ThinkingDelta(_) => Some(PipelineStage::Thinking),
+                    StreamEvent::ToolStart { tool_name, .. } => {
+                        Some(PipelineStage::Executing {
+                            tool_name: tool_name.clone(),
+                        })
+                    }
+                    StreamEvent::ToolResult { .. } => Some(PipelineStage::Thinking),
+                    StreamEvent::TurnComplete { .. } => Some(PipelineStage::Complete),
+                    StreamEvent::TurnAbort { .. } => Some(PipelineStage::Idle),
+                    StreamEvent::Error(_) => Some(PipelineStage::Idle),
+                    _ => None,
+                };
+                if let Some(stage) = new_stage {
+                    update_routing_stage(
+                        &mut routing_signal,
+                        stage,
+                        &routing_agent_name,
+                        &routing_agent_id,
+                    );
+                }
+
                 let mut state = legacy_state.write();
                 let _ = manager.apply(event, &mut state);
             }
+
+            // WHY: After streaming completes, transition to Idle after a
+            // brief delay so the operator sees "done" before it disappears.
+            // 2-second visibility matches the toast auto-dismiss timing.
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            update_routing_stage(
+                &mut routing_signal,
+                PipelineStage::Idle,
+                &routing_agent_name,
+                &routing_agent_id,
+            );
         });
     };
 
@@ -462,6 +547,10 @@ pub(crate) fn Chat() -> Element {
             if let Some(ref nous_id) = active_nous_id {
                 DistillationIndicatorView { nous_id: nous_id.clone() }
             }
+
+            // WHY: Transparent routing indicator shows pipeline stage
+            // so the operator always knows what the system is doing (#2411).
+            RoutingIndicator {}
 
             CommandPaletteView {
                 is_open: *palette_open.read(),

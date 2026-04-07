@@ -19,39 +19,38 @@ const CONTAINER_STYLE: &str = "\
     display: flex; \
     flex-direction: column; \
     height: 100%; \
-    padding: 16px; \
-    gap: 16px;\
+    padding: var(--space-4); \
+    gap: var(--space-4);\
 ";
 
 const GRID_STYLE: &str = "\
     display: grid; \
     grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); \
-    gap: 16px; \
+    gap: var(--space-4); \
     flex: 1; \
     overflow-y: auto; \
     align-content: start;\
 ";
 
 const CARD_STYLE: &str = "\
-    background: #1a1a2e; \
-    border: 1px solid #333; \
-    border-radius: 8px; \
-    padding: 16px 20px; \
-    cursor: pointer; \
-    transition: border-color 0.15s;\
+    background: var(--bg-surface); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-lg); \
+    padding: var(--space-4); \
+    cursor: pointer;\
 ";
 
 const CARD_TITLE: &str = "\
-    font-size: 16px; \
-    font-weight: bold; \
-    color: #e0e0e0; \
-    margin-bottom: 4px;\
+    font-size: var(--text-md); \
+    font-weight: var(--weight-bold); \
+    color: var(--text-primary); \
+    margin-bottom: var(--space-1);\
 ";
 
 const CARD_DESC: &str = "\
-    font-size: 13px; \
-    color: #888; \
-    margin-bottom: 12px; \
+    font-size: var(--text-sm); \
+    color: var(--text-secondary); \
+    margin-bottom: var(--space-3); \
     display: -webkit-box; \
     -webkit-line-clamp: 2; \
     -webkit-box-orient: vertical; \
@@ -60,18 +59,18 @@ const CARD_DESC: &str = "\
 
 const BADGE_STYLE: &str = "\
     display: inline-block; \
-    padding: 2px 8px; \
-    border-radius: 4px; \
-    font-size: 11px; \
-    font-weight: 600;\
+    padding: var(--space-1) var(--space-2); \
+    border-radius: var(--radius-md); \
+    font-size: var(--text-xs); \
+    font-weight: var(--weight-semibold);\
 ";
 
 const PROGRESS_TRACK: &str = "\
-    background: #2a2a3a; \
+    background: var(--bg-surface-dim); \
     height: 4px; \
-    border-radius: 2px; \
+    border-radius: var(--radius-sm); \
     overflow: hidden; \
-    margin: 8px 0;\
+    margin: var(--space-2) 0;\
 ";
 
 const META_STYLE: &str = "\

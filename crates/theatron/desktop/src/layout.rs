@@ -9,6 +9,8 @@ use crate::state::agents::AgentStore;
 use crate::state::app::TabBar;
 use crate::state::commands::CommandStore;
 use crate::state::navigation::NavAction;
+use crate::state::pipeline::RoutingState;
+use crate::state::view_preservation::ViewPreservationStore;
 
 const SIDEBAR_STYLE: &str = "\
     width: 220px; \
@@ -71,6 +73,15 @@ pub(crate) fn Layout() -> Element {
     use_context_provider(|| Signal::new(CommandStore::new()));
     use_context_provider(|| Signal::new(TabBar::new()));
     use_context_provider(|| Signal::new(Option::<NavAction>::None));
+
+    // WHY: View preservation store survives route changes so views can
+    // save scroll position and input drafts before unmounting and restore
+    // on return. This eliminates the 23-minute context-switch tax (#2411).
+    use_context_provider(|| Signal::new(ViewPreservationStore::new()));
+
+    // WHY: Routing state signal drives the transparent routing indicator
+    // in the chat view. Updated by the SSE event processing pipeline.
+    use_context_provider(|| Signal::new(Option::<RoutingState>::None));
 
     // Command palette open state -- shared with the keyboard handler.
     let palette_open = use_signal(|| false);

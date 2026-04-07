@@ -52,5 +52,9 @@ pub(crate) mod ops;
 pub(crate) mod settings;
 /// Token usage, cost tracking, budget, and metrics display helpers.
 pub(crate) mod metrics;
+/// Pipeline stage tracking for transparent agent routing indicator.
+pub(crate) mod pipeline;
 /// Tool usage metrics: aggregated stats, date range filtering, stores.
 pub(crate) mod tool_metrics;
+/// View state preservation across navigation (scroll position, input drafts).
+pub(crate) mod view_preservation;

@@ -10,6 +10,7 @@ use dioxus::prelude::*;
 
 use crate::components::resize_handle::{use_resize_state, ResizeDir, ResizeHandle};
 use crate::state::navigation::NavAction;
+use crate::state::view_preservation::{PreservedViewState, ViewKey, ViewPreservationStore};
 use crate::views::files::diff::DiffViewer;
 use crate::views::files::search::FileSearch;
 use crate::views::files::tree::FileTree;
@@ -76,6 +77,33 @@ pub(crate) fn Files() -> Element {
 
     // Resize state -- replaces the inline is_resizing/resize_start_x/resize_start_width signals.
     let resize = use_resize_state(DEFAULT_TREE_WIDTH, MIN_TREE_WIDTH, MAX_TREE_WIDTH);
+
+    // WHY: Restore preserved state on mount (#2411 context preservation).
+    let mut preservation = use_context::<Signal<ViewPreservationStore>>();
+    use_hook(|| {
+        if let Some(saved) = preservation.write().restore(&ViewKey::Files) {
+            if !saved.input_text.is_empty() {
+                selected_path.set(Some(saved.input_text));
+            }
+        }
+    });
+
+    // Save state on unmount.
+    use_drop(move || {
+        let path_text = selected_path
+            .read()
+            .as_deref()
+            .unwrap_or("")
+            .to_string();
+        preservation.write().save(
+            ViewKey::Files,
+            PreservedViewState {
+                scroll_top: 0.0,
+                input_text: path_text,
+                secondary_scroll: 0.0,
+            },
+        );
+    });
 
     // NOTE: Consume navigation actions from toast buttons to open diff viewer.
     if let Some(mut nav_signal) = try_consume_context::<Signal<Option<NavAction>>>() {
