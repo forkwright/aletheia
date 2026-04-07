@@ -54,7 +54,10 @@ pub(crate) fn run(args: &DesktopArgs) -> anyhow::Result<()> {
         .map_err(|e| anyhow::anyhow!("failed to exec `{}`: {e}", binary.display()))?;
 
     if !status.success() {
-        std::process::exit(status.code().unwrap_or(1));
+        let code = status.code().unwrap_or(1);
+        return Err(anyhow::anyhow!(
+            "`{BINARY_NAME}` exited with status {code}"
+        ));
     }
 
     Ok(())

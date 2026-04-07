@@ -61,7 +61,6 @@ pub(crate) fn interpolate_env_vars(content: &str) -> Result<String> {
     let mut rest = content;
 
     while let Some(dollar_pos) = rest.find("${") {
-        // Copy everything before `${`.
         #[expect(
             clippy::string_slice,
             reason = "dollar_pos from str::find is a valid UTF-8 boundary"
@@ -72,10 +71,9 @@ pub(crate) fn interpolate_env_vars(content: &str) -> Result<String> {
             reason = "dollar_pos + 2 skips ASCII '$' + '{', always a valid UTF-8 boundary"
         )]
         {
-            rest = &rest[dollar_pos + 2..]; // skip `${`
+            rest = &rest[dollar_pos + 2..];
         }
 
-        // Find the closing `}`.
         let Some(close_pos) = rest.find('}') else {
             let excerpt: String = rest.chars().take(30).collect();
             return EnvVarUnterminatedSnafu { excerpt }.fail();
@@ -91,14 +89,13 @@ pub(crate) fn interpolate_env_vars(content: &str) -> Result<String> {
             reason = "close_pos + 1 skips ASCII '}', always a valid UTF-8 boundary"
         )]
         {
-            rest = &rest[close_pos + 1..]; // skip `}`
+            rest = &rest[close_pos + 1..];
         }
 
         let substituted = resolve_expr(expr)?;
         result.push_str(&substituted);
     }
 
-    // Copy the tail (no more `${` found).
     result.push_str(rest);
     Ok(result)
 }
@@ -110,7 +107,6 @@ pub(crate) fn interpolate_env_vars(content: &str) -> Result<String> {
 )]
 fn resolve_expr(expr: &str) -> Result<String> {
     if let Some(sep) = expr.find(":-") {
-        // ${VAR:-default}: use default when VAR is unset.
         #[expect(
             clippy::string_slice,
             reason = "sep is a valid UTF-8 boundary returned by str::find on ASCII ':-'"
@@ -123,7 +119,6 @@ fn resolve_expr(expr: &str) -> Result<String> {
         let default = &expr[sep + 2..];
         Ok(env::var(var).unwrap_or_else(|_| default.to_owned()))
     } else if let Some(sep) = expr.find(":?") {
-        // ${VAR:?message}: abort when VAR is unset.
         #[expect(
             clippy::string_slice,
             reason = "sep is a valid UTF-8 boundary returned by str::find on ASCII ':?'"
@@ -142,7 +137,6 @@ fn resolve_expr(expr: &str) -> Result<String> {
             .build()
         })
     } else {
-        // ${VAR}: substitute value or empty string.
         Ok(env::var(expr).unwrap_or_default())
     }
 }

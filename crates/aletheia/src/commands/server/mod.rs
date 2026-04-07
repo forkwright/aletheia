@@ -27,23 +27,21 @@ pub(crate) struct Args {
     reason = "server startup sequence: sequential subsystem init; splitting adds indirection without clarity"
 )]
 pub(crate) async fn run(args: Args) -> Result<()> {
-    // Oikos is pure path resolution: no IO, safe before tracing is set up.
+    // WHY: Oikos is pure path resolution: no IO, safe before tracing is set up.
     let oikos = match &args.instance_root {
         Some(root) => Oikos::from_root(root),
         None => Oikos::discover(),
     };
 
-    // Load config early to get [logging] settings before tracing is initialised.
-    // Errors here surface to stderr before the subscriber is up.
+    // WHY: Load config early to get [logging] settings before tracing is
+    // initialised. Errors here surface to stderr before the subscriber is up.
     let config = load_config(&oikos).whatever_context("failed to load config")?;
 
-    // Resolve and create the log directory.
     let log_dir = resolve_log_dir(&oikos, config.logging.log_dir.as_deref());
     std::fs::create_dir_all(&log_dir).whatever_context("failed to create log directory")?;
 
-    // Initialise tracing: console at the CLI-specified level, JSON file at
-    // the configured level (default WARN+). The returned guard must live for
-    // the entire process lifetime to flush the non-blocking writer on exit.
+    // WARNING: The returned guard must live for the entire process lifetime
+    // to flush the non-blocking writer on exit.
     let _log_guard = init_tracing(
         &args.log_level,
         args.json_logs,
@@ -57,19 +55,16 @@ pub(crate) async fn run(args: Args) -> Result<()> {
 
     let oikos_arc = Arc::new(oikos);
 
-    // Build the full runtime via RuntimeBuilder
     let mut runtime = RuntimeBuilder::production(Arc::clone(&oikos_arc), config.clone())
         .build()
         .await?;
 
-    // Log retention: runs immediately at startup then every 24 h.
     spawn_log_retention(
         log_dir.clone(),
         config.logging.retention_days,
         runtime.shutdown_token.child_token(),
     );
 
-    // Pylon HTTP gateway
     let security = aletheia_pylon::security::SecurityConfig::from_gateway(&config.gateway);
 
     #[cfg(feature = "mcp")]
@@ -102,7 +97,7 @@ pub(crate) async fn run(args: Args) -> Result<()> {
     let app = build_router(runtime.state.clone(), &security);
 
     let port = args.port.unwrap_or(config.gateway.port);
-    // Resolve bind address: CLI flag > config gateway.bind > default 127.0.0.1.
+    // NOTE: Precedence is CLI flag > config gateway.bind > default 127.0.0.1.
     // "lan" is a semantic alias for "0.0.0.0" (listen on all interfaces).
     let bind_host = args.bind.as_deref().unwrap_or(&config.gateway.bind);
     let bind_addr_str = match bind_host {
@@ -111,11 +106,9 @@ pub(crate) async fn run(args: Args) -> Result<()> {
         other => other,
     };
 
-    // Warn unconditionally when auth is disabled: every request is granted Readonly role.
     if config.gateway.auth.mode == "none" {
         warn!("auth mode is 'none' -- all requests granted Readonly role");
     }
-    // Additionally warn if auth is disabled on a non-localhost bind address.
     if config.gateway.auth.mode == "none"
         && bind_addr_str != "127.0.0.1"
         && bind_addr_str != "localhost"
@@ -149,8 +142,8 @@ pub(crate) async fn run(args: Args) -> Result<()> {
     #[cfg(unix)]
     let sighup_handle = aletheia_pylon::server::spawn_sighup_handler(Arc::clone(&runtime.state));
 
-    // Axum graceful shutdown: wait for OS signal, then cancel root token so
-    // all subsystems observe shutdown simultaneously.
+    // WHY: Cancel root token on OS signal so all subsystems observe
+    // shutdown simultaneously.
     let token_for_signal = runtime.shutdown_token.clone();
     axum::serve(listener, app)
         .with_graceful_shutdown(async move {
@@ -161,7 +154,7 @@ pub(crate) async fn run(args: Args) -> Result<()> {
         .await
         .whatever_context("server error")?;
 
-    // Drain ordering:
+    // INVARIANT: Drain ordering must follow this sequence:
     // 1. HTTP server has stopped accepting new requests (axum graceful_shutdown).
     // 2. Root token is cancelled: daemon tasks observe it and exit their loops.
     // 2a. Drain SIGHUP handler (observes shutdown token).
@@ -178,7 +171,6 @@ pub(crate) async fn run(args: Args) -> Result<()> {
             .unwrap_or(10),
     );
 
-    // Drain SIGHUP handler before other subsystems.
     #[cfg(unix)]
     {
         if tokio::time::timeout(shutdown_timeout, sighup_handle)
@@ -189,7 +181,6 @@ pub(crate) async fn run(args: Args) -> Result<()> {
         }
     }
 
-    // Await system daemon handles
     for handle in runtime.daemon_handles.drain(..) {
         match tokio::time::timeout(shutdown_timeout, handle).await {
             Ok(Ok(())) => {}
@@ -201,10 +192,9 @@ pub(crate) async fn run(args: Args) -> Result<()> {
         }
     }
 
-    // Drain nous actors
     runtime.state.nous_manager.drain(shutdown_timeout).await;
 
-    // Flush the SQLite session-store WAL explicitly (#1723).
+    // FIXME(#1723): Flush the SQLite session-store WAL explicitly.
     match runtime.state.session_store.try_lock() {
         Ok(store) => {
             if let Err(e) = store.checkpoint_wal() {

@@ -39,10 +39,10 @@ pub(super) fn spawn_log_retention(log_dir: PathBuf, retention_days: u32, token: 
                     trace_dir: dir,
                     archive_dir,
                     max_age_days: retention_days,
-                    // No size-based eviction: only age matters for log retention.
+                    // WHY: No size-based eviction; only age matters for log retention.
                     max_total_size_mb: 1_000_000,
                     compress: false,
-                    // Prune every archived file immediately: net effect is deletion.
+                    // WHY: Prune every archived file immediately; net effect is deletion.
                     max_archives: 0,
                 };
 
@@ -94,25 +94,20 @@ pub(super) fn init_tracing(
     file_level: &str,
     redaction: &aletheia_taxis::config::RedactionSettings,
 ) -> Result<WorkerGuard> {
-    // Console filter: respect RUST_LOG env var, fall back to the CLI level.
+    // NOTE: Respects RUST_LOG env var; falls back to the CLI level.
     let console_filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new(format!("aletheia={log_level},{log_level}")));
 
-    // File filter: configured level, default "warn": captures WARN+ even
-    // when the console is set to INFO.
+    // WHY: File filter captures WARN+ even when the console is set to INFO.
     let file_filter = EnvFilter::try_new(file_level).with_whatever_context(|_| {
         format!("invalid logging.level '{file_level}' — use a tracing directive such as 'warn'")
     })?;
 
-    // Daily-rolling file appender. tracing_appender creates one file per day:
-    //   aletheia.log.2026-03-14, aletheia.log.2026-03-15, …
-    // The non_blocking wrapper offloads writes to a background thread.
     let file_appender = tracing_appender::rolling::daily(log_dir, "aletheia.log");
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
-    // Console layers: exactly one is Some, the other None.
-    // Option<L> implements Layer<S> as a no-op when None, so both arms compose
-    // cleanly without type-erasing via Box<dyn Layer>.
+    // WHY: Option<L> implements Layer<S> as a no-op when None, so both arms
+    // compose cleanly without type-erasing via Box<dyn Layer>.
     let console_filter_clone = console_filter.clone();
     let json_console = json.then(|| {
         fmt::layer()
@@ -129,7 +124,6 @@ pub(super) fn init_tracing(
             .with_filter(console_filter)
     });
 
-    // File layer: redacting or plain depending on config.
     if redaction.enabled {
         let redacting = RedactingLayer::new(
             non_blocking,

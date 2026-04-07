@@ -113,7 +113,7 @@ impl CredentialFile {
             std::fs::create_dir_all(parent)?;
         }
 
-        // Phase 1: write all temp files and fsync
+        // INVARIANT: Phase 1 — write all temp files and fsync.
         let key_tmp = if key_needs_persist {
             Some(prepare_key_file(path, &key)?)
         } else {
@@ -127,7 +127,7 @@ impl CredentialFile {
         file.flush()?;
         file.sync_all()?;
 
-        // Phase 2: rename both atomically. If either fails, clean up both.
+        // INVARIANT: Phase 2 — rename both atomically. If either fails, clean up both.
         if let Some(ref ktmp) = key_tmp
             && let Err(e) = commit_key_file(path, ktmp)
         {

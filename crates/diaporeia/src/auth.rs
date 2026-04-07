@@ -71,7 +71,7 @@ pub async fn mcp_auth(
     // Validate via JwtManager. When auth_mode != "none" the jwt_manager is
     // always Some (enforced at construction in server/mod.rs).
     let Some(ref jwt) = state.jwt_manager else {
-        // Defensive: should never happen if construction is correct.
+        // INVARIANT: should never happen if construction is correct.
         warn!("MCP request rejected: jwt_manager unavailable despite auth_mode != \"none\"");
         return unauthorized();
     };
