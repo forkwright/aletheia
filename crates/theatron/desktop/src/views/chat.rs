@@ -74,7 +74,6 @@ pub(crate) fn Chat() -> Element {
             PreservedViewState {
                 scroll_top: scroll_top(),
                 input_text: input_state.read().text.clone(),
-                secondary_scroll: 0.0,
             },
         );
     });

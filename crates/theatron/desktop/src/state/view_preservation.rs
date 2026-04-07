@@ -74,7 +74,6 @@ mod tests {
             PreservedViewState {
                 scroll_top: 42.0,
                 input_text: "draft message".to_string(),
-                secondary_scroll: 0.0,
             },
         );
 
