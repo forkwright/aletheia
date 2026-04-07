@@ -29,6 +29,8 @@ pub mod metrics;
 pub mod prosoche;
 /// Per-nous background task runner with cron scheduling, failure tracking, and graceful shutdown.
 pub mod runner;
+/// Self-prompting: daemon-initiated follow-up actions with rate limiting.
+pub mod self_prompt;
 /// Scheduling primitives: cron, interval, one-shot, jitter, and active time windows.
 pub mod schedule;
 /// SQLite-backed persistence, workspace config, and single-instance locking.
@@ -53,4 +55,5 @@ mod assertions {
     assert_impl_all!(super::state::DaemonConfig: Send, Sync);
     assert_impl_all!(super::coordination::Coordinator: Send);
     assert_impl_all!(super::triggers::TriggerRouter: Send, Sync);
+    assert_impl_all!(super::self_prompt::SelfPromptConfig: Send, Sync);
 }

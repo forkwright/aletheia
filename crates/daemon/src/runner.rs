@@ -88,6 +88,10 @@ pub struct TaskRunner {
     state_store: Option<crate::state::TaskStateStore>,
     /// Output mode: full or brief (truncated).
     output_mode: DaemonOutputMode,
+    /// Self-prompt rate limiter (tracks per-agent dispatch counts).
+    self_prompt_limiter: crate::self_prompt::SelfPromptLimiter,
+    /// Self-prompt configuration (enabled, rate limits).
+    self_prompt_config: crate::self_prompt::SelfPromptConfig,
 }
 
 /// Tracks a task that is currently executing.
@@ -133,6 +137,8 @@ impl TaskRunner {
             in_flight: HashMap::new(),
             state_store: None,
             output_mode: DaemonOutputMode::Full,
+            self_prompt_limiter: crate::self_prompt::SelfPromptLimiter::new(1),
+            self_prompt_config: crate::self_prompt::SelfPromptConfig::default(),
         }
     }
 
@@ -153,6 +159,8 @@ impl TaskRunner {
             in_flight: HashMap::new(),
             state_store: None,
             output_mode: DaemonOutputMode::Full,
+            self_prompt_limiter: crate::self_prompt::SelfPromptLimiter::new(1),
+            self_prompt_config: crate::self_prompt::SelfPromptConfig::default(),
         }
     }
 
@@ -195,6 +203,17 @@ impl TaskRunner {
     #[must_use]
     pub fn with_output_mode(mut self, mode: DaemonOutputMode) -> Self {
         self.output_mode = mode;
+        self
+    }
+
+    /// Configure self-prompting behavior (rate-limited daemon-initiated follow-ups).
+    ///
+    /// WHY: self-prompting enables proactive work when prosoche checks identify
+    /// items needing attention. Must be explicitly enabled with rate limits.
+    #[must_use]
+    pub fn with_self_prompt(mut self, config: crate::self_prompt::SelfPromptConfig) -> Self {
+        self.self_prompt_limiter = crate::self_prompt::SelfPromptLimiter::new(config.max_per_hour);
+        self.self_prompt_config = config;
         self
     }
 
@@ -583,6 +602,7 @@ impl TaskRunner {
                 match in_flight.handle.await {
                     Ok(Ok(result)) => {
                         self.log_result(&task_id, &result);
+                        self.maybe_queue_self_prompt(&task_id, &result);
                         self.record_task_completion(&task_id, duration);
                     }
                     Ok(Err(e)) => {
@@ -622,6 +642,84 @@ impl TaskRunner {
                 tracing::info!(task_id = %task_id, output = %truncated, "task output (brief)");
             }
         }
+    }
+
+    /// Check if a completed task's output contains a `## Follow-up` section
+    /// and, if self-prompting is enabled and rate-allowed, spawn a self-prompt.
+    ///
+    /// WHY: self-prompting closes the feedback loop. A prosoche check that finds
+    /// something wrong can request a follow-up action without human intervention.
+    /// Rate limiting ensures this never runs away.
+    fn maybe_queue_self_prompt(&mut self, task_id: &str, result: &ExecutionResult) {
+        if !self.self_prompt_config.enabled {
+            return;
+        }
+
+        let Some(output) = result.output.as_deref() else {
+            return;
+        };
+
+        let Some(follow_up) = crate::self_prompt::extract_follow_up(output) else {
+            return;
+        };
+
+        if !self.self_prompt_limiter.is_allowed(&self.nous_id) {
+            tracing::info!(
+                nous_id = %self.nous_id,
+                task_id = %task_id,
+                "self-prompt rate limited  -  skipping follow-up"
+            );
+            return;
+        }
+
+        self.self_prompt_limiter.record(&self.nous_id);
+
+        let bridge = self.bridge.clone();
+        let nous_id = self.nous_id.clone();
+        let task_id_owned = task_id.to_owned();
+
+        // WHY: spawn as a detached task. Self-prompt execution should not block
+        // the main scheduler loop. Failures are logged but do not affect the
+        // originating task's status.
+        tokio::spawn(async move {
+            tracing::info!(
+                nous_id = %nous_id,
+                source_task = %task_id_owned,
+                prompt_len = follow_up.len(),
+                "dispatching self-prompt from follow-up"
+            );
+            let result = crate::self_prompt::execute_self_prompt(
+                &nous_id,
+                &follow_up,
+                bridge.as_deref(),
+            )
+            .await;
+            match result {
+                Ok(r) if r.success => {
+                    tracing::info!(
+                        nous_id = %nous_id,
+                        source_task = %task_id_owned,
+                        "self-prompt dispatched successfully"
+                    );
+                }
+                Ok(r) => {
+                    tracing::warn!(
+                        nous_id = %nous_id,
+                        source_task = %task_id_owned,
+                        output = ?r.output,
+                        "self-prompt dispatch returned failure"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        nous_id = %nous_id,
+                        source_task = %task_id_owned,
+                        error = %e,
+                        "self-prompt dispatch error"
+                    );
+                }
+            }
+        });
     }
 
     /// Record a successful task completion and UPDATE scheduling.

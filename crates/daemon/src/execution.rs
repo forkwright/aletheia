@@ -289,6 +289,18 @@ pub(crate) async fn execute_builtin(
         BuiltinTask::GraphCleanup => {
             graph_cleanup::execute_graph_cleanup(nous_id, knowledge_executor).await
         }
+        BuiltinTask::SelfPrompt => {
+            // NOTE: SelfPrompt is dispatched inline by the runner after
+            // extracting a follow-up from prosoche output. This arm handles
+            // the case where it's registered as a standalone task (should not
+            // happen in normal operation).
+            Ok(ExecutionResult {
+                success: false,
+                output: Some(
+                    "self-prompt must be dispatched via runner follow-up extraction".to_owned(),
+                ),
+            })
+        }
         BuiltinTask::RetentionExecution => {
             let Some(executor) = retention_executor else {
                 tracing::info!("retention execution skipped — no executor configured");

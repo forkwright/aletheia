@@ -178,6 +178,14 @@ pub struct DaemonConfig {
     /// Brief output mode: truncate tool results and model responses in logs.
     #[serde(default)]
     pub brief_output: bool,
+
+    /// Self-prompting configuration: daemon-initiated follow-up actions.
+    ///
+    /// WHY: self-prompting must be opt-in. Without explicit enablement, the
+    /// daemon never sends itself follow-up prompts. Rate limiting prevents
+    /// runaway loops from misconfigured attention checks.
+    #[serde(default)]
+    pub self_prompt: crate::self_prompt::SelfPromptConfig,
 }
 
 fn default_max_children() -> usize {
@@ -194,6 +202,7 @@ impl Default for DaemonConfig {
             webhook_port: None,
             watch_paths: Vec::new(),
             brief_output: false,
+            self_prompt: crate::self_prompt::SelfPromptConfig::default(),
         }
     }
 }
