@@ -13,14 +13,15 @@
 //!
 //! # Usage
 //!
-//! ```no_run
+//! ```ignore
+//! // NOTE: MockEmbeddingProvider requires cfg(test) or feature = "test-support".
 //! use aletheia_episteme::embedding::MockEmbeddingProvider;
 //! use aletheia_episteme::embedding_eval::{EvalDataset, evaluate_model};
 //!
 //! let dataset = EvalDataset::from_jsonl_str(r#"{"query":"foo","relevant_ids":["a"]}"#).unwrap();
 //! let provider = MockEmbeddingProvider::new(384);
 //! let corpus: Vec<(String, String)> = vec![("a".into(), "foo bar".into())];
-//! let result = evaluate_model(&provider, &dataset, &corpus, 5);
+//! let result = evaluate_model(&provider, &dataset, &corpus, 5).unwrap();
 //! println!("Recall@5: {}", result.recall_at_k);
 //! ```
 
