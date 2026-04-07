@@ -12,5 +12,6 @@
 
 pub mod error;
 pub mod rows;
+pub mod schema;
 pub mod storage;
 pub mod value;
