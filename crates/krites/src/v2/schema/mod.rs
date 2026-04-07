@@ -10,4 +10,4 @@
 
 pub mod relation;
 
-pub use relation::{ColumnDef, ColumnType, RelationSchema};
+pub use relation::{ColumnDef, ColumnType, RelationSchema, VectorDtype};

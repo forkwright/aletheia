@@ -11,6 +11,7 @@
 //! - [`error`] — v2-specific error types
 
 pub mod error;
+pub mod parse;
 pub mod rows;
 pub mod schema;
 pub mod storage;
