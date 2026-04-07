@@ -14,6 +14,8 @@ pub(crate) mod error;
 pub mod handoff;
 /// Prometheus metric definitions for planning and project orchestration.
 pub mod metrics;
+/// Phase boundary gates: conditions that must be met before advancing between phases.
+pub mod gate;
 /// Phase types within a project: groupings of related plans with lifecycle state.
 pub mod phase;
 /// Executable plans within a phase: dependency tracking, iteration limits, and blocker management.
@@ -37,6 +39,9 @@ pub mod workspace;
 mod assertions {
     use static_assertions::assert_impl_all;
 
+    assert_impl_all!(crate::gate::GateCondition: Send, Sync);
+    assert_impl_all!(crate::gate::GateResult: Send, Sync);
+    assert_impl_all!(crate::gate::PhaseGate: Send, Sync);
     assert_impl_all!(crate::project::Project: Send, Sync);
     assert_impl_all!(crate::phase::Phase: Send, Sync);
     assert_impl_all!(crate::plan::Plan: Send, Sync);
