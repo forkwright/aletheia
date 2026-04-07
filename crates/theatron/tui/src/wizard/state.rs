@@ -272,7 +272,7 @@ pub(crate) static AUTH_OPTIONS: &[SelectOption] = &[
 
 pub(crate) static MODEL_OPTIONS: &[SelectOption] = &[
     SelectOption {
-        value: "claude-sonnet-4-6",
+        value: aletheia_koina::defaults::DEFAULT_MODEL_SHORT,
         label: "claude-sonnet-4-6 (recommended)",
     },
     SelectOption {
@@ -367,7 +367,7 @@ fn make_agent_step() -> StepState {
                 "pronoea",
                 "alphanumeric + hyphens, used in paths",
             ),
-            WizardField::select("Model", MODEL_OPTIONS, "claude-sonnet-4-6", ""),
+            WizardField::select("Model", MODEL_OPTIONS, aletheia_koina::defaults::DEFAULT_MODEL_SHORT, ""),
         ],
         cursor: 0,
         editing: None,
@@ -623,7 +623,7 @@ mod tests {
         assert_eq!(answers.auth_mode, "none");
         assert_eq!(answers.agent_name, "Pronoea");
         assert_eq!(answers.agent_id, "pronoea");
-        assert_eq!(answers.model, "claude-sonnet-4-6");
+        assert_eq!(answers.model, aletheia_koina::defaults::DEFAULT_MODEL_SHORT);
         assert!(answers.api_key.is_none());
     }
 
