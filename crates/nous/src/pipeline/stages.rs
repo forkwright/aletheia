@@ -346,9 +346,24 @@ pub(super) fn run_full_compact_stage(
     let (_request, preserved) =
         crate::compact::full::build_summary_request(&ctx.messages, &compact_config);
 
-    // TODO(#2603): spawn background task via task registry for model summarization.
-    // For now, build a structural summary from message roles and content snippets.
+    // WHY: structural summary is fast (no LLM call) and runs synchronously.
+    // If a summary improvement channel is available, we also queue an async
+    // LLM-based summary that will replace this one when ready.
     let summary = build_structural_summary(&ctx.messages, &compact_config);
+
+    if let Some(ref tx) = ctx.summary_improvement_tx {
+        let request = crate::pipeline::SummaryImprovementRequest {
+            session_id: config.id.clone(),
+            messages: ctx.messages.clone(),
+            model: config.distillation.model.clone(),
+            max_tokens: 2048,
+        };
+        // WHY: try_send avoids blocking the synchronous pipeline.
+        // If the channel is full, the structural summary stands.
+        if tx.try_send(request).is_err() {
+            tracing::debug!("summary improvement channel full, using structural summary");
+        }
+    }
 
     let result = crate::compact::full::apply_compaction(
         &summary,
