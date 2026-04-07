@@ -117,6 +117,8 @@ pub enum BuiltinTask {
     SelfReflection,
     /// Periodic knowledge graph cleanup: orphan removal and stale entity pruning.
     GraphCleanup,
+    /// Extract operational metrics as knowledge graph facts.
+    OpsFactExtraction,
 }
 
 impl Schedule {

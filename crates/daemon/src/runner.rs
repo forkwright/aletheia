@@ -272,6 +272,17 @@ impl TaskRunner {
             self.register_knowledge_maintenance_tasks();
         }
 
+        // WHY: operational fact extraction runs on a short interval to keep
+        // the knowledge graph current with system health metrics. Agents
+        // recall these facts during bootstrap for situational awareness.
+        self.register_builtin(
+            "ops-fact-extraction",
+            "Operational fact extraction",
+            Schedule::Interval(Duration::from_secs(15 * 60)),
+            BuiltinTask::OpsFactExtraction,
+            false,
+        );
+
         self.register_cron_tasks(&config.cron);
     }
 

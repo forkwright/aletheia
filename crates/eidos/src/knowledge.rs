@@ -365,6 +365,8 @@ pub enum FactType {
     Audit,
     /// Claim-source provenance check: ephemeral (7 days).
     Verification,
+    /// Operational metric snapshot: ephemeral (3 days).
+    Operational,
 }
 
 impl FactType {
@@ -372,7 +374,7 @@ impl FactType {
     #[must_use]
     #[expect(
         clippy::match_same_arms,
-        reason = "Audit/Event share 30-day decay, Task/Verification share 7-day decay, but are semantically distinct"
+        reason = "Audit/Event share 30-day decay, Task/Verification share 7-day decay, Observation/Operational share 3-day decay, but are semantically distinct"
     )]
     pub fn base_stability_hours(self) -> f64 {
         match self {
@@ -385,6 +387,7 @@ impl FactType {
             Self::Observation => 72.0,
             Self::Audit => 720.0,
             Self::Verification => 168.0,
+            Self::Operational => 72.0,
         }
     }
 
@@ -437,6 +440,7 @@ impl FactType {
             Self::Observation => "observation",
             Self::Audit => "audit",
             Self::Verification => "verification",
+            Self::Operational => "operational",
         }
     }
 
@@ -452,6 +456,7 @@ impl FactType {
             "task" => Self::Task,
             "audit" => Self::Audit,
             "verification" => Self::Verification,
+            "operational" => Self::Operational,
             // WHY: Unknown values fall back to Observation to keep the type system open.
             _ => Self::Observation,
         }
