@@ -131,10 +131,15 @@ impl Config {
         let resolved_token = cli_token.or(file_config.token);
         let credential_label = detect_credential_label(resolved_token.as_deref());
 
+        // WHY: When neither CLI flag nor config file provides a URL, attempt
+        // auto-discovery before falling back to the compiled default.
+        // Discovery runs a blocking runtime because Config::load is sync.
+        let url = cli_url.or(file_config.url).unwrap_or_else(|| {
+            Self::try_discover().unwrap_or_else(|| DEFAULT_URL.to_string())
+        });
+
         Ok(Config {
-            url: cli_url
-                .or(file_config.url)
-                .unwrap_or_else(|| DEFAULT_URL.to_string()),
+            url,
             token: resolved_token.map(SecretString::from),
             default_agent: cli_agent.or(file_config.default_agent),
             default_session: cli_session.or(file_config.default_session),
@@ -144,6 +149,36 @@ impl Config {
             theme,
             credential_label,
         })
+    }
+
+    /// Attempt server auto-discovery on the local network.
+    ///
+    /// WHY: Config::load is synchronous (called before the tokio runtime is
+    /// fully available to callers). We use `tokio::runtime::Handle::try_current`
+    /// to detect whether we are already inside a runtime. If so, we spawn a
+    /// blocking task to run discovery without deadlocking the current runtime.
+    /// If no runtime is active (e.g. tests without `#[tokio::test]`), we create
+    /// a temporary one.
+    fn try_discover() -> Option<String> {
+        tracing::info!("no server URL configured, attempting auto-discovery");
+
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            // We are inside a tokio runtime. Spawn a blocking task to avoid
+            // blocking the async executor while discovery probes run.
+            std::thread::scope(|s| {
+                s.spawn(|| handle.block_on(theatron_core::discovery::discover_server()))
+                    .join()
+                    .ok()
+                    .flatten()
+            })
+        } else {
+            // No runtime available: create a temporary one for discovery.
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .ok()?;
+            rt.block_on(theatron_core::discovery::discover_server())
+        }
     }
 
     #[expect(

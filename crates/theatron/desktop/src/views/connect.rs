@@ -89,7 +89,9 @@ const STATUS_STYLE: &str = "\
 /// Connect view component.
 ///
 /// Reads connection state from context and provides a form for the user to
-/// configure and initiate a server connection.
+/// configure and initiate a server connection. When the current URL is the
+/// compiled default, auto-discovery runs in the background and pre-fills
+/// the URL if a server is found on the LAN.
 #[component]
 pub(crate) fn ConnectView(
     connection_state: Signal<ConnectionState>,
@@ -102,6 +104,23 @@ pub(crate) fn ConnectView(
             .auth_token
             .clone()
             .unwrap_or_default()
+    });
+
+    // WHY: Run auto-discovery once on first render when the URL is the compiled
+    // default. If a server is found, update the URL input so the user does not
+    // have to type it. `use_resource` runs once and caches the result.
+    let _discovery = use_resource(move || {
+        let current_url = url_input.read().clone();
+        async move {
+            let default_url = ConnectionConfig::default().server_url;
+            if current_url != default_url {
+                return; // User already configured a custom URL
+            }
+            if let Some(discovered) = theatron_core::discovery::discover_server().await {
+                tracing::info!(url = %discovered, "auto-discovered server, updating connect form");
+                url_input.set(discovered);
+            }
+        }
     });
 
     let is_connecting = matches!(
