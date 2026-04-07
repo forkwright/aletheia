@@ -118,6 +118,10 @@ pub(crate) mod storage;
 )]
 pub(crate) mod utils;
 
+/// Clean-room Datalog engine (v2). Feature-gated: `krites-v2`.
+#[cfg(feature = "krites-v2")]
+pub mod v2;
+
 /// Convert an `InternalError` to the public `Error` type.
 ///
 /// Specific internal error types map to typed public variants where possible.
