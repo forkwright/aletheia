@@ -121,6 +121,8 @@ impl ToolExecutor for ComputerUseExecutor {
                         error::ExecutionFailedSnafu {
                             name: input.name.clone(),
                             message: format!("failed to serialize result: {e}"),
+                            exit_code: None,
+                            timed_out: false,
                         }
                         .build()
                     })?;

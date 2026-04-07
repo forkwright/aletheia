@@ -45,8 +45,10 @@ pub enum Error {
     },
 
     /// Failed to serialize to JSON.
-    #[snafu(display("JSON serialization failed"))]
+    #[snafu(display("JSON serialization failed for {}", path.display()))]
     JsonSerialize {
+        /// The path to the file that failed serialization.
+        path: PathBuf,
         /// The underlying serialization error.
         source: serde_json::Error,
         #[snafu(implicit)]
@@ -55,8 +57,10 @@ pub enum Error {
     },
 
     /// Failed to deserialize from JSON.
-    #[snafu(display("JSON deserialization failed"))]
+    #[snafu(display("JSON deserialization failed for {}", path.display()))]
     JsonDeserialize {
+        /// The path to the file that failed deserialization.
+        path: PathBuf,
         /// The underlying deserialization error.
         source: serde_json::Error,
         #[snafu(implicit)]
@@ -106,9 +110,13 @@ mod tests {
     #[test]
     fn json_deserialize_error() {
         let err: std::result::Result<serde_json::Value, Error> =
-            serde_json::from_str("not json").context(JsonDeserializeSnafu);
+            serde_json::from_str("not json").context(JsonDeserializeSnafu {
+                path: PathBuf::from("/tmp/test.json"),
+            });
         assert!(err.is_err());
-        assert!(err.unwrap_err().to_string().contains("JSON"));
+        let msg = err.unwrap_err().to_string();
+        assert!(msg.contains("JSON"));
+        assert!(msg.contains("/tmp/test.json"));
     }
 
     #[test]

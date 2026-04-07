@@ -110,7 +110,7 @@ pub enum ApiError {
     },
 
     /// Config validation failed (422).
-    #[snafu(display("validation failed"))]
+    #[snafu(display("validation failed: {}", errors.join(", ")))]
     ValidationFailed {
         errors: Vec<String>,
         #[snafu(implicit)]

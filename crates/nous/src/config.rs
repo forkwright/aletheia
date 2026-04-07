@@ -82,7 +82,7 @@ impl Default for NousLimits {
         use aletheia_koina::defaults as d;
         Self {
             max_tool_iterations: d::MAX_TOOL_ITERATIONS,
-            loop_detection_threshold: 3,
+            loop_detection_threshold: 5,
             consecutive_error_threshold: 4,
             loop_max_warnings: 2,
             session_token_cap: default_session_token_cap(),
@@ -355,7 +355,7 @@ mod tests {
             },
             limits: NousLimits {
                 max_tool_iterations: 10,
-                loop_detection_threshold: 5,
+                loop_detection_threshold: 5,  // Issue #2721: raised from 3 to reduce false positives
                 consecutive_error_threshold: 4,
                 loop_max_warnings: 2,
                 session_token_cap: 250_000,
