@@ -97,7 +97,7 @@ Register in `crates/organon/src/builtins/mod.rs` via `register_all()`.
 
 | Subcommand | Description |
 |------------|-------------|
-| *(none)* / `serve` | Start the server |
+| `serve` | Start the HTTP server (same as no subcommand) |
 | `health [--url URL]` | HTTP health check against a running instance |
 | `status [--url URL]` | System status dashboard |
 | `backup [--list\|--prune --keep N\|--export-json]` | Database backup management |
