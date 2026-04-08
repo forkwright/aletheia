@@ -127,14 +127,27 @@ fn save_sync(state: &WindowState) -> Result<(), WindowStateError> {
     Ok(())
 }
 
+/// Guard that aborts the background flush task when the last clone drops.
+///
+/// WHY: `JoinHandle` is not `Clone`, but `DebouncedWriter` must be `Clone`
+/// for Dioxus hooks. Wrapping the `AbortHandle` in `Arc<AbortOnDrop>` gives
+/// automatic cleanup: the task is aborted only when every clone is gone.
+struct AbortOnDrop(tokio::task::AbortHandle);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
 /// Debounced window state writer.
 ///
 /// Buffers state changes and flushes to disk at most once per
 /// [`DEBOUNCE_INTERVAL`]. Call [`mark_dirty`](Self::mark_dirty) whenever
 /// the window state changes; the background task handles the rest.
 ///
-/// On drop or explicit [`flush`](Self::flush), any pending state is
-/// written immediately.
+/// The background flush task is automatically aborted when the last
+/// `DebouncedWriter` clone is dropped.
 // WHY: Clone is derived because Dioxus `use_hook` requires `Clone + 'static`.
 // All fields are `Arc`-wrapped, so cloning is cheap (reference count bump).
 #[derive(Clone)]
@@ -143,27 +156,25 @@ pub(crate) struct DebouncedWriter {
     dirty: Arc<Notify>,
     /// Whether there are unsaved changes.
     has_pending: Arc<std::sync::atomic::AtomicBool>,
+    /// Aborts the background flush task when the last `DebouncedWriter` clone drops.
+    _flush_guard: Arc<AbortOnDrop>,
 }
 
 impl DebouncedWriter {
     /// Create a new debounced writer and spawn the background flush task.
     ///
-    /// The background task runs until the returned `DebouncedWriter` is dropped.
+    /// The background task runs until the last `DebouncedWriter` clone is dropped,
+    /// at which point it is aborted via the `AbortOnDrop` guard.
     #[must_use]
     pub(crate) fn new(initial: WindowState) -> Self {
         let state = Arc::new(Mutex::new(initial));
         let dirty = Arc::new(Notify::new());
         let has_pending = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
-        let writer = Self {
-            state: Arc::clone(&state),
-            dirty: Arc::clone(&dirty),
-            has_pending: Arc::clone(&has_pending),
-        };
-
         // WHY: Spawn a tokio task (not Dioxus coroutine) so it runs independently
-        // of component lifecycle and can flush on app shutdown.
-        tokio::spawn({
+        // of component lifecycle and can flush on app shutdown. The AbortHandle
+        // is stored so the task is cancelled when all DebouncedWriter clones drop.
+        let handle = tokio::spawn({
             let state = Arc::clone(&state);
             let dirty = Arc::clone(&dirty);
             let has_pending = Arc::clone(&has_pending);
@@ -185,7 +196,12 @@ impl DebouncedWriter {
             }
         });
 
-        writer
+        Self {
+            state,
+            dirty,
+            has_pending,
+            _flush_guard: Arc::new(AbortOnDrop(handle.abort_handle())),
+        }
     }
 
     /// Update the buffered state. The write will be flushed after the debounce interval.

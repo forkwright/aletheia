@@ -8,6 +8,7 @@ use std::collections::{HashMap, HashSet};
 use ratatui::Frame;
 use ratatui::buffer::Buffer;
 use tokio::sync::mpsc;
+use tokio::task::JoinSet;
 
 use persistence::{load_command_history, load_session_state};
 
@@ -207,6 +208,10 @@ pub struct App {
     pub viewport: ViewportState,
     pub interaction: InteractionState,
     pub layout: LayoutState,
+
+    /// Background fire-and-forget tasks (API calls, etc.) tracked so they can
+    /// be awaited on shutdown instead of being silently dropped.
+    pub(crate) background_tasks: JoinSet<()>,
 }
 
 impl App {
@@ -320,6 +325,7 @@ impl App {
                 bell_enabled,
                 notifications: NotificationStore::default(),
             },
+            background_tasks: JoinSet::new(),
         };
 
         app.connect().await?;
@@ -574,6 +580,36 @@ impl App {
                 }
                 Err(e) => {
                     tracing::error!("failed to load history: {e}");
+                }
+            }
+        }
+    }
+
+    /// Drain all background tasks, giving them a short grace period to complete.
+    /// Called on shutdown to avoid leaking in-flight API requests.
+    #[tracing::instrument(skip_all)]
+    pub(crate) async fn shutdown_background_tasks(&mut self) {
+        let deadline = tokio::time::sleep(std::time::Duration::from_secs(5));
+        tokio::pin!(deadline);
+        loop {
+            tokio::select! {
+                biased;
+                result = self.background_tasks.join_next() => {
+                    match result {
+                        Some(Ok(())) => {}
+                        Some(Err(e)) => {
+                            tracing::warn!(error = %e, "background task panicked during shutdown");
+                        }
+                        None => break, // all tasks drained
+                    }
+                }
+                () = &mut deadline => {
+                    let remaining = self.background_tasks.len();
+                    if remaining > 0 {
+                        tracing::warn!(remaining, "aborting lingering background tasks after timeout");
+                        self.background_tasks.abort_all();
+                    }
+                    break;
                 }
             }
         }

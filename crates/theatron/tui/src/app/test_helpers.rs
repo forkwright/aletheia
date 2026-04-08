@@ -119,6 +119,7 @@ pub(crate) fn test_app() -> App {
             bell_enabled: false,
             notifications: NotificationStore::default(),
         },
+        background_tasks: tokio::task::JoinSet::new(),
     }
 }
 

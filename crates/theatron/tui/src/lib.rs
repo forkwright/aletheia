@@ -118,6 +118,10 @@ async fn run_tui_inner(
     let _ = crossterm::execute!(std::io::stderr(), crossterm::event::DisableMouseCapture);
     let _ = crossterm::execute!(std::io::stderr(), cursor::SetCursorStyle::DefaultUserShape);
     ratatui::restore();
+    // WHY: Drain background tasks before exit so in-flight API calls (tool
+    // approvals, plan cancellations, abort requests) complete instead of being
+    // silently dropped when the runtime shuts down.
+    app.shutdown_background_tasks().await;
     // Persist last-active sessions so the TUI resumes at the same place on relaunch.
     crate::app::save_session_state(&app.config, &app.dashboard.saved_sessions);
 

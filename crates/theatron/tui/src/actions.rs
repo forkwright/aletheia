@@ -35,7 +35,7 @@ impl App {
                 let session_id = session_id.clone();
                 let text = text.to_string();
                 let span = tracing::info_span!("queue_message", %session_id);
-                tokio::spawn(
+                self.background_tasks.spawn(
                     async move {
                         if let Err(e) = client.queue_message(&session_id, &text).await {
                             tracing::error!("failed to queue message: {e}");
