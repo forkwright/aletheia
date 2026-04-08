@@ -42,6 +42,10 @@ const BRIEF_RESPONSE_MAX_CHARS: usize = 200;
 ///
 /// Keeps the first `BRIEF_HEAD_LINES` and last `BRIEF_TAIL_LINES`, inserting
 /// a `... (N lines omitted)` marker in between.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "bounds checked: total > HEAD + TAIL before slicing"
+)]
 pub(crate) fn truncate_output(output: &str) -> String {
     let lines: Vec<&str> = output.lines().collect();
     let total = lines.len();
@@ -62,6 +66,10 @@ pub(crate) fn truncate_output(output: &str) -> String {
 }
 
 /// Truncate a model response for brief-mode logging.
+#[expect(
+    clippy::string_slice,
+    reason = "bounds checked: response.len() > max and end <= max"
+)]
 pub(crate) fn truncate_response(response: &str) -> String {
     if response.len() <= BRIEF_RESPONSE_MAX_CHARS {
         return response.to_owned();

@@ -469,7 +469,8 @@ fn days_in_month(year: i16, month: i8) -> u8 {
     clippy::cast_sign_loss,
     clippy::as_conversions,
     clippy::cast_possible_truncation,
-    reason = "intermediate values are small positive integers that fit in u8/i32"
+    clippy::indexing_slicing,
+    reason = "intermediate values are small positive integers that fit in u8/i32; month is 1-12 so m-1 is valid index 0-11"
 )]
 fn day_of_week(year: i16, month: i8, day: i8) -> u8 {
     static T: [i32; 12] = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
