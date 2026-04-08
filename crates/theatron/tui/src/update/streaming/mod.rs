@@ -152,7 +152,7 @@ pub(crate) fn handle_stream_tool_approval_required(
     {
         let client = app.client.clone();
         let span = tracing::info_span!("auto_approve_tool", %turn_id, %tool_id, %tool_name);
-        tokio::spawn(
+        app.background_tasks.spawn(
             async move {
                 if let Err(e) = client.approve_tool(&turn_id, &tool_id).await {
                     tracing::error!("failed to auto-approve tool: {e}");
@@ -376,12 +376,12 @@ pub(crate) async fn handle_cancel_turn(app: &mut App) {
     };
     app.connection.state_epoch = app.connection.state_epoch.wrapping_add(1);
 
-    // Fire-and-forget: tell the server to abort. Errors are non-fatal; the
-    // stream receiver being dropped is sufficient to stop local processing.
+    // WHY: Tracked in background_tasks so the abort request completes before
+    // shutdown instead of being silently dropped when the runtime exits.
     let client = app.client.clone();
     let id = turn_id.to_string();
     let span = tracing::info_span!("abort_turn", turn_id = %id);
-    tokio::spawn(
+    app.background_tasks.spawn(
         async move {
             if let Err(e) = client.abort_turn(&id).await {
                 tracing::warn!(error = %e, "abort_turn request failed");
