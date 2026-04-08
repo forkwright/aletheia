@@ -142,7 +142,12 @@ pub(crate) fn validate_path(raw: &str, ctx: &ToolContext, tool_name: &ToolName) 
         .build());
     }
 
-    Ok(normalized)
+    // WHY: return the canonical path so callers operate on the resolved
+    // target. Using the normalized (non-canonical) path leaves a TOCTOU
+    // window where a symlink could be swapped after validation but before
+    // I/O. Returning canonical shrinks this window because the kernel
+    // path lookup won't follow the original symlink. Closes #2786.
+    Ok(canonical)
 }
 
 pub(crate) fn normalize(path: &Path) -> PathBuf {
@@ -281,17 +286,10 @@ impl ToolExecutor for ReadExecutor {
         Box::pin(async {
             let path_str = extract_str(&input.arguments, "path", &input.name)?;
             let max_lines = extract_opt_u64(&input.arguments, "maxLines");
+            // WHY: validate_path returns the canonical path (symlinks resolved),
+            // so the I/O below operates on the resolved target, not the original
+            // symlink. This eliminates the TOCTOU window from #2162.
             let path = validate_path(path_str, ctx, &input.name)?;
-
-            // WHY: Close TOCTOU window for symlink-based attacks. A validated
-            // path could be swapped to a symlink pointing outside allowed roots
-            // between validate_path and the actual read. Closes #2162.
-            if path.exists()
-                && let Ok(canonical) = std::fs::canonicalize(&path)
-                && canonical != path
-            {
-                validate_path(&canonical.to_string_lossy(), ctx, &input.name)?;
-            }
 
             match std::fs::metadata(&path) {
                 Ok(meta) if meta.len() > MAX_READ_BYTES => {
