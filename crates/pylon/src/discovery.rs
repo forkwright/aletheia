@@ -240,9 +240,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn remove_nonexistent_file_does_not_error() {
+    async fn remove_nonexistent_file_succeeds_silently() {
         let dir = tempfile::tempdir().unwrap();
-        // Should not panic or error.
+        // Should not panic or error - the function returns (), so we verify
+        // it completes without panicking by reaching this point.
         remove_discovery_file(dir.path()).await;
+        // Verify the directory still exists and is empty
+        assert!(dir.path().exists());
+        let entries: Vec<_> = std::fs::read_dir(dir.path()).unwrap().collect();
+        assert!(entries.is_empty(), "directory should be empty");
     }
 }

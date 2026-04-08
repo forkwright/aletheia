@@ -424,10 +424,26 @@ mod tests {
 
     #[test]
     fn health_state_has_all_required_fields() {
-        // Verify HealthState can be constructed with the fields health handlers need.
-        // NOTE: This test just validates HealthState struct construction; actual
-        // handler behavior is covered by integration tests in tests/health.rs.
-        let _ = std::mem::size_of::<HealthState>();
+        // Verify HealthState has all fields needed by health handlers.
+        // This is a compile-time check that the fields exist and are accessible.
+        fn assert_health_state_fields(state: &HealthState) {
+            use std::sync::Arc;
+            use aletheia_mneme::store::SessionStore;
+            use aletheia_hermeneus::provider::ProviderRegistry;
+            use aletheia_nous::manager::NousManager;
+            use aletheia_taxis::oikos::Oikos;
+            use aletheia_taxis::config::AletheiaConfig;
+
+            let _: &Arc<tokio::sync::Mutex<SessionStore>> = &state.session_store;
+            let _: &Arc<ProviderRegistry> = &state.provider_registry;
+            let _: &Arc<NousManager> = &state.nous_manager;
+            let _: std::time::Instant = state.start_time;
+            let _: &Arc<Oikos> = &state.oikos;
+            let _: &Arc<tokio::sync::RwLock<AletheiaConfig>> = &state.config;
+        }
+        // The function above proves all required fields exist and have correct types.
+        // If this compiles, HealthState has all the fields health handlers need.
+        assert!(std::mem::size_of::<HealthState>() > 0);
     }
 
     #[test]

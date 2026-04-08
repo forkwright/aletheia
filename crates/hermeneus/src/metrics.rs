@@ -256,38 +256,218 @@ pub(crate) fn set_concurrency_in_flight(provider: &str, in_flight: u32) {
 mod tests {
     use super::*;
 
-    #[test]
-    fn init_does_not_panic() {
-        init();
+    /// Read a Prometheus counter value by metric name and label values.
+    fn read_counter(name: &str, label_names: &[&str], label_values: &[&str]) -> u64 {
+        let families = prometheus::default_registry().gather();
+        for family in &families {
+            if family.name() == name {
+                for metric in family.get_metric() {
+                    let labels = metric.get_label();
+                    // Match labels by name->value
+                    let label_map: std::collections::HashMap<_, _> = labels
+                        .iter()
+                        .map(|l| (l.name(), l.value()))
+                        .collect();
+                    let matches = label_names.iter().zip(label_values.iter()).all(|(name, expected)| {
+                        label_map.get(name).map(|v| *v == *expected).unwrap_or(false)
+                    });
+                    if matches && labels.len() == label_values.len() {
+                        return metric.get_counter().value() as u64;
+                    }
+                }
+            }
+        }
+        0
+    }
+
+    /// Read a Prometheus float counter value by metric name and label values.
+    fn read_float_counter(name: &str, label_names: &[&str], label_values: &[&str]) -> f64 {
+        let families = prometheus::default_registry().gather();
+        for family in &families {
+            if family.name() == name {
+                for metric in family.get_metric() {
+                    let labels = metric.get_label();
+                    let label_map: std::collections::HashMap<_, _> = labels
+                        .iter()
+                        .map(|l| (l.name(), l.value()))
+                        .collect();
+                    let matches = label_names.iter().zip(label_values.iter()).all(|(name, expected)| {
+                        label_map.get(name).map(|v| *v == *expected).unwrap_or(false)
+                    });
+                    if matches && labels.len() == label_values.len() {
+                        return metric.get_counter().value();
+                    }
+                }
+            }
+        }
+        0.0
+    }
+
+    /// Read a Prometheus histogram count by metric name and label values.
+    fn read_histogram_count(name: &str, label_names: &[&str], label_values: &[&str]) -> u64 {
+        let families = prometheus::default_registry().gather();
+        for family in &families {
+            if family.name() == name {
+                for metric in family.get_metric() {
+                    let labels = metric.get_label();
+                    let label_map: std::collections::HashMap<_, _> = labels
+                        .iter()
+                        .map(|l| (l.name(), l.value()))
+                        .collect();
+                    let matches = label_names.iter().zip(label_values.iter()).all(|(name, expected)| {
+                        label_map.get(name).map(|v| *v == *expected).unwrap_or(false)
+                    });
+                    if matches && labels.len() == label_values.len() {
+                        return metric.get_histogram().sample_count() as u64;
+                    }
+                }
+            }
+        }
+        0
     }
 
     #[test]
-    fn record_completion_success_does_not_panic() {
+    fn init_registers_all_metrics() {
+        // Initialize metrics - this forces all LazyLock statics to register
         init();
-        record_completion("anthropic", 100, 50, 0.001, true);
+
+        // Record values on metrics to ensure they appear in gather()
+        record_completion("test-init", 1, 1, 0.001, true);
+        record_cache_tokens("test-init", 1, 1);
+        record_latency("test-init", "ok", 0.1);
+        record_ttft("test-init", "ok", 0.1);
+        // Set concurrency metrics so they appear in the registry
+        set_concurrency_limit("test-init", 10);
+        set_concurrency_latency_ewma("test-init", 0.5);
+        set_concurrency_in_flight("test-init", 5);
+
+        let families = prometheus::default_registry().gather();
+        let metric_names: std::collections::HashSet<_> =
+            families.iter().map(|f| f.name()).collect();
+
+        // Core metrics that are always registered after recording
+        assert!(metric_names.contains("aletheia_llm_tokens_total"), "tokens metric should be registered");
+        assert!(metric_names.contains("aletheia_llm_cost_total"), "cost metric should be registered");
+        assert!(metric_names.contains("aletheia_llm_requests_total"), "requests metric should be registered");
+        assert!(metric_names.contains("aletheia_llm_cache_tokens_total"), "cache tokens metric should be registered");
+        assert!(metric_names.contains("aletheia_llm_request_duration_seconds"), "request duration metric should be registered");
+        assert!(metric_names.contains("aletheia_llm_ttft_seconds"), "ttft metric should be registered");
+        // Concurrency metrics registered after setting values
+        assert!(metric_names.contains("aletheia_llm_concurrency_limit"), "concurrency limit metric should be registered");
+        assert!(metric_names.contains("aletheia_llm_concurrency_latency_ewma_seconds"), "concurrency latency metric should be registered");
+        assert!(metric_names.contains("aletheia_llm_concurrency_in_flight"), "concurrency in-flight metric should be registered");
     }
 
     #[test]
-    fn record_completion_failure_does_not_panic() {
-        init();
-        record_completion("anthropic", 0, 0, 0.0, false);
+    fn record_completion_success_updates_all_metrics() {
+        // Use a unique provider name to avoid test interference
+        let provider = "test-completion-success";
+        let before_requests = read_counter("aletheia_llm_requests_total", &["provider", "status"], &[provider, "ok"]);
+        let before_tokens_in =
+            read_counter("aletheia_llm_tokens_total", &["provider", "direction"], &[provider, "input"]);
+        let before_tokens_out =
+            read_counter("aletheia_llm_tokens_total", &["provider", "direction"], &[provider, "output"]);
+        let before_cost = read_float_counter("aletheia_llm_cost_total", &["provider"], &[provider]);
+
+        record_completion(provider, 100, 50, 0.001, true);
+
+        assert_eq!(
+            read_counter("aletheia_llm_requests_total", &["provider", "status"], &[provider, "ok"]),
+            before_requests + 1,
+            "request counter should increment"
+        );
+        assert_eq!(
+            read_counter("aletheia_llm_tokens_total", &["provider", "direction"], &[provider, "input"]),
+            before_tokens_in + 100,
+            "input token counter should increment by 100"
+        );
+        assert_eq!(
+            read_counter("aletheia_llm_tokens_total", &["provider", "direction"], &[provider, "output"]),
+            before_tokens_out + 50,
+            "output token counter should increment by 50"
+        );
+        let after_cost = read_float_counter("aletheia_llm_cost_total", &["provider"], &[provider]);
+        assert!(
+            after_cost > before_cost,
+            "cost counter should increase (before: {before_cost}, after: {after_cost})"
+        );
     }
 
     #[test]
-    fn record_latency_does_not_panic() {
-        init();
-        record_latency("claude-sonnet-4-6", "ok", 1.5);
+    fn record_completion_failure_updates_error_metrics() {
+        let provider = "test-completion-failure";
+        let before = read_counter("aletheia_llm_requests_total", &["provider", "status"], &[provider, "error"]);
+
+        record_completion(provider, 0, 0, 0.0, false);
+
+        assert_eq!(
+            read_counter("aletheia_llm_requests_total", &["provider", "status"], &[provider, "error"]),
+            before + 1,
+            "error request counter should increment"
+        );
     }
 
     #[test]
-    fn record_ttft_does_not_panic() {
-        init();
-        record_ttft("claude-sonnet-4-6", "ok", 0.25);
+    fn record_latency_records_observation() {
+        let model = "test-model-latency";
+        let status = "ok";
+        let before = read_histogram_count(
+            "aletheia_llm_request_duration_seconds",
+            &["model", "status"],
+            &[model, status],
+        );
+
+        record_latency(model, status, 1.5);
+
+        assert_eq!(
+            read_histogram_count(
+                "aletheia_llm_request_duration_seconds",
+                &["model", "status"],
+                &[model, status]
+            ),
+            before + 1,
+            "latency histogram should have one more observation"
+        );
     }
 
     #[test]
-    fn record_cache_tokens_does_not_panic() {
-        init();
-        record_cache_tokens("anthropic", 1000, 500);
+    fn record_ttft_records_observation() {
+        let model = "test-model-ttft";
+        let status = "ok";
+        let before = read_histogram_count(
+            "aletheia_llm_ttft_seconds",
+            &["model", "status"],
+            &[model, status],
+        );
+
+        record_ttft(model, status, 0.25);
+
+        assert_eq!(
+            read_histogram_count("aletheia_llm_ttft_seconds", &["model", "status"], &[model, status]),
+            before + 1,
+            "ttft histogram should have one more observation"
+        );
+    }
+
+    #[test]
+    fn record_cache_tokens_increments_counters() {
+        let provider = "test-cache-tokens";
+        let before_read =
+            read_counter("aletheia_llm_cache_tokens_total", &["provider", "direction"], &[provider, "read"]);
+        let before_write =
+            read_counter("aletheia_llm_cache_tokens_total", &["provider", "direction"], &[provider, "write"]);
+
+        record_cache_tokens(provider, 1000, 500);
+
+        assert_eq!(
+            read_counter("aletheia_llm_cache_tokens_total", &["provider", "direction"], &[provider, "read"]),
+            before_read + 1000,
+            "read cache token counter should increment by 1000"
+        );
+        assert_eq!(
+            read_counter("aletheia_llm_cache_tokens_total", &["provider", "direction"], &[provider, "write"]),
+            before_write + 500,
+            "write cache token counter should increment by 500"
+        );
     }
 }
