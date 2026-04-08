@@ -403,7 +403,11 @@ fn parse_callback_request(reader: &mut BufReader<&TcpStream>) -> Result<Option<C
     let mut header_line = String::new();
     loop {
         header_line.clear();
-        if reader.read_line(&mut header_line).context(ReadRequestSnafu)? == 0 {
+        if reader
+            .read_line(&mut header_line)
+            .context(ReadRequestSnafu)?
+            == 0
+        {
             break;
         }
         if header_line.trim().is_empty() {
@@ -516,7 +520,10 @@ fn handle_callback_connection(
                     // State matches
                 }
                 _ => {
-                    let _ = send_error_response(&mut stream, "Invalid state parameter. Possible CSRF attack.");
+                    let _ = send_error_response(
+                        &mut stream,
+                        "Invalid state parameter. Possible CSRF attack.",
+                    );
                     return Err(PkceError::InvalidState {
                         location: snafu::location!(),
                     });
@@ -596,10 +603,7 @@ async fn exchange_code(
         .context(HttpRequestSnafu)?;
 
     let status = response.status();
-    let body_text = response
-        .text()
-        .await
-        .context(HttpRequestSnafu)?;
+    let body_text = response.text().await.context(HttpRequestSnafu)?;
 
     if !status.is_success() {
         // Try to parse as OAuth error
@@ -663,9 +667,9 @@ pub async fn pkce_login(provider: &OAuthProvider) -> Result<CredentialFile> {
     // Build and display authorization URL
     let auth_url = build_authorization_url(provider, &pkce, &state, port);
 
-    println!("\n🔐 Authentication required");
-    println!("Please visit this URL to authorize:\n");
-    println!("  {auth_url}\n");
+    eprintln!("\n🔐 Authentication required");
+    eprintln!("Please visit this URL to authorize:\n");
+    eprintln!("  {auth_url}\n");
 
     // Wait for callback with timeout
     let callback_result = tokio::time::timeout(Duration::from_secs(300), callback_rx).await;
@@ -699,9 +703,9 @@ pub async fn pkce_login(provider: &OAuthProvider) -> Result<CredentialFile> {
     info!("successfully obtained access token");
 
     // Build credential file
-    let expires_at = token_response.expires_in.map(|secs| {
-        super::unix_epoch_ms() + secs * 1000
-    });
+    let expires_at = token_response
+        .expires_in
+        .map(|secs| super::unix_epoch_ms() + secs * 1000);
 
     let scopes = token_response
         .scope
@@ -780,7 +784,10 @@ mod tests {
     fn test_url_decode() {
         assert_eq!(url_decode("hello%20world"), Some("hello world".to_string()));
         assert_eq!(url_decode("foo%2Fbar"), Some("foo/bar".to_string()));
-        assert_eq!(url_decode("test%40example.com"), Some("test@example.com".to_string()));
+        assert_eq!(
+            url_decode("test%40example.com"),
+            Some("test@example.com".to_string())
+        );
     }
 
     #[test]
@@ -839,7 +846,7 @@ mod tests {
         params.insert("client_id", "my client");
 
         let body = build_form_body(&params);
-        
+
         // HashMap iteration order is not guaranteed, so check for presence of each param
         assert!(body.contains("grant_type=authorization_code"));
         assert!(body.contains("code=abc123"));
