@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
-use tracing::{info_span, instrument};
+use tracing::{Instrument, info_span, instrument};
 
 use aletheia_hermeneus::provider::ProviderRegistry;
 use aletheia_koina::event::EventEmitter;
@@ -698,7 +698,11 @@ pub(crate) async fn run_pipeline(
         pipeline.tool_calls = tracing::field::Empty,
         pipeline.model = %config.generation.model,
     );
-    let _pipeline_guard = pipeline_span.enter();
+    // WHY: span.enter() must not be held across .await points — it uses
+    // thread-local storage that breaks when the future migrates threads.
+    // Wrapping the async body with .instrument() sets the span correctly
+    // for each poll without holding a guard across suspension points.
+    async move {
     let mut stages_completed: u32 = 0;
 
     let mut ctx = PipelineContext::default();
@@ -817,23 +821,24 @@ pub(crate) async fn run_pipeline(
         crate::instinct::record_observations(&result.tool_calls, &input.content, &config.id);
     }
 
+    let current_span = tracing::Span::current();
     #[expect(
         clippy::cast_possible_truncation,
         clippy::as_conversions,
         reason = "u128→u64: pipeline duration fits in u64; usize→u64 for tool call count"
     )]
     {
-        pipeline_span.record(
+        current_span.record(
             "pipeline.total_duration_ms",
             pipeline_start.elapsed().as_millis() as u64, // kanon:ignore RUST/as-cast
         );
     }
-    pipeline_span.record("pipeline.stages_completed", stages_completed);
+    current_span.record("pipeline.stages_completed", stages_completed);
     #[expect(
         clippy::as_conversions,
         reason = "usize→u64: tool call count fits in u64"
     )]
-    pipeline_span.record("pipeline.tool_calls", result.tool_calls.len() as u64); // kanon:ignore RUST/as-cast
+    current_span.record("pipeline.tool_calls", result.tool_calls.len() as u64); // kanon:ignore RUST/as-cast
 
     // Single event emission replaces separate metrics::record_turn + tracing::info.
     crate::metrics::record_turn(&config.id);
@@ -854,6 +859,7 @@ pub(crate) async fn run_pipeline(
     });
 
     Ok(result)
+    }.instrument(pipeline_span).await
 }
 
 /// Typed pipeline events for the internal event system.

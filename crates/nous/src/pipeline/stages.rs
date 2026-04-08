@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
-use tracing::{debug, error, info_span};
+use tracing::{Instrument, debug, error, info_span};
 
 use aletheia_hermeneus::provider::ProviderRegistry;
 use aletheia_koina::event::EventEmitter;
@@ -44,7 +44,6 @@ pub(super) async fn run_context_stage(
         duration_ms = tracing::field::Empty,
         status = tracing::field::Empty
     );
-    let _guard = span.enter();
     let start = Instant::now();
     assemble_context_conditional(
         oikos,
@@ -54,6 +53,7 @@ pub(super) async fn run_context_stage(
         extra_bootstrap,
         task_hint,
     )
+    .instrument(span.clone())
     .await
     .inspect_err(|_| {
         crate::metrics::record_error(&config.id, "context", "assembly_failed");
@@ -96,7 +96,6 @@ pub(super) async fn run_recall_stage(
         duration_ms = tracing::field::Empty,
         status = tracing::field::Empty
     );
-    let _guard = span.enter();
     let start = Instant::now();
     let recall_timeout_secs = pipeline_config.stage_budget.recall_secs;
     let is_mock_embedding =
@@ -128,9 +127,11 @@ pub(super) async fn run_recall_stage(
         let recall_stage = crate::recall::RecallStage::new(config.recall.clone());
 
         let recall_result_opt = if recall_timeout_secs > 0 {
-            match tokio::time::timeout(Duration::from_secs(u64::from(recall_timeout_secs)), async {
-                recall_stage.run(content, &config.id, ep, vs, budget)
-            })
+            match tokio::time::timeout(
+                Duration::from_secs(u64::from(recall_timeout_secs)),
+                async { recall_stage.run(content, &config.id, ep, vs, budget) }
+                    .instrument(span.clone()),
+            )
             .await
             {
                 Ok(result) => Some(result),
@@ -183,7 +184,6 @@ pub(super) async fn run_history_stage(
         duration_ms = tracing::field::Empty,
         status = tracing::field::Empty
     );
-    let _guard = span.enter();
     let start = Instant::now();
 
     // NOTE: Waterfall: unused system-prompt budget flows into the history budget
@@ -192,8 +192,7 @@ pub(super) async fn run_history_stage(
 
     let history_config = HistoryConfig::default();
     if let Some(store_mutex) = session_store {
-        // WHY: guard scoped and dropped before execute .await
-        let store = store_mutex.lock().await;
+        let store = store_mutex.lock().instrument(span.clone()).await;
         let (messages, hist_result) = history::load_history(
             &store,
             &input.session.id,
@@ -506,7 +505,6 @@ pub(super) async fn run_execute_stage(
         tokens_in = tracing::field::Empty,
         tokens_out = tracing::field::Empty,
     );
-    let _guard = span.enter();
     let start = Instant::now();
 
     // NOTE: prefer per-stage budget, fall back to remaining time from total pipeline budget, whichever is tighter.
@@ -547,7 +545,8 @@ pub(super) async fn run_execute_stage(
             )
             .await
         }
-    };
+    }
+    .instrument(span.clone());
 
     let execute_result = if let Some(timeout_dur) = effective_execute_timeout {
         match tokio::time::timeout(timeout_dur, execute_fut).await {
@@ -647,10 +646,9 @@ pub(super) async fn run_finalize_stage(
         duration_ms = tracing::field::Empty,
         status = tracing::field::Empty
     );
-    let _guard = span.enter();
     let start = Instant::now();
     if let Some(store_mutex) = session_store {
-        let store = store_mutex.lock().await;
+        let store = store_mutex.lock().instrument(span.clone()).await;
         let finalize_config = crate::finalize::FinalizeConfig::default();
         match crate::finalize::finalize(
             &store,
