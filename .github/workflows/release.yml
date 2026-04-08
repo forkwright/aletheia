@@ -24,6 +24,38 @@ jobs:
       - name: Test
         run: cargo test --workspace --exclude theatron-desktop
 
+  feature-check:
+    # WHY: ensures optional features compile; if they break, nobody knows until someone
+    # enables them locally. See standards/RUST.md "Feature Flags" section.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # aletheia features
+          - crate: aletheia
+            feature: mcp
+          - crate: aletheia
+            feature: cc-provider
+          - crate: aletheia
+            feature: energeia
+          # organon features
+          - crate: aletheia-organon
+            feature: computer-use
+          # hermeneus features
+          - crate: aletheia-hermeneus
+            feature: local-llm
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          key: feature-${{ matrix.feature }}
+      - name: Check feature ${{ matrix.feature }}
+        run: cargo check -p ${{ matrix.crate }} --features ${{ matrix.feature }}
+
   build:
     needs: [test]
     strategy:
