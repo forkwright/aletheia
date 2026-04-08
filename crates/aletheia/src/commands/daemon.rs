@@ -2,6 +2,7 @@
 
 use std::path::PathBuf;
 
+use aletheia_taxis::oikos::Oikos;
 use anyhow::{Context, Result};
 
 /// Fork the server to background by re-executing the binary without `--daemon`.
@@ -54,17 +55,10 @@ pub(crate) async fn do_daemon() -> Result<()> {
     Ok(())
 }
 
-/// Resolve the instance root from CLI args or environment for PID file placement.
+/// Resolve the instance root for PID file placement.
+///
+/// Uses Oikos discovery which checks ALETHEIA_ROOT env var and falls back to
+/// ./instance.
 fn daemon_instance_root() -> PathBuf {
-    let args: Vec<String> = std::env::args().collect();
-    for (i, arg) in args.iter().enumerate() {
-        if arg == "-r" || arg == "--instance-root" {
-            if let Some(path) = args.get(i + 1) {
-                return PathBuf::from(path);
-            }
-        } else if let Some(path) = arg.strip_prefix("--instance-root=") {
-            return PathBuf::from(path);
-        }
-    }
-    std::env::var("ALETHEIA_ROOT").map_or_else(|_| PathBuf::from("instance"), PathBuf::from)
+    Oikos::discover().root().to_path_buf()
 }

@@ -467,6 +467,7 @@ dependencies = [
  "aletheia-dianoia",
  "aletheia-episteme",
  "aletheia-koina",
+ "aletheia-taxis",
  "axum 0.8.8",
  "fd-lock",
  "flate2",
@@ -6215,6 +6216,7 @@ name = "theatron-tui"
 version = "0.13.65"
 dependencies = [
  "aletheia-koina",
+ "aletheia-taxis",
  "arboard",
  "base64 0.22.1",
  "clap",
