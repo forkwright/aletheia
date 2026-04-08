@@ -44,7 +44,8 @@ const TOTAL_TIMEOUT: Duration = Duration::from_secs(10);
 const LAN_HOSTNAMES: &[&str] = &["menos", "metis"];
 
 /// Known Tailscale IPs that may host an aletheia instance.
-const TAILSCALE_IPS: &[&str] = &["100.74.109.2", "100.117.8.41"];
+/// Uses RFC 5737 TEST-NET addresses (198.51.100.0/24) for documentation.
+const TAILSCALE_IPS: &[&str] = &["198.51.100.1", "198.51.100.2"];
 
 /// Candidate endpoint to probe during discovery.
 #[derive(Debug, Clone)]

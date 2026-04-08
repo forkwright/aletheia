@@ -1,0 +1,121 @@
+# === Oikos: instance is the entire private boundary ===
+/instance/
+!/instance.example/
+
+# === Legacy paths ===
+/theke/
+/projects/
+/archive/
+nous/*/
+shared/memory/
+shared/contracts/
+shared/checkpoints/
+shared/status/
+shared/insights/
+shared/task-contracts/
+shared/USER.md
+data/
+# Rust crate source directories named 'data' are source code, not runtime data
+!crates/*/src/data/
+!crates/*/src/data/**
+!crates/mneme/src/engine/data/
+!crates/mneme/src/engine/data/**
+# Seed eval datasets are part of the shipped example instance
+!instance.example/data/
+!instance.example/data/**
+
+# === Cargo build output ===
+/target/
+tui/target/
+fuzz/target/
+fuzz/artifacts/
+fuzz/Cargo.lock
+.cargo/
+
+# === Model caches ===
+.fastembed_cache/
+
+# === Secrets ===
+*.env
+**/credentials.json
+**/credentials.yaml
+**/credentials.yml
+**/secrets*
+**/*.key
+**/*.pem
+**/api-key
+
+# === OS ===
+.DS_Store
+Thumbs.db
+
+# === Syncthing ===
+.stfolder/
+.stignore
+.stversions/
+
+# === Workspace backups ===
+*.aletheia-backup
+*.bak
+*.pre-compile.bak
+
+# === Legacy ===
+clawd
+
+# === Financial data ===
+**/*relay*.csv
+**/*transaction*.csv
+
+# === Large/binary ===
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.mp3
+*.mp4
+*.zip
+*.tar.gz
+
+# === Ephemeral state ===
+.planning/
+**/.task/
+**/.taskrc
+**/cookies.txt
+**/heartbeat-state.json
+*sync-conflict*
+
+# === Learned skills (instance-specific, not shipped) ===
+shared/skills/
+!shared/skills/_examples/
+
+# === Cache/logs ===
+shared/cache/
+shared/blackboard/
+shared/traces/
+shared/logs/
+
+# === Config with tokens ===
+nous/*/config/
+shared/competence/model.json
+shared/config/tools.yaml
+shared/prosoche/activity_model.json
+
+# === Deploy backups ===
+.deploy-backup/
+
+# === Nix ===
+/result
+.direnv/
+
+# === Build artifacts / virtual environments ===
+.venv/
+node_modules/
+__pycache__/
+*.egg-info/
+**/dist/
+!crates/*/dist/
+.claude/
+crates/aletheia/instance/
+crates/theatron/desktop/target/

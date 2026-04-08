@@ -5,7 +5,7 @@ use std::time::Instant;
 
 use snafu::prelude::*;
 use tokio::sync::Mutex;
-use tokio::task::JoinHandle;
+use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, debug, info, warn};
 
@@ -68,7 +68,7 @@ pub(crate) struct Runtime {
         reason = "accessible for callers that need direct NousManager access"
     )]
     pub nous_manager: Arc<NousManager>,
-    pub daemon_handles: Vec<JoinHandle<()>>,
+    pub daemon_handles: JoinSet<()>,
     pub shutdown_token: CancellationToken,
 }
 
@@ -658,7 +658,7 @@ impl RuntimeBuilder {
         }
 
         // Daemon handles collector
-        let mut daemon_handles: Vec<JoinHandle<()>> = Vec::new();
+        let mut daemon_handles: JoinSet<()> = JoinSet::new();
 
         if self.daemons {
             // System maintenance daemon
@@ -677,14 +677,13 @@ impl RuntimeBuilder {
             }
 
             daemon_runner.register_maintenance_tasks();
-            let daemon_handle = tokio::spawn(
+            daemon_handles.spawn(
                 async move {
                     daemon_runner.run().await;
                 }
                 .instrument(tracing::info_span!("daemon_runner")),
             );
             info!("daemon started");
-            daemon_handles.push(daemon_handle);
         }
 
         let nous_manager = Arc::new(nous_manager);

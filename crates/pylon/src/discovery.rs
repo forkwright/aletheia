@@ -18,6 +18,7 @@ const DISCOVERY_FILE: &str = ".discovery.json";
 
 /// Errors from writing the discovery file.
 #[derive(Debug, Snafu)]
+#[non_exhaustive]
 #[expect(
     missing_docs,
     reason = "snafu error variant fields are self-documenting via display format"
@@ -208,14 +209,14 @@ mod tests {
     #[test]
     fn discovery_info_serializes_with_tailscale() {
         let info = DiscoveryInfo {
-            url: "http://100.74.109.2:18789".to_owned(),
+            url: "http://198.51.100.1:18789".to_owned(),
             version: "0.13.0",
             started_at: "2026-04-06T12:00:00Z".to_owned(),
-            tailscale_ip: Some("100.74.109.2".to_owned()),
+            tailscale_ip: Some("198.51.100.1".to_owned()),
         };
         let json = serde_json::to_value(&info).unwrap();
-        assert_eq!(json["tailscale_ip"], "100.74.109.2");
-        assert_eq!(json["url"], "http://100.74.109.2:18789");
+        assert_eq!(json["tailscale_ip"], "198.51.100.1");
+        assert_eq!(json["url"], "http://198.51.100.1:18789");
     }
 
     #[tokio::test]

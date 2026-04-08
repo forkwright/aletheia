@@ -4,7 +4,7 @@ use std::future::Future;
 use std::sync::Arc;
 
 use tokio::sync::mpsc;
-use tokio::task::{JoinHandle, JoinSet};
+use tokio::task::JoinSet;
 use tracing::{Instrument, info_span, instrument};
 
 use tokio_util::sync::CancellationToken;
@@ -28,7 +28,7 @@ fn redact_phone(phone: &str) -> String {
 /// registry).
 pub struct ChannelListener {
     rx: Option<mpsc::Receiver<InboundMessage>>,
-    handles: Vec<JoinHandle<()>>,
+    handles: JoinSet<()>,
     /// Abort callbacks registered at task-spawn time; disarmed by `into_receiver`.
     cleanup: aletheia_koina::cleanup::CleanupRegistry,
 }
@@ -57,19 +57,15 @@ impl ChannelListener {
     #[must_use]
     pub(crate) fn from_parts(
         rx: mpsc::Receiver<InboundMessage>,
-        handles: Vec<JoinHandle<()>>,
+        handles: JoinSet<()>,
     ) -> Self {
-        let mut cleanup = aletheia_koina::cleanup::CleanupRegistry::new();
-        for handle in &handles {
-            let abort = handle.abort_handle();
-            cleanup.register(move || abort.abort());
-        }
-        // WHY: handle count is small (single-digit), fits in i64
+        // WHY: JoinSet aborts all tasks on drop, so no explicit cleanup needed.
+        // Handle count is small (single-digit), fits in i64
         crate::metrics::set_active_subscriptions(i64::try_from(handles.len()).unwrap_or(0));
         Self {
             rx: Some(rx),
             handles,
-            cleanup,
+            cleanup: aletheia_koina::cleanup::CleanupRegistry::new(),
         }
     }
 
@@ -132,7 +128,7 @@ impl ChannelListener {
     /// abort them for immediate shutdown or await them for graceful drain.  Tasks
     /// also stop naturally once the receiver is dropped (closed channel).
     #[must_use]
-    pub fn into_receiver(mut self) -> (mpsc::Receiver<InboundMessage>, Vec<JoinHandle<()>>) {
+    pub fn into_receiver(mut self) -> (mpsc::Receiver<InboundMessage>, JoinSet<()>) {
         #[expect(
             clippy::expect_used,
             reason = "rx is None only if into_receiver was already called; calling it twice is a programming error and panic is appropriate"
@@ -143,8 +139,7 @@ impl ChannelListener {
             .expect("into_receiver called on consumed listener");
         // Disarm cleanup so the caller takes responsibility for the handles.
         self.cleanup.disarm();
-        let handles = std::mem::take(&mut self.handles);
-        (rx, handles)
+        (rx, self.handles)
     }
 
     /// Stop all polling tasks.
