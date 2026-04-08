@@ -59,12 +59,6 @@ pub mod query;
 pub(crate) mod query_rewrite;
 /// 6-factor recall scoring engine for knowledge retrieval ranking.
 pub mod recall;
-/// Serendipity engine: cross-domain discovery, surprise scoring, and context injection.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "pub(crate) items used only in tests")
-)]
-pub mod serendipity;
 /// Side-query memory relevance selector with LRU caching and already-surfaced tracking.
 pub mod side_query;
 /// Skill storage helpers and SKILL.md parser.

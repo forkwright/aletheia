@@ -103,8 +103,6 @@ pub use aletheia_episteme::knowledge_store;
 pub use aletheia_episteme::query;
 /// 6-factor recall scoring engine for knowledge retrieval ranking.
 pub use aletheia_episteme::recall;
-/// Serendipity engine: cross-domain discovery, surprise scoring, and context injection.
-pub use aletheia_episteme::serendipity;
 /// Skill storage helpers and SKILL.md parser.
 pub use aletheia_episteme::skill;
 /// Skill auto-capture: heuristic filter, signature hashing, and candidate tracking.
