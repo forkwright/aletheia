@@ -8,9 +8,6 @@
 /// HTTP client, SSE connection, and per-message streaming.
 pub mod api;
 
-/// Shared formatting utilities (token counts, etc.) used by all frontends.
-pub mod format;
-
 /// Auto-discover a running aletheia server on the local network.
 pub mod discovery;
 
@@ -27,7 +24,7 @@ pub mod sse;
 mod tests {
     #[test]
     fn public_modules_exist() {
-        // WHY: smoke test verifying the three public modules compile and link
+        // WHY: smoke test verifying the five public modules compile and link
         let _ = std::any::type_name::<super::api::ApiClient>();
         let _ = super::discovery::discover_server as fn() -> _;
         let _ = std::any::type_name::<super::id::NousId>();

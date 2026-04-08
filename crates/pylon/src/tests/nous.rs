@@ -2,12 +2,6 @@
     clippy::indexing_slicing,
     reason = "test: vec/JSON indices valid after asserting len or known structure"
 )]
-#![expect(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    reason = "test assertions: panics on failure produce clear test output"
-)]
-
 use std::sync::Arc;
 
 use axum::http::StatusCode;
@@ -22,7 +16,7 @@ async fn list_nous_returns_agents() {
 
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
-    let agents = body["nous"].as_array().expect("response must have a 'nous' array");
+    let agents = body["nous"].as_array().unwrap();
     assert_eq!(agents.len(), 1);
     assert_eq!(agents[0]["id"], "syn");
 }
@@ -74,7 +68,7 @@ async fn nous_list_from_manager() {
 
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
-    let agents = body["nous"].as_array().expect("response must have a 'nous' array");
+    let agents = body["nous"].as_array().unwrap();
     assert_eq!(agents.len(), 1);
     assert_eq!(agents[0]["id"], "syn");
     assert_eq!(agents[0]["model"], "mock-model");

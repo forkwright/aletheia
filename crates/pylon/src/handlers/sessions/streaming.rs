@@ -49,22 +49,14 @@ impl Drop for AbortOnDrop {
 /// Stream wrapper that holds an `AbortOnDrop` guard alongside the inner stream.
 ///
 /// When this stream is dropped (client disconnect), the guard aborts the
-/// associated spawned task AND cancels the client token. The abort handles
-/// the common case (task at an await point); the cancellation handles the
-/// edge case where the LLM HTTP call is buffering between yield points.
+/// associated spawned task. The `Stream` impl delegates entirely to the
+/// inner stream.
 ///
 /// WHY: `Unpin` bound is sufficient because `ReceiverStream` and its
 /// `Map` combinator both implement `Unpin`.
 struct GuardedStream<S> {
     inner: S,
     _guard: AbortOnDrop,
-    client_cancel: tokio_util::sync::CancellationToken,
-}
-
-impl<S> Drop for GuardedStream<S> {
-    fn drop(&mut self) {
-        self.client_cancel.cancel();
-    }
 }
 
 impl<S: tokio_stream::Stream + Unpin> tokio_stream::Stream for GuardedStream<S> {
@@ -162,7 +154,6 @@ pub async fn send_message(
                     _guard: AbortOnDrop(tokio::spawn(
                         async {}.instrument(tracing::info_span!("idempotent_noop")),
                     )),
-                    client_cancel: tokio_util::sync::CancellationToken::new(),
                 };
                 return Ok(Sse::new(stream).keep_alive(
                     KeepAlive::new()
@@ -199,7 +190,7 @@ pub async fn send_message(
         .build());
     }
 
-    // NOTE: enforce max message size to prevent memory exhaustion from oversized payloads.
+    // SAFETY: enforce max message size to prevent memory exhaustion from oversized payloads.
     if content.len() > MAX_MESSAGE_BYTES {
         return Err(BadRequestSnafu {
             message: format!("content exceeds maximum size of {MAX_MESSAGE_BYTES} bytes"),
@@ -247,11 +238,6 @@ pub async fn send_message(
         idempotency_key = idempotency_key.as_deref().unwrap_or(""),
     );
     let shutdown_token = state.shutdown.child_token();
-    // WHY: cancel the LLM turn when the SSE client disconnects, not just on
-    // server shutdown. Without this, a disconnected client still consumes
-    // LLM tokens until the turn completes (#2730).
-    let client_cancel = tokio_util::sync::CancellationToken::new();
-    let client_cancel_inner = client_cancel.clone();
     let turn_handle = tokio::spawn(
         async move {
             // WHY(#2113): Emit an immediate acknowledgment so the client never sees an empty
@@ -271,14 +257,9 @@ pub async fn send_message(
                 aletheia_nous::handle::DEFAULT_SEND_TIMEOUT,
             );
             let result = tokio::select! {
-                biased;
                 r = turn_fut => r,
                 () = shutdown_token.cancelled() => {
                     tracing::info!("shutdown: cancelling in-flight SSE turn");
-                    return;
-                }
-                () = client_cancel_inner.cancelled() => {
-                    tracing::info!("client disconnect: cancelling in-flight SSE turn");
                     return;
                 }
             };
@@ -336,7 +317,6 @@ pub async fn send_message(
     let stream = GuardedStream {
         inner: ReceiverStream::new(rx).map(sse_event_to_axum),
         _guard: AbortOnDrop(turn_handle),
-        client_cancel,
     };
 
     Ok(Sse::new(stream).keep_alive(
@@ -394,7 +374,7 @@ pub async fn stream_turn(
         .build());
     }
 
-    // NOTE: enforce max message size to prevent memory exhaustion from oversized payloads.
+    // SAFETY: enforce max message size to prevent memory exhaustion from oversized payloads.
     if message.len() > MAX_MESSAGE_BYTES {
         return Err(BadRequestSnafu {
             message: format!("message exceeds maximum size of {MAX_MESSAGE_BYTES} bytes"),
@@ -490,12 +470,10 @@ pub async fn stream_turn(
     );
 
     let shutdown_token = state.shutdown.child_token();
-    let stream_client_cancel = tokio_util::sync::CancellationToken::new();
-    let stream_client_cancel_inner = stream_client_cancel.clone();
     let stream_turn_handle = tokio::spawn(
         async move {
-            // WHY: cancel the in-flight turn on server shutdown OR client disconnect.
-            // Without the client cancel, a disconnected client still consumes LLM tokens (#2730).
+            // WHY: cancel the in-flight turn when the server shuts down so Axum's graceful
+            // shutdown can drain open SSE connections rather than hanging indefinitely (#1723).
             let turn_fut = handle.send_turn_streaming_with_session_id(
                 &session_key,
                 Some(sid.clone()),
@@ -504,14 +482,9 @@ pub async fn stream_turn(
                 aletheia_nous::handle::DEFAULT_SEND_TIMEOUT,
             );
             let result = tokio::select! {
-                biased;
                 r = turn_fut => r,
                 () = shutdown_token.cancelled() => {
                     tracing::info!("shutdown: cancelling in-flight streaming turn");
-                    return;
-                }
-                () = stream_client_cancel_inner.cancelled() => {
-                    tracing::info!("client disconnect: cancelling in-flight streaming turn");
                     return;
                 }
             };
@@ -583,7 +556,6 @@ pub async fn stream_turn(
             }
         }),
         _guard: AbortOnDrop(stream_turn_handle),
-        client_cancel: stream_client_cancel,
     };
 
     Ok(Sse::new(stream).keep_alive(
@@ -609,11 +581,8 @@ pub async fn stream_turn(
     security(("bearer_auth" = []))
 )]
 pub async fn events(
-    claims: Claims,
+    _claims: Claims,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
-    // NOTE: Claims extracted to enforce authentication; actual authorization
-    // checks would be added here if role-based access control is needed.
-    let _ = claims;
     // WHY: emit periodic comment-only events so the connection stays alive and
     // proxies do not close it. Real domain events require a broadcast channel
     // wired into AppState: deferred to issue #1248.

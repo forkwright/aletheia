@@ -661,9 +661,7 @@ impl ToolExecutor for ExecExecutor {
             let code = status.code().unwrap_or(-1);
             let mut output = format!("exit={code}\n{stdout}\n{stderr}");
             if output.len() > MAX_OUTPUT_BYTES {
-                // WHY: floor_char_boundary prevents panic on multi-byte chars.
-                let safe = output.floor_char_boundary(MAX_OUTPUT_BYTES);
-                output.truncate(safe);
+                output.truncate(MAX_OUTPUT_BYTES);
                 output.push_str("\n[output truncated]");
             }
 

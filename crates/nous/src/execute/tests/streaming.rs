@@ -78,7 +78,7 @@ async fn streaming_tool_events_emitted() {
         "streaming execute should record one tool call"
     );
 
-    // WHY: Mock provider falls back to non-streaming execute(), so no tool events via channel
+    // NOTE: Even with mock (non-streaming) provider, tool events should be emitted
     drop(tx);
     let mut tool_start_count = 0;
     let mut tool_result_count = 0;

@@ -48,7 +48,7 @@ impl SpawnServiceImpl {
 }
 
 impl SpawnService for SpawnServiceImpl {
-    // WHY: sequential ephemeral-actor lifecycle: build config, spawn actor, run single turn,
+    // NOTE: sequential ephemeral-actor lifecycle: build config, spawn actor, run single turn,
     // teardown. Splitting would fragment a cohesive lifecycle.
     #[expect(clippy::too_many_lines, reason = "spawn setup requires many steps")]
     fn spawn_and_run(
@@ -107,7 +107,6 @@ impl SpawnService for SpawnServiceImpl {
             recall: crate::recall::RecallConfig::default(),
             tool_allowlist,
             hooks: crate::config::HookConfig::default(),
-            distillation: crate::distillation::DistillTriggerConfig::default(),
         };
 
         // WHY: ephemeral sub-agents do not capture training data — their turns

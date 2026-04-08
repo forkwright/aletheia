@@ -1,6 +1,6 @@
 # Aletheia C Footprint Audit
 
-> As of v0.13.66+ (April 2026). Run `cargo tree --prefix none | grep -i 'sys '` to verify.
+> As of v0.13.57 (April 2026). Run `cargo tree --prefix none | grep -i 'sys '` to verify.
 
 ## C Dependencies
 
@@ -8,14 +8,14 @@
 
 - **Chain:** rusqlite (bundled) → libsqlite3-sys → C:sqlite3
 - **Why:** Core persistent knowledge graph storage (graphe crate)
-- **Elimination:** None planned  -  acceptable core dependency
+- **Elimination:** None planned — acceptable core dependency
 - **Status:** Essential
 
 ### inotify-sys (Linux inotify)
 
 - **Chain:** notify → inotify-sys → C:libc.inotify
 - **Why:** File change notifications for config hot-reload (daemon)
-- **Elimination:** None planned  -  kernel API has no pure-Rust alternative
+- **Elimination:** None planned — kernel API has no pure-Rust alternative
 - **Status:** Essential
 
 ### onig_sys (Oniguruma regex)
@@ -37,7 +37,7 @@
 ### linux-raw-sys
 
 - **Chain:** rustix → workspace
-- **What:** Generated Rust bindings for Linux syscalls  -  no C code compiled
+- **What:** Generated Rust bindings for Linux syscalls — no C code compiled
 - **Status:** Not a C dependency; no action needed
 
 ## Eliminated
@@ -61,7 +61,7 @@ ring enters via:
 1. symbolon (JWT signing: `ring::hmac`, encryption: `ring::aead`)
 2. taxis (config encryption: `ring::aead`)
 3. hermeneus (SHA256 fingerprint: `ring::digest`)
-4. rustls (TLS  -  cannot migrate until rustls-rustcrypto stabilizes)
+4. rustls (TLS — cannot migrate until rustls-rustcrypto stabilizes)
 
 Migration replaces ring with `hmac`, `sha2`, `aes-gcm`, `chacha20poly1305` crates. ring remains as transitive via rustls.
 
@@ -69,6 +69,6 @@ Migration replaces ring with `hmac`, `sha2`, `aes-gcm`, `chacha20poly1305` crate
 
 chrono enters via:
 1. daemon (cron crate requires `chrono::Utc` for schedule iteration)
-2. rmcp (transitive via schemars  -  not controllable)
+2. rmcp (transitive via schemars — not controllable)
 
 Migration requires replacing `cron` crate with jiff-native alternative.

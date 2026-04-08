@@ -1,7 +1,6 @@
 //! Expandable tool call panel component.
 
 use dioxus::prelude::*;
-use theatron_core::format::format_duration;
 
 use crate::state::tools::ToolCallState;
 
@@ -155,6 +154,21 @@ pub(crate) fn ToolPanel(tool: ToolCallState) -> Element {
     }
 }
 
+/// Format a duration in milliseconds to a human-readable badge string.
+fn format_duration(ms: u64) -> String {
+    if ms < 1000 {
+        format!("{ms}ms")
+    } else {
+        let secs = ms / 1000;
+        let remainder = ms % 1000;
+        if remainder == 0 {
+            format!("{secs}s")
+        } else {
+            format!("{secs}.{:01}s", remainder / 100)
+        }
+    }
+}
+
 /// Pretty-print a JSON value for display in the tool panel.
 fn format_json(value: &serde_json::Value) -> String {
     serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string())
@@ -164,6 +178,19 @@ fn format_json(value: &serde_json::Value) -> String {
 mod tests {
     use super::*;
     use crate::state::tools::ToolStatus;
+
+    #[test]
+    fn format_duration_milliseconds() {
+        assert_eq!(format_duration(50), "50ms");
+        assert_eq!(format_duration(999), "999ms");
+    }
+
+    #[test]
+    fn format_duration_seconds() {
+        assert_eq!(format_duration(1000), "1s");
+        assert_eq!(format_duration(2500), "2.5s");
+        assert_eq!(format_duration(10_000), "10s");
+    }
 
     #[test]
     fn format_json_pretty_prints() {

@@ -15,7 +15,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
 
 use snafu::ResultExt;
-use tracing::Instrument;
 use tracing::instrument;
 
 use aletheia_hermeneus::provider::LlmProvider;
@@ -305,8 +304,9 @@ impl DreamEngine {
         let target = Arc::clone(target);
         let provider = Arc::clone(provider);
 
-        let span = tracing::info_span!("auto_dream_consolidation");
         tokio::spawn(async move {
+            let span = tracing::info_span!("auto_dream_consolidation");
+            let _guard = span.enter();
 
             tracing::info!("auto-dream consolidation started");
             let start = std::time::Instant::now();
@@ -350,7 +350,7 @@ impl DreamEngine {
                     );
                 }
             }
-        }.instrument(span));
+        });
     }
 
     /// Execute the consolidation pipeline.
@@ -570,7 +570,7 @@ mod tests {
 
     /// Write bytes to a file (test helper).
     ///
-    /// NOTE: `std::fs::write` is disallowed by melete's clippy.toml.
+    /// WHY: `std::fs::write` is disallowed by melete's clippy.toml.
     fn write_test_file(path: &std::path::Path, content: &[u8]) {
         use std::io::Write;
         let mut f = std::fs::File::options()
@@ -891,9 +891,7 @@ mod tests {
         engine.on_turn_complete(&source, &target, &provider);
 
         // NOTE: give the background task time to complete.
-        tokio::time::pause();
-        tokio::time::advance(std::time::Duration::from_millis(100)).await;
-        tokio::time::resume();
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
 
     #[test]

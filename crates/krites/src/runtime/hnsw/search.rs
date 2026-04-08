@@ -2,11 +2,10 @@
 //! SessionTx methods for HNSW vector index operations.
 //! Hierarchical Navigable Small World vector index.
 
-use std::collections::BinaryHeap;
-
 use ordered_float::OrderedFloat;
+use priority_queue::PriorityQueue;
 
-use super::types::{CompoundKey, DEFAULT_VECTOR_CACHE_CAPACITY, VectorCache};
+use super::types::{DEFAULT_VECTOR_CACHE_CAPACITY, VectorCache};
 use super::visited_pool::VisitedPool;
 use crate::data::expr::{Bytecode, eval_bytecode_pred};
 use crate::data::program::HnswSearch;
@@ -92,8 +91,8 @@ impl<'a> SessionTx<'a> {
             let ep_key = (ep_t_key, ep_idx, ep_subidx);
             vec_cache.ensure_key(&ep_key, &config.base_handle, self)?;
             let ep_distance = vec_cache.v_dist(&q, &ep_key)?;
-            let mut found_nn: BinaryHeap<(OrderedFloat<f64>, CompoundKey)> = BinaryHeap::new();
-            found_nn.push((OrderedFloat(ep_distance), ep_key));
+            let mut found_nn = PriorityQueue::new();
+            found_nn.push(ep_key, OrderedFloat(ep_distance));
             let pool = VisitedPool::with_defaults();
             for current_level in bottom_level..0 {
                 self.hnsw_search_level_pooled(
@@ -129,7 +128,7 @@ impl<'a> SessionTx<'a> {
 
             let mut ret = vec![];
 
-            while let Some((OrderedFloat(distance), cand_key)) = found_nn.pop() {
+            while let Some((cand_key, OrderedFloat(distance))) = found_nn.pop() {
                 if let Some(r) = config.radius
                     && distance > r
                 {

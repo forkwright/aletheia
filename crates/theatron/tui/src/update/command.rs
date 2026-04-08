@@ -401,7 +401,7 @@ async fn execute_recall(app: &mut App, query: &str) {
     let query = query.to_string();
     match client.recall(&nous_id, &query).await {
         Ok(result) => {
-            // NOTE: sanitized at ingestion: recall results from memory API.
+            // SAFETY: sanitized at ingestion: recall results from memory API.
             let clean = sanitize_for_display(&result).into_owned();
             let display = if clean.len() > 200 {
                 format!("{}...", safe_truncate(&clean, 200))

@@ -33,11 +33,6 @@ pub(crate) mod dedup;
 pub mod embedding;
 /// Embedding evaluation gate: Recall@K and MRR for model upgrade checks.
 pub mod embedding_eval;
-/// Fine-tune pipeline scaffold for domain-tuned embedding models.
-pub mod embedding_finetune;
-/// HNSW hot-swap infrastructure for embedding model upgrades.
-#[cfg(feature = "hnsw_rs")]
-pub mod embedding_swap;
 /// LLM-driven knowledge extraction pipeline (entities, relationships, facts).
 pub mod extract;
 /// Graph-enhanced recall scoring: PageRank boost, community proximity, supersession chains.
@@ -69,8 +64,6 @@ pub mod recall;
     not(test),
     expect(dead_code, reason = "pub(crate) items used only in tests")
 )]
-/// Retroactive knowledge revision with provenance-based impact analysis.
-pub mod revision;
 pub mod serendipity;
 /// Side-query memory relevance selector with LRU caching and already-surfaced tracking.
 pub mod side_query;

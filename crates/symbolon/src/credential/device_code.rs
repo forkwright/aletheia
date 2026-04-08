@@ -256,10 +256,7 @@ async fn poll_token_endpoint(
     let start_time = std::time::Instant::now();
     let expires_after = Duration::from_secs(expires_in_secs);
 
-    // WHY: clamp server-provided interval to prevent resource exhaustion
-    // from malicious servers returning interval: 0 (RFC 8628 §3.4, #2784).
-    let clamped_interval = interval_secs.clamp(5, 300);
-    let mut current_interval = Duration::from_secs(clamped_interval);
+    let mut current_interval = Duration::from_secs(interval_secs);
 
     loop {
         // Check if we've exceeded the expiration time
@@ -354,7 +351,7 @@ async fn poll_token_endpoint(
 /// ```no_run
 /// use aletheia_symbolon::credential::device_code::{DeviceOAuthProvider, device_code_login};
 ///
-/// # async fn example() -> Result<(), DeviceCodeError> {
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let provider = DeviceOAuthProvider::new(
 ///     "my-client-id",
 ///     "https://auth.example.com/authorize",
@@ -501,7 +498,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn device_oauth_provider_builder_chains_configuration() {
+    fn test_device_oauth_provider_builder() {
         let provider = DeviceOAuthProvider::new(
             "test-client",
             "https://example.com/auth",
@@ -522,17 +519,17 @@ mod tests {
     }
 
     #[test]
-    fn default_expires_in_returns_30_minutes() {
+    fn test_default_expires_in() {
         assert_eq!(default_expires_in(), 1800);
     }
 
     #[test]
-    fn default_interval_returns_5_seconds() {
+    fn test_default_interval() {
         assert_eq!(default_interval(), 5);
     }
 
     #[test]
-    fn build_form_body_str_creates_url_encoded_params() {
+    fn test_build_form_body_str() {
         let mut params = HashMap::new();
         params.insert("grant_type".to_string(), "urn:ietf:params:oauth:grant-type:device_code".to_string());
         params.insert("device_code".to_string(), "abc123".to_string());

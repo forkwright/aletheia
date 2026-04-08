@@ -279,16 +279,8 @@ impl DaemonConfig {
 ///
 /// The lock file is created at `.aletheia/daemon.lock` in the workspace root.
 /// The lock is held for the lifetime of this guard and released on drop.
-///
-/// WHY raw flock instead of fd_lock's RAII guard: fd_lock::RwLockWriteGuard
-/// borrows the RwLock, making it impossible to store both in the same struct
-/// (self-referential). Using rustix::fs::flock() directly holds the advisory
-/// lock for the file descriptor's lifetime — dropping the File releases it.
 pub struct WorkspaceGuard {
-    // WHY: the advisory flock is held as long as this File is open.
-    // rustix::fs::flock(LOCK_EX | LOCK_NB) acquires it on construction;
-    // the OS releases it when the FD closes (struct drop).
-    _file: std::fs::File,
+    _lock: fd_lock::RwLock<std::fs::File>,
     path: PathBuf,
 }
 
@@ -319,29 +311,29 @@ impl WorkspaceGuard {
                 context: format!("opening lock file: {}", lock_path.display()),
             })?;
 
-        // WHY: LOCK_EX | LOCK_NB = exclusive + non-blocking.
-        // Returns EWOULDBLOCK if another process holds the lock.
-        // NOTE: The guard drops immediately; flock remains held via the open fd.
-        use std::os::fd::AsFd;
+        let mut lock = fd_lock::RwLock::new(file);
 
-        use rustix::fs::{FlockOperation, flock};
-        flock(&file.as_fd(), FlockOperation::NonBlockingLockExclusive).map_err(|e| {
-            crate::error::TaskFailedSnafu {
-                task_id: "workspace-lock",
+        // NOTE: try_write() is non-blocking; returns Err if another process holds the lock.
+        // WHY: we probe with try_write() then immediately drop the guard. The RwLock
+        // itself keeps the file descriptor open and the advisory lock held for the
+        // lifetime of this struct.
+        if let Err(e) = lock.try_write() {
+            return Err(crate::error::TaskFailedSnafu {
+                task_id: "workspace-lock".to_owned(),
                 reason: format!(
                     "another daemon instance holds the lock at {}: {e}",
                     lock_path.display()
                 ),
             }
-            .build()
-        })?;
+            .build());
+        }
 
         tracing::info!(
             path = %lock_path.display(),
             "workspace daemon lock acquired"
         );
         Ok(Self {
-            _file: file,
+            _lock: lock,
             path: lock_path,
         })
     }

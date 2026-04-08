@@ -1,7 +1,6 @@
 //! Plan card component for execution view.
 
 use dioxus::prelude::*;
-use theatron_core::format::format_duration_secs;
 
 use crate::state::execution::{ExecutionPlan, StepStatus};
 
@@ -183,10 +182,10 @@ pub(crate) fn PlanCard(plan: ExecutionPlan) -> Element {
                 div {
                     style: "{TIME_ROW}",
                     if let Some(elapsed) = plan.elapsed_secs {
-                        span { "{format_duration_secs(elapsed)} elapsed" }
+                        span { "{format_duration(elapsed)} elapsed" }
                     }
                     if let Some(remaining) = plan.estimated_remaining_secs {
-                        span { "~{format_duration_secs(remaining)} remaining" }
+                        span { "~{format_duration(remaining)} remaining" }
                     }
                 }
             }
@@ -222,6 +221,18 @@ fn agent_status_color(status: &str) -> &'static str {
         "idle" | "waiting" => "#f59e0b",
         "error" | "failed" => "#ef4444",
         _ => "#666",
+    }
+}
+
+fn format_duration(secs: f64) -> String {
+    if secs < 60.0 {
+        format!("{secs:.0}s")
+    } else if secs < 3600.0 {
+        let mins = secs / 60.0;
+        format!("{mins:.1}m")
+    } else {
+        let hours = secs / 3600.0;
+        format!("{hours:.1}h")
     }
 }
 
@@ -265,4 +276,18 @@ mod tests {
         );
     }
 
+    #[test]
+    fn format_duration_seconds() {
+        assert_eq!(format_duration(45.0), "45s");
+    }
+
+    #[test]
+    fn format_duration_minutes() {
+        assert_eq!(format_duration(150.0), "2.5m");
+    }
+
+    #[test]
+    fn format_duration_hours() {
+        assert_eq!(format_duration(7200.0), "2.0h");
+    }
 }

@@ -2,12 +2,6 @@
     clippy::indexing_slicing,
     reason = "test: vec/JSON indices valid after asserting len or known structure"
 )]
-#![expect(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    reason = "test assertions: panics on failure produce clear test output"
-)]
-
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use tower::ServiceExt;

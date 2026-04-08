@@ -256,7 +256,7 @@ impl NotificationDispatch {
         let Some(at) = self.disconnect_at else {
             return;
         };
-        if Instant::now().saturating_duration_since(at) < CONNECTION_LOST_DELAY {
+        if Instant::now().duration_since(at) < CONNECTION_LOST_DELAY {
             return;
         }
         // Clear so we don't fire again.
@@ -300,7 +300,7 @@ impl NotificationDispatch {
         let now = Instant::now();
 
         if let Some(group) = self.pending_groups.get_mut(&category) {
-            if now.saturating_duration_since(group.started_at) < GROUP_WINDOW {
+            if now.duration_since(group.started_at) < GROUP_WINDOW {
                 // Still within the grouping window -- coalesce.
                 group.count += 1;
                 return;
@@ -343,7 +343,7 @@ impl NotificationDispatch {
     ) {
         let now = Instant::now();
         self.pending_groups
-            .retain(|_, g| now.saturating_duration_since(g.started_at) < GROUP_WINDOW);
+            .retain(|_, g| now.duration_since(g.started_at) < GROUP_WINDOW);
     }
 
     // -- Send -----------------------------------------------------------------
@@ -401,7 +401,7 @@ impl NotificationDispatch {
         let window = self.rate_windows.entry(category).or_default();
 
         // Evict entries outside the sliding window.
-        window.retain(|&sent| now.saturating_duration_since(sent) < RATE_WINDOW);
+        window.retain(|&sent| now.duration_since(sent) < RATE_WINDOW);
 
         if window.len() >= RATE_LIMIT_PER_MINUTE {
             return false;

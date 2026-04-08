@@ -2,12 +2,6 @@
     clippy::indexing_slicing,
     reason = "test: vec/JSON indices valid after asserting len or known structure"
 )]
-#![expect(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    reason = "test assertions: panics on failure produce clear test output"
-)]
-
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -46,7 +40,7 @@ async fn sse_stream_each_data_line_is_valid_json_with_type_field() {
     let (state, _dir) = test_state().await;
     let router = build_router(Arc::clone(&state), &test_security_config());
     let created = create_test_session(&router).await;
-    let id = created["id"].as_str().expect("created session must have a string id");
+    let id = created["id"].as_str().unwrap();
 
     let req = authed_request(
         "POST",
@@ -69,7 +63,7 @@ async fn sse_stream_each_data_line_is_valid_json_with_type_field() {
             "every data event must have a string 'type' field, got: {event}"
         );
         assert!(
-            !event["type"].as_str().expect("event must have a string 'type' field").is_empty(),
+            !event["type"].as_str().unwrap().is_empty(),
             "event type must not be empty, got: {event}"
         );
     }
@@ -81,7 +75,7 @@ async fn sse_stream_text_delta_text_matches_mock_response() {
     let (state, _dir) = test_state().await;
     let router = build_router(Arc::clone(&state), &test_security_config());
     let created = create_test_session(&router).await;
-    let id = created["id"].as_str().expect("created session must have a string id");
+    let id = created["id"].as_str().unwrap();
 
     let req = authed_request(
         "POST",
@@ -94,7 +88,7 @@ async fn sse_stream_text_delta_text_matches_mock_response() {
 
     let text_delta = find_sse_event(&events, "text_delta").expect("stream must contain text_delta");
     assert_eq!(
-        text_delta["text"].as_str().expect("text_delta must have a string 'text' field"),
+        text_delta["text"].as_str().unwrap(),
         "Hello from mock!",
         "text_delta.text must equal the mock provider's response"
     );
@@ -107,7 +101,7 @@ async fn sse_stream_message_complete_reports_token_counts() {
     let (state, _dir) = test_state().await;
     let router = build_router(Arc::clone(&state), &test_security_config());
     let created = create_test_session(&router).await;
-    let id = created["id"].as_str().expect("created session must have a string id");
+    let id = created["id"].as_str().unwrap();
 
     let req = authed_request(
         "POST",
@@ -126,17 +120,17 @@ async fn sse_stream_message_complete_reports_token_counts() {
         "message_complete must have a usage object, got: {complete}"
     );
     assert_eq!(
-        usage["input_tokens"].as_u64().expect("usage must have a numeric 'input_tokens' field"),
+        usage["input_tokens"].as_u64().unwrap(),
         10,
         "input_tokens must match mock provider value"
     );
     assert_eq!(
-        usage["output_tokens"].as_u64().expect("usage must have a numeric 'output_tokens' field"),
+        usage["output_tokens"].as_u64().unwrap(),
         5,
         "output_tokens must match mock provider value"
     );
     assert_eq!(
-        complete["stop_reason"].as_str().expect("message_complete must have a string 'stop_reason' field"),
+        complete["stop_reason"].as_str().unwrap(),
         "end_turn",
         "stop_reason must match mock provider StopReason::EndTurn"
     );
@@ -149,7 +143,7 @@ async fn sse_stream_text_delta_precedes_message_complete() {
     let (state, _dir) = test_state().await;
     let router = build_router(Arc::clone(&state), &test_security_config());
     let created = create_test_session(&router).await;
-    let id = created["id"].as_str().expect("created session must have a string id");
+    let id = created["id"].as_str().unwrap();
 
     let req = authed_request(
         "POST",
@@ -182,7 +176,7 @@ async fn sse_stream_text_delta_precedes_message_complete() {
 async fn sse_send_message_with_invalid_json_body_returns_client_error() {
     let (router, _dir) = app().await;
     let created = create_test_session(&router).await;
-    let id = created["id"].as_str().expect("created session must have a string id");
+    let id = created["id"].as_str().unwrap();
 
     let token = default_token();
     let req = Request::builder()
@@ -218,7 +212,7 @@ fn sse_serialization_fallback_data_is_valid_json_with_message_field() {
         "fallback error must have a string message field"
     );
     assert!(
-        !parsed["message"].as_str().expect("fallback error must have a string 'message' field").is_empty(),
+        !parsed["message"].as_str().unwrap().is_empty(),
         "fallback error message must not be empty"
     );
     assert!(
@@ -251,7 +245,7 @@ async fn sse_concurrent_connections_each_receive_complete_stream() {
                 let create_resp = router.clone().oneshot(create_req).await.unwrap();
                 assert_eq!(create_resp.status(), StatusCode::CREATED);
                 let session = body_json(create_resp).await;
-                let id = session["id"].as_str().expect("created session must have a string id").to_owned();
+                let id = session["id"].as_str().unwrap().to_owned();
 
                 let msg_req = authed_request(
                     "POST",
@@ -288,7 +282,7 @@ async fn sse_dropping_response_body_does_not_panic() {
     let (state, _dir) = test_state().await;
     let router = build_router(Arc::clone(&state), &test_security_config());
     let created = create_test_session(&router).await;
-    let id = created["id"].as_str().expect("created session must have a string id");
+    let id = created["id"].as_str().unwrap();
 
     let req = authed_request(
         "POST",

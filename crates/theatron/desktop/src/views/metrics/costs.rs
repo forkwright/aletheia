@@ -15,8 +15,8 @@ use crate::state::metrics::{
 use super::agent_costs::AgentCosts;
 
 const SECTION_STYLE: &str = "\
-    background: var(--bg-surface); \
-    border: 1px solid var(--border); \
+    background: #1a1816; \
+    border: 1px solid #2a2724; \
     border-radius: 8px; \
     padding: 16px;\
 ";
@@ -24,7 +24,7 @@ const SECTION_STYLE: &str = "\
 const SECTION_TITLE_STYLE: &str = "\
     font-size: 12px; \
     font-weight: 600; \
-    color: var(--text-secondary); \
+    color: #a8a49e; \
     text-transform: uppercase; \
     letter-spacing: 0.05em; \
     margin-bottom: 12px; \
@@ -32,8 +32,8 @@ const SECTION_TITLE_STYLE: &str = "\
 ";
 
 const CARD_STYLE: &str = "\
-    background: var(--bg-surface); \
-    border: 1px solid var(--border); \
+    background: #1a1816; \
+    border: 1px solid #2a2724; \
     border-radius: 8px; \
     padding: 12px 16px; \
     flex: 1;\
@@ -41,7 +41,7 @@ const CARD_STYLE: &str = "\
 
 const CARD_LABEL_STYLE: &str = "\
     font-size: 11px; \
-    color: var(--text-muted); \
+    color: #706c66; \
     margin-bottom: 4px; \
     font-family: 'IBM Plex Mono', monospace;\
 ";
@@ -49,16 +49,16 @@ const CARD_LABEL_STYLE: &str = "\
 const CARD_VALUE_STYLE: &str = "\
     font-size: 20px; \
     font-weight: 600; \
-    color: var(--aporia); \
+    color: #eab308; \
     font-family: 'IBM Plex Mono', monospace;\
 ";
 
 const CONTROL_BTN_ACTIVE: &str = "\
     padding: 4px 10px; \
     font-size: 12px; \
-    background: var(--bg-surface-bright); \
-    color: var(--text-primary); \
-    border: 1px solid var(--border); \
+    background: #2a2724; \
+    color: #e8e6e3; \
+    border: 1px solid #3a3530; \
     border-radius: 4px; \
     cursor: pointer; \
     font-family: 'IBM Plex Mono', monospace;\
@@ -68,7 +68,7 @@ const CONTROL_BTN_INACTIVE: &str = "\
     padding: 4px 10px; \
     font-size: 12px; \
     background: transparent; \
-    color: var(--text-muted); \
+    color: #706c66; \
     border: 1px solid transparent; \
     border-radius: 4px; \
     cursor: pointer; \
@@ -142,7 +142,7 @@ pub(crate) fn Costs() -> Element {
                         }
                     }
                 }
-                div { style: "width: 1px; height: 20px; background: var(--border);" }
+                div { style: "width: 1px; height: 20px; background: #2a2724;" }
                 div {
                     style: "display: flex; gap: 4px;",
                     for r in [DateRange::Last7Days, DateRange::Last30Days, DateRange::Last90Days] {
@@ -167,13 +167,13 @@ pub(crate) fn Costs() -> Element {
             match fetch_state.read().clone() {
                 FetchState::Loading => rsx! {
                     div {
-                        style: "display: flex; align-items: center; justify-content: center; height: 200px; color: var(--text-muted); font-size: 13px;",
+                        style: "display: flex; align-items: center; justify-content: center; height: 200px; color: #706c66; font-size: 13px;",
                         "Loading…"
                     }
                 },
                 FetchState::Error(msg) => rsx! {
                     div {
-                        style: "padding: 16px; background: var(--status-error-bg); border: 1px solid var(--status-error); border-radius: 8px; color: var(--status-error); font-size: 13px;",
+                        style: "padding: 16px; background: #2a1818; border: 1px solid #7f1d1d; border-radius: 8px; color: #fca5a5; font-size: 13px;",
                         "Error: {msg}"
                     }
                 },
@@ -213,8 +213,8 @@ fn loaded_costs_view(
             label: pt.date.clone(),
             primary: pt.cost_usd,
             secondary: 0.0,
-            primary_color: "var(--aporia)".to_string(),
-            secondary_color: "var(--aporia)".to_string(),
+            primary_color: "#eab308".to_string(),
+            secondary_color: "#eab308".to_string(),
         })
         .collect();
 
@@ -238,7 +238,7 @@ fn loaded_costs_view(
                     style: "{CARD_STYLE}",
                     div { style: "{CARD_LABEL_STYLE}", "Projected Month-End" }
                     div { style: "{CARD_VALUE_STYLE}", "{format_cost(projected)}" }
-                    div { style: "font-size: 11px; color: var(--text-muted); margin-top: 2px; font-family: 'IBM Plex Mono', monospace;", "linear projection" }
+                    div { style: "font-size: 11px; color: #706c66; margin-top: 2px; font-family: 'IBM Plex Mono', monospace;", "linear projection" }
                 }
             }
 
@@ -299,11 +299,11 @@ fn budget_panel(
                 style: "display: flex; flex-direction: column; gap: 8px;",
                 div {
                     style: "display: flex; justify-content: space-between; font-size: 12px; font-family: 'IBM Plex Mono', monospace;",
-                    span { style: "color: var(--text-secondary);", "{format_cost(month_cost)} spent" }
-                    span { style: "color: var(--text-muted);", "of {format_cost(budget_limit)}" }
+                    span { style: "color: #a8a49e;", "{format_cost(month_cost)} spent" }
+                    span { style: "color: #706c66;", "of {format_cost(budget_limit)}" }
                 }
                 div {
-                    style: "height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; border: 1px solid var(--border);",
+                    style: "height: 8px; background: #1a1816; border-radius: 4px; overflow: hidden; border: 1px solid #2a2724;",
                     div {
                         style: "height: 100%; width: {budget_pct:.0}%; background: {bar_color}; border-radius: 4px; transition: width 0.3s ease;",
                     }
@@ -311,13 +311,13 @@ fn budget_panel(
                 div {
                     style: "display: flex; align-items: center; gap: 8px; margin-top: 4px;",
                     input {
-                        style: "padding: 4px 8px; font-size: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text-primary); width: 100px; font-family: 'IBM Plex Mono', monospace;",
+                        style: "padding: 4px 8px; font-size: 12px; background: #12110f; border: 1px solid #3a3530; border-radius: 4px; color: #e8e6e3; width: 100px; font-family: 'IBM Plex Mono', monospace;",
                         placeholder: "New limit $",
                         value: "{input_value}",
                         oninput: move |e| on_input(e.value()),
                     }
                     button {
-                        style: "padding: 4px 10px; font-size: 12px; background: var(--bg-surface-bright); color: var(--text-primary); border: 1px solid var(--border); border-radius: 4px; cursor: pointer; font-family: 'IBM Plex Mono', monospace;",
+                        style: "padding: 4px 10px; font-size: 12px; background: #2a2724; color: #e8e6e3; border: 1px solid #3a3530; border-radius: 4px; cursor: pointer; font-family: 'IBM Plex Mono', monospace;",
                         onclick: move |_| {
                             if let Ok(v) = input_for_set.trim().parse::<f64>() {
                                 on_set(v);
@@ -332,15 +332,15 @@ fn budget_panel(
         rsx! {
             div {
                 style: "display: flex; align-items: center; gap: 8px;",
-                span { style: "font-size: 12px; color: var(--text-muted); font-family: 'IBM Plex Mono', monospace;", "No budget set." }
+                span { style: "font-size: 12px; color: #706c66; font-family: 'IBM Plex Mono', monospace;", "No budget set." }
                 input {
-                    style: "padding: 4px 8px; font-size: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text-primary); width: 100px; font-family: 'IBM Plex Mono', monospace;",
+                    style: "padding: 4px 8px; font-size: 12px; background: #12110f; border: 1px solid #3a3530; border-radius: 4px; color: #e8e6e3; width: 100px; font-family: 'IBM Plex Mono', monospace;",
                     placeholder: "Monthly limit $",
                     value: "{input_value}",
                     oninput: move |e| on_input(e.value()),
                 }
                 button {
-                    style: "padding: 4px 10px; font-size: 12px; background: var(--bg-surface-bright); color: var(--text-primary); border: 1px solid var(--border); border-radius: 4px; cursor: pointer; font-family: 'IBM Plex Mono', monospace;",
+                    style: "padding: 4px 10px; font-size: 12px; background: #2a2724; color: #e8e6e3; border: 1px solid #3a3530; border-radius: 4px; cursor: pointer; font-family: 'IBM Plex Mono', monospace;",
                     onclick: move |_| {
                         if let Ok(v) = input_for_set.trim().parse::<f64>() {
                             on_set(v);
@@ -355,7 +355,7 @@ fn budget_panel(
 
 fn cost_card(label: &str, value: &str, delta_pct: f64, is_up: bool) -> Element {
     let arrow = if is_up { "↑" } else { "↓" };
-    let delta_color = if is_up { "var(--status-error)" } else { "var(--status-success)" };
+    let delta_color = if is_up { "#ef4444" } else { "#22c55e" };
     let delta_str = format!("{arrow} {delta_pct:.1}%");
     let value = value.to_string();
     let label = label.to_string();

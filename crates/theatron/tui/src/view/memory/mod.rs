@@ -639,8 +639,6 @@ pub(super) fn tier_style(theme: &Theme, tier: &str) -> Style {
     }
 }
 
-use theatron_core::format::truncate_str;
-
 fn event_type_style(theme: &Theme, event_type: &str) -> Style {
     match event_type {
         "created" => theme.style_success(),
@@ -652,12 +650,28 @@ fn event_type_style(theme: &Theme, event_type: &str) -> Style {
 }
 
 pub(super) fn truncate(s: &str, max_len: usize) -> String {
-    truncate_str(s, max_len)
+    if s.len() <= max_len {
+        s.to_string()
+    } else {
+        format!("{}…", s.get(..max_len.saturating_sub(1)).unwrap_or(s))
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn truncate_short_string() {
+        assert_eq!(truncate("hello", 10), "hello");
+    }
+
+    #[test]
+    fn truncate_long_string() {
+        let result = truncate("this is a very long string", 10);
+        assert!(result.len() <= 12); // 9 chars + ellipsis (multi-byte)
+        assert!(result.ends_with('…'));
+    }
 
     #[test]
     fn confidence_style_high() {

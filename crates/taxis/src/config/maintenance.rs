@@ -6,17 +6,10 @@ use serde::{Deserialize, Serialize};
 
 use super::{EgressPolicy, SandboxEnforcementMode};
 
-/// Data retention policy configuration (reserved for future use).
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[serde(default)]
-#[serde(deny_unknown_fields)]
-pub struct RetentionConfig {}
 /// Instance maintenance settings.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
-#[serde(deny_unknown_fields)]
 pub struct MaintenanceSettings {
     /// Trace log file rotation and compression.
     pub trace_rotation: TraceRotationSettings,
@@ -37,24 +30,12 @@ pub struct MaintenanceSettings {
     pub watchdog: WatchdogSettings,
     /// Periodic cron task settings (evolution, reflection, graph cleanup).
     pub cron_tasks: CronTaskSettings,
-    /// Graceful shutdown timeout in seconds.
-    ///
-    /// Controls how long the server waits for in-flight requests and
-    /// background tasks to complete before forced termination.
-    /// Default: 10 seconds.
-    #[serde(default = "default_shutdown_timeout_secs")]
-    pub shutdown_timeout_secs: u64,
-}
-
-fn default_shutdown_timeout_secs() -> u64 {
-    10
 }
 
 /// Trace file rotation settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
-#[serde(deny_unknown_fields)]
 pub struct TraceRotationSettings {
     /// Whether automatic trace rotation runs.
     pub enabled: bool,
@@ -84,7 +65,6 @@ impl Default for TraceRotationSettings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
-#[serde(deny_unknown_fields)]
 pub struct DriftDetectionSettings {
     /// Whether drift detection runs during maintenance.
     pub enabled: bool,
@@ -133,7 +113,6 @@ impl Default for DriftDetectionSettings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
-#[serde(deny_unknown_fields)]
 pub struct DbMonitoringSettings {
     /// Whether database size monitoring runs.
     pub enabled: bool,
@@ -161,7 +140,6 @@ impl Default for DbMonitoringSettings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
-#[serde(deny_unknown_fields)]
 pub struct DiskSpaceSettings {
     /// Whether disk space monitoring is active.
     pub enabled: bool,
@@ -192,7 +170,6 @@ impl Default for DiskSpaceSettings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
-#[serde(deny_unknown_fields)]
 #[expect(
     clippy::struct_excessive_bools,
     reason = "config struct: each bool is an independent toggle"
@@ -223,7 +200,6 @@ impl Default for SqliteRecoverySettings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
-#[serde(deny_unknown_fields)]
 #[derive(Default)]
 pub struct RetentionSettings {
     /// Whether automatic retention enforcement (session cleanup) runs.
@@ -234,7 +210,6 @@ pub struct RetentionSettings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
-#[serde(deny_unknown_fields)]
 pub struct SandboxSettings {
     /// Whether sandbox restrictions are applied to tool execution.
     pub enabled: bool,
@@ -295,7 +270,6 @@ impl Default for SandboxSettings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
-#[serde(deny_unknown_fields)]
 pub struct CredentialConfig {
     /// Credential source strategy: `"auto"`, `"api-key"`, or `"claude-code"`.
     pub source: String,
@@ -323,7 +297,6 @@ impl Default for CredentialConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
-#[serde(deny_unknown_fields)]
 pub struct CircuitBreakerSettings {
     /// Number of failures within the window to trip the circuit.
     pub failure_threshold: u32,
@@ -357,7 +330,6 @@ impl Default for CircuitBreakerSettings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
-#[serde(deny_unknown_fields)]
 pub struct LoggingSettings {
     /// Directory where daily log files are written.
     ///
@@ -398,7 +370,6 @@ impl Default for LoggingSettings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
-#[serde(deny_unknown_fields)]
 pub struct RedactionSettings {
     /// Primary switch for the redaction layer. Default: `true`.
     pub enabled: bool,
@@ -442,7 +413,6 @@ impl Default for RedactionSettings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
-#[serde(deny_unknown_fields)]
 pub struct WatchdogSettings {
     /// Whether the watchdog monitor is enabled.
     pub enabled: bool,
@@ -452,10 +422,6 @@ pub struct WatchdogSettings {
     pub check_interval_secs: u64,
     /// Maximum restart attempts before abandoning a process.
     pub max_restarts: u32,
-    /// Base delay in seconds for exponential backoff between restart attempts.
-    pub backoff_base_secs: u64,
-    /// Maximum delay in seconds for exponential backoff cap.
-    pub backoff_cap_secs: u64,
 }
 
 impl Default for WatchdogSettings {
@@ -465,8 +431,6 @@ impl Default for WatchdogSettings {
             heartbeat_timeout_secs: 60,
             check_interval_secs: 10,
             max_restarts: 5,
-            backoff_base_secs: 2,
-            backoff_cap_secs: 300,
         }
     }
 }
@@ -478,7 +442,6 @@ impl Default for WatchdogSettings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
-#[serde(deny_unknown_fields)]
 pub struct CronTaskSettings {
     /// Evolution: periodic configuration variant search.
     pub evolution: CronTaskEntry,
@@ -511,7 +474,6 @@ impl Default for CronTaskSettings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
-#[serde(deny_unknown_fields)]
 pub struct CronTaskEntry {
     /// Whether this cron task is enabled.
     pub enabled: bool,
@@ -532,7 +494,6 @@ impl Default for CronTaskEntry {
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
-#[serde(deny_unknown_fields)]
 pub struct McpConfig {
     /// Per-session rate limiting for MCP tool calls.
     pub rate_limit: McpRateLimitConfig,
@@ -546,7 +507,6 @@ pub struct McpConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
-#[serde(deny_unknown_fields)]
 pub struct McpRateLimitConfig {
     /// Whether MCP rate limiting is active.
     pub enabled: bool,

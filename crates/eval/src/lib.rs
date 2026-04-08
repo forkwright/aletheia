@@ -23,8 +23,6 @@ pub mod scenarios;
 pub mod sse;
 /// Configurable evaluation trigger scheduling.
 pub mod triggers;
-/// A/B training pipeline: multi-model competition via canary evaluation.
-pub mod training;
 
 #[cfg(test)]
 mod tests {

@@ -1,9 +1,9 @@
 //! SessionTx methods for HNSW vector insertion.
 
 use std::cmp::{Reverse, max};
-use std::collections::BinaryHeap;
 
 use ordered_float::OrderedFloat;
+use priority_queue::PriorityQueue;
 use rustc_hash::FxHashSet;
 use tracing::warn;
 
@@ -88,8 +88,8 @@ impl<'a> SessionTx<'a> {
             let ep_key = (ep_t_key, ep_idx, ep_subidx);
             vec_cache.ensure_key(&ep_key, orig_table, self)?;
             let ep_distance = vec_cache.v_dist(q, &ep_key)?;
-            let mut found_nn: BinaryHeap<(OrderedFloat<f64>, CompoundKey)> = BinaryHeap::new();
-            found_nn.push((OrderedFloat(ep_distance), ep_key));
+            let mut found_nn = PriorityQueue::new();
+            found_nn.push(ep_key, OrderedFloat(ep_distance));
             let target_level = manifest.get_random_level();
             if target_level < bottom_level {
                 self.hnsw_put_fresh_at_levels(
@@ -161,7 +161,7 @@ impl<'a> SessionTx<'a> {
                 self.store_tx
                     .put(&self_tuple_key_bytes, &self_tuple_val_bytes)?;
 
-                for (Reverse(OrderedFloat(dist)), neighbour) in neighbours.iter() {
+                for (neighbour, Reverse(OrderedFloat(dist))) in neighbours.iter() {
                     let mut out_key = Vec::with_capacity(orig_table.metadata.keys.len() * 2 + 5);
                     let out_val = vec![
                         DataValue::from(*dist),
@@ -287,11 +287,11 @@ impl<'a> SessionTx<'a> {
     ) -> Result<usize> {
         vec_cache.ensure_key(target_key, orig_table, self)?;
         let vec = vec_cache.get_key(target_key).clone();
-        let mut candidates: BinaryHeap<(OrderedFloat<f64>, CompoundKey)> = BinaryHeap::new();
+        let mut candidates = PriorityQueue::new();
         for (neighbour_key, neighbour_dist) in
             self.hnsw_get_neighbours(target_key, level, idx_table, false)?
         {
-            candidates.push((OrderedFloat(neighbour_dist), neighbour_key));
+            candidates.push(neighbour_key, OrderedFloat(neighbour_dist));
         }
         let new_candidates = self.hnsw_select_neighbours_heuristic(
             &vec,
@@ -304,15 +304,15 @@ impl<'a> SessionTx<'a> {
             vec_cache,
         )?;
         let mut old_candidate_set = FxHashSet::default();
-        for (_, old) in &candidates {
+        for (old, _) in &candidates {
             old_candidate_set.insert(old.clone());
         }
         let mut new_candidate_set = FxHashSet::default();
-        for (_, new) in &new_candidates {
+        for (new, _) in &new_candidates {
             new_candidate_set.insert(new.clone());
         }
         let new_degree = new_candidates.len();
-        for (Reverse(OrderedFloat(new_dist)), new) in new_candidates {
+        for (new, Reverse(OrderedFloat(new_dist))) in new_candidates {
             if !old_candidate_set.contains(&new) {
                 let mut new_key = Vec::with_capacity(orig_table.metadata.keys.len() * 2 + 5);
                 let new_val = vec![
@@ -333,7 +333,7 @@ impl<'a> SessionTx<'a> {
                 self.store_tx.put(&new_key_bytes, &new_val_bytes)?;
             }
         }
-        for (OrderedFloat(old_dist), old) in candidates {
+        for (old, OrderedFloat(old_dist)) in candidates {
             if !new_candidate_set.contains(&old) {
                 let mut old_key = Vec::with_capacity(orig_table.metadata.keys.len() * 2 + 5);
                 old_key.push(DataValue::from(level));
@@ -386,37 +386,37 @@ impl<'a> SessionTx<'a> {
     fn hnsw_select_neighbours_heuristic(
         &self,
         q: &Vector,
-        found: &BinaryHeap<(OrderedFloat<f64>, CompoundKey)>,
+        found: &PriorityQueue<CompoundKey, OrderedFloat<f64>>,
         m: usize,
         level: i64,
         manifest: &HnswIndexManifest,
         idx_table: &RelationHandle,
         orig_table: &RelationHandle,
         vec_cache: &mut VectorCache,
-    ) -> Result<BinaryHeap<(Reverse<OrderedFloat<f64>>, CompoundKey)>> {
-        let mut candidates: BinaryHeap<(Reverse<OrderedFloat<f64>>, CompoundKey)> = BinaryHeap::new();
-        let mut ret: BinaryHeap<(Reverse<OrderedFloat<f64>>, CompoundKey)> = BinaryHeap::new();
-        let mut discarded: BinaryHeap<(Reverse<OrderedFloat<f64>>, CompoundKey)> = BinaryHeap::new();
-        for (dist, item) in found.iter() {
-            candidates.push((Reverse(*dist), item.clone()));
+    ) -> Result<PriorityQueue<CompoundKey, Reverse<OrderedFloat<f64>>>> {
+        let mut candidates = PriorityQueue::new();
+        let mut ret: PriorityQueue<CompoundKey, Reverse<OrderedFloat<_>>> = PriorityQueue::new();
+        let mut discarded: PriorityQueue<_, Reverse<OrderedFloat<_>>> = PriorityQueue::new();
+        for (item, dist) in found.iter() {
+            candidates.push(item.clone(), Reverse(*dist));
         }
         if manifest.extend_candidates {
-            for (_, item) in found.iter() {
+            for (item, _) in found.iter() {
                 for (neighbour_key, _) in self.hnsw_get_neighbours(item, level, idx_table, false)? {
                     vec_cache.ensure_key(&neighbour_key, orig_table, self)?;
                     let dist = vec_cache.v_dist(q, &neighbour_key)?;
-                    candidates.push((
+                    candidates.push(
+                        (neighbour_key.0, neighbour_key.1, neighbour_key.2),
                         Reverse(OrderedFloat(dist)),
-                        (neighbour_key.0.clone(), neighbour_key.1, neighbour_key.2),
-                    ));
+                    );
                 }
             }
         }
         while !candidates.is_empty() && ret.len() < m {
-            let (Reverse(OrderedFloat(cand_dist_to_q)), cand_key) =
+            let (cand_key, Reverse(OrderedFloat(cand_dist_to_q))) =
                 candidates.pop().unwrap_or_else(|| unreachable!());
             let mut should_add = true;
-            for (_, existing) in ret.iter() {
+            for (existing, _) in ret.iter() {
                 vec_cache.ensure_key(&cand_key, orig_table, self)?;
                 vec_cache.ensure_key(existing, orig_table, self)?;
                 let dist_to_existing = vec_cache.k_dist(existing, &cand_key)?;
@@ -426,16 +426,16 @@ impl<'a> SessionTx<'a> {
                 }
             }
             if should_add {
-                ret.push((Reverse(OrderedFloat(cand_dist_to_q)), cand_key));
+                ret.push(cand_key, Reverse(OrderedFloat(cand_dist_to_q)));
             } else if manifest.keep_pruned_connections {
-                discarded.push((Reverse(OrderedFloat(cand_dist_to_q)), cand_key));
+                discarded.push(cand_key, Reverse(OrderedFloat(cand_dist_to_q)));
             }
         }
         if manifest.keep_pruned_connections {
             while !discarded.is_empty() && ret.len() < m {
-                let (Reverse(OrderedFloat(nearest_dist)), nearest_triple) =
+                let (nearest_triple, Reverse(OrderedFloat(nearest_dist))) =
                     discarded.pop().unwrap_or_else(|| unreachable!());
-                ret.push((Reverse(OrderedFloat(nearest_dist)), nearest_triple));
+                ret.push(nearest_triple, Reverse(OrderedFloat(nearest_dist)));
             }
         }
         Ok(ret)
@@ -451,7 +451,7 @@ impl<'a> SessionTx<'a> {
         cur_level: i64,
         orig_table: &RelationHandle,
         idx_table: &RelationHandle,
-        found_nn: &mut BinaryHeap<(OrderedFloat<f64>, CompoundKey)>,
+        found_nn: &mut PriorityQueue<CompoundKey, OrderedFloat<f64>>,
         vec_cache: &mut VectorCache,
     ) -> Result<()> {
         self.hnsw_search_level_pooled(
@@ -470,7 +470,7 @@ impl<'a> SessionTx<'a> {
         cur_level: i64,
         orig_table: &RelationHandle,
         idx_table: &RelationHandle,
-        found_nn: &mut BinaryHeap<(OrderedFloat<f64>, CompoundKey)>,
+        found_nn: &mut PriorityQueue<CompoundKey, OrderedFloat<f64>>,
         vec_cache: &mut VectorCache,
         visited_pool: Option<&VisitedPool>,
     ) -> Result<()> {
@@ -478,16 +478,16 @@ impl<'a> SessionTx<'a> {
             Some(pool) => pool.acquire(),
             None => FxHashSet::default(),
         };
-        let mut candidates: BinaryHeap<(Reverse<OrderedFloat<f64>>, CompoundKey)> =
-            BinaryHeap::new();
+        let mut candidates: PriorityQueue<CompoundKey, Reverse<OrderedFloat<f64>>> =
+            PriorityQueue::new();
 
-        for (dist, item) in found_nn.iter() {
-            visited.insert(item.clone());
-            candidates.push((Reverse(*dist), item.clone()));
+        for item in found_nn.iter() {
+            visited.insert(item.0.clone());
+            candidates.push(item.0.clone(), Reverse(*item.1));
         }
 
-        while let Some((Reverse(OrderedFloat(candidate_dist)), candidate)) = candidates.pop() {
-            let (OrderedFloat(furtherest_dist), _) =
+        while let Some((candidate, Reverse(OrderedFloat(candidate_dist)))) = candidates.pop() {
+            let (_, OrderedFloat(furtherest_dist)) =
                 found_nn.peek().unwrap_or_else(|| unreachable!());
             let furtherest_dist = *furtherest_dist;
             if candidate_dist > furtherest_dist {
@@ -501,11 +501,11 @@ impl<'a> SessionTx<'a> {
                 }
                 vec_cache.ensure_key(&neighbour_key, orig_table, self)?;
                 let neighbour_dist = vec_cache.v_dist(q, &neighbour_key)?;
-                let (OrderedFloat(cand_furtherest_dist), _) =
+                let (_, OrderedFloat(cand_furtherest_dist)) =
                     found_nn.peek().unwrap_or_else(|| unreachable!());
                 if found_nn.len() < ef || neighbour_dist < *cand_furtherest_dist {
-                    candidates.push((Reverse(OrderedFloat(neighbour_dist)), neighbour_key.clone()));
-                    found_nn.push((OrderedFloat(neighbour_dist), neighbour_key.clone()));
+                    candidates.push(neighbour_key.clone(), Reverse(OrderedFloat(neighbour_dist)));
+                    found_nn.push(neighbour_key.clone(), OrderedFloat(neighbour_dist));
                     if found_nn.len() > ef {
                         found_nn.pop();
                     }

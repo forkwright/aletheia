@@ -289,14 +289,10 @@ mod candle_provider {
         fn encode_and_forward(&self, texts: &[&str]) -> EmbeddingResult<(Tensor, Tensor)> {
             // WHY: Read lock allows concurrent tokenization across callers.
             // Tokenizer::encode_batch takes &self, no mutation needed.
-            // WHY: unwrap_or_else(into_inner) recovers from poison instead of
-            // permanently failing. A prior panic may have left stale state, but
-            // the tokenizer is stateless (no accumulated mutation) so recovery
-            // is safe. This prevents one-panic-kills-all-recall (#2725).
             let tokenizer = self
                 .tokenizer
                 .read()
-                .unwrap_or_else(|poison| poison.into_inner());
+                .map_err(|_poison| LockPoisonedSnafu.build())?;
 
             let encodings = tokenizer.encode_batch(texts.to_vec(), true).map_err(|e| {
                 EmbedFailedSnafu {
@@ -327,12 +323,10 @@ mod candle_provider {
 
             // WHY: Read lock allows concurrent forward passes.
             // BertModel::forward takes &self, no mutation needed.
-            // WHY: same poison recovery as tokenizer. BertModel::forward is
-            // stateless (&self, no mutation) so recovery is safe.
             let model = self
                 .model
                 .read()
-                .unwrap_or_else(|poison| poison.into_inner());
+                .map_err(|_poison| LockPoisonedSnafu.build())?;
             let embeddings = model
                 .forward(&input_ids, &token_type_ids, Some(&attention_mask))
                 .map_err(Self::candle_err("model forward pass"))?;

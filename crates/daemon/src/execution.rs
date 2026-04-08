@@ -4,8 +4,6 @@ use std::sync::Arc;
 
 use snafu::ResultExt;
 
-use aletheia_taxis::oikos::Oikos;
-
 use crate::bridge::DaemonBridge;
 use crate::cron::{evolution, graph_cleanup, reflection};
 use crate::error::{self, Result};
@@ -310,7 +308,12 @@ pub(crate) async fn execute_builtin(
         BuiltinTask::ProposeRules => {
             let data_dir = maintenance
                 .map(|m| m.propose_rules.data_dir.clone())
-                .unwrap_or_else(|| Oikos::discover().data());
+                .unwrap_or_else(|| {
+                    let root = std::env::var("ALETHEIA_ROOT")
+                        .map(std::path::PathBuf::from)
+                        .unwrap_or_else(|_| std::path::PathBuf::from("instance"));
+                    root.join("data")
+                });
             tokio::task::spawn_blocking(move || {
                 // WHY: no live observation stream is wired here yet.
                 // propose_rules operates on an empty slice, writing an empty
@@ -666,7 +669,7 @@ fn read_prometheus_counter(name: &str) -> u64 {
                 // protobuf's `.value()` on `Counter` gives the f64 count.
                 total += metric.get_counter().value();
             }
-            // NOTE: Prometheus counter values are non-negative f64 totals from
+            // SAFETY: Prometheus counter values are non-negative f64 totals from
             // monotonically increasing counters; practical counts are well within
             // u64 range and f64 mantissa (2^53). Truncation is intentional.
             #[expect(
@@ -698,7 +701,7 @@ fn read_prometheus_counter_with_label(name: &str, label_name: &str, label_value:
                     total += metric.get_counter().value();
                 }
             }
-            // NOTE: Prometheus counter values are non-negative f64 totals from
+            // SAFETY: Prometheus counter values are non-negative f64 totals from
             // monotonically increasing counters; practical counts are well within
             // u64 range and f64 mantissa (2^53). Truncation is intentional.
             #[expect(

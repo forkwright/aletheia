@@ -266,39 +266,36 @@ Rules:
         let now = jiff::Timestamp::now();
         let mut result = PersistResult::default();
 
-        let entities = extraction
-            .entities
-            .get(..self.config.max_entities)
-            .unwrap_or(&extraction.entities);
-        if extraction.entities.len() > self.config.max_entities {
+        let entities = if extraction.entities.len() > self.config.max_entities {
             tracing::warn!(
                 count = extraction.entities.len(),
                 limit = self.config.max_entities,
                 "extraction entity limit exceeded, truncating"
             );
-        }
-        let relationships = extraction
-            .relationships
-            .get(..self.config.max_relationships)
-            .unwrap_or(&extraction.relationships);
-        if extraction.relationships.len() > self.config.max_relationships {
+            &extraction.entities[..self.config.max_entities]
+        } else {
+            &extraction.entities
+        };
+        let relationships = if extraction.relationships.len() > self.config.max_relationships {
             tracing::warn!(
                 count = extraction.relationships.len(),
                 limit = self.config.max_relationships,
                 "extraction relationship limit exceeded, truncating"
             );
-        }
-        let facts = extraction
-            .facts
-            .get(..self.config.max_facts)
-            .unwrap_or(&extraction.facts);
-        if extraction.facts.len() > self.config.max_facts {
+            &extraction.relationships[..self.config.max_relationships]
+        } else {
+            &extraction.relationships
+        };
+        let facts = if extraction.facts.len() > self.config.max_facts {
             tracing::warn!(
                 count = extraction.facts.len(),
                 limit = self.config.max_facts,
                 "extraction fact limit exceeded, truncating"
             );
-        }
+            &extraction.facts[..self.config.max_facts]
+        } else {
+            &extraction.facts
+        };
 
         for entity in entities {
             let id = crate::id::EntityId::new(slugify(&entity.name)).map_err(|e| {

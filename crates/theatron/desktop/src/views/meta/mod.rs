@@ -63,36 +63,18 @@ struct MetricsApiResponse {
 struct KnowledgeFactsResponse {
     #[serde(default)]
     facts: Vec<FactEntry>,
-    #[expect(dead_code, reason = "deserialized from API for future pagination")]
-    #[serde(default)]
-    total_count: u64,
 }
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 struct FactEntry {
-    #[expect(dead_code, reason = "deserialized; used when stale entity table is populated")]
-    #[serde(default)]
-    entity: String,
-    #[expect(dead_code, reason = "deserialized; used when topic extraction is wired")]
-    #[serde(default)]
-    content: String,
     #[serde(default)]
     confidence: f64,
-    #[expect(dead_code, reason = "deserialized; used when type-based filtering is added")]
-    #[serde(default)]
-    fact_type: String,
-    #[expect(dead_code, reason = "deserialized; used when creation timeline is built")]
-    #[serde(default)]
-    created_at: String,
     #[serde(default)]
     updated_at: String,
 }
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 struct EntityEntry {
-    #[expect(dead_code, reason = "deserialized; used when entity detail view is added")]
-    #[serde(default)]
-    name: String,
     #[serde(default)]
     entity_type: String,
     #[serde(default)]
@@ -424,7 +406,7 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
 
     let facts: Vec<FactEntry> = match facts_res {
         Ok(resp) if resp.status().is_success() => {
-            // NOTE: API may return bare array or wrapped in { facts: [...] }.
+            // WHY: API may return bare array or wrapped in { facts: [...] }.
             let text = resp.text().await.unwrap_or_default();
             serde_json::from_str::<Vec<FactEntry>>(&text)
                 .or_else(|_| {

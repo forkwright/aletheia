@@ -360,7 +360,7 @@ pub async fn rename(
         .build());
     }
 
-    // NOTE: enforce max session name length to prevent oversized input.
+    // SAFETY: enforce max session name length to prevent oversized input.
     if body.name.len() > MAX_SESSION_NAME_LEN {
         return Err(BadRequestSnafu {
             message: format!("name exceeds maximum length of {MAX_SESSION_NAME_LEN} bytes"),

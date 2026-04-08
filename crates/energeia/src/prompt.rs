@@ -1,4 +1,4 @@
-// NOTE: Prompt loading and DAG construction from YAML frontmatter files.
+// WHY: Prompt loading and DAG construction from YAML frontmatter files.
 // Separates I/O (loading from disk) from graph logic (DAG construction),
 // keeping each concern testable in isolation.
 
@@ -118,7 +118,7 @@ fn parse_prompt_str(raw: &str, path: &Path) -> Result<PromptSpec> {
     )]
     let body = after_open[body_start..].trim_start_matches('\n').to_owned();
 
-    let fm: Frontmatter = serde_yml::from_str(yaml_str).map_err(|e| {
+    let fm: Frontmatter = serde_yaml::from_str(yaml_str).map_err(|e| {
         FrontmatterParseSnafu {
             path: path.to_owned(),
             detail: format!("YAML parse error: {e}"),

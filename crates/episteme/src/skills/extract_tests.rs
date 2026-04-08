@@ -276,7 +276,7 @@ fn parse_malformed_json_returns_error() {
 fn parse_incomplete_json_returns_error() {
     let response = r#"{"name": "test", "description": "d"}"#;
     let result = parse_skill_response(response);
-    // NOTE: Missing required fields
+    // WHY: Missing required fields
     assert!(
         result.is_err(),
         "JSON missing required fields should return an error"

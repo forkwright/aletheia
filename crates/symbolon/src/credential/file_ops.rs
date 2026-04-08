@@ -128,13 +128,12 @@ impl CredentialFile {
         file.sync_all()?;
 
         // INVARIANT: Phase 2 — rename both atomically. If either fails, clean up both.
-        // NOTE: commit_key_file takes ownership of the NamedTempFile; on failure,
-        // the temp file is automatically cleaned up by RAII (#2745).
-        if let Some(ktmp) = key_tmp {
-            if let Err(e) = commit_key_file(path, ktmp) {
-                let _ = std::fs::remove_file(&cred_tmp);
-                return Err(e);
-            }
+        if let Some(ref ktmp) = key_tmp
+            && let Err(e) = commit_key_file(path, ktmp)
+        {
+            let _ = std::fs::remove_file(ktmp);
+            let _ = std::fs::remove_file(&cred_tmp);
+            return Err(e);
         }
 
         if let Err(e) = std::fs::rename(&cred_tmp, path) {

@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use hmac::{Hmac, KeyInit, Mac};
+use hmac::{Hmac, Mac};
 use sha2::Sha256;
 use tracing::instrument;
 
@@ -210,10 +210,7 @@ impl JwtManager {
             .build());
         }
 
-        // WHY: 10-second leeway for clock drift between server and client.
-        // RFC 7518 recommends tolerance for clock skew (#2783).
-        const CLOCK_SKEW_LEEWAY_SECS: i64 = 10;
-        if claims.exp + CLOCK_SKEW_LEEWAY_SECS <= now_unix() {
+        if claims.exp <= now_unix() {
             return Err(error::ExpiredTokenSnafu.build());
         }
 

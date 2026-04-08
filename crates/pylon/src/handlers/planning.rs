@@ -4,7 +4,7 @@
 //! component. The Re-verify button triggers `POST .../verification/refresh`
 //! which acknowledges the request and returns the current verification snapshot.
 //!
-//! # TODO(#2604)
+//! # TODO(#2034)
 //! Wire to the actual `dianoia` verification engine once a `PlanningService`
 //! is exposed in pylon's `AppState`. Current handlers return stub data so the
 //! desktop UI flow completes without error.
@@ -14,10 +14,7 @@ use axum::extract::Path;
 use axum::http::StatusCode;
 use serde::Serialize;
 
-use aletheia_symbolon::types::Role;
-
 use crate::error::{ErrorBody, ErrorResponse};
-use crate::extract::{Claims, require_role};
 
 /// Verification status for a single requirement.
 // NOTE: variants are constructed in tests and will be used in production once
@@ -28,7 +25,7 @@ use crate::extract::{Claims, require_role};
     not(test),
     expect(
         dead_code,
-        reason = "API contract types: variants used in tests, production use pending #2604"
+        reason = "API contract types: variants used in tests, production use pending #2034"
     )
 )]
 pub(crate) enum VerificationStatus {
@@ -51,7 +48,7 @@ pub(crate) enum VerificationStatus {
     not(test),
     expect(
         dead_code,
-        reason = "API contract types: variants used in tests, production use pending #2604"
+        reason = "API contract types: variants used in tests, production use pending #2034"
     )
 )]
 pub(crate) enum RequirementPriority {
@@ -111,7 +108,7 @@ pub(crate) struct RequirementVerification {
     not(test),
     expect(
         dead_code,
-        reason = "API contract types: used in tests, production use pending #2604"
+        reason = "API contract types: used in tests, production use pending #2034"
     )
 )]
 pub(crate) struct VerificationResult {
@@ -125,7 +122,7 @@ pub(crate) struct VerificationResult {
 
 /// Response for `POST .../verification/refresh`.
 #[derive(Debug, Serialize)]
-#[expect(dead_code, reason = "API contract type: production use pending #2604")]
+#[expect(dead_code, reason = "API contract type: production use pending #2034")]
 pub(crate) struct RefreshResponse {
     /// Refresh status: `"accepted"`.
     pub(crate) status: &'static str,
@@ -150,82 +147,19 @@ pub(crate) struct RefreshResponse {
     security(("bearer_auth" = []))
 )]
 pub(crate) async fn get_verification(
-    Path(project_id): Path<String>,
-    axum::extract::State(state): axum::extract::State<std::sync::Arc<crate::state::AppState>>,
-    claims: Claims,
-) -> axum::response::Response {
-    use axum::response::IntoResponse;
-
-    if let Err(e) = require_role(&claims, Role::Operator) {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: ErrorBody {
-                    code: "forbidden".to_owned(),
-                    message: e.to_string(),
-                    request_id: None,
-                    details: None,
-                },
-            }),
-        )
-            .into_response();
-    }
-
-    let Some(ref service) = state.planning_service else {
-        return (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(ErrorResponse {
-                error: ErrorBody {
-                    code: "service_unavailable".to_owned(),
-                    message: "planning service not configured".to_owned(),
-                    request_id: None,
-                    details: None,
-                },
-            }),
-        )
-            .into_response();
-    };
-
-    match service.list_phases() {
-        Ok(phases) => {
-            // WHY: verify each phase with empty inputs (snapshot of current state).
-            // Full criterion evaluation requires agent interaction (future enhancement).
-            let verifications: Vec<serde_json::Value> = phases
-                .iter()
-                .map(|phase| {
-                    let result = aletheia_dianoia::verify::verify_phase(phase, &[]);
-                    serde_json::json!({
-                        "phase": phase.name,
-                        "status": format!("{:?}", result.status),
-                        "summary": result.summary,
-                        "gaps": result.gaps.len(),
-                        "verified_at": result.verified_at.to_string(),
-                    })
-                })
-                .collect();
-
-            (
-                StatusCode::OK,
-                Json(serde_json::json!({
-                    "project_id": project_id,
-                    "phases": verifications,
-                })),
-            )
-                .into_response()
-        }
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: ErrorBody {
-                    code: "verification_failed".to_owned(),
-                    message: e,
-                    request_id: None,
-                    details: None,
-                },
-            }),
-        )
-            .into_response(),
-    }
+    Path(_project_id): Path<String>,
+) -> (StatusCode, Json<ErrorResponse>) {
+    (
+        StatusCode::NOT_IMPLEMENTED,
+        Json(ErrorResponse {
+            error: ErrorBody {
+                code: "not_implemented".to_owned(),
+                message: "verification engine not yet wired (tracking #2034)".to_owned(),
+                request_id: None,
+                details: None,
+            },
+        }),
+    )
 }
 
 /// `POST /api/planning/projects/{project_id}/verification/refresh`
@@ -245,70 +179,19 @@ pub(crate) async fn get_verification(
     security(("bearer_auth" = []))
 )]
 pub(crate) async fn refresh_verification(
-    Path(project_id): Path<String>,
-    axum::extract::State(state): axum::extract::State<std::sync::Arc<crate::state::AppState>>,
-    claims: Claims,
-) -> axum::response::Response {
-    use axum::response::IntoResponse;
-
-    if let Err(e) = require_role(&claims, Role::Operator) {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: ErrorBody {
-                    code: "forbidden".to_owned(),
-                    message: e.to_string(),
-                    request_id: None,
-                    details: None,
-                },
-            }),
-        )
-            .into_response();
-    }
-
-    let Some(ref service) = state.planning_service else {
-        return (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(ErrorResponse {
-                error: ErrorBody {
-                    code: "service_unavailable".to_owned(),
-                    message: "planning service not configured".to_owned(),
-                    request_id: None,
-                    details: None,
-                },
-            }),
-        )
-            .into_response();
-    };
-
-    // WHY: refresh triggers a fresh verification pass. Currently synchronous;
-    // a background task can be spawned for long-running evaluations later.
-    match service.list_phases() {
-        Ok(phases) => {
-            let count = phases.len();
-            (
-                StatusCode::OK,
-                Json(serde_json::json!({
-                    "status": "refreshed",
-                    "project_id": project_id,
-                    "phases_verified": count,
-                })),
-            )
-                .into_response()
-        }
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: ErrorBody {
-                    code: "refresh_failed".to_owned(),
-                    message: e,
-                    request_id: None,
-                    details: None,
-                },
-            }),
-        )
-            .into_response(),
-    }
+    Path(_project_id): Path<String>,
+) -> (StatusCode, Json<ErrorResponse>) {
+    (
+        StatusCode::NOT_IMPLEMENTED,
+        Json(ErrorResponse {
+            error: ErrorBody {
+                code: "not_implemented".to_owned(),
+                message: "verification engine not yet wired (tracking #2034)".to_owned(),
+                request_id: None,
+                details: None,
+            },
+        }),
+    )
 }
 
 #[cfg(test)]

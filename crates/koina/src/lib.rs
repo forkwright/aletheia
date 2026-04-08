@@ -22,10 +22,11 @@ pub mod event;
 /// Restricted filesystem helpers for writing sensitive files.
 pub mod fs;
 /// Shared HTTP constants (content types, auth prefix, API paths).
-pub mod color;
 pub mod http;
 /// Newtype wrappers for domain identifiers ([`id::NousId`], [`id::SessionId`], [`id::TurnId`], [`id::ToolName`]).
 pub mod id;
+/// Multi-output pipeline stages via the OutputBuffer pattern.
+pub mod output_buffer;
 /// Sensitive value redaction for safe log output (API keys, tokens, passwords).
 pub mod redact;
 /// Tracing layer that redacts sensitive field values before output.
@@ -36,10 +37,6 @@ pub mod retry;
 pub mod secret;
 /// Trait abstractions for filesystem, clock, and environment operations.
 pub mod system;
-/// Hex encoding utilities shared across Aletheia crates ([`hex::encode`]).
-pub mod hex;
-/// Time utilities: timestamp helpers shared across Aletheia crates ([`time::now_iso8601`]).
-pub mod time;
 /// Tracing subscriber initialization for human-readable and JSON log output.
 pub mod tracing_init;
 

@@ -1,10 +1,10 @@
 //! Minimum spanning tree (Prim).
 use std::cmp::Reverse;
-use std::collections::{BTreeMap, BinaryHeap};
+use std::collections::BTreeMap;
 
 use compact_str::CompactString;
 use ordered_float::OrderedFloat;
-
+use priority_queue::PriorityQueue;
 
 use crate::data::expr::Expr;
 use crate::data::symb::Symbol;
@@ -79,30 +79,28 @@ fn prim(
 ) -> Result<Vec<(u32, u32, f32)>> {
     let mut visited = vec![false; graph.node_count() as usize];
     let mut mst_edges = Vec::with_capacity((graph.node_count() - 1) as usize);
-    let mut pq: BinaryHeap<(Reverse<OrderedFloat<f32>>, u32, u32)> = BinaryHeap::new();
+    let mut pq = PriorityQueue::new();
 
-    let mut start_node = starting;
-    loop {
-        visited[start_node as usize] = true;
-        for target in graph.out_neighbors_with_values(start_node) {
+    let mut relax_edges_at_node = |node: u32, pq: &mut PriorityQueue<_, _>| {
+        visited[node as usize] = true;
+        for target in graph.out_neighbors_with_values(node) {
             let to_node = target.target;
             let cost = target.value;
             if visited[to_node as usize] {
                 continue;
             }
-            pq.push((Reverse(OrderedFloat(cost)), start_node, to_node));
+            pq.push_increase(to_node, (Reverse(OrderedFloat(cost)), node));
         }
+    };
+
+    relax_edges_at_node(starting, &mut pq);
+
+    while let Some((to_node, (Reverse(OrderedFloat(cost)), from_node))) = pq.pop() {
         if mst_edges.len() == (graph.node_count() - 1) as usize {
             break;
         }
-        let Some((Reverse(OrderedFloat(cost)), from_node, to_node)) = pq.pop() else {
-            break;
-        };
-        if visited[to_node as usize] {
-            continue;
-        }
         mst_edges.push((from_node, to_node, cost));
-        start_node = to_node;
+        relax_edges_at_node(to_node, &mut pq);
         poison.check()?;
     }
 

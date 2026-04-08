@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use aletheia_koina::color::{supports_color, AnsiColorize};
+use owo_colors::OwoColorize;
 use snafu::{ResultExt, Snafu};
 
 use aletheia_koina::http::{API_HEALTH, API_V1};
@@ -30,15 +30,15 @@ pub(crate) async fn run(
     url: &str,
     instance_root: Option<&std::path::PathBuf>,
 ) -> Result<(), StatusError> {
-    let use_color = supports_color();
+    let use_color = supports_color::on(supports_color::Stream::Stdout).is_some();
     let version = env!("CARGO_PKG_VERSION");
 
     if use_color {
         println!(
             "{} {} — {}",
-            "Aletheia".bold(use_color),
-            format!("v{version}").dimmed(use_color),
-            "Status".bold(use_color)
+            "Aletheia".bold(),
+            format!("v{version}").dimmed(),
+            "Status".bold()
         );
     } else {
         println!("Aletheia v{version} — Status");
@@ -118,13 +118,13 @@ fn print_gateway_up(url: &str, health: &HealthResponse, color: bool) {
     let uptime = format_uptime(health.uptime_seconds);
     if color {
         let status_colored = match health.status.as_str() {
-            "healthy" => "UP".green(color),
-            "degraded" => "DEGRADED".yellow(color),
-            _ => "UNHEALTHY".red(color),
+            "healthy" => "UP".green().to_string(),
+            "degraded" => "DEGRADED".yellow().to_string(),
+            _ => "UNHEALTHY".red().to_string(),
         };
         println!(
             "  {:<12}{} — {} (uptime: {}, v{})",
-            "Gateway:".bold(color),
+            "Gateway:".bold(),
             url,
             status_colored,
             uptime,
@@ -147,9 +147,9 @@ fn print_gateway_down(url: &str, color: bool) {
     if color {
         println!(
             "  {:<12}{} — {}",
-            "Gateway:".bold(color),
+            "Gateway:".bold(),
             url,
-            "DOWN".red(color).bold(color)
+            "DOWN".red().bold()
         );
     } else {
         println!("  {:<12}{} — DOWN", "Gateway:", url);
@@ -161,7 +161,7 @@ fn print_checks(checks: &[HealthCheck], color: bool) {
         return;
     }
     if color {
-        println!("  {}:", "Checks".bold(color));
+        println!("  {}:", "Checks".bold());
     } else {
         println!("  Checks:");
     }
@@ -169,21 +169,21 @@ fn print_checks(checks: &[HealthCheck], color: bool) {
         let status = match check.status.as_str() {
             "pass" => {
                 if color {
-                    "PASS".green(color)
+                    "PASS".green().to_string()
                 } else {
                     "PASS".to_owned()
                 }
             }
             "warn" => {
                 if color {
-                    "WARN".yellow(color)
+                    "WARN".yellow().to_string()
                 } else {
                     "WARN".to_owned()
                 }
             }
             _ => {
                 if color {
-                    "FAIL".red(color)
+                    "FAIL".red().to_string()
                 } else {
                     "FAIL".to_owned()
                 }
@@ -204,7 +204,7 @@ fn print_nous(list: &[NousInfo], color: bool) {
         return;
     }
     if color {
-        println!("  {}:", "Nous".bold(color));
+        println!("  {}:", "Nous".bold());
     } else {
         println!("  Nous:");
     }
@@ -212,14 +212,14 @@ fn print_nous(list: &[NousInfo], color: bool) {
         let lifecycle = match nous.lifecycle.as_str() {
             "idle" => {
                 if color {
-                    "IDLE".green(color)
+                    "IDLE".green().to_string()
                 } else {
                     "IDLE".to_owned()
                 }
             }
             "processing" => {
                 if color {
-                    "BUSY".yellow(color)
+                    "BUSY".yellow().to_string()
                 } else {
                     "BUSY".to_owned()
                 }
@@ -236,7 +236,7 @@ fn print_nous(list: &[NousInfo], color: bool) {
 
 fn print_storage(oikos: &aletheia_taxis::oikos::Oikos, server_data_dir: Option<&str>, color: bool) {
     if color {
-        println!("  {}:", "Storage".bold(color));
+        println!("  {}:", "Storage".bold());
     } else {
         println!("  Storage:");
     }

@@ -57,17 +57,6 @@ static CACHE_READ_TOKENS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
     .expect("metric registration") // kanon:ignore RUST/expect
 });
 
-static BACKGROUND_TASK_FAILURES_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
-    register_int_counter_vec!(
-        Opts::new(
-            "aletheia_background_task_failures_total",
-            "Background task failures (extraction, distillation, skill analysis)"
-        ),
-        &["nous_id", "task_type"]
-    )
-    .expect("metric registration") // kanon:ignore RUST/expect
-});
-
 static CACHE_CREATION_TOKENS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
     register_int_counter_vec!(
         Opts::new(
@@ -91,7 +80,6 @@ pub(crate) fn init() {
     LazyLock::force(&PIPELINE_TURNS_TOTAL);
     LazyLock::force(&PIPELINE_STAGE_DURATION_SECONDS);
     LazyLock::force(&PIPELINE_ERRORS_TOTAL);
-    LazyLock::force(&BACKGROUND_TASK_FAILURES_TOTAL);
     LazyLock::force(&CACHE_READ_TOKENS_TOTAL);
     LazyLock::force(&CACHE_CREATION_TOKENS_TOTAL);
 }
@@ -106,13 +94,6 @@ pub(crate) fn record_stage(nous_id: &str, stage: &str, duration_secs: f64) {
 /// Record a completed turn.
 pub(crate) fn record_turn(nous_id: &str) {
     PIPELINE_TURNS_TOTAL.with_label_values(&[nous_id]).inc(); // kanon:ignore RUST/indexing-slicing
-}
-
-/// Record a background task failure (extraction, distillation, skill analysis).
-pub(crate) fn record_background_failure(nous_id: &str, task_type: &str) {
-    BACKGROUND_TASK_FAILURES_TOTAL
-        .with_label_values(&[nous_id, task_type])
-        .inc();
 }
 
 /// Record a pipeline error.

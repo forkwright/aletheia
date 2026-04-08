@@ -92,7 +92,13 @@ pub fn append_jsonl(path: &Path, records: &[EvalRecord]) -> Result<()> {
 }
 
 fn now_iso8601() -> String {
-    aletheia_koina::time::now_iso8601()
+    // WHY: avoid pulling in jiff/chrono for a single timestamp format.
+    // Epoch seconds are unambiguous and lightweight.
+    let duration = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = duration.as_secs();
+    format!("{secs}")
 }
 
 fn millis_from_duration(duration: &std::time::Duration) -> u64 {

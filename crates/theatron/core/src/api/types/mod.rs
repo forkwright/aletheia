@@ -417,54 +417,6 @@ pub struct NousToolsResponse {
     pub tools: Vec<NousTool>,
 }
 
-/// Credential entry as returned by the API.
-#[derive(Debug, Clone, Deserialize)]
-pub struct CredentialApiEntry {
-    /// Credential identifier.
-    #[serde(default)]
-    pub id: String,
-    /// Provider name (e.g., "anthropic", "openai").
-    #[serde(default)]
-    pub provider: String,
-    /// Role string (e.g., "primary", "backup").
-    #[serde(default)]
-    pub role: String,
-    /// Masked key value (last 4 chars prefixed with "...").
-    #[serde(default)]
-    pub masked_key: String,
-    /// Status string (e.g., "valid", "expired", "untested").
-    #[serde(default)]
-    pub status: String,
-    /// ISO timestamp of last validation, if any.
-    #[serde(default)]
-    pub last_validated: Option<String>,
-    /// Number of requests made today.
-    #[serde(default)]
-    pub requests_today: u64,
-    /// Number of tokens consumed today.
-    #[serde(default)]
-    pub tokens_today: u64,
-}
-
-/// Response from the credentials list endpoint.
-#[derive(Debug, Clone, Deserialize)]
-pub struct CredentialsListResponse {
-    /// List of credentials.
-    #[serde(default)]
-    pub credentials: Vec<CredentialApiEntry>,
-}
-
-/// Request to add a new credential.
-#[derive(Debug, Clone, Serialize)]
-pub struct AddCredentialRequest {
-    /// Provider name.
-    pub provider: String,
-    /// Raw API key (sensitive).
-    pub key: String,
-    /// Role ("primary" or "backup").
-    pub role: String,
-}
-
 #[cfg(test)]
 #[expect(
     clippy::unwrap_used,

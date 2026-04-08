@@ -100,6 +100,7 @@ pub(crate) fn Files() -> Element {
             PreservedViewState {
                 scroll_top: 0.0,
                 input_text: path_text,
+                secondary_scroll: 0.0,
             },
         );
     });

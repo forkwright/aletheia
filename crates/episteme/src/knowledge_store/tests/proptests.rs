@@ -310,7 +310,7 @@ mod merge {
             merge_shift in 1_usize..20,
         ) {
             let canonical_idx = canonical_raw % n;
-            // NOTE: `1 + (merge_shift % (n-1))` is in 1..n-1, so adding it to
+            // WHY: `1 + (merge_shift % (n-1))` is in 1..n-1, so adding it to
             // canonical_idx and wrapping modulo n can never yield canonical_idx
             // again: canonical and merged are always distinct.
             let merged_idx = (canonical_idx + 1 + (merge_shift % (n - 1))) % n;

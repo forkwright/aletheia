@@ -45,12 +45,36 @@ pub struct ChatMessage {
 /// A chat session: one conversation with an agent.
 #[derive(Debug, Clone)]
 pub struct ChatSession {
+    /// Session identifier.
+    #[expect(dead_code, reason = "public API")]
+    pub id: SessionId,
+    /// Agent this session belongs to.
+    #[expect(dead_code, reason = "public API")]
+    pub agent_id: NousId,
+    /// Ordered message history (oldest first).
+    #[expect(dead_code, reason = "public API")]
+    pub messages: Vec<ChatMessage>,
+    /// Current scroll position (pixel offset from top of content).
+    #[expect(dead_code, reason = "public API")]
+    pub scroll_position: f64,
+    /// Whether older messages exist on the server.
+    #[expect(dead_code, reason = "public API")]
+    pub has_more_history: bool,
+    #[expect(dead_code, reason = "public API")]
     next_id: u64,
 }
 
+
 /// Store managing all chat sessions.
 #[derive(Debug, Clone, Default)]
-pub struct ChatStore;
+pub struct ChatStore {
+    /// Currently active session ID.
+    #[expect(dead_code, reason = "public API")]
+    pub active_session: Option<SessionId>,
+    /// All loaded sessions keyed by ID.
+    #[expect(dead_code, reason = "public API")]
+    pub sessions: std::collections::HashMap<SessionId, ChatSession>,
+}
 
 /// Format a Unix timestamp as a relative time string.
 #[must_use]

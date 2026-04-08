@@ -13,10 +13,6 @@ use crate::config::NousConfig;
     missing_docs,
     reason = "session state fields are self-documenting by name"
 )]
-#[expect(
-    clippy::struct_excessive_bools,
-    reason = " SessionState requires multiple boolean flags for configuration state"
-)]
 pub struct SessionState {
     pub id: String,
     pub nous_id: String,

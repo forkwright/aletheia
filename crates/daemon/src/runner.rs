@@ -171,14 +171,6 @@ impl TaskRunner {
         self
     }
 
-    /// Attach a retention executor for data cleanup.
-    #[must_use]
-    #[expect(dead_code, reason = "daemon task runner configuration")]
-    pub(crate) fn with_retention(mut self, executor: Arc<dyn RetentionExecutor>) -> Self {
-        self.retention_executor = Some(executor);
-        self
-    }
-
     /// Attach a knowledge maintenance executor for graph operations.
     #[must_use]
     pub fn with_knowledge_maintenance(
@@ -527,7 +519,6 @@ impl TaskRunner {
 
         loop {
             tokio::select! {
-                biased;
                 // SAFETY: cancel-safe. `interval.tick()` is cancel-safe; dropping it
                 // before it fires simply delays the next tick without losing state.
                 // `check_in_flight` polls already-spawned handles and does not
@@ -589,9 +580,10 @@ impl TaskRunner {
     }
 
     /// Check in-flight tasks for completion, timeout warnings, and hung task cancellation.
-    ///
-    /// Ensures tasks are removed from the in-flight map before awaiting to prevent
-    /// stale entries on panic (#2745).
+    #[expect(
+        clippy::expect_used,
+        reason = "key existence verified by is_finished() check immediately before"
+    )]
     async fn check_in_flight(&mut self) {
         let task_ids: Vec<String> = self.in_flight.keys().cloned().collect();
 
@@ -627,9 +619,6 @@ impl TaskRunner {
             }
 
             if in_flight.handle.is_finished() {
-                // Remove from map BEFORE awaiting to ensure cleanup on panic (#2745).
-                // The entry is removed here; even if the await panics (and task is not
-                // caught), the stale handle won't remain in the map.
                 let Some(in_flight) = self.in_flight.remove(&task_id) else {
                     continue;
                 };
@@ -717,7 +706,6 @@ impl TaskRunner {
         // WHY: spawn as a detached task. Self-prompt execution should not block
         // the main scheduler loop. Failures are logged but do not affect the
         // originating task's status.
-        let span = tracing::info_span!("self_prompt_dispatch", nous_id = %nous_id, source_task = %task_id_owned);
         tokio::spawn(async move {
             tracing::info!(
                 nous_id = %nous_id,
@@ -756,7 +744,7 @@ impl TaskRunner {
                     );
                 }
             }
-        }.instrument(span));
+        });
     }
 
     /// Record a successful task completion and UPDATE scheduling.

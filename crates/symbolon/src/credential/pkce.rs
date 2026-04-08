@@ -201,12 +201,9 @@ impl OAuthProvider {
 }
 
 /// PKCE code verifier (plaintext) and challenge (hashed).
-///
-/// WHY: verifier is wrapped in SecretString for zeroize-on-drop.
-/// The plaintext verifier is a bearer-equivalent credential (#2785).
 #[derive(Debug)]
 struct PkcePair {
-    verifier: aletheia_koina::secret::SecretString,
+    verifier: String,
     challenge: String,
 }
 
@@ -232,7 +229,7 @@ impl PkcePair {
         let challenge = URL_SAFE_NO_PAD.encode(hash);
 
         Ok(Self {
-            verifier: aletheia_koina::secret::SecretString::from(verifier),
+            verifier,
             challenge,
         })
     }
@@ -499,13 +496,9 @@ fn handle_callback_connection(
     expected_state: &str,
 ) -> Result<CallbackData> {
     // Set a timeout for accepting connections
-    #[expect(
-        clippy::expect_used,
-        reason = "set_nonblocking on a freshly bound listener should not fail"
-    )]
     listener
         .set_nonblocking(false)
-        .expect("set_nonblocking on a freshly bound listener should not fail");
+        .expect("should be able to set blocking mode");
 
     let (stream, addr) = listener.accept().context(AcceptConnectionSnafu)?;
     info!("received OAuth callback from {}", addr);
@@ -576,7 +569,7 @@ async fn exchange_code(
     client: &reqwest::Client,
     provider: &OAuthProvider,
     code: &str,
-    verifier: &aletheia_koina::secret::SecretString,
+    verifier: &str,
     redirect_port: u16,
 ) -> Result<TokenResponse> {
     let redirect_uri = provider
@@ -589,7 +582,7 @@ async fn exchange_code(
     params.insert("code", code);
     params.insert("redirect_uri", &redirect_uri);
     params.insert("client_id", &provider.client_id);
-    params.insert("code_verifier", verifier.expose_secret());
+    params.insert("code_verifier", verifier);
 
     let body = build_form_body(&params);
 
@@ -646,7 +639,7 @@ async fn exchange_code(
 /// ```no_run
 /// use aletheia_symbolon::credential::pkce::{OAuthProvider, pkce_login};
 ///
-/// # async fn example() -> Result<(), PkceError> {
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let provider = OAuthProvider::new(
 ///     "my-client-id",
 ///     "https://auth.example.com/authorize",
@@ -746,10 +739,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn pkce_pair_generates_valid_verifier_and_challenge() {
+    fn test_pkce_pair_generation() {
         let pair = PkcePair::generate().unwrap();
         // Verifier should be base64url encoded
-        assert!(!pair.verifier.expose_secret().is_empty());
+        assert!(!pair.verifier.is_empty());
         assert!(!pair.challenge.is_empty());
 
         // Challenge should be base64url-encoded SHA256 hash (43 chars)
@@ -757,13 +750,13 @@ mod tests {
 
         // Verify challenge is correct
         let mut hasher = Sha256::new();
-        hasher.update(pair.verifier.expose_secret().as_bytes());
+        hasher.update(pair.verifier.as_bytes());
         let expected = URL_SAFE_NO_PAD.encode(hasher.finalize());
         assert_eq!(pair.challenge, expected);
     }
 
     #[test]
-    fn generate_state_produces_unique_values() {
+    fn test_generate_state() {
         let state1 = generate_state().unwrap();
         let state2 = generate_state().unwrap();
 
@@ -776,7 +769,7 @@ mod tests {
     }
 
     #[test]
-    fn url_encode_escapes_special_characters() {
+    fn test_url_encode() {
         assert_eq!(url_encode("hello world"), "hello%20world");
         assert_eq!(url_encode("foo/bar"), "foo%2Fbar");
         assert_eq!(url_encode("test@example.com"), "test%40example.com");
@@ -784,21 +777,21 @@ mod tests {
     }
 
     #[test]
-    fn url_decode_reverses_encoding() {
+    fn test_url_decode() {
         assert_eq!(url_decode("hello%20world"), Some("hello world".to_string()));
         assert_eq!(url_decode("foo%2Fbar"), Some("foo/bar".to_string()));
         assert_eq!(url_decode("test%40example.com"), Some("test@example.com".to_string()));
     }
 
     #[test]
-    fn html_escape_escapes_html_entities() {
+    fn test_html_escape() {
         assert_eq!(html_escape("<script>"), "&lt;script&gt;");
         assert_eq!(html_escape("foo & bar"), "foo &amp; bar");
         assert_eq!(html_escape("\"test\""), "&quot;test&quot;");
     }
 
     #[test]
-    fn build_authorization_url_includes_all_parameters() {
+    fn test_build_authorization_url() {
         let provider = OAuthProvider::new(
             "test-client-id",
             "https://example.com/auth",
@@ -822,7 +815,7 @@ mod tests {
     }
 
     #[test]
-    fn build_authorization_url_uses_custom_redirect_uri() {
+    fn test_build_authorization_url_custom_redirect() {
         let provider = OAuthProvider::new(
             "test-client-id",
             "https://example.com/auth",
@@ -839,7 +832,7 @@ mod tests {
     }
 
     #[test]
-    fn build_form_body_creates_url_encoded_params() {
+    fn test_build_form_body() {
         let mut params = HashMap::new();
         params.insert("grant_type", "authorization_code");
         params.insert("code", "abc123");

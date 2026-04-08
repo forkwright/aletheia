@@ -140,7 +140,6 @@ pub(crate) fn Layout() -> Element {
                 NavItem { to: Route::Sessions {}, icon: "[T]", label: "Sessions", shortcut: "Ctrl+7", collapsed: *sidebar_collapsed.read() }
                 NavItem { to: Route::Meta {}, icon: "[I]", label: "Insights", shortcut: "", collapsed: *sidebar_collapsed.read() }
                 NavItem { to: Route::Settings {}, icon: "[S]", label: "Settings", shortcut: "", collapsed: *sidebar_collapsed.read() }
-                NavItem { to: Route::Reference {}, icon: "[R]", label: "Reference", shortcut: "", collapsed: *sidebar_collapsed.read() }
                 div { style: "{NAV_DIVIDER_STYLE}", role: "separator" }
                 AgentSidebarView { collapsed: *sidebar_collapsed.read() }
                 div { style: "flex: 1;" }

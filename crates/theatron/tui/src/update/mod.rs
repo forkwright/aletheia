@@ -266,9 +266,20 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::StreamError(msg) => streaming::handle_stream_error(app, msg),
         Msg::CancelTurn => streaming::handle_cancel_turn(app).await,
 
+        Msg::AgentsLoaded(agents) => api::handle_agents_loaded(app, agents),
+        Msg::SessionsLoaded { nous_id, sessions } => {
+            api::handle_sessions_loaded(app, nous_id, sessions)
+        }
+        Msg::HistoryLoaded { messages, .. } => api::handle_history_loaded(app, messages),
+        Msg::CostLoaded { daily_total_cents } => api::handle_cost_loaded(app, daily_total_cents),
+        // NOTE: auth/API errors handled upstream, no local state update needed
+        Msg::AuthResult(_) | Msg::ApiError(_) => {}
         Msg::NewSession => api::handle_new_session(app).await,
         Msg::SessionPickerNewSession => api::handle_session_picker_new(app).await,
         Msg::SessionPickerArchive => api::handle_session_picker_archive(app).await,
+        Msg::SettingsLoaded(config) => settings::handle_loaded(app, config),
+        Msg::SettingsSaved => settings::handle_saved(app),
+        Msg::SettingsSaveError(msg) => settings::handle_save_error(app, msg),
         Msg::MemoryOpen => memory::handle_open(app).await,
         Msg::MemoryClose => memory::handle_close(app),
         Msg::MemoryTabNext => memory::handle_tab_next(app),
@@ -300,10 +311,39 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::MemoryPageUp => memory::handle_page_up(app),
         Msg::MemoryDriftTabNext => memory::handle_drift_tab_next(app),
         Msg::MemoryDriftTabPrev => memory::handle_drift_tab_prev(app),
+        Msg::MemoryFactsLoaded { facts, total } => memory::handle_facts_loaded(app, facts, total),
+        Msg::MemoryDetailLoaded(detail) => memory::handle_detail_loaded(app, *detail),
+        // NOTE: memory data variants handled in memory inspector view
+        Msg::MemoryEntitiesLoaded(_)
+        | Msg::MemoryRelationshipsLoaded(_)
+        | Msg::MemoryTimelineLoaded(_) => {}
+        Msg::MemorySearchResults(_) => {}
+        Msg::MemoryActionResult(msg) => memory::handle_action_result(app, msg),
+
+        Msg::MetricsOpen => metrics::handle_open(app).await,
         Msg::MetricsClose => metrics::handle_close(app),
         Msg::MetricsSelectUp => metrics::handle_select_up(app),
         Msg::MetricsSelectDown => metrics::handle_select_down(app),
         Msg::MetricsHealthLoaded(healthy) => metrics::handle_health_loaded(app, healthy),
+
+        Msg::PlanningOpen => {
+            app.layout
+                .view_stack
+                .push(crate::state::view_stack::View::Planning);
+        }
+        Msg::PlanningClose => {
+            app.layout.view_stack.pop();
+        }
+        Msg::RetrospectiveOpen => {
+            app.layout
+                .view_stack
+                .push(crate::state::view_stack::View::Retrospective);
+        }
+        Msg::RetrospectiveClose => {
+            app.layout.view_stack.pop();
+        }
+
+        Msg::ExportConversation => command::execute_export_from_msg(app),
 
         Msg::SlashCompleteOpen => slash::handle_open(app),
         Msg::SlashCompleteClose => slash::handle_close(app),
@@ -313,16 +353,79 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::SlashCompleteDown => slash::handle_down(app),
         Msg::SlashCompleteSelect => slash::handle_select(app).await,
 
+        Msg::ToastPush {
+            message,
+            kind,
+            duration_secs,
+        } => {
+            use crate::state::notification::Toast;
+            let toast = Toast::with_duration(message.clone(), kind, duration_secs);
+            app.viewport.toasts.push(toast);
+            app.layout
+                .notifications
+                .push(app.dashboard.focused_agent.clone(), message, kind);
+        }
+        Msg::ErrorBannerSet(msg) => {
+            use crate::state::notification::ErrorBanner;
+            app.viewport.error_banner = Some(ErrorBanner { message: msg });
+        }
+        Msg::ErrorBannerDismiss => {
+            app.viewport.error_banner = None;
+        }
+
         Msg::SessionSearchOpen => search::handle_open(app),
         Msg::SessionSearchClose => search::handle_close(app),
         Msg::SessionSearchInput(c) => search::handle_input(app, c),
         Msg::SessionSearchBackspace => search::handle_backspace(app),
+        // NOTE: submit triggers search via SessionSearchSelect
+        Msg::SessionSearchSubmit => {}
         Msg::SessionSearchUp => search::handle_up(app),
         Msg::SessionSearchDown => search::handle_down(app),
         Msg::SessionSearchSelect => search::handle_select(app).await,
 
         Msg::ShowError(msg) => api::handle_show_error(app, msg),
+        Msg::ShowSuccess(msg) => api::handle_show_success(app, msg),
+        Msg::DismissError => api::handle_dismiss_error(app),
+        Msg::DiffOpen => diff::handle_diff_open(app).await,
+        Msg::DiffClose => diff::handle_diff_close(app),
+        Msg::DiffCycleMode => diff::handle_diff_cycle_mode(app),
+        Msg::DiffScrollUp => diff::handle_diff_scroll_up(app),
+        Msg::DiffScrollDown => diff::handle_diff_scroll_down(app),
+        Msg::DiffPageUp => diff::handle_diff_page_up(app),
+        Msg::DiffPageDown => diff::handle_diff_page_down(app),
+        Msg::DiffFromToolResult {
+            path,
+            old_content,
+            new_content,
+        } => diff::handle_diff_from_tool_result(app, &path, &old_content, &new_content),
 
+        Msg::DecisionCardNextField => {
+            if let Some(crate::state::Overlay::DecisionCard(ref mut card)) = app.layout.overlay {
+                card.next_field();
+            }
+        }
+        Msg::DecisionCardPrevField => {
+            if let Some(crate::state::Overlay::DecisionCard(ref mut card)) = app.layout.overlay {
+                card.prev_field();
+            }
+        }
+        Msg::StreamDecisionRequired { question, options } => {
+            let opts: Vec<crate::state::DecisionOption> = options
+                .into_iter()
+                .map(
+                    |(label, description, is_recommendation)| crate::state::DecisionOption {
+                        label,
+                        description,
+                        is_recommendation,
+                    },
+                )
+                .collect();
+            app.layout.overlay = Some(crate::state::Overlay::DecisionCard(
+                crate::state::DecisionCardOverlay::new(question, opts),
+            ));
+        }
+
+        Msg::EditorOpen => editor::handle_open(app),
         Msg::EditorClose => editor::handle_close(app),
         Msg::EditorCharInput(c) => editor::handle_char_input(app, c),
         Msg::EditorNewline => editor::handle_newline(app),
@@ -342,6 +445,7 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::EditorTabClose => editor::handle_tab_close(app),
         Msg::EditorTreeToggle => editor::handle_tree_toggle(app),
         Msg::EditorFocusToggle => editor::handle_focus_toggle(app),
+        Msg::EditorTreeExpand => editor::handle_tree_expand(app),
         Msg::EditorCut => editor::handle_cut(app),
         Msg::EditorCopy => editor::handle_copy(app),
         Msg::EditorPaste => editor::handle_paste(app),
@@ -351,6 +455,8 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::EditorConfirmDelete(confirmed) => editor::handle_confirm_delete(app, confirmed),
         Msg::EditorModalCancel => editor::handle_modal_cancel(app),
         Msg::EditorRefreshTree => editor::handle_refresh_tree(app),
+        Msg::EditorAutosaveTick => editor::handle_autosave_tick(app),
+        Msg::EditorScrollTree(h) => editor::handle_scroll_tree(app, h),
 
         Msg::Quit => app.should_quit = true,
         Msg::Tick => api::handle_tick(app),

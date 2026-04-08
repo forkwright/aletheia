@@ -71,7 +71,7 @@ const RESTART_DRAIN_TIMEOUT: Duration = Duration::from_secs(30);
 const RESTART_DECAY_WINDOW: Duration = Duration::from_secs(3600);
 
 /// Manages the lifecycle of all nous actors.
-// WHY: 14 fields — runtime dependency injection (providers, tools, stores) plus
+// NOTE: 14 fields: runtime dependency injection (providers, tools, stores) plus
 // actor state. Kept flat because splitting would scatter logically-paired fields.
 pub struct NousManager {
     actors: HashMap<String, ActorEntry>,
@@ -393,18 +393,10 @@ impl NousManager {
                         tracing::debug!(nous_id = %id, "old actor drained cleanly before restart");
                     }
                     Err(_) => {
-                        tracing::warn!(nous_id = %id, "actor did not drain within {RESTART_DRAIN_TIMEOUT:?}, spawning replacement");
+                        tracing::warn!(nous_id = %id, "actor did not drain within {RESTART_DRAIN_TIMEOUT:?}, spawning replacement — concurrent store access possible");
                     }
                 }
             }
-        }
-
-        // WHY: check if another path (concurrent health check, manual spawn) already
-        // re-inserted this actor while we were draining the old one. If so, don't
-        // double-spawn — the existing actor is already running (#2744).
-        if self.actors.contains_key(id) {
-            tracing::info!(nous_id = %id, "actor already re-spawned by concurrent path, skipping restart");
-            return;
         }
 
         let handle = self
@@ -440,7 +432,6 @@ impl NousManager {
                 debug!(interval_secs = interval.as_secs(), "health poller started");
                 loop {
                     tokio::select! {
-                        biased;
                         // SAFETY: cancel-safe. `tokio::time::sleep` is cancel-safe:
                         // if dropped before it fires, the sleep is simply abandoned
                         // and a new one starts next iteration. The mutex lock and

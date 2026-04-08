@@ -1,7 +1,5 @@
 //! Instance maintenance services: trace rotation, drift detection, DB monitoring, retention.
 
-use aletheia_taxis::oikos::Oikos;
-
 /// Database size monitoring with configurable warning and alert thresholds.
 pub(crate) mod db_monitor;
 /// Instance drift detection: compare a live instance against the example template.
@@ -34,9 +32,12 @@ pub struct ProposeRulesConfig {
 
 impl Default for ProposeRulesConfig {
     fn default() -> Self {
+        let root = std::env::var("ALETHEIA_ROOT")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|_| std::path::PathBuf::from("instance"));
         Self {
             enabled: false,
-            data_dir: Oikos::discover().data(),
+            data_dir: root.join("data"),
         }
     }
 }

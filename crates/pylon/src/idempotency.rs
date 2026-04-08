@@ -98,7 +98,7 @@ impl IdempotencyCache {
         let mut inner = self.lock_inner();
         inner.evict_expired();
 
-        // TODO(#2599): Cache keys are not scoped per user. The `sub` claim from
+        // TODO(#2200): Cache keys are not scoped per user. The `sub` claim from
         // Claims is not available at this layer because the cache operates below
         // the auth extractor. Callers should prefix the key with the user's `sub`
         // before calling check_or_insert to prevent cross-user key collisions.
@@ -160,7 +160,7 @@ impl CacheInner {
         let now = Instant::now();
         while let Some(front_key) = self.order.front() {
             if let Some(entry) = self.entries.get(front_key) {
-                if now.saturating_duration_since(entry.created_at) > self.ttl {
+                if now.duration_since(entry.created_at) > self.ttl {
                     #[expect(clippy::expect_used, reason = "just peeked front()")]
                     let key = self.order.pop_front().expect("just peeked");
                     self.entries.remove(&key);

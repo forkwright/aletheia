@@ -8,7 +8,6 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use aletheia_koina::secret::SecretString;
 use snafu::ResultExt;
 use tracing::debug;
 
@@ -27,11 +26,11 @@ const PAPER_FIELDS: &str = "paperId,title,abstract,year,citationCount,url";
 /// per-second rate limit.
 pub(crate) struct AcademicSource {
     client: Arc<reqwest::Client>,
-    api_key: Option<SecretString>,
+    api_key: Option<String>,
 }
 
 impl AcademicSource {
-    pub(crate) fn new(client: Arc<reqwest::Client>, api_key: Option<SecretString>) -> Self {
+    pub(crate) fn new(client: Arc<reqwest::Client>, api_key: Option<String>) -> Self {
         Self { client, api_key }
     }
 }
@@ -54,7 +53,7 @@ impl RecallSource for AcademicSource {
                 .query(&[("limit", clamped_limit)]);
 
             if let Some(ref key) = self.api_key {
-                req = req.header("x-api-key", key.expose_secret());
+                req = req.header("x-api-key", key);
             }
 
             let response = req.send().await.context(HttpRequestSnafu {

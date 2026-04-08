@@ -72,9 +72,7 @@ impl ProjectWorkspace {
     #[must_use]
     pub fn save_project(&self, project: &Project) -> Result<()> {
         let layout = self.layout();
-        let json = serde_json::to_string_pretty(project).context(error::WorkspaceSerializeSnafu {
-            path: &layout.project_file,
-        })?;
+        let json = serde_json::to_string_pretty(project).context(error::WorkspaceSerializeSnafu)?;
         aletheia_koina::fs::write_restricted(&layout.project_file, json.as_bytes()).context(
             error::WorkspaceIoSnafu {
                 path: &layout.project_file,
@@ -98,9 +96,7 @@ impl ProjectWorkspace {
                 path: &layout.project_file,
             })?;
         let project: Project =
-            serde_json::from_str(&contents).context(error::WorkspaceDeserializeSnafu {
-                path: &layout.project_file,
-            })?;
+            serde_json::from_str(&contents).context(error::WorkspaceDeserializeSnafu)?;
         Ok(project)
     }
 

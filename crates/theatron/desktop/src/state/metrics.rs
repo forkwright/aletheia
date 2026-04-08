@@ -430,7 +430,26 @@ pub(crate) fn project_month_end(current_spend: f64, day_of_month: u32, days_in_m
 
 // -- Display formatters -------------------------------------------------------
 
-pub(crate) use theatron_core::format::format_tokens;
+/// Format a token count with K/M suffix.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "display-only: sub-token precision irrelevant"
+)]
+#[expect(
+    clippy::as_conversions,
+    reason = "u64 to f64 for human-readable formatting"
+)]
+pub(crate) fn format_tokens(count: u64) -> String {
+    const K: u64 = 1_000;
+    const M: u64 = 1_000_000;
+    if count >= M {
+        format!("{:.1}M", count as f64 / M as f64)
+    } else if count >= K {
+        format!("{:.1}K", count as f64 / K as f64)
+    } else {
+        count.to_string()
+    }
+}
 
 /// Format a USD cost value.
 pub(crate) fn format_cost(value: f64) -> String {
@@ -695,6 +714,13 @@ mod tests {
     #[test]
     fn project_month_end_zero_day() {
         assert_eq!(project_month_end(10.0, 0, 30), 0.0);
+    }
+
+    #[test]
+    fn format_tokens_units() {
+        assert_eq!(format_tokens(500), "500");
+        assert_eq!(format_tokens(1500), "1.5K");
+        assert_eq!(format_tokens(2_500_000), "2.5M");
     }
 
     #[test]

@@ -80,10 +80,8 @@ pub enum Error {
     },
 
     /// Failed to deserialize a project file from JSON.
-    #[snafu(display("failed to deserialize workspace at {}", path.display()))]
+    #[snafu(display("workspace deserialization error"))]
     WorkspaceDeserialize {
-        /// The path to the file that failed deserialization.
-        path: PathBuf,
         /// The underlying deserialization error.
         source: serde_json::Error,
         #[snafu(implicit)]
@@ -92,10 +90,8 @@ pub enum Error {
     },
 
     /// Failed to serialize a project to JSON.
-    #[snafu(display("failed to serialize workspace at {}", path.display()))]
+    #[snafu(display("workspace serialization error"))]
     WorkspaceSerialize {
-        /// The path to the file that failed serialization.
-        path: PathBuf,
         /// The underlying serialization error.
         source: serde_json::Error,
         #[snafu(implicit)]
@@ -126,10 +122,8 @@ pub enum Error {
     },
 
     /// Failed to deserialize a handoff file from JSON.
-    #[snafu(display("failed to deserialize handoff at {}", path.display()))]
+    #[snafu(display("handoff deserialization error"))]
     HandoffDeserialize {
-        /// The path to the file that failed deserialization.
-        path: PathBuf,
         /// The underlying deserialization error.
         source: serde_json::Error,
         #[snafu(implicit)]
@@ -138,10 +132,8 @@ pub enum Error {
     },
 
     /// Failed to serialize handoff context to JSON.
-    #[snafu(display("failed to serialize handoff at {}", path.display()))]
+    #[snafu(display("handoff serialization error"))]
     HandoffSerialize {
-        /// The path to the file that failed serialization.
-        path: PathBuf,
         /// The underlying serialization error.
         source: serde_json::Error,
         #[snafu(implicit)]

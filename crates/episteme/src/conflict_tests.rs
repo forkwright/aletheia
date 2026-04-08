@@ -148,7 +148,7 @@ fn cosine_similarity_antiparallel() {
 
 #[test]
 fn cosine_similarity_scale_invariant() {
-    // NOTE: Scaling one vector must not change the cosine similarity.
+    // WHY: Scaling one vector must not change the cosine similarity.
     // This verifies the denominator uses norms (not squared norms).
     let a = vec![1.0, 2.0, 3.0];
     let b = vec![2.0, 4.0, 6.0]; // b = 2 * a → same direction

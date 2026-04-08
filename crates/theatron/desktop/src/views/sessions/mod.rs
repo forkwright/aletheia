@@ -101,6 +101,7 @@ pub(crate) fn Sessions() -> Element {
             PreservedViewState {
                 scroll_top: 0.0,
                 input_text: list_store.read().search_query.clone(),
+                secondary_scroll: 0.0,
             },
         );
     });
@@ -152,7 +153,7 @@ pub(crate) fn Sessions() -> Element {
 
                 match client.get(&url).send().await {
                     Ok(resp) if resp.status().is_success() => {
-                        // NOTE: API may return {sessions: [...]} or bare [...].
+                        // WHY: API may return {sessions: [...]} or bare [...].
                         let text = match resp.text().await {
                             Ok(t) => t,
                             Err(e) => {
@@ -226,7 +227,7 @@ pub(crate) fn Sessions() -> Element {
                             }
                         };
 
-                        // NOTE: history response may be {messages: [...]} or bare [...].
+                        // WHY: history response may be {messages: [...]} or bare [...].
                         let messages =
                             if let Ok(wrapper) = serde_json::from_str::<HistoryResponse>(&text) {
                                 wrapper.messages
@@ -506,13 +507,7 @@ pub(crate) fn Sessions() -> Element {
                         SessionDetail {
                             detail_state,
                             on_open_chat: move |_id: SessionId| {
-                                // Set active agent from the session before navigating to chat.
-                                if let FetchState::Loaded(detail) = &*detail_state.read() {
-                                    if let Some(ref session) = detail.session {
-                                        let mut agents: Signal<AgentStore> = use_context();
-                                        agents.write().set_active(&session.nous_id);
-                                    }
-                                }
+                                // TODO(#108): set active agent and session in chat state before navigating.
                                 let nav = navigator();
                                 nav.push(crate::app::Route::Chat {});
                             },

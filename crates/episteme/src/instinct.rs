@@ -462,8 +462,9 @@ pub(crate) fn aggregate_observations(observations: &[ToolObservation]) -> Vec<Be
             None => {
                 accum.first_observed = Some(obs.observed_at);
             }
-            // NOTE: Current observation is not earlier than the stored first_observed.
-            _ => {}
+            _ => {
+                // NOTE: current observation is not earlier, no update needed
+            }
         }
 
         match accum.last_observed {
@@ -473,8 +474,9 @@ pub(crate) fn aggregate_observations(observations: &[ToolObservation]) -> Vec<Be
             None => {
                 accum.last_observed = Some(obs.observed_at);
             }
-            // NOTE: Current observation is not later than the stored last_observed.
-            _ => {}
+            _ => {
+                // NOTE: current observation is not later, no update needed
+            }
         }
     }
 

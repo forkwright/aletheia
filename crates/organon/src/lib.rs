@@ -9,8 +9,6 @@
 
 /// Built-in tool implementations that ship with the platform.
 pub mod builtins;
-/// User-defined slash commands loaded from YAML files via oikos cascade.
-pub mod custom_commands;
 /// Organon-specific error types and result alias.
 pub mod error;
 /// Prometheus metrics for tool execution counts, latency, and error rates.
@@ -28,8 +26,6 @@ pub mod sandbox;
 pub mod testing;
 /// Tool definition, parameter schema, and executor trait.
 pub mod types;
-/// Gnomon tool validation contracts for pre/post-dispatch validation.
-pub mod validation;
 
 #[cfg(test)]
 mod assertions {

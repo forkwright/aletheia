@@ -298,15 +298,6 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
-
-    /// Configuration parameter is invalid.
-    #[snafu(display("configuration error: {message}"))]
-    Configuration {
-        /// Error message describing the configuration issue.
-        message: String,
-        #[snafu(implicit)]
-        location: snafu::Location,
-    },
 }
 
 /// Result alias using mneme's [`Error`] type.

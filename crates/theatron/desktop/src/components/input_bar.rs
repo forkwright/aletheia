@@ -8,18 +8,18 @@ const INPUT_BAR_STYLE: &str = "\
     display: flex; \
     gap: 8px; \
     padding: 12px 16px; \
-    background: var(--bg-surface); \
-    border-top: 1px solid var(--border); \
+    background: #1a1a2e; \
+    border-top: 1px solid #333; \
     align-items: flex-end;\
 ";
 
 const TEXTAREA_STYLE: &str = "\
     flex: 1; \
-    background: var(--bg); \
-    border: 1px solid var(--border); \
+    background: #0f0f1a; \
+    border: 1px solid #333; \
     border-radius: 8px; \
     padding: 10px 14px; \
-    color: var(--text-primary); \
+    color: #e0e0e0; \
     font-size: 14px; \
     font-family: inherit; \
     resize: none; \
@@ -31,11 +31,11 @@ const TEXTAREA_STYLE: &str = "\
 
 const TEXTAREA_DISABLED_STYLE: &str = "\
     flex: 1; \
-    background: var(--bg-surface-dim); \
-    border: 1px solid var(--border-separator); \
+    background: #0a0a14; \
+    border: 1px solid #2a2a3a; \
     border-radius: 8px; \
     padding: 10px 14px; \
-    color: var(--text-muted); \
+    color: #555; \
     font-size: 14px; \
     font-family: inherit; \
     resize: none; \
@@ -46,8 +46,8 @@ const TEXTAREA_DISABLED_STYLE: &str = "\
 ";
 
 const SEND_BTN_STYLE: &str = "\
-    background: var(--accent); \
-    color: var(--text-inverse); \
+    background: #4a4aff; \
+    color: white; \
     border: none; \
     border-radius: 8px; \
     padding: 10px 20px; \
@@ -57,8 +57,8 @@ const SEND_BTN_STYLE: &str = "\
 ";
 
 const SEND_BTN_DISABLED: &str = "\
-    background: var(--bg-surface-bright); \
-    color: var(--text-muted); \
+    background: #333; \
+    color: #666; \
     border: none; \
     border-radius: 8px; \
     padding: 10px 20px; \
@@ -68,8 +68,8 @@ const SEND_BTN_DISABLED: &str = "\
 ";
 
 const ABORT_BTN_STYLE: &str = "\
-    background: var(--status-error); \
-    color: var(--text-inverse); \
+    background: #ef4444; \
+    color: white; \
     border: none; \
     border-radius: 8px; \
     padding: 10px 20px; \

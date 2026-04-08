@@ -11,8 +11,6 @@ pub(crate) mod error;
 pub mod listener;
 /// Prometheus metric definitions for channel messaging.
 pub mod metrics;
-/// Matrix channel provider: E2E encrypted messaging via conduwuit homeserver.
-pub mod matrix;
 /// Channel registry: the single source of truth for available channel providers.
 pub mod registry;
 /// Message routing: resolves inbound messages to the appropriate nous agent.

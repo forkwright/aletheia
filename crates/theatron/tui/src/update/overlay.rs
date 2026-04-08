@@ -5,16 +5,32 @@ use crate::msg::OverlayKind;
 use crate::state::{Overlay, SessionPickerOverlay};
 
 pub(crate) async fn handle_open_overlay(app: &mut App, kind: OverlayKind) {
-    app.layout.overlay = Some(match kind {
-        OverlayKind::Help => Overlay::Help,
-        OverlayKind::AgentPicker => Overlay::AgentPicker { cursor: 0 },
-        OverlayKind::SessionPicker => Overlay::SessionPicker(SessionPickerOverlay {
-            cursor: 0,
-            show_archived: false,
-        }),
-        OverlayKind::SystemStatus => Overlay::SystemStatus,
-        OverlayKind::ContextBudget => Overlay::ContextBudget,
-    });
+    match kind {
+        OverlayKind::Settings => {
+            super::settings::handle_open(app).await;
+        }
+        other => {
+            app.layout.overlay = Some(match other {
+                OverlayKind::Help => Overlay::Help,
+                OverlayKind::AgentPicker => Overlay::AgentPicker { cursor: 0 },
+                OverlayKind::SessionPicker => Overlay::SessionPicker(SessionPickerOverlay {
+                    cursor: 0,
+                    show_archived: false,
+                }),
+                OverlayKind::SessionPickerAll => Overlay::SessionPicker(SessionPickerOverlay {
+                    cursor: 0,
+                    show_archived: true,
+                }),
+                OverlayKind::SystemStatus => Overlay::SystemStatus,
+                OverlayKind::ContextBudget => Overlay::ContextBudget,
+                OverlayKind::Settings => unreachable!(),
+                OverlayKind::NotificationHistory => {
+                    app.layout.notifications.mark_all_read();
+                    Overlay::NotificationHistory { scroll: 0 }
+                }
+            });
+        }
+    }
 }
 
 pub(crate) fn handle_tool_approval_always_allow(app: &mut App) {
@@ -99,7 +115,9 @@ pub(crate) fn handle_overlay_up(app: &mut App) {
                 card.cursor = card.cursor.saturating_sub(1);
             }
         }
-
+        Some(Overlay::NotificationHistory { scroll }) => {
+            *scroll = scroll.saturating_sub(1);
+        }
         _ => {
             // NOTE: no overlay or non-navigable overlay, nothing to do
         }
@@ -138,7 +156,9 @@ pub(crate) fn handle_overlay_down(app: &mut App) {
                 card.cursor = (card.cursor + 1).min(max);
             }
         }
-
+        Some(Overlay::NotificationHistory { scroll }) => {
+            *scroll += 1;
+        }
         _ => {
             // NOTE: no overlay or non-navigable overlay, nothing to do
         }

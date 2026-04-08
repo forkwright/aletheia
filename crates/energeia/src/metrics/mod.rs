@@ -114,9 +114,8 @@ impl std::fmt::Debug for MetricsService {
 #[cfg(feature = "storage-fjall")]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
-    use tempfile::TempDir;
-
     use super::*;
+    use tempfile::TempDir;
 
     fn setup() -> (TempDir, MetricsService) {
         let dir = TempDir::new().unwrap();

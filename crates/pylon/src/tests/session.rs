@@ -2,12 +2,6 @@
     clippy::indexing_slicing,
     reason = "test: vec/JSON indices valid after asserting len or known structure"
 )]
-#![expect(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    reason = "test assertions: panics on failure produce clear test output"
-)]
-
 use std::sync::Arc;
 
 use axum::http::StatusCode;
@@ -30,7 +24,7 @@ async fn create_session_returns_201() {
 async fn get_session_returns_created_session() {
     let (router, _dir) = app().await;
     let created = create_test_session(&router).await;
-    let id = created["id"].as_str().expect("created session must have a string id");
+    let id = created["id"].as_str().unwrap();
 
     let resp = router
         .clone()
@@ -61,7 +55,7 @@ async fn get_unknown_session_returns_404() {
 async fn close_session_returns_204() {
     let (router, _dir) = app().await;
     let created = create_test_session(&router).await;
-    let id = created["id"].as_str().expect("created session must have a string id");
+    let id = created["id"].as_str().unwrap();
 
     let resp = router
         .clone()
@@ -76,7 +70,7 @@ async fn close_session_returns_204() {
 async fn get_deleted_session_returns_404() {
     let (router, _dir) = app().await;
     let created = create_test_session(&router).await;
-    let id = created["id"].as_str().expect("created session must have a string id");
+    let id = created["id"].as_str().unwrap();
 
     let del = router
         .clone()
@@ -208,7 +202,7 @@ async fn list_sessions_includes_created_session() {
         .unwrap();
 
     let body = body_json(resp).await;
-    let sessions = body["sessions"].as_array().expect("response must have a 'sessions' array");
+    let sessions = body["sessions"].as_array().unwrap();
     assert!(!sessions.is_empty());
     assert_eq!(sessions[0]["nous_id"], "syn");
 }
@@ -227,7 +221,7 @@ async fn list_sessions_filter_by_nous_id() {
         .unwrap();
 
     let body = body_json(resp).await;
-    let sessions = body["sessions"].as_array().expect("response must have a 'sessions' array");
+    let sessions = body["sessions"].as_array().unwrap();
     assert!(!sessions.is_empty());
 
     let resp2 = router
@@ -237,7 +231,7 @@ async fn list_sessions_filter_by_nous_id() {
         .unwrap();
 
     let body2 = body_json(resp2).await;
-    let sessions2 = body2["sessions"].as_array().expect("response must have a 'sessions' array");
+    let sessions2 = body2["sessions"].as_array().unwrap();
     assert!(sessions2.is_empty());
 }
 
@@ -268,7 +262,7 @@ async fn list_sessions_limit_param_returns_n_sessions() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
     assert_eq!(
-        body["sessions"].as_array().expect("response must have a 'sessions' array").len(),
+        body["sessions"].as_array().unwrap().len(),
         3,
         "limit=3 must return exactly 3 sessions"
     );
@@ -278,7 +272,7 @@ async fn list_sessions_limit_param_returns_n_sessions() {
 async fn archive_via_post_returns_204() {
     let (router, _dir) = app().await;
     let created = create_test_session(&router).await;
-    let id = created["id"].as_str().expect("created session must have a string id");
+    let id = created["id"].as_str().unwrap();
 
     let req = authed_request("POST", &format!("/api/v1/sessions/{id}/archive"), None);
     let resp = router.clone().oneshot(req).await.unwrap();
@@ -353,7 +347,7 @@ async fn send_message_to_archived_session_returns_409() {
     // NOTE: POST /api/v1/sessions/{id}/messages on an archived session must return 409 (#1250).
     let (router, _dir) = app().await;
     let created = create_test_session(&router).await;
-    let id = created["id"].as_str().expect("created session must have a string id");
+    let id = created["id"].as_str().unwrap();
 
     let del = router
         .clone()
@@ -392,7 +386,7 @@ async fn session_response_has_all_expected_fields() {
 async fn history_empty_for_new_session() {
     let (router, _dir) = app().await;
     let created = create_test_session(&router).await;
-    let id = created["id"].as_str().expect("created session must have a string id");
+    let id = created["id"].as_str().unwrap();
 
     let resp = router
         .clone()
@@ -402,7 +396,7 @@ async fn history_empty_for_new_session() {
 
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
-    assert!(body["messages"].as_array().expect("response must have a 'messages' array").is_empty());
+    assert!(body["messages"].as_array().unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -422,7 +416,7 @@ async fn history_with_limit() {
     let router = build_router(Arc::clone(&state), &test_security_config());
 
     let created = create_test_session(&router).await;
-    let id = created["id"].as_str().expect("created session must have a string id");
+    let id = created["id"].as_str().unwrap();
 
     {
         let store = state.session_store.lock().await;
@@ -449,7 +443,7 @@ async fn history_with_limit() {
         .unwrap();
 
     let body = body_json(resp).await;
-    assert_eq!(body["messages"].as_array().expect("response must have a 'messages' array").len(), 3);
+    assert_eq!(body["messages"].as_array().unwrap().len(), 3);
 }
 
 #[tokio::test]
@@ -458,7 +452,7 @@ async fn history_before_filter() {
     let router = build_router(Arc::clone(&state), &test_security_config());
 
     let created = create_test_session(&router).await;
-    let id = created["id"].as_str().expect("created session must have a string id");
+    let id = created["id"].as_str().unwrap();
 
     {
         let store = state.session_store.lock().await;
@@ -485,8 +479,8 @@ async fn history_before_filter() {
         .unwrap();
 
     let body = body_json(resp).await;
-    let messages = body["messages"].as_array().expect("response must have a 'messages' array");
-    assert!(messages.iter().all(|m| m["seq"].as_i64().expect("message must have a numeric seq field") < 3));
+    let messages = body["messages"].as_array().unwrap();
+    assert!(messages.iter().all(|m| m["seq"].as_i64().unwrap() < 3));
 }
 
 #[tokio::test]
@@ -494,7 +488,7 @@ async fn history_messages_have_expected_fields() {
     let (state, _dir) = test_state().await;
     let router = build_router(Arc::clone(&state), &test_security_config());
     let created = create_test_session(&router).await;
-    let id = created["id"].as_str().expect("created session must have a string id");
+    let id = created["id"].as_str().unwrap();
 
     {
         let store = state.session_store.lock().await;

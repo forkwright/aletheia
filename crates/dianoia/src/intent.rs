@@ -295,18 +295,14 @@ impl IntentStore {
                 path: self.path.clone(),
             })?;
         let intents: Vec<Intent> =
-            serde_json::from_str(&contents).context(error::WorkspaceDeserializeSnafu {
-                path: self.path.clone(),
-            })?;
+            serde_json::from_str(&contents).context(error::WorkspaceDeserializeSnafu)?;
         Ok(intents)
     }
 
     /// Persist the full intent list to disk atomically with 0600 permissions.
     fn persist(&self, intents: &[Intent]) -> Result<()> {
         let json =
-            serde_json::to_string_pretty(intents).context(error::WorkspaceSerializeSnafu {
-                path: self.path.clone(),
-            })?;
+            serde_json::to_string_pretty(intents).context(error::WorkspaceSerializeSnafu)?;
         aletheia_koina::fs::write_restricted(&self.path, json.as_bytes()).context(
             error::WorkspaceIoSnafu {
                 path: self.path.clone(),

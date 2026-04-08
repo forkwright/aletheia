@@ -8,7 +8,7 @@ use figment::providers::{Env, Format, Serialized, Toml};
 use snafu::ResultExt;
 use tracing::{error, warn};
 
-use aletheia_koina::disk_space::DiskStatus;
+use aletheia_koina::disk_space::{DiskSpaceMonitor, DiskStatus};
 use aletheia_koina::system::{FileSystem, RealSystem};
 
 use crate::config::AletheiaConfig;
@@ -98,20 +98,7 @@ pub fn load_config_with(oikos: &Oikos, fs: &impl FileSystem) -> Result<AletheiaC
 
     figment = figment.merge(Env::prefixed("ALETHEIA_").split("__"));
 
-    // WHY: fall back to defaults if config parsing fails, rather than
-    // refusing to start. A typo in an optional section shouldn't prevent
-    // the server from booting (#2727). The error is logged at error level
-    // so the operator is alerted.
-    match figment.extract() {
-        Ok(config) => Ok(config),
-        Err(figment_err) => {
-            tracing::error!(
-                error = %figment_err,
-                "config parsing failed — falling back to defaults. Fix aletheia.toml to apply your settings."
-            );
-            Ok(AletheiaConfig::default())
-        }
-    }
+    figment.extract().context(FigmentSnafu)
 }
 
 /// Parse TOML content, decrypt any `enc:` values, and serialize back.
@@ -222,10 +209,10 @@ pub fn write_config(oikos: &Oikos, config: &AletheiaConfig) -> Result<()> {
 pub(crate) fn write_config_checked(
     oikos: &Oikos,
     config: &AletheiaConfig,
-    disk_status: Option<DiskStatus>,
+    disk_monitor: Option<&DiskSpaceMonitor>,
 ) -> Result<()> {
-    if let Some(status) = disk_status {
-        match status {
+    if let Some(monitor) = disk_monitor {
+        match monitor.status() {
             DiskStatus::Warning { available_bytes } => {
                 let mb = available_bytes / (1024 * 1024);
                 warn!(

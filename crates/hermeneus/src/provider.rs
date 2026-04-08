@@ -77,31 +77,6 @@ pub struct ModelPricing {
     pub output_cost_per_mtok: f64,
 }
 
-/// Retry and backoff settings for provider operations.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(default)]
-pub struct RetrySettings {
-    /// Maximum retry attempts for transient failures.
-    pub max_retries: u32,
-    /// Base backoff duration in milliseconds.
-    pub backoff_base_ms: u64,
-    /// Backoff multiplier (exponential factor).
-    pub backoff_factor: u32,
-    /// Maximum backoff duration in milliseconds.
-    pub backoff_max_ms: u64,
-}
-
-impl Default for RetrySettings {
-    fn default() -> Self {
-        Self {
-            max_retries: crate::models::DEFAULT_MAX_RETRIES,
-            backoff_base_ms: crate::models::BACKOFF_BASE_MS,
-            backoff_factor: crate::models::BACKOFF_FACTOR as u32,
-            backoff_max_ms: crate::models::BACKOFF_MAX_MS,
-        }
-    }
-}
-
 /// Configuration for provider initialization.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ProviderConfig {
@@ -114,7 +89,6 @@ pub struct ProviderConfig {
     /// Default model to use.
     pub default_model: Option<String>,
     /// Maximum retries on transient failures.
-    /// Deprecated: Use `retry_settings.max_retries` instead.
     pub max_retries: Option<u32>,
     /// Per-model pricing for cost metrics. Keyed by model name.
     #[serde(default)]
@@ -125,9 +99,6 @@ pub struct ProviderConfig {
     /// using API keys).
     #[serde(default)]
     pub cc_mimicry: Option<bool>,
-    /// Retry and backoff configuration.
-    #[serde(default)]
-    pub retry_settings: RetrySettings,
 }
 
 impl Default for ProviderConfig {
@@ -184,10 +155,9 @@ impl Default for ProviderConfig {
             api_key: None,
             base_url: None,
             default_model: Some("claude-opus-4-20250514".to_owned()),
-            max_retries: None, // Deprecated: use retry_settings
+            max_retries: Some(3),
             pricing,
             cc_mimicry: None,
-            retry_settings: RetrySettings::default(),
         }
     }
 }
