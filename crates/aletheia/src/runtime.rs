@@ -913,7 +913,18 @@ fn build_tool_registry(
             aletheia_taxis::config::SandboxEnforcementMode::Enforcing => {
                 aletheia_organon::sandbox::SandboxEnforcement::Enforcing
             }
-            _ => aletheia_organon::sandbox::SandboxEnforcement::Permissive,
+            aletheia_taxis::config::SandboxEnforcementMode::Permissive => {
+                aletheia_organon::sandbox::SandboxEnforcement::Permissive
+            }
+            // WHY: #[non_exhaustive] requires wildcard. Default to most restrictive
+            // option so new variants don't silently bypass security controls.
+            _ => {
+                tracing::warn!(
+                    mode = ?sandbox_settings.enforcement,
+                    "unknown sandbox enforcement mode, defaulting to enforcing"
+                );
+                aletheia_organon::sandbox::SandboxEnforcement::Enforcing
+            }
         },
         allowed_root: sandbox_settings.allowed_root.clone(),
         extra_read_paths: sandbox_settings.extra_read_paths.clone(),
@@ -923,10 +934,21 @@ fn build_tool_registry(
             aletheia_taxis::config::EgressPolicy::Deny => {
                 aletheia_organon::sandbox::EgressPolicy::Deny
             }
+            aletheia_taxis::config::EgressPolicy::Allow => {
+                aletheia_organon::sandbox::EgressPolicy::Allow
+            }
             aletheia_taxis::config::EgressPolicy::Allowlist => {
                 aletheia_organon::sandbox::EgressPolicy::Allowlist
             }
-            _ => aletheia_organon::sandbox::EgressPolicy::Allow,
+            // WHY: #[non_exhaustive] requires wildcard. Default to most restrictive
+            // option so new variants don't silently permit unrestricted egress.
+            _ => {
+                tracing::warn!(
+                    policy = ?sandbox_settings.egress,
+                    "unknown egress policy, defaulting to deny"
+                );
+                aletheia_organon::sandbox::EgressPolicy::Deny
+            }
         },
         egress_allowlist: sandbox_settings.egress_allowlist.clone(),
         nproc_limit: sandbox_settings.nproc_limit,
