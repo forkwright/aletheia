@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use super::*;
 
 #[test]
@@ -180,7 +182,7 @@ async fn assemble_context_populates_pipeline() {
 
     let oikos = Oikos::from_root(root);
     let nous_config = NousConfig {
-        id: "test-agent".to_owned(),
+        id: Arc::from("test-agent"),
         ..NousConfig::default()
     };
     let pipeline_config = PipelineConfig::default();
@@ -237,7 +239,7 @@ async fn run_pipeline_simple() {
 
     let oikos = Oikos::from_root(root);
     let nous_config = NousConfig {
-        id: "test-agent".to_owned(),
+        id: Arc::from("test-agent"),
         generation: crate::config::NousGenerationConfig {
             model: "test-model".to_owned(),
             ..crate::config::NousGenerationConfig::default()
@@ -324,7 +326,7 @@ async fn assemble_context_missing_soul_returns_error() {
 
     let oikos = Oikos::from_root(root);
     let config = crate::config::NousConfig {
-        id: "test-agent".to_owned(),
+        id: Arc::from("test-agent"),
         ..crate::config::NousConfig::default()
     };
     let pipeline_config = crate::config::PipelineConfig::default();

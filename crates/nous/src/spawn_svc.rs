@@ -85,7 +85,7 @@ impl SpawnService for SpawnServiceImpl {
         let session_key = format!("spawn:{}", aletheia_koina::ulid::Ulid::new().to_string().to_lowercase());
 
         let config = NousConfig {
-            id: spawn_id.clone(),
+            id: Arc::from(spawn_id.as_str()),
             name: None,
             generation: crate::config::NousGenerationConfig {
                 model,

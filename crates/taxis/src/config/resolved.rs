@@ -53,7 +53,7 @@ pub struct AgentCapabilities {
 #[derive(Debug, Clone)]
 pub struct ResolvedNousConfig {
     /// Agent identifier.
-    pub id: String,
+    pub id: Arc<str>,
     /// Human-readable display name (from the agent definition, if set).
     pub name: Option<String>,
     /// Resolved model selection.
@@ -150,7 +150,7 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
     };
 
     ResolvedNousConfig {
-        id: nous_id.to_owned(),
+        id: Arc::from(nous_id),
         name,
         model: ResolvedModelConfig {
             primary: model,

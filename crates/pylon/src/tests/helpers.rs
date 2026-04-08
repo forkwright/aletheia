@@ -127,7 +127,7 @@ bind = "localhost"
     );
 
     let nous_config = NousConfig {
-        id: "syn".to_owned(),
+        id: Arc::from("syn"),
         generation: aletheia_nous::config::NousGenerationConfig {
             model: "mock-model".to_owned(),
             ..Default::default()

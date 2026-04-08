@@ -243,7 +243,7 @@ fn resolve_uses_defaults_for_unknown_agent() {
     let config = AletheiaConfig::default();
     let resolved = resolve_nous(&config, "unknown-agent");
     assert_eq!(
-        resolved.id, "unknown-agent",
+        resolved.id.as_ref(), "unknown-agent",
         "resolved id should match requested agent id"
     );
     assert_eq!(

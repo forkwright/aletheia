@@ -6,6 +6,8 @@
 //! 3. Persists the assistant's response
 //! 4. Records token usage
 
+use std::sync::Arc;
+
 use snafu::ResultExt;
 use tracing::{debug, instrument, warn};
 use aletheia_koina::ulid::Ulid;
@@ -225,7 +227,7 @@ mod tests {
             .create_session("ses-1", "test-nous", "main", None, Some("test-model"))
             .expect("create session");
         let config = NousConfig {
-            id: "test-nous".to_owned(),
+            id: Arc::from("test-nous"),
             generation: crate::config::NousGenerationConfig {
                 model: "test-model".to_owned(),
                 ..crate::config::NousGenerationConfig::default()
@@ -347,7 +349,7 @@ mod tests {
         let store = SessionStore::open_in_memory().expect("in-memory store");
         // WHY: Do NOT call store.create_session: the actor wouldn't have done so.
         let config_nous = NousConfig {
-            id: "test-nous".to_owned(),
+            id: Arc::from("test-nous"),
             generation: crate::config::NousGenerationConfig {
                 model: "test-model".to_owned(),
                 ..crate::config::NousGenerationConfig::default()
@@ -442,7 +444,7 @@ mod tests {
         // WHY: Actor's SessionState must use the SAME ID as the database.
         // Before the fix, the actor would generate a different ULID here.
         let config = NousConfig {
-            id: "test-nous".to_owned(),
+            id: Arc::from("test-nous"),
             generation: crate::config::NousGenerationConfig {
                 model: "test-model".to_owned(),
                 ..crate::config::NousGenerationConfig::default()
@@ -482,7 +484,7 @@ mod tests {
 
         // NOTE: Actor would have generated a DIFFERENT ID (before the fix)
         let config = NousConfig {
-            id: "test-nous".to_owned(),
+            id: Arc::from("test-nous"),
             generation: crate::config::NousGenerationConfig {
                 model: "test-model".to_owned(),
                 ..crate::config::NousGenerationConfig::default()

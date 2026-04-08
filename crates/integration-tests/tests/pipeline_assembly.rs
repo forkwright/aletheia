@@ -88,7 +88,7 @@ fn turn_result_with_tool_calls() {
 #[test]
 fn session_state_flows_through_pipeline() {
     let config = NousConfig {
-        id: "syn".to_owned(),
+        id: Arc::from("syn"),
         ..NousConfig::default()
     };
     let mgr = SessionManager::new(config);

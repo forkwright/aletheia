@@ -172,7 +172,7 @@ priority = "important"
     );
 
     let config = NousConfig {
-        id: "test-agent".to_owned(),
+        id: Arc::from("test-agent"),
         generation: aletheia_nous::config::NousGenerationConfig {
             model: "mock-model".to_owned(),
             ..Default::default()
@@ -324,7 +324,7 @@ domains = ["healthcare"]
     );
 
     let analyst_config = NousConfig {
-        id: "analyst".to_owned(),
+        id: Arc::from("analyst"),
         generation: aletheia_nous::config::NousGenerationConfig {
             model: "mock-model".to_owned(),
             ..Default::default()
@@ -361,7 +361,7 @@ domains = ["healthcare"]
     );
 
     let hermes_config = NousConfig {
-        id: "hermes".to_owned(),
+        id: Arc::from("hermes"),
         generation: aletheia_nous::config::NousGenerationConfig {
             model: "mock-model".to_owned(),
             ..Default::default()
