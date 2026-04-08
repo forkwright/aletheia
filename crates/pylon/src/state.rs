@@ -83,6 +83,8 @@ pub struct HealthState {
     pub start_time: std::time::Instant,
     /// Instance directory layout for path reporting.
     pub oikos: Arc<Oikos>,
+    /// Runtime configuration for config readability checks.
+    pub config: Arc<tokio::sync::RwLock<AletheiaConfig>>,
 }
 
 impl FromRef<Arc<AppState>> for HealthState {
@@ -93,6 +95,7 @@ impl FromRef<Arc<AppState>> for HealthState {
             nous_manager: Arc::clone(&state.nous_manager),
             start_time: state.start_time,
             oikos: Arc::clone(&state.oikos),
+            config: Arc::clone(&state.config),
         }
     }
 }
