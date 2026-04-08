@@ -275,6 +275,9 @@ RUST/expect:crates/organon/src/builtins/planning_tests_mock.rs
 RUST/expect:crates/theatron/tui/src/app/test_helpers.rs
 RUST/expect:crates/mneme/src/lib.rs
 
+# -- False positive: ".unwrap()" is a pattern string for anti-pattern detection, not actual unwrap
+RUST/unwrap:crates/energeia/src/qa/mechanical.rs
+
 # -- Also suppress .unwrap() and indexing in the same test files:
 RUST/unwrap:crates/episteme/src/**/*_tests.rs
 RUST/unwrap:crates/episteme/src/**/*_tests/*.rs

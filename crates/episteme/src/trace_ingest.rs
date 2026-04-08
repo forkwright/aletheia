@@ -26,7 +26,11 @@
 //! gated on the `mneme-engine` feature; without it the buffer still fills but
 //! flushes are no-ops.
 
-use std::sync::Mutex;
+// WHY: std::sync::Mutex is correct here — all methods using this lock are synchronous.
+// `on_event()` is a synchronous tracing Layer callback; `drain()` and `pending()` are
+// synchronous public APIs. The lock is never held across an .await point.
+// Using parking_lot::Mutex for better performance (no poisoning, faster paths).
+use parking_lot::Mutex;
 
 use tracing::field::{Field, Visit};
 use tracing::{Event, Subscriber};
@@ -230,8 +234,7 @@ impl TraceIngestLayer {
     pub fn drain(&self) -> Vec<TraceEvent> {
         let mut buf = self
             .buffer
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+            .lock();
         std::mem::take(&mut *buf)
     }
 
@@ -239,7 +242,6 @@ impl TraceIngestLayer {
     pub fn pending(&self) -> usize {
         self.buffer
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .len()
     }
 
@@ -425,8 +427,7 @@ where
 
         let mut buf = self
             .buffer
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+            .lock();
         buf.push(captured);
     }
 }
@@ -442,8 +443,7 @@ mod tests {
     fn push_event(layer: &TraceIngestLayer, event: TraceEvent) {
         let mut buf = layer
             .buffer
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+            .lock();
         buf.push(event);
     }
 
