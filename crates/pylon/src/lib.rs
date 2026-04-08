@@ -33,7 +33,8 @@ mod tests;
 
 #[cfg(test)]
 mod assertions {
-    use static_assertions::assert_impl_all;
-
-    assert_impl_all!(super::state::AppState: Send, Sync);
+    const _: fn() = || {
+        fn assert<T: Send + Sync>() {}
+        assert::<super::state::AppState>();
+    };
 }

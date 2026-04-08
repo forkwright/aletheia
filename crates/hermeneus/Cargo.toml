@@ -41,6 +41,5 @@ test-full = []
 
 [dev-dependencies]
 proptest = { workspace = true }
-static_assertions = { workspace = true }
 tokio = { workspace = true }
 wiremock = { workspace = true }

@@ -479,6 +479,9 @@ mod tests {
 
     #[test]
     fn handle_send_sync() {
-        static_assertions::assert_impl_all!(NousHandle: Send, Sync, Clone);
+        const _: fn() = || {
+            fn assert<T: Send + Sync + Clone>() {}
+            assert::<NousHandle>();
+        };
     }
 }

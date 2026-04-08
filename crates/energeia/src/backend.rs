@@ -65,9 +65,7 @@ pub trait DispatchBackend: Send + Sync {
     ) -> Pin<Box<dyn Future<Output = Result<StewardResult>> + Send + 'a>>;
 
     /// Query current dispatch state: active sessions, queue depth, recent outcomes.
-    fn status<'a>(
-        &'a self,
-    ) -> Pin<Box<dyn Future<Output = Result<StatusDashboard>> + Send + 'a>>;
+    fn status<'a>(&'a self) -> Pin<Box<dyn Future<Output = Result<StatusDashboard>> + Send + 'a>>;
 
     /// Pipeline health metrics: session success rate, cost trends, latency.
     fn health<'a>(
@@ -137,9 +135,7 @@ impl DispatchBackend for EnergeiaBackend {
         })
     }
 
-    fn status<'a>(
-        &'a self,
-    ) -> Pin<Box<dyn Future<Output = Result<StatusDashboard>> + Send + 'a>> {
+    fn status<'a>(&'a self) -> Pin<Box<dyn Future<Output = Result<StatusDashboard>> + Send + 'a>> {
         Box::pin(async move { self.metrics.status_dashboard() })
     }
 
@@ -165,5 +161,5 @@ mod tests {
     // WHY: compile-time check that DispatchBackend is object-safe.
     // This ensures it can be used as `dyn DispatchBackend` for runtime
     // backend selection via config/feature-flag.
-    static_assertions::assert_obj_safe!(DispatchBackend);
+    const _: Option<&dyn DispatchBackend> = None;
 }

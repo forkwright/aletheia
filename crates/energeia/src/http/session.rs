@@ -143,6 +143,9 @@ mod tests {
 
     #[test]
     fn process_session_handle_is_send() {
-        static_assertions::assert_impl_all!(ProcessSessionHandle: Send);
+        const _: fn() = || {
+            fn assert<T: Send>() {}
+            assert::<ProcessSessionHandle>();
+        };
     }
 }

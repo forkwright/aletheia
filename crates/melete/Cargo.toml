@@ -29,6 +29,5 @@ jiff = { workspace = true }
 
 [dev-dependencies]
 aletheia-hermeneus = { path = "../hermeneus", features = ["test-utils"] }
-static_assertions = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["full", "test-util"] }

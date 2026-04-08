@@ -30,4 +30,3 @@ supports-color = "3"
 [dev-dependencies]
 aletheia-organon = { path = "../organon", features = ["test-support"] }
 wiremock = { workspace = true }
-static_assertions = { workspace = true }

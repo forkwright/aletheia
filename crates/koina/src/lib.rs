@@ -13,10 +13,10 @@ pub mod credential;
 pub mod defaults;
 /// Disk space monitoring: threshold checks, cached monitor, write guards.
 pub mod disk_space;
-/// Error classification for intelligent retry and escalation decisions.
-pub mod error_class;
 /// Error types shared across all Aletheia crates (file I/O, JSON, identifiers).
 pub mod error;
+/// Error classification for intelligent retry and escalation decisions.
+pub mod error_class;
 /// Internal event system coupling metrics and structured logs.
 pub mod event;
 /// Restricted filesystem helpers for writing sensitive files.
@@ -44,12 +44,13 @@ pub mod ulid;
 
 #[cfg(test)]
 mod assertions {
-    use static_assertions::assert_impl_all;
-
     use super::id::*;
 
-    assert_impl_all!(NousId: Send, Sync);
-    assert_impl_all!(SessionId: Send, Sync);
-    assert_impl_all!(TurnId: Send, Sync);
-    assert_impl_all!(ToolName: Send, Sync);
+    const _: fn() = || {
+        fn assert<T: Send + Sync>() {}
+        assert::<NousId>();
+        assert::<SessionId>();
+        assert::<TurnId>();
+        assert::<ToolName>();
+    };
 }

@@ -45,9 +45,10 @@ pub mod types;
 
 #[cfg(all(test, feature = "sqlite"))]
 mod assertions {
-    use static_assertions::assert_impl_all;
-
     use super::store::SessionStore;
 
-    assert_impl_all!(SessionStore: Send);
+    const _: fn() = || {
+        fn assert<T: Send>() {}
+        assert::<SessionStore>();
+    };
 }

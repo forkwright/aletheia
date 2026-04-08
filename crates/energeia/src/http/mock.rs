@@ -317,6 +317,9 @@ mod tests {
 
     #[test]
     fn mock_engine_is_send_sync() {
-        static_assertions::assert_impl_all!(MockEngine: Send, Sync);
+        const _: fn() = || {
+            fn assert<T: Send + Sync>() {}
+            assert::<MockEngine>();
+        };
     }
 }

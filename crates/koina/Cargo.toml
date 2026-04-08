@@ -31,5 +31,4 @@ tokio = { workspace = true, features = ["sync", "time"] }
 uuid = { workspace = true }
 
 [dev-dependencies]
-static_assertions = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt", "test-util"] }

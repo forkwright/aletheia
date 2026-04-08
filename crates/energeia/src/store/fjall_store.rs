@@ -961,6 +961,9 @@ mod tests {
 
     #[test]
     fn store_is_send_sync() {
-        static_assertions::assert_impl_all!(EnergeiaStore: Send, Sync);
+        const _: fn() = || {
+            fn assert<T: Send + Sync>() {}
+            assert::<EnergeiaStore>();
+        };
     }
 }

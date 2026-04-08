@@ -51,5 +51,4 @@ aletheia-mneme = { path = "../mneme", features = ["sqlite"] }
 aletheia-symbolon = { path = "../symbolon" }
 
 [dev-dependencies]
-static_assertions = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }

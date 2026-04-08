@@ -22,8 +22,6 @@ pub mod types;
 
 #[cfg(test)]
 mod assertions {
-    use static_assertions::assert_impl_all;
-
     use super::listener::ChannelListener;
     use super::registry::ChannelRegistry;
     use super::router::MessageRouter;
@@ -31,10 +29,14 @@ mod assertions {
     use super::semeion::client::SignalClient;
     use super::types::InboundMessage;
 
-    assert_impl_all!(ChannelRegistry: Send, Sync);
-    assert_impl_all!(ChannelListener: Send);
-    assert_impl_all!(InboundMessage: Send, Sync);
-    assert_impl_all!(MessageRouter: Send, Sync);
-    assert_impl_all!(SignalClient: Send, Sync);
-    assert_impl_all!(SignalProvider: Send, Sync);
+    const _: fn() = || {
+        fn assert_send<T: Send>() {}
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<ChannelRegistry>();
+        assert_send::<ChannelListener>();
+        assert_send_sync::<InboundMessage>();
+        assert_send_sync::<MessageRouter>();
+        assert_send_sync::<SignalClient>();
+        assert_send_sync::<SignalProvider>();
+    };
 }

@@ -314,6 +314,9 @@ mod tests {
 
     #[test]
     fn error_is_send_sync() {
-        static_assertions::assert_impl_all!(Error: Send, Sync);
+        const _: fn() = || {
+            fn assert<T: Send + Sync>() {}
+            assert::<Error>();
+        };
     }
 }

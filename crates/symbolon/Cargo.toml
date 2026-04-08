@@ -41,5 +41,4 @@ tracing = { workspace = true }
 zeroize = { workspace = true }
 
 [dev-dependencies]
-static_assertions = { workspace = true }
 tempfile = { workspace = true }

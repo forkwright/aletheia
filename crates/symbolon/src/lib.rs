@@ -31,13 +31,15 @@ pub(crate) mod util;
 
 #[cfg(test)]
 mod assertions {
-    use static_assertions::assert_impl_all;
-
     use super::auth::AuthService;
     use super::jwt::JwtManager;
     use super::store::AuthStore;
 
-    assert_impl_all!(AuthService: Send);
-    assert_impl_all!(AuthStore: Send);
-    assert_impl_all!(JwtManager: Send, Sync);
+    const _: fn() = || {
+        fn assert_send<T: Send>() {}
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send::<AuthService>();
+        assert_send::<AuthStore>();
+        assert_send_sync::<JwtManager>();
+    };
 }

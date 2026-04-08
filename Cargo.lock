@@ -68,7 +68,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia"
-version = "0.13.65"
+version = "0.13.66"
 dependencies = [
  "aletheia-agora",
  "aletheia-dianoia",
@@ -119,7 +119,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-agora"
-version = "0.13.65"
+version = "0.13.66"
 dependencies = [
  "aletheia-koina",
  "aletheia-organon",
@@ -130,7 +130,6 @@ dependencies = [
  "serde",
  "serde_json",
  "snafu",
- "static_assertions",
  "tokio",
  "tokio-util",
  "tracing",
@@ -140,7 +139,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-dianoia"
-version = "0.13.65"
+version = "0.13.66"
 dependencies = [
  "aletheia-koina",
  "jiff",
@@ -148,13 +147,12 @@ dependencies = [
  "serde",
  "serde_json",
  "snafu",
- "static_assertions",
  "tempfile",
 ]
 
 [[package]]
 name = "aletheia-diaporeia"
-version = "0.13.65"
+version = "0.13.66"
 dependencies = [
  "aletheia-koina",
  "aletheia-mneme",
@@ -170,7 +168,6 @@ dependencies = [
  "serde",
  "serde_json",
  "snafu",
- "static_assertions",
  "tokio",
  "tokio-util",
  "tracing",
@@ -178,7 +175,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-dokimion"
-version = "0.13.65"
+version = "0.13.66"
 dependencies = [
  "aletheia-koina",
  "aletheia-organon",
@@ -188,7 +185,6 @@ dependencies = [
  "serde",
  "serde_json",
  "snafu",
- "static_assertions",
  "supports-color",
  "tokio",
  "tracing",
@@ -197,7 +193,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-eidos"
-version = "0.13.65"
+version = "0.13.66"
 dependencies = [
  "jiff",
  "serde",
@@ -207,7 +203,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-energeia"
-version = "0.13.65"
+version = "0.13.66"
 dependencies = [
  "aletheia-eidos",
  "aletheia-koina",
@@ -221,7 +217,6 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "snafu",
- "static_assertions",
  "tempfile",
  "tokio",
  "tokio-util",
@@ -231,7 +226,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-episteme"
-version = "0.13.65"
+version = "0.13.66"
 dependencies = [
  "aletheia-eidos",
  "aletheia-graphe",
@@ -250,7 +245,6 @@ dependencies = [
  "serde",
  "serde_json",
  "snafu",
- "static_assertions",
  "tempfile",
  "tokenizers",
  "tokio",
@@ -262,7 +256,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-graphe"
-version = "0.13.65"
+version = "0.13.66"
 dependencies = [
  "aletheia-eidos",
  "aletheia-koina",
@@ -274,7 +268,6 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "snafu",
- "static_assertions",
  "tempfile",
  "tokio",
  "tracing",
@@ -282,7 +275,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-hermeneus"
-version = "0.13.65"
+version = "0.13.66"
 dependencies = [
  "aletheia-koina",
  "jiff",
@@ -296,7 +289,6 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "snafu",
- "static_assertions",
  "tokio",
  "tower 0.5.3",
  "tracing",
@@ -306,7 +298,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-integration-tests"
-version = "0.13.65"
+version = "0.13.66"
 dependencies = [
  "aletheia-dokimion",
  "aletheia-hermeneus",
@@ -331,7 +323,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-koina"
-version = "0.13.65"
+version = "0.13.66"
 dependencies = [
  "compact_str",
  "jiff",
@@ -341,7 +333,6 @@ dependencies = [
  "serde",
  "serde_json",
  "snafu",
- "static_assertions",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -351,7 +342,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-krites"
-version = "0.13.65"
+version = "0.13.66"
 dependencies = [
  "aho-corasick",
  "aletheia-eidos",
@@ -383,7 +374,6 @@ dependencies = [
  "sha2 0.11.0",
  "smallvec",
  "snafu",
- "static_assertions",
  "tempfile",
  "tokio",
  "tracing",
@@ -395,7 +385,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-melete"
-version = "0.13.65"
+version = "0.13.66"
 dependencies = [
  "aletheia-hermeneus",
  "aletheia-koina",
@@ -406,7 +396,6 @@ dependencies = [
  "serde",
  "serde_json",
  "snafu",
- "static_assertions",
  "tempfile",
  "tokio",
  "tracing",
@@ -414,7 +403,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-mneme"
-version = "0.13.65"
+version = "0.13.66"
 dependencies = [
  "aletheia-eidos",
  "aletheia-episteme",
@@ -433,7 +422,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-nous"
-version = "0.13.65"
+version = "0.13.66"
 dependencies = [
  "aletheia-dianoia",
  "aletheia-hermeneus",
@@ -451,7 +440,6 @@ dependencies = [
  "serde",
  "serde_json",
  "snafu",
- "static_assertions",
  "tempfile",
  "tokio",
  "tokio-util",
@@ -462,7 +450,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-oikonomos"
-version = "0.13.65"
+version = "0.13.66"
 dependencies = [
  "aletheia-episteme",
  "aletheia-koina",
@@ -476,7 +464,6 @@ dependencies = [
  "serde",
  "serde_json",
  "snafu",
- "static_assertions",
  "tempfile",
  "tokio",
  "tokio-util",
@@ -486,7 +473,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-organon"
-version = "0.13.65"
+version = "0.13.66"
 dependencies = [
  "aletheia-energeia",
  "aletheia-hermeneus",
@@ -507,7 +494,6 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "snafu",
- "static_assertions",
  "tempfile",
  "tokio",
  "tracing",
@@ -515,7 +501,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-pylon"
-version = "0.13.65"
+version = "0.13.66"
 dependencies = [
  "aletheia-hermeneus",
  "aletheia-koina",
@@ -534,7 +520,6 @@ dependencies = [
  "serde",
  "serde_json",
  "snafu",
- "static_assertions",
  "tempfile",
  "tokio",
  "tokio-stream",
@@ -548,7 +533,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-symbolon"
-version = "0.13.65"
+version = "0.13.66"
 dependencies = [
  "aes-gcm",
  "aletheia-koina",
@@ -566,7 +551,6 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "snafu",
- "static_assertions",
  "subtle",
  "tempfile",
  "tokio",
@@ -577,7 +561,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-taxis"
-version = "0.13.65"
+version = "0.13.66"
 dependencies = [
  "aletheia-koina",
  "aletheia-mneme",
@@ -596,14 +580,14 @@ dependencies = [
 
 [[package]]
 name = "aletheia-theatron"
-version = "0.13.65"
+version = "0.13.66"
 dependencies = [
  "theatron-core",
 ]
 
 [[package]]
 name = "aletheia-thesauros"
-version = "0.13.65"
+version = "0.13.66"
 dependencies = [
  "aletheia-koina",
  "aletheia-organon",
@@ -6228,7 +6212,7 @@ dependencies = [
 
 [[package]]
 name = "theatron-core"
-version = "0.13.65"
+version = "0.13.66"
 dependencies = [
  "aletheia-koina",
  "bytes",
@@ -6247,7 +6231,7 @@ dependencies = [
 
 [[package]]
 name = "theatron-tui"
-version = "0.13.65"
+version = "0.13.66"
 dependencies = [
  "aletheia-koina",
  "arboard",

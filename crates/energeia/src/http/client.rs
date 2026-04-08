@@ -403,6 +403,9 @@ mod tests {
 
     #[test]
     fn http_engine_is_send_sync() {
-        static_assertions::assert_impl_all!(HttpEngine: Send, Sync);
+        const _: fn() = || {
+            fn assert<T: Send + Sync>() {}
+            assert::<HttpEngine>();
+        };
     }
 }
