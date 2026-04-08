@@ -324,7 +324,6 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::ShowError(msg) => api::handle_show_error(app, msg),
 
         Msg::EditorClose => editor::handle_close(app),
-        Msg::EditorClose => editor::handle_close(app),
         Msg::EditorCharInput(c) => editor::handle_char_input(app, c),
         Msg::EditorNewline => editor::handle_newline(app),
         Msg::EditorBackspace => editor::handle_backspace(app),
