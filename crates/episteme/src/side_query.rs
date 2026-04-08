@@ -241,7 +241,6 @@ impl SideQuerySelector {
             });
         }
 
-        
         let filtered = self.filter_surfaced(manifest);
         if filtered.is_empty() {
             debug!("all manifest entries already surfaced");
@@ -254,7 +253,6 @@ impl SideQuerySelector {
         let manifest_text = filtered.format();
         let cache_key = compute_cache_key(query, &manifest_text);
 
-        
         {
             let mut cache = self
                 .cache

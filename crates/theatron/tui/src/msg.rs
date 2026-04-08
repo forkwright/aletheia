@@ -263,7 +263,6 @@ pub enum Msg {
     EditorModalCancel,
     EditorRefreshTree,
 
-
     ShowError(String),
 
     /// Cancel the active LLM turn immediately (Esc / Ctrl+C during streaming).
@@ -323,14 +322,6 @@ pub enum Msg {
         )
     )]
     MetricsHealthLoaded(bool),
-
-
-
-
-
-
-
-
 
     Tick,
 }
@@ -411,8 +402,6 @@ impl ErrorToast {
         self.created_at.elapsed() > std::time::Duration::from_secs(5)
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {

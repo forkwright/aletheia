@@ -3,7 +3,6 @@
 use std::fmt;
 use std::path::Path;
 
-
 const BYTES_PER_MB: u64 = 1024 * 1024;
 
 /// Default warning threshold: 1 GB.
