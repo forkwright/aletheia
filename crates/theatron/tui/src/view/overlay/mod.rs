@@ -106,6 +106,10 @@ const HELP_OVERLAY_MARGIN: u16 = 4; // 2 chars each side
 /// Width reserved for the key column in the help overlay.
 const HELP_KEY_COLUMN_WIDTH: usize = 13;
 
+#[expect(
+    clippy::string_slice,
+    reason = "desc_max_width < description.len() checked before slicing"
+)]
 fn render_help(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let key_style = Style::default()
         .fg(theme.colors.accent)

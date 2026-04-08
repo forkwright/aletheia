@@ -257,7 +257,8 @@ impl Orchestrator {
                 let blast_radius = if outcome.blast_radius.is_empty() {
                     "unknown"
                 } else {
-                    // Use first blast radius for Prometheus (or could join them)
+                    // SAFETY: blast_radius checked non-empty above
+                    #[expect(clippy::indexing_slicing, reason = "blast_radius checked non-empty at line above")]
                     outcome.blast_radius[0].as_str()
                 };
 

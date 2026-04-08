@@ -217,8 +217,11 @@ impl DriftDetector {
             return None;
         }
 
-        let baseline_slice = &values[..baseline_end]; // kanon:ignore RUST/indexing-slicing
-        let recent_slice = &values[baseline_end..]; // kanon:ignore RUST/indexing-slicing
+        // SAFETY: baseline_end > 0 checked above, and baseline_end <= n
+        #[expect(clippy::indexing_slicing, reason = "baseline_end > 0 and <= values.len()")]
+        let baseline_slice = &values[..baseline_end];
+        #[expect(clippy::indexing_slicing, reason = "baseline_end <= values.len()")]
+        let recent_slice = &values[baseline_end..];
 
         let (baseline, std_dev) = mean_and_stddev(baseline_slice);
         let recent = slice_mean(recent_slice);

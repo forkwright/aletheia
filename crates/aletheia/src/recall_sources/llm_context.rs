@@ -128,6 +128,8 @@ fn extract_context_size_k(query: &str) -> Option<u64> {
             }
             // WHY: Check for 'k' suffix immediately after digits.
             if i < bytes.len() && (bytes[i] == b'k' || bytes[i] == b'K') {
+                // SAFETY: start and i are bounds-checked above (start <= i < bytes.len())
+                #[expect(clippy::string_slice, reason = "bounds verified: start <= i < bytes.len()")]
                 if let Ok(n) = query[start..i].parse::<u64>() {
                     return Some(n);
                 }
