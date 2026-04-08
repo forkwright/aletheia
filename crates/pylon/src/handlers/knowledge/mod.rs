@@ -36,10 +36,10 @@ pub struct FactsQuery {
     pub tier: Option<String>,
     /// Maximum results to return.
     #[serde(default = "default_limit")]
-    pub limit: usize,
+    pub limit: u32,
     /// Offset for pagination.
     #[serde(default)]
-    pub offset: usize,
+    pub offset: u32,
     /// Include forgotten facts.
     #[serde(default)]
     pub include_forgotten: bool,
@@ -66,9 +66,9 @@ const VALID_SORT_FIELDS: &[&str] = &[
 const VALID_ORDER_VALUES: &[&str] = &["asc", "desc"];
 
 /// Hard upper bound on the `limit` query parameter for all knowledge endpoints.
-const MAX_FACTS_LIMIT: usize = 1000;
+const MAX_FACTS_LIMIT: u32 = 1000;
 
-fn default_limit() -> usize {
+fn default_limit() -> u32 {
     100
 }
 
@@ -139,15 +139,15 @@ pub struct SearchQuery {
     #[serde(default)]
     pub nous_id: Option<String>,
     #[serde(default = "default_search_limit")]
-    pub limit: usize,
+    pub limit: u32,
 }
 
-fn default_search_limit() -> usize {
+fn default_search_limit() -> u32 {
     20
 }
 
 /// Hard upper bound on the `limit` query parameter for search.
-const MAX_SEARCH_LIMIT: usize = 1000;
+const MAX_SEARCH_LIMIT: u32 = 1000;
 
 /// Search result item.
 #[derive(Debug, Serialize)]
@@ -261,8 +261,8 @@ fn validate_sort_order(sort: &str, order: &str) -> Result<(), ApiError> {
         ("filter" = Option<String>, Query, description = "Text filter"),
         ("fact_type" = Option<String>, Query, description = "Fact type filter: knowledge, preference, skill, observation, etc."),
         ("tier" = Option<String>, Query, description = "Epistemic tier: verified, inferred, assumed"),
-        ("limit" = Option<usize>, Query, description = "Maximum results (default: 100, max: 1000)"),
-        ("offset" = Option<usize>, Query, description = "Pagination offset"),
+        ("limit" = Option<u32>, Query, description = "Maximum results (default: 100, max: 1000)"),
+        ("offset" = Option<u32>, Query, description = "Pagination offset"),
         ("include_forgotten" = Option<bool>, Query, description = "Include forgotten facts (default: false)"),
     ),
     responses(
@@ -320,8 +320,8 @@ pub async fn list_facts(
 
     sort_facts(&mut facts, &query.sort, &query.order);
 
-    let start = query.offset.min(facts.len());
-    let end = (start + query.limit).min(facts.len());
+    let start = (query.offset as usize).min(facts.len());
+    let end = (start + (query.limit as usize)).min(facts.len());
     // start and end are both bounded by facts.len() via .min()
     #[expect(
         clippy::indexing_slicing,
