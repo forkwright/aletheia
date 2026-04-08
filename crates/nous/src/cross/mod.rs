@@ -207,12 +207,16 @@ mod tests {
 
     #[test]
     fn send_sync_assertions() {
-        static_assertions::assert_impl_all!(CrossNousRouter: Send, Sync);
-        static_assertions::assert_impl_all!(CrossNousMessage: Send, Sync);
-        static_assertions::assert_impl_all!(CrossNousReply: Send, Sync);
-        static_assertions::assert_impl_all!(DeliveryState: Send, Sync);
-        static_assertions::assert_impl_all!(DeliveryEntry: Send, Sync);
-        static_assertions::assert_impl_all!(DeliveryLog: Send);
+        const _: fn() = || {
+            fn assert_send_sync<T: Send + Sync>() {}
+            fn assert_send<T: Send>() {}
+            assert_send_sync::<CrossNousRouter>();
+            assert_send_sync::<CrossNousMessage>();
+            assert_send_sync::<CrossNousReply>();
+            assert_send_sync::<DeliveryState>();
+            assert_send_sync::<DeliveryEntry>();
+            assert_send::<DeliveryLog>();
+        };
     }
 
     #[tokio::test]

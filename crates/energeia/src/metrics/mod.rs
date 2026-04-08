@@ -158,7 +158,10 @@ mod tests {
 
     #[test]
     fn service_is_send_sync() {
-        static_assertions::assert_impl_all!(MetricsService: Send, Sync);
+        const _: fn() = || {
+            fn assert<T: Send + Sync>() {}
+            assert::<MetricsService>();
+        };
     }
 
     #[test]

@@ -55,7 +55,6 @@ indexmap = { workspace = true }
 proptest = { workspace = true }
 rustls = { workspace = true }
 snafu = { workspace = true }
-static_assertions = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true }
 

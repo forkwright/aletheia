@@ -110,6 +110,9 @@ mod tests {
 
     #[test]
     fn mcp_claims_is_send_sync() {
-        static_assertions::assert_impl_all!(McpClaims: Send, Sync, Clone);
+        const _: fn() = || {
+            fn assert<T: Send + Sync + Clone>() {}
+            assert::<McpClaims>();
+        };
     }
 }

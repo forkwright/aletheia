@@ -126,6 +126,9 @@ mod tests {
 
     #[test]
     fn server_send_sync() {
-        static_assertions::assert_impl_all!(DiaporeiaServer: Send, Sync);
+        const _: fn() = || {
+            fn assert<T: Send + Sync>() {}
+            assert::<DiaporeiaServer>();
+        };
     }
 }

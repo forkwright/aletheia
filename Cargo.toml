@@ -179,7 +179,6 @@ rand = "0.9"
 
 # Testing
 proptest = "1"
-static_assertions = "1.1"
 tempfile = "3"
 wiremock = "0.6"
 

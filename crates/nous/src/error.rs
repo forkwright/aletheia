@@ -333,9 +333,7 @@ impl aletheia_koina::error_class::Classifiable for Error {
                 user_message: format!("Request rejected: {reason}"),
             },
             Error::LoopDetected { pattern, .. } => ErrorAction::Surface {
-                user_message: format!(
-                    "Loop detected ({pattern}) — please rephrase your request."
-                ),
+                user_message: format!("Loop detected ({pattern}) — please rephrase your request."),
             },
             Error::NousNotFound { nous_id, .. } => ErrorAction::Surface {
                 user_message: format!("Agent '{nous_id}' not found."),
@@ -572,6 +570,9 @@ mod tests {
 
     #[test]
     fn error_is_send_sync() {
-        static_assertions::assert_impl_all!(Error: Send, Sync);
+        const _: fn() = || {
+            fn assert<T: Send + Sync>() {}
+            assert::<Error>();
+        };
     }
 }

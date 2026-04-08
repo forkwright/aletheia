@@ -386,7 +386,10 @@ mod tests {
 
     #[test]
     fn api_error_is_send_sync() {
-        static_assertions::assert_impl_all!(ApiError: Send, Sync);
+        const _: fn() = || {
+            fn assert<T: Send + Sync>() {}
+            assert::<ApiError>();
+        };
     }
 
     /// Helper: extract the `message` field from an `ErrorResponse` JSON body.

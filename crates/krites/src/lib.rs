@@ -452,10 +452,12 @@ impl TestMultiTx {
 
 #[cfg(test)]
 mod safety_assertions {
-    use static_assertions::assert_impl_all;
-    assert_impl_all!(crate::runtime::db::Db<crate::storage::mem::MemStorage>: Send, Sync);
-    #[cfg(feature = "storage-fjall")]
-    assert_impl_all!(crate::runtime::db::Db<crate::storage::fjall_backend::FjallStorage>: Send, Sync);
+    const _: fn() = || {
+        fn assert<T: Send + Sync>() {}
+        assert::<crate::runtime::db::Db<crate::storage::mem::MemStorage>>();
+        #[cfg(feature = "storage-fjall")]
+        assert::<crate::runtime::db::Db<crate::storage::fjall_backend::FjallStorage>>();
+    };
 }
 
 #[cfg(test)]

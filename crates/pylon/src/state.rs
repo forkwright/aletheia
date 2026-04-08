@@ -206,18 +206,22 @@ impl FromRef<Arc<AppState>> for KnowledgeState {
 }
 
 #[cfg(test)]
-static_assertions::assert_impl_all!(AppState: Send, Sync);
+const _: fn() = || {
+    fn assert<T: Send + Sync>() {}
+    assert::<AppState>();
+};
 
 #[cfg(test)]
 mod tests {
-    use static_assertions::assert_impl_all;
-
     use super::*;
 
-    assert_impl_all!(HealthState: Send, Sync, Clone);
-    assert_impl_all!(MetricsState: Send, Sync, Clone);
-    assert_impl_all!(NousState: Send, Sync, Clone);
-    assert_impl_all!(ConfigState: Send, Sync, Clone);
-    assert_impl_all!(SessionsState: Send, Sync, Clone);
-    assert_impl_all!(KnowledgeState: Send, Sync, Clone);
+    const _: fn() = || {
+        fn assert<T: Send + Sync + Clone>() {}
+        assert::<HealthState>();
+        assert::<MetricsState>();
+        assert::<NousState>();
+        assert::<ConfigState>();
+        assert::<SessionsState>();
+        assert::<KnowledgeState>();
+    };
 }

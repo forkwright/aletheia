@@ -25,20 +25,21 @@ mod roundtrip_tests;
 
 #[cfg(test)]
 mod assertions {
-    use static_assertions::assert_impl_all;
-
     use super::contradiction::{Contradiction, ContradictionLog};
     use super::distill::{DistillConfig, DistillEngine, DistillResult, DistillSection};
     use super::flush::{FlushItem, MemoryFlush};
     use super::similarity::PruningStats;
 
-    assert_impl_all!(DistillEngine: Send, Sync);
-    assert_impl_all!(DistillResult: Send, Sync);
-    assert_impl_all!(DistillConfig: Send, Sync);
-    assert_impl_all!(DistillSection: Send, Sync);
-    assert_impl_all!(MemoryFlush: Send, Sync);
-    assert_impl_all!(FlushItem: Send, Sync);
-    assert_impl_all!(PruningStats: Send, Sync);
-    assert_impl_all!(ContradictionLog: Send, Sync);
-    assert_impl_all!(Contradiction: Send, Sync);
+    const _: fn() = || {
+        fn assert<T: Send + Sync>() {}
+        assert::<DistillEngine>();
+        assert::<DistillResult>();
+        assert::<DistillConfig>();
+        assert::<DistillSection>();
+        assert::<MemoryFlush>();
+        assert::<FlushItem>();
+        assert::<PruningStats>();
+        assert::<ContradictionLog>();
+        assert::<Contradiction>();
+    };
 }

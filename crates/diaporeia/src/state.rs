@@ -46,4 +46,7 @@ pub struct DiaporeiaState {
 }
 
 #[cfg(test)]
-static_assertions::assert_impl_all!(DiaporeiaState: Send, Sync);
+const _: fn() = || {
+    fn assert<T: Send + Sync>() {}
+    assert::<DiaporeiaState>();
+};

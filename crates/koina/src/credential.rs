@@ -65,12 +65,14 @@ impl fmt::Debug for dyn CredentialProvider {
 
 #[cfg(test)]
 mod tests {
-    use static_assertions::assert_impl_all;
-
     use super::*;
 
-    assert_impl_all!(CredentialSource: Send, Sync, Clone);
-    assert_impl_all!(Credential: Send, Sync);
+    const _: fn() = || {
+        fn assert_send_sync_clone<T: Send + Sync + Clone>() {}
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync_clone::<CredentialSource>();
+        assert_send_sync::<Credential>();
+    };
 
     #[test]
     fn source_display() {

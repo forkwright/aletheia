@@ -29,9 +29,10 @@ pub mod types;
 
 #[cfg(test)]
 mod assertions {
-    use static_assertions::assert_impl_all;
-
     use super::registry::ToolRegistry;
 
-    assert_impl_all!(ToolRegistry: Send, Sync);
+    const _: fn() = || {
+        fn assert<T: Send + Sync>() {}
+        assert::<ToolRegistry>();
+    };
 }

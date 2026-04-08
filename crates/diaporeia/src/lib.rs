@@ -34,6 +34,9 @@ pub mod transport;
 mod tests {
     #[test]
     fn error_type_is_send_sync() {
-        static_assertions::assert_impl_all!(super::error::Error: Send, Sync);
+        const _: fn() = || {
+            fn assert<T: Send + Sync>() {}
+            assert::<super::error::Error>();
+        };
     }
 }

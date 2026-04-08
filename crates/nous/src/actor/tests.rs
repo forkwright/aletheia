@@ -260,10 +260,16 @@ async fn handle_clone_works() {
 
 #[test]
 fn send_sync_assertions() {
-    static_assertions::assert_impl_all!(NousHandle: Send, Sync, Clone);
-    static_assertions::assert_impl_all!(NousMessage: Send);
-    static_assertions::assert_impl_all!(NousStatus: Send, Sync);
-    static_assertions::assert_impl_all!(NousLifecycle: Send, Sync, Copy);
+    const _: fn() = || {
+        fn assert_send_sync_clone<T: Send + Sync + Clone>() {}
+        fn assert_send<T: Send>() {}
+        fn assert_send_sync<T: Send + Sync>() {}
+        fn assert_send_sync_copy<T: Send + Sync + Copy>() {}
+        assert_send_sync_clone::<NousHandle>();
+        assert_send::<NousMessage>();
+        assert_send_sync::<NousStatus>();
+        assert_send_sync_copy::<NousLifecycle>();
+    };
 }
 
 #[test]

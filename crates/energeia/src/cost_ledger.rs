@@ -157,10 +157,8 @@ impl CostLedger {
     #[must_use]
     pub fn query_all(&self) -> Vec<(String, BlastRadiusCost)> {
         let guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-        let mut results: Vec<(String, BlastRadiusCost)> = guard
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
+        let mut results: Vec<(String, BlastRadiusCost)> =
+            guard.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
         // Sort by blast radius for deterministic output
         results.sort_by(|a, b| a.0.cmp(&b.0));
         results
@@ -233,7 +231,13 @@ mod tests {
         assert!((cost.total_cost_usd - 1.50).abs() < 0.001);
         assert_eq!(cost.total_turns, 10);
         assert_eq!(cost.session_count, 1);
-        assert_eq!(cost.cost_by_model.get("claude-3-5-sonnet").copied().unwrap(), 1.50);
+        assert_eq!(
+            cost.cost_by_model
+                .get("claude-3-5-sonnet")
+                .copied()
+                .unwrap(),
+            1.50
+        );
     }
 
     #[test]
@@ -249,7 +253,14 @@ mod tests {
         assert_eq!(cost.session_count, 3);
         assert_eq!(cost.cost_by_model.len(), 2);
         assert!(
-            (cost.cost_by_model.get("claude-3-5-sonnet").copied().unwrap() - 3.00).abs() < 0.001
+            (cost
+                .cost_by_model
+                .get("claude-3-5-sonnet")
+                .copied()
+                .unwrap()
+                - 3.00)
+                .abs()
+                < 0.001
         );
         assert!((cost.cost_by_model.get("claude-3-haiku").copied().unwrap() - 0.50).abs() < 0.001);
     }
@@ -351,12 +362,18 @@ mod tests {
 
     #[test]
     fn ledger_is_send_sync() {
-        static_assertions::assert_impl_all!(CostLedger: Send, Sync);
+        const _: fn() = || {
+            fn assert<T: Send + Sync>() {}
+            assert::<CostLedger>();
+        };
     }
 
     #[test]
     fn blast_radius_cost_is_send_sync() {
-        static_assertions::assert_impl_all!(BlastRadiusCost: Send, Sync);
+        const _: fn() = || {
+            fn assert<T: Send + Sync>() {}
+            assert::<BlastRadiusCost>();
+        };
     }
 
     #[test]
