@@ -102,8 +102,11 @@ async fn idempotency_key_in_flight_returns_409() {
     let created = create_test_session(&router).await;
     let id = created["id"].as_str().unwrap();
 
+    // WHY: The handler prefixes the idempotency key with the JWT sub claim.
+    // We must insert with the same prefix to simulate an in-flight request.
     let key = "inflight-key-001";
-    state.idempotency_cache.check_or_insert(key);
+    let prefixed_key = format!("test-user:{key}");
+    state.idempotency_cache.check_or_insert(&prefixed_key);
 
     let req = send_message_req(id, Some(key));
     let resp = router.clone().oneshot(req).await.unwrap();

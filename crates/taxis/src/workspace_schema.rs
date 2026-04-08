@@ -7,11 +7,12 @@
 //!
 //! # Example
 //!
-//! ```no_run
+//! ```ignore
 //! use std::path::Path;
 //! use aletheia_taxis::workspace_schema::{WorkspaceSchema, WorkspaceRequirement, RequirementKind};
 //!
 //! let schema = WorkspaceSchema::standard();
+//! // WHY: validate is pub(crate) — this example shows intended usage within the crate.
 //! if let Err(e) = schema.validate(Path::new("/srv/aletheia/instance/nous/main")) {
 //!     eprintln!("{e}");
 //! }
