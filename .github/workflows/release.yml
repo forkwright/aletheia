@@ -131,7 +131,23 @@ jobs:
           artifact-name: aletheia-sbom.spdx.json
           output-file: aletheia-sbom.spdx.json
 
-      - name: Attach SBOM to release
+      - name: Attach Anchore SBOM to release
         run: gh release upload "${GITHUB_REF#refs/tags/}" aletheia-sbom.spdx.json --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+
+      - name: Install cargo-cyclonedx
+        run: cargo install cargo-cyclonedx --version ^0.5 --locked
+
+      - name: Generate CycloneDX SBOM
+        run: |
+          cargo cyclonedx --all --format json
+          cp crates/aletheia/aletheia.cdx.json bom.cdx.json
+
+      - name: Attach CycloneDX SBOM to release
+        run: gh release upload "${GITHUB_REF#refs/tags/}" bom.cdx.json --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

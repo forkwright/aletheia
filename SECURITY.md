@@ -44,3 +44,25 @@ After a fix ships, we publish a GitHub Security Advisory with CVE (if warranted)
 | 0.x (latest minor) | Yes |
 | 0.x (previous minor) | Bug fixes only |
 | < current - 2 minors | No |
+
+## Software Bill of Materials (SBOM)
+
+Per basanos security requirements, every dependency must be tracked in an SBOM with component name, version, PURL, license (SPDX), and hash.
+
+### Generating SBOM locally
+
+Run the provided script to generate a CycloneDX SBOM:
+
+```bash
+./scripts/generate-sbom.sh
+```
+
+This produces `bom.cdx.json` at the workspace root.
+
+### SBOM in releases
+
+On every release, CI generates two SBOMs:
+- **SPDX format** via Anchore SBOM Action (`aletheia-sbom.spdx.json`)
+- **CycloneDX format** via cargo-cyclonedx (`bom.cdx.json`)
+
+Both are attached as release artifacts automatically.
