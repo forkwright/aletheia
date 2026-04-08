@@ -114,7 +114,9 @@ impl CredentialFile {
         }
 
         // INVARIANT: Phase 1 — write all temp files and fsync.
-        let key_tmp = if key_needs_persist {
+        // WHY: TempFileGuard ensures cleanup if the caller panics between
+        // prepare and commit. Defuse after successful commit. Closes #2745.
+        let mut key_guard = if key_needs_persist {
             Some(prepare_key_file(path, &key)?)
         } else {
             None
@@ -128,12 +130,17 @@ impl CredentialFile {
         file.sync_all()?;
 
         // INVARIANT: Phase 2 — rename both atomically. If either fails, clean up both.
-        if let Some(ref ktmp) = key_tmp
-            && let Err(e) = commit_key_file(path, ktmp)
+        if let Some(ref guard) = key_guard
+            && let Err(e) = commit_key_file(path, guard.path())
         {
-            let _ = std::fs::remove_file(ktmp);
+            // Guard's drop will clean up key tmp; manually clean cred tmp.
             let _ = std::fs::remove_file(&cred_tmp);
             return Err(e);
+        }
+
+        // Key committed successfully — defuse the guard so Drop doesn't delete
+        if let Some(ref mut guard) = key_guard {
+            guard.defuse();
         }
 
         if let Err(e) = std::fs::rename(&cred_tmp, path) {
