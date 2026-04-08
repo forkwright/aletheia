@@ -177,6 +177,7 @@ pub struct TrainingPair {
 /// Source of a training pair for debugging/provenance.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum PairSource {
     /// Facts linked by the same entity.
     EntityLinked,

@@ -82,6 +82,7 @@ impl fmt::Display for Role {
 
 /// Tool access policy for a role.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ToolPolicy {
     /// All registered tools available.
     Unrestricted,

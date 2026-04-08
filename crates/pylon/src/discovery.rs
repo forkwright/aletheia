@@ -22,6 +22,7 @@ const DISCOVERY_FILE: &str = ".discovery.json";
     missing_docs,
     reason = "snafu error variant fields are self-documenting via display format"
 )]
+#[non_exhaustive]
 pub enum DiscoveryError {
     /// Failed to serialize discovery info to JSON.
     #[snafu(display("failed to serialize discovery info: {source}"))]

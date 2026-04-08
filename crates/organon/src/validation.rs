@@ -26,6 +26,7 @@ pub struct ToolContract {
 
 /// Result of validating a tool call against its contract.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ValidationResult {
     /// The tool call is valid according to the contract.
     Valid,

@@ -27,6 +27,7 @@ use crate::v2::value::Value;
 
 /// Whether a script execution may modify stored relations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Mutability {
     /// Read-only: queries only, no writes.
     Immutable,

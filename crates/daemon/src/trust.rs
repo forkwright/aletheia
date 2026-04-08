@@ -94,6 +94,7 @@ pub enum GitOp {
 
 /// Result of a trust boundary check.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum TrustCheck {
     /// Action is permitted.
     Allowed,

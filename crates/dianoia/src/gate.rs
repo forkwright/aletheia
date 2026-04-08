@@ -38,6 +38,7 @@ impl GateCondition {
 
 /// The outcome of evaluating a [`PhaseGate`].
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum GateResult {
     /// All conditions are satisfied; the transition may proceed.
     Pass,
