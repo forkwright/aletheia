@@ -17,6 +17,7 @@ test-full = []
 
 [dependencies]
 aletheia-koina = { path = "../../koina" }
+aletheia-taxis = { path = "../../taxis" }
 theatron-core = { path = "../core" }
 
 # Core TUI — ratatui 0.30 defaults to crossterm 0.29

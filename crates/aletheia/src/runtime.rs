@@ -237,8 +237,7 @@ impl RuntimeBuilder {
             .auth
             .signing_key
             .as_ref()
-            .map(|s| s.expose_secret().to_owned())
-            .or_else(|| std::env::var("ALETHEIA_JWT_SECRET").ok());
+            .map(|s| s.expose_secret().to_owned());
         let auth_mode = self.config.gateway.auth.mode.as_str();
         let jwt_check_label = "gateway.auth JWT key";
         if matches!(auth_mode, "token" | "jwt") {
@@ -343,13 +342,8 @@ impl RuntimeBuilder {
             info!("startup validation passed");
         }
 
-        // JWT key resolution
-        let jwt_key: Option<SecretString> =
-            self.config.gateway.auth.signing_key.clone().or_else(|| {
-                std::env::var("ALETHEIA_JWT_SECRET")
-                    .ok()
-                    .map(SecretString::from)
-            });
+        // JWT key resolution (from config only; use ALETHEIA_GATEWAY__AUTH__SIGNING_KEY env var)
+        let jwt_key: Option<SecretString> = self.config.gateway.auth.signing_key.clone();
         let jwt_config = match jwt_key {
             Some(k) => JwtConfig {
                 signing_key: k,

@@ -37,6 +37,17 @@ pub struct MaintenanceSettings {
     pub watchdog: WatchdogSettings,
     /// Periodic cron task settings (evolution, reflection, graph cleanup).
     pub cron_tasks: CronTaskSettings,
+    /// Graceful shutdown timeout in seconds.
+    ///
+    /// Controls how long the server waits for in-flight requests and
+    /// background tasks to complete before forced termination.
+    /// Default: 10 seconds.
+    #[serde(default = "default_shutdown_timeout_secs")]
+    pub shutdown_timeout_secs: u64,
+}
+
+fn default_shutdown_timeout_secs() -> u64 {
+    10
 }
 
 /// Trace file rotation settings.

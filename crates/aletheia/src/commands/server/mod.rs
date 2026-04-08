@@ -164,12 +164,8 @@ pub(crate) async fn run(args: Args) -> Result<()> {
 
     info!("shutting down");
 
-    let shutdown_timeout = std::time::Duration::from_secs(
-        std::env::var("ALETHEIA_SHUTDOWN_TIMEOUT_SECS")
-            .ok()
-            .and_then(|v| v.parse::<u64>().ok())
-            .unwrap_or(10),
-    );
+    let shutdown_timeout =
+        std::time::Duration::from_secs(config.maintenance.shutdown_timeout_secs);
 
     #[cfg(unix)]
     {

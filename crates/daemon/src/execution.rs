@@ -4,6 +4,8 @@ use std::sync::Arc;
 
 use snafu::ResultExt;
 
+use aletheia_taxis::oikos::Oikos;
+
 use crate::bridge::DaemonBridge;
 use crate::cron::{evolution, graph_cleanup, reflection};
 use crate::error::{self, Result};
@@ -308,12 +310,7 @@ pub(crate) async fn execute_builtin(
         BuiltinTask::ProposeRules => {
             let data_dir = maintenance
                 .map(|m| m.propose_rules.data_dir.clone())
-                .unwrap_or_else(|| {
-                    let root = std::env::var("ALETHEIA_ROOT")
-                        .map(std::path::PathBuf::from)
-                        .unwrap_or_else(|_| std::path::PathBuf::from("instance"));
-                    root.join("data")
-                });
+                .unwrap_or_else(|| Oikos::discover().data());
             tokio::task::spawn_blocking(move || {
                 // WHY: no live observation stream is wired here yet.
                 // propose_rules operates on an empty slice, writing an empty
