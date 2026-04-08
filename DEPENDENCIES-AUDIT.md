@@ -1,6 +1,9 @@
 # Aletheia C Footprint Audit
 
-> As of v0.13.57 (April 2026). Run `cargo tree --prefix none | grep -i 'sys '` to verify.
+> As of v0.13.66 (April 2026). Run `cargo tree --prefix none | grep -i 'sys '` to verify.
+>
+> **Direct dependencies:** 25 workspace crates  
+> **Total transitive dependencies:** ~703 packages
 
 ## C Dependencies
 
@@ -72,3 +75,21 @@ chrono enters via:
 2. rmcp (transitive via schemars — not controllable)
 
 Migration requires replacing `cron` crate with jiff-native alternative.
+
+## Rand Version Reconciliation
+
+**Status:** Three versions of rand coexist in the dependency tree. The workspace uses `rand = "0.9"` as the primary version.
+
+| Version | Dependents | Upgrade Path |
+|---------|------------|--------------|
+| **rand@0.9.2** | aletheia, episteme, hermeneus, koina, krites, pylon, symbolon, taxis, candle-core, candle-transformers, hf-hub, proptest, tokenizers, twox-hash, rand_distr, float8, half | ✓ Current workspace standard |
+| **rand@0.10.0** | rmcp@1.3.0 | Blocked — rmcp requires 0.10; wait for ecosystem alignment or rmcp update |
+| **rand@0.8.5** | phf_generator@0.11.3 (transitive via multiple crates) | Indirect — requires upstream updates to phf_generator |
+
+**Impact:** Low — rand is a well-maintained crate with no known security issues across these versions. The duplication adds minor compile-time overhead but no runtime duplication (different major versions are distinct crates).
+
+**Recommendation:** Monitor rmcp for rand 0.9 compatibility. No action needed for rand 0.8.5 (phf_generator is a build-time dependency for perfect hash functions).
+
+---
+
+*Last audit: 2026-04-08*
