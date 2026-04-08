@@ -101,29 +101,103 @@ pub(crate) fn record_embedding_duration(provider: &str, duration_secs: f64) {
 mod tests {
     use super::*;
 
+    /// Read a Prometheus counter value by metric name and label values.
+    fn read_counter(name: &str, label_values: &[&str]) -> u64 {
+        let families = prometheus::default_registry().gather();
+        for family in &families {
+            if family.name() == name {
+                for metric in family.get_metric() {
+                    let labels = metric.get_label();
+                    let matches = label_values.iter().enumerate().all(|(i, expected)| {
+                        labels.get(i).map(|l| l.value() == *expected).unwrap_or(false)
+                    });
+                    if matches {
+                        return metric.get_counter().value() as u64;
+                    }
+                }
+            }
+        }
+        0
+    }
+
+    /// Read a Prometheus histogram count by metric name and label values.
+    fn read_histogram_count(name: &str, label_values: &[&str]) -> u64 {
+        let families = prometheus::default_registry().gather();
+        for family in &families {
+            if family.name() == name {
+                for metric in family.get_metric() {
+                    let labels = metric.get_label();
+                    let matches = label_values.iter().enumerate().all(|(i, expected)| {
+                        labels.get(i).map(|l| l.value() == *expected).unwrap_or(false)
+                    });
+                    if matches {
+                        return metric.get_histogram().sample_count() as u64;
+                    }
+                }
+            }
+        }
+        0
+    }
+
     #[test]
-    fn init_does_not_panic() {
+    fn init_registers_all_metrics() {
         init();
+        // Verify all metrics are registered by checking the registry
+        let families = prometheus::default_registry().gather();
+        let metric_names: std::collections::HashSet<_> =
+            families.iter().map(|f| f.name()).collect();
+        assert!(metric_names.contains("aletheia_knowledge_facts_total"));
+        assert!(metric_names.contains("aletheia_knowledge_extractions_total"));
+        assert!(metric_names.contains("aletheia_recall_duration_seconds"));
+        assert!(metric_names.contains("aletheia_embedding_duration_seconds"));
     }
 
     #[test]
-    fn record_fact_inserted_does_not_panic() {
-        record_fact_inserted("test-nous");
+    fn record_fact_inserted_increments_counter() {
+        let nous_id = "test-nous-fact";
+        let before = read_counter("aletheia_knowledge_facts_total", &[nous_id]);
+        record_fact_inserted(nous_id);
+        let after = read_counter("aletheia_knowledge_facts_total", &[nous_id]);
+        assert_eq!(after, before + 1);
     }
 
     #[test]
-    fn record_extraction_does_not_panic() {
-        record_extraction("test-nous", true);
-        record_extraction("test-nous", false);
+    fn record_extraction_increments_counters() {
+        let nous_id = "test-nous-extraction";
+        let before_ok =
+            read_counter("aletheia_knowledge_extractions_total", &[nous_id, "ok"]);
+        let before_error =
+            read_counter("aletheia_knowledge_extractions_total", &[nous_id, "error"]);
+
+        record_extraction(nous_id, true);
+        record_extraction(nous_id, false);
+
+        let after_ok =
+            read_counter("aletheia_knowledge_extractions_total", &[nous_id, "ok"]);
+        let after_error =
+            read_counter("aletheia_knowledge_extractions_total", &[nous_id, "error"]);
+
+        assert_eq!(after_ok, before_ok + 1);
+        assert_eq!(after_error, before_error + 1);
     }
 
     #[test]
-    fn record_recall_duration_does_not_panic() {
-        record_recall_duration("test-nous", 0.05);
+    fn record_recall_duration_records_observation() {
+        let nous_id = "test-nous-recall";
+        let before = read_histogram_count("aletheia_recall_duration_seconds", &[nous_id]);
+        record_recall_duration(nous_id, 0.05);
+        let after = read_histogram_count("aletheia_recall_duration_seconds", &[nous_id]);
+        assert_eq!(after, before + 1);
     }
 
     #[test]
-    fn record_embedding_duration_does_not_panic() {
-        record_embedding_duration("candle", 0.1);
+    fn record_embedding_duration_records_observation() {
+        let provider = "candle";
+        let before =
+            read_histogram_count("aletheia_embedding_duration_seconds", &[provider]);
+        record_embedding_duration(provider, 0.1);
+        let after =
+            read_histogram_count("aletheia_embedding_duration_seconds", &[provider]);
+        assert_eq!(after, before + 1);
     }
 }

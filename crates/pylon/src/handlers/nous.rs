@@ -230,7 +230,17 @@ mod tests {
 
     #[test]
     fn nous_state_contains_manager_and_registry() {
-        let _ = std::mem::size_of::<NousState>();
+        // Verify NousState has the fields needed by nous handlers.
+        fn assert_nous_state_fields(state: &NousState) {
+            use std::sync::Arc;
+            use aletheia_nous::manager::NousManager;
+            use aletheia_organon::registry::ToolRegistry;
+
+            let _: &Arc<NousManager> = &state.nous_manager;
+            let _: &Arc<ToolRegistry> = &state.tool_registry;
+        }
+        // If the above compiles, NousState contains both required fields.
+        assert!(std::mem::size_of::<NousState>() > 0);
     }
 
     #[test]
