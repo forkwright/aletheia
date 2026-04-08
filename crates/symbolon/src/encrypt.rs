@@ -104,7 +104,7 @@ pub(crate) fn load_or_generate_key(
 pub(crate) fn prepare_key_file(
     credential_path: &Path,
     key: &[u8; KEY_LEN],
-) -> std::io::Result<PathBuf> {
+) -> std::io::Result<TempFileGuard> {
     let key_path = key_file_path(credential_path);
     let tmp = key_path.with_extension("key.tmp");
     if let Some(parent) = key_path.parent() {
@@ -114,7 +114,40 @@ pub(crate) fn prepare_key_file(
     f.write_all(key)?;
     f.flush()?;
     f.sync_all()?;
-    Ok(tmp)
+    Ok(TempFileGuard::new(tmp))
+}
+
+/// Drop guard that deletes a temp file if not defused.
+///
+/// WHY: prevents temp file leaks if the caller panics between
+/// `prepare_key_file` and `commit_key_file`. Call [`defuse`](Self::defuse)
+/// after the commit succeeds to prevent deletion. Closes #2745.
+pub(crate) struct TempFileGuard {
+    path: Option<PathBuf>,
+}
+
+impl TempFileGuard {
+    fn new(path: PathBuf) -> Self {
+        Self { path: Some(path) }
+    }
+
+    /// The temp file path.
+    pub(crate) fn path(&self) -> &Path {
+        self.path.as_deref().expect("guard already defused")
+    }
+
+    /// Prevent the guard from deleting the file on drop.
+    pub(crate) fn defuse(&mut self) {
+        self.path = None;
+    }
+}
+
+impl Drop for TempFileGuard {
+    fn drop(&mut self) {
+        if let Some(ref path) = self.path {
+            let _ = std::fs::remove_file(path);
+        }
+    }
 }
 
 /// Rename a prepared key temp file to its final path with mode 0600.
