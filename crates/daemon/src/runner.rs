@@ -35,8 +35,6 @@ pub enum DaemonOutputMode {
 const BRIEF_HEAD_LINES: usize = 5;
 /// Maximum lines FROM the tail of tool output in brief mode.
 const BRIEF_TAIL_LINES: usize = 3;
-/// Maximum character length for model response summaries in brief mode.
-const BRIEF_RESPONSE_MAX_CHARS: usize = 200;
 
 /// Truncate output for brief mode.
 ///
@@ -63,22 +61,6 @@ pub(crate) fn truncate_output(output: &str) -> String {
         head.join("\n"),
         tail.join("\n")
     )
-}
-
-/// Truncate a model response for brief-mode logging.
-#[expect(
-    clippy::string_slice,
-    reason = "bounds checked: response.len() > max and end <= max"
-)]
-pub(crate) fn truncate_response(response: &str) -> String {
-    if response.len() <= BRIEF_RESPONSE_MAX_CHARS {
-        return response.to_owned();
-    }
-
-    let truncated = &response[..BRIEF_RESPONSE_MAX_CHARS];
-    // NOTE: find the last space to avoid cutting mid-word
-    let end = truncated.rfind(' ').unwrap_or(BRIEF_RESPONSE_MAX_CHARS);
-    format!("{}...", &response[..end])
 }
 
 /// Per-nous background task runner.

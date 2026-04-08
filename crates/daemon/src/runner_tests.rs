@@ -715,26 +715,6 @@ fn truncate_output_long_shows_head_and_tail() {
 }
 
 #[test]
-fn truncate_response_short_passes_through() {
-    let short = "All good.";
-    assert_eq!(truncate_response(short), short);
-}
-
-#[test]
-fn truncate_response_long_truncates_at_word_boundary() {
-    let long = "word ".repeat(100);
-    let truncated = truncate_response(&long);
-    assert!(
-        truncated.len() <= BRIEF_RESPONSE_MAX_CHARS + 10,
-        "truncated response should be near BRIEF_RESPONSE_MAX_CHARS"
-    );
-    assert!(
-        truncated.ends_with("..."),
-        "truncated response should end with ellipsis"
-    );
-}
-
-#[test]
 fn with_output_mode_sets_mode() {
     let token = CancellationToken::new();
     let runner = TaskRunner::new("test-nous", token).with_output_mode(DaemonOutputMode::Brief);
