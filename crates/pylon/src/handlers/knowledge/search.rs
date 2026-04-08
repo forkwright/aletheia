@@ -23,7 +23,7 @@ use super::{
     params(
         ("q" = String, Query, description = "Search query text"),
         ("nous_id" = Option<String>, Query, description = "Filter by agent ID"),
-        ("limit" = Option<usize>, Query, description = "Maximum results (default: 20)"),
+        ("limit" = Option<u32>, Query, description = "Maximum results (default: 20)"),
     ),
     responses(
         (status = 200, description = "Search results ranked by relevance"),
@@ -65,8 +65,8 @@ pub async fn search(
         filter: None,
         fact_type: None,
         tier: None,
-        limit: 10_000,
-        offset: 0,
+        limit: 10_000_u32,
+        offset: 0_u32,
         include_forgotten: false,
     };
     let all_facts = get_stored_facts(&state, &facts_query);
@@ -106,7 +106,7 @@ pub async fn search(
             .partial_cmp(&a.score)
             .unwrap_or(std::cmp::Ordering::Equal)
     });
-    results.truncate(query.limit);
+    results.truncate(query.limit as usize);
 
     Ok(Json(SearchResponse { results }))
 }
@@ -190,8 +190,7 @@ pub(super) fn get_stored_facts(
 ) -> Vec<aletheia_mneme::knowledge::Fact> {
     #[cfg(feature = "knowledge-store")]
     if let Some(ref store) = state.knowledge_store {
-        let fetch_limit =
-            i64::try_from((query.offset + query.limit).min(10_000)).unwrap_or(i64::MAX);
+        let fetch_limit = i64::from((query.offset + query.limit).min(10_000));
         let result = if let Some(nous_id) = query.nous_id.as_deref() {
             store.audit_all_facts(nous_id, fetch_limit)
         } else {
