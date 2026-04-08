@@ -201,6 +201,8 @@ pub(super) fn build_messages(
         .map(|m| Message {
             role: match m.role.as_str() {
                 "assistant" => Role::Assistant,
+                "system" => Role::System,
+                "user" => Role::User,
                 _ => Role::User,
             },
             content: Content::Text(m.content.clone()),

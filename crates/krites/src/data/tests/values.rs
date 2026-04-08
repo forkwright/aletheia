@@ -7,17 +7,44 @@ use crate::data::symb::Symbol;
 use crate::data::value::DataValue;
 
 #[test]
-fn show_size() {
-    println!("DataValue size: {}", size_of::<DataValue>());
-    println!("Symbol size: {}", size_of::<Symbol>());
-    println!("String size: {}", size_of::<String>());
-    println!(
-        "HashMap<String,String> size: {}",
-        size_of::<HashMap<String, String>>()
+fn type_size_consistency() {
+    // Verify that type sizes are as expected for memory layout optimization.
+    // These assertions catch unexpected size changes from dependency updates
+    // or struct modifications.
+    let datavalue_size = size_of::<DataValue>();
+    let symbol_size = size_of::<Symbol>();
+    let string_size = size_of::<String>();
+    let hashmap_size = size_of::<HashMap<String, String>>();
+    let btreemap_size = size_of::<BTreeMap<String, String>>();
+
+    // DataValue is an enum with multiple variants; expect reasonable size
+    assert!(
+        datavalue_size >= 16 && datavalue_size <= 64,
+        "DataValue size {datavalue_size} seems unreasonable"
     );
-    println!(
-        "BTreeMap<String,String> size: {}",
-        size_of::<BTreeMap<String, String>>()
+
+    // Symbol contains a CompactString and SourceSpan
+    assert!(
+        symbol_size >= 16 && symbol_size <= 48,
+        "Symbol size {symbol_size} seems unreasonable"
+    );
+
+    // Standard String is 24 bytes on 64-bit systems (ptr + len + capacity)
+    assert_eq!(
+        string_size, 24,
+        "String size should be 24 bytes on 64-bit systems"
+    );
+
+    // HashMap has some overhead for the hash table
+    assert!(
+        hashmap_size >= 32 && hashmap_size <= 64,
+        "HashMap size {hashmap_size} seems unreasonable"
+    );
+
+    // BTreeMap has node overhead
+    assert!(
+        btreemap_size >= 16 && btreemap_size <= 48,
+        "BTreeMap size {btreemap_size} seems unreasonable"
     );
 }
 
@@ -39,18 +66,32 @@ fn utf8() {
 
 #[test]
 fn display_datavalues() {
-    println!("{}", DataValue::Null);
-    println!("{}", DataValue::from(true));
-    println!("{}", DataValue::from(-1));
-    println!("{}", DataValue::from(-1_121_212_121.331_212_f64));
-    println!("{}", DataValue::from(f64::NAN));
-    println!("{}", DataValue::from(f64::NEG_INFINITY));
-    println!(
-        "{}",
-        DataValue::List(vec![
-            DataValue::from(false),
-            DataValue::from(r###"abc"你"好'啊👌"###),
-            DataValue::from(f64::NEG_INFINITY),
-        ])
+    // Verify Display trait implementations for DataValue variants
+    assert_eq!(format!("{}", DataValue::Null), "null");
+    assert_eq!(format!("{}", DataValue::from(true)), "true");
+    assert_eq!(format!("{}", DataValue::from(-1)), "-1");
+    assert_eq!(
+        format!("{}", DataValue::from(-1_121_212_121.331_212_f64)),
+        "-1121212121.331212"
+    );
+    // Special floats display as function calls that reconstruct them
+    assert_eq!(
+        format!("{}", DataValue::from(f64::NAN)),
+        r#"to_float("NAN")"#
+    );
+    assert_eq!(
+        format!("{}", DataValue::from(f64::NEG_INFINITY)),
+        r#"to_float("NEG_INF")"#
+    );
+
+    // List formatting with mixed content including special characters
+    let list = DataValue::List(vec![
+        DataValue::from(false),
+        DataValue::from(r###"abc"你"好'啊👌"###),
+        DataValue::from(f64::NEG_INFINITY),
+    ]);
+    assert_eq!(
+        format!("{}", list),
+        r#"[false, "abc\"你\"好'啊👌", to_float("NEG_INF")]"#
     );
 }

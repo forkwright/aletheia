@@ -153,55 +153,187 @@ pub(crate) fn record_cache_usage(
 
 #[cfg(test)]
 mod tests {
+    use prometheus::core::Collector;
+
     use super::*;
 
     #[test]
-    fn init_does_not_panic() {
+    fn init_registers_all_metrics() {
         init();
+        // Verify all metrics are registered by accessing their metadata
+        assert_eq!(
+            PIPELINE_TURNS_TOTAL.desc()[0].fq_name,
+            "aletheia_pipeline_turns_total"
+        );
+        assert_eq!(
+            PIPELINE_STAGE_DURATION_SECONDS.desc()[0].fq_name,
+            "aletheia_pipeline_stage_duration_seconds"
+        );
+        assert_eq!(
+            PIPELINE_ERRORS_TOTAL.desc()[0].fq_name,
+            "aletheia_pipeline_errors_total"
+        );
+        assert_eq!(
+            CACHE_READ_TOKENS_TOTAL.desc()[0].fq_name,
+            "aletheia_cache_read_tokens_total"
+        );
+        assert_eq!(
+            CACHE_CREATION_TOKENS_TOTAL.desc()[0].fq_name,
+            "aletheia_cache_creation_tokens_total"
+        );
     }
 
     #[test]
-    fn record_stage_does_not_panic() {
-        record_stage("test-nous", "context", 0.001);
-        record_stage("test-nous", "execute", 1.5);
+    fn record_stage_increments_histogram_count() {
+        let agent = "test-record-stage";
+        let before = PIPELINE_STAGE_DURATION_SECONDS
+            .with_label_values(&[agent, "context"])
+            .get_sample_count();
+        record_stage(agent, "context", 0.001);
+        record_stage(agent, "context", 0.002);
+        let after = PIPELINE_STAGE_DURATION_SECONDS
+            .with_label_values(&[agent, "context"])
+            .get_sample_count();
+        assert_eq!(after - before, 2, "expected 2 samples to be recorded");
     }
 
     #[test]
-    fn record_turn_does_not_panic() {
-        record_turn("test-nous");
+    fn record_turn_increments_counter() {
+        let agent = "test-record-turn";
+        let before = PIPELINE_TURNS_TOTAL
+            .with_label_values(&[agent])
+            .get();
+        record_turn(agent);
+        record_turn(agent);
+        record_turn(agent);
+        let after = PIPELINE_TURNS_TOTAL
+            .with_label_values(&[agent])
+            .get();
+        assert_eq!(after - before, 3, "expected counter to increment by 3");
     }
 
     #[test]
-    fn record_error_does_not_panic() {
-        record_error("test-nous", "execute", "provider_unavailable");
+    fn record_error_increments_counter() {
+        let agent = "test-record-error";
+        let error_type = "test_error";
+        let before = PIPELINE_ERRORS_TOTAL
+            .with_label_values(&[agent, "execute", error_type])
+            .get();
+        record_error(agent, "execute", error_type);
+        let after = PIPELINE_ERRORS_TOTAL
+            .with_label_values(&[agent, "execute", error_type])
+            .get();
+        assert_eq!(after - before, 1, "expected error counter to increment by 1");
     }
 
     #[test]
     fn record_multiple_stages_different_agents() {
         for agent in ["syn", "demiurge", "analyst"] {
+            let before = PIPELINE_STAGE_DURATION_SECONDS
+                .with_label_values(&[agent, "context"])
+                .get_sample_count();
             record_stage(agent, "context", 0.01);
-            record_stage(agent, "execute", 0.5);
+            let after = PIPELINE_STAGE_DURATION_SECONDS
+                .with_label_values(&[agent, "context"])
+                .get_sample_count();
+            assert_eq!(
+                after - before,
+                1,
+                "expected one sample recorded for {agent}"
+            );
             record_turn(agent);
+        }
+        // Verify each agent has exactly one turn recorded
+        for agent in ["syn", "demiurge", "analyst"] {
+            let turns = PIPELINE_TURNS_TOTAL.with_label_values(&[agent]).get();
+            assert!(turns >= 1, "expected at least one turn for {agent}");
         }
     }
 
     #[test]
-    fn record_cache_usage_does_not_panic() {
-        record_cache_usage("test-nous", 1500, 500);
+    fn record_cache_usage_increments_counters() {
+        let agent = "test-cache-usage";
+        let read_before = CACHE_READ_TOKENS_TOTAL
+            .with_label_values(&[agent])
+            .get();
+        let creation_before = CACHE_CREATION_TOKENS_TOTAL
+            .with_label_values(&[agent])
+            .get();
+        record_cache_usage(agent, 1500, 500);
+        let read_after = CACHE_READ_TOKENS_TOTAL
+            .with_label_values(&[agent])
+            .get();
+        let creation_after = CACHE_CREATION_TOKENS_TOTAL
+            .with_label_values(&[agent])
+            .get();
+        assert_eq!(
+            read_after - read_before,
+            1500,
+            "expected read tokens to increase by 1500"
+        );
+        assert_eq!(
+            creation_after - creation_before,
+            500,
+            "expected creation tokens to increase by 500"
+        );
     }
 
     #[test]
     fn record_cache_usage_zero_values() {
         // WHY: first request has no cache to read from; all tokens are creation
-        record_cache_usage("cold-start-agent", 0, 2000);
+        let cold_agent = "cold-start-agent";
+        let creation_before = CACHE_CREATION_TOKENS_TOTAL
+            .with_label_values(&[cold_agent])
+            .get();
+        record_cache_usage(cold_agent, 0, 2000);
+        let creation_after = CACHE_CREATION_TOKENS_TOTAL
+            .with_label_values(&[cold_agent])
+            .get();
+        assert_eq!(
+            creation_after - creation_before,
+            2000,
+            "expected 2000 creation tokens for cold start"
+        );
+
         // WHY: fully cached request reads everything, creates nothing
-        record_cache_usage("warm-agent", 3000, 0);
+        let warm_agent = "warm-agent";
+        let read_before = CACHE_READ_TOKENS_TOTAL
+            .with_label_values(&[warm_agent])
+            .get();
+        record_cache_usage(warm_agent, 3000, 0);
+        let read_after = CACHE_READ_TOKENS_TOTAL
+            .with_label_values(&[warm_agent])
+            .get();
+        assert_eq!(
+            read_after - read_before,
+            3000,
+            "expected 3000 read tokens for warm agent"
+        );
     }
 
     #[test]
     fn record_cache_usage_multiple_agents() {
-        for agent in ["parent-agent", "child-fork-1", "child-fork-2"] {
+        let agents = ["parent-agent", "child-fork-1", "child-fork-2"];
+        let before_counts: Vec<_> = agents
+            .iter()
+            .map(|agent| {
+                CACHE_READ_TOKENS_TOTAL
+                    .with_label_values(&[agent])
+                    .get()
+            })
+            .collect();
+        for agent in agents {
             record_cache_usage(agent, 1000, 200);
+        }
+        for (i, agent) in agents.iter().enumerate() {
+            let after = CACHE_READ_TOKENS_TOTAL
+                .with_label_values(&[agent])
+                .get();
+            assert_eq!(
+                after - before_counts[i],
+                1000,
+                "expected 1000 read tokens for {agent}"
+            );
         }
     }
 }

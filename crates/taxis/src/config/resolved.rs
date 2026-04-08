@@ -1,14 +1,16 @@
 //! Resolved configuration types: computed from raw config at runtime.
 
+use std::sync::Arc;
+
 use super::{AgencyLevel, AletheiaConfig, RecallSettings};
 
 /// Resolved model selection for an agent.
 #[derive(Debug, Clone)]
 pub struct ResolvedModelConfig {
     /// Primary model identifier.
-    pub primary: String,
+    pub primary: Arc<str>,
     /// Ordered fallback models.
-    pub fallbacks: Vec<String>,
+    pub fallbacks: Vec<Arc<str>>,
     /// How many times to retry the current model before trying the next fallback.
     pub retries_before_fallback: u32,
 }
@@ -69,7 +71,7 @@ pub struct ResolvedNousConfig {
     /// Resolved recall pipeline settings.
     pub recall: RecallSettings,
     /// Model used for prosoche heartbeat sessions.
-    pub prosoche_model: String,
+    pub prosoche_model: Arc<str>,
 }
 
 /// Resolve effective configuration for a specific nous agent.
@@ -81,18 +83,25 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
     let defaults = &config.agents.defaults;
     let agent = config.agents.list.iter().find(|a| a.id == nous_id);
 
-    let (model, fallbacks, retries_before_fallback) = match agent.and_then(|a| a.model.as_ref()) {
-        Some(spec) => (
-            spec.primary.clone(),
-            spec.fallbacks.clone(),
-            spec.retries_before_fallback,
-        ),
-        None => (
-            defaults.model_defaults.model.primary.clone(),
-            defaults.model_defaults.model.fallbacks.clone(),
-            defaults.model_defaults.model.retries_before_fallback,
-        ),
-    };
+    let (model, fallbacks, retries_before_fallback): (Arc<str>, Vec<Arc<str>>, u32) =
+        match agent.and_then(|a| a.model.as_ref()) {
+            Some(spec) => (
+                Arc::from(spec.primary.as_str()),
+                spec.fallbacks.iter().map(|s| Arc::from(s.as_str())).collect(),
+                spec.retries_before_fallback,
+            ),
+            None => (
+                Arc::from(defaults.model_defaults.model.primary.as_str()),
+                defaults
+                    .model_defaults
+                    .model
+                    .fallbacks
+                    .iter()
+                    .map(|s| Arc::from(s.as_str()))
+                    .collect(),
+                defaults.model_defaults.model.retries_before_fallback,
+            ),
+        };
 
     let agency = agent.and_then(|a| a.agency).unwrap_or(defaults.agency);
 
@@ -167,6 +176,6 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
         allowed_roots,
         domains,
         recall,
-        prosoche_model: defaults.model_defaults.prosoche_model.clone(),
+        prosoche_model: Arc::from(defaults.model_defaults.prosoche_model.as_str()),
     }
 }

@@ -131,7 +131,14 @@ pub fn default_gate(from: &ProjectState) -> Option<PhaseGate> {
             ProjectState::Verifying,
             vec![GateCondition::ReviewApproved],
         )),
-        _ => None,
+        ProjectState::Created
+        | ProjectState::Questioning
+        | ProjectState::Researching
+        | ProjectState::Scoping
+        | ProjectState::Discussing
+        | ProjectState::Complete
+        | ProjectState::Abandoned
+        | ProjectState::Paused { .. } => None,
     }
 }
 
