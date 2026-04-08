@@ -6,7 +6,6 @@
 
 use std::sync::Arc;
 
-use aletheia_koina::defaults::CHARS_PER_TOKEN;
 use serde::{Deserialize, Serialize};
 
 use aletheia_hermeneus::types::{Message, ThinkingConfig, ToolDefinition};
@@ -355,7 +354,7 @@ impl WorkingState {
         }
 
         let content = parts.join("\n");
-        let token_estimate = u64::try_from(content.len() / CHARS_PER_TOKEN as usize).unwrap_or(0);
+        let token_estimate = u64::try_from(content.len() / 4).unwrap_or(0);
 
         Some(BootstrapSection {
             name: "WORKING_STATE".to_owned(),
@@ -379,7 +378,7 @@ impl WorkingState {
 pub(crate) const WORKING_STATE_TTL_SECS: i64 = 604_800;
 
 fn now_iso8601() -> String {
-    aletheia_koina::time::now_iso8601()
+    jiff::Timestamp::now().to_string()
 }
 
 #[cfg(test)]

@@ -26,7 +26,9 @@ pub(crate) struct PreservedViewState {
     pub scroll_top: f64,
     /// Draft input text (chat textarea, search bars, etc.).
     pub input_text: String,
-
+    /// Secondary scroll position (e.g. detail panel in memory view).
+    #[expect(dead_code, reason = "public API")]
+    pub secondary_scroll: f64,
 }
 
 /// Store holding preserved state for all views.
@@ -74,6 +76,7 @@ mod tests {
             PreservedViewState {
                 scroll_top: 42.0,
                 input_text: "draft message".to_string(),
+                secondary_scroll: 0.0,
             },
         );
 

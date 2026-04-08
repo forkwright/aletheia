@@ -1,11 +1,11 @@
 //! All-pairs shortest path (Floyd-Warshall).
 use std::cmp::Reverse;
-use std::collections::{BTreeMap, BinaryHeap};
+use std::collections::BTreeMap;
 
 use compact_str::CompactString;
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
-
+use priority_queue::PriorityQueue;
 use rayon::prelude::*;
 
 use crate::data::expr::Expr;
@@ -155,12 +155,12 @@ pub(crate) fn dijkstra_cost_only(
     poison: Poison,
 ) -> Result<Vec<f32>> {
     let mut distance = vec![f32::INFINITY; edges.node_count() as usize];
-    let mut pq = BinaryHeap::new();
+    let mut pq = PriorityQueue::new();
     let mut back_pointers = vec![u32::MAX; edges.node_count() as usize];
     distance[start as usize] = 0.;
-    pq.push((Reverse(OrderedFloat(0.)), start));
+    pq.push(start, Reverse(OrderedFloat(0.)));
 
-    while let Some((Reverse(OrderedFloat(cost)), node)) = pq.pop() {
+    while let Some((node, Reverse(OrderedFloat(cost)))) = pq.pop() {
         if cost > distance[node as usize] {
             continue;
         }
@@ -171,7 +171,7 @@ pub(crate) fn dijkstra_cost_only(
 
             let nxt_cost = cost + path_weight;
             if nxt_cost < distance[nxt_node as usize] {
-                pq.push((Reverse(OrderedFloat(nxt_cost)), nxt_node));
+                pq.push_increase(nxt_node, Reverse(OrderedFloat(nxt_cost)));
                 distance[nxt_node as usize] = nxt_cost;
                 back_pointers[nxt_node as usize] = node;
             }

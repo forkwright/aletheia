@@ -216,7 +216,7 @@ pub(crate) fn RequirementsView(project_id: String) -> Element {
                 }
             };
 
-            // NOTE: Proposals endpoint may not exist yet; treat 404 as empty.
+            // WHY: Proposals endpoint may not exist yet; treat 404 as empty.
             let proposals = match props_result {
                 Ok(resp) if resp.status().is_success() => resp
                     .json::<Vec<CategoryProposal>>()

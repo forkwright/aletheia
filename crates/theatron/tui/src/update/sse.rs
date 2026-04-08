@@ -10,7 +10,7 @@ use crate::state::{ActiveTool, AgentState, AgentStatus, ChatMessage};
 const RECONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
 
 #[tracing::instrument(skip_all)]
-// NOTE: sanitized at ingestion: agent data from API is sanitized here on SSE reconnect.
+// SAFETY: sanitized at ingestion: agent data from API is sanitized here on SSE reconnect.
 pub(crate) async fn handle_sse_connected(app: &mut App) {
     let was_disconnected = !app.connection.sse_connected;
     app.connection.sse_connected = true;
@@ -143,7 +143,7 @@ pub(crate) async fn handle_sse_turn_after(app: &mut App, nous_id: NousId, sessio
 }
 
 #[tracing::instrument(skip_all, fields(%nous_id, %tool_name))]
-// NOTE: sanitized at ingestion: tool name from SSE event.
+// SAFETY: sanitized at ingestion: tool name from SSE event.
 pub(crate) fn handle_sse_tool_called(app: &mut App, nous_id: NousId, tool_name: String) {
     if let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == nous_id) {
         agent.active_tool = Some(ActiveTool {
@@ -197,7 +197,7 @@ pub(crate) fn handle_sse_distill_before(app: &mut App, nous_id: NousId) {
 }
 
 #[tracing::instrument(skip_all, fields(%nous_id, %stage))]
-// NOTE: sanitized at ingestion: distill stage from SSE event.
+// SAFETY: sanitized at ingestion: distill stage from SSE event.
 pub(crate) fn handle_sse_distill_stage(app: &mut App, nous_id: NousId, stage: String) {
     if let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == nous_id) {
         agent.compaction_stage = Some(sanitize_for_display(&stage).into_owned());

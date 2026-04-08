@@ -2,12 +2,6 @@
     clippy::indexing_slicing,
     reason = "test: vec/JSON indices valid after asserting len or known structure"
 )]
-#![expect(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    reason = "test assertions: panics on failure produce clear test output"
-)]
-
 use std::sync::Arc;
 
 use axum::http::StatusCode;
@@ -454,7 +448,7 @@ async fn update_confidence_negative_returns_400_with_envelope() {
 
 #[tokio::test]
 async fn update_confidence_valid_range_without_store_returns_503() {
-    // NOTE: the knowledge store is not available in the default test app (no
+    // WHY: the knowledge store is not available in the default test app (no
     // mneme-engine feature), so a valid confidence update returns 503
     // service_unavailable instead of 200. The 501 path is gone now that the
     // handler is implemented.
@@ -511,7 +505,7 @@ async fn send_message_missing_content_field_returns_422() {
         .oneshot(req)
         .await
         .expect("POST /sessions/{id}/messages request should succeed");
-    // NOTE: Axum's Json extractor returns 422 for missing required fields.
+    // WHY: Axum's Json extractor returns 422 for missing required fields.
     assert_eq!(
         resp.status(),
         StatusCode::UNPROCESSABLE_ENTITY,
@@ -533,7 +527,7 @@ async fn stream_turn_missing_agent_id_returns_422() {
         .oneshot(req)
         .await
         .expect("POST /sessions/stream request should succeed");
-    // NOTE: Axum's Json extractor returns 422 for missing required fields.
+    // WHY: Axum's Json extractor returns 422 for missing required fields.
     assert_eq!(
         resp.status(),
         StatusCode::UNPROCESSABLE_ENTITY,

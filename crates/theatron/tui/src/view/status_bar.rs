@@ -493,8 +493,8 @@ fn context_gauge_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
         spans.push(Span::styled(
             format!(
                 "  ({} / {})",
-                theatron_core::format::format_tokens(u64::from(used)),
-                theatron_core::format::format_tokens(u64::from(total))
+                format_token_count(used),
+                format_token_count(total)
             ),
             theme.style_muted(),
         ));
@@ -505,6 +505,16 @@ fn context_gauge_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
     }
 
     spans
+}
+
+fn format_token_count(n: u32) -> String {
+    if n >= 1_000_000 {
+        format!("{}M", n / 1_000_000)
+    } else if n >= 1_000 {
+        format!("{}K", n / 1_000)
+    } else {
+        format!("{n}")
+    }
 }
 
 #[cfg(test)]

@@ -345,7 +345,9 @@ impl Default for TraceIngestLayer {
 }
 
 fn now_iso8601() -> String {
-    aletheia_koina::time::now_iso8601()
+    jiff::Timestamp::now()
+        .strftime("%Y-%m-%dT%H:%M:%SZ")
+        .to_string()
 }
 
 impl<S> Layer<S> for TraceIngestLayer
@@ -572,31 +574,14 @@ mod tests {
 
     #[test]
     fn layer_on_event_via_tracing_subscriber() {
-        // WHY: TraceIngestLayer uses interior mutability (Mutex<Vec>), so we
-        // share it via Arc between the subscriber and the assertion code.
-        // tracing-subscriber 0.3+ doesn't impl Layer for Arc<L>, so we
-        // wrap in a newtype that delegates.
         let layer = std::sync::Arc::new(TraceIngestLayer::new());
+
+        // Clone an Arc handle so we can inspect the buffer after recording.
         let captured = std::sync::Arc::clone(&layer);
 
-        struct ArcLayer(std::sync::Arc<TraceIngestLayer>);
-        impl<S> tracing_subscriber::Layer<S> for ArcLayer
-        where
-            S: tracing::Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
-        {
-            fn on_event(
-                &self,
-                event: &tracing::Event<'_>,
-                ctx: tracing_subscriber::layer::Context<'_, S>,
-            ) {
-                <TraceIngestLayer as tracing_subscriber::Layer<S>>::on_event(
-                    &self.0, event, ctx,
-                );
-            }
-        }
-
+        // Set a per-test default subscriber scoped to this thread.
         let _guard = tracing_subscriber::registry()
-            .with(ArcLayer(std::sync::Arc::clone(&layer)))
+            .with(std::sync::Arc::clone(&layer))
             .set_default();
 
         tracing::info!(

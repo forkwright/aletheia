@@ -118,7 +118,7 @@ fn ActivityHeatmap(cells: Vec<crate::state::meta::HeatmapCell>) -> Element {
 
     let max_count = cells.iter().map(|c| c.count).max().unwrap_or(0);
 
-    // NOTE: Grid layout -- 7 rows (days) x 24 columns (hours).
+    // WHY: Grid layout -- 7 rows (days) x 24 columns (hours).
     let grid_width = 24.0 * (CELL_SIZE + CELL_GAP) + 40.0;
     let grid_height = 7.0 * (CELL_SIZE + CELL_GAP) + 30.0;
     let viewbox = format!("0 0 {grid_width} {grid_height}");
@@ -238,7 +238,7 @@ fn EfficiencyPanel(
                 div { style: "{CARD_VALUE}", {
                     #[expect(clippy::as_conversions, reason = "f64 to u64 for token display formatting")]
                     let tokens = tokens_per_entity as u64;
-                    format_tokens(tokens).to_string()
+                    format!("{}", format_tokens(tokens))
                 } }
                 div { style: "{CARD_LABEL}", "Tokens / Entity" }
                 div { style: "{CARD_SUB}", "Conversation cost per knowledge node" }
@@ -351,4 +351,20 @@ fn format_cost(value: f64) -> String {
     }
 }
 
-use theatron_core::format::format_tokens;
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "display-only: sub-token precision irrelevant"
+)]
+#[expect(clippy::as_conversions, reason = "u64 to f64 for human-readable formatting")]
+fn format_tokens(count: u64) -> String {
+    const K: u64 = 1_000;
+    const M: u64 = 1_000_000;
+
+    if count >= M {
+        format!("{:.1}M", count as f64 / M as f64)
+    } else if count >= K {
+        format!("{:.1}K", count as f64 / K as f64)
+    } else {
+        count.to_string()
+    }
+}

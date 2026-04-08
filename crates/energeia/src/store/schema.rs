@@ -1,4 +1,4 @@
-// NOTE: encoding primitives are building blocks — some are only consumed by
+// WHY: encoding primitives are building blocks — some are only consumed by
 // tests or by cfg(feature = "storage-fjall") query code today, but all will
 // be needed as the store API surface grows.
 #![expect(

@@ -154,6 +154,22 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// Invalid model identifier specified.
+    #[snafu(display("invalid model: {model}"))]
+    InvalidModel {
+        model: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Feature not yet implemented.
+    #[snafu(display("not implemented: {feature}"))]
+    NotImplemented {
+        feature: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Convenience alias for results with [`Error`].

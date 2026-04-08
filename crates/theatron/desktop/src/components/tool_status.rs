@@ -84,7 +84,7 @@ mod tests {
         .map(|s| status_color(*s))
         .collect();
 
-        // NOTE: verify no two statuses share the same color.
+        // WHY: verify no two statuses share the same color.
         for (i, a) in colors.iter().enumerate() {
             for b in colors.iter().skip(i + 1) {
                 assert_ne!(a, b, "status colors must be distinct");

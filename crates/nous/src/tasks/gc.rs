@@ -126,9 +126,7 @@ mod tests {
         );
 
         // WHY: Wait long enough for at least one sweep.
-        tokio::time::pause();
-        tokio::time::advance(Duration::from_millis(200)).await;
-        tokio::time::resume();
+        tokio::time::sleep(Duration::from_millis(200)).await;
 
         shutdown.cancel();
         handle.await.expect("gc task join");
@@ -161,9 +159,7 @@ mod tests {
             Duration::from_millis(50),
         );
 
-        tokio::time::pause();
-        tokio::time::advance(Duration::from_millis(200)).await;
-        tokio::time::resume();
+        tokio::time::sleep(Duration::from_millis(200)).await;
 
         shutdown.cancel();
         handle.await.expect("gc task join");
@@ -212,9 +208,7 @@ mod tests {
             Duration::from_millis(50),
         );
 
-        tokio::time::pause();
-        tokio::time::advance(Duration::from_millis(200)).await;
-        tokio::time::resume();
+        tokio::time::sleep(Duration::from_millis(200)).await;
 
         shutdown.cancel();
         handle.await.expect("gc task join");

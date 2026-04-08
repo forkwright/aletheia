@@ -57,7 +57,8 @@ fn render_header(frame: &mut Frame, area: Rect, theme: &Theme) {
 fn render_phases(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let mut lines: Vec<Line> = Vec::new();
 
-    // NOTE: Uses generic streaming text and active_turn_id, not plan-specific events
+    // WHY: Planning data comes from the stream plan events. Show whatever plan state
+    // is available from the current connection.
     let has_plan =
         !app.connection.streaming_text.is_empty() && app.connection.active_turn_id.is_some();
 

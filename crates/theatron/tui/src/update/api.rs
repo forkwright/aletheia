@@ -6,7 +6,7 @@ use crate::sanitize::sanitize_for_display;
 use crate::state::{AgentState, AgentStatus, ChatMessage};
 
 #[tracing::instrument(skip_all, fields(count = agents.len()))]
-// NOTE: sanitized at ingestion: all Agent fields from API are sanitized here.
+// SAFETY: sanitized at ingestion: all Agent fields from API are sanitized here.
 pub(crate) fn handle_agents_loaded(app: &mut App, agents: Vec<Agent>) {
     app.dashboard.agents = agents
         .into_iter()
@@ -32,7 +32,7 @@ pub(crate) fn handle_agents_loaded(app: &mut App, agents: Vec<Agent>) {
 }
 
 #[tracing::instrument(skip_all, fields(%nous_id, count = sessions.len()))]
-// NOTE: sanitized at ingestion: session keys and fields from API are sanitized here.
+// SAFETY: sanitized at ingestion: session keys and fields from API are sanitized here.
 pub(crate) fn handle_sessions_loaded(app: &mut App, nous_id: NousId, sessions: Vec<Session>) {
     if let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == nous_id) {
         agent.sessions = sanitize_sessions(sessions);
@@ -40,7 +40,7 @@ pub(crate) fn handle_sessions_loaded(app: &mut App, nous_id: NousId, sessions: V
 }
 
 #[tracing::instrument(skip_all, fields(count = messages.len()))]
-// NOTE: sanitized at ingestion: all message content from API is sanitized here.
+// SAFETY: sanitized at ingestion: all message content from API is sanitized here.
 pub(crate) fn handle_history_loaded(app: &mut App, messages: Vec<HistoryMessage>) {
     app.dashboard.messages = messages
         .into_iter()
@@ -145,7 +145,7 @@ pub(crate) async fn handle_session_picker_archive(app: &mut App) {
 }
 
 #[tracing::instrument(skip_all)]
-// NOTE: sanitized at ingestion: error messages may contain external data.
+// SAFETY: sanitized at ingestion: error messages may contain external data.
 pub(crate) fn handle_show_error(app: &mut App, msg: String) {
     app.viewport.error_toast = Some(ErrorToast::new(sanitize_for_display(&msg).into_owned()));
 }

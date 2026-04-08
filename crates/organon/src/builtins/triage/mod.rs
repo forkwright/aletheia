@@ -462,9 +462,6 @@ async fn fetch_issues(
 }
 
 /// Find a staged prompt by ID (issue number prefix or filename).
-///
-/// When multiple files match the prompt_id prefix, the first file in
-/// alphabetical order is selected for deterministic resolution (#2738).
 async fn find_staged_prompt(
     staging: &std::path::Path,
     prompt_id: &str,
@@ -484,17 +481,14 @@ async fn find_staged_prompt(
         let dash_prefix = format!("{prompt_id}-");
         let dot_prefix = format!("{prompt_id}.");
         if name == prompt_id || name.starts_with(&dash_prefix) || name.starts_with(&dot_prefix) {
-            candidates.push((name, entry.path()));
+            candidates.push(entry.path());
         }
     }
-
-    // Sort by filename for deterministic resolution (#2738)
-    candidates.sort_by(|a, b| a.0.cmp(&b.0));
 
     match candidates.len() {
         0 => Err(format!("no staged prompt found matching '{prompt_id}'")),
         // SAFETY: len() == 1 guarantees next() returns Some
-        1 => Ok(candidates.into_iter().next().map(|(_, p)| p).unwrap_or_default()),
+        1 => Ok(candidates.into_iter().next().unwrap_or_default()),
         n => Err(format!(
             "ambiguous prompt_id '{prompt_id}': matched {n} files"
         )),

@@ -145,9 +145,7 @@ impl HandoffFile {
         let json_path = self.json_path();
         let md_path = self.md_path();
 
-        let json = serde_json::to_string_pretty(context).context(error::HandoffSerializeSnafu {
-            path: &json_path,
-        })?;
+        let json = serde_json::to_string_pretty(context).context(error::HandoffSerializeSnafu)?;
         let markdown = context.to_markdown();
 
         #[expect(
@@ -186,9 +184,7 @@ impl HandoffFile {
         let contents = std::fs::read_to_string(&json_path)
             .context(error::HandoffIoSnafu { path: &json_path })?;
         let context: HandoffContext =
-            serde_json::from_str(&contents).context(error::HandoffDeserializeSnafu {
-                path: &json_path,
-            })?;
+            serde_json::from_str(&contents).context(error::HandoffDeserializeSnafu)?;
 
         Ok(Some(context))
     }

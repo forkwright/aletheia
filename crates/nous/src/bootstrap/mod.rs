@@ -318,7 +318,7 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
         let (mut sections, filtered_names) = self.resolve_workspace_files(nous_id, hint).await?;
         sections.extend(extra_sections);
 
-        // WHY: stable sort preserves declaration order within same priority
+        // NOTE: stable sort preserves declaration order within same priority
         sections.sort_by_key(|s| s.priority);
 
         let mut included: Vec<BootstrapSection> = Vec::new();

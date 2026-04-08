@@ -1,10 +1,10 @@
 //! A* shortest path search.
 use std::cmp::Reverse;
-use std::collections::{BTreeMap, BinaryHeap};
+use std::collections::BTreeMap;
 
 use compact_str::CompactString;
 use ordered_float::OrderedFloat;
-
+use priority_queue::PriorityQueue;
 
 use crate::data::expr::{Expr, eval_bytecode};
 use crate::data::symb::Symbol;
@@ -98,11 +98,11 @@ fn astar(
     };
     let mut back_trace: BTreeMap<DataValue, DataValue> = Default::default();
     let mut g_score: BTreeMap<DataValue, f64> = BTreeMap::from([(start_node.clone(), 0.)]);
-    let mut open_set: BinaryHeap<(Reverse<OrderedFloat<f64>>, usize, DataValue)> =
-        BinaryHeap::new();
-    open_set.push((Reverse(OrderedFloat(0.)), 0, start_node.clone()));
+    let mut open_set: PriorityQueue<DataValue, (Reverse<OrderedFloat<f64>>, usize)> =
+        PriorityQueue::new();
+    open_set.push(start_node.clone(), (Reverse(OrderedFloat(0.)), 0));
     let mut sub_priority: usize = 0;
-    while let Some((Reverse(OrderedFloat(cost)), _, node)) = open_set.pop() {
+    while let Some((node, (Reverse(OrderedFloat(cost)), _))) = open_set.pop() {
         if node == *goal_node {
             let mut current = node;
             let mut ret = vec![];
@@ -162,11 +162,13 @@ fn astar(
 
                 let heuristic_cost = eval_heuristic(&edge_dst_tuple)?;
                 sub_priority += 1;
-                open_set.push((
-                    Reverse(OrderedFloat(tentative_cost_to_dst + heuristic_cost)),
-                    sub_priority,
+                open_set.push_increase(
                     edge_dst.clone(),
-                ));
+                    (
+                        Reverse(OrderedFloat(tentative_cost_to_dst + heuristic_cost)),
+                        sub_priority,
+                    ),
+                );
             }
             poison.check()?;
         }

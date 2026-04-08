@@ -12,9 +12,8 @@ pub(crate) use types::{DiffViewState, compute_diff};
 
 #[cfg(test)]
 use crate::theme::Theme;
-pub(crate) use theatron_core::format::truncate_str;
 #[cfg(test)]
-pub(crate) use parse::parse_hunk_header;
+pub(crate) use parse::{parse_hunk_header, truncate_str};
 #[cfg(test)]
 pub(crate) use render::{render_side_by_side, render_unified, render_word_diff};
 #[cfg(test)]

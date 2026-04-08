@@ -1,4 +1,4 @@
-// NOTE: Semantic evaluation uses LLM to assess acceptance criteria that cannot
+// WHY: Semantic evaluation uses LLM to assess acceptance criteria that cannot
 // be verified mechanically. This module provides criteria classification,
 // evaluation prompt construction, and structured response parsing.
 
@@ -64,7 +64,7 @@ pub fn classify_criteria(criteria: &[String]) -> Vec<(String, CriterionType)> {
 fn classify_single(criterion: &str) -> CriterionType {
     let lower = criterion.to_lowercase();
 
-    // PERF: Check mechanical first — it's cheaper (no LLM cost).
+    // WHY: Check mechanical first — it's cheaper (no LLM cost).
     if MECHANICAL_KEYWORDS.iter().any(|kw| lower.contains(kw)) {
         return CriterionType::Mechanical;
     }

@@ -108,7 +108,7 @@ pub(super) async fn run_recall_stage(
     )]
     let budget = ctx.remaining_tokens.max(0) as u64; // kanon:ignore RUST/as-cast
 
-    // WHY: BM25-only fallback when mock embedding provider is in use.
+    // NOTE: BM25-only fallback when mock embedding provider is in use.
     // Vector recall would produce meaningless results from hash-based embeddings.
     if is_mock_embedding {
         if let Some(ts) = text_search {
@@ -346,24 +346,9 @@ pub(super) fn run_full_compact_stage(
     let (_request, preserved) =
         crate::compact::full::build_summary_request(&ctx.messages, &compact_config);
 
-    // WHY: structural summary is fast (no LLM call) and runs synchronously.
-    // If a summary improvement channel is available, we also queue an async
-    // LLM-based summary that will replace this one when ready.
+    // TODO(#2261): spawn background task via task registry for model summarization.
+    // For now, build a structural summary from message roles and content snippets.
     let summary = build_structural_summary(&ctx.messages, &compact_config);
-
-    if let Some(ref tx) = ctx.summary_improvement_tx {
-        let request = crate::pipeline::SummaryImprovementRequest {
-            session_id: config.id.clone(),
-            messages: ctx.messages.clone(),
-            model: config.distillation.model.clone(),
-            max_tokens: 2048,
-        };
-        // WHY: try_send avoids blocking the synchronous pipeline.
-        // If the channel is full, the structural summary stands.
-        if tx.try_send(request).is_err() {
-            tracing::debug!("summary improvement channel full, using structural summary");
-        }
-    }
 
     let result = crate::compact::full::apply_compaction(
         &summary,
@@ -737,7 +722,8 @@ fn apply_recall_result(
                     prompt.push_str("\n\n");
                     prompt.push_str(section);
                 }
-                // WHY: max(0) prevents negative values; saturating_sub caps at i64::MIN.
+                // WHY: saturating_sub followed by max(0) ensures remaining_tokens
+                // never goes negative regardless of recall token accounting.
                 #[expect(
                     clippy::cast_possible_wrap,
                     clippy::as_conversions,

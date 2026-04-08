@@ -2,12 +2,6 @@
     clippy::indexing_slicing,
     reason = "test: vec/JSON indices valid after asserting len or known structure"
 )]
-#![expect(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    reason = "test assertions: panics on failure produce clear test output"
-)]
-
 use std::sync::Arc;
 
 use axum::body::Body;
@@ -96,9 +90,9 @@ async fn metrics_returns_200_with_prometheus_content_type() {
     let content_type = resp
         .headers()
         .get("content-type")
-        .expect("metrics response must have content-type header")
+        .unwrap()
         .to_str()
-        .expect("content-type header must be valid UTF-8");
+        .unwrap();
     assert!(
         content_type.contains("text/plain"),
         "expected text/plain content type, got: {content_type}"
@@ -117,7 +111,7 @@ async fn metrics_no_auth_required() {
 }
 
 #[tokio::test]
-#[ignore = "metrics registration broken by FromRef migration — fix in followup (#2770)")]
+#[ignore = "metrics registration broken by FromRef migration — fix in followup"]
 async fn metrics_contains_aletheia_prefixed_families() {
     let (app, _dir) = app().await;
     let resp = app
@@ -182,7 +176,7 @@ async fn openapi_spec_returns_valid_json() {
 
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
-    let version = body["openapi"].as_str().expect("openapi spec must have a string 'openapi' version field");
+    let version = body["openapi"].as_str().unwrap();
     assert!(
         version.starts_with("3."),
         "expected OpenAPI 3.x, got {version}"
@@ -202,7 +196,7 @@ async fn openapi_spec_has_all_paths() {
         .unwrap();
 
     let body = body_json(resp).await;
-    let paths = body["paths"].as_object().expect("openapi spec must have a 'paths' object");
+    let paths = body["paths"].as_object().unwrap();
     assert!(paths.contains_key("/api/health"));
     assert!(paths.contains_key("/api/v1/sessions"));
     assert!(paths.contains_key("/api/v1/sessions/{id}"));
@@ -241,7 +235,7 @@ async fn openapi_spec_has_schemas() {
         .unwrap();
 
     let body = body_json(resp).await;
-    let schemas = body["components"]["schemas"].as_object().expect("openapi spec must have components.schemas object");
+    let schemas = body["components"]["schemas"].as_object().unwrap();
     assert!(schemas.contains_key("SessionResponse"));
     assert!(schemas.contains_key("ErrorResponse"));
     assert!(schemas.contains_key("HealthResponse"));

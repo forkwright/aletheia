@@ -481,7 +481,7 @@ fn run_sample(
         }
         let content = &fact.content;
         let display = if content.len() > 200 {
-            // NOTE: actual safety is from str::get(), which handles UTF-8 boundaries
+            // WHY: byte length checked above ensures ASCII prefix is safe; UTF-8 boundary handled by get
             let truncated = content.get(..197).unwrap_or(content);
             format!("{truncated}...")
         } else {

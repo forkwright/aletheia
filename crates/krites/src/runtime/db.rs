@@ -307,8 +307,6 @@ impl<'s, S: Storage<'s>> Db<S> {
     }
 
     /// Backup the running database into an Sqlite file.
-    ///
-    /// Not currently supported: requires the removed `storage-sqlite` feature.
     #[must_use = "backup can fail"]
     pub fn backup_db(&'s self, _out_file: impl AsRef<Path>) -> Result<()> {
         UnsupportedSnafu {
@@ -318,8 +316,6 @@ impl<'s, S: Storage<'s>> Db<S> {
         .fail()?
     }
     /// Restore from an Sqlite backup.
-    ///
-    /// Not currently supported: requires the removed `storage-sqlite` feature.
     #[must_use = "restore can fail"]
     pub fn restore_backup(&'s self, _in_file: impl AsRef<Path>) -> Result<()> {
         UnsupportedSnafu {
@@ -329,8 +325,6 @@ impl<'s, S: Storage<'s>> Db<S> {
         .fail()?
     }
     /// Import data from relations in a backup file.
-    ///
-    /// Not currently supported: requires the removed `storage-sqlite` feature.
     #[must_use = "import can fail"]
     pub fn import_from_backup(
         &'s self,

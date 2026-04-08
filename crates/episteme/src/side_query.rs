@@ -134,7 +134,7 @@ struct CacheEntry {
 /// Keys are a combined hash of (query, `manifest_text`). Entries expire
 /// after a configurable TTL. Front = LRU, back = MRU.
 pub(crate) struct RelevanceCache {
-    // NOTE: linear scan is fine for small capacity (default 64).
+    // PERF: linear scan is acceptable for default capacity (64 entries).
     entries: Vec<(u64, CacheEntry)>,
     capacity: usize,
     ttl: Duration,
@@ -156,13 +156,13 @@ impl RelevanceCache {
         // PERF: linear scan is fine for small capacity (default 64).
         let pos = self.entries.iter().position(|(k, _)| *k == key)?;
 
-        if now.saturating_duration_since(self.entries.get(pos)?.1.created_at) > self.ttl {
+        if now.duration_since(self.entries.get(pos)?.1.created_at) > self.ttl {
             self.entries.remove(pos);
             return None;
         }
 
         let ids = self.entries.get(pos)?.1.selected_ids.clone();
-        
+        // NOTE: move to back (most recently used).
         let pair = self.entries.remove(pos);
         self.entries.push(pair);
         Some(ids)
@@ -170,10 +170,10 @@ impl RelevanceCache {
 
     /// Insert a result, evicting the LRU entry if at capacity.
     pub(crate) fn insert(&mut self, key: u64, selected_ids: Vec<String>) {
-        
+        // NOTE: remove existing entry with same key before inserting.
         self.entries.retain(|(k, _)| *k != key);
         if self.entries.len() >= self.capacity {
-            self.entries.remove(0);
+            self.entries.remove(0); // NOTE: evict LRU (front)
         }
         self.entries.push((
             key,
@@ -241,6 +241,7 @@ impl SideQuerySelector {
             });
         }
 
+        // NOTE: filter out already-surfaced entries before ranking.
         let filtered = self.filter_surfaced(manifest);
         if filtered.is_empty() {
             debug!("all manifest entries already surfaced");
@@ -253,6 +254,7 @@ impl SideQuerySelector {
         let manifest_text = filtered.format();
         let cache_key = compute_cache_key(query, &manifest_text);
 
+        // NOTE: check cache first.
         {
             let mut cache = self
                 .cache

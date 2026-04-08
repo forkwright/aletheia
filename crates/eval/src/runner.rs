@@ -11,7 +11,6 @@ use crate::provider::{BuiltinProvider, EvalProvider};
 use crate::scenario::{Scenario, ScenarioOutcome, ScenarioResult};
 
 /// Configuration for a scenario run.
-#[derive(Clone)]
 pub struct RunConfig {
     /// Base URL of the target instance.
     pub base_url: String,
@@ -161,7 +160,6 @@ impl ScenarioRunner {
             tokio::pin!(scenario_fut);
 
             let outcome = tokio::select! {
-                biased;
                 result = &mut scenario_fut => {
                     match result {
                         Ok(()) => {

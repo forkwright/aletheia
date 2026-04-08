@@ -93,6 +93,8 @@ pub struct HotkeyState {
     pub registrations: Vec<(HotkeyAction, HotkeyRegistration)>,
 }
 
+
+
 /// Persisted window geometry and UI state.
 ///
 /// Saved to `~/.config/aletheia-desktop/window-state.toml` on quit and
@@ -164,6 +166,8 @@ impl Default for WindowState {
         }
     }
 }
+
+
 
 /// Reactive state for the quick input overlay.
 #[derive(Debug, Clone, Default)]

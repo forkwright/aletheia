@@ -81,32 +81,6 @@ impl AttentionItem {
 }
 
 impl ProsocheCheck {
-    /// Create a prosoche check for the given nous.
-    #[expect(dead_code, reason = "prosoche attention check builder")]
-    pub(crate) fn new(nous_id: impl Into<String>) -> Self {
-        Self {
-            nous_id: nous_id.into(),
-            data_dir: None,
-            db_paths: Vec::new(),
-        }
-    }
-
-    /// Set the instance data directory for disk space checks.
-    #[must_use]
-    #[expect(dead_code, reason = "prosoche attention check builder")]
-    pub(crate) fn with_data_dir(mut self, path: impl Into<PathBuf>) -> Self {
-        self.data_dir = Some(path.into());
-        self
-    }
-
-    /// Add database file paths to check sizes.
-    #[must_use]
-    #[expect(dead_code, reason = "prosoche attention check builder")]
-    pub(crate) fn with_db_paths(mut self, paths: Vec<PathBuf>) -> Self {
-        self.db_paths = paths;
-        self
-    }
-
     /// Run the attention check. Returns items needing attention.
     ///
     /// Performs real system health checks:

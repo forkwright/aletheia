@@ -530,8 +530,8 @@ fn render_context_budget(app: &App, frame: &mut Frame, area: Rect, theme: &Theme
     let token_line = match (used, total) {
         (Some(u), Some(t)) => format!(
             "{pct}%  {bar}  ({} / {} tokens)",
-            theatron_core::format::format_tokens(u64::from(u)),
-            theatron_core::format::format_tokens(u64::from(t))
+            format_tokens(u),
+            format_tokens(t)
         ),
         _ => format!("{pct}%  {bar}"),
     };
@@ -573,6 +573,16 @@ fn render_context_budget(app: &App, frame: &mut Frame, area: Rect, theme: &Theme
         .wrap(Wrap { trim: false })
         .style(ratatui::style::Style::default());
     frame.render_widget(para, inner);
+}
+
+fn format_tokens(n: u32) -> String {
+    if n >= 1_000_000 {
+        format!("{}M", n / 1_000_000)
+    } else if n >= 1_000 {
+        format!("{}K", n / 1_000)
+    } else {
+        format!("{n}")
+    }
 }
 
 fn render_decision_card(

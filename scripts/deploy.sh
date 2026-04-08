@@ -18,35 +18,29 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# WHY: derive project name from the repo directory or env var so the script
-# works for both aletheia and forks (ergon, etc.) without hardcoded names.
-PROJECT_NAME="${DEPLOY_PROJECT_NAME:-$(basename "$REPO_ROOT")}"
-
-# Instance root: env var, then $HOME/<project>/instance, then fail
+# Instance root: env var, then common locations, then fail
 if [[ -n "${ALETHEIA_ROOT:-}" ]]; then
     INSTANCE_ROOT="$ALETHEIA_ROOT"
-elif [ -d "$HOME/$PROJECT_NAME/instance" ]; then
-    INSTANCE_ROOT="$HOME/$PROJECT_NAME/instance"
+elif [ -d "$HOME/ergon/instance" ]; then
+    INSTANCE_ROOT="$HOME/ergon/instance"
 elif [ -d "$HOME/aletheia/instance" ]; then
     INSTANCE_ROOT="$HOME/aletheia/instance"
 else
-    echo "[deploy] ERROR: No instance root found. Set ALETHEIA_ROOT or create ~/$PROJECT_NAME/instance/" >&2
+    echo "[deploy] ERROR: No instance root found. Set ALETHEIA_ROOT or create ~/ergon/instance/" >&2
     exit 1
 fi
 
-# WHY: cargo builds the binary with the package name from Cargo.toml,
-# which is always "aletheia" regardless of the repo name.
 BINARY_SRC="$REPO_ROOT/target/release/aletheia"
 
-# Binary destination: env var, then $HOME/<project>/bin, then ~/.local/bin
+# Binary destination: env var, then common locations
 if [[ -n "${ALETHEIA_BINARY:-}" ]]; then
     BINARY_DST="$ALETHEIA_BINARY"
-elif [ -d "$HOME/$PROJECT_NAME/bin" ]; then
-    BINARY_DST="$HOME/$PROJECT_NAME/bin/aletheia"
+elif [ -d "$HOME/ergon/bin" ]; then
+    BINARY_DST="$HOME/ergon/bin/aletheia"
 else
     BINARY_DST="$HOME/.local/bin/aletheia"
 fi
-SERVICE="${PROJECT_NAME}.service"
+SERVICE="aletheia.service"
 BACKUP_DIR="${INSTANCE_ROOT}/.deploy-backup"
 DEPLOY_LOG="${INSTANCE_ROOT}/deploy.log"
 HEALTH_URL="${ALETHEIA_HEALTH_URL:-http://localhost:18789/api/health}"
@@ -307,10 +301,7 @@ download_binary() {
     local repo="${GITHUB_REPO:-$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null | sed 's|.*github.com[:/]||;s|\.git$||')}"
     repo="${repo:-forkwright/aletheia}"
     local asset_name
-    # WHY: release.yml names assets as "<project>-linux-<arch>-<version>"
-    local arch
-    arch="$(uname -m)"
-    asset_name="${PROJECT_NAME}-linux-${arch}-${version}"
+    asset_name="aletheia-$(uname -m)-unknown-linux-gnu"
     local tmp_bin
     tmp_bin="$(mktemp)" || return 1
     trap 'rm -f -- "$tmp_bin"' RETURN

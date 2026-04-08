@@ -21,8 +21,9 @@ pub(crate) enum InitError {
         #[snafu(implicit)]
         location: snafu::Location,
     },
-    #[snafu(display("API key not provided"))]
+    #[snafu(display("ANTHROPIC_API_KEY not set"))]
     MissingApiKey {
+        source: std::env::VarError,
         #[snafu(implicit)]
         location: snafu::Location,
     },
@@ -154,9 +155,9 @@ fn print_success_outro(root: &std::path::Path) -> Result<(), InitError> {
 }
 
 pub(crate) fn run(args: RunArgs) -> Result<(), InitError> {
-    // WHY: ALETHEIA_INSTANCE_PATH is handled by clap env var; ALETHEIA_ROOT
-    // support is removed in favor of explicit CLI args or Oikos discovery.
-    run_inner(args, None)
+    // WHY: pass the env var through a parameter so tests can call run_inner
+    // directly with None and bypass ALETHEIA_ROOT without touching env state
+    run_inner(args, std::env::var("ALETHEIA_ROOT").ok().map(PathBuf::from))
 }
 
 fn run_inner(args: RunArgs, env_root: Option<PathBuf>) -> Result<(), InitError> {
@@ -360,9 +361,8 @@ fn collect_credential() -> Result<Option<SecretString>, InitError> {
             Ok(Some(SecretString::from(key)))
         }
         "env" => {
-            // NOTE: Direct env var reading removed per #2800.
-            // Use --api-key CLI arg or credential store instead.
-            MissingApiKeySnafu.fail()
+            let key = std::env::var("ANTHROPIC_API_KEY").context(MissingApiKeySnafu)?;
+            Ok(Some(SecretString::from(key)))
         }
         _ => Ok(None),
     }

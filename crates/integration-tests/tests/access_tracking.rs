@@ -165,7 +165,7 @@ fn default_stability_by_fact_type() {
 }
 
 #[test]
-#[ignore = "run manually: cargo test -p aletheia-integration-tests --features engine-tests audit -- --ignored --nocapture (#2770)")]
+#[ignore = "run manually: cargo test -p aletheia-integration-tests --features engine-tests audit -- --ignored --nocapture"]
 fn knowledge_graph_data_audit() {
     let store = open_store(4);
 

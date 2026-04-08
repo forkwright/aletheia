@@ -1,4 +1,4 @@
-// NOTE: Corrective prompt generation creates focused fix prompts targeting only
+// WHY: Corrective prompt generation creates focused fix prompts targeting only
 // failed criteria. This prevents full reimplementation when only specific
 // aspects of a PR need correction.
 

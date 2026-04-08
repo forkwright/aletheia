@@ -487,15 +487,10 @@ impl NousActor {
             return;
         }
         // WHY: last_accessed tracks actual session activity; least recently used is evicted.
-        // Tiebreak on session key for deterministic eviction when timestamps match (#2737).
         let oldest_key = self
             .sessions
             .iter()
-            .min_by(|(k_a, s_a), (k_b, s_b)| {
-                s_a.last_accessed
-                    .cmp(&s_b.last_accessed)
-                    .then_with(|| k_a.cmp(k_b))
-            })
+            .min_by_key(|(_, state)| state.last_accessed)
             .map(|(key, _)| key.clone());
         if let Some(key) = oldest_key {
             warn!(
@@ -538,7 +533,7 @@ impl NousActor {
                     .await;
             }
         }
-        // WHY: suppress unused-variable warning when knowledge-store feature is off
+        // WHY: suppress unused-variable warning when tui feature is off
         #[cfg(not(feature = "knowledge-store"))]
         let _ = content;
 
@@ -554,12 +549,10 @@ impl NousActor {
     /// Degrades gracefully: any I/O or deserialization error is logged and
     /// returns an empty vec so the pipeline is never blocked by intent load failures.
     pub(crate) fn resolve_intent_sections(&self) -> Vec<BootstrapSection> {
-        use tracing::warn;
-
-        use aletheia_dianoia::intent::IntentStore;
-
         use crate::bootstrap::{BootstrapSection, SectionPriority};
         use crate::budget::{CharEstimator, TokenEstimator as _};
+        use aletheia_dianoia::intent::IntentStore;
+        use tracing::warn;
 
         let agent_dir = self.services.oikos.nous_dir(&self.id);
         let store = IntentStore::new(agent_dir);

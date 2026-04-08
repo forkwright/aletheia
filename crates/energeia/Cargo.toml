@@ -17,6 +17,8 @@ storage-fjall = ["dep:fjall"]
 
 [dependencies]
 aletheia-koina = { path = "../koina" }
+async-trait = "0.1"
+uuid = { workspace = true }
 aletheia-eidos = { path = "../eidos" }
 prometheus = { workspace = true }
 regex = { workspace = true }
@@ -29,7 +31,7 @@ jiff = { workspace = true, features = ["serde"] }
 rmp-serde = "1.2"
 serde = { workspace = true }
 serde_json = { workspace = true }
-serde_yml = { workspace = true }
+serde_yaml = { workspace = true }
 snafu = { workspace = true }
 tokio = { workspace = true, features = ["process", "io-util"] }
 tokio-util = { workspace = true }

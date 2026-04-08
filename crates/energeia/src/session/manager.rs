@@ -1,4 +1,4 @@
-// NOTE: Per-prompt executor that spawns a session, monitors events, enforces
+// WHY: Per-prompt executor that spawns a session, monitors events, enforces
 // budget limits, and handles multi-stage resume escalation. Produces a
 // SessionOutcome that records cost, turns, duration, and terminal status.
 

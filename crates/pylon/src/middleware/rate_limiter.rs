@@ -54,12 +54,12 @@ impl RateLimiter {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
 
         if let Some((window_start, count)) = state.get_mut(client) {
-            if now.saturating_duration_since(*window_start) >= self.window {
+            if now.duration_since(*window_start) >= self.window {
                 *window_start = now;
                 *count = 1;
                 None
             } else if *count >= self.max_requests {
-                let elapsed = now.saturating_duration_since(*window_start);
+                let elapsed = now.duration_since(*window_start);
                 let remaining = self.window.saturating_sub(elapsed);
                 Some(remaining.as_secs() + 1)
             } else {

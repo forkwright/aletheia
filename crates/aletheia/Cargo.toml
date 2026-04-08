@@ -76,7 +76,7 @@ clap = { version = "4", features = ["derive", "env"] }
 clap_complete = "4"
 qdrant-client = { version = "1", optional = true }
 rand = { workspace = true }
-sha2 = { workspace = true }
+sha2 = "0.11"
 anyhow = "1"
 snafu = { workspace = true }
 rcgen = { workspace = true }
@@ -84,7 +84,8 @@ rcgen = { workspace = true }
 # time::OffsetDateTime. rcgen already depends on time transitively, so this does
 # not add a new crate to the binary — it only pins our access to the same version.
 time = "0.3"
-
+owo-colors = "4"
+supports-color = "3"
 toml = { workspace = true }
 toml_edit = "0.25"
 

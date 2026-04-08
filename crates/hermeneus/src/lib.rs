@@ -36,8 +36,7 @@ pub mod local;
 pub mod metrics;
 /// Model constants and API configuration defaults.
 pub mod models;
-/// [`LlmProvider`](provider::LlmProvider), [`ProviderConfig`](provider::ProviderConfig),
-/// [`ProviderRegistry`](provider::ProviderRegistry), and [`RetrySettings`](provider::RetrySettings).
+/// [`LlmProvider`](provider::LlmProvider), [`ProviderConfig`](provider::ProviderConfig), and [`ProviderRegistry`](provider::ProviderRegistry).
 pub mod provider;
 /// Shared mock provider for tests across the workspace.
 #[cfg(any(test, feature = "test-utils"))]

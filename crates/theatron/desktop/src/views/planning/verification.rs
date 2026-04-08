@@ -114,7 +114,7 @@ const PLACEHOLDER_STYLE: &str = "\
 /// Displays overall and per-tier coverage bars, a requirement table,
 /// and the gap analysis panel.
 ///
-/// # TODO(#2604)
+/// # TODO(#2034)
 /// `POST /api/planning/projects/{project_id}/verification/refresh` endpoint
 /// is assumed but may not exist yet; the Re-verify button is wired to it.
 #[component]
@@ -155,7 +155,7 @@ pub(crate) fn VerificationView(project_id: String) -> Element {
                         }
                     }
                 }
-                // NOTE: 404 means verification endpoint not yet on this pylon version.
+                // WHY: 404 means verification endpoint not yet on this pylon version.
                 Ok(resp) if resp.status().as_u16() == 404 => {
                     fetch_state.set(FetchState::NotAvailable);
                 }

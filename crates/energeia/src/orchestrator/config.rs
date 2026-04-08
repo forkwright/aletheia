@@ -1,4 +1,4 @@
-// NOTE: Centralizes orchestrator-level defaults (concurrency, budget, timeouts)
+// WHY: Centralizes orchestrator-level defaults (concurrency, budget, timeouts)
 // separate from per-session config (EngineConfig) so callers can tune the
 // dispatch pipeline without touching session internals.
 

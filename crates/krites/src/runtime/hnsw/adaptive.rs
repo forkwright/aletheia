@@ -7,9 +7,8 @@
     dead_code,
     reason = "infrastructure for future HNSW search-path integration"
 )]
-use std::collections::BinaryHeap;
-
 use ordered_float::OrderedFloat;
+use priority_queue::PriorityQueue;
 
 use super::types::{CompoundKey, VectorCache};
 use crate::DataValue;
@@ -87,7 +86,7 @@ impl<'a> SessionTx<'a> {
         let key_len = base_handle.metadata.keys.len();
 
         // Max-heap: we push all candidates and pop the worst when > k.
-        let mut top_k: BinaryHeap<(OrderedFloat<f64>, CompoundKey)> = BinaryHeap::new();
+        let mut top_k: PriorityQueue<CompoundKey, OrderedFloat<f64>> = PriorityQueue::new();
 
         for res in idx_handle.scan_prefix(self, &canary_prefix) {
             let tuple = match res {
@@ -128,7 +127,7 @@ impl<'a> SessionTx<'a> {
                 Err(_) => continue,
             };
 
-            top_k.push((OrderedFloat(dist), cand_key));
+            top_k.push(cand_key, OrderedFloat(dist));
             if top_k.len() > k {
                 top_k.pop();
             }
@@ -136,7 +135,7 @@ impl<'a> SessionTx<'a> {
 
         // Collect results in ascending distance order.
         let mut results: Vec<(CompoundKey, f64)> = Vec::with_capacity(top_k.len());
-        while let Some((OrderedFloat(dist), key)) = top_k.pop() {
+        while let Some((key, OrderedFloat(dist))) = top_k.pop() {
             results.push((key, dist));
         }
         results.reverse();

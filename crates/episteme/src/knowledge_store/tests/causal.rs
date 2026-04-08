@@ -4,10 +4,10 @@
     reason = "test assertions use direct indexing"
 )]
 
-use crate::id::{CausalEdgeId, FactId};
+use crate::id::FactId;
 use crate::knowledge::{
-    CausalEdge, CausalRelationType, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance,
-    FactTemporal, TemporalOrdering, far_future,
+    CausalEdge, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
+    TemporalOrdering, far_future,
 };
 use crate::knowledge_store::KnowledgeStore;
 
@@ -47,14 +47,11 @@ fn make_fact(id: &str, content: &str) -> Fact {
 /// Helper: create a causal edge.
 fn make_edge(cause: &str, effect: &str, confidence: f64) -> CausalEdge {
     CausalEdge {
-        id: CausalEdgeId::new(ulid::Ulid::new().to_string()).expect("valid test id"),
-        source_id: FactId::new(cause).expect("valid test id"),
-        target_id: FactId::new(effect).expect("valid test id"),
-        relationship_type: CausalRelationType::Caused,
+        cause: FactId::new(cause).expect("valid test id"),
+        effect: FactId::new(effect).expect("valid test id"),
         ordering: TemporalOrdering::Before,
         confidence,
-        evidence_session_id: None,
-        timestamp: jiff::Timestamp::now(),
+        created_at: jiff::Timestamp::now(),
     }
 }
 
@@ -80,7 +77,7 @@ fn insert_and_query_causal_edge() {
         .expect("query_effects should succeed");
     assert_eq!(effects.len(), 1, "should have one effect");
     assert_eq!(
-        effects[0].target_id.as_str(),
+        effects[0].effect.as_str(),
         "fact-b",
         "effect should be fact-b"
     );
@@ -94,7 +91,7 @@ fn insert_and_query_causal_edge() {
         .query_causes(&FactId::new("fact-b").expect("valid test id"))
         .expect("query_causes should succeed");
     assert_eq!(causes.len(), 1, "should have one cause");
-    assert_eq!(causes[0].source_id.as_str(), "fact-a", "cause should be fact-a");
+    assert_eq!(causes[0].cause.as_str(), "fact-a", "cause should be fact-a");
 }
 
 #[test]
@@ -291,14 +288,11 @@ fn causal_edge_with_concurrent_ordering() {
         .expect("insert c2");
 
     let edge = CausalEdge {
-        id: CausalEdgeId::new(ulid::Ulid::new().to_string()).expect("valid test id"),
-        source_id: FactId::new("c1").expect("valid test id"),
-        target_id: FactId::new("c2").expect("valid test id"),
-        relationship_type: CausalRelationType::Caused,
+        cause: FactId::new("c1").expect("valid test id"),
+        effect: FactId::new("c2").expect("valid test id"),
         ordering: TemporalOrdering::Concurrent,
         confidence: 0.75,
-        evidence_session_id: None,
-        timestamp: jiff::Timestamp::now(),
+        created_at: jiff::Timestamp::now(),
     };
     store
         .insert_causal_edge(&edge)

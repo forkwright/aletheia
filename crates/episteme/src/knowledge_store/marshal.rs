@@ -198,7 +198,7 @@ pub(super) fn compute_tool_overlap(a: &[String], b: &[String]) -> f64 {
     if union == 0 {
         return 1.0;
     }
-    intersection as f64 / union as f64 // NOTE: set counts fit f64
+    intersection as f64 / union as f64 // SAFETY: set counts fit f64
 }
 
 /// Compute name similarity using longest common subsequence ratio.
@@ -223,7 +223,7 @@ pub(super) fn compute_name_similarity(a: &str, b: &str) -> f64 {
         return 1.0;
     }
     let lcs = lcs_char_length(&a_chars, &b_chars);
-    lcs as f64 / max_len as f64 // NOTE: string lengths fit f64
+    lcs as f64 / max_len as f64 // SAFETY: string lengths fit f64
 }
 
 /// Classic DP Longest Common Subsequence length for char slices.

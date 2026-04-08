@@ -20,6 +20,8 @@ pub enum ToolStatus {
     Error,
 }
 
+
+
 /// Rich tool call state for the expandable panel display.
 ///
 /// This extends the minimal [`super::events::ToolCallInfo`] with input/output

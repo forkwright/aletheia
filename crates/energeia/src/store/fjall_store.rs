@@ -569,9 +569,8 @@ impl std::fmt::Debug for EnergeiaStore {
 )]
 #[expect(clippy::float_cmp, reason = "test assertions on exact float values")]
 mod tests {
-    use tempfile::TempDir;
-
     use super::*;
+    use tempfile::TempDir;
 
     fn setup_test_store() -> (TempDir, EnergeiaStore) {
         let temp_dir = TempDir::new().unwrap();
@@ -913,8 +912,6 @@ mod tests {
             resume_count: 0,
             pr_url: Some("https://github.com/acme/repo/pull/42".to_owned()),
             error: None,
-            model: Some("claude-sonnet-4-20250514".to_owned()),
-            blast_radius: vec!["crates/test/".to_owned()],
         };
 
         let fact = store.record_training_data(session, &outcome).unwrap();

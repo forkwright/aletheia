@@ -6,6 +6,8 @@ use rusqlite::Connection;
 use snafu::ResultExt;
 use tracing::{info, instrument, warn};
 
+use aletheia_koina::disk_space::DiskSpaceMonitor;
+
 use crate::error::{self, Result};
 
 /// Validate a backup path for safe SQL interpolation and optional directory containment.
@@ -65,6 +67,7 @@ fn validate_backup_path(path: &Path, backup_dir: Option<&Path>) -> Result<()> {
 pub struct BackupManager<'a> {
     conn: &'a Connection,
     backup_dir: PathBuf,
+    disk_monitor: Option<DiskSpaceMonitor>,
 }
 
 /// Outcome of creating a backup.
@@ -111,7 +114,15 @@ impl<'a> BackupManager<'a> {
         Self {
             conn,
             backup_dir: backup_dir.into(),
+            disk_monitor: None,
         }
+    }
+
+    /// Attach a disk space monitor. Backups are non-essential and will be
+    /// skipped when disk space reaches the critical threshold.
+    #[expect(dead_code, reason = "daemon disk monitor integration pending")]
+    pub(crate) fn set_disk_monitor(&mut self, monitor: DiskSpaceMonitor) {
+        self.disk_monitor = Some(monitor);
     }
 
     /// Create a `SQLite` backup using `VACUUM INTO`.
@@ -131,6 +142,14 @@ impl<'a> BackupManager<'a> {
     #[instrument(skip(self))]
     pub fn create_backup(&self) -> Result<Option<BackupResult>> {
         let backup_start = std::time::Instant::now();
+        if let Some(ref monitor) = self.disk_monitor
+            && !monitor.allow_non_essential_write()
+        {
+            let mb = monitor.status().available_bytes() / (1024 * 1024);
+            warn!(available_mb = mb, "skipping backup: disk space critical");
+            return Ok(None);
+        }
+
         std::fs::create_dir_all(&self.backup_dir).context(error::IoSnafu {
             path: self.backup_dir.clone(),
         })?;
@@ -182,6 +201,17 @@ impl<'a> BackupManager<'a> {
     /// method returns `Ok(None)` instead of writing.
     #[instrument(skip(self))]
     pub fn export_sessions_json(&self, output_dir: &Path) -> Result<Option<ExportResult>> {
+        if let Some(ref monitor) = self.disk_monitor
+            && !monitor.allow_non_essential_write()
+        {
+            let mb = monitor.status().available_bytes() / (1024 * 1024);
+            warn!(
+                available_mb = mb,
+                "skipping JSON export: disk space critical"
+            );
+            return Ok(None);
+        }
+
         std::fs::create_dir_all(output_dir).context(error::IoSnafu {
             path: output_dir.to_path_buf(),
         })?;

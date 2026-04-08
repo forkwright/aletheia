@@ -152,6 +152,7 @@ pub(crate) fn Memory() -> Element {
             PreservedViewState {
                 scroll_top: 0.0,
                 input_text: list_store.read().search_query.clone(),
+                secondary_scroll: 0.0,
             },
         );
     });

@@ -105,6 +105,28 @@ pub(crate) fn parse_hunk_header(line: &str) -> (usize, usize) {
     (old_start, new_start)
 }
 
+pub(crate) fn truncate_str(s: &str, max_chars: usize) -> String {
+    if s.len() <= max_chars {
+        s.to_string()
+    } else {
+        let mut end = max_chars.min(s.len());
+        while end > 0 && !s.is_char_boundary(end) {
+            end -= 1;
+        }
+        let truncated = s.get(..end).unwrap_or(s);
+        if end >= 2 {
+            format!(
+                "{}…",
+                truncated
+                    .get(..truncated.len().saturating_sub(1))
+                    .unwrap_or(truncated)
+            )
+        } else {
+            truncated.to_string()
+        }
+    }
+}
+
 pub(super) fn pad_to(s: String, width: usize) -> String {
     if s.len() >= width {
         s.get(..width).unwrap_or(&s).to_string()

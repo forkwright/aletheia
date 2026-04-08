@@ -7,11 +7,39 @@ use aletheia_hermeneus::types::{Content, Message, Role};
 use crate::distill::{DistillConfig, DistillEngine, DistillSection};
 use crate::flush::{FlushItem, FlushSource, MemoryFlush};
 
+#[expect(dead_code, reason = "test helper available for future flush tests")]
+fn summary_provider(text: &str) -> MockProvider {
+    MockProvider::new(text)
+        .models(&["claude-sonnet-4-20250514"])
+        .named("mock-roundtrip")
+}
+
 fn text_msg(role: Role, text: &str) -> Message {
     Message {
         role,
         content: Content::Text(text.to_owned()),
     }
+}
+
+#[expect(dead_code, reason = "test helper available for future flush tests")]
+fn default_engine() -> DistillEngine {
+    DistillEngine::new(DistillConfig::default())
+}
+
+#[expect(dead_code, reason = "test helper available for future flush tests")]
+fn n_messages(n: usize) -> Vec<Message> {
+    (0..n)
+        .map(|i| {
+            text_msg(
+                if i % 2 == 0 {
+                    Role::User
+                } else {
+                    Role::Assistant
+                },
+                &format!("Message {i} with content for token estimation."),
+            )
+        })
+        .collect()
 }
 
 fn sample_flush_item(content: &str, source: FlushSource) -> FlushItem {
@@ -22,6 +50,7 @@ fn sample_flush_item(content: &str, source: FlushSource) -> FlushItem {
     }
 }
 
+#[expect(dead_code, reason = "test helper available for future flush tests")]
 const FULL_SUMMARY: &str = "\
 ## Summary
 Fixed login bug and added tool-based database schema update.
@@ -180,10 +209,10 @@ fn engine_config_sections_match_input() {
         *s.first().expect("idx 0"),
         DistillSection::Summary,
         "first section should be Summary"
-    );
+    ); // WHY: test assertion
     assert_eq!(
         *s.get(1).expect("idx 1"),
         DistillSection::Corrections,
         "second section should be Corrections"
-    );
+    ); // WHY: test assertion
 }

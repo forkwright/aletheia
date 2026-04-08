@@ -38,11 +38,11 @@ pub(crate) fn handle_stream_turn_start(app: &mut App, turn_id: TurnId, nous_id: 
 }
 
 #[tracing::instrument(skip_all, fields(len = text.len()))]
-// NOTE: sanitized at ingestion: streaming text from LLM API.
+// SAFETY: sanitized at ingestion: streaming text from LLM API.
 pub(crate) fn handle_stream_text_delta(app: &mut App, text: String) {
     app.connection.stream_phase = crate::state::StreamPhase::Streaming;
     let clean = sanitize_for_display(&text);
-    // NOTE: Line-by-line streaming. Buffer partial lines and flush only complete
+    // PERF: Line-by-line streaming. Buffer partial lines and flush only complete
     // lines (ending in `\n`) to streaming_text. The incomplete tail stays in the
     // line buffer. This prevents markdown re-parses on every token within a line.
     app.connection.streaming_line_buffer.push_str(&clean);
@@ -58,7 +58,7 @@ pub(crate) fn handle_stream_text_delta(app: &mut App, text: String) {
 }
 
 #[tracing::instrument(skip_all, fields(len = text.len()))]
-// NOTE: sanitized at ingestion: thinking text from LLM API.
+// SAFETY: sanitized at ingestion: thinking text from LLM API.
 pub(crate) fn handle_stream_thinking_delta(app: &mut App, text: String) {
     app.connection.stream_phase = crate::state::StreamPhase::Thinking;
     let clean = sanitize_for_display(&text);
@@ -67,7 +67,7 @@ pub(crate) fn handle_stream_thinking_delta(app: &mut App, text: String) {
 }
 
 #[tracing::instrument(skip_all, fields(%tool_name))]
-// NOTE: sanitized at ingestion: tool names from stream API.
+// SAFETY: sanitized at ingestion: tool names from stream API.
 pub(crate) fn handle_stream_tool_start(
     app: &mut App,
     tool_name: String,
@@ -132,7 +132,7 @@ pub(crate) fn handle_stream_tool_result(
 }
 
 #[tracing::instrument(skip_all, fields(%tool_name, %risk))]
-// NOTE: sanitized at ingestion: tool approval data from stream API.
+// SAFETY: sanitized at ingestion: tool approval data from stream API.
 pub(crate) fn handle_stream_tool_approval_required(
     app: &mut App,
     turn_id: TurnId,
@@ -203,7 +203,7 @@ pub(crate) fn handle_stream_plan_complete(app: &mut App, status: String) {
 }
 
 #[tracing::instrument(skip_all)]
-// NOTE: sanitized at ingestion: plan step labels and roles from stream API.
+// SAFETY: sanitized at ingestion: plan step labels and roles from stream API.
 pub(crate) fn handle_stream_plan_proposed(app: &mut App, plan: Plan) {
     app.layout.overlay = Some(Overlay::PlanApproval(PlanApprovalOverlay {
         plan_id: plan.id,
@@ -223,7 +223,7 @@ pub(crate) fn handle_stream_plan_proposed(app: &mut App, plan: Plan) {
 }
 
 #[tracing::instrument(skip_all)]
-// NOTE: sanitized at ingestion: streaming_text already sanitized via handle_stream_text_delta,
+// SAFETY: sanitized at ingestion: streaming_text already sanitized via handle_stream_text_delta,
 // model name from API is sanitized here.
 pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutcome) {
     app.connection.stream_phase = crate::state::StreamPhase::Done;
@@ -344,7 +344,7 @@ pub(crate) fn handle_stream_turn_abort(app: &mut App, reason: String) {
 }
 
 #[tracing::instrument(skip_all)]
-// NOTE: sanitized at ingestion: error messages may contain external data.
+// SAFETY: sanitized at ingestion: error messages may contain external data.
 pub(crate) fn handle_stream_error(app: &mut App, msg: String) {
     tracing::error!("stream error: {msg}");
     app.connection.state_epoch = app.connection.state_epoch.wrapping_add(1);
@@ -368,7 +368,7 @@ pub(crate) fn handle_stream_error(app: &mut App, msg: String) {
 }
 
 #[tracing::instrument(skip_all)]
-// NOTE: sanitized at ingestion: streaming_text already sanitized via handle_stream_text_delta.
+// SAFETY: sanitized at ingestion: streaming_text already sanitized via handle_stream_text_delta.
 pub(crate) async fn handle_cancel_turn(app: &mut App) {
     let turn_id = match app.connection.active_turn_id.take() {
         Some(id) => id,

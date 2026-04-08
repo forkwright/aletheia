@@ -38,7 +38,6 @@ impl NousActor {
                         self.record_background_panic();
                     } else {
                         warn!(nous_id = %self.id, error = %e, "background task failed");
-                        crate::metrics::record_background_failure(&self.id, "unknown");
                     }
                 }
             }
@@ -245,7 +244,7 @@ impl NousActor {
             let Ok(Some(session)) = store.find_session_by_id(&session_id) else {
                 return false;
             };
-            let config = self.config.distillation.clone();
+            let config = crate::distillation::DistillTriggerConfig::default();
             crate::distillation::should_trigger_distillation(
                 &session,
                 u64::from(self.config.generation.context_window),

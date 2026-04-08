@@ -6,13 +6,13 @@
 
 use std::time::Duration;
 
-use aletheia_koina::hex;
 use rand::Rng;
 use tracing::instrument;
 
 use crate::error::{self, Result};
 use crate::store::AuthStore;
 use crate::types::{ApiKeyRecord, Claims, Role, TokenKind};
+use crate::util::days_to_date;
 
 /// Prefix for all Aletheia API keys.
 const KEY_PREFIX: &str = "ale";
@@ -36,14 +36,15 @@ pub(crate) fn generate(
     let id = ulid::Ulid::new().to_string();
 
     let expires_at = expires_in.map(|d| {
-        let signed = jiff::SignedDuration::try_from(d).unwrap_or_else(|_| {
-            tracing::warn!("expiry duration overflows signed duration, clamping");
-            jiff::SignedDuration::MAX
-        });
-        jiff::Timestamp::now()
-            .checked_add(signed)
-            .unwrap_or(jiff::Timestamp::MAX)
-            .to_string()
+        let expiry = std::time::SystemTime::now() + d;
+        let secs = expiry
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_else(|e| {
+                tracing::warn!("failed to compute expiry timestamp: {e}");
+                std::time::Duration::default()
+            })
+            .as_secs();
+        time_from_unix(secs)
     });
 
     let record = ApiKeyRecord {
@@ -137,7 +138,46 @@ fn parse_key(raw: &str) -> Result<(&str, &str, &str)> {
 }
 
 fn now_iso() -> String {
-    aletheia_koina::time::now_iso8601()
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_else(|e| {
+            tracing::warn!("failed to get current timestamp: {e}");
+            std::time::Duration::default()
+        })
+        .as_secs();
+    time_from_unix(secs)
+}
+
+fn time_from_unix(secs: u64) -> String {
+    // WHY: simple ISO 8601 formatting without external dependency
+    let days = secs / 86400;
+    let time_secs = secs % 86400;
+    let hours = time_secs / 3600;
+    let minutes = (time_secs % 3600) / 60;
+    let seconds = time_secs % 60;
+
+    let (year, month, day) = days_to_date(days);
+    format!("{year:04}-{month:02}-{day:02}T{hours:02}:{minutes:02}:{seconds:02}.000Z")
+}
+
+mod hex {
+    const HEX_CHARS: &[u8; 16] = b"0123456789abcdef";
+
+    pub(super) fn encode(bytes: &[u8]) -> String {
+        let mut s = String::with_capacity(bytes.len() * 2);
+        for &b in bytes {
+            // SAFETY: nibble is 0..=15, HEX_CHARS has exactly 16 elements
+            let hi = usize::from(b >> 4);
+            let lo = usize::from(b & 0x0f);
+            if let Some(&ch) = HEX_CHARS.get(hi) {
+                s.push(char::from(ch));
+            }
+            if let Some(&ch) = HEX_CHARS.get(lo) {
+                s.push(char::from(ch));
+            }
+        }
+        s
+    }
 }
 
 #[cfg(test)]

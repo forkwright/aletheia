@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 use snafu::prelude::*;
 
 use aletheia_koina::secret::SecretString;
-use aletheia_taxis::oikos::Oikos;
 
 use crate::error::{ConfigDirSnafu, IoSnafu, Result, TomlSnafu};
 use crate::theme::ThemeMode;
@@ -113,12 +112,15 @@ impl Config {
     ) -> Result<Self> {
         let file_config = Self::load_file().unwrap_or_default();
 
-        // Use Oikos for workspace root discovery; file config is fallback
-        let workspace_root = file_config
-            .workspace_root
-            .as_deref()
+        let workspace_root = std::env::var("ALETHEIA_ROOT")
+            .ok()
             .map(std::path::PathBuf::from)
-            .or_else(|| Some(Oikos::discover().root().to_path_buf()));
+            .or_else(|| {
+                file_config
+                    .workspace_root
+                    .as_deref()
+                    .map(std::path::PathBuf::from)
+            });
 
         let theme = file_config.theme.as_deref().and_then(|s| match s {
             "light" => Some(ThemeMode::Light),

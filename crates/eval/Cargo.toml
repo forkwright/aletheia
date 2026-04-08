@@ -24,7 +24,8 @@ serde_json = { workspace = true }
 snafu = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
-
+owo-colors = "4"
+supports-color = "3"
 
 [dev-dependencies]
 aletheia-organon = { path = "../organon", features = ["test-support"] }

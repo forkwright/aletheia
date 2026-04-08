@@ -13,7 +13,7 @@ const ROW_STYLE: &str = "\
     align-items: center; \
     gap: 12px; \
     padding: 10px 12px; \
-    border-bottom: 1px solid var(--border-separator); \
+    border-bottom: 1px solid #222; \
     cursor: pointer; \
     transition: background 0.1s;\
 ";
@@ -23,15 +23,15 @@ const ROW_HOVER_STYLE: &str = "\
     align-items: center; \
     gap: 12px; \
     padding: 10px 12px; \
-    border-bottom: 1px solid var(--border-separator); \
+    border-bottom: 1px solid #222; \
     cursor: pointer; \
-    background: var(--bg-surface);\
+    background: #1a1a2e;\
 ";
 
 const TITLE_STYLE: &str = "\
     flex: 1; \
     font-size: 14px; \
-    color: var(--text-primary); \
+    color: #e0e0e0; \
     overflow: hidden; \
     text-overflow: ellipsis; \
     white-space: nowrap;\
@@ -42,14 +42,14 @@ const AGENT_BADGE_STYLE: &str = "\
     padding: 2px 8px; \
     border-radius: 4px; \
     font-size: 11px; \
-    background: var(--bg-surface-bright); \
-    color: var(--accent); \
+    background: #2a2a4a; \
+    color: #7a7aff; \
     white-space: nowrap;\
 ";
 
 const META_STYLE: &str = "\
     font-size: 11px; \
-    color: var(--text-muted); \
+    color: #888; \
     white-space: nowrap;\
 ";
 
@@ -65,35 +65,35 @@ const SORT_BAR_STYLE: &str = "\
     align-items: center; \
     gap: 8px; \
     padding: 8px 12px; \
-    border-bottom: 1px solid var(--border); \
+    border-bottom: 1px solid #2a2a3a; \
     font-size: 12px; \
-    color: var(--text-muted);\
+    color: #888;\
 ";
 
 const SORT_BTN_STYLE: &str = "\
     background: none; \
-    border: 1px solid var(--border); \
+    border: 1px solid #333; \
     border-radius: 4px; \
     padding: 2px 8px; \
     font-size: 11px; \
-    color: var(--text-secondary); \
+    color: #aaa; \
     cursor: pointer;\
 ";
 
 const SORT_BTN_ACTIVE_STYLE: &str = "\
-    background: var(--bg-surface-bright); \
-    border: 1px solid var(--accent); \
+    background: #2a2a4a; \
+    border: 1px solid #4a4aff; \
     border-radius: 4px; \
     padding: 2px 8px; \
     font-size: 11px; \
-    color: var(--accent); \
+    color: #7a7aff; \
     cursor: pointer;\
 ";
 
 const CHECKBOX_STYLE: &str = "\
     width: 16px; \
     height: 16px; \
-    accent-color: var(--accent); \
+    accent-color: #4a4aff; \
     cursor: pointer; \
     flex-shrink: 0;\
 ";
@@ -110,20 +110,20 @@ const EMPTY_STYLE: &str = "\
     justify-content: center; \
     flex: 1; \
     gap: 12px; \
-    color: var(--text-muted);\
+    color: #555;\
 ";
 
 const LOAD_MORE_STYLE: &str = "\
     display: flex; \
     justify-content: center; \
     padding: 12px; \
-    border-top: 1px solid var(--border-separator);\
+    border-top: 1px solid #222;\
 ";
 
 const LOAD_MORE_BTN: &str = "\
-    background: var(--bg-surface-bright); \
-    color: var(--text-primary); \
-    border: 1px solid var(--border); \
+    background: #2a2a4a; \
+    color: #e0e0e0; \
+    border: 1px solid #444; \
     border-radius: 6px; \
     padding: 6px 16px; \
     font-size: 12px; \
@@ -243,7 +243,7 @@ pub(crate) fn SessionList(
             // Select all bar
             if !sessions.is_empty() {
                 div {
-                    style: "display: flex; align-items: center; gap: 8px; padding: 4px 12px; border-bottom: 1px solid var(--border-separator); font-size: 12px; color: var(--text-muted);",
+                    style: "display: flex; align-items: center; gap: 8px; padding: 4px 12px; border-bottom: 1px solid #1a1a2e; font-size: 12px; color: #888;",
                     input {
                         r#type: "checkbox",
                         style: "{CHECKBOX_STYLE}",

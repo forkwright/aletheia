@@ -1,4 +1,4 @@
-// NOTE: Concurrent execution of independent prompts within a DAG frontier group.
+// WHY: Concurrent execution of independent prompts within a DAG frontier group.
 // Uses JoinSet for bounded concurrency with per-prompt error isolation so one
 // failure doesn't abort siblings. CancellationToken enables graceful abort from
 // budget exhaustion or operator cancellation.

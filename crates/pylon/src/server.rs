@@ -149,7 +149,6 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         shutdown: CancellationToken::new(),
         #[cfg(feature = "knowledge-store")]
         knowledge_store,
-        planning_service: None, // NOTE: initialized when a project workspace is configured
     });
 
     #[cfg(unix)]
@@ -407,8 +406,7 @@ async fn shutdown_signal() {
     let terminate = std::future::pending::<()>();
 
     tokio::select! {
-        biased;
-        // SAFETY: cancel-safe. The `ctrl_c` future wraps `tokio::signal::ctrl_c()',
+        // SAFETY: cancel-safe. The `ctrl_c` future wraps `tokio::signal::ctrl_c()`,
         // which is cancel-safe: dropping it before it resolves simply re-arms the
         // handler; Ctrl+C will be caught by the next call.
         () = ctrl_c => info!("received ctrl+c"),

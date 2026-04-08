@@ -7,7 +7,7 @@ use std::time::SystemTime;
 
 use snafu::ResultExt;
 
-use aletheia_koina::disk_space::DiskStatus;
+use aletheia_koina::disk_space::DiskSpaceMonitor;
 
 use crate::error;
 
@@ -58,7 +58,7 @@ pub struct RotationReport {
 /// Rotates old trace files to an archive directory with optional gzip compression.
 pub struct TraceRotator {
     config: TraceRotationConfig,
-    disk_status: Option<DiskStatus>,
+    disk_monitor: Option<DiskSpaceMonitor>,
 }
 
 impl TraceRotator {
@@ -67,13 +67,15 @@ impl TraceRotator {
     pub fn new(config: TraceRotationConfig) -> Self {
         Self {
             config,
-            disk_status: None,
+            disk_monitor: None,
         }
     }
 
-    /// Set the current disk status for non-essential write gating.
-    pub(crate) fn set_disk_status(&mut self, status: DiskStatus) {
-        self.disk_status = Some(status);
+    /// Attach a disk space monitor. Rotation (a non-essential write) is
+    /// skipped when disk space reaches the critical threshold.
+    #[expect(dead_code, reason = "daemon disk monitor integration pending")]
+    pub(crate) fn set_disk_monitor(&mut self, monitor: DiskSpaceMonitor) {
+        self.disk_monitor = Some(monitor);
     }
 
     /// Run trace rotation. Moves old files to archive, compresses if configured,
@@ -86,10 +88,10 @@ impl TraceRotator {
         reason = "file_name() is None only for paths ending in '..', which trace files never are"
     )]
     pub fn rotate(&self) -> error::Result<RotationReport> {
-        if let Some(status) = self.disk_status
-            && status.is_critical()
+        if let Some(ref monitor) = self.disk_monitor
+            && !monitor.allow_non_essential_write()
         {
-            let mb = status.available_bytes() / (1024 * 1024);
+            let mb = monitor.status().available_bytes() / (1024 * 1024);
             tracing::warn!(
                 available_mb = mb,
                 "skipping trace rotation: disk space critical"

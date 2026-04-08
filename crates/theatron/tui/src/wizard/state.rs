@@ -2,8 +2,6 @@
 
 use std::path::PathBuf;
 
-use aletheia_koina::secret::SecretString;
-
 /// Number of wizard steps.
 pub(crate) const TOTAL_STEPS: usize = 5;
 
@@ -395,7 +393,7 @@ pub struct WizardAnswers {
     /// API provider (`"anthropic"` or `"openai"`).
     pub api_provider: String,
     /// Raw API key string pasted by the user; `None` means use the environment.
-    pub api_key: Option<SecretString>,
+    pub api_key: Option<String>,
     /// Credential resolution source (`"api-key"` or `"auto"`).
     pub credential_source: String,
     /// Gateway bind target (`"localhost"` or `"lan"`).
@@ -542,7 +540,7 @@ impl WizardState {
         let api_key = if api_key_str.is_empty() {
             None
         } else {
-            Some(SecretString::from(api_key_str))
+            Some(api_key_str)
         };
         let credential_source = if api_key.is_some() { "api-key" } else { "auto" };
 
@@ -633,10 +631,7 @@ mod tests {
     fn collect_answers_with_pasted_key() {
         let state = WizardState::new(None, Some("sk-ant-key123".to_owned()));
         let answers = state.collect_answers();
-        assert_eq!(
-            answers.api_key.as_ref().map(SecretString::expose_secret),
-            Some("sk-ant-key123")
-        );
+        assert_eq!(answers.api_key, Some("sk-ant-key123".to_owned()));
         assert_eq!(answers.credential_source, "api-key");
     }
 

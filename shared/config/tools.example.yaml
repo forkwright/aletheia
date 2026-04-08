@@ -28,14 +28,14 @@ hex:
     status: "get_hex_run_status"
     runs: "get_hex_project_runs"
     cancel: "cancel_hex_run"
-  projects: ~
+  projects: {}
   notes: "API is execution/metadata only. Cannot edit notebook content."
 
 # -- Development tools --
 
 github:
   account: YOUR_GITHUB_USERNAME
-  repos: ~
+  repos: {}
   commands:
     status: "safe-git status"
     commit: 'safe-git commit -m "msg"'

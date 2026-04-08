@@ -363,7 +363,7 @@ impl App {
             }
         }
 
-        // NOTE: sanitized at ingestion: all agent fields from API are sanitized here.
+        // SAFETY: sanitized at ingestion: all agent fields from API are sanitized here.
         // Best-effort: if agent fetch fails, start with empty list and show error toast.
         let agents = match self.client.agents().await {
             Ok(a) => a,
@@ -541,7 +541,7 @@ impl App {
                         );
                         return;
                     }
-                    // NOTE: sanitized at ingestion: all message fields from API.
+                    // SAFETY: sanitized at ingestion: all message fields from API.
                     self.dashboard.messages = history
                         .into_iter()
                         .filter_map(|m| {

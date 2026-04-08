@@ -1,9 +1,3 @@
-#![expect(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    reason = "test assertions: panics on failure produce clear test output"
-)]
-
 use std::sync::Arc;
 
 use axum::body::Body;
@@ -52,7 +46,7 @@ async fn expired_token_rejected() {
         jti: "expired-jti".to_owned(),
         kind: TokenKind::Access,
     };
-    let token = test_jwt_manager().encode_claims(&claims).expect("encode_claims should succeed with valid claims");
+    let token = test_jwt_manager().encode_claims(&claims).unwrap();
 
     let req = Request::builder()
         .method("POST")
@@ -151,7 +145,6 @@ async fn app_auth_disabled() -> (axum::Router, tempfile::TempDir) {
         shutdown: state.shutdown.clone(),
         #[cfg(feature = "knowledge-store")]
         knowledge_store: None,
-        planning_service: None,
     });
     (build_router(state, &test_security_config()), dir)
 }

@@ -10,7 +10,6 @@ use rmcp::model::CallToolResult;
 use rmcp::service::RequestContext;
 use rmcp::{tool, tool_router};
 use snafu::{OptionExt as _, ResultExt as _};
-use tracing::Instrument;
 
 use aletheia_koina::http::BEARER_PREFIX;
 use aletheia_koina::id::SessionId;
@@ -201,10 +200,9 @@ impl DiaporeiaServer {
 
         // Drain stream events in background so the channel doesn't back-pressure
         // the actor. MCP doesn't support server-push, so events are discarded.
-        let span = tracing::debug_span!("stream_drain");
         let drain = tokio::spawn(async move {
             while stream_rx.recv().await.is_some() {}
-        }.instrument(span));
+        });
 
         let result = handle
             .send_turn_streaming(&params.session_key, &params.content, stream_tx)

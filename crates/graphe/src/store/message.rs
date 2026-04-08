@@ -1,6 +1,5 @@
 //! Message operations, distillation pipeline, and usage recording.
 
-use aletheia_koina::defaults::CHARS_PER_TOKEN;
 use snafu::ResultExt;
 use tracing::{debug, info, instrument};
 
@@ -90,9 +89,9 @@ impl SessionStore {
         let sql = if let Some(lim) = limit {
             params.push(Box::new(lim));
             format!(
-                "SELECT * FROM (
-                   SELECT * FROM messages WHERE {where_clause}
-                   ORDER BY seq DESC LIMIT ?{idx}
+                "SELECT * FROM (\
+                   SELECT * FROM messages WHERE {where_clause} \
+                   ORDER BY seq DESC LIMIT ?{idx}\
                  ) ORDER BY seq ASC"
             )
         } else {
@@ -315,7 +314,7 @@ impl SessionStore {
             clippy::as_conversions,
             reason = "usize→i64: summary length fits in i64"
         )]
-        let token_estimate = (content.len() as i64 + i64::from(CHARS_PER_TOKEN) - 1) / i64::from(CHARS_PER_TOKEN);
+        let token_estimate = (content.len() as i64 + 3) / 4;
         tx.execute(
             "INSERT INTO messages (session_id, seq, role, content, is_distilled, token_estimate, created_at)
              VALUES (?1, 0, 'system', ?2, 0, ?3, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",

@@ -39,14 +39,10 @@ pub enum Error {
     },
 
     /// Tool execution returned an error.
-    #[snafu(display("tool execution failed: {name}: {message} (exit_code: {exit_code:?}, timed_out: {timed_out})"))]
+    #[snafu(display("tool execution failed: {name}: {message}"))]
     ExecutionFailed {
         name: ToolName,
         message: String,
-        /// Process exit code, if available.
-        exit_code: Option<i32>,
-        /// Whether the execution timed out.
-        timed_out: bool,
         #[snafu(implicit)]
         location: snafu::Location,
     },

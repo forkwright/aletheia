@@ -8,8 +8,6 @@
 //!
 //! Depends on: koina
 
-/// Cross-project attention allocation: priority-weighted fair scheduling.
-pub mod attention;
 /// Errors from planning, state transitions, and workspace I/O.
 pub(crate) mod error;
 /// Intent persistence with conviction tiers for sustained autonomous governance.
@@ -18,8 +16,6 @@ pub mod intent;
 pub mod handoff;
 /// Prometheus metric definitions for planning and project orchestration.
 pub mod metrics;
-/// Active project orchestrator: wave dispatch, outcome tracking, synthesis triggers.
-pub mod orchestrate;
 /// Phase boundary gates: conditions that must be met before advancing between phases.
 pub mod gate;
 /// Phase types within a project: groupings of related plans with lifecycle state.

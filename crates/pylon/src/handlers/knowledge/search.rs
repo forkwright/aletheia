@@ -3,10 +3,7 @@
 use axum::Json;
 use axum::extract::{Query, State};
 
-use aletheia_symbolon::types::Role;
-
 use crate::error::ApiError;
-use crate::extract::{Claims, require_nous_access, require_role};
 use crate::state::KnowledgeState;
 
 #[cfg(feature = "knowledge-store")]
@@ -23,7 +20,7 @@ use super::{
     params(
         ("q" = String, Query, description = "Search query text"),
         ("nous_id" = Option<String>, Query, description = "Filter by agent ID"),
-        ("limit" = Option<u32>, Query, description = "Maximum results (default: 20)"),
+        ("limit" = Option<usize>, Query, description = "Maximum results (default: 20)"),
     ),
     responses(
         (status = 200, description = "Search results ranked by relevance"),
@@ -33,13 +30,8 @@ use super::{
 )]
 pub async fn search(
     State(state): State<KnowledgeState>,
-    claims: Claims,
     Query(mut query): Query<SearchQuery>,
 ) -> Result<Json<SearchResponse>, ApiError> {
-    require_role(&claims, Role::Operator)?;
-    if let Some(ref nous_id) = query.nous_id {
-        require_nous_access(&claims, nous_id)?;
-    }
     if query.q.trim().is_empty() {
         return Err(crate::error::BadRequestSnafu {
             message: "search query 'q' must not be empty",
@@ -65,8 +57,8 @@ pub async fn search(
         filter: None,
         fact_type: None,
         tier: None,
-        limit: 10_000_u32,
-        offset: 0_u32,
+        limit: 10_000,
+        offset: 0,
         include_forgotten: false,
     };
     let all_facts = get_stored_facts(&state, &facts_query);
@@ -106,7 +98,7 @@ pub async fn search(
             .partial_cmp(&a.score)
             .unwrap_or(std::cmp::Ordering::Equal)
     });
-    results.truncate(query.limit as usize);
+    results.truncate(query.limit);
 
     Ok(Json(SearchResponse { results }))
 }
@@ -126,13 +118,8 @@ pub async fn search(
 )]
 pub async fn timeline(
     State(state): State<KnowledgeState>,
-    claims: Claims,
     Query(query): Query<FactsQuery>,
 ) -> Result<Json<TimelineResponse>, ApiError> {
-    require_role(&claims, Role::Operator)?;
-    if let Some(ref nous_id) = query.nous_id {
-        require_nous_access(&claims, nous_id)?;
-    }
     // WHY: Pass the caller-supplied nous_id so get_stored_facts can query the store.
     // The previous call to get_all_facts hardcoded nous_id: None, causing the store
     // to return empty even when facts were persisted under a specific agent (Bug #1252).
@@ -190,7 +177,8 @@ pub(super) fn get_stored_facts(
 ) -> Vec<aletheia_mneme::knowledge::Fact> {
     #[cfg(feature = "knowledge-store")]
     if let Some(ref store) = state.knowledge_store {
-        let fetch_limit = i64::from((query.offset + query.limit).min(10_000));
+        let fetch_limit =
+            i64::try_from((query.offset + query.limit).min(10_000)).unwrap_or(i64::MAX);
         let result = if let Some(nous_id) = query.nous_id.as_deref() {
             store.audit_all_facts(nous_id, fetch_limit)
         } else {

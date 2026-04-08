@@ -8,7 +8,6 @@
 
 use std::path::PathBuf;
 
-use aletheia_koina::color::{supports_color, AnsiColorize};
 use clap::Args;
 use snafu::prelude::*;
 
@@ -157,7 +156,7 @@ fn builtin_corpus() -> Vec<(String, String)> {
 
 /// Print a human-readable comparison table to stdout.
 fn print_table(run: &aletheia_mneme::embedding_eval::EvalRunResult) {
-    let color = supports_color();
+    use owo_colors::OwoColorize;
 
     println!();
     println!("┌─────────────────────────────────────────────────────────┐");
@@ -181,25 +180,25 @@ fn print_table(run: &aletheia_mneme::embedding_eval::EvalRunResult) {
         let diff_mrr = c.mrr - b.mrr;
         let rk_str = format!("{:.1}%  (Δ {:+.1}%)", c.recall_at_k * 100.0, diff_rk * 100.0);
         if diff_rk >= 0.0 {
-            println!("  Recall@K  : {}", rk_str.green(color));
+            println!("  Recall@K  : {}", rk_str.green());
         } else {
-            println!("  Recall@K  : {}", rk_str.red(color));
+            println!("  Recall@K  : {}", rk_str.red());
         }
         println!("  Recall@5  : {:.1}%", c.recall_at_5 * 100.0);
         println!("  Recall@10 : {:.1}%", c.recall_at_10 * 100.0);
         let mrr_str = format!("{:.3}  (Δ {:+.3})", c.mrr, diff_mrr);
         if diff_mrr >= 0.0 {
-            println!("  MRR       : {}", mrr_str.green(color));
+            println!("  MRR       : {}", mrr_str.green());
         } else {
-            println!("  MRR       : {}", mrr_str.red(color));
+            println!("  MRR       : {}", mrr_str.red());
         }
         println!();
     }
 
     if run.passed {
-        println!("  {}", "GATE PASSED".green(color).bold(color));
+        println!("  {}", "GATE PASSED".green().bold());
     } else {
-        println!("  {}", "GATE FAILED — candidate regresses Recall@K".red(color).bold(color));
+        println!("  {}", "GATE FAILED — candidate regresses Recall@K".red().bold());
     }
     println!();
 }

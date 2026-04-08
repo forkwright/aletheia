@@ -253,6 +253,7 @@ pub(crate) struct MessagePreview {
     /// First line or truncated content.
     pub summary: String,
     /// Timestamp if available.
+    #[expect(dead_code, reason = "public API")]
     pub created_at: Option<String>,
 }
 

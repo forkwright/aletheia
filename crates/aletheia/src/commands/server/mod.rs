@@ -164,8 +164,12 @@ pub(crate) async fn run(args: Args) -> Result<()> {
 
     info!("shutting down");
 
-    let shutdown_timeout =
-        std::time::Duration::from_secs(config.maintenance.shutdown_timeout_secs);
+    let shutdown_timeout = std::time::Duration::from_secs(
+        std::env::var("ALETHEIA_SHUTDOWN_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(10),
+    );
 
     #[cfg(unix)]
     {
@@ -190,6 +194,7 @@ pub(crate) async fn run(args: Args) -> Result<()> {
 
     runtime.state.nous_manager.drain(shutdown_timeout).await;
 
+    // FIXME(#1723): Flush the SQLite session-store WAL explicitly.
     match runtime.state.session_store.try_lock() {
         Ok(store) => {
             if let Err(e) = store.checkpoint_wal() {

@@ -221,7 +221,6 @@ impl CrossNousRouter {
         self.log_delivery(message, &DeliveryState::Delivered).await;
 
         tokio::select! {
-            biased;
             result = reply_rx => {
                 if let Ok(reply) = result {
                     self.log_delivery(message, &DeliveryState::Replied).await;

@@ -121,7 +121,6 @@ fn run_repl(instance_root: Option<&PathBuf>) -> Result<()> {
                     run_query_and_print(&store, "::relations");
                     continue;
                 }
-                // NOTE: Unknown meta-commands fall through to Datalog processing.
                 _ => {}
             }
         }

@@ -71,14 +71,6 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
-
-    /// KAIROS dispatch cycle failed.
-    #[snafu(display("kairos cycle failed: {message}"))]
-    Kairos {
-        message: String,
-        #[snafu(implicit)]
-        location: snafu::Location,
-    },
 }
 
 /// Convenience alias for `Result` with daemon's [`Error`] type.

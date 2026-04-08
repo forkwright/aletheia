@@ -1,11 +1,11 @@
 //! Minimum spanning tree (Kruskal).
 use std::cmp::Reverse;
-use std::collections::{BTreeMap, BinaryHeap};
+use std::collections::BTreeMap;
 
 use compact_str::CompactString;
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
-
+use priority_queue::PriorityQueue;
 
 use crate::data::expr::Expr;
 use crate::data::symb::Symbol;
@@ -54,17 +54,17 @@ impl FixedRule for MinimumSpanningForestKruskal {
 }
 
 fn kruskal(edges: &DirectedCsrGraph<f32>, poison: Poison) -> Result<Vec<(u32, u32, f32)>> {
-    let mut pq: BinaryHeap<(Reverse<OrderedFloat<f32>>, u32, u32)> = BinaryHeap::new();
+    let mut pq = PriorityQueue::new();
     let mut uf = UnionFind::new(edges.node_count());
     let mut mst = Vec::with_capacity((edges.node_count() - 1) as usize);
     for from in 0..edges.node_count() {
         for target in edges.out_neighbors_with_values(from) {
             let to = target.target;
             let cost = target.value;
-            pq.push((Reverse(OrderedFloat(cost)), from, to));
+            pq.push((from, to), Reverse(OrderedFloat(cost)));
         }
     }
-    while let Some((Reverse(OrderedFloat(cost)), from, to)) = pq.pop() {
+    while let Some(((from, to), Reverse(OrderedFloat(cost)))) = pq.pop() {
         if uf.connected(from, to) {
             continue;
         }

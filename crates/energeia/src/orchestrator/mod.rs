@@ -1,4 +1,4 @@
-// NOTE: Top-level dispatch orchestrator wiring DAG/frontier, session management,
+// WHY: Top-level dispatch orchestrator wiring DAG/frontier, session management,
 // QA evaluation, and state persistence into a single execution pipeline. Given
 // a DispatchSpec, executes prompts in dependency order with controlled
 // concurrency, runs QA on results, generates corrective prompts for failures,

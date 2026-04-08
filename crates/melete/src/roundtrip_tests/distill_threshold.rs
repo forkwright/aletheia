@@ -25,6 +25,31 @@ fn default_engine() -> DistillEngine {
     DistillEngine::new(DistillConfig::default())
 }
 
+#[expect(dead_code, reason = "test helper available for future threshold tests")]
+fn n_messages(n: usize) -> Vec<Message> {
+    (0..n)
+        .map(|i| {
+            text_msg(
+                if i % 2 == 0 {
+                    Role::User
+                } else {
+                    Role::Assistant
+                },
+                &format!("Message {i} with content for token estimation."),
+            )
+        })
+        .collect()
+}
+
+#[expect(dead_code, reason = "test helper available for future threshold tests")]
+fn sample_flush_item(content: &str, source: FlushSource) -> FlushItem {
+    FlushItem {
+        content: content.to_owned(),
+        timestamp: "2026-03-09T12:00:00Z".to_owned(),
+        source,
+    }
+}
+
 const FULL_SUMMARY: &str = "\
 ## Summary
 Fixed login bug and added tool-based database schema update.
@@ -171,7 +196,7 @@ async fn verbatim_tail_preserves_roles() {
     let result = engine
         .distill(&messages, "test", &provider, 1)
         .await
-        .expect("distill should succeed when preserving verbatim tail roles");
+        .expect("distill should succeed when preserving verbatim tail roles"); // WHY: test assertion
 
     let vm = &result.verbatim_messages;
     assert_eq!(vm.len(), 3, "last 3 messages should be kept verbatim");
@@ -179,17 +204,17 @@ async fn verbatim_tail_preserves_roles() {
         vm.first().expect("msg 0").role,
         Role::User,
         "first verbatim message should have User role"
-    );
+    ); // WHY: test assertion
     assert_eq!(
         vm.get(1).expect("msg 1").role,
         Role::Assistant,
         "second verbatim message should have Assistant role"
-    );
+    ); // WHY: test assertion
     assert_eq!(
         vm.get(2).expect("msg 2").role,
         Role::User,
         "third verbatim message should have User role"
-    );
+    ); // WHY: test assertion
 }
 
 #[tokio::test]
@@ -206,7 +231,7 @@ async fn verbatim_tail_when_single_message_preserves_it() {
     let result = engine
         .distill(&messages, "test", &provider, 1)
         .await
-        .expect("distill should succeed with single message input");
+        .expect("distill should succeed with single message input"); // WHY: test assertion
 
     assert_eq!(
         result.verbatim_messages.len(),
@@ -218,7 +243,7 @@ async fn verbatim_tail_when_single_message_preserves_it() {
         .first()
         .expect("verbatim msg 0")
         .content
-        .text();
+        .text(); // WHY: test assertion
     assert_eq!(
         left, "Only message",
         "verbatim message content should match input"
@@ -261,14 +286,14 @@ async fn verbatim_tail_preserves_block_content() {
     let result = engine
         .distill(&messages, "test", &provider, 1)
         .await
-        .expect("distill should succeed when last message has block content");
+        .expect("distill should succeed when last message has block content"); // WHY: test assertion
 
     assert_eq!(
         result.verbatim_messages.len(),
         1,
         "last message with block content should be kept verbatim"
     );
-    let first = result.verbatim_messages.first().expect("verbatim msg 0");
+    let first = result.verbatim_messages.first().expect("verbatim msg 0"); // WHY: test assertion
     let check = first.content.text().contains("Block content preserved");
     assert!(
         check,

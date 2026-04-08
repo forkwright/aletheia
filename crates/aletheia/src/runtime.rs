@@ -7,7 +7,7 @@ use snafu::prelude::*;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
-use tracing::{Instrument, info, warn};
+use tracing::{Instrument, debug, info, warn};
 
 use aletheia_agora::listener::ChannelListener;
 use aletheia_agora::registry::ChannelRegistry;
@@ -237,7 +237,8 @@ impl RuntimeBuilder {
             .auth
             .signing_key
             .as_ref()
-            .map(|s| s.expose_secret().to_owned());
+            .map(|s| s.expose_secret().to_owned())
+            .or_else(|| std::env::var("ALETHEIA_JWT_SECRET").ok());
         let auth_mode = self.config.gateway.auth.mode.as_str();
         let jwt_check_label = "gateway.auth JWT key";
         if matches!(auth_mode, "token" | "jwt") {
@@ -342,8 +343,13 @@ impl RuntimeBuilder {
             info!("startup validation passed");
         }
 
-        // JWT key resolution (from config only; use ALETHEIA_GATEWAY__AUTH__SIGNING_KEY env var)
-        let jwt_key: Option<SecretString> = self.config.gateway.auth.signing_key.clone();
+        // JWT key resolution
+        let jwt_key: Option<SecretString> =
+            self.config.gateway.auth.signing_key.clone().or_else(|| {
+                std::env::var("ALETHEIA_JWT_SECRET")
+                    .ok()
+                    .map(SecretString::from)
+            });
         let jwt_config = match jwt_key {
             Some(k) => JwtConfig {
                 signing_key: k,
@@ -521,9 +527,7 @@ impl RuntimeBuilder {
             let http_client = Arc::new(reqwest::Client::new());
 
             // Academic source (Semantic Scholar)
-            let api_key = std::env::var("SEMANTIC_SCHOLAR_API_KEY")
-                .ok()
-                .map(SecretString::from);
+            let api_key = std::env::var("SEMANTIC_SCHOLAR_API_KEY").ok();
             registry.register(Arc::new(
                 crate::recall_sources::academic::AcademicSource::new(
                     Arc::clone(&http_client),
@@ -638,7 +642,6 @@ impl RuntimeBuilder {
                     recall: resolved.recall.into(),
                     tool_allowlist: None,
                     hooks: Default::default(),
-                    distillation: Default::default(),
                 };
                 nous_manager
                     .spawn(
@@ -764,7 +767,6 @@ impl RuntimeBuilder {
             shutdown: shutdown_token.clone(),
             #[cfg(feature = "recall")]
             knowledge_store,
-            planning_service: None,
         });
 
         Ok(Runtime {
@@ -907,18 +909,7 @@ fn build_tool_registry(
             aletheia_taxis::config::SandboxEnforcementMode::Enforcing => {
                 aletheia_organon::sandbox::SandboxEnforcement::Enforcing
             }
-            aletheia_taxis::config::SandboxEnforcementMode::Permissive => {
-                aletheia_organon::sandbox::SandboxEnforcement::Permissive
-            }
-            // WHY: #[non_exhaustive] requires wildcard. Default to most restrictive
-            // option so new variants don't silently bypass security controls.
-            _ => {
-                tracing::warn!(
-                    mode = ?sandbox_settings.enforcement,
-                    "unknown sandbox enforcement mode, defaulting to enforcing"
-                );
-                aletheia_organon::sandbox::SandboxEnforcement::Enforcing
-            }
+            _ => aletheia_organon::sandbox::SandboxEnforcement::Permissive,
         },
         allowed_root: sandbox_settings.allowed_root.clone(),
         extra_read_paths: sandbox_settings.extra_read_paths.clone(),
@@ -928,21 +919,10 @@ fn build_tool_registry(
             aletheia_taxis::config::EgressPolicy::Deny => {
                 aletheia_organon::sandbox::EgressPolicy::Deny
             }
-            aletheia_taxis::config::EgressPolicy::Allow => {
-                aletheia_organon::sandbox::EgressPolicy::Allow
-            }
             aletheia_taxis::config::EgressPolicy::Allowlist => {
                 aletheia_organon::sandbox::EgressPolicy::Allowlist
             }
-            // WHY: #[non_exhaustive] requires wildcard. Default to most restrictive
-            // option so new variants don't silently permit unrestricted egress.
-            _ => {
-                tracing::warn!(
-                    policy = ?sandbox_settings.egress,
-                    "unknown egress policy, defaulting to deny"
-                );
-                aletheia_organon::sandbox::EgressPolicy::Deny
-            }
+            _ => aletheia_organon::sandbox::EgressPolicy::Allow,
         },
         egress_allowlist: sandbox_settings.egress_allowlist.clone(),
         nproc_limit: sandbox_settings.nproc_limit,

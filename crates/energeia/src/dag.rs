@@ -1,4 +1,4 @@
-// NOTE: Prompt dependency graph for dispatch planning. Tracks which prompts
+// WHY: Prompt dependency graph for dispatch planning. Tracks which prompts
 // are ready to dispatch based on dependency satisfaction, and computes
 // parallel execution waves for maximum throughput.
 

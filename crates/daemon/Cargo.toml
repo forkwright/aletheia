@@ -15,10 +15,8 @@ test-core = []
 test-full = []
 
 [dependencies]
-aletheia-dianoia = { path = "../dianoia" }
 aletheia-episteme = { path = "../episteme", default-features = false }
 aletheia-koina = { path = "../koina" }
-aletheia-taxis = { path = "../taxis" }
 # WHY: axum for webhook trigger listener
 axum = { workspace = true }
 # WHY: single-instance enforcement per workspace
@@ -36,7 +34,6 @@ tokio-util = { workspace = true }
 # WHY: daemon.toml workspace opt-in config
 toml = { workspace = true }
 rusqlite = { workspace = true }
-rustix = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]

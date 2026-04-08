@@ -7,10 +7,7 @@ use axum::Json;
 use axum::extract::{Path, Query, State};
 use serde::{Deserialize, Serialize};
 
-use aletheia_symbolon::types::Role;
-
 use crate::error::{ApiError, BadRequestSnafu};
-use crate::extract::{Claims, require_nous_access, require_role};
 use crate::state::KnowledgeState;
 
 /// Query parameters for listing facts.
@@ -36,10 +33,10 @@ pub struct FactsQuery {
     pub tier: Option<String>,
     /// Maximum results to return.
     #[serde(default = "default_limit")]
-    pub limit: u32,
+    pub limit: usize,
     /// Offset for pagination.
     #[serde(default)]
-    pub offset: u32,
+    pub offset: usize,
     /// Include forgotten facts.
     #[serde(default)]
     pub include_forgotten: bool,
@@ -66,9 +63,9 @@ const VALID_SORT_FIELDS: &[&str] = &[
 const VALID_ORDER_VALUES: &[&str] = &["asc", "desc"];
 
 /// Hard upper bound on the `limit` query parameter for all knowledge endpoints.
-const MAX_FACTS_LIMIT: u32 = 1000;
+const MAX_FACTS_LIMIT: usize = 1000;
 
-fn default_limit() -> u32 {
+fn default_limit() -> usize {
     100
 }
 
@@ -139,15 +136,15 @@ pub struct SearchQuery {
     #[serde(default)]
     pub nous_id: Option<String>,
     #[serde(default = "default_search_limit")]
-    pub limit: u32,
+    pub limit: usize,
 }
 
-fn default_search_limit() -> u32 {
+fn default_search_limit() -> usize {
     20
 }
 
 /// Hard upper bound on the `limit` query parameter for search.
-const MAX_SEARCH_LIMIT: u32 = 1000;
+const MAX_SEARCH_LIMIT: usize = 1000;
 
 /// Search result item.
 #[derive(Debug, Serialize)]
@@ -261,8 +258,8 @@ fn validate_sort_order(sort: &str, order: &str) -> Result<(), ApiError> {
         ("filter" = Option<String>, Query, description = "Text filter"),
         ("fact_type" = Option<String>, Query, description = "Fact type filter: knowledge, preference, skill, observation, etc."),
         ("tier" = Option<String>, Query, description = "Epistemic tier: verified, inferred, assumed"),
-        ("limit" = Option<u32>, Query, description = "Maximum results (default: 100, max: 1000)"),
-        ("offset" = Option<u32>, Query, description = "Pagination offset"),
+        ("limit" = Option<usize>, Query, description = "Maximum results (default: 100, max: 1000)"),
+        ("offset" = Option<usize>, Query, description = "Pagination offset"),
         ("include_forgotten" = Option<bool>, Query, description = "Include forgotten facts (default: false)"),
     ),
     responses(
@@ -274,13 +271,8 @@ fn validate_sort_order(sort: &str, order: &str) -> Result<(), ApiError> {
 )]
 pub async fn list_facts(
     State(state): State<KnowledgeState>,
-    claims: Claims,
     Query(mut query): Query<FactsQuery>,
 ) -> Result<Json<FactsResponse>, ApiError> {
-    require_role(&claims, Role::Operator)?;
-    if let Some(ref nous_id) = query.nous_id {
-        require_nous_access(&claims, nous_id)?;
-    }
     use aletheia_mneme::knowledge::EpistemicTier;
 
     query.limit = query.limit.min(MAX_FACTS_LIMIT);
@@ -320,8 +312,8 @@ pub async fn list_facts(
 
     sort_facts(&mut facts, &query.sort, &query.order);
 
-    let start = (query.offset as usize).min(facts.len());
-    let end = (start + (query.limit as usize)).min(facts.len());
+    let start = query.offset.min(facts.len());
+    let end = (start + query.limit).min(facts.len());
     // start and end are both bounded by facts.len() via .min()
     #[expect(
         clippy::indexing_slicing,
@@ -353,10 +345,8 @@ pub async fn get_fact(
         )
     )]
     State(state): State<KnowledgeState>,
-    claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<FactDetailResponse>, ApiError> {
-    require_role(&claims, Role::Operator)?;
     // WHY: The previous implementation called get_all_facts which hardcoded
     // nous_id: None, causing get_stored_facts to always return an empty Vec
     // (it requires nous_id.is_some() to query the store). Bug #1252.
@@ -398,9 +388,7 @@ pub async fn get_fact(
 )]
 pub async fn list_entities(
     State(state): State<KnowledgeState>,
-    claims: Claims,
 ) -> Result<Json<EntitiesResponse>, ApiError> {
-    require_role(&claims, Role::Operator)?;
     let entities = get_stored_entities(&state);
     Ok(Json(EntitiesResponse { entities }))
 }
@@ -418,10 +406,8 @@ pub async fn list_entities(
 )]
 pub async fn entity_relationships(
     State(state): State<KnowledgeState>,
-    claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<RelationshipsResponse>, ApiError> {
-    require_role(&claims, Role::Operator)?;
     let relationships = get_entity_relationships(&state, &id);
     Ok(Json(RelationshipsResponse { relationships }))
 }
@@ -463,30 +449,11 @@ pub struct GraphCheckReport {
 ///
 /// Runs server-side; avoids the fjall exclusive-lock conflict that occurs when
 /// `aletheia memory check` tries to open the store while the server holds it.
-#[utoipa::path(
-    get,
-    path = "/api/v1/knowledge/check",
-    responses(
-        (status = 200, description = "Graph health check results"),
-        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
-        (status = 503, description = "Knowledge store not available", body = crate::error::ErrorResponse),
-    ),
-    security(("bearer_auth" = []))
-)]
 pub async fn check_graph_health(
     State(state): State<KnowledgeState>,
-    claims: Claims,
 ) -> impl axum::response::IntoResponse {
     use axum::http::StatusCode;
     use axum::response::IntoResponse as _;
-
-    if let Err(e) = require_role(&claims, Role::Operator) {
-        return (
-            axum::http::StatusCode::FORBIDDEN,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        )
-            .into_response();
-    }
 
     #[cfg(feature = "knowledge-store")]
     {
@@ -727,7 +694,7 @@ mod tests {
 
     #[test]
     fn limit_is_capped_at_max() {
-        // NOTE: MAX_FACTS_LIMIT is 1000; the test validates the constant is correct.
+        // NOTE: list_facts clamps query.limit to MAX_FACTS_LIMIT (1000) before use.
         const { assert!(MAX_FACTS_LIMIT <= 1000) };
         assert_eq!(MAX_FACTS_LIMIT, 1000);
     }

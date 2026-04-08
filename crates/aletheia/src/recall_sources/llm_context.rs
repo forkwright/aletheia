@@ -58,7 +58,6 @@ impl ModelCard {
                     "Pricing: ${input:.2}/MTok input, ${output:.2}/MTok output"
                 ));
             }
-            // NOTE: Pricing omitted when either cost is unavailable.
             _ => {}
         }
 

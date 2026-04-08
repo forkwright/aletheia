@@ -19,7 +19,7 @@ use rusqlite::Connection;
 use snafu::ResultExt;
 use tracing::{error, info, instrument, warn};
 
-use aletheia_koina::disk_space::DiskStatus;
+use aletheia_koina::disk_space::{DiskSpaceMonitor, DiskStatus};
 
 use crate::error::{self, Result};
 use crate::migration;
@@ -55,6 +55,7 @@ pub trait ConnectionHook: Send + Sync {
 /// The session store: wraps a `SQLite` connection with optional degraded mode.
 pub struct SessionStore {
     conn: Connection,
+    disk_monitor: Option<DiskSpaceMonitor>,
     mode: StoreMode,
     path: Option<PathBuf>,
     hook: Option<Box<dyn ConnectionHook>>,
@@ -110,6 +111,7 @@ impl SessionStore {
 
                     return Ok(Self {
                         conn: recovered_conn,
+                        disk_monitor: None,
                         mode,
                         path: Some(path.to_path_buf()),
                         hook: None,
@@ -129,6 +131,7 @@ impl SessionStore {
 
         Ok(Self {
             conn,
+            disk_monitor: None,
             mode: StoreMode::Normal,
             path: Some(path.to_path_buf()),
             hook: None,
@@ -163,6 +166,7 @@ impl SessionStore {
         migration::run_migrations(&conn)?;
         Ok(Self {
             conn,
+            disk_monitor: None,
             mode: StoreMode::Normal,
             path: None,
             hook: None,
@@ -185,38 +189,32 @@ impl SessionStore {
         Ok(store)
     }
 
-    /// Check disk space before writes. Essential writes (message append)
-    /// always proceed but emit warnings. Non-essential writes can be
-    /// skipped if disk is critical.
+    /// Attach a disk space monitor for pre-write checks.
+    pub fn set_disk_monitor(&mut self, monitor: DiskSpaceMonitor) {
+        self.disk_monitor = Some(monitor);
+    }
+
+    /// Emit tracing diagnostics based on current disk status.
     ///
-    /// WHY: SQLite SQLITE_FULL errors lose data silently. Pre-checking
-    /// disk space lets us warn before the failure (#2726).
+    /// Database writes are essential and always proceed, but warnings and
+    /// errors are emitted so operators can respond before the disk fills.
     pub(crate) fn check_disk(&self, operation: &str) {
-        // WHY: use the database path's filesystem for the check.
-        let Some(ref db_path) = self.path else { return };
-        if let Ok(status) = aletheia_koina::disk_space::check_disk_space(
-            db_path,
-            aletheia_koina::disk_space::DEFAULT_WARNING_BYTES,
-            aletheia_koina::disk_space::DEFAULT_CRITICAL_BYTES,
-        ) {
-            match status {
-                aletheia_koina::disk_space::DiskStatus::Warning { available_bytes } => {
+        if let Some(ref monitor) = self.disk_monitor {
+            match monitor.status() {
+                DiskStatus::Warning { available_bytes } => {
                     let mb = available_bytes / (1024 * 1024);
-                    tracing::warn!(
+                    warn!(
                         available_mb = mb,
-                        operation,
-                        "disk space low, database write proceeding"
+                        operation, "disk space low, database write proceeding"
                     );
                 }
-                aletheia_koina::disk_space::DiskStatus::Critical { available_bytes } => {
+                DiskStatus::Critical { available_bytes } => {
                     let mb = available_bytes / (1024 * 1024);
-                    tracing::error!(
+                    error!(
                         available_mb = mb,
-                        operation,
-                        "disk space critical — database write may fail with SQLITE_FULL"
+                        operation, "disk space critical, database write proceeding (essential)"
                     );
                 }
-                aletheia_koina::disk_space::DiskStatus::Ok { .. } => {}
                 _ => {}
             }
         }

@@ -82,7 +82,7 @@ impl Default for NousLimits {
         use aletheia_koina::defaults as d;
         Self {
             max_tool_iterations: d::MAX_TOOL_ITERATIONS,
-            loop_detection_threshold: 5,
+            loop_detection_threshold: 3,
             consecutive_error_threshold: 4,
             loop_max_warnings: 2,
             session_token_cap: default_session_token_cap(),
@@ -128,13 +128,6 @@ pub struct NousConfig {
     /// Turn-level hook configuration.
     #[serde(default)]
     pub hooks: HookConfig,
-    /// Distillation trigger configuration.
-    ///
-    /// Controls when context distillation fires: token thresholds, message
-    /// counts, stale session windows. Defaults match the original hardcoded
-    /// values for zero behavior change.
-    #[serde(default)]
-    pub distillation: crate::distillation::DistillTriggerConfig,
 }
 
 /// Configuration for turn-level behavior hooks.
@@ -210,7 +203,6 @@ impl Default for NousConfig {
             recall: RecallConfig::default(),
             tool_allowlist: None,
             hooks: HookConfig::default(),
-            distillation: crate::distillation::DistillTriggerConfig::default(),
         }
     }
 }
@@ -355,7 +347,7 @@ mod tests {
             },
             limits: NousLimits {
                 max_tool_iterations: 10,
-                loop_detection_threshold: 5,  // Issue #2721: raised from 3 to reduce false positives
+                loop_detection_threshold: 5,
                 consecutive_error_threshold: 4,
                 loop_max_warnings: 2,
                 session_token_cap: 250_000,

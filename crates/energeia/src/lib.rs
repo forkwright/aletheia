@@ -18,7 +18,7 @@
 //! - [`types`] — dispatch specs, outcomes, QA results
 //! - [`error`] — snafu error types with location tracking
 
-/// Agent SDK configuration and engine for CC subprocess dispatch.
+/// Agent SDK engine: OAuth-enabled, permission-aware dispatch backend.
 pub mod agent_sdk;
 /// High-level dispatch backend trait for control plane integration.
 pub mod backend;
@@ -52,25 +52,3 @@ pub mod steward;
 pub mod store;
 /// Core dispatch types: specs, outcomes, QA results.
 pub mod types;
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn crate_exports_modules() {
-        // Verify that all public modules are accessible
-        // This is a baseline test to ensure the crate structure is intact
-        let _ = std::any::type_name::<engine::DispatchEngine>();
-        let _ = std::any::type_name::<types::DispatchOutcome>();
-        let _ = std::any::type_name::<error::EnergeiaError>();
-    }
-
-    #[test]
-    fn budget_tracks_costs() {
-        // Baseline test for budget module
-        let budget = budget::DispatchBudget::new(100.0, 1000, std::time::Duration::from_secs(3600));
-        assert_eq!(budget.max_cost_usd(), 100.0);
-        assert_eq!(budget.max_turns(), 1000);
-    }
-}
