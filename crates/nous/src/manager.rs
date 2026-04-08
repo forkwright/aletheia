@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use tokio::sync::Mutex as TokioMutex;
 use tokio::sync::watch;
-use tokio::task::JoinHandle;
+use tokio::task::{JoinHandle, JoinSet};
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, debug, error, info, warn};
 
@@ -512,10 +512,14 @@ impl NousManager {
             }
         }
 
+        let mut join_set: JoinSet<(String, Result<(), tokio::task::JoinError>)> = JoinSet::new();
         for (id, join_opt) in joins {
-            if let Some(join) = join_opt
-                && let Err(e) = join.await
-            {
+            if let Some(join) = join_opt {
+                join_set.spawn(async move { (id, join.await) });
+            }
+        }
+        while let Some(result) = join_set.join_next().await {
+            if let Ok((id, Err(e))) = result {
                 warn!(nous_id = %id, error = %e, "actor task panicked");
             }
         }
@@ -558,18 +562,17 @@ impl NousManager {
         }
 
         // WHY: take handles before await: must not hold MutexGuard across .await
-        let mut joins: Vec<(String, JoinHandle<()>)> = self
-            .actors
-            .iter()
-            .filter_map(|(id, entry)| {
-                let join = entry.join.try_lock().ok()?.take()?;
-                Some((id.clone(), join))
-            })
-            .collect();
+        let mut join_set: JoinSet<(String, Result<(), tokio::task::JoinError>)> = JoinSet::new();
+        for (id, entry) in self.actors.iter() {
+            if let Some(join) = entry.join.try_lock().ok().and_then(|mut g| g.take()) {
+                let id = id.clone();
+                join_set.spawn(async move { (id, join.await) });
+            }
+        }
 
         let drain_fut = async move {
-            for (id, join) in joins.drain(..) {
-                if let Err(e) = join.await {
+            while let Some(result) = join_set.join_next().await {
+                if let Ok((id, Err(e))) = result {
                     warn!(nous_id = %id, error = %e, "actor task panicked during drain");
                 }
             }

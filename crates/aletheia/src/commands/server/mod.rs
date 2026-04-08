@@ -181,14 +181,10 @@ pub(crate) async fn run(args: Args) -> Result<()> {
         }
     }
 
-    for handle in runtime.daemon_handles.drain(..) {
-        match tokio::time::timeout(shutdown_timeout, handle).await {
-            Ok(Ok(())) => {}
-            Ok(Err(e)) => warn!(error = %e, "system daemon panicked during shutdown"),
-            Err(_) => warn!(
-                timeout_secs = shutdown_timeout.as_secs(),
-                "system daemon did not exit within shutdown timeout"
-            ),
+    while let Some(result) = runtime.daemon_handles.join_next().await {
+        match result {
+            Ok(()) => {}
+            Err(e) => warn!(error = %e, "system daemon panicked during shutdown"),
         }
     }
 

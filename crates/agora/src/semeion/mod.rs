@@ -16,7 +16,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::sync::{Mutex, mpsc};
-use tokio::task::JoinHandle;
+use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, instrument};
 
@@ -144,10 +144,10 @@ impl SignalProvider {
         &self,
         poll_interval: Option<Duration>,
         cancel: CancellationToken,
-    ) -> (mpsc::Receiver<InboundMessage>, Vec<JoinHandle<()>>) {
+    ) -> (mpsc::Receiver<InboundMessage>, JoinSet<()>) {
         let interval = poll_interval.unwrap_or(DEFAULT_POLL_INTERVAL);
         let (tx, rx) = mpsc::channel(64);
-        let mut handles = Vec::with_capacity(self.clients.len());
+        let mut handles = JoinSet::new();
 
         for (account_id, signal_client) in &self.clients {
             // WHY: skip accounts where auto_start is false -- they are registered
@@ -174,9 +174,7 @@ impl SignalProvider {
                 account = %account_id
             );
 
-            let handle =
-                tokio::spawn(poll_loop(signal_client, tx, interval, state, token).instrument(span));
-            handles.push(handle);
+            handles.spawn(poll_loop(signal_client, tx, interval, state, token).instrument(span));
         }
 
         (rx, handles)
