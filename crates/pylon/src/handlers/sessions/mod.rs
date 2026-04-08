@@ -64,6 +64,19 @@ pub async fn create(
         }
         .build());
     }
+    // WHY: bound identifier fields to prevent memory exhaustion from oversized IDs (#2787).
+    if nous_id.len() > MAX_IDENTIFIER_BYTES {
+        return Err(BadRequestSnafu {
+            message: "nous_id exceeds maximum length",
+        }
+        .build());
+    }
+    if session_key.len() > MAX_IDENTIFIER_BYTES {
+        return Err(BadRequestSnafu {
+            message: "session_key exceeds maximum length",
+        }
+        .build());
+    }
 
     let config = state.nous_manager.get_config(&nous_id).ok_or_else(|| {
         NousNotFoundSnafu {
@@ -385,6 +398,8 @@ pub async fn rename(
 
 /// Maximum session name length in bytes.
 const MAX_SESSION_NAME_LEN: usize = 255;
+/// Maximum identifier field size (nous_id, session_key).
+const MAX_IDENTIFIER_BYTES: usize = 256;
 
 /// Maximum number of messages returnable per history request.
 const MAX_HISTORY_LIMIT: u32 = 1000;

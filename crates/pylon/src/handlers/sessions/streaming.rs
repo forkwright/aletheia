@@ -32,6 +32,8 @@ use super::{find_session, resolve_session};
 
 /// Maximum user message size in bytes (256 KB).
 const MAX_MESSAGE_BYTES: usize = 262_144;
+/// Maximum identifier field size in bytes (session keys, agent IDs).
+const MAX_IDENTIFIER_BYTES: usize = 256;
 
 /// Guard that aborts a spawned task when dropped.
 ///
@@ -378,6 +380,20 @@ pub async fn stream_turn(
     if message.len() > MAX_MESSAGE_BYTES {
         return Err(BadRequestSnafu {
             message: format!("message exceeds maximum size of {MAX_MESSAGE_BYTES} bytes"),
+        }
+        .build());
+    }
+
+    // WHY: bound identifier fields to prevent memory exhaustion from oversized IDs (#2787).
+    if agent_id.len() > MAX_IDENTIFIER_BYTES {
+        return Err(BadRequestSnafu {
+            message: "agent_id exceeds maximum length",
+        }
+        .build());
+    }
+    if session_key.len() > MAX_IDENTIFIER_BYTES {
+        return Err(BadRequestSnafu {
+            message: "session_key exceeds maximum length",
         }
         .build());
     }
