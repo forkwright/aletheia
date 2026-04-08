@@ -2,6 +2,7 @@
 
 use std::path::Path;
 
+use aletheia_koina::secret::SecretString;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 
@@ -12,6 +13,23 @@ use crate::encrypt::{
 
 use super::unix_epoch_ms;
 
+fn serialize_secret<S: serde::Serializer>(
+    secret: &SecretString,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    serializer.serialize_str(secret.expose_secret())
+}
+
+fn serialize_option_secret<S: serde::Serializer>(
+    secret: &Option<SecretString>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    match secret {
+        Some(s) => serializer.serialize_some(s.expose_secret()),
+        None => serializer.serialize_none(),
+    }
+}
+
 /// On-disk credential file format.
 ///
 /// Accepts both `"token"` (native format) and `"accessToken"` (Claude Code OAuth
@@ -19,11 +37,15 @@ use super::unix_epoch_ms;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CredentialFile {
     /// Access token (API key or OAuth access token).
-    #[serde(alias = "accessToken")]
-    pub token: String,
+    #[serde(alias = "accessToken", serialize_with = "serialize_secret")]
+    pub token: SecretString,
     /// OAuth refresh token (absent for static API keys).
-    #[serde(rename = "refreshToken", skip_serializing_if = "Option::is_none")]
-    pub refresh_token: Option<String>,
+    #[serde(
+        rename = "refreshToken",
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_option_secret"
+    )]
+    pub refresh_token: Option<SecretString>,
     /// Token expiry as milliseconds since epoch.
     #[serde(rename = "expiresAt", skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<u64>,
@@ -160,7 +182,9 @@ impl CredentialFile {
     /// Whether this credential has a refresh token (OAuth flow).
     #[must_use]
     pub fn has_refresh_token(&self) -> bool {
-        self.refresh_token.as_ref().is_some_and(|t| !t.is_empty())
+        self.refresh_token
+            .as_ref()
+            .is_some_and(|t| !t.expose_secret().is_empty())
     }
 
     /// Seconds remaining until token expires. Returns `None` if no expiry set.

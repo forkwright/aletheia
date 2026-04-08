@@ -47,8 +47,8 @@ const MAX_EXPIRES_IN_SECS: u64 = 86400;
 
 #[derive(Deserialize)]
 pub(super) struct OAuthResponse {
-    pub access_token: String,
-    pub refresh_token: String,
+    pub access_token: SecretString,
+    pub refresh_token: SecretString,
     #[serde(default = "default_expires_in")]
     pub expires_in: u64,
     pub scope: Option<String>,
@@ -129,7 +129,10 @@ impl RefreshingCredentialProvider {
         cb_config: CircuitBreakerConfig,
     ) -> Option<Self> {
         let cred = CredentialFile::load(&path)?;
-        let refresh_token = cred.refresh_token.clone().filter(|t| !t.is_empty())?;
+        let refresh_token = cred
+            .refresh_token
+            .clone()
+            .filter(|t| !t.expose_secret().is_empty())?;
 
         let state = Arc::new(RwLock::new(Some(RefreshState {
             current_token: SecretString::from(cred.token.clone()),
@@ -503,11 +506,11 @@ pub async fn force_refresh(path: &Path) -> Result<CredentialFile, String> {
     let refresh_token = cred
         .refresh_token
         .as_ref()
-        .filter(|t| !t.is_empty())
+        .filter(|t| !t.expose_secret().is_empty())
         .ok_or("no refresh token in credential file")?;
 
     let client = reqwest::Client::new();
-    let resp = match do_refresh(&client, refresh_token).await {
+    let resp = match do_refresh(&client, refresh_token.expose_secret()).await {
         RefreshOutcome::Success(r) => r,
         RefreshOutcome::InvalidGrant => {
             return Err(

@@ -10,6 +10,8 @@ use serde::Deserialize;
 use snafu::{ResultExt, Snafu};
 use tracing::{debug, info, warn};
 
+use aletheia_koina::secret::SecretString;
+
 use super::OAuthProvider;
 use super::file_ops::CredentialFile;
 use super::pkce::url_encode;
@@ -130,9 +132,9 @@ fn default_interval() -> u64 {
 /// OAuth 2.0 Token Response.
 #[derive(Debug, Deserialize)]
 struct TokenResponse {
-    access_token: String,
+    access_token: SecretString,
     #[serde(default)]
-    refresh_token: Option<String>,
+    refresh_token: Option<SecretString>,
     #[serde(default)]
     expires_in: Option<u64>,
     #[serde(default)]
@@ -140,7 +142,7 @@ struct TokenResponse {
     /// Token type (typically "Bearer").
     #[serde(default)]
     #[expect(dead_code, reason = "field provided by OAuth but not currently used")]
-    token_type: String,
+    token_type: String, // kanon:ignore RUST/plain-string-secret
 }
 
 /// OAuth 2.0 Token Error Response (for device flow polling).

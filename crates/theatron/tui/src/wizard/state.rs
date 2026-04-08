@@ -2,6 +2,8 @@
 
 use std::path::PathBuf;
 
+use aletheia_koina::secret::SecretString;
+
 /// Number of wizard steps.
 pub(crate) const TOTAL_STEPS: usize = 5;
 
@@ -367,7 +369,12 @@ fn make_agent_step() -> StepState {
                 "pronoea",
                 "alphanumeric + hyphens, used in paths",
             ),
-            WizardField::select("Model", MODEL_OPTIONS, aletheia_koina::defaults::DEFAULT_MODEL_SHORT, ""),
+            WizardField::select(
+                "Model",
+                MODEL_OPTIONS,
+                aletheia_koina::defaults::DEFAULT_MODEL_SHORT,
+                "",
+            ),
         ],
         cursor: 0,
         editing: None,
@@ -393,9 +400,9 @@ pub struct WizardAnswers {
     /// API provider (`"anthropic"` or `"openai"`).
     pub api_provider: String,
     /// Raw API key string pasted by the user; `None` means use the environment.
-    pub api_key: Option<String>,
+    pub api_key: Option<SecretString>,
     /// Credential resolution source (`"api-key"` or `"auto"`).
-    pub credential_source: String,
+    pub credential_source: String, // kanon:ignore RUST/plain-string-secret
     /// Gateway bind target (`"localhost"` or `"lan"`).
     pub bind: String,
     /// Gateway auth mode (`"none"` or `"token"`).
@@ -540,7 +547,7 @@ impl WizardState {
         let api_key = if api_key_str.is_empty() {
             None
         } else {
-            Some(api_key_str)
+            Some(SecretString::from(api_key_str))
         };
         let credential_source = if api_key.is_some() { "api-key" } else { "auto" };
 
@@ -631,7 +638,7 @@ mod tests {
     fn collect_answers_with_pasted_key() {
         let state = WizardState::new(None, Some("sk-ant-key123".to_owned()));
         let answers = state.collect_answers();
-        assert_eq!(answers.api_key, Some("sk-ant-key123".to_owned()));
+        assert_eq!(answers.api_key, Some(SecretString::from("sk-ant-key123")));
         assert_eq!(answers.credential_source, "api-key");
     }
 
