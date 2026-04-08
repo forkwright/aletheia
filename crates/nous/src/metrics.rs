@@ -57,6 +57,17 @@ static CACHE_READ_TOKENS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
     .expect("metric registration") // kanon:ignore RUST/expect
 });
 
+static BACKGROUND_TASK_FAILURES_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    register_int_counter_vec!(
+        Opts::new(
+            "aletheia_background_task_failures_total",
+            "Total background task failures (extraction, distillation, skill analysis)"
+        ),
+        &["nous_id", "task_type"]
+    )
+    .expect("metric registration") // kanon:ignore RUST/expect
+});
+
 static CACHE_CREATION_TOKENS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
     register_int_counter_vec!(
         Opts::new(
@@ -82,6 +93,7 @@ pub(crate) fn init() {
     LazyLock::force(&PIPELINE_ERRORS_TOTAL);
     LazyLock::force(&CACHE_READ_TOKENS_TOTAL);
     LazyLock::force(&CACHE_CREATION_TOKENS_TOTAL);
+    LazyLock::force(&BACKGROUND_TASK_FAILURES_TOTAL);
 }
 
 /// Record a completed pipeline stage.
@@ -100,6 +112,16 @@ pub(crate) fn record_turn(nous_id: &str) {
 pub(crate) fn record_error(nous_id: &str, stage: &str, error_type: &str) {
     PIPELINE_ERRORS_TOTAL
         .with_label_values(&[nous_id, stage, error_type])
+        .inc();
+}
+
+/// Record a background task failure.
+///
+/// WHY: Background extraction/distillation failures are silent data loss.
+/// This counter surfaces the failure rate for alerting. Closes #2724.
+pub(crate) fn record_background_failure(nous_id: &str, task_type: &str) {
+    BACKGROUND_TASK_FAILURES_TOTAL
+        .with_label_values(&[nous_id, task_type])
         .inc();
 }
 
