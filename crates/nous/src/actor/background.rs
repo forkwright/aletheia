@@ -25,7 +25,7 @@ impl Drop for DistillationFlagGuard {
 }
 
 impl NousActor {
-    /// Reap completed background tasks, log failures, and count panics.
+    /// Reap completed background tasks, log failures, count panics, record metrics.
     pub(super) fn reap_background_tasks(&mut self) {
         while let Some(result) = self.runtime.background_tasks.try_join_next() {
             match result {
@@ -36,8 +36,10 @@ impl NousActor {
                         // WHY: Background tasks run outside the main panic boundary.
                         // They are logged but do NOT trigger degraded mode.
                         self.record_background_panic();
+                        crate::metrics::record_background_failure(&self.id, "panic");
                     } else {
                         warn!(nous_id = %self.id, error = %e, "background task failed");
+                        crate::metrics::record_background_failure(&self.id, "error");
                     }
                 }
             }
