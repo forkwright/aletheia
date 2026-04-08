@@ -7,15 +7,7 @@
 
 use std::sync::LazyLock;
 
-use prometheus::{IntCounterVec, IntGauge, Opts, register_int_counter_vec, register_int_gauge};
-
-static PROJECTS_ACTIVE: LazyLock<IntGauge> = LazyLock::new(|| {
-    register_int_gauge!(
-        "aletheia_projects_active",
-        "Number of currently active projects"
-    )
-    .expect("metric registration")
-});
+use prometheus::{IntCounterVec, Opts, register_int_counter_vec};
 
 static PHASE_TRANSITIONS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
     register_int_counter_vec!(
@@ -39,20 +31,6 @@ static STUCK_DETECTIONS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
     .expect("metric registration")
 });
 
-#[expect(dead_code, reason = "WIP: planning orchestration metrics")]
-/// Force-initialize all lazy metric statics.
-pub(crate) fn init() {
-    LazyLock::force(&PROJECTS_ACTIVE);
-    LazyLock::force(&PHASE_TRANSITIONS_TOTAL);
-    LazyLock::force(&STUCK_DETECTIONS_TOTAL);
-}
-
-/// Set the number of currently active projects.
-#[expect(dead_code, reason = "WIP: planning orchestration metrics")]
-pub(crate) fn set_projects_active(count: i64) {
-    PROJECTS_ACTIVE.set(count);
-}
-
 /// Record a project state transition.
 pub(crate) fn record_phase_transition(from: &str, to: &str) {
     PHASE_TRANSITIONS_TOTAL.with_label_values(&[from, to]).inc();
@@ -66,17 +44,6 @@ pub(crate) fn record_stuck_detection(pattern: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn init_does_not_panic() {
-        init();
-    }
-
-    #[test]
-    fn set_projects_active_does_not_panic() {
-        set_projects_active(3);
-        set_projects_active(0);
-    }
 
     #[test]
     fn record_phase_transition_does_not_panic() {
