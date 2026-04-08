@@ -63,6 +63,35 @@ pub(super) async fn test_state_with_provider(
     std::fs::create_dir_all(root.join("nous/syn")).expect("mkdir nous/syn");
     std::fs::create_dir_all(root.join("shared")).expect("mkdir shared");
     std::fs::create_dir_all(root.join("theke")).expect("mkdir theke");
+    std::fs::create_dir_all(root.join("data")).expect("mkdir data");
+    std::fs::create_dir_all(root.join("config")).expect("mkdir config");
+
+    // Create a minimal config file for health checks
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "pylon test helpers write config fixtures to temp directories; synchronous I/O is required in test setup"
+    )]
+    std::fs::write(
+        root.join("config/aletheia.toml"),
+        r#"
+[gateway]
+port = 18789
+bind = "localhost"
+"#,
+    )
+    .expect("write config file");
+
+    // Create credentials directory and a mock credential file for health checks
+    std::fs::create_dir_all(root.join("config/credentials")).expect("mkdir credentials");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "pylon test helpers write credential fixtures to temp directories; synchronous I/O is required in test setup"
+    )]
+    std::fs::write(
+        root.join("config/credentials/anthropic.json"),
+        r#"{"token":"sk-ant-test-key-for-health-checks"}"#,
+    )
+    .expect("write credential file");
     #[expect(
         clippy::disallowed_methods,
         reason = "pylon test helpers write TLS fixtures to temp directories; synchronous I/O is required in test setup"
