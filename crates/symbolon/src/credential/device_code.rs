@@ -366,6 +366,7 @@ async fn poll_token_endpoint(
 /// # Ok(())
 /// # }
 /// ```
+#[must_use]
 pub async fn device_code_login(provider: &DeviceOAuthProvider) -> Result<CredentialFile> {
     let client = reqwest::Client::new();
 

@@ -97,6 +97,7 @@ impl CausalStore {
     /// # Errors
     /// Returns [`CausalError::DuplicateEdge`] if an edge with the same ID
     /// already exists.
+    #[must_use]
     pub fn add_edge(&mut self, edge: CausalEdge) -> Result<(), CausalError> {
         if self.edges.contains_key(&edge.id) {
             return DuplicateEdgeSnafu {

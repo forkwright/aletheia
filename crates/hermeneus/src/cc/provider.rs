@@ -75,6 +75,7 @@ impl CcProvider {
     /// # Errors
     ///
     /// Returns [`Error::ProviderInit`] if the binary cannot be found.
+    #[must_use]
     pub fn new(config: &CcProviderConfig) -> Result<Self> {
         // kanon:ignore RUST/pub-visibility
         let cc_binary = if let Some(ref path) = config.cc_binary {
