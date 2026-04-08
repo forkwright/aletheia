@@ -359,23 +359,38 @@ mod tests {
         };
 
         let svc = memory_service();
-        svc.authorize(
-            &claims,
-            &Action::ReadSession {
-                nous_id: "syn".to_owned(),
-            },
-        )
-        .unwrap();
-        svc.authorize(
-            &claims,
-            &Action::WriteSession {
-                nous_id: "syn".to_owned(),
-            },
-        )
-        .unwrap();
-        svc.authorize(&claims, &Action::ManageAgents).unwrap();
-        svc.authorize(&claims, &Action::ManageUsers).unwrap();
-        svc.authorize(&claims, &Action::ReadDashboard).unwrap();
+        assert!(
+            svc.authorize(
+                &claims,
+                &Action::ReadSession {
+                    nous_id: "syn".to_owned(),
+                },
+            )
+            .is_ok(),
+            "Operator should be able to read any session"
+        );
+        assert!(
+            svc.authorize(
+                &claims,
+                &Action::WriteSession {
+                    nous_id: "syn".to_owned(),
+                },
+            )
+            .is_ok(),
+            "Operator should be able to write any session"
+        );
+        assert!(
+            svc.authorize(&claims, &Action::ManageAgents).is_ok(),
+            "Operator should be able to manage agents"
+        );
+        assert!(
+            svc.authorize(&claims, &Action::ManageUsers).is_ok(),
+            "Operator should be able to manage users"
+        );
+        assert!(
+            svc.authorize(&claims, &Action::ReadDashboard).is_ok(),
+            "Operator should be able to read dashboard"
+        );
     }
 
     #[test]

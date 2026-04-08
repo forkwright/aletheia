@@ -53,19 +53,65 @@ mod tests {
     use super::*;
 
     #[test]
-    fn init_does_not_panic() {
+    fn init_registers_all_metrics() {
         init();
+        // Verify metrics are registered by accessing them
+        let _ = CHANNEL_MESSAGES_TOTAL.with_label_values(&["test", "ok"]).get();
+        let _ = ACTIVE_SUBSCRIPTIONS.get();
     }
 
     #[test]
-    fn record_channel_message_does_not_panic() {
-        record_channel_message("signal-main", true);
-        record_channel_message("signal-main", false);
+    fn record_channel_message_increments_counter() {
+        let channel_id = "test-channel";
+        let ok_before = CHANNEL_MESSAGES_TOTAL.with_label_values(&[channel_id, "ok"]).get();
+        let error_before = CHANNEL_MESSAGES_TOTAL.with_label_values(&[channel_id, "error"]).get();
+
+        record_channel_message(channel_id, true);
+        assert_eq!(
+            CHANNEL_MESSAGES_TOTAL.with_label_values(&[channel_id, "ok"]).get(),
+            ok_before + 1,
+            "ok counter should increment for success=true"
+        );
+        assert_eq!(
+            CHANNEL_MESSAGES_TOTAL.with_label_values(&[channel_id, "error"]).get(),
+            error_before,
+            "error counter should not change for success=true"
+        );
+
+        record_channel_message(channel_id, false);
+        assert_eq!(
+            CHANNEL_MESSAGES_TOTAL.with_label_values(&[channel_id, "ok"]).get(),
+            ok_before + 1,
+            "ok counter should be unchanged after error"
+        );
+        assert_eq!(
+            CHANNEL_MESSAGES_TOTAL.with_label_values(&[channel_id, "error"]).get(),
+            error_before + 1,
+            "error counter should increment for success=false"
+        );
     }
 
     #[test]
-    fn set_active_subscriptions_does_not_panic() {
+    fn set_active_subscriptions_updates_gauge() {
         set_active_subscriptions(3);
+        assert_eq!(
+            ACTIVE_SUBSCRIPTIONS.get(),
+            3,
+            "gauge should be set to 3"
+        );
+
+        set_active_subscriptions(10);
+        assert_eq!(
+            ACTIVE_SUBSCRIPTIONS.get(),
+            10,
+            "gauge should be updated to 10"
+        );
+
         set_active_subscriptions(0);
+        assert_eq!(
+            ACTIVE_SUBSCRIPTIONS.get(),
+            0,
+            "gauge should be resettable to 0"
+        );
     }
 }
