@@ -635,6 +635,15 @@ DROP INDEX IF EXISTS idx_audit_timestamp;
 DROP INDEX IF EXISTS idx_audit_actor;
 DROP TABLE IF EXISTS audit_log;",
     },
+    // ── v32: blackboard UNIQUE constraint on key ───────────────────────
+    Migration {
+        version: 32,
+        description: "blackboard — add UNIQUE constraint on key for upsert support",
+        up: "CREATE UNIQUE INDEX IF NOT EXISTS idx_blackboard_key_unique ON blackboard(key);
+DROP INDEX IF EXISTS idx_blackboard_key;",
+        down: "DROP INDEX IF EXISTS idx_blackboard_key_unique;
+CREATE INDEX IF NOT EXISTS idx_blackboard_key ON blackboard(key);",
+    },
 ];
 
 /// Outcome of a migration run.

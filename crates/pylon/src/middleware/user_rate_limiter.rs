@@ -188,6 +188,20 @@ impl UserRateLimiter {
 /// rate-limit bucket (#2223). The auth extractor runs inside route handlers,
 /// after rate-limit middleware, so verified claims are unavailable here.
 fn extract_user_key(request: &Request, trust_proxy: bool) -> String {
+    // WHY: Per-user rate limiting should key on the authenticated user, not
+    // just the IP. When a Bearer token is present, use a hash of the token
+    // as the key so different tokens get independent rate limit buckets.
+    // Falls back to IP for unauthenticated requests.
+    if let Some(auth) = request.headers().get("authorization") {
+        if let Ok(val) = auth.to_str() {
+            if let Some(token) = val.strip_prefix("Bearer ") {
+                use std::hash::{DefaultHasher, Hash, Hasher};
+                let mut hasher = DefaultHasher::new();
+                token.hash(&mut hasher);
+                return format!("token:{:x}", hasher.finish());
+            }
+        }
+    }
     extract_client_key(request, trust_proxy)
 }
 

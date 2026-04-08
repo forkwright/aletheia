@@ -38,8 +38,9 @@ use crate::error::{EnvVarRequiredSnafu, EnvVarUnterminatedSnafu, Result};
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// // WHY: interpolate_env_vars is pub(crate) — example shows intended usage.
 /// let out = aletheia_taxis::interpolate::interpolate_env_vars(
 ///     "[gateway]\nport = ${_TAXIS_UNSET_EXAMPLE:-18789}"
 /// )?;
