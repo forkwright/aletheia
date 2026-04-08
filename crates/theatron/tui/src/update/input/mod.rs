@@ -439,7 +439,7 @@ pub(crate) fn handle_submit(app: &mut App) {
     app.send_message(&text);
 }
 
-pub(crate) fn handle_copy_last_response(app: &mut App) {
+pub(crate) fn handle_copy_last_response(app: &App) {
     if let Some(msg) = app
         .dashboard
         .messages

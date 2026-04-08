@@ -252,7 +252,7 @@ pub(crate) fn Memory() -> Element {
                         store.sort_entities();
                     }
                     Ok(resp) => {
-                        tracing::warn!("entities request failed: {}", resp.status());
+                        tracing::warn!(status = %resp.status(), "entities request failed");
                     }
                     Err(e) => {
                         tracing::warn!("entities connection error: {e}");

@@ -501,7 +501,7 @@ fn handle_callback_connection(
         .expect("should be able to set blocking mode");
 
     let (stream, addr) = listener.accept().context(AcceptConnectionSnafu)?;
-    info!("received OAuth callback from {}", addr);
+    info!(addr = %addr, "received OAuth callback");
 
     let mut reader = BufReader::new(&stream);
     let callback_data = parse_callback_request(&mut reader)?;
@@ -730,7 +730,7 @@ pub async fn pkce_login_and_save(
 ) -> Result<CredentialFile> {
     let cred = pkce_login(provider).await?;
     cred.save(path).context(SaveCredentialSnafu)?;
-    info!("credentials saved to {}", path.display());
+    info!(path = %path.display(), "credentials saved");
     Ok(cred)
 }
 

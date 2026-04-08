@@ -13,7 +13,7 @@ use crate::runtime::transact::SessionTx;
 
 impl<'a> SessionTx<'a> {
     pub(crate) fn sort_and_collect(
-        &mut self,
+        &self,
         original: EpochStore,
         sorters: &[(Symbol, SortDir)],
         head: &[Symbol],

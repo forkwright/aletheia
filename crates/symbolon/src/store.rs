@@ -65,7 +65,7 @@ pub(crate) struct AuthStore {
 impl AuthStore {
     /// Open (or create) the auth store at the given path.
     pub(crate) fn open(path: &Path) -> Result<Self> {
-        info!("Opening auth store at {}", path.display());
+        info!(path = %path.display(), "Opening auth store");
         let conn = Connection::open(path).context(error::DatabaseSnafu)?;
         conn.busy_timeout(std::time::Duration::from_secs(5))
             .context(error::DatabaseSnafu)?;

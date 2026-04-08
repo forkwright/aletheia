@@ -143,7 +143,7 @@ impl<'a> crate::runtime::transact::SessionTx<'a> {
     }
 
     pub(crate) fn ensure_not_in_relation(
-        &mut self,
+        &self,
         res_iter: impl Iterator<Item = Tuple>,
         headers: &[Symbol],
         cur_vld: ValidityTs,
@@ -193,7 +193,7 @@ impl<'a> crate::runtime::transact::SessionTx<'a> {
     }
 
     pub(crate) fn ensure_in_relation(
-        &mut self,
+        &self,
         res_iter: impl Iterator<Item = Tuple>,
         headers: &[Symbol],
         cur_vld: ValidityTs,

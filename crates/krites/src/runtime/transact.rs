@@ -38,7 +38,7 @@ const OK_STR: &str = "OK";
 impl<'a> SessionTx<'a> {
     pub(crate) fn get_returning_rows(
         &self,
-        callback_collector: &mut CallbackCollector,
+        callback_collector: &CallbackCollector,
         rel: &str,
         returning: &ReturnMutation,
     ) -> Result<NamedRows> {

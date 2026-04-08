@@ -193,7 +193,7 @@ impl Config {
             file_config.token = None;
             let toml_str = toml::to_string(&file_config).context(TomlSnafu)?;
             write_config(&path, &toml_str)?;
-            tracing::info!("cleared credentials from {}", path.display());
+            tracing::info!(path = %path.display(), "cleared credentials");
         }
         Ok(())
     }

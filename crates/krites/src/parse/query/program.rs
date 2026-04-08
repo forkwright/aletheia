@@ -511,7 +511,7 @@ fn apply_stored_relation(
     Ok(())
 }
 
-fn validate_sort_keys(prog: &mut InputProgram) -> Result<()> {
+fn validate_sort_keys(prog: &InputProgram) -> Result<()> {
     if prog.out_opts.sorters.is_empty() {
         return Ok(());
     }

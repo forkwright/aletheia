@@ -276,7 +276,7 @@ pub(crate) fn MergeDialog(
                                             on_merged.call(());
                                         }
                                         Ok(resp) => {
-                                            tracing::warn!("merge failed: {}", resp.status());
+                                            tracing::warn!(status = %resp.status(), "merge failed");
                                             is_submitting.set(false);
                                         }
                                         Err(e) => {
@@ -403,7 +403,7 @@ pub(crate) fn FlagDialog(
                                             on_flagged.call(());
                                         }
                                         Ok(resp) => {
-                                            tracing::warn!("flag failed: {}", resp.status());
+                                            tracing::warn!(status = %resp.status(), "flag failed");
                                             is_submitting.set(false);
                                         }
                                         Err(e) => {
@@ -491,7 +491,7 @@ pub(crate) fn DeleteDialog(
                                             on_deleted.call(());
                                         }
                                         Ok(resp) => {
-                                            tracing::warn!("delete failed: {}", resp.status());
+                                            tracing::warn!(status = %resp.status(), "delete failed");
                                             is_submitting.set(false);
                                         }
                                         Err(e) => {

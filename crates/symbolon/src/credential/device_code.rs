@@ -427,7 +427,7 @@ pub async fn device_code_login_and_save(
 ) -> Result<CredentialFile> {
     let cred = device_code_login(provider).await?;
     cred.save(path).context(SaveCredentialSnafu)?;
-    info!("credentials saved to {}", path.display());
+    info!(path = %path.display(), "credentials saved");
     Ok(cred)
 }
 

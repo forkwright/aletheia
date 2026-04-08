@@ -41,6 +41,7 @@
 | **Organon** | ὄργανον | "tools" | Aristotle's name for the instruments of thought, that by which the mind extends itself. Tool registry, definitions, built-in tool set. |
 | **Agora** | ἀγορά | "channels" | The gathering place, Greek civic space where voices meet and meaning is made public. Channel registry, ChannelProvider trait, Signal JSON-RPC client. |
 | **Melete** | μελέτη | "distillation" | Disciplined practice, one of the original Muses. Context distillation, compression strategies, token budget management. Attending carefully to what was. |
+| **Energeia** | ἐνέργεια | "dispatch" | Actualization: the transition from potential to realized work. Dispatch orchestration, Agent SDK, session management, QA, steward. The moment plans become execution. |
 
 ### Mid layer
 
@@ -70,6 +71,7 @@
 | **Semeion** | σημεῖον | "signal" | The sign, the mark; communication as semiotics. Signal messaging integration inside Agora. |
 | **Oikonomos** | οἰκονόμος | "daemon" | The household steward, managing the oikos and keeping things in order. Background scheduling, cron, lifecycle events. |
 | **Prosoche** | προσοχή | "heartbeat" | Sustained directed attention, the practice that makes unconcealment possible. Attention checks, health monitoring, directive surfacing. |
+| **Kairos** | καιρός | "dispatch timing" | The right moment, opportune time. Autonomous dispatch task that reads directives and dispatches them at the proper moment. |
 | **Theke** | θήκη | "vault" | A repository in the original sense, a place that holds what matters. Tier-0 instance directory, human + nous collaborative space. |
 | **Diaporeia** | διαπορεία | "mcp-server" | Passage through, transit between worlds. MCP server bridge for external AI agents. |
 

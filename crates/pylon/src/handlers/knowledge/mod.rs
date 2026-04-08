@@ -461,23 +461,21 @@ pub async fn check_graph_health(
             let report = build_graph_check_report(store);
             return match report {
                 Ok(r) => (StatusCode::OK, Json(r)).into_response(),
-                Err(e) => (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(serde_json::json!({ "error": e })),
-                )
-                    .into_response(),
+                Err(e) => ApiError::Internal {
+                    message: e,
+                    location: snafu::location!(),
+                }
+                .into_response(),
             };
         }
     }
 
     let _ = &state;
-    (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(serde_json::json!({
-            "error": "knowledge store not enabled on this server"
-        })),
-    )
-        .into_response()
+    ApiError::ServiceUnavailable {
+        message: "knowledge store not enabled on this server".to_owned(),
+        location: snafu::location!(),
+    }
+    .into_response()
 }
 
 #[cfg(feature = "knowledge-store")]

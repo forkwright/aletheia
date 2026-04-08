@@ -183,7 +183,7 @@ pub(crate) fn Sessions() -> Element {
                         store.sort_sessions();
                     }
                     Ok(resp) => {
-                        tracing::warn!("sessions request failed: {}", resp.status());
+                        tracing::warn!(status = %resp.status(), "sessions request failed");
                     }
                     Err(e) => {
                         tracing::warn!("sessions connection error: {e}");
@@ -330,7 +330,7 @@ pub(crate) fn Sessions() -> Element {
                         tracing::info!("archived session {id}");
                     }
                     Ok(resp) => {
-                        tracing::warn!("archive failed: {}", resp.status());
+                        tracing::warn!(status = %resp.status(), "archive failed");
                     }
                     Err(e) => {
                         tracing::warn!("archive error: {e}");
@@ -359,7 +359,7 @@ pub(crate) fn Sessions() -> Element {
                         tracing::info!("restored session {id}");
                     }
                     Ok(resp) => {
-                        tracing::warn!("restore failed: {}", resp.status());
+                        tracing::warn!(status = %resp.status(), "restore failed");
                     }
                     Err(e) => {
                         tracing::warn!("restore error: {e}");

@@ -145,7 +145,7 @@ impl<'a> SessionTx<'a> {
         Ok(compiled)
     }
     pub(crate) fn compile_magic_rule_body(
-        &mut self,
+        &self,
         rule: &MagicInlineRule,
         rule_name: &MagicSymbol,
         store_arities: &BTreeMap<MagicSymbol, usize>,
