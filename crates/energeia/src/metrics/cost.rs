@@ -86,6 +86,7 @@ pub struct DailyVelocity {
 /// # Errors
 ///
 /// Returns `Error::Store` if any underlying store read fails.
+#[must_use]
 pub fn compute_cost_report(store: &EnergeiaStore, window_days: u32) -> Result<CostReport> {
     let now = jiff::Timestamp::now();
 

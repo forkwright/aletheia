@@ -62,6 +62,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::Store` if the partition cannot be opened.
+    #[must_use]
     pub fn new(db: &fjall::Database) -> Result<Self> {
         let keyspace = db
             .keyspace(PARTITION_NAME, fjall::KeyspaceCreateOptions::default)
@@ -95,6 +96,7 @@ impl EnergeiaStore {
     ///
     /// Returns `Error::Store` on write failure, `Error::Serialization` on
     /// encoding failure.
+    #[must_use]
     pub fn create_dispatch(&self, project: &str, spec: &DispatchSpec) -> Result<DispatchId> {
         let id = DispatchId::new(aletheia_koina::ulid::Ulid::new().to_string());
         let spec_json =
@@ -127,6 +129,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::NotFound` if the dispatch does not exist.
+    #[must_use]
     pub fn finish_dispatch(&self, id: &DispatchId, status: DispatchStatus) -> Result<()> {
         let mut record = self.get_dispatch(id)?.ok_or_else(|| {
             error::NotFoundSnafu {
@@ -164,6 +167,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::Store` on read failure.
+    #[must_use]
     pub fn get_dispatch(&self, id: &DispatchId) -> Result<Option<DispatchRecord>> {
         let key = schema::dispatch_key(id);
         match self
@@ -185,6 +189,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::Store` on write failure.
+    #[must_use]
     pub fn create_session(
         &self,
         dispatch_id: &DispatchId,
@@ -223,6 +228,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::NotFound` if the session does not exist.
+    #[must_use]
     pub fn update_session(&self, id: &SessionId, update: SessionUpdate) -> Result<()> {
         // WHY: session keys are indexed by (dispatch_id, prompt_number), so we
         // need to scan to find the record by SessionId. For the expected
@@ -266,6 +272,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::Store` on read failure.
+    #[must_use]
     pub fn list_sessions_for_dispatch(
         &self,
         dispatch_id: &DispatchId,
@@ -282,6 +289,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::Store` on write failure.
+    #[must_use]
     pub fn add_lesson(&self, lesson: &NewLesson) -> Result<()> {
         let now = jiff::Timestamp::now();
         let record = LessonRecord {
@@ -329,6 +337,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::Store` on write failure.
+    #[must_use]
     pub fn add_observation(&self, observation: &NewObservation) -> Result<()> {
         let now = jiff::Timestamp::now();
         let obs_ulid = aletheia_koina::ulid::Ulid::new().to_string();
@@ -488,6 +497,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::Store` on read failure.
+    #[must_use]
     pub fn list_dispatches(&self, limit: usize) -> Result<Vec<DispatchRecord>> {
         queries::list_dispatches(&self.keyspace, limit)
     }
@@ -501,6 +511,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::Store` on read failure.
+    #[must_use]
     pub fn list_all_sessions(&self, limit: usize) -> Result<Vec<SessionRecord>> {
         queries::list_all_sessions(&self.keyspace, limit)
     }
@@ -513,6 +524,7 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::Store` on read failure.
+    #[must_use]
     pub fn list_all_ci_validations(&self, limit: usize) -> Result<Vec<CiValidationRecord>> {
         queries::list_all_ci_validations(&self.keyspace, limit)
     }

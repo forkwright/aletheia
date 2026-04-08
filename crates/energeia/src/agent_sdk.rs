@@ -72,6 +72,7 @@ impl AgentSdkEngine {
     ///
     /// Returns an error if the engine cannot be initialized (e.g., binary
     /// lookup fails, OAuth token invalid, MCP server unavailable).
+    #[must_use]
     pub fn new(config: AgentSdkConfig) -> Result<Self> {
         // WHY: Verify the model identifier is valid during construction.
         if config.default_model.is_empty() {
