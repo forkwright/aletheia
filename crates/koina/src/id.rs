@@ -229,6 +229,26 @@ impl fmt::Display for SessionId {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct TurnId(u64);
 
+impl TurnId {
+    /// Create a turn ID from a numeric value.
+    #[must_use]
+    pub const fn new(n: u64) -> Self {
+        Self(n)
+    }
+
+    /// The underlying numeric value.
+    #[must_use]
+    pub const fn as_u64(self) -> u64 {
+        self.0
+    }
+
+    /// The next sequential turn ID.
+    #[must_use]
+    pub const fn next(self) -> Self {
+        Self(self.0 + 1)
+    }
+}
+
 impl From<u64> for TurnId {
     fn from(n: u64) -> Self {
         Self(n)
