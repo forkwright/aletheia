@@ -12,8 +12,11 @@
 use std::collections::HashSet;
 use std::fmt;
 use std::hash::{DefaultHasher, Hash, Hasher};
-use std::sync::Mutex;
 use std::time::{Duration, Instant};
+
+// WHY: parking_lot::Mutex — lock is never held across .await, and parking_lot
+// provides better performance (no poisoning, no contention overhead).
+use parking_lot::Mutex;
 
 use snafu::Snafu;
 use tracing::{debug, instrument};
@@ -256,10 +259,7 @@ impl SideQuerySelector {
 
         // NOTE: check cache first.
         {
-            let mut cache = self
-                .cache
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let mut cache = self.cache.lock();
             if let Some(ids) = cache.get(cache_key) {
                 debug!(count = ids.len(), "side-query cache hit");
                 return Ok(SideQueryResult {
@@ -276,10 +276,7 @@ impl SideQuerySelector {
 
         // NOTE: store in cache.
         {
-            let mut cache = self
-                .cache
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let mut cache = self.cache.lock();
             cache.insert(cache_key, selected.clone());
         }
 
@@ -291,10 +288,7 @@ impl SideQuerySelector {
 
     /// Mark source IDs as surfaced so they won't be re-selected.
     pub fn mark_surfaced(&self, ids: &[String]) {
-        let mut surfaced = self
-            .already_surfaced
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut surfaced = self.already_surfaced.lock();
         for id in ids {
             surfaced.insert(id.clone());
         }
@@ -303,27 +297,20 @@ impl SideQuerySelector {
     /// Check whether a source ID has already been surfaced.
     #[must_use]
     pub fn is_surfaced(&self, id: &str) -> bool {
-        self.already_surfaced
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        self.already_surfaced.lock()
             .contains(id)
     }
 
     /// Number of entries in the relevance cache.
     #[must_use]
     pub fn cache_len(&self) -> usize {
-        self.cache
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        self.cache.lock()
             .len()
     }
 
     /// Build a filtered manifest excluding already-surfaced entries.
     fn filter_surfaced(&self, manifest: &MemoryManifest) -> MemoryManifest {
-        let surfaced = self
-            .already_surfaced
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let surfaced = self.already_surfaced.lock();
         let filtered: Vec<_> = manifest
             .headers()
             .iter()
@@ -340,7 +327,7 @@ impl fmt::Debug for SideQuerySelector {
             .field("config", &self.config)
             .field(
                 "surfaced_count",
-                &self.already_surfaced.lock().map(|s| s.len()).unwrap_or(0),
+                &self.already_surfaced.lock().len(),
             )
             .field("cache_len", &self.cache_len())
             .finish_non_exhaustive()

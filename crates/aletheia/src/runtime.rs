@@ -527,7 +527,13 @@ impl RuntimeBuilder {
             let http_client = Arc::new(reqwest::Client::new());
 
             // Academic source (Semantic Scholar)
-            let api_key = std::env::var("SEMANTIC_SCHOLAR_API_KEY").ok();
+            let api_key = match std::env::var("SEMANTIC_SCHOLAR_API_KEY") {
+                Ok(key) => Some(key),
+                Err(e) => {
+                    tracing::warn!(error = %e, "SEMANTIC_SCHOLAR_API_KEY not set or invalid");
+                    None
+                }
+            };
             registry.register(Arc::new(
                 crate::recall_sources::academic::AcademicSource::new(
                     Arc::clone(&http_client),

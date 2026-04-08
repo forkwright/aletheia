@@ -17,7 +17,8 @@
 //! use aletheia_episteme::embedding::MockEmbeddingProvider;
 //! use aletheia_episteme::embedding_eval::{EvalDataset, evaluate_model};
 //!
-//! let dataset = EvalDataset::from_jsonl_str(r#"{"query":"foo","relevant_ids":["a"]}"#).unwrap();
+//! let dataset = EvalDataset::from_jsonl_str(r#"{"query":"foo","relevant_ids":["a"]}"#)
+//!     .expect("JSONL must parse for valid test data");
 //! let provider = MockEmbeddingProvider::new(384);
 //! let corpus: Vec<(String, String)> = vec![("a".into(), "foo bar".into())];
 //! let result = evaluate_model(&provider, &dataset, &corpus, 5);

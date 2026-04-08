@@ -15,6 +15,7 @@ use crate::types::{MechanicalIssue, MechanicalIssueKind};
 ///
 /// Each entry is `(pattern_string, human_message)`. Checked against every
 /// added line in non-test files.
+#[expect(clippy::unwrap_used, reason = "pattern string for anti-pattern detection, not an actual unwrap call")]
 const ANTI_PATTERNS: &[(&str, &str)] = &[
     (
         ".unwrap()",

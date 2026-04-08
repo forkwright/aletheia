@@ -30,6 +30,7 @@ aletheia-graphe = { path = "../graphe", default-features = false }
 aletheia-koina = { path = "../koina" }
 aletheia-krites = { path = "../krites", optional = true }
 jiff = { workspace = true, features = ["serde"] }
+parking_lot = "0.12"
 prometheus = { workspace = true }
 rand = { workspace = true }
 regex = { workspace = true }
