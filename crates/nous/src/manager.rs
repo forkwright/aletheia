@@ -168,7 +168,7 @@ impl NousManager {
         config: NousConfig,
         pipeline_config: PipelineConfig,
     ) -> NousHandle {
-        let id = config.id.clone();
+        let id = config.id.to_string();
 
         if let Some(old) = self.actors.remove(&id) {
             warn!(nous_id = %id, "replacing existing actor");
@@ -189,7 +189,7 @@ impl NousManager {
         config: NousConfig,
         pipeline_config: PipelineConfig,
     ) -> NousHandle {
-        let id = config.id.clone();
+        let id = config.id.to_string();
 
         let extra_bootstrap = {
             let estimator = CharEstimator::new(u64::from(config.generation.chars_per_token));

@@ -40,7 +40,7 @@ impl SessionState {
     pub fn new(id: String, session_key: String, config: &NousConfig) -> Self {
         Self {
             id,
-            nous_id: config.id.clone(),
+            nous_id: config.id.to_string(),
             session_key,
             model: config.generation.model.clone(),
             turn: 0,
@@ -98,7 +98,7 @@ impl SessionManager {
         info!(
             id,
             session_key,
-            nous_id = self.config.id,
+            nous_id = self.config.id.as_ref(),
             "creating session"
         );
         SessionState::new(id.to_owned(), session_key.to_owned(), &self.config)
@@ -128,11 +128,13 @@ impl SessionManager {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
 
     fn make_config() -> NousConfig {
         NousConfig {
-            id: "syn".to_owned(),
+            id: Arc::from("syn"),
             ..NousConfig::default()
         }
     }
@@ -261,7 +263,7 @@ mod tests {
     fn session_manager_config_accessor() {
         let config = make_config();
         let mgr = SessionManager::new(config);
-        assert_eq!(mgr.config().id, "syn");
+        assert_eq!(mgr.config().id.as_ref(), "syn");
     }
 
     #[test]

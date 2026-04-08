@@ -51,7 +51,7 @@ fn make_manager(oikos: Arc<Oikos>) -> NousManager {
 
 fn syn_config() -> NousConfig {
     NousConfig {
-        id: "syn".to_owned(),
+        id: Arc::from("syn"),
         generation: crate::config::NousGenerationConfig {
             model: "test-model".to_owned(),
             ..crate::config::NousGenerationConfig::default()
@@ -62,7 +62,7 @@ fn syn_config() -> NousConfig {
 
 fn demiurge_config() -> NousConfig {
     NousConfig {
-        id: "demiurge".to_owned(),
+        id: Arc::from("demiurge"),
         generation: crate::config::NousGenerationConfig {
             model: "test-model".to_owned(),
             ..crate::config::NousGenerationConfig::default()
@@ -114,7 +114,7 @@ async fn get_config_returns_stored_config() {
     mgr.spawn(syn_config(), PipelineConfig::default()).await;
 
     let config = mgr.get_config("syn").expect("config");
-    assert_eq!(config.id, "syn", "config id should match");
+    assert_eq!(config.id.as_ref(), "syn", "config id should match");
     assert_eq!(
         config.generation.model, "test-model",
         "config model should match"
@@ -145,7 +145,7 @@ async fn configs_returns_all() {
     let configs = mgr.configs();
     assert_eq!(configs.len(), 2, "should have two configs");
 
-    let ids: Vec<&str> = configs.iter().map(|c| c.id.as_str()).collect();
+    let ids: Vec<&str> = configs.iter().map(|c| c.id.as_ref()).collect();
     assert!(ids.contains(&"syn"), "configs should include syn");
     assert!(ids.contains(&"demiurge"), "configs should include demiurge");
 

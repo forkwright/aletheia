@@ -849,7 +849,7 @@ pub(crate) async fn run_pipeline(
     )]
     let tool_calls_count = result.tool_calls.len() as u64; // kanon:ignore RUST/as-cast
     emitter.emit(&events::TurnCompleted {
-        nous_id: config.id.clone(),
+        nous_id: config.id.to_string(),
         model: config.generation.model.clone(),
         duration_ms,
         input_tokens: result.usage.input_tokens,

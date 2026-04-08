@@ -58,7 +58,7 @@ pub(super) async fn run_context_stage(
     .inspect_err(|_| {
         crate::metrics::record_error(&config.id, "context", "assembly_failed");
         emitter.emit(&StageError {
-            nous_id: config.id.clone(),
+            nous_id: config.id.to_string(),
             stage: "context",
             error_type: "assembly_failed".to_owned(),
         });
@@ -68,7 +68,7 @@ pub(super) async fn run_context_stage(
     span.record("status", "ok");
     crate::metrics::record_stage(&config.id, "context", duration_secs);
     emitter.emit(&StageCompleted {
-        nous_id: config.id.clone(),
+        nous_id: config.id.to_string(),
         stage: "context",
         duration_secs,
     });
@@ -118,7 +118,7 @@ pub(super) async fn run_recall_stage(
         } else {
             span.record("status", "skipped");
             emitter.emit(&StageSkipped {
-                nous_id: config.id.clone(),
+                nous_id: config.id.to_string(),
                 stage: "recall",
                 reason: "mock embedding provider with no text search".to_owned(),
             });
@@ -138,7 +138,7 @@ pub(super) async fn run_recall_stage(
                 Err(_elapsed) => {
                     span.record("status", "timeout");
                     emitter.emit(&StageTimeout {
-                        nous_id: config.id.clone(),
+                        nous_id: config.id.to_string(),
                         stage: "recall",
                         timeout_secs: recall_timeout_secs,
                     });
@@ -155,7 +155,7 @@ pub(super) async fn run_recall_stage(
     } else {
         span.record("status", "skipped");
         emitter.emit(&StageSkipped {
-            nous_id: config.id.clone(),
+            nous_id: config.id.to_string(),
             stage: "recall",
             reason: "embedding provider or vector search not configured".to_owned(),
         });
@@ -164,7 +164,7 @@ pub(super) async fn run_recall_stage(
     record_stage_duration(&span, &start);
     crate::metrics::record_stage(&config.id, "recall", duration_secs);
     emitter.emit(&StageCompleted {
-        nous_id: config.id.clone(),
+        nous_id: config.id.to_string(),
         stage: "recall",
         duration_secs,
     });
@@ -203,7 +203,7 @@ pub(super) async fn run_history_stage(
         .inspect_err(|_| {
             crate::metrics::record_error(&config.id, "history", "load_failed");
             emitter.emit(&StageError {
-                nous_id: config.id.clone(),
+                nous_id: config.id.to_string(),
                 stage: "history",
                 error_type: "load_failed".to_owned(),
             });
@@ -229,7 +229,7 @@ pub(super) async fn run_history_stage(
     span.record("status", "ok");
     crate::metrics::record_stage(&config.id, "history", duration_secs);
     emitter.emit(&StageCompleted {
-        nous_id: config.id.clone(),
+        nous_id: config.id.to_string(),
         stage: "history",
         duration_secs,
     });
@@ -283,7 +283,7 @@ pub(super) fn run_microcompact_stage(
     record_stage_duration(&span, &start);
     crate::metrics::record_stage(&config.id, "microcompact", duration_secs);
     emitter.emit(&StageCompleted {
-        nous_id: config.id.clone(),
+        nous_id: config.id.to_string(),
         stage: "microcompact",
         duration_secs,
     });
@@ -333,7 +333,7 @@ pub(super) fn run_full_compact_stage(
         record_stage_duration(&span, &start);
         crate::metrics::record_stage(&config.id, "full_compact", duration_secs);
         emitter.emit(&StageSkipped {
-            nous_id: config.id.clone(),
+            nous_id: config.id.to_string(),
             stage: "full_compact",
             reason: format!("token usage {consumed}/{context_window} below threshold"),
         });
@@ -365,7 +365,7 @@ pub(super) fn run_full_compact_stage(
     record_stage_duration(&span, &start);
     crate::metrics::record_stage(&config.id, "full_compact", duration_secs);
     emitter.emit(&StageCompleted {
-        nous_id: config.id.clone(),
+        nous_id: config.id.to_string(),
         stage: "full_compact",
         duration_secs,
     });
@@ -423,7 +423,7 @@ pub(super) fn run_guard_stage(
         GuardResult::Allow => {
             span.record("status", "ok");
             emitter.emit(&StageCompleted {
-                nous_id: config.id.clone(),
+                nous_id: config.id.to_string(),
                 stage: "guard",
                 duration_secs,
             });
@@ -433,7 +433,7 @@ pub(super) fn run_guard_stage(
             span.record("status", "error");
             crate::metrics::record_error(&config.id, "guard", "rate_limited");
             emitter.emit(&StageError {
-                nous_id: config.id.clone(),
+                nous_id: config.id.to_string(),
                 stage: "guard",
                 error_type: "rate_limited".to_owned(),
             });
@@ -446,7 +446,7 @@ pub(super) fn run_guard_stage(
             span.record("status", "error");
             crate::metrics::record_error(&config.id, "guard", "loop_detected");
             emitter.emit(&StageError {
-                nous_id: config.id.clone(),
+                nous_id: config.id.to_string(),
                 stage: "guard",
                 error_type: "loop_detected".to_owned(),
             });
@@ -460,7 +460,7 @@ pub(super) fn run_guard_stage(
             span.record("status", "error");
             crate::metrics::record_error(&config.id, "guard", "rejected");
             emitter.emit(&StageError {
-                nous_id: config.id.clone(),
+                nous_id: config.id.to_string(),
                 stage: "guard",
                 error_type: "rejected".to_owned(),
             });
@@ -556,7 +556,7 @@ pub(super) async fn run_execute_stage(
                 span.record("status", "timeout");
                 crate::metrics::record_error(&config.id, "execute", "timeout");
                 emitter.emit(&StageTimeout {
-                    nous_id: config.id.clone(),
+                    nous_id: config.id.to_string(),
                     stage: "execute",
                     timeout_secs: secs,
                 });
@@ -580,7 +580,7 @@ pub(super) async fn run_execute_stage(
         Err(ref err) if crate::degraded_mode::is_transient_llm_error(err) => {
             crate::metrics::record_error(&config.id, "execute", "degraded_mode");
             emitter.emit(&StageError {
-                nous_id: config.id.clone(),
+                nous_id: config.id.to_string(),
                 stage: "execute",
                 error_type: "degraded_mode".to_owned(),
             });
@@ -608,7 +608,7 @@ pub(super) async fn run_execute_stage(
         Err(err) => {
             crate::metrics::record_error(&config.id, "execute", "pipeline_error");
             emitter.emit(&StageError {
-                nous_id: config.id.clone(),
+                nous_id: config.id.to_string(),
                 stage: "execute",
                 error_type: "pipeline_error".to_owned(),
             });
@@ -625,7 +625,7 @@ pub(super) async fn run_execute_stage(
     }
     crate::metrics::record_stage(&config.id, "execute", duration_secs);
     emitter.emit(&StageCompleted {
-        nous_id: config.id.clone(),
+        nous_id: config.id.to_string(),
         stage: "execute",
         duration_secs,
     });
@@ -669,7 +669,7 @@ pub(super) async fn run_finalize_stage(
                 error!(error = %e, "finalize failed, returning result without persistence");
                 span.record("status", "error");
                 emitter.emit(&StageError {
-                    nous_id: config.id.clone(),
+                    nous_id: config.id.to_string(),
                     stage: "finalize",
                     error_type: "persistence_failed".to_owned(),
                 });
@@ -678,7 +678,7 @@ pub(super) async fn run_finalize_stage(
     } else {
         span.record("status", "skipped");
         emitter.emit(&StageSkipped {
-            nous_id: config.id.clone(),
+            nous_id: config.id.to_string(),
             stage: "finalize",
             reason: "no session store".to_owned(),
         });
@@ -687,7 +687,7 @@ pub(super) async fn run_finalize_stage(
     record_stage_duration(&span, &start);
     crate::metrics::record_stage(&config.id, "finalize", duration_secs);
     emitter.emit(&StageCompleted {
-        nous_id: config.id.clone(),
+        nous_id: config.id.to_string(),
         stage: "finalize",
         duration_secs,
     });

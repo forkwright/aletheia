@@ -27,8 +27,8 @@ pub async fn list(State(state): State<NousState>, _claims: Claims) -> Json<NousL
         .configs()
         .into_iter()
         .map(|c| NousSummary {
-            id: c.id.clone(),
-            name: c.name.clone().unwrap_or_else(|| c.id.clone()),
+            id: c.id.to_string(),
+            name: c.name.clone().unwrap_or_else(|| c.id.to_string()),
             model: c.generation.model.clone(),
             status: "active".to_owned(),
         })
@@ -67,7 +67,7 @@ pub async fn get_status(
     };
 
     Ok(Json(NousStatus {
-        id: config.id.clone(),
+        id: config.id.to_string(),
         model: config.generation.model.clone(),
         context_window: config.generation.context_window,
         max_output_tokens: config.generation.max_output_tokens,

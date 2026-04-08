@@ -1,8 +1,32 @@
 //! Nous agent configuration.
 
+use std::sync::Arc;
+
 use serde::{Deserialize, Serialize};
 
 use crate::recall::RecallConfig;
+
+/// Serde helpers for `Arc<str>`.
+mod arc_str {
+    use std::sync::Arc;
+
+    use serde::{Deserialize, Serialize};
+
+    pub fn serialize<S>(value: &Arc<str>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        value.as_ref().serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Arc<str>, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s: String = Deserialize::deserialize(deserializer)?;
+        Ok(Arc::from(s))
+    }
+}
 
 /// LLM generation settings for a nous agent.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -96,7 +120,8 @@ impl Default for NousLimits {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NousConfig {
     /// Agent identifier (e.g. "syn", "demiurge").
-    pub id: String,
+    #[serde(with = "arc_str")]
+    pub id: Arc<str>,
     /// Human-readable display name (e.g. "Syn"). Falls back to `id` if absent.
     #[serde(default)]
     pub name: Option<String>,
@@ -193,7 +218,7 @@ fn default_max_tool_result_bytes() -> u32 {
 impl Default for NousConfig {
     fn default() -> Self {
         Self {
-            id: "default".to_owned(),
+            id: Arc::from("default"),
             name: None,
             generation: NousGenerationConfig::default(),
             limits: NousLimits::default(),
@@ -307,7 +332,7 @@ mod tests {
         let config = NousConfig::default();
         let json = serde_json::to_string(&config).unwrap();
         let back: NousConfig = serde_json::from_str(&json).unwrap();
-        assert_eq!(config.id, back.id);
+        assert_eq!(config.id.as_ref(), back.id.as_ref());
         assert_eq!(config.generation.model, back.generation.model);
     }
 
@@ -333,7 +358,7 @@ mod tests {
     #[test]
     fn nous_config_custom_values() {
         let config = NousConfig {
-            id: "analyst".to_owned(),
+            id: Arc::from("analyst"),
             name: Some("Analyst".to_owned()),
             generation: NousGenerationConfig {
                 model: "claude-haiku-4-5-20251001".to_owned(),

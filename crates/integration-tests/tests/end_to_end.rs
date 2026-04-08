@@ -160,7 +160,7 @@ impl TestHarness {
         );
 
         let nous_config = NousConfig {
-            id: "test-nous".to_owned(),
+            id: Arc::from("test-nous"),
             generation: aletheia_nous::config::NousGenerationConfig {
                 model: "mock-model".to_owned(),
                 ..Default::default()

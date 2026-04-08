@@ -53,7 +53,7 @@ pub(crate) fn spawn(
     cancel: CancellationToken,
 ) -> (NousHandle, tokio::task::JoinHandle<()>, Arc<AtomicBool>) {
     let (tx, rx) = mpsc::channel(DEFAULT_INBOX_CAPACITY);
-    let id = config.id.clone();
+    let id = config.id.to_string();
     let handle = NousHandle::new(id.clone(), tx);
 
     let active_turn = Arc::new(AtomicBool::new(false));
