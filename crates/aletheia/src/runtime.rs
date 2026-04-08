@@ -7,7 +7,7 @@ use snafu::prelude::*;
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
-use tracing::{Instrument, debug, info, warn};
+use tracing::{Instrument, info, warn};
 
 use aletheia_agora::listener::ChannelListener;
 use aletheia_agora::registry::ChannelRegistry;
@@ -342,6 +342,9 @@ impl RuntimeBuilder {
                 .whatever_context("startup validation failed")?;
             info!("startup validation passed");
         }
+
+        // Initialize dianoia metrics (planning/project orchestration)
+        aletheia_dianoia::metrics::init();
 
         // JWT key resolution
         let jwt_key: Option<SecretString> =
