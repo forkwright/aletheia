@@ -50,6 +50,20 @@ static LINT_IGNORE_INLINE_RE: LazyLock<Regex> =
     clippy::expect_used,
     reason = "compile-time constant regex patterns cannot fail"
 )]
+static PROMPT_NUMBER_K_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"[Kk]-?(\d{1,4})").expect("valid regex"));
+
+#[expect(
+    clippy::expect_used,
+    reason = "compile-time constant regex patterns cannot fail"
+)]
+static PROMPT_NUMBER_TEXT_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"prompt[\s-](\d{1,4})").expect("valid regex"));
+
+#[expect(
+    clippy::expect_used,
+    reason = "compile-time constant regex patterns cannot fail"
+)]
 static STRUCTURED_COMMENT_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"//\s*(SAFETY|INVARIANT)\s*:").expect("valid regex"));
 
@@ -148,24 +162,25 @@ pub fn extract_prompt_number(pr: &PullRequest) -> Option<u32> {
 /// Recognized patterns: `K-NNN`, `KNNN`, `prompt NNN`
 #[must_use]
 pub(crate) fn extract_prompt_number_from_text(text: &str) -> Option<u32> {
-    // WHY: Use a simple regex to match common prompt number patterns.
-    // The patterns are tried in order of specificity.
-    let patterns = [
-        r"[Kk]-?(\d{1,4})",      // K-042, K042, k-42
-        r"prompt[\s-](\d{1,4})", // prompt 42, prompt-42
-    ];
+    // WHY: Use pre-compiled regex patterns to match common prompt number patterns.
+    // Patterns are compiled once via LazyLock and cached for all calls.
 
-    for pattern in &patterns {
-        // NOTE: Pattern compilation is cheap for these small patterns,
-        // and they're only used in classification (not hot path).
-        if let Ok(re) = Regex::new(pattern)
-            && let Some(caps) = re.captures(text)
-            && let Some(num_str) = caps.get(1)
-            && let Ok(num) = num_str.as_str().parse::<u32>()
-            && num > 0
-        {
-            return Some(num);
-        }
+    // Try K-pattern first (K-042, K042, k-42)
+    if let Some(caps) = PROMPT_NUMBER_K_RE.captures(text)
+        && let Some(num_str) = caps.get(1)
+        && let Ok(num) = num_str.as_str().parse::<u32>()
+        && num > 0
+    {
+        return Some(num);
+    }
+
+    // Try text pattern (prompt 42, prompt-42)
+    if let Some(caps) = PROMPT_NUMBER_TEXT_RE.captures(text)
+        && let Some(num_str) = caps.get(1)
+        && let Ok(num) = num_str.as_str().parse::<u32>()
+        && num > 0
+    {
+        return Some(num);
     }
 
     None
