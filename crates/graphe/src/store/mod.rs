@@ -80,7 +80,7 @@ impl SessionStore {
     /// Returns an error if the database cannot be opened or initialized.
     #[instrument(skip(path, recovery_config))]
     pub fn open_with_recovery(path: &Path, recovery_config: &RecoveryConfig) -> Result<Self> {
-        info!("Opening session store at {}", path.display());
+        info!(path = %path.display(), "Opening session store");
         let conn = Connection::open(path).context(error::DatabaseSnafu)?;
 
         // PERF: WAL mode + NORMAL synchronous for write throughput without sacrificing crash safety.

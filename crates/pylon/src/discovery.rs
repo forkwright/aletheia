@@ -123,7 +123,7 @@ async fn query_tailscale_ip() -> Option<String> {
         .ok()?;
 
     if !output.status.success() {
-        warn!("tailscale status exited with {}", output.status);
+        warn!(status = %output.status, "tailscale status exited with error");
         return None;
     }
 

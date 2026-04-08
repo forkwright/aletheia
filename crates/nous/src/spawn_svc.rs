@@ -17,7 +17,12 @@ use crate::actor;
 use crate::config::{NousConfig, PipelineConfig, StageBudget};
 use crate::roles::Role;
 
-const SONNET_MODEL: &str = aletheia_koina::defaults::DEFAULT_MODEL;
+use aletheia_koina::defaults::{
+    BOOTSTRAP_MAX_TOKENS, CONTEXT_TOKENS, DEFAULT_MODEL, MAX_OUTPUT_TOKENS, MAX_TOOL_ITERATIONS,
+    MAX_TOOL_RESULT_BYTES,
+};
+
+const SONNET_MODEL: &str = DEFAULT_MODEL;
 
 /// Resolve role from string, returning typed role or falling back to model heuristic.
 fn resolve_role(role_str: &str) -> Option<Role> {
@@ -84,21 +89,21 @@ impl SpawnService for SpawnServiceImpl {
             name: None,
             generation: crate::config::NousGenerationConfig {
                 model,
-                context_window: 200_000,
-                max_output_tokens: 16_384,
-                bootstrap_max_tokens: 4_000,
+                context_window: CONTEXT_TOKENS,
+                max_output_tokens: MAX_OUTPUT_TOKENS,
+                bootstrap_max_tokens: BOOTSTRAP_MAX_TOKENS,
                 thinking_enabled: false,
                 thinking_budget: 0,
                 chars_per_token: 4,
                 prosoche_model: "claude-haiku-4-5-20251001".to_owned(),
             },
             limits: crate::config::NousLimits {
-                max_tool_iterations: 100,
+                max_tool_iterations: MAX_TOOL_ITERATIONS,
                 loop_detection_threshold: 3,
                 consecutive_error_threshold: 4,
                 loop_max_warnings: 2,
                 session_token_cap: 500_000,
-                max_tool_result_bytes: 32_768,
+                max_tool_result_bytes: MAX_TOOL_RESULT_BYTES,
                 max_consecutive_tool_only_iterations: 3,
             },
             domains: Vec::new(),

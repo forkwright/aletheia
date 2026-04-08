@@ -157,11 +157,11 @@ impl VectorCache {
     // (though LRU eviction may have removed it if capacity is very small and
     // many keys were ensured between the ensure and the access: callers that
     // need multiple keys should ensure them close to their use site).
-    pub(crate) fn v_dist(&mut self, v: &Vector, key: &CompoundKey) -> Result<f64> {
+    pub(crate) fn v_dist(&self, v: &Vector, key: &CompoundKey) -> Result<f64> {
         let v2 = self.cache.peek(key).unwrap_or_else(|| unreachable!());
         self.dist(v, v2)
     }
-    pub(crate) fn k_dist(&mut self, k1: &CompoundKey, k2: &CompoundKey) -> Result<f64> {
+    pub(crate) fn k_dist(&self, k1: &CompoundKey, k2: &CompoundKey) -> Result<f64> {
         // WHY: Clone to avoid overlapping borrows on the cache.
         let v1 = self
             .cache
@@ -171,7 +171,7 @@ impl VectorCache {
         let v2 = self.cache.peek(k2).unwrap_or_else(|| unreachable!());
         self.dist(&v1, v2)
     }
-    pub(crate) fn get_key(&mut self, key: &CompoundKey) -> &Vector {
+    pub(crate) fn get_key(&self, key: &CompoundKey) -> &Vector {
         self.cache.peek(key).unwrap_or_else(|| unreachable!())
     }
     pub(crate) fn ensure_key(
