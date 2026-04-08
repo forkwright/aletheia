@@ -43,7 +43,12 @@ pub(crate) fn format_messages(messages: &[Message], include_tool_calls: bool) ->
             Role::System => "SYSTEM",
             Role::User => "USER",
             Role::Assistant => "ASSISTANT",
-            _ => "UNKNOWN",
+            // WHY: #[non_exhaustive] requires wildcard. Log so new variants
+            // are noticed instead of silently mapped.
+            _ => {
+                tracing::warn!(role = ?msg.role, "unknown message role in distillation");
+                "UNKNOWN"
+            }
         };
 
         match &msg.content {
