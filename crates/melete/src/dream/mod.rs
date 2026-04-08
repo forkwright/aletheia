@@ -891,7 +891,9 @@ mod tests {
         engine.on_turn_complete(&source, &target, &provider);
 
         // NOTE: give the background task time to complete.
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        tokio::time::pause();
+        tokio::time::advance(std::time::Duration::from_millis(100)).await;
+        tokio::time::resume();
     }
 
     #[test]

@@ -501,7 +501,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_device_oauth_provider_builder() {
+    fn device_oauth_provider_builder_chains_configuration() {
         let provider = DeviceOAuthProvider::new(
             "test-client",
             "https://example.com/auth",
@@ -522,17 +522,17 @@ mod tests {
     }
 
     #[test]
-    fn test_default_expires_in() {
+    fn default_expires_in_returns_30_minutes() {
         assert_eq!(default_expires_in(), 1800);
     }
 
     #[test]
-    fn test_default_interval() {
+    fn default_interval_returns_5_seconds() {
         assert_eq!(default_interval(), 5);
     }
 
     #[test]
-    fn test_build_form_body_str() {
+    fn build_form_body_str_creates_url_encoded_params() {
         let mut params = HashMap::new();
         params.insert("grant_type".to_string(), "urn:ietf:params:oauth:grant-type:device_code".to_string());
         params.insert("device_code".to_string(), "abc123".to_string());
