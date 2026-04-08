@@ -58,9 +58,9 @@ mod assertions {
         assert_send_sync::<super::maintenance::DbMonitor>();
         assert_send::<super::watchdog::Watchdog>();
         assert_send_sync::<super::watchdog::WatchdogConfig>();
+        assert_send_sync::<super::state::DaemonConfig>();
+        assert_send::<super::coordination::Coordinator>();
+        assert_send_sync::<super::triggers::TriggerRouter>();
+        assert_send_sync::<super::self_prompt::SelfPromptConfig>();
     };
-    assert_impl_all!(super::state::DaemonConfig: Send, Sync);
-    assert_impl_all!(super::coordination::Coordinator: Send);
-    assert_impl_all!(super::triggers::TriggerRouter: Send, Sync);
-    assert_impl_all!(super::self_prompt::SelfPromptConfig: Send, Sync);
 }

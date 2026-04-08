@@ -64,19 +64,70 @@ mod tests {
     use super::*;
 
     #[test]
-    fn init_does_not_panic() {
+    fn init_registers_all_metrics() {
         init();
+        // Verify metrics are registered by accessing them
+        let _ = TOOL_INVOCATIONS_TOTAL.with_label_values(&["test", "ok"]).get();
+        let _ = TOOL_DURATION_SECONDS
+            .with_label_values(&["test"])
+            .get_sample_count();
     }
 
     #[test]
-    fn record_invocation_success_does_not_panic() {
-        init();
-        record_invocation("read_file", 0.05, true);
+    fn record_invocation_records_success() {
+        let tool_name = "test-tool-success";
+        let ok_before = TOOL_INVOCATIONS_TOTAL.with_label_values(&[tool_name, "ok"]).get();
+        let error_before = TOOL_INVOCATIONS_TOTAL.with_label_values(&[tool_name, "error"]).get();
+        let hist_before = TOOL_DURATION_SECONDS
+            .with_label_values(&[tool_name])
+            .get_sample_count();
+
+        record_invocation(tool_name, 0.05, true);
+        assert_eq!(
+            TOOL_INVOCATIONS_TOTAL.with_label_values(&[tool_name, "ok"]).get(),
+            ok_before + 1,
+            "ok counter should increment for success=true"
+        );
+        assert_eq!(
+            TOOL_INVOCATIONS_TOTAL.with_label_values(&[tool_name, "error"]).get(),
+            error_before,
+            "error counter should not change for success=true"
+        );
+        assert_eq!(
+            TOOL_DURATION_SECONDS
+                .with_label_values(&[tool_name])
+                .get_sample_count(),
+            hist_before + 1,
+            "histogram should have 1 sample"
+        );
     }
 
     #[test]
-    fn record_invocation_failure_does_not_panic() {
-        init();
-        record_invocation("write_file", 0.01, false);
+    fn record_invocation_records_failure() {
+        let tool_name = "test-tool-failure";
+        let ok_before = TOOL_INVOCATIONS_TOTAL.with_label_values(&[tool_name, "ok"]).get();
+        let error_before = TOOL_INVOCATIONS_TOTAL.with_label_values(&[tool_name, "error"]).get();
+        let hist_before = TOOL_DURATION_SECONDS
+            .with_label_values(&[tool_name])
+            .get_sample_count();
+
+        record_invocation(tool_name, 0.01, false);
+        assert_eq!(
+            TOOL_INVOCATIONS_TOTAL.with_label_values(&[tool_name, "ok"]).get(),
+            ok_before,
+            "ok counter should not change for success=false"
+        );
+        assert_eq!(
+            TOOL_INVOCATIONS_TOTAL.with_label_values(&[tool_name, "error"]).get(),
+            error_before + 1,
+            "error counter should increment for success=false"
+        );
+        assert_eq!(
+            TOOL_DURATION_SECONDS
+                .with_label_values(&[tool_name])
+                .get_sample_count(),
+            hist_before + 1,
+            "histogram should have 1 sample"
+        );
     }
 }
