@@ -13,7 +13,9 @@
 //!
 //! # Usage
 //!
-//! ```no_run
+//! ```ignore
+//! // WHY: MockEmbeddingProvider is gated behind the `test-support` feature.
+//! // This example shows the API but cannot compile in doctest mode.
 //! use aletheia_episteme::embedding::MockEmbeddingProvider;
 //! use aletheia_episteme::embedding_eval::{EvalDataset, evaluate_model};
 //!
@@ -21,7 +23,7 @@
 //!     .expect("JSONL must parse for valid test data");
 //! let provider = MockEmbeddingProvider::new(384);
 //! let corpus: Vec<(String, String)> = vec![("a".into(), "foo bar".into())];
-//! let result = evaluate_model(&provider, &dataset, &corpus, 5);
+//! let result = evaluate_model(&provider, &dataset, &corpus, 5).unwrap();
 //! println!("Recall@5: {}", result.recall_at_k);
 //! ```
 
