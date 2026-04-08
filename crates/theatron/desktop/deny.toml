@@ -5,12 +5,17 @@
 # Exclude test-only crate from all checks
 exclude = ["aletheia-integration-tests"]
 
-[advisories]
-ignore = [
-    { id = "RUSTSEC-2024-0320", reason = "yaml-rust unmaintained — transitive via syntect/aletheia-tui, no safe upgrade" },
-    { id = "RUSTSEC-2025-0141", reason = "bincode unmaintained — transitive via syntect/aletheia-tui, no safe upgrade" },
-    { id = "RUSTSEC-2024-0436", reason = "paste unmaintained, transitive via tokenizers; no safe upgrade" },
-]
+[[advisories.ignore]]
+id = "RUSTSEC-2024-0320"
+reason = "yaml-rust unmaintained — transitive via syntect/aletheia-tui, no safe upgrade"
+
+[[advisories.ignore]]
+id = "RUSTSEC-2025-0141"
+reason = "bincode unmaintained — transitive via syntect/aletheia-tui, no safe upgrade"
+
+[[advisories.ignore]]
+id = "RUSTSEC-2024-0436"
+reason = "paste unmaintained, transitive via tokenizers; no safe upgrade"
 
 [licenses]
 allow = [
@@ -27,7 +32,8 @@ allow = [
     "0BSD",
     "MPL-2.0",              # option-ext, smartstring
     "LGPL-3.0-or-later",    # priority-queue
-    "CDLA-Permissive-2.0",  # webpki-roots, webpki-root-certs
+    "CDLA-Permissive-2.0",  # webpki-roots, webpki-root-certs,
+
 ]
 confidence-threshold = 0.8
 

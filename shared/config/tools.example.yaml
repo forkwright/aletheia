@@ -3,91 +3,94 @@
 
 # -- Data tools (deployment-specific) --
 
-redshift:
-  description: "Data warehouse (AWS Redshift Provisioned)"
-  cluster: YOUR_CLUSTER_IDENTIFIER
-  database: dev
-  user: YOUR_ADMIN_USER
-  commands:
-    query: 'query_redshift.sh "SQL"'
-    query_file: 'query_redshift.sh -f path/to/query.sql'
-    schema_table: 'schema_lookup.sh table <name>'
-    schema_column: 'schema_lookup.sh column <name>'
-    schema_search: 'schema_lookup.sh search <term>'
-  notes: "Read-only by default. AWS SSO tokens expire; run 'aws sso login' to refresh."
+redshift: {}
+  # description: "Data warehouse (AWS Redshift Provisioned)"
+  # cluster: YOUR_CLUSTER_IDENTIFIER
+  # database: dev
+  # user: YOUR_ADMIN_USER
+  # commands:
+  #   query: 'query_redshift.sh "SQL"'
+  #   query_file: 'query_redshift.sh -f path/to/query.sql'
+  #   schema_table: 'schema_lookup.sh table <name>'
+  #   schema_column: 'schema_lookup.sh column <name>'
+  #   schema_search: 'schema_lookup.sh search <term>'
+  # notes: "Read-only by default. AWS SSO tokens expire; run 'aws sso login' to refresh."
 
-hex:
-  description: "Hex dashboards"
-  api_url: "https://app.hex.tech/api/v1"
-  config: "~/.hex-mcp/config.yaml"
-  commands:
-    list: "list_hex_projects"
-    search: "search_hex_projects"
-    get: "get_hex_project"
-    run: "run_hex_project"
-    status: "get_hex_run_status"
-    runs: "get_hex_project_runs"
-    cancel: "cancel_hex_run"
-  projects: {}
-  notes: "API is execution/metadata only. Cannot edit notebook content."
+hex: {}
+  # description: "Hex dashboards"
+  # api_url: "https://app.hex.tech/api/v1"
+  # config: "~/.hex-mcp/config.yaml"
+  # commands:
+  #   list: "list_hex_projects"
+  #   search: "search_hex_projects"
+  #   get: "get_hex_project"
+  #   run: "run_hex_project"
+  #   status: "get_hex_run_status"
+  #   runs: "get_hex_project_runs"
+  #   cancel: "cancel_hex_run"
+  # projects: {}
+  # notes: "API is execution/metadata only. Cannot edit notebook content."
 
 # -- Development tools --
 
-github:
-  account: YOUR_GITHUB_USERNAME
-  repos: {}
-  commands:
-    status: "safe-git status"
-    commit: 'safe-git commit -m "msg"'
-    push: "safe-git push  # BLOCKED unless --override-push-guard"
-  notes: "Never push without explicit operator approval."
+github: {}
+  # account: YOUR_GITHUB_USERNAME
+  # repos: {}
+  # commands:
+  #   status: "safe-git status"
+  #   commit: 'safe-git commit -m "msg"'
+  #   push: "safe-git push  # BLOCKED unless --override-push-guard"
+  # notes: "Never push without explicit operator approval."
 
-quality:
-  shellcheck: "shellcheck script.sh"
-  cargo_clippy: "cargo clippy --workspace"
-  cargo_fmt: "cargo fmt --check"
+quality: {}
+  # shellcheck: "shellcheck script.sh"
+  # cargo_clippy: "cargo clippy --workspace"
+  # cargo_fmt: "cargo fmt --check"
 
-office:
-  extract: "office extract file.pptx"
-  list: "office list file.pptx"
-  convert: "office convert file.pptx --to pdf"
+office: {}
+  # extract: "office extract file.pptx"
+  # list: "office list file.pptx"
+  # convert: "office convert file.pptx --to pdf"
 
 # -- Research tools --
 
-research:
-  pplx: {cmd: "pplx \"query\"", flags: ["--sources", "--raw"]}
-  scholar:
-    description: "Multi-source academic search + citation graph + paper retrieval"
-    command: "scholar"
-    sources: "OpenAlex (250M+), arXiv, Semantic Scholar (225M+)"
-    examples:
-      - 'scholar "distributed cognition" -v --limit 10'
-      - 'scholar cite DOI  # citation graph'
-      - 'scholar fetch ARXIV_ID  # download + convert to markdown'
-    notes: "S1/S2 source discovery. Deduplicates across sources."
-  wiki:
-    description: "Wikipedia lookup for concept orientation"
-    command: "wiki"
-    notes: "Grey literature. Use for orientation, not as primary source."
-browser_automation:
-  description: "LLM-driven web browser automation"
-  command: "browse"
-  notes: "Uses Browser Use library. Requires ANTHROPIC_API_KEY."
+research: {}
+  # pplx:
+  #   cmd: 'pplx "query"'
+  #   flags: ["--sources", "--raw"]
+  # scholar:
+  #   description: "Multi-source academic search + citation graph + paper retrieval"
+  #   command: "scholar"
+  #   sources: "OpenAlex (250M+), arXiv, Semantic Scholar (225M+)"
+  #   examples:
+  #     - 'scholar "distributed cognition" -v --limit 10'
+  #     - 'scholar cite DOI  # citation graph'
+  #     - 'scholar fetch ARXIV_ID  # download + convert to markdown'
+  #   notes: "S1/S2 source discovery. Deduplicates across sources."
+  # wiki:
+  #   description: "Wikipedia lookup for concept orientation"
+  #   command: "wiki"
+  #   notes: "Grey literature. Use for orientation, not as primary source."
+
+browser_automation: {}
+  # description: "LLM-driven web browser automation"
+  # command: "browse"
+  # notes: "Uses Browser Use library. Requires ANTHROPIC_API_KEY."
 
 # -- Memory and knowledge management --
 
-memory:
-  knowledge_store:
-    description: "Long-term extracted memories (embedded engine, cross-agent, cross-session)"
-    tool: "memory_search (always available)"
+memory: {}
+  # knowledge_store:
+  #   description: "Long-term extracted memories (embedded engine, cross-agent, cross-session)"
+  #   tool: "memory_search (always available)"
 
 # -- System tools --
 
-agents:
-  health: "aletheia health"
+agents: {}
+  # health: "aletheia health"
 
-runtime:
-  config:
-    bindings_use: "channel (not provider)"
-    model_ids: "full date suffix for pre-4.6 models"
-    validate: "aletheia health"
+runtime: {}
+  # config:
+  #   bindings_use: "channel (not provider)"
+  #   model_ids: "full date suffix for pre-4.6 models"
+  #   validate: "aletheia health"

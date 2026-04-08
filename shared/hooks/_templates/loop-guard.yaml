@@ -7,7 +7,7 @@ event: turn:after
 enabled: false
 description: External loop guard — writes sentinel file on high tool call count
 
-handler:
+handler: ~
   type: shell
   command: <aletheia-root>/shared/hooks/_templates/loop-guard.sh
   timeout: 5s

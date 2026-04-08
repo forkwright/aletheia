@@ -6,7 +6,7 @@ event: turn:after
 description: Append craft session notes for a specific agent's domain
 nousFilter: [my-agent]
 
-handler:
+handler: ~
   type: shell
   command: /bin/sh
   args: ["-c", "echo \"$(date -Iseconds) session={{sessionId}} tools={{toolCalls}}\" >> <nous-dir>/<agent-id>/craft-journal.log"]

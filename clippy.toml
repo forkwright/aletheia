@@ -2,6 +2,10 @@
 
 too-many-arguments-threshold = 10
 
-disallowed-methods = [
-    { path = "std::process::exit", reason = "use snafu errors and propagate; exit() bypasses destructors" },
-]
+[[disallowed-methods]]
+path = "std::process::exit"
+reason = "use snafu errors and propagate; exit() bypasses destructors"
+
+[[disallowed-types]]
+path = "std::sync::Mutex"
+reason = "use tokio::sync::Mutex in async code; use parking_lot::Mutex otherwise"

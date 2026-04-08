@@ -23,7 +23,9 @@ test-core = []
 test-full = []
 
 [dependencies]
-aletheia-energeia = { path = "../energeia", optional = true, features = ["storage-fjall"] }
+aletheia-energeia = { path = "../energeia", optional = true, features = [
+    "storage-fjall",
+] }
 aletheia-hermeneus = { path = "../hermeneus" }
 aletheia-koina = { path = "../koina" }
 aletheia-taxis = { path = "../taxis" }
