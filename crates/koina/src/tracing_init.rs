@@ -51,6 +51,10 @@ mod tests {
     fn env_filter_parses_default() {
         use tracing_subscriber::EnvFilter;
         let filter = EnvFilter::new("aletheia=info,warn");
-        drop(filter);
+        // Verify filter is not empty and contains expected directives
+        assert!(
+            filter.to_string().contains("aletheia"),
+            "filter should contain aletheia directive"
+        );
     }
 }

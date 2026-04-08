@@ -37,10 +37,21 @@ mod tests {
 
     #[test]
     fn public_modules_accessible() {
-        // INVARIANT: all public modules must be importable
-        let _ = std::any::type_name::<config::AletheiaConfig>();
-        let _ = std::any::type_name::<cascade::Tier>();
-        let _ = std::any::type_name::<error::Error>();
-        let _ = std::any::type_name::<oikos::Oikos>();
+        // INVARIANT: all public modules must be importable and have expected type names
+        let config_name = std::any::type_name::<config::AletheiaConfig>();
+        let cascade_name = std::any::type_name::<cascade::Tier>();
+        let error_name = std::any::type_name::<error::Error>();
+        let oikos_name = std::any::type_name::<oikos::Oikos>();
+
+        assert!(
+            config_name.contains("AletheiaConfig"),
+            "config module should export AletheiaConfig"
+        );
+        assert!(
+            cascade_name.contains("Tier"),
+            "cascade module should export Tier"
+        );
+        assert!(error_name.contains("Error"), "error module should export Error");
+        assert!(oikos_name.contains("Oikos"), "oikos module should export Oikos");
     }
 }
