@@ -1,0 +1,56 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.3",
+  "version": 1,
+  "serialNumber": "urn:uuid:de6e4eb6-ee56-406a-8ec5-2b76a18275be",
+  "metadata": {
+    "timestamp": "2026-04-08T00:03:14.618638198Z",
+    "tools": [
+      {
+        "vendor": "CycloneDX",
+        "name": "cargo-cyclonedx",
+        "version": "0.5.9"
+      }
+    ],
+    "component": {
+      "type": "library",
+      "bom-ref": "path+file:///data/worktrees/kimi-wave-14/crates/integration-tests#aletheia-integration-tests@0.13.65",
+      "name": "aletheia-integration-tests",
+      "version": "0.13.65",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "AGPL-3.0-or-later"
+        }
+      ],
+      "purl": "pkg:cargo/aletheia-integration-tests@0.13.65?download_url=file://.",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/forkwright/aletheia"
+        }
+      ],
+      "components": [
+        {
+          "type": "library",
+          "bom-ref": "path+file:///data/worktrees/kimi-wave-14/crates/integration-tests#aletheia-integration-tests@0.13.65 bin-target-0",
+          "name": "aletheia_integration_tests",
+          "version": "0.13.65",
+          "purl": "pkg:cargo/aletheia-integration-tests@0.13.65?download_url=file://.#src/lib.rs"
+        }
+      ]
+    },
+    "properties": [
+      {
+        "name": "cdx:rustc:sbom:target:triple",
+        "value": "x86_64-unknown-linux-gnu"
+      }
+    ]
+  },
+  "components": [],
+  "dependencies": [
+    {
+      "ref": "path+file:///data/worktrees/kimi-wave-14/crates/integration-tests#aletheia-integration-tests@0.13.65"
+    }
+  ]
+}
