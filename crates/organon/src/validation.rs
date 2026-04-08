@@ -408,7 +408,7 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_input_valid() {
+    fn validates_input_with_all_required_fields() {
         let contract = create_test_contract();
         let input = serde_json::json!({
             "name": "test",
@@ -424,7 +424,7 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_input_missing_required() {
+    fn rejects_input_missing_required_fields() {
         let contract = create_test_contract();
         let input = serde_json::json!({
             "count": 42
@@ -437,7 +437,7 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_input_type_mismatch() {
+    fn rejects_input_with_type_mismatch() {
         let contract = create_test_contract();
         let input = serde_json::json!({
             "name": "test",
@@ -451,7 +451,7 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_input_enum_violation() {
+    fn rejects_input_with_invalid_enum_value() {
         let contract = create_test_contract();
         let input = serde_json::json!({
             "name": "test",
@@ -465,7 +465,7 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_input_not_object() {
+    fn rejects_non_object_input() {
         let contract = create_test_contract();
         let input = serde_json::json!("not an object");
 
@@ -475,7 +475,7 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_output_valid() {
+    fn validates_output_with_all_required_fields() {
         let contract = create_test_contract();
         let output = serde_json::json!({
             "result": "success"
@@ -486,7 +486,7 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_output_missing_required() {
+    fn rejects_output_missing_required_fields() {
         let contract = create_test_contract();
         let output = serde_json::json!({});
 
@@ -495,7 +495,7 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_output_no_schema() {
+    fn accepts_any_output_when_no_schema_defined() {
         let mut contract = create_test_contract();
         contract.output_schema = None;
         let output = serde_json::json!({ "anything": "goes" });
@@ -505,7 +505,7 @@ mod tests {
     }
 
     #[test]
-    fn test_contract_registry() {
+    fn contract_registry_manages_tool_contracts() {
         let mut registry = ContractRegistry::new();
         let contract = create_test_contract();
 
@@ -544,7 +544,7 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_before_dispatch_success() {
+    fn dispatch_validation_succeeds_with_valid_input() {
         let mut registry = ContractRegistry::new();
         let contract = create_test_contract();
         registry.register(contract);
@@ -555,7 +555,7 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_before_dispatch_unknown_tool() {
+    fn dispatch_validation_succeeds_for_unknown_tool() {
         let registry = ContractRegistry::new();
         let input = serde_json::json!({ "name": "test" });
         // Unknown tools pass validation (permissive default)
@@ -564,7 +564,7 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_before_dispatch_invalid() {
+    fn dispatch_validation_fails_with_invalid_input() {
         let mut registry = ContractRegistry::new();
         let contract = create_test_contract();
         registry.register(contract);
@@ -575,7 +575,7 @@ mod tests {
     }
 
     #[test]
-    fn test_number_vs_integer() {
+    fn distinguishes_between_number_and_integer_types() {
         let contract = ToolContract {
             tool_name: "num_test".to_string(),
             input_schema: serde_json::json!({
@@ -607,7 +607,7 @@ mod tests {
     }
 
     #[test]
-    fn test_nested_object_validation() {
+    fn validates_nested_object_properties() {
         let contract = ToolContract {
             tool_name: "nested_test".to_string(),
             input_schema: serde_json::json!({
@@ -650,7 +650,7 @@ mod tests {
     }
 
     #[test]
-    fn test_array_validation() {
+    fn validates_array_items() {
         let contract = ToolContract {
             tool_name: "array_test".to_string(),
             input_schema: serde_json::json!({
@@ -685,7 +685,7 @@ mod tests {
     }
 
     #[test]
-    fn test_validation_result_methods() {
+    fn validation_result_helper_methods_work() {
         let valid = ValidationResult::Valid;
         assert!(valid.is_valid());
         assert!(!valid.is_invalid());
@@ -700,7 +700,7 @@ mod tests {
     }
 
     #[test]
-    fn test_contract_registry_validate_output() {
+    fn contract_registry_validates_output_against_schema() {
         let mut registry = ContractRegistry::new();
         let contract = create_test_contract();
         registry.register(contract);

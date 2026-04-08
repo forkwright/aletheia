@@ -353,7 +353,7 @@ mod tests {
     }
 
     #[test]
-    fn ready_plans_with_no_dependencies() {
+    fn dispatches_all_plans_with_no_dependencies() {
         let p1 = test_plan("plan-a", 0, vec![]);
         let p2 = test_plan("plan-b", 0, vec![]);
         let phase = test_phase(vec![p1, p2]);
@@ -369,7 +369,7 @@ mod tests {
     }
 
     #[test]
-    fn dependent_plan_waits_for_predecessor() {
+    fn dependent_plan_waits_until_predecessor_completes() {
         let p1 = test_plan("plan-a", 0, vec![]);
         let dep_id = p1.id;
         let p2 = test_plan("plan-b", 1, vec![dep_id]);
@@ -387,7 +387,7 @@ mod tests {
     }
 
     #[test]
-    fn all_complete_triggers_verify() {
+    fn all_plans_complete_triggers_phase_verification() {
         let mut p1 = test_plan("plan-a", 0, vec![]);
         p1.state = PlanState::Complete;
         let phase = test_phase(vec![p1]);
@@ -401,7 +401,7 @@ mod tests {
     }
 
     #[test]
-    fn failed_plan_triggers_blocked() {
+    fn failed_plan_triggers_phase_blocked() {
         let mut p1 = test_plan("plan-a", 0, vec![]);
         p1.state = PlanState::Failed;
         let phase = test_phase(vec![p1]);
@@ -415,7 +415,7 @@ mod tests {
     }
 
     #[test]
-    fn record_success_transitions_plan() {
+    fn recording_success_transitions_plan_to_complete() {
         let p1 = test_plan("plan-a", 0, vec![]);
         let plan_id = p1.id;
         let phase = test_phase(vec![p1]);
@@ -442,7 +442,7 @@ mod tests {
     }
 
     #[test]
-    fn record_failure_increments_iterations() {
+    fn recording_failure_increments_iteration_count() {
         let p1 = test_plan("plan-a", 0, vec![]);
         let plan_id = p1.id;
         let phase = test_phase(vec![p1]);

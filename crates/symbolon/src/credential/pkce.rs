@@ -746,7 +746,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_pkce_pair_generation() {
+    fn pkce_pair_generates_valid_verifier_and_challenge() {
         let pair = PkcePair::generate().unwrap();
         // Verifier should be base64url encoded
         assert!(!pair.verifier.expose_secret().is_empty());
@@ -763,7 +763,7 @@ mod tests {
     }
 
     #[test]
-    fn test_generate_state() {
+    fn generate_state_produces_unique_values() {
         let state1 = generate_state().unwrap();
         let state2 = generate_state().unwrap();
 
@@ -776,7 +776,7 @@ mod tests {
     }
 
     #[test]
-    fn test_url_encode() {
+    fn url_encode_escapes_special_characters() {
         assert_eq!(url_encode("hello world"), "hello%20world");
         assert_eq!(url_encode("foo/bar"), "foo%2Fbar");
         assert_eq!(url_encode("test@example.com"), "test%40example.com");
@@ -784,21 +784,21 @@ mod tests {
     }
 
     #[test]
-    fn test_url_decode() {
+    fn url_decode_reverses_encoding() {
         assert_eq!(url_decode("hello%20world"), Some("hello world".to_string()));
         assert_eq!(url_decode("foo%2Fbar"), Some("foo/bar".to_string()));
         assert_eq!(url_decode("test%40example.com"), Some("test@example.com".to_string()));
     }
 
     #[test]
-    fn test_html_escape() {
+    fn html_escape_escapes_html_entities() {
         assert_eq!(html_escape("<script>"), "&lt;script&gt;");
         assert_eq!(html_escape("foo & bar"), "foo &amp; bar");
         assert_eq!(html_escape("\"test\""), "&quot;test&quot;");
     }
 
     #[test]
-    fn test_build_authorization_url() {
+    fn build_authorization_url_includes_all_parameters() {
         let provider = OAuthProvider::new(
             "test-client-id",
             "https://example.com/auth",
@@ -822,7 +822,7 @@ mod tests {
     }
 
     #[test]
-    fn test_build_authorization_url_custom_redirect() {
+    fn build_authorization_url_uses_custom_redirect_uri() {
         let provider = OAuthProvider::new(
             "test-client-id",
             "https://example.com/auth",
@@ -839,7 +839,7 @@ mod tests {
     }
 
     #[test]
-    fn test_build_form_body() {
+    fn build_form_body_creates_url_encoded_params() {
         let mut params = HashMap::new();
         params.insert("grant_type", "authorization_code");
         params.insert("code", "abc123");
