@@ -284,7 +284,7 @@ Store images on disk in `$XDG_DATA_HOME/aletheia/attachments/<hash>.ext` and ref
 The theatron image system renders from file paths detected in text. To render images from message content blocks:
 
 1. **History loading**: When loading history messages, parse content blocks and extract image attachments
-2. **Inline rendering**: Use the existing half-block renderer but from in-memory image data rather than file paths
+2. **Inline rendering**: Use the existing half-block renderer with in-memory image data, not file paths
 3. **Placeholder text**: For TextOnly terminals, show `[image: 800x600 jpeg, 340 KB]`
 4. **Streaming**: Image blocks in user messages are sent before streaming begins, so no streaming-specific handling is needed
 

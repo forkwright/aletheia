@@ -53,7 +53,7 @@ The fast path is already sub-100ms. Predictive recall targets the Tier 2/3 cases
 5. **Graph proximity** (0.10)  -  BFS hop count from query entities, community-boosted
 6. **Access frequency** (0.05)  -  log-normalized recall count with supersession chain bonus
 
-**Key observation:** Only vector similarity is computed from the actual query. The other five factors are either static per-fact properties or config defaults. This means the scoring function is mostly query-independent once candidates are retrieved  -  a property that makes pre-fetching viable.
+**Key observation:** Only vector similarity is computed from the actual query. The other five factors are either static per-fact properties or config defaults. This means the scoring function is nearly query-independent once candidates are retrieved - a property that makes pre-fetching viable.
 
 ### 2. predictive recall strategies
 
@@ -95,7 +95,7 @@ The fast path is already sub-100ms. Predictive recall targets the Tier 2/3 cases
 - Works even when graph is sparse.
 
 **Weaknesses:**
-- Trajectory vector is a coarse signal  -  it averages over topics rather than predicting the next one.
+- Trajectory vector is a coarse signal - it averages over topics instead of predicting the next one.
 - Requires maintaining per-session embedding history (memory cost: ~1.5KB per turn at 384 dims).
 - Speculative search adds background CPU/IO load.
 
@@ -341,7 +341,7 @@ max_prefetch_ms = 50               # Wall-clock budget for speculative work
 
 ## Gotchas
 
-1. **Extraction timing.** Graph neighborhood pre-loading depends on extraction having identified entities from the current turn. Extraction runs in the background and may not complete before the user's next message arrives (especially for short turn gaps). The speculative cache must handle the case where no entities are available yet  -  fall back to no-op rather than blocking.
+1. **Extraction timing.** Graph neighborhood pre-loading depends on extraction having identified entities from the current turn. Extraction runs in the background and may not complete before the user's next message arrives (especially for short turn gaps). The speculative cache must handle the case where no entities are available yet - fall back to no-op instead of blocking.
 
 2. **Hub entity explosion.** High-PageRank entities (e.g., the user's own name, a project name) can have hundreds of 1-hop neighbors. The `max_prefetch_ms` budget and a PageRank-based neighbor limit (skip neighbors with PageRank < 0.01) prevent this from becoming a latency spike.
 

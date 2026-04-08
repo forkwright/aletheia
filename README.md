@@ -4,7 +4,7 @@ Self-hosted AI agents with persistent memory.
 
 Talk to an AI that remembers your previous conversations, learns your preferences, and builds a knowledge graph over time. Give it a name, a personality, and goals. Run it from a terminal dashboard, HTTP API, or Signal messenger.
 
-One binary. No containers. No external databases. No cloud dependencies beyond your LLM provider.
+One binary. No containers. No external databases. Beyond your LLM provider, there are no cloud dependencies.
 
 [Quickstart](docs/QUICKSTART.md) · [Configuration](docs/CONFIGURATION.md) · [Deployment](docs/DEPLOYMENT.md) · [Architecture](docs/ARCHITECTURE.md)
 
@@ -71,7 +71,7 @@ Each agent has a workspace under `nous/` with character, operations, and memory 
 
 ## Privacy
 
-No telemetry. No phone-home. No analytics, crash reports, or beacon requests.
+No telemetry, phone-home, analytics, crash reports, or beacon requests.
 
 The only outbound connections are to services you explicitly configure (LLM provider, Signal). Everything else stays on your machine. See [DATA.md](docs/DATA.md) for the data inventory, [NETWORK.md](docs/NETWORK.md) for every network call the binary makes.
 

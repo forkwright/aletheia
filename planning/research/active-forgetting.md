@@ -39,7 +39,7 @@ The `Fact` struct tracks two temporal dimensions:
 1. **Valid time** (`valid_from`, `valid_to`): when the fact was true in the real world
 2. **Transaction time** (`recorded_at`): when the system learned about it
 
-Supersession chains link old facts to replacements via `superseded_by`. This is correct. "Forgetting" in a bi-temporal system does not mean the fact never existed. It means the system records when the knowledge became invalid. The `valid_to` timestamp already captures this for contradicted facts. What's missing is the mechanism that sets `valid_to` for facts that become stale through inaction rather than contradiction.
+Supersession chains link old facts to replacements via `superseded_by`. This is correct. "Forgetting" in a bi-temporal system does not mean the fact never existed. It means the system records when the knowledge became invalid. The `valid_to` timestamp already captures this for contradicted facts. What is missing is the mechanism that sets `valid_to` for facts that become stale through inaction instead of contradiction.
 
 The `is_forgotten` flag operates outside the temporal model. It is a query-time filter, not a temporal assertion. A forgotten fact is invisible to recall but temporally unchanged. This is the right design: forgetting is an access-control decision, not a truth claim.
 
@@ -121,9 +121,9 @@ Low-confidence extractions (`confidence < 0.5`, tier = `assumed`) are pruned fir
 | Mechanism | Periodic sweep: forget facts where `confidence < threshold AND tier = assumed` |
 | Strength | Targets the lowest-quality extractions. Aligns with epistemic model. |
 | Weakness | Confidence is set at extraction time and never updated. A 0.4-confidence fact that's been accessed 50 times is probably valuable despite its initial score. |
-| Mitigation | Combine with access count: only prune low-confidence facts with low access. |
+| Mitigation | Combine with access count: prune only low-confidence facts with low access. |
 
-**Verdict: Pre-filter for decay-threshold candidates.** Low-confidence, low-access assumed facts should have the lowest effective stability, making them the first to cross the decay threshold naturally. Adjust the FSRS stability formula to penalize low-confidence facts more aggressively rather than adding a separate mechanism.
+**Verdict: Pre-filter for decay-threshold candidates.** Low-confidence, low-access assumed facts should have the lowest effective stability, making them the first to cross the decay threshold naturally. Adjust the FSRS stability formula to penalize low-confidence facts more aggressively instead of adding a separate mechanism.
 
 #### 5. user-directed forgetting
 
@@ -131,7 +131,7 @@ Already implemented via `forget_fact(reason: ForgetReason::UserRequested)`. Work
 
 ### What will NOT work
 
-**Hard deletion.** Physically removing facts from CozoDB destroys the audit trail and breaks supersession chains. A deleted fact referenced by `superseded_by` creates dangling pointers. The bi-temporal model depends on historical records existing. Hard deletion is only appropriate for GDPR-style "right to be forgotten" requests, and even then, the audit record should persist with content redacted rather than removed.
+**Hard deletion.** Physically removing facts from CozoDB destroys the audit trail and breaks supersession chains. A deleted fact referenced by `superseded_by` creates dangling pointers. The bi-temporal model depends on historical records existing. Hard deletion is appropriate only for GDPR-style "right to be forgotten" requests, and even then, the audit record should persist with content redacted, not removed.
 
 **Global TTL.** A single time-to-live for all facts is wrong. Identity facts ("user's name") should persist for years. Task facts ("need to fix bug X") should decay in days. The FactType-based stability already models this correctly. A global TTL would either expire valuable facts or retain garbage.
 
@@ -316,7 +316,7 @@ For LLM-reviewed facts classified as SUPERSEDE, both `valid_to` and `is_forgotte
 3. LLM review gate (stage 3) and embedding ratio monitoring
 4. Pin/unpin API and any UI integration
 
-Phase 1-2 delivers the core value. Phase 3 adds quality. Phase 4 adds user control.
+Phases 1-2 deliver the core value. Phase 3 adds quality. User control comes in Phase 4.
 
 ## References
 

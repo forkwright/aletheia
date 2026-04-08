@@ -241,7 +241,7 @@ See [CONFIGURATION.md](CONFIGURATION.md#channelssignal) for DM/group policies, a
 
 ## Optional: prosoche (heartbeat)
 
-Prosoche is the attention subsystem: a periodic background check where your agent surveys its environment and reports anything needing attention (calendar events, overdue tasks, system health).
+The attention subsystem runs periodic background checks. Your agent surveys its environment and reports anything needing attention: calendar events, overdue tasks, system health.
 
 Each agent has a `PROSOCHE.md` workspace file defining what to check. The default agent template includes a starter checklist. To configure the heartbeat schedule, see [PROSOCHE.md](PROSOCHE.md).
 

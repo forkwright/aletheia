@@ -138,7 +138,7 @@ recall_federated(query, options) -> Vec<RecallResult>
 | Explicit whitelist/blacklist | Agents control who sees their facts | Requires registration, maintenance |
 | Per-fact visibility flags | Granular control | Schema change, extraction complexity |
 
-**Recommendation.** Extend the existing model with per-fact visibility rather than building a separate federation layer. Add a `visibility` field to facts:
+**Recommendation.** Extend the existing model with per-fact visibility instead of building a separate federation layer. Add a `visibility` field to facts:
 
 | Visibility | Meaning |
 |------------|---------|

@@ -379,7 +379,7 @@ enabled = true
 
 ## logging
 
-File-based log output. Console logging is controlled separately via the `RUST_LOG` environment variable.
+Write log files to a configurable directory with automatic retention. Console logging is controlled separately via the `RUST_LOG` environment variable.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
