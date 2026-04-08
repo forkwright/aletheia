@@ -5,7 +5,7 @@ name: backup-on-distill
 event: distill:after
 description: Back up session data after distillation completes
 
-handler:
+handler: ~
   type: shell
   command: /bin/sh
   args: ["-c", "cp ${ALETHEIA_ROOT}/data/sessions.db ${ALETHEIA_ROOT}/data/sessions.db.bak-$(date +%Y%m%d%H%M)"]

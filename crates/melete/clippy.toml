@@ -1,16 +1,27 @@
 # melete: context distillation — summarises and compresses conversation history.
 # Uses hermeneus for token counting and model routing; must not touch the database directly.
 
-disallowed-methods = [
-    { path = "std::process::exit", reason = "do not call process::exit from library code" },
-    { path = "std::process::abort", reason = "do not call process::abort from library code" },
+[[disallowed-methods]]
+path = "std::process::exit"
+reason = "do not call process::exit from library code"
 
-    { path = "std::fs::read", reason = "use tokio::fs for async or abstract behind a trait for testability" },
-    { path = "std::fs::write", reason = "use tokio::fs for async or abstract behind a trait for testability" },
-    { path = "std::fs::File::open", reason = "use tokio::fs::File::open for async or abstract behind a trait for testability" },
-]
+[[disallowed-methods]]
+path = "std::process::abort"
+reason = "do not call process::abort from library code"
 
-disallowed-types = [
-    # Distillation is a pure transformation; persistence belongs in mneme
-    { path = "rusqlite::Connection", reason = "melete must not access SQLite directly; persistence belongs in mneme" },
-]
+[[disallowed-methods]]
+path = "std::fs::read"
+reason = "use tokio::fs for async or abstract behind a trait for testability"
+
+[[disallowed-methods]]
+path = "std::fs::write"
+reason = "use tokio::fs for async or abstract behind a trait for testability"
+
+[[disallowed-methods]]
+path = "std::fs::File::open"
+reason = "use tokio::fs::File::open for async or abstract behind a trait for testability"
+
+# Distillation is a pure transformation; persistence belongs in mneme
+[[disallowed-types]]
+path = "rusqlite::Connection"
+reason = "melete must not access SQLite directly; persistence belongs in mneme"

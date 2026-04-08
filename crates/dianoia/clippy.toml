@@ -1,18 +1,32 @@
 # dianoia: planning and reasoning logic — pure domain layer with no external I/O.
 # Must not make HTTP calls, open database connections, or call LLM APIs directly.
 
-disallowed-methods = [
-    { path = "std::process::exit", reason = "do not call process::exit from library code" },
-    { path = "std::process::abort", reason = "do not call process::abort from library code" },
+[[disallowed-methods]]
+path = "std::process::exit"
+reason = "do not call process::exit from library code"
 
-    { path = "std::fs::read", reason = "use tokio::fs for async or abstract behind a trait for testability" },
-    { path = "std::fs::write", reason = "use tokio::fs for async or abstract behind a trait for testability" },
-    { path = "std::fs::File::open", reason = "use tokio::fs::File::open for async or abstract behind a trait for testability" },
-]
+[[disallowed-methods]]
+path = "std::process::abort"
+reason = "do not call process::abort from library code"
 
-disallowed-types = [
-    # Planning logic is intentionally I/O-free; HTTP belongs in hermeneus or pylon
-    { path = "reqwest::Client", reason = "dianoia must not perform HTTP calls; use trait-based providers" },
-    # Database access belongs in mneme
-    { path = "rusqlite::Connection", reason = "dianoia must not access SQLite directly; persistence belongs in mneme" },
-]
+[[disallowed-methods]]
+path = "std::fs::read"
+reason = "use tokio::fs for async or abstract behind a trait for testability"
+
+[[disallowed-methods]]
+path = "std::fs::write"
+reason = "use tokio::fs for async or abstract behind a trait for testability"
+
+[[disallowed-methods]]
+path = "std::fs::File::open"
+reason = "use tokio::fs::File::open for async or abstract behind a trait for testability"
+
+# Planning logic is intentionally I/O-free; HTTP belongs in hermeneus or pylon
+[[disallowed-types]]
+path = "reqwest::Client"
+reason = "dianoia must not perform HTTP calls; use trait-based providers"
+
+# Database access belongs in mneme
+[[disallowed-types]]
+path = "rusqlite::Connection"
+reason = "dianoia must not access SQLite directly; persistence belongs in mneme"
