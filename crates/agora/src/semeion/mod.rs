@@ -588,8 +588,9 @@ mod tests {
 
         token.cancel();
         drop(rx);
-        for h in handles {
-            let _ = tokio::time::timeout(Duration::from_secs(5), h).await;
+        let mut handles = handles;
+        while let Some(result) = tokio::time::timeout(Duration::from_secs(5), handles.join_next()).await.ok().flatten() {
+            let _ = result;
         }
     }
 
@@ -623,8 +624,9 @@ mod tests {
 
         token.cancel();
         drop(rx);
-        for h in handles {
-            let _ = tokio::time::timeout(Duration::from_secs(5), h).await;
+        let mut handles = handles;
+        while let Some(result) = tokio::time::timeout(Duration::from_secs(5), handles.join_next()).await.ok().flatten() {
+            let _ = result;
         }
     }
 

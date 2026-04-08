@@ -4,6 +4,8 @@
     reason = "test: map/vec indexing with keys/indices asserted present by surrounding context"
 )]
 
+use std::sync::Arc;
+
 use super::*;
 
 #[test]
@@ -245,7 +247,7 @@ fn resolve_uses_defaults_for_unknown_agent() {
         "resolved id should match requested agent id"
     );
     assert_eq!(
-        resolved.model.primary, "claude-sonnet-4-6",
+        resolved.model.primary, Arc::<str>::from("claude-sonnet-4-6"),
         "unknown agent should use default primary model"
     );
     assert_eq!(
@@ -288,12 +290,12 @@ fn resolve_merges_agent_overrides() {
 
     let resolved = resolve_nous(&config, "syn");
     assert_eq!(
-        resolved.model.primary, "claude-opus-4-6",
+        resolved.model.primary, Arc::<str>::from("claude-opus-4-6"),
         "agent override should replace primary model"
     );
     assert_eq!(
         resolved.model.fallbacks,
-        vec!["claude-sonnet-4-6"],
+        vec![Arc::<str>::from("claude-sonnet-4-6")],
         "agent override should set fallback model"
     );
     assert_eq!(

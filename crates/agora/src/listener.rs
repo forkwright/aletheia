@@ -183,7 +183,7 @@ mod tests {
     #[tokio::test]
     async fn listener_receives_messages() {
         let (tx, rx) = mpsc::channel(16);
-        let listener = ChannelListener::from_parts(rx, vec![]);
+        let listener = ChannelListener::from_parts(rx, JoinSet::new());
 
         let msg = InboundMessage {
             channel: "signal".to_owned(),
@@ -209,7 +209,7 @@ mod tests {
     #[tokio::test]
     async fn listener_run_dispatches_to_handler() {
         let (tx, rx) = mpsc::channel(16);
-        let listener = ChannelListener::from_parts(rx, vec![]);
+        let listener = ChannelListener::from_parts(rx, JoinSet::new());
 
         let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let count_clone = count.clone();
@@ -253,7 +253,9 @@ mod tests {
             .instrument(tracing::info_span!("test_sleep_task")),
         );
 
-        let listener = ChannelListener::from_parts(rx, vec![handle]);
+        let mut handles = JoinSet::new();
+        handles.spawn(async { handle.await.ok(); });
+        let listener = ChannelListener::from_parts(rx, handles);
         listener.stop();
     }
 
@@ -273,7 +275,9 @@ mod tests {
         );
 
         {
-            let _listener = ChannelListener::from_parts(rx, vec![handle]);
+            let mut handles = JoinSet::new();
+            handles.spawn(async { handle.await.ok(); });
+            let _listener = ChannelListener::from_parts(rx, handles);
         }
 
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -295,12 +299,12 @@ mod tests {
             .instrument(tracing::info_span!("test_sleep_task")),
         );
 
-        let listener = ChannelListener::from_parts(rx, vec![handle]);
-        let (_rx, handles) = listener.into_receiver();
+        let mut join_set = JoinSet::new();
+        join_set.spawn(async { handle.await.ok(); });
+        let listener = ChannelListener::from_parts(rx, join_set);
+        let (_rx, mut handles) = listener.into_receiver();
 
         assert_eq!(handles.len(), 1);
-        for h in &handles {
-            h.abort();
-        }
+        handles.abort_all();
     }
 }

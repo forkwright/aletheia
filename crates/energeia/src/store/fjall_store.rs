@@ -912,6 +912,8 @@ mod tests {
             resume_count: 0,
             pr_url: Some("https://github.com/acme/repo/pull/42".to_owned()),
             error: None,
+            model: Some("claude-3-5-sonnet".to_owned()),
+            blast_radius: vec!["crates/test/".to_owned()],
         };
 
         let fact = store.record_training_data(session, &outcome).unwrap();

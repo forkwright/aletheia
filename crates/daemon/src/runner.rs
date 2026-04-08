@@ -171,6 +171,16 @@ impl TaskRunner {
         self
     }
 
+    /// Attach a retention executor for data lifecycle management.
+    #[must_use]
+    pub fn with_retention(
+        mut self,
+        executor: Arc<dyn crate::maintenance::RetentionExecutor>,
+    ) -> Self {
+        self.retention_executor = Some(executor);
+        self
+    }
+
     /// Attach a knowledge maintenance executor for graph operations.
     #[must_use]
     pub fn with_knowledge_maintenance(
