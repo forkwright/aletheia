@@ -618,14 +618,14 @@ impl RuntimeBuilder {
                     id: resolved.id,
                     name: resolved.name,
                     generation: aletheia_nous::config::NousGenerationConfig {
-                        model: resolved.model.primary,
+                        model: resolved.model.primary.to_string(),
                         context_window: resolved.limits.context_tokens,
                         max_output_tokens: resolved.limits.max_output_tokens,
                         bootstrap_max_tokens: resolved.limits.bootstrap_max_tokens,
                         thinking_enabled: resolved.capabilities.thinking_enabled,
                         thinking_budget: resolved.limits.thinking_budget,
                         chars_per_token: resolved.limits.chars_per_token,
-                        prosoche_model: resolved.prosoche_model,
+                        prosoche_model: resolved.prosoche_model.to_string(),
                     },
                     limits: aletheia_nous::config::NousLimits {
                         max_tool_iterations: resolved.capabilities.max_tool_iterations,
