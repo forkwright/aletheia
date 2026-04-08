@@ -50,7 +50,7 @@ impl FixedRule for ShortestPathBFS {
             while let Some(candidate) = queue.pop_back() {
                 for edge in edges.prefix_iter(&candidate)? {
                     let edge = edge?;
-                    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+                    // SAFETY: `edge` comes from `ensure_min_len(2)` so has at least 2 elements.
                     let to_node = &edge[1];
                     if visited.contains(to_node) {
                         continue;

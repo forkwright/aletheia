@@ -62,7 +62,7 @@ impl HnswSearchRA {
             .parent
             .iter(tx, delta_rule, stores)?
             .map_ok(move |tuple| -> Result<_> {
-                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+                // SAFETY: `bind_idx` is validated during compilation to be within `tuple` bounds.
                 let v = match tuple[bind_idx].clone() {
                     DataValue::Vec(v) => v,
                     d => {
@@ -140,7 +140,7 @@ impl FtsSearchRA {
             .parent
             .iter(tx, delta_rule, stores)?
             .map_ok(move |tuple| -> Result<_> {
-                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+                // SAFETY: `bind_idx` is validated during compilation to be within `tuple` bounds.
                 let q = match tuple[bind_idx].clone() {
                     DataValue::Str(s) => s,
                     DataValue::List(l) => {

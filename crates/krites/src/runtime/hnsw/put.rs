@@ -58,7 +58,7 @@ impl<'a> SessionTx<'a> {
             .next();
         if let Some(ep) = ep_res {
             let ep = ep?;
-            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+            // SAFETY: `ep` comes from HNSW index scan which yields tuples with at least 1 element.
             let bottom_level = ep[0].get_int().unwrap_or_else(|| unreachable!());
             let ep_t_key = ep[1..orig_table.metadata.keys.len() + 1].to_vec();
             let ep_idx = usize::try_from(
@@ -235,7 +235,7 @@ impl<'a> SessionTx<'a> {
                         clippy::cast_sign_loss,
                         reason = "degree is a small non-negative integer stored as f64"
                     )]
-                    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+                    // SAFETY: `target_self_val` is deserialized from HNSW metadata which always has at least 1 element.
                     let mut target_degree = target_self_val[0]
                         .get_float()
                         .unwrap_or_else(|| unreachable!())

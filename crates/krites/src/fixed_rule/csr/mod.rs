@@ -56,7 +56,8 @@ impl<EV> Csr<EV> {
 
     fn targets_with_values(&self, node: u32) -> &[Target<EV>] {
         let i = node as usize;
-        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+        // SAFETY: `offsets` has length `node_count + 1`, and `node` < `node_count`,
+        // so both `i` and `i + 1` are valid indices.
         let from = self.offsets[i] as usize;
         let to = self.offsets[i + 1] as usize;
         &self.targets[from..to]
@@ -66,7 +67,8 @@ impl<EV> Csr<EV> {
 impl Csr<()> {
     fn targets_iter(&self, node: u32) -> impl Iterator<Item = u32> + '_ {
         let i = node as usize;
-        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+        // SAFETY: `offsets` has length `node_count + 1`, and `node` < `node_count`,
+        // so both `i` and `i + 1` are valid indices.
         let from = self.offsets[i] as usize;
         let to = self.offsets[i + 1] as usize;
         self.targets[from..to].iter().map(|t| t.target)

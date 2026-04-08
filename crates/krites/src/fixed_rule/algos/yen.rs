@@ -36,7 +36,7 @@ impl FixedRule for KShortestPathYen {
         let mut starting_nodes = BTreeSet::new();
         for tuple in starting.iter()? {
             let tuple = tuple?;
-            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+            // SAFETY: `tuple` comes from `starting` input validated to have arity >= 1.
             let node = &tuple[0];
             if let Some(idx) = inv_indices.get(node) {
                 starting_nodes.insert(*idx);
@@ -45,7 +45,7 @@ impl FixedRule for KShortestPathYen {
         let mut termination_nodes = BTreeSet::new();
         for tuple in termination.iter()? {
             let tuple = tuple?;
-            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+            // SAFETY: `tuple` comes from `termination` input validated to have arity >= 1.
             let node = &tuple[0];
             if let Some(idx) = inv_indices.get(node) {
                 termination_nodes.insert(*idx);
@@ -143,18 +143,22 @@ fn k_shortest_path_yen(
                 None => return Ok(vec![]),
                 Some(n) => *n,
             };
+            // SAFETY: `i` ranges from 0 to `prev_path.len() - 2`, so `i + 1 <= prev_path.len() - 1`.
             let root_path = &prev_path[0..i + 1];
             let mut forbidden_edges = BTreeSet::new();
             for (_, p) in &k_shortest {
                 if p.len() < root_path.len() + 1 {
                     continue;
                 }
+                // SAFETY: `i` ranges from 0 to `prev_path.len() - 2`, and `p.len() >= root_path.len() + 1 >= i + 2`.
                 let p_prefix = &p[0..i + 1];
                 if p_prefix == root_path {
+                    // SAFETY: `i` is valid for `p` due to the length check above.
                     forbidden_edges.insert((p[i], p[i + 1]));
                 }
             }
             let mut forbidden_nodes = BTreeSet::new();
+            // SAFETY: `i` ranges from 0 to `prev_path.len() - 2`, so `i <= prev_path.len() - 2 < prev_path.len()`.
             for node in &prev_path[0..i] {
                 forbidden_nodes.insert(*node);
             }
@@ -170,7 +174,7 @@ fn k_shortest_path_yen(
             {
                 let mut total_cost = spur_cost;
                 for i in 0..root_path.len() - 1 {
-                    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+                    // SAFETY: `i` ranges from 0 to `root_path.len() - 2`, so `i` and `i + 1` are valid.
                     let s = root_path[i];
                     let d = root_path[i + 1];
                     for target in edges.out_neighbors_with_values(s) {

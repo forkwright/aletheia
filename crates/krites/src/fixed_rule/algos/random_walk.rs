@@ -48,7 +48,7 @@ impl FixedRule for RandomWalk {
         let mut rng = rand::rng();
         for start_node in starting.iter()? {
             let start_node = start_node?;
-            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+            // SAFETY: `start_node` comes from `starting` input validated to have arity >= 1.
             let start_node_key = &start_node[0];
             let starting_tuple = nodes.prefix_iter(start_node_key)?.next().ok_or_else(
                 || -> crate::error::InternalError {
@@ -64,7 +64,8 @@ impl FixedRule for RandomWalk {
                 let mut current_tuple = starting_tuple.clone();
                 let mut path = vec![start_node_key.clone()];
                 for _ in 0..steps {
-                    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+                    // SAFETY: `current_tuple` is obtained from `nodes.prefix_iter()` which yields
+                    // tuples with at least one element.
                     let cur_node_key = &current_tuple[0];
                     let candidate_steps: Vec<_> = edges.prefix_iter(cur_node_key)?.try_collect()?;
                     if candidate_steps.is_empty() {
@@ -113,7 +114,8 @@ impl FixedRule for RandomWalk {
                             .choose(&mut rng)
                             .unwrap_or_else(|| unreachable!())
                     };
-                    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+                    // SAFETY: `next_step` comes from `edges.prefix_iter()` which yields tuples
+                    // with at least 2 elements.
                     let next_node = &next_step[1];
                     path.push(next_node.clone());
                     current_tuple = nodes.prefix_iter(next_node)?.next().ok_or_else(

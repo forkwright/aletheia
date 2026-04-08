@@ -30,7 +30,7 @@ impl FixedRule for LabelPropagation {
         let (graph, indices, _inv_indices) = edges.as_directed_weighted_graph(undirected, true)?;
         let labels = label_propagation(&graph, max_iter, poison)?;
         for (idx, label) in labels.into_iter().enumerate() {
-            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+            // SAFETY: `indices` and `labels` have the same length (both derived from graph node count).
             let node = indices[idx].clone();
             out.put(vec![DataValue::from(label as i64), node]);
         }
@@ -70,7 +70,7 @@ fn label_propagation(
             }
             let mut labels_by_score = labels_for_node.into_iter().collect_vec();
             labels_by_score.sort_by(|a, b| a.1.total_cmp(&b.1).reverse());
-            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+            // SAFETY: `labels_by_score` is non-empty due to the `is_empty()` check above.
             let max_score = labels_by_score[0].1;
             let candidate_labels = labels_by_score
                 .into_iter()

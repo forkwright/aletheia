@@ -43,6 +43,7 @@ impl FixedRule for ShortestPathAStar {
             for goal in goals.iter()? {
                 let goal = goal?;
                 let (cost, path) = astar(&start, &goal, edges, nodes, &heuristic, poison.clone())?;
+                // SAFETY: `start` and `goal` come from input relations validated to have arity >= 1.
                 out.put(vec![
                     start[0].clone(),
                     goal[0].clone(),
@@ -73,9 +74,9 @@ fn astar(
     heuristic: &Expr,
     poison: Poison,
 ) -> Result<(f64, Vec<DataValue>)> {
-    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+    // SAFETY: `starting` and `goal` come from input relations validated to have arity >= 1.
     let start_node = &starting[0];
-    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+    // SAFETY: `goal` comes from input relation validated to have arity >= 1.
     let goal_node = &goal[0];
     let heuristic_bytecode = heuristic.compile()?;
     let mut stack = vec![];
@@ -127,7 +128,7 @@ fn astar(
 
         for edge in edges.prefix_iter(&node)? {
             let edge = edge?;
-            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+            // SAFETY: `edge` comes from `ensure_min_len(2)` so has at least 2 elements.
             let edge_dst = &edge[1];
             let edge_cost = match edge.get(2) {
                 None => 1.,

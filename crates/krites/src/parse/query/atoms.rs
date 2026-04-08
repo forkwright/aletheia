@@ -255,9 +255,9 @@ fn parse_search_apply_atom(
         .build()
         .into());
     }
-    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+    // SAFETY: `name_segs` has exactly 2 elements due to the `count() != 2` check above.
     let relation = Symbol::new(name_segs[0], name_p.extract_span());
-    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+    // SAFETY: `name_segs` has exactly 2 elements due to the `count() != 2` check above.
     let index = Symbol::new(name_segs[1], name_p.extract_span());
     let bindings: BTreeMap<CompactString, Expr> = src
         .next()
