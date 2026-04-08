@@ -8,6 +8,7 @@ use std::io::{BufRead, BufReader, Write as _};
 use std::net::{TcpListener, TcpStream};
 use std::time::Duration;
 
+use aletheia_koina::secret::SecretString;
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use rand::TryRngCore as _;
@@ -153,6 +154,7 @@ pub enum PkceError {
 pub type Result<T> = std::result::Result<T, PkceError>;
 
 /// OAuth 2.0 provider configuration for PKCE flow.
+// kanon:ignore RUST/plain-string-secret
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct OAuthProvider {
@@ -161,7 +163,7 @@ pub struct OAuthProvider {
     /// Authorization endpoint URL.
     pub authorization_url: String,
     /// Token endpoint URL.
-    pub token_url: String,
+    pub token_url: String, // kanon:ignore RUST/plain-string-secret
     /// Requested OAuth scopes.
     pub scopes: Vec<String>,
     /// Optional redirect URI (defaults to localhost).
@@ -203,7 +205,7 @@ impl OAuthProvider {
 /// PKCE code verifier (plaintext) and challenge (hashed).
 #[derive(Debug)]
 struct PkcePair {
-    verifier: String,
+    verifier: SecretString,
     challenge: String,
 }
 
@@ -229,7 +231,7 @@ impl PkcePair {
         let challenge = URL_SAFE_NO_PAD.encode(hash);
 
         Ok(Self {
-            verifier,
+            verifier: SecretString::from(verifier),
             challenge,
         })
     }
@@ -238,9 +240,9 @@ impl PkcePair {
 /// OAuth token response from the token endpoint.
 #[derive(Debug, serde::Deserialize)]
 struct TokenResponse {
-    access_token: String,
+    access_token: SecretString,
     #[serde(default)]
-    refresh_token: Option<String>,
+    refresh_token: Option<SecretString>,
     #[serde(default)]
     expires_in: Option<u64>,
     #[serde(default)]
@@ -248,7 +250,7 @@ struct TokenResponse {
     /// Token type (typically "Bearer").
     #[serde(default)]
     #[expect(dead_code, reason = "field provided by OAuth but not currently used")]
-    token_type: String,
+    token_type: String, // kanon:ignore RUST/plain-string-secret
 }
 
 /// OAuth error response from the token endpoint.
@@ -581,7 +583,7 @@ async fn exchange_code(
     client: &reqwest::Client,
     provider: &OAuthProvider,
     code: &str,
-    verifier: &str,
+    verifier: &SecretString,
     redirect_port: u16,
 ) -> Result<TokenResponse> {
     let redirect_uri = provider
@@ -594,7 +596,7 @@ async fn exchange_code(
     params.insert("code", code);
     params.insert("redirect_uri", &redirect_uri);
     params.insert("client_id", &provider.client_id);
-    params.insert("code_verifier", verifier);
+    params.insert("code_verifier", verifier.expose_secret());
 
     let body = build_form_body(&params);
 
@@ -751,7 +753,7 @@ mod tests {
     fn test_pkce_pair_generation() {
         let pair = PkcePair::generate().unwrap();
         // Verifier should be base64url encoded
-        assert!(!pair.verifier.is_empty());
+        assert!(!pair.verifier.expose_secret().is_empty());
         assert!(!pair.challenge.is_empty());
 
         // Challenge should be base64url-encoded SHA256 hash (43 chars)
@@ -759,7 +761,7 @@ mod tests {
 
         // Verify challenge is correct
         let mut hasher = Sha256::new();
-        hasher.update(pair.verifier.as_bytes());
+        hasher.update(pair.verifier.expose_secret().as_bytes());
         let expected = URL_SAFE_NO_PAD.encode(hasher.finalize());
         assert_eq!(pair.challenge, expected);
     }

@@ -65,7 +65,10 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
                 };
                 println!("Source:        file ({})", cred_path.display());
                 println!("Type:          {cred_type}");
-                println!("Token:         {}", token_preview(&cred.token));
+                println!(
+                    "Token:         {}",
+                    token_preview(cred.token.expose_secret())
+                );
                 if let Some(remaining) = cred.seconds_remaining() {
                     let hours = remaining / 3600;
                     let mins = (remaining % 3600) / 60;

@@ -14,8 +14,8 @@ fn credential_file_roundtrip() {
     let path = dir.path().join("test.json");
 
     let cred = CredentialFile {
-        token: "sk-test-123".to_owned(),
-        refresh_token: Some("rt-test-456".to_owned()),
+        token: SecretString::from("sk-test-123"),
+        refresh_token: Some(SecretString::from("rt-test-456")),
         expires_at: Some(1_700_000_000_000),
         scopes: Some(vec!["user:inference".to_owned()]),
         subscription_type: Some("max".to_owned()),
@@ -23,8 +23,11 @@ fn credential_file_roundtrip() {
     cred.save(&path).expect("save credential file");
 
     let loaded = CredentialFile::load(&path).expect("load saved credential file");
-    assert_eq!(loaded.token, "sk-test-123");
-    assert_eq!(loaded.refresh_token.as_deref(), Some("rt-test-456"));
+    assert_eq!(loaded.token.expose_secret(), "sk-test-123");
+    assert_eq!(
+        loaded.refresh_token.as_ref().map(|s| s.expose_secret()),
+        Some("rt-test-456")
+    );
     assert_eq!(loaded.expires_at, Some(1_700_000_000_000));
 }
 
@@ -60,8 +63,11 @@ fn credential_file_load_claude_code_oauth_wrapper() {
     .expect("write oauth wrapper credential file");
 
     let loaded = CredentialFile::load(&path).expect("load oauth wrapper credential file");
-    assert_eq!(loaded.token, "sk-ant-oat-wrapped");
-    assert_eq!(loaded.refresh_token.as_deref(), Some("rt-wrapped"));
+    assert_eq!(loaded.token.expose_secret(), "sk-ant-oat-wrapped");
+    assert_eq!(
+        loaded.refresh_token.as_ref().map(|s| s.expose_secret()),
+        Some("rt-wrapped")
+    );
     assert_eq!(loaded.expires_at, Some(9_999_999_999_000));
     assert!(loaded.has_refresh_token());
 }
@@ -81,7 +87,7 @@ fn credential_file_load_wrapped_no_refresh_token() {
     .expect("write no-refresh-token credential file");
 
     let loaded = CredentialFile::load(&path).expect("load no-refresh-token credential file");
-    assert_eq!(loaded.token, "sk-ant-oat-no-rt");
+    assert_eq!(loaded.token.expose_secret(), "sk-ant-oat-no-rt");
     assert!(!loaded.has_refresh_token());
 }
 
@@ -99,7 +105,7 @@ fn credential_file_load_flat_takes_precedence_over_wrapper() {
     )
     .expect("write flat-token-wins credential file");
     let loaded = CredentialFile::load(&path).expect("load flat-token-wins credential file");
-    assert_eq!(loaded.token, "flat-token");
+    assert_eq!(loaded.token.expose_secret(), "flat-token");
 }
 
 #[test]
@@ -118,8 +124,8 @@ fn credential_file_load_wrapper_missing_key_returns_none() {
 #[test]
 fn has_refresh_token() {
     let with = CredentialFile {
-        token: "t".to_owned(),
-        refresh_token: Some("rt".to_owned()),
+        token: SecretString::from("t"),
+        refresh_token: Some(SecretString::from("rt")),
         expires_at: None,
         scopes: None,
         subscription_type: None,
@@ -133,7 +139,7 @@ fn has_refresh_token() {
     assert!(!without.has_refresh_token());
 
     let empty = CredentialFile {
-        refresh_token: Some(String::new()),
+        refresh_token: Some(SecretString::from("")),
         ..without
     };
     assert!(!empty.has_refresh_token());
@@ -338,7 +344,7 @@ fn chain_falls_through_expired_oauth_env_to_file_provider() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let path = dir.path().join(".credentials.json");
     let cred_file = CredentialFile {
-        token: "sk-ant-api-file-fallback".to_owned(),
+        token: SecretString::from("sk-ant-api-file-fallback"),
         refresh_token: None,
         expires_at: None,
         scopes: None,
@@ -370,7 +376,7 @@ fn file_provider_reads_token() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let path = dir.path().join("anthropic.json");
     let cred = CredentialFile {
-        token: "sk-file-token".to_owned(),
+        token: SecretString::from("sk-file-token"),
         refresh_token: None,
         expires_at: None,
         scopes: None,
@@ -398,7 +404,7 @@ fn file_provider_detects_file_change() {
     let path = dir.path().join("anthropic.json");
 
     let cred1 = CredentialFile {
-        token: "token-v1".to_owned(),
+        token: SecretString::from("token-v1"),
         refresh_token: None,
         expires_at: None,
         scopes: None,
@@ -422,7 +428,7 @@ fn file_provider_detects_file_change() {
     }
 
     let cred2 = CredentialFile {
-        token: "token-v2".to_owned(),
+        token: SecretString::from("token-v2"),
         ..cred1
     };
     cred2.save(&path).expect("save updated credential");
@@ -526,7 +532,7 @@ fn claude_code_provider_static_token() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let path = dir.path().join(".credentials.json");
     let cred = CredentialFile {
-        token: "sk-ant-api-static".to_owned(),
+        token: SecretString::from("sk-ant-api-static"),
         refresh_token: None,
         expires_at: None,
         scopes: None,
@@ -610,7 +616,7 @@ fn unix_epoch_ms_returns_nonzero() {
 #[test]
 fn seconds_remaining_none_when_no_expiry() {
     let cred = CredentialFile {
-        token: "t".to_owned(),
+        token: SecretString::from("t"),
         refresh_token: None,
         expires_at: None,
         scopes: None,
@@ -622,7 +628,7 @@ fn seconds_remaining_none_when_no_expiry() {
 #[test]
 fn seconds_remaining_negative_when_expired() {
     let cred = CredentialFile {
-        token: "t".to_owned(),
+        token: SecretString::from("t"),
         refresh_token: None,
         expires_at: Some(1_000_000_000_000),
         scopes: None,
@@ -641,7 +647,7 @@ fn seconds_remaining_negative_when_expired() {
 fn seconds_remaining_positive_for_future_expiry() {
     let far_future_ms = unix_epoch_ms() + 3_600_000;
     let cred = CredentialFile {
-        token: "t".to_owned(),
+        token: SecretString::from("t"),
         refresh_token: None,
         expires_at: Some(far_future_ms),
         scopes: None,
@@ -662,8 +668,8 @@ async fn refreshing_provider_reads_credential_file_and_provides_token() {
     let path = dir.path().join(".credentials.json");
     let far_future_ms = unix_epoch_ms() + 7_200_000;
     let cred = CredentialFile {
-        token: "sk-ant-oat-initial-token".to_owned(),
-        refresh_token: Some("rt-test-refresh".to_owned()),
+        token: SecretString::from("sk-ant-oat-initial-token"),
+        refresh_token: Some(SecretString::from("rt-test-refresh")),
         expires_at: Some(far_future_ms),
         scopes: Some(vec!["user:inference".to_owned()]),
         subscription_type: Some("max".to_owned()),
@@ -687,8 +693,8 @@ async fn refresh_write_back_preserves_subscription_type() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let path = dir.path().join(".credentials.json");
     let cred = CredentialFile {
-        token: "sk-ant-oat-original".to_owned(),
-        refresh_token: Some("rt-original".to_owned()),
+        token: SecretString::from("sk-ant-oat-original"),
+        refresh_token: Some(SecretString::from("rt-original")),
         expires_at: Some(unix_epoch_ms() + 7_200_000),
         scopes: Some(vec!["user:inference".to_owned()]),
         subscription_type: Some("max".to_owned()),
@@ -701,8 +707,8 @@ async fn refresh_write_back_preserves_subscription_type() {
     // and verify subscription_type is preserved in the write-back.
     let original = CredentialFile::load(&path).expect("load original credential");
     let refreshed = CredentialFile {
-        token: "sk-ant-oat-refreshed".to_owned(),
-        refresh_token: Some("rt-new".to_owned()),
+        token: SecretString::from("sk-ant-oat-refreshed"),
+        refresh_token: Some(SecretString::from("rt-new")),
         expires_at: Some(unix_epoch_ms() + 28_800_000),
         scopes: original.scopes.clone(),
         subscription_type: original.subscription_type.clone(),
@@ -710,8 +716,11 @@ async fn refresh_write_back_preserves_subscription_type() {
     refreshed.save(&path).expect("save refreshed credential");
 
     let reloaded = CredentialFile::load(&path).expect("load refreshed credential");
-    assert_eq!(reloaded.token, "sk-ant-oat-refreshed");
-    assert_eq!(reloaded.refresh_token.as_deref(), Some("rt-new"));
+    assert_eq!(reloaded.token.expose_secret(), "sk-ant-oat-refreshed");
+    assert_eq!(
+        reloaded.refresh_token.as_ref().map(|s| s.expose_secret()),
+        Some("rt-new")
+    );
     assert_eq!(
         reloaded.subscription_type.as_deref(),
         Some("max"),
@@ -740,8 +749,8 @@ async fn refresh_write_back_from_claude_code_wrapper_preserves_subscription_type
 
     // NOTE: Simulate refresh write-back preserving subscription_type
     let refreshed = CredentialFile {
-        token: "sk-ant-oat-new".to_owned(),
-        refresh_token: Some("rt-new".to_owned()),
+        token: SecretString::from("sk-ant-oat-new"),
+        refresh_token: Some(SecretString::from("rt-new")),
         expires_at: Some(unix_epoch_ms() + 28_800_000),
         scopes: None,
         subscription_type: original.subscription_type,
@@ -763,8 +772,8 @@ async fn refreshing_provider_shuts_down_cleanly() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let path = dir.path().join(".credentials.json");
     let cred = CredentialFile {
-        token: "sk-ant-oat-token".to_owned(),
-        refresh_token: Some("rt-test".to_owned()),
+        token: SecretString::from("sk-ant-oat-token"),
+        refresh_token: Some(SecretString::from("rt-test")),
         expires_at: Some(unix_epoch_ms() + 7_200_000),
         scopes: None,
         subscription_type: None,
@@ -782,8 +791,8 @@ async fn credential_file_roundtrip_preserves_all_fields() {
     let path = dir.path().join("full.json");
 
     let original = CredentialFile {
-        token: "sk-ant-oat-full".to_owned(),
-        refresh_token: Some("rt-full".to_owned()),
+        token: SecretString::from("sk-ant-oat-full"),
+        refresh_token: Some(SecretString::from("rt-full")),
         expires_at: Some(1_800_000_000_000),
         scopes: Some(vec!["user:inference".to_owned(), "org:admin".to_owned()]),
         subscription_type: Some("enterprise".to_owned()),
@@ -791,8 +800,11 @@ async fn credential_file_roundtrip_preserves_all_fields() {
     original.save(&path).expect("save full credential file");
 
     let loaded = CredentialFile::load(&path).expect("load full credential file");
-    assert_eq!(loaded.token, original.token);
-    assert_eq!(loaded.refresh_token, original.refresh_token);
+    assert_eq!(loaded.token.expose_secret(), original.token.expose_secret());
+    assert_eq!(
+        loaded.refresh_token.as_ref().map(|s| s.expose_secret()),
+        original.refresh_token.as_ref().map(|s| s.expose_secret())
+    );
     assert_eq!(loaded.expires_at, original.expires_at);
     assert_eq!(loaded.scopes, original.scopes);
     assert_eq!(loaded.subscription_type, original.subscription_type);

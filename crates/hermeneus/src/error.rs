@@ -15,7 +15,7 @@ pub struct ApiErrorContext {
     /// Model requested when the error occurred.
     pub model: String,
     /// Credential source used (e.g. `"oauth"`, `"environment"`, `"file"`).
-    pub credential_source: String,
+    pub credential_source: String, // kanon:ignore RUST/plain-string-secret
 }
 
 impl ApiErrorContext {
@@ -25,7 +25,7 @@ impl ApiErrorContext {
         // kanon:ignore RUST/pub-visibility
         Box::new(Self {
             model: String::new(),
-            credential_source: String::new(),
+            credential_source: String::new(), // kanon:ignore RUST/plain-string-secret
         })
     }
 }
@@ -200,7 +200,9 @@ impl aletheia_koina::error_class::Classifiable for Error {
             Error::UnsupportedModel { model, .. } => ErrorAction::Surface {
                 user_message: format!("Model '{model}' is not supported by this provider."),
             },
-            Error::ApiError { status, message, .. } => ErrorAction::Surface {
+            Error::ApiError {
+                status, message, ..
+            } => ErrorAction::Surface {
                 user_message: format!("API error {status}: {message}"),
             },
             Error::ParseResponse { .. } | Error::ProviderInit { .. } => ErrorAction::Escalate,
