@@ -200,6 +200,48 @@ impl Watchdog {
         }
     }
 
+    /// Return a snapshot of all watched process statuses.
+    #[expect(
+        dead_code,
+        reason = "watchdog process monitor, tested and awaiting integration"
+    )]
+    pub(crate) fn status(&self) -> Vec<ProcessStatus> {
+        self.processes
+            .iter()
+            .map(|(id, proc)| ProcessStatus {
+                id: id.clone(),
+                state: proc.state,
+                last_heartbeat_secs: proc.last_heartbeat.elapsed().as_secs(),
+                restart_count: proc.restart_count,
+            })
+            .collect()
+    }
+
+    /// Return the restart event log.
+    #[expect(
+        dead_code,
+        reason = "watchdog process monitor, tested and awaiting integration"
+    )]
+    pub(crate) fn restart_log(&self) -> &[RestartEvent] {
+        &self.restart_log
+    }
+
+    /// Report that a process exited unexpectedly.
+    #[expect(
+        dead_code,
+        reason = "watchdog process monitor, tested and awaiting integration"
+    )]
+    pub(crate) fn report_exit(&mut self, process_id: &str, reason: &str) {
+        if let Some(proc) = self.processes.get_mut(process_id) {
+            tracing::warn!(
+                process_id = %process_id,
+                reason = %reason,
+                "watchdog: process reported exit"
+            );
+            proc.state = ProcessState::Hung;
+        }
+    }
+
     /// Run the watchdog event loop. Returns when the shutdown token is cancelled.
     ///
     /// # Cancel safety

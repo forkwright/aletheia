@@ -202,7 +202,15 @@ impl Visit for EventVisitor {
 /// );
 /// ```
 pub struct TraceIngestLayer {
-    buffer: Mutex<Vec<TraceEvent>>,
+    buffer: std::sync::Arc<Mutex<Vec<TraceEvent>>>,
+}
+
+impl Clone for TraceIngestLayer {
+    fn clone(&self) -> Self {
+        Self {
+            buffer: std::sync::Arc::clone(&self.buffer),
+        }
+    }
 }
 
 impl TraceIngestLayer {
@@ -210,7 +218,7 @@ impl TraceIngestLayer {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            buffer: Mutex::new(Vec::new()),
+            buffer: std::sync::Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -574,14 +582,15 @@ mod tests {
 
     #[test]
     fn layer_on_event_via_tracing_subscriber() {
-        let layer = std::sync::Arc::new(TraceIngestLayer::new());
+        let layer = TraceIngestLayer::new();
 
-        // Clone an Arc handle so we can inspect the buffer after recording.
-        let captured = std::sync::Arc::clone(&layer);
+        // WHY: Clone shares the internal Arc<Mutex<Vec>> so we can inspect
+        // the buffer after the subscriber consumes the original.
+        let captured = layer.clone();
 
         // Set a per-test default subscriber scoped to this thread.
         let _guard = tracing_subscriber::registry()
-            .with(std::sync::Arc::clone(&layer))
+            .with(layer)
             .set_default();
 
         tracing::info!(
