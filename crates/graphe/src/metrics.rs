@@ -59,19 +59,37 @@ mod tests {
     use super::*;
 
     #[test]
-    fn init_does_not_panic() {
+    fn init_initializes_metrics() {
+        // Verify init() completes without panic and metrics are accessible
         init();
-    }
-
-    #[test]
-    fn record_session_created_does_not_panic() {
+        // After init, metrics should be recordable without panic
         record_session_created("test-nous", "primary");
-        record_session_created("test-nous", "ephemeral");
+        let metric = &*SESSIONS_TOTAL;
+        // Just verify we can read the metric (actual value depends on test order)
+        let _count = metric.with_label_values(&["test-nous", "primary"]).get();
     }
 
     #[test]
-    fn record_backup_duration_does_not_panic() {
+    fn record_session_created_increments_counter() {
+        // Get initial count
+        let metric = &*SESSIONS_TOTAL;
+        let initial = metric.with_label_values(&["test-nous", "primary"]).get();
+
+        record_session_created("test-nous", "primary");
+
+        let after = metric.with_label_values(&["test-nous", "primary"]).get();
+        assert_eq!(after, initial + 1, "counter should increment by 1");
+    }
+
+    #[test]
+    fn record_backup_duration_records_observation() {
+        // Record an observation and verify histogram has samples
+        let metric = &*BACKUP_DURATION_SECONDS;
+        let initial = metric.with_label_values(&["ok"]).get_sample_count();
+
         record_backup_duration(5.0, true);
-        record_backup_duration(1.0, false);
+
+        let after = metric.with_label_values(&["ok"]).get_sample_count();
+        assert_eq!(after, initial + 1, "histogram should have one more sample");
     }
 }

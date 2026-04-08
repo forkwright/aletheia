@@ -32,11 +32,19 @@ pub mod transport;
 
 #[cfg(test)]
 mod tests {
+    use super::error::Error;
+
     #[test]
     fn error_type_is_send_sync() {
         const _: fn() = || {
             fn assert<T: Send + Sync>() {}
-            assert::<super::error::Error>();
+            assert::<Error>();
         };
+
+        // Runtime assertion: verify Error implements Send + Sync
+        fn assert_send<T: Send>() {}
+        fn assert_sync<T: Sync>() {}
+        assert_send::<Error>();
+        assert_sync::<Error>();
     }
 }

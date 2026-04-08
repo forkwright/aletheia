@@ -53,14 +53,37 @@ mod tests {
     use super::*;
 
     #[test]
-    fn record_phase_transition_does_not_panic() {
+    fn init_initializes_metrics() {
+        // Verify init() completes without panic and metrics are accessible
+        init();
+        // After init, metrics should be recordable without panic
         record_phase_transition("planning", "executing");
-        record_phase_transition("executing", "verifying");
+        let metric = &*PHASE_TRANSITIONS_TOTAL;
+        // Just verify we can read the metric (actual value depends on test order)
+        let _count = metric.with_label_values(&["planning", "executing"]).get();
     }
 
     #[test]
-    fn record_stuck_detection_does_not_panic() {
+    fn record_phase_transition_increments_counter() {
+        // Get initial count
+        let metric = &*PHASE_TRANSITIONS_TOTAL;
+        let initial = metric.with_label_values(&["planning", "executing"]).get();
+
+        record_phase_transition("planning", "executing");
+
+        let after = metric.with_label_values(&["planning", "executing"]).get();
+        assert_eq!(after, initial + 1, "counter should increment by 1");
+    }
+
+    #[test]
+    fn record_stuck_detection_increments_counter() {
+        // Get initial count
+        let metric = &*STUCK_DETECTIONS_TOTAL;
+        let initial = metric.with_label_values(&["repeated_error"]).get();
+
         record_stuck_detection("repeated_error");
-        record_stuck_detection("same_tool_same_args");
+
+        let after = metric.with_label_values(&["repeated_error"]).get();
+        assert_eq!(after, initial + 1, "counter should increment by 1");
     }
 }

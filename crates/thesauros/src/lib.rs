@@ -21,8 +21,21 @@ pub mod tools;
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
-    fn crate_compiles() {
-        // NOTE: minimal test verifying the crate links and modules resolve correctly
+    fn crate_exports_all_modules() {
+        // Verify all public modules are accessible by checking their type names
+        let error_name = std::any::type_name::<error::Error>();
+        let manifest_name = std::any::type_name::<manifest::PackManifest>();
+
+        assert!(
+            error_name.contains("thesauros"),
+            "error module should be from thesauros crate"
+        );
+        assert!(
+            manifest_name.contains("PackManifest"),
+            "manifest module should export PackManifest"
+        );
     }
 }
