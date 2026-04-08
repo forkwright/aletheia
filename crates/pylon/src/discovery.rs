@@ -18,6 +18,7 @@ const DISCOVERY_FILE: &str = ".discovery.json";
 
 /// Errors from writing the discovery file.
 #[derive(Debug, Snafu)]
+#[non_exhaustive]
 #[expect(
     missing_docs,
     reason = "snafu error variant fields are self-documenting via display format"
