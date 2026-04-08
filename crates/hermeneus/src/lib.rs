@@ -27,11 +27,6 @@ pub mod health;
 /// authentication. Gated behind the `cc-provider` feature flag.
 #[cfg(feature = "cc-provider")]
 pub mod cc;
-/// OpenAI-compatible local LLM provider for vLLM and similar servers.
-///
-/// Gated behind the `local-llm` feature flag.
-#[cfg(feature = "local-llm")]
-pub mod local;
 /// Prometheus metrics for LLM request counts, latency, and token usage.
 pub mod metrics;
 /// Model constants and API configuration defaults.
