@@ -61,7 +61,7 @@ impl<'a> SessionTx<'a> {
             .next();
         if let Some(ep) = ep_res {
             let ep = ep?;
-            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+            // SAFETY: `ep` comes from HNSW index scan which yields tuples with at least 1 element.
             let bottom_level = ep[0].get_int().unwrap_or_else(|| unreachable!());
             let ep_idx = match ep[config.base_handle.metadata.keys.len() + 1].get_int() {
                 Some(x) => usize::try_from(x).map_err(|_e| {

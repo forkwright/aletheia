@@ -40,7 +40,7 @@ impl FixedRule for ShortestPathDijkstra {
         let mut starting_nodes = BTreeSet::new();
         for tuple in starting.iter()? {
             let tuple = tuple?;
-            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+            // SAFETY: `tuple` comes from `starting` input validated to have arity >= 1.
             let node = &tuple[0];
             if let Some(idx) = inv_indices.get(node) {
                 starting_nodes.insert(*idx);
@@ -52,7 +52,7 @@ impl FixedRule for ShortestPathDijkstra {
                 let mut tn = BTreeSet::new();
                 for tuple in t.iter()? {
                     let tuple = tuple?;
-                    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+                    // SAFETY: `tuple` comes from `termination` input validated to have arity >= 1.
                     let node = &tuple[0];
                     if let Some(idx) = inv_indices.get(node) {
                         tn.insert(*idx);

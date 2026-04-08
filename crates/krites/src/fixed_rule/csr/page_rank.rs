@@ -66,7 +66,7 @@ pub(crate) fn page_rank(
                 .map(|v| out_scores[v as usize])
                 .sum();
 
-            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+            // SAFETY: `u` ranges from 0 to `node_count - 1`, and `scores` has length `node_count`.
             let old_score = scores[u];
             let new_score = base_score + damping_factor * incoming_total;
 

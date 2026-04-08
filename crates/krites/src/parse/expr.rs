@@ -78,6 +78,8 @@ pub(crate) fn expr2bytecode(expr: &Expr, collector: &mut Vec<Bytecode>) -> Resul
                     span: *span,
                 });
                 return_jump_pos.push(collector.len() - 1);
+                // SAFETY: `false_jump_amend_pos` is `collector.len() - 1` from above,
+                // so it is always a valid index.
                 collector[false_jump_amend_pos] = Bytecode::JumpIfFalse {
                     jump_to: collector.len(),
                     span: *span,
@@ -85,6 +87,8 @@ pub(crate) fn expr2bytecode(expr: &Expr, collector: &mut Vec<Bytecode>) -> Resul
             }
             let total_len = collector.len();
             for pos in return_jump_pos {
+                // SAFETY: `pos` values are `collector.len() - 1` values pushed above,
+                // so they are always valid indices.
                 collector[pos] = Bytecode::Goto {
                     jump_to: total_len,
                     span: *span,
@@ -406,6 +410,7 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
 }
 
 pub(crate) fn parse_int(s: &str, radix: u32) -> i64 {
+    // Use `get(2..)` for bounds-checked slicing; default to empty string if out of bounds.
     i64::from_str_radix(&s.get(2..).unwrap_or("").replace('_', ""), radix)
         .unwrap_or_else(|_| unreachable!())
 }

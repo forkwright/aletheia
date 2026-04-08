@@ -40,7 +40,7 @@ impl FixedRule for MinimumSpanningTreePrim {
                     }
                     .build()
                 })??;
-                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+                // SAFETY: `tuple` comes from `starting` input validated to have arity >= 1.
                 let dv = &tuple[0];
                 *inv_indices.get(dv).ok_or_else(|| {
                     crate::fixed_rule::error::InvalidInputSnafu {

@@ -63,7 +63,7 @@ impl InlineFixedRA {
         Ok(if self.data.is_empty() {
             Box::new(iter::empty())
         } else if self.data.len() == 1 {
-            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+            // SAFETY: `self.data.len() == 1` check above ensures index 0 is valid.
             let data = self.data[0].clone();
             let right_join_values = right_join_indices
                 .into_iter()
@@ -339,7 +339,7 @@ impl StoredRA {
 
             for tuple in self.storage.scan_all(tx) {
                 let tuple = tuple?;
-                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+                // SAFETY: `right_join_indices` contains indices validated to be within `tuple` bounds.
                 let to_join: Box<[DataValue]> = right_join_indices
                     .iter()
                     .map(|i| tuple[*i].clone())
@@ -349,7 +349,7 @@ impl StoredRA {
             Ok(Box::new(
                 left_iter
                     .map_ok(move |tuple| -> Result<Option<Tuple>> {
-                        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+                        // SAFETY: `left_join_indices` contains indices validated to be within `tuple` bounds.
                         let left_join_vals: Box<[DataValue]> = left_join_indices
                             .iter()
                             .map(|i| tuple[*i].clone())
@@ -511,7 +511,7 @@ impl TempStoreRA {
             Ok(Box::new(
                 left_iter
                     .map_ok(move |tuple| -> Result<Option<Tuple>> {
-                        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+                        // SAFETY: `left_join_indices` contains indices validated to be within `tuple` bounds.
                         let left_join_vals: Box<[DataValue]> = left_join_indices
                             .iter()
                             .map(|i| tuple[*i].clone())

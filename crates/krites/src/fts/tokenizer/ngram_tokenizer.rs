@@ -269,7 +269,7 @@ impl<'a> Iterator for CodepointFrontiers<'a> {
             if self.s.is_empty() {
                 self.next_el = None;
             } else {
-                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+                // SAFETY: `self.s.is_empty()` check above ensures index 0 is valid.
                 let first_codepoint_width = utf8_codepoint_width(self.s.as_bytes()[0]);
                 self.s = self.s.get(first_codepoint_width..).unwrap_or("");
                 self.next_el = Some(offset + first_codepoint_width);

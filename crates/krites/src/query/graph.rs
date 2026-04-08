@@ -146,6 +146,8 @@ impl<'a> TarjanScc<'a> {
     }
     fn run(mut self, poison: Poison) -> Result<Vec<Vec<usize>>> {
         for i in 0..self.graph.len() {
+            // SAFETY: `i` ranges from 0 to `self.graph.len() - 1`, and `self.ids`
+            // is initialized with `graph.len()` elements.
             if self.ids[i].is_none() {
                 self.dfs(i);
                 poison.check()?;
@@ -161,22 +163,32 @@ impl<'a> TarjanScc<'a> {
     }
     fn dfs(&mut self, at: usize) {
         self.stack.push(at);
+        // SAFETY: `at` is always less than `graph.len()` (validated by caller).
         self.on_stack[at] = true;
         self.id += 1;
+        // SAFETY: `at` is always less than `graph.len()` (validated by caller).
         self.ids[at] = Some(self.id);
+        // SAFETY: `at` is always less than `graph.len()` (validated by caller).
         self.low[at] = self.id;
+        // SAFETY: `at` is always less than `graph.len()` (validated by caller).
         for to in &self.graph[at] {
             let to = *to;
+            // SAFETY: `to` is always less than `graph.len()` (validated by graph construction).
             if self.ids[to].is_none() {
                 self.dfs(to);
             }
+            // SAFETY: `to` is always less than `graph.len()` (validated by graph construction).
             if self.on_stack[to] {
+                // SAFETY: `at` and `to` are always less than `graph.len()`.
                 self.low[at] = min(self.low[at], self.low[to]);
             }
         }
+        // SAFETY: `at` is always less than `graph.len()` (validated by caller).
         if self.ids[at].unwrap_or_else(|| unreachable!()) == self.low[at] {
             while let Some(node) = self.stack.pop() {
+                // SAFETY: `node` was pushed from valid indices within this function.
                 self.on_stack[node] = false;
+                // SAFETY: `node` and `at` are always less than `graph.len()`.
                 self.low[node] = self.ids[at].unwrap_or_else(|| unreachable!());
                 if node == at {
                     break;

@@ -398,7 +398,7 @@ impl<'a> SessionTx<'a> {
         stores: &BTreeMap<MagicSymbol, EpochStore>,
         poison: Poison,
     ) -> Result<MeetAggrStore> {
-        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+        // SAFETY: `ruleset` is guaranteed to have at least one element in this code path.
         let mut out_store = MeetAggrStore::new(ruleset[0].aggr.clone())?;
 
         for (rule_n, rule) in ruleset.iter().enumerate() {
@@ -415,7 +415,7 @@ impl<'a> SessionTx<'a> {
             poison.check()?;
         }
         if out_store.is_empty() && ruleset[0].aggr.iter().all(|a| a.is_some()) {
-            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+            // SAFETY: `ruleset` is guaranteed to have at least one element in this code path.
             let mut aggr = ruleset[0].aggr.clone();
             for (aggr, args) in aggr.iter_mut().flatten() {
                 aggr.meet_init(args)?;
@@ -478,6 +478,8 @@ impl<'a> SessionTx<'a> {
                     Entry::Occupied(mut ent) => {
                         let aggr_ops = ent.get_mut();
                         for (aggr_idx, (tuple_idx, _)) in val_indices_and_aggrs.iter().enumerate() {
+                            // SAFETY: `aggr_ops` and `val_indices_and_aggrs` have the same length,
+                            // so `aggr_idx` is always valid.
                             aggr_ops[aggr_idx]
                                 .normal_op
                                 .as_mut()
@@ -504,7 +506,7 @@ impl<'a> SessionTx<'a> {
             poison.check()?;
         }
 
-        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+        // SAFETY: `ruleset` is guaranteed to have at least one element in this code path.
         let mut inv_indices = Vec::with_capacity(ruleset[0].aggr.len());
         let mut seen_keys = 0usize;
         let mut seen_aggrs = 0usize;
@@ -519,7 +521,7 @@ impl<'a> SessionTx<'a> {
         }
 
         if aggr_work.is_empty() && ruleset[0].aggr.iter().all(|v| v.is_some()) {
-            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+            // SAFETY: `ruleset` is guaranteed to have at least one element in this code path.
             let empty_result: Vec<_> = ruleset[0]
                 .aggr
                 .iter()
@@ -672,7 +674,7 @@ impl<'a> SessionTx<'a> {
         stores: &BTreeMap<MagicSymbol, EpochStore>,
         poison: Poison,
     ) -> Result<MeetAggrStore> {
-        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+        // SAFETY: `ruleset` is guaranteed to have at least one element in this code path.
         let mut out_store = MeetAggrStore::new(ruleset[0].aggr.clone())?;
         for (rule_n, rule) in ruleset.iter().enumerate() {
             let mut need_complete_run = false;

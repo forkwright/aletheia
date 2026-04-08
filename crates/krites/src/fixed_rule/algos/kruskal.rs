@@ -71,6 +71,7 @@ fn kruskal(edges: &DirectedCsrGraph<f32>, poison: Poison) -> Result<Vec<(u32, u3
         uf.union(from, to);
 
         mst.push((from, to, cost));
+        // SAFETY: `szs` is initialized with `n` elements where `n >= 1`, so index 0 is always valid.
         if uf.szs[0] == edges.node_count() {
             break;
         }

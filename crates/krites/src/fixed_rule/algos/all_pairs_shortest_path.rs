@@ -74,7 +74,7 @@ impl FixedRule for BetweennessCentrality {
         }
 
         for (i, s) in centrality.into_iter().enumerate() {
-            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+            // SAFETY: `indices` and `centrality` have the same length (both derived from graph node count).
             let node = indices[i].clone();
             out.put(vec![node, f64::from(s).into()]);
         }

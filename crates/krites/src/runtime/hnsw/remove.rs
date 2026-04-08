@@ -159,7 +159,7 @@ impl<'a> SessionTx<'a> {
             if let Some(ep) = ep_res {
                 let ep = ep?;
                 let target_key_bytes = idx_table.encode_key_for_store(&ep, Default::default())?;
-                #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+                // SAFETY: `ep` comes from HNSW index scan which yields tuples with at least 1 element.
                 let bottom_level = ep[0].get_int().unwrap_or_else(|| unreachable!());
                 // WHY: canary value is for conflict detection: prevent the scenario of disconnected graphs at all levels
                 let canary_value = [

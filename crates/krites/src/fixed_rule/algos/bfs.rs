@@ -41,7 +41,7 @@ impl FixedRule for Bfs {
 
         'outer: for node_tuple in starting_nodes.iter()? {
             let node_tuple = node_tuple?;
-            #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+            // SAFETY: `node_tuple` comes from `starting_nodes` input validated to have arity >= 1.
             let starting_node = &node_tuple[0];
             if visited.contains(starting_node) {
                 continue;
@@ -54,7 +54,7 @@ impl FixedRule for Bfs {
             while let Some(candidate) = queue.pop_back() {
                 for edge in edges.prefix_iter(&candidate)? {
                     let edge = edge?;
-                    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
+                    // SAFETY: `edge` comes from `ensure_min_len(2)` so has at least 2 elements.
                     let to_node = &edge[1];
                     if visited.contains(to_node) {
                         continue;
