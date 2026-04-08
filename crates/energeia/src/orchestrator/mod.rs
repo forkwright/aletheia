@@ -384,6 +384,7 @@ impl Orchestrator {
     ///
     /// Returns [`Error::Preflight`] if the prompt set is empty or the DAG
     /// is invalid.
+    #[must_use]
     pub fn dry_run(&self, prompts: &[PromptSpec]) -> Result<DryRunResult> {
         if prompts.is_empty() {
             return error::PreflightSnafu {
