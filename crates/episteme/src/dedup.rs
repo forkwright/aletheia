@@ -457,19 +457,19 @@ mod tests {
 
     #[test]
     fn jw_exact_case_insensitive() {
-        let sim = jaro_winkler_ci("John Smith", "john smith");
+        let sim = jaro_winkler_ci("Alice Test", "alice test");
         assert!((sim - 1.0).abs() < f64::EPSILON);
     }
 
     #[test]
     fn jw_similar_names() {
-        let sim = jaro_winkler_ci("John Smith", "Jon Smith");
+        let sim = jaro_winkler_ci("Alice Test", "Alicia Test");
         assert!(sim >= 0.85, "expected >= 0.85, got {sim}");
     }
 
     #[test]
     fn jw_different_names() {
-        let sim = jaro_winkler_ci("John Smith", "Alice Johnson");
+        let sim = jaro_winkler_ci("Alice Test", "Bob Example");
         assert!(sim < 0.85, "expected < 0.85, got {sim}");
     }
 
@@ -497,7 +497,7 @@ mod tests {
         assert!(name_in_aliases(
             "JS",
             &["js".to_owned(), "smith".to_owned()],
-            "John Smith",
+            "Alice Test",
             &[],
         ));
     }
@@ -524,8 +524,8 @@ mod tests {
     #[test]
     fn exact_name_match_case_insensitive() {
         let entities = vec![
-            entity("e1", "John Smith", "person", vec![], 2, "2026-01-01"),
-            entity("e2", "john smith", "person", vec![], 1, "2026-01-02"),
+            entity("e1", "Alice Test", "person", vec![], 2, "2026-01-01"),
+            entity("e2", "alice test", "person", vec![], 1, "2026-01-02"),
         ];
         let candidates = generate_candidates(&entities, &no_embed);
         assert_eq!(candidates.len(), 1);
@@ -535,8 +535,8 @@ mod tests {
     #[test]
     fn jaro_winkler_candidate() {
         let entities = vec![
-            entity("e1", "John Smith", "person", vec![], 1, "2026-01-01"),
-            entity("e2", "Jon Smith", "person", vec![], 1, "2026-01-01"),
+            entity("e1", "Alice Test", "person", vec![], 1, "2026-01-01"),
+            entity("e2", "Alicia Test", "person", vec![], 1, "2026-01-01"),
         ];
         let candidates = generate_candidates(&entities, &no_embed);
         assert_eq!(candidates.len(), 1);
@@ -546,8 +546,8 @@ mod tests {
     #[test]
     fn different_types_not_candidates() {
         let entities = vec![
-            entity("e1", "John Smith", "person", vec![], 1, "2026-01-01"),
-            entity("e2", "John Smith", "organization", vec![], 1, "2026-01-01"),
+            entity("e1", "Alice Test", "person", vec![], 1, "2026-01-01"),
+            entity("e2", "Alice Test", "organization", vec![], 1, "2026-01-01"),
         ];
         let candidates = generate_candidates(&entities, &no_embed);
         assert!(candidates.is_empty());
@@ -556,8 +556,8 @@ mod tests {
     #[test]
     fn alias_overlap_triggers_candidate() {
         let entities = vec![
-            entity("e1", "John Smith", "person", vec!["JS"], 1, "2026-01-01"),
-            entity("e2", "J. Smith", "person", vec!["JS"], 1, "2026-01-01"),
+            entity("e1", "Alice Test", "person", vec!["AT"], 1, "2026-01-01"),
+            entity("e2", "A. Test", "person", vec!["AT"], 1, "2026-01-01"),
         ];
         let candidates = generate_candidates(&entities, &no_embed);
         assert_eq!(candidates.len(), 1);
@@ -594,9 +594,9 @@ mod tests {
     #[test]
     fn classify_auto_merge_and_review() {
         let entities = vec![
-            entity("e1", "John Smith", "person", vec!["JS"], 2, "2026-01-01"),
-            entity("e2", "john smith", "person", vec!["JS"], 1, "2026-01-02"),
-            entity("e3", "Jon Smith", "person", vec![], 1, "2026-01-03"),
+            entity("e1", "Alice Test", "person", vec!["AT"], 2, "2026-01-01"),
+            entity("e2", "alice test", "person", vec!["AT"], 1, "2026-01-02"),
+            entity("e3", "Alicia Test", "person", vec![], 1, "2026-01-03"),
         ];
         let high_embed = |a: &EntityId, b: &EntityId| -> f64 {
             if (a.as_str() == "e1" && b.as_str() == "e2")
@@ -619,8 +619,8 @@ mod tests {
 
     #[test]
     fn canonical_most_relationships() {
-        let a = entity("e1", "John Smith", "person", vec![], 5, "2026-01-02");
-        let b = entity("e2", "john smith", "person", vec![], 2, "2026-01-01");
+        let a = entity("e1", "Alice Test", "person", vec![], 5, "2026-01-02");
+        let b = entity("e2", "alice test", "person", vec![], 2, "2026-01-01");
         let (canonical, merged) = pick_canonical(&a, &b);
         assert_eq!(canonical.id, EntityId::new("e1").expect("valid test id"));
         assert_eq!(merged.id, EntityId::new("e2").expect("valid test id"));
@@ -628,8 +628,8 @@ mod tests {
 
     #[test]
     fn canonical_tiebreak_oldest() {
-        let a = entity("e1", "John Smith", "person", vec![], 3, "2026-01-02");
-        let b = entity("e2", "john smith", "person", vec![], 3, "2026-01-01");
+        let a = entity("e1", "Alice Test", "person", vec![], 3, "2026-01-02");
+        let b = entity("e2", "alice test", "person", vec![], 3, "2026-01-01");
         let (canonical, _) = pick_canonical(&a, &b);
         assert_eq!(
             canonical.id,
@@ -642,7 +642,7 @@ mod tests {
     fn idempotent_no_self_candidates() {
         let entities = vec![entity(
             "e1",
-            "John Smith",
+            "Alice Test",
             "person",
             vec![],
             1,
