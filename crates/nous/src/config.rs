@@ -12,6 +12,7 @@ mod arc_str {
 
     use serde::{Deserialize, Serialize};
 
+    #[must_use]
     pub fn serialize<S>(value: &Arc<str>, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -19,6 +20,7 @@ mod arc_str {
         value.as_ref().serialize(serializer)
     }
 
+    #[must_use]
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Arc<str>, D::Error>
     where
         D: serde::Deserializer<'de>,

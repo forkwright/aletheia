@@ -72,6 +72,7 @@ pub struct OutputWriter {
 
 impl OutputWriter {
     /// Create a new output writer backed by a temp file in `dir`.
+    #[must_use]
     pub async fn new(dir: &Path) -> Result<Self, OutputError> {
         // WHY: Create parent dir if missing so callers don't need to pre-create.
         fs::create_dir_all(dir).await.context(CreateSnafu)?;
@@ -83,6 +84,7 @@ impl OutputWriter {
     }
 
     /// Append a chunk of output.
+    #[must_use]
     pub async fn write_chunk(&mut self, data: &[u8]) -> Result<(), OutputError> {
         self.file.write_all(data).await.context(WriteSnafu)?;
         self.file.flush().await.context(FlushSnafu)?;
@@ -105,6 +107,7 @@ pub struct OutputReader {
 
 impl OutputReader {
     /// Open the output file at `path` for streaming reads.
+    #[must_use]
     pub async fn open(path: &Path) -> Result<Self, OutputError> {
         let file = fs::File::open(path).await.context(OpenSnafu)?;
         Ok(Self { file })

@@ -663,6 +663,7 @@ async fn exchange_code(
 /// # Ok(())
 /// # }
 /// ```
+#[must_use]
 pub async fn pkce_login(provider: &OAuthProvider) -> Result<CredentialFile> {
     // Generate PKCE parameters
     let pkce = PkcePair::generate()?;

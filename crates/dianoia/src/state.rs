@@ -154,6 +154,7 @@ impl ProjectState {
     ///
     /// Non-advance transitions (`Abandon`, `Pause`, `Resume`, `Revert`, …) bypass
     /// the gate — gates only guard forward progress, not escape hatches.
+    #[must_use]
     pub fn transition_gated(self, t: Transition, gate: Option<&PhaseGate>) -> Result<Self> {
         let is_advance = matches!(
             &t,

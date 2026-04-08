@@ -120,6 +120,7 @@ impl ContractRegistry {
     ///
     /// Returns [`error::Error::RoleContract`] if the file exists but
     /// cannot be parsed as valid TOML.
+    #[must_use]
     pub fn load_from_file(path: &Path) -> Result<Self> {
         let content = match std::fs::read_to_string(path) {
             Ok(c) => c,
@@ -142,6 +143,7 @@ impl ContractRegistry {
     ///
     /// Returns [`error::Error::RoleContract`] if the string is not valid
     /// roles TOML.
+    #[must_use]
     pub fn from_toml(content: &str) -> Result<Self> {
         Self::parse_toml(content, Path::new("<inline>"))
     }
