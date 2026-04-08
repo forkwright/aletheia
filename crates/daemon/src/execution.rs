@@ -500,7 +500,22 @@ async fn execute_knowledge_task(
             BuiltinTask::IndexMaintenance => executor.maintain_indexes(&nous_id_owned),
             BuiltinTask::GraphHealthCheck => executor.health_check(&nous_id_owned),
             BuiltinTask::SkillDecay => executor.run_skill_decay(&nous_id_owned),
-            _ => unreachable!("non-knowledge task routed to execute_knowledge_task"),
+            BuiltinTask::Prosoche
+            | BuiltinTask::TraceRotation
+            | BuiltinTask::DriftDetection
+            | BuiltinTask::DbSizeMonitor
+            | BuiltinTask::RetentionExecution
+            | BuiltinTask::SelfAudit
+            | BuiltinTask::ProbeAudit
+            | BuiltinTask::EvolutionSearch
+            | BuiltinTask::SelfReflection
+            | BuiltinTask::GraphCleanup
+            | BuiltinTask::OpsFactExtraction
+            | BuiltinTask::LessonExtraction
+            | BuiltinTask::SelfPrompt
+            | BuiltinTask::ProposeRules => {
+                unreachable!("non-knowledge task routed to execute_knowledge_task")
+            }
         }?;
 
         report.duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);

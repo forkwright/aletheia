@@ -43,7 +43,6 @@ pub(crate) fn format_messages(messages: &[Message], include_tool_calls: bool) ->
             Role::System => "SYSTEM",
             Role::User => "USER",
             Role::Assistant => "ASSISTANT",
-            _ => "UNKNOWN",
         };
 
         match &msg.content {
