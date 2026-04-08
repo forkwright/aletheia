@@ -19,9 +19,9 @@ test-full = []
 [dependencies]
 aletheia-koina = { path = "../koina" }
 keyring = { version = "3", optional = true }
-argon2 = { version = "0.5", features = ["std"] }
+argon2 = { version = "0.5", default-features = false, features = ["std"] }
 base64 = { workspace = true }
-blake3 = "1"
+blake3 = { version = "1", default-features = false }
 jiff = { workspace = true }
 prometheus = { workspace = true }
 rand = { workspace = true }

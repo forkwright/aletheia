@@ -119,22 +119,22 @@ zeroize = "1"
 
 # Tracing
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "json", "smallvec", "parking_lot"] }
 tracing-appender = "0.2"
 
 # Metrics
-prometheus = { version = "0.14", features = ["process"] }
+prometheus = { version = "0.14", default-features = false, features = ["process"] }
 
 # Config
 figment = { version = "0.10", features = ["toml", "env"] }
 
 # IDs
-uuid = { version = "1", features = ["v4", "serde"] }
+uuid = { version = "1", default-features = false, features = ["v4", "serde", "std"] }
 
 # Types
-compact_str = { version = "0.9", features = ["serde"] }
-indexmap = { version = "2", features = ["serde"] }
-ulid = { version = "1", features = ["serde"] }
+compact_str = { version = "0.9", default-features = false, features = ["serde"] }
+indexmap = { version = "2", default-features = false, features = ["serde", "std"] }
+ulid = { version = "1", default-features = false, features = ["serde", "std"] }
 
 # Time
 jiff = "0.2"
@@ -146,7 +146,7 @@ futures = "0.3"
 # Async
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "sync", "time", "fs"] }
 tokio-stream = "0.1"
-tokio-util = { version = "0.7", features = ["rt"] }
+tokio-util = { version = "0.7", default-features = false, features = ["rt"] }
 
 # Compression
 flate2 = "1"
@@ -164,7 +164,7 @@ rcgen = "0.14"
 regex = "1"
 
 # Database
-rusqlite = { version = "0.38", features = ["bundled"] }
+rusqlite = { version = "0.38", default-features = false, features = ["bundled"] }
 
 # FFI
 rustix = { version = "1", default-features = false, features = ["fs", "mm", "thread"] }
