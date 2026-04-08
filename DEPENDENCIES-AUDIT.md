@@ -11,14 +11,14 @@
 
 - **Chain:** rusqlite (bundled) → libsqlite3-sys → C:sqlite3
 - **Why:** Core persistent knowledge graph storage (graphe crate)
-- **Elimination:** None planned — acceptable core dependency
+- **Elimination:** None planned - acceptable core dependency
 - **Status:** Essential
 
 ### inotify-sys (Linux inotify)
 
 - **Chain:** notify → inotify-sys → C:libc.inotify
 - **Why:** File change notifications for config hot-reload (daemon)
-- **Elimination:** None planned — kernel API has no pure-Rust alternative
+- **Elimination:** None planned - kernel API has no pure-Rust alternative
 - **Status:** Essential
 
 ### onig_sys (Oniguruma regex)
@@ -40,7 +40,7 @@
 ### linux-raw-sys
 
 - **Chain:** rustix → workspace
-- **What:** Generated Rust bindings for Linux syscalls — no C code compiled
+- **What:** Generated Rust bindings for Linux syscalls - no C code compiled
 - **Status:** Not a C dependency; no action needed
 
 ## Eliminated
@@ -60,11 +60,11 @@
 
 ### ring → RustCrypto (#2288)
 
-ring enters via:
+- **ring** enters via:
 1. symbolon (JWT signing: `ring::hmac`, encryption: `ring::aead`)
 2. taxis (config encryption: `ring::aead`)
 3. hermeneus (SHA256 fingerprint: `ring::digest`)
-4. rustls (TLS — cannot migrate until rustls-rustcrypto stabilizes)
+4. rustls (TLS - cannot migrate until rustls-rustcrypto stabilizes)
 
 Migration replaces ring with `hmac`, `sha2`, `aes-gcm`, `chacha20poly1305` crates. ring remains as transitive via rustls.
 
@@ -72,9 +72,9 @@ Migration replaces ring with `hmac`, `sha2`, `aes-gcm`, `chacha20poly1305` crate
 
 chrono enters via:
 1. daemon (cron crate requires `chrono::Utc` for schedule iteration)
-2. rmcp (transitive via schemars — not controllable)
+2. rmcp (transitive via schemars - not controllable)
 
-Migration requires replacing `cron` crate with jiff-native alternative.
+Migrate by replacing the `cron` crate with a jiff-native alternative.
 
 ## Rand Version Reconciliation
 
@@ -83,10 +83,10 @@ Migration requires replacing `cron` crate with jiff-native alternative.
 | Version | Dependents | Upgrade Path |
 |---------|------------|--------------|
 | **rand@0.9.2** | aletheia, episteme, hermeneus, koina, krites, pylon, symbolon, taxis, candle-core, candle-transformers, hf-hub, proptest, tokenizers, twox-hash, rand_distr, float8, half | ✓ Current workspace standard |
-| **rand@0.10.0** | rmcp@1.3.0 | Blocked — rmcp requires 0.10; wait for ecosystem alignment or rmcp update |
-| **rand@0.8.5** | phf_generator@0.11.3 (transitive via multiple crates) | Indirect — requires upstream updates to phf_generator |
+| **rand@0.10.0** | rmcp@1.3.0 | Blocked - rmcp requires 0.10; wait for ecosystem alignment or rmcp update |
+| **rand@0.8.5** | phf_generator@0.11.3 (transitive via multiple crates) | Indirect - requires upstream updates to phf_generator |
 
-**Impact:** Low — rand is a well-maintained crate with no known security issues across these versions. The duplication adds minor compile-time overhead but no runtime duplication (different major versions are distinct crates).
+**Impact:** Low - rand is a well-maintained crate with no known security issues across these versions. The duplication adds minor compile-time overhead but no runtime duplication (different major versions are distinct crates).
 
 **Recommendation:** Monitor rmcp for rand 0.9 compatibility. No action needed for rand 0.8.5 (phf_generator is a build-time dependency for perfect hash functions).
 

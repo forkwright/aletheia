@@ -241,4 +241,4 @@ strip = "symbols"
 
 ## Ergon
 
-Ergon is a strategic fork of aletheia maintained in a separate repository. It tracks aletheia's main branch with zero divergence — no custom code, no feature additions. It exists as a client-deliverable identity: same runtime, different branding. Changes flow from aletheia to ergon, never the reverse. Do not add ergon-specific code to this repository.
+Tracks aletheia's main branch with zero divergence - no custom code, no feature additions. Ergon exists as a client-deliverable identity: same runtime, different branding. Changes flow from aletheia to ergon, never the reverse. Do not add ergon-specific code to this repository.

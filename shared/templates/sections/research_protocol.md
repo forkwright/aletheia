@@ -35,7 +35,7 @@ Before including a source:
 
 For any claim central to our thesis:
 - **Actively search for disconfirming evidence** ("X is wrong", "critique of X", "limitations of X")
-- **Steel-man the strongest counterargument** - present it fairly before responding
+- **Present the strongest counterargument** - show it fully before responding
 - **If no counterargument found, note that explicitly** - absence of criticism is itself information (either too new or too niche)
 
 ### Research log
@@ -74,4 +74,4 @@ For systematic literature reviews (not quick lookups):
 - **Confidence inflation** - treating one preprint as established fact
 - **Synthesis drift** - our interpretation slowly becoming "what the research says"
 - **Cherry-picking** - only citing evidence that supports our thesis
-- **Hallucinated citations** - the fundamental AI failure mode. When uncertain, say "I need to verify this" rather than fabricating a plausible-sounding reference
+- **Hallucinated citations** - the fundamental AI failure mode. When uncertain, say "I need to verify this" instead of fabricating a plausible-sounding reference

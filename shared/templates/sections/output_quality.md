@@ -1,6 +1,6 @@
 ## Output quality
 
-Your chat output is for the human. Your thinking is for you. Keep them separate.
+Separate chat output from internal thinking. Chat is for the human; thinking is for you.
 
 ### Thinking (never in chat)
 - Memory/context save confirmations

@@ -8,19 +8,19 @@ Fix these 5 issues ONE AT A TIME. After each fix, commit separately with convent
 Read: `gh issue view 2845 --json body`
 Replace wildcard `_` catch-all match arms with explicit variants on internal enums.
 
-## 2. #2840: clone hotspots — config.id cloned ~15x in pipeline
+## 2. #2840: clone hotspots - config.id cloned ~15x in pipeline
 Read: `gh issue view 2840 --json body`
-Replace repeated `.clone()` calls with references or Arc where appropriate.
+Replace repeated `.clone()` calls with references or `Arc` where appropriate.
 
-## 3. #2820: nous metrics tests mirror episteme pattern — 5 more assertion-free tests
+## 3. #2820: nous metrics tests mirror episteme pattern - 5 more assertion-free tests
 Read: `gh issue view 2820 --json body`
 Add meaningful assertions to the identified tests that currently have no assertions.
 
-## 4. #2818: krites debug/exploratory tests left in codebase — zero assertion tests
+## 4. #2818: krites debug/exploratory tests left in codebase - zero assertion tests
 Read: `gh issue view 2818 --json body`
 Add assertions to exploratory tests or convert them to proper tests with expectations.
 
-## 5. #2655: dormant features and dead config — local-llm, custom_commands, dianoia metrics
+## 5. #2655: dormant features and dead config - local-llm, custom_commands, dianoia metrics
 Read: `gh issue view 2655 --json body`
 Remove dead feature flags and unused config from the identified locations.
 

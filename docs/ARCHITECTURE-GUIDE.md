@@ -6,7 +6,7 @@ For new contributors. For the reference module map and dependency graph, see [AR
 
 ## What aletheia is
 
-Aletheia is a self-hosted multi-agent AI system. Multiple AI agents run as persistent actors, each with character, memory, and domain expertise. They communicate via Signal, HTTP API, or TUI, and persist understanding across sessions.
+Aletheia runs multiple AI agents as persistent actors. Each agent has character, memory, and domain expertise. They communicate via Signal, HTTP API, or TUI, and persist understanding across sessions.
 
 It is not a chatbot framework. It is a distributed cognition system: each agent has persistent identity (SOUL.md) and memory (MEMORY.md), and coordinates with other agents through shared infrastructure.
 

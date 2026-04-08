@@ -407,7 +407,7 @@ aletheia backup --list --json    # machine-readable
 
 ## Restore from backup
 
-The backup is a complete SQLite copy. To restore:
+Restoring requires the complete SQLite copy from backup:
 
 ```bash
 systemctl --user stop aletheia
@@ -634,7 +634,7 @@ Ephemeral sessions use keys prefixed with `spawn:`, `ask:`, or `dispatch:`. They
 
 ### Denied tool calls
 
-If the LLM attempts a tool outside its role's allowlist, the call is blocked and the agent receives a denied result, not an error. If an agent reports it cannot perform an action, verify the requested tool is in its role's allowlist.
+Expect a denied result (not an error) when a role's allowlist blocks a tool call. If an agent reports it cannot perform an action, verify the requested tool is in its role's allowlist.
 
 ---
 

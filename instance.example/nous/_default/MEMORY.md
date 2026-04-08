@@ -2,7 +2,7 @@
 
 Long-term facts live in the knowledge store (use `memory_search` to query). This file holds operational context: things that should persist across sessions but don't fit the knowledge graph.
 
-Keep this file lean. If an entry is no longer relevant, delete it. If it belongs in the knowledge store, move it there. If it duplicates what's in USER.md or GOALS.md, remove the duplicate.
+Keep this file lean. Delete entries that are no longer relevant. Move entries that belong in the knowledge store. Remove duplicates found in USER.md or GOALS.md.
 
 ## System
 

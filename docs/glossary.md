@@ -4,7 +4,7 @@ Project-specific terms used across the Aletheia codebase. For the naming philoso
 Greek construction system, see [gnomon.md](gnomon.md). For the full crate registry with
 layer-by-layer analysis, see [lexicon.md](lexicon.md).
 
-Each entry gives: Greek word and pronunciation, etymology, technical meaning in this
+Each entry lists the Greek word and pronunciation, etymology, and technical meaning in this
 codebase, and cross-reference to the relevant crate or module.
 
 ---
@@ -49,7 +49,7 @@ communication channels and the agent pipeline.
 **Etymology.** From *διά* (through, across) + *νοῦς* (mind). Plato's term for discursive
 reasoning: the mode of thought that works *through* problems step by step, as opposed to
 noesis (immediate insight). In the divided line of *Republic* VI, dianoia occupies the
-upper-sensible region - reasoning that still relies on hypotheses and images rather than
+upper-sensible region - reasoning that still relies on hypotheses and images instead of
 grasping Forms directly.
 
 **In this codebase.** The multi-phase planning orchestrator. Implements structured reasoning
@@ -94,7 +94,7 @@ live Aletheia instance to verify agent behavior matches specification.
 **εἶδος** (*eí-dos*)
 
 **Etymology.** From *εἴδω* (to see, to know). The visible form: the essential shape that
-makes a thing *this kind* of thing rather than another. Plato's term for the intelligible
+makes a thing *this kind* of thing, not another. Plato's term for the intelligible
 forms; Aristotle's term for the formal cause.
 
 **In this codebase.** The shared memory type library. Defines `Fact`, `Session`, `NousId`,
@@ -173,7 +173,7 @@ workspace uses without it belonging to any single layer.
 **Etymology.** From *κρίνω* (to separate, to judge, to decide). The judge: one who
 distinguishes, evaluates, and renders a verdict.
 
-**In this codebase.** The Datalog query engine. A vendored CozoDB instance that evaluates
+**In this codebase.** The Datalog query engine. A vendored CozoDB instance evaluates
 logical rules and facts, deciding what follows from what the system knows.
 
 **Crate.** `krites` (low layer) - Datalog engine.
