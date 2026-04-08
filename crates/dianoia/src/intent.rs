@@ -9,9 +9,9 @@
 
 use std::path::{Path, PathBuf};
 
+use aletheia_koina::ulid::Ulid;
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
-use aletheia_koina::ulid::Ulid;
 
 use crate::error::{self, Result};
 
@@ -57,6 +57,7 @@ pub enum IntentSource {
 /// before every autonomous decision: planning, dispatch ordering, merge priority,
 /// and attention allocation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(try_from = "IntentRaw")]
 pub struct Intent {
     /// Unique intent identifier.
     pub id: Ulid,
@@ -79,6 +80,69 @@ pub struct Intent {
     /// Resolved intents are retained for audit purposes but excluded from the
     /// active set consulted during bootstrap.
     pub resolved: bool,
+}
+
+/// Raw intent for deserialization, validated on conversion.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct IntentRaw {
+    id: Ulid,
+    description: String,
+    conviction_tier: ConvictionTier,
+    source: IntentSource,
+    created_at: jiff::Timestamp,
+    expires_at: Option<jiff::Timestamp>,
+    resolved: bool,
+}
+
+/// Error type for intent validation failures.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IntentError {
+    message: String,
+}
+
+impl std::fmt::Display for IntentError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl std::error::Error for IntentError {}
+
+impl TryFrom<IntentRaw> for Intent {
+    type Error = IntentError;
+
+    fn try_from(raw: IntentRaw) -> std::result::Result<Self, Self::Error> {
+        if raw.source == IntentSource::Nous && raw.conviction_tier != ConvictionTier::Suggestion {
+            return Err(IntentError {
+                message: "nous may only add Suggestion-tier intents; \
+                         Directive and Preference are operator-only"
+                    .to_owned(),
+            });
+        }
+        Ok(Self {
+            id: raw.id,
+            description: raw.description,
+            conviction_tier: raw.conviction_tier,
+            source: raw.source,
+            created_at: raw.created_at,
+            expires_at: raw.expires_at,
+            resolved: raw.resolved,
+        })
+    }
+}
+
+impl From<Intent> for IntentRaw {
+    fn from(intent: Intent) -> Self {
+        Self {
+            id: intent.id,
+            description: intent.description,
+            conviction_tier: intent.conviction_tier,
+            source: intent.source,
+            created_at: intent.created_at,
+            expires_at: intent.expires_at,
+            resolved: intent.resolved,
+        }
+    }
 }
 
 impl Intent {
@@ -213,11 +277,7 @@ impl IntentStore {
         let now = jiff::Timestamp::now();
         let expired_count = intents
             .iter()
-            .filter(|i| {
-                !i.resolved
-                    && i.expires_at
-                        .is_some_and(|exp| exp <= now)
-            })
+            .filter(|i| !i.resolved && i.expires_at.is_some_and(|exp| exp <= now))
             .count();
         // WHY: no structural change needed — is_active() checks expires_at at read time.
         // We write back to canonicalise the file (e.g. after an external edit).
@@ -275,10 +335,7 @@ impl IntentStore {
             };
             out.push_str(&format!(
                 "- {} {} (set by {}, {})\n",
-                tier_label,
-                intent.description,
-                source_label,
-                intent.created_at,
+                tier_label, intent.description, source_label, intent.created_at,
             ));
         }
 
@@ -290,10 +347,9 @@ impl IntentStore {
         if !self.path.exists() {
             return Ok(Vec::new());
         }
-        let contents =
-            std::fs::read_to_string(&self.path).context(error::WorkspaceIoSnafu {
-                path: self.path.clone(),
-            })?;
+        let contents = std::fs::read_to_string(&self.path).context(error::WorkspaceIoSnafu {
+            path: self.path.clone(),
+        })?;
         let intents: Vec<Intent> =
             serde_json::from_str(&contents).context(error::WorkspaceDeserializeSnafu)?;
         Ok(intents)
@@ -301,8 +357,7 @@ impl IntentStore {
 
     /// Persist the full intent list to disk atomically with 0600 permissions.
     fn persist(&self, intents: &[Intent]) -> Result<()> {
-        let json =
-            serde_json::to_string_pretty(intents).context(error::WorkspaceSerializeSnafu)?;
+        let json = serde_json::to_string_pretty(intents).context(error::WorkspaceSerializeSnafu)?;
         aletheia_koina::fs::write_restricted(&self.path, json.as_bytes()).context(
             error::WorkspaceIoSnafu {
                 path: self.path.clone(),
@@ -369,7 +424,9 @@ mod tests {
     #[test]
     fn multiple_intents_accumulated() {
         let (_dir, store) = make_store();
-        store.add_intent(operator_directive("directive one")).unwrap();
+        store
+            .add_intent(operator_directive("directive one"))
+            .unwrap();
         store
             .add_intent(operator_preference("preference one"))
             .unwrap();
@@ -489,7 +546,9 @@ mod tests {
     #[test]
     fn active_intents_sorted_directive_first() {
         let (_dir, store) = make_store();
-        store.add_intent(nous_suggestion("low priority hint")).unwrap();
+        store
+            .add_intent(nous_suggestion("low priority hint"))
+            .unwrap();
         store
             .add_intent(operator_preference("medium priority"))
             .unwrap();
@@ -539,7 +598,10 @@ mod tests {
         store.resolve_intent(intent.id).unwrap();
 
         let result = store.render_for_bootstrap().unwrap();
-        assert!(result.is_none(), "resolved intent should not appear in bootstrap");
+        assert!(
+            result.is_none(),
+            "resolved intent should not appear in bootstrap"
+        );
     }
 
     // --- Source / tier access control ---
@@ -622,5 +684,73 @@ mod tests {
     fn conviction_tier_ordering() {
         assert!(ConvictionTier::Directive > ConvictionTier::Preference);
         assert!(ConvictionTier::Preference > ConvictionTier::Suggestion);
+    }
+
+    #[test]
+    fn intent_deserialize_valid_operator_directive() {
+        let valid_id = Ulid::new().to_string();
+        let json = format!(
+            r#"{{
+            "id": "{}",
+            "description": "test intent",
+            "conviction_tier": "Directive",
+            "source": "Operator",
+            "created_at": "2024-01-01T00:00:00Z",
+            "expires_at": null,
+            "resolved": false
+        }}"#,
+            valid_id
+        );
+        let result: std::result::Result<Intent, _> = serde_json::from_str(&json);
+        assert!(
+            result.is_ok(),
+            "operator directive should deserialize: {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn intent_deserialize_valid_nous_suggestion() {
+        let valid_id = Ulid::new().to_string();
+        let json = format!(
+            r#"{{
+            "id": "{}",
+            "description": "test suggestion",
+            "conviction_tier": "Suggestion",
+            "source": "Nous",
+            "created_at": "2024-01-01T00:00:00Z",
+            "expires_at": null,
+            "resolved": false
+        }}"#,
+            valid_id
+        );
+        let result: std::result::Result<Intent, _> = serde_json::from_str(&json);
+        assert!(
+            result.is_ok(),
+            "nous suggestion should deserialize: {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn intent_deserialize_invalid_nous_directive_fails() {
+        let valid_id = Ulid::new().to_string();
+        let json = format!(
+            r#"{{
+            "id": "{}",
+            "description": "invalid intent",
+            "conviction_tier": "Directive",
+            "source": "Nous",
+            "created_at": "2024-01-01T00:00:00Z",
+            "expires_at": null,
+            "resolved": false
+        }}"#,
+            valid_id
+        );
+        let result: std::result::Result<Intent, _> = serde_json::from_str(&json);
+        assert!(
+            result.is_err(),
+            "nous directive should fail deserialization"
+        );
     }
 }

@@ -188,6 +188,7 @@ impl From<NousId> for String {
 /// WHY: ULID uses only 80 bits of randomness; UUID v4 provides 122 bits,
 /// eliminating any practical guessability risk for session tokens.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(try_from = "String")]
 pub struct SessionId(Uuid);
 
 impl SessionId {
@@ -216,6 +217,14 @@ impl SessionId {
 impl Default for SessionId {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl TryFrom<String> for SessionId {
+    type Error = IdError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::parse(&value)
     }
 }
 
@@ -578,6 +587,22 @@ mod tests {
         assert!(SessionId::parse("").is_err());
         assert!(SessionId::parse("not-a-uuid").is_err());
         assert!(SessionId::parse("too-short").is_err());
+    }
+
+    #[test]
+    fn session_id_deserialize_valid_uuid() {
+        let valid_uuid = "550e8400-e29b-41d4-a716-446655440000";
+        let json = format!("\"{}\"", valid_uuid);
+        let result: Result<SessionId, _> = serde_json::from_str(&json);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().to_string(), valid_uuid);
+    }
+
+    #[test]
+    fn session_id_deserialize_invalid_uuid_fails() {
+        let json = "\"not-a-valid-uuid\"";
+        let result: Result<SessionId, _> = serde_json::from_str(json);
+        assert!(result.is_err(), "deserializing invalid UUID should fail");
     }
 
     #[test]
