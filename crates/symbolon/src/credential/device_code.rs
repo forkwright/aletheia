@@ -10,8 +10,8 @@ use serde::Deserialize;
 use snafu::{ResultExt, Snafu};
 use tracing::{debug, info, warn};
 
-use super::file_ops::CredentialFile;
 use super::OAuthProvider;
+use super::file_ops::CredentialFile;
 use super::pkce::url_encode;
 
 /// Errors from Device Code authentication flow.
@@ -372,15 +372,18 @@ pub async fn device_code_login(provider: &DeviceOAuthProvider) -> Result<Credent
     let device_auth = request_device_authorization(&client, provider).await?;
 
     // Step 2: Display instructions to the user
-    println!("\n🔐 Device Authentication Required\n");
-    println!("Please visit: {}", device_auth.verification_uri);
-    println!("And enter code: {}\n", device_auth.user_code);
+    eprintln!("\n🔐 Device Authentication Required\n");
+    eprintln!("Please visit: {}", device_auth.verification_uri);
+    eprintln!("And enter code: {}\n", device_auth.user_code);
 
     if let Some(complete_uri) = &device_auth.verification_uri_complete {
-        println!("Or visit this direct link:\n  {}\n", complete_uri);
+        eprintln!("Or visit this direct link:\n  {}\n", complete_uri);
     }
 
-    println!("Waiting for authorization... (expires in {} seconds)\n", device_auth.expires_in);
+    eprintln!(
+        "Waiting for authorization... (expires in {} seconds)\n",
+        device_auth.expires_in
+    );
 
     // Step 3: Poll for token
     let token_response = poll_token_endpoint(
@@ -393,12 +396,12 @@ pub async fn device_code_login(provider: &DeviceOAuthProvider) -> Result<Credent
     .await?;
 
     info!("successfully obtained access token via device flow");
-    println!("\n✓ Authentication successful!\n");
+    eprintln!("\n✓ Authentication successful!\n");
 
     // Step 4: Build credential file
-    let expires_at = token_response.expires_in.map(|secs| {
-        super::unix_epoch_ms() + secs * 1000
-    });
+    let expires_at = token_response
+        .expires_in
+        .map(|secs| super::unix_epoch_ms() + secs * 1000);
 
     let scopes = token_response
         .scope
@@ -476,9 +479,9 @@ where
     info!("successfully obtained access token via device flow");
 
     // Step 4: Build credential file
-    let expires_at = token_response.expires_in.map(|secs| {
-        super::unix_epoch_ms() + secs * 1000
-    });
+    let expires_at = token_response
+        .expires_in
+        .map(|secs| super::unix_epoch_ms() + secs * 1000);
 
     let scopes = token_response
         .scope
@@ -510,7 +513,10 @@ mod tests {
         .with_redirect_uri("http://localhost/callback");
 
         assert_eq!(provider.base.client_id, "test-client");
-        assert_eq!(provider.device_authorization_url, "https://example.com/device");
+        assert_eq!(
+            provider.device_authorization_url,
+            "https://example.com/device"
+        );
         assert_eq!(provider.base.scopes, vec!["read", "write"]);
         assert_eq!(
             provider.base.redirect_uri,
@@ -531,12 +537,15 @@ mod tests {
     #[test]
     fn test_build_form_body_str() {
         let mut params = HashMap::new();
-        params.insert("grant_type".to_string(), "urn:ietf:params:oauth:grant-type:device_code".to_string());
+        params.insert(
+            "grant_type".to_string(),
+            "urn:ietf:params:oauth:grant-type:device_code".to_string(),
+        );
         params.insert("device_code".to_string(), "abc123".to_string());
         params.insert("client_id".to_string(), "my client".to_string());
 
         let body = build_form_body_str(&params);
-        
+
         // HashMap iteration order is not guaranteed, so check for presence of each param
         assert!(body.contains("grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code"));
         assert!(body.contains("device_code=abc123"));
