@@ -69,7 +69,6 @@ rustls = { workspace = true }
 
 indexmap = { workspace = true }
 jiff = { workspace = true }
-ulid = { workspace = true }
 
 cliclack = "0.5"
 clap = { version = "4", features = ["derive", "env"] }

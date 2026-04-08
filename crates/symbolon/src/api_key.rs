@@ -33,7 +33,7 @@ pub(crate) fn generate(
     let full_key = format!("{KEY_PREFIX}_{prefix}_{secret_hex}");
 
     let key_hash = blake3::hash(full_key.as_bytes()).to_hex().to_string();
-    let id = ulid::Ulid::new().to_string();
+    let id = aletheia_koina::ulid::Ulid::new().to_string();
 
     let expires_at = expires_in.map(|d| {
         let expiry = std::time::SystemTime::now() + d;

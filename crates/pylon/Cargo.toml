@@ -47,7 +47,6 @@ tracing = { workspace = true }
 prometheus = { workspace = true }
 
 # Types
-ulid = { workspace = true }
 
 # Cryptographic random number generation (CSRF token generation)
 rand = { workspace = true }

@@ -92,7 +92,7 @@ impl From<RequestId> for String {
 
 /// Middleware that generates a ULID request ID and stores it in request extensions.
 pub async fn inject_request_id(mut request: Request, next: Next) -> Response {
-    let id = ulid::Ulid::new().to_string();
+    let id = aletheia_koina::ulid::Ulid::new().to_string();
     request.extensions_mut().insert(RequestId(id));
     next.run(request).await
 }

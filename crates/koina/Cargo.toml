@@ -28,7 +28,6 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 rand = { workspace = true }
 tokio = { workspace = true, features = ["sync", "time"] }
-ulid = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]

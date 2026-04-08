@@ -1,7 +1,7 @@
 //! Phase types within a project.
 
 use serde::{Deserialize, Serialize};
-use ulid::Ulid;
+use aletheia_koina::ulid::Ulid;
 
 use crate::plan::{Plan, PlanState};
 

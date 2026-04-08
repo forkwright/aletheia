@@ -1,7 +1,7 @@
 //! Executable plans within a phase.
 
 use serde::{Deserialize, Serialize};
-use ulid::Ulid;
+use aletheia_koina::ulid::Ulid;
 
 use crate::error::{self, Result};
 

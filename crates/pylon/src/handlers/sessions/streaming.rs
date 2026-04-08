@@ -416,7 +416,7 @@ pub async fn stream_turn(
 
     let session_id = resolve_session(&state, &agent_id, &session_key, model.as_deref()).await?;
 
-    let turn_id = ulid::Ulid::new().to_string();
+    let turn_id = aletheia_koina::ulid::Ulid::new().to_string();
     let (webchat_tx, webchat_rx) = mpsc::channel::<WebchatEvent>(32);
     let (nous_tx, mut nous_rx) = mpsc::channel::<TurnStreamEvent>(64);
 

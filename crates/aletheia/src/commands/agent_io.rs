@@ -318,7 +318,7 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
         target_nous_id: args.target_id.clone(),
         force: args.force,
     };
-    let id_gen = || ulid::Ulid::new().to_string();
+    let id_gen = || aletheia_koina::ulid::Ulid::new().to_string();
     let result =
         aletheia_mneme::import::import_agent(&agent_file, &store, &workspace_path, &id_gen, &opts)
             .whatever_context("import failed")?;
@@ -423,7 +423,7 @@ pub(crate) fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
             let content_json = serde_json::to_string(skill)
                 .with_whatever_context(|_| format!("failed to serialize skill: {slug}"))?;
 
-            let fact_id = ulid::Ulid::new().to_string();
+            let fact_id = aletheia_koina::ulid::Ulid::new().to_string();
             let fact = Fact {
                 id: aletheia_mneme::id::FactId::new(fact_id.clone())
                     .whatever_context("invalid fact id")?,
@@ -459,7 +459,7 @@ pub(crate) fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
                 .with_whatever_context(|_| format!("failed to insert skill {slug}"))?;
 
             let embedding_text = format!("{}: {}", skill.name, skill.description);
-            let emb_id = ulid::Ulid::new().to_string();
+            let emb_id = aletheia_koina::ulid::Ulid::new().to_string();
             let chunk = aletheia_mneme::knowledge::EmbeddedChunk {
                 id: aletheia_mneme::id::EmbeddingId::new(emb_id)
                     .whatever_context("invalid embedding id")?,

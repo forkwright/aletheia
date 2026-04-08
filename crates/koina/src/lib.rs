@@ -39,6 +39,8 @@ pub mod secret;
 pub mod system;
 /// Tracing subscriber initialization for human-readable and JSON log output.
 pub mod tracing_init;
+/// Internal ULID generation (Crockford base32, 48-bit timestamp + 80-bit random).
+pub mod ulid;
 
 #[cfg(test)]
 mod assertions {

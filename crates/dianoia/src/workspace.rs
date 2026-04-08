@@ -148,8 +148,8 @@ impl ProjectWorkspace {
                 blockers.push(Blocker {
                     description: content,
                     plan_id: plan_id_str
-                        .parse::<ulid::Ulid>()
-                        .unwrap_or_else(|_| ulid::Ulid::new()),
+                        .parse::<aletheia_koina::ulid::Ulid>()
+                        .unwrap_or_else(|_| aletheia_koina::ulid::Ulid::new()),
                     detected_at: jiff::Timestamp::now(),
                 });
             }
@@ -210,7 +210,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let ws = ProjectWorkspace::create(dir.path().join("project")).unwrap();
 
-        let plan_id = ulid::Ulid::new();
+        let plan_id = aletheia_koina::ulid::Ulid::new();
         let blocker = Blocker {
             description: "blocked on API design".into(),
             plan_id,
@@ -255,8 +255,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let ws = ProjectWorkspace::create(dir.path().join("project")).unwrap();
 
-        let plan_id_1 = ulid::Ulid::new();
-        let plan_id_2 = ulid::Ulid::new();
+        let plan_id_1 = aletheia_koina::ulid::Ulid::new();
+        let plan_id_2 = aletheia_koina::ulid::Ulid::new();
 
         let first_blocker = Blocker {
             description: "first blocker".into(),

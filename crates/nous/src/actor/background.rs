@@ -427,7 +427,7 @@ async fn run_skill_extraction(
                             FactAccess, FactLifecycle, FactProvenance, FactTemporal,
                         };
                         let fact_id =
-                            match aletheia_mneme::id::FactId::new(ulid::Ulid::new().to_string()) {
+                            match aletheia_mneme::id::FactId::new(aletheia_koina::ulid::Ulid::new().to_string()) {
                                 Ok(id) => id,
                                 Err(e) => {
                                     warn!(error = %e, "failed to create fact ID for skill");

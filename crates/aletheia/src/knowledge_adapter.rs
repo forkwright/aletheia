@@ -154,7 +154,7 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
             let now = jiff::Zoned::now()
                 .strftime("%Y-%m-%dT%H:%M:%SZ")
                 .to_string();
-            let new_id = format!("fact-{}", ulid::Ulid::new());
+            let new_id = format!("fact-{}", aletheia_koina::ulid::Ulid::new());
 
             let retract_script = r"
                 ?[id, valid_from, content, nous_id, confidence, tier, valid_to, superseded_by, source_session_id, recorded_at,

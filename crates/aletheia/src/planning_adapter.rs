@@ -322,7 +322,7 @@ impl PlanningService for FilesystemPlanningService {
                     .build()
                 })?;
 
-                let phase_ulid: ulid::Ulid = phase_id.parse().map_err(|e: ulid::DecodeError| {
+                let phase_ulid: aletheia_koina::ulid::Ulid = phase_id.parse().map_err(|e: aletheia_koina::ulid::DecodeError| {
                     InvalidIdSnafu {
                         kind: "phase_id".to_owned(),
                         message: e.to_string(),
@@ -414,14 +414,14 @@ fn find_plan_mut<'a>(
     phase_id: &str,
     plan_id: &str,
 ) -> Result<&'a mut aletheia_dianoia::plan::Plan, PlanningAdapterError> {
-    let phase_ulid: ulid::Ulid = phase_id.parse().map_err(|e: ulid::DecodeError| {
+    let phase_ulid: aletheia_koina::ulid::Ulid = phase_id.parse().map_err(|e: aletheia_koina::ulid::DecodeError| {
         InvalidIdSnafu {
             kind: "phase_id".to_owned(),
             message: e.to_string(),
         }
         .build()
     })?;
-    let plan_ulid: ulid::Ulid = plan_id.parse().map_err(|e: ulid::DecodeError| {
+    let plan_ulid: aletheia_koina::ulid::Ulid = plan_id.parse().map_err(|e: aletheia_koina::ulid::DecodeError| {
         InvalidIdSnafu {
             kind: "plan_id".to_owned(),
             message: e.to_string(),

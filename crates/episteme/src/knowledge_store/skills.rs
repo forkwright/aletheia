@@ -197,7 +197,7 @@ impl KnowledgeStore {
             })?;
         "approved".clone_into(&mut pending_skill.status);
 
-        let new_id = crate::id::FactId::new(ulid::Ulid::new().to_string())
+        let new_id = crate::id::FactId::new(aletheia_koina::ulid::Ulid::new().to_string())
             .context(crate::error::InvalidIdSnafu)?;
         let skill_json = serde_json::to_string(&pending_skill.skill).map_err(|e| {
             crate::error::EngineQuerySnafu {
