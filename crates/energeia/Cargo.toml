@@ -36,7 +36,6 @@ snafu = { workspace = true }
 tokio = { workspace = true, features = ["process", "io-util"] }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
-ulid = { workspace = true }
 
 [dev-dependencies]
 static_assertions = { workspace = true }

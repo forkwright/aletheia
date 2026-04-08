@@ -148,7 +148,7 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
         TraceLayer::new_for_http()
             .make_span_with(|request: &axum::http::Request<_>| {
                 let request_id = request.extensions().get::<RequestId>().map_or_else(
-                    || ulid::Ulid::new().to_string(),
+                    || aletheia_koina::ulid::Ulid::new().to_string(),
                     std::string::ToString::to_string,
                 );
                 info_span!("http_request",

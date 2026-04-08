@@ -334,7 +334,7 @@ pub fn store_audit_report(
             CheckStatus::Fail => EpistemicTier::Assumed,
         };
 
-        let fact_id = match aletheia_mneme::id::FactId::new(format!("audit-{}", ulid::Ulid::new()))
+        let fact_id = match aletheia_mneme::id::FactId::new(format!("audit-{}", aletheia_koina::ulid::Ulid::new()))
         {
             Ok(id) => id,
             Err(e) => {

@@ -8,7 +8,7 @@
 
 use snafu::ResultExt;
 use tracing::{debug, instrument, warn};
-use ulid::Ulid;
+use aletheia_koina::ulid::Ulid;
 
 use aletheia_mneme::store::SessionStore;
 use aletheia_mneme::types::{Role, UsageRecord};
@@ -25,7 +25,7 @@ use crate::session::SessionState;
 /// within each millisecond and practically unique across restarts.
 fn turn_seq_from_ulid(ulid: &Ulid) -> i64 {
     // NOTE: ULID is 128-bit: shift right 65 bits to keep upper 63 bits (47-bit timestamp + 16-bit randomness prefix); mask ensures sign bit is zero so cast to i64 never wraps
-    let raw = u128::from(*ulid);
+    let raw = ulid.as_u128();
     #[expect(
         clippy::as_conversions,
         reason = "u128→i64: mask ensures sign bit is zero so cast never wraps"

@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
-use ulid::Ulid;
+use aletheia_koina::ulid::Ulid;
 
 use crate::error::{self, Result};
 

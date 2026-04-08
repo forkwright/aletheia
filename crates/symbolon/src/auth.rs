@@ -62,7 +62,7 @@ impl AuthService {
         role: Role,
     ) -> Result<crate::types::User> {
         let hash = password::hash_password(password)?;
-        let id = ulid::Ulid::new().to_string();
+        let id = aletheia_koina::ulid::Ulid::new().to_string();
         self.store.create_user(&id, username, &hash, role)
     }
 

@@ -299,7 +299,7 @@ impl JwtManager {
             iat: now,
             // WHY: saturate to i64::MAX: a TTL exceeding ~292 billion years is effectively infinite
             exp: now + i64::try_from(ttl.as_secs()).unwrap_or(i64::MAX),
-            jti: ulid::Ulid::new().to_string(),
+            jti: aletheia_koina::ulid::Ulid::new().to_string(),
             kind,
         };
 

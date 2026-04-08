@@ -96,7 +96,7 @@ impl EnergeiaStore {
     /// Returns `Error::Store` on write failure, `Error::Serialization` on
     /// encoding failure.
     pub fn create_dispatch(&self, project: &str, spec: &DispatchSpec) -> Result<DispatchId> {
-        let id = DispatchId::new(ulid::Ulid::new().to_string());
+        let id = DispatchId::new(aletheia_koina::ulid::Ulid::new().to_string());
         let spec_json =
             serde_json::to_string(spec).map_err(|e| ser_err("serialize dispatch spec", e))?;
 
@@ -190,7 +190,7 @@ impl EnergeiaStore {
         dispatch_id: &DispatchId,
         prompt_number: u32,
     ) -> Result<SessionId> {
-        let id = SessionId::new(ulid::Ulid::new().to_string());
+        let id = SessionId::new(aletheia_koina::ulid::Ulid::new().to_string());
         let now = jiff::Timestamp::now();
 
         let record = SessionRecord {
@@ -294,7 +294,7 @@ impl EnergeiaStore {
             created_at: now,
         };
 
-        let lesson_ulid = ulid::Ulid::new().to_string();
+        let lesson_ulid = aletheia_koina::ulid::Ulid::new().to_string();
         let key = schema::lesson_key(&lesson.source, now.as_millisecond(), &lesson_ulid);
         let value = serialize_msgpack(&record, "lesson record")?;
 
@@ -331,7 +331,7 @@ impl EnergeiaStore {
     /// Returns `Error::Store` on write failure.
     pub fn add_observation(&self, observation: &NewObservation) -> Result<()> {
         let now = jiff::Timestamp::now();
-        let obs_ulid = ulid::Ulid::new().to_string();
+        let obs_ulid = aletheia_koina::ulid::Ulid::new().to_string();
 
         let record = ObservationRecord {
             id: obs_ulid.clone(),

@@ -304,7 +304,7 @@ pub fn extract_causal_edges(
     };
 
     // WHY: ulid gives monotonically sortable IDs for edges within a session.
-    let edge_id_str = ulid::Ulid::new().to_string();
+    let edge_id_str = aletheia_koina::ulid::Ulid::new().to_string();
     let Ok(edge_id) = CausalEdgeId::new(edge_id_str) else {
         // ID generation failed (empty string) — should never happen with ulid.
         return vec![];

@@ -31,7 +31,6 @@ sha2 = { version = "0.11", optional = true }
 snafu = { workspace = true }
 tokio = { workspace = true, optional = true }
 tracing = { workspace = true }
-ulid = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }

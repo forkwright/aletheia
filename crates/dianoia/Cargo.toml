@@ -21,7 +21,6 @@ prometheus = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
-ulid = { workspace = true }
 
 [dev-dependencies]
 static_assertions = { workspace = true }
