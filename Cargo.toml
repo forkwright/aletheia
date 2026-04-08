@@ -93,20 +93,20 @@ disallowed_methods = "deny"
 disallowed_types = "deny"
 
 [workspace.dependencies]
-base64 = "0.22"
-rayon = "1"
+base64 = { version = "0.22", default-features = false }
+rayon = { version = "1", default-features = false }
 
 # Error handling
 snafu = "0.8"
 
 # Serialization
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-serde_yaml = "0.9"
+serde = { version = "1", default-features = false, features = ["derive"] }
+serde_json = { version = "1", default-features = false }
+serde_yaml = { version = "0.9", default-features = false }
 toml = "1.1"
 
 # HTTP
-http = "1"
+http = { version = "1", default-features = false }
 axum = "0.8"
 utoipa = { version = "5", features = ["axum_extras"] }
 reqwest = { version = "0.13", default-features = false, features = [
@@ -116,7 +116,7 @@ reqwest = { version = "0.13", default-features = false, features = [
     "query",
 ] }
 tower = "0.5"
-tower-http = { version = "0.6", features = [
+tower-http = { version = "0.6", default-features = false, features = [
     "cors",
     "compression-gzip",
     "trace",
@@ -124,38 +124,38 @@ tower-http = { version = "0.6", features = [
     "set-header",
     "fs",
 ] }
-axum-server = { version = "0.8", features = ["tls-rustls"] }
+axum-server = { version = "0.8", default-features = false, features = ["tls-rustls"] }
 
 # Secrets
-zeroize = "1"
+zeroize = { version = "1", default-features = false }
 
 # Tracing
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
-tracing-appender = "0.2"
+tracing-appender = { version = "0.2", default-features = false }
 
 # Metrics
 prometheus = { version = "0.14", features = ["process"] }
 
 # Config
-figment = { version = "0.10", features = ["toml", "env"] }
+figment = { version = "0.10", default-features = false, features = ["toml", "env"] }
 
 # IDs
-uuid = { version = "1", features = ["v4", "serde"] }
+uuid = { version = "1", default-features = false, features = ["v4", "serde"] }
 
 # Types
 compact_str = { version = "0.9", features = ["serde"] }
-indexmap = { version = "2", features = ["serde"] }
+indexmap = { version = "2", default-features = false, features = ["serde"] }
 
 # Time
 jiff = "0.2"
 
 # Async utilities
-bytes = "1"
-futures = "0.3"
+bytes = { version = "1", default-features = false }
+futures = { version = "0.3", default-features = false }
 
 # Async
-tokio = { version = "1", features = [
+tokio = { version = "1", default-features = false, features = [
     "rt-multi-thread",
     "macros",
     "net",
@@ -164,8 +164,8 @@ tokio = { version = "1", features = [
     "time",
     "fs",
 ] }
-tokio-stream = "0.1"
-tokio-util = { version = "0.7", features = ["rt"] }
+tokio-stream = { version = "0.1", default-features = false }
+tokio-util = { version = "0.7", default-features = false, features = ["rt"] }
 
 # Compression
 flate2 = "1"
@@ -180,12 +180,12 @@ rustls = { version = "0.23", default-features = false, features = [
 ] }
 
 # Cryptography (RustCrypto)
-hmac = "0.12"
-sha2 = "0.10"
+hmac = { version = "0.12", default-features = false }
+sha2 = { version = "0.10", default-features = false }
 aes-gcm = "0.10"
 chacha20poly1305 = "0.10"
 rcgen = "0.14"
-regex = "1"
+regex = { version = "1", default-features = false }
 
 # Database
 rusqlite = { version = "0.38", features = ["bundled"] }
@@ -198,7 +198,7 @@ rustix = { version = "1", default-features = false, features = [
 ] }
 
 # File locking
-fd-lock = "4"
+fd-lock = { version = "4", default-features = false }
 
 # File watching
 notify = { version = "8", default-features = false, features = [
@@ -210,8 +210,8 @@ rand = "0.9"
 
 # Testing
 proptest = "1"
-tempfile = "3"
-wiremock = "0.6"
+tempfile = { version = "3", default-features = false }
+wiremock = { version = "0.6", default-features = false }
 
 [profile.dev]
 opt-level = 1
