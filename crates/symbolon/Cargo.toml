@@ -32,6 +32,8 @@ rustix = { workspace = true }
 rusqlite = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+# WHY: constant-time comparison for secret values (prevents timing side-channels)
+subtle = "2"
 snafu = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }

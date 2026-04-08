@@ -12,6 +12,8 @@ use hmac::{Hmac, Mac};
 use sha2::Sha256;
 use tracing::instrument;
 
+use subtle::ConstantTimeEq;
+
 use aletheia_koina::secret::SecretString;
 
 use crate::error::{self, Result};
@@ -62,9 +64,14 @@ impl Default for JwtConfig {
 
 impl JwtConfig {
     /// Returns `true` if the signing key is the insecure placeholder.
+    ///
+    /// Uses constant-time comparison to prevent timing side-channels
+    /// that could leak information about the key contents.
     #[must_use]
     pub(crate) fn has_insecure_key(&self) -> bool {
-        self.signing_key.expose_secret() == INSECURE_DEFAULT_KEY
+        let key_bytes = self.signing_key.expose_secret().as_bytes();
+        let default_bytes = INSECURE_DEFAULT_KEY.as_bytes();
+        key_bytes.ct_eq(default_bytes).into()
     }
 
     /// Reject the insecure default key when the auth mode requires JWT signing.
