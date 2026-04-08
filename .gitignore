@@ -119,3 +119,7 @@ __pycache__/
 .claude/
 crates/aletheia/instance/
 crates/theatron/desktop/target/
+
+# === SBOM artifacts (generated during build) ===
+bom.cdx.json
+*.cdx.json
