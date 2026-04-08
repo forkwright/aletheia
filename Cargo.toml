@@ -109,9 +109,21 @@ toml = "1.1"
 http = "1"
 axum = "0.8"
 utoipa = { version = "5", features = ["axum_extras"] }
-reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json", "http2", "query"] }
+reqwest = { version = "0.13", default-features = false, features = [
+    "rustls-no-provider",
+    "json",
+    "http2",
+    "query",
+] }
 tower = "0.5"
-tower-http = { version = "0.6", features = ["cors", "compression-gzip", "trace", "limit", "set-header", "fs"] }
+tower-http = { version = "0.6", features = [
+    "cors",
+    "compression-gzip",
+    "trace",
+    "limit",
+    "set-header",
+    "fs",
+] }
 axum-server = { version = "0.8", features = ["tls-rustls"] }
 
 # Secrets
@@ -144,7 +156,15 @@ bytes = "1"
 futures = "0.3"
 
 # Async
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "sync", "time", "fs"] }
+tokio = { version = "1", features = [
+    "rt-multi-thread",
+    "macros",
+    "net",
+    "signal",
+    "sync",
+    "time",
+    "fs",
+] }
 tokio-stream = "0.1"
 tokio-util = { version = "0.7", features = ["rt"] }
 
