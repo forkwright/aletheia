@@ -3,7 +3,6 @@
 use snafu::ResultExt;
 use tracing::{info, instrument};
 
-
 use aletheia_hermeneus::models::names;
 use aletheia_hermeneus::provider::LlmProvider;
 use aletheia_hermeneus::types::{Content, Message as HermeneusMessage, Role as HermeneusRole};

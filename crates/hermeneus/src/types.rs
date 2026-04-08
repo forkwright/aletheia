@@ -31,7 +31,7 @@ impl ToolResultType {
     #[must_use]
     pub fn classify(tool_name: &str) -> Self {
         let lower = tool_name.to_lowercase();
-        // WHY: classification mirrors CC's COMPACTABLE_TOOLS whitelist.
+        // WHY: classification mirrors CC's COMPACTABLE_TOOLS allowlist.
         // NOTE: web check before search because "web_search" should match WebResult, not SearchResult.
         if lower.contains("read")
             || lower.contains("edit")
