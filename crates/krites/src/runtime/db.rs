@@ -100,7 +100,7 @@ struct NamedRowsRaw {
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Default)]
-#[serde(try_from = "NamedRowsRaw")]
+#[serde(from = "NamedRowsRaw")]
 /// Rows in a relation, together with headers for the fields.
 pub struct NamedRows {
     /// The headers
@@ -111,11 +111,9 @@ pub struct NamedRows {
     pub next: Option<Box<NamedRows>>,
 }
 
-impl TryFrom<NamedRowsRaw> for NamedRows {
-    type Error = std::convert::Infallible;
-
-    fn try_from(raw: NamedRowsRaw) -> std::result::Result<Self, Self::Error> {
-        Ok(Self::new(raw.headers, raw.rows))
+impl From<NamedRowsRaw> for NamedRows {
+    fn from(raw: NamedRowsRaw) -> Self {
+        Self::new(raw.headers, raw.rows)
     }
 }
 

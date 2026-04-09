@@ -17,18 +17,16 @@ struct SymbolRaw {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(try_from = "SymbolRaw")]
+#[serde(from = "SymbolRaw")]
 pub struct Symbol {
     pub(crate) name: CompactString,
     #[serde(skip)]
     pub(crate) span: SourceSpan,
 }
 
-impl TryFrom<SymbolRaw> for Symbol {
-    type Error = std::convert::Infallible;
-
-    fn try_from(raw: SymbolRaw) -> std::result::Result<Self, Self::Error> {
-        Ok(Self::new(raw.name, SourceSpan::default()))
+impl From<SymbolRaw> for Symbol {
+    fn from(raw: SymbolRaw) -> Self {
+        Self::new(raw.name, SourceSpan::default())
     }
 }
 
