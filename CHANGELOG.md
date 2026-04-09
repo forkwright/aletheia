@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.13.67](https://github.com/forkwright/aletheia/compare/v0.13.66...v0.13.67) (2026-04-09)
+
+
+### Features
+
+* **ci:** add CycloneDX SBOM generation on release ([#2834](https://github.com/forkwright/aletheia/issues/2834)) ([#2904](https://github.com/forkwright/aletheia/issues/2904)) ([2aab284](https://github.com/forkwright/aletheia/commit/2aab284f7d17bc2cb12ae21efa5c3c48a689fab3))
+* **observability:** instrument async fns in hermeneus/daemon/melete/symbolon/diaporeia ([#2897](https://github.com/forkwright/aletheia/issues/2897)) ([#2929](https://github.com/forkwright/aletheia/issues/2929)) ([58dc6da](https://github.com/forkwright/aletheia/commit/58dc6da741d0eb95a658da25f8a1310a0cc73dd7))
+* **pylon:** comprehensive health endpoint checks ([#2855](https://github.com/forkwright/aletheia/issues/2855)) ([#2918](https://github.com/forkwright/aletheia/issues/2918)) ([aa45d5c](https://github.com/forkwright/aletheia/commit/aa45d5c3f1fcca03fd90c87e8bcb71caac391e5b))
+
+
+### Bug Fixes
+
+* #[must_use] wave A — theatron + energeia ([#2764](https://github.com/forkwright/aletheia/issues/2764)) ([#2924](https://github.com/forkwright/aletheia/issues/2924)) ([5a00418](https://github.com/forkwright/aletheia/commit/5a0041800e4eb698d6b19acdfd6d15d0627de4c9))
+* #[must_use] wave B — remaining crates ([#2764](https://github.com/forkwright/aletheia/issues/2764)) ([#2923](https://github.com/forkwright/aletheia/issues/2923)) ([7d77739](https://github.com/forkwright/aletheia/commit/7d77739e38123c7bbc0e12224f2ad84b0011ffbd))
+* dormant features — dianoia metrics, local-llm, custom_commands ([#2655](https://github.com/forkwright/aletheia/issues/2655)) ([#2920](https://github.com/forkwright/aletheia/issues/2920)) ([02c2596](https://github.com/forkwright/aletheia/commit/02c2596f1e773b1dbe536e50996b84f33e433fd4))
+* **episteme:** mark embedding_eval doctest as ignore ([6046771](https://github.com/forkwright/aletheia/commit/6046771f2889901c85d986063c5337e4e61cb049))
+* indexing/slicing in aletheia/daemon/nous/others ([#2761](https://github.com/forkwright/aletheia/issues/2761)) ([#2914](https://github.com/forkwright/aletheia/issues/2914)) ([6acc209](https://github.com/forkwright/aletheia/commit/6acc2096931bb70af51629d2f07ddc1e652d087e))
+* indexing/slicing in krites + episteme ([#2761](https://github.com/forkwright/aletheia/issues/2761)) ([#2912](https://github.com/forkwright/aletheia/issues/2912)) ([29c3beb](https://github.com/forkwright/aletheia/commit/29c3beb78222b4882de781625146357d55529059))
+* panic paths — lock poisoning, std::Mutex, library unwraps ([#2759](https://github.com/forkwright/aletheia/issues/2759)) ([#2909](https://github.com/forkwright/aletheia/issues/2909)) ([71a7f65](https://github.com/forkwright/aletheia/commit/71a7f65a2b16c81d8ed4b7f90a120b69ecb3070d))
+* resolve 10 test failures — blackboard SQL, rate limit, idempotency, doctests ([#2887](https://github.com/forkwright/aletheia/issues/2887)) ([#2903](https://github.com/forkwright/aletheia/issues/2903)) ([9a3d78c](https://github.com/forkwright/aletheia/commit/9a3d78c52c6fcd5a6ec5325b7db0476d901c0694))
+* resolve test compilation errors across 6 crates ([#2884](https://github.com/forkwright/aletheia/issues/2884)) ([#2901](https://github.com/forkwright/aletheia/issues/2901)) ([43d2438](https://github.com/forkwright/aletheia/commit/43d24386051a4d4cad68f722da1fde19d852d167))
+* **security:** plain-string secrets → SecretString ([#2756](https://github.com/forkwright/aletheia/issues/2756)) ([#2913](https://github.com/forkwright/aletheia/issues/2913)) ([a3db0d0](https://github.com/forkwright/aletheia/commit/a3db0d09d1091562c42e164ac02ad375b7ac84d1))
+* serde bypass constructors — validate on deserialize ([#2766](https://github.com/forkwright/aletheia/issues/2766)) ([#2910](https://github.com/forkwright/aletheia/issues/2910)) ([f748cb6](https://github.com/forkwright/aletheia/commit/f748cb66979b5bf9408f1eff9eb2d7f90e10376d))
+* **symbolon:** println → eprintln in credential flows ([#2898](https://github.com/forkwright/aletheia/issues/2898)) ([#2905](https://github.com/forkwright/aletheia/issues/2905)) ([6bb5d83](https://github.com/forkwright/aletheia/commit/6bb5d83f27dec1bdc7f1bbdc8f9bd58255b0700f))
+* TOML/YAML formatting — inline tables + empty values ([#2772](https://github.com/forkwright/aletheia/issues/2772)) ([#2919](https://github.com/forkwright/aletheia/issues/2919)) ([ae7dc60](https://github.com/forkwright/aletheia/commit/ae7dc60d0ff98d04d41e6e85d40ac0b01c2cbbc5))
+
+
+### Performance
+
+* Arc&lt;str&gt; for clone hotspots ([#2840](https://github.com/forkwright/aletheia/issues/2840)) ([#2921](https://github.com/forkwright/aletheia/issues/2921)) ([a23b030](https://github.com/forkwright/aletheia/commit/a23b0307a50657426275b41cfbc00c8e18f2f629))
+
+
+### Documentation
+
+* # Errors sections for public Result functions ([#2835](https://github.com/forkwright/aletheia/issues/2835)) ([#2931](https://github.com/forkwright/aletheia/issues/2931)) ([c4f4949](https://github.com/forkwright/aletheia/commit/c4f49497d97b9f73101241d5fc23011317a588ad))
+* **deps:** update audit doc to v0.13.66 ([#2791](https://github.com/forkwright/aletheia/issues/2791)) ([#2907](https://github.com/forkwright/aletheia/issues/2907)) ([255891d](https://github.com/forkwright/aletheia/commit/255891df4a2cba006758f14e16eb380e025360f1))
+* fix writing style violations ([#2774](https://github.com/forkwright/aletheia/issues/2774)) ([#2926](https://github.com/forkwright/aletheia/issues/2926)) ([3193172](https://github.com/forkwright/aletheia/commit/31931729fc7f3c5ab2fd640a708bf78ed0c8be19))
+
 ## [0.13.66](https://github.com/forkwright/aletheia/compare/v0.13.65...v0.13.66) (2026-04-08)
 
 
