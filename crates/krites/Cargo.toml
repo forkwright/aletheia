@@ -21,12 +21,12 @@ test-full = []
 aletheia-eidos = { path = "../eidos" }
 
 jiff = { workspace = true, features = ["serde"] }
-ndarray = { version = "0.17", default-features = false, features = ["serde"] }
+ndarray = { version = "0.17", default-features = false, features = ["serde", "std"] }
 tokio = { workspace = true }
 
 # Engine core
 rayon = { workspace = true }
-ordered-float = { version = "5.3.0", default-features = false }
+ordered-float = { version = "5.3.0", default-features = false, features = ["std"] }
 priority-queue = "2.7"
 smallvec = { version = "1.13.2", default-features = false, features = [
     "serde",
@@ -39,10 +39,10 @@ compact_str = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_bytes = "0.11"
-rmp-serde = { version = "1.2", default-features = false }
+rmp-serde = "1.2"
 crossbeam = "0.8.4"
-itertools = { version = "0.14.0", default-features = false }
-rustc-hash = { version = "2.1.2", default-features = false }
+itertools = { version = "0.14.0", default-features = false, features = ["use_std"] }
+rustc-hash = { version = "2.1.2", default-features = false, features = ["std"] }
 twox-hash = "2.1"
 regex = { workspace = true }
 sha2 = { version = "0.11", default-features = false }
@@ -53,7 +53,7 @@ uuid = { workspace = true, features = ["v1", "serde"] }
 pest = "2.8"
 pest_derive = "2.8"
 unicode-normalization = { version = "0.1", default-features = false }
-aho-corasick = { version = "1.1", default-features = false }
+aho-corasick = { version = "1.1", default-features = false, features = ["std"] }
 rust-stemmers = { version = "1.2", default-features = false }
 bytemuck = { version = "1.25", default-features = false }
 lru = { version = "0.16", default-features = false }
