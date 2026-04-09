@@ -17,8 +17,9 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+// Re-export types from eidos for convenience
+pub use aletheia_eidos::training::{TrainingConfig, TrainingRecord};
 use jiff::Timestamp;
-use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
 use tracing::{debug, warn};
 
@@ -59,49 +60,6 @@ pub enum TrainingCaptureError {
 
 /// Result alias for training capture operations.
 pub type Result<T> = std::result::Result<T, TrainingCaptureError>;
-
-/// Configuration for training data capture.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct TrainingConfig {
-    /// Whether training data capture is enabled.
-    pub enabled: bool,
-    /// Directory path for training data output, relative to the instance root.
-    ///
-    /// The JSONL file `conversations.jsonl` is written inside this directory.
-    pub path: String,
-}
-
-impl Default for TrainingConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            path: "data/training".to_owned(),
-        }
-    }
-}
-
-/// A single training record representing one conversation turn.
-///
-/// Serialized as one JSON line in the output JSONL file. Fields match
-/// the kanon training corpus schema for downstream compatibility.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TrainingRecord {
-    /// Session identifier (groups turns within a conversation).
-    pub session_id: String,
-    /// Nous agent identifier that handled the turn.
-    pub nous_id: String,
-    /// The user's input message.
-    pub user_message: String,
-    /// The assistant's response content.
-    pub assistant_response: String,
-    /// LLM model used for generation.
-    pub model: String,
-    /// Total tokens consumed (input + output).
-    pub tokens: u64,
-    /// When the turn was captured.
-    pub timestamp: Timestamp,
-}
 
 /// Append-only training data writer.
 ///

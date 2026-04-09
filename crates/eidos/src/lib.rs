@@ -9,6 +9,8 @@
 pub mod id;
 /// Knowledge graph domain types: facts, entities, relationships, embeddings.
 pub mod knowledge;
+/// Training data capture types.
+pub mod training;
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]

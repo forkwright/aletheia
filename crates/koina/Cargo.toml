@@ -11,6 +11,7 @@ rust-version.workspace = true
 workspace = true
 
 [features]
+default = []
 test-core = []
 test-full = []
 test-support = []
