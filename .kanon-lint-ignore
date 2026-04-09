@@ -65,16 +65,6 @@ RUST/expect:crates/episteme/src/extract/observation.rs
 # documented with #[expect(clippy::expect_used)] inline.
 RUST/expect:crates/energeia/src/store/queries.rs
 
-# WHY: false positive — .expect() and .unwrap() match strings appear inside
-# `//!` doctest comments (the doctest is marked `ignore` so it never compiles).
-# basanos's RUST/expect rule should skip doc comments.
-RUST/expect:crates/episteme/src/embedding_eval.rs
-RUST/unwrap:crates/episteme/src/embedding_eval.rs
-
-# WHY: tests use `unwrap_or_else(|_| unreachable!())` after assert!(is_ok()).
-# basanos should skip #[cfg(test)] modules for RUST/unreachable.
-RUST/unreachable-in-match:crates/episteme/src/recall_tests/side_query.rs
-
 # WHY: from_utf8 on Crockford base32 alphabet (ASCII subset) is infallible;
 # documented with inline WHY comment and used as alternative to unsafe.
 RUST/expect:crates/koina/src/ulid.rs
@@ -1184,11 +1174,6 @@ RUST/string-slice:crates/krites/src/fixed_rule/**
 RUST/string-slice:crates/krites/src/fts/**
 RUST/string-slice:crates/krites/src/query/**
 RUST/string-slice:crates/krites/src/runtime/**
-
-# -- bare-assert: doc comment examples
-# WHY: assert_eq! calls inside a ```text doc comment block are example output,
-# not production code. kanon cannot distinguish doc comment code from real code.
-RUST/bare-assert:crates/krites/src/fts/tokenizer/ngram_tokenizer.rs
 
 # -- struct-too-many-fields: config/manifest structs
 # WHY: HnswSearch, HnswIndexManifest, and RelationHandle are data-carrying
