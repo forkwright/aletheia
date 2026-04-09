@@ -183,8 +183,9 @@ mod tests {
     #[test]
     fn build_candidates_includes_localhost_first() {
         let candidates = build_candidates();
-        assert!(!candidates.is_empty());
-        let first = &candidates[0];
+        let Some(first) = candidates.first() else {
+            panic!("build_candidates always returns at least one entry");
+        };
         assert_eq!(first.label, "localhost");
         assert!(
             first.base_url.contains("localhost"),
