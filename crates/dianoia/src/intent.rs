@@ -7,6 +7,7 @@
 //! Intents are stored at `instance/nous/<agent>/intents.json` and loaded during
 //! bootstrap for injection into the system prompt.
 
+use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
 use aletheia_koina::ulid::Ulid;
@@ -229,7 +230,6 @@ impl IntentStore {
     /// # Errors
     ///
     /// Returns a workspace I/O or serialization error if the store cannot be written.
-    #[must_use]
     pub fn add_intent(&self, intent: Intent) -> Result<Intent> {
         let mut intents = self.load_all()?;
         intents.push(intent.clone());
@@ -242,7 +242,6 @@ impl IntentStore {
     /// # Errors
     ///
     /// Returns a deserialization error if the store file is malformed.
-    #[must_use]
     pub fn list_intents(&self) -> Result<Vec<Intent>> {
         self.load_all()
     }
@@ -254,7 +253,6 @@ impl IntentStore {
     /// # Errors
     ///
     /// Returns a deserialization error if the store file is malformed.
-    #[must_use]
     pub fn active_intents(&self) -> Result<Vec<Intent>> {
         let mut active: Vec<Intent> = self
             .load_all()?
@@ -275,7 +273,6 @@ impl IntentStore {
     /// # Errors
     ///
     /// Returns a workspace I/O error if the updated store cannot be written.
-    #[must_use]
     pub fn expire_intents(&self) -> Result<usize> {
         let intents = self.load_all()?;
         let now = jiff::Timestamp::now();
@@ -299,7 +296,6 @@ impl IntentStore {
     /// # Errors
     ///
     /// Returns a workspace I/O error if the updated store cannot be written.
-    #[must_use]
     pub fn resolve_intent(&self, id: Ulid) -> Result<bool> {
         let mut intents = self.load_all()?;
         let Some(intent) = intents.iter_mut().find(|i| i.id == id) else {
@@ -317,7 +313,6 @@ impl IntentStore {
     /// # Errors
     ///
     /// Returns a deserialization error if the store file is malformed.
-    #[must_use]
     pub fn render_for_bootstrap(&self) -> Result<Option<String>> {
         let active = self.active_intents()?;
         if active.is_empty() {
@@ -339,10 +334,12 @@ impl IntentStore {
                 IntentSource::Operator => "operator",
                 IntentSource::Nous => "nous",
             };
-            out.push_str(&format!(
-                "- {} {} (set by {}, {})\n",
+            // SAFETY: writing to a String via fmt::Write cannot fail.
+            let _ = writeln!(
+                out,
+                "- {} {} (set by {}, {})",
                 tier_label, intent.description, source_label, intent.created_at,
-            ));
+            );
         }
 
         Ok(Some(out))

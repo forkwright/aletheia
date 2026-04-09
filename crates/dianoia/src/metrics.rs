@@ -36,7 +36,6 @@ pub(crate) fn record_phase_transition(from: &str, to: &str) {
     PHASE_TRANSITIONS_TOTAL.with_label_values(&[from, to]).inc();
 }
 
-#[expect(dead_code, reason = "metric init called from server startup")]
 /// Force-initialize all lazy metric statics.
 pub fn init() {
     LazyLock::force(&PHASE_TRANSITIONS_TOTAL);
