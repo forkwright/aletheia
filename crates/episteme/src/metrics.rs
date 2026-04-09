@@ -141,8 +141,18 @@ mod tests {
 
     #[test]
     fn init_registers_all_metrics() {
+        // WHY: prometheus::Registry::gather() filters out IntCounterVec /
+        // HistogramVec families that have zero observed label sets. init()
+        // only forces the LazyLocks, so we also have to emit at least one
+        // label set per metric for them to appear in gather() output.
+        // Tracked in #2988 — the earlier `init_does_not_panic` test was
+        // looser and didn't catch this.
         init();
-        // Verify all metrics are registered by checking the registry
+        record_fact_inserted("init-test-nous");
+        record_extraction("init-test-nous", true);
+        record_recall_duration("init-test-nous", 0.001);
+        record_embedding_duration("init-test-provider", 0.001);
+
         let families = prometheus::default_registry().gather();
         let metric_names: std::collections::HashSet<_> =
             families.iter().map(|f| f.name()).collect();
