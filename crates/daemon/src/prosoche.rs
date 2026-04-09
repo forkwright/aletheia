@@ -285,6 +285,7 @@ fn check_memory() -> Vec<AttentionItem> {
             let rss_mb = resident_kb / 1024;
             #[expect(
                 clippy::cast_precision_loss,
+                clippy::as_conversions,
                 reason = "u64→f64: MB values are small enough for exact representation"
             )]
             let rss_f64 = rss_mb as f64;

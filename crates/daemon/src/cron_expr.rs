@@ -95,7 +95,8 @@ impl CronExpr {
         clippy::as_conversions,
         clippy::cast_sign_loss,
         clippy::cast_possible_wrap,
-        reason = "month (1-12), day (1-31), hour (0-23), minute (0-59), second (0-59) all fit in i8 and have no negative values; u8→i8 is safe for values ≤ 59"
+        clippy::too_many_lines,
+        reason = "month (1-12), day (1-31), hour (0-23), minute (0-59), second (0-59) all fit in i8 and have no negative values; u8→i8 is safe for values ≤ 59. Function length: this is a single cohesive cron field-walking state machine — splitting would scatter the field-rollover logic and obscure the carry semantics"
     )]
     pub(crate) fn next_after(&self, after: jiff::Timestamp) -> Option<jiff::Timestamp> {
         // Work in UTC civil datetime for field-level manipulation.
@@ -156,28 +157,25 @@ impl CronExpr {
             // --- Day of month ---
             let dim = days_in_month(year, month);
             // Clamp day-of-month candidates to actual month length.
-            match next_value_max(&self.days_of_month, day as u8, dim) {
-                Some(d) => {
-                    if d != day as u8 {
-                        day = d as i8;
-                        hour = 0;
-                        minute = 0;
-                        second = 0;
-                    }
-                }
-                None => {
-                    // No valid day left in this month — advance month.
-                    month += 1;
-                    if month > 12 {
-                        month = 1;
-                        year += 1;
-                    }
-                    day = 1;
+            if let Some(d) = next_value_max(&self.days_of_month, day as u8, dim) {
+                if d != day as u8 {
+                    day = d as i8;
                     hour = 0;
                     minute = 0;
                     second = 0;
-                    continue;
                 }
+            } else {
+                // No valid day left in this month — advance month.
+                month += 1;
+                if month > 12 {
+                    month = 1;
+                    year += 1;
+                }
+                day = 1;
+                hour = 0;
+                minute = 0;
+                second = 0;
+                continue;
             }
 
             // --- Day of week check ---

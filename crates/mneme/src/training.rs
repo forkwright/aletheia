@@ -61,6 +61,29 @@ pub enum TrainingCaptureError {
 /// Result alias for training capture operations.
 pub type Result<T> = std::result::Result<T, TrainingCaptureError>;
 
+/// Borrowed inputs to [`TrainingCapture::maybe_capture`].
+///
+/// Bundles the seven per-turn fields into a single record so the call sites
+/// remain self-documenting and so the function signature stays under the
+/// workspace's `too_many_arguments` threshold.
+#[derive(Debug, Clone, Copy)]
+pub struct CaptureInput<'a> {
+    /// Session identifier the turn belongs to.
+    pub session_id: &'a str,
+    /// Nous identifier (agent name) handling the turn.
+    pub nous_id: &'a str,
+    /// Raw user message that started the turn.
+    pub user_message: &'a str,
+    /// Final assistant response produced by the model.
+    pub assistant_response: &'a str,
+    /// Model identifier used for this turn (e.g. `claude-sonnet-4-20250514`).
+    pub model: &'a str,
+    /// Total tokens consumed by the turn (prompt + completion).
+    pub tokens: u64,
+    /// Stop reason reported by the provider.
+    pub stop_reason: &'a str,
+}
+
 /// Append-only training data writer.
 ///
 /// Writes [`TrainingRecord`]s as JSON Lines to a file on disk. The writer
@@ -138,40 +161,32 @@ impl TrainingCapture {
     /// filtered out by the quality gate. I/O errors are logged as
     /// warnings and do not propagate: training capture must never
     /// block the pipeline.
-    pub fn maybe_capture(
-        &self,
-        session_id: &str,
-        nous_id: &str,
-        user_message: &str,
-        assistant_response: &str,
-        model: &str,
-        tokens: u64,
-        stop_reason: &str,
-    ) -> bool {
+    pub fn maybe_capture(&self, input: CaptureInput<'_>) -> bool {
         // Quality gate: reject empty or error responses
-        if assistant_response.is_empty() {
-            debug!(session_id, "training capture skipped: empty response");
+        if input.assistant_response.is_empty() {
+            debug!(session_id = input.session_id, "training capture skipped: empty response");
             return false;
         }
 
         // WHY: error stop reasons indicate the model failed to produce a
         // usable response. Including these in training data would teach
         // the model to reproduce failure modes.
-        if stop_reason == "error" || stop_reason == "max_tokens_exceeded" {
+        if input.stop_reason == "error" || input.stop_reason == "max_tokens_exceeded" {
             debug!(
-                session_id,
-                stop_reason, "training capture skipped: error stop reason"
+                session_id = input.session_id,
+                stop_reason = input.stop_reason,
+                "training capture skipped: error stop reason"
             );
             return false;
         }
 
         let record = TrainingRecord {
-            session_id: session_id.to_owned(),
-            nous_id: nous_id.to_owned(),
-            user_message: user_message.to_owned(),
-            assistant_response: assistant_response.to_owned(),
-            model: model.to_owned(),
-            tokens,
+            session_id: input.session_id.to_owned(),
+            nous_id: input.nous_id.to_owned(),
+            user_message: input.user_message.to_owned(),
+            assistant_response: input.assistant_response.to_owned(),
+            model: input.model.to_owned(),
+            tokens: input.tokens,
             timestamp: Timestamp::now(),
         };
 
@@ -180,7 +195,7 @@ impl TrainingCapture {
             Err(e) => {
                 // WHY: training capture is advisory. A write failure must
                 // never block or fail the conversation pipeline.
-                warn!(error = %e, session_id, "training capture write failed");
+                warn!(error = %e, session_id = input.session_id, "training capture write failed");
                 false
             }
         }
@@ -273,7 +288,15 @@ mod tests {
         };
         let capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
-        let captured = capture.maybe_capture("ses-1", "syn", "Hi", "", "end_turn", 10, "end_turn");
+        let captured = capture.maybe_capture(CaptureInput {
+            session_id: "ses-1",
+            nous_id: "syn",
+            user_message: "Hi",
+            assistant_response: "",
+            model: "end_turn",
+            tokens: 10,
+            stop_reason: "end_turn",
+        });
         assert!(!captured);
 
         // File should not exist or be empty
@@ -290,8 +313,15 @@ mod tests {
         };
         let capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
-        let captured =
-            capture.maybe_capture("ses-1", "syn", "Hi", "Response", "test", 50, "error");
+        let captured = capture.maybe_capture(CaptureInput {
+            session_id: "ses-1",
+            nous_id: "syn",
+            user_message: "Hi",
+            assistant_response: "Response",
+            model: "test",
+            tokens: 50,
+            stop_reason: "error",
+        });
         assert!(!captured);
     }
 
@@ -304,15 +334,15 @@ mod tests {
         };
         let capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
-        let captured = capture.maybe_capture(
-            "ses-1",
-            "syn",
-            "Hello",
-            "Hi there!",
-            "test-model",
-            150,
-            "end_turn",
-        );
+        let captured = capture.maybe_capture(CaptureInput {
+            session_id: "ses-1",
+            nous_id: "syn",
+            user_message: "Hello",
+            assistant_response: "Hi there!",
+            model: "test-model",
+            tokens: 150,
+            stop_reason: "end_turn",
+        });
         assert!(captured);
 
         let content = std::fs::read_to_string(capture.file_path()).expect("read");
