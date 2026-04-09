@@ -264,81 +264,28 @@ pub fn evaluate_model(
     let mut rr_sum = 0.0_f64;
 
     for eq in &dataset.queries {
-        let q_vec = provider.embed(&eq.query).map_err(|e| {
-            EmbedFailedSnafu {
-                message: format!("query {:?}: {e}", eq.query),
-            }
-            .build()
-        })?;
-
-        // Rank corpus by cosine similarity (dot product of L2-normalized vectors).
-        let mut ranked: Vec<(usize, f32)> = corpus_vecs
-            .iter()
-            .enumerate()
-            .map(|(i, cv)| (i, cosine_similarity(&q_vec, cv)))
-            .collect();
-        ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-
-        // WHY: ranked is collected from enumerate over corpus_vecs, so each (i, _)
-        // pair has `i < corpus.len()`. Use `.get()` to avoid the indexing/slicing
-        // lints; missing entries (impossible by construction) are silently skipped
-        // via filter_map rather than panicking.
-        let top_k_ids: Vec<String> = ranked
-            .iter()
-            .take(eff_k)
-            .filter_map(|(i, _)| corpus.get(*i).map(|(id, _)| id.clone()))
-            .collect();
-
-        let relevant: std::collections::HashSet<&str> =
-            eq.relevant_ids.iter().map(String::as_str).collect();
-
-        // Recall@K (run K)
-        let hit = top_k_ids.iter().any(|id| relevant.contains(id.as_str()));
-        if hit {
+        let outcome = score_one_query(
+            provider,
+            eq,
+            corpus,
+            &corpus_vecs,
+            [eff_k, eff_k5, eff_k10],
+        )?;
+        if outcome.hit_k {
             hit_count_k += 1;
         }
-
-        // Recall@5
-        let top5_ids: Vec<&str> = ranked
-            .iter()
-            .take(eff_k5)
-            .filter_map(|(i, _)| corpus.get(*i).map(|(id, _)| id.as_str()))
-            .collect();
-        if top5_ids.iter().any(|id| relevant.contains(id)) {
+        if outcome.hit_5 {
             hit_count_5 += 1;
         }
-
-        // Recall@10
-        let top10_ids: Vec<&str> = ranked
-            .iter()
-            .take(eff_k10)
-            .filter_map(|(i, _)| corpus.get(*i).map(|(id, _)| id.as_str()))
-            .collect();
-        if top10_ids.iter().any(|id| relevant.contains(id)) {
+        if outcome.hit_10 {
             hit_count_10 += 1;
         }
-
-        // MRR: first hit position across top-K (use full ranked list, capped at k).
-        let first_hit_rank = top_k_ids
-            .iter()
-            .position(|id| relevant.contains(id.as_str()))
-            .map(|pos| pos + 1); // 1-indexed
-        let rr = first_hit_rank.map_or(0.0, |r| {
-            #[expect(
-                clippy::cast_precision_loss,
-                clippy::as_conversions,
-                reason = "rank fits in f64 exactly for any realistic K"
-            )]
-            let rf = r as f64;
-            1.0 / rf
-        });
-        rr_sum += rr;
-
+        rr_sum += outcome.reciprocal_rank;
         per_query.push(QueryResult {
             query: eq.query.clone(),
-            hit,
-            reciprocal_rank: rr,
-            top_k_ids,
+            hit: outcome.hit_k,
+            reciprocal_rank: outcome.reciprocal_rank,
+            top_k_ids: outcome.top_k_ids,
         });
     }
 
@@ -348,7 +295,7 @@ pub fn evaluate_model(
         clippy::as_conversions,
         reason = "n and the hit counts are small dataset sizes that fit exactly in f64"
     )]
-    let (nf, k_f, k5_f, k10_f) = (
+    let (queries_f, hits_at_k, hits_at_five, hits_at_ten) = (
         n as f64,
         hit_count_k as f64,
         hit_count_5 as f64,
@@ -358,11 +305,102 @@ pub fn evaluate_model(
     Ok(ModelMetrics {
         model_name: provider.model_name().to_owned(),
         k: eff_k,
-        recall_at_k: k_f / nf,
-        recall_at_5: k5_f / nf,
-        recall_at_10: k10_f / nf,
-        mrr: rr_sum / nf,
+        recall_at_k: hits_at_k / queries_f,
+        recall_at_5: hits_at_five / queries_f,
+        recall_at_10: hits_at_ten / queries_f,
+        mrr: rr_sum / queries_f,
         per_query,
+    })
+}
+
+/// Per-query outcome of [`score_one_query`].
+struct QueryOutcome {
+    hit_k: bool,
+    hit_5: bool,
+    hit_10: bool,
+    reciprocal_rank: f64,
+    top_k_ids: Vec<String>,
+}
+
+/// Score one evaluation query against the embedded corpus.
+///
+/// Embeds the query, ranks the corpus by cosine similarity, then computes
+/// hit indicators for K, 5, 10 and the reciprocal rank.
+///
+/// `cutoffs` is `[eff_k, eff_k_5, eff_k_10]` — the effective top-K cutoffs
+/// already capped at corpus length.
+fn score_one_query(
+    provider: &dyn EmbeddingProvider,
+    eq: &EvalQuery,
+    corpus: &[(String, String)],
+    corpus_vecs: &[Vec<f32>],
+    cutoffs: [usize; 3],
+) -> EvalResult<QueryOutcome> {
+    let [eff_k, eff_k5, eff_k10] = cutoffs;
+
+    let q_vec = provider.embed(&eq.query).map_err(|e| {
+        EmbedFailedSnafu {
+            message: format!("query {:?}: {e}", eq.query),
+        }
+        .build()
+    })?;
+
+    // Rank corpus by cosine similarity (dot product of L2-normalized vectors).
+    let mut ranked: Vec<(usize, f32)> = corpus_vecs
+        .iter()
+        .enumerate()
+        .map(|(i, cv)| (i, cosine_similarity(&q_vec, cv)))
+        .collect();
+    ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+    // WHY: ranked is collected from enumerate over corpus_vecs, so each (i, _)
+    // pair has `i < corpus.len()`. Use `.get()` to avoid the indexing/slicing
+    // lints; missing entries (impossible by construction) are silently skipped
+    // via filter_map rather than panicking.
+    let top_k_ids: Vec<String> = ranked
+        .iter()
+        .take(eff_k)
+        .filter_map(|(i, _)| corpus.get(*i).map(|(id, _)| id.clone()))
+        .collect();
+
+    let relevant: std::collections::HashSet<&str> =
+        eq.relevant_ids.iter().map(String::as_str).collect();
+
+    let hit_k = top_k_ids.iter().any(|id| relevant.contains(id.as_str()));
+
+    let hit_5 = ranked
+        .iter()
+        .take(eff_k5)
+        .filter_map(|(i, _)| corpus.get(*i).map(|(id, _)| id.as_str()))
+        .any(|id| relevant.contains(id));
+
+    let hit_10 = ranked
+        .iter()
+        .take(eff_k10)
+        .filter_map(|(i, _)| corpus.get(*i).map(|(id, _)| id.as_str()))
+        .any(|id| relevant.contains(id));
+
+    // MRR: first hit position across top-K (1-indexed).
+    let first_hit_rank = top_k_ids
+        .iter()
+        .position(|id| relevant.contains(id.as_str()))
+        .map(|pos| pos + 1);
+    let reciprocal_rank = first_hit_rank.map_or(0.0, |r| {
+        #[expect(
+            clippy::cast_precision_loss,
+            clippy::as_conversions,
+            reason = "rank fits in f64 exactly for any realistic K"
+        )]
+        let rf = r as f64;
+        1.0 / rf
+    });
+
+    Ok(QueryOutcome {
+        hit_k,
+        hit_5,
+        hit_10,
+        reciprocal_rank,
+        top_k_ids,
     })
 }
 
