@@ -269,7 +269,12 @@ pub fn parse_script(
             .build()
         })?
         .next()
-        .unwrap_or_else(|| unreachable!());
+        .ok_or_else(|| {
+            error::InvalidQuerySnafu {
+                message: "expected script content".to_string(),
+            }
+            .build()
+        })?;
     Ok(match parsed.as_rule() {
         Rule::query_script => {
             let q = parse_query(parsed.into_inner(), param_pool, fixed_rules, cur_vld)?;
@@ -286,7 +291,13 @@ pub fn parse_script(
             fixed_rules,
             cur_vld,
         )?),
-        _ => unreachable!(),
+        r => {
+            return Err(error::InvalidQuerySnafu {
+                message: format!("unexpected script type {:?} in parser", r),
+            }
+            .build()
+            .into());
+        }
     })
 }
 

@@ -24,7 +24,12 @@ pub(crate) fn parse_schema(
     let mut dep_bindings = vec![];
     let mut seen_names = BTreeSet::new();
 
-    for p in src.next().unwrap_or_else(|| unreachable!()).into_inner() {
+    for p in src.next().ok_or_else(|| {
+        InvalidQuerySnafu {
+            message: "expected element".to_string(),
+        }
+        .build()
+    })?.into_inner() {
         let _span = p.extract_span();
         let (col, ident) = parse_col(p)?;
         if !seen_names.insert(col.name.clone()) {
@@ -65,7 +70,12 @@ pub(crate) fn parse_schema(
 
 fn parse_col(pair: Pair<'_>) -> Result<(ColumnDef, Symbol)> {
     let mut src = pair.into_inner();
-    let name_p = src.next().unwrap_or_else(|| unreachable!());
+    let name_p = src.next().ok_or_else(|| {
+        InvalidQuerySnafu {
+            message: "expected element".to_string(),
+        }
+        .build()
+    })?;
     let name = CompactString::from(name_p.as_str());
     let mut typing = NullableColType {
         coltype: ColType::Any,
@@ -80,7 +90,13 @@ fn parse_col(pair: Pair<'_>) -> Result<(ColumnDef, Symbol)> {
             Rule::out_arg => {
                 binding_candidate = Some(Symbol::new(nxt.as_str(), nxt.extract_span()))
             }
-            r => unreachable!("{:?}", r),
+            r => {
+                return Err(InvalidQuerySnafu {
+                    message: format!("unexpected rule {:?} in schema parser", r),
+                }
+                .build()
+                .into());
+            }
         }
     }
     let binding =
@@ -97,7 +113,12 @@ fn parse_col(pair: Pair<'_>) -> Result<(ColumnDef, Symbol)> {
 
 pub(crate) fn parse_nullable_type(pair: Pair<'_>) -> Result<NullableColType> {
     let nullable = pair.as_str().ends_with('?');
-    let coltype = parse_type_inner(pair.into_inner().next().unwrap_or_else(|| unreachable!()))?;
+    let coltype = parse_type_inner(pair.into_inner().next().ok_or_else(|| {
+        InvalidQuerySnafu {
+            message: "expected element".to_string(),
+        }
+        .build()
+    })?)?;
     Ok(NullableColType { coltype, nullable })
 }
 
@@ -114,7 +135,12 @@ fn parse_type_inner(pair: Pair<'_>) -> Result<ColType> {
         Rule::validity_type => ColType::Validity,
         Rule::list_type => {
             let mut inner = pair.into_inner();
-            let eltype = parse_nullable_type(inner.next().unwrap_or_else(|| unreachable!()))?;
+            let eltype = parse_nullable_type(inner.next().ok_or_else(|| {
+                InvalidQuerySnafu {
+                    message: "expected element".to_string(),
+                }
+                .build()
+            })?)?;
             let len = match inner.next() {
                 None => None,
                 Some(len_p) => {
@@ -146,12 +172,28 @@ fn parse_type_inner(pair: Pair<'_>) -> Result<ColType> {
         }
         Rule::vec_type => {
             let mut inner = pair.into_inner();
-            let eltype = match inner.next().unwrap_or_else(|| unreachable!()).as_str() {
+            let eltype = match inner.next().ok_or_else(|| {
+                InvalidQuerySnafu {
+                    message: "expected element".to_string(),
+                }
+                .build()
+            })?.as_str() {
                 "F32" | "Float" => VecElementType::F32,
                 "F64" | "Double" => VecElementType::F64,
-                _ => unreachable!(),
+                _ => {
+                    return Err(InvalidQuerySnafu {
+                        message: "unexpected vec element type".to_string(),
+                    }
+                    .build()
+                    .into());
+                }
             };
-            let len = inner.next().unwrap_or_else(|| unreachable!());
+            let len = inner.next().ok_or_else(|| {
+                InvalidQuerySnafu {
+                    message: "expected element".to_string(),
+                }
+                .build()
+            })?;
             let len = len
                 .as_str()
                 .replace('_', "")
@@ -167,6 +209,12 @@ fn parse_type_inner(pair: Pair<'_>) -> Result<ColType> {
         Rule::tuple_type => {
             ColType::Tuple(pair.into_inner().map(parse_nullable_type).try_collect()?)
         }
-        _ => unreachable!(),
+        r => {
+            return Err(InvalidQuerySnafu {
+                message: format!("unexpected rule {:?} in schema parser", r),
+            }
+            .build()
+            .into());
+        }
     })
 }

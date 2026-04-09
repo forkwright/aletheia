@@ -25,12 +25,22 @@ pub(crate) fn parse_sys(
     algorithms: &BTreeMap<String, Arc<Box<dyn FixedRule>>>,
     cur_vld: ValidityTs,
 ) -> Result<SysOp> {
-    let inner = src.next().unwrap_or_else(|| unreachable!());
+    let inner = src.next().ok_or_else(|| {
+        InvalidQuerySnafu {
+            message: "expected element".to_string(),
+        }
+        .build()
+    })?;
     Ok(match inner.as_rule() {
         Rule::compact_op => SysOp::Compact,
         Rule::running_op => SysOp::ListRunning,
         Rule::kill_op => {
-            let i_expr = inner.into_inner().next().unwrap_or_else(|| unreachable!());
+            let i_expr = inner.into_inner().next().ok_or_else(|| {
+                InvalidQuerySnafu {
+                    message: "expected element".to_string(),
+                }
+                .build()
+            })?;
             let i_val = build_expr(i_expr, param_pool)?;
             let i_val = i_val.eval_to_const()?;
             let i_val = i_val.get_int().ok_or_else(|| {
@@ -46,7 +56,12 @@ pub(crate) fn parse_sys(
                 inner
                     .into_inner()
                     .next()
-                    .unwrap_or_else(|| unreachable!())
+                    .ok_or_else(|| {
+                        InvalidQuerySnafu {
+                            message: "expected element".to_string(),
+                        }
+                        .build()
+                    })?
                     .into_inner(),
                 param_pool,
                 algorithms,
@@ -56,7 +71,12 @@ pub(crate) fn parse_sys(
         }
         Rule::describe_relation_op => {
             let mut inner = inner.into_inner();
-            let rels_p = inner.next().unwrap_or_else(|| unreachable!());
+            let rels_p = inner.next().ok_or_else(|| {
+                InvalidQuerySnafu {
+                    message: "expected element".to_string(),
+                }
+                .build()
+            })?;
             let rel = Symbol::new(rels_p.as_str(), rels_p.extract_span());
             let description = match inner.next() {
                 None => Default::default(),
@@ -74,37 +94,70 @@ pub(crate) fn parse_sys(
             SysOp::RemoveRelation(rel)
         }
         Rule::list_columns_op => {
-            let rels_p = inner.into_inner().next().unwrap_or_else(|| unreachable!());
+            let rels_p = inner.into_inner().next().ok_or_else(|| {
+                InvalidQuerySnafu {
+                    message: "expected element".to_string(),
+                }
+                .build()
+            })?;
             let rel = Symbol::new(rels_p.as_str(), rels_p.extract_span());
             SysOp::ListColumns(rel)
         }
         Rule::list_indices_op => {
-            let rels_p = inner.into_inner().next().unwrap_or_else(|| unreachable!());
+            let rels_p = inner.into_inner().next().ok_or_else(|| {
+                InvalidQuerySnafu {
+                    message: "expected element".to_string(),
+                }
+                .build()
+            })?;
             let rel = Symbol::new(rels_p.as_str(), rels_p.extract_span());
             SysOp::ListIndices(rel)
         }
         Rule::rename_relations_op => {
-            let rename_pairs = inner
-                .into_inner()
-                .map(|pair| {
-                    let mut src = pair.into_inner();
-                    let rels_p = src.next().unwrap_or_else(|| unreachable!());
-                    let rel = Symbol::new(rels_p.as_str(), rels_p.extract_span());
-                    let rels_p = src.next().unwrap_or_else(|| unreachable!());
-                    let new_rel = Symbol::new(rels_p.as_str(), rels_p.extract_span());
-                    (rel, new_rel)
-                })
-                .collect_vec();
+            let mut rename_pairs = vec![];
+            for pair in inner.into_inner() {
+                let mut src = pair.into_inner();
+                let rels_p = src.next().ok_or_else(|| {
+                    InvalidQuerySnafu {
+                        message: "expected element in rename relations".to_string(),
+                    }
+                    .build()
+                })?;
+                let rel = Symbol::new(rels_p.as_str(), rels_p.extract_span());
+                let rels_p = src.next().ok_or_else(|| {
+                    InvalidQuerySnafu {
+                        message: "expected element in rename relations".to_string(),
+                    }
+                    .build()
+                })?;
+                let new_rel = Symbol::new(rels_p.as_str(), rels_p.extract_span());
+                rename_pairs.push((rel, new_rel));
+            }
             SysOp::RenameRelation(rename_pairs)
         }
         Rule::access_level_op => {
             let mut ps = inner.into_inner();
-            let access_level = match ps.next().unwrap_or_else(|| unreachable!()).as_str() {
+            let access_level = match ps
+                .next()
+                .ok_or_else(|| {
+                    InvalidQuerySnafu {
+                        message: "expected element".to_string(),
+                    }
+                    .build()
+                })?
+                .as_str()
+            {
                 "normal" => AccessLevel::Normal,
                 "protected" => AccessLevel::Protected,
                 "read_only" => AccessLevel::ReadOnly,
                 "hidden" => AccessLevel::Hidden,
-                _ => unreachable!(),
+                s => {
+                    return Err(InvalidQuerySnafu {
+                        message: format!("unexpected access level: {}", s),
+                    }
+                    .build()
+                    .into());
+                }
             };
             let mut rels = vec![];
             for rel_p in ps {
@@ -114,21 +167,41 @@ pub(crate) fn parse_sys(
             SysOp::SetAccessLevel(rels, access_level)
         }
         Rule::trigger_relation_show_op => {
-            let rels_p = inner.into_inner().next().unwrap_or_else(|| unreachable!());
+            let rels_p = inner.into_inner().next().ok_or_else(|| {
+                InvalidQuerySnafu {
+                    message: "expected element".to_string(),
+                }
+                .build()
+            })?;
             let rel = Symbol::new(rels_p.as_str(), rels_p.extract_span());
             SysOp::ShowTrigger(rel)
         }
         Rule::trigger_relation_op => {
             let mut src = inner.into_inner();
-            let rels_p = src.next().unwrap_or_else(|| unreachable!());
+            let rels_p = src.next().ok_or_else(|| {
+                InvalidQuerySnafu {
+                    message: "expected element".to_string(),
+                }
+                .build()
+            })?;
             let rel = Symbol::new(rels_p.as_str(), rels_p.extract_span());
             let mut puts = vec![];
             let mut rms = vec![];
             let mut replaces = vec![];
             for clause in src {
                 let mut clause_inner = clause.into_inner();
-                let op = clause_inner.next().unwrap_or_else(|| unreachable!());
-                let script = clause_inner.next().unwrap_or_else(|| unreachable!());
+                let op = clause_inner.next().ok_or_else(|| {
+                    InvalidQuerySnafu {
+                        message: "expected element".to_string(),
+                    }
+                    .build()
+                })?;
+                let script = clause_inner.next().ok_or_else(|| {
+                    InvalidQuerySnafu {
+                        message: "expected element".to_string(),
+                    }
+                    .build()
+                })?;
                 let script_str = script.as_str();
                 parse_query(
                     script.into_inner(),
@@ -140,18 +213,39 @@ pub(crate) fn parse_sys(
                     Rule::trigger_put => puts.push(script_str.to_string()),
                     Rule::trigger_rm => rms.push(script_str.to_string()),
                     Rule::trigger_replace => replaces.push(script_str.to_string()),
-                    r => unreachable!("{:?}", r),
+                    r => {
+                        return Err(InvalidQuerySnafu {
+                            message: format!("unexpected rule {:?} in system parser", r),
+                        }
+                        .build()
+                        .into());
+                    }
                 }
             }
             SysOp::SetTriggers(rel, puts, rms, replaces)
         }
         Rule::lsh_idx_op => {
-            let inner = inner.into_inner().next().unwrap_or_else(|| unreachable!());
+            let inner = inner.into_inner().next().ok_or_else(|| {
+                InvalidQuerySnafu {
+                    message: "expected element".to_string(),
+                }
+                .build()
+            })?;
             match inner.as_rule() {
                 Rule::index_create_adv => {
                     let mut inner = inner.into_inner();
-                    let rel = inner.next().unwrap_or_else(|| unreachable!());
-                    let name = inner.next().unwrap_or_else(|| unreachable!());
+                    let rel = inner.next().ok_or_else(|| {
+                        InvalidQuerySnafu {
+                            message: "expected element".to_string(),
+                        }
+                        .build()
+                    })?;
+                    let name = inner.next().ok_or_else(|| {
+                        InvalidQuerySnafu {
+                            message: "expected element".to_string(),
+                        }
+                        .build()
+                    })?;
                     let mut filters = vec![];
                     let mut tokenizer = TokenizerConfig {
                         name: Default::default(),
@@ -166,8 +260,18 @@ pub(crate) fn parse_sys(
                     let mut false_negative_weight = 1.0;
                     for opt_pair in inner {
                         let mut opt_inner = opt_pair.into_inner();
-                        let opt_name = opt_inner.next().unwrap_or_else(|| unreachable!());
-                        let opt_val = opt_inner.next().unwrap_or_else(|| unreachable!());
+                        let opt_name = opt_inner.next().ok_or_else(|| {
+                            InvalidQuerySnafu {
+                                message: "expected element".to_string(),
+                            }
+                            .build()
+                        })?;
+                        let opt_val = opt_inner.next().ok_or_else(|| {
+                            InvalidQuerySnafu {
+                                message: "expected element".to_string(),
+                            }
+                            .build()
+                        })?;
                         match opt_name.as_str() {
                             "false_positive_weight" => {
                                 let mut expr = build_expr(opt_val, param_pool)?;
@@ -375,23 +479,54 @@ pub(crate) fn parse_sys(
                 }
                 Rule::index_drop => {
                     let mut inner = inner.into_inner();
-                    let rel = inner.next().unwrap_or_else(|| unreachable!());
-                    let name = inner.next().unwrap_or_else(|| unreachable!());
+                    let rel = inner.next().ok_or_else(|| {
+                        InvalidQuerySnafu {
+                            message: "expected element".to_string(),
+                        }
+                        .build()
+                    })?;
+                    let name = inner.next().ok_or_else(|| {
+                        InvalidQuerySnafu {
+                            message: "expected element".to_string(),
+                        }
+                        .build()
+                    })?;
                     SysOp::RemoveIndex(
                         Symbol::new(rel.as_str(), rel.extract_span()),
                         Symbol::new(name.as_str(), name.extract_span()),
                     )
                 }
-                r => unreachable!("{:?}", r),
+                r => {
+                    return Err(InvalidQuerySnafu {
+                        message: format!("unexpected rule {:?} in system parser", r),
+                    }
+                    .build()
+                    .into());
+                }
             }
         }
         Rule::fts_idx_op => {
-            let inner = inner.into_inner().next().unwrap_or_else(|| unreachable!());
+            let inner = inner.into_inner().next().ok_or_else(|| {
+                InvalidQuerySnafu {
+                    message: "expected element".to_string(),
+                }
+                .build()
+            })?;
             match inner.as_rule() {
                 Rule::index_create_adv => {
                     let mut inner = inner.into_inner();
-                    let rel = inner.next().unwrap_or_else(|| unreachable!());
-                    let name = inner.next().unwrap_or_else(|| unreachable!());
+                    let rel = inner.next().ok_or_else(|| {
+                        InvalidQuerySnafu {
+                            message: "expected element".to_string(),
+                        }
+                        .build()
+                    })?;
+                    let name = inner.next().ok_or_else(|| {
+                        InvalidQuerySnafu {
+                            message: "expected element".to_string(),
+                        }
+                        .build()
+                    })?;
                     let mut filters = vec![];
                     let mut tokenizer = TokenizerConfig {
                         name: Default::default(),
@@ -401,8 +536,18 @@ pub(crate) fn parse_sys(
                     let mut extract_filter = "".to_string();
                     for opt_pair in inner {
                         let mut opt_inner = opt_pair.into_inner();
-                        let opt_name = opt_inner.next().unwrap_or_else(|| unreachable!());
-                        let opt_val = opt_inner.next().unwrap_or_else(|| unreachable!());
+                        let opt_name = opt_inner.next().ok_or_else(|| {
+                            InvalidQuerySnafu {
+                                message: "expected element".to_string(),
+                            }
+                            .build()
+                        })?;
+                        let opt_val = opt_inner.next().ok_or_else(|| {
+                            InvalidQuerySnafu {
+                                message: "expected element".to_string(),
+                            }
+                            .build()
+                        })?;
                         match opt_name.as_str() {
                             "extractor" => {
                                 let mut ex = build_expr(opt_val, param_pool)?;
@@ -509,23 +654,54 @@ pub(crate) fn parse_sys(
                 }
                 Rule::index_drop => {
                     let mut inner = inner.into_inner();
-                    let rel = inner.next().unwrap_or_else(|| unreachable!());
-                    let name = inner.next().unwrap_or_else(|| unreachable!());
+                    let rel = inner.next().ok_or_else(|| {
+                        InvalidQuerySnafu {
+                            message: "expected element".to_string(),
+                        }
+                        .build()
+                    })?;
+                    let name = inner.next().ok_or_else(|| {
+                        InvalidQuerySnafu {
+                            message: "expected element".to_string(),
+                        }
+                        .build()
+                    })?;
                     SysOp::RemoveIndex(
                         Symbol::new(rel.as_str(), rel.extract_span()),
                         Symbol::new(name.as_str(), name.extract_span()),
                     )
                 }
-                r => unreachable!("{:?}", r),
+                r => {
+                    return Err(InvalidQuerySnafu {
+                        message: format!("unexpected rule {:?} in system parser", r),
+                    }
+                    .build()
+                    .into());
+                }
             }
         }
         Rule::vec_idx_op => {
-            let inner = inner.into_inner().next().unwrap_or_else(|| unreachable!());
+            let inner = inner.into_inner().next().ok_or_else(|| {
+                InvalidQuerySnafu {
+                    message: "expected element".to_string(),
+                }
+                .build()
+            })?;
             match inner.as_rule() {
                 Rule::index_create_adv => {
                     let mut inner = inner.into_inner();
-                    let rel = inner.next().unwrap_or_else(|| unreachable!());
-                    let name = inner.next().unwrap_or_else(|| unreachable!());
+                    let rel = inner.next().ok_or_else(|| {
+                        InvalidQuerySnafu {
+                            message: "expected element".to_string(),
+                        }
+                        .build()
+                    })?;
+                    let name = inner.next().ok_or_else(|| {
+                        InvalidQuerySnafu {
+                            message: "expected element".to_string(),
+                        }
+                        .build()
+                    })?;
                     let mut vec_dim = 0;
                     let mut dtype = VecElementType::F32;
                     let mut vec_fields = vec![];
@@ -538,8 +714,18 @@ pub(crate) fn parse_sys(
 
                     for opt_pair in inner {
                         let mut opt_inner = opt_pair.into_inner();
-                        let opt_name = opt_inner.next().unwrap_or_else(|| unreachable!());
-                        let opt_val = opt_inner.next().unwrap_or_else(|| unreachable!());
+                        let opt_name = opt_inner.next().ok_or_else(|| {
+                            InvalidQuerySnafu {
+                                message: "expected element".to_string(),
+                            }
+                            .build()
+                        })?;
+                        let opt_val = opt_inner.next().ok_or_else(|| {
+                            InvalidQuerySnafu {
+                                message: "expected element".to_string(),
+                            }
+                            .build()
+                        })?;
                         let opt_val_str = opt_val.as_str();
                         match opt_name.as_str() {
                             "dim" => {
@@ -680,24 +866,55 @@ pub(crate) fn parse_sys(
                 }
                 Rule::index_drop => {
                     let mut inner = inner.into_inner();
-                    let rel = inner.next().unwrap_or_else(|| unreachable!());
-                    let name = inner.next().unwrap_or_else(|| unreachable!());
+                    let rel = inner.next().ok_or_else(|| {
+                        InvalidQuerySnafu {
+                            message: "expected element".to_string(),
+                        }
+                        .build()
+                    })?;
+                    let name = inner.next().ok_or_else(|| {
+                        InvalidQuerySnafu {
+                            message: "expected element".to_string(),
+                        }
+                        .build()
+                    })?;
                     SysOp::RemoveIndex(
                         Symbol::new(rel.as_str(), rel.extract_span()),
                         Symbol::new(name.as_str(), name.extract_span()),
                     )
                 }
-                r => unreachable!("{:?}", r),
+                r => {
+                    return Err(InvalidQuerySnafu {
+                        message: format!("unexpected rule {:?} in system parser", r),
+                    }
+                    .build()
+                    .into());
+                }
             }
         }
         Rule::index_op => {
-            let inner = inner.into_inner().next().unwrap_or_else(|| unreachable!());
+            let inner = inner.into_inner().next().ok_or_else(|| {
+                InvalidQuerySnafu {
+                    message: "expected element".to_string(),
+                }
+                .build()
+            })?;
             match inner.as_rule() {
                 Rule::index_create => {
                     let _span = inner.extract_span();
                     let mut inner = inner.into_inner();
-                    let rel = inner.next().unwrap_or_else(|| unreachable!());
-                    let name = inner.next().unwrap_or_else(|| unreachable!());
+                    let rel = inner.next().ok_or_else(|| {
+                        InvalidQuerySnafu {
+                            message: "expected element".to_string(),
+                        }
+                        .build()
+                    })?;
+                    let name = inner.next().ok_or_else(|| {
+                        InvalidQuerySnafu {
+                            message: "expected element".to_string(),
+                        }
+                        .build()
+                    })?;
                     let cols = inner
                         .map(|p| Symbol::new(p.as_str(), p.extract_span()))
                         .collect_vec();
@@ -717,17 +934,39 @@ pub(crate) fn parse_sys(
                 }
                 Rule::index_drop => {
                     let mut inner = inner.into_inner();
-                    let rel = inner.next().unwrap_or_else(|| unreachable!());
-                    let name = inner.next().unwrap_or_else(|| unreachable!());
+                    let rel = inner.next().ok_or_else(|| {
+                        InvalidQuerySnafu {
+                            message: "expected element".to_string(),
+                        }
+                        .build()
+                    })?;
+                    let name = inner.next().ok_or_else(|| {
+                        InvalidQuerySnafu {
+                            message: "expected element".to_string(),
+                        }
+                        .build()
+                    })?;
                     SysOp::RemoveIndex(
                         Symbol::new(rel.as_str(), rel.extract_span()),
                         Symbol::new(name.as_str(), name.extract_span()),
                     )
                 }
-                _ => unreachable!(),
+                r => {
+                    return Err(InvalidQuerySnafu {
+                        message: format!("unexpected rule {:?} in system parser", r),
+                    }
+                    .build()
+                    .into());
+                }
             }
         }
         Rule::list_fixed_rules => SysOp::ListFixedRules,
-        r => unreachable!("{:?}", r),
+        r => {
+            return Err(InvalidQuerySnafu {
+                message: format!("unexpected rule {:?} in system parser", r),
+            }
+            .build()
+            .into());
+        }
     })
 }
