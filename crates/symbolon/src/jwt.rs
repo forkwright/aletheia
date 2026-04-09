@@ -66,6 +66,9 @@ impl JwtConfig {
     ///
     /// Uses constant-time comparison to prevent timing side-channels
     /// that could leak information about the key contents.
+    ///
+    /// // SAFETY: Constant-time comparison via `subtle::ConstantTimeEq` prevents
+    /// // timing attacks that could leak the key through comparison timing differences.
     #[must_use]
     pub(crate) fn has_insecure_key(&self) -> bool {
         let key_bytes = self.signing_key.expose_secret().as_bytes();
@@ -147,6 +150,10 @@ impl JwtManager {
     /// Returns an error if the token's expiration time has passed.
     /// Returns an error if the token is malformed, has an invalid
     /// signature, or fails any other JWT validation check.
+    ///
+    /// // WHY: Signature is verified BEFORE parsing claims to reject tampered
+    /// // tokens early. This ordering prevents attackers from triggering JSON
+    /// // parsing errors with malformed payloads that would log noise.
     #[must_use = "validated claims must be checked before granting access"]
     pub fn validate(&self, token: &str) -> Result<Claims> {
         let (header_payload, signature) = token.rsplit_once('.').ok_or_else(|| {
@@ -199,7 +206,7 @@ impl JwtManager {
             .build()
         })?;
 
-        // WHY: Validate required claims
+        // Validate required claims after signature verification succeeded.
         if claims.iss != self.config.issuer {
             return Err(error::TokenDecodeSnafu {
                 message: format!(
@@ -225,6 +232,10 @@ impl JwtManager {
     }
 
     /// Refresh a token pair: validate the refresh token, issue a new access + refresh pair.
+    ///
+    /// // WHY: Refresh tokens are single-use (rotated on each refresh). This
+    /// // prevents replay attacks where a stolen refresh token could be used
+    /// // indefinitely. Both new tokens have independent expiration.
     #[cfg_attr(
         not(test),
         expect(
@@ -317,7 +328,8 @@ fn now_unix() -> i64 {
             })
             .as_secs(),
     )
-    // WHY: saturate u64 seconds to i64::MAX (~year 292B) to prevent overflow
+    // NOTE: u64 seconds are saturated to i64::MAX (~year 292B) to prevent overflow.
+    // This is effectively infinite for practical JWT expiration purposes.
     .unwrap_or(i64::MAX)
 }
 

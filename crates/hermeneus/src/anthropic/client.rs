@@ -463,6 +463,10 @@ impl AnthropicProvider {
     /// The token prefix is the first 4 characters of the current secret value;
     /// the credential source is the [`CredentialSource`] display string.
     /// Returns empty strings when no credential is available.
+    ///
+    /// // WHY: Only the first 4 characters of the token are logged to avoid
+    /// // leaking credential material in logs while still allowing operators to
+    /// // distinguish between different tokens (e.g., after a refresh rotation).
     fn credential_log_info(&self) -> (String, String) {
         match self.credential_provider.get_credential() {
             Some(cred) => {
@@ -481,6 +485,11 @@ impl AnthropicProvider {
     /// system prompt check. The Messages API inspects the system field and only
     /// allows higher-tier models when the prompt begins with the CC identity.
     /// Haiku works without this. This matches Claude Code's own behavior.
+    ///
+    /// // WHY: Anthropic requires the EXACT CC identity as the system field for
+    /// // OAuth tokens to access Sonnet/Opus. Any additional content in the system
+    /// // field causes 400. The actual bootstrap prompt moves into messages as
+    /// // the first User-role message with a [System context] label.
     fn maybe_prepend_oauth_identity(&self, request: &CompletionRequest) -> CompletionRequest {
         let credential = self.credential_provider.get_credential();
         let Some(cred) = credential else {
@@ -519,6 +528,10 @@ impl AnthropicProvider {
     /// Returns `None` when CC mimicry is inactive (API key mode or disabled).
     /// The attribution is computed from the first user message text and the
     /// CC version, matching CC's `getAttributionHeader()` in `constants/system.ts`.
+    ///
+    /// // WHY: Attribution headers are part of Anthropic's request fingerprinting
+    /// // for OAuth-based API access. Missing or incorrect attribution causes
+    /// // subtle rate-limiting or model availability issues.
     fn compute_attribution(&self, request: &CompletionRequest) -> Option<String> {
         let profile = self.cc_profile.as_ref()?;
         // Extract first user message text for fingerprint computation.

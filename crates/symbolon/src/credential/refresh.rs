@@ -71,8 +71,9 @@ fn default_expires_in() -> u64 {
 
 /// Clamp `expires_in` to [`MIN_EXPIRES_IN_SECS`, `MAX_EXPIRES_IN_SECS`].
 ///
-/// WHY: a zero or negative value from a buggy OAuth server causes infinite
-/// refresh loops; an absurdly large value delays legitimate re-auth.
+/// // WHY: A zero or negative value from a buggy OAuth server causes infinite
+/// // refresh loops (immediate re-trigger). An absurdly large value delays
+/// // legitimate re-auth after revocation. Clamping bounds the behavior.
 pub(super) fn clamp_expires_in(raw: u64) -> u64 {
     let clamped = raw.clamp(MIN_EXPIRES_IN_SECS, MAX_EXPIRES_IN_SECS);
     if clamped != raw {
@@ -98,11 +99,14 @@ pub(super) struct RefreshState {
 /// background task is cancelled and aborted when the provider is dropped,
 /// regardless of whether the drop occurs during normal execution, early
 /// error return, or panic unwind.
+///
+/// // WHY: RwLock allows concurrent readers (get_credential calls) with a
+/// // single writer (the background refresh task). This avoids blocking
+/// // LLM requests during token refresh, which may take 100-500ms.
 pub struct RefreshingCredentialProvider {
     /// Current OAuth token and refresh metadata. `None` after a fatal
     /// refresh failure. Writers: the background refresh task (exclusive).
-    /// Readers: `get_credential()` on any thread. The `RwLock` ensures
-    /// readers never see a partially-updated token/expiry pair.
+    /// Readers: `get_credential()` on any thread.
     state: Arc<RwLock<Option<RefreshState>>>,
     file_provider: FileCredentialProvider,
     shutdown: CancellationToken,
@@ -322,7 +326,9 @@ async fn refresh_loop(
             () = tokio::time::sleep(check_interval) => {}
         }
 
-        // WHY: When circuit is open, poll file for external credential updates.
+        // When circuit is open, poll file for external credential updates.
+        // This allows manual credential fixes (e.g., `aletheia auth login`)
+        // to take effect without restarting the refresh loop.
         if !circuit_breaker.check_allowed() {
             if mtime_tracker.has_changed(&path) {
                 try_reload_from_file(&state, &path, &circuit_breaker);
@@ -366,8 +372,9 @@ async fn refresh_loop(
         );
 
         let refresh_result = do_refresh(&client, &refresh_token_value).await;
-        // WHY: zeroize the plaintext refresh token from memory immediately
-        // after use to limit the window for memory disclosure attacks.
+        // SAFETY: The refresh token is zeroized immediately after use to
+        // limit the window for memory disclosure attacks. The token is
+        // still in the OAuthResponse if we need to persist it to disk.
         refresh_token_value.zeroize();
         match refresh_result {
             RefreshOutcome::Success(resp) => {
@@ -434,7 +441,8 @@ async fn refresh_loop(
 }
 
 pub(super) async fn do_refresh(client: &reqwest::Client, refresh_token: &str) -> RefreshOutcome {
-    // WHY: Anthropic OAuth endpoint expects form-urlencoded, not JSON
+    // NOTE: Anthropic OAuth endpoint expects form-urlencoded, not JSON.
+    // This matches RFC 6749 Section 4.1.3 for token refresh requests.
     let body = format!(
         "grant_type=refresh_token&refresh_token={refresh_token}&client_id={OAUTH_CLIENT_ID}",
     );
@@ -461,7 +469,7 @@ pub(super) async fn do_refresh(client: &reqwest::Client, refresh_token: &str) ->
             String::new()
         });
 
-        // WHY: `invalid_grant` means the refresh token is revoked, expired, or
+        // `invalid_grant` means the refresh token is revoked, expired, or
         // otherwise permanently invalid. Retrying will never succeed — the user
         // must re-authenticate to obtain a new refresh token.
         if let Ok(err_resp) = serde_json::from_str::<OAuthErrorResponse>(&body_text) {

@@ -82,8 +82,9 @@ impl RecallStage {
 
     /// Set side-query selected IDs for pre-filtering before 6-factor scoring.
     ///
-    /// WHY: when a side-query has identified relevant source IDs, this narrows
-    /// the candidate set before the expensive scoring pipeline runs.
+    /// // WHY: Side-queries (e.g., from tool results or explicit references) can
+    /// // identify relevant knowledge IDs directly, bypassing vector search.
+    /// // Pre-filtering avoids expensive 6-factor scoring on irrelevant candidates.
     #[must_use]
     pub fn with_side_query_ids(mut self, ids: HashSet<String>) -> Self {
         self.side_query_ids = Some(ids);
@@ -102,6 +103,12 @@ impl RecallStage {
     ///
     /// Used as a fallback when the embedding provider is in mock mode.
     /// Scores, ranks, and formats results the same way as [`run`](Self::run).
+    ///
+    /// # Why
+    ///
+    /// BM25 is a pure-text fallback when embeddings are unavailable
+    /// (mock mode, network issues, or local-only deployments). It provides
+    /// reasonable relevance without external service dependencies.
     ///
     /// # Complexity
     ///
@@ -136,6 +143,10 @@ impl RecallStage {
     /// Embeds the query, searches for nearest vectors, scores and ranks results,
     /// then formats the top results as a markdown section for the system prompt.
     /// When `iterative` is enabled, runs a second cycle with terminology-refined queries.
+    ///
+    /// // WHY: Iterative recall discovers domain terminology from initial results
+    /// // and re-queries with expanded terms, improving recall for technical queries
+    /// // where the user's vocabulary may not match the knowledge base.
     ///
     /// Non-fatal errors are returned as `Err`: the caller should catch and continue.
     ///

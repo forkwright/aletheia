@@ -118,6 +118,10 @@ impl NousActor {
     /// were dropped mid-await, those fields would not be reset. In
     /// practice this is only called from the sequential actor loop, so
     /// cancellation only occurs at shutdown when the actor is consumed.
+    ///
+    /// // NOTE: The panic boundary in `execute_turn_with_panic_boundary` ensures
+    /// // that even if the pipeline panics, the actor remains in a consistent
+    /// // state and can process subsequent messages.
     pub(super) async fn handle_turn(
         &mut self,
         session_key: String, // kanon:ignore RUST/plain-string-secret
@@ -184,6 +188,10 @@ impl NousActor {
     /// Execute a turn with a panic boundary. If the pipeline panics, the panic
     /// is caught, logged, and an error is returned to the caller. The actor
     /// continues processing subsequent messages.
+    ///
+    /// // WHY: Pipeline panics are isolated to a spawned task so they don't
+    /// // crash the actor. This is essential for long-running agents where
+    /// // a single malformed input or tool bug shouldn't terminate the service.
     async fn execute_turn_with_panic_boundary(
         &mut self,
         session_key: &str,
@@ -227,6 +235,10 @@ impl NousActor {
     /// in-memory `SessionState` instead of generating a new ULID. This
     /// ensures the actor's session ID matches the database row created by
     /// pylon, preventing FK constraint failures in finalize and tools.
+    ///
+    /// // WHY(#2160): Session is persisted BEFORE spawning the pipeline task.
+    /// // If the actor crashes mid-pipeline, the session_id survives in SQLite
+    /// // for recovery instead of being lost with the in-memory HashMap.
     #[expect(
         clippy::too_many_lines,
         reason = "pipeline setup is sequential and cohesive; splitting adds indirection"
@@ -252,9 +264,7 @@ impl NousActor {
 
         session.next_turn();
 
-        // WHY(#2160): persist session to store BEFORE spawning the pipeline task.
-        // If the actor crashes mid-pipeline, the session_id survives in SQLite
-        // for recovery instead of being lost with the in-memory HashMap.
+        // Persist session to store BEFORE spawning the pipeline task.
         if let Some(ref store) = self.stores.session_store {
             let guard = store.lock().await;
             if let Err(e) = guard.find_or_create_session(
