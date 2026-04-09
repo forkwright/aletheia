@@ -84,7 +84,6 @@ impl CronExpr {
     /// happen for well-formed expressions, but we guard against infinite
     /// loops with a year-limit).
     #[expect(
-        clippy::cast_possible_truncation,
         clippy::as_conversions,
         reason = "month (1-12), day (1-31), hour (0-23), minute (0-59), second (0-59) all fit in i8; u8→i8 is safe for values ≤ 59"
     )]
@@ -449,13 +448,9 @@ fn first_value(set: &BTreeSet<u8>) -> u8 {
 // ---------------------------------------------------------------------------
 
 /// Number of days in a given month (1-12) for a given year.
-#[expect(
-    clippy::cast_possible_truncation,
-    clippy::as_conversions,
-    reason = "days_in_month result is 28-31, always fits u8"
-)]
 fn days_in_month(year: i16, month: i8) -> u8 {
     // Use jiff to get the correct answer including leap years.
+    // The `try_into().ok()` keeps the conversion safe — no `as` cast needed.
     jiff::civil::Date::new(year, month, 1)
         .ok()
         .and_then(|d| d.days_in_month().try_into().ok())
@@ -468,7 +463,6 @@ fn days_in_month(year: i16, month: i8) -> u8 {
 #[expect(
     clippy::cast_sign_loss,
     clippy::as_conversions,
-    clippy::cast_possible_truncation,
     clippy::indexing_slicing,
     reason = "intermediate values are small positive integers that fit in u8/i32; month is 1-12 so m-1 is valid index 0-11"
 )]

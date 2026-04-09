@@ -419,7 +419,7 @@ impl TaskRunner {
 
     /// Register a task. Startup tasks are marked for immediate execution.
     ///
-    /// If the task has jitter configured, it is applied to the initial next_run.
+    /// If the task has jitter configured, it is applied to the initial `next_run`.
     pub fn register(&mut self, task: TaskDef) {
         let base_next_run = match &task.schedule {
             Schedule::Startup => Some(jiff::Timestamp::now()),
@@ -593,10 +593,6 @@ impl TaskRunner {
     /// # Complexity
     ///
     /// O(i) where i is the number of in-flight tasks.
-    #[expect(
-        clippy::expect_used,
-        reason = "key existence verified by is_finished() check immediately before"
-    )]
     async fn check_in_flight(&mut self) {
         let task_ids: Vec<String> = self.in_flight.keys().cloned().collect();
 
@@ -804,10 +800,6 @@ impl TaskRunner {
     }
 
     /// Record a task failure: increment failures, apply backoff, possibly auto-disable.
-    #[expect(
-        clippy::expect_used,
-        reason = "arithmetic on small bounded values (delay nanos < i64::MAX, timestamp addition within valid jiff range)"
-    )]
     fn record_task_failure(&mut self, task_id: &str, reason: &str) {
         let Some(task) = self.tasks.iter_mut().find(|t| t.def.id == task_id) else {
             return;
@@ -1049,7 +1041,7 @@ fn sd_watchdog_interval() -> Option<Duration> {
     Some(Duration::from_micros(usec / 2))
 }
 
-/// Low-level sd_notify: write a message to `$NOTIFY_SOCKET` (Unix datagram).
+/// Low-level `sd_notify`: write a message to `$NOTIFY_SOCKET` (Unix datagram).
 ///
 /// No-op on non-Unix platforms or when `$NOTIFY_SOCKET` is not SET.
 #[cfg(unix)]
