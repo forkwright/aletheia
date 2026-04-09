@@ -83,7 +83,6 @@ impl OutputWriter {
     /// Not cancel-safe. If cancelled after directory creation but before
     /// file creation, the directory remains but the file is not created.
     /// The caller must handle this partial state.
-    #[must_use]
     pub async fn new(dir: &Path) -> Result<Self, OutputError> {
         // WHY: Create parent dir if missing so callers don't need to pre-create.
         fs::create_dir_all(dir).await.context(CreateSnafu)?;
@@ -105,7 +104,6 @@ impl OutputWriter {
     /// Not cancel-safe. If cancelled after `write_all` but before `flush`,
     /// data may be buffered but not persisted to disk. The next call will
     /// overwrite this buffered data, potentially causing data loss.
-    #[must_use]
     pub async fn write_chunk(&mut self, data: &[u8]) -> Result<(), OutputError> {
         self.file.write_all(data).await.context(WriteSnafu)?;
         self.file.flush().await.context(FlushSnafu)?;
@@ -136,7 +134,6 @@ impl OutputReader {
     /// # Cancel safety
     ///
     /// Cancel-safe. File opening is atomic; no partial state on cancellation.
-    #[must_use]
     pub async fn open(path: &Path) -> Result<Self, OutputError> {
         let file = fs::File::open(path).await.context(OpenSnafu)?;
         Ok(Self { file })

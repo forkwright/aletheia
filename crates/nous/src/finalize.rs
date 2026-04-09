@@ -6,8 +6,6 @@
 //! 3. Persists the assistant's response
 //! 4. Records token usage
 
-use std::sync::Arc;
-
 use snafu::ResultExt;
 use tracing::{debug, instrument, warn};
 use aletheia_koina::ulid::Ulid;
@@ -217,6 +215,8 @@ pub(crate) fn finalize(
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
     use crate::config::NousConfig;
     use crate::pipeline::{ToolCall, TurnUsage};
