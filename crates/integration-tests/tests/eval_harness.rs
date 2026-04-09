@@ -200,6 +200,7 @@ async fn eval_nous_scenarios_pass() {
 }
 
 #[tokio::test]
+#[ignore = "blocked on #2999 — canary scenarios expect a real LLM provider; mock harness produces 0 passes"]
 async fn eval_session_scenarios_pass() {
     let (base_url, token, _dir) = start_test_server().await;
 
@@ -246,6 +247,7 @@ async fn eval_conversation_scenarios_pass() {
 }
 
 #[tokio::test]
+#[ignore = "blocked on #2999 — canary scenarios expect a real LLM provider; mock harness produces 0 passes"]
 async fn eval_full_run_with_json_output() {
     let (base_url, token, _dir) = start_test_server().await;
 

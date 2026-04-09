@@ -28,7 +28,7 @@ aletheia-mneme = { path = "../mneme", default-features = false, features = [
 ] }
 aletheia-hermeneus = { path = "../hermeneus", features = ["test-utils"] }
 aletheia-nous = { path = "../nous" }
-aletheia-organon = { path = "../organon" }
+aletheia-organon = { path = "../organon", features = ["test-support"] }
 aletheia-thesauros = { path = "../thesauros" }
 aletheia-pylon = { path = "../pylon" }
 aletheia-symbolon = { path = "../symbolon" }
