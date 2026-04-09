@@ -138,6 +138,12 @@ impl NegJoin {
         delta_rule: Option<&MagicSymbol>,
         stores: &'a BTreeMap<MagicSymbol, EpochStore>,
     ) -> Result<TupleIter<'a>> {
+        /// Execute the inner join iterator.
+        ///
+        /// # Complexity
+        ///
+        /// O(L * cost(R)) where L is left tuples. For prefix join: O(L * log R).
+        /// For materialized join: O(L * R) to build hash table + O(L) to probe.
         let bindings = self.left.bindings_after_eliminate();
         let eliminate_indices = get_eliminate_indices(&bindings, &self.to_eliminate);
         match &self.right {
@@ -359,6 +365,12 @@ impl InnerJoin {
             .map_err(|e| e.into()),
         }
     }
+    /// Materialized hash join: builds B-tree index on right side.
+    ///
+    /// # Complexity
+    ///
+    /// O(R * log R + L * log R) to build and probe the B-tree index.
+    /// Space: O(R) for the materialized right relation.
     fn materialized_join<'a>(
         &'a self,
         tx: &'a SessionTx<'_>,

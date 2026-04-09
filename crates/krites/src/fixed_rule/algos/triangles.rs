@@ -18,6 +18,12 @@ use crate::runtime::temp_store::RegularTempStore;
 pub(crate) struct ClusteringCoefficients;
 
 impl FixedRule for ClusteringCoefficients {
+    /// Run clustering coefficient and triangle counting.
+    ///
+    /// # Complexity
+    ///
+    /// O(V * d^2) where V is vertices and d is average degree. For each node,
+    /// checks all pairs of neighbors for triangle completion. Parallelized.
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
@@ -49,6 +55,12 @@ impl FixedRule for ClusteringCoefficients {
     }
 }
 
+/// Compute local clustering coefficients and triangle counts.
+///
+/// # Complexity
+///
+/// O(V * d^2) where d is average degree. Uses parallel iteration over nodes.
+/// For sparse graphs, this is much faster than O(V^3) matrix methods.
 fn clustering_coefficients(
     graph: &DirectedCsrGraph,
     poison: Poison,

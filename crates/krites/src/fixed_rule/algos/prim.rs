@@ -19,6 +19,11 @@ use crate::runtime::temp_store::RegularTempStore;
 pub(crate) struct MinimumSpanningTreePrim;
 
 impl FixedRule for MinimumSpanningTreePrim {
+    /// Run Prim's minimum spanning tree algorithm.
+    ///
+    /// # Complexity
+    ///
+    /// O(E log V) using binary heap, or O(V^2) with array (dense graphs).
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
@@ -72,6 +77,12 @@ impl FixedRule for MinimumSpanningTreePrim {
     }
 }
 
+/// Prim MST using binary heap.
+///
+/// # Complexity
+///
+/// O(E log V) where E is edges and V is vertices. Each edge may be pushed
+/// to the heap once, and each vertex is extracted once.
 fn prim(
     graph: &DirectedCsrGraph<f32>,
     starting: u32,

@@ -23,6 +23,12 @@ use crate::runtime::temp_store::RegularTempStore;
 pub(crate) struct KCore;
 
 impl FixedRule for KCore {
+    /// Run k-core decomposition algorithm.
+    ///
+    /// # Complexity
+    ///
+    /// O(V + E) where V is vertices and E is edges. Uses iterative peeling
+    /// with a bucket queue approach (similar to radix sort on degrees).
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,

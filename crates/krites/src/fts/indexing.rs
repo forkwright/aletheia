@@ -30,6 +30,11 @@ pub(crate) struct FtsCache {
 }
 
 impl FtsCache {
+    /// Get total document count for a relation (cached).
+    ///
+    /// # Complexity
+    ///
+    /// O(1) cached, or O(1) for the underlying range count operation.
     fn get_n_for_relation(&mut self, rel: &RelationHandle, tx: &SessionTx<'_>) -> Result<usize> {
         Ok(match self.total_n_cache.entry(rel.name.clone()) {
             Entry::Vacant(v) => {
@@ -43,6 +48,12 @@ impl FtsCache {
         })
     }
 
+    /// Get average document length for a relation (cached).
+    ///
+    /// # Complexity
+    ///
+    /// O(D) where D is documents with indexed terms. Scans term entries
+    /// and computes unique document lengths.
     fn get_avg_dl_for_relation(&mut self, idx: &RelationHandle, tx: &SessionTx<'_>) -> Result<f64> {
         Ok(match self.avg_dl_cache.entry(idx.name.clone()) {
             Entry::Occupied(o) => *o.get(),
@@ -101,6 +112,12 @@ struct LiteralStats {
     doc_len: u32,
 }
 
+/// Compute BM25 relevance score.
+///
+/// # Complexity
+///
+/// O(1) arithmetic operations. Uses the standard BM25 formula with
+/// configurable k1 and b parameters.
 pub(crate) fn bm25_compute_score(
     tf: usize,
     df: usize,
@@ -139,6 +156,12 @@ pub(crate) fn bm25_compute_score(
 }
 
 impl<'a> SessionTx<'a> {
+    /// Search for a literal term in the FTS index.
+    ///
+    /// # Complexity
+    ///
+    /// O(log T + M) where T is unique terms, M is matching documents.
+    /// Uses prefix scan for range queries.
     fn fts_search_literal(
         &self,
         literal: &FtsLiteral,
@@ -216,6 +239,12 @@ impl<'a> SessionTx<'a> {
         }
         Ok(results)
     }
+    /// Execute FTS search from parsed AST.
+    ///
+    /// # Complexity
+    ///
+    /// O(Q * (log T + D)) where Q is query terms, T is unique terms, D is docs.
+    /// AND/OR/Near operations merge document sets with varying complexity.
     fn fts_search_impl(
         &self,
         ast: &FtsExpr,
@@ -380,6 +409,12 @@ impl<'a> SessionTx<'a> {
             }
         }
     }
+    /// Full-text search entry point.
+    ///
+    /// # Complexity
+    ///
+    /// O(tokenize + search + rank) = O(L + Q*(log T + D) + D log D) where
+    /// L is query length, Q is terms, T is unique terms, D is matching docs.
     pub(crate) fn fts_search(
         &self,
         q: &str,
@@ -442,6 +477,12 @@ impl<'a> SessionTx<'a> {
         }
         Ok(ret)
     }
+    /// Index a document for full-text search.
+    ///
+    /// # Complexity
+    ///
+    /// O(L) where L is the tokenized length of the document. Each unique term
+    /// requires one index write (amortized O(1) with LSM).
     pub(crate) fn put_fts_index_item(
         &mut self,
         tuple: &[DataValue],
@@ -495,6 +536,12 @@ impl<'a> SessionTx<'a> {
         }
         Ok(())
     }
+    /// Remove a document from the full-text search index.
+    ///
+    /// # Complexity
+    ///
+    /// O(L) where L is the tokenized length. Deletes each term entry
+    /// for the document (amortized O(1) per deletion with LSM).
     pub(crate) fn del_fts_index_item(
         &mut self,
         tuple: &[DataValue],

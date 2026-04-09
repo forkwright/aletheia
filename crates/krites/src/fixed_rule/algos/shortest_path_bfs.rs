@@ -17,6 +17,12 @@ use crate::runtime::temp_store::RegularTempStore;
 pub(crate) struct ShortestPathBFS;
 
 impl FixedRule for ShortestPathBFS {
+    /// Run unweighted shortest path search via BFS.
+    ///
+    /// # Complexity
+    ///
+    /// O(S * (V + E)) where S is starting nodes, V is vertices, E is edges.
+    /// Performs BFS from each starting node to all ending nodes.
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,

@@ -16,6 +16,12 @@ use crate::runtime::temp_store::RegularTempStore;
 pub(crate) struct Bfs;
 
 impl FixedRule for Bfs {
+    /// Run breadth-first search traversal.
+    ///
+    /// # Complexity
+    ///
+    /// O(V + E) where V is vertices reachable from starting nodes and E is
+    /// edges traversed. Stops early when limit is reached.
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,

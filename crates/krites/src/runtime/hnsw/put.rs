@@ -19,6 +19,13 @@ use crate::runtime::relation::RelationHandle;
 use crate::runtime::transact::SessionTx;
 
 impl<'a> SessionTx<'a> {
+    /// Insert a single vector into the HNSW index.
+    ///
+    /// # Complexity
+    ///
+    /// O(log n * ef_construction * m) where n is the number of vectors, ef_construction
+    /// is the construction beam width, and m is the maximum connections per node.
+    /// Space: O(m) for neighbor maintenance.
     fn hnsw_put_vector(
         &mut self,
         tuple: &[DataValue],
@@ -275,6 +282,12 @@ impl<'a> SessionTx<'a> {
         }
         Ok(())
     }
+    /// Shrink neighbor connections when exceeding m_max.
+    ///
+    /// # Complexity
+    ///
+    /// O(m^2) where m is the maximum connections. Evaluates all pairwise distances
+    /// between neighbors for the heuristic selection.
     fn hnsw_shrink_neighbour(
         &mut self,
         target_key: &CompoundKey,
@@ -383,6 +396,12 @@ impl<'a> SessionTx<'a> {
 
         Ok(new_degree)
     }
+    /// Select neighbors using the HNSW heuristic (Algorithm 4 from the paper).
+    ///
+    /// # Complexity
+    ///
+    /// O(m^2 * ef) where m is max connections and ef is the beam width. Performs
+    /// pairwise distance checks between all candidates in the found set.
     fn hnsw_select_neighbours_heuristic(
         &self,
         q: &Vector,
@@ -444,6 +463,11 @@ impl<'a> SessionTx<'a> {
     ///
     /// Delegates to [`hnsw_search_level_pooled`](Self::hnsw_search_level_pooled)
     /// without a visited-list pool (fresh allocation per call).
+    ///
+    /// # Complexity
+    ///
+    /// O(ef * m) where ef is the beam width and m is max connections per node.
+    /// Visits at most ef nodes, checking m neighbors each.
     pub(crate) fn hnsw_search_level(
         &self,
         q: &Vector,
@@ -463,6 +487,11 @@ impl<'a> SessionTx<'a> {
     ///
     /// When a [`VisitedPool`] is provided, the visited set is acquired from the
     /// pool and returned after use, eliminating per-search allocation.
+    ///
+    /// # Complexity
+    ///
+    /// O(ef * m) where ef is the beam width and m is max connections per node.
+    /// Space: O(ef) for the candidate priority queue plus O(ef) for visited set.
     pub(crate) fn hnsw_search_level_pooled(
         &self,
         q: &Vector,
@@ -520,6 +549,11 @@ impl<'a> SessionTx<'a> {
 
         Ok(())
     }
+    /// Get neighbors of a node at a specific level.
+    ///
+    /// # Complexity
+    ///
+    /// O(m) where m is the number of neighbors (bounded by m_max).
     pub(super) fn hnsw_get_neighbours<'b>(
         &'b self,
         cand_key: &'b CompoundKey,
@@ -577,6 +611,11 @@ impl<'a> SessionTx<'a> {
                 }
             }))
     }
+    /// Insert a fresh vector at the specified levels without graph traversal.
+    ///
+    /// # Complexity
+    ///
+    /// O(levels) where levels is the number of layers to populate.
     fn hnsw_put_fresh_at_levels(
         &mut self,
         hash: &[u8],
@@ -630,11 +669,21 @@ impl<'a> SessionTx<'a> {
     ///
     /// Canary entries (level = `DataValue::from(1)`) are written once per vector
     /// in `hnsw_put_fresh_at_levels` and serve as a per-vector marker.
+    ///
+    /// # Complexity
+    ///
+    /// O(n) where n is the number of vectors. Requires a full scan of canary entries.
     fn hnsw_count_vectors(&self, idx_table: &RelationHandle) -> usize {
         let prefix = vec![DataValue::from(1_i64)];
         idx_table.scan_prefix(self, &prefix).count()
     }
 
+    /// Public entry point for HNSW vector insertion.
+    ///
+    /// # Complexity
+    ///
+    /// O(v * log n * ef_construction * m) where v is the number of vectors in the
+    /// tuple, n is index size, ef_construction is beam width, and m is max connections.
     pub(crate) fn hnsw_put(
         &mut self,
         manifest: &HnswIndexManifest,
@@ -722,6 +771,11 @@ impl<'a> SessionTx<'a> {
     /// without a matching HNSW removal (#1719).
     ///
     /// Orphans are logged at `warn` level for each occurrence.
+    ///
+    /// # Complexity
+    ///
+    /// O(n) where n is the number of indexed vectors. Performs a canary scan plus
+    /// n lookups in the base relation.
     #[expect(
         dead_code,
         reason = "entry point for maintenance tasks — not yet wired into scheduler"

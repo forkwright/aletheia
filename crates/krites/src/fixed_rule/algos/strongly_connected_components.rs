@@ -36,6 +36,11 @@ impl StronglyConnectedComponent {
 
 #[cfg(feature = "graph-algo")]
 impl FixedRule for StronglyConnectedComponent {
+    /// Run Tarjan's strongly connected components algorithm.
+    ///
+    /// # Complexity
+    ///
+    /// O(V + E) where V is vertices and E is edges. Single DFS traversal.
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
@@ -106,6 +111,11 @@ impl TarjanSccG {
             stack: vec![],
         }
     }
+    /// Execute Tarjan's SCC algorithm.
+    ///
+    /// # Complexity
+    ///
+    /// O(V + E) - linear time DFS-based algorithm.
     pub(crate) fn run(mut self, poison: Poison) -> Result<Vec<Vec<u32>>> {
         for i in 0..self.graph.node_count() {
             if self.ids[i as usize].is_none() {
@@ -123,6 +133,11 @@ impl TarjanSccG {
 
         Ok(low_map.into_values().collect_vec())
     }
+    /// Depth-first search for SCC discovery.
+    ///
+    /// # Complexity
+    ///
+    /// O(1) per node plus O(E) total edge traversals across all DFS calls.
     fn dfs(&mut self, at: u32) {
         self.stack.push(at);
         self.on_stack[at as usize] = true;

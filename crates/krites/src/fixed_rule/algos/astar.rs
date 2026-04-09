@@ -22,6 +22,12 @@ use crate::runtime::temp_store::RegularTempStore;
 pub(crate) struct ShortestPathAStar;
 
 impl FixedRule for ShortestPathAStar {
+    /// Run A* shortest path search.
+    ///
+    /// # Complexity
+    ///
+    /// O(E log V) in the worst case where E is edges and V is vertices.
+    /// With a good heuristic, explores significantly fewer nodes than Dijkstra.
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
@@ -66,6 +72,11 @@ impl FixedRule for ShortestPathAStar {
     }
 }
 
+/// A* pathfinding with heuristic guidance.
+///
+/// # Complexity
+///
+/// O(E log V) worst case. The priority queue operations dominate.
 fn astar(
     starting: &Tuple,
     goal: &Tuple,

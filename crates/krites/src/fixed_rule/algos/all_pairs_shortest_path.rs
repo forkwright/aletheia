@@ -22,6 +22,12 @@ use crate::runtime::temp_store::RegularTempStore;
 pub(crate) struct BetweennessCentrality;
 
 impl FixedRule for BetweennessCentrality {
+    /// Run betweenness centrality computation (Brandes algorithm variant).
+    ///
+    /// # Complexity
+    ///
+    /// O(V * (E log V)) where V is vertices, E is edges. Runs Dijkstra from each node
+    /// and accumulates dependency scores. Parallelized across starting nodes.
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
@@ -95,6 +101,12 @@ impl FixedRule for BetweennessCentrality {
 pub(crate) struct ClosenessCentrality;
 
 impl FixedRule for ClosenessCentrality {
+    /// Run closeness centrality computation.
+    ///
+    /// # Complexity
+    ///
+    /// O(V * (E log V)) where V is vertices, E is edges. Runs Dijkstra from each node
+    /// to compute sum of distances. Parallelized across starting nodes.
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
@@ -149,6 +161,11 @@ impl FixedRule for ClosenessCentrality {
     }
 }
 
+/// Dijkstra variant returning only distance costs (no paths).
+///
+/// # Complexity
+///
+/// O(E log V) using binary heap. Space: O(V) for distance array.
 pub(crate) fn dijkstra_cost_only(
     edges: &DirectedCsrGraph<f32>,
     start: u32,

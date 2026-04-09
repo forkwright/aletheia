@@ -19,6 +19,12 @@ use crate::runtime::temp_store::RegularTempStore;
 pub(crate) struct KShortestPathYen;
 
 impl FixedRule for KShortestPathYen {
+    /// Run Yen's k-shortest paths algorithm.
+    ///
+    /// # Complexity
+    ///
+    /// O(K * S * T * (E log V)) where K is paths, S is sources, T is targets.
+    /// Each candidate path requires a Dijkstra run with edge exclusions.
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
@@ -118,6 +124,12 @@ impl FixedRule for KShortestPathYen {
     }
 }
 
+/// Yen's k-shortest loopless paths.
+///
+/// # Complexity
+///
+/// O(K * N * (E log V)) where K is paths, N is path length, E is edges, V is vertices.
+/// For each of K paths, explores up to N spur nodes with Dijkstra.
 fn k_shortest_path_yen(
     k: usize,
     edges: &DirectedCsrGraph<f32>,
