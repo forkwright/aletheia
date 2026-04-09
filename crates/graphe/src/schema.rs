@@ -94,14 +94,25 @@ CREATE INDEX IF NOT EXISTS idx_notes_nous ON agent_notes(nous_id);
 mod tests {
     use rusqlite::Connection;
 
-    use crate::migration;
+    use crate::migration::{self, MIGRATIONS};
     use crate::schema::{DDL, VALID_CATEGORIES};
+
+    /// Latest migration version known to the test build.
+    ///
+    /// WHY: hardcoding the version here breaks every time a migration is
+    /// added — read it from `MIGRATIONS` instead.
+    fn latest_version() -> u32 {
+        MIGRATIONS
+            .last()
+            .map(|m| m.version)
+            .expect("MIGRATIONS slice is non-empty")
+    }
 
     #[test]
     fn fresh_database_initializes_via_migration() {
         let conn = Connection::open_in_memory().expect("in-memory SQLite opens");
         let result = migration::run_migrations(&conn).expect("initial migration succeeds");
-        assert_eq!(result.current_version, 31);
+        assert_eq!(result.current_version, latest_version());
     }
 
     #[test]
@@ -111,7 +122,7 @@ mod tests {
         migration::run_migrations(&conn).expect("idempotent second migration succeeds");
 
         let version = migration::get_schema_version(&conn);
-        assert_eq!(version, 31);
+        assert_eq!(version, latest_version());
     }
 
     #[test]

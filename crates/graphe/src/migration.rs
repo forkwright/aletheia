@@ -954,6 +954,18 @@ mod tests {
         Connection::open_in_memory().expect("in-memory SQLite connection should always open")
     }
 
+    /// Latest schema version known to the test build.
+    ///
+    /// WHY: hardcoding `31` (or any value) here breaks every time a new
+    /// migration is added. Reading from `MIGRATIONS` keeps the test in
+    /// lockstep with the migration list.
+    fn latest_version() -> u32 {
+        MIGRATIONS
+            .last()
+            .map(|m| m.version)
+            .expect("MIGRATIONS slice is non-empty")
+    }
+
     #[test]
     fn fresh_database_gets_all_migrations() {
         let conn = fresh_conn();
@@ -963,14 +975,15 @@ mod tests {
             result.was_fresh,
             "fresh database should be reported as fresh"
         );
-        let expected: Vec<u32> = (1..=31).collect();
+        let expected: Vec<u32> = (1..=latest_version()).collect();
         assert_eq!(
             result.applied, expected,
-            "all 31 migrations should be applied to a fresh database"
+            "every migration should be applied to a fresh database"
         );
         assert_eq!(
-            result.current_version, 31,
-            "current version should be 31 after all migrations"
+            result.current_version,
+            latest_version(),
+            "current version should match latest migration after run"
         );
     }
 
@@ -989,8 +1002,9 @@ mod tests {
             "second run should apply no migrations"
         );
         assert_eq!(
-            result.current_version, 31,
-            "version should still be 31 after idempotent run"
+            result.current_version,
+            latest_version(),
+            "version should still match latest after idempotent run"
         );
     }
 
@@ -1019,8 +1033,8 @@ mod tests {
         let pending = check_migrations(&conn).unwrap_or_default();
         assert_eq!(
             pending.len(),
-            31,
-            "all 31 migrations should be pending on a fresh database"
+            MIGRATIONS.len(),
+            "every migration should be pending on a fresh database"
         );
         assert_eq!(
             pending[0].version, 1,
@@ -1113,13 +1127,15 @@ mod tests {
         let conn = fresh_conn();
         let result = run_migrations(&conn).expect("migrations should apply to fresh DB");
         assert_eq!(
-            result.current_version, 31,
-            "current_version should be 31 after full migration"
+            result.current_version,
+            latest_version(),
+            "current_version should match latest after full migration"
         );
         let version = get_schema_version(&conn);
         assert_eq!(
-            version, 31,
-            "get_schema_version should return 31 after full migration"
+            version,
+            latest_version(),
+            "get_schema_version should return latest after full migration"
         );
     }
 
@@ -1170,7 +1186,8 @@ mod tests {
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("PRAGMA user_version should be readable after migration");
         assert_eq!(
-            pragma_version, 31,
+            pragma_version,
+            latest_version(),
             "PRAGMA user_version should match latest migration version"
         );
     }
@@ -1206,14 +1223,15 @@ mod tests {
 
         let result = run_migrations(&conn).expect("migrations should apply to v1 DB");
         assert!(!result.was_fresh, "upgraded database should not be fresh");
-        let expected: Vec<u32> = (2..=31).collect();
+        let expected: Vec<u32> = (2..=latest_version()).collect();
         assert_eq!(
             result.applied, expected,
-            "migrations 2-31 should be applied to v1 database"
+            "migrations 2..=latest should be applied to a v1 database"
         );
         assert_eq!(
-            result.current_version, 31,
-            "current version should be 31 after upgrade"
+            result.current_version,
+            latest_version(),
+            "current version should match latest after upgrade"
         );
 
         assert!(
