@@ -177,3 +177,23 @@ async fn gateway_config_signing_key_is_redacted() {
     assert_eq!(body["auth"]["signingKey"], "***");
     assert_eq!(body["port"], 18789);
 }
+
+#[tokio::test]
+async fn nous_recover_unknown_returns_404() {
+    let (app, _dir) = app().await;
+    let req = authed_request("POST", "/api/v1/nous/nonexistent/recover", None);
+    let resp = app.oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "nous_not_found");
+}
+
+#[tokio::test]
+async fn nous_recover_requires_auth() {
+    let (app, _dir) = app().await;
+    let req = json_request("POST", "/api/v1/nous/syn/recover", None);
+    let resp = app.oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}

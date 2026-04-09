@@ -304,3 +304,219 @@ async fn sse_dropping_response_body_does_not_panic() {
 
     tokio::time::sleep(Duration::from_millis(50)).await;
 }
+
+/// Error path: sending an empty message returns 400 Bad Request.
+#[tokio::test]
+async fn send_message_empty_content_returns_400() {
+    let (router, _dir) = app().await;
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    let req = authed_request(
+        "POST",
+        &format!("/api/v1/sessions/{id}/messages"),
+        Some(serde_json::json!({ "content": "" })),
+    );
+    let resp = router.clone().oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "bad_request");
+    assert!(body["error"]["message"].as_str().unwrap().contains("empty"));
+}
+
+/// Error path: sending an oversized message returns 400 Bad Request.
+#[tokio::test]
+async fn send_message_oversized_content_returns_400() {
+    let (router, _dir) = app().await;
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    let oversized_content = "x".repeat(300_000); // > 262144 byte limit
+    let req = authed_request(
+        "POST",
+        &format!("/api/v1/sessions/{id}/messages"),
+        Some(serde_json::json!({ "content": oversized_content })),
+    );
+    let resp = router.clone().oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "bad_request");
+    assert!(body["error"]["message"].as_str().unwrap().contains("maximum size"));
+}
+
+/// Error path: sending message to unknown session returns 404 Not Found.
+#[tokio::test]
+async fn send_message_unknown_session_returns_404() {
+    let (app, _dir) = app().await;
+    let req = authed_request(
+        "POST",
+        "/api/v1/sessions/nonexistent/messages",
+        Some(serde_json::json!({ "content": "test" })),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "session_not_found");
+}
+
+/// Error path: invalid idempotency key with non-ASCII characters returns 400.
+#[tokio::test]
+async fn send_message_invalid_idempotency_key_returns_400() {
+    let (router, _dir) = app().await;
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    let token = default_token();
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/sessions/{id}/messages"))
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .header("idempotency-key", "key with emoji 🎉")
+        .body(Body::from(
+            serde_json::to_vec(&serde_json::json!({ "content": "test" })).unwrap(),
+        ))
+        .unwrap();
+
+    let resp = router.clone().oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "bad_request");
+}
+
+/// Error path: empty idempotency key returns 400 Bad Request.
+#[tokio::test]
+async fn send_message_empty_idempotency_key_returns_400() {
+    let (router, _dir) = app().await;
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    let token = default_token();
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/sessions/{id}/messages"))
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .header("idempotency-key", "")
+        .body(Body::from(
+            serde_json::to_vec(&serde_json::json!({ "content": "test" })).unwrap(),
+        ))
+        .unwrap();
+
+    let resp = router.clone().oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "bad_request");
+}
+
+/// Error path: stream_turn with empty message returns 400 Bad Request.
+#[tokio::test]
+async fn stream_turn_empty_message_returns_400() {
+    let (app, _dir) = app().await;
+    let req = authed_request(
+        "POST",
+        "/api/v1/sessions/stream",
+        Some(serde_json::json!({
+            "agentId": "syn",
+            "message": "",
+            "sessionKey": "test"
+        })),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+
+    // WHY: Handler validates message and returns 400 for empty
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "bad_request");
+}
+
+/// Error path: stream_turn with oversized message returns 400 Bad Request.
+#[tokio::test]
+async fn stream_turn_oversized_message_returns_400() {
+    let (app, _dir) = app().await;
+    let oversized_message = "x".repeat(300_000);
+    let req = authed_request(
+        "POST",
+        "/api/v1/sessions/stream",
+        Some(serde_json::json!({
+            "agentId": "syn",
+            "message": oversized_message,
+            "sessionKey": "test"
+        })),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+
+    // WHY: Handler validates message and returns 400 for oversized
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "bad_request");
+}
+
+/// Error path: stream_turn with unknown agent_id returns 404 Not Found.
+#[tokio::test]
+async fn stream_turn_unknown_agent_returns_404() {
+    let (app, _dir) = app().await;
+    let req = authed_request(
+        "POST",
+        "/api/v1/sessions/stream",
+        Some(serde_json::json!({
+            "agentId": "nonexistent-agent",
+            "message": "test",
+            "sessionKey": "test"
+        })),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "nous_not_found");
+}
+
+/// Error path: stream_turn with oversized agent_id returns 400 Bad Request.
+#[tokio::test]
+async fn stream_turn_oversized_agent_id_returns_400() {
+    let (app, _dir) = app().await;
+    let oversized_agent_id = "a".repeat(300);
+    let req = authed_request(
+        "POST",
+        "/api/v1/sessions/stream",
+        Some(serde_json::json!({
+            "agentId": oversized_agent_id,
+            "message": "test",
+            "sessionKey": "test"
+        })),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+
+    // WHY: Handler validates agent_id and returns 400 for oversized
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "bad_request");
+}
+
+/// Error path: stream_turn with oversized session_key returns 400 Bad Request.
+#[tokio::test]
+async fn stream_turn_oversized_session_key_returns_400() {
+    let (app, _dir) = app().await;
+    let oversized_session_key = "b".repeat(300);
+    let req = authed_request(
+        "POST",
+        "/api/v1/sessions/stream",
+        Some(serde_json::json!({
+            "agentId": "syn",
+            "message": "test",
+            "sessionKey": oversized_session_key
+        })),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+
+    // WHY: Handler validates session_key and returns 400 for oversized
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "bad_request");
+}

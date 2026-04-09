@@ -19,6 +19,7 @@ mod handler_doc;
 mod health;
 mod helpers;
 mod idempotency;
+mod knowledge;
 mod message;
 mod middleware;
 mod nous;

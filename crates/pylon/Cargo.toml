@@ -27,7 +27,7 @@ axum-server = { workspace = true, optional = true }
 
 # Async
 tokio = { workspace = true, features = ["process"] }
-tokio-stream = { workspace = true }
+tokio-stream = { workspace = true, features = ["time"] }
 tokio-util = { workspace = true }
 
 # Serialization
