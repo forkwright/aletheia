@@ -140,41 +140,80 @@ impl FlagSeverity {
 
 /// An entity from the knowledge graph.
 #[derive(Debug, Clone, serde::Deserialize)]
+#[serde(try_from = "EntityRaw")]
 pub(crate) struct Entity {
     /// Unique identifier.
     pub id: String,
     /// Primary display name.
     pub name: String,
     /// Entity classification.
-    #[serde(default = "default_entity_type")]
     pub entity_type: EntityType,
     /// Confidence score (0.0--1.0).
-    #[serde(default)]
     pub confidence: f64,
     /// PageRank importance score.
-    #[serde(default)]
     pub page_rank: f64,
     /// Number of associated memories.
-    #[serde(default)]
     pub memory_count: u32,
     /// Number of relationships.
-    #[serde(default)]
     pub relationship_count: u32,
     /// Key-value properties.
-    #[serde(default)]
     pub properties: Vec<EntityProperty>,
     /// Last updated timestamp (ISO 8601).
-    #[serde(default)]
     pub updated_at: Option<String>,
     /// Creating agent ID.
-    #[serde(default)]
     pub created_by: Option<String>,
     /// Creation timestamp.
-    #[serde(default)]
     pub created_at: Option<String>,
     /// Whether this entity is flagged for review.
-    #[serde(default)]
     pub flagged: bool,
+}
+
+/// Raw deserialization type for [`Entity`].
+#[derive(Debug, Clone, serde::Deserialize)]
+struct EntityRaw {
+    id: String,
+    name: String,
+    #[serde(default = "default_entity_type")]
+    entity_type: EntityType,
+    #[serde(default)]
+    confidence: f64,
+    #[serde(default)]
+    page_rank: f64,
+    #[serde(default)]
+    memory_count: u32,
+    #[serde(default)]
+    relationship_count: u32,
+    #[serde(default)]
+    properties: Vec<EntityProperty>,
+    #[serde(default)]
+    updated_at: Option<String>,
+    #[serde(default)]
+    created_by: Option<String>,
+    #[serde(default)]
+    created_at: Option<String>,
+    #[serde(default)]
+    flagged: bool,
+}
+
+impl TryFrom<EntityRaw> for Entity {
+    type Error = std::convert::Infallible;
+
+    fn try_from(raw: EntityRaw) -> Result<Self, Self::Error> {
+        Ok(Self {
+            id: raw.id,
+            name: raw.name,
+            entity_type: raw.entity_type,
+            confidence: raw.confidence,
+            page_rank: raw.page_rank,
+            memory_count: raw.memory_count,
+            relationship_count: raw.relationship_count,
+            properties: raw.properties,
+            updated_at: raw.updated_at,
+            created_by: raw.created_by,
+            created_at: raw.created_at,
+            flagged: raw.flagged,
+        })
+    }
 }
 
 fn default_entity_type() -> EntityType {

@@ -28,6 +28,7 @@ const CORRECTIONS_FILENAME: &str = "corrections.json";
 
 /// A persisted behavioral correction from the operator.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(try_from = "CorrectionRaw")]
 pub(crate) struct Correction {
     /// The extracted correction text.
     pub text: String,
@@ -35,6 +36,26 @@ pub(crate) struct Correction {
     pub created_at: String,
     /// The original user message that triggered the correction.
     pub source_message: String,
+}
+
+/// Raw deserialization type for [`Correction`].
+#[derive(Debug, Clone, Deserialize)]
+struct CorrectionRaw {
+    text: String,
+    created_at: String,
+    source_message: String,
+}
+
+impl TryFrom<CorrectionRaw> for Correction {
+    type Error = std::convert::Infallible;
+
+    fn try_from(raw: CorrectionRaw) -> Result<Self, Self::Error> {
+        Ok(Self {
+            text: raw.text,
+            created_at: raw.created_at,
+            source_message: raw.source_message,
+        })
+    }
 }
 
 /// Detects correction patterns in user messages and persists them.

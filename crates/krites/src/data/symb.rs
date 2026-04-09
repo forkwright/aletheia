@@ -9,11 +9,27 @@ use serde::{Deserialize, Serialize};
 
 use super::error::*;
 use crate::parse::SourceSpan;
-#[derive(Clone, Deserialize, Serialize)]
+
+/// Raw deserialization type for [`Symbol`].
+#[derive(Clone, Deserialize)]
+struct SymbolRaw {
+    name: CompactString,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(try_from = "SymbolRaw")]
 pub struct Symbol {
     pub(crate) name: CompactString,
     #[serde(skip)]
     pub(crate) span: SourceSpan,
+}
+
+impl TryFrom<SymbolRaw> for Symbol {
+    type Error = std::convert::Infallible;
+
+    fn try_from(raw: SymbolRaw) -> std::result::Result<Self, Self::Error> {
+        Ok(Self::new(raw.name, SourceSpan::default()))
+    }
 }
 
 impl Deref for Symbol {

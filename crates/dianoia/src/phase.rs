@@ -7,6 +7,7 @@ use crate::plan::{Plan, PlanState};
 
 /// A phase within a project (e.g., "Foundation", "Core Features").
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(try_from = "PhaseRaw")]
 pub struct Phase {
     /// Unique phase identifier.
     pub id: Ulid,
@@ -22,6 +23,34 @@ pub struct Phase {
     pub state: PhaseState,
     /// Ordering position within the project (lower runs first).
     pub order: u32,
+}
+
+/// Raw deserialization type for [`Phase`].
+#[derive(Debug, Clone, Deserialize)]
+struct PhaseRaw {
+    id: Ulid,
+    name: String,
+    goal: String,
+    requirements: Vec<String>,
+    plans: Vec<Plan>,
+    state: PhaseState,
+    order: u32,
+}
+
+impl TryFrom<PhaseRaw> for Phase {
+    type Error = std::convert::Infallible;
+
+    fn try_from(raw: PhaseRaw) -> std::result::Result<Self, Self::Error> {
+        Ok(Self {
+            id: raw.id,
+            name: raw.name,
+            goal: raw.goal,
+            requirements: raw.requirements,
+            plans: raw.plans,
+            state: raw.state,
+            order: raw.order,
+        })
+    }
 }
 
 /// Phase lifecycle states.

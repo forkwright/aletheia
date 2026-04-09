@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 /// Controls concurrency limits, budget defaults, and timeouts that apply to
 /// the entire dispatch run rather than individual sessions.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(try_from = "OrchestratorConfigRaw")]
 #[non_exhaustive]
 pub struct OrchestratorConfig {
     /// Maximum number of sessions executing concurrently within a group.
@@ -33,6 +34,34 @@ pub struct OrchestratorConfig {
     /// Maximum number of corrective prompt retries per failed prompt.
     /// Defaults to 1.
     pub max_corrective_retries: u32,
+}
+
+/// Raw deserialization type for [`OrchestratorConfig`].
+#[derive(Debug, Clone, Deserialize)]
+struct OrchestratorConfigRaw {
+    max_concurrent: u32,
+    default_budget_usd: Option<f64>,
+    default_budget_turns: Option<u32>,
+    #[serde(with = "duration_ms_option")]
+    max_duration: Option<Duration>,
+    #[serde(with = "duration_ms_option")]
+    session_idle_timeout: Option<Duration>,
+    max_corrective_retries: u32,
+}
+
+impl TryFrom<OrchestratorConfigRaw> for OrchestratorConfig {
+    type Error = std::convert::Infallible;
+
+    fn try_from(raw: OrchestratorConfigRaw) -> std::result::Result<Self, Self::Error> {
+        Ok(Self {
+            max_concurrent: raw.max_concurrent,
+            default_budget_usd: raw.default_budget_usd,
+            default_budget_turns: raw.default_budget_turns,
+            max_duration: raw.max_duration,
+            session_idle_timeout: raw.session_idle_timeout,
+            max_corrective_retries: raw.max_corrective_retries,
+        })
+    }
 }
 
 impl Default for OrchestratorConfig {

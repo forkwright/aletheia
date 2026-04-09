@@ -27,6 +27,7 @@ pub(crate) const PROGRESS_CHANNEL_CAPACITY: usize = 64;
 /// WHY: Tasks need identity that survives across progress updates, GC checks,
 /// and UI refreshes. UUID provides collision-free generation without coordination.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(try_from = "aletheia_koina::uuid::Uuid")]
 pub struct TaskId(aletheia_koina::uuid::Uuid);
 
 impl TaskId {
@@ -45,6 +46,14 @@ impl Default for TaskId {
 impl fmt::Display for TaskId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+impl TryFrom<aletheia_koina::uuid::Uuid> for TaskId {
+    type Error = std::convert::Infallible;
+
+    fn try_from(uuid: aletheia_koina::uuid::Uuid) -> std::result::Result<Self, Self::Error> {
+        Ok(Self(uuid))
     }
 }
 

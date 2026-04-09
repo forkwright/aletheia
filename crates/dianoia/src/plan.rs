@@ -9,6 +9,7 @@ const DEFAULT_MAX_ITERATIONS: u32 = 10;
 
 /// An executable plan within a phase.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(try_from = "PlanRaw")]
 pub struct Plan {
     /// Unique plan identifier.
     pub id: Ulid,
@@ -30,6 +31,40 @@ pub struct Plan {
     pub blockers: Vec<Blocker>,
     /// Notable accomplishments recorded during execution.
     pub achievements: Vec<String>,
+}
+
+/// Raw deserialization type for [`Plan`].
+#[derive(Debug, Clone, Deserialize)]
+struct PlanRaw {
+    id: Ulid,
+    title: String,
+    description: String,
+    wave: u32,
+    depends_on: Vec<Ulid>,
+    state: PlanState,
+    max_iterations: u32,
+    iterations: u32,
+    blockers: Vec<Blocker>,
+    achievements: Vec<String>,
+}
+
+impl TryFrom<PlanRaw> for Plan {
+    type Error = std::convert::Infallible;
+
+    fn try_from(raw: PlanRaw) -> std::result::Result<Self, Self::Error> {
+        Ok(Self {
+            id: raw.id,
+            title: raw.title,
+            description: raw.description,
+            wave: raw.wave,
+            depends_on: raw.depends_on,
+            state: raw.state,
+            max_iterations: raw.max_iterations,
+            iterations: raw.iterations,
+            blockers: raw.blockers,
+            achievements: raw.achievements,
+        })
+    }
 }
 
 /// Plan lifecycle states.

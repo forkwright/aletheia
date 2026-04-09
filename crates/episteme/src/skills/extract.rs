@@ -408,6 +408,7 @@ fn parse_skill_response(response: &str) -> Result<ExtractedSkill, SkillExtractio
 
 /// A skill awaiting human review before activation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(try_from = "PendingSkillRaw")]
 pub struct PendingSkill {
     /// The extracted skill content.
     pub skill: SkillContent,
@@ -417,6 +418,28 @@ pub struct PendingSkill {
     pub status: String,
     /// When the skill was extracted.
     pub extracted_at: jiff::Timestamp,
+}
+
+/// Raw deserialization type for [`PendingSkill`].
+#[derive(Debug, Clone, Deserialize)]
+struct PendingSkillRaw {
+    skill: SkillContent,
+    candidate_id: String,
+    status: String,
+    extracted_at: jiff::Timestamp,
+}
+
+impl TryFrom<PendingSkillRaw> for PendingSkill {
+    type Error = std::convert::Infallible;
+
+    fn try_from(raw: PendingSkillRaw) -> Result<Self, Self::Error> {
+        Ok(Self {
+            skill: raw.skill,
+            candidate_id: raw.candidate_id,
+            status: raw.status,
+            extracted_at: raw.extracted_at,
+        })
+    }
 }
 
 impl PendingSkill {

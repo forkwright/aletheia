@@ -130,6 +130,7 @@ impl CacheSafeParams {
 /// influences which memories are recalled. Wait state tracks pending
 /// operations for the TUI dashboard.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(try_from = "WorkingStateRaw")]
 pub struct WorkingState {
     /// Stack of active tasks (most recent at the end).
     pub task_stack: Vec<TaskEntry>,
@@ -146,6 +147,32 @@ pub struct WorkingState {
     /// WHY: runtime-only field; not persisted because `Arc` references are session-scoped.
     #[serde(skip)]
     pub(crate) cache_params: Option<Arc<CacheSafeParams>>,
+}
+
+/// Raw deserialization type for [`WorkingState`].
+#[derive(Debug, Clone, Default, Deserialize)]
+struct WorkingStateRaw {
+    task_stack: Vec<TaskEntry>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    focus: Option<FocusContext>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    wait: Option<WaitState>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    updated_at: Option<String>,
+}
+
+impl TryFrom<WorkingStateRaw> for WorkingState {
+    type Error = std::convert::Infallible;
+
+    fn try_from(raw: WorkingStateRaw) -> Result<Self, Self::Error> {
+        Ok(Self {
+            task_stack: raw.task_stack,
+            focus: raw.focus,
+            wait: raw.wait,
+            updated_at: raw.updated_at,
+            cache_params: None,
+        })
+    }
 }
 
 /// Maximum task stack depth before oldest entries are evicted.

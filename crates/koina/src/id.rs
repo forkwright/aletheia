@@ -237,6 +237,7 @@ impl fmt::Display for SessionId {
 
 /// A turn identifier. Sequential within a session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(try_from = "u64")]
 pub struct TurnId(u64);
 
 impl TurnId {
