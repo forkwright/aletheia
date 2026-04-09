@@ -11,11 +11,15 @@ rust-version.workspace = true
 workspace = true
 
 [features]
+default = ["knowledge-store"]
 test-core = []
 test-full = []
 # WHY: gates the optional knowledge_store argument in NousManager::new so the
 # integration tests in tests/public_api.rs can match either signature under
-# workspace feature unification (#3018 follow-up).
+# workspace feature unification (#3018 follow-up). Made default because workspace
+# feature unification enables nous/knowledge-store via the `aletheia` binary's
+# `recall` feature — if diaporeia doesn't also enable it, the `#[cfg]` gate
+# in test code evaluates incorrectly and NousManager::new gets the wrong arity.
 knowledge-store = ["aletheia-nous/knowledge-store"]
 
 [dependencies]
