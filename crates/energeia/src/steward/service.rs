@@ -23,6 +23,10 @@ pub struct StewardConfig {
 }
 
 impl StewardConfig {
+    /// Create a new steward configuration with the given project slug.
+    ///
+    /// Defaults to a 5-minute polling interval, continuous mode (not once),
+    /// and no dry-run. Use the builder-style methods to customize.
     #[must_use]
     pub fn new(project: String) -> Self {
         Self {
