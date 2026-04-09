@@ -418,6 +418,12 @@ impl Iterator for CollectedSkipIterator {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
+            // WHY: both indexings are guarded by an explicit `self.pos < self.data.len()`
+            // check that runs immediately before each access.
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "explicit bounds check on `self.pos < self.data.len()` immediately precedes each index"
+            )]
             while self.pos < self.data.len() {
                 if self.data[self.pos].0.as_slice() >= self.next_bound.as_slice() {
                     break;
@@ -428,6 +434,10 @@ impl Iterator for CollectedSkipIterator {
                 return None;
             }
 
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "early-return on `self.pos >= self.data.len()` immediately above guarantees safety"
+            )]
             let (ref candidate_key, ref candidate_val) = self.data[self.pos];
             if candidate_key.as_slice() >= self.upper.as_slice() {
                 return None;

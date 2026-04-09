@@ -162,7 +162,7 @@ async fn run_loop(mut terminal: DefaultTerminal, app: &mut App) -> error::Result
         }
 
         // Update cursor style: solid at rest, blinking when flashing on input
-        update_cursor_style(&app);
+        update_cursor_style(app);
 
         let mut sse_rx = app.take_sse();
         let mut stream_rx = app.take_stream();
