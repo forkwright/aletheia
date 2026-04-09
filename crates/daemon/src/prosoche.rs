@@ -122,6 +122,7 @@ impl ProsocheCheck {
     /// - Disk space on the data directory
     /// - Database file sizes
     /// - Process memory (RSS) via /proc/self/status
+    #[tracing::instrument(skip_all)]
     pub async fn run(&self) -> crate::error::Result<ProsocheResult> {
         let mut items = Vec::new();
 

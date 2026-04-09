@@ -26,6 +26,7 @@ impl Default for CronEvolutionConfig {
 /// 1. Mutate its current pipeline configuration
 /// 2. Evaluate variant performance against benchmarks
 /// 3. Promote variants that show measurable improvement
+#[tracing::instrument(skip_all)]
 pub(crate) async fn execute_evolution(
     nous_id: &str,
     bridge: Option<&dyn crate::bridge::DaemonBridge>,

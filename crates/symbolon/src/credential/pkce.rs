@@ -663,6 +663,7 @@ async fn exchange_code(
 /// # Ok(())
 /// # }
 /// ```
+#[tracing::instrument(skip_all)]
 #[must_use]
 pub async fn pkce_login(provider: &OAuthProvider) -> Result<CredentialFile> {
     // Generate PKCE parameters
@@ -736,6 +737,7 @@ pub async fn pkce_login(provider: &OAuthProvider) -> Result<CredentialFile> {
 /// # Errors
 ///
 /// Returns an error if the flow fails or if the credential file cannot be saved.
+#[tracing::instrument(skip_all)]
 pub async fn pkce_login_and_save(
     provider: &OAuthProvider,
     path: &std::path::Path,

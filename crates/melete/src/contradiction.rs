@@ -93,6 +93,7 @@ impl ContradictionLog {
 /// # Errors
 ///
 /// Returns `LlmCall` if the provider request fails.
+#[tracing::instrument(skip_all)]
 pub(crate) async fn detect_contradictions(
     chunks: &[String],
     provider: &dyn LlmProvider,

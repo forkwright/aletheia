@@ -66,6 +66,7 @@ pub(crate) struct CcOutput {
 ///
 /// # Errors
 /// Returns errors on spawn failure, timeout, or if CC reports an error result.
+#[tracing::instrument(skip_all)]
 pub(crate) async fn run_completion(
     cc_binary: &PathBuf,
     model: &str,
@@ -285,6 +286,7 @@ async fn read_stream(stdout: tokio::process::ChildStdout) -> Result<CcOutput> {
 /// Spawn CC for streaming, calling `on_event` for each assistant delta.
 ///
 /// Returns the final `CcOutput` after the stream completes.
+#[tracing::instrument(skip_all)]
 pub(crate) async fn run_streaming(
     cc_binary: &PathBuf,
     model: &str,

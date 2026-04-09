@@ -13,6 +13,7 @@ use crate::error::{self, ApiErrorContext, Result};
 /// Logs the full raw body, model, token prefix, credential source, and
 /// `x-request-id` at WARN level before parsing so operators can diagnose
 /// opaque errors (e.g. OAuth token with unknown model alias returning "Error").
+#[tracing::instrument(skip_all)]
 pub(crate) async fn map_error_response(
     response: Response,
     model: &str,

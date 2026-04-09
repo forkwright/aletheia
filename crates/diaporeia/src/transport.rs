@@ -36,6 +36,7 @@ pub fn streamable_http_router(state: Arc<DiaporeiaState>) -> axum::Router {
 ///
 /// Reads JSON-RPC from stdin, writes to stdout. Blocks until the connection
 /// closes or the shutdown token fires.
+#[tracing::instrument(skip_all)]
 #[expect(
     dead_code,
     reason = "intended for future aletheia mcp stdio subcommand"
