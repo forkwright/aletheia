@@ -37,6 +37,10 @@ impl CronExpr {
     ///
     /// Accepts 5-field (`min hour dom month dow`) or 6-field
     /// (`sec min hour dom month dow`) formats.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "indices match the just-validated `fields.len()` arm above"
+    )]
     pub(crate) fn parse(expr: &str) -> Result<Self, error::Error> {
         let fields: Vec<&str> = expr.split_whitespace().collect();
 
@@ -85,7 +89,9 @@ impl CronExpr {
     /// loops with a year-limit).
     #[expect(
         clippy::as_conversions,
-        reason = "month (1-12), day (1-31), hour (0-23), minute (0-59), second (0-59) all fit in i8; u8→i8 is safe for values ≤ 59"
+        clippy::cast_sign_loss,
+        clippy::cast_possible_wrap,
+        reason = "month (1-12), day (1-31), hour (0-23), minute (0-59), second (0-59) all fit in i8 and have no negative values; u8→i8 is safe for values ≤ 59"
     )]
     pub(crate) fn next_after(&self, after: jiff::Timestamp) -> Option<jiff::Timestamp> {
         // Work in UTC civil datetime for field-level manipulation.
