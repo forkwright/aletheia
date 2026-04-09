@@ -121,7 +121,10 @@ pub struct StuckDetector {
 impl StuckDetector {
     /// Create a new detector with the given configuration.
     #[must_use]
-    #[expect(dead_code, reason = "WIP: stuck pattern detection")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "WIP: stuck pattern detection")
+    )]
     pub(crate) fn new(config: StuckConfig) -> Self {
         let capacity = config.history_window;
         Self {
@@ -133,7 +136,10 @@ impl StuckDetector {
     /// Record a tool invocation and check for stuck patterns.
     ///
     /// Returns `Some(StuckSignal)` if a stuck pattern is detected.
-    #[expect(dead_code, reason = "WIP: stuck pattern detection")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "WIP: stuck pattern detection")
+    )]
     pub(crate) fn record(&mut self, invocation: ToolInvocation) -> Option<StuckSignal> {
         self.history.push_back(invocation);
         while self.history.len() > self.config.history_window {
@@ -156,14 +162,20 @@ impl StuckDetector {
     }
 
     /// Reset the detector, clearing all recorded history.
-    #[expect(dead_code, reason = "WIP: planning orchestration")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "WIP: planning orchestration")
+    )]
     pub(crate) fn reset(&mut self) {
         self.history.clear();
     }
 
     /// Number of invocations currently in the history window.
     #[must_use]
-    #[expect(dead_code, reason = "WIP: planning orchestration")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "WIP: planning orchestration")
+    )]
     pub(crate) fn history_len(&self) -> usize {
         self.history.len()
     }

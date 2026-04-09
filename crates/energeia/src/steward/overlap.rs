@@ -129,7 +129,8 @@ pub fn file_overlap(a: &ClassifiedPr, b: &ClassifiedPr) -> Vec<String> {
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(clippy::indexing_slicing, reason = "test assertions over fixture data")]
 mod tests {
     use super::*;
     use crate::steward::types::{CiStatus, PullRequest};

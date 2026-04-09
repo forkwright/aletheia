@@ -218,7 +218,10 @@ pub fn trace_goals(phase: &Phase, criteria: &[CriterionResult]) -> Vec<GoalTrace
 
 /// Override a verification result with a manual justification.
 #[must_use]
-#[expect(dead_code, reason = "WIP: manual override for verification results")]
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "WIP: manual override for verification results")
+)]
 pub(crate) fn override_result(mut result: VerificationResult, note: String) -> VerificationResult {
     result.overridden = true;
     result.override_note = Some(note);

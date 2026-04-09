@@ -16,9 +16,12 @@ pub struct ProjectWorkspace {
 /// Standard directories in a project workspace.
 pub(crate) struct WorkspaceLayout {
     /// Root directory of the project workspace.
-    #[expect(
-        dead_code,
-        reason = "WIP: workspace layout root needed for future relative path resolution"
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "WIP: workspace layout root needed for future relative path resolution"
+        )
     )]
     pub root: PathBuf,
     /// Path to the main `PROJECT.json` file.
@@ -97,7 +100,10 @@ impl ProjectWorkspace {
     }
 
     /// Write a blocker file for stuck detection integration.
-    #[expect(dead_code, reason = "WIP: project workspace persistence")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "WIP: project workspace persistence")
+    )]
     pub(crate) fn write_blocker(&self, phase_id: &str, blocker: &Blocker) -> Result<()> {
         let layout = self.layout();
         let phase_blockers = layout.blockers_dir.join(phase_id);
@@ -117,7 +123,10 @@ impl ProjectWorkspace {
     }
 
     /// Read all blockers for a phase.
-    #[expect(dead_code, reason = "WIP: project workspace persistence")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "WIP: project workspace persistence")
+    )]
     pub(crate) fn read_blockers(&self, phase_id: &str) -> Result<Vec<Blocker>> {
         let layout = self.layout();
         let phase_blockers = layout.blockers_dir.join(phase_id);

@@ -116,13 +116,19 @@ impl Plan {
 
     /// Check if all dependencies are satisfied given completed plan IDs.
     #[must_use]
-    #[expect(dead_code, reason = "WIP: plan execution lifecycle")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "WIP: plan execution lifecycle")
+    )]
     pub(crate) fn is_ready(&self, completed: &[Ulid]) -> bool {
         self.depends_on.iter().all(|dep| completed.contains(dep))
     }
 
     /// Record an iteration. Returns `Err` if `max_iterations` exceeded.
-    #[expect(dead_code, reason = "WIP: plan execution lifecycle")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "WIP: plan execution lifecycle")
+    )]
     pub(crate) fn record_iteration(&mut self) -> Result<()> {
         self.iterations += 1;
         if self.iterations > self.max_iterations {
@@ -137,7 +143,10 @@ impl Plan {
     }
 
     /// Mark as stuck with a blocker.
-    #[expect(dead_code, reason = "WIP: planning orchestration")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "WIP: planning orchestration")
+    )]
     pub(crate) fn mark_stuck(&mut self, blocker: Blocker) {
         self.state = PlanState::Stuck;
         self.blockers.push(blocker);

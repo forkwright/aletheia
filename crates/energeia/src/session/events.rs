@@ -177,9 +177,12 @@ pub(crate) fn extract_pr_url(text: &str) -> Option<&str> {
 /// rate-limit variant (pending Agent SDK integration).
 // NOTE: Will be consumed by the session manager once `SessionEvent` gains a
 // rate-limit variant (pending Agent SDK integration). Used in tests only for now.
-#[expect(
-    dead_code,
-    reason = "constant defined for use once SessionEvent gains rate-limit events"
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "constant defined for use once SessionEvent gains rate-limit events"
+    )
 )]
 pub(crate) const RATE_LIMIT_ABORT_THRESHOLD: f64 = 0.98;
 

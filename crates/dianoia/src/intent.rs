@@ -372,6 +372,7 @@ impl IntentStore {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::indexing_slicing, reason = "test assertions over fixture data")]
 mod tests {
     use super::*;
 
@@ -694,21 +695,19 @@ mod tests {
         let valid_id = Ulid::new().to_string();
         let json = format!(
             r#"{{
-            "id": "{}",
+            "id": "{valid_id}",
             "description": "test intent",
             "conviction_tier": "Directive",
             "source": "Operator",
             "created_at": "2024-01-01T00:00:00Z",
             "expires_at": null,
             "resolved": false
-        }}"#,
-            valid_id
+        }}"#
         );
         let result: std::result::Result<Intent, _> = serde_json::from_str(&json);
         assert!(
             result.is_ok(),
-            "operator directive should deserialize: {:?}",
-            result
+            "operator directive should deserialize: {result:?}"
         );
     }
 
@@ -717,21 +716,19 @@ mod tests {
         let valid_id = Ulid::new().to_string();
         let json = format!(
             r#"{{
-            "id": "{}",
+            "id": "{valid_id}",
             "description": "test suggestion",
             "conviction_tier": "Suggestion",
             "source": "Nous",
             "created_at": "2024-01-01T00:00:00Z",
             "expires_at": null,
             "resolved": false
-        }}"#,
-            valid_id
+        }}"#
         );
         let result: std::result::Result<Intent, _> = serde_json::from_str(&json);
         assert!(
             result.is_ok(),
-            "nous suggestion should deserialize: {:?}",
-            result
+            "nous suggestion should deserialize: {result:?}"
         );
     }
 
@@ -740,15 +737,14 @@ mod tests {
         let valid_id = Ulid::new().to_string();
         let json = format!(
             r#"{{
-            "id": "{}",
+            "id": "{valid_id}",
             "description": "invalid intent",
             "conviction_tier": "Directive",
             "source": "Nous",
             "created_at": "2024-01-01T00:00:00Z",
             "expires_at": null,
             "resolved": false
-        }}"#,
-            valid_id
+        }}"#
         );
         let result: std::result::Result<Intent, _> = serde_json::from_str(&json);
         assert!(
