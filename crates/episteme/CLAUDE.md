@@ -60,3 +60,41 @@ Knowledge pipeline: extraction, recall, conflict detection, consolidation, embed
 
 Uses: eidos, graphe, koina, krites (optional)
 Used by: mneme (facade re-export)
+
+## Observability
+
+### Metrics (Prometheus)
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `aletheia_knowledge_facts_total` | Counter | `nous_id` | Total facts inserted into knowledge store |
+| `aletheia_knowledge_extractions_total` | Counter | `nous_id`, `status` | Knowledge extraction operations (ok/error) |
+| `aletheia_recall_duration_seconds` | Histogram | `nous_id` | Knowledge recall latency (buckets: 0.001s to 5s) |
+| `aletheia_embedding_duration_seconds` | Histogram | `provider` | Embedding computation latency (buckets: 0.001s to 5s) |
+
+### Spans
+
+| Span | Location | Fields |
+|------|----------|--------|
+| `ExtractionEngine::extract` | `extract/engine.rs` | `msg_count`, `turn_type` |
+| `ExtractionEngine::analyze_turn` | `extract/engine.rs` | `msg_count` |
+| `ExtractionEngine::extract_facts` | `extract/engine.rs` | - |
+| `RecallEngine::recall` | `recall.rs` | - |
+| `RecallEngine::rank` | `recall.rs` | `count` (candidates) |
+| `HnswIndex::new` | `hnsw_index.rs` | `dim`, `max_conn` |
+| `HnswIndex::load` | `hnsw_index.rs` | `dir` |
+| `KnowledgeStore::search` | `knowledge_store/search.rs` | `limit`, `ef` |
+| `KnowledgeStore::insert_fact` | `knowledge_store/facts.rs` | `fact_id` |
+
+### Log Events
+
+| Level | Event | When |
+|-------|-------|------|
+| `info` | `migrating knowledge schema v{N} -> v{M}` | Schema migration starting |
+| `info` | `knowledge schema migration v{N} -> v{M} complete` | Schema migration finished |
+| `info` | `loading existing HNSW index` | Vector index restore from disk |
+| `warn` | `query rewrite failed, falling back to original` | LLM query rewrite error |
+| `warn` | `fact extraction parse error` | JSON parsing failure from LLM response |
+| `warn` | `failed to increment access counts` | Concurrent access tracking error |
+| `warn` | `HNSW read lock was poisoned, recovering` | Lock poison recovery |
+| `warn` | `unknown epistemic tier in stored fact` | Data integrity issue in stored fact |

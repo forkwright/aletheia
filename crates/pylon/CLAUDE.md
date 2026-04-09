@@ -59,3 +59,42 @@ All handlers: `async fn(State(Arc<AppState>), Claims, ...) -> Result<impl IntoRe
 
 Uses: koina, taxis, nous, hermeneus, mneme, organon, symbolon, axum, tower, tokio, snafu
 Used by: aletheia (binary)
+
+## Observability
+
+### Metrics (Prometheus)
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `aletheia_http_requests_total` | Counter | `method`, `path`, `status` | Total HTTP requests (path normalized to prevent label explosion) |
+| `aletheia_http_request_duration_seconds` | Histogram | `method`, `path` | Request latency in seconds (buckets: 0.005s to 10s) |
+| `aletheia_active_sessions` | Gauge | - | Number of active sessions |
+| `aletheia_uptime_seconds` | Gauge | - | Server uptime in seconds |
+
+### Spans
+
+| Span | Location | Fields |
+|------|----------|--------|
+| `session_create` | `handlers/sessions/mod.rs` | `agent_id` |
+| `session_list` | `handlers/sessions/mod.rs` | - |
+| `session_get` | `handlers/sessions/mod.rs` | - |
+| `session_archive` | `handlers/sessions/mod.rs` | - |
+| `session_unarchive` | `handlers/sessions/mod.rs` | - |
+| `session_delete` | `handlers/sessions/mod.rs` | - |
+| `session_send` | `handlers/sessions/mod.rs` | - |
+| `session_send_streaming` | `handlers/sessions/streaming.rs` | `agent_id` |
+| `config_get` | `handlers/config.rs` | - |
+| `config_reload` | `handlers/config.rs` | - |
+| `config_update` | `handlers/config.rs` | - |
+
+### Log Events
+
+| Level | Event | When |
+|-------|-------|------|
+| `info` | `idempotency cache hit` | Returning cached response for duplicate request |
+| `warn` | `failed to load config, using defaults` | Config file read/parse error at startup |
+| `warn` | `config reload failed, keeping current config` | Hot reload validation or merge failure |
+| `warn` | `idempotency cache lock was poisoned, recovering` | Mutex poison recovery |
+| `error` | `internal server error` | Unhandled 500 error with details |
+| `error` | `turn failed` | SSE streaming turn execution error |
+| `error` | `config deserialization failed after merge` | Post-merge validation error |
