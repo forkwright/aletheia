@@ -4,9 +4,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 #[cfg(any(test, feature = "test-support"))]
-use std::collections::{HashMap, HashSet};
-#[cfg(any(test, feature = "test-support"))]
-use std::sync::{Arc, Mutex};
+use std::collections::HashSet;
 
 use jiff::{SignedDuration, Timestamp};
 
