@@ -71,20 +71,20 @@ impl FuzzyMatcher {
             return None;
         }
 
-        let score = self.calculate_score(candidate, &indices);
+        let score = Self::calculate_score(candidate, &indices);
 
         Some(MatchResult { score, indices })
     }
 
     /// Calculate a score for a match based on heuristics.
-    fn calculate_score(&self, candidate: &str, indices: &[usize]) -> i64 {
+    fn calculate_score(candidate: &str, indices: &[usize]) -> i64 {
         let mut score: i64 = 100; // Base score
 
         // Bonus for matching at the start
-        if let Some(&first) = indices.first() {
-            if first == 0 {
-                score += 50;
-            }
+        if let Some(&first) = indices.first()
+            && first == 0
+        {
+            score += 50;
         }
 
         // Bonus for consecutive matches
