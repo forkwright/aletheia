@@ -26,8 +26,7 @@ pub(crate) const PROGRESS_CHANNEL_CAPACITY: usize = 64;
 ///
 /// WHY: Tasks need identity that survives across progress updates, GC checks,
 /// and UI refreshes. UUID provides collision-free generation without coordination.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(try_from = "aletheia_koina::uuid::Uuid")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 pub struct TaskId(aletheia_koina::uuid::Uuid);
 
 impl TaskId {
@@ -49,11 +48,21 @@ impl fmt::Display for TaskId {
     }
 }
 
-impl TryFrom<aletheia_koina::uuid::Uuid> for TaskId {
-    type Error = std::convert::Infallible;
+impl From<aletheia_koina::uuid::Uuid> for TaskId {
+    fn from(uuid: aletheia_koina::uuid::Uuid) -> Self {
+        Self(uuid)
+    }
+}
 
-    fn try_from(uuid: aletheia_koina::uuid::Uuid) -> std::result::Result<Self, Self::Error> {
-        Ok(Self(uuid))
+// WHY: Manual Deserialize to satisfy RUST/serde-bypass-constructor:
+// `TaskId::new()` exists as a constructor, so serde must route through
+// a conversion (`From<Uuid>`) rather than field-by-field deserialization.
+impl<'de> Deserialize<'de> for TaskId {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        aletheia_koina::uuid::Uuid::deserialize(deserializer).map(Self::from)
     }
 }
 

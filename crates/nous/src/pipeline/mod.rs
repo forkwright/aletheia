@@ -212,7 +212,7 @@ impl LoopDetector {
     /// [`LoopVerdict::Warn`] on first detection (inject warning and continue),
     /// or [`LoopVerdict::Halt`] after `max_warnings` have been issued.
     ///
-    /// // WHY: The input_hash (not full input) is used for comparison to keep
+    /// // WHY: The `input_hash` (not full input) is used for comparison to keep
     /// // memory usage bounded. Collisions are unlikely with a good hash and
     /// // false positives only trigger warnings, not immediate halts.
     pub fn record(&mut self, tool_name: &str, input_hash: &str, is_error: bool) -> LoopVerdict {
@@ -675,7 +675,7 @@ pub fn check_guard(session: &SessionState, config: &NousConfig) -> GuardResult {
 /// typed event that simultaneously records a metric and produces a structured
 /// log line. Pass `None` to use a default log-only emitter.
 ///
-/// // WHY: The pipeline uses a mutable PipelineContext passed between stages
+/// // WHY: The pipeline uses a mutable `PipelineContext` passed between stages
 /// // rather than returning values. This allows each stage to build on the
 /// // work of previous stages (e.g., recall uses remaining tokens after context).
 #[expect(

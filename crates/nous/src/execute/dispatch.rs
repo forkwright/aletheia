@@ -199,10 +199,11 @@ pub(super) fn build_messages(
     pipeline_messages
         .iter()
         .map(|m| Message {
+            // WHY: unknown role strings default to User to preserve forward
+            // compatibility with pipeline sources that may add new roles.
             role: match m.role.as_str() {
                 "assistant" => Role::Assistant,
                 "system" => Role::System,
-                "user" => Role::User,
                 _ => Role::User,
             },
             content: Content::Text(m.content.clone()),

@@ -684,16 +684,20 @@ fn extract_output_style(user_content: &str) -> Option<String> {
         }
     };
 
-    // NOTE: find the end of this section (next ## heading or end of content)
-    let section_body_start = user_content[start..]
+    // NOTE: find the end of this section (next ## heading or end of content).
+    // WHY: `start` came from `.find()` on the same string, so it is on a UTF-8
+    // boundary; `.get(start..)` is safe and None would indicate a logic bug.
+    let after_start = user_content.get(start..)?;
+    let section_body_start = after_start
         .find('\n')
         .map_or(user_content.len(), |nl| start + nl + 1);
 
-    let end = user_content[section_body_start..]
+    let after_body_start = user_content.get(section_body_start..)?;
+    let end = after_body_start
         .find("\n## ")
         .map_or(user_content.len(), |pos| section_body_start + pos);
 
-    let body = user_content[section_body_start..end].trim();
+    let body = user_content.get(section_body_start..end)?.trim();
     if body.is_empty() {
         None
     } else {

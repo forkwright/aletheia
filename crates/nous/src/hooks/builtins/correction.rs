@@ -27,8 +27,7 @@ const MAX_CORRECTIONS: usize = 50;
 const CORRECTIONS_FILENAME: &str = "corrections.json";
 
 /// A persisted behavioral correction from the operator.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(try_from = "CorrectionRaw")]
+#[derive(Debug, Clone, Serialize)]
 pub(crate) struct Correction {
     /// The extracted correction text.
     pub text: String,
@@ -46,15 +45,26 @@ struct CorrectionRaw {
     source_message: String,
 }
 
-impl TryFrom<CorrectionRaw> for Correction {
-    type Error = std::convert::Infallible;
-
-    fn try_from(raw: CorrectionRaw) -> Result<Self, Self::Error> {
-        Ok(Self {
+impl From<CorrectionRaw> for Correction {
+    fn from(raw: CorrectionRaw) -> Self {
+        Self {
             text: raw.text,
             created_at: raw.created_at,
             source_message: raw.source_message,
-        })
+        }
+    }
+}
+
+// WHY: Manual Deserialize to satisfy RUST/serde-bypass-constructor:
+// `CorrectionDetector`/`CorrectionInjector` in this file expose `new()`
+// constructors, so serde must route through a conversion
+// (`From<CorrectionRaw>`) rather than populating fields directly.
+impl<'de> Deserialize<'de> for Correction {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        CorrectionRaw::deserialize(deserializer).map(Self::from)
     }
 }
 

@@ -21,7 +21,7 @@ use crate::config::HookConfig;
 /// prevent any further processing. Scope enforcement (20) runs next
 /// to block disallowed tools before execution. Correction injector (30)
 /// runs after scope enforcement so corrections cannot bypass scope rules.
-/// Correction detector (90) runs late in on_turn_complete since it only
+/// Correction detector (90) runs late in `on_turn_complete` since it only
 /// logs. Audit logging (100) runs last to capture the final state of the turn.
 pub(crate) const COST_CONTROL_PRIORITY: i32 = 10;
 pub(crate) const SCOPE_ENFORCEMENT_PRIORITY: i32 = 20;

@@ -269,7 +269,8 @@ impl DriftDetector {
     fn check_response_length(&self) -> Option<DriftEvent> {
         #[expect(
             clippy::cast_precision_loss,
-            reason = "u64→f64: token counts are far below f64 precision limits"
+            clippy::as_conversions,
+            reason = "u64→f64: per-turn response token counts are far below f64 mantissa precision"
         )]
         let values: Vec<f64> = self
             .window
@@ -308,7 +309,8 @@ impl Default for DriftDetector {
 /// Returns `(0.0, 0.0)` for empty slices.
 #[expect(
     clippy::cast_precision_loss,
-    reason = "usize→f64: window sizes are far below f64 precision limits"
+    clippy::as_conversions,
+    reason = "usize→f64: drift window sizes are bounded by config (tens of samples), far below f64 mantissa precision"
 )]
 fn mean_and_stddev(values: &[f64]) -> (f64, f64) {
     if values.is_empty() {
@@ -326,7 +328,8 @@ fn mean_and_stddev(values: &[f64]) -> (f64, f64) {
 /// Returns `0.0` if the slice is empty.
 #[expect(
     clippy::cast_precision_loss,
-    reason = "usize→f64: window sizes are far below f64 precision limits"
+    clippy::as_conversions,
+    reason = "usize→f64: drift window sizes are bounded by config (tens of samples), far below f64 mantissa precision"
 )]
 fn slice_mean(values: &[f64]) -> f64 {
     if values.is_empty() {

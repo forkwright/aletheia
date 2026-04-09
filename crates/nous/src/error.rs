@@ -255,6 +255,10 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>; // kanon:ignore RUST/pub-visibility
 
 impl aletheia_koina::error_class::Classifiable for Error {
+    #[expect(
+        clippy::match_same_arms,
+        reason = "per-variant arms document the intended classification for each error; merging them hides which variants belong to which class and makes adding new variants error-prone"
+    )]
     fn class(&self) -> aletheia_koina::error_class::ErrorClass {
         use aletheia_koina::error_class::ErrorClass;
         match self {

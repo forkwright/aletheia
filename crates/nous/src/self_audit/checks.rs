@@ -580,7 +580,7 @@ impl ProsocheCheck for SessionContinuityCheck {
         let status = worse_status(carry_status, restatement_status);
 
         // Score blends both signals: carry is good (higher=better), restatement is bad.
-        let score = ((carry_rate + (1.0 - restatement_rate)) / 2.0).clamp(0.0, 1.0);
+        let score = f64::midpoint(carry_rate, 1.0 - restatement_rate).clamp(0.0, 1.0);
 
         let evidence = format!(
             "{}/{total} turns carried context ({:.1}%), {}/{total} required restatement ({:.1}%)",

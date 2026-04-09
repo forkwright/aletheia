@@ -79,12 +79,12 @@ impl NousActor {
         let total_calls = turn_result.tool_calls.len();
         let error_calls = turn_result.tool_calls.iter().filter(|tc| tc.is_error).count();
 
-        #[expect(
-            clippy::cast_precision_loss,
-            reason = "usize→f64: tool call counts are far below f64 precision limits"
-        )]
+        // WHY: tool call counts are in the low tens per turn; u32 is ample and
+        // the u32→f64 conversion is lossless (u32::MAX < f64 mantissa precision).
         let tool_error_rate = if total_calls > 0 {
-            error_calls as f64 / total_calls as f64 // kanon:ignore RUST/as-cast
+            let errors = f64::from(u32::try_from(error_calls).unwrap_or(u32::MAX));
+            let total = f64::from(u32::try_from(total_calls).unwrap_or(u32::MAX));
+            errors / total
         } else {
             0.0
         };
@@ -237,8 +237,8 @@ impl NousActor {
     /// pylon, preventing FK constraint failures in finalize and tools.
     ///
     /// // WHY(#2160): Session is persisted BEFORE spawning the pipeline task.
-    /// // If the actor crashes mid-pipeline, the session_id survives in SQLite
-    /// // for recovery instead of being lost with the in-memory HashMap.
+    /// // If the actor crashes mid-pipeline, the `session_id` survives in `SQLite`
+    /// // for recovery instead of being lost with the in-memory `HashMap`.
     #[expect(
         clippy::too_many_lines,
         reason = "pipeline setup is sequential and cohesive; splitting adds indirection"
