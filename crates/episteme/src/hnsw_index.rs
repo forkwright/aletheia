@@ -359,6 +359,7 @@ impl HnswIndex {
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(clippy::indexing_slicing, reason = "test assertions on search results with known length")]
 mod tests {
     use super::*;
 
@@ -408,6 +409,7 @@ mod tests {
         for i in 0..20_usize {
             #[expect(
                 clippy::cast_precision_loss,
+                clippy::as_conversions,
                 reason = "test data: small indices fit in f32"
             )]
             let v = vec![i as f32, 0.0, 0.0, 0.0];

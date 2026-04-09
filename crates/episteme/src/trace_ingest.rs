@@ -625,6 +625,7 @@ mod tests {
     }
 
     #[cfg(feature = "mneme-engine")]
+    #[expect(clippy::expect_used, reason = "test assertions")]
     mod engine_tests {
         use super::*;
         use crate::knowledge_store::{KnowledgeConfig, KnowledgeStore};

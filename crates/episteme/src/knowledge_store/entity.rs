@@ -59,7 +59,7 @@ impl KnowledgeStore {
 
     /// Insert a fact-entity mapping.
     #[instrument(skip(self))]
-    #[expect(dead_code, reason = "entity operations for knowledge store")]
+    #[cfg_attr(not(test), expect(dead_code, reason = "entity operations for knowledge store"))]
     pub(crate) fn insert_fact_entity(
         &self,
         fact_id: &crate::id::FactId,
@@ -276,7 +276,7 @@ impl KnowledgeStore {
 
     /// Approve a pending merge: execute it.
     #[instrument(skip(self))]
-    #[expect(dead_code, reason = "entity operations for knowledge store")]
+    #[expect(dead_code, reason = "entity dedup pipeline — no callers yet including tests")]
     pub(crate) fn approve_merge(
         &self,
         canonical_id: &crate::id::EntityId,
@@ -291,7 +291,7 @@ impl KnowledgeStore {
         clippy::used_underscore_binding,
         reason = "nous_id reserved for future filtering"
     )]
-    #[expect(dead_code, reason = "entity operations for knowledge store")]
+    #[expect(dead_code, reason = "entity dedup pipeline — no callers yet including tests")]
     pub(crate) fn get_merge_history(
         &self,
         _nous_id: &str,

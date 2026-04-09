@@ -48,7 +48,7 @@ fn make_fact(id: &str, content: &str) -> Fact {
 /// Helper: create a causal edge.
 fn make_edge(cause: &str, effect: &str, confidence: f64) -> CausalEdge {
     CausalEdge {
-        id: CausalEdgeId::new(&format!("ce-{cause}-{effect}")).expect("valid test id"),
+        id: CausalEdgeId::new(format!("ce-{cause}-{effect}")).expect("valid test id"),
         source_id: FactId::new(cause).expect("valid test id"),
         target_id: FactId::new(effect).expect("valid test id"),
         relationship_type: CausalRelationType::Caused,
