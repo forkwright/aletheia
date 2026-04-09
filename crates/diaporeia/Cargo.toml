@@ -13,6 +13,10 @@ workspace = true
 [features]
 test-core = []
 test-full = []
+# WHY: gates the optional knowledge_store argument in NousManager::new so the
+# integration tests in tests/public_api.rs can match either signature under
+# workspace feature unification (#3018 follow-up).
+knowledge-store = ["aletheia-nous/knowledge-store"]
 
 [dependencies]
 # MCP SDK — pin exact per TECHNOLOGY.md policy
