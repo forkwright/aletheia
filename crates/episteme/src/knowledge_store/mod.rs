@@ -499,7 +499,7 @@ impl KnowledgeStore {
     ///
     /// # Complexity
     ///
-    /// O(1) - single row lookup in schema_version relation.
+    /// O(1) - single row lookup in `schema_version` relation.
     pub fn schema_version(&self) -> crate::error::Result<i64> {
         use std::collections::BTreeMap;
 
@@ -615,7 +615,7 @@ impl KnowledgeStore {
     ///
     /// # Complexity
     ///
-    /// O(D) where D is database size. Copies all SSTables and logs.
+    /// O(D) where D is database size. Copies all `SSTables` and logs.
     #[instrument(skip(self, out_file))]
     pub fn backup_db(&self, out_file: impl AsRef<std::path::Path>) -> crate::error::Result<()> {
         self.db.backup_db(out_file).map_err(|e| {
@@ -633,7 +633,7 @@ impl KnowledgeStore {
     ///
     /// # Complexity
     ///
-    /// O(D) where D is backup size. Replaces all SSTables.
+    /// O(D) where D is backup size. Replaces all `SSTables`.
     #[instrument(skip(self, in_file))]
     pub fn restore_backup(&self, in_file: impl AsRef<std::path::Path>) -> crate::error::Result<()> {
         self.db.restore_backup(in_file).map_err(|e| {

@@ -133,6 +133,15 @@ pub struct ProposalFile {
 // Analysis
 // ---------------------------------------------------------------------------
 
+/// Aggregator for grouping observations by `(tool_name, context_category)`
+/// during proposal generation.
+struct Accum {
+    failure_count: u32,
+    total_count: u32,
+    first_tool: String,
+    context_type: String,
+}
+
 /// Analyze observations and return lint rule proposals above the threshold.
 ///
 /// Groups observations by `(tool_name, context_category)`, computes failure
@@ -145,13 +154,6 @@ pub fn propose_rules(observations: &[ToolObservation]) -> Vec<RuleProposal> {
     let now = jiff::Timestamp::now().to_string();
 
     // Aggregate by (tool_name, context_category derived from ContextCategory::classify)
-    struct Accum {
-        failure_count: u32,
-        total_count: u32,
-        first_tool: String,
-        context_type: String,
-    }
-
     let mut groups: HashMap<String, Accum> = HashMap::new();
 
     for obs in observations {

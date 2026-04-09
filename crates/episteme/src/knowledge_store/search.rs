@@ -13,8 +13,8 @@ impl KnowledgeStore {
     ///
     /// # Complexity
     ///
-    /// O(log n * ef_construction) where n is index size and ef_construction is the
-    /// HNSW construction beam width. Space: O(dim) for the vector storage.
+    /// O(log n * `ef_construction`) where n is index size and `ef_construction` is the
+    /// HNSW construction beam width. Space: O(`dim`) for the vector storage.
     #[instrument(skip(self, chunk), fields(chunk_id = %chunk.id))]
     pub fn insert_embedding(
         &self,
@@ -263,7 +263,7 @@ impl KnowledgeStore {
     /// # Complexity
     ///
     /// Best case O(log n * ef) for fast path. Worst case adds query rewriting
-    /// O(RW) plus enhanced search O(V * search_hybrid) plus graph expansion O(E).
+    /// O(RW) plus enhanced search O(V * `search_hybrid`) plus graph expansion O(E).
     pub(crate) fn search_tiered(
         &self,
         base_query: &HybridQuery,
@@ -437,7 +437,7 @@ impl KnowledgeStore {
     ///
     /// # Complexity
     ///
-    /// O(search_hybrid + C) where C is candidate count for temporal validation.
+    /// O(`search_hybrid` + C) where C is candidate count for temporal validation.
     /// Temporal check is O(C) using in-clause filtering.
     pub(crate) fn search_temporal(
         &self,
@@ -514,7 +514,7 @@ impl KnowledgeStore {
     ///
     /// # Complexity
     ///
-    /// Same as `search_temporal`: O(search_hybrid + C).
+    /// Same as `search_temporal`: O(`search_hybrid` + C).
     #[instrument(skip(self, q, at_time))]
     pub async fn search_temporal_async(
         self: &std::sync::Arc<Self>,

@@ -154,6 +154,25 @@ pub struct ProjectScores {
     pub grade_distribution: HashMap<Grade, usize>,
 }
 
+/// Inputs to [`compute_grade`].
+///
+/// Bundles the boolean and counter flags into a single named record so the
+/// call sites are self-documenting and so the function signature stays
+/// under the workspace's "more than 3 bools" lint threshold.
+#[derive(Debug, Clone, Copy)]
+pub struct GradeInputs {
+    /// Session completed in one shot, no resume needed.
+    pub one_shot: bool,
+    /// CI passed on the first attempt, no fix needed.
+    pub ci_first_try: bool,
+    /// QA gate passed.
+    pub qa_pass: bool,
+    /// Number of resume attempts during the session.
+    pub resume_count: u32,
+    /// Session was aborted, errored, or rolled back.
+    pub has_failure: bool,
+}
+
 /// Compute a quality grade based on execution metrics.
 ///
 /// - A: one-shot + CI pass on first try + QA pass
@@ -161,20 +180,14 @@ pub struct ProjectScores {
 /// - C: multiple resumes or fixes
 /// - F: stuck or failed
 #[must_use]
-pub fn compute_grade(
-    one_shot: bool,
-    ci_first_try: bool,
-    qa_pass: bool,
-    resume_count: u32,
-    has_failure: bool,
-) -> Grade {
-    if has_failure {
+pub fn compute_grade(inputs: GradeInputs) -> Grade {
+    if inputs.has_failure {
         return Grade::F;
     }
-    if one_shot && ci_first_try && qa_pass {
+    if inputs.one_shot && inputs.ci_first_try && inputs.qa_pass {
         return Grade::A;
     }
-    if resume_count <= 1 && (ci_first_try || qa_pass) {
+    if inputs.resume_count <= 1 && (inputs.ci_first_try || inputs.qa_pass) {
         return Grade::B;
     }
     Grade::C
@@ -194,25 +207,49 @@ mod tests {
 
     #[test]
     fn compute_grade_a_for_perfect_run() {
-        let grade = compute_grade(true, true, true, 0, false);
+        let grade = compute_grade(GradeInputs {
+            one_shot: true,
+            ci_first_try: true,
+            qa_pass: true,
+            resume_count: 0,
+            has_failure: false,
+        });
         assert_eq!(grade, Grade::A);
     }
 
     #[test]
     fn compute_grade_b_for_one_resume() {
-        let grade = compute_grade(false, true, true, 1, false);
+        let grade = compute_grade(GradeInputs {
+            one_shot: false,
+            ci_first_try: true,
+            qa_pass: true,
+            resume_count: 1,
+            has_failure: false,
+        });
         assert_eq!(grade, Grade::B);
     }
 
     #[test]
     fn compute_grade_c_for_multiple_resumes() {
-        let grade = compute_grade(false, false, false, 3, false);
+        let grade = compute_grade(GradeInputs {
+            one_shot: false,
+            ci_first_try: false,
+            qa_pass: false,
+            resume_count: 3,
+            has_failure: false,
+        });
         assert_eq!(grade, Grade::C);
     }
 
     #[test]
     fn compute_grade_f_for_failure() {
-        let grade = compute_grade(false, false, false, 0, true);
+        let grade = compute_grade(GradeInputs {
+            one_shot: false,
+            ci_first_try: false,
+            qa_pass: false,
+            resume_count: 0,
+            has_failure: true,
+        });
         assert_eq!(grade, Grade::F);
     }
 

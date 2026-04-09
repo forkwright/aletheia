@@ -136,7 +136,14 @@ impl ObservationType {
     }
 
     /// Parse from database string representation.
+    ///
+    /// Unknown strings fall back to [`Self::Idea`] — the most permissive
+    /// classification — so legacy rows from older schemas don't break.
     #[must_use]
+    #[expect(
+        clippy::match_same_arms,
+        reason = "explicit `\"idea\" => Idea` arm + `_ => Idea` fallback is intentional: documents that 'idea' is a known value AND the fallback target"
+    )]
     pub fn from_str_lossy(s: &str) -> Self {
         match s {
             "bug" => Self::Bug,
@@ -222,6 +229,14 @@ fn extract_observations_section(pr_body: &str) -> Option<String> {
         return None;
     }
 
+    // WHY: `end` starts at `lines.len()` and is only ever reassigned to a valid
+    // enumerate index `i < lines.len()`, so `end <= lines.len()`. Combined with
+    // the `start >= end` early-return above, the slice `start..end` is always
+    // in bounds.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "start in (None, lines.len()), end in (lines.len() or i < lines.len()); start < end checked above"
+    )]
     let section: String = lines[start..end].join("\n");
     if section.trim().is_empty() {
         return None;
