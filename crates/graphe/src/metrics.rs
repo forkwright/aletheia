@@ -82,13 +82,19 @@ mod tests {
 
     #[test]
     fn record_session_created_increments_counter() {
-        // Get initial count
+        // WHY: use a unique label pair so concurrent tests (`init_initializes_metrics`)
+        // that also call `record_session_created("test-nous", "primary")` don't
+        // race on the same counter. Prometheus counters are global singletons.
         let metric = &*SESSIONS_TOTAL;
-        let initial = metric.with_label_values(&["test-nous", "primary"]).get();
+        let initial = metric
+            .with_label_values(&["test-incr-nous", "primary"])
+            .get();
 
-        record_session_created("test-nous", "primary");
+        record_session_created("test-incr-nous", "primary");
 
-        let after = metric.with_label_values(&["test-nous", "primary"]).get();
+        let after = metric
+            .with_label_values(&["test-incr-nous", "primary"])
+            .get();
         assert_eq!(after, initial + 1, "counter should increment by 1");
     }
 
