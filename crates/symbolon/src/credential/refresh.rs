@@ -300,6 +300,75 @@ fn resolve_post_refresh_state(
     }
 }
 
+/// Persist a successful refresh response and update in-memory state.
+fn persist_refresh_success(
+    state: &Arc<RwLock<Option<RefreshState>>>,
+    path: &Path,
+    mtime_tracker: &mut FileMtimeTracker,
+    circuit_breaker: &CircuitBreaker,
+    resp: OAuthResponse,
+    subscription_type: Option<String>,
+) {
+    circuit_breaker.record_success();
+    let expires_in = clamp_expires_in(resp.expires_in);
+    let new_expires_at_ms = unix_epoch_ms() + expires_in * 1000;
+
+    let scopes = resp
+        .scope
+        .as_deref()
+        .map(|s| s.split_whitespace().map(String::from).collect());
+    let cred_file = CredentialFile {
+        token: resp.access_token.clone(),
+        refresh_token: Some(resp.refresh_token.clone()),
+        expires_at: Some(new_expires_at_ms),
+        scopes,
+        subscription_type: subscription_type.clone(),
+    };
+
+    match cred_file.save(path) {
+        Ok(()) => {
+            mtime_tracker.has_changed(path);
+            let final_state =
+                resolve_post_refresh_state(path, resp, new_expires_at_ms, subscription_type);
+            if let Ok(mut guard) = state.write() {
+                *guard = Some(final_state);
+            }
+            crate::metrics::record_token_refresh(true);
+            info!(expires_in_secs = expires_in, "OAuth token refreshed");
+        }
+        Err(e) => {
+            error!(error = %e, "failed to write refreshed credential file, keeping previous in-memory token");
+            crate::metrics::record_credential_write_failure();
+            crate::metrics::record_token_refresh(true);
+        }
+    }
+}
+
+/// Read current in-memory state and decide whether a refresh is due.
+///
+/// Returns `None` when no refresh is required (no state, stale lock, or still
+/// inside the refresh window). Returns `Some((refresh_token, subscription_type,
+/// expires_at_ms))` when the caller should perform a refresh.
+fn plan_refresh(
+    state: &Arc<RwLock<Option<RefreshState>>>,
+) -> Option<(String, Option<String>, u64)> {
+    let guard = state.read().ok()?;
+    let s = guard.as_ref()?;
+    let now_ms = unix_epoch_ms();
+    let expires_i64 = i64::try_from(s.expires_at_ms).unwrap_or(i64::MAX);
+    let now_i64 = i64::try_from(now_ms).unwrap_or(i64::MAX);
+    let remaining_secs = (expires_i64 - now_i64) / 1000;
+    let threshold = i64::try_from(REFRESH_THRESHOLD_SECS).unwrap_or(i64::MAX);
+    if remaining_secs >= threshold {
+        return None;
+    }
+    Some((
+        s.refresh_token.expose_secret().to_owned(),
+        s.subscription_type.clone(),
+        s.expires_at_ms,
+    ))
+}
+
 async fn refresh_loop(
     state: Arc<RwLock<Option<RefreshState>>>,
     shutdown: CancellationToken,
@@ -335,29 +404,10 @@ async fn refresh_loop(
             continue;
         }
 
-        let (mut refresh_token_value, subscription_type, expires_at_ms, needs_refresh) = {
-            let Ok(guard) = state.read() else {
-                continue;
-            };
-            let Some(s) = guard.as_ref() else {
-                continue;
-            };
-            let now_ms = unix_epoch_ms();
-            let expires_i64 = i64::try_from(s.expires_at_ms).unwrap_or(i64::MAX);
-            let now_i64 = i64::try_from(now_ms).unwrap_or(i64::MAX);
-            let remaining_secs = (expires_i64 - now_i64) / 1000;
-            let threshold = i64::try_from(REFRESH_THRESHOLD_SECS).unwrap_or(i64::MAX);
-            (
-                s.refresh_token.expose_secret().to_owned(),
-                s.subscription_type.clone(),
-                s.expires_at_ms,
-                remaining_secs < threshold,
-            )
-        };
-
-        if !needs_refresh {
+        let Some((mut refresh_token_value, subscription_type, expires_at_ms)) = plan_refresh(&state)
+        else {
             continue;
-        }
+        };
 
         info!(
             expires_at_ms,
@@ -372,43 +422,14 @@ async fn refresh_loop(
         refresh_token_value.zeroize();
         match refresh_result {
             RefreshOutcome::Success(resp) => {
-                circuit_breaker.record_success();
-                let expires_in = clamp_expires_in(resp.expires_in);
-                let new_expires_at_ms = unix_epoch_ms() + expires_in * 1000;
-
-                let scopes = resp
-                    .scope
-                    .as_deref()
-                    .map(|s| s.split_whitespace().map(String::from).collect());
-                let cred_file = CredentialFile {
-                    token: resp.access_token.clone(),
-                    refresh_token: Some(resp.refresh_token.clone()),
-                    expires_at: Some(new_expires_at_ms),
-                    scopes,
-                    subscription_type: subscription_type.clone(),
-                };
-
-                match cred_file.save(&path) {
-                    Ok(()) => {
-                        mtime_tracker.has_changed(&path);
-                        let final_state = resolve_post_refresh_state(
-                            &path,
-                            resp,
-                            new_expires_at_ms,
-                            subscription_type,
-                        );
-                        if let Ok(mut guard) = state.write() {
-                            *guard = Some(final_state);
-                        }
-                        crate::metrics::record_token_refresh(true);
-                        info!(expires_in_secs = expires_in, "OAuth token refreshed");
-                    }
-                    Err(e) => {
-                        error!(error = %e, "failed to write refreshed credential file, keeping previous in-memory token");
-                        crate::metrics::record_credential_write_failure();
-                        crate::metrics::record_token_refresh(true);
-                    }
-                }
+                persist_refresh_success(
+                    &state,
+                    &path,
+                    &mut mtime_tracker,
+                    &circuit_breaker,
+                    resp,
+                    subscription_type,
+                );
             }
             RefreshOutcome::InvalidGrant => {
                 // WHY: invalid_grant is permanent — the refresh token has been

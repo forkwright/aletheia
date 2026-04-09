@@ -293,6 +293,8 @@ fn generate_state() -> Result<String> {
 
 /// Simple URL encoding for query parameters.
 pub(crate) fn url_encode(s: &str) -> String {
+    use std::fmt::Write;
+
     let mut result = String::new();
     for byte in s.bytes() {
         match byte {
@@ -301,8 +303,7 @@ pub(crate) fn url_encode(s: &str) -> String {
             }
             _ => {
                 result.push('%');
-                use std::fmt::Write;
-                // SAFETY: writing to a String via fmt::Write cannot fail.
+                // INVARIANT: writing to a String via fmt::Write cannot fail.
                 let _ = write!(result, "{byte:02X}");
             }
         }
@@ -384,18 +385,17 @@ fn parse_callback_request(reader: &mut BufReader<&TcpStream>) -> Result<Option<C
     debug!("callback request: {}", first_line.trim());
 
     // Parse the request line: GET /callback?code=...&state=... HTTP/1.1
-    let parts: Vec<&str> = first_line.split_whitespace().collect();
-    if parts.len() < 2 {
+    let mut parts = first_line.split_whitespace();
+    let _method = parts.next();
+    let Some(path) = parts.next() else {
         return Ok(None);
-    }
-
-    let path = parts[1];
+    };
 
     // Extract query string
     let query_start = path.find('?');
-    // SAFETY: i is from find('?'), so i+1 is a valid byte boundary
+    // INVARIANT: i is from find('?'), so i+1 is a valid byte boundary
     #[expect(clippy::string_slice, reason = "i from find('?'), i+1 is valid boundary")]
-    let query = query_start.map(|i| &path[i + 1..]).unwrap_or("");
+    let query = query_start.map_or("", |i| &path[i + 1..]);
 
     // Parse query parameters
     let mut data = CallbackData::default();
@@ -531,53 +531,50 @@ fn handle_callback_connection(
 
     let mut stream = stream;
 
-    match callback_data {
-        Some(data) => {
-            // Validate state parameter
-            match &data.state {
-                Some(state) if state == expected_state => {
-                    // State matches
-                }
-                _ => {
-                    let _ = send_error_response(
-                        &mut stream,
-                        "Invalid state parameter. Possible CSRF attack.",
-                    );
-                    return Err(PkceError::InvalidState {
-                        location: snafu::location!(),
-                    });
-                }
+    if let Some(data) = callback_data {
+        // Validate state parameter
+        match &data.state {
+            Some(state) if state == expected_state => {
+                // State matches
             }
-
-            if let Some(ref error) = data.error {
-                let message = data
-                    .error_description
-                    .clone()
-                    .unwrap_or_else(|| error.clone());
-                let _ = send_error_response(&mut stream, &message);
-                return Err(PkceError::AuthorizationError {
-                    error: error.clone(),
-                    error_description: data.error_description.clone(),
+            _ => {
+                let _ = send_error_response(
+                    &mut stream,
+                    "Invalid state parameter. Possible CSRF attack.",
+                );
+                return Err(PkceError::InvalidState {
                     location: snafu::location!(),
                 });
             }
-
-            if data.code.is_none() {
-                let _ = send_error_response(&mut stream, "Missing authorization code.");
-                return Err(PkceError::MissingCode {
-                    location: snafu::location!(),
-                });
-            }
-
-            let _ = send_success_response(&mut stream);
-            Ok(data)
         }
-        None => {
-            let _ = send_error_response(&mut stream, "Invalid request.");
-            Err(PkceError::MissingCode {
+
+        if let Some(ref error) = data.error {
+            let message = data
+                .error_description
+                .clone()
+                .unwrap_or_else(|| error.clone());
+            let _ = send_error_response(&mut stream, &message);
+            return Err(PkceError::AuthorizationError {
+                error: error.clone(),
+                error_description: data.error_description.clone(),
                 location: snafu::location!(),
-            })
+            });
         }
+
+        if data.code.is_none() {
+            let _ = send_error_response(&mut stream, "Missing authorization code.");
+            return Err(PkceError::MissingCode {
+                location: snafu::location!(),
+            });
+        }
+
+        let _ = send_success_response(&mut stream);
+        Ok(data)
+    } else {
+        let _ = send_error_response(&mut stream, "Invalid request.");
+        Err(PkceError::MissingCode {
+            location: snafu::location!(),
+        })
     }
 }
 
