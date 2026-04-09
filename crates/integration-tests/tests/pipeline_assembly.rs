@@ -6,6 +6,8 @@
     reason = "integration tests: index-based assertions on known-length slices"
 )]
 
+use std::sync::Arc;
+
 use aletheia_nous::config::{NousConfig, PipelineConfig};
 use aletheia_nous::pipeline::{
     GuardResult, InteractionSignal, LoopDetector, LoopVerdict, PipelineContext, PipelineInput,
