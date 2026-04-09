@@ -408,6 +408,7 @@ impl KnowledgeStore {
     /// # Complexity
     ///
     /// Same as `search_tiered`: depends on tier reached.
+    #[instrument(skip(self, rewriter, provider, context, config))]
     pub async fn search_tiered_async(
         self: &std::sync::Arc<Self>,
         base_query: HybridQuery,
@@ -514,6 +515,7 @@ impl KnowledgeStore {
     /// # Complexity
     ///
     /// Same as `search_temporal`: O(search_hybrid + C).
+    #[instrument(skip(self, q, at_time))]
     pub async fn search_temporal_async(
         self: &std::sync::Arc<Self>,
         q: HybridQuery,

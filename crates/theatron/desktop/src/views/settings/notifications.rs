@@ -106,7 +106,9 @@ pub(crate) fn NotificationSettings() -> Element {
                     style: if enabled { TOGGLE_ON } else { TOGGLE_OFF },
                     onclick: move |_| {
                         prefs.write().enabled = !enabled;
-                        config::save_notification_prefs(&prefs.read()).ok();
+                        if let Err(e) = config::save_notification_prefs(&prefs.read()) {
+                            tracing::warn!(error = %e, "failed to save notification preferences");
+                        }
                     },
                     if enabled { "On" } else { "Off" }
                 }
@@ -120,7 +122,9 @@ pub(crate) fn NotificationSettings() -> Element {
                     style: if agent_completion { TOGGLE_ON } else { TOGGLE_OFF },
                     onclick: move |_| {
                         prefs.write().agent_completion = !agent_completion;
-                        config::save_notification_prefs(&prefs.read()).ok();
+                        if let Err(e) = config::save_notification_prefs(&prefs.read()) {
+                            tracing::warn!(error = %e, "failed to save notification preferences");
+                        }
                     },
                     if agent_completion { "On" } else { "Off" }
                 }
@@ -140,7 +144,9 @@ pub(crate) fn NotificationSettings() -> Element {
                     style: if tool_approval { TOGGLE_ON } else { TOGGLE_OFF },
                     onclick: move |_| {
                         prefs.write().tool_approval = !tool_approval;
-                        config::save_notification_prefs(&prefs.read()).ok();
+                        if let Err(e) = config::save_notification_prefs(&prefs.read()) {
+                            tracing::warn!(error = %e, "failed to save notification preferences");
+                        }
                     },
                     if tool_approval { "On" } else { "Off" }
                 }
@@ -154,7 +160,9 @@ pub(crate) fn NotificationSettings() -> Element {
                     style: if errors { TOGGLE_ON } else { TOGGLE_OFF },
                     onclick: move |_| {
                         prefs.write().errors = !errors;
-                        config::save_notification_prefs(&prefs.read()).ok();
+                        if let Err(e) = config::save_notification_prefs(&prefs.read()) {
+                            tracing::warn!(error = %e, "failed to save notification preferences");
+                        }
                     },
                     if errors { "On" } else { "Off" }
                 }
@@ -168,7 +176,9 @@ pub(crate) fn NotificationSettings() -> Element {
                     style: if connection_status { TOGGLE_ON } else { TOGGLE_OFF },
                     onclick: move |_| {
                         prefs.write().connection_status = !connection_status;
-                        config::save_notification_prefs(&prefs.read()).ok();
+                        if let Err(e) = config::save_notification_prefs(&prefs.read()) {
+                            tracing::warn!(error = %e, "failed to save notification preferences");
+                        }
                     },
                     if connection_status { "On" } else { "Off" }
                 }
@@ -182,7 +192,9 @@ pub(crate) fn NotificationSettings() -> Element {
                     style: if sound_enabled { TOGGLE_ON } else { TOGGLE_OFF },
                     onclick: move |_| {
                         prefs.write().sound_enabled = !sound_enabled;
-                        config::save_notification_prefs(&prefs.read()).ok();
+                        if let Err(e) = config::save_notification_prefs(&prefs.read()) {
+                            tracing::warn!(error = %e, "failed to save notification preferences");
+                        }
                     },
                     if sound_enabled { "On" } else { "Off" }
                 }
@@ -196,7 +208,9 @@ pub(crate) fn NotificationSettings() -> Element {
                     style: if only_when_backgrounded { TOGGLE_ON } else { TOGGLE_OFF },
                     onclick: move |_| {
                         prefs.write().only_when_backgrounded = !only_when_backgrounded;
-                        config::save_notification_prefs(&prefs.read()).ok();
+                        if let Err(e) = config::save_notification_prefs(&prefs.read()) {
+                            tracing::warn!(error = %e, "failed to save notification preferences");
+                        }
                     },
                     if only_when_backgrounded { "On" } else { "Off" }
                 }

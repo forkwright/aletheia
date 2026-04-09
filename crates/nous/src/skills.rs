@@ -195,6 +195,7 @@ impl SkillLoader {
         let query = task_context.to_owned();
 
         let candidates = match tokio::task::spawn_blocking(move || {
+            let _span = tracing::info_span!("skill_search", nous_id = %nous_id_owned).entered();
             store.search_skills(&nous_id_owned, &query, fetch_limit)
         })
         .await

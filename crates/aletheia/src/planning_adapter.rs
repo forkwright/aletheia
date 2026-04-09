@@ -46,6 +46,7 @@ impl PlanningService for FilesystemPlanningService {
         let owner = owner.to_owned();
         Box::pin(async move {
             tokio::task::spawn_blocking(move || {
+                let _span = tracing::info_span!("planning_create_project").entered();
                 let mode = parse_mode(&mode_str, appetite_minutes)?;
                 let mut project = Project::new(name, description, mode, owner);
                 if let Some(s) = scope {
@@ -79,6 +80,7 @@ impl PlanningService for FilesystemPlanningService {
         let project_id = project_id.to_owned();
         Box::pin(async move {
             tokio::task::spawn_blocking(move || {
+                let _span = tracing::info_span!("planning_load_project", project_id = %project_id).entered();
                 let ws_path = root.join(&project_id);
                 let ws = ProjectWorkspace::open(&ws_path).map_err(|e| {
                     WorkspaceSnafu {
@@ -109,6 +111,7 @@ impl PlanningService for FilesystemPlanningService {
         let transition_str = transition.to_owned();
         Box::pin(async move {
             tokio::task::spawn_blocking(move || {
+                let _span = tracing::info_span!("planning_transition_project", project_id = %project_id, transition = %transition_str).entered();
                 let ws_path = root.join(&project_id);
                 let ws = ProjectWorkspace::open(&ws_path).map_err(|e| {
                     WorkspaceSnafu {
@@ -159,6 +162,7 @@ impl PlanningService for FilesystemPlanningService {
         let goal = goal.to_owned();
         Box::pin(async move {
             tokio::task::spawn_blocking(move || {
+                let _span = tracing::info_span!("planning_add_phase", project_id = %project_id, phase_name = %name).entered();
                 let ws_path = root.join(&project_id);
                 let ws = ProjectWorkspace::open(&ws_path).map_err(|e| {
                     WorkspaceSnafu {
@@ -207,6 +211,7 @@ impl PlanningService for FilesystemPlanningService {
         let achievement = achievement.map(str::to_owned);
         Box::pin(async move {
             tokio::task::spawn_blocking(move || {
+                let _span = tracing::info_span!("planning_complete_plan", project_id = %project_id, phase_id = %phase_id, plan_id = %plan_id).entered();
                 let ws_path = root.join(&project_id);
                 let ws = ProjectWorkspace::open(&ws_path).map_err(|e| {
                     WorkspaceSnafu {
@@ -252,6 +257,7 @@ impl PlanningService for FilesystemPlanningService {
         let reason = reason.to_owned();
         Box::pin(async move {
             tokio::task::spawn_blocking(move || {
+                let _span = tracing::info_span!("planning_fail_plan", project_id = %project_id, phase_id = %phase_id, plan_id = %plan_id).entered();
                 let ws_path = root.join(&project_id);
                 let ws = ProjectWorkspace::open(&ws_path).map_err(|e| {
                     WorkspaceSnafu {
@@ -290,9 +296,12 @@ impl PlanningService for FilesystemPlanningService {
     ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>> {
         let root = self.projects_root.clone();
         Box::pin(async move {
-            tokio::task::spawn_blocking(move || list_projects_sync(&root))
-                .await
-                .context(TaskJoinSnafu)?
+            tokio::task::spawn_blocking(move || {
+                let _span = tracing::info_span!("planning_list_projects").entered();
+                list_projects_sync(&root)
+            })
+            .await
+            .context(TaskJoinSnafu)?
         })
     }
 
@@ -308,6 +317,7 @@ impl PlanningService for FilesystemPlanningService {
         let criteria_json = criteria_json.to_owned();
         Box::pin(async move {
             tokio::task::spawn_blocking(move || {
+                let _span = tracing::info_span!("planning_verify_criteria", project_id = %project_id, phase_id = %phase_id).entered();
                 let ws_path = root.join(&project_id);
                 let ws = ProjectWorkspace::open(&ws_path).map_err(|e| {
                     WorkspaceSnafu {
