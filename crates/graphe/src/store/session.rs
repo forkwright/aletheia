@@ -12,7 +12,6 @@ impl SessionStore {
 
     /// Find an active session by nous ID and session key.
     #[instrument(skip(self))]
-    #[must_use]
     pub fn find_session(&self, nous_id: &str, session_key: &str) -> Result<Option<Session>> {
         let mut stmt = self
             .conn
@@ -31,7 +30,6 @@ impl SessionStore {
 
     /// Find a session by ID (any status).
     #[instrument(skip(self))]
-    #[must_use]
     pub fn find_session_by_id(&self, id: &str) -> Result<Option<Session>> {
         let mut stmt = self
             .conn
@@ -148,7 +146,6 @@ impl SessionStore {
 
     /// List sessions, optionally filtered by nous ID.
     #[instrument(skip(self))]
-    #[must_use]
     pub fn list_sessions(&self, nous_id: Option<&str>) -> Result<Vec<Session>> {
         let mut sessions = Vec::new();
 
@@ -183,7 +180,6 @@ impl SessionStore {
 
     /// Update session status.
     #[instrument(skip(self))]
-    #[must_use]
     pub fn update_session_status(&self, id: &str, status: SessionStatus) -> Result<()> {
         self.require_writable()?;
         self.conn
@@ -197,7 +193,6 @@ impl SessionStore {
 
     /// Update session display name.
     #[instrument(skip(self))]
-    #[must_use]
     pub fn update_display_name(&self, id: &str, display_name: &str) -> Result<()> {
         self.require_writable()?;
         self.conn
@@ -219,7 +214,6 @@ impl SessionStore {
     /// Returns an error if the database is not writable, the transaction
     /// fails, or any of the dependent DELETE statements fails.
     #[instrument(skip(self))]
-    #[must_use]
     pub fn delete_session(&self, id: &str) -> Result<bool> {
         self.require_writable()?;
         // WHY: the schema's REFERENCES sessions(id) declarations do NOT

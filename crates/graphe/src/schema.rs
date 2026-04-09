@@ -12,7 +12,7 @@ pub(crate) const VALID_CATEGORIES: &[&str] =
 /// WHY: This matches the original v1 schema that the deployed database was
 /// created with. Additional columns and tables are added by later migrations
 /// (v2-v31). The sessions table starts with only the 10 base columns; session
-/// feature columns (last_input_tokens, thread_id, etc.) are added
+/// feature columns (`last_input_tokens`, `thread_id`, etc.) are added
 /// incrementally via ALTER TABLE in later migrations to match the deployed
 /// column order.
 pub(crate) const DDL: &str = r"
