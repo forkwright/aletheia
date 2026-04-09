@@ -77,7 +77,6 @@ pub enum Transition {
 impl ProjectState {
     /// Attempt a state transition. Returns the new state or an error
     /// if the transition is invalid from the current state.
-    #[must_use]
     pub fn transition(self, t: Transition) -> Result<Self> {
         let from_label = state_label(&self);
         let result = match (&self, &t) {
@@ -154,7 +153,6 @@ impl ProjectState {
     ///
     /// Non-advance transitions (`Abandon`, `Pause`, `Resume`, `Revert`, …) bypass
     /// the gate — gates only guard forward progress, not escape hatches.
-    #[must_use]
     pub fn transition_gated(self, t: Transition, gate: Option<&PhaseGate>) -> Result<Self> {
         let is_advance = matches!(
             &t,
@@ -163,16 +161,15 @@ impl ProjectState {
                 | Transition::Complete
         );
 
-        if is_advance {
-            if let Some(g) = gate {
-                if let GateResult::Fail(conditions) = evaluate_gate(g) {
-                    return GateBlockedSnafu {
-                        state: self,
-                        conditions,
-                    }
-                    .fail();
-                }
+        if is_advance
+            && let Some(g) = gate
+            && let GateResult::Fail(conditions) = evaluate_gate(g)
+        {
+            return GateBlockedSnafu {
+                state: self,
+                conditions,
             }
+            .fail();
         }
 
         self.transition(t)
