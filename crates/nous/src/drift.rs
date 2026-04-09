@@ -341,6 +341,8 @@ fn slice_mean(values: &[f64]) -> f64 {
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use super::*;
 

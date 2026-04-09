@@ -154,6 +154,7 @@ pub fn build_degraded_response(
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use super::*;
 

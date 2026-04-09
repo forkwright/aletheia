@@ -323,6 +323,10 @@ fn runner_contract() -> RoleContract {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "test fixtures use std::fs to write tempdir files synchronously"
+)]
 mod tests {
     use super::*;
 
