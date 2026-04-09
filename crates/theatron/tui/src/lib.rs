@@ -12,6 +12,8 @@ pub(crate) mod diff;
 /// TUI-specific error types and result alias.
 pub mod error;
 mod events;
+/// Fuzzy matching for command palette and slash completion.
+pub mod fuzzy;
 mod highlight;
 mod hyperlink;
 mod id;

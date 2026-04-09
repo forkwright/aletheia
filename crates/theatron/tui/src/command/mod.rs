@@ -1,7 +1,5 @@
 /// Command registry and fuzzy matching for the `:` command palette.
-use fuzzy_matcher::FuzzyMatcher;
-use fuzzy_matcher::skim::SkimMatcherV2;
-
+use crate::fuzzy::FuzzyMatcher;
 use crate::state::AgentState;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -220,7 +218,7 @@ pub fn build_suggestions(input: &str, agents: &[AgentState]) -> Vec<Suggestion> 
         None => input,
     };
 
-    let matcher = SkimMatcherV2::default();
+    let matcher = FuzzyMatcher::new();
     let mut suggestions: Vec<Suggestion> = Vec::new();
 
     if query.is_empty() {
@@ -255,16 +253,16 @@ pub fn build_suggestions(input: &str, agents: &[AgentState]) -> Vec<Suggestion> 
 
         for agent in agents {
             let mut best: Option<i64> = None;
-            if let Some(s) = matcher.fuzzy_match(&agent.name, query) {
-                best = Some(s);
+            if let Some(result) = matcher.fuzzy_match(&agent.name, query) {
+                best = Some(result.score);
             }
-            if let Some(s) = matcher.fuzzy_match(&agent.id, query) {
-                best = best.map_or(Some(s), |prev| Some(prev.max(s)));
+            if let Some(result) = matcher.fuzzy_match(&agent.id, query) {
+                best = best.map_or(Some(result.score), |prev| Some(prev.max(result.score)));
             }
             // NOTE: Also match "agent <name>" as a compound so typing "agent syn" surfaces the agent.
             let compound = format!("agent {}", agent.name);
-            if let Some(s) = matcher.fuzzy_match(&compound, query) {
-                best = best.map_or(Some(s), |prev| Some(prev.max(s)));
+            if let Some(result) = matcher.fuzzy_match(&compound, query) {
+                best = best.map_or(Some(result.score), |prev| Some(prev.max(result.score)));
             }
             if let Some(score) = best {
                 suggestions.push(agent_suggestion(agent, score));
@@ -299,19 +297,19 @@ fn agent_suggestion(agent: &AgentState, score: i64) -> Suggestion {
     }
 }
 
-fn best_match(matcher: &SkimMatcherV2, cmd: &Command, query: &str) -> Option<i64> {
+fn best_match(matcher: &FuzzyMatcher, cmd: &Command, query: &str) -> Option<i64> {
     let mut best: Option<i64> = None;
 
-    if let Some(s) = matcher.fuzzy_match(cmd.name, query) {
-        best = Some(s);
+    if let Some(result) = matcher.fuzzy_match(cmd.name, query) {
+        best = Some(result.score);
     }
     for alias in cmd.aliases {
-        if let Some(s) = matcher.fuzzy_match(alias, query) {
-            best = best.map_or(Some(s), |prev| Some(prev.max(s)));
+        if let Some(result) = matcher.fuzzy_match(alias, query) {
+            best = best.map_or(Some(result.score), |prev| Some(prev.max(result.score)));
         }
     }
-    if let Some(s) = matcher.fuzzy_match(cmd.description, query) {
-        best = best.map_or(Some(s), |prev| Some(prev.max(s)));
+    if let Some(result) = matcher.fuzzy_match(cmd.description, query) {
+        best = best.map_or(Some(result.score), |prev| Some(prev.max(result.score)));
     }
 
     best

@@ -67,9 +67,6 @@ arboard = "3"
 base64 = { workspace = true }
 regex = { workspace = true }
 
-# Fuzzy matching for command palette
-fuzzy-matcher = "0.3"
-
 # Time — used for export timestamps
 jiff = { workspace = true }
 
