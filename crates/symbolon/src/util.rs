@@ -82,7 +82,12 @@ fn base64_encode_with_alphabet(input: &[u8], alphabet: &[u8; 64], pad: bool) -> 
                 out.push('=');
             }
         }
-        _ => unreachable!(),
+        // SAFETY: chunks_exact(3).remainder() returns 0, 1, or 2 elements only.
+        #[expect(
+            clippy::unreachable,
+            reason = "chunks_exact(3) guarantees remainder().len() ∈ {0, 1, 2}; only 3 arms reachable"
+        )]
+        _ => unreachable!("chunks_exact(3) remainder cannot exceed 2"),
     }
 
     out

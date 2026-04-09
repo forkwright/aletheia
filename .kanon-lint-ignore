@@ -48,6 +48,51 @@ RUST/struct-too-many-fields:crates/pylon/src/state.rs
 # WHY: .expect() calls in pylon are already annotated with
 # #[expect(clippy::expect_used)] at function or module level.
 RUST/expect:crates/pylon/src/handlers/metrics.rs
+
+# WHY: energeia metric registration is infallible at startup; documented with
+# #![expect(clippy::expect_used)] at module level. basanos doesn't honor #[expect].
+RUST/expect:crates/energeia/src/metrics/cost.rs
+RUST/expect:crates/energeia/src/metrics/health.rs
+RUST/expect:crates/energeia/src/metrics/prometheus.rs
+RUST/expect:crates/organon/src/metrics.rs
+
+# WHY: compile-time constant regex patterns cannot fail; each .expect() is
+# annotated with #[expect(clippy::expect_used, reason = ...)].
+RUST/expect:crates/energeia/src/steward/classify.rs
+RUST/expect:crates/episteme/src/extract/observation.rs
+
+# WHY: bounded timestamp subtraction within realistic day ranges is infallible;
+# documented with #[expect(clippy::expect_used)] inline.
+RUST/expect:crates/energeia/src/store/queries.rs
+
+# WHY: false positive — .expect() and .unwrap() match strings appear inside
+# `//!` doctest comments (the doctest is marked `ignore` so it never compiles).
+# basanos's RUST/expect rule should skip doc comments.
+RUST/expect:crates/episteme/src/embedding_eval.rs
+RUST/unwrap:crates/episteme/src/embedding_eval.rs
+
+# WHY: tests use `unwrap_or_else(|_| unreachable!())` after assert!(is_ok()).
+# basanos should skip #[cfg(test)] modules for RUST/unreachable.
+RUST/unreachable-in-match:crates/episteme/src/recall_tests/side_query.rs
+
+# WHY: from_utf8 on Crockford base32 alphabet (ASCII subset) is infallible;
+# documented with inline WHY comment and used as alternative to unsafe.
+RUST/expect:crates/koina/src/ulid.rs
+
+# WHY: hex digit (0-15) always fits in u8; #[expect] annotated with proof.
+RUST/expect:crates/koina/src/uuid.rs
+
+# WHY: Serve command is intercepted in main() before dispatch reaches this arm;
+# unreachable!() exists only for match exhaustiveness, annotated with #[expect].
+RUST/unreachable-in-match:crates/aletheia/src/commands/mod.rs
+
+# WHY: TempFileGuard.path() invariant — Some until defuse() is called, callers
+# always access path before defuse. Annotated with #[expect].
+RUST/expect:crates/symbolon/src/encrypt.rs
+
+# WHY: chunks_exact(3).remainder() guarantees length is 0, 1, or 2 — the
+# unreachable!() arm cannot fire. Annotated with #[expect].
+RUST/unreachable-in-match:crates/symbolon/src/util.rs
 RUST/expect:crates/pylon/src/idempotency.rs
 RUST/expect:crates/pylon/src/metrics.rs
 RUST/expect:crates/pylon/src/openapi.rs

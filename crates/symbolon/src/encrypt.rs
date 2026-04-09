@@ -132,6 +132,15 @@ impl TempFileGuard {
     }
 
     /// The temp file path.
+    ///
+    /// # Panics
+    ///
+    /// Panics if called after [`defuse`](Self::defuse). Callers must access
+    /// the path before defusing the guard.
+    #[expect(
+        clippy::expect_used,
+        reason = "guard invariant: path is Some until defuse() is called, and callers always access path before defuse"
+    )]
     pub(crate) fn path(&self) -> &Path {
         self.path.as_deref().expect("guard already defused")
     }
