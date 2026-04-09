@@ -11,14 +11,23 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct PullRequest {
+    /// Pull request number (e.g., 42 for PR #42).
     pub number: u64,
+    /// Title of the pull request.
     pub title: String,
+    /// Name of the head branch.
     pub head_ref_name: Option<String>,
+    /// SHA of the head commit.
     pub head_sha: Option<String>,
+    /// State of the PR (e.g., "open", "closed").
     pub state: Option<String>,
+    /// Mergeability status from GitHub API.
     pub mergeable: Option<String>,
+    /// Body/description of the PR.
     pub body: Option<String>,
+    /// ISO 8601 timestamp of last update.
     pub updated_at: Option<String>,
+    /// ISO 8601 timestamp when merged, if applicable.
     pub merged_at: Option<String>,
 }
 
@@ -26,8 +35,11 @@ pub struct PullRequest {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum MergeMethod {
+    /// Squash all commits into a single commit.
     Squash,
+    /// Create a merge commit (traditional merge).
     Merge,
+    /// Rebase commits onto the target branch.
     Rebase,
 }
 
@@ -45,11 +57,17 @@ impl fmt::Display for MergeMethod {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Issue {
+    /// Issue number.
     pub number: u64,
+    /// Title of the issue.
     pub title: String,
+    /// Body/description of the issue.
     pub body: Option<String>,
+    /// Labels attached to the issue.
     pub labels: Vec<String>,
+    /// State of the issue (e.g., "open", "closed").
     pub state: Option<String>,
+    /// ISO 8601 timestamp when the issue was created.
     pub created_at: Option<String>,
 }
 
@@ -247,11 +265,9 @@ impl fmt::Display for CiStatus {
 pub struct MergeDecision {
     /// PR number this decision applies to.
     pub pr_number: u64,
-
-    /// The action to take.
+    /// The action to take (merge, hold, block, etc.).
     pub action: MergeAction,
-
-    /// Human-readable explanation.
+    /// Human-readable explanation for the decision.
     pub reason: String,
 }
 
@@ -317,13 +333,10 @@ impl Default for MergeOptions {
 pub struct MergeResult {
     /// PR number.
     pub pr_number: u64,
-
     /// The decision that was made.
     pub decision: MergeDecision,
-
     /// Whether the merge (if attempted) succeeded.
     pub success: bool,
-
     /// Error message if the merge failed.
     pub error: Option<String>,
 }
@@ -394,10 +407,8 @@ pub struct PrFile {
 pub struct FixResult {
     /// PR number that was fixed.
     pub pr_number: u64,
-
     /// Individual fixes that were applied.
     pub fixes_applied: Vec<FixApplied>,
-
     /// Whether CI might still be failing after fixes.
     pub still_failing: bool,
 }
@@ -406,12 +417,10 @@ pub struct FixResult {
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct FixApplied {
-    /// What kind of fix was applied.
+    /// What kind of fix was applied (format, clippy, etc.).
     pub kind: FixKind,
-
     /// Files that were changed by this fix.
     pub files_changed: Vec<String>,
-
     /// Human-readable description of what was done.
     pub details: String,
 }
@@ -459,11 +468,9 @@ impl fmt::Display for FixKind {
 pub struct CiFailure {
     /// Name of the failing check (e.g. "build", "test").
     pub check_name: String,
-
-    /// Conclusion string (e.g. "failure", `timed_out`).
+    /// Conclusion string (e.g. "failure", "timed_out").
     pub conclusion: String,
-
-    /// Relevant portion of the CI log.
+    /// Relevant portion of the CI log showing the failure.
     pub log_excerpt: String,
 }
 
@@ -486,14 +493,11 @@ pub enum CiFailureKind {
 pub struct ConflictResult {
     /// PR number.
     pub pr_number: u64,
-
     /// Whether the conflict was resolved.
     pub resolved: bool,
-
     /// Strategy used to resolve the conflict.
     pub strategy: ConflictStrategy,
-
-    /// Human-readable details.
+    /// Human-readable details about the resolution.
     pub details: String,
 }
 

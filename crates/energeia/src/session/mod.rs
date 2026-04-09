@@ -12,7 +12,9 @@
 //! - [`options`] — `EngineConfig` builder for session-level configuration
 
 pub(crate) mod events;
+/// Per-prompt session manager with resume loop and event processing.
 pub mod manager;
+/// Session-level configuration options for the execution engine.
 pub mod options;
 
 pub use manager::SessionManager;

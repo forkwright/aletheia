@@ -25,6 +25,7 @@ use crate::types::{
     Budget, DispatchResult, DispatchSpec, QaVerdict, SessionOutcome, SessionStatus,
 };
 
+/// Configuration for the dispatch orchestrator.
 pub mod config;
 pub(crate) mod group;
 

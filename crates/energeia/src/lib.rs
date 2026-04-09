@@ -1,4 +1,5 @@
 //! aletheia-energeia: dispatch orchestration for the Aletheia agent runtime.
+#![deny(missing_docs)]
 //!
 //! Energeia (ἐνέργεια): "actualization" — the process of bringing potential
 //! into reality. This crate orchestrates the dispatch of coding tasks to agent
