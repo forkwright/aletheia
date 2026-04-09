@@ -135,11 +135,13 @@ impl aletheia_koina::error_class::Classifiable for Error {
     fn class(&self) -> aletheia_koina::error_class::ErrorClass {
         use aletheia_koina::error_class::ErrorClass;
         match self {
-            // Transient: safe to retry — rate limits, server errors, network issues
-            Error::RateLimited { .. } => ErrorClass::Transient,
-            Error::ApiError {
+            // Transient: safe to retry — rate limits + server errors (5xx)
+            Error::RateLimited { .. }
+            | Error::ApiError {
                 status: 500..=599, ..
             } => ErrorClass::Transient,
+
+            // Mixed: classify by message content (timeout/connection/reset/pipe → transient)
             Error::ApiRequest { message, .. } => {
                 let msg = message.to_lowercase();
                 if msg.contains("timeout")
@@ -153,11 +155,12 @@ impl aletheia_koina::error_class::Classifiable for Error {
                 }
             }
 
-            // Permanent: retrying will not help
-            Error::AuthFailed { .. } => ErrorClass::Permanent,
-            Error::UnsupportedModel { .. } => ErrorClass::Permanent,
-            Error::ApiError { .. } => ErrorClass::Permanent,
-            Error::ParseResponse { .. } => ErrorClass::Permanent,
+            // Permanent: retrying will not help — auth, unsupported model,
+            // non-5xx API errors, parse failures
+            Error::AuthFailed { .. }
+            | Error::UnsupportedModel { .. }
+            | Error::ApiError { .. }
+            | Error::ParseResponse { .. } => ErrorClass::Permanent,
 
             // Unknown: provider init failures may be transient (e.g. config
             // not yet loaded) or permanent — escalate for operator visibility.
