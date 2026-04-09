@@ -33,7 +33,7 @@ pub enum ObservationType {
 impl ObservationType {
     /// Classify observation text using keyword matching.
     ///
-    /// Priority order: Bug > MissingTest > DocGap > Debt > Idea (default).
+    /// Priority order: `Bug` > `MissingTest` > `DocGap` > `Debt` > `Idea` (default).
     /// Bug keywords are checked first because misclassifying a bug is costlier
     /// than misclassifying an idea.
     #[must_use]

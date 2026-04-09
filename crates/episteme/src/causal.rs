@@ -72,8 +72,8 @@ pub struct CausalChainNode {
 /// In-memory index of causal edges between facts.
 ///
 /// Maintains two adjacency maps for O(1) edge lookup in both directions:
-/// - `causes_of`: target_id → edges where `target_id` is the effect
-/// - `effects_of`: source_id → edges where `source_id` is the cause
+/// - `causes_of`: `target_id` → edges where `target_id` is the effect
+/// - `effects_of`: `source_id` → edges where `source_id` is the cause
 ///
 /// Edges are stored by ID in a flat map; the adjacency maps hold IDs only.
 #[derive(Debug, Default)]
@@ -97,7 +97,6 @@ impl CausalStore {
     /// # Errors
     /// Returns [`CausalError::DuplicateEdge`] if an edge with the same ID
     /// already exists.
-    #[must_use]
     pub fn add_edge(&mut self, edge: CausalEdge) -> Result<(), CausalError> {
         if self.edges.contains_key(&edge.id) {
             return DuplicateEdgeSnafu {
@@ -118,7 +117,6 @@ impl CausalStore {
     }
 
     /// Return all edges in the store as an unordered slice reference.
-    #[must_use]
     pub fn all_edges(&self) -> impl Iterator<Item = &CausalEdge> {
         self.edges.values()
     }

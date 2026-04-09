@@ -63,7 +63,6 @@ impl OpsFactExtractor {
     /// # Errors
     ///
     /// Returns an error if fact ID generation fails (should not happen in practice).
-    #[must_use]
     pub fn extract(snapshot: &OpsSnapshot) -> Result<Vec<OpsFact>, ExtractError> {
         let now = jiff::Timestamp::now();
         let mut facts = Vec::with_capacity(4);
