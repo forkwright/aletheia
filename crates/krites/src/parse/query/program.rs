@@ -86,7 +86,13 @@ pub(crate) fn parse_query(
                 disable_magic_rewrite = parse_query_option_bool(pair, param_pool)?;
             }
             Rule::EOI => break,
-            r => unreachable!("{:?}", r),
+            r => {
+                return Err(InvalidQuerySnafu {
+                    message: format!("unexpected rule {:?} in parser", r),
+                }
+                .build()
+                .into());
+            }
         }
     }
 
@@ -120,6 +126,7 @@ fn add_rule_to_program(
             let key = e.key().to_string();
             match e.get_mut() {
                 InputInlineRulesOrFixed::Rules { rules: rs } => {
+                    #[expect(unreachable_code, reason = "Occupied entry guarantees non-empty vector")]
                     let prev = rs.first().unwrap_or_else(|| unreachable!());
                     if prev.aggr != rule.aggr {
                         return Err(InvalidQuerySnafu {
@@ -181,6 +188,7 @@ fn add_const_rule_to_program(
 ) -> Result<()> {
     let span = pair.extract_span();
     let mut src = pair.into_inner();
+    #[expect(unreachable_code, reason = "grammar guarantees const_rule has rule_head")]
     let (name, head, aggr) =
         parse_rule_head(src.next().unwrap_or_else(|| unreachable!()), param_pool)?;
 
@@ -205,6 +213,7 @@ fn add_const_rule_to_program(
         }
     }
 
+    #[expect(unreachable_code, reason = "grammar guarantees const_rule has data_part")]
     let data_part = src.next().unwrap_or_else(|| unreachable!());
     build_and_insert_const_rule(name, head, data_part, param_pool, progs, span)
 }
@@ -247,6 +256,7 @@ fn build_and_insert_const_rule(
         && name.is_prog_entry()
         && let Ok(mut datalist) = DatalogParser::parse(Rule::param_list, data_part_str)
     {
+        #[expect(unreachable_code, reason = "grammar guarantees param_list has content")]
         extend_head_from_params(&mut head, datalist.next().unwrap_or_else(|| unreachable!()));
     }
 
@@ -270,6 +280,7 @@ fn build_and_insert_const_rule(
 fn extend_head_from_params(head: &mut Vec<Symbol>, param_list: Pair<'_>) {
     for s in param_list.into_inner() {
         if s.as_rule() == Rule::param {
+            #[expect(unreachable_code, reason = "param always starts with '$' per grammar")]
             head.push(Symbol::new(
                 s.as_str()
                     .strip_prefix('$')
@@ -284,6 +295,7 @@ fn parse_query_option_float(
     pair: Pair<'_>,
     param_pool: &BTreeMap<String, DataValue>,
 ) -> Result<f64> {
+    #[expect(unreachable_code, reason = "grammar guarantees query options have content")]
     let inner = pair.into_inner().next().unwrap_or_else(|| unreachable!());
     build_expr(inner, param_pool)?
         .eval_to_const()
@@ -329,6 +341,7 @@ fn parse_query_option_usize(
     pair: Pair<'_>,
     param_pool: &BTreeMap<String, DataValue>,
 ) -> Result<usize> {
+    #[expect(unreachable_code, reason = "grammar guarantees query options have content")]
     let inner = pair.into_inner().next().unwrap_or_else(|| unreachable!());
     let n = build_expr(inner, param_pool)?
         .eval_to_const()
@@ -352,6 +365,7 @@ fn parse_query_option_bool(
     pair: Pair<'_>,
     param_pool: &BTreeMap<String, DataValue>,
 ) -> Result<bool> {
+    #[expect(unreachable_code, reason = "grammar guarantees query options have content")]
     let inner = pair.into_inner().next().unwrap_or_else(|| unreachable!());
     build_expr(inner, param_pool)?
         .eval_to_const()
@@ -384,6 +398,7 @@ fn collect_sort_option(pair: Pair<'_>, out_opts: &mut QueryOutOptions) {
                 }
                 Rule::sort_asc => dir = SortDir::Asc,
                 Rule::sort_desc => dir = SortDir::Dsc,
+                #[expect(unreachable_code, reason = "grammar guarantees sort_option only contains sort_asc or sort_desc")]
                 _ => unreachable!(),
             }
         }
@@ -412,6 +427,7 @@ fn parse_relation_stored_option(
 ) -> Result<StoredRelationSpec> {
     let span = pair.extract_span();
     let mut args = pair.into_inner();
+    #[expect(unreachable_code, reason = "grammar guarantees relation_option has operator")]
     let op = match args.next().unwrap_or_else(|| unreachable!()).as_rule() {
         Rule::relation_create => RelationOp::Create,
         Rule::relation_replace => RelationOp::Replace,
@@ -422,8 +438,15 @@ fn parse_relation_stored_option(
         Rule::relation_delete => RelationOp::Delete,
         Rule::relation_ensure => RelationOp::Ensure,
         Rule::relation_ensure_not => RelationOp::EnsureNot,
-        _ => unreachable!(),
+        _ => {
+            return Err(InvalidQuerySnafu {
+                message: "unexpected rule in parser".to_string(),
+            }
+            .build()
+            .into());
+        }
     };
+    #[expect(unreachable_code, reason = "grammar guarantees relation_option has name")]
     let name_p = args.next().unwrap_or_else(|| unreachable!());
     let name = Symbol::new(name_p.as_str(), name_p.extract_span());
     match args.next() {
@@ -571,7 +594,11 @@ fn resolve_empty_mutation_head(prog: &mut InputProgram) -> Result<()> {
                 })
                 .collect();
         } else {
-            unreachable!()
+            return Err(InvalidQuerySnafu {
+                message: "unexpected empty stored relation".to_string(),
+            }
+            .build()
+            .into());
         }
     }
     Ok(())

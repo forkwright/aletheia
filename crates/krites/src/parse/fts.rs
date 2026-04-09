@@ -26,13 +26,24 @@ pub(crate) fn parse_fts_query(q: &str) -> Result<FtsExpr> {
         }
         .build()
     })?;
-    let pairs = pairs.next().unwrap_or_else(|| unreachable!()).into_inner();
+    let pairs = pairs.next()
+        .ok_or_else(|| {
+            InvalidQuerySnafu {
+                message: "FTS parser produced no tokens".to_string(),
+            }.build()
+        })?
+        .into_inner();
     let pairs: Vec<_> = pairs
         .filter(|r| r.as_rule() != Rule::EOI)
         .map(parse_fts_expr)
         .try_collect()?;
     Ok(if pairs.len() == 1 {
-        pairs.into_iter().next().unwrap_or_else(|| unreachable!())
+        pairs.into_iter().next()
+            .ok_or_else(|| {
+                InvalidQuerySnafu {
+                    message: "FTS parser produced empty expression".to_string(),
+                }.build()
+            })?
     } else {
         FtsExpr::And(pairs)
     })
@@ -54,7 +65,11 @@ fn build_infix(lhs: Result<FtsExpr>, op: Pair<'_>, rhs: Result<FtsExpr>) -> Resu
         Rule::fts_and => FtsExpr::And(vec![lhs, rhs]),
         Rule::fts_or => FtsExpr::Or(vec![lhs, rhs]),
         Rule::fts_not => FtsExpr::Not(Box::new(lhs), Box::new(rhs)),
-        _ => unreachable!("unexpected rule: {:?}", op.as_rule()),
+        r => {
+            return Err(InvalidQuerySnafu {
+                message: format!("unexpected rule {:?} in FTS parser - grammar mismatch", r),
+            }.build().into());
+        }
     })
 }
 
@@ -66,7 +81,11 @@ fn build_term(pair: Pair<'_>) -> Result<FtsExpr> {
                 collected
                     .into_iter()
                     .next()
-                    .unwrap_or_else(|| unreachable!())
+                    .ok_or_else(|| {
+                        InvalidQuerySnafu {
+                            message: "FTS grouped expression is empty".to_string(),
+                        }.build()
+                    })?
             } else {
                 FtsExpr::And(collected)
             }
@@ -104,11 +123,20 @@ fn build_term(pair: Pair<'_>) -> Result<FtsExpr> {
 
 fn build_phrase(pair: Pair<'_>) -> Result<FtsLiteral> {
     let mut inner = pair.into_inner();
-    let kernel = inner.next().unwrap_or_else(|| unreachable!());
+    let kernel = inner.next()
+        .ok_or_else(|| {
+            InvalidQuerySnafu {
+                message: "FTS phrase has no content".to_string(),
+            }.build()
+        })?;
     let core_text = match kernel.as_rule() {
         Rule::fts_phrase_group => CompactString::from(kernel.as_str().trim()),
         Rule::quoted_string | Rule::s_quoted_string | Rule::raw_string => parse_string(kernel)?,
-        _ => unreachable!("unexpected rule: {:?}", kernel.as_rule()),
+        r => {
+            return Err(InvalidQuerySnafu {
+                message: format!("unexpected rule {:?} in FTS phrase - grammar mismatch", r),
+            }.build().into());
+        }
     };
     let mut is_quoted = false;
     let mut booster = 1.0;
@@ -116,7 +144,12 @@ fn build_phrase(pair: Pair<'_>) -> Result<FtsLiteral> {
         match pair.as_rule() {
             Rule::fts_prefix_marker => is_quoted = true,
             Rule::fts_booster => {
-                let boosted = pair.into_inner().next().unwrap_or_else(|| unreachable!());
+                let boosted = pair.into_inner().next()
+                    .ok_or_else(|| {
+                        InvalidQuerySnafu {
+                            message: "FTS booster has no value".to_string(),
+                        }.build()
+                    })?;
                 match boosted.as_rule() {
                     Rule::dot_float => {
                         let f = boosted
@@ -144,10 +177,18 @@ fn build_phrase(pair: Pair<'_>) -> Result<FtsLiteral> {
                             })?;
                         booster = i as f64;
                     }
-                    _ => unreachable!("unexpected rule: {:?}", boosted.as_rule()),
+                    r => {
+                        return Err(InvalidQuerySnafu {
+                            message: format!("unexpected rule {:?} in FTS booster - grammar mismatch", r),
+                        }.build().into());
+                    }
                 }
             }
-            _ => unreachable!("unexpected rule: {:?}", pair.as_rule()),
+            r => {
+                return Err(InvalidQuerySnafu {
+                    message: format!("unexpected rule {:?} in FTS phrase modifier - grammar mismatch", r),
+                }.build().into());
+            }
         }
     }
     Ok(FtsLiteral {

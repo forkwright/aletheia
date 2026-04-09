@@ -10,8 +10,8 @@ use crate::error::InternalResult as Result;
 use crate::parse::query::parse_query;
 use crate::parse::sys::parse_sys;
 use crate::parse::{
-    ExtractSpan, ImperativeProgram, ImperativeStmt, ImperativeStmtClause, ImperativeSysop, Pair,
-    Rule,
+    error::InvalidQuerySnafu, ExtractSpan, ImperativeProgram, ImperativeStmt, ImperativeStmtClause,
+    ImperativeSysop, Pair, Rule,
 };
 use crate::{DataValue, FixedRule, ValidityTs};
 
@@ -72,7 +72,11 @@ fn parse_imperative_stmt(
                     Rule::query_script_inner => {
                         let mut src = p.into_inner();
                         let prog = parse_query(
-                            src.next().unwrap_or_else(|| unreachable!()).into_inner(),
+                            src.next().ok_or_else(|| {
+                                InvalidQuerySnafu {
+                                    message: "expected inner element".to_string(),
+                                }.build()
+                            })?.into_inner(),
                             param_pool,
                             fixed_rules,
                             cur_vld,
@@ -80,7 +84,11 @@ fn parse_imperative_stmt(
                         let store_as = src.next().map(|p| CompactString::from(p.as_str().trim()));
                         rets.push(Left(ImperativeStmtClause { prog, store_as }))
                     }
-                    _ => unreachable!(),
+                    r => {
+                        return Err(InvalidQuerySnafu {
+                            message: format!("unexpected rule {:?} in imperative parser", r),
+                        }.build().into());
+                    }
                 }
             }
             ImperativeStmt::Return { returns: rets }
@@ -88,13 +96,21 @@ fn parse_imperative_stmt(
         Rule::if_chain | Rule::if_not_chain => {
             let negated = pair.as_rule() == Rule::if_not_chain;
             let mut inner = pair.into_inner();
-            let condition = inner.next().unwrap_or_else(|| unreachable!());
+            let condition = inner.next().ok_or_else(|| {
+                InvalidQuerySnafu {
+                    message: "expected inner element".to_string(),
+                }.build()
+            })?;
             let cond = match condition.as_rule() {
                 Rule::underscore_ident => Left(CompactString::from(condition.as_str())),
                 Rule::imperative_clause => {
                     let mut src = condition.into_inner();
                     let prog = parse_query(
-                        src.next().unwrap_or_else(|| unreachable!()).into_inner(),
+                        src.next().ok_or_else(|| {
+                            InvalidQuerySnafu {
+                                message: "expected inner element".to_string(),
+                            }.build()
+                        })?.into_inner(),
                         param_pool,
                         fixed_rules,
                         cur_vld,
@@ -102,11 +118,19 @@ fn parse_imperative_stmt(
                     let store_as = src.next().map(|p| CompactString::from(p.as_str().trim()));
                     Right(ImperativeStmtClause { prog, store_as })
                 }
-                _ => unreachable!(),
+                r => {
+                    return Err(InvalidQuerySnafu {
+                        message: format!("unexpected rule {:?} in imperative parser", r),
+                    }.build().into());
+                }
             };
             let body = inner
                 .next()
-                .unwrap_or_else(|| unreachable!())
+                .ok_or_else(|| {
+                    InvalidQuerySnafu {
+                        message: "expected inner element".to_string(),
+                    }.build()
+                })?
                 .into_inner()
                 .map(|p| parse_imperative_stmt(p, param_pool, fixed_rules, cur_vld))
                 .try_collect()?;
@@ -127,19 +151,35 @@ fn parse_imperative_stmt(
         Rule::loop_block => {
             let mut inner = pair.into_inner();
             let mut mark = None;
-            let mut nxt = inner.next().unwrap_or_else(|| unreachable!());
+            let mut nxt = inner.next().ok_or_else(|| {
+                InvalidQuerySnafu {
+                    message: "expected inner element".to_string(),
+                }.build()
+            })?;
             if nxt.as_rule() == Rule::ident {
                 mark = Some(CompactString::from(nxt.as_str()));
-                nxt = inner.next().unwrap_or_else(|| unreachable!());
+                nxt = inner.next().ok_or_else(|| {
+                    InvalidQuerySnafu {
+                        message: "expected inner element".to_string(),
+                    }.build()
+                })?;
             }
             let body = parse_imperative_block(nxt, param_pool, fixed_rules, cur_vld)?;
             ImperativeStmt::Loop { label: mark, body }
         }
         Rule::temp_swap => {
             let mut pairs = pair.into_inner();
-            let left = pairs.next().unwrap_or_else(|| unreachable!());
+            let left = pairs.next().ok_or_else(|| {
+                InvalidQuerySnafu {
+                    message: "expected inner element".to_string(),
+                }.build()
+            })?;
             let left_name = left.as_str();
-            let right = pairs.next().unwrap_or_else(|| unreachable!());
+            let right = pairs.next().ok_or_else(|| {
+                InvalidQuerySnafu {
+                    message: "expected inner element".to_string(),
+                }.build()
+            })?;
             let right_name = right.as_str();
 
             ImperativeStmt::TempSwap {
@@ -148,7 +188,11 @@ fn parse_imperative_stmt(
             }
         }
         Rule::debug_stmt => {
-            let name_p = pair.into_inner().next().unwrap_or_else(|| unreachable!());
+            let name_p = pair.into_inner().next().ok_or_else(|| {
+                InvalidQuerySnafu {
+                    message: "expected inner element".to_string(),
+                }.build()
+            })?;
             let name = name_p.as_str();
 
             ImperativeStmt::TempDebug {
@@ -158,7 +202,11 @@ fn parse_imperative_stmt(
         Rule::imperative_sysop => {
             let mut src = pair.into_inner();
             let sysop = parse_sys(
-                src.next().unwrap_or_else(|| unreachable!()).into_inner(),
+                src.next().ok_or_else(|| {
+                    InvalidQuerySnafu {
+                        message: "expected inner element".to_string(),
+                    }.build()
+                })?.into_inner(),
                 param_pool,
                 fixed_rules,
                 cur_vld,
@@ -171,7 +219,11 @@ fn parse_imperative_stmt(
         Rule::imperative_clause => {
             let mut src = pair.into_inner();
             let prog = parse_query(
-                src.next().unwrap_or_else(|| unreachable!()).into_inner(),
+                src.next().ok_or_else(|| {
+                    InvalidQuerySnafu {
+                        message: "expected inner element".to_string(),
+                    }.build()
+                })?.into_inner(),
                 param_pool,
                 fixed_rules,
                 cur_vld,
@@ -182,10 +234,18 @@ fn parse_imperative_stmt(
             }
         }
         Rule::ignore_error_script => {
-            let pair = pair.into_inner().next().unwrap_or_else(|| unreachable!());
+            let pair = pair.into_inner().next().ok_or_else(|| {
+                InvalidQuerySnafu {
+                    message: "expected inner element".to_string(),
+                }.build()
+            })?;
             let mut src = pair.into_inner();
             let prog = parse_query(
-                src.next().unwrap_or_else(|| unreachable!()).into_inner(),
+                src.next().ok_or_else(|| {
+                    InvalidQuerySnafu {
+                        message: "expected inner element".to_string(),
+                    }.build()
+                })?.into_inner(),
                 param_pool,
                 fixed_rules,
                 cur_vld,
@@ -195,6 +255,10 @@ fn parse_imperative_stmt(
                 prog: ImperativeStmtClause { prog, store_as },
             }
         }
-        r => unreachable!("{r:?}"),
+        r => {
+            return Err(InvalidQuerySnafu {
+                message: format!("unexpected rule {:?} in imperative parser", r),
+            }.build().into());
+        }
     })
 }

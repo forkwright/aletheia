@@ -128,7 +128,16 @@ pub(crate) fn build_expr(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue
                     args: [rhs].into(),
                     span: op.extract_span().merge(rhs_span),
                 },
-                _ => unreachable!(),
+                r => {
+                    return Err(InvalidQuerySnafu {
+                        message: format!(
+                            "unexpected rule {:?} in parser - grammar mismatch, please file a bug",
+                            r
+                        ),
+                    }
+                    .build()
+                    .into());
+                }
             })
         })
         .parse(pair.into_inner())
@@ -154,7 +163,16 @@ fn build_expr_infix(lhs: Result<Expr>, op: Pair<'_>, rhs: Result<Expr>) -> Resul
         Rule::op_and => &OP_AND,
         Rule::op_coalesce => &OP_COALESCE,
         Rule::op_field_access => &OP_MAYBE_GET,
-        _ => unreachable!(),
+        r => {
+            return Err(InvalidQuerySnafu {
+                message: format!(
+                    "unexpected rule {:?} in parser - grammar mismatch, please file a bug",
+                    r
+                ),
+            }
+            .build()
+            .into());
+        }
     };
     #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
     let start = args[0].span().0;
@@ -177,10 +195,12 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
             tuple_pos: None,
         },
         Rule::param => {
-            let param_str = pair
-                .as_str()
-                .strip_prefix('$')
-                .unwrap_or_else(|| unreachable!());
+            let param_str = pair.as_str().strip_prefix('$').ok_or_else(|| {
+                InvalidQuerySnafu {
+                    message: "parameter missing '$' prefix".to_string(),
+                }
+                .build()
+            })?;
             Expr::Const {
                 val: param_pool
                     .get(param_str)
@@ -269,8 +289,18 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
             let mut args = vec![];
             for p in pair.into_inner() {
                 let mut p = p.into_inner();
-                let k = p.next().unwrap_or_else(|| unreachable!());
-                let v = p.next().unwrap_or_else(|| unreachable!());
+                let k = p.next().ok_or_else(|| {
+                    InvalidQuerySnafu {
+                        message: "missing key in object pair".to_string(),
+                    }
+                    .build()
+                })?;
+                let v = p.next().ok_or_else(|| {
+                    InvalidQuerySnafu {
+                        message: "missing value in object pair".to_string(),
+                    }
+                    .build()
+                })?;
                 let k = build_expr(k, param_pool)?;
                 let v = build_expr(v, param_pool)?;
                 args.push(k);
@@ -284,11 +314,21 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
         }
         Rule::apply => {
             let mut p = pair.into_inner();
-            let ident_p = p.next().unwrap_or_else(|| unreachable!());
+            let ident_p = p.next().ok_or_else(|| {
+                InvalidQuerySnafu {
+                    message: "missing identifier in function application".to_string(),
+                }
+                .build()
+            })?;
             let ident = ident_p.as_str();
             let mut args: Vec<_> = p
                 .next()
-                .unwrap_or_else(|| unreachable!())
+                .ok_or_else(|| {
+                    InvalidQuerySnafu {
+                        message: "missing arguments in function application".to_string(),
+                    }
+                    .build()
+                })?
                 .into_inner()
                 .map(|v| build_expr(v, param_pool))
                 .try_collect()?;
@@ -307,7 +347,15 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
                             args.len() - 1,
                             Expr::Const {
                                 val: DataValue::Null,
-                                span: args.last().unwrap_or_else(|| unreachable!()).span(),
+                                span: args
+                                    .last()
+                                    .ok_or_else(|| {
+                                        InvalidQuerySnafu {
+                                            message: "missing last argument for cond".to_string(),
+                                        }
+                                        .build()
+                                    })?
+                                    .span(),
                             },
                         )
                     }
@@ -349,8 +397,18 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
 
                     let mut clauses = vec![];
                     let mut args = args.into_iter();
-                    let cond = args.next().unwrap_or_else(|| unreachable!());
-                    let then = args.next().unwrap_or_else(|| unreachable!());
+                    let cond = args.next().ok_or_else(|| {
+                        InvalidQuerySnafu {
+                            message: "missing condition in if expression".to_string(),
+                        }
+                        .build()
+                    })?;
+                    let then = args.next().ok_or_else(|| {
+                        InvalidQuerySnafu {
+                            message: "missing then branch in if expression".to_string(),
+                        }
+                        .build()
+                    })?;
                     clauses.push((cond, then));
                     clauses.push((
                         Expr::Const {
@@ -402,13 +460,31 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
             }
         }
         Rule::grouping => build_expr(
-            pair.into_inner().next().unwrap_or_else(|| unreachable!()),
+            pair.into_inner().next().ok_or_else(|| {
+                InvalidQuerySnafu {
+                    message: "empty grouping expression".to_string(),
+                }
+                .build()
+            })?,
             param_pool,
         )?,
-        r => unreachable!("Encountered unknown op {:?}", r),
+        r => {
+            return Err(InvalidQuerySnafu {
+                message: format!(
+                    "unexpected rule {:?} in parser - grammar mismatch, please file a bug",
+                    r
+                ),
+            }
+            .build()
+            .into());
+        }
     })
 }
 
+#[expect(
+    unreachable_code,
+    reason = "parse_int returns i64, not Result; grammar guarantees valid integer format"
+)]
 pub(crate) fn parse_int(s: &str, radix: u32) -> i64 {
     // Use `get(2..)` for bounds-checked slicing; default to empty string if out of bounds.
     i64::from_str_radix(&s.get(2..).unwrap_or("").replace('_', ""), radix)
@@ -421,7 +497,16 @@ pub(crate) fn parse_string(pair: Pair<'_>) -> Result<CompactString> {
         Rule::s_quoted_string => Ok(parse_s_quoted_string(pair)?),
         Rule::raw_string => Ok(parse_raw_string(pair)?),
         Rule::ident => Ok(CompactString::from(pair.as_str())),
-        t => unreachable!("{:?}", t),
+        r => {
+            return Err(InvalidQuerySnafu {
+                message: format!(
+                    "unexpected rule {:?} in parser - grammar mismatch, please file a bug",
+                    r
+                ),
+            }
+            .build()
+            .into());
+        }
     }
 }
 
@@ -429,7 +514,12 @@ fn parse_quoted_string(pair: Pair<'_>) -> Result<CompactString> {
     let pairs = pair
         .into_inner()
         .next()
-        .unwrap_or_else(|| unreachable!())
+        .ok_or_else(|| {
+            InvalidQuerySnafu {
+                message: "empty quoted string".to_string(),
+            }
+            .build()
+        })?
         .into_inner();
     let mut ret = CompactString::default();
     for pair in pairs {
@@ -471,7 +561,12 @@ fn parse_s_quoted_string(pair: Pair<'_>) -> Result<CompactString> {
     let pairs = pair
         .into_inner()
         .next()
-        .unwrap_or_else(|| unreachable!())
+        .ok_or_else(|| {
+            InvalidQuerySnafu {
+                message: "empty single-quoted string".to_string(),
+            }
+            .build()
+        })?
         .into_inner();
     let mut ret = CompactString::default();
     for pair in pairs {
@@ -513,7 +608,12 @@ fn parse_raw_string(pair: Pair<'_>) -> Result<CompactString> {
     Ok(CompactString::from(
         pair.into_inner()
             .next()
-            .unwrap_or_else(|| unreachable!())
+            .ok_or_else(|| {
+                InvalidQuerySnafu {
+                    message: "empty raw string".to_string(),
+                }
+                .build()
+            })?
             .as_str(),
     ))
 }

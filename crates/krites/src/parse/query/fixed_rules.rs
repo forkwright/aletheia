@@ -29,8 +29,15 @@ pub(crate) fn parse_fixed_rule(
     cur_vld: ValidityTs,
 ) -> Result<(Symbol, FixedRuleApply)> {
     let mut src = src.into_inner();
-    let (out_symbol, head, aggr) =
-        parse_rule_head(src.next().unwrap_or_else(|| unreachable!()), param_pool)?;
+    let (out_symbol, head, aggr) = parse_rule_head(
+        src.next().ok_or_else(|| {
+            InvalidQuerySnafu {
+                message: "expected element".to_string(),
+            }
+            .build()
+        })?,
+        param_pool,
+    )?;
 
     for (a, _v) in aggr.iter().zip(head.iter()) {
         if a.is_some() {
@@ -45,9 +52,19 @@ pub(crate) fn parse_fixed_rule(
     let mut seen_bindings = BTreeSet::new();
     let mut binding_gen_id = 0;
 
-    let name_pair = src.next().unwrap_or_else(|| unreachable!());
+    let name_pair = src.next().ok_or_else(|| {
+        InvalidQuerySnafu {
+            message: "expected element".to_string(),
+        }
+        .build()
+    })?;
     let fixed_name = &name_pair.as_str();
-    let args_list = src.next().unwrap_or_else(|| unreachable!());
+    let args_list = src.next().ok_or_else(|| {
+        InvalidQuerySnafu {
+            message: "expected element".to_string(),
+        }
+        .build()
+    })?;
     let args_list_span = args_list.extract_span();
 
     let (rule_args, mut options) = collect_fixed_rule_args(
@@ -103,7 +120,12 @@ fn collect_fixed_rule_args<'i>(
     for nxt in args_list.into_inner() {
         match nxt.as_rule() {
             Rule::fixed_rel => {
-                let inner = nxt.into_inner().next().unwrap_or_else(|| unreachable!());
+                let inner = nxt.into_inner().next().ok_or_else(|| {
+                    InvalidQuerySnafu {
+                        message: "expected element".to_string(),
+                    }
+                    .build()
+                })?;
                 let arg = match inner.as_rule() {
                     Rule::fixed_rule_rel => {
                         parse_fixed_rule_rel_arg(inner, seen_bindings, binding_gen_id)?
@@ -121,18 +143,43 @@ fn collect_fixed_rule_args<'i>(
                         param_pool,
                         cur_vld,
                     )?,
-                    _ => unreachable!(),
+                    r => {
+                        return Err(InvalidQuerySnafu {
+                            message: format!("unexpected rule {:?} in fixed rules parser", r),
+                        }
+                        .build()
+                        .into());
+                    }
                 };
                 rule_args.push(arg);
             }
             Rule::fixed_opt_pair => {
                 let mut inner = nxt.into_inner();
-                let name = inner.next().unwrap_or_else(|| unreachable!()).as_str();
-                let val = inner.next().unwrap_or_else(|| unreachable!());
+                let name = inner
+                    .next()
+                    .ok_or_else(|| {
+                        InvalidQuerySnafu {
+                            message: "expected element".to_string(),
+                        }
+                        .build()
+                    })?
+                    .as_str();
+                let val = inner.next().ok_or_else(|| {
+                    InvalidQuerySnafu {
+                        message: "expected element".to_string(),
+                    }
+                    .build()
+                })?;
                 let val = build_expr(val, param_pool)?;
                 options.insert(CompactString::from(name), val);
             }
-            _ => unreachable!(),
+            r => {
+                return Err(InvalidQuerySnafu {
+                    message: format!("unexpected rule {:?} in fixed rules parser", r),
+                }
+                .build()
+                .into());
+            }
         }
     }
     Ok((rule_args, options))
@@ -145,7 +192,12 @@ fn parse_fixed_rule_rel_arg<'i>(
 ) -> Result<FixedRuleArg> {
     let span = inner.extract_span();
     let mut els = inner.into_inner();
-    let name = els.next().unwrap_or_else(|| unreachable!());
+    let name = els.next().ok_or_else(|| {
+        InvalidQuerySnafu {
+            message: "expected element".to_string(),
+        }
+        .build()
+    })?;
     let mut bindings = Vec::with_capacity(els.size_hint().1.unwrap_or(4));
     for v in els {
         let s = v.as_str();
@@ -180,7 +232,12 @@ fn parse_fixed_relation_rel_arg<'i>(
 ) -> Result<FixedRuleArg> {
     let span = inner.extract_span();
     let mut els = inner.into_inner();
-    let name = els.next().unwrap_or_else(|| unreachable!());
+    let name = els.next().ok_or_else(|| {
+        InvalidQuerySnafu {
+            message: "expected element".to_string(),
+        }
+        .build()
+    })?;
     let mut bindings = vec![];
     let mut valid_at = None;
     for v in els {
@@ -203,18 +260,32 @@ fn parse_fixed_relation_rel_arg<'i>(
                 }
             }
             Rule::validity_clause => {
-                let vld_inner = v.into_inner().next().unwrap_or_else(|| unreachable!());
+                let vld_inner = v.into_inner().next().ok_or_else(|| {
+                    InvalidQuerySnafu {
+                        message: "expected element".to_string(),
+                    }
+                    .build()
+                })?;
                 let vld_expr = build_expr(vld_inner, param_pool)?;
                 valid_at = Some(expr2vld_spec(vld_expr, cur_vld)?)
             }
-            _ => unreachable!(),
+            r => {
+                return Err(InvalidQuerySnafu {
+                    message: format!("unexpected rule {:?} in fixed rules parser", r),
+                }
+                .build()
+                .into());
+            }
         }
     }
     Ok(FixedRuleArg::Stored {
         name: Symbol::new(
-            name.as_str()
-                .strip_prefix('*')
-                .unwrap_or_else(|| unreachable!()),
+            name.as_str().strip_prefix('*').ok_or_else(|| {
+                InvalidQuerySnafu {
+                    message: "expected element".to_string(),
+                }
+                .build()
+            })?,
             name.extract_span(),
         ),
         bindings,
@@ -231,14 +302,24 @@ fn parse_fixed_named_relation_rel_arg<'i>(
 ) -> Result<FixedRuleArg> {
     let span = inner.extract_span();
     let mut els = inner.into_inner();
-    let name = els.next().unwrap_or_else(|| unreachable!());
+    let name = els.next().ok_or_else(|| {
+        InvalidQuerySnafu {
+            message: "expected element".to_string(),
+        }
+        .build()
+    })?;
     let mut bindings = BTreeMap::new();
     let mut valid_at = None;
     for p in els {
         match p.as_rule() {
             Rule::fixed_named_relation_arg_pair => {
                 let mut vs = p.into_inner();
-                let kp = vs.next().unwrap_or_else(|| unreachable!());
+                let kp = vs.next().ok_or_else(|| {
+                    InvalidQuerySnafu {
+                        message: "expected element".to_string(),
+                    }
+                    .build()
+                })?;
                 let k = CompactString::from(kp.as_str());
                 let v = match vs.next() {
                     Some(vp) => {
@@ -265,18 +346,32 @@ fn parse_fixed_named_relation_rel_arg<'i>(
                 bindings.insert(k, v);
             }
             Rule::validity_clause => {
-                let vld_inner = p.into_inner().next().unwrap_or_else(|| unreachable!());
+                let vld_inner = p.into_inner().next().ok_or_else(|| {
+                    InvalidQuerySnafu {
+                        message: "expected element".to_string(),
+                    }
+                    .build()
+                })?;
                 let vld_expr = build_expr(vld_inner, param_pool)?;
                 valid_at = Some(expr2vld_spec(vld_expr, cur_vld)?)
             }
-            _ => unreachable!(),
+            r => {
+                return Err(InvalidQuerySnafu {
+                    message: format!("unexpected rule {:?} in fixed rules parser", r),
+                }
+                .build()
+                .into());
+            }
         }
     }
     Ok(FixedRuleArg::NamedStored {
         name: Symbol::new(
-            name.as_str()
-                .strip_prefix(':')
-                .unwrap_or_else(|| unreachable!()),
+            name.as_str().strip_prefix(':').ok_or_else(|| {
+                InvalidQuerySnafu {
+                    message: "expected element".to_string(),
+                }
+                .build()
+            })?,
             name.extract_span(),
         ),
         bindings,
