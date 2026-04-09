@@ -33,6 +33,10 @@ pub(crate) struct TaskStateStore {
     conn: rusqlite::Connection,
 }
 
+#[expect(
+    dead_code,
+    reason = "open + create_schema are called from #[cfg(test)] state::tests and runner_tests; production wiring lives in the binary crate"
+)]
 impl TaskStateStore {
     /// Open (or create) the task state database at `path`.
     pub(crate) fn open(path: &Path) -> Result<Self> {
