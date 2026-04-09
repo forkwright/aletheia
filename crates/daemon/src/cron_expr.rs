@@ -40,7 +40,7 @@ impl CronExpr {
     pub(crate) fn parse(expr: &str) -> Result<Self, error::Error> {
         let fields: Vec<&str> = expr.split_whitespace().collect();
 
-        let (sec_field, min_field, hour_field, dom_field, mon_field, dow_field) = match fields.len()
+        let (sec_str, minute_str, hour_str, dom_str, month_str, dow_str) = match fields.len()
         {
             5 => ("0", fields[0], fields[1], fields[2], fields[3], fields[4]),
             6 => (
@@ -55,17 +55,17 @@ impl CronExpr {
             }
         };
 
-        let seconds = parse_field(sec_field, 0, 59, &[])
+        let seconds = parse_field(sec_str, 0, 59, &[])
             .map_err(|e| cron_error(expr, format!("seconds: {e}")))?;
-        let minutes = parse_field(min_field, 0, 59, &[])
+        let minutes = parse_field(minute_str, 0, 59, &[])
             .map_err(|e| cron_error(expr, format!("minutes: {e}")))?;
-        let hours = parse_field(hour_field, 0, 23, &[])
+        let hours = parse_field(hour_str, 0, 23, &[])
             .map_err(|e| cron_error(expr, format!("hours: {e}")))?;
-        let days_of_month = parse_field(dom_field, 1, 31, &[])
+        let days_of_month = parse_field(dom_str, 1, 31, &[])
             .map_err(|e| cron_error(expr, format!("day-of-month: {e}")))?;
-        let months = parse_field(mon_field, 1, 12, &MONTH_NAMES)
+        let months = parse_field(month_str, 1, 12, &MONTH_NAMES)
             .map_err(|e| cron_error(expr, format!("month: {e}")))?;
-        let days_of_week = parse_field(dow_field, 0, 6, &DOW_NAMES)
+        let days_of_week = parse_field(dow_str, 0, 6, &DOW_NAMES)
             .map_err(|e| cron_error(expr, format!("day-of-week: {e}")))?;
 
         Ok(Self {
@@ -350,7 +350,7 @@ fn parse_field(
         let (range_part, step) = if let Some((r, s)) = part.split_once('/') {
             let step: u8 = s
                 .parse()
-                .map_err(|_| FieldError(format!("invalid step value: {s}")))?;
+                .map_err(|_e| FieldError(format!("invalid step value: {s}")))?;
             if step == 0 {
                 return Err(FieldError(format!("step must be > 0, got {step}")));
             }
@@ -412,7 +412,7 @@ fn resolve_value(
 
     let v: u8 = token
         .parse()
-        .map_err(|_| FieldError(format!("invalid value: {token}")))?;
+        .map_err(|_e| FieldError(format!("invalid value: {token}")))?;
     if v < min || v > max {
         return Err(FieldError(format!(
             "value {v} out of range [{min}, {max}]"

@@ -3,7 +3,6 @@
 use std::sync::Arc;
 
 use snafu::ResultExt;
-use tracing::Instrument;
 
 use crate::bridge::DaemonBridge;
 use crate::cron::{evolution, graph_cleanup, reflection};
@@ -318,14 +317,17 @@ pub(crate) async fn execute_builtin(
             })
         }
         BuiltinTask::ProposeRules => {
-            let data_dir = maintenance
-                .map(|m| m.propose_rules.data_dir.clone())
-                .unwrap_or_else(|| {
+            let data_dir = maintenance.map_or_else(
+                || {
                     let root = std::env::var("ALETHEIA_ROOT")
-                        .map(std::path::PathBuf::from)
-                        .unwrap_or_else(|_| std::path::PathBuf::from("instance"));
+                        .map_or_else(
+                            |_e| std::path::PathBuf::from("instance"),
+                            std::path::PathBuf::from,
+                        );
                     root.join("data")
-                });
+                },
+                |m| m.propose_rules.data_dir.clone(),
+            );
             tokio::task::spawn_blocking(move || {
                 let _span = tracing::info_span!("propose_rules").entered();
                 // WHY: no live observation stream is wired here yet.
