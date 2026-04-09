@@ -29,19 +29,18 @@ fn try_parse_event(event_type: &mut String, data: &mut String) -> Option<ParsedS
     if event_type.is_empty() || data.is_empty() {
         return None;
     }
-    match serde_json::from_str::<serde_json::Value>(data) {
-        Ok(parsed) => Some(ParsedSseEvent {
+    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
+        Some(ParsedSseEvent {
             event_type: std::mem::take(event_type),
             data: parsed,
-        }),
-        Err(_) => {
-            tracing::warn!(
-                event_type = %event_type,
-                raw_data = %data,
-                "malformed SSE event skipped"
-            );
-            None
-        }
+        })
+    } else {
+        tracing::warn!(
+            event_type = %event_type,
+            raw_data = %data,
+            "malformed SSE event skipped"
+        );
+        None
     }
 }
 

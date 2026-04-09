@@ -1,4 +1,4 @@
-//! EvalProvider trait implementations.
+//! `EvalProvider` trait implementations.
 
 use crate::provider::EvalProvider;
 use crate::scenario::Scenario;
@@ -16,6 +16,13 @@ impl EvalProvider for BuiltinProvider {
         crate::scenarios::all_scenarios()
     }
 
+    // WHY: trait signature is `fn name(&self) -> &str`. CompositeProvider
+    // returns a borrowed self.name field, so the trait cannot use 'static.
+    // Allowed locally on impls that happen to return literals.
+    #[allow(
+        clippy::unnecessary_literal_bound,
+        reason = "trait signature returns &str (borrowed), not &'static str"
+    )]
     fn name(&self) -> &str {
         "builtin"
     }
