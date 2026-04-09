@@ -116,6 +116,10 @@ pub(crate) async fn dispatch(cmd: Command, instance_root: Option<&PathBuf>) -> R
         Command::Repl(a) => repl::run(instance_root, &a).map_err(Into::into),
         // NOTE: Serve is intercepted in main() before dispatch is called.
         // This arm exists only for match exhaustiveness.
+        #[expect(
+            clippy::unreachable,
+            reason = "Serve is intercepted in main() before this dispatch table is reached; arm exists only for match exhaustiveness"
+        )]
         Command::Serve => unreachable!("Serve handled in main"),
     }
 }

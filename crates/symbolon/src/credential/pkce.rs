@@ -51,6 +51,16 @@ pub enum PkceError {
         location: snafu::Location,
     },
 
+    /// Failed to set listener blocking mode.
+    #[snafu(display("failed to set blocking mode on listener: {source}"))]
+    SetBlocking {
+        /// Underlying IO error.
+        source: std::io::Error,
+        /// Source location of the error.
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Failed to read HTTP request.
     #[snafu(display("failed to read request: {source}"))]
     ReadRequest {
@@ -506,10 +516,10 @@ fn handle_callback_connection(
     listener: &TcpListener,
     expected_state: &str,
 ) -> Result<CallbackData> {
-    // Set a timeout for accepting connections
+    // Set blocking mode on the listener so accept() blocks until a connection arrives.
     listener
         .set_nonblocking(false)
-        .expect("should be able to set blocking mode");
+        .context(SetBlockingSnafu)?;
 
     let (stream, addr) = listener.accept().context(AcceptConnectionSnafu)?;
     info!(addr = %addr, "received OAuth callback");
