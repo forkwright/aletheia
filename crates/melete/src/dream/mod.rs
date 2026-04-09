@@ -467,7 +467,7 @@ impl DreamEngine {
 }
 
 #[cfg(test)]
-#[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use std::sync::atomic::AtomicUsize;
 

@@ -245,7 +245,13 @@ fn detect_conflicts(db: &Project, fs: &Project, conflicts: &mut Vec<ConflictEntr
 /// O(d + f) where d is the number of database snapshots and f is the
 /// number of filesystem snapshots.
 #[must_use]
-#[expect(dead_code, reason = "WIP: database-filesystem state reconciliation")]
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "WIP: database-filesystem state reconciliation"
+    )
+)]
 pub(crate) fn reconcile_all(
     db_snapshots: &[ProjectSnapshot],
     fs_snapshots: &[ProjectSnapshot],

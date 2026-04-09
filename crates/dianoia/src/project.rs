@@ -115,13 +115,19 @@ impl Project {
 
     /// Get the current active phase (first non-complete phase).
     #[must_use]
-    #[expect(dead_code, reason = "WIP: project orchestration lifecycle")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "WIP: project orchestration lifecycle")
+    )]
     pub(crate) fn active_phase(&self) -> Option<&Phase> {
         self.phases.iter().find(|p| !p.is_complete())
     }
 
     /// Get a mutable reference to the current active phase.
-    #[expect(dead_code, reason = "WIP: project orchestration lifecycle")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "WIP: project orchestration lifecycle")
+    )]
     pub(crate) fn active_phase_mut(&mut self) -> Option<&mut Phase> {
         self.phases.iter_mut().find(|p| !p.is_complete())
     }

@@ -236,6 +236,7 @@ pub fn build_dag(prompts: &[PromptSpec]) -> Result<PromptDag> {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::indexing_slicing, reason = "test assertions over fixture data")]
 mod tests {
     use std::io::Write as _;
 

@@ -211,6 +211,7 @@ impl CostLedger {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::indexing_slicing, reason = "test assertions over fixture data")]
 mod tests {
     use super::*;
 
@@ -232,13 +233,12 @@ mod tests {
         assert!((cost.total_cost_usd - 1.50).abs() < 0.001);
         assert_eq!(cost.total_turns, 10);
         assert_eq!(cost.session_count, 1);
-        assert_eq!(
-            cost.cost_by_model
-                .get("claude-3-5-sonnet")
-                .copied()
-                .unwrap(),
-            1.50
-        );
+        let sonnet_cost = cost
+            .cost_by_model
+            .get("claude-3-5-sonnet")
+            .copied()
+            .unwrap();
+        assert!((sonnet_cost - 1.50).abs() < 0.001);
     }
 
     #[test]
