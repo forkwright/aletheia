@@ -539,7 +539,6 @@ dependencies = [
  "aes-gcm",
  "aletheia-koina",
  "argon2",
- "base64 0.22.1",
  "blake3",
  "hmac",
  "keyring",
