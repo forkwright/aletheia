@@ -1,8 +1,13 @@
 //! Tests for session CRUD, messages, history, and usage recording.
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(clippy::unwrap_used, reason = "test assertions")]
 #![expect(
     clippy::indexing_slicing,
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+)]
+#![expect(
+    clippy::similar_names,
+    reason = "seq_a1/seq_b1/seq_a2/seq_b2 mirror paired-session assertions"
 )]
 use super::super::SessionStore;
 use crate::types::{Role, SessionStatus, SessionType, UsageRecord};

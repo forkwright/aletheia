@@ -757,6 +757,7 @@ pub async fn pkce_login_and_save(
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use super::*;
 

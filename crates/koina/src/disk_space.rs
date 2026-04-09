@@ -7,11 +7,17 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 const BYTES_PER_MB: u64 = 1024 * 1024;
 
-#[expect(dead_code, reason = "daemon disk monitor integration pending")]
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "daemon disk monitor integration pending")
+)]
 /// Default warning threshold: 1 GB.
 pub(crate) const DEFAULT_WARNING_BYTES: u64 = 1024 * BYTES_PER_MB;
 
-#[expect(dead_code, reason = "daemon disk monitor integration pending")]
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "daemon disk monitor integration pending")
+)]
 /// Default critical threshold: 100 MB.
 pub(crate) const DEFAULT_CRITICAL_BYTES: u64 = 100 * BYTES_PER_MB;
 
@@ -102,7 +108,10 @@ pub fn available_space(path: &Path) -> std::io::Result<u64> {
     Ok(stat.f_bavail * stat.f_frsize)
 }
 
-#[expect(dead_code, reason = "daemon disk monitor integration pending")]
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "daemon disk monitor integration pending")
+)]
 /// Check disk space and classify against thresholds.
 pub(crate) fn check_disk_space(
     path: &Path,
@@ -142,7 +151,10 @@ impl DiskSpaceMonitor {
     /// The initial cached value is `u64::MAX` (assumes space is available
     /// until the first [`refresh`](Self::refresh) completes).
     #[must_use]
-    #[expect(dead_code, reason = "daemon disk monitor integration pending")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "daemon disk monitor integration pending")
+    )]
     pub(crate) fn new(warning_bytes: u64, critical_bytes: u64) -> Self {
         Self {
             cached_available: Arc::new(AtomicU64::new(u64::MAX)),
@@ -158,7 +170,10 @@ impl DiskSpaceMonitor {
     /// # Errors
     ///
     /// Returns an I/O error if `statvfs` fails.
-    #[expect(dead_code, reason = "daemon disk monitor integration pending")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "daemon disk monitor integration pending")
+    )]
     pub(crate) fn refresh(&self, path: &Path) -> std::io::Result<DiskStatus> {
         let avail = available_space(path)?;
         self.cached_available.store(avail, Ordering::Relaxed);

@@ -253,6 +253,12 @@ pub(crate) fn set_concurrency_in_flight(provider: &str, in_flight: u32) {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::as_conversions,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "prometheus counter values are known non-negative small integers in tests"
+)]
 mod tests {
     use super::*;
 
@@ -268,9 +274,13 @@ mod tests {
                         .iter()
                         .map(|l| (l.name(), l.value()))
                         .collect();
-                    let matches = label_names.iter().zip(label_values.iter()).all(|(name, expected)| {
-                        label_map.get(name).map(|v| *v == *expected).unwrap_or(false)
-                    });
+                    let matches =
+                        label_names
+                            .iter()
+                            .zip(label_values.iter())
+                            .all(|(name, expected)| {
+                                label_map.get(name).is_some_and(|v| *v == *expected)
+                            });
                     if matches && labels.len() == label_values.len() {
                         return metric.get_counter().value() as u64;
                     }
@@ -291,9 +301,13 @@ mod tests {
                         .iter()
                         .map(|l| (l.name(), l.value()))
                         .collect();
-                    let matches = label_names.iter().zip(label_values.iter()).all(|(name, expected)| {
-                        label_map.get(name).map(|v| *v == *expected).unwrap_or(false)
-                    });
+                    let matches =
+                        label_names
+                            .iter()
+                            .zip(label_values.iter())
+                            .all(|(name, expected)| {
+                                label_map.get(name).is_some_and(|v| *v == *expected)
+                            });
                     if matches && labels.len() == label_values.len() {
                         return metric.get_counter().value();
                     }
@@ -314,11 +328,15 @@ mod tests {
                         .iter()
                         .map(|l| (l.name(), l.value()))
                         .collect();
-                    let matches = label_names.iter().zip(label_values.iter()).all(|(name, expected)| {
-                        label_map.get(name).map(|v| *v == *expected).unwrap_or(false)
-                    });
+                    let matches =
+                        label_names
+                            .iter()
+                            .zip(label_values.iter())
+                            .all(|(name, expected)| {
+                                label_map.get(name).is_some_and(|v| *v == *expected)
+                            });
                     if matches && labels.len() == label_values.len() {
-                        return metric.get_histogram().sample_count() as u64;
+                        return metric.get_histogram().sample_count();
                     }
                 }
             }
@@ -342,8 +360,10 @@ mod tests {
         set_concurrency_in_flight("test-init", 5);
 
         let families = prometheus::default_registry().gather();
-        let metric_names: std::collections::HashSet<_> =
-            families.iter().map(|f| f.name()).collect();
+        let metric_names: std::collections::HashSet<_> = families
+            .iter()
+            .map(prometheus::proto::MetricFamily::name)
+            .collect();
 
         // Core metrics that are always registered after recording
         assert!(metric_names.contains("aletheia_llm_tokens_total"), "tokens metric should be registered");

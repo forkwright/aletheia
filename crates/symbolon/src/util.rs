@@ -180,6 +180,7 @@ pub(crate) fn decode_jwt_exp_secs(token: &str) -> Option<u64> {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use super::*;
 

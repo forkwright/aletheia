@@ -678,6 +678,10 @@ pub(crate) struct PendingMigration {
     /// Version number that would be applied.
     pub version: u32,
     /// Human-readable summary of the migration.
+    #[cfg_attr(
+        test,
+        expect(dead_code, reason = "populated for parity with production CLI output")
+    )]
     pub description: &'static str,
 }
 
@@ -791,7 +795,10 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<MigrationResult> {
 /// # Errors
 ///
 /// Returns [`error::Error::Database`] if `SQLite` operations fail.
-#[expect(dead_code, reason = "migration check for CLI preflight diagnostics")]
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "migration check for CLI preflight diagnostics")
+)]
 pub(crate) fn check_migrations(conn: &Connection) -> Result<Vec<PendingMigration>> {
     bootstrap_version_table(conn)?;
     let current = get_schema_version(conn);

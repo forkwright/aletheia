@@ -70,7 +70,10 @@ impl<T: Clone> OutputBuffer<T> {
     /// Register the dead-letter output for failed events.
     ///
     /// Equivalent to `register_output(DEAD_LETTER)`.
-    #[expect(dead_code, reason = "output buffer pipeline routing infrastructure")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "output buffer pipeline routing infrastructure")
+    )]
     pub(crate) fn register_dead_letter(&mut self) {
         self.register_output(DEAD_LETTER);
     }
@@ -98,7 +101,10 @@ impl<T: Clone> OutputBuffer<T> {
     /// silently skipped. If no targets matched and a dead-letter output
     /// is registered, the event lands there. Returns the number of
     /// outputs that received the event.
-    #[expect(dead_code, reason = "output buffer pipeline routing infrastructure")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "output buffer pipeline routing infrastructure")
+    )]
     pub(crate) fn fan_out(&mut self, event: T, targets: &[&str]) -> usize {
         let mut delivered = 0;
         for &target in targets {
@@ -120,7 +126,7 @@ impl<T: Clone> OutputBuffer<T> {
     /// The routing function receives a reference to the event and returns the
     /// output name. If the output does not exist, the event goes to the
     /// dead-letter output (if registered).
-    #[expect(dead_code, reason = "planned infrastructure")]
+    #[cfg_attr(not(test), expect(dead_code, reason = "planned infrastructure"))]
     pub(crate) fn route(&mut self, event: T, router: impl FnOnce(&T) -> &str) -> bool {
         let target = router(&event).to_owned();
         self.push(event, &target)
@@ -139,14 +145,17 @@ impl<T: Clone> OutputBuffer<T> {
 
     /// Drain the dead-letter output.
     #[must_use]
-    #[expect(dead_code, reason = "planned infrastructure")]
+    #[cfg_attr(not(test), expect(dead_code, reason = "planned infrastructure"))]
     pub(crate) fn drain_dead_letter(&mut self) -> Vec<T> {
         self.drain(DEAD_LETTER)
     }
 
     /// Peek at events in a named output without draining.
     #[must_use]
-    #[expect(dead_code, reason = "output buffer pipeline routing infrastructure")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "output buffer pipeline routing infrastructure")
+    )]
     pub(crate) fn peek(&self, output: &str) -> &[T] {
         self.outputs.get(output).map_or(&[], Vec::as_slice)
     }
@@ -159,34 +168,49 @@ impl<T: Clone> OutputBuffer<T> {
 
     /// Whether a named output is empty or does not exist.
     #[must_use]
-    #[expect(dead_code, reason = "output buffer pipeline routing infrastructure")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "output buffer pipeline routing infrastructure")
+    )]
     pub(crate) fn is_empty(&self, output: &str) -> bool {
         self.len(output) == 0
     }
 
     /// Total events across all outputs.
     #[must_use]
-    #[expect(dead_code, reason = "output buffer pipeline routing infrastructure")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "output buffer pipeline routing infrastructure")
+    )]
     pub(crate) fn total_events(&self) -> usize {
         self.outputs.values().map(Vec::len).sum()
     }
 
     /// Names of all registered outputs (including dead-letter if registered).
     #[must_use]
-    #[expect(dead_code, reason = "output buffer pipeline routing infrastructure")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "output buffer pipeline routing infrastructure")
+    )]
     pub(crate) fn output_names(&self) -> Vec<&str> {
         self.outputs.keys().map(String::as_str).collect()
     }
 
     /// Whether a named output is registered.
     #[must_use]
-    #[expect(dead_code, reason = "output buffer pipeline routing infrastructure")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "output buffer pipeline routing infrastructure")
+    )]
     pub(crate) fn has_output(&self, name: &str) -> bool {
         self.outputs.contains_key(name)
     }
 
     /// Clear all events from all outputs without removing the registrations.
-    #[expect(dead_code, reason = "output buffer pipeline routing infrastructure")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "output buffer pipeline routing infrastructure")
+    )]
     pub(crate) fn clear(&mut self) {
         for queue in self.outputs.values_mut() {
             queue.clear();

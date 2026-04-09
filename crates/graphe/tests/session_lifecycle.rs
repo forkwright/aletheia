@@ -1,4 +1,4 @@
-//! Integration tests for the SessionStore public API.
+//! Integration tests for the `SessionStore` public API.
 //!
 //! WHY: graphe had zero `crates/graphe/tests/` integration tests prior to
 //! this. Inline tests in `src/store/tests/` cover individual methods, but
@@ -6,18 +6,22 @@
 //! the published API surface only — what an external crate
 //! (e.g. mneme, nous) can actually use.
 //!
-//! Each test creates an isolated tempdir-backed SQLite store so they
+//! Each test creates an isolated tempdir-backed `SQLite` store so they
 //! can run in parallel without sharing state.
 
 #![cfg(feature = "sqlite")]
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "history Vecs have known length from preceding append assertions"
+)]
 
 use aletheia_graphe::store::SessionStore;
 use aletheia_graphe::types::{Role, SessionStatus};
 use aletheia_koina::ulid::Ulid;
 use tempfile::TempDir;
 
-/// Open a fresh SessionStore in a tempdir. The TempDir must be kept alive
+/// Open a fresh `SessionStore` in a tempdir. The `TempDir` must be kept alive
 /// for the duration of the test or its files will be cleaned up.
 fn fresh_store() -> (SessionStore, TempDir) {
     let dir = TempDir::new().expect("temp dir creates");
