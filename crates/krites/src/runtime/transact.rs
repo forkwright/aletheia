@@ -133,6 +133,11 @@ impl<'a> SessionTx<'a> {
         Ok(ret)
     }
 
+    /// Commit the transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying storage commit fails.
     #[must_use = "commit can fail"]
     pub fn commit_tx(&mut self) -> Result<()> {
         self.store_tx.commit()?;
@@ -303,6 +308,11 @@ impl<'s, S: Storage<'s>> Db<S> {
     /// Export relations to JSON data.
     ///
     /// `relations` contains names of the stored relations to export.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a relation is not found, has insufficient access
+    /// level, or if storage operations fail during export.
     #[must_use = "returns the exported data or an error"]
     pub fn export_relations<I, T>(&'s self, relations: I) -> Result<BTreeMap<String, NamedRows>>
     where
@@ -358,6 +368,11 @@ impl<'s, S: Storage<'s>> Db<S> {
     ///
     /// Note that triggers and callbacks are _not_ run for the relations, if any exists.
     /// If you need to activate triggers or callbacks, use queries with parameters.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a target relation does not exist, has insufficient
+    /// access level, if the data format is invalid, or if storage operations fail.
     #[must_use = "import can fail"]
     pub fn import_relations(&'s self, data: BTreeMap<String, NamedRows>) -> Result<()> {
         let rel_names = data.keys().map(CompactString::from).collect_vec();

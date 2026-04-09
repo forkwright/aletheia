@@ -159,7 +159,12 @@ impl NamedRows {
             "next": nxt,
         })
     }
-    /// Make named rows from JSON
+    /// Make named rows from JSON.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the JSON is missing required fields (`headers`, `rows`)
+    /// or if the structure is invalid.
     #[must_use = "returns parsed rows or an error"]
     pub fn from_json(value: &JsonValue) -> Result<Self> {
         let headers = value
@@ -291,6 +296,10 @@ impl<'s, S: Storage<'s>> Db<S> {
     }
 
     /// Must be called after creation of the database to initialize the runtime state.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if storage initialization fails or version checks fail.
     #[must_use = "initialization can fail"]
     pub fn initialize(&'s self) -> Result<()> {
         self.load_last_ids()?;
@@ -307,6 +316,10 @@ impl<'s, S: Storage<'s>> Db<S> {
     }
 
     /// Backup the running database into an Sqlite file.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the backup operation is not supported or fails.
     #[must_use = "backup can fail"]
     pub fn backup_db(&'s self, _out_file: impl AsRef<Path>) -> Result<()> {
         UnsupportedSnafu {
@@ -316,6 +329,10 @@ impl<'s, S: Storage<'s>> Db<S> {
         .fail()?
     }
     /// Restore from an Sqlite backup.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the restore operation is not supported or fails.
     #[must_use = "restore can fail"]
     pub fn restore_backup(&'s self, _in_file: impl AsRef<Path>) -> Result<()> {
         UnsupportedSnafu {
@@ -325,6 +342,10 @@ impl<'s, S: Storage<'s>> Db<S> {
         .fail()?
     }
     /// Import data from relations in a backup file.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the import operation is not supported or fails.
     #[must_use = "import can fail"]
     pub fn import_from_backup(
         &'s self,
@@ -338,6 +359,10 @@ impl<'s, S: Storage<'s>> Db<S> {
         .fail()?
     }
     /// Register a custom fixed rule implementation.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a rule with the same name is already registered.
     #[must_use = "registration can fail if the name is already taken"]
     pub fn register_fixed_rule<R>(&self, name: String, rule_impl: R) -> Result<()>
     where
@@ -362,6 +387,10 @@ impl<'s, S: Storage<'s>> Db<S> {
     }
 
     /// Unregister a custom fixed rule implementation.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if attempting to unregister a builtin fixed rule.
     #[must_use = "returns whether the rule existed or an error"]
     pub fn unregister_fixed_rule(&self, name: &str) -> Result<bool> {
         if DEFAULT_FIXED_RULES.contains_key(name) {

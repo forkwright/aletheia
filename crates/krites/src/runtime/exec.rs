@@ -35,6 +35,11 @@ use crate::storage::Storage;
 
 impl<'s, S: Storage<'s>> Db<S> {
     /// Run the DatalogScript passed in. The `params` argument is a map of parameters.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if parsing fails, if the script requires write access
+    /// in read-only mode, or if execution fails.
     pub fn run_script(
         &'s self,
         payload: &str,
@@ -54,6 +59,10 @@ impl<'s, S: Storage<'s>> Db<S> {
     }
 
     /// Run the DatalogScript passed in. The `params` argument is a map of parameters.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if parsing fails or if execution fails.
     pub fn run_script_read_only(
         &'s self,
         payload: &str,
@@ -63,6 +72,11 @@ impl<'s, S: Storage<'s>> Db<S> {
     }
 
     /// Run the AST DatalogScript passed in.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the script requires write access in read-only mode
+    /// or if execution fails.
     pub fn run_script_ast(
         &'s self,
         payload: DatalogScript,

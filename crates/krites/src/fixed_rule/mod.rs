@@ -55,11 +55,21 @@ pub struct FixedRuleInputRelation<'a, 'b> {
 }
 
 impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
-    /// The arity of the input relation
+    /// The arity of the input relation.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the input relation cannot be found in the temporary
+    /// stores or if accessing a stored relation fails.
     pub fn arity(&self) -> Result<usize> {
         self.arg_manifest.arity(self.tx, self.stores)
     }
     /// Ensure the input relation contains tuples of the given minimal length.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the arity check fails or if the input relation
+    /// has insufficient arity for the requested operation.
     pub fn ensure_min_len(self, len: usize) -> Result<Self> {
         let arity = self.arg_manifest.arity(self.tx, self.stores)?;
         if arity < len {
@@ -76,7 +86,12 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
     pub fn get_binding_map(&self, offset: usize) -> BTreeMap<Symbol, usize> {
         self.arg_manifest.get_binding_map(offset)
     }
-    /// Iterate the input relation
+    /// Iterate the input relation.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the requested rule cannot be found in the temporary
+    /// stores or if accessing a stored relation fails.
     pub fn iter(&self) -> Result<TupleIter<'a>> {
         Ok(match &self.arg_manifest {
             MagicFixedRuleRuleArg::InMem { name, .. } => {
@@ -99,7 +114,12 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
             }
         })
     }
-    /// Iterate the relation with the given single-value prefix
+    /// Iterate the relation with the given single-value prefix.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the requested rule cannot be found in the temporary
+    /// stores or if accessing a stored relation fails.
     pub fn prefix_iter(&self, prefix: &DataValue) -> Result<TupleIter<'_>> {
         Ok(match self.arg_manifest {
             MagicFixedRuleRuleArg::InMem { name, .. } => {
@@ -134,6 +154,11 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
     ///
     /// Returns the graph, the vertices in a vector with the index the same as used in the graph,
     /// and the inverse vertex mapping.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if iteration fails or if the relation cannot be
+    /// interpreted as edges (tuples must have at least two elements).
     #[cfg(feature = "graph-algo")]
     pub fn as_directed_graph(
         &self,
@@ -217,6 +242,12 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
     ///
     /// Returns the graph, the vertices in a vector with the index the same as used in the graph,
     /// and the inverse vertex mapping.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if iteration fails, if the relation cannot be interpreted
+    /// as edges, if edge weights are not finite numbers, or if negative weights
+    /// are provided when `allow_negative_weights` is `false`.
     #[cfg(feature = "graph-algo")]
     pub fn as_directed_weighted_graph(
         &self,
@@ -365,6 +396,11 @@ impl<'a, 'b> FixedRulePayload<'a, 'b> {
         self.manifest.relations_count()
     }
     /// Get the input relation at `idx`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the index is out of bounds for the available
+    /// input relations.
     pub fn get_input(&self, idx: usize) -> Result<FixedRuleInputRelation<'a, 'b>> {
         let arg_manifest = self.manifest.relation(idx)?;
         Ok(FixedRuleInputRelation {
@@ -381,7 +417,11 @@ impl<'a, 'b> FixedRulePayload<'a, 'b> {
     pub fn span(&self) -> SourceSpan {
         self.manifest.span
     }
-    /// Extract an expression option
+    /// Extract an expression option.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the option is not found and no default is provided.
     pub fn expr_option(&self, name: &str, default: Option<Expr>) -> Result<Expr> {
         match self.manifest.options.get(name) {
             Some(ex) => Ok(ex.clone()),
@@ -397,7 +437,12 @@ impl<'a, 'b> FixedRulePayload<'a, 'b> {
         }
     }
 
-    /// Extract a string option
+    /// Extract a string option.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the option is not found and no default is provided,
+    /// or if the option value cannot be evaluated to a string.
     pub fn string_option(&self, name: &str, default: Option<&str>) -> Result<CompactString> {
         match self.manifest.options.get(name) {
             Some(ex) => match ex.clone().eval_to_const()? {
@@ -423,6 +468,10 @@ impl<'a, 'b> FixedRulePayload<'a, 'b> {
     }
 
     /// Get the source span of the named option. Useful for generating informative error messages.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the named option is not found.
     pub fn option_span(&self, name: &str) -> Result<SourceSpan> {
         match self.manifest.options.get(name) {
             None => Err(FixedRuleOptionNotFoundError {
@@ -434,7 +483,12 @@ impl<'a, 'b> FixedRulePayload<'a, 'b> {
             Some(v) => Ok(v.span()),
         }
     }
-    /// Extract an integer option
+    /// Extract an integer option.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the option is not found and no default is provided,
+    /// or if the option value cannot be evaluated to an integer.
     pub fn integer_option(&self, name: &str, default: Option<i64>) -> Result<i64> {
         match self.manifest.options.get(name) {
             Some(v) => match v.clone().eval_to_const() {
@@ -466,7 +520,12 @@ impl<'a, 'b> FixedRulePayload<'a, 'b> {
             },
         }
     }
-    /// Extract a positive integer option
+    /// Extract a positive integer option.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the option is not found and no default is provided,
+    /// or if the option value is not a positive integer.
     pub fn pos_integer_option(&self, name: &str, default: Option<usize>) -> Result<usize> {
         #[expect(clippy::cast_possible_wrap, reason = "value fits i64")]
         let i = self.integer_option(name, default.map(|i| i as i64))?;
@@ -481,7 +540,12 @@ impl<'a, 'b> FixedRulePayload<'a, 'b> {
         }
         Ok(i as usize)
     }
-    /// Extract a non-negative integer option
+    /// Extract a non-negative integer option.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the option is not found and no default is provided,
+    /// or if the option value is negative.
     pub fn non_neg_integer_option(&self, name: &str, default: Option<usize>) -> Result<usize> {
         #[expect(clippy::cast_possible_wrap, reason = "value fits i64")]
         let i = self.integer_option(name, default.map(|i| i as i64))?;
@@ -496,7 +560,12 @@ impl<'a, 'b> FixedRulePayload<'a, 'b> {
         }
         Ok(i as usize)
     }
-    /// Extract a floating point option
+    /// Extract a floating point option.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the option is not found and no default is provided,
+    /// or if the option value cannot be evaluated to a number.
     pub fn float_option(&self, name: &str, default: Option<f64>) -> Result<f64> {
         match self.manifest.options.get(name) {
             Some(v) => match v.clone().eval_to_const() {
@@ -524,6 +593,11 @@ impl<'a, 'b> FixedRulePayload<'a, 'b> {
         }
     }
     /// Extract a floating point option between 0. and 1.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the option is not found and no default is provided,
+    /// or if the option value is not in the range [0.0, 1.0].
     pub fn unit_interval_option(&self, name: &str, default: Option<f64>) -> Result<f64> {
         let f = self.float_option(name, default)?;
         if !(0. ..=1.).contains(&f) {
@@ -537,7 +611,12 @@ impl<'a, 'b> FixedRulePayload<'a, 'b> {
         }
         Ok(f)
     }
-    /// Extract a boolean option
+    /// Extract a boolean option.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the option is not found and no default is provided,
+    /// or if the option value cannot be evaluated to a boolean.
     pub fn bool_option(&self, name: &str, default: Option<bool>) -> Result<bool> {
         match self.manifest.options.get(name) {
             Some(v) => match v.clone().eval_to_const() {

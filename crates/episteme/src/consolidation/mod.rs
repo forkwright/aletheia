@@ -243,6 +243,10 @@ pub fn consolidation_user_message(facts: &[(FactId, String, f64, String)]) -> St
 /// Parse the LLM response into consolidated fact entries.
 ///
 /// Expects a JSON array of objects with at least a `content` field.
+///
+/// # Errors
+///
+/// Returns an error if the response cannot be parsed as valid JSON.
 pub fn parse_consolidation_response(
     response: &str,
 ) -> Result<Vec<LlmConsolidatedEntry>, ConsolidationError> {

@@ -47,6 +47,11 @@ pub fn register_all(registry: &mut ToolRegistry) -> Result<()> {
 }
 
 /// Register all built-in tool executors with custom sandbox config.
+///
+/// # Errors
+///
+/// Returns an error if any built-in tool name collides with an
+/// already-registered tool.
 pub fn register_all_with_sandbox(
     registry: &mut ToolRegistry,
     sandbox: SandboxConfig,

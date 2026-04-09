@@ -246,7 +246,12 @@ impl Expr {
         }
         Ok(())
     }
-    /// Evaluate the expression to a constant value if possible
+    /// Evaluate the expression to a constant value if possible.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the expression contains unevaluated bindings
+    /// or if partial evaluation fails.
     #[must_use = "returns the evaluated constant or an error"]
     pub fn eval_to_const(mut self) -> Result<DataValue> {
         self.partial_eval()?;
