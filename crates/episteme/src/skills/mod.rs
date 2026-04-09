@@ -30,7 +30,7 @@ pub use signature::{SequenceSignature, sequence_signature, signature_similarity}
 /// This is a lightweight record, a subset of a full tool execution record
 /// carrying only what the heuristic filter needs.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(try_from = "ToolCallRecordRaw")]
+#[serde(from = "ToolCallRecordRaw")]
 pub struct ToolCallRecord {
     /// Tool name (e.g. `"Read"`, `"Edit"`, `"Bash"`).
     pub tool_name: String,
@@ -48,15 +48,13 @@ struct ToolCallRecordRaw {
     duration_ms: u64,
 }
 
-impl TryFrom<ToolCallRecordRaw> for ToolCallRecord {
-    type Error = std::convert::Infallible;
-
-    fn try_from(raw: ToolCallRecordRaw) -> Result<Self, Self::Error> {
-        Ok(Self {
+impl From<ToolCallRecordRaw> for ToolCallRecord {
+    fn from(raw: ToolCallRecordRaw) -> Self {
+        Self {
             tool_name: raw.tool_name,
             is_error: raw.is_error,
             duration_ms: raw.duration_ms,
-        })
+        }
     }
 }
 

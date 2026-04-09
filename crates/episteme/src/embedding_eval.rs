@@ -279,9 +279,14 @@ pub fn evaluate_model(
             .collect();
         ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
-        let top_k_ids: Vec<String> = ranked[..eff_k]
+        // WHY: ranked is collected from enumerate over corpus_vecs, so each (i, _)
+        // pair has `i < corpus.len()`. Use `.get()` to avoid the indexing/slicing
+        // lints; missing entries (impossible by construction) are silently skipped
+        // via filter_map rather than panicking.
+        let top_k_ids: Vec<String> = ranked
             .iter()
-            .map(|(i, _)| corpus[*i].0.clone())
+            .take(eff_k)
+            .filter_map(|(i, _)| corpus.get(*i).map(|(id, _)| id.clone()))
             .collect();
 
         let relevant: std::collections::HashSet<&str> =
@@ -294,18 +299,20 @@ pub fn evaluate_model(
         }
 
         // Recall@5
-        let top5_ids: Vec<&str> = ranked[..eff_k5]
+        let top5_ids: Vec<&str> = ranked
             .iter()
-            .map(|(i, _)| corpus[*i].0.as_str())
+            .take(eff_k5)
+            .filter_map(|(i, _)| corpus.get(*i).map(|(id, _)| id.as_str()))
             .collect();
         if top5_ids.iter().any(|id| relevant.contains(id)) {
             hit_count_5 += 1;
         }
 
         // Recall@10
-        let top10_ids: Vec<&str> = ranked[..eff_k10]
+        let top10_ids: Vec<&str> = ranked
             .iter()
-            .map(|(i, _)| corpus[*i].0.as_str())
+            .take(eff_k10)
+            .filter_map(|(i, _)| corpus.get(*i).map(|(id, _)| id.as_str()))
             .collect();
         if top10_ids.iter().any(|id| relevant.contains(id)) {
             hit_count_10 += 1;
@@ -339,16 +346,21 @@ pub fn evaluate_model(
     #[expect(
         clippy::cast_precision_loss,
         clippy::as_conversions,
-        reason = "n is a small count fitting f64 exactly"
+        reason = "n and the hit counts are small dataset sizes that fit exactly in f64"
     )]
-    let nf = n as f64;
+    let (nf, k_f, k5_f, k10_f) = (
+        n as f64,
+        hit_count_k as f64,
+        hit_count_5 as f64,
+        hit_count_10 as f64,
+    );
 
     Ok(ModelMetrics {
         model_name: provider.model_name().to_owned(),
         k: eff_k,
-        recall_at_k: hit_count_k as f64 / nf,
-        recall_at_5: hit_count_5 as f64 / nf,
-        recall_at_10: hit_count_10 as f64 / nf,
+        recall_at_k: k_f / nf,
+        recall_at_5: k5_f / nf,
+        recall_at_10: k10_f / nf,
         mrr: rr_sum / nf,
         per_query,
     })
