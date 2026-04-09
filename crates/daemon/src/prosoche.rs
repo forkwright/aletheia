@@ -66,9 +66,12 @@ pub enum Urgency {
 impl AttentionItem {
     /// Short label for this item's category (used in prompt formatting).
     #[must_use]
-    #[expect(
-        dead_code,
-        reason = "attention item label for prosoche prompt formatting"
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "attention item label for prosoche prompt formatting"
+        )
     )]
     pub(crate) fn category_label(&self) -> &str {
         match &self.category {
@@ -82,9 +85,12 @@ impl AttentionItem {
 
 impl ProsocheCheck {
     /// Create a prosoche check for the given nous with default paths.
-    #[expect(
-        dead_code,
-        reason = "prosoche attention checks, tested and awaiting integration"
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "prosoche attention checks, tested and awaiting integration"
+        )
     )]
     pub(crate) fn new(nous_id: &str) -> Self {
         Self {
@@ -96,9 +102,12 @@ impl ProsocheCheck {
 
     /// Set the data directory for disk space checking.
     #[must_use]
-    #[expect(
-        dead_code,
-        reason = "prosoche attention checks, tested and awaiting integration"
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "prosoche attention checks, tested and awaiting integration"
+        )
     )]
     pub(crate) fn with_data_dir(mut self, path: &Path) -> Self {
         self.data_dir = Some(path.to_path_buf());
@@ -107,9 +116,12 @@ impl ProsocheCheck {
 
     /// Set database file paths for size checking.
     #[must_use]
-    #[expect(
-        dead_code,
-        reason = "prosoche attention checks, tested and awaiting integration"
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "prosoche attention checks, tested and awaiting integration"
+        )
     )]
     pub(crate) fn with_db_paths(mut self, paths: Vec<PathBuf>) -> Self {
         self.db_paths = paths;
