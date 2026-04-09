@@ -18,6 +18,12 @@ use crate::runtime::temp_store::RegularTempStore;
 pub(crate) struct LabelPropagation;
 
 impl FixedRule for LabelPropagation {
+    /// Run label propagation community detection.
+    ///
+    /// # Complexity
+    ///
+    /// O(I * (V + E)) where I is iterations, V is vertices, E is edges.
+    /// Each iteration processes all nodes and their neighbors.
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
@@ -47,6 +53,12 @@ impl FixedRule for LabelPropagation {
     }
 }
 
+/// Label propagation for community detection (Raghavan et al. 2007).
+///
+/// # Complexity
+///
+/// O(I * (V + E)) where I is iterations until convergence. Typically
+/// converges in 5-10 iterations for real-world graphs.
 fn label_propagation(
     graph: &DirectedCsrGraph<f32>,
     max_iter: usize,

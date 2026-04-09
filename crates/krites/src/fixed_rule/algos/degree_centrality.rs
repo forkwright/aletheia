@@ -15,6 +15,11 @@ use crate::runtime::temp_store::RegularTempStore;
 pub(crate) struct DegreeCentrality;
 
 impl FixedRule for DegreeCentrality {
+    /// Run degree centrality computation.
+    ///
+    /// # Complexity
+    ///
+    /// O(E) where E is edges. Single pass counting in/out/total degrees.
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,

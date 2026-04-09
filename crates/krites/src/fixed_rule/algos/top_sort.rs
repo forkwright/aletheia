@@ -16,6 +16,11 @@ use crate::runtime::temp_store::RegularTempStore;
 pub(crate) struct TopSort;
 
 impl FixedRule for TopSort {
+    /// Run topological sort (Kahn's algorithm).
+    ///
+    /// # Complexity
+    ///
+    /// O(V + E) where V is vertices and E is edges. Processes each node and edge once.
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
@@ -50,6 +55,11 @@ impl FixedRule for TopSort {
     }
 }
 
+/// Kahn's algorithm for topological sorting.
+///
+/// # Complexity
+///
+/// O(V + E) where V is vertices and E is edges.
 pub(crate) fn kahn_g(graph: &DirectedCsrGraph, poison: Poison) -> Result<Vec<u32>> {
     let graph_size = graph.node_count();
     let mut in_degree = vec![0; graph_size as usize];

@@ -16,6 +16,12 @@ use crate::runtime::temp_store::RegularTempStore;
 pub(crate) struct PageRank;
 
 impl FixedRule for PageRank {
+    /// Run PageRank on the input edge relation.
+    ///
+    /// # Complexity
+    ///
+    /// O(I * (V + E)) where I is iterations, V is vertices, E is edges.
+    /// Each iteration performs a full graph traversal.
     #[expect(
         unused_variables,
         reason = "poison is required by the FixedRule trait but PageRank does not poll for cancellation"

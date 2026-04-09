@@ -284,12 +284,20 @@ impl KnowledgeStore {
     const SCHEMA_VERSION: i64 = 6;
 
     /// Open an in-memory knowledge store with default configuration.
+    ///
+    /// # Complexity
+    ///
+    /// O(S) where S is schema initialization cost (creates relations and indices).
     #[instrument]
     pub fn open_mem() -> crate::error::Result<std::sync::Arc<Self>> {
         Self::open_mem_with_config(KnowledgeConfig::default())
     }
 
     /// Open an in-memory knowledge store with custom configuration.
+    ///
+    /// # Complexity
+    ///
+    /// O(S) where S is schema initialization cost (creates relations and indices).
     #[instrument]
     pub fn open_mem_with_config(
         config: KnowledgeConfig,
@@ -313,6 +321,11 @@ impl KnowledgeStore {
     ///
     /// Primary production backend: pure Rust, LSM-tree, LZ4 compression,
     /// native read-your-own-writes.
+    ///
+    /// # Complexity
+    ///
+    /// O(S + L) where S is schema init and L is LSM recovery cost (typically O(1)
+    /// for fjall with existing data).
     #[cfg(feature = "storage-fjall")]
     #[instrument(skip(path))]
     pub fn open_fjall(
@@ -338,6 +351,12 @@ impl KnowledgeStore {
         clippy::too_many_lines,
         reason = "schema init is a single linear sequence"
     )]
+    /// Initialize the knowledge schema (relations, indices, migrations).
+    ///
+    /// # Complexity
+    ///
+    /// O(R) where R is number of relations to create (constant ~10).
+    /// Migrations run conditionally based on schema version.
     fn init_schema(&self) -> crate::error::Result<()> {
         use std::collections::BTreeMap;
 
@@ -477,6 +496,10 @@ impl KnowledgeStore {
     }
 
     /// Query the stored schema version from the database.
+    ///
+    /// # Complexity
+    ///
+    /// O(1) - single row lookup in schema_version relation.
     pub fn schema_version(&self) -> crate::error::Result<i64> {
         use std::collections::BTreeMap;
 
@@ -502,6 +525,11 @@ impl KnowledgeStore {
     ///
     /// Returns a [`QueryResult`] rather than raw `NamedRows` to keep `CozoDB`
     /// internals encapsulated. Access row values via `result.rows[i][j]`.
+    ///
+    /// # Complexity
+    ///
+    /// Depends on query complexity. Simple lookups O(1), joins O(N log M),
+    /// recursive queries O(E * I) where E is edges, I is iterations to fixpoint.
     #[instrument(skip(self, params))]
     pub fn run_query(
         &self,
@@ -521,6 +549,10 @@ impl KnowledgeStore {
     ///
     /// Returns a [`QueryResult`] rather than raw `NamedRows` to keep `CozoDB` internals
     /// encapsulated.
+    ///
+    /// # Complexity
+    ///
+    /// Same as `run_query`. Timeout adds minimal overhead (O(1) polling).
     #[instrument(skip(self, params))]
     pub fn run_query_with_timeout(
         &self,
@@ -554,6 +586,10 @@ impl KnowledgeStore {
     ///
     /// Returns a [`QueryResult`] rather than raw `NamedRows` to keep `CozoDB` internals
     /// encapsulated.
+    ///
+    /// # Complexity
+    ///
+    /// Depends on mutation scope. Single row writes O(1), bulk operations O(N).
     #[instrument(skip(self, params))]
     pub fn run_mut_query(
         &self,
@@ -576,6 +612,10 @@ impl KnowledgeStore {
     ///
     /// Delegates to the inner engine's `backup_db`. Currently returns an error
     /// for in-memory and redb backends (`SQLite` storage support was removed).
+    ///
+    /// # Complexity
+    ///
+    /// O(D) where D is database size. Copies all SSTables and logs.
     #[instrument(skip(self, out_file))]
     pub fn backup_db(&self, out_file: impl AsRef<std::path::Path>) -> crate::error::Result<()> {
         self.db.backup_db(out_file).map_err(|e| {
@@ -590,6 +630,10 @@ impl KnowledgeStore {
     ///
     /// Delegates to the inner engine's `restore_backup`. Currently returns an error
     /// for in-memory and redb backends (`SQLite` storage support was removed).
+    ///
+    /// # Complexity
+    ///
+    /// O(D) where D is backup size. Replaces all SSTables.
     #[instrument(skip(self, in_file))]
     pub fn restore_backup(&self, in_file: impl AsRef<std::path::Path>) -> crate::error::Result<()> {
         self.db.restore_backup(in_file).map_err(|e| {
@@ -604,6 +648,10 @@ impl KnowledgeStore {
     ///
     /// Delegates to the inner engine's `import_from_backup`. Currently returns an error
     /// for in-memory and redb backends (`SQLite` storage support was removed).
+    ///
+    /// # Complexity
+    ///
+    /// O(R) where R is total size of relations being imported.
     #[instrument(skip(self, in_file))]
     pub fn import_from_backup(
         &self,
@@ -625,6 +673,10 @@ impl KnowledgeStore {
     ///
     /// Returns a [`QueryResult`] rather than raw `NamedRows` to keep `CozoDB` internals
     /// encapsulated.
+    ///
+    /// # Complexity
+    ///
+    /// Same as `run_query`.
     #[instrument(skip(self, params))]
     pub fn run_script_read_only(
         &self,
@@ -636,6 +688,11 @@ impl KnowledgeStore {
 
     /// Read a single fact by its ID (all temporal records matching).
     /// Returns all fields; does not apply time/validity filters.
+    ///
+    /// # Complexity
+    ///
+    /// O(T) where T is temporal versions of the fact. Typically O(1) for
+    /// non-versioned facts, O(log V) for versioned with time-travel indices.
     pub fn read_facts_by_id(&self, id: &str) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
         use std::collections::BTreeMap;
 

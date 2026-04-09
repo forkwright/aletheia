@@ -23,6 +23,12 @@ use crate::runtime::temp_store::RegularTempStore;
 pub(crate) struct ShortestPathDijkstra;
 
 impl FixedRule for ShortestPathDijkstra {
+    /// Run Dijkstra's shortest path algorithm.
+    ///
+    /// # Complexity
+    ///
+    /// O(S * (E log V)) where S is starting nodes, E is edges, V is vertices.
+    /// Parallelized across starting nodes when count > 1.
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
@@ -244,6 +250,11 @@ impl Goal for BTreeSet<u32> {
     }
 }
 
+/// Dijkstra shortest path with optional constraints.
+///
+/// # Complexity
+///
+/// O(E log V) using binary heap. Space: O(V) for distances and backpointers.
 pub(crate) fn dijkstra<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal + Clone>(
     edges: &DirectedCsrGraph<f32>,
     start: u32,
@@ -309,6 +320,12 @@ pub(crate) fn dijkstra<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal + Clone>(
         .collect_vec()
 }
 
+/// Dijkstra variant that keeps all ties (equal-cost paths).
+///
+/// # Complexity
+///
+/// O(E log V + P) where P is the number of paths found. Can be exponential
+/// in worst case when many equal-cost paths exist.
 pub(crate) fn dijkstra_keep_ties<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal + Clone>(
     edges: &DirectedCsrGraph<f32>,
     start: u32,

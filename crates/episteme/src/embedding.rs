@@ -50,18 +50,36 @@ pub(crate) type EmbeddingResult<T> = std::result::Result<T, EmbeddingError>;
 /// Implementations must be `Send + Sync` for use across async boundaries.
 pub trait EmbeddingProvider: Send + Sync {
     /// Embed a single text chunk. Returns a vector of floats.
+    ///
+    /// # Complexity
+    ///
+    /// O(L * d^2) for transformer-based models where L is sequence length
+    /// and d is embedding dimension. BERT-style models are typically O(L^2 * d).
     fn embed(&self, text: &str) -> EmbeddingResult<Vec<f32>>;
 
     /// Embed multiple text chunks in a batch. Default implementation
     /// calls `embed` sequentially: providers should override for efficiency.
+    ///
+    /// # Complexity
+    ///
+    /// Default: O(B * L * d^2) where B is batch size. Optimized implementations
+    /// can achieve O(max(L) * d^2) through parallelization.
     fn embed_batch(&self, texts: &[&str]) -> EmbeddingResult<Vec<Vec<f32>>> {
         texts.iter().map(|t| self.embed(t)).collect()
     }
 
     /// The dimensionality of output vectors.
+    ///
+    /// # Complexity
+    ///
+    /// O(1) - returns a stored constant.
     fn dimension(&self) -> usize;
 
     /// The model name/identifier.
+    ///
+    /// # Complexity
+    ///
+    /// O(1) - returns a string reference.
     fn model_name(&self) -> &str;
 }
 
@@ -81,6 +99,10 @@ pub struct MockEmbeddingProvider {
 #[cfg(any(test, feature = "test-support"))]
 impl MockEmbeddingProvider {
     /// Create a mock provider with the given dimension.
+    ///
+    /// # Complexity
+    ///
+    /// O(1) - stores the dimension.
     #[must_use]
     #[instrument]
     pub fn new(dim: usize) -> Self {

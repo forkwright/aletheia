@@ -26,6 +26,7 @@ pub(crate) struct HnswSearchRA {
 }
 
 impl HnswSearchRA {
+    /// Compile filter expressions and fill binding indices.
     pub(crate) fn fill_binding_indices_and_compile(&mut self) -> Result<()> {
         self.parent.fill_binding_indices_and_compile()?;
         if let Some(filter) = self.hnsw_search.filter.as_mut() {
@@ -41,6 +42,24 @@ impl HnswSearchRA {
         }
         Ok(())
     }
+    /// Iterate over HNSW search results.
+    ///
+    /// # Complexity
+    ///
+    /// O(P * log N * ef) where P is parent tuples, N is index size, ef is beam width.
+    /// Each parent tuple triggers one HNSW search.
+    /// Iterate over full-text search results.
+    ///
+    /// # Complexity
+    ///
+    /// O(P * (T + D)) where P is parent tuples, T is tokenization cost,
+    /// D is matching documents. BM25 scoring adds O(D log D) for ranking.
+    /// Iterate over LSH (locality-sensitive hashing) search results.
+    ///
+    /// # Complexity
+    ///
+    /// O(P * b) where P is parent tuples and b is number of hash bands.
+    /// Each band requires a prefix scan of the LSH index.
     pub(crate) fn iter<'a>(
         &'a self,
         tx: &'a SessionTx<'_>,
@@ -98,6 +117,7 @@ pub(crate) struct FtsSearchRA {
 }
 
 impl FtsSearchRA {
+    /// Compile filter expressions and fill binding indices.
     pub(crate) fn fill_binding_indices_and_compile(&mut self) -> Result<()> {
         self.parent.fill_binding_indices_and_compile()?;
         if let Some(filter) = self.fts_search.filter.as_mut() {
@@ -206,6 +226,7 @@ pub(crate) struct LshSearchRA {
 }
 
 impl LshSearchRA {
+    /// Compile filter expressions and fill binding indices.
     pub(crate) fn fill_binding_indices_and_compile(&mut self) -> Result<()> {
         self.parent.fill_binding_indices_and_compile()?;
         if let Some(filter) = self.lsh_search.filter.as_mut() {

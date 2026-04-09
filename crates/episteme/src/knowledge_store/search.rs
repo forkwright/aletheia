@@ -10,6 +10,11 @@ use super::{HybridQuery, HybridResult, KnowledgeStore, queries};
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
     /// Insert a vector embedding for semantic search.
+    ///
+    /// # Complexity
+    ///
+    /// O(log n * ef_construction) where n is index size and ef_construction is the
+    /// HNSW construction beam width. Space: O(dim) for the vector storage.
     #[instrument(skip(self, chunk), fields(chunk_id = %chunk.id))]
     pub fn insert_embedding(
         &self,
@@ -37,6 +42,11 @@ impl KnowledgeStore {
     }
 
     /// kNN semantic vector search.
+    ///
+    /// # Complexity
+    ///
+    /// O(log n * ef + k) where n is index size, ef is search beam width, k is results.
+    /// The k factor includes post-filtering for forgotten facts.
     #[instrument(skip(self, query_vec))]
     pub fn search_vectors(
         &self,
@@ -97,6 +107,10 @@ impl KnowledgeStore {
     }
 
     /// Async `search_vectors`: wraps sync call in `spawn_blocking`.
+    ///
+    /// # Complexity
+    ///
+    /// Same as `search_vectors`: O(log n * ef + k).
     #[instrument(skip(self, query_vec))]
     pub async fn search_vectors_async(
         self: &std::sync::Arc<Self>,
@@ -115,6 +129,11 @@ impl KnowledgeStore {
     ///
     /// Used as a fallback when the embedding provider is unavailable or in mock mode.
     /// Distance is the reciprocal of the BM25 score (lower = more relevant).
+    ///
+    /// # Complexity
+    ///
+    /// O(Q * (log T + D) + D log D) where Q is query terms, T is unique terms,
+    /// D is matching documents. BM25 scoring adds O(D) and ranking adds O(D log D).
     pub fn search_text_for_recall(
         &self,
         query_text: &str,
@@ -135,6 +154,12 @@ impl KnowledgeStore {
     ///
     /// Runs a single Datalog query combining all three signals in the engine.
     /// When `seed_entities` is empty, the graph signal contributes zero to RRF.
+    ///
+    /// # Complexity
+    ///
+    /// O(log n * ef + Q*(log T + D) + G + R) where: n is HNSW size, ef is beam width,
+    /// Q is query terms, T is unique terms, D is BM25 matches, G is graph neighbors,
+    /// R is RRF merge cost (linear in result count).
     #[instrument(skip(self, q), fields(limit = q.limit, ef = q.ef))]
     pub(crate) fn search_hybrid(&self, q: &HybridQuery) -> crate::error::Result<Vec<HybridResult>> {
         use std::collections::BTreeMap;
@@ -195,6 +220,11 @@ impl KnowledgeStore {
     ///
     /// The `base_query` provides the embedding and search parameters. Each variant
     /// replaces the `text` field for BM25 scoring while reusing the same embedding.
+    ///
+    /// # Complexity
+    ///
+    /// O(V * (log n * ef + Q*(log T + D))) where V is query variants. RRF merge
+    /// across variants is O(V * R log R) where R is results per variant.
     pub(crate) fn search_enhanced(
         &self,
         base_query: &HybridQuery,
@@ -229,6 +259,11 @@ impl KnowledgeStore {
     ///
     /// Escalates through tiers until sufficient results are found.
     /// Requires a `QueryRewriter` and `RewriteProvider` for tier 2+.
+    ///
+    /// # Complexity
+    ///
+    /// Best case O(log n * ef) for fast path. Worst case adds query rewriting
+    /// O(RW) plus enhanced search O(V * search_hybrid) plus graph expansion O(E).
     pub(crate) fn search_tiered(
         &self,
         base_query: &HybridQuery,
@@ -290,6 +325,11 @@ impl KnowledgeStore {
     ///
     /// Takes the top entity IDs from existing results, queries their neighborhoods,
     /// and returns related facts as additional results.
+    ///
+    /// # Complexity
+    ///
+    /// O(K * N) where K is top results expanded, N is average neighborhood size.
+    /// Each entity neighborhood query is O(log E) where E is entity count.
     #[expect(
         clippy::as_conversions,
         clippy::cast_precision_loss,
@@ -364,6 +404,10 @@ impl KnowledgeStore {
     /// Async tiered search: wraps sync call in `spawn_blocking`.
     ///
     /// Note: the `RewriteProvider` must be `Send + Sync + 'static` for async usage.
+    ///
+    /// # Complexity
+    ///
+    /// Same as `search_tiered`: depends on tier reached.
     pub async fn search_tiered_async(
         self: &std::sync::Arc<Self>,
         base_query: HybridQuery,
@@ -389,6 +433,11 @@ impl KnowledgeStore {
 
     /// Search for facts relevant to a query, as they existed at a specific time.
     /// Filters hybrid search results through the temporal lens.
+    ///
+    /// # Complexity
+    ///
+    /// O(search_hybrid + C) where C is candidate count for temporal validation.
+    /// Temporal check is O(C) using in-clause filtering.
     pub(crate) fn search_temporal(
         &self,
         q: &HybridQuery,
@@ -414,6 +463,11 @@ impl KnowledgeStore {
 
     /// Return the subset of `ids` that are not forgotten and whose validity
     /// window contains `at_time` (`valid_from <= at_time < valid_to`).
+    ///
+    /// # Complexity
+    ///
+    /// O(C) where C is the number of candidate IDs. Uses a single query with
+    /// an IN clause for batch validation.
     fn query_ids_valid_at(
         &self,
         at_time: &str,
@@ -456,6 +510,10 @@ impl KnowledgeStore {
     }
 
     /// Async `search_temporal` wrapper.
+    ///
+    /// # Complexity
+    ///
+    /// Same as `search_temporal`: O(search_hybrid + C).
     pub async fn search_temporal_async(
         self: &std::sync::Arc<Self>,
         q: HybridQuery,

@@ -19,6 +19,12 @@ use crate::runtime::temp_store::RegularTempStore;
 pub(crate) struct RandomWalk;
 
 impl FixedRule for RandomWalk {
+    /// Run random walk over the graph.
+    ///
+    /// # Complexity
+    ///
+    /// O(S * I * (d + W)) where S is starting nodes, I is iterations, d is out-degree,
+    /// W is weight evaluation cost. Each step samples from outgoing edges.
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,

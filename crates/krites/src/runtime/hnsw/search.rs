@@ -18,6 +18,12 @@ use crate::runtime::transact::SessionTx;
 use crate::{DataValue, SourceSpan};
 
 impl<'a> SessionTx<'a> {
+    /// Perform k-nearest neighbors search on an HNSW index.
+    ///
+    /// # Complexity
+    ///
+    /// O(log n * ef) where n is the number of vectors in the index and ef is the
+    /// search beam width. Space: O(ef) for the candidate queue.
     pub(crate) fn hnsw_knn(
         &self,
         q: Vector,

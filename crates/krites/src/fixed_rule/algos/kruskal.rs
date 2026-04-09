@@ -20,6 +20,12 @@ use crate::runtime::temp_store::RegularTempStore;
 pub(crate) struct MinimumSpanningForestKruskal;
 
 impl FixedRule for MinimumSpanningForestKruskal {
+    /// Run Kruskal's minimum spanning forest algorithm.
+    ///
+    /// # Complexity
+    ///
+    /// O(E log E) for sorting edges, plus O(E * α(V)) for union-find operations
+    /// where α is the inverse Ackermann function (effectively constant).
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
@@ -53,6 +59,11 @@ impl FixedRule for MinimumSpanningForestKruskal {
     }
 }
 
+/// Kruskal MST using union-find with path compression.
+///
+/// # Complexity
+///
+/// O(E log E) dominated by sorting. Union-find operations are O(α(V)).
 fn kruskal(edges: &DirectedCsrGraph<f32>, poison: Poison) -> Result<Vec<(u32, u32, f32)>> {
     let mut pq = PriorityQueue::new();
     let mut uf = UnionFind::new(edges.node_count());

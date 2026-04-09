@@ -11,6 +11,12 @@ use crate::runtime::relation::RelationHandle;
 use crate::runtime::transact::SessionTx;
 
 impl<'a> SessionTx<'a> {
+    /// Remove all vectors associated with a tuple from the HNSW index.
+    ///
+    /// # Complexity
+    ///
+    /// O(v * L * m) where v is vectors in tuple, L is number of levels, and m is
+    /// max connections. Must update neighbor connections at each level.
     pub(crate) fn hnsw_remove(
         &mut self,
         orig_table: &RelationHandle,
@@ -48,6 +54,12 @@ impl<'a> SessionTx<'a> {
         }
         Ok(())
     }
+    /// Remove a specific vector (identified by compound key) from the index.
+    ///
+    /// # Complexity
+    ///
+    /// O(L * m) where L is number of levels and m is max connections per node.
+    /// Updates bidirectional edges at each level containing the vector.
     pub(super) fn hnsw_remove_vec(
         &mut self,
         tuple_key: &[DataValue],

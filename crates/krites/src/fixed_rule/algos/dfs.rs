@@ -16,6 +16,12 @@ use crate::runtime::temp_store::RegularTempStore;
 pub(crate) struct Dfs;
 
 impl FixedRule for Dfs {
+    /// Run depth-first search traversal.
+    ///
+    /// # Complexity
+    ///
+    /// O(V + E) where V is vertices reachable from starting nodes and E is
+    /// edges traversed. Uses explicit stack to avoid recursion depth issues.
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,

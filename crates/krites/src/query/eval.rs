@@ -55,6 +55,13 @@ impl QueryLimiter {
 }
 
 impl<'a> SessionTx<'a> {
+    /// Evaluate a stratified Datalog program with magic sets optimization.
+    ///
+    /// # Complexity
+    ///
+    /// O(S * R * T) where S is the number of strata, R is the maximum rule count
+    /// per stratum, and T is the average tuple count processed. Semi-naive evaluation
+    /// converges in O(d) epochs where d is the data depth (typically small).
     pub(crate) fn stratified_magic_evaluate(
         &self,
         strata: &[CompiledProgram],
@@ -303,6 +310,11 @@ impl<'a> SessionTx<'a> {
     }
 
     /// returns true if early return is activated
+    ///
+    /// # Complexity
+    ///
+    /// O(E * R * T) where E is epochs until fixpoint, R is rules, T is tuples.
+    /// Converges when no new facts are derived (monotonic).
     fn semi_naive_magic_evaluate(
         &self,
         prog: &CompiledProgram,
@@ -354,6 +366,11 @@ impl<'a> SessionTx<'a> {
         Ok(used_limiter.load(Ordering::Acquire))
     }
     /// returns true is early return is activated
+    ///
+    /// # Complexity
+    ///
+    /// O(R * T) where R is rules and T is tuples scanned. Aggregation-free rules
+    /// stream tuples directly without grouping overhead.
     fn initial_rule_non_aggr_eval(
         &self,
         rule_symb: &MagicSymbol,
@@ -391,6 +408,12 @@ impl<'a> SessionTx<'a> {
 
         Ok((should_check_limit, out_store))
     }
+    /// Evaluate meet aggregation rules (initial epoch).
+    ///
+    /// # Complexity
+    ///
+    /// O(R * T * A) where R is rules, T is tuples, A is aggregation arity.
+    /// Meet aggregation combines partial results incrementally.
     fn initial_rule_meet_eval(
         &self,
         rule_symb: &MagicSymbol,
@@ -432,6 +455,12 @@ impl<'a> SessionTx<'a> {
         }
         Ok(out_store)
     }
+    /// Evaluate normal aggregation rules (initial epoch).
+    ///
+    /// # Complexity
+    ///
+    /// O(R * T * log G) where R is rules, T is tuples, G is group count.
+    /// Groups tuples by key and applies aggregation functions.
     fn initial_rule_aggr_eval(
         &self,
         rule_symb: &MagicSymbol,
@@ -569,6 +598,12 @@ impl<'a> SessionTx<'a> {
         }
         Ok((should_check_limit, out_store))
     }
+    /// Evaluate non-aggregation rules incrementally (subsequent epochs).
+    ///
+    /// # Complexity
+    ///
+    /// O(R * D * T) where R is rules, D is delta tuples, T is derivation cost.
+    /// Only processes changed dependencies (semi-naive).
     fn incremental_rule_non_aggr_eval(
         &self,
         rule_symb: &MagicSymbol,
@@ -667,6 +702,11 @@ impl<'a> SessionTx<'a> {
         }
         Ok((should_check_limit, out_store))
     }
+    /// Evaluate meet aggregation rules incrementally.
+    ///
+    /// # Complexity
+    ///
+    /// O(R * D * A) where R is rules, D is delta tuples, A is aggregation arity.
     fn incremental_rule_meet_eval(
         &self,
         rule_symb: &MagicSymbol,

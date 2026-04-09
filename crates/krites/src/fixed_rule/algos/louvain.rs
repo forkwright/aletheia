@@ -18,6 +18,12 @@ use crate::runtime::temp_store::RegularTempStore;
 pub(crate) struct CommunityDetectionLouvain;
 
 impl FixedRule for CommunityDetectionLouvain {
+    /// Run Louvain community detection algorithm.
+    ///
+    /// # Complexity
+    ///
+    /// O(I * V * log V) where I is max iterations, V is vertices. Each pass
+    /// evaluates community moves for all nodes until convergence.
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
@@ -65,6 +71,12 @@ impl FixedRule for CommunityDetectionLouvain {
     }
 }
 
+/// Louvain hierarchical community detection.
+///
+/// # Complexity
+///
+/// O(P * I * V * log V) where P is hierarchy levels, I is iterations, V is vertices.
+/// Typically converges in 2-5 levels for real-world graphs.
 fn louvain(
     graph: &DirectedCsrGraph<f32>,
     delta: f32,

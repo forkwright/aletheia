@@ -52,6 +52,10 @@ impl Default for RecallWeights {
 
 impl RecallWeights {
     /// Sum of all weights (for normalization).
+    ///
+    /// # Complexity
+    ///
+    /// O(1) - constant time sum of 6 fields.
     #[must_use]
     #[instrument(skip(self))]
     pub(crate) fn total(&self) -> f64 {
@@ -69,6 +73,10 @@ impl RecallWeights {
     /// zero, meaning graph traversal results would be multiplied by zero and
     /// discarded. Callers should skip expensive graph operations (BFS,
     /// `PageRank`, Louvain) when this returns `false`.
+    ///
+    /// # Complexity
+    ///
+    /// O(1) - single floating-point comparison.
     #[must_use]
     pub(crate) fn graph_recall_active(&self) -> bool {
         self.relationship_proximity >= f64::EPSILON
@@ -119,6 +127,10 @@ pub struct RecallEngine {
 
 impl RecallEngine {
     /// Create a new recall engine with default weights.
+    ///
+    /// # Complexity
+    ///
+    /// O(1) - allocates the engine struct with default values.
     #[must_use]
     #[instrument]
     pub fn new() -> Self {
@@ -129,6 +141,10 @@ impl RecallEngine {
     }
 
     /// Create with custom weights.
+    ///
+    /// # Complexity
+    ///
+    /// O(1) - stores the provided weights.
     #[must_use]
     #[instrument(skip(weights))]
     pub fn with_weights(weights: RecallWeights) -> Self {
@@ -151,6 +167,10 @@ impl RecallEngine {
     ///
     /// Cosine distance is in [0.0, 2.0] (0 = identical, 2 = opposite).
     /// We convert to a similarity in [0.0, 1.0].
+    ///
+    /// # Complexity
+    ///
+    /// O(1) - constant time arithmetic.
     #[must_use]
     #[instrument(skip(self))]
     pub fn score_vector_similarity(&self, cosine_distance: f64) -> f64 {
@@ -177,6 +197,10 @@ impl RecallEngine {
     /// Properties:
     /// - R(0) = 1.0 for any stability
     /// - R(S) ≈ 0.9 (by design of FSRS 19/81 constant)
+    ///
+    /// # Complexity
+    ///
+    /// O(1) - constant time arithmetic and one logarithm.
     #[must_use]
     #[instrument(skip(self))]
     pub fn score_decay(
@@ -200,6 +224,10 @@ impl RecallEngine {
     /// Compute the relevance score.
     ///
     /// 1.0 if the memory belongs to the querying nous, 0.5 for shared, 0.3 for other.
+    ///
+    /// # Complexity
+    ///
+    /// O(1) - string comparison (typically short IDs).
     #[must_use]
     #[instrument(skip(self))]
     pub fn score_relevance(&self, memory_nous_id: &str, query_nous_id: &str) -> f64 {
@@ -213,6 +241,10 @@ impl RecallEngine {
     }
 
     /// Compute the epistemic tier score.
+    ///
+    /// # Complexity
+    ///
+    /// O(1) - pattern match on tier string (typically 3 variants).
     #[must_use]
     #[instrument(skip(self))]
     pub fn score_epistemic_tier(&self, tier: &str) -> f64 {
@@ -228,6 +260,10 @@ impl RecallEngine {
     ///
     /// Same entity (0 hops) or direct neighbor (1 hop) = 1.0, 2-hop = 0.5, 3-hop = 0.25, etc.
     /// No connection = 0.0.
+    ///
+    /// # Complexity
+    ///
+    /// O(1) - pattern match on hop count.
     #[must_use]
     #[instrument(skip(self))]
     #[expect(
@@ -247,6 +283,10 @@ impl RecallEngine {
     /// Compute the access frequency score.
     ///
     /// Logarithmic scaling: `score = ln(1 + count) / ln(1 + max_count)`
+    ///
+    /// # Complexity
+    ///
+    /// O(1) - constant time logarithm and division.
     #[must_use]
     #[instrument(skip(self))]
     pub(crate) fn score_access_frequency(&self, access_count: u64) -> f64 {
@@ -260,6 +300,10 @@ impl RecallEngine {
     }
 
     /// Compute the weighted final score from factor scores.
+    ///
+    /// # Complexity
+    ///
+    /// O(1) - constant time weighted sum of 6 factors.
     #[instrument(skip(self, factors))]
     #[must_use]
     pub(crate) fn compute_score(&self, factors: &FactorScores) -> f64 {
@@ -284,6 +328,11 @@ impl RecallEngine {
     /// WHY: runs `pre_filter_by_side_query` before 6-factor scoring so the
     /// expensive `compute_score` loop operates on a narrower candidate set.
     /// When `selected_ids` is empty, all candidates pass through unfiltered.
+    ///
+    /// # Complexity
+    ///
+    /// O(C) where C is candidate count. Scoring is O(1) per candidate, sorting
+    /// is O(C log C) for final ranking.
     #[must_use]
     #[instrument(skip(self, candidates, selected_ids), fields(count = candidates.len()))]
     pub fn rank_with_prefilter<S: BuildHasher>(
@@ -296,6 +345,10 @@ impl RecallEngine {
     }
 
     /// Score and rank a batch of candidates. Returns sorted by score descending.
+    ///
+    /// # Complexity
+    ///
+    /// O(C log C) where C is candidate count. O(C) for scoring, O(C log C) for sort.
     #[must_use]
     #[instrument(skip(self, candidates), fields(count = candidates.len()))]
     pub fn rank(&self, mut candidates: Vec<ScoredResult>) -> Vec<ScoredResult> {
