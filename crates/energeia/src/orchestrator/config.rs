@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 /// Controls concurrency limits, budget defaults, and timeouts that apply to
 /// the entire dispatch run rather than individual sessions.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(try_from = "OrchestratorConfigRaw")]
+#[serde(from = "OrchestratorConfigRaw")]
 #[non_exhaustive]
 pub struct OrchestratorConfig {
     /// Maximum number of sessions executing concurrently within a group.
@@ -49,18 +49,16 @@ struct OrchestratorConfigRaw {
     max_corrective_retries: u32,
 }
 
-impl TryFrom<OrchestratorConfigRaw> for OrchestratorConfig {
-    type Error = std::convert::Infallible;
-
-    fn try_from(raw: OrchestratorConfigRaw) -> std::result::Result<Self, Self::Error> {
-        Ok(Self {
+impl From<OrchestratorConfigRaw> for OrchestratorConfig {
+    fn from(raw: OrchestratorConfigRaw) -> Self {
+        Self {
             max_concurrent: raw.max_concurrent,
             default_budget_usd: raw.default_budget_usd,
             default_budget_turns: raw.default_budget_turns,
             max_duration: raw.max_duration,
             session_idle_timeout: raw.session_idle_timeout,
             max_corrective_retries: raw.max_corrective_retries,
-        })
+        }
     }
 }
 

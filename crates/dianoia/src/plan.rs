@@ -9,7 +9,7 @@ const DEFAULT_MAX_ITERATIONS: u32 = 10;
 
 /// An executable plan within a phase.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(try_from = "PlanRaw")]
+#[serde(from = "PlanRaw")]
 pub struct Plan {
     /// Unique plan identifier.
     pub id: Ulid,
@@ -48,11 +48,9 @@ struct PlanRaw {
     achievements: Vec<String>,
 }
 
-impl TryFrom<PlanRaw> for Plan {
-    type Error = std::convert::Infallible;
-
-    fn try_from(raw: PlanRaw) -> std::result::Result<Self, Self::Error> {
-        Ok(Self {
+impl From<PlanRaw> for Plan {
+    fn from(raw: PlanRaw) -> Self {
+        Self {
             id: raw.id,
             title: raw.title,
             description: raw.description,
@@ -63,7 +61,7 @@ impl TryFrom<PlanRaw> for Plan {
             iterations: raw.iterations,
             blockers: raw.blockers,
             achievements: raw.achievements,
-        })
+        }
     }
 }
 

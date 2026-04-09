@@ -16,7 +16,7 @@ pub use crate::resume::{ResumePolicy, ResumeStage};
 
 /// What to dispatch: a set of prompt numbers with optional DAG constraints.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(try_from = "DispatchSpecRaw")]
+#[serde(from = "DispatchSpecRaw")]
 #[non_exhaustive]
 pub struct DispatchSpec {
     /// Prompt numbers to execute (may be a subset of the full DAG).
@@ -38,16 +38,14 @@ struct DispatchSpecRaw {
     max_parallel: Option<u32>,
 }
 
-impl TryFrom<DispatchSpecRaw> for DispatchSpec {
-    type Error = std::convert::Infallible;
-
-    fn try_from(raw: DispatchSpecRaw) -> std::result::Result<Self, Self::Error> {
-        Ok(Self {
+impl From<DispatchSpecRaw> for DispatchSpec {
+    fn from(raw: DispatchSpecRaw) -> Self {
+        Self {
             prompt_numbers: raw.prompt_numbers,
             project: raw.project,
             dag_ref: raw.dag_ref,
             max_parallel: raw.max_parallel,
-        })
+        }
     }
 }
 
@@ -160,7 +158,7 @@ impl std::fmt::Display for SessionStatus {
 
 /// Result of a QA evaluation against a pull request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(try_from = "QaResultRaw")]
+#[serde(from = "QaResultRaw")]
 #[non_exhaustive]
 pub struct QaResult {
     /// The prompt number that produced the PR.
@@ -191,11 +189,9 @@ struct QaResultRaw {
     evaluated_at: Timestamp,
 }
 
-impl TryFrom<QaResultRaw> for QaResult {
-    type Error = std::convert::Infallible;
-
-    fn try_from(raw: QaResultRaw) -> std::result::Result<Self, Self::Error> {
-        Ok(Self {
+impl From<QaResultRaw> for QaResult {
+    fn from(raw: QaResultRaw) -> Self {
+        Self {
             prompt_number: raw.prompt_number,
             pr_number: raw.pr_number,
             verdict: raw.verdict,
@@ -203,7 +199,7 @@ impl TryFrom<QaResultRaw> for QaResult {
             mechanical_issues: raw.mechanical_issues,
             cost_usd: raw.cost_usd,
             evaluated_at: raw.evaluated_at,
-        })
+        }
     }
 }
 

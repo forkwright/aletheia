@@ -7,7 +7,7 @@ use crate::plan::{Plan, PlanState};
 
 /// A phase within a project (e.g., "Foundation", "Core Features").
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(try_from = "PhaseRaw")]
+#[serde(from = "PhaseRaw")]
 pub struct Phase {
     /// Unique phase identifier.
     pub id: Ulid,
@@ -37,11 +37,9 @@ struct PhaseRaw {
     order: u32,
 }
 
-impl TryFrom<PhaseRaw> for Phase {
-    type Error = std::convert::Infallible;
-
-    fn try_from(raw: PhaseRaw) -> std::result::Result<Self, Self::Error> {
-        Ok(Self {
+impl From<PhaseRaw> for Phase {
+    fn from(raw: PhaseRaw) -> Self {
+        Self {
             id: raw.id,
             name: raw.name,
             goal: raw.goal,
@@ -49,7 +47,7 @@ impl TryFrom<PhaseRaw> for Phase {
             plans: raw.plans,
             state: raw.state,
             order: raw.order,
-        })
+        }
     }
 }
 

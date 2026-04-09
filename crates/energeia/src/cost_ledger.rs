@@ -1,11 +1,16 @@
 // WHY: Per-blast-radius cost attribution ledger. Tracks cumulative cost, turns,
 // and session counts by blast radius to answer "how much did this feature cost?"
 //
-// Uses Arc<Mutex<HashMap>> for thread-safe accumulation. This is not a hot path
-// (recorded once per session completion), so the lock contention is minimal.
+// Uses Arc<parking_lot::Mutex<HashMap>> for thread-safe accumulation. parking_lot
+// is the workspace-recommended replacement for std::sync::Mutex in sync code:
+// no poison handling, faster, no fairness overhead. The ledger API is entirely
+// synchronous (no .await held while a guard is live), so a tokio::sync::Mutex
+// would be wrong here.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+
+use parking_lot::Mutex;
 
 // ---------------------------------------------------------------------------
 // BlastRadiusCost
@@ -111,7 +116,7 @@ impl CostLedger {
             return;
         }
 
-        let mut guard = self.inner.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut guard = self.inner.lock();
         let entry = guard
             .entry(blast_radius.to_owned())
             .or_insert_with(|| BlastRadiusCost::new(blast_radius.to_owned()));
@@ -123,16 +128,12 @@ impl CostLedger {
     ///
     /// The cost is attributed to each blast radius in full (not divided).
     /// This reflects that the session work benefits/applies to all radii.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the internal mutex is poisoned.
     pub fn record_multi(&self, blast_radii: &[String], cost_usd: f64, turns: u32, model: &str) {
         if cost_usd <= 0.0 && turns == 0 {
             return;
         }
 
-        let mut guard = self.inner.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut guard = self.inner.lock();
         for radius in blast_radii {
             let entry = guard
                 .entry(radius.clone())
@@ -146,7 +147,7 @@ impl CostLedger {
     /// Returns `None` if no sessions have been recorded for this radius.
     #[must_use]
     pub fn query(&self, blast_radius: &str) -> Option<BlastRadiusCost> {
-        let guard = self.inner.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let guard = self.inner.lock();
         guard.get(blast_radius).cloned()
     }
 
@@ -156,7 +157,7 @@ impl CostLedger {
     /// for deterministic output.
     #[must_use]
     pub fn query_all(&self) -> Vec<(String, BlastRadiusCost)> {
-        let guard = self.inner.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let guard = self.inner.lock();
         let mut results: Vec<(String, BlastRadiusCost)> =
             guard.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
         // Sort by blast radius for deterministic output
@@ -169,7 +170,7 @@ impl CostLedger {
     /// Returns a vector of (model, `total_cost_usd`) tuples sorted by model name.
     #[must_use]
     pub fn query_by_model(&self) -> Vec<(String, f64)> {
-        let guard = self.inner.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let guard = self.inner.lock();
         let mut by_model: HashMap<String, f64> = HashMap::new();
 
         for cost in guard.values() {
@@ -186,20 +187,20 @@ impl CostLedger {
     /// Get the total cost across all blast radii.
     #[must_use]
     pub fn total_cost(&self) -> f64 {
-        let guard = self.inner.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let guard = self.inner.lock();
         guard.values().map(|c| c.total_cost_usd).sum()
     }
 
     /// Get the total number of sessions recorded across all blast radii.
     #[must_use]
     pub fn total_sessions(&self) -> u32 {
-        let guard = self.inner.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let guard = self.inner.lock();
         guard.values().map(|c| c.session_count).sum()
     }
 
     /// Clear all recorded data.
     pub fn clear(&self) {
-        let mut guard = self.inner.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut guard = self.inner.lock();
         guard.clear();
     }
 }

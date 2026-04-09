@@ -357,6 +357,10 @@ impl std::fmt::Debug for SignalProvider {
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "single cohesive state machine: halted-state health check + receive success/error branches share lock acquisition order; splitting would risk the lock dance and obscure the connection-state transitions"
+)]
 async fn poll_loop(
     signal_client: client::SignalClient,
     tx: mpsc::Sender<InboundMessage>,
