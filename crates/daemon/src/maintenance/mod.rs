@@ -32,9 +32,10 @@ pub struct ProposeRulesConfig {
 
 impl Default for ProposeRulesConfig {
     fn default() -> Self {
-        let root = std::env::var("ALETHEIA_ROOT")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|_| std::path::PathBuf::from("instance"));
+        let root = std::env::var("ALETHEIA_ROOT").map_or_else(
+            |_e| std::path::PathBuf::from("instance"),
+            std::path::PathBuf::from,
+        );
         Self {
             enabled: false,
             data_dir: root.join("data"),

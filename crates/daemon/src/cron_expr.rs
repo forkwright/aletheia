@@ -41,6 +41,10 @@ impl CronExpr {
         clippy::indexing_slicing,
         reason = "indices match the just-validated `fields.len()` arm above"
     )]
+    #[expect(
+        clippy::similar_names,
+        reason = "field names mirror cron section names — disambiguating them with longer/shorter names hurts readability"
+    )]
     pub(crate) fn parse(expr: &str) -> Result<Self, error::Error> {
         let fields: Vec<&str> = expr.split_whitespace().collect();
 
