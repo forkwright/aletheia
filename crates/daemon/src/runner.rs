@@ -719,45 +719,52 @@ impl TaskRunner {
         // WHY: spawn as a detached task. Self-prompt execution should not block
         // the main scheduler loop. Failures are logged but do not affect the
         // originating task's status.
-        tokio::spawn(async move {
-            tracing::info!(
-                nous_id = %nous_id,
-                source_task = %task_id_owned,
-                prompt_len = follow_up.len(),
-                "dispatching self-prompt from follow-up"
-            );
-            let result = crate::self_prompt::execute_self_prompt(
-                &nous_id,
-                &follow_up,
-                bridge.as_deref(),
-            )
-            .await;
-            match result {
-                Ok(r) if r.success => {
-                    tracing::info!(
-                        nous_id = %nous_id,
-                        source_task = %task_id_owned,
-                        "self-prompt dispatched successfully"
-                    );
-                }
-                Ok(r) => {
-                    tracing::warn!(
-                        nous_id = %nous_id,
-                        source_task = %task_id_owned,
-                        output = ?r.output,
-                        "self-prompt dispatch returned failure"
-                    );
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        nous_id = %nous_id,
-                        source_task = %task_id_owned,
-                        error = %e,
-                        "self-prompt dispatch error"
-                    );
+        let task_name = "self_prompt";
+        tokio::spawn(
+            async move {
+                tracing::info!(
+                    nous_id = %nous_id,
+                    source_task = %task_id_owned,
+                    prompt_len = follow_up.len(),
+                    "dispatching self-prompt from follow-up"
+                );
+                let result = crate::self_prompt::execute_self_prompt(
+                    &nous_id,
+                    &follow_up,
+                    bridge.as_deref(),
+                )
+                .await;
+                match result {
+                    Ok(r) if r.success => {
+                        tracing::info!(
+                            nous_id = %nous_id,
+                            source_task = %task_id_owned,
+                            "self-prompt dispatched successfully"
+                        );
+                    }
+                    Ok(r) => {
+                        tracing::warn!(
+                            nous_id = %nous_id,
+                            source_task = %task_id_owned,
+                            output = ?r.output,
+                            "self-prompt dispatch returned failure"
+                        );
+                        crate::metrics::record_background_failure(&nous_id, task_name);
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            task = task_name,
+                            nous_id = %nous_id,
+                            source_task = %task_id_owned,
+                            error = %e,
+                            "background task failed"
+                        );
+                        crate::metrics::record_background_failure(&nous_id, task_name);
+                    }
                 }
             }
-        });
+            .instrument(tracing::info_span!("background_task", task = task_name)),
+        );
     }
 
     /// Record a successful task completion and UPDATE scheduling.
