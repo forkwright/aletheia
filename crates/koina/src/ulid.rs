@@ -97,10 +97,18 @@ impl Ulid {
     /// Generate a new ULID using the current system time and random entropy.
     #[must_use]
     pub fn new() -> Self {
-        let ms = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
+        // WHY: Duration::as_millis returns u128, but the ULID spec uses a
+        // 48-bit ms timestamp (the upper 16 bits of the u64 are unused).
+        // try_from with saturating fallback to u64::MAX is correct: any
+        // value above 2^48 (year 8921) is already a spec violation; the
+        // saturating cast is documented and avoids the silent `as`.
+        let ms = u64::try_from(
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis(),
+        )
+        .unwrap_or(u64::MAX);
 
         let random: u128 = {
             let mut rng = rand::rng();
@@ -149,11 +157,16 @@ impl fmt::Display for Ulid {
             *byte = CROCKFORD[(val & 0x1F) as usize];
             val >>= 5;
         }
-        // WHY: CROCKFORD alphabet is ASCII, so buf is always valid UTF-8.
-        // Use expect rather than unsafe: the const alphabet guarantees validity.
-        f.write_str(
-            std::str::from_utf8(&buf).expect("Crockford base32 is always valid UTF-8"),
-        )
+        // WHY: CROCKFORD alphabet is ASCII (32 bytes), so every byte we
+        // emit into `buf` is in 0..=127 — valid UTF-8 by construction.
+        // Use #[expect] on the local expect() so the invariant is documented
+        // at the call site rather than via unsafe.
+        #[expect(
+            clippy::expect_used,
+            reason = "Crockford base32 alphabet is ASCII; buf is always valid UTF-8 by construction"
+        )]
+        let s = std::str::from_utf8(&buf).expect("Crockford base32 is always valid UTF-8");
+        f.write_str(s)
     }
 }
 
