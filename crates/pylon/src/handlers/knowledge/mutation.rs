@@ -27,6 +27,11 @@ use super::{ForgetRequest, UpdateConfidenceRequest};
     ),
     security(("bearer_auth" = []))
 )]
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
 pub async fn forget_fact(
     State(state): State<KnowledgeState>,
     claims: Claims,
@@ -79,6 +84,11 @@ pub async fn forget_fact(
     ),
     security(("bearer_auth" = []))
 )]
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
 pub async fn restore_fact(
     State(state): State<KnowledgeState>,
     claims: Claims,
@@ -132,6 +142,11 @@ pub async fn restore_fact(
     ),
     security(("bearer_auth" = []))
 )]
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
 pub async fn update_confidence(
     State(state): State<KnowledgeState>,
     claims: Claims,

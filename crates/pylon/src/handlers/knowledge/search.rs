@@ -28,6 +28,11 @@ use super::{
     ),
     security(("bearer_auth" = []))
 )]
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
 pub async fn search(
     State(state): State<KnowledgeState>,
     Query(mut query): Query<SearchQuery>,
@@ -116,6 +121,11 @@ pub async fn search(
     ),
     security(("bearer_auth" = []))
 )]
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
 pub async fn timeline(
     State(state): State<KnowledgeState>,
     Query(query): Query<FactsQuery>,

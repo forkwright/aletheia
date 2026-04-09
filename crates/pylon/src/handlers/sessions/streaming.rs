@@ -97,6 +97,12 @@ impl<S: tokio_stream::Stream + Unpin> tokio_stream::Stream for GuardedStream<S> 
 // NOTE(#940): ~89 lines excluding match arms: single SSE handler with preflight checks,
 // idempotency guard, and spawned turn task. The match arms account for the bulk of raw
 // line count; the control flow is a single cohesive request lifecycle.
+//
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response. The spawned turn task
+/// continues running independently.
 #[expect(
     clippy::too_many_lines,
     reason = "handler includes preflight checks, idempotency guard, and spawned turn task"
@@ -352,6 +358,12 @@ pub async fn send_message(
 )]
 // NOTE(#940): ~109 lines excluding match arms: sequential SSE bridge setup with
 // turn spawn and completion event emission. Match arms inflate raw line count.
+//
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response. The spawned turn task
+/// continues running independently.
 #[expect(
     clippy::too_many_lines,
     reason = "streaming bridge setup is inherently sequential"

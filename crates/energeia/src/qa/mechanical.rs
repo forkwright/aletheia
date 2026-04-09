@@ -56,6 +56,12 @@ pub fn mechanical_check(diff: &str, prompt: &PromptSpec) -> Vec<MechanicalIssue>
 ///
 /// Returns a [`MechanicalIssue`] per file with formatting violations.
 /// Returns an empty vec on success or if the command cannot run.
+///
+/// # Cancel safety
+///
+/// Cancel-safe. The spawned `cargo fmt` process runs independently;
+/// cancelling this future simply detaches from the process. The process
+/// will complete and its output is discarded.
 pub async fn format_check(working_dir: &Path) -> Vec<MechanicalIssue> {
     let output = match tokio::process::Command::new("cargo")
         .args(["fmt", "--all", "--", "--check"])
@@ -104,6 +110,12 @@ pub async fn format_check(working_dir: &Path) -> Vec<MechanicalIssue> {
 ///
 /// Returns a [`MechanicalIssue`] per warning or error detected.
 /// Returns an empty vec on success or if the command cannot run.
+///
+/// # Cancel safety
+///
+/// Cancel-safe. The spawned `cargo clippy` process runs independently;
+/// cancelling this future simply detaches from the process. The process
+/// will complete and its output is discarded.
 pub async fn lint_check(working_dir: &Path) -> Vec<MechanicalIssue> {
     let output = match tokio::process::Command::new("cargo")
         .args([

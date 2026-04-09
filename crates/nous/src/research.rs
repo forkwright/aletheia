@@ -39,6 +39,12 @@ fn domain_sort_key(domain: ResearchDomain) -> u8 {
 /// Returns `String` only if the spawn service itself is unavailable. Individual
 /// researcher failures are captured as [`FindingStatus::Failed`] or
 /// [`FindingStatus::TimedOut`] in the output.
+///
+/// # Cancel safety
+///
+/// Not cancel-safe. If cancelled while spawning researchers, some sub-agents
+/// may have been spawned but their results will never be collected. This leaks
+/// spawned tasks until they complete naturally. Do not use in `select!` branches.
 pub async fn run_research(
     spawn_service: &Arc<dyn SpawnService>,
     parent_nous_id: &str,

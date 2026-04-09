@@ -11,6 +11,11 @@ use crate::state::MetricsState;
 pub(crate) const METRICS_CONTENT_TYPE: &str = "text/plain; version=0.0.4; charset=utf-8";
 
 /// GET /metrics: Prometheus text-format metrics exposition.
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
 #[utoipa::path(
     get,
     path = "/metrics",

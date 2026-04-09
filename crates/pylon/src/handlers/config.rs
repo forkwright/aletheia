@@ -71,6 +71,11 @@ pub async fn get_config(
 }
 
 /// GET /api/v1/config/{section}: redacted config section.
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
 #[utoipa::path(
     get,
     path = "/api/v1/config/{section}",
@@ -112,6 +117,11 @@ pub async fn get_section(
 /// against the current in-memory config, applies hot-reloadable changes, and
 /// logs what changed. Cold values (port, bind, TLS, auth mode, channels) are
 /// reported but not applied until restart.
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
 #[utoipa::path(
     post,
     path = "/api/v1/config/reload",
@@ -171,6 +181,11 @@ pub async fn reload_config(
 }
 
 /// PUT /api/v1/config/{section}: update and persist a config section.
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
 #[utoipa::path(
     put,
     path = "/api/v1/config/{section}",

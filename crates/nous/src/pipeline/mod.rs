@@ -578,6 +578,12 @@ pub async fn assemble_context(
 ///
 /// Uses [`TaskHint::General`] which loads all workspace files. Use
 /// [`assemble_context_conditional`] for task-aware loading.
+///
+/// # Cancel safety
+///
+/// Not cancel-safe. Delegates to [`assemble_context_conditional`].
+/// If cancelled after partial context assembly, the `PipelineContext`
+/// may contain incomplete state.
 #[instrument(skip_all, fields(nous_id = %nous_config.id))]
 pub async fn assemble_context_with_extra(
     oikos: &Oikos,
@@ -601,6 +607,12 @@ pub async fn assemble_context_with_extra(
 ///
 /// Only workspace files relevant to the given [`TaskHint`] are loaded.
 /// Identity-tier files always load; operational files load based on the hint.
+///
+/// # Cancel safety
+///
+/// Not cancel-safe. If cancelled after the bootstrap assembler has
+/// partially written to `ctx`, the context will be in an inconsistent
+/// state. Callers should not use this in `select!` branches.
 #[instrument(skip_all, fields(nous_id = %nous_config.id, ?task_hint))]
 pub async fn assemble_context_conditional(
     oikos: &Oikos,

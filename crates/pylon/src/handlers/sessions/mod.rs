@@ -29,6 +29,11 @@ use crate::extract::{Claims, require_nous_access, require_role};
 use crate::state::SessionsState;
 
 /// POST /api/v1/sessions: create a new session.
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
 #[utoipa::path(
     post,
     path = "/api/v1/sessions",
@@ -122,6 +127,11 @@ pub async fn create(
 }
 
 /// GET /api/v1/sessions: list sessions, optionally filtered by agent.
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
 #[utoipa::path(
     get,
     path = "/api/v1/sessions",
@@ -177,6 +187,11 @@ pub async fn list_sessions(
 }
 
 /// GET /api/v1/sessions/{id}: get session state.
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
 #[utoipa::path(
     get,
     path = "/api/v1/sessions/{id}",
@@ -204,6 +219,11 @@ pub async fn get_session(
 }
 
 /// DELETE /api/v1/sessions/{id}: close (archive) a session.
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
 #[utoipa::path(
     delete,
     path = "/api/v1/sessions/{id}",
@@ -228,6 +248,11 @@ pub async fn close(
 }
 
 /// DELETE /api/v1/sessions/{id}/purge: permanently delete a session and all its messages.
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
 #[utoipa::path(
     delete,
     path = "/api/v1/sessions/{id}/purge",
@@ -264,6 +289,11 @@ pub async fn purge(
 /// POST /api/v1/sessions/{id}/archive: archive a session.
 ///
 /// Same behavior as DELETE but via POST, matching the TUI's API contract.
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
 #[utoipa::path(
     post,
     path = "/api/v1/sessions/{id}/archive",
@@ -306,6 +336,11 @@ async fn archive_session_by_id(state: &SessionsState, id: &str) -> Result<Status
 }
 
 /// POST /api/v1/sessions/{id}/unarchive: reactivate an archived session.
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
 #[utoipa::path(
     post,
     path = "/api/v1/sessions/{id}/unarchive",
@@ -342,6 +377,11 @@ pub async fn unarchive(
 }
 
 /// PUT /api/v1/sessions/{id}/name: rename a session.
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
 #[utoipa::path(
     put,
     path = "/api/v1/sessions/{id}/name",
@@ -407,6 +447,11 @@ const MAX_HISTORY_LIMIT: u32 = 1000;
 const DEFAULT_HISTORY_LIMIT: u32 = 50;
 
 /// GET /api/v1/sessions/{id}/history: get conversation history.
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
 #[utoipa::path(
     get,
     path = "/api/v1/sessions/{id}/history",

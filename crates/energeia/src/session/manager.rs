@@ -62,6 +62,12 @@ impl SessionManager {
     /// Returns [`Error::SpawnFailed`](crate::error::Error::SpawnFailed) if the
     /// initial session cannot be created, if the session is cancelled,
     /// or if the engine encounters an error during execution.
+    ///
+    /// # Cancel safety
+    ///
+    /// Not cancel-safe. If cancelled after spawning a session but before
+    /// collecting its results, the session continues running but its
+    /// outcome is lost. Do not use in `select!` branches.
     #[expect(
         clippy::too_many_lines,
         reason = "session lifecycle is inherently sequential with many branches"

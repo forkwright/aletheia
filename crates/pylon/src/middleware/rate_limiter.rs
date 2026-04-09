@@ -123,6 +123,11 @@ pub(super) fn extract_client_key(request: &Request, trust_proxy: bool) -> String
 /// Reads the `Arc<RateLimiter>` from request extensions (installed by
 /// `build_router`). Returns 429 Too Many Requests with a `Retry-After` header
 /// when the client has exceeded the configured limit.
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum middleware; cancellation drops the future with no
+/// side effects beyond not returning a response.
 pub async fn rate_limit(request: Request, next: Next) -> Response {
     let limiter = request.extensions().get::<Arc<RateLimiter>>().cloned();
     let Some(limiter) = limiter else {

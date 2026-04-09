@@ -211,6 +211,11 @@ fn extract_user_key(request: &Request, trust_proxy: bool) -> String {
 /// IP address (verified claims are unavailable at the middleware layer).
 /// Returns 429 with `Retry-After` header when the client has exceeded the
 /// configured limit for the endpoint category.
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum middleware; cancellation drops the future with no
+/// side effects beyond not returning a response.
 pub async fn per_user_rate_limit(request: Request, next: Next) -> Response {
     let limiter = request.extensions().get::<Arc<UserRateLimiter>>().cloned();
     let trust_proxy = request

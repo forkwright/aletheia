@@ -199,6 +199,14 @@ impl AdaptiveConcurrencyLimiter {
     /// The permit must be consumed via [`ConcurrencyPermit::finish`] or
     /// [`ConcurrencyPermit::finish_with_latency`] to record the outcome.
     /// Dropping without calling either applies a `Neutral` outcome.
+    ///
+    /// # Cancel safety
+    ///
+    /// Not cancel-safe. If cancelled after incrementing `in_flight` but
+    /// before returning the permit, the counter is never decremented,
+    /// effectively leaking a concurrency slot until the limiter is dropped.
+    /// However, the permit's `Drop` implementation will eventually release
+    /// the slot if the permit itself is dropped.
     #[tracing::instrument(skip_all)]
     pub async fn acquire(self: &Arc<Self>) -> ConcurrencyPermit {
         loop {
