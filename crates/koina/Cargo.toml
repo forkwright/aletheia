@@ -32,3 +32,11 @@ tokio = { workspace = true, features = ["sync", "time"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
+criterion = { workspace = true }
+
+# WHY: ID generation is on every session/turn/observation hot path. Track
+# regressions in the internal ULID/UUID implementations against external
+# baselines so any future PR that touches them surfaces a perf delta.
+[[bench]]
+name = "ids"
+harness = false
