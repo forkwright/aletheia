@@ -153,6 +153,7 @@ dependencies = [
 name = "aletheia-diaporeia"
 version = "0.14.0"
 dependencies = [
+ "aletheia-hermeneus",
  "aletheia-koina",
  "aletheia-mneme",
  "aletheia-nous",
@@ -167,8 +168,10 @@ dependencies = [
  "serde",
  "serde_json",
  "snafu",
+ "tempfile",
  "tokio",
  "tokio-util",
+ "tower 0.5.3",
  "tracing",
 ]
 
