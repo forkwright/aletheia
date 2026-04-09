@@ -258,11 +258,6 @@ fn is_stale(mtime: Option<&std::time::SystemTime>, stale_threshold_secs: i64) ->
         // NOTE: mtime in the future → not stale.
         return false;
     };
-    #[expect(
-        clippy::as_conversions,
-        clippy::cast_sign_loss,
-        reason = "i64→u64: stale_threshold_secs is always positive"
-    )]
     let threshold = std::time::Duration::from_secs(u64::try_from(stale_threshold_secs).unwrap_or_default());
     elapsed > threshold
 }
