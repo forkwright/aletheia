@@ -159,6 +159,15 @@ pub struct ProjectScores {
 /// Bundles the boolean and counter flags into a single named record so the
 /// call sites are self-documenting and so the function signature stays
 /// under the workspace's "more than 3 bools" lint threshold.
+///
+/// The four boolean fields are **independent quality observations**, not a
+/// state machine — `one_shot`, `ci_first_try`, `qa_pass`, and `has_failure`
+/// each measure a different dimension of the run, and any combination of
+/// them is valid. A state-machine refactor would obscure that independence.
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "four independent quality dimensions of a single dispatch run; not a state machine"
+)]
 #[derive(Debug, Clone, Copy)]
 pub struct GradeInputs {
     /// Session completed in one shot, no resume needed.
