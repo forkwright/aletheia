@@ -50,7 +50,7 @@ pub struct AletheiaConfig {
     /// MCP server configuration.
     pub mcp: McpConfig,
     /// Training data capture configuration.
-    pub training: aletheia_mneme::training::TrainingConfig,
+    pub training: aletheia_eidos::training::TrainingConfig,
 }
 
 /// Sandbox enforcement level for tool execution.

@@ -127,7 +127,7 @@ tower-http = { version = "0.6", default-features = false, features = [
 axum-server = { version = "0.8", default-features = false, features = ["tls-rustls"] }
 
 # Secrets
-zeroize = { version = "1", default-features = false }
+zeroize = { version = "1", default-features = false, features = ["std"] }
 
 # Tracing
 tracing = "0.1"

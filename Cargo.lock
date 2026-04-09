@@ -558,8 +558,8 @@ dependencies = [
 name = "aletheia-taxis"
 version = "0.13.67"
 dependencies = [
+ "aletheia-eidos",
  "aletheia-koina",
- "aletheia-mneme",
  "base64 0.22.1",
  "chacha20poly1305",
  "figment",
