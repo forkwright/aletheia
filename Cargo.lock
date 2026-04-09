@@ -278,6 +278,7 @@ name = "aletheia-hermeneus"
 version = "0.14.0"
 dependencies = [
  "aletheia-koina",
+ "criterion",
  "jiff",
  "prometheus",
  "proptest",
