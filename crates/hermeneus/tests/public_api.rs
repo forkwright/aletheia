@@ -2,9 +2,9 @@
 //!
 //! WHY: hermeneus had zero `crates/hermeneus/tests/` integration tests
 //! prior to this. The crate is the LLM client used by every nous turn,
-//! and its public types (Role, Message, ContentBlock, Usage, StopReason,
-//! ToolDefinition, CompletionRequest/Response) form the wire contract
-//! that drives the rest of the workspace.
+//! and its public types (`Role`, `Message`, `ContentBlock`, `Usage`,
+//! `StopReason`, `ToolDefinition`, `CompletionRequest`/`CompletionResponse`)
+//! form the wire contract that drives the rest of the workspace.
 //!
 //! These tests run against the published API surface only — what nous,
 //! pylon, and the dispatch path actually consume.
@@ -41,13 +41,21 @@ mod model_constants {
 
     #[test]
     fn retry_constants_are_sensible() {
-        assert!(DEFAULT_MAX_RETRIES > 0, "must allow at least one retry");
-        assert!(BACKOFF_BASE_MS >= 100, "base backoff should not be aggressive");
-        assert!(BACKOFF_FACTOR >= 2, "exponential backoff requires factor >= 2");
-        assert!(
-            BACKOFF_MAX_MS >= BACKOFF_BASE_MS * BACKOFF_FACTOR,
-            "max must allow at least one full backoff step"
-        );
+        const {
+            assert!(DEFAULT_MAX_RETRIES > 0, "must allow at least one retry");
+            assert!(
+                BACKOFF_BASE_MS >= 100,
+                "base backoff should not be aggressive"
+            );
+            assert!(
+                BACKOFF_FACTOR >= 2,
+                "exponential backoff requires factor >= 2"
+            );
+            assert!(
+                BACKOFF_MAX_MS >= BACKOFF_BASE_MS * BACKOFF_FACTOR,
+                "max must allow at least one full backoff step"
+            );
+        }
     }
 
     #[test]

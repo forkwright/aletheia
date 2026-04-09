@@ -309,8 +309,10 @@ mod tests {
         let s = "0OIL0000000000000000000000";
         assert_eq!(s.len(), 26);
         let ulid: Ulid = s.parse().unwrap();
-        // First 4 chars decode as: 0, 0, 1, 1
-        let expected_val = (0u128 << 125) | (0u128 << 120) | (1u128 << 115) | (1u128 << 110);
+        // First 4 chars decode to base32 values [0, 0, 1, 1].
+        // Each char encodes 5 bits at decreasing shifts (125, 120, 115, 110);
+        // the two zero chars contribute nothing, so only the two `1` chars remain.
+        let expected_val = (1u128 << 115) | (1u128 << 110);
         assert_eq!(ulid.as_u128(), expected_val);
     }
 
@@ -329,10 +331,13 @@ mod tests {
     fn timestamp_extraction() {
         let ulid = Ulid::new();
         let ts = ulid.timestamp_ms();
-        let now_ms = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64;
+        let now_ms = u64::try_from(
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_millis(),
+        )
+        .unwrap();
         // Should be within 1 second of now
         assert!(
             ts.abs_diff(now_ms) < 1000,

@@ -1,15 +1,17 @@
-//! Microbenchmarks for the SessionStore SQLite hot paths.
+//! Microbenchmarks for the `SessionStore` `SQLite` hot paths.
 //!
 //! WHY: every turn creates or finds a session and appends ≥2 messages.
-//! These benchmarks track end-to-end SQLite cost (including the
-//! `INSERT...SELECT MAX(seq)` pattern in append_message) so any
+//! These benchmarks track end-to-end `SQLite` cost (including the
+//! `INSERT...SELECT MAX(seq)` pattern in `append_message`) so any
 //! schema/index/prepared-statement change surfaces in CI.
 //!
 //! Run: `cargo bench -p aletheia-graphe`
 //! Filter: `cargo bench -p aletheia-graphe -- create_session`
 //!
 //! Each bench uses an in-memory database to isolate from disk I/O —
-//! this measures the SQLite engine + our SQL, not the storage stack.
+//! this measures the `SQLite` engine + our SQL, not the storage stack.
+
+#![expect(clippy::expect_used, reason = "bench setup")]
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;

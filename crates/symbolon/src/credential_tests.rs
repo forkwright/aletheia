@@ -25,7 +25,7 @@ fn credential_file_roundtrip() {
     let loaded = CredentialFile::load(&path).expect("load saved credential file");
     assert_eq!(loaded.token.expose_secret(), "sk-test-123");
     assert_eq!(
-        loaded.refresh_token.as_ref().map(|s| s.expose_secret()),
+        loaded.refresh_token.as_ref().map(SecretString::expose_secret),
         Some("rt-test-456")
     );
     assert_eq!(loaded.expires_at, Some(1_700_000_000_000));
@@ -65,7 +65,7 @@ fn credential_file_load_claude_code_oauth_wrapper() {
     let loaded = CredentialFile::load(&path).expect("load oauth wrapper credential file");
     assert_eq!(loaded.token.expose_secret(), "sk-ant-oat-wrapped");
     assert_eq!(
-        loaded.refresh_token.as_ref().map(|s| s.expose_secret()),
+        loaded.refresh_token.as_ref().map(SecretString::expose_secret),
         Some("rt-wrapped")
     );
     assert_eq!(loaded.expires_at, Some(9_999_999_999_000));
@@ -718,7 +718,7 @@ async fn refresh_write_back_preserves_subscription_type() {
     let reloaded = CredentialFile::load(&path).expect("load refreshed credential");
     assert_eq!(reloaded.token.expose_secret(), "sk-ant-oat-refreshed");
     assert_eq!(
-        reloaded.refresh_token.as_ref().map(|s| s.expose_secret()),
+        reloaded.refresh_token.as_ref().map(SecretString::expose_secret),
         Some("rt-new")
     );
     assert_eq!(
@@ -802,8 +802,8 @@ async fn credential_file_roundtrip_preserves_all_fields() {
     let loaded = CredentialFile::load(&path).expect("load full credential file");
     assert_eq!(loaded.token.expose_secret(), original.token.expose_secret());
     assert_eq!(
-        loaded.refresh_token.as_ref().map(|s| s.expose_secret()),
-        original.refresh_token.as_ref().map(|s| s.expose_secret())
+        loaded.refresh_token.as_ref().map(SecretString::expose_secret),
+        original.refresh_token.as_ref().map(SecretString::expose_secret)
     );
     assert_eq!(loaded.expires_at, original.expires_at);
     assert_eq!(loaded.scopes, original.scopes);

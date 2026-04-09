@@ -44,7 +44,6 @@ pub(crate) fn init_json() {
 }
 
 #[cfg(test)]
-#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     // NOTE: tracing init is global state: can only test it doesn't panic; integration tests exercise actual output
 

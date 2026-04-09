@@ -1,15 +1,18 @@
 //! Integration tests for koina's public API surface.
 //!
-//! WHY: koina had zero \`crates/koina/tests/\` integration tests prior to
+//! WHY: koina had zero `crates/koina/tests/` integration tests prior to
 //! this. The crate is foundational — every other crate consumes
-//! \`SecretString\`, \`Ulid\`, \`Uuid\`, \`EventEmitter\`, etc. — so any
+//! `SecretString`, `Ulid`, `Uuid`, `EventEmitter`, etc. — so any
 //! breakage in the public API ripples across the workspace.
 //!
 //! These tests run against the published API surface only (no
-//! \`pub(crate)\` access), the same way nous/pylon/symbolon consume it.
+//! `pub(crate)` access), the same way nous/pylon/symbolon consume it.
 
 #![expect(clippy::expect_used, reason = "test assertions")]
-#![expect(clippy::unwrap_used, reason = "test assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "known-length Vec indexing in UUID segment/version assertions"
+)]
 
 // --- SecretString ---
 

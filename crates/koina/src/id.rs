@@ -594,7 +594,7 @@ mod tests {
     #[test]
     fn session_id_deserialize_valid_uuid() {
         let valid_uuid = "550e8400-e29b-41d4-a716-446655440000";
-        let json = format!("\"{}\"", valid_uuid);
+        let json = format!("\"{valid_uuid}\"");
         let result: Result<SessionId, _> = serde_json::from_str(&json);
         assert!(result.is_ok());
         assert_eq!(result.unwrap().to_string(), valid_uuid);

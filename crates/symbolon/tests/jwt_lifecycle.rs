@@ -1,4 +1,4 @@
-//! Integration tests for JwtManager and JwtConfig public API.
+//! Integration tests for `JwtManager` and `JwtConfig` public API.
 //!
 //! WHY: symbolon had zero `crates/symbolon/tests/` integration tests prior
 //! to this. The crate is security-critical (auth tokens, credentials, JWT
@@ -7,7 +7,10 @@
 //! consume it.
 
 #![expect(clippy::expect_used, reason = "test assertions")]
-#![expect(clippy::unwrap_used, reason = "test assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "JWT segments have a known 3-part structure asserted before indexing"
+)]
 
 use std::time::Duration;
 
@@ -15,7 +18,7 @@ use aletheia_koina::secret::SecretString;
 use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
 use aletheia_symbolon::types::{Role, TokenKind};
 
-/// Build a JwtManager with a test signing key and standard TTLs.
+/// Build a `JwtManager` with a test signing key and standard TTLs.
 fn test_manager() -> JwtManager {
     JwtManager::new(JwtConfig {
         signing_key: SecretString::from("test-signing-key-for-integration-tests".to_owned()),

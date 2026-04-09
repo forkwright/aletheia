@@ -143,7 +143,6 @@ pub fn uuid_v4() -> String {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
-#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 
@@ -216,7 +215,7 @@ mod tests {
 
     #[test]
     fn default_is_v4() {
-        let id: Uuid = Default::default();
+        let id = Uuid::default();
         let s = id.to_string();
         // Version should be 4
         assert_eq!(s.chars().nth(14), Some('4'));

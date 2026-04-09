@@ -9,6 +9,8 @@
 //! Run: `cargo bench -p aletheia-koina`
 //! Run a single bench: `cargo bench -p aletheia-koina -- ulid_new`
 
+#![expect(clippy::expect_used, reason = "bench setup")]
+
 use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
 
