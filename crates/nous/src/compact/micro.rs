@@ -109,14 +109,7 @@ pub(crate) fn run_microcompaction(
                 reason = "usize→u64: marker length is small, always fits in u64"
             )]
             let marker_tokens = (marker.len() as u64).div_ceil(4); // kanon:ignore RUST/as-cast
-            #[expect(
-                clippy::cast_possible_wrap,
-                clippy::as_conversions,
-                reason = "u64→i64: marker token count is small, fits in i64"
-            )]
-            {
-                msg.token_estimate = i64::try_from(marker_tokens).unwrap_or_default(); // kanon:ignore RUST/as-cast
-            }
+            msg.token_estimate = i64::try_from(marker_tokens).unwrap_or_default();
             msg.content = marker;
             metrics.results_cleared += 1;
         }

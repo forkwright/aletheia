@@ -254,7 +254,6 @@ impl TaskRegistry {
     /// # Errors
     ///
     /// Returns an error if the task is not found or if the registry lock is poisoned.
-    #[must_use]
     pub fn record_error(&self, task_id: TaskId, error: String) -> Result<(), RegistryError> {
         let mut tasks = self.tasks.write().map_err(lock_poisoned)?;
 
@@ -274,7 +273,6 @@ impl TaskRegistry {
     /// # Errors
     ///
     /// Returns an error if the task is not found or if the registry lock is poisoned.
-    #[must_use]
     pub fn set_output_path(
         &self,
         task_id: TaskId,
@@ -298,7 +296,6 @@ impl TaskRegistry {
     /// # Errors
     ///
     /// Returns an error if the task is not found or if the registry lock is poisoned.
-    #[must_use]
     pub fn broadcast_output_chunk(
         &self,
         task_id: TaskId,
@@ -319,7 +316,6 @@ impl TaskRegistry {
     /// # Errors
     ///
     /// Returns an error if the task is not found or if the registry lock is poisoned.
-    #[must_use]
     pub fn get(&self, task_id: TaskId) -> Result<TaskSnapshot, RegistryError> {
         let tasks = self.tasks.read().map_err(lock_poisoned)?;
 
@@ -339,7 +335,6 @@ impl TaskRegistry {
     /// # Errors
     ///
     /// Returns an error if the registry lock is poisoned.
-    #[must_use]
     pub fn list(
         &self,
         status_filter: Option<TaskStatus>,
@@ -364,7 +359,6 @@ impl TaskRegistry {
     /// # Errors
     ///
     /// Returns an error if the task is not found or if the registry lock is poisoned.
-    #[must_use]
     pub fn subscribe(
         &self,
         task_id: TaskId,
@@ -386,7 +380,6 @@ impl TaskRegistry {
     /// # Errors
     ///
     /// Returns an error if the task is not found or if the registry lock is poisoned.
-    #[must_use]
     pub fn kill(&self, task_id: TaskId) -> Result<(), RegistryError> {
         let mut tasks = self.tasks.write().map_err(lock_poisoned)?;
 
@@ -453,7 +446,6 @@ impl TaskRegistry {
     /// # Errors
     ///
     /// Returns an error if the registry lock is poisoned.
-    #[must_use]
     pub fn len(&self) -> Result<usize, RegistryError> {
         let tasks = self.tasks.read().map_err(lock_poisoned)?;
         Ok(tasks.len())
@@ -464,7 +456,6 @@ impl TaskRegistry {
     /// # Errors
     ///
     /// Returns an error if the registry lock is poisoned.
-    #[must_use]
     pub fn is_empty(&self) -> Result<bool, RegistryError> {
         Ok(self.len()? == 0)
     }
