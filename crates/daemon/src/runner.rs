@@ -190,9 +190,12 @@ impl TaskRunner {
     /// State is loaded on the first call to [`Self::run`] (before catch-up),
     /// and saved after every task completion or failure.
     #[must_use]
-    #[expect(
-        dead_code,
-        reason = "called by runner_tests::with_state_store_persists_across_restarts; production wiring lives in the binary crate"
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "called by runner_tests::with_state_store_persists_across_restarts; production wiring lives in the binary crate"
+        )
     )]
     pub(crate) fn with_state_store(mut self, store: crate::state::TaskStateStore) -> Self {
         self.state_store = Some(store);
@@ -490,7 +493,7 @@ impl TaskRunner {
     }
 
     /// Set the `last_run` timestamp for a task by ID (for catch-up testing/persistence).
-    #[expect(dead_code, reason = "daemon task runner configuration")]
+    #[cfg_attr(not(test), expect(dead_code, reason = "daemon task runner configuration"))]
     pub(crate) fn set_last_run(&mut self, task_id: &str, last_run: jiff::Timestamp) {
         if let Some(task) = self.tasks.iter_mut().find(|t| t.def.id == task_id) {
             task.last_run = Some(last_run);

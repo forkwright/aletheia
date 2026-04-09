@@ -33,9 +33,12 @@ pub(crate) struct TaskStateStore {
     conn: rusqlite::Connection,
 }
 
-#[expect(
-    dead_code,
-    reason = "open + create_schema are called from #[cfg(test)] state::tests and runner_tests; production wiring lives in the binary crate"
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "open + create_schema are called from #[cfg(test)] state::tests and runner_tests; production wiring lives in the binary crate"
+    )
 )]
 impl TaskStateStore {
     /// Open (or create) the task state database at `path`.
@@ -364,6 +367,14 @@ impl Drop for WorkspaceGuard {
 #[expect(
     clippy::indexing_slicing,
     reason = "test: vec indices valid after asserting len"
+)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "tests use std::fs to set up tempdir fixtures synchronously; tokio::fs would be unnecessary ceremony"
+)]
+#[expect(
+    clippy::used_underscore_binding,
+    reason = "_guard1 holds the lock for the duration of the test; the underscore prefix marks it as intentionally unused beyond Drop"
 )]
 mod tests {
     use super::*;

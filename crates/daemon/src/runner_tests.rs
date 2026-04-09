@@ -1,4 +1,5 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(clippy::unwrap_used, reason = "test assertions")]
 #![expect(
     clippy::indexing_slicing,
     reason = "test: vec indices valid after asserting len"
@@ -1115,7 +1116,7 @@ fn cron_parse_out_of_range_hour_returns_error() {
     assert!(err_string.contains("out of range"));
 }
 
-/// Error path: missing config paths return errors in propose_rules.
+/// Error path: missing config paths return errors in `propose_rules`.
 #[tokio::test]
 async fn propose_rules_with_missing_data_dir_returns_error() {
     // NOTE: propose_rules uses a temp directory if the default doesn't exist,
@@ -1134,7 +1135,7 @@ async fn propose_rules_with_missing_data_dir_returns_error() {
     assert!(result.is_ok());
 }
 
-/// Error path: task execution error includes task_id in error message.
+/// Error path: task execution error includes `task_id` in error message.
 #[test]
 fn task_failed_error_includes_task_id() {
     use crate::error::Error;
@@ -1195,7 +1196,7 @@ fn task_disabled_error_includes_failure_count() {
 
     let err_string = err.to_string();
     assert!(err_string.contains("failing-task"));
-    assert!(err_string.contains("3"));
+    assert!(err_string.contains('3'));
 }
 
 /// Error path: maintenance io error includes context.

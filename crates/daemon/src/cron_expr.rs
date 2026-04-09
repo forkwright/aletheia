@@ -491,7 +491,6 @@ fn day_of_week(year: i16, month: i8, day: i8) -> u8 {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
-#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 
