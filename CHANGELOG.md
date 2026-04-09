@@ -1,5 +1,51 @@
 # Changelog
 
+## [0.14.0](https://github.com/forkwright/aletheia/compare/v0.13.67...v0.14.0) (2026-04-09)
+
+
+### Features
+
+* **bench:** add criterion microbenchmark scaffold ([#2802](https://github.com/forkwright/aletheia/issues/2802)) ([#2956](https://github.com/forkwright/aletheia/issues/2956)) ([9c44a3a](https://github.com/forkwright/aletheia/commit/9c44a3af487e2f4aeae6fe2879adbe696186d2b5))
+* **koina:** internal UUID v4 generation ([#2680](https://github.com/forkwright/aletheia/issues/2680)) ([#2936](https://github.com/forkwright/aletheia/issues/2936)) ([ff4ed2d](https://github.com/forkwright/aletheia/commit/ff4ed2db6f6b1cf82375eb24f3ebc720276e71bd))
+
+
+### Bug Fixes
+
+* background task failure visibility ([#2724](https://github.com/forkwright/aletheia/issues/2724)) ([#2944](https://github.com/forkwright/aletheia/issues/2944)) ([12314b9](https://github.com/forkwright/aletheia/commit/12314b9828a15e8abe7b5230b7e9ce65b9c4c3a9))
+* **ci:** release-please bumps minor on feat: commits in 0.x ([122483a](https://github.com/forkwright/aletheia/commit/122483ac38a7f2c89b01c6dbcb96cb047028acf8))
+* **daemon:** clear low-hanging clippy warnings ([#2958](https://github.com/forkwright/aletheia/issues/2958)) ([#2966](https://github.com/forkwright/aletheia/issues/2966)) ([9d22447](https://github.com/forkwright/aletheia/commit/9d224474dde5abe272f799cd402eb4f0f8a5e238))
+* **deps:** restore std features required by krites and base64 ([#2928](https://github.com/forkwright/aletheia/issues/2928) regression) ([c54b69b](https://github.com/forkwright/aletheia/commit/c54b69be0e7d60241a462c476cb6c45e218e132b))
+* **deps:** restore unicode-case + unicode-perl in regex features ([#2955](https://github.com/forkwright/aletheia/issues/2955)) ([f66f539](https://github.com/forkwright/aletheia/commit/f66f539b6a9fe9bbb058bc764429b9c3320f9fa8))
+* **dianoia:** clear low-hanging clippy warnings ([#2958](https://github.com/forkwright/aletheia/issues/2958)) ([#2970](https://github.com/forkwright/aletheia/issues/2970)) ([ac04335](https://github.com/forkwright/aletheia/commit/ac0433537789a0db5dfd28a54184e2cb55a81903))
+* **energeia:** feature-gate flag cleanup ([#2768](https://github.com/forkwright/aletheia/issues/2768)) ([#2933](https://github.com/forkwright/aletheia/issues/2933)) ([1f8b7a1](https://github.com/forkwright/aletheia/commit/1f8b7a1cdcb9e01572f7d31fa0b5081b730714e1))
+* **graphe:** clear all clippy warnings ([#2958](https://github.com/forkwright/aletheia/issues/2958)) ([#2967](https://github.com/forkwright/aletheia/issues/2967)) ([dcbcb70](https://github.com/forkwright/aletheia/commit/dcbcb70449d837d9b53b1483f708f7a963b40680))
+* **graphe:** delete_session cleans up children explicitly (closes [#2959](https://github.com/forkwright/aletheia/issues/2959)) ([#2961](https://github.com/forkwright/aletheia/issues/2961)) ([66bd218](https://github.com/forkwright/aletheia/commit/66bd218e097e5db13d6c8ce1e5893ccbe18b1a6d))
+* **graphe:** use MIGRATIONS.len() instead of hardcoded count in tests ([#2953](https://github.com/forkwright/aletheia/issues/2953)) ([8d27a3c](https://github.com/forkwright/aletheia/commit/8d27a3cc4db7d581b1a3cfd7fa5131a25dca8b2d))
+* **hermeneus:** clear all clippy warnings ([#2958](https://github.com/forkwright/aletheia/issues/2958)) ([#2971](https://github.com/forkwright/aletheia/issues/2971)) ([ca8bc6c](https://github.com/forkwright/aletheia/commit/ca8bc6cebb0f57992c08cff017be5936bc55ace3))
+* **koina:** clear low-hanging clippy warnings ([#2958](https://github.com/forkwright/aletheia/issues/2958)) ([#2963](https://github.com/forkwright/aletheia/issues/2963)) ([a162974](https://github.com/forkwright/aletheia/commit/a162974ed0b908e885c0a18f72758e4ea2e1d4c4))
+* **krites:** parser unreachable!() panic paths ([#2762](https://github.com/forkwright/aletheia/issues/2762)) ([#2943](https://github.com/forkwright/aletheia/issues/2943)) ([8618f20](https://github.com/forkwright/aletheia/commit/8618f200133290d63c1799c68c2a1ded3bb505a9))
+* **nous:** clear low-hanging clippy warnings ([#2958](https://github.com/forkwright/aletheia/issues/2958)) ([#2972](https://github.com/forkwright/aletheia/issues/2972)) ([013c010](https://github.com/forkwright/aletheia/commit/013c010392fca2e4731621cd6717d818d474b5d4))
+* **observability:** dark spots — silent errors + spans ([#2776](https://github.com/forkwright/aletheia/issues/2776)) ([#2948](https://github.com/forkwright/aletheia/issues/2948)) ([e4aa56c](https://github.com/forkwright/aletheia/commit/e4aa56c16256005d8ea460e2ebe52cfe8d0b6a15))
+* **panic-paths:** real fixes + documented infallible expects ([#2762](https://github.com/forkwright/aletheia/issues/2762) partial) ([#2946](https://github.com/forkwright/aletheia/issues/2946)) ([4ac753a](https://github.com/forkwright/aletheia/commit/4ac753a99832658338fd19a8711c4bb067249988))
+* **pylon:** clear all clippy warnings ([#2958](https://github.com/forkwright/aletheia/issues/2958)) ([#2969](https://github.com/forkwright/aletheia/issues/2969)) ([1acf3e1](https://github.com/forkwright/aletheia/commit/1acf3e10f427e3c7cf9cef494531b09246925aed))
+* remaining serde bypass constructors ([#2766](https://github.com/forkwright/aletheia/issues/2766)) ([#2949](https://github.com/forkwright/aletheia/issues/2949)) ([cb1a819](https://github.com/forkwright/aletheia/commit/cb1a819a298f35bdd1f9081ae0bdda68c6efc40a))
+* **symbolon:** clear low-hanging clippy warnings ([#2958](https://github.com/forkwright/aletheia/issues/2958)) ([#2973](https://github.com/forkwright/aletheia/issues/2973)) ([a919d61](https://github.com/forkwright/aletheia/commit/a919d6163b075b08b060cdb6520356eb1f649533))
+
+
+### Performance
+
+* **deps:** reduce koina + taxis dep budgets ([#2837](https://github.com/forkwright/aletheia/issues/2837)) ([#2947](https://github.com/forkwright/aletheia/issues/2947)) ([be7dd3d](https://github.com/forkwright/aletheia/commit/be7dd3d88472588b0e1a1e3e7ab41388a28b99a2))
+
+
+### Documentation
+
+* cancel-safety on async functions ([#2793](https://github.com/forkwright/aletheia/issues/2793)) ([#2942](https://github.com/forkwright/aletheia/issues/2942)) ([76c6844](https://github.com/forkwright/aletheia/commit/76c6844c182f90f53fff978a99dd3d13452f233b))
+* comment tag coverage in hermeneus/nous/symbolon ([#2900](https://github.com/forkwright/aletheia/issues/2900)) ([#2940](https://github.com/forkwright/aletheia/issues/2940)) ([518a9ac](https://github.com/forkwright/aletheia/commit/518a9ac5f05754cb8f3256ebe705cb8a0b5f628d))
+* missing_docs enforcement in library crates ([#2794](https://github.com/forkwright/aletheia/issues/2794)) ([#2945](https://github.com/forkwright/aletheia/issues/2945)) ([9a73577](https://github.com/forkwright/aletheia/commit/9a73577eaed4a9d8893cca9aa6406855ea3d63ea))
+* O() complexity — krites + episteme ([#2839](https://github.com/forkwright/aletheia/issues/2839)) ([#2941](https://github.com/forkwright/aletheia/issues/2941)) ([f7c9033](https://github.com/forkwright/aletheia/commit/f7c9033cc460fba63c1b312cf5730aea84405f05))
+* O() complexity — remaining crates ([#2839](https://github.com/forkwright/aletheia/issues/2839)) ([#2939](https://github.com/forkwright/aletheia/issues/2939)) ([9d0c959](https://github.com/forkwright/aletheia/commit/9d0c9597063a94a75608c27ad04343c69c0d8ae1))
+* observability contracts per module ([#2795](https://github.com/forkwright/aletheia/issues/2795)) ([#2938](https://github.com/forkwright/aletheia/issues/2938)) ([b3270d0](https://github.com/forkwright/aletheia/commit/b3270d03a39e231b4e761c964e37cdaef3082f13))
+
 ## [0.13.67](https://github.com/forkwright/aletheia/compare/v0.13.66...v0.13.67) (2026-04-09)
 
 
