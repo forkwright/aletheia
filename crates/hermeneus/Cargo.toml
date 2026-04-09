@@ -37,6 +37,15 @@ test-core = []
 test-full = []
 
 [dev-dependencies]
+criterion = { workspace = true }
 proptest = { workspace = true }
 tokio = { workspace = true }
 wiremock = { workspace = true }
+
+# WHY: complexity::score_complexity runs on every message to pick a tier,
+# and the concurrency limiter's acquire/release cycle wraps every provider
+# call. Regressions in either surface as latency in every streamed
+# completion, so both belong in CI-tracked microbenchmarks.
+[[bench]]
+name = "parser"
+harness = false
