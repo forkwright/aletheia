@@ -340,9 +340,15 @@ pub enum Msg {
     EditorScrollTree(usize),
 
     ShowError(String),
-    #[expect(dead_code, reason = "constructed by API event bridge, not yet wired")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "constructed by API event bridge, not yet wired")
+    )]
     ShowSuccess(String),
-    #[expect(dead_code, reason = "constructed by API event bridge, not yet wired")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "constructed by API event bridge, not yet wired")
+    )]
     DismissError,
 
     #[expect(dead_code, reason = "planned TUI feature")]
