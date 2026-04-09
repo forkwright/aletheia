@@ -233,17 +233,12 @@ mod tests {
     #[test]
     fn random_level_distribution_is_non_empty_over_many_samples() {
         let m = 20;
-        #[expect(
-            clippy::cast_precision_loss,
-            reason = "i64 to f64: precision loss acceptable"
-        )]
         let mult = 1. / (m as f64).ln();
         let mut rng = rand::rng();
         let mut collected = BTreeMap::new();
         for _ in 0..10000 {
             let uniform_num: f64 = rng.random_range(0.0..1.0);
             let r = -uniform_num.ln() * mult;
-            #[expect(clippy::cast_possible_wrap, reason = "value fits i64")]
             let level = -(r.floor() as i64);
             collected.entry(level).and_modify(|x| *x += 1).or_insert(1);
         }
@@ -254,7 +249,6 @@ mod tests {
     fn hnsw_cache_eviction() {
         let mut cache = VectorCache::new(HnswDistance::L2, 10);
         for i in 0..20u8 {
-            #[expect(clippy::cast_possible_wrap, reason = "value fits i64")]
             let key = (vec![DataValue::from(i as i64)], 0, -1);
             let vec = Vector::F64(ndarray::Array1::zeros(4));
             cache.insert(key, vec);
@@ -266,13 +260,11 @@ mod tests {
     fn hnsw_cache_retains_recent() {
         let mut cache = VectorCache::new(HnswDistance::L2, 5);
         for i in 0..10u8 {
-            #[expect(clippy::cast_possible_wrap, reason = "value fits i64")]
             let key = (vec![DataValue::from(i as i64)], 0, -1);
             let vec = Vector::F64(ndarray::Array1::zeros(4));
             cache.insert(key, vec);
         }
         for i in 5..10u8 {
-            #[expect(clippy::cast_possible_wrap, reason = "value fits i64")]
             let key = (vec![DataValue::from(i as i64)], 0, -1);
             assert!(
                 cache.cache.contains(&key),
@@ -280,7 +272,6 @@ mod tests {
             );
         }
         for i in 0..5u8 {
-            #[expect(clippy::cast_possible_wrap, reason = "value fits i64")]
             let key = (vec![DataValue::from(i as i64)], 0, -1);
             assert!(!cache.cache.contains(&key), "old key {i} should be evicted");
         }
@@ -336,10 +327,6 @@ mod tests {
         )
         .unwrap();
         for i in 0..20 {
-            #[expect(
-                clippy::cast_possible_truncation,
-                reason = "f64 to f32: intentional precision reduction"
-            )]
             let val = i as f32;
             db.run_default(&format!(
                 "?[id, vec] <- [[{i}, vec([{val}, {val}, {val}, {val}])]] :put vectors {{}}"
@@ -406,10 +393,6 @@ mod tests {
         )
         .unwrap();
         for i in 0..10 {
-            #[expect(
-                clippy::cast_possible_truncation,
-                reason = "f64 to f32: intentional precision reduction"
-            )]
             let val = i as f32;
             db.run_default(&format!(
                 "?[id, vec] <- [[{i}, vec([{val}, {val}, {val}, {val}])]] :put vectors {{}}"
@@ -447,10 +430,6 @@ mod tests {
         )
         .unwrap();
         for i in 0..50 {
-            #[expect(
-                clippy::cast_possible_truncation,
-                reason = "f64 to f32: intentional precision reduction"
-            )]
             let val = i as f32;
             db.run_default(&format!(
                 "?[id, vec] <- [[{i}, vec([{val}, 0.0, 0.0, 0.0])]] :put vectors {{}}"

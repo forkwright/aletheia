@@ -704,7 +704,6 @@ fn test_bit_and() {
     );
 
     let m_bit_and_aggr = aggr.meet_op.expect("test assertion");
-    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
     let mut v = DataValue::Bytes(vec![0b11100]);
     m_bit_and_aggr
         .update(&mut v, &DataValue::Bytes(vec![0b01011]))
@@ -731,7 +730,6 @@ fn test_bit_or() {
     );
 
     let m_bit_or_aggr = aggr.meet_op.expect("test assertion");
-    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
     let mut v = DataValue::Bytes(vec![0b11100]);
     m_bit_or_aggr
         .update(&mut v, &DataValue::Bytes(vec![0b01011]))

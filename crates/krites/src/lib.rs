@@ -482,7 +482,6 @@ mod db_cache_tests {
             .unwrap_or_else(|_| unreachable!())
             .with_cache(NonZeroUsize::new(16).unwrap_or_else(|| unreachable!()));
 
-        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let script = "?[x] := x = 1";
         let _ = db.run(script, BTreeMap::new(), ScriptMutability::Immutable);
         let _ = db.run(script, BTreeMap::new(), ScriptMutability::Immutable);
