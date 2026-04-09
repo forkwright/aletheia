@@ -63,6 +63,15 @@ impl Uuid {
                         .ok_or(UuidParseError)?
                         .try_into()
                         .expect("hex digit 0-15 always fits in u8");
+                    // WHY: `byte_idx` only increments inside this branch, and
+                    // this branch runs for the 32 hex chars in a 36-char UUID
+                    // (positions 0-7, 9-12, 14-17, 19-22, 24-35). So byte_idx
+                    // ranges 0..32 and `byte_idx / 2` ranges 0..16 — exactly
+                    // the bounds of `bytes: [u8; 16]`. Safe by construction.
+                    #[expect(
+                        clippy::indexing_slicing,
+                        reason = "byte_idx in 0..32; byte_idx/2 in 0..16; bytes is [u8; 16]"
+                    )]
                     if byte_idx % 2 == 0 {
                         bytes[byte_idx / 2] = nibble << 4;
                     } else {
