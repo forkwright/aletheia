@@ -100,7 +100,7 @@ async fn spec_note_executor_passes() {
     );
 }
 
-/// Validates that a ToolExecutorSpec correctly flags an error-only executor.
+/// Validates that a `ToolExecutorSpec` correctly flags an error-only executor.
 ///
 /// An executor that always returns `ToolResult::error(...)` must be flagged
 /// on the `success-result-not-marked-error` check.
@@ -124,7 +124,7 @@ async fn spec_detects_always_error_executor() {
     );
 }
 
-/// Validates that call_count tracking works across spec validation runs.
+/// Validates that `call_count` tracking works across spec validation runs.
 #[tokio::test]
 async fn spec_validation_drives_multiple_calls() {
     let executor = MockToolExecutor::text("hi");

@@ -137,10 +137,6 @@ impl ToolExecutor for ComputerUseExecutor {
     }
 }
 
-#[expect(
-    clippy::expect_used,
-    reason = "ToolName::new() with static string literal is infallible"
-)]
 fn computer_use_def() -> ToolDef {
     ToolDef {
         name: ToolName::from_static("computer_use"), // kanon:ignore RUST/expect

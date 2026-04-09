@@ -456,6 +456,10 @@ impl Iterator for CollectedSkipIterator {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions on collections with known length"
+)]
 mod tests {
     use std::collections::BTreeMap;
 
