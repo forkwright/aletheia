@@ -54,6 +54,17 @@ static CRON_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
     .expect("metric registration")
 });
 
+static BACKGROUND_TASK_FAILURES_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    register_int_counter_vec!(
+        Opts::new(
+            "aletheia_background_task_failures_total",
+            "Total background task failures (self-prompt, gc, etc.)"
+        ),
+        &["nous_id", "task_type"]
+    )
+    .expect("metric registration")
+});
+
 #[expect(dead_code, reason = "metric init called from server startup")]
 /// Force-initialize all lazy metric statics.
 pub(crate) fn init() {
@@ -61,6 +72,7 @@ pub(crate) fn init() {
     LazyLock::force(&WATCHDOG_HUNG_PROCESSES);
     LazyLock::force(&CRON_EXECUTIONS_TOTAL);
     LazyLock::force(&CRON_DURATION_SECONDS);
+    LazyLock::force(&BACKGROUND_TASK_FAILURES_TOTAL);
 }
 
 /// Record a watchdog process restart.
@@ -86,6 +98,16 @@ pub(crate) fn record_cron_execution(task_name: &str, duration_secs: f64, success
         .observe(duration_secs);
 }
 
+/// Record a background task failure.
+///
+/// WHY: Background task failures are silent data loss. This counter
+/// surfaces the failure rate for alerting. Closes #2724.
+pub(crate) fn record_background_failure(nous_id: &str, task_type: &str) {
+    BACKGROUND_TASK_FAILURES_TOTAL
+        .with_label_values(&[nous_id, task_type])
+        .inc();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -98,6 +120,7 @@ mod tests {
         let _ = WATCHDOG_HUNG_PROCESSES.get();
         let _ = CRON_EXECUTIONS_TOTAL.with_label_values(&["test", "ok"]).get();
         let _ = CRON_DURATION_SECONDS.with_label_values(&["test"]).get_sample_count();
+        let _ = BACKGROUND_TASK_FAILURES_TOTAL.with_label_values(&["test", "self_prompt"]).get();
     }
 
     #[test]
@@ -187,6 +210,62 @@ mod tests {
                 .get_sample_count(),
             hist_before + 2,
             "histogram should have 2 samples"
+        );
+    }
+
+    #[test]
+    fn record_background_failure_increments_counter() {
+        let nous_id = "test-nous";
+        let task_type = "self_prompt";
+        let before = BACKGROUND_TASK_FAILURES_TOTAL
+            .with_label_values(&[nous_id, task_type])
+            .get();
+
+        record_background_failure(nous_id, task_type);
+        assert_eq!(
+            BACKGROUND_TASK_FAILURES_TOTAL
+                .with_label_values(&[nous_id, task_type])
+                .get(),
+            before + 1,
+            "failure counter should increment by 1"
+        );
+
+        record_background_failure(nous_id, task_type);
+        assert_eq!(
+            BACKGROUND_TASK_FAILURES_TOTAL
+                .with_label_values(&[nous_id, task_type])
+                .get(),
+            before + 2,
+            "failure counter should be cumulative"
+        );
+    }
+
+    #[test]
+    fn record_background_failure_different_task_types() {
+        let nous_id = "test-nous";
+        let before_prompt = BACKGROUND_TASK_FAILURES_TOTAL
+            .with_label_values(&[nous_id, "self_prompt"])
+            .get();
+        let before_gc = BACKGROUND_TASK_FAILURES_TOTAL
+            .with_label_values(&[nous_id, "gc"])
+            .get();
+
+        record_background_failure(nous_id, "self_prompt");
+        record_background_failure(nous_id, "gc");
+
+        assert_eq!(
+            BACKGROUND_TASK_FAILURES_TOTAL
+                .with_label_values(&[nous_id, "self_prompt"])
+                .get(),
+            before_prompt + 1,
+            "self_prompt counter should increment"
+        );
+        assert_eq!(
+            BACKGROUND_TASK_FAILURES_TOTAL
+                .with_label_values(&[nous_id, "gc"])
+                .get(),
+            before_gc + 1,
+            "gc counter should increment"
         );
     }
 }
