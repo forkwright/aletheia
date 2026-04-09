@@ -74,13 +74,13 @@ pub async fn check(State(state): State<HealthState>) -> impl IntoResponse {
     });
 
     // Check provider reachability via health tracker
-    checks.push(check_provider_reachability(&state).await);
+    checks.push(check_provider_reachability(&state));
 
     // Check config readability
     checks.push(check_config_readable(&state).await);
 
     // Check credential validity
-    checks.push(check_credential_validity(&state).await);
+    checks.push(check_credential_validity(&state));
 
     // Check storage writability
     checks.push(check_storage_writable(&state).await);
@@ -112,7 +112,7 @@ pub async fn check(State(state): State<HealthState>) -> impl IntoResponse {
 }
 
 /// Check LLM provider connectivity by querying the provider registry health.
-async fn check_provider_reachability(state: &HealthState) -> HealthCheck {
+fn check_provider_reachability(state: &HealthState) -> HealthCheck {
     let providers = state.provider_registry.providers();
     if providers.is_empty() {
         return HealthCheck {
@@ -172,7 +172,7 @@ async fn check_config_readable(state: &HealthState) -> HealthCheck {
     };
 
     match tokio::fs::metadata(&config_path).await {
-        Ok(metadata) => {
+        Ok(_metadata) => {
             if std::fs::metadata(&config_path).map(|m| m.is_file()).unwrap_or(false) {
                 // Also verify we can read the current config in memory
                 let _config = state.config.read().await;
@@ -206,8 +206,13 @@ async fn check_config_readable(state: &HealthState) -> HealthCheck {
     }
 }
 
+/// Allowed clock skew between the local clock and the JWT issuer.
+const CLOCK_SKEW_LEEWAY: u64 = 30;
+/// Warn when an OAuth token expires within this many seconds (1 hour).
+const EXPIRY_WARNING_THRESHOLD: u64 = 3600;
+
 /// Check credential validity (presence and expiry).
-async fn check_credential_validity(_state: &HealthState) -> HealthCheck {
+fn check_credential_validity(state: &HealthState) -> HealthCheck {
     // Check for API key in environment
     let env_key = match std::env::var("ANTHROPIC_API_KEY") {
         Ok(key) => Some(key),
@@ -235,8 +240,6 @@ async fn check_credential_validity(_state: &HealthState) -> HealthCheck {
                     .unwrap_or_default()
                     .as_secs();
 
-                const CLOCK_SKEW_LEEWAY: u64 = 30;
-
                 if exp_secs + CLOCK_SKEW_LEEWAY < now_secs {
                     return HealthCheck {
                         name: "credential_validity",
@@ -246,7 +249,6 @@ async fn check_credential_validity(_state: &HealthState) -> HealthCheck {
                 }
 
                 // Check if expiring soon (within 1 hour)
-                const EXPIRY_WARNING_THRESHOLD: u64 = 3600;
                 if exp_secs + CLOCK_SKEW_LEEWAY + EXPIRY_WARNING_THRESHOLD < now_secs {
                     return HealthCheck {
                         name: "credential_validity",
@@ -265,7 +267,7 @@ async fn check_credential_validity(_state: &HealthState) -> HealthCheck {
     }
 
     // Check for credentials file
-    let creds_dir = _state.oikos.credentials();
+    let creds_dir = state.oikos.credentials();
     let cred_file = creds_dir.join("anthropic.json");
 
     match aletheia_symbolon::credential::CredentialFile::load(&cred_file) {
@@ -356,7 +358,7 @@ fn decode_jwt_exp(token: &str) -> Option<u64> {
     let payload = base64url_decode(payload_b64).ok()?;
     let json: serde_json::Value = serde_json::from_slice(&payload).ok()?;
 
-    json.get("exp").and_then(|v| v.as_u64())
+    json.get("exp").and_then(serde_json::Value::as_u64)
 }
 
 /// Decode base64url-encoded string (no padding required).
@@ -375,7 +377,8 @@ fn base64url_decode(s: &str) -> Result<Vec<u8>, ()> {
 
     let bytes = s.as_bytes();
     let end = bytes.iter().rposition(|&b| b != b'=').map_or(0, |i| i + 1);
-    let bytes = &bytes[..end];
+    // SAFETY: end <= bytes.len() by construction from rposition's return value.
+    let bytes = bytes.get(..end).unwrap_or(bytes);
 
     let mut out = Vec::with_capacity(bytes.len() * 6 / 8 + 1);
     let mut buf: u32 = 0;

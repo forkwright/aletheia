@@ -477,11 +477,11 @@ pub struct GraphCheckReport {
 pub async fn check_graph_health(
     State(state): State<KnowledgeState>,
 ) -> impl axum::response::IntoResponse {
-    use axum::http::StatusCode;
     use axum::response::IntoResponse as _;
 
     #[cfg(feature = "knowledge-store")]
     {
+        use axum::http::StatusCode;
         if let Some(ref store) = state.knowledge_store {
             let report = build_graph_check_report(store);
             return match report {

@@ -438,7 +438,7 @@ pub async fn rename(
 
 /// Maximum session name length in bytes.
 const MAX_SESSION_NAME_LEN: usize = 255;
-/// Maximum identifier field size (nous_id, session_key).
+/// Maximum identifier field size (`nous_id`, `session_key`).
 const MAX_IDENTIFIER_BYTES: usize = 256;
 
 /// Maximum number of messages returnable per history request.

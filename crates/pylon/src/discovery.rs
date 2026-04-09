@@ -114,10 +114,10 @@ pub async fn write_discovery_file(
 /// Cancel-safe. File removal is atomic; no partial state on cancellation.
 pub async fn remove_discovery_file(data_dir: &Path) {
     let path = data_dir.join(DISCOVERY_FILE);
-    if let Err(e) = tokio::fs::remove_file(&path).await {
-        if e.kind() != std::io::ErrorKind::NotFound {
-            warn!(path = %path.display(), error = %e, "failed to remove discovery file");
-        }
+    if let Err(e) = tokio::fs::remove_file(&path).await
+        && e.kind() != std::io::ErrorKind::NotFound
+    {
+        warn!(path = %path.display(), error = %e, "failed to remove discovery file");
     }
 }
 
