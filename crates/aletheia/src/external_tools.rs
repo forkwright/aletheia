@@ -5,7 +5,7 @@
 //! that forwards tool calls to the configured endpoint.
 //!
 //! WHY: Different deployments have different MCP servers available.  A menos
-//! instance has Semantic Scholar + PubMed + kanon-mcp.  A verda instance has
+//! instance has Semantic Scholar + `PubMed` + kanon-mcp.  A verda instance has
 //! none.  This module lets operators declare available tools per-deployment
 //! without hardcoded tool assumptions.
 
@@ -118,9 +118,8 @@ pub(crate) struct ToolManifestEntry {
 #[must_use]
 pub(crate) fn load_tools_config(oikos: &Oikos) -> ExternalToolsConfig {
     let toml_path = oikos.config().join("aletheia.toml");
-    let content = match std::fs::read_to_string(&toml_path) {
-        Ok(c) => c,
-        Err(_) => return ExternalToolsConfig::default(),
+    let Ok(content) = std::fs::read_to_string(&toml_path) else {
+        return ExternalToolsConfig::default();
     };
 
     // WHY: parse the full TOML and extract only the [tools] table rather than
@@ -161,7 +160,7 @@ pub(crate) fn load_tools_config(oikos: &Oikos) -> ExternalToolsConfig {
 pub(crate) fn register_external_tools(
     config: &ExternalToolsConfig,
     registry: &mut ToolRegistry,
-    http_client: reqwest::Client,
+    http_client: &reqwest::Client,
 ) -> ToolManifest {
     let mut manifest = ToolManifest {
         required: Vec::new(),
@@ -171,12 +170,12 @@ pub(crate) fn register_external_tools(
     // WHY: process required tools first so startup warnings about missing
     // required tools appear before optional tool info.
     for (name, entry) in &config.required {
-        let result = register_single_tool(name, entry, registry, &http_client);
+        let result = register_single_tool(name, entry, registry, http_client);
         manifest.required.push(result);
     }
 
     for (name, entry) in &config.optional {
-        let result = register_single_tool(name, entry, registry, &http_client);
+        let result = register_single_tool(name, entry, registry, http_client);
         manifest.optional.push(result);
     }
 
@@ -210,17 +209,14 @@ fn register_single_tool(
         };
     }
 
-    let endpoint = match &entry.endpoint {
-        Some(ep) => ep.clone(),
-        None => {
-            warn!(tool = name, "external tool has no endpoint configured");
-            return ToolManifestEntry {
-                name: name.to_owned(),
-                kind: entry.kind,
-                available: false,
-                description,
-            };
-        }
+    let Some(endpoint) = entry.endpoint.clone() else {
+        warn!(tool = name, "external tool has no endpoint configured");
+        return ToolManifestEntry {
+            name: name.to_owned(),
+            kind: entry.kind,
+            available: false,
+            description,
+        };
     };
 
     let tool_name = match ToolName::new(name) {
@@ -364,6 +360,7 @@ impl ToolExecutor for ExternalToolExecutor {
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 
@@ -510,7 +507,7 @@ no_endpoint = { type = "mcp" }
         let mut registry = ToolRegistry::new();
         let client = reqwest::Client::new();
 
-        let manifest = register_external_tools(&config, &mut registry, client);
+        let manifest = register_external_tools(&config, &mut registry, &client);
 
         // NOTE: file_ops is builtin but not registered in empty registry → unavailable
         assert_eq!(manifest.required.len(), 1);

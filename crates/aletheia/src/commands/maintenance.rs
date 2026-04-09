@@ -6,8 +6,8 @@ use clap::Subcommand;
 use snafu::prelude::*;
 
 use aletheia_oikonomos::maintenance::{
-    DbMonitor, DbMonitoringConfig, DriftDetectionConfig, DriftDetector, MaintenanceConfig,
-    TraceRotationConfig, TraceRotator,
+    AutoDreamConfig, DbMonitor, DbMonitoringConfig, DriftDetectionConfig, DriftDetector,
+    MaintenanceConfig, ProposeRulesConfig, TraceRotationConfig, TraceRotator,
 };
 use aletheia_oikonomos::runner::TaskRunner;
 use aletheia_taxis::loader::load_config;
@@ -188,9 +188,9 @@ pub(crate) fn build_config(
         },
         knowledge_maintenance: aletheia_oikonomos::maintenance::KnowledgeMaintenanceConfig {
             enabled: settings.knowledge_maintenance_enabled,
-            auto_dream: Default::default(),
+            auto_dream: AutoDreamConfig::default(),
         },
-        propose_rules: Default::default(),
+        propose_rules: ProposeRulesConfig::default(),
         cron: aletheia_oikonomos::cron::CronConfig {
             evolution: aletheia_oikonomos::cron::CronEvolutionConfig {
                 enabled: settings.cron_tasks.evolution.enabled,

@@ -43,7 +43,7 @@ pub(crate) trait RecallSource: Send + Sync {
     ) -> Pin<Box<dyn Future<Output = Result<Vec<SourceResult>, RecallSourceError>> + Send + 'a>>;
 
     /// Identifier for this source type (e.g., `"academic"`, `"llm_context"`).
-    fn source_type(&self) -> &str;
+    fn source_type(&self) -> &'static str;
 
     /// Whether the source is currently available for queries.
     fn available(&self) -> bool;
@@ -141,6 +141,7 @@ impl RecallSourceRegistry {
 }
 
 #[cfg(test)]
+#[expect(clippy::indexing_slicing, reason = "test data has known structure")]
 mod tests {
     use super::*;
 
@@ -162,7 +163,7 @@ mod tests {
             Box::pin(async move { Ok(results) })
         }
 
-        fn source_type(&self) -> &str {
+        fn source_type(&self) -> &'static str {
             self.type_name
         }
 

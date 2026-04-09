@@ -63,10 +63,6 @@ struct CorpusEntry {
 
 /// Parse a corpus JSONL file into `(id, text)` pairs.
 fn load_corpus(path: &std::path::Path) -> Result<Vec<(String, String)>> {
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "synchronous filesystem I/O is correct here; eval-embeddings runs outside the async runtime"
-    )]
     let contents = std::fs::read_to_string(path)
         .whatever_context(format!("cannot read corpus file: {}", path.display()))?;
 
@@ -204,7 +200,7 @@ fn print_table(run: &aletheia_mneme::embedding_eval::EvalRunResult) {
 }
 
 /// Entry point for the `eval-embeddings` subcommand.
-pub(crate) fn run(args: EvalEmbeddingsArgs) -> Result<()> {
+pub(crate) fn run(args: &EvalEmbeddingsArgs) -> Result<()> {
     use aletheia_mneme::embedding::{EmbeddingConfig, create_provider};
     use aletheia_mneme::embedding_eval::{EvalDataset, compare_models};
 
