@@ -110,7 +110,6 @@ pub struct HealthReport {
 /// # Errors
 ///
 /// Returns `Error::Store` if any underlying store read fails.
-#[must_use]
 pub fn compute_health_report(store: &EnergeiaStore, window_days: u32) -> Result<HealthReport> {
     let now = jiff::Timestamp::now();
 
