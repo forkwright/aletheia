@@ -5,7 +5,6 @@
 
 use aletheia_mneme::store::SessionStore;
 use aletheia_mneme::types::Role;
-use std::sync::Arc;
 
 use aletheia_nous::config::NousConfig;
 use aletheia_nous::session::{SessionManager, SessionState};
