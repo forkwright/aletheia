@@ -45,3 +45,36 @@ Anthropic LLM client with streaming, retries, fallback, health tracking, and cos
 
 Uses: koina, taxis, reqwest, serde_json, tokio, snafu, tracing
 Used by: nous, pylon, organon, melete
+
+## Observability
+
+### Metrics (Prometheus)
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `aletheia_llm_tokens_total` | Counter | `provider`, `direction` | Total tokens consumed (input/output) |
+| `aletheia_llm_cost_total` | Counter | `provider` | Total cost in USD |
+| `aletheia_llm_requests_total` | Counter | `provider`, `status` | Total API requests (ok/error) |
+| `aletheia_llm_cache_tokens_total` | Counter | `provider`, `direction` | Cache tokens read/written |
+| `aletheia_llm_request_duration_seconds` | Histogram | `model`, `status` | Request latency (buckets: 0.1s to 120s) |
+| `aletheia_llm_ttft_seconds` | Histogram | `model`, `status` | Time to first token for streaming (buckets: 0.05s to 10s) |
+| `aletheia_llm_circuit_breaker_transitions_total` | Counter | `provider`, `from`, `to` | Circuit breaker state changes |
+| `aletheia_llm_concurrency_limit` | Gauge | `provider` | Current adaptive concurrency limit |
+| `aletheia_llm_concurrency_latency_ewma_seconds` | Gauge | `provider` | EWMA latency for adaptive limiter |
+| `aletheia_llm_concurrency_in_flight` | Gauge | `provider` | In-flight request count |
+
+### Spans
+
+_No `#[instrument]` spans in this crate. Span creation is delegated to callers (typically via `tracing::info_span!` in parent crates)._
+
+### Log Events
+
+| Level | Event | When |
+|-------|-------|------|
+| `warn` | `circuit-breaker open; streaming request rejected` | Request blocked by circuit breaker |
+| `warn` | `streaming retry abandoned after content started` | Non-retryable error mid-stream |
+| `warn` | `SSE stream returned retryable error before content` | Pre-content retryable failure |
+| `warn` | `no pricing configured for model; cost reported as 0` | Missing pricing config for model |
+| `warn` | `fallback chain exhausted` | All fallback models failed |
+| `error` | `SSE error after content started streaming — cannot retry` | Unrecoverable mid-stream error |
+| `info` | `complexity limiter recommendation` | Token complexity analysis results |

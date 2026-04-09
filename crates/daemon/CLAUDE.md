@@ -51,3 +51,37 @@ Per-nous background task runner: cron scheduling, maintenance services, prosoche
 
 Uses: koina, chrono, cron, jiff, rusqlite, tokio, snafu, tracing
 Used by: aletheia (binary)
+
+## Observability
+
+### Metrics (Prometheus)
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `aletheia_watchdog_restarts_total` | Counter | `process_id` | Watchdog-initiated process restarts |
+| `aletheia_watchdog_hung_processes` | Gauge | - | Number of processes currently detected as hung |
+| `aletheia_cron_executions_total` | Counter | `task_name`, `status` | Cron task executions (ok/error) |
+| `aletheia_cron_duration_seconds` | Histogram | `task_name` | Cron task duration (buckets: 0.1s to 600s) |
+
+### Spans
+
+_No `#[instrument]` spans in this crate. Spans created via `tracing::info_span!` at task spawn points._
+
+### Log Events
+
+| Level | Event | When |
+|-------|-------|------|
+| `info` | `daemon started` | TaskRunner initialization with task count |
+| `info` | `daemon shutting down` | Graceful shutdown initiated |
+| `info` | `watchdog: registered process` | New process added to health monitoring |
+| `info` | `watchdog: process heartbeat resumed` | Previously hung process recovered |
+| `info` | `task scheduled` | Cron/interval task registered |
+| `info` | `task completed` | Task execution finished successfully |
+| `info` | `task state restored FROM SQLite` | Persistence recovery on startup |
+| `warn` | `watchdog: process missed heartbeat` | Heartbeat timeout detected |
+| `warn` | `watchdog: restart loop detected` | Rapid restart threshold exceeded |
+| `warn` | `task execution failed` | Task error with retry scheduled |
+| `warn` | `task execution skipped — no executor configured` | Missing handler for task type |
+| `warn` | `retention execution failed` | Data cleanup task error |
+| `error` | `watchdog: failed to restart process` | Restart command failure |
+| `error` | `task panicked` | Spawned task panic caught |

@@ -68,3 +68,42 @@ Session persistence layer: SQLite-backed session/message store with backup, migr
 
 Uses: eidos, koina, rusqlite, jiff, snafu, tracing
 Used by: mneme (facade re-export), episteme
+
+## Observability
+
+### Metrics (Prometheus)
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `aletheia_sessions_total` | Counter | `nous_id`, `session_type` | Total sessions created (primary/background/ephemeral) |
+| `aletheia_backup_duration_seconds` | Histogram | `status` | Database backup duration (buckets: 0.1s to 300s) |
+
+### Spans
+
+| Span | Location | Fields |
+|------|----------|--------|
+| `SessionStore::open` | `store/mod.rs` | - |
+| `SessionStore::open_with_recovery` | `store/mod.rs` | `path` |
+| `SessionStore::session_create` | `store/session.rs` | - |
+| `SessionStore::session_get` | `store/session.rs` | - |
+| `SessionStore::session_list` | `store/session.rs` | - |
+| `SessionStore::message_append` | `store/message.rs` | `content` (length) |
+| `SessionStore::message_get_range` | `store/message.rs` | - |
+| `SessionStore::message_distill` | `store/message.rs` | `seqs` (count) |
+| `BackupManager::backup` | `backup.rs` | `backup_dir` |
+| `BackupManager::restore` | `backup.rs` | - |
+| `retention_apply` | `retention.rs` | - |
+| `import_agent_file` | `import.rs` | `agent_file` |
+| `export_sessions` | `export.rs` | - |
+
+### Log Events
+
+| Level | Event | When |
+|-------|-------|------|
+| `info` | `database integrity check passed` | Store open verification success |
+| `info` | `backup completed` | VACUUM INTO or export finished |
+| `info` | `migration applied` | Schema migration executed |
+| `warn` | `database integrity check failed` | Corruption detected, attempting recovery |
+| `warn` | `falling back to read-only mode` | Unrecoverable corruption - read-only fallback |
+| `warn` | `backup path contains dangerous characters` | Path validation failure |
+| `error` | `backup failed` | VACUUM INTO or export error |

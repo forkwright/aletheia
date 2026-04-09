@@ -54,3 +54,47 @@ Agent session pipeline: bootstrap, recall, execute, finalize. 22K lines. The age
 
 Uses: koina, taxis, mneme, hermeneus, organon, melete, thesauros, tokio, snafu
 Used by: pylon, aletheia (binary)
+
+## Observability
+
+### Metrics (Prometheus)
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `aletheia_pipeline_turns_total` | Counter | `nous_id` | Total pipeline turns processed |
+| `aletheia_pipeline_stage_duration_seconds` | Histogram | `nous_id`, `stage` | Pipeline stage duration in seconds (buckets: 0.001s to 60s) |
+| `aletheia_pipeline_errors_total` | Counter | `nous_id`, `stage`, `error_type` | Total pipeline errors by stage |
+| `aletheia_cache_read_tokens_total` | Counter | `nous_id` | Tokens read from prompt cache (cache hits) |
+| `aletheia_cache_creation_tokens_total` | Counter | `nous_id` | Tokens written to prompt cache (cache misses) |
+| `aletheia_background_task_failures_total` | Counter | `nous_id`, `task_type` | Background task failures (extraction, distillation, skill analysis) |
+
+### Spans
+
+| Span | Location | Fields |
+|------|----------|--------|
+| `nous_actor` | `actor/spawn.rs` | `nous.id` |
+| `handle_turn` | `actor/mod.rs` | - |
+| `pipeline::run` | `pipeline/mod.rs` | `nous_id`, `session_id`, `task_hint` |
+| `pipeline::resume` | `pipeline/mod.rs` | `nous_id` |
+| `pipeline::finalize` | `pipeline/mod.rs` | `nous_id` |
+| `execute_turn` | `execute/mod.rs` | `nous_id`, `session_id` |
+| `execute_parallel` | `execute/mod.rs` | `nous_id`, `session_id` |
+| `session_finalize` | `finalize.rs` | `session_id` |
+| `recall` | `recall/mod.rs` | `nous_id` |
+| `run_tool` | `instinct.rs` | `tool` |
+| `run_tool_batch` | `instinct.rs` | `nous_id`, `tool_count` |
+| `cross_router` | `cross/router.rs` | `msg_id`, `from`, `to` |
+| `cross_router_deliver` | `cross/router.rs` | `msg_id`, `from`, `to` |
+| `cross_router_handle_reply` | `cross/router.rs` | `in_reply_to`, `from` |
+
+### Log Events
+
+| Level | Event | When |
+|-------|-------|------|
+| `info` | `turn_completed` | Pipeline turn completes successfully |
+| `info` | `nous_actor started` | Actor spawn with ID |
+| `info` | `nous_actor stopped` | Actor shutdown complete |
+| `warn` | `actor did not drain within timeout` | Actor restart with potential concurrent store access |
+| `warn` | `recall stage failed, continuing without recalled knowledge` | Non-fatal recall failure |
+| `warn` | `training capture initialization failed` | Metrics/training data capture error |
+| `error` | `turn failed` | Pipeline execution error with details |
