@@ -210,6 +210,7 @@ impl TrainingCapture {
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(clippy::indexing_slicing, reason = "test assertions on a known-length collection")]
 mod tests {
     use super::*;
 
