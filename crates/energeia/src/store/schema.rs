@@ -1,9 +1,12 @@
 // WHY: encoding primitives are building blocks — some are only consumed by
 // tests or by cfg(feature = "storage-fjall") query code today, but all will
 // be needed as the store API surface grows.
-#![expect(
-    dead_code,
-    reason = "schema primitives used across feature gates and tests"
+#![cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "schema primitives used across feature gates and tests"
+    )
 )]
 
 //! Key encoding and decoding for energeia's fjall key-value schema.
