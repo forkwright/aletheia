@@ -93,7 +93,7 @@ pub type Result<T, E = RuleProposalError> = std::result::Result<T, E>;
 /// Proposals are operator/nous inputs — never auto-applied.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuleProposal {
-    /// Short snake_case rule name, suitable for use as a basanos rule key.
+    /// Short `snake_case` rule name, suitable for use as a basanos rule key.
     pub rule_name: String,
 
     /// Human-readable description of the pattern that was observed.
@@ -178,15 +178,10 @@ pub fn propose_rules(observations: &[ToolObservation]) -> Vec<RuleProposal> {
                 return None;
             }
 
-            #[expect(
-                clippy::cast_precision_loss,
-                clippy::as_conversions,
-                reason = "u32→f64: observation counts are small, within f64 precision"
-            )]
             let failure_rate =
                 f64::from(accum.failure_count) / f64::from(accum.total_count);
-            let count_f = accum.total_count as f64;
-            let min_obs_f = MIN_OBSERVATIONS as f64;
+            let count_f = f64::from(accum.total_count);
+            let min_obs_f = f64::from(MIN_OBSERVATIONS);
 
             // WHY: sqrt of (count / min_obs) weights confidence toward the minimum
             // threshold, preventing low-count patterns from inflating confidence.
@@ -262,12 +257,12 @@ pub fn write_proposals(
     observations_analyzed: usize,
     data_dir: &Path,
 ) -> Result<()> {
-    if let Some(parent) = data_dir.parent() {
-        if !parent.exists() {
-            std::fs::create_dir_all(parent).context(CreateDirSnafu {
-                path: parent.display().to_string(),
-            })?;
-        }
+    if let Some(parent) = data_dir.parent()
+        && !parent.exists()
+    {
+        std::fs::create_dir_all(parent).context(CreateDirSnafu {
+            path: parent.display().to_string(),
+        })?;
     }
 
     std::fs::create_dir_all(data_dir).context(CreateDirSnafu {
@@ -283,6 +278,12 @@ pub fn write_proposals(
     let toml_str = toml::to_string_pretty(&output).context(SerializeSnafu)?;
     let out_path = data_dir.join("rule_proposals.toml");
 
+    // SAFETY: synchronous filesystem write is correct here — propose_rules
+    // runs from a daemon spawn_blocking pool, not the async runtime.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "rule proposals are written from a sync daemon task"
+    )]
     std::fs::write(&out_path, toml_str.as_bytes()).context(WriteSnafu {
         path: out_path.display().to_string(),
     })?;
@@ -297,7 +298,7 @@ pub fn write_proposals(
     Ok(())
 }
 
-/// Convert a tool name to a safe snake_case identifier fragment.
+/// Convert a tool name to a safe `snake_case` identifier fragment.
 fn sanitize_tool_name(name: &str) -> String {
     name.to_lowercase()
         .chars()

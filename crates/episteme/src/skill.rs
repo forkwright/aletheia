@@ -117,7 +117,6 @@ impl std::fmt::Display for SkillParseError {
 ///
 /// Returns an error if the document is empty, missing a top-level heading,
 /// or has no description.
-#[must_use]
 pub fn parse_skill_md(source: &str, slug: &str) -> Result<SkillContent, SkillParseError> {
     let err = |reason: &str| SkillParseError {
         path: slug.to_owned(),
@@ -303,7 +302,6 @@ fn derive_domain_tags(slug: &str) -> Vec<String> {
 ///
 /// Returns an error if the directory cannot be read or if a skill file
 /// cannot be read.
-#[must_use]
 pub fn scan_skill_dir(dir: &std::path::Path) -> Result<Vec<(String, String)>, std::io::Error> {
     let mut skills = Vec::new();
 

@@ -133,10 +133,6 @@ impl EvalDataset {
     /// # Errors
     ///
     /// Returns [`EvalError::ParseFailed`] if reading or parsing fails.
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "synchronous filesystem I/O is correct here; eval runs outside the async runtime"
-    )]
     pub fn from_jsonl_file(path: &std::path::Path) -> EvalResult<Self> {
         let contents = std::fs::read_to_string(path).map_err(|e| {
             ParseFailedSnafu {
@@ -320,17 +316,15 @@ pub fn evaluate_model(
             .iter()
             .position(|id| relevant.contains(id.as_str()))
             .map(|pos| pos + 1); // 1-indexed
-        let rr = first_hit_rank
-            .map(|r| {
-                #[expect(
-                    clippy::cast_precision_loss,
-                    clippy::as_conversions,
-                    reason = "rank fits in f64 exactly for any realistic K"
-                )]
-                let rf = r as f64;
-                1.0 / rf
-            })
-            .unwrap_or(0.0);
+        let rr = first_hit_rank.map_or(0.0, |r| {
+            #[expect(
+                clippy::cast_precision_loss,
+                clippy::as_conversions,
+                reason = "rank fits in f64 exactly for any realistic K"
+            )]
+            let rf = r as f64;
+            1.0 / rf
+        });
         rr_sum += rr;
 
         per_query.push(QueryResult {
