@@ -213,11 +213,17 @@ macro_rules! impl_from_error {
     ($error_mod:path, |$err:ident| { $($arms:tt)* }) => {
         impl From<$error_mod> for ApiError {
             fn from($err: $error_mod) -> Self {
-                #[expect(clippy::enum_glob_use, reason = "scoped to From impl body for concise match arms")]
+                // WHY: `#[allow]` rather than `#[expect]` because each macro
+                // invocation has different match coverage — for some error
+                // types every variant is matched (catch-all unreachable), for
+                // others the catch-all is genuinely needed. `#[expect]`
+                // would fire `unfulfilled_lint_expectations` on the cases
+                // where the lint doesn't fire.
+                #[allow(clippy::enum_glob_use, reason = "scoped to From impl body for concise match arms")]
                 use $error_mod::*;
                 match $err {
                     $($arms)*
-                    #[expect(unreachable_patterns, reason = "catch-all after explicit arms")]
+                    #[allow(unreachable_patterns, reason = "catch-all after explicit arms")]
                     _ => InternalSnafu {
                         message: $err.to_string(),
                     }

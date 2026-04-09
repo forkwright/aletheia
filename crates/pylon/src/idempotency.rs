@@ -97,7 +97,7 @@ impl IdempotencyCache {
     ///
     /// # Complexity
     ///
-    /// O(1) for the HashMap lookup. O(k) for eviction of expired entries
+    /// O(1) for the `HashMap` lookup. O(k) for eviction of expired entries
     /// where k is the number of expired entries at the front of the LRU queue.
     pub(crate) fn check_or_insert(&self, key: &str) -> LookupResult {
         let mut inner = self.lock_inner();
