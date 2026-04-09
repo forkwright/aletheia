@@ -13,7 +13,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use tracing::{debug, warn};
+use tracing::{Instrument, debug, warn};
 
 use error::RecallSourceError;
 
@@ -92,30 +92,34 @@ impl RecallSourceRegistry {
 
             let source = Arc::clone(source);
             let query = query.to_owned();
-            handles.push(tokio::spawn(async move {
-                let source_type = source.source_type().to_owned();
-                match source.query(&query, limit_per_source).await {
-                    Ok(results) => {
-                        debug!(
-                            source_type = %source_type,
-                            count = results.len(),
-                            "recall source returned results"
-                        );
-                        results
-                            .into_iter()
-                            .map(|r| (source_type.clone(), r))
-                            .collect::<Vec<_>>()
-                    }
-                    Err(e) => {
-                        warn!(
-                            source_type = %source_type,
-                            error = %e,
-                            "recall source query failed, skipping"
-                        );
-                        Vec::new()
+            let source_type = source.source_type().to_owned();
+            let task_span = tracing::info_span!("recall_source_query", source_type = %source_type);
+            handles.push(tokio::spawn(
+                async move {
+                    match source.query(&query, limit_per_source).await {
+                        Ok(results) => {
+                            debug!(
+                                source_type = %source_type,
+                                count = results.len(),
+                                "recall source returned results"
+                            );
+                            results
+                                .into_iter()
+                                .map(|r| (source_type.clone(), r))
+                                .collect::<Vec<_>>()
+                        }
+                        Err(e) => {
+                            warn!(
+                                source_type = %source_type,
+                                error = %e,
+                                "recall source query failed, skipping"
+                            );
+                            Vec::new()
+                        }
                     }
                 }
-            }));
+                .instrument(task_span),
+            ));
         }
 
         let mut all_results = Vec::new();

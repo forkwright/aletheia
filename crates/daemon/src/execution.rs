@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use snafu::ResultExt;
+use tracing::Instrument;
 
 use crate::bridge::DaemonBridge;
 use crate::cron::{evolution, graph_cleanup, reflection};
@@ -141,11 +142,14 @@ pub(crate) async fn execute_builtin(
             let config = maintenance
                 .map(|m| m.trace_rotation.clone())
                 .unwrap_or_default();
-            let report = tokio::task::spawn_blocking(move || TraceRotator::new(config).rotate())
-                .await
-                .context(error::BlockingJoinSnafu {
-                    context: "trace rotation",
-                })??;
+            let report = tokio::task::spawn_blocking(move || {
+                let _span = tracing::info_span!("trace_rotation").entered();
+                TraceRotator::new(config).rotate()
+            })
+            .await
+            .context(error::BlockingJoinSnafu {
+                context: "trace rotation",
+            })??;
 
             tracing::info!(
                 rotated = report.files_rotated,
@@ -165,11 +169,14 @@ pub(crate) async fn execute_builtin(
             let config = maintenance
                 .map(|m| m.drift_detection.clone())
                 .unwrap_or_default();
-            let report = tokio::task::spawn_blocking(move || DriftDetector::new(config).check())
-                .await
-                .context(error::BlockingJoinSnafu {
-                    context: "drift detection",
-                })??;
+            let report = tokio::task::spawn_blocking(move || {
+                let _span = tracing::info_span!("drift_detection").entered();
+                DriftDetector::new(config).check()
+            })
+            .await
+            .context(error::BlockingJoinSnafu {
+                context: "drift detection",
+            })??;
 
             tracing::info!(
                 missing = report.missing_files.len(),
@@ -223,11 +230,14 @@ pub(crate) async fn execute_builtin(
             let config = maintenance
                 .map(|m| m.db_monitoring.clone())
                 .unwrap_or_default();
-            let report = tokio::task::spawn_blocking(move || DbMonitor::new(config).check())
-                .await
-                .context(error::BlockingJoinSnafu {
-                    context: "db size monitor",
-                })??;
+            let report = tokio::task::spawn_blocking(move || {
+                let _span = tracing::info_span!("db_size_monitor").entered();
+                DbMonitor::new(config).check()
+            })
+            .await
+            .context(error::BlockingJoinSnafu {
+                context: "db size monitor",
+            })??;
 
             let summary: Vec<String> = report
                 .databases
@@ -317,6 +327,7 @@ pub(crate) async fn execute_builtin(
                     root.join("data")
                 });
             tokio::task::spawn_blocking(move || {
+                let _span = tracing::info_span!("propose_rules").entered();
                 // WHY: no live observation stream is wired here yet.
                 // propose_rules operates on an empty slice, writing an empty
                 // (but valid) proposals file. Future work: wire a serialized
@@ -350,11 +361,14 @@ pub(crate) async fn execute_builtin(
                     output: Some("skipped — no executor".to_owned()),
                 });
             };
-            let summary = tokio::task::spawn_blocking(move || executor.execute_retention())
-                .await
-                .context(error::BlockingJoinSnafu {
-                    context: "retention execution",
-                })??;
+            let summary = tokio::task::spawn_blocking(move || {
+                let _span = tracing::info_span!("retention_execution").entered();
+                executor.execute_retention()
+            })
+            .await
+            .context(error::BlockingJoinSnafu {
+                context: "retention execution",
+            })??;
 
             tracing::info!(
                 sessions = summary.sessions_cleaned,

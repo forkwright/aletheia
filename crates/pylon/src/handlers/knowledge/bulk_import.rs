@@ -3,6 +3,7 @@
 use axum::Json;
 use axum::extract::State;
 use serde::{Deserialize, Serialize};
+use tracing::instrument;
 
 use aletheia_symbolon::types::Role;
 
@@ -61,6 +62,7 @@ pub struct ImportFactError {
 ///
 /// Cancel-safe. Axum handler; cancellation drops the future with no
 /// side effects beyond not returning a response.
+#[instrument(skip_all, fields(count = body.facts.len()))]
 pub async fn import_facts(
     State(state): State<KnowledgeState>,
     claims: Claims,

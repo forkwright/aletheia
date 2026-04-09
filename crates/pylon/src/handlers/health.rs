@@ -209,7 +209,13 @@ async fn check_config_readable(state: &HealthState) -> HealthCheck {
 /// Check credential validity (presence and expiry).
 async fn check_credential_validity(_state: &HealthState) -> HealthCheck {
     // Check for API key in environment
-    let env_key = std::env::var("ANTHROPIC_API_KEY").ok();
+    let env_key = match std::env::var("ANTHROPIC_API_KEY") {
+        Ok(key) => Some(key),
+        Err(e) => {
+            tracing::debug!(error = %e, "ANTHROPIC_API_KEY not set or unreadable");
+            None
+        }
+    };
 
     if let Some(key) = env_key {
         if key.is_empty() {

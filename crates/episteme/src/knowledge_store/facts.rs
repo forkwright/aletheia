@@ -537,6 +537,7 @@ impl KnowledgeStore {
     }
 
     /// Async `query_facts_temporal` wrapper.
+    #[instrument(skip(self))]
     pub async fn query_facts_temporal_async(
         self: &std::sync::Arc<Self>,
         nous_id: String,
@@ -553,6 +554,7 @@ impl KnowledgeStore {
     }
 
     /// Async `query_facts_diff` wrapper.
+    #[instrument(skip(self))]
     pub async fn query_facts_diff_async(
         self: &std::sync::Arc<Self>,
         nous_id: String,
