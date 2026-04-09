@@ -60,5 +60,5 @@ Tick ─────────────┘                                 
 
 ## Dependencies
 
-Uses: theatron-core, koina, ratatui, crossterm, tokio, reqwest, pulldown-cmark, syntect, clap, fuzzy-matcher
+Uses: theatron-core, koina, ratatui, crossterm, tokio, reqwest, pulldown-cmark, syntect, clap, internal fuzzy matcher
 Used by: aletheia (binary, feature-gated)

@@ -1,8 +1,6 @@
 /// Slash-command autocomplete update handlers.
-use fuzzy_matcher::FuzzyMatcher;
-use fuzzy_matcher::skim::SkimMatcherV2;
-
 use crate::app::App;
+use crate::fuzzy::FuzzyMatcher;
 use crate::command::COMMANDS;
 use crate::state::SlashSuggestion;
 
@@ -71,7 +69,7 @@ const MAX_SLASH_SUGGESTIONS: usize = 8;
 
 fn refresh_suggestions(app: &mut App) {
     let query = app.interaction.slash_complete.query.clone();
-    let matcher = SkimMatcherV2::default();
+    let matcher = FuzzyMatcher::new();
 
     let mut scored: Vec<(i64, SlashSuggestion)> = COMMANDS
         .iter()
@@ -87,16 +85,16 @@ fn refresh_suggestions(app: &mut App) {
                 ));
             }
             let mut best: Option<i64> = None;
-            if let Some(s) = matcher.fuzzy_match(cmd.name, &query) {
-                best = Some(s);
+            if let Some(result) = matcher.fuzzy_match(cmd.name, &query) {
+                best = Some(result.score);
             }
             for alias in cmd.aliases {
-                if let Some(s) = matcher.fuzzy_match(alias, &query) {
-                    best = best.map_or(Some(s), |p| Some(p.max(s)));
+                if let Some(result) = matcher.fuzzy_match(alias, &query) {
+                    best = best.map_or(Some(result.score), |p| Some(p.max(result.score)));
                 }
             }
-            if let Some(s) = matcher.fuzzy_match(cmd.description, &query) {
-                best = best.map_or(Some(s), |p| Some(p.max(s)));
+            if let Some(result) = matcher.fuzzy_match(cmd.description, &query) {
+                best = best.map_or(Some(result.score), |p| Some(p.max(result.score)));
             }
             best.map(|score| {
                 (
