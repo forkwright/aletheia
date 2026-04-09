@@ -185,7 +185,7 @@ sha2 = { version = "0.10", default-features = false }
 aes-gcm = "0.10"
 chacha20poly1305 = "0.10"
 rcgen = "0.14"
-regex = { version = "1", default-features = false, features = ["std", "perf"] }
+regex = { version = "1", default-features = false, features = ["std", "perf", "unicode-case", "unicode-perl"] }
 
 # Database
 rusqlite = { version = "0.38", features = ["bundled"] }
@@ -212,6 +212,10 @@ rand = "0.9"
 proptest = "1"
 tempfile = { version = "3", default-features = false }
 wiremock = { version = "0.6", default-features = false }
+# WHY: criterion provides statistical microbenchmarks with regression detection.
+# Used in `benches/` per crate. `default-features = false` strips rayon/plotters
+# (HTML reports) — we don't need plotting for CI-only runs and it cuts ~150 deps.
+criterion = { version = "0.7", default-features = false, features = ["cargo_bench_support"] }
 
 [profile.dev]
 opt-level = 1
