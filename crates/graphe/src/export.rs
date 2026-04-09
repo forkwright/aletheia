@@ -53,6 +53,12 @@ impl Default for ExportOptions {
 /// The caller resolves paths and config from Oikos/taxis, then passes
 /// simple types here: mneme never touches taxis.
 ///
+/// # Complexity
+///
+/// O(s × m + f) where s is the number of sessions, m is the average
+/// number of messages per session, and f is the number of files in the
+/// workspace.
+///
 /// # Errors
 ///
 /// Returns an error if session store queries or workspace I/O fails.
@@ -114,6 +120,10 @@ pub fn export_agent(
 }
 
 /// Scan a workspace directory, classifying files as text or binary.
+///
+/// # Complexity
+///
+/// O(f) where f is the number of files in the workspace directory tree.
 fn scan_workspace(workspace_path: &Path) -> Result<WorkspaceData> {
     let mut files = HashMap::new();
     let mut binary_files = Vec::new();
@@ -140,6 +150,10 @@ fn scan_workspace(workspace_path: &Path) -> Result<WorkspaceData> {
 }
 
 /// Recursive directory walk collecting text and binary file paths.
+///
+/// # Complexity
+///
+/// O(f) where f is the number of files and directories in the subtree.
 fn walk_directory(
     root: &Path,
     current: &Path,
@@ -252,6 +266,10 @@ fn is_binary_content(path: &Path) -> bool {
 }
 
 /// Export a single session with all messages and notes.
+///
+/// # Complexity
+///
+/// O(m) where m is the number of messages in the session.
 fn export_session(
     store: &SessionStore,
     session: &crate::types::Session,
@@ -287,6 +305,10 @@ fn export_session(
 }
 
 /// Get ALL messages for a session (including distilled) via raw SQL.
+///
+/// # Complexity
+///
+/// O(m) where m is the number of messages in the session.
 fn get_all_messages(
     store: &SessionStore,
     session_id: &str,

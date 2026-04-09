@@ -62,6 +62,11 @@ impl RetentionPolicy {
     ///
     /// `archive_dir` is used when `archive_before_delete` is true. One JSON file
     /// per session is written to `{archive_dir}/{session_id}.json`.
+    ///
+    /// # Complexity
+    ///
+    /// O(s × t) where s is the number of expired sessions and t is the
+    /// number of tables with related rows to clean up per session.
     #[instrument(skip(self, conn))]
     #[expect(
         clippy::expect_used,
@@ -131,6 +136,11 @@ impl RetentionPolicy {
     }
 }
 
+/// Find expired sessions based on the cutoff timestamp.
+///
+/// # Complexity
+///
+/// O(n) where n is the number of sessions in the database.
 fn find_expired_sessions(conn: &Connection, cutoff: &str) -> Result<Vec<String>> {
     let mut stmt = conn
         .prepare_cached("SELECT id FROM sessions WHERE status != 'active' AND updated_at < ?1")
@@ -147,6 +157,12 @@ fn find_expired_sessions(conn: &Connection, cutoff: &str) -> Result<Vec<String>>
     Ok(ids)
 }
 
+/// Find excess sessions per nous when over the retention limit.
+///
+/// # Complexity
+///
+/// O(u × s) where u is the number of unique nous_ids and s is the
+/// average number of sessions per nous.
 fn find_excess_sessions_per_nous(conn: &Connection, keep: u32) -> Result<Vec<String>> {
     let mut stmt = conn
         .prepare_cached("SELECT DISTINCT nous_id FROM sessions")
@@ -182,6 +198,12 @@ fn find_excess_sessions_per_nous(conn: &Connection, keep: u32) -> Result<Vec<Str
     Ok(excess)
 }
 
+/// Archive sessions to JSON files before deletion.
+///
+/// # Complexity
+///
+/// O(s × m) where s is the number of sessions and m is the average
+/// number of messages per session.
 fn archive_sessions(conn: &Connection, session_ids: &[String], archive_dir: &Path) -> Result<()> {
     std::fs::create_dir_all(archive_dir).context(error::IoSnafu {
         path: archive_dir.to_path_buf(),
@@ -283,6 +305,12 @@ fn build_session_archive(conn: &Connection, session_id: &str) -> Result<SessionA
     })
 }
 
+/// Delete sessions and their related data.
+///
+/// # Complexity
+///
+/// O(s × t) where s is the number of sessions and t is the number of
+/// related tables to clean up.
 fn delete_sessions(conn: &Connection, session_ids: &[String]) -> Result<u32> {
     let tx = conn.unchecked_transaction().context(error::DatabaseSnafu)?;
 

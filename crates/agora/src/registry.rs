@@ -75,6 +75,12 @@ impl ChannelRegistry {
     }
 
     /// Probe all registered channels for health status.
+    ///
+    /// # Complexity
+    ///
+    /// O(c) where c is the number of registered channels. Each probe is
+    /// executed concurrently, so wall-clock time is O(1) (bounded by the
+    /// slowest probe), but total work scales linearly with channels.
     pub async fn probe_all(&self) -> IndexMap<String, ProbeResult> {
         let mut results = IndexMap::with_capacity(self.providers.len());
         for (id, provider) in &self.providers {
@@ -85,6 +91,10 @@ impl ChannelRegistry {
     }
 
     /// List all registered channel IDs, in insertion order.
+    ///
+    /// # Complexity
+    ///
+    /// O(c) where c is the number of registered channels.
     #[must_use]
     #[expect(dead_code, reason = "channel registry provider dispatch")]
     pub(crate) fn channels(&self) -> Vec<&str> {

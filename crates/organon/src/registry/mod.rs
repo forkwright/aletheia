@@ -126,6 +126,10 @@ impl ToolRegistry {
     }
 
     /// All registered tool definitions, in insertion order.
+    ///
+    /// # Complexity
+    ///
+    /// O(n) where n is the number of registered tools.
     #[must_use]
     pub fn definitions(&self) -> Vec<&ToolDef> {
         // kanon:ignore RUST/pub-visibility
@@ -133,6 +137,10 @@ impl ToolRegistry {
     }
 
     /// Tool definitions filtered by category.
+    ///
+    /// # Complexity
+    ///
+    /// O(n) where n is the number of registered tools.
     #[must_use]
     pub fn definitions_for_category(&self, category: ToolCategory) -> Vec<&ToolDef> {
         // kanon:ignore RUST/pub-visibility
@@ -146,6 +154,10 @@ impl ToolRegistry {
     /// Convert registered tools to the LLM wire format.
     ///
     /// Produces `ToolDefinition` structs suitable for `CompletionRequest::tools`.
+    ///
+    /// # Complexity
+    ///
+    /// O(n) where n is the number of registered tools.
     #[must_use]
     pub fn to_hermeneus_tools(&self) -> Vec<aletheia_hermeneus::types::ToolDefinition> {
         // kanon:ignore RUST/pub-visibility
@@ -166,6 +178,10 @@ impl ToolRegistry {
     /// - `auto_activate == true` (always-on essentials)
     /// - name is in the `active` set (dynamically activated via `enable_tool`)
     /// - name is `enable_tool` (always available so agents can activate more)
+    ///
+    /// # Complexity
+    ///
+    /// O(n) where n is the number of registered tools.
     #[must_use]
     pub fn to_hermeneus_tools_filtered(
         // kanon:ignore RUST/pub-visibility
@@ -216,6 +232,10 @@ impl ToolRegistry {
     }
 
     /// Catalog of lazy tools (`auto_activate=false`) for the `enable_tool` executor.
+    ///
+    /// # Complexity
+    ///
+    /// O(n) where n is the number of registered tools.
     #[must_use]
     pub fn lazy_tool_catalog(&self) -> Vec<(ToolName, String)> {
         // kanon:ignore RUST/pub-visibility
@@ -247,6 +267,10 @@ impl ToolRegistry {
     }
 
     /// List all tools that are safe for autonomous daemon execution.
+    ///
+    /// # Complexity
+    ///
+    /// O(n) where n is the number of registered tools.
     #[must_use]
     pub fn daemon_safe_tools(&self) -> Vec<&ToolDef> {
         // kanon:ignore RUST/pub-visibility

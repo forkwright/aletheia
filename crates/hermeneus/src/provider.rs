@@ -207,6 +207,10 @@ impl ProviderRegistry {
     }
 
     /// Find a provider that supports the given model.
+    ///
+    /// # Complexity
+    ///
+    /// O(p) where p is the number of registered providers.
     #[must_use]
     pub fn find_provider(&self, model: &str) -> Option<&dyn LlmProvider> {
         // kanon:ignore RUST/pub-visibility
@@ -217,6 +221,10 @@ impl ProviderRegistry {
     }
 
     /// List all registered providers.
+    ///
+    /// # Complexity
+    ///
+    /// O(p) where p is the number of registered providers.
     #[must_use]
     pub fn providers(&self) -> Vec<&dyn LlmProvider> {
         // kanon:ignore RUST/pub-visibility
@@ -224,6 +232,10 @@ impl ProviderRegistry {
     }
 
     /// Query health of a provider by name.
+    ///
+    /// # Complexity
+    ///
+    /// O(p) where p is the number of registered providers.
     #[must_use]
     pub fn provider_health(&self, name: &str) -> Option<ProviderHealth> {
         // kanon:ignore RUST/pub-visibility

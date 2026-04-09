@@ -94,6 +94,11 @@ impl IdempotencyCache {
     }
 
     /// Look up a key. On miss, atomically inserts it as `InFlight`.
+    ///
+    /// # Complexity
+    ///
+    /// O(1) for the HashMap lookup. O(k) for eviction of expired entries
+    /// where k is the number of expired entries at the front of the LRU queue.
     pub(crate) fn check_or_insert(&self, key: &str) -> LookupResult {
         let mut inner = self.lock_inner();
         inner.evict_expired();
@@ -156,6 +161,12 @@ impl IdempotencyCache {
 }
 
 impl CacheInner {
+    /// Evict expired entries from the cache.
+    ///
+    /// # Complexity
+    ///
+    /// O(k) where k is the number of consecutive expired entries at the
+    /// front of the LRU order queue.
     fn evict_expired(&mut self) {
         let now = Instant::now();
         while let Some(front_key) = self.order.front() {

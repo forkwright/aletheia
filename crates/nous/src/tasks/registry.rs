@@ -332,6 +332,10 @@ impl TaskRegistry {
 
     /// List snapshots of all tasks, optionally filtered by status.
     ///
+    /// # Complexity
+    ///
+    /// O(n) where n is the number of tasks in the registry.
+    ///
     /// # Errors
     ///
     /// Returns an error if the registry lock is poisoned.
@@ -414,6 +418,10 @@ impl TaskRegistry {
     ///
     /// Returns the IDs and output paths of evicted tasks so the caller can
     /// clean up output files outside the lock.
+    ///
+    /// # Complexity
+    ///
+    /// O(n) where n is the number of tasks in the registry.
     pub(crate) fn gc_sweep(
         &self,
     ) -> Result<Vec<(TaskId, Option<std::path::PathBuf>)>, RegistryError> {
