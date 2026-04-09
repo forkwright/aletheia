@@ -40,7 +40,7 @@ pub use provider_impl::{BuiltinProvider, CompositeProvider};
 #[cfg(test)]
 mod tests {
     use crate::provider::EvalProvider;
-    use crate::provider_impl::{BuiltinProvider, CompositeProvider};
+    use crate::provider::provider_impl::{BuiltinProvider, CompositeProvider};
 
     #[test]
     fn builtin_provider_returns_scenarios() {
