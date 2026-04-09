@@ -414,7 +414,7 @@ async fn send_message_empty_idempotency_key_returns_400() {
     assert_eq!(body["error"]["code"], "bad_request");
 }
 
-/// Error path: stream_turn with empty message returns 400 Bad Request.
+/// Error path: `stream_turn` with empty message returns 400 Bad Request.
 #[tokio::test]
 async fn stream_turn_empty_message_returns_400() {
     let (app, _dir) = app().await;
@@ -435,7 +435,7 @@ async fn stream_turn_empty_message_returns_400() {
     assert_eq!(body["error"]["code"], "bad_request");
 }
 
-/// Error path: stream_turn with oversized message returns 400 Bad Request.
+/// Error path: `stream_turn` with oversized message returns 400 Bad Request.
 #[tokio::test]
 async fn stream_turn_oversized_message_returns_400() {
     let (app, _dir) = app().await;
@@ -457,7 +457,7 @@ async fn stream_turn_oversized_message_returns_400() {
     assert_eq!(body["error"]["code"], "bad_request");
 }
 
-/// Error path: stream_turn with unknown agent_id returns 404 Not Found.
+/// Error path: `stream_turn` with unknown `agent_id` returns 404 Not Found.
 #[tokio::test]
 async fn stream_turn_unknown_agent_returns_404() {
     let (app, _dir) = app().await;
@@ -477,7 +477,7 @@ async fn stream_turn_unknown_agent_returns_404() {
     assert_eq!(body["error"]["code"], "nous_not_found");
 }
 
-/// Error path: stream_turn with oversized agent_id returns 400 Bad Request.
+/// Error path: `stream_turn` with oversized `agent_id` returns 400 Bad Request.
 #[tokio::test]
 async fn stream_turn_oversized_agent_id_returns_400() {
     let (app, _dir) = app().await;
@@ -499,7 +499,7 @@ async fn stream_turn_oversized_agent_id_returns_400() {
     assert_eq!(body["error"]["code"], "bad_request");
 }
 
-/// Error path: stream_turn with oversized session_key returns 400 Bad Request.
+/// Error path: `stream_turn` with oversized `session_key` returns 400 Bad Request.
 #[tokio::test]
 async fn stream_turn_oversized_session_key_returns_400() {
     let (app, _dir) = app().await;

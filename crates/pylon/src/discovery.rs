@@ -174,6 +174,10 @@ fn port_from_bind(bind_addr: &str) -> &str {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: JSON indices valid against serialized fixture shape"
+)]
 mod tests {
     use super::*;
 

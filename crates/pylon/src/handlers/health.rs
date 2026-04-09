@@ -440,6 +440,10 @@ mod tests {
     fn health_state_has_all_required_fields() {
         // Verify HealthState has all fields needed by health handlers.
         // This is a compile-time check that the fields exist and are accessible.
+        #[expect(
+            dead_code,
+            reason = "compile-time shape assertion: proves field types via unused local fn"
+        )]
         fn assert_health_state_fields(state: &HealthState) {
             use std::sync::Arc;
             use aletheia_mneme::store::SessionStore;
@@ -581,7 +585,7 @@ mod tests {
         // base64url: eyJleHAiOjEyMzQ1Njc4OTB9
         let token = "header.eyJleHAiOjEyMzQ1Njc4OTB9.signature";
         let exp = decode_jwt_exp(token);
-        assert_eq!(exp, Some(1234567890));
+        assert_eq!(exp, Some(1_234_567_890));
     }
 
     #[test]

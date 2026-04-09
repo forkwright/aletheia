@@ -246,6 +246,10 @@ mod tests {
     #[test]
     fn nous_state_contains_manager_and_registry() {
         // Verify NousState has the fields needed by nous handlers.
+        #[expect(
+            dead_code,
+            reason = "compile-time shape assertion: proves field types via unused local fn"
+        )]
         fn assert_nous_state_fields(state: &NousState) {
             use std::sync::Arc;
             use aletheia_nous::manager::NousManager;

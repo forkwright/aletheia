@@ -5,7 +5,7 @@ use tower::ServiceExt;
 
 use super::helpers::*;
 
-/// Error path: get_fact with unknown fact_id returns 404 Not Found.
+/// Error path: `get_fact` with unknown `fact_id` returns 404 Not Found.
 #[tokio::test]
 async fn get_fact_unknown_id_returns_404() {
     let (app, _dir) = app().await;
@@ -19,7 +19,7 @@ async fn get_fact_unknown_id_returns_404() {
     assert_eq!(body["error"]["code"], "not_found");
 }
 
-/// Error path: list_facts with invalid sort parameter returns 400 Bad Request.
+/// Error path: `list_facts` with invalid sort parameter returns 400 Bad Request.
 #[tokio::test]
 async fn list_facts_invalid_sort_returns_400() {
     let (app, _dir) = app().await;
@@ -37,7 +37,7 @@ async fn list_facts_invalid_sort_returns_400() {
         .contains("invalid sort field"));
 }
 
-/// Error path: list_facts with invalid order parameter returns 400 Bad Request.
+/// Error path: `list_facts` with invalid order parameter returns 400 Bad Request.
 #[tokio::test]
 async fn list_facts_invalid_order_returns_400() {
     let (app, _dir) = app().await;
@@ -55,7 +55,7 @@ async fn list_facts_invalid_order_returns_400() {
         .contains("invalid order"));
 }
 
-/// Error path: forget_fact returns 503 Service Unavailable when knowledge store not enabled.
+/// Error path: `forget_fact` returns 503 Service Unavailable when knowledge store not enabled.
 #[tokio::test]
 async fn forget_fact_without_knowledge_store_returns_503() {
     let (app, _dir) = app().await;
@@ -71,7 +71,7 @@ async fn forget_fact_without_knowledge_store_returns_503() {
     assert_eq!(body["error"]["code"], "service_unavailable");
 }
 
-/// Error path: restore_fact returns 503 Service Unavailable when knowledge store not enabled.
+/// Error path: `restore_fact` returns 503 Service Unavailable when knowledge store not enabled.
 #[tokio::test]
 async fn restore_fact_without_knowledge_store_returns_503() {
     let (app, _dir) = app().await;
@@ -83,7 +83,7 @@ async fn restore_fact_without_knowledge_store_returns_503() {
     assert_eq!(body["error"]["code"], "service_unavailable");
 }
 
-/// Error path: update_confidence returns 503 Service Unavailable when knowledge store not enabled.
+/// Error path: `update_confidence` returns 503 Service Unavailable when knowledge store not enabled.
 #[tokio::test]
 async fn update_confidence_without_knowledge_store_returns_503() {
     let (app, _dir) = app().await;
@@ -99,7 +99,7 @@ async fn update_confidence_without_knowledge_store_returns_503() {
     assert_eq!(body["error"]["code"], "service_unavailable");
 }
 
-/// Error path: update_confidence with out-of-range confidence returns 400 Bad Request.
+/// Error path: `update_confidence` with out-of-range confidence returns 400 Bad Request.
 #[tokio::test]
 async fn update_confidence_out_of_range_returns_400() {
     let (app, _dir) = app().await;
@@ -119,7 +119,7 @@ async fn update_confidence_out_of_range_returns_400() {
         .contains("between 0.0 and 1.0"));
 }
 
-/// Error path: update_confidence with negative confidence returns 400 Bad Request.
+/// Error path: `update_confidence` with negative confidence returns 400 Bad Request.
 #[tokio::test]
 async fn update_confidence_negative_returns_400() {
     let (app, _dir) = app().await;
@@ -135,7 +135,7 @@ async fn update_confidence_negative_returns_400() {
     assert_eq!(body["error"]["code"], "bad_request");
 }
 
-/// Error path: check_graph_health returns 503 when knowledge store not enabled.
+/// Error path: `check_graph_health` returns 503 when knowledge store not enabled.
 #[tokio::test]
 async fn check_graph_health_without_knowledge_store_returns_503() {
     let (app, _dir) = app().await;
@@ -149,7 +149,7 @@ async fn check_graph_health_without_knowledge_store_returns_503() {
     assert_eq!(body["error"]["code"], "service_unavailable");
 }
 
-/// Error path: entity_relationships returns empty list when knowledge store not enabled.
+/// Error path: `entity_relationships` returns empty list when knowledge store not enabled.
 #[tokio::test]
 async fn entity_relationships_without_knowledge_store_returns_empty() {
     let (app, _dir) = app().await;
@@ -164,7 +164,7 @@ async fn entity_relationships_without_knowledge_store_returns_empty() {
     assert!(body["relationships"].is_array());
 }
 
-/// Error path: list_entities returns empty list when knowledge store not enabled.
+/// Error path: `list_entities` returns empty list when knowledge store not enabled.
 #[tokio::test]
 async fn list_entities_without_knowledge_store_returns_empty() {
     let (app, _dir) = app().await;
