@@ -230,7 +230,7 @@ impl PkcePair {
         let mut rng = rand::rngs::OsRng;
         let mut verifier_bytes = vec![0u8; 128];
         rng.try_fill_bytes(&mut verifier_bytes)
-            .map_err(|_| PkceError::RandomGeneration {
+            .map_err(|_e| PkceError::RandomGeneration {
                 location: snafu::location!(),
             })?;
         let verifier = base64url_encode(&verifier_bytes);
@@ -285,7 +285,7 @@ fn generate_state() -> Result<String> {
     let mut rng = rand::rngs::OsRng;
     let mut bytes = vec![0u8; 32];
     rng.try_fill_bytes(&mut bytes)
-        .map_err(|_| PkceError::RandomGeneration {
+        .map_err(|_e| PkceError::RandomGeneration {
             location: snafu::location!(),
         })?;
     Ok(base64url_encode(&bytes))
@@ -301,7 +301,9 @@ pub(crate) fn url_encode(s: &str) -> String {
             }
             _ => {
                 result.push('%');
-                result.push_str(&format!("{:02X}", byte));
+                use std::fmt::Write;
+                // SAFETY: writing to a String via fmt::Write cannot fail.
+                let _ = write!(result, "{byte:02X}");
             }
         }
     }
@@ -632,7 +634,7 @@ async fn exchange_code(
             });
         }
         return Err(PkceError::OAuthError {
-            error: format!("HTTP {}: {}", status, body_text),
+            error: format!("HTTP {status}: {body_text}"),
             error_description: None,
             location: snafu::location!(),
         });
@@ -697,7 +699,7 @@ pub async fn pkce_login(provider: &OAuthProvider) -> Result<CredentialFile> {
         Ok(Ok(Err(e))) => return Err(e),
         Ok(Err(_)) => {
             return Err(PkceError::ServerBind {
-                source: std::io::Error::new(std::io::ErrorKind::Other, "channel closed"),
+                source: std::io::Error::other("channel closed"),
                 location: snafu::location!(),
             });
         }

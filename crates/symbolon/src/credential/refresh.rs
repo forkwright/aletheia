@@ -100,7 +100,7 @@ pub(super) struct RefreshState {
 /// regardless of whether the drop occurs during normal execution, early
 /// error return, or panic unwind.
 ///
-/// // WHY: RwLock allows concurrent readers (get_credential calls) with a
+/// // WHY: `RwLock` allows concurrent readers (`get_credential` calls) with a
 /// // single writer (the background refresh task). This avoids blocking
 /// // LLM requests during token refresh, which may take 100-500ms.
 pub struct RefreshingCredentialProvider {
@@ -466,18 +466,18 @@ pub(super) async fn do_refresh(client: &reqwest::Client, refresh_token: &str) ->
         // `invalid_grant` means the refresh token is revoked, expired, or
         // otherwise permanently invalid. Retrying will never succeed — the user
         // must re-authenticate to obtain a new refresh token.
-        if let Ok(err_resp) = serde_json::from_str::<OAuthErrorResponse>(&body_text) {
-            if err_resp.error == "invalid_grant" {
-                error!(
-                    status = %status,
-                    error = %err_resp.error,
-                    description = err_resp.error_description.as_deref().unwrap_or(""),
-                    "OAuth refresh token is invalid — re-authentication required. \
-                     Run `aletheia auth login` or re-authorize via Claude Code to obtain \
-                     a new refresh token."
-                );
-                return RefreshOutcome::InvalidGrant;
-            }
+        if let Ok(err_resp) = serde_json::from_str::<OAuthErrorResponse>(&body_text)
+            && err_resp.error == "invalid_grant"
+        {
+            error!(
+                status = %status,
+                error = %err_resp.error,
+                description = err_resp.error_description.as_deref().unwrap_or(""),
+                "OAuth refresh token is invalid — re-authentication required. \
+                 Run `aletheia auth login` or re-authorize via Claude Code to obtain \
+                 a new refresh token."
+            );
+            return RefreshOutcome::InvalidGrant;
         }
 
         warn!(status = %status, body = %body_text, "OAuth refresh returned error");

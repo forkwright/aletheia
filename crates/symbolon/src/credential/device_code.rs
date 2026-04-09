@@ -238,7 +238,7 @@ async fn request_device_authorization(
             });
         }
         return Err(DeviceCodeError::OAuthError {
-            error: format!("HTTP {}: {}", status, body_text),
+            error: format!("HTTP {status}: {body_text}"),
             error_description: None,
             location: snafu::location!(),
         });
@@ -378,7 +378,7 @@ pub async fn device_code_login(provider: &DeviceOAuthProvider) -> Result<Credent
     eprintln!("And enter code: {}\n", device_auth.user_code);
 
     if let Some(complete_uri) = &device_auth.verification_uri_complete {
-        eprintln!("Or visit this direct link:\n  {}\n", complete_uri);
+        eprintln!("Or visit this direct link:\n  {complete_uri}\n");
     }
 
     eprintln!(

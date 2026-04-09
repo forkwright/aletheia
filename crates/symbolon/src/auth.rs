@@ -189,9 +189,9 @@ impl AuthService {
 
 /// RBAC authorization logic.
 ///
-/// // WHY: RBAC is implemented as a pure function separate from the AuthService
+/// // WHY: RBAC is implemented as a pure function separate from the `AuthService`
 /// // to allow testing without database setup. The role hierarchy is flat:
-/// // Admin/Operator > Agent > Readonly. Agent access is scoped to its own nous_id.
+/// // Admin/Operator > Agent > Readonly. Agent access is scoped to its own `nous_id`.
 fn is_authorized(claims: &Claims, action: &Action) -> bool {
     match claims.role {
         Role::Admin | Role::Operator => true,
