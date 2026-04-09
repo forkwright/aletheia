@@ -181,6 +181,12 @@ impl SessionStore {
     ///
     /// # Errors
     /// Returns an error if initialization fails.
+    ///
+    /// # NOTE
+    /// Test-only — exists so the hook tests can verify
+    /// `before_acquire`/`after_release` ordering without spinning up a real
+    /// disk-backed store.
+    #[cfg(test)]
     #[instrument(skip(hook))]
     pub(crate) fn open_in_memory_with_hook(hook: Box<dyn ConnectionHook>) -> Result<Self> {
         hook.before_acquire();
@@ -190,6 +196,10 @@ impl SessionStore {
     }
 
     /// Attach a disk space monitor for pre-write checks.
+    #[expect(
+        dead_code,
+        reason = "disk_monitor infrastructure has no current caller; tracked for follow-up cleanup"
+    )]
     pub(crate) fn set_disk_monitor(&mut self, monitor: DiskSpaceMonitor) {
         self.disk_monitor = Some(monitor);
     }
@@ -235,18 +245,6 @@ impl SessionStore {
     #[must_use]
     pub fn conn(&self) -> &Connection {
         &self.conn
-    }
-
-    /// Current operating mode of the store.
-    #[must_use]
-    pub(crate) fn mode(&self) -> StoreMode {
-        self.mode
-    }
-
-    /// Whether the store is in degraded (read-only) mode.
-    #[must_use]
-    pub(crate) fn is_degraded(&self) -> bool {
-        self.mode == StoreMode::ReadOnly
     }
 
     /// Force a WAL checkpoint, flushing all pending writes to the main database file.

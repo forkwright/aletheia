@@ -35,3 +35,12 @@ tracing = { workspace = true }
 [dev-dependencies]
 proptest = { workspace = true }
 tempfile = { workspace = true }
+criterion = { workspace = true }
+
+# WHY: session create + message append are on the hot path of every
+# turn. Track regressions in the SQLite layer so prepared-statement or
+# schema changes surface in CI.
+[[bench]]
+name = "session_store"
+harness = false
+required-features = ["sqlite"]

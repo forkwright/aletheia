@@ -647,7 +647,16 @@ CREATE INDEX IF NOT EXISTS idx_blackboard_key ON blackboard(key);",
 ];
 
 /// Outcome of a migration run.
+///
+/// WHY fields are dead-code-allowed in non-test builds: every field is
+/// read by `#[cfg(test)] mod tests` (the migration test suite). The
+/// non-test build constructs but doesn't read them — they exist for
+/// the test assertions and as a future API surface for diagnostics.
 #[derive(Debug)]
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "fields are read by #[cfg(test)] migration test suite")
+)]
 pub(crate) struct MigrationResult {
     /// Versions applied during this run.
     pub applied: Vec<u32>,
@@ -658,7 +667,13 @@ pub(crate) struct MigrationResult {
 }
 
 /// Pending migration info for dry-run reporting.
+///
+/// See [`MigrationResult`] for the dead-code rationale.
 #[derive(Debug)]
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "fields are read by #[cfg(test)] migration test suite")
+)]
 pub(crate) struct PendingMigration {
     /// Version number that would be applied.
     pub version: u32,
