@@ -59,7 +59,7 @@ pub struct McpServerConfig {
 /// Agent SDK-based dispatch engine.
 ///
 /// WHY: Provides native Agent SDK integration with OAuth, permissions, and
-/// plugin support, replacing the subprocess-based HttpEngine.
+/// plugin support, replacing the subprocess-based `HttpEngine`.
 pub struct AgentSdkEngine {
     config: AgentSdkConfig,
     binary: String,
@@ -72,7 +72,6 @@ impl AgentSdkEngine {
     ///
     /// Returns an error if the engine cannot be initialized (e.g., binary
     /// lookup fails, OAuth token invalid, MCP server unavailable).
-    #[must_use]
     pub fn new(config: AgentSdkConfig) -> Result<Self> {
         // WHY: Verify the model identifier is valid during construction.
         if config.default_model.is_empty() {
@@ -123,10 +122,10 @@ impl AgentSdkEngine {
         args.extend(["--model".to_owned(), model.to_owned()]);
 
         // WHY: Apply permission mode based on config (if not skipped).
-        if !self.config.skip_permissions {
-            if let Some(ref mode) = options.permission_mode {
-                args.extend(["--permission-mode".to_owned(), mode.clone()]);
-            }
+        if !self.config.skip_permissions
+            && let Some(ref mode) = options.permission_mode
+        {
+            args.extend(["--permission-mode".to_owned(), mode.clone()]);
         }
 
         if let Some(ref prompt) = options.system_prompt {

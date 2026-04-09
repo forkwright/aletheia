@@ -468,7 +468,7 @@ impl fmt::Display for FixKind {
 pub struct CiFailure {
     /// Name of the failing check (e.g. "build", "test").
     pub check_name: String,
-    /// Conclusion string (e.g. "failure", "timed_out").
+    /// Conclusion string (e.g. "failure", `"timed_out"`).
     pub conclusion: String,
     /// Relevant portion of the CI log showing the failure.
     pub log_excerpt: String,

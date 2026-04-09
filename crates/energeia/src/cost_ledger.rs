@@ -111,7 +111,7 @@ impl CostLedger {
             return;
         }
 
-        let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let mut guard = self.inner.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let entry = guard
             .entry(blast_radius.to_owned())
             .or_insert_with(|| BlastRadiusCost::new(blast_radius.to_owned()));
@@ -132,7 +132,7 @@ impl CostLedger {
             return;
         }
 
-        let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let mut guard = self.inner.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         for radius in blast_radii {
             let entry = guard
                 .entry(radius.clone())
@@ -146,17 +146,17 @@ impl CostLedger {
     /// Returns `None` if no sessions have been recorded for this radius.
     #[must_use]
     pub fn query(&self, blast_radius: &str) -> Option<BlastRadiusCost> {
-        let guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let guard = self.inner.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         guard.get(blast_radius).cloned()
     }
 
     /// Query all blast radius cost records.
     ///
-    /// Returns a vector of (blast_radius, cost) tuples sorted by blast radius
+    /// Returns a vector of (`blast_radius`, cost) tuples sorted by blast radius
     /// for deterministic output.
     #[must_use]
     pub fn query_all(&self) -> Vec<(String, BlastRadiusCost)> {
-        let guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let guard = self.inner.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut results: Vec<(String, BlastRadiusCost)> =
             guard.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
         // Sort by blast radius for deterministic output
@@ -166,10 +166,10 @@ impl CostLedger {
 
     /// Query total cost aggregated by model across all blast radii.
     ///
-    /// Returns a vector of (model, total_cost_usd) tuples sorted by model name.
+    /// Returns a vector of (model, `total_cost_usd`) tuples sorted by model name.
     #[must_use]
     pub fn query_by_model(&self) -> Vec<(String, f64)> {
-        let guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let guard = self.inner.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut by_model: HashMap<String, f64> = HashMap::new();
 
         for cost in guard.values() {
@@ -186,20 +186,20 @@ impl CostLedger {
     /// Get the total cost across all blast radii.
     #[must_use]
     pub fn total_cost(&self) -> f64 {
-        let guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let guard = self.inner.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         guard.values().map(|c| c.total_cost_usd).sum()
     }
 
     /// Get the total number of sessions recorded across all blast radii.
     #[must_use]
     pub fn total_sessions(&self) -> u32 {
-        let guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let guard = self.inner.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         guard.values().map(|c| c.session_count).sum()
     }
 
     /// Clear all recorded data.
     pub fn clear(&self) {
-        let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let mut guard = self.inner.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         guard.clear();
     }
 }

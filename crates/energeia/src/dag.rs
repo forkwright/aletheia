@@ -128,7 +128,6 @@ impl PromptDag {
     /// # Errors
     ///
     /// Returns [`DagError::DuplicateNode`] if `number` is already present.
-    #[must_use]
     pub fn add_node(&mut self, number: u32, depends_on: Vec<u32>) -> Result<(), DagError> {
         if self.nodes.contains_key(&number) {
             return Err(DagError::DuplicateNode { number });
@@ -149,7 +148,6 @@ impl PromptDag {
     /// # Errors
     ///
     /// Returns [`DagError::InvalidPrompt`] if `number` is not in the graph.
-    #[must_use]
     pub fn set_status(&mut self, number: u32, status: PromptStatus) -> Result<(), DagError> {
         self.nodes
             .get_mut(&number)
@@ -181,7 +179,6 @@ impl PromptDag {
     ///
     /// Returns [`DagError::MissingDependencies`] if dependencies are missing,
     /// or [`DagError::Cycle`] if a cycle is detected.
-    #[must_use]
     pub fn validate(&self) -> Result<(), DagError> {
         // WHY: Check missing deps first — simpler to diagnose, collect all at once.
         let all_numbers: HashSet<u32> = self.nodes.keys().copied().collect();
