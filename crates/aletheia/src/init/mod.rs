@@ -376,10 +376,9 @@ use scaffold::scaffold;
 
 #[cfg(feature = "tui")]
 fn wizard_answers_to_answers(wa: &theatron_tui::wizard::WizardAnswers) -> Answers {
-    use aletheia_koina::secret::SecretString;
     Answers {
         root: wa.root.clone(),
-        api_key: wa.api_key.clone().map(SecretString::from),
+        api_key: wa.api_key.clone(),
         api_provider: wa.api_provider.clone(),
         model: wa.model.clone(),
         agent_id: wa.agent_id.clone(),

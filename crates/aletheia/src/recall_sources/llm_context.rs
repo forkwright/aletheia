@@ -52,13 +52,12 @@ impl ModelCard {
             parts.push(format!("Capabilities: {}", caps.join(", ")));
         }
 
-        match (self.input_cost_per_mtok, self.output_cost_per_mtok) {
-            (Some(input), Some(output)) => {
-                parts.push(format!(
-                    "Pricing: ${input:.2}/MTok input, ${output:.2}/MTok output"
-                ));
-            }
-            _ => {}
+        if let (Some(input), Some(output)) =
+            (self.input_cost_per_mtok, self.output_cost_per_mtok)
+        {
+            parts.push(format!(
+                "Pricing: ${input:.2}/MTok input, ${output:.2}/MTok output"
+            ));
         }
 
         parts.join("\n")
@@ -97,19 +96,18 @@ impl ModelCard {
         }
         // WHY: Specific context size queries (e.g., "256k context") match
         // models whose window is at or above the requested size.
-        if let Some(requested_k) = extract_context_size_k(query_lower) {
-            if self.context_window >= requested_k * 1000 {
-                score += 0.4;
-            }
+        if let Some(requested_k) = extract_context_size_k(query_lower)
+            && self.context_window >= requested_k * 1000
+        {
+            score += 0.4;
         }
 
-        if query_lower.contains("cost")
+        if (query_lower.contains("cost")
             || query_lower.contains("price")
-            || query_lower.contains("pricing")
+            || query_lower.contains("pricing"))
+            && self.input_cost_per_mtok.is_some()
         {
-            if self.input_cost_per_mtok.is_some() {
-                score += 0.2;
-            }
+            score += 0.2;
         }
 
         score.min(1.0)
@@ -121,15 +119,16 @@ fn extract_context_size_k(query: &str) -> Option<u64> {
     let bytes = query.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
-        if bytes[i].is_ascii_digit() {
+        let Some(&b) = bytes.get(i) else { break };
+        if b.is_ascii_digit() {
             let start = i;
-            while i < bytes.len() && bytes[i].is_ascii_digit() {
+            while bytes.get(i).is_some_and(u8::is_ascii_digit) {
                 i += 1;
             }
             // WHY: Check for 'k' suffix immediately after digits.
-            if i < bytes.len() && (bytes[i] == b'k' || bytes[i] == b'K') {
-                // SAFETY: start and i are bounds-checked above (start <= i < bytes.len())
-                #[expect(clippy::string_slice, reason = "bounds verified: start <= i < bytes.len()")]
+            if bytes.get(i).is_some_and(|&b| b == b'k' || b == b'K') {
+                // SAFETY: start..i are within bounds (guarded by .get() above)
+                #[expect(clippy::string_slice, reason = "bounds verified via .get() checks above")]
                 if let Ok(n) = query[start..i].parse::<u64>() {
                     return Some(n);
                 }
@@ -208,7 +207,7 @@ impl RecallSource for LlmContextSource {
         })
     }
 
-    fn source_type(&self) -> &str {
+    fn source_type(&self) -> &'static str {
         "llm_context"
     }
 
@@ -265,6 +264,9 @@ fn anthropic_model_cards() -> Vec<ModelCard> {
 }
 
 #[cfg(test)]
+#[expect(clippy::indexing_slicing, reason = "test data has known structure")]
+#[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use super::*;
 

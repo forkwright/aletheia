@@ -92,7 +92,7 @@ pub(crate) async fn dispatch(cmd: Command, instance_root: Option<&PathBuf>) -> R
         Command::Tui(_) => anyhow::bail!("TUI not available - rebuild with `--features tui`"),
         Command::Desktop(a) => desktop::run(&a),
         Command::Eval(a) => eval::run(a).await.map_err(Into::into),
-        Command::EvalEmbeddings(a) => eval_embeddings::run(a).map_err(Into::into),
+        Command::EvalEmbeddings(ref a) => eval_embeddings::run(a).map_err(Into::into),
         Command::Export(a) => agent_io::export_agent(instance_root, &a).map_err(Into::into),
         Command::SessionExport(a) => session_export::run(&a).await.map_err(Into::into),
         Command::Import(a) => agent_io::import_agent(instance_root, &a).map_err(Into::into),

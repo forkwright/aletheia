@@ -83,8 +83,17 @@ impl RecallSource for AcademicSource {
                     let content = format_paper(&paper);
                     // NOTE: Position-based relevance: rank 0 = 1.0, declining linearly.
                     // Semantic Scholar returns results in relevance order.
+                    #[expect(
+                        clippy::as_conversions,
+                        clippy::cast_precision_loss,
+                        reason = "clamped_limit ≤ 100: well within f64 mantissa"
+                    )]
                     let denominator = (clamped_limit.max(1)) as f64;
-                    #[expect(clippy::cast_precision_loss, reason = "rank index is small enough that f64 precision is sufficient")]
+                    #[expect(
+                        clippy::as_conversions,
+                        clippy::cast_precision_loss,
+                        reason = "rank index ≤ 100: well within f64 mantissa"
+                    )]
                     let relevance = 1.0 - (rank as f64 / denominator);
                     SourceResult {
                         content,
@@ -98,7 +107,7 @@ impl RecallSource for AcademicSource {
         })
     }
 
-    fn source_type(&self) -> &str {
+    fn source_type(&self) -> &'static str {
         "academic"
     }
 
@@ -116,10 +125,10 @@ fn format_paper(paper: &Paper) -> String {
         parts.push(paper.title.clone());
     }
 
-    if let Some(ref abs) = paper.r#abstract {
-        if !abs.is_empty() {
-            parts.push(abs.clone());
-        }
+    if let Some(ref abs) = paper.r#abstract
+        && !abs.is_empty()
+    {
+        parts.push(abs.clone());
     }
 
     if let Some(citations) = paper.citation_count {
@@ -144,6 +153,10 @@ struct SearchResponse {
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[expect(
+    clippy::struct_field_names,
+    reason = "field name matches Semantic Scholar API JSON key 'paperId'"
+)]
 struct Paper {
     paper_id: String,
     title: String,
@@ -154,6 +167,8 @@ struct Paper {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::indexing_slicing, reason = "test data has known structure")]
 mod tests {
     use super::*;
 
