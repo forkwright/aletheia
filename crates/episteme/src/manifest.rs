@@ -152,6 +152,7 @@ impl fmt::Display for MemoryManifest {
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 
@@ -309,7 +310,7 @@ mod tests {
     fn from_headers_preserves_all_within_cap() {
         let count = MAX_MEMORY_ENTRIES - 1;
         let headers: Vec<MemoryHeader> = (0..count)
-            .map(|i| make_header(&format!("id-{i}"), &format!("n-{i}"), i64::from(i as i32)))
+            .map(|i| make_header(&format!("id-{i}"), &format!("n-{i}"), i.try_into().expect("count < MAX_MEMORY_ENTRIES (200) fits i64")))
             .collect();
         let manifest = MemoryManifest::from_headers(headers);
         assert_eq!(

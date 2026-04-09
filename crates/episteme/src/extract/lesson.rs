@@ -98,7 +98,7 @@ pub struct LessonConfig {
 /// 3. Extract knowledge facts from the changes
 /// 4. Produce entities, relationships, and causal edges
 #[must_use]
-#[expect(dead_code, reason = "post-merge lesson extraction from git diffs")]
+#[cfg_attr(not(test), expect(dead_code, reason = "post-merge lesson extraction from git diffs"))]
 pub(crate) fn extract_lessons(diff: &str, config: &LessonConfig) -> ExtractedLesson {
     let parsed = parse_unified_diff(diff);
     let changes = classify_changes(&parsed);

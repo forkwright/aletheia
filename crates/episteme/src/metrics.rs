@@ -58,7 +58,7 @@ static EMBEDDING_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
     .expect("metric registration")
 });
 
-#[expect(dead_code, reason = "metric init called from server startup")]
+#[cfg_attr(not(test), expect(dead_code, reason = "metric init called from server startup"))]
 /// Force-initialize all lazy metric statics.
 pub(crate) fn init() {
     LazyLock::force(&KNOWLEDGE_FACTS_TOTAL);
@@ -74,7 +74,7 @@ pub(crate) fn record_fact_inserted(nous_id: &str) {
 }
 
 /// Record a knowledge extraction operation.
-#[expect(dead_code, reason = "metric recording called from extraction pipeline")]
+#[cfg_attr(not(test), expect(dead_code, reason = "metric recording called from extraction pipeline"))]
 pub(crate) fn record_extraction(nous_id: &str, success: bool) {
     let status = if success { "ok" } else { "error" };
     KNOWLEDGE_EXTRACTIONS_TOTAL
@@ -90,7 +90,7 @@ pub(crate) fn record_recall_duration(nous_id: &str, duration_secs: f64) {
 }
 
 /// Record embedding computation duration.
-#[expect(dead_code, reason = "metric recording called from embedding pipeline")]
+#[cfg_attr(not(test), expect(dead_code, reason = "metric recording called from embedding pipeline"))]
 pub(crate) fn record_embedding_duration(provider: &str, duration_secs: f64) {
     EMBEDDING_DURATION_SECONDS
         .with_label_values(&[provider])
@@ -109,9 +109,21 @@ mod tests {
                 for metric in family.get_metric() {
                     let labels = metric.get_label();
                     let matches = label_values.iter().enumerate().all(|(i, expected)| {
-                        labels.get(i).map(|l| l.value() == *expected).unwrap_or(false)
+                        labels.get(i).is_some_and(|l| l.value() == *expected)
                     });
                     if matches {
+                        #[expect(
+                            clippy::as_conversions,
+                            reason = "prometheus counter values are non-negative integers stored as f64; truncation is safe for test comparison"
+                        )]
+                        #[expect(
+                            clippy::cast_possible_truncation,
+                            reason = "prometheus counter values are small integers in tests; no truncation risk"
+                        )]
+                        #[expect(
+                            clippy::cast_sign_loss,
+                            reason = "prometheus counters are non-negative; sign loss cannot occur"
+                        )]
                         return metric.get_counter().value() as u64;
                     }
                 }
@@ -128,10 +140,10 @@ mod tests {
                 for metric in family.get_metric() {
                     let labels = metric.get_label();
                     let matches = label_values.iter().enumerate().all(|(i, expected)| {
-                        labels.get(i).map(|l| l.value() == *expected).unwrap_or(false)
+                        labels.get(i).is_some_and(|l| l.value() == *expected)
                     });
                     if matches {
-                        return metric.get_histogram().sample_count() as u64;
+                        return metric.get_histogram().sample_count();
                     }
                 }
             }
@@ -155,7 +167,7 @@ mod tests {
 
         let families = prometheus::default_registry().gather();
         let metric_names: std::collections::HashSet<_> =
-            families.iter().map(|f| f.name()).collect();
+            families.iter().map(prometheus::proto::MetricFamily::name).collect();
         assert!(metric_names.contains("aletheia_knowledge_facts_total"));
         assert!(metric_names.contains("aletheia_knowledge_extractions_total"));
         assert!(metric_names.contains("aletheia_recall_duration_seconds"));

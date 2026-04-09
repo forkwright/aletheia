@@ -448,6 +448,8 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(clippy::indexing_slicing, reason = "test assertions on collections with known length")]
 mod tests {
     use super::*;
     use crate::embedding::MockEmbeddingProvider;

@@ -396,6 +396,9 @@ fn detect_trends(summary: &LintSummaryRecord, buckets: &mut HashMap<String, Rule
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::indexing_slicing, reason = "test assertions on collections with known length")]
+#[expect(clippy::float_cmp, reason = "test assertions on exact float values")]
+#[expect(clippy::disallowed_methods, reason = "tests use std::fs for synchronous fixture setup")]
 mod tests {
     use super::*;
 

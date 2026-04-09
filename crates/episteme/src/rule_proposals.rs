@@ -317,11 +317,12 @@ fn sanitize_tool_name(name: &str) -> String {
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 #[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(clippy::indexing_slicing, reason = "test assertions on collections with known length")]
 mod tests {
     use super::*;
     use crate::instinct::{ToolObservation, ToolOutcome};
 
-    fn make_obs(tool: &str, outcome: ToolOutcome, count: usize) -> Vec<ToolObservation> {
+    fn make_obs(tool: &str, outcome: &ToolOutcome, count: usize) -> Vec<ToolObservation> {
         (0..count)
             .map(|_| ToolObservation {
                 tool_name: tool.to_owned(),
@@ -336,7 +337,7 @@ mod tests {
 
     #[test]
     fn below_min_observations_no_proposal() {
-        let obs = make_obs("grep", ToolOutcome::Failure { error: "not found".to_owned() }, 3);
+        let obs = make_obs("grep", &ToolOutcome::Failure { error: "not found".to_owned() }, 3);
         let proposals = propose_rules(&obs);
         assert!(proposals.is_empty(), "3 observations < MIN_OBSERVATIONS=5");
     }
@@ -344,8 +345,8 @@ mod tests {
     #[test]
     fn high_failure_rate_above_threshold_emits_proposal() {
         // 8 failures, 2 successes → 80% failure rate → confidence well above 0.60
-        let mut obs = make_obs("grep", ToolOutcome::Failure { error: "x".to_owned() }, 8);
-        obs.extend(make_obs("grep", ToolOutcome::Success, 2));
+        let mut obs = make_obs("grep", &ToolOutcome::Failure { error: "x".to_owned() }, 8);
+        obs.extend(make_obs("grep", &ToolOutcome::Success, 2));
         let proposals = propose_rules(&obs);
         assert!(!proposals.is_empty(), "80% failure rate should generate a proposal");
         assert!(proposals[0].confidence >= MIN_CONFIDENCE);
@@ -353,7 +354,7 @@ mod tests {
 
     #[test]
     fn all_successes_no_proposal() {
-        let obs = make_obs("grep", ToolOutcome::Success, 20);
+        let obs = make_obs("grep", &ToolOutcome::Success, 20);
         let proposals = propose_rules(&obs);
         assert!(proposals.is_empty(), "0% failure rate should not generate proposals");
     }
@@ -361,10 +362,10 @@ mod tests {
     #[test]
     fn proposals_sorted_by_confidence_descending() {
         // Two tools with different failure rates
-        let mut obs = make_obs("exec", ToolOutcome::Failure { error: "x".to_owned() }, 9);
-        obs.extend(make_obs("exec", ToolOutcome::Success, 1)); // 90% failure
-        obs.extend(make_obs("grep", ToolOutcome::Failure { error: "x".to_owned() }, 7));
-        obs.extend(make_obs("grep", ToolOutcome::Success, 3)); // 70% failure
+        let mut obs = make_obs("exec", &ToolOutcome::Failure { error: "x".to_owned() }, 9);
+        obs.extend(make_obs("exec", &ToolOutcome::Success, 1)); // 90% failure
+        obs.extend(make_obs("grep", &ToolOutcome::Failure { error: "x".to_owned() }, 7));
+        obs.extend(make_obs("grep", &ToolOutcome::Success, 3)); // 70% failure
 
         let proposals = propose_rules(&obs);
         if proposals.len() >= 2 {
@@ -389,8 +390,8 @@ mod tests {
         let data_dir = dir.path().join("data");
 
         let obs = {
-            let mut v = make_obs("exec", ToolOutcome::Failure { error: "x".to_owned() }, 8);
-            v.extend(make_obs("exec", ToolOutcome::Success, 2));
+            let mut v = make_obs("exec", &ToolOutcome::Failure { error: "x".to_owned() }, 8);
+            v.extend(make_obs("exec", &ToolOutcome::Success, 2));
             v
         };
         let proposals = propose_rules(&obs);
