@@ -518,3 +518,181 @@ async fn history_messages_have_expected_fields() {
     assert!(msg["content"].is_string());
     assert!(msg["created_at"].is_string());
 }
+
+#[tokio::test]
+async fn create_session_empty_nous_id_returns_400() {
+    let (app, _dir) = app().await;
+    let req = authed_request(
+        "POST",
+        "/api/v1/sessions",
+        Some(serde_json::json!({
+            "nous_id": "",
+            "session_key": "test"
+        })),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "bad_request");
+}
+
+#[tokio::test]
+async fn create_session_empty_session_key_returns_400() {
+    let (app, _dir) = app().await;
+    let req = authed_request(
+        "POST",
+        "/api/v1/sessions",
+        Some(serde_json::json!({
+            "nous_id": "syn",
+            "session_key": ""
+        })),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "bad_request");
+}
+
+#[tokio::test]
+async fn create_session_oversized_nous_id_returns_400() {
+    let (app, _dir) = app().await;
+    let oversized_nous_id = "a".repeat(300);
+    let req = authed_request(
+        "POST",
+        "/api/v1/sessions",
+        Some(serde_json::json!({
+            "nous_id": oversized_nous_id,
+            "session_key": "test"
+        })),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "bad_request");
+    assert!(body["error"]["message"].as_str().unwrap().contains("maximum length"));
+}
+
+#[tokio::test]
+async fn create_session_oversized_session_key_returns_400() {
+    let (app, _dir) = app().await;
+    let oversized_session_key = "b".repeat(300);
+    let req = authed_request(
+        "POST",
+        "/api/v1/sessions",
+        Some(serde_json::json!({
+            "nous_id": "syn",
+            "session_key": oversized_session_key
+        })),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "bad_request");
+    assert!(body["error"]["message"].as_str().unwrap().contains("maximum length"));
+}
+
+#[tokio::test]
+async fn rename_session_empty_name_returns_400() {
+    let (router, _dir) = app().await;
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    let req = authed_request(
+        "PUT",
+        &format!("/api/v1/sessions/{id}/name"),
+        Some(serde_json::json!({ "name": "" })),
+    );
+    let resp = router.clone().oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "bad_request");
+}
+
+#[tokio::test]
+async fn rename_session_oversized_name_returns_400() {
+    let (router, _dir) = app().await;
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    let oversized_name = "c".repeat(300);
+    let req = authed_request(
+        "PUT",
+        &format!("/api/v1/sessions/{id}/name"),
+        Some(serde_json::json!({ "name": oversized_name })),
+    );
+    let resp = router.clone().oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "bad_request");
+    assert!(body["error"]["message"].as_str().unwrap().contains("maximum length"));
+}
+
+#[tokio::test]
+async fn rename_unknown_session_returns_404() {
+    let (app, _dir) = app().await;
+    let req = authed_request(
+        "PUT",
+        "/api/v1/sessions/nonexistent/name",
+        Some(serde_json::json!({ "name": "new name" })),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "session_not_found");
+}
+
+#[tokio::test]
+async fn purge_unknown_session_returns_404() {
+    let (app, _dir) = app().await;
+    let req = authed_request("DELETE", "/api/v1/sessions/nonexistent/purge", None);
+    let resp = app.oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "session_not_found");
+}
+
+#[tokio::test]
+async fn unarchive_unknown_session_returns_404() {
+    let (app, _dir) = app().await;
+    let req = authed_request("POST", "/api/v1/sessions/nonexistent/unarchive", None);
+    let resp = app.oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "session_not_found");
+}
+
+#[tokio::test]
+async fn unarchive_active_session_succeeds() {
+    let (router, _dir) = app().await;
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    // Archive first
+    let req = authed_request("POST", &format!("/api/v1/sessions/{id}/archive"), None);
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+    // Then unarchive
+    let req = authed_request("POST", &format!("/api/v1/sessions/{id}/unarchive"), None);
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+    // Verify session is active again
+    let resp = router
+        .clone()
+        .oneshot(authed_get(&format!("/api/v1/sessions/{id}")))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["status"], "active");
+}

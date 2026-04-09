@@ -214,3 +214,48 @@ fn deep_merge_replaces_non_object_with_object() {
     deep_merge(&mut base, patch);
     assert_eq!(base["key"]["nested"], true);
 }
+
+// -- Config endpoint error tests --
+
+#[tokio::test]
+async fn get_config_section_unknown_returns_404() {
+    use tower::ServiceExt;
+    let (app, _dir) = super::helpers::app().await;
+    let resp = app
+        .oneshot(super::helpers::authed_get("/api/v1/config/unknown_section"))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), axum::http::StatusCode::NOT_FOUND);
+    let body = super::helpers::body_json(resp).await;
+    assert_eq!(body["error"]["code"], "not_found");
+}
+
+#[tokio::test]
+async fn update_config_section_unknown_returns_404() {
+    use tower::ServiceExt;
+    let (app, _dir) = super::helpers::app().await;
+    let req = super::helpers::authed_request(
+        "PUT",
+        "/api/v1/config/unknown_section",
+        Some(serde_json::json!({"key": "value"})),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), axum::http::StatusCode::NOT_FOUND);
+    let body = super::helpers::body_json(resp).await;
+    assert_eq!(body["error"]["code"], "not_found");
+}
+
+#[tokio::test]
+async fn get_config_section_invalid_path_format() {
+    use tower::ServiceExt;
+    // NOTE: This tests that unknown config sections properly return 404
+    let (app, _dir) = super::helpers::app().await;
+    let resp = app
+        .oneshot(super::helpers::authed_get("/api/v1/config/secrets"))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), axum::http::StatusCode::NOT_FOUND);
+}

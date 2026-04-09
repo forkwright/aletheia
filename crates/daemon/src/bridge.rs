@@ -28,8 +28,7 @@ pub use bridge_impl::NoopBridge;
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
-    use crate::bridge::DaemonBridge;
-    use crate::bridge_impl::NoopBridge;
+    use crate::bridge::{DaemonBridge, NoopBridge};
 
     #[tokio::test]
     async fn noop_bridge_returns_not_success() {
