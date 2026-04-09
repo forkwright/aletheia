@@ -101,7 +101,7 @@ fn parse_hex_key(hex: &str, path: &Path) -> Result<Option<[u8; KEY_LEN]>> {
             }
             .build()
         })?;
-        let lo = hex_digit(chunk[1]).ok_or_else(|| {
+        let lo = hex_digit(chunk.get(1).copied().unwrap_or_default()).ok_or_else(|| {
             error::InvalidPrimaryKeySnafu {
                 path: path.to_path_buf(),
                 reason: format!("invalid hex character at position {}", i * 2 + 1),
@@ -230,14 +230,13 @@ pub(crate) fn encrypt_value(plaintext: &str, primary_key: &[u8; KEY_LEN]) -> Res
 /// # Errors
 ///
 /// Returns an error if the value is malformed or decryption fails.
+///
+/// ChaCha20-Poly1305 tag length in bytes.
+const TAG_LEN: usize = 16;
+
 #[expect(
     clippy::result_large_err,
     reason = "taxis Error is inherently large due to PathBuf fields"
-)]
-#[must_use]
-#[expect(
-    clippy::double_must_use,
-    reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
 )]
 pub(crate) fn decrypt_value(encrypted: &str, primary_key: &[u8; KEY_LEN]) -> Result<String> {
     let encoded = encrypted
@@ -249,8 +248,6 @@ pub(crate) fn decrypt_value(encrypted: &str, primary_key: &[u8; KEY_LEN]) -> Res
         .decode(encoded)
         .map_err(|_decode_err| build_decrypt_error("invalid base64"))?;
 
-    // ChaCha20-Poly1305 tag is 16 bytes
-    const TAG_LEN: usize = 16;
     if payload.len() < NONCE_LEN + TAG_LEN {
         return Err(build_decrypt_error("ciphertext too short"));
     }

@@ -84,7 +84,6 @@ impl TrainingCapture {
     ///
     /// Returns [`TrainingCaptureError::CreateDir`] if the directory cannot
     /// be created.
-    #[must_use]
     pub fn new(instance_root: &Path, config: &TrainingConfig) -> Result<Self> {
         let dir = instance_root.join(&config.path);
         fs::create_dir_all(&dir).context(CreateDirSnafu { path: &dir })?;
@@ -103,7 +102,6 @@ impl TrainingCapture {
     ///
     /// Returns an error if the file cannot be opened, the record cannot
     /// be serialized, or the write fails.
-    #[must_use]
     pub fn write_record(&self, record: &TrainingRecord) -> Result<()> {
         let mut line = serde_json::to_string(record).context(SerializeSnafu)?;
         line.push('\n');

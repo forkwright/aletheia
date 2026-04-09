@@ -84,7 +84,7 @@ fn base64_decode_urlsafe(input: &str) -> Result<Vec<u8>, base64::DecodeError> {
 ///
 /// Returns `true` if:
 /// - Auth mode is "none" (single-operator mode)
-/// - Caller has Role::Operator or Role::Admin
+/// - Caller has `Role::Operator` or `Role::Admin`
 async fn is_operator_or_above(
     server: &DiaporeiaServer,
     context: &RequestContext<rmcp::RoleServer>,
