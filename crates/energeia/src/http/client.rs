@@ -77,6 +77,13 @@ impl HttpEngine {
     }
 
     /// Spawn a subprocess and return a session handle.
+    ///
+    /// WHY: includes a tiny ETXTBSY retry loop. On Linux, exec() can return
+    /// ETXTBSY ("Text file busy") if the kernel's still cleaning up a
+    /// concurrent writer's handle on the binary, even when the writer has
+    /// closed the fd. This is benign in production (claude binary is
+    /// stable) but flaky in tests where mock scripts are written milliseconds
+    /// before exec. Retry up to 3 times with 5ms backoff. See #2990.
     fn launch(mut cmd: Command) -> Result<ProcessSessionHandle> {
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
@@ -84,12 +91,44 @@ impl HttpEngine {
         // without explicit wait/abort.
         cmd.kill_on_drop(true);
 
-        let mut child = cmd.spawn().map_err(|e| {
-            error::EngineSnafu {
-                detail: format!("failed to spawn claude subprocess: {e}"),
+        let mut child = match cmd.spawn() {
+            Ok(c) => c,
+            Err(e) if e.raw_os_error() == Some(26) => {
+                // ETXTBSY = 26 on Linux. Retry up to 3 times.
+                let mut last_err = e;
+                let mut attempt = 0;
+                loop {
+                    attempt += 1;
+                    if attempt > 3 {
+                        return Err(error::EngineSnafu {
+                            detail: format!(
+                                "failed to spawn claude subprocess after {attempt} ETXTBSY retries: {last_err}"
+                            ),
+                        }
+                        .build());
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(5 * attempt));
+                    match cmd.spawn() {
+                        Ok(c) => break c,
+                        Err(e2) if e2.raw_os_error() == Some(26) => {
+                            last_err = e2;
+                        }
+                        Err(e2) => {
+                            return Err(error::EngineSnafu {
+                                detail: format!("failed to spawn claude subprocess: {e2}"),
+                            }
+                            .build());
+                        }
+                    }
+                }
             }
-            .build()
-        })?;
+            Err(e) => {
+                return Err(error::EngineSnafu {
+                    detail: format!("failed to spawn claude subprocess: {e}"),
+                }
+                .build());
+            }
+        };
 
         let stdout = child.stdout.take().ok_or_else(|| {
             error::EngineSnafu {
@@ -219,6 +258,13 @@ mod tests {
     }
 
     /// Helper: create a mock script that emits NDJSON lines and exits.
+    ///
+    /// WHY: uses `File::open + sync_all` to flush metadata before returning.
+    /// Without the explicit fsync, parallel tests in the same runner can hit
+    /// `ETXTBSY` ("Text file busy") when one thread tries to exec the script
+    /// while another thread's recent write is still in the kernel buffer
+    /// (#2990). The sync forces the inode metadata to disk so the exec sees
+    /// a fully-flushed, no-writers-attached file.
     fn create_mock_script(
         dir: &std::path::Path,
         stdout_lines: &[&str],
@@ -238,6 +284,12 @@ mod tests {
             std::fs::set_permissions(&script_path, std::fs::Permissions::from_mode(0o755))
                 .expect("mock script should be chmod-able");
         }
+
+        // WHY: explicit sync_all forces metadata and content to disk so a
+        // subsequent exec doesn't race with a still-in-flight write.
+        let f = std::fs::File::open(&script_path).expect("open for sync");
+        f.sync_all().expect("sync_all");
+        drop(f);
 
         script_path
     }
