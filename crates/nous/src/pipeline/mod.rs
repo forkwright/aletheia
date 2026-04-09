@@ -814,15 +814,15 @@ pub(crate) async fn run_pipeline(
             &pipeline_config.training,
         ) {
             Ok(capture) => {
-                capture.maybe_capture(
-                    &input.session.id,
-                    &config.id,
-                    &input.content,
-                    &result.content,
-                    &config.generation.model,
-                    result.usage.total_tokens(),
-                    &result.stop_reason,
-                );
+                capture.maybe_capture(aletheia_mneme::training::CaptureInput {
+                    session_id: &input.session.id,
+                    nous_id: &config.id,
+                    user_message: &input.content,
+                    assistant_response: &result.content,
+                    model: &config.generation.model,
+                    tokens: result.usage.total_tokens(),
+                    stop_reason: &result.stop_reason,
+                });
             }
             Err(e) => {
                 tracing::warn!(error = %e, "training capture initialization failed");

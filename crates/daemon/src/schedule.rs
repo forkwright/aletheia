@@ -235,12 +235,23 @@ pub(crate) fn compute_jitter(
     let hash = hasher.finish();
 
     // NOTE: extract lower 32 bits → [0, 1) fraction
-    #[expect(clippy::as_conversions, reason = "u32 to f64: values within f64 mantissa range for practical jitter")]
+    #[expect(
+        clippy::as_conversions,
+        clippy::cast_possible_truncation,
+        reason = "intentional u64→u32 mask: takes the lower 32 bits of the hash to seed the [0,1) fraction; full 64 bits would overflow f64 mantissa"
+    )]
     let frac = f64::from(hash as u32) / f64::from(u32::MAX);
 
     let max_nanos = max_jitter.as_nanos();
-    // NOTE: f64 multiplication then truncate back to i128 → i64
-    #[expect(clippy::as_conversions, reason = "i128 to f64: duration nanos within practical range")]
+    // NOTE: f64 multiplication then truncate back to i128 → i64.
+    // Both casts are bounded: max_nanos comes from a SignedDuration with practical
+    // limits (at most a few hours), and frac is in [0, 1).
+    #[expect(
+        clippy::as_conversions,
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        reason = "max_nanos is a small SignedDuration count fitting f64 exactly; frac is in [0,1); product fits i128"
+    )]
     let jitter_nanos = (max_nanos as f64 * frac) as i128;
 
     // SAFETY: jitter_nanos ≤ max_jitter nanos, which fits in the input SignedDuration

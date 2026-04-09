@@ -83,6 +83,7 @@ impl SelfPromptLimiter {
 
         #[expect(
             clippy::cast_possible_truncation,
+            clippy::as_conversions,
             reason = "vec len is bounded by max_per_hour which is u32"
         )]
         let count = timestamps.len() as u32;
@@ -127,22 +128,27 @@ pub(crate) fn extract_follow_up(output: &str) -> Option<String> {
     let content_start = start_idx + marker.len();
 
     // Skip the rest of the heading line.
-    let after_heading = &output[content_start..];
+    // WHY: `start_idx + marker.len() <= output.len()` because `find` returns the
+    // byte index of the marker and `output` has the same byte length as `lower`.
+    // `.get()` returns `None` only if `content_start > output.len()`, which
+    // cannot happen here, but use it anyway to satisfy clippy::string_slice.
+    let after_heading = output.get(content_start..)?;
     let line_end = after_heading.find('\n').unwrap_or(after_heading.len());
     let body_start = content_start + line_end;
 
-    if body_start >= output.len() {
+    // `body_start = content_start + line_end <= content_start + after_heading.len() == output.len()`
+    let body = output.get(body_start..)?;
+    if body.is_empty() {
         return None;
     }
-
-    let body = &output[body_start..];
 
     // Terminate at the next `##` heading or end of string.
     let end = body
         .find("\n## ")
-        .map_or(body.len(), |pos| pos);
+        .unwrap_or(body.len());
 
-    let content = body[..end].trim();
+    // `end <= body.len()` by construction (find returns Some(pos<len) or unwrap_or(body.len())).
+    let content = body.get(..end)?.trim();
 
     if content.is_empty() {
         None

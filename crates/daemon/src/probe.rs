@@ -272,6 +272,7 @@ impl ProbeAuditSummary {
 
         #[expect(
             clippy::cast_precision_loss,
+            clippy::as_conversions,
             reason = "probe counts are small (< 100); precision loss is negligible"
         )]
         let avg_confidence = if total == 0 {
