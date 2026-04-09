@@ -1,4 +1,4 @@
-//! TokenEstimator trait implementations.
+//! `TokenEstimator` trait implementations.
 
 use crate::budget::TokenEstimator;
 

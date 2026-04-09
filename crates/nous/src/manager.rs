@@ -44,7 +44,7 @@ struct ActorEntry {
     /// When the actor was last (re)started.
     last_start: std::time::Instant,
     /// When the actor was last restarted. `None` until first restart.
-    /// Used to determine if restart_count should decay after stable operation.
+    /// Used to determine if `restart_count` should decay after stable operation.
     last_restart: Option<std::time::Instant>,
     /// Shared with the actor task. `true` while the actor is processing a turn.
     /// Readable without queuing through the inbox: used by `check_health` to
@@ -67,7 +67,7 @@ const MAX_RESTART_BACKOFF: Duration = Duration::from_secs(300);
 /// Timeout for waiting for an actor to drain during restart (30 seconds).
 const RESTART_DRAIN_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Window of stable operation after which restart_count decays to 0 (1 hour).
+/// Window of stable operation after which `restart_count` decays to 0 (1 hour).
 const RESTART_DECAY_WINDOW: Duration = Duration::from_secs(3600);
 
 /// Manages the lifecycle of all nous actors.
@@ -563,7 +563,7 @@ impl NousManager {
 
         // WHY: take handles before await: must not hold MutexGuard across .await
         let mut join_set: JoinSet<(String, Result<(), tokio::task::JoinError>)> = JoinSet::new();
-        for (id, entry) in self.actors.iter() {
+        for (id, entry) in &self.actors {
             if let Some(join) = entry.join.try_lock().ok().and_then(|mut g| g.take()) {
                 let id = id.clone();
                 join_set.spawn(async move { (id, join.await) });

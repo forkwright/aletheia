@@ -159,6 +159,10 @@ pub struct NousConfig {
 ///
 /// Controls which built-in hooks are enabled and their parameters.
 /// All hooks are enabled by default.
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "each flag toggles an independent hook (cost control, scope, corrections, audit); they are not a state machine"
+)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct HookConfig {

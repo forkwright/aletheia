@@ -129,8 +129,7 @@ impl CacheSafeParams {
 /// session resumption by showing where the agent left off. Focus context
 /// influences which memories are recalled. Wait state tracks pending
 /// operations for the TUI dashboard.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(try_from = "WorkingStateRaw")]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct WorkingState {
     /// Stack of active tasks (most recent at the end).
     pub task_stack: Vec<TaskEntry>,
@@ -161,17 +160,27 @@ struct WorkingStateRaw {
     updated_at: Option<String>,
 }
 
-impl TryFrom<WorkingStateRaw> for WorkingState {
-    type Error = std::convert::Infallible;
-
-    fn try_from(raw: WorkingStateRaw) -> Result<Self, Self::Error> {
-        Ok(Self {
+impl From<WorkingStateRaw> for WorkingState {
+    fn from(raw: WorkingStateRaw) -> Self {
+        Self {
             task_stack: raw.task_stack,
             focus: raw.focus,
             wait: raw.wait,
             updated_at: raw.updated_at,
             cache_params: None,
-        })
+        }
+    }
+}
+
+// WHY: Manual Deserialize to satisfy RUST/serde-bypass-constructor:
+// `WorkingState::new()` exists as a constructor, so serde must route through
+// a conversion (`From<WorkingStateRaw>`) rather than populating fields directly.
+impl<'de> Deserialize<'de> for WorkingState {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        WorkingStateRaw::deserialize(deserializer).map(Self::from)
     }
 }
 
