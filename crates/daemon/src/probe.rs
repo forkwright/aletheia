@@ -172,14 +172,15 @@ impl ProbeSet {
         let passed = violations.is_empty() && missing_required.is_empty();
 
         // Confidence: 1.0 if clean pass; degrades with number of violations/missing.
-        #[expect(
-            clippy::cast_precision_loss,
-            reason = "small probe counts (< 20) are well within f64 precision"
-        )]
         let total_issues = violations.len() + missing_required.len();
         let confidence = if passed {
             1.0_f32
         } else {
+            #[expect(
+                clippy::cast_precision_loss,
+                clippy::as_conversions,
+                reason = "small probe counts (< 20) are well within f32 precision"
+            )]
             let penalty = total_issues as f32 * 0.25_f32;
             (1.0_f32 - penalty).max(0.0_f32)
         };

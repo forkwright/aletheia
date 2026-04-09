@@ -113,8 +113,8 @@ pub enum BuiltinTask {
     SelfAudit,
     /// Run adversarial self-probing: consistency, boundary, and recall probes.
     ///
-    /// WHY: SelfAudit dispatches a generic introspection prompt to the nous;
-    /// ProbeAudit dispatches a structured probe set that evaluates specific
+    /// WHY: `SelfAudit` dispatches a generic introspection prompt to the nous;
+    /// `ProbeAudit` dispatches a structured probe set that evaluates specific
     /// behavioral invariants (injection resistance, factual consistency, recall
     /// fidelity). Silent capability drift is detected before QA surfaces it.
     ProbeAudit,
@@ -202,10 +202,6 @@ impl Schedule {
     /// Check if the current time is within the active window.
     ///
     /// `None` window means always active. Handles overnight windows (e.g., 22-06).
-    #[expect(
-        clippy::expect_used,
-        reason = "hour() returns 0-23 which always fits in u8"
-    )]
     pub(crate) fn in_window(window: Option<(u8, u8)>) -> bool {
         let Some((start, end)) = window else {
             return true;
@@ -230,10 +226,6 @@ impl Schedule {
 ///
 /// The algorithm hashes the task ID, extracts the lower 32 bits as a fraction
 /// in `[0, 1)`, and multiplies by `max_jitter`.
-#[expect(
-    clippy::cast_precision_loss,
-    reason = "u32 → f64 is lossless for all u32 values (f64 has 52-bit mantissa)"
-)]
 pub(crate) fn compute_jitter(
     task_id: &str,
     max_jitter: jiff::SignedDuration,
@@ -243,12 +235,12 @@ pub(crate) fn compute_jitter(
     let hash = hasher.finish();
 
     // NOTE: extract lower 32 bits → [0, 1) fraction
-    #[expect(clippy::cast_precision_loss, clippy::as_conversions, reason = "u32/i128 to f64: values within f64 mantissa range for practical jitter")]
-    let frac = (hash as u32) as f64 / f64::from(u32::MAX);
+    #[expect(clippy::as_conversions, reason = "u32 to f64: values within f64 mantissa range for practical jitter")]
+    let frac = f64::from(hash as u32) / f64::from(u32::MAX);
 
     let max_nanos = max_jitter.as_nanos();
     // NOTE: f64 multiplication then truncate back to i128 → i64
-    #[expect(clippy::cast_precision_loss, clippy::as_conversions, reason = "i128 to f64: duration nanos within practical range")]
+    #[expect(clippy::as_conversions, reason = "i128 to f64: duration nanos within practical range")]
     let jitter_nanos = (max_nanos as f64 * frac) as i128;
 
     // SAFETY: jitter_nanos ≤ max_jitter nanos, which fits in the input SignedDuration
@@ -258,10 +250,6 @@ pub(crate) fn compute_jitter(
 /// Apply jitter to a computed next-run timestamp.
 ///
 /// Returns `None` if no base timestamp or no jitter configured.
-#[expect(
-    clippy::expect_used,
-    reason = "jitter addition to a valid timestamp cannot overflow for reasonable jitter values (< 24h)"
-)]
 pub(crate) fn apply_jitter(
     base: Option<jiff::Timestamp>,
     task_id: &str,

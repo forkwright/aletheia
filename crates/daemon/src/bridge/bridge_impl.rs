@@ -1,4 +1,4 @@
-//! DaemonBridge trait implementations.
+//! `DaemonBridge` trait implementations.
 
 use std::future::Future;
 use std::pin::Pin;

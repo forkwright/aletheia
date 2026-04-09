@@ -227,7 +227,6 @@ impl DaemonConfig {
     /// # Errors
     ///
     /// Returns `TaskFailed` if the file exists but cannot be parsed.
-    #[must_use]
     pub fn load(workspace_root: &Path) -> Result<Self> {
         let config_path = workspace_root.join(".aletheia").join("daemon.toml");
 
@@ -291,7 +290,6 @@ impl WorkspaceGuard {
     ///
     /// Returns `TaskFailed` if the lock file cannot be created or another
     /// daemon instance already holds the lock.
-    #[must_use]
     pub fn acquire(workspace_root: &Path) -> Result<Self> {
         let lock_dir = workspace_root.join(".aletheia");
         if !lock_dir.exists() {
