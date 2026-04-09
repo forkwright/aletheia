@@ -17,6 +17,18 @@ use serde::{Deserialize, Serialize};
 const CROCKFORD: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
 /// Reverse lookup: ASCII byte → 5-bit value. 0xFF = invalid.
+///
+/// WHY: every index here is a literal ASCII byte (`b'0'..=b'9'`,
+/// `b'A'..=b'Z'`, `b'a'..=b'z'`) cast to `usize`, all of which are
+/// strictly less than 128 — the table length. The casts are zero-cost on
+/// every architecture and the indexing is statically proved safe by
+/// inspection. Suppress at the const item so the proof is documented in
+/// one place rather than repeated 60+ times.
+#[expect(
+    clippy::as_conversions,
+    clippy::indexing_slicing,
+    reason = "compile-time const lookup table; every index is a literal ASCII byte (< 128 by construction)"
+)]
 const DECODE: [u8; 128] = {
     let mut table = [0xFFu8; 128];
     // Digits
@@ -137,6 +149,10 @@ impl Ulid {
 
     /// The millisecond timestamp component (upper 48 bits).
     #[must_use]
+    #[expect(
+        clippy::as_conversions,
+        reason = "shifting a u128 right by 80 leaves the upper 48 bits in the low half; the result fits in u64 by construction"
+    )]
     pub const fn timestamp_ms(self) -> u64 {
         (self.0 >> 80) as u64
     }
@@ -154,7 +170,16 @@ impl fmt::Display for Ulid {
         let mut val = self.0;
         // Encode from least significant to most significant
         for byte in buf.iter_mut().rev() {
-            *byte = CROCKFORD[(val & 0x1F) as usize];
+            // WHY: `val & 0x1F` is in 0..=31 (5-bit mask), and CROCKFORD has
+            // 32 entries. The cast to `usize` and the index are statically safe.
+            #[expect(
+                clippy::as_conversions,
+                clippy::indexing_slicing,
+                reason = "5-bit mask result (0..=31) indexes a 32-entry table"
+            )]
+            {
+                *byte = CROCKFORD[(val & 0x1F) as usize];
+            }
             val >>= 5;
         }
         // WHY: CROCKFORD alphabet is ASCII (32 bytes), so every byte we
@@ -207,6 +232,13 @@ impl FromStr for Ulid {
                     reason: "non-ASCII character",
                 });
             }
+            // WHY: the `byte >= 128` guard above proves `byte as usize` is in
+            // 0..=127 — a valid index into the 128-entry DECODE table.
+            #[expect(
+                clippy::as_conversions,
+                clippy::indexing_slicing,
+                reason = "guarded by `byte >= 128` check immediately above"
+            )]
             let digit = DECODE[byte as usize];
             if digit == 0xFF {
                 return Err(DecodeError {
