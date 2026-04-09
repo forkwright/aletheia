@@ -34,9 +34,9 @@ pub(crate) struct Migration {
 
 /// All registered migrations, in version order.
 ///
-/// WHY versions 1-31 are reconstructed: The deployed database (sessions.db)
+/// WHY versions 1-31 are reconstructed: The deployed database (`sessions.db`)
 /// reached schema version 31 via a release binary whose migration source was
-/// never committed. The schema_version rows have empty checksums, so
+/// never committed. The `schema_version` rows have empty checksums, so
 /// verification is skipped for deployed databases. These migrations
 /// reconstruct the incremental path so that:
 ///   1. A fresh database reaches the same schema as the deployed one.

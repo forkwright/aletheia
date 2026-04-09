@@ -161,7 +161,7 @@ fn find_expired_sessions(conn: &Connection, cutoff: &str) -> Result<Vec<String>>
 ///
 /// # Complexity
 ///
-/// O(u × s) where u is the number of unique nous_ids and s is the
+/// O(u × s) where u is the number of unique `nous_id`s and s is the
 /// average number of sessions per nous.
 fn find_excess_sessions_per_nous(conn: &Connection, keep: u32) -> Result<Vec<String>> {
     let mut stmt = conn
