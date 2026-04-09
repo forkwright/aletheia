@@ -1,12 +1,7 @@
 //! Search traits and adapters for recall retrieval.
 
-#[cfg(feature = "knowledge-store")]
-use std::sync::Arc;
-
 use aletheia_mneme::embedding::EmbeddingProvider;
 use aletheia_mneme::knowledge::RecallResult as KnowledgeRecallResult;
-#[cfg(feature = "knowledge-store")]
-use aletheia_mneme::knowledge_store::KnowledgeStore;
 
 use crate::error;
 
