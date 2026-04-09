@@ -472,14 +472,14 @@ impl PendingSkill {
 
     /// Returns `true` if the skill is pending review.
     #[must_use]
-    #[expect(dead_code, reason = "skill extraction lifecycle methods")]
+    #[cfg_attr(not(test), expect(dead_code, reason = "skill extraction lifecycle methods"))]
     pub(crate) fn is_pending(&self) -> bool {
         self.status == "pending_review"
     }
 
     /// Returns `true` if the skill has been approved.
     #[must_use]
-    #[expect(dead_code, reason = "skill extraction lifecycle methods")]
+    #[cfg_attr(not(test), expect(dead_code, reason = "skill extraction lifecycle methods"))]
     pub(crate) fn is_approved(&self) -> bool {
         self.status == "approved"
     }

@@ -66,7 +66,7 @@ impl SkillCandidate {
     /// # Errors
     ///
     /// Returns a [`serde_json::Error`] if serialisation fails.
-    #[expect(dead_code, reason = "skill candidate tracking for auto-extraction")]
+    #[cfg_attr(not(test), expect(dead_code, reason = "skill candidate tracking for auto-extraction"))]
     pub(crate) fn to_json(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string(self)
     }
@@ -76,7 +76,7 @@ impl SkillCandidate {
     /// # Errors
     ///
     /// Returns a [`serde_json::Error`] if the JSON is malformed or the schema changed.
-    #[expect(dead_code, reason = "skill candidate tracking for auto-extraction")]
+    #[cfg_attr(not(test), expect(dead_code, reason = "skill candidate tracking for auto-extraction"))]
     pub(crate) fn from_json(json: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(json)
     }
@@ -200,7 +200,7 @@ impl CandidateTracker {
 
     /// Return all promoted candidates (`recurrence_count` ≥ threshold) for a nous.
     #[expect(clippy::expect_used, reason = "mutex poisoning is unrecoverable")]
-    #[expect(dead_code, reason = "skill candidate tracking for auto-extraction")]
+    #[cfg_attr(not(test), expect(dead_code, reason = "skill candidate tracking for auto-extraction"))]
     pub(crate) fn promoted_for(&self, nous_id: &str) -> Vec<SkillCandidate> {
         let guard = self.candidates.lock().expect("lock not poisoned");
         guard
@@ -217,7 +217,7 @@ impl CandidateTracker {
     }
 
     /// Returns `true` if no candidates are tracked.
-    #[expect(dead_code, reason = "skill candidate tracking for auto-extraction")]
+    #[cfg_attr(not(test), expect(dead_code, reason = "skill candidate tracking for auto-extraction"))]
     pub(crate) fn is_empty(&self) -> bool {
         self.len() == 0
     }

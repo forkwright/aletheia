@@ -330,6 +330,7 @@ pub fn extract_causal_edges(
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(clippy::indexing_slicing, reason = "test assertions on collections with known length")]
 mod tests {
     use super::*;
 

@@ -373,6 +373,7 @@ pub fn extract_tags(text: &str) -> Vec<String> {
 }
 
 #[cfg(test)]
+#[expect(clippy::indexing_slicing, reason = "test assertions on collections with known length")]
 mod tests {
     use super::*;
 

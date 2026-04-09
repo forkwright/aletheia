@@ -1,5 +1,6 @@
 //! Tests for side-query memory relevance selection, caching, and pre-filter
 //! integration with the recall pipeline.
+#![expect(clippy::unwrap_used, reason = "test assertions")]
 
 use std::collections::HashSet;
 
@@ -69,7 +70,7 @@ impl CapturingRanker {
     fn captured_manifests(&self) -> Vec<String> {
         self.captured
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone()
     }
 }
@@ -83,7 +84,7 @@ impl SideQueryRanker for CapturingRanker {
     ) -> Result<Vec<String>, SideQueryError> {
         self.captured
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .push(manifest_text.to_owned());
         Ok(self.response.iter().take(max_results).cloned().collect())
     }
