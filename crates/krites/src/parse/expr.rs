@@ -481,12 +481,8 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
     })
 }
 
-#[expect(
-    unreachable_code,
-    reason = "parse_int returns i64, not Result; grammar guarantees valid integer format"
-)]
 pub(crate) fn parse_int(s: &str, radix: u32) -> i64 {
-    // Use `get(2..)` for bounds-checked slicing; default to empty string if out of bounds.
+    // WHY: get(2..) skips "0x"/"0o"/"0b" prefix; grammar guarantees valid integer format.
     i64::from_str_radix(&s.get(2..).unwrap_or("").replace('_', ""), radix)
         .unwrap_or_else(|_| unreachable!())
 }

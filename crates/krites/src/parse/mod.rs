@@ -239,13 +239,9 @@ pub(crate) struct ParseError {
 /// Parse a text script into the datalog AST.
 ///
 /// * `src` - the script to parse
-///
 /// * `param_pool` - the list of parameters to execute the script with. These are substituted into the syntax tree during parsing.
-///
 /// * `fixed_rules` - a mapping of fixed rule names to their implementations. These are substituted into the syntax tree during parsing.
-///
 /// * `cur_vld` - the current timestamp, substituted into expressions where validity is relevant.
-/// Parse a datalog script from source.
 ///
 /// # Errors
 ///
