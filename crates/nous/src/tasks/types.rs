@@ -27,12 +27,12 @@ pub(crate) const PROGRESS_CHANNEL_CAPACITY: usize = 64;
 /// WHY: Tasks need identity that survives across progress updates, GC checks,
 /// and UI refreshes. UUID provides collision-free generation without coordination.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct TaskId(uuid::Uuid);
+pub struct TaskId(aletheia_koina::uuid::Uuid);
 
 impl TaskId {
     /// Generate a new random task ID.
     pub fn new() -> Self {
-        Self(uuid::Uuid::new_v4())
+        Self(aletheia_koina::uuid::Uuid::new_v4())
     }
 }
 

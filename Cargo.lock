@@ -133,7 +133,6 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
- "uuid",
  "wiremock",
 ]
 
@@ -221,7 +220,6 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -293,7 +291,6 @@ dependencies = [
  "tokio",
  "tower 0.5.3",
  "tracing",
- "uuid",
  "wiremock",
 ]
 
@@ -337,7 +334,6 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
- "uuid",
  "zeroize",
 ]
 
@@ -446,7 +442,6 @@ dependencies = [
  "tokio-util",
  "toml 1.1.2+spec-1.1.0",
  "tracing",
- "uuid",
 ]
 
 [[package]]

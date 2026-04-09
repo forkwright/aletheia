@@ -592,7 +592,7 @@ impl AnthropicProvider {
                 );
                 headers.insert(
                     "x-client-request-id",
-                    HeaderValue::from_str(&uuid::Uuid::new_v4().to_string()).map_err(|_e| {
+                    HeaderValue::from_str(&aletheia_koina::uuid::uuid_v4()).map_err(|_e| {
                         error::AuthFailedSnafu {
                             message: "request id contains invalid characters".to_owned(),
                         }
@@ -679,7 +679,7 @@ impl AnthropicProvider {
 
         // WHY: Reuse the same idempotency key across retries so the server
         // deduplicates if our first request actually succeeded but we timed out.
-        let idempotency_key = uuid::Uuid::new_v4().to_string();
+        let idempotency_key = aletheia_koina::uuid::uuid_v4();
 
         for attempt in 0..=self.max_retries {
             if attempt > 0 {

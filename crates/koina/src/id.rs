@@ -5,7 +5,8 @@ use std::fmt;
 
 use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
+
+use crate::uuid::Uuid;
 
 /// Generate a newtype ID wrapper around a string-like inner type.
 ///
@@ -206,10 +207,10 @@ impl SessionId {
     pub fn parse(s: &str) -> Result<Self, IdError> {
         Uuid::parse_str(s)
             .map(Self)
-            .map_err(|e| IdError::InvalidFormat {
+            .map_err(|_e| IdError::InvalidFormat {
                 kind: "SessionId",
                 value: s.to_owned(),
-                reason: e.to_string(),
+                reason: "invalid UUID format".to_owned(),
             })
     }
 }
@@ -230,7 +231,7 @@ impl TryFrom<String> for SessionId {
 
 impl fmt::Display for SessionId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0.hyphenated())
+        write!(f, "{}", self.0)
     }
 }
 
