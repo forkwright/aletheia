@@ -41,6 +41,7 @@ pub struct McpClaims {
 ///
 /// Validated claims are inserted into request extensions so downstream handlers
 /// can access them via `req.extensions().get::<McpClaims>()`.
+#[tracing::instrument(skip_all)]
 pub async fn mcp_auth(
     state: Arc<DiaporeiaState>,
     mut req: Request<Body>,

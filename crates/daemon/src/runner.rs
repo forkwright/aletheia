@@ -500,6 +500,7 @@ impl TaskRunner {
     /// future is dropped between iterations, in-flight tasks continue running
     /// on the Tokio executor; their `JoinHandle`s are held in `self.in_flight`
     /// and will be abandoned (not awaited) on DROP.
+    #[tracing::instrument(skip_all)]
     pub async fn run(&mut self) {
         tracing::info!(nous_id = %self.nous_id, tasks = self.tasks.len(), "daemon started");
 

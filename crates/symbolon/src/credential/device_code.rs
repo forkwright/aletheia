@@ -366,6 +366,7 @@ async fn poll_token_endpoint(
 /// # Ok(())
 /// # }
 /// ```
+#[tracing::instrument(skip_all)]
 #[must_use]
 pub async fn device_code_login(provider: &DeviceOAuthProvider) -> Result<CredentialFile> {
     let client = reqwest::Client::new();
@@ -427,6 +428,7 @@ pub async fn device_code_login(provider: &DeviceOAuthProvider) -> Result<Credent
 /// # Errors
 ///
 /// Returns an error if the flow fails or if the credential file cannot be saved.
+#[tracing::instrument(skip_all)]
 pub async fn device_code_login_and_save(
     provider: &DeviceOAuthProvider,
     path: &std::path::Path,
@@ -449,6 +451,7 @@ pub async fn device_code_login_and_save(
 /// # Errors
 ///
 /// Returns an error if any step of the flow fails.
+#[tracing::instrument(skip_all)]
 pub async fn device_code_login_with_callback<F>(
     provider: &DeviceOAuthProvider,
     display_callback: F,

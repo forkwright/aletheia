@@ -26,6 +26,7 @@ impl Default for CronReflectionConfig {
 /// 1. Review recent session performance
 /// 2. Identify patterns, contradictions, and corrections
 /// 3. Consolidate learnings into memory
+#[tracing::instrument(skip_all)]
 pub(crate) async fn execute_reflection(
     nous_id: &str,
     bridge: Option<&dyn crate::bridge::DaemonBridge>,

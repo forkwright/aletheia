@@ -29,6 +29,7 @@ pub struct FallbackConfig {
 ///
 /// Returns the last error if all models in the chain fail, or the first
 /// non-retryable error encountered.
+#[tracing::instrument(skip_all)]
 pub async fn complete_with_fallback(
     provider: &dyn LlmProvider,
     request: &CompletionRequest,

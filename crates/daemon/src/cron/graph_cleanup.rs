@@ -31,6 +31,7 @@ impl Default for CronGraphCleanupConfig {
 /// 1. Remove orphaned nodes with no relationships
 /// 2. Prune stale entities past their validity window
 /// 3. Clean up expired edges
+#[tracing::instrument(skip_all)]
 pub(crate) async fn execute_graph_cleanup(
     nous_id: &str,
     knowledge_executor: Option<Arc<dyn KnowledgeMaintenanceExecutor>>,

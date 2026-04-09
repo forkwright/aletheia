@@ -17,6 +17,7 @@ use crate::schedule::{BuiltinTask, TaskAction};
 
 /// Execute a task action. Receives owned `Arc`s for executor references
 /// so it can be spawned as a `'static` future.
+#[tracing::instrument(skip_all)]
 pub(crate) async fn execute_action(
     action: &TaskAction,
     nous_id: &str,
@@ -78,6 +79,7 @@ async fn execute_command(cmd: &str) -> Result<ExecutionResult> {
     }
 }
 
+#[tracing::instrument(skip_all)]
 #[expect(
     clippy::too_many_lines,
     reason = "match dispatch over builtin variants"

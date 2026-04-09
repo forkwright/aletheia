@@ -248,6 +248,7 @@ impl Watchdog {
     ///
     /// Cancel-safe at the loop boundary. `interval.tick()` is cancel-safe,
     /// and `CancellationToken::cancelled()` is cancel-safe.
+    #[tracing::instrument(skip_all)]
     #[expect(
         dead_code,
         reason = "watchdog process monitor, tested and awaiting integration"

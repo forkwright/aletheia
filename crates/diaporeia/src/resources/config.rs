@@ -22,6 +22,7 @@ pub(crate) fn resource_templates() -> Vec<ResourceTemplate> {
 }
 
 /// Read a configuration resource.
+#[tracing::instrument(skip_all)]
 pub(crate) async fn read_resource(
     state: &DiaporeiaState,
     params: &ReadResourceRequestParams,

@@ -152,6 +152,7 @@ pub(crate) fn extract_follow_up(output: &str) -> Option<String> {
 }
 
 /// Execute a self-prompt: send the extracted follow-up to the nous via the bridge.
+#[tracing::instrument(skip_all)]
 pub(crate) async fn execute_self_prompt(
     nous_id: &str,
     prompt: &str,

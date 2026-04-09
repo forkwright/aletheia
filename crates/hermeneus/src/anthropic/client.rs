@@ -213,6 +213,7 @@ impl AnthropicProvider {
     ///
     /// This is an `AnthropicProvider`-specific method. The `LlmProvider`
     /// trait only exposes `complete()`.
+    #[tracing::instrument(skip_all)]
     pub async fn complete_streaming(
         &self,
         request: &CompletionRequest,

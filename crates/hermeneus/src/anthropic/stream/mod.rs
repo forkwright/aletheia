@@ -123,6 +123,7 @@ pub(crate) fn parse_sse_stream(
 ///
 /// Uses lossy UTF-8 so proxy-injected non-UTF-8 bytes produce replacement
 /// characters (`\u{FFFD}`) rather than aborting the stream.
+#[tracing::instrument(skip_all)]
 pub(crate) async fn parse_sse_response(
     response: &mut Response,
     accumulator: &mut StreamAccumulator,

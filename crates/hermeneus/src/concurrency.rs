@@ -199,6 +199,7 @@ impl AdaptiveConcurrencyLimiter {
     /// The permit must be consumed via [`ConcurrencyPermit::finish`] or
     /// [`ConcurrencyPermit::finish_with_latency`] to record the outcome.
     /// Dropping without calling either applies a `Neutral` outcome.
+    #[tracing::instrument(skip_all)]
     pub async fn acquire(self: &Arc<Self>) -> ConcurrencyPermit {
         loop {
             // Create the notified future *before* inspecting state to avoid
