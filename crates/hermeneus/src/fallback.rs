@@ -91,8 +91,9 @@ pub async fn complete_with_fallback(
         }
     }
 
-    // SAFETY: the loop above always executes at least once (max(1)), so
-    // `last_error` is always `Some` when we reach this point.
+    // SAFETY: the retry loop executes at least once because retries_before_fallback
+    // is clamped to max(1). last_error is populated on every retryable failure.
+    // The unwrap_or_else is a defensive fallback that should never trigger.
     Err(last_error.unwrap_or_else(|| {
         crate::error::ApiRequestSnafu {
             message: "all models in fallback chain failed".to_owned(),

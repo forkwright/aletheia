@@ -309,6 +309,12 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
     /// Operational files (AGENTS, GOALS, TOOLS, CHECKLIST, MEMORY, CONTEXT)
     /// load only when relevant to the task hint.
     ///
+    /// # Why
+    ///
+    /// Identity files define "who the agent is" and must always load.
+    /// Operational files bloat the context window unnecessarily for simple
+    /// queries. Loading TOOLS.md for a casual greeting wastes tokens.
+    ///
     /// # Complexity
     ///
     /// O(f + s log s) where f is the number of workspace files and s is the
@@ -507,6 +513,12 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
     /// marker is prepended so the reader knows content was removed. Falls back to
     /// line-by-line truncation if no headers are found or no single section fits.
     ///
+    /// # Why
+    ///
+    /// Newest-first truncation preserves recent context (current goals,
+    /// active tasks) which is more relevant than older history. The LLM
+    /// attends more strongly to content near the end of long contexts.
+    ///
     /// # Complexity
     ///
     /// O(p) where p is the number of markdown sections in the content.
@@ -577,6 +589,9 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
     ///
     /// Keeps the **newest** (last) lines that fit within the budget, dropping
     /// the oldest. A truncation marker is prepended to indicate removed content.
+    ///
+    /// // WHY: Line-by-line is coarser than header-based truncation but handles
+    /// // files without markdown structure. Still prefers newest content.
     fn truncate_by_lines(&self, section: &BootstrapSection, max_tokens: u64) -> BootstrapSection {
         let lines: Vec<&str> = section.content.lines().collect();
 

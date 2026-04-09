@@ -136,6 +136,10 @@ pub struct NousActor {
     stores: ActorStores,
     runtime: ActorRuntime,
     /// Per-session quality drift detectors keyed by session key.
+    ///
+    /// // WHY: Drift is tracked per-session, not globally, because different
+    /// // sessions may have different quality baselines. A coding session
+    /// // naturally has different tool-error patterns than a research session.
     drift_detectors: HashMap<String, DriftDetector>,
 }
 
@@ -234,6 +238,10 @@ impl NousActor {
     /// `cross_rx.recv()`, and `cancel.cancelled()`, all of which are
     /// cancel-safe. Dropping the future exits the loop without leaving
     /// inconsistent state.
+    ///
+    /// // SAFETY: The select! uses `biased;` ordering: cancellation and shutdown
+    /// // branches are polled first. This ensures prompt shutdown even when
+    /// // the inbox is flooded with messages.
     #[instrument(skip(self), fields(nous.id = %self.id))]
     #[expect(
         clippy::too_many_lines,
@@ -482,6 +490,10 @@ impl NousActor {
 
     /// Evict the oldest session (by `last_accessed`) when the session count reaches
     /// `MAX_SESSIONS`. Prevents unbounded memory growth using LRU eviction.
+    ///
+    /// // WHY: LRU eviction prioritizes keeping active sessions over dormant ones.
+    /// // This prevents memory exhaustion from abandoned sessions while preserving
+    /// // context for ongoing conversations.
     fn evict_oldest_session_if_needed(&mut self) {
         if self.sessions.len() < MAX_SESSIONS {
             return;
@@ -509,6 +521,10 @@ impl NousActor {
     /// empty vec when the knowledge-store feature is disabled, when no
     /// `KnowledgeStore` is configured, or when no skills match: preserving
     /// existing behaviour in all degraded cases.
+    ///
+    /// // WHY: Skills are resolved per-turn because they depend on the specific
+    /// // task context extracted from user input. A coding query needs different
+    /// // skills than a research query, even for the same agent.
     ///
     /// # Cancel safety
     ///
@@ -545,6 +561,10 @@ impl NousActor {
     /// Reads active intents from `instance/nous/<id>/intents.json` and returns a
     /// single [`BootstrapSection`] when there are active intents. Returns an empty
     /// vec when no intents are active (file absent or all resolved/expired).
+    ///
+    /// // WHY: Intents are operator directives (e.g., "migrate all tests to insta")
+    /// // that must be visible to the agent for planning. They live outside the
+    /// // normal bootstrap files because they're dynamic and task-specific.
     ///
     /// Degrades gracefully: any I/O or deserialization error is logged and
     /// returns an empty vec so the pipeline is never blocked by intent load failures.

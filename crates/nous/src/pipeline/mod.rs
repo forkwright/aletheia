@@ -154,6 +154,10 @@ struct CallRecord {
 /// 4. Circular tool chains (A → B → C → A with same context)
 ///
 /// Uses a two-tier response: first `Warn`, then `Halt` after `max_warnings`.
+///
+/// // WHY: Agents can get stuck in loops (repeatedly calling the same failing tool,
+/// // oscillating between two approaches). The two-tier response gives the LLM
+/// // a chance to self-correct with a warning before we forcibly halt execution.
 #[derive(Debug, Clone)]
 pub struct LoopDetector {
     /// Recent tool call records (ring buffer, capped at `window` entries).
@@ -207,6 +211,10 @@ impl LoopDetector {
     /// Returns [`LoopVerdict::Ok`] if no pattern is detected,
     /// [`LoopVerdict::Warn`] on first detection (inject warning and continue),
     /// or [`LoopVerdict::Halt`] after `max_warnings` have been issued.
+    ///
+    /// // WHY: The input_hash (not full input) is used for comparison to keep
+    /// // memory usage bounded. Collisions are unlikely with a good hash and
+    /// // false positives only trigger warnings, not immediate halts.
     pub fn record(&mut self, tool_name: &str, input_hash: &str, is_error: bool) -> LoopVerdict {
         let signature = format!("{tool_name}:{input_hash}");
         self.history.push_back(CallRecord {
@@ -654,6 +662,10 @@ pub fn check_guard(session: &SessionState, config: &NousConfig) -> GuardResult {
 /// The [`EventEmitter`] couples metrics and logs: each stage emits a single
 /// typed event that simultaneously records a metric and produces a structured
 /// log line. Pass `None` to use a default log-only emitter.
+///
+/// // WHY: The pipeline uses a mutable PipelineContext passed between stages
+/// // rather than returning values. This allows each stage to build on the
+/// // work of previous stages (e.g., recall uses remaining tokens after context).
 #[expect(
     clippy::too_many_arguments,
     reason = "pipeline threading requires all dependencies until config struct refactor"
@@ -745,7 +757,7 @@ pub(crate) async fn run_pipeline(
     run_guard_stage(&input.session, config, emitter)?;
     stages_completed += 1;
 
-    // WHY: before_query hooks run after guard (so rejected requests never reach hooks)
+    // Before-query hooks run after guard (so rejected requests never reach hooks)
     // but before execute (so hooks can modify context before the model call).
     if let Some(hook_registry) = hooks {
         let mut query_ctx = QueryContext {

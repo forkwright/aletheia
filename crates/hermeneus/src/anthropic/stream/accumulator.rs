@@ -74,6 +74,10 @@ impl StreamAccumulator {
 
     /// Process an SSE event, emitting `StreamEvent`s via the callback.
     /// Returns `Err` if the stream contains an error event.
+    ///
+    /// // WHY: The accumulator maintains a Vec<BlockBuilder> indexed by the
+    /// // API's content block index. The while-loop ensures the vec is grown
+    /// // to accommodate out-of-order or sparse indices from the stream.
     #[expect(
         clippy::too_many_lines,
         reason = "SSE event dispatch is inherently branchy"
@@ -144,7 +148,8 @@ impl StreamAccumulator {
                     }
                 };
                 // INVARIANT: blocks vec must be at least index+1 long before assignment.
-                // index is a u32 content block index from the API; usize is at least 32 bits
+                // NOTE: u32→usize conversion is safe: content block indices are small
+                // and usize is at least 32 bits on all supported platforms.
                 #[expect(
                     clippy::as_conversions,
                     reason = "u32→usize: content block indices are small"
