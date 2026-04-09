@@ -152,7 +152,10 @@ jiff = "0.2"
 
 # Async utilities
 bytes = { version = "1", default-features = false }
-futures = { version = "0.3", default-features = false }
+# WHY: `std` feature is required for `FutureExt::catch_unwind` (used in
+# melete distillation panic boundary). Stripping `std` would remove the
+# unwind-safe future combinator we depend on.
+futures = { version = "0.3", default-features = false, features = ["std"] }
 
 # Async
 tokio = { version = "1", default-features = false, features = [
