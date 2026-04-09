@@ -543,7 +543,11 @@ mod tests {
         // WHY: limit high enough to fit text but the image block pushes total over
         let limit = 80 + image_size + 10;
         let content = ToolResultContent::Blocks(blocks);
-        #[expect(clippy::as_conversions, reason = "usize→u32: test value fits")]
+        #[expect(
+            clippy::as_conversions,
+            clippy::cast_possible_truncation,
+            reason = "usize→u32: test value fits"
+        )]
         let result = truncate_tool_result(content, limit as u32); // kanon:ignore RUST/as-cast
         match result {
             ToolResultContent::Blocks(bs) => {

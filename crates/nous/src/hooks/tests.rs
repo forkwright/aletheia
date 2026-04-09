@@ -67,7 +67,7 @@ impl TurnHook for NoopHook {
     }
 }
 
-/// Hook that always aborts on before_query.
+/// Hook that always aborts on `before_query`.
 struct AbortingHook;
 
 impl TurnHook for AbortingHook {

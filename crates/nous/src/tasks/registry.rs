@@ -472,6 +472,11 @@ impl std::fmt::Debug for TaskRegistry {
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions on collections with previously verified length"
+)]
 mod tests {
     use std::time::Duration;
 

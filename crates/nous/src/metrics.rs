@@ -152,6 +152,10 @@ pub(crate) fn record_cache_usage(
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "prometheus desc() returns a non-empty slice for registered metrics; indexing [0] is safe by contract"
+)]
 mod tests {
     use prometheus::core::Collector;
 
