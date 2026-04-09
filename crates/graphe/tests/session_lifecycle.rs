@@ -250,11 +250,11 @@ fn delete_session_removes_empty_session() {
 }
 
 #[test]
-#[ignore = "blocked on #2959 — delete_session has no FK cascade and fails on sessions with messages"]
 fn delete_session_removes_session_and_messages() {
-    // WHY: the regression test for #2959. Once the FK cascade or explicit
-    // child-cleanup lands in delete_session, this test should pass and the
-    // #[ignore] can be removed.
+    // WHY: the regression test for #2959. delete_session now manually
+    // cleans up children (messages, usage_records, distillation_records,
+    // agent_notes) inside a transaction since the schema lacks
+    // ON DELETE CASCADE.
     let (store, _dir) = fresh_store();
     let session_id = Ulid::new().to_string();
     store
@@ -272,6 +272,14 @@ fn delete_session_removes_session_and_messages() {
     assert!(
         after.is_none(),
         "session should not be findable after delete"
+    );
+    // WHY: also verify no orphan rows remain in messages.
+    let history = store
+        .get_history(&session_id, None)
+        .expect("history query");
+    assert!(
+        history.is_empty(),
+        "messages should be deleted along with the session"
     );
 }
 

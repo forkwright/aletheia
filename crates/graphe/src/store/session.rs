@@ -212,19 +212,41 @@ impl SessionStore {
     /// Hard-delete a session and all its messages by ID.
     ///
     /// Unlike archiving, this permanently removes the session row and all
-    /// associated message rows. The caller must have verified the session
-    /// exists before calling this method.
+    /// associated message, usage, distillation, and note rows. The caller
+    /// must have verified the session exists before calling this method.
+    ///
+    /// # Errors
+    /// Returns an error if the database is not writable, the transaction
+    /// fails, or any of the dependent DELETE statements fails.
     #[instrument(skip(self))]
     #[must_use]
     pub fn delete_session(&self, id: &str) -> Result<bool> {
         self.require_writable()?;
-        // WHY: messages.session_id has ON DELETE CASCADE, so deleting the
-        // session row removes its messages in the same transaction without
-        // a separate DELETE statement.
-        let rows = self
+        // WHY: the schema's REFERENCES sessions(id) declarations do NOT
+        // include ON DELETE CASCADE (#2959), so we must manually clean up
+        // every dependent table inside a single transaction:
+        //   1. messages
+        //   2. usage (not usage_records)
+        //   3. distillations (not distillation_records)
+        //   4. agent_notes
+        // Adding cascade via migration is the long-term fix; this is the
+        // safe, no-migration option.
+        let tx = self
             .conn
+            .unchecked_transaction()
+            .context(error::DatabaseSnafu)?;
+        tx.execute("DELETE FROM messages WHERE session_id = ?1", [id])
+            .context(error::DatabaseSnafu)?;
+        tx.execute("DELETE FROM usage WHERE session_id = ?1", [id])
+            .context(error::DatabaseSnafu)?;
+        tx.execute("DELETE FROM distillations WHERE session_id = ?1", [id])
+            .context(error::DatabaseSnafu)?;
+        tx.execute("DELETE FROM agent_notes WHERE session_id = ?1", [id])
+            .context(error::DatabaseSnafu)?;
+        let rows = tx
             .execute("DELETE FROM sessions WHERE id = ?1", [id])
             .context(error::DatabaseSnafu)?;
+        tx.commit().context(error::DatabaseSnafu)?;
         Ok(rows > 0)
     }
 }
