@@ -166,9 +166,13 @@ impl AgentSdkEngine {
     }
 }
 
+// WHY: manual Debug impl rather than `#[derive]` because the config holds an
+// `oauth_token: Option<String>` we must never log. The summary form shows
+// `has_oauth: bool` and `mcp_server_count: usize` instead of the raw values.
 impl std::fmt::Debug for AgentSdkEngine {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AgentSdkEngine")
+            .field("binary", &self.binary)
             .field("default_model", &self.config.default_model)
             .field("skip_permissions", &self.config.skip_permissions)
             .field("disable_plugins", &self.config.disable_plugins)

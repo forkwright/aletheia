@@ -27,6 +27,7 @@ regex = { workspace = true }
 # aletheia-hermeneus = { path = "../hermeneus" }
 fjall = { version = "3", optional = true }
 jiff = { workspace = true, features = ["serde"] }
+parking_lot = { version = "0.12", default-features = false }
 rmp-serde = "1.2"
 serde = { workspace = true }
 serde_json = { workspace = true }

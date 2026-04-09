@@ -52,6 +52,11 @@ impl SessionType {
     }
 
     /// Classify session type from key pattern.
+    ///
+    /// Only compiled when the `sqlite` feature is enabled — the only call
+    /// sites (`store::session::create_session` and friends) live behind
+    /// that feature gate.
+    #[cfg(any(feature = "sqlite", test))]
     #[must_use]
     pub(crate) fn from_key(key: &str) -> Self {
         if key.contains("prosoche") {

@@ -78,7 +78,7 @@ impl HttpEngine {
 
     /// Spawn a subprocess and return a session handle.
     ///
-    /// WHY: includes a tiny ETXTBSY retry loop. On Linux, exec() can return
+    /// WHY: includes a tiny ETXTBSY retry loop. On Linux, `exec()` can return
     /// ETXTBSY ("Text file busy") if the kernel's still cleaning up a
     /// concurrent writer's handle on the binary, even when the writer has
     /// closed the fd. This is benign in production (claude binary is

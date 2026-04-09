@@ -85,7 +85,7 @@ pub struct SessionSpec {
 ///
 /// Built incrementally via the builder methods.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(try_from = "AgentOptionsRaw")]
+#[serde(from = "AgentOptionsRaw")]
 #[non_exhaustive]
 pub struct AgentOptions {
     /// LLM model identifier (e.g., "claude-sonnet-4-20250514").
@@ -110,17 +110,15 @@ struct AgentOptionsRaw {
     permission_mode: Option<String>,
 }
 
-impl TryFrom<AgentOptionsRaw> for AgentOptions {
-    type Error = std::convert::Infallible;
-
-    fn try_from(raw: AgentOptionsRaw) -> std::result::Result<Self, Self::Error> {
-        Ok(Self {
+impl From<AgentOptionsRaw> for AgentOptions {
+    fn from(raw: AgentOptionsRaw) -> Self {
+        Self {
             model: raw.model,
             system_prompt: raw.system_prompt,
             cwd: raw.cwd,
             max_turns: raw.max_turns,
             permission_mode: raw.permission_mode,
-        })
+        }
     }
 }
 
@@ -216,7 +214,7 @@ pub enum SessionEvent {
 
 /// Final result of a completed session.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(try_from = "SessionResultRaw")]
+#[serde(from = "SessionResultRaw")]
 #[non_exhaustive]
 pub struct SessionResult {
     /// The Agent SDK session identifier.
@@ -247,11 +245,9 @@ struct SessionResultRaw {
     model: Option<String>,
 }
 
-impl TryFrom<SessionResultRaw> for SessionResult {
-    type Error = std::convert::Infallible;
-
-    fn try_from(raw: SessionResultRaw) -> std::result::Result<Self, Self::Error> {
-        Ok(Self {
+impl From<SessionResultRaw> for SessionResult {
+    fn from(raw: SessionResultRaw) -> Self {
+        Self {
             session_id: raw.session_id,
             cost_usd: raw.cost_usd,
             num_turns: raw.num_turns,
@@ -259,7 +255,7 @@ impl TryFrom<SessionResultRaw> for SessionResult {
             success: raw.success,
             result_text: raw.result_text,
             model: raw.model,
-        })
+        }
     }
 }
 

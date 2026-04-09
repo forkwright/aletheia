@@ -209,6 +209,7 @@ dependencies = [
  "async-trait",
  "fjall",
  "jiff",
+ "parking_lot",
  "prometheus",
  "regex",
  "rmp-serde",

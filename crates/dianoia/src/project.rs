@@ -9,7 +9,7 @@ use crate::state::{ProjectState, Transition};
 
 /// A planning project.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(try_from = "ProjectRaw")]
+#[serde(from = "ProjectRaw")]
 pub struct Project {
     /// Unique project identifier.
     pub id: Ulid,
@@ -48,11 +48,9 @@ struct ProjectRaw {
     owner: String,
 }
 
-impl TryFrom<ProjectRaw> for Project {
-    type Error = std::convert::Infallible;
-
-    fn try_from(raw: ProjectRaw) -> std::result::Result<Self, Self::Error> {
-        Ok(Self {
+impl From<ProjectRaw> for Project {
+    fn from(raw: ProjectRaw) -> Self {
+        Self {
             id: raw.id,
             name: raw.name,
             description: raw.description,
@@ -63,7 +61,7 @@ impl TryFrom<ProjectRaw> for Project {
             created_at: raw.created_at,
             updated_at: raw.updated_at,
             owner: raw.owner,
-        })
+        }
     }
 }
 

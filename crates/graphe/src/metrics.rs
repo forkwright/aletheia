@@ -40,6 +40,10 @@ pub(crate) fn init() {
 }
 
 /// Record a session creation.
+///
+/// Only compiled when the `sqlite` feature is enabled — the only call site
+/// (`store::session::create`) lives behind that feature gate.
+#[cfg(any(feature = "sqlite", test))]
 pub(crate) fn record_session_created(nous_id: &str, session_type: &str) {
     SESSIONS_TOTAL
         .with_label_values(&[nous_id, session_type])
@@ -47,6 +51,10 @@ pub(crate) fn record_session_created(nous_id: &str, session_type: &str) {
 }
 
 /// Record a backup operation duration.
+///
+/// Only compiled when the `sqlite` feature is enabled — the only call site
+/// (`backup::create_backup`) lives behind that feature gate.
+#[cfg(any(feature = "sqlite", test))]
 pub(crate) fn record_backup_duration(duration_secs: f64, success: bool) {
     let status = if success { "ok" } else { "error" };
     BACKUP_DURATION_SECONDS
