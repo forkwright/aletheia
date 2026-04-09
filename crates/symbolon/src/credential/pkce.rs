@@ -9,12 +9,12 @@ use std::net::{TcpListener, TcpStream};
 use std::time::Duration;
 
 use aletheia_koina::secret::SecretString;
-use base64::Engine as _;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use rand::TryRngCore as _;
 use sha2::{Digest, Sha256};
 use snafu::{ResultExt, Snafu};
 use tracing::{debug, info};
+
+use crate::util::base64url_encode;
 
 use super::file_ops::CredentialFile;
 
@@ -223,12 +223,12 @@ impl PkcePair {
             .map_err(|_| PkceError::RandomGeneration {
                 location: snafu::location!(),
             })?;
-        let verifier = URL_SAFE_NO_PAD.encode(&verifier_bytes);
+        let verifier = base64url_encode(&verifier_bytes);
 
         let mut hasher = Sha256::new();
         hasher.update(verifier.as_bytes());
         let hash = hasher.finalize();
-        let challenge = URL_SAFE_NO_PAD.encode(hash);
+        let challenge = base64url_encode(&hash);
 
         Ok(Self {
             verifier: SecretString::from(verifier),
@@ -278,7 +278,7 @@ fn generate_state() -> Result<String> {
         .map_err(|_| PkceError::RandomGeneration {
             location: snafu::location!(),
         })?;
-    Ok(URL_SAFE_NO_PAD.encode(&bytes))
+    Ok(base64url_encode(&bytes))
 }
 
 /// Simple URL encoding for query parameters.
@@ -765,7 +765,7 @@ mod tests {
         // Verify challenge is correct
         let mut hasher = Sha256::new();
         hasher.update(pair.verifier.expose_secret().as_bytes());
-        let expected = URL_SAFE_NO_PAD.encode(hasher.finalize());
+        let expected = base64url_encode(&hasher.finalize());
         assert_eq!(pair.challenge, expected);
     }
 

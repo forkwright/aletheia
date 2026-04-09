@@ -15,8 +15,8 @@ use std::path::{Path, PathBuf};
 use aes_gcm::aead::generic_array::GenericArray;
 use aes_gcm::aead::{Aead, AeadCore, OsRng};
 use aes_gcm::{Aes256Gcm, KeyInit};
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD as BASE64;
+
+use crate::util::{base64_decode, base64_encode};
 
 /// Magic prefix that marks an encrypted credential file.
 pub(crate) const ENCRYPTED_SENTINEL: &str = "ALETHEIA_ENC_V1:";
@@ -186,7 +186,7 @@ pub(crate) fn encrypt(key: &[u8; KEY_LEN], plaintext: &[u8]) -> std::io::Result<
     combined.extend_from_slice(&nonce);
     combined.extend_from_slice(&ciphertext_with_tag);
 
-    Ok(BASE64.encode(&combined))
+    Ok(base64_encode(&combined))
 }
 
 /// Decrypt a base64-encoded `nonce || ciphertext_with_tag` produced by [`encrypt`].
@@ -195,10 +195,10 @@ pub(crate) fn encrypt(key: &[u8; KEY_LEN], plaintext: &[u8]) -> std::io::Result<
 ///
 /// Returns an `io::Error` if base64 decoding or AES-GCM authentication fails.
 pub(crate) fn decrypt(key: &[u8; KEY_LEN], encoded: &str) -> std::io::Result<Vec<u8>> {
-    let combined = BASE64.decode(encoded).map_err(|e| {
+    let combined = base64_decode(encoded).ok_or_else(|| {
         std::io::Error::new(
             std::io::ErrorKind::InvalidData,
-            format!("base64 decode failed: {e}"),
+            "base64 decode failed",
         )
     })?;
 

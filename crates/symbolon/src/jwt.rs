@@ -6,8 +6,6 @@
 
 use std::time::Duration;
 
-use base64::Engine;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 use tracing::instrument;
@@ -18,6 +16,7 @@ use aletheia_koina::secret::SecretString;
 
 use crate::error::{self, Result};
 use crate::types::{Claims, Role, TokenKind, TokenPair};
+use crate::util::{base64url_decode, base64url_encode};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -158,7 +157,7 @@ impl JwtManager {
         })?;
 
         // WHY: verify signature before parsing claims to reject tampered tokens early
-        let sig_bytes = URL_SAFE_NO_PAD.decode(signature).map_err(|_err| {
+        let sig_bytes = base64url_decode(signature).ok_or_else(|| {
             error::TokenDecodeSnafu {
                 message: "invalid base64url in signature".to_owned(),
             }
@@ -186,7 +185,7 @@ impl JwtManager {
             .build()
         })?;
 
-        let payload_bytes = URL_SAFE_NO_PAD.decode(payload_b64).map_err(|_err| {
+        let payload_bytes = base64url_decode(payload_b64).ok_or_else(|| {
             error::TokenDecodeSnafu {
                 message: "invalid base64url in payload".to_owned(),
             }
@@ -266,7 +265,7 @@ impl JwtManager {
             }
             .build()
         })?;
-        let payload_b64 = URL_SAFE_NO_PAD.encode(&payload_json);
+        let payload_b64 = base64url_encode(&payload_json);
         let signing_input = format!("{HS256_HEADER_B64}.{payload_b64}");
         // WHY: new_from_slice only fails if the key length is incompatible with
         // the hash block size, which cannot happen for HMAC-SHA256 (any length accepted).
@@ -278,7 +277,7 @@ impl JwtManager {
         })?;
         mac.update(signing_input.as_bytes());
         let tag = mac.finalize().into_bytes();
-        let signature = URL_SAFE_NO_PAD.encode(&tag);
+        let signature = base64url_encode(&tag);
 
         Ok(format!("{signing_input}.{signature}"))
     }
@@ -466,7 +465,7 @@ mod tests {
         let tampered = format!(
             "{}.{}.{}",
             parts[0],
-            URL_SAFE_NO_PAD.encode(b"{\"sub\":\"hacker\",\"role\":\"operator\",\"iss\":\"aletheia-test\",\"iat\":0,\"exp\":9999999999,\"jti\":\"x\",\"kind\":\"access\"}"),
+            base64url_encode(b"{\"sub\":\"hacker\",\"role\":\"operator\",\"iss\":\"aletheia-test\",\"iat\":0,\"exp\":9999999999,\"jti\":\"x\",\"kind\":\"access\"}"),
             parts[2]
         );
         assert!(
