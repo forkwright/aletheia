@@ -9,11 +9,12 @@ use regex::Regex;
 
 /// Compile a static regex from a literal pattern. Panics if the pattern is invalid
 /// (programming error caught at startup, not a runtime concern).
-// WHY: #[allow] instead of #[expect] because clippy cannot track lint suppression
-// through macro expansion on static items.
+// WHY: `#[allow]` instead of `#[expect]` because clippy cannot track lint
+// suppression through macro expansion on static items — `#[expect]` would
+// fire `unfulfilled_lint_expectations` on every invocation of this macro.
 macro_rules! static_regex {
     ($name:ident, $pattern:expr) => {
-        #[expect(clippy::expect_used, reason = "macro-generated static regex requires expect() for compilation failure")]
+        #[allow(clippy::expect_used, reason = "macro-generated static regex requires expect() for compilation failure")]
         static $name: LazyLock<Regex> = LazyLock::new(||
             Regex::new($pattern).expect("static regex must compile")
         );
