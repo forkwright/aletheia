@@ -139,8 +139,8 @@ impl RefreshingCredentialProvider {
             .filter(|t| !t.expose_secret().is_empty())?;
 
         let state = Arc::new(RwLock::new(Some(RefreshState {
-            current_token: SecretString::from(cred.token.clone()),
-            refresh_token: SecretString::from(refresh_token),
+            current_token: cred.token.clone(),
+            refresh_token,
             expires_at_ms: cred.expires_at.unwrap_or_else(|| {
                 warn!(
                     "credential has no expiry, treating as immediately expired to trigger refresh"
@@ -256,15 +256,12 @@ fn try_reload_from_file(
     info!("credential file changed externally while circuit open, reloading");
     if let Ok(mut guard) = state.write() {
         *guard = Some(RefreshState {
-            current_token: SecretString::from(file_cred.token),
-            refresh_token: file_cred.refresh_token.map_or_else(
-                || {
-                    guard
-                        .as_ref()
-                        .map_or_else(|| SecretString::from(""), |s| s.refresh_token.clone())
-                },
-                SecretString::from,
-            ),
+            current_token: file_cred.token,
+            refresh_token: file_cred.refresh_token.unwrap_or_else(|| {
+                guard
+                    .as_ref()
+                    .map_or_else(|| SecretString::from(""), |s| s.refresh_token.clone())
+            }),
             expires_at_ms: file_cred.expires_at.unwrap_or(0),
             subscription_type: file_cred.subscription_type,
         });
@@ -288,18 +285,15 @@ fn resolve_post_refresh_state(
             "file has newer credential than our refresh, adopting"
         );
         RefreshState {
-            current_token: SecretString::from(on_disk.token),
-            refresh_token: on_disk.refresh_token.map_or_else(
-                || SecretString::from(resp.refresh_token),
-                SecretString::from,
-            ),
+            current_token: on_disk.token,
+            refresh_token: on_disk.refresh_token.unwrap_or(resp.refresh_token),
             expires_at_ms: on_disk.expires_at.unwrap_or(new_expires_at_ms),
             subscription_type: on_disk.subscription_type,
         }
     } else {
         RefreshState {
-            current_token: SecretString::from(resp.access_token),
-            refresh_token: SecretString::from(resp.refresh_token),
+            current_token: resp.access_token,
+            refresh_token: resp.refresh_token,
             expires_at_ms: new_expires_at_ms,
             subscription_type,
         }

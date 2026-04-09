@@ -138,7 +138,6 @@ impl JwtManager {
 
     /// Issue a refresh token.
     #[instrument(skip(self), fields(kind = "refresh"))]
-    #[must_use]
     pub fn issue_refresh(&self, sub: &str, role: Role) -> Result<String> {
         self.issue(sub, role, None, TokenKind::Refresh, self.config.refresh_ttl)
     }

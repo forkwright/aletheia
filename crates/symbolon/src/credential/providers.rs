@@ -132,7 +132,7 @@ impl FileCredentialProvider {
             SystemTime::UNIX_EPOCH
         });
 
-        let token = SecretString::from(cred.token);
+        let token = cred.token;
         if let Ok(mut guard) = self.cached.write() {
             *guard = Some(CachedFile {
                 token: token.clone(),
