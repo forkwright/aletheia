@@ -523,6 +523,8 @@ pub fn apply_sandbox(
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use std::os::unix::fs::PermissionsExt;
     use std::path::PathBuf;
@@ -711,10 +713,6 @@ mod tests {
 
         let workspace = tempfile::tempdir().expect("create workspace");
         let symlink = workspace.path().join("escape_link");
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "test setup requires direct filesystem access"
-        )]
         std::os::unix::fs::symlink(&secret_file, &symlink).expect("create symlink");
 
         let policy = policy_with_system_paths(workspace.path());
@@ -952,7 +950,7 @@ mod tests {
         );
     }
 
-    /// Test that pivot_root is blocked by seccomp.
+    /// Test that `pivot_root` is blocked by seccomp.
     #[cfg(target_os = "linux")]
     #[test]
     fn seccomp_blocks_pivot_root() {
@@ -1203,7 +1201,7 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn disabled_policy_allows_all() {
-        let workspace = tempfile::tempdir().expect("create workspace");
+        let _workspace = tempfile::tempdir().expect("create workspace");
         let policy = SandboxPolicy {
             enabled: false,
             read_paths: Vec::new(),
@@ -1233,8 +1231,8 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn proc_self_access_restricted() {
-        let _workspace = tempfile::tempdir().expect("create workspace");
-        let policy = policy_with_system_paths(_workspace.path());
+        let workspace = tempfile::tempdir().expect("create workspace");
+        let policy = policy_with_system_paths(workspace.path());
 
         // Try to access /proc/self/environ which could leak environment variables
         let mut cmd = Command::new("cat");
@@ -1336,12 +1334,8 @@ mod tests {
         // Create a deeply nested directory structure
         let mut deep_path = workspace.path().to_path_buf();
         for i in 0..20 {
-            deep_path = deep_path.join(format!("subdir_{:02}", i));
+            deep_path = deep_path.join(format!("subdir_{i:02}"));
         }
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "test setup requires direct filesystem access"
-        )]
         std::fs::create_dir_all(&deep_path).expect("create deep directory");
 
         let test_file = deep_path.join("deep_file.txt");
@@ -1386,10 +1380,6 @@ mod tests {
 
         // Create a deep nested structure in workspace
         let nested = workspace.path().join("a").join("b").join("c");
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "test setup requires direct filesystem access"
-        )]
         std::fs::create_dir_all(&nested).expect("create nested dirs");
 
         // Try to traverse outside workspace using relative paths
@@ -1478,10 +1468,6 @@ mod tests {
             reason = "test setup requires direct filesystem access"
         )]
         std::fs::write(&file1, "shared content").expect("write file1");
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "test setup requires direct filesystem access"
-        )]
         std::fs::hard_link(&file1, &file2).expect("create hard link");
 
         let mut cmd = Command::new("cat");
@@ -1513,10 +1499,6 @@ mod tests {
             reason = "test setup requires direct filesystem access"
         )]
         std::fs::write(&script, "#!/bin/bash\necho 'script executed'").expect("write script");
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "test setup requires direct filesystem access"
-        )]
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))
             .expect("chmod script");
 
@@ -1549,10 +1531,6 @@ mod tests {
             reason = "test setup requires direct filesystem access"
         )]
         std::fs::write(&script, "#!/bin/bash\necho 'should not execute'").expect("write script");
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "test setup requires direct filesystem access"
-        )]
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))
             .expect("chmod script");
 
@@ -1597,7 +1575,7 @@ mod tests {
             let policy_clone = Arc::clone(&policy);
             let handle = thread::spawn(move || {
                 let mut cmd = Command::new("echo");
-                cmd.arg(format!("concurrent test {}", i));
+                cmd.arg(format!("concurrent test {i}"));
 
                 // We can't actually apply sandbox in threads due to pre_exec constraints,
                 // but we can verify the policy structure
