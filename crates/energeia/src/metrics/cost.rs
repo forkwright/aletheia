@@ -351,6 +351,7 @@ fn build_daily_velocity(
 #[cfg(feature = "storage-fjall")]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 #[expect(clippy::float_cmp, reason = "test assertions on exact float values")]
+#[expect(clippy::indexing_slicing, reason = "test assertions on collections with known length")]
 mod tests {
     use super::*;
     use tempfile::TempDir;
