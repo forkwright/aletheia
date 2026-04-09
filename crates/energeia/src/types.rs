@@ -16,6 +16,7 @@ pub use crate::resume::{ResumePolicy, ResumeStage};
 
 /// What to dispatch: a set of prompt numbers with optional DAG constraints.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(try_from = "DispatchSpecRaw")]
 #[non_exhaustive]
 pub struct DispatchSpec {
     /// Prompt numbers to execute (may be a subset of the full DAG).
@@ -26,6 +27,28 @@ pub struct DispatchSpec {
     pub dag_ref: Option<String>,
     /// Maximum parallelism (simultaneous sessions). `None` means unlimited.
     pub max_parallel: Option<u32>,
+}
+
+/// Raw deserialization type for [`DispatchSpec`].
+#[derive(Debug, Clone, Deserialize)]
+struct DispatchSpecRaw {
+    prompt_numbers: Vec<u32>,
+    project: String,
+    dag_ref: Option<String>,
+    max_parallel: Option<u32>,
+}
+
+impl TryFrom<DispatchSpecRaw> for DispatchSpec {
+    type Error = std::convert::Infallible;
+
+    fn try_from(raw: DispatchSpecRaw) -> std::result::Result<Self, Self::Error> {
+        Ok(Self {
+            prompt_numbers: raw.prompt_numbers,
+            project: raw.project,
+            dag_ref: raw.dag_ref,
+            max_parallel: raw.max_parallel,
+        })
+    }
 }
 
 impl DispatchSpec {
@@ -137,6 +160,7 @@ impl std::fmt::Display for SessionStatus {
 
 /// Result of a QA evaluation against a pull request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(try_from = "QaResultRaw")]
 #[non_exhaustive]
 pub struct QaResult {
     /// The prompt number that produced the PR.
@@ -153,6 +177,34 @@ pub struct QaResult {
     pub cost_usd: f64,
     /// Timestamp when the evaluation completed.
     pub evaluated_at: Timestamp,
+}
+
+/// Raw deserialization type for [`QaResult`].
+#[derive(Debug, Clone, Deserialize)]
+struct QaResultRaw {
+    prompt_number: u32,
+    pr_number: u64,
+    verdict: QaVerdict,
+    criteria_results: Vec<CriterionResult>,
+    mechanical_issues: Vec<MechanicalIssue>,
+    cost_usd: f64,
+    evaluated_at: Timestamp,
+}
+
+impl TryFrom<QaResultRaw> for QaResult {
+    type Error = std::convert::Infallible;
+
+    fn try_from(raw: QaResultRaw) -> std::result::Result<Self, Self::Error> {
+        Ok(Self {
+            prompt_number: raw.prompt_number,
+            pr_number: raw.pr_number,
+            verdict: raw.verdict,
+            criteria_results: raw.criteria_results,
+            mechanical_issues: raw.mechanical_issues,
+            cost_usd: raw.cost_usd,
+            evaluated_at: raw.evaluated_at,
+        })
+    }
 }
 
 impl QaResult {

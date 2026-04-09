@@ -23,6 +23,7 @@ pub(crate) const MAX_MEMORY_ENTRIES: usize = 200;
 /// Analogous to CC's `MemoryHeader` but adapted for knowledge-store facts
 /// rather than filesystem files.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(try_from = "MemoryHeaderRaw")]
 pub struct MemoryHeader {
     /// Source identifier (fact ID, document reference, or path).
     pub source_id: String,
@@ -32,6 +33,28 @@ pub struct MemoryHeader {
     pub description: Option<String>,
     /// Modification time in milliseconds since epoch.
     pub mtime_ms: i64,
+}
+
+/// Raw deserialization type for [`MemoryHeader`].
+#[derive(Debug, Clone, Deserialize)]
+struct MemoryHeaderRaw {
+    source_id: String,
+    name: String,
+    description: Option<String>,
+    mtime_ms: i64,
+}
+
+impl TryFrom<MemoryHeaderRaw> for MemoryHeader {
+    type Error = std::convert::Infallible;
+
+    fn try_from(raw: MemoryHeaderRaw) -> Result<Self, Self::Error> {
+        Ok(Self {
+            source_id: raw.source_id,
+            name: raw.name,
+            description: raw.description,
+            mtime_ms: raw.mtime_ms,
+        })
+    }
 }
 
 impl MemoryHeader {

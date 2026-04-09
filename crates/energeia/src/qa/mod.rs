@@ -67,6 +67,7 @@ pub trait QaGate: Send + Sync {
 /// Contains the acceptance criteria and blast radius constraints that the
 /// QA gate evaluates against.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(try_from = "PromptSpecRaw")]
 #[non_exhaustive]
 pub struct PromptSpec {
     /// Prompt number within the dispatch.
@@ -77,6 +78,28 @@ pub struct PromptSpec {
     pub acceptance_criteria: Vec<String>,
     /// Files that the prompt is allowed to modify.
     pub blast_radius: Vec<String>,
+}
+
+/// Raw deserialization type for [`PromptSpec`].
+#[derive(Debug, Clone, Deserialize)]
+struct PromptSpecRaw {
+    prompt_number: u32,
+    description: String,
+    acceptance_criteria: Vec<String>,
+    blast_radius: Vec<String>,
+}
+
+impl TryFrom<PromptSpecRaw> for PromptSpec {
+    type Error = std::convert::Infallible;
+
+    fn try_from(raw: PromptSpecRaw) -> std::result::Result<Self, Self::Error> {
+        Ok(Self {
+            prompt_number: raw.prompt_number,
+            description: raw.description,
+            acceptance_criteria: raw.acceptance_criteria,
+            blast_radius: raw.blast_radius,
+        })
+    }
 }
 
 impl PromptSpec {

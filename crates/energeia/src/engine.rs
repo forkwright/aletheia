@@ -85,6 +85,7 @@ pub struct SessionSpec {
 ///
 /// Built incrementally via the builder methods.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(try_from = "AgentOptionsRaw")]
 #[non_exhaustive]
 pub struct AgentOptions {
     /// LLM model identifier (e.g., "claude-sonnet-4-20250514").
@@ -97,6 +98,30 @@ pub struct AgentOptions {
     pub max_turns: Option<u32>,
     /// Permission mode for tool execution (e.g., "plan", "auto").
     pub permission_mode: Option<String>,
+}
+
+/// Raw deserialization type for [`AgentOptions`].
+#[derive(Debug, Clone, Deserialize)]
+struct AgentOptionsRaw {
+    model: Option<String>,
+    system_prompt: Option<String>,
+    cwd: Option<String>,
+    max_turns: Option<u32>,
+    permission_mode: Option<String>,
+}
+
+impl TryFrom<AgentOptionsRaw> for AgentOptions {
+    type Error = std::convert::Infallible;
+
+    fn try_from(raw: AgentOptionsRaw) -> std::result::Result<Self, Self::Error> {
+        Ok(Self {
+            model: raw.model,
+            system_prompt: raw.system_prompt,
+            cwd: raw.cwd,
+            max_turns: raw.max_turns,
+            permission_mode: raw.permission_mode,
+        })
+    }
 }
 
 impl AgentOptions {
@@ -191,6 +216,7 @@ pub enum SessionEvent {
 
 /// Final result of a completed session.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(try_from = "SessionResultRaw")]
 #[non_exhaustive]
 pub struct SessionResult {
     /// The Agent SDK session identifier.
@@ -207,6 +233,34 @@ pub struct SessionResult {
     pub result_text: Option<String>,
     /// LLM model used for this session, if known.
     pub model: Option<String>,
+}
+
+/// Raw deserialization type for [`SessionResult`].
+#[derive(Debug, Clone, Deserialize)]
+struct SessionResultRaw {
+    session_id: String,
+    cost_usd: f64,
+    num_turns: u32,
+    duration_ms: u64,
+    success: bool,
+    result_text: Option<String>,
+    model: Option<String>,
+}
+
+impl TryFrom<SessionResultRaw> for SessionResult {
+    type Error = std::convert::Infallible;
+
+    fn try_from(raw: SessionResultRaw) -> std::result::Result<Self, Self::Error> {
+        Ok(Self {
+            session_id: raw.session_id,
+            cost_usd: raw.cost_usd,
+            num_turns: raw.num_turns,
+            duration_ms: raw.duration_ms,
+            success: raw.success,
+            result_text: raw.result_text,
+            model: raw.model,
+        })
+    }
 }
 
 impl SessionResult {

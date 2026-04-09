@@ -59,6 +59,7 @@ impl GateResult {
 /// External systems write to [`satisfied`][Self::satisfied] using the condition keys returned
 /// by [`GateCondition::key`]. Call [`evaluate_gate`] to check the gate.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(try_from = "PhaseGateRaw")]
 pub struct PhaseGate {
     /// The project state this gate guards (the state being *left*).
     pub from: ProjectState,
@@ -66,6 +67,26 @@ pub struct PhaseGate {
     pub conditions: Vec<GateCondition>,
     /// Condition keys that have been marked satisfied by external systems.
     pub satisfied: Vec<String>,
+}
+
+/// Raw deserialization type for [`PhaseGate`].
+#[derive(Debug, Clone, Deserialize)]
+struct PhaseGateRaw {
+    from: ProjectState,
+    conditions: Vec<GateCondition>,
+    satisfied: Vec<String>,
+}
+
+impl TryFrom<PhaseGateRaw> for PhaseGate {
+    type Error = std::convert::Infallible;
+
+    fn try_from(raw: PhaseGateRaw) -> std::result::Result<Self, Self::Error> {
+        Ok(Self {
+            from: raw.from,
+            conditions: raw.conditions,
+            satisfied: raw.satisfied,
+        })
+    }
 }
 
 impl PhaseGate {

@@ -9,6 +9,7 @@ use crate::state::{ProjectState, Transition};
 
 /// A planning project.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(try_from = "ProjectRaw")]
 pub struct Project {
     /// Unique project identifier.
     pub id: Ulid,
@@ -30,6 +31,40 @@ pub struct Project {
     pub updated_at: jiff::Timestamp,
     /// Nous or user that owns this project.
     pub owner: String,
+}
+
+/// Raw deserialization type for [`Project`].
+#[derive(Debug, Clone, Deserialize)]
+struct ProjectRaw {
+    id: Ulid,
+    name: String,
+    description: String,
+    scope: Option<String>,
+    state: ProjectState,
+    mode: ProjectMode,
+    phases: Vec<Phase>,
+    created_at: jiff::Timestamp,
+    updated_at: jiff::Timestamp,
+    owner: String,
+}
+
+impl TryFrom<ProjectRaw> for Project {
+    type Error = std::convert::Infallible;
+
+    fn try_from(raw: ProjectRaw) -> std::result::Result<Self, Self::Error> {
+        Ok(Self {
+            id: raw.id,
+            name: raw.name,
+            description: raw.description,
+            scope: raw.scope,
+            state: raw.state,
+            mode: raw.mode,
+            phases: raw.phases,
+            created_at: raw.created_at,
+            updated_at: raw.updated_at,
+            owner: raw.owner,
+        })
+    }
 }
 
 /// Operating modes for planning.
