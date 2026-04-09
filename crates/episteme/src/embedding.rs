@@ -79,7 +79,9 @@ pub trait EmbeddingProvider: Send + Sync {
     ///
     /// # Complexity
     ///
-    /// O(1) - returns a string reference.
+    /// O(1) - returns a string reference. Implementations may return either
+    /// a `&'static str` (for built-in providers) or a borrow tied to `self`
+    /// (for runtime-loaded models).
     fn model_name(&self) -> &str;
 }
 

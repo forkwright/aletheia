@@ -121,6 +121,15 @@ const _: () = assert!(
     "_loader must be declared before inner; see safety comment on HnswIndex"
 );
 
+// WHY: this entire impl block is currently dead in non-test code — the
+// `aletheia-episteme` crate has a second HNSW implementation (this file) that
+// was never wired into the recall pipeline. Issue #2701 tracks the
+// consolidation. Suppress dead_code at the impl level so the rest of the
+// crate's lints stay clean while #2701 is open.
+#[expect(
+    dead_code,
+    reason = "dual HNSW implementation; consolidation tracked in #2701"
+)]
 impl HnswIndex {
     /// Create a new empty HNSW index.
     #[instrument(skip_all, fields(dim = config.dim, max_conn = config.max_nb_connection))]
