@@ -155,11 +155,6 @@ pub fn record_session(
 ///
 /// Call this to update the `energeia_turns_total` metric.
 pub fn record_turns(project: &str, turns: u32, model: &str, blast_radius: &str) {
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::as_conversions,
-        reason = "turns fit in u64 for realistic session sizes"
-    )]
     TURNS_TOTAL
         .with_label_values(&[project, model, blast_radius])
         .inc_by(u64::from(turns));

@@ -72,7 +72,6 @@ struct Frontmatter {
 /// Returns [`crate::error::Error::Io`] on read failure or
 /// [`crate::error::Error::FrontmatterParse`] if the YAML is malformed or
 /// the file lacks the `---` delimiters.
-#[must_use]
 pub fn load_prompt(path: &Path) -> Result<PromptSpec> {
     let raw = std::fs::read_to_string(path).context(IoSnafu {
         path: path.to_owned(),
@@ -146,7 +145,6 @@ fn parse_prompt_str(raw: &str, path: &Path) -> Result<PromptSpec> {
 ///
 /// Returns [`crate::error::Error::Io`] if the directory cannot be read.
 /// Returns [`crate::error::Error::FrontmatterParse`] for any malformed file.
-#[must_use]
 pub fn load_queue(dir: &Path) -> Result<Vec<PromptSpec>> {
     let entries = std::fs::read_dir(dir).context(IoSnafu {
         path: dir.to_owned(),
@@ -178,7 +176,6 @@ pub fn load_queue(dir: &Path) -> Result<Vec<PromptSpec>> {
 ///
 /// Returns [`crate::error::Error::DagCycle`] on cycle detection or
 /// [`crate::error::Error::DagMissingDeps`] for broken dependency references.
-#[must_use]
 pub fn build_dag(prompts: &[PromptSpec]) -> Result<PromptDag> {
     let mut dag = PromptDag::new();
 

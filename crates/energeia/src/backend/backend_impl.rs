@@ -1,15 +1,25 @@
-//! DispatchBackend trait implementations.
+//! `DispatchBackend` trait implementations.
 
+#[cfg(feature = "storage-fjall")]
 use std::future::Future;
+#[cfg(feature = "storage-fjall")]
 use std::pin::Pin;
 
+#[cfg(feature = "storage-fjall")]
 use crate::backend::DispatchBackend;
+#[cfg(feature = "storage-fjall")]
 use crate::error::Result;
+#[cfg(feature = "storage-fjall")]
 use crate::metrics::cost::CostReport;
+#[cfg(feature = "storage-fjall")]
 use crate::metrics::health::HealthReport;
+#[cfg(feature = "storage-fjall")]
 use crate::metrics::status::StatusDashboard;
+#[cfg(feature = "storage-fjall")]
 use crate::prompt::PromptSpec;
+#[cfg(feature = "storage-fjall")]
 use crate::steward::StewardResult;
+#[cfg(feature = "storage-fjall")]
 use crate::types::{DispatchResult, DispatchSpec};
 
 /// Production [`DispatchBackend`] using energeia's orchestrator and steward.

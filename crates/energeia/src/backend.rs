@@ -40,10 +40,6 @@ use crate::types::DispatchSpec;
 ///   in aletheia. Requires the `storage-fjall` feature.
 /// - `PhronesisBackend` (in kanon) — wraps kanon's phronesis dispatch engine.
 ///   Exists for backwards compatibility during the migration period.
-#[expect(
-    clippy::type_complexity,
-    reason = "async trait methods returning boxed futures require nested generics"
-)]
 pub trait DispatchBackend: Send + Sync {
     /// Execute a batch of prompts according to their dependency DAG.
     ///
