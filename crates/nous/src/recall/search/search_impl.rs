@@ -4,6 +4,9 @@
 use std::sync::Arc;
 
 #[cfg(feature = "knowledge-store")]
+use crate::error;
+
+#[cfg(feature = "knowledge-store")]
 use aletheia_mneme::knowledge::RecallResult as KnowledgeRecallResult;
 #[cfg(feature = "knowledge-store")]
 use aletheia_mneme::knowledge_store::KnowledgeStore;
