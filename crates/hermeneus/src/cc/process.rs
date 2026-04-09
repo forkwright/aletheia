@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
 
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 use tracing::{debug, warn};
 
@@ -33,9 +33,13 @@ fn read_oauth_token() -> std::io::Result<String> {
 }
 
 /// Outcome of a CC subprocess invocation.
-#[expect(
-    dead_code,
-    reason = "fields retained for diagnostics and future cost tracking callers"
+#[derive(Debug)]
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "fields retained for diagnostics and future cost tracking callers"
+    )
 )]
 pub(crate) struct CcOutput {
     /// The final result text.
@@ -201,7 +205,13 @@ pub(crate) async fn run_completion(
 }
 
 /// Read CC's stdout stream, collecting assistant deltas and the final result.
-async fn read_stream(stdout: tokio::process::ChildStdout) -> Result<CcOutput> {
+///
+/// Generic over the reader so unit tests can pass an in-memory buffer
+/// (`tokio::io::Cursor` / `&[u8]`) without spawning a real subprocess.
+async fn read_stream<R>(stdout: R) -> Result<CcOutput>
+where
+    R: AsyncRead + Unpin,
+{
     let reader = BufReader::new(stdout);
     let mut lines = reader.lines();
 
@@ -282,6 +292,8 @@ async fn read_stream(stdout: tokio::process::ChildStdout) -> Result<CcOutput> {
         stream_deltas,
     })
 }
+
+// (read_stream's tests live in the bottom #[cfg(test)] module.)
 
 /// Spawn CC for streaming, calling `on_event` for each assistant delta.
 ///
@@ -383,10 +395,15 @@ pub(crate) async fn run_streaming(
 }
 
 /// Read CC stdout with a callback for each text delta.
-async fn read_stream_with_callback(
-    stdout: tokio::process::ChildStdout,
+///
+/// Generic over the reader for unit testing (see [`read_stream`]).
+async fn read_stream_with_callback<R>(
+    stdout: R,
     on_delta: &mut (dyn FnMut(&str) + Send),
-) -> Result<CcOutput> {
+) -> Result<CcOutput>
+where
+    R: AsyncRead + Unpin,
+{
     let reader = BufReader::new(stdout);
     let mut lines = reader.lines();
 
@@ -456,4 +473,147 @@ async fn read_stream_with_callback(
         session_id,
         stream_deltas,
     })
+}
+
+#[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
+mod tests {
+    use super::*;
+
+    /// Build a multi-line stream-json buffer from individual event JSON strings.
+    fn stream_buf(events: &[&str]) -> Vec<u8> {
+        let mut out = String::new();
+        for line in events {
+            out.push_str(line);
+            out.push('\n');
+        }
+        out.into_bytes()
+    }
+
+    #[tokio::test]
+    async fn read_stream_assistant_then_result() {
+        let buf = stream_buf(&[
+            r#"{"type":"system","subtype":"init","session_id":"abc"}"#,
+            r#"{"type":"assistant","message":{"type":"text","text":"Hello "}}"#,
+            r#"{"type":"assistant","message":{"type":"text","text":"world"}}"#,
+            r#"{"type":"result","subtype":"success","result":"Hello world","is_error":false,"session_id":"sess_42","cost_usd":0.002,"duration_ms":1500,"usage":{"input_tokens":12,"output_tokens":3}}"#,
+        ]);
+        let output = read_stream(buf.as_slice()).await.unwrap();
+        assert_eq!(output.result_text, "Hello world");
+        assert!(!output.is_error);
+        assert_eq!(output.stream_deltas, vec!["Hello ", "world"]);
+        assert_eq!(output.session_id.as_deref(), Some("sess_42"));
+        assert_eq!(output.cost_usd, Some(0.002));
+        assert_eq!(output.duration_ms, Some(1500));
+        let usage = output.usage.unwrap();
+        assert_eq!(usage.input_tokens, 12);
+        assert_eq!(usage.output_tokens, 3);
+    }
+
+    #[tokio::test]
+    async fn read_stream_result_only() {
+        // WHY: CC can emit a result event with no preceding assistant deltas
+        // (e.g. when the response is short and CC batches it into the result).
+        let buf = stream_buf(&[
+            r#"{"type":"result","subtype":"success","result":"ok","is_error":false}"#,
+        ]);
+        let output = read_stream(buf.as_slice()).await.unwrap();
+        assert_eq!(output.result_text, "ok");
+        assert!(output.stream_deltas.is_empty());
+    }
+
+    #[tokio::test]
+    async fn read_stream_no_result_synthesizes_from_deltas() {
+        // WHY: If CC exits without emitting a result event we fall back to
+        // joining the collected text deltas. This guards graceful degradation.
+        let buf = stream_buf(&[
+            r#"{"type":"assistant","message":{"type":"text","text":"part1 "}}"#,
+            r#"{"type":"assistant","message":{"type":"text","text":"part2"}}"#,
+        ]);
+        let output = read_stream(buf.as_slice()).await.unwrap();
+        assert_eq!(output.result_text, "part1 part2");
+        assert_eq!(output.stream_deltas.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn read_stream_empty_input_errors() {
+        // WHY: No result event AND no deltas is unrecoverable — caller needs to
+        // know the subprocess produced nothing usable.
+        let buf: Vec<u8> = Vec::new();
+        let err = read_stream(buf.as_slice()).await.unwrap_err();
+        assert!(
+            err.to_string().contains("no result event"),
+            "expected 'no result event' in error, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn read_stream_blank_lines_skipped() {
+        // WHY: parse_event treats blank lines as None — read_stream must not
+        // crash on them and must not synthesize empty deltas.
+        let buf = b"\n\n   \n{\"type\":\"result\",\"subtype\":\"success\",\"result\":\"ok\",\"is_error\":false}\n";
+        let output = read_stream(buf.as_slice()).await.unwrap();
+        assert_eq!(output.result_text, "ok");
+    }
+
+    #[tokio::test]
+    async fn read_stream_invalid_json_skipped() {
+        // WHY: parse_event returns None on invalid JSON (logged as warning) —
+        // read_stream should continue past it to subsequent valid events.
+        let buf = stream_buf(&[
+            "not json at all",
+            r#"{"type":"result","subtype":"success","result":"recovered","is_error":false}"#,
+        ]);
+        let output = read_stream(buf.as_slice()).await.unwrap();
+        assert_eq!(output.result_text, "recovered");
+    }
+
+    #[tokio::test]
+    async fn read_stream_with_callback_invokes_for_each_delta() {
+        let buf = stream_buf(&[
+            r#"{"type":"assistant","message":{"type":"text","text":"a"}}"#,
+            r#"{"type":"assistant","message":{"type":"text","text":"b"}}"#,
+            r#"{"type":"assistant","message":{"type":"text","text":"c"}}"#,
+            r#"{"type":"result","subtype":"success","result":"abc","is_error":false}"#,
+        ]);
+        let mut collected: Vec<String> = Vec::new();
+        {
+            let mut on_delta = |s: &str| collected.push(s.to_string());
+            let output = read_stream_with_callback(buf.as_slice(), &mut on_delta)
+                .await
+                .unwrap();
+            assert_eq!(output.result_text, "abc");
+            assert_eq!(output.stream_deltas, vec!["a", "b", "c"]);
+        }
+        assert_eq!(collected, vec!["a", "b", "c"]);
+    }
+
+    #[tokio::test]
+    async fn read_stream_with_callback_skips_empty_text() {
+        // WHY: An assistant event with empty text should not invoke the
+        // callback (matches read_stream behavior to avoid empty UI updates).
+        let buf = stream_buf(&[
+            r#"{"type":"assistant","message":{"type":"text","text":""}}"#,
+            r#"{"type":"assistant","message":{"type":"text","text":"real"}}"#,
+            r#"{"type":"result","subtype":"success","result":"real","is_error":false}"#,
+        ]);
+        let mut count = 0_u32;
+        let mut on_delta = |_: &str| count += 1;
+        let _ = read_stream_with_callback(buf.as_slice(), &mut on_delta)
+            .await
+            .unwrap();
+        assert_eq!(count, 1, "callback should fire once for the non-empty delta");
+    }
+
+    #[tokio::test]
+    async fn read_stream_propagates_is_error_flag() {
+        // WHY: A `result` event with is_error=true is preserved on the output
+        // so the provider layer can map it to a hermeneus::Error variant.
+        let buf = stream_buf(&[
+            r#"{"type":"result","subtype":"error","result":"rate limit","is_error":true}"#,
+        ]);
+        let output = read_stream(buf.as_slice()).await.unwrap();
+        assert!(output.is_error);
+        assert_eq!(output.result_text, "rate limit");
+    }
 }
