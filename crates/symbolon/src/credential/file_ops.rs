@@ -20,6 +20,14 @@ fn serialize_secret<S: serde::Serializer>(
     serializer.serialize_str(secret.expose_secret())
 }
 
+// WHY: serde's `serialize_with` passes `&T` where T is the field type, so an
+// `Option<SecretString>` field forces a `&Option<SecretString>` parameter.
+// Cannot be rewritten to `Option<&SecretString>` without dropping the
+// `serialize_with` attribute.
+#[expect(
+    clippy::ref_option,
+    reason = "serde serialize_with contract requires &Option<T> for Option<T> fields"
+)]
 fn serialize_option_secret<S: serde::Serializer>(
     secret: &Option<SecretString>,
     serializer: S,

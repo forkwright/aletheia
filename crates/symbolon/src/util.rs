@@ -48,41 +48,64 @@ pub(crate) fn base64url_decode(s: &str) -> Option<Vec<u8>> {
     base64_decode_with_alphabet(s, true)
 }
 
+/// Look up a base64 sextet (0-63) in a 64-entry alphabet.
+///
+/// INVARIANT: callers mask inputs with `& 0x3F` (range 0-63) before calling;
+/// the alphabet is a fixed 64-byte array, so the index is always in bounds.
+/// The `unwrap_or(b'A')` branch is mathematically unreachable but avoids a
+/// panic path and keeps the function total.
+fn base64_sextet(alphabet: &[u8; 64], six_bits: u32) -> char {
+    let idx = (six_bits & 0x3F).to_le_bytes();
+    // INVARIANT: `six_bits & 0x3F` fits in u8, so idx[0] is the whole index.
+    let byte = idx.first().copied().unwrap_or(0);
+    char::from(alphabet.get(usize::from(byte)).copied().unwrap_or(b'A'))
+}
+
 /// Internal: encode with a given alphabet and optional padding.
 fn base64_encode_with_alphabet(input: &[u8], alphabet: &[u8; 64], pad: bool) -> String {
-    let mut out = String::with_capacity((input.len() * 4 + 2) / 3 + if pad { 4 } else { 0 });
+    let mut out = String::with_capacity((input.len() * 4).div_ceil(3) + if pad { 4 } else { 0 });
 
     let mut chunks = input.chunks_exact(3);
     for chunk in &mut chunks {
-        let b = (u32::from(chunk[0]) << 16) | (u32::from(chunk[1]) << 8) | u32::from(chunk[2]);
-        out.push(char::from(alphabet[((b >> 18) & 0x3F) as usize]));
-        out.push(char::from(alphabet[((b >> 12) & 0x3F) as usize]));
-        out.push(char::from(alphabet[((b >> 6) & 0x3F) as usize]));
-        out.push(char::from(alphabet[(b & 0x3F) as usize]));
+        // INVARIANT: chunks_exact(3) guarantees every yielded chunk has len == 3.
+        let [b0, b1, b2] = *chunk else {
+            #[expect(
+                clippy::unreachable,
+                reason = "chunks_exact(3) yields only full-length chunks; remainder is handled separately"
+            )]
+            {
+                unreachable!("chunks_exact(3) chunk must have len 3")
+            }
+        };
+        let b = (u32::from(b0) << 16) | (u32::from(b1) << 8) | u32::from(b2);
+        out.push(base64_sextet(alphabet, b >> 18));
+        out.push(base64_sextet(alphabet, b >> 12));
+        out.push(base64_sextet(alphabet, b >> 6));
+        out.push(base64_sextet(alphabet, b));
     }
 
     let remainder = chunks.remainder();
-    match remainder.len() {
-        0 => {}
-        1 => {
-            let b = u32::from(remainder[0]) << 16;
-            out.push(char::from(alphabet[((b >> 18) & 0x3F) as usize]));
-            out.push(char::from(alphabet[((b >> 12) & 0x3F) as usize]));
+    match *remainder {
+        [] => {}
+        [b0] => {
+            let b = u32::from(b0) << 16;
+            out.push(base64_sextet(alphabet, b >> 18));
+            out.push(base64_sextet(alphabet, b >> 12));
             if pad {
                 out.push('=');
                 out.push('=');
             }
         }
-        2 => {
-            let b = (u32::from(remainder[0]) << 16) | (u32::from(remainder[1]) << 8);
-            out.push(char::from(alphabet[((b >> 18) & 0x3F) as usize]));
-            out.push(char::from(alphabet[((b >> 12) & 0x3F) as usize]));
-            out.push(char::from(alphabet[((b >> 6) & 0x3F) as usize]));
+        [b0, b1] => {
+            let b = (u32::from(b0) << 16) | (u32::from(b1) << 8);
+            out.push(base64_sextet(alphabet, b >> 18));
+            out.push(base64_sextet(alphabet, b >> 12));
+            out.push(base64_sextet(alphabet, b >> 6));
             if pad {
                 out.push('=');
             }
         }
-        // SAFETY: chunks_exact(3).remainder() returns 0, 1, or 2 elements only.
+        // INVARIANT: chunks_exact(3).remainder() always has len ∈ {0, 1, 2}.
         #[expect(
             clippy::unreachable,
             reason = "chunks_exact(3) guarantees remainder().len() ∈ {0, 1, 2}; only 3 arms reachable"

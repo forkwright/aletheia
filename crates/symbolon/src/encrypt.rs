@@ -64,7 +64,7 @@ pub(crate) fn load_or_create_key(credential_path: &Path) -> std::io::Result<[u8;
         return Ok(key);
     }
 
-    let key = generate_key()?;
+    let key = generate_key();
     write_key_file(&key_path, &key)?;
     Ok(key)
 }
@@ -91,7 +91,7 @@ pub(crate) fn load_or_generate_key(
         })?;
         Ok((key, false))
     } else {
-        let key = generate_key()?;
+        let key = generate_key();
         Ok((key, true))
     }
 }
@@ -236,10 +236,10 @@ pub(crate) fn decrypt(key: &[u8; KEY_LEN], encoded: &str) -> std::io::Result<Vec
 }
 
 /// Generate a fresh random 32-byte AES-256-GCM key using the system CSPRNG.
-fn generate_key() -> std::io::Result<[u8; KEY_LEN]> {
+fn generate_key() -> [u8; KEY_LEN] {
     let mut key = [0u8; KEY_LEN];
     rand::fill(&mut key);
-    Ok(key)
+    key
 }
 
 /// Write the encryption key to disk with restrictive permissions.
