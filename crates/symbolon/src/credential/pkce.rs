@@ -674,7 +674,6 @@ async fn exchange_code(
 /// # }
 /// ```
 #[tracing::instrument(skip_all)]
-#[must_use]
 pub async fn pkce_login(provider: &OAuthProvider) -> Result<CredentialFile> {
     // Generate PKCE parameters
     let pkce = PkcePair::generate()?;

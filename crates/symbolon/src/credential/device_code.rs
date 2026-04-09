@@ -304,15 +304,13 @@ async fn poll_token_endpoint(
 
         match error_resp.error.as_str() {
             "authorization_pending" => {
-                // User hasn't completed authorization yet, continue polling
+                // User hasn't completed authorization yet, loop continues naturally
                 debug!("authorization pending, continuing to poll");
-                continue;
             }
             "slow_down" => {
                 // Server wants us to poll less frequently
                 warn!("server requested slow down, increasing polling interval");
                 current_interval += Duration::from_secs(5);
-                continue;
             }
             "expired_token" => {
                 return Err(DeviceCodeError::ExpiredToken {
@@ -367,7 +365,6 @@ async fn poll_token_endpoint(
 /// # }
 /// ```
 #[tracing::instrument(skip_all)]
-#[must_use]
 pub async fn device_code_login(provider: &DeviceOAuthProvider) -> Result<CredentialFile> {
     let client = reqwest::Client::new();
 
