@@ -50,6 +50,10 @@ impl EmbeddingProvider for MockEmbeddingProvider {
         self.dim
     }
 
+    #[expect(
+        clippy::unnecessary_literal_bound,
+        reason = "trait method returns `&str` to support runtime-loaded model names; mock returns a literal"
+    )]
     fn model_name(&self) -> &str {
         "mock-embedding"
     }
