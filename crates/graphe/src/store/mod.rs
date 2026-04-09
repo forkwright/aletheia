@@ -79,7 +79,7 @@ impl SessionStore {
     /// # Errors
     /// Returns an error if the database cannot be opened or initialized.
     #[instrument(skip(path, recovery_config))]
-    pub fn open_with_recovery(path: &Path, recovery_config: &RecoveryConfig) -> Result<Self> {
+    pub(crate) fn open_with_recovery(path: &Path, recovery_config: &RecoveryConfig) -> Result<Self> {
         info!(path = %path.display(), "Opening session store");
         let conn = Connection::open(path).context(error::DatabaseSnafu)?;
 
@@ -182,7 +182,7 @@ impl SessionStore {
     /// # Errors
     /// Returns an error if initialization fails.
     #[instrument(skip(hook))]
-    pub fn open_in_memory_with_hook(hook: Box<dyn ConnectionHook>) -> Result<Self> {
+    pub(crate) fn open_in_memory_with_hook(hook: Box<dyn ConnectionHook>) -> Result<Self> {
         hook.before_acquire();
         let mut store = Self::open_in_memory()?;
         store.hook = Some(hook);
@@ -190,7 +190,7 @@ impl SessionStore {
     }
 
     /// Attach a disk space monitor for pre-write checks.
-    pub fn set_disk_monitor(&mut self, monitor: DiskSpaceMonitor) {
+    pub(crate) fn set_disk_monitor(&mut self, monitor: DiskSpaceMonitor) {
         self.disk_monitor = Some(monitor);
     }
 
@@ -239,13 +239,13 @@ impl SessionStore {
 
     /// Current operating mode of the store.
     #[must_use]
-    pub fn mode(&self) -> StoreMode {
+    pub(crate) fn mode(&self) -> StoreMode {
         self.mode
     }
 
     /// Whether the store is in degraded (read-only) mode.
     #[must_use]
-    pub fn is_degraded(&self) -> bool {
+    pub(crate) fn is_degraded(&self) -> bool {
         self.mode == StoreMode::ReadOnly
     }
 

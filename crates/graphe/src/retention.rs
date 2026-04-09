@@ -11,7 +11,7 @@ use crate::error::{self, Result};
 
 /// Configurable retention policy for session data.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RetentionPolicy {
+pub(crate) struct RetentionPolicy {
     /// Max age for closed sessions (days). Default: 90.
     pub session_max_age_days: u32,
     /// Max age for orphaned messages with no session (days). Default: 30.
@@ -35,7 +35,7 @@ impl Default for RetentionPolicy {
 
 /// Outcome of a retention pass.
 #[derive(Debug, Default)]
-pub struct RetentionResult {
+pub(crate) struct RetentionResult {
     /// Number of sessions removed during this pass.
     pub sessions_deleted: u32,
     /// Number of orphan messages removed during this pass.
