@@ -1,10 +1,4 @@
 //! Pre-tokenized string wrapper.
-#![cfg_attr(
-    test,
-    expect(
-        reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-    )
-)]
 
 #[cfg(test)]
 use std::cmp::Ordering;

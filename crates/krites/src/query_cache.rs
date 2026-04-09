@@ -117,7 +117,6 @@ mod tests {
     #[test]
     fn first_call_is_a_miss() {
         let c = cache(8);
-        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let hit = c.check("?[x] := *facts{x}");
         assert!(!hit, "first check for a new query should be a cache miss");
     }
@@ -126,7 +125,6 @@ mod tests {
     fn second_call_is_a_hit() {
         let c = cache(8);
         c.check("?[x] := *facts{x}");
-        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let hit = c.check("?[x] := *facts{x}");
         assert!(hit, "repeated identical query should be a cache hit");
     }
@@ -136,7 +134,6 @@ mod tests {
         let c = cache(8);
         c.check("?[x] := *facts{x}");
         // Extra whitespace and leading/trailing space should normalize to the same key.
-        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let hit = c.check("  ?[x]   :=  *facts{x}  ");
         assert!(
             hit,

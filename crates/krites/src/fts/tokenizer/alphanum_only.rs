@@ -1,10 +1,4 @@
 //! Filter that removes non-alphanumeric tokens.
-#![cfg_attr(
-    test,
-    expect(
-        reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-    )
-)]
 use super::{BoxTokenStream, Token, TokenFilter, TokenStream};
 
 /// `TokenFilter` that removes all tokens that contain non

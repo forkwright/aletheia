@@ -1,10 +1,4 @@
 //! Tokenizer that emits the entire input as one token.
-#![cfg_attr(
-    test,
-    expect(
-        reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-    )
-)]
 use super::{Token, TokenStream, Tokenizer};
 use crate::fts::tokenizer::BoxTokenStream;
 

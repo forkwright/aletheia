@@ -13,9 +13,7 @@ fn test_now() {
         matches!(now, DataValue::Num(_)),
         "op_now should return a numeric timestamp"
     );
-    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
     let s = op_format_timestamp(&[now]).expect("test assertion");
-    #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
     let _dt = op_parse_timestamp(&[s]).expect("test assertion");
 }
 

@@ -325,7 +325,6 @@ mod tests {
 
     #[test]
     fn stuttering_iterator_yields_none_for_single_element() {
-        #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
         let rg: Vec<usize> = vec![0];
         let mut it = StutteringIterator::new(rg.into_iter(), 1, 2);
         assert_eq!(it.next(), None);

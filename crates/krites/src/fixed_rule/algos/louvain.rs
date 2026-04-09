@@ -322,11 +322,6 @@ mod tests {
             .sorted()
             .edges_with_values(graph.into_iter().enumerate().flat_map(|(fr, tos)| {
                 tos.into_iter().map(move |to| {
-                    #[expect(
-                        clippy::cast_possible_truncation,
-                        reason = "test graph index fits in u32"
-                    )]
-                    #[expect(clippy::cast_possible_truncation, reason = "value fits u32")]
                     let fr_u32 = fr as u32;
                     (fr_u32, to, 1.)
                 })

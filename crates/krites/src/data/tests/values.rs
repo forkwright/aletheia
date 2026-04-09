@@ -19,13 +19,13 @@ fn type_size_consistency() {
 
     // DataValue is an enum with multiple variants; expect reasonable size
     assert!(
-        datavalue_size >= 16 && datavalue_size <= 64,
+        (16..=64).contains(&datavalue_size),
         "DataValue size {datavalue_size} seems unreasonable"
     );
 
     // Symbol contains a CompactString and SourceSpan
     assert!(
-        symbol_size >= 16 && symbol_size <= 48,
+        (16..=48).contains(&symbol_size),
         "Symbol size {symbol_size} seems unreasonable"
     );
 
@@ -37,13 +37,13 @@ fn type_size_consistency() {
 
     // HashMap has some overhead for the hash table
     assert!(
-        hashmap_size >= 32 && hashmap_size <= 64,
+        (32..=64).contains(&hashmap_size),
         "HashMap size {hashmap_size} seems unreasonable"
     );
 
     // BTreeMap has node overhead
     assert!(
-        btreemap_size >= 16 && btreemap_size <= 48,
+        (16..=48).contains(&btreemap_size),
         "BTreeMap size {btreemap_size} seems unreasonable"
     );
 }
