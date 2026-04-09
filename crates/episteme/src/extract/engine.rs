@@ -128,6 +128,10 @@ Rules:
     }
 
     /// Run extraction end-to-end: build prompt, call provider, parse response.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the provider call fails or if the response cannot be parsed.
     #[instrument(skip(self, provider))]
     pub async fn extract(
         &self,
@@ -155,6 +159,10 @@ Rules:
     /// Classifies the turn, applies per-type prompt instructions, detects
     /// corrections, classifies fact types, applies quality filters, and boosts
     /// confidence where appropriate.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the provider call fails or if the response cannot be parsed.
     #[instrument(skip(self, provider))]
     pub async fn extract_refined(
         &self,
@@ -238,6 +246,10 @@ Rules:
     }
 
     /// Persist an extraction to the knowledge store.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if storing entities, relationships, or facts fails.
     #[cfg(feature = "mneme-engine")]
     #[instrument(
         skip(self, store, extraction),

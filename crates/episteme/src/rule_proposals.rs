@@ -252,6 +252,11 @@ pub fn propose_rules(observations: &[ToolObservation]) -> Vec<RuleProposal> {
 ///
 /// WHY: Proposals are for operator review, not runtime consumption. A flat
 /// TOML file is the least-friction format for a human to open and annotate.
+///
+/// # Errors
+///
+/// Returns an error if the directory cannot be created, if serialization fails,
+/// or if writing to the file fails.
 pub fn write_proposals(
     proposals: &[RuleProposal],
     observations_analyzed: usize,

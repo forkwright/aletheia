@@ -60,6 +60,12 @@ pub(crate) fn tuple_too_short_err(name: &str, index: usize, length: usize) -> Da
     .build()
 }
 
+/// Evaluate bytecode to a boolean predicate result.
+///
+/// # Errors
+///
+/// Returns an error if bytecode evaluation fails or if the result
+/// is not a boolean value.
 pub fn eval_bytecode_pred(
     bytecodes: &[Bytecode],
     bindings: impl AsRef<[DataValue]>,
@@ -77,6 +83,12 @@ pub fn eval_bytecode_pred(
     }
 }
 
+/// Evaluate bytecode to produce a data value.
+///
+/// # Errors
+///
+/// Returns an error if a variable is unbound, if the tuple is too short
+/// for a binding, if an operation fails, or if type mismatches occur.
 pub fn eval_bytecode(
     bytecodes: &[Bytecode],
     bindings: impl AsRef<[DataValue]>,

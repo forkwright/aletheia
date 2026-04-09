@@ -60,7 +60,8 @@ impl SessionManager {
     /// # Errors
     ///
     /// Returns [`Error::SpawnFailed`](crate::error::Error::SpawnFailed) if the
-    /// initial session cannot be created.
+    /// initial session cannot be created, if the session is cancelled,
+    /// or if the engine encounters an error during execution.
     #[expect(
         clippy::too_many_lines,
         reason = "session lifecycle is inherently sequential with many branches"

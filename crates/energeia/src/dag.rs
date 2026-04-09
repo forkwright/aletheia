@@ -123,8 +123,11 @@ impl PromptDag {
 
     /// Add a prompt node to the graph.
     ///
-    /// The initial status is `Pending`. Returns [`DagError::DuplicateNode`] if
-    /// `number` is already present.
+    /// The initial status is `Pending`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DagError::DuplicateNode`] if `number` is already present.
     #[must_use]
     pub fn add_node(&mut self, number: u32, depends_on: Vec<u32>) -> Result<(), DagError> {
         if self.nodes.contains_key(&number) {
@@ -142,6 +145,8 @@ impl PromptDag {
     }
 
     /// Update the status of a prompt node.
+    ///
+    /// # Errors
     ///
     /// Returns [`DagError::InvalidPrompt`] if `number` is not in the graph.
     #[must_use]
@@ -171,6 +176,11 @@ impl PromptDag {
     /// Collects ALL broken `depends_on` references before returning, so callers
     /// can fix every problem in one pass. Cycle detection uses DFS with
     /// three-color marking (white/gray/black).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DagError::MissingDependencies`] if dependencies are missing,
+    /// or [`DagError::Cycle`] if a cycle is detected.
     #[must_use]
     pub fn validate(&self) -> Result<(), DagError> {
         // WHY: Check missing deps first — simpler to diagnose, collect all at once.

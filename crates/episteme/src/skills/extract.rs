@@ -115,6 +115,10 @@ impl<P: SkillExtractionProvider> SkillExtractor<P> {
     ///
     /// `tool_call_sequences` should contain the tool call sequences from each
     /// session where the pattern was observed (one vec per session).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the LLM call fails or if the response cannot be parsed.
     pub async fn extract_skill(
         &self,
         candidate: &SkillCandidate,

@@ -35,6 +35,10 @@ impl KnowledgeStore {
     }
 
     /// Find entity-overflow consolidation candidates.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the knowledge store query fails.
     #[instrument(skip(self))]
     pub fn find_entity_overflow_candidates(
         &self,
@@ -96,6 +100,10 @@ impl KnowledgeStore {
     }
 
     /// Find community-overflow consolidation candidates.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the knowledge store query fails.
     #[instrument(skip(self))]
     pub fn find_community_overflow_candidates(
         &self,

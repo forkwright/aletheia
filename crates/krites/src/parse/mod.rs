@@ -245,6 +245,11 @@ pub(crate) struct ParseError {
 /// * `fixed_rules` - a mapping of fixed rule names to their implementations. These are substituted into the syntax tree during parsing.
 ///
 /// * `cur_vld` - the current timestamp, substituted into expressions where validity is relevant.
+/// Parse a datalog script from source.
+///
+/// # Errors
+///
+/// Returns an error if the source contains syntax errors or if parsing fails.
 pub fn parse_script(
     src: &str,
     param_pool: &BTreeMap<String, DataValue>,

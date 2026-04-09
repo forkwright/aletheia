@@ -132,6 +132,10 @@ impl TaskRegistry {
     /// Register a new task and return its ID and cancellation token.
     ///
     /// The task starts in [`TaskStatus::Pending`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the registry lock is poisoned.
     pub fn register(
         &self,
         task_type: TaskType,
@@ -153,6 +157,11 @@ impl TaskRegistry {
     ///
     /// Returns an error if the transition is invalid (e.g. terminal -> running)
     /// or the task doesn't exist.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the task is not found, if the status transition
+    /// is invalid, or if the registry lock is poisoned.
     pub fn update_status(
         &self,
         task_id: TaskId,
@@ -215,6 +224,10 @@ impl TaskRegistry {
     }
 
     /// Record a tool call for a task's rolling activity window.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the task is not found or if the registry lock is poisoned.
     pub fn record_tool_call(
         &self,
         task_id: TaskId,
@@ -237,6 +250,10 @@ impl TaskRegistry {
     }
 
     /// Record an error snapshot for a task.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the task is not found or if the registry lock is poisoned.
     #[must_use]
     pub fn record_error(&self, task_id: TaskId, error: String) -> Result<(), RegistryError> {
         let mut tasks = self.tasks.write().map_err(lock_poisoned)?;
@@ -253,6 +270,10 @@ impl TaskRegistry {
     }
 
     /// Set the output file path for a task.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the task is not found or if the registry lock is poisoned.
     #[must_use]
     pub fn set_output_path(
         &self,
@@ -273,6 +294,10 @@ impl TaskRegistry {
     ///
     /// WHY: This only sends the progress event. The actual disk write is done
     /// by the `OutputWriter` that the task owns -- keeping I/O outside the lock.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the task is not found or if the registry lock is poisoned.
     #[must_use]
     pub fn broadcast_output_chunk(
         &self,
@@ -290,6 +315,10 @@ impl TaskRegistry {
     }
 
     /// Get a snapshot of a task.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the task is not found or if the registry lock is poisoned.
     #[must_use]
     pub fn get(&self, task_id: TaskId) -> Result<TaskSnapshot, RegistryError> {
         let tasks = self.tasks.read().map_err(lock_poisoned)?;
@@ -302,6 +331,10 @@ impl TaskRegistry {
     }
 
     /// List snapshots of all tasks, optionally filtered by status.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the registry lock is poisoned.
     #[must_use]
     pub fn list(
         &self,
@@ -323,6 +356,10 @@ impl TaskRegistry {
     /// WHY: Returns a `broadcast::Receiver` so the subscriber sees all future
     /// events. Past events are not replayed -- subscribers joining late only
     /// see events from their subscription point forward.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the task is not found or if the registry lock is poisoned.
     #[must_use]
     pub fn subscribe(
         &self,
@@ -341,6 +378,10 @@ impl TaskRegistry {
     ///
     /// Sets the task status to `Killed` and cancels the token so the task's
     /// execution loop can observe the cancellation at yield points.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the task is not found or if the registry lock is poisoned.
     #[must_use]
     pub fn kill(&self, task_id: TaskId) -> Result<(), RegistryError> {
         let mut tasks = self.tasks.write().map_err(lock_poisoned)?;
@@ -400,6 +441,10 @@ impl TaskRegistry {
     }
 
     /// Number of tasks currently in the registry.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the registry lock is poisoned.
     #[must_use]
     pub fn len(&self) -> Result<usize, RegistryError> {
         let tasks = self.tasks.read().map_err(lock_poisoned)?;
@@ -407,6 +452,10 @@ impl TaskRegistry {
     }
 
     /// Whether the registry is empty.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the registry lock is poisoned.
     #[must_use]
     pub fn is_empty(&self) -> Result<bool, RegistryError> {
         Ok(self.len()? == 0)

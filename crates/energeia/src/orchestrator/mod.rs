@@ -94,7 +94,7 @@ impl Orchestrator {
     ///
     /// Returns [`Error::Preflight`] if the prompt set is empty or the DAG
     /// is invalid. Returns [`Error::Aborted`] if the cancellation token is
-    /// triggered before any work begins.
+    /// triggered before any work begins, or if session execution fails.
     #[expect(
         clippy::too_many_lines,
         reason = "dispatch lifecycle is inherently sequential with DAG iteration, QA, and store updates"

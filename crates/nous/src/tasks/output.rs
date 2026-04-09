@@ -72,6 +72,11 @@ pub struct OutputWriter {
 
 impl OutputWriter {
     /// Create a new output writer backed by a temp file in `dir`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the directory cannot be created or if the output
+    /// file cannot be created.
     #[must_use]
     pub async fn new(dir: &Path) -> Result<Self, OutputError> {
         // WHY: Create parent dir if missing so callers don't need to pre-create.
@@ -84,6 +89,10 @@ impl OutputWriter {
     }
 
     /// Append a chunk of output.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to or flushing the output file fails.
     #[must_use]
     pub async fn write_chunk(&mut self, data: &[u8]) -> Result<(), OutputError> {
         self.file.write_all(data).await.context(WriteSnafu)?;
@@ -107,6 +116,10 @@ pub struct OutputReader {
 
 impl OutputReader {
     /// Open the output file at `path` for streaming reads.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the output file cannot be opened for reading.
     #[must_use]
     pub async fn open(path: &Path) -> Result<Self, OutputError> {
         let file = fs::File::open(path).await.context(OpenSnafu)?;
