@@ -29,6 +29,12 @@ pub struct FallbackConfig {
 ///
 /// Returns the last error if all models in the chain fail, or the first
 /// non-retryable error encountered.
+///
+/// # Cancel safety
+///
+/// Not cancel-safe. If cancelled after an LLM call but before returning,
+/// the result is lost and the caller cannot determine which model was
+/// attempted. Do not use in `select!` branches.
 #[tracing::instrument(skip_all)]
 pub async fn complete_with_fallback(
     provider: &dyn LlmProvider,

@@ -95,6 +95,11 @@ impl utoipa::Modify for SecurityAddon {
 }
 
 /// Serve the generated `OpenAPI` specification as JSON.
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
 pub async fn openapi_json() -> impl IntoResponse {
     let spec = ApiDoc::openapi()
         .to_json()

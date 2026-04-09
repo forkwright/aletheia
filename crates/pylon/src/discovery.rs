@@ -60,6 +60,12 @@ pub struct DiscoveryInfo {
 ///
 /// Returns [`DiscoveryError::Serialize`] if JSON serialization fails.
 /// Returns [`DiscoveryError::Write`] if the file cannot be written.
+///
+/// # Cancel safety
+///
+/// Not cancel-safe. If cancelled after writing the temp file but before
+/// the rename, the temp file is left behind. Subsequent calls will succeed
+/// but leave stale temp files.
 pub async fn write_discovery_file(
     data_dir: &Path,
     bind_addr: &str,
@@ -102,6 +108,10 @@ pub async fn write_discovery_file(
 }
 
 /// Remove the discovery file on shutdown so stale info is not served.
+///
+/// # Cancel safety
+///
+/// Cancel-safe. File removal is atomic; no partial state on cancellation.
 pub async fn remove_discovery_file(data_dir: &Path) {
     let path = data_dir.join(DISCOVERY_FILE);
     if let Err(e) = tokio::fs::remove_file(&path).await {

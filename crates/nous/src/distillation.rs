@@ -145,6 +145,12 @@ pub fn should_trigger_distillation(
 /// Check if session needs distillation, run it if so.
 ///
 /// Returns `Some(result)` if distillation ran, `None` if not needed.
+///
+/// # Cancel safety
+///
+/// Not cancel-safe. If cancelled after the LLM call but before the
+/// session store is updated, the distillation result is lost and the
+/// session remains undistilled. Do not use in `select!` branches.
 #[instrument(skip(session_store, provider, config))]
 pub async fn maybe_distill(
     session_store: &SessionStore,

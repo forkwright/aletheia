@@ -269,6 +269,11 @@ fn validate_sort_order(sort: &str, order: &str) -> Result<(), ApiError> {
     ),
     security(("bearer_auth" = []))
 )]
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
 pub async fn list_facts(
     State(state): State<KnowledgeState>,
     Query(mut query): Query<FactsQuery>,
@@ -336,6 +341,11 @@ pub async fn list_facts(
     ),
     security(("bearer_auth" = []))
 )]
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
 pub async fn get_fact(
     #[cfg_attr(
         not(feature = "knowledge-store"),
@@ -377,6 +387,11 @@ pub async fn get_fact(
 }
 
 /// GET /api/v1/knowledge/entities
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
 #[utoipa::path(
     get,
     path = "/api/v1/knowledge/entities",
@@ -394,6 +409,11 @@ pub async fn list_entities(
 }
 
 /// GET /api/v1/knowledge/entities/{id}/relationships
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
 #[utoipa::path(
     get,
     path = "/api/v1/knowledge/entities/{id}/relationships",
@@ -449,6 +469,11 @@ pub struct GraphCheckReport {
 ///
 /// Runs server-side; avoids the fjall exclusive-lock conflict that occurs when
 /// `aletheia memory check` tries to open the store while the server holds it.
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
 pub async fn check_graph_health(
     State(state): State<KnowledgeState>,
 ) -> impl axum::response::IntoResponse {

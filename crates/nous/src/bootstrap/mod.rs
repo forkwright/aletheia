@@ -264,6 +264,12 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
     ///
     /// Returns [`error::Error::ContextAssembly`] if a Required file (SOUL.md) is
     /// missing or unreadable.
+    ///
+    /// # Cancel safety
+    ///
+    /// Not cancel-safe. If cancelled after partial file loading, the
+    /// returned `BootstrapResult` may be incomplete. Callers should not
+    /// use this in `select!` branches.
     pub async fn assemble(
         &self,
         nous_id: &str,
@@ -286,6 +292,10 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
     ///
     /// Returns [`error::Error::ContextAssembly`] if a Required file (SOUL.md) is
     /// missing or unreadable.
+    ///
+    /// # Cancel safety
+    ///
+    /// Not cancel-safe. Delegates to [`assemble_conditional`](Self::assemble_conditional).
     pub async fn assemble_with_extra(
         &self,
         nous_id: &str,
@@ -308,6 +318,12 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
     ///
     /// Returns [`error::Error::ContextAssembly`] if a Required file (SOUL.md) is
     /// missing or unreadable.
+    ///
+    /// # Cancel safety
+    ///
+    /// Not cancel-safe. If cancelled during file I/O, partial sections may
+    /// be loaded and token budget calculations incomplete. Do not use in
+    /// `select!` branches.
     pub async fn assemble_conditional(
         &self,
         nous_id: &str,

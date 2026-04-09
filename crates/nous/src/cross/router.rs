@@ -82,6 +82,11 @@ impl CrossNousRouter {
     }
 
     /// Remove a nous actor's route, preventing further message delivery.
+    ///
+    /// # Cancel safety
+    ///
+    /// Cancel-safe. Uses a single `RwLock::write` + `remove`. No partial
+    /// state on cancellation.
     #[instrument(skip(self))]
     pub async fn unregister(&self, nous_id: &str) {
         self.routes.write().await.remove(nous_id);
@@ -244,6 +249,12 @@ impl CrossNousRouter {
     }
 
     /// Submit a reply for a pending ask.
+    ///
+    /// # Cancel safety
+    ///
+    /// Not cancel-safe. If cancelled after removing the pending reply entry
+    /// but before sending the reply, the asker will timeout waiting for a
+    /// reply that was consumed. Do not use in `select!` branches.
     #[instrument(skip(self, reply), fields(in_reply_to = %reply.in_reply_to, from = %reply.from))]
     pub async fn reply(&self, reply: CrossNousReply) -> error::Result<()> {
         let msg_id = reply.in_reply_to;
@@ -259,6 +270,10 @@ impl CrossNousRouter {
     }
 
     /// List all registered nous IDs.
+    ///
+    /// # Cancel safety
+    ///
+    /// Cancel-safe. Uses a single `RwLock::read`. No partial state on cancellation.
     pub async fn registered(&self) -> Vec<String> {
         self.routes.read().await.keys().cloned().collect()
     }

@@ -56,6 +56,11 @@ pub struct ImportFactError {
     ),
     security(("bearer_auth" = []))
 )]
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
 pub async fn import_facts(
     State(state): State<KnowledgeState>,
     claims: Claims,

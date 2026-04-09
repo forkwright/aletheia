@@ -24,6 +24,11 @@ pub struct CsrfState {
 ///
 /// GET, HEAD, and OPTIONS are exempt. POST, PUT, DELETE, and PATCH must
 /// include the configured header with the expected value.
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum middleware; cancellation drops the future with no
+/// side effects beyond not returning a response.
 pub async fn require_csrf_header(request: Request, next: Next) -> Response {
     let is_safe = matches!(
         *request.method(),
@@ -91,6 +96,11 @@ impl From<RequestId> for String {
 }
 
 /// Middleware that generates a ULID request ID and stores it in request extensions.
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum middleware; cancellation drops the future with no
+/// side effects beyond not returning a response.
 pub async fn inject_request_id(mut request: Request, next: Next) -> Response {
     let id = aletheia_koina::ulid::Ulid::new().to_string();
     request.extensions_mut().insert(RequestId(id));
@@ -100,6 +110,11 @@ pub async fn inject_request_id(mut request: Request, next: Next) -> Response {
 /// Middleware that enriches 4xx/5xx JSON error responses with `request_id`.
 ///
 /// Must be placed inside the compression layer so the body is uncompressed.
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum middleware; cancellation drops the future with no
+/// side effects beyond not returning a response.
 pub async fn enrich_error_response(request: Request, next: Next) -> Response {
     let request_id = request
         .extensions()
@@ -148,6 +163,11 @@ pub async fn enrich_error_response(request: Request, next: Next) -> Response {
 }
 
 /// Middleware that records HTTP request metrics (count + duration).
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum middleware; cancellation drops the future with no
+/// side effects beyond not returning a response.
 pub async fn record_http_metrics(request: Request, next: Next) -> Response {
     let method = request.method().to_string();
     let path = crate::metrics::normalize_path(request.uri().path());

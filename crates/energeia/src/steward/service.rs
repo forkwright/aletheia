@@ -42,6 +42,12 @@ impl StewardConfig {
 ///
 /// WHY: Separating the polling loop from the single-pass logic allows
 /// both daemon mode (polling) and CLI mode (single pass).
+///
+/// # Cancel safety
+///
+/// Cancel-safe at loop boundaries. The `select!` uses `cancel.cancelled()`
+/// which is cancel-safe. Dropping the future between iterations simply
+/// delays the next poll without losing state.
 pub async fn run(config: &StewardConfig, cancel: CancellationToken) -> Vec<StewardResult> {
     let results = Vec::new();
 
@@ -75,6 +81,12 @@ pub async fn run(config: &StewardConfig, cancel: CancellationToken) -> Vec<Stewa
 ///
 /// This is the unit of work for both polling and single-pass modes.
 /// Returns the classification and action results.
+///
+/// # Cancel safety
+///
+/// Not cancel-safe. This is a placeholder implementation; the real
+/// implementation will perform side effects (fetching PRs, executing
+/// merges) that are not idempotent. Do not use in `select!` branches.
 pub async fn run_once(config: &StewardConfig) -> StewardResult {
     tracing::info!(
         project = %config.project,

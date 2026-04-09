@@ -10,6 +10,11 @@ use utoipa::ToSchema;
 use crate::state::HealthState;
 
 /// GET /api/health: liveness + readiness check.
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
 #[utoipa::path(
     get,
     path = "/api/health",

@@ -213,6 +213,12 @@ impl AnthropicProvider {
     ///
     /// This is an `AnthropicProvider`-specific method. The `LlmProvider`
     /// trait only exposes `complete()`.
+    ///
+    /// # Cancel safety
+    ///
+    /// Not cancel-safe. If cancelled after emitting partial content to the
+    /// callback, the stream ends abruptly. The caller's callback may have
+    /// received incomplete data with no indication of truncation.
     #[tracing::instrument(skip_all)]
     pub async fn complete_streaming(
         &self,

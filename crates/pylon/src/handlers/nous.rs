@@ -37,6 +37,11 @@ pub async fn list(State(state): State<NousState>, _claims: Claims) -> Json<NousL
 }
 
 /// GET /api/v1/nous/{id}: get nous status.
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
 #[utoipa::path(
     get,
     path = "/api/v1/nous/{id}",
@@ -79,6 +84,11 @@ pub async fn get_status(
 }
 
 /// GET /api/v1/nous/{id}/tools: list tools available to a nous.
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
 #[utoipa::path(
     get,
     path = "/api/v1/nous/{id}/tools",
@@ -114,6 +124,11 @@ pub async fn tools(
 }
 
 /// POST /api/v1/nous/{id}/recover: reset degraded actor to idle.
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
 #[utoipa::path(
     post,
     path = "/api/v1/nous/{id}/recover",

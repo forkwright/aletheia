@@ -146,6 +146,12 @@ fn process_response_blocks(content: &[ContentBlock]) -> ResponseExtract {
 /// 3. Processes `tool_use` blocks by dispatching to the `ToolRegistry`
 /// 4. Feeds tool results back and re-calls the LLM
 /// 5. Repeats until `EndTurn`, `MaxTokens`, or iteration limit
+///
+/// # Cancel safety
+///
+/// Not cancel-safe. If cancelled mid-loop, tool calls may have been
+/// dispatched but their results not processed, leaving the session
+/// in an inconsistent state. Do not use in `select!` branches.
 #[expect(
     clippy::too_many_lines,
     reason = "execution loop is inherently sequential, splitting would obscure control flow"
@@ -401,6 +407,12 @@ pub async fn execute(
 ///
 /// Uses `complete_streaming()` when the provider supports it, falling back to
 /// `complete()` otherwise. Tool start/result events are emitted via the channel.
+///
+/// # Cancel safety
+///
+/// Not cancel-safe. Same as [`execute`]: if cancelled mid-loop, partial
+/// streaming events may have been sent but the final result is lost,
+/// leaving the session in an inconsistent state. Do not use in `select!` branches.
 #[expect(
     clippy::too_many_lines,
     reason = "streaming agent loop parallels execute() with provider callback — one cohesive operation"
