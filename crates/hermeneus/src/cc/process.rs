@@ -26,8 +26,13 @@ fn read_oauth_token() -> std::io::Result<String> {
     let content = std::fs::read_to_string(&path)?;
     let parsed: serde_json::Value = serde_json::from_str(&content)
         .map_err(|e| std::io::Error::other(e.to_string()))?;
-    parsed["claudeAiOauth"]["accessToken"]
-        .as_str()
+    // WHY: serde_json::Value::get returns None on missing keys (vs the
+    // panic from indexing), so this is the safe form of
+    // `parsed["claudeAiOauth"]["accessToken"]`.
+    parsed
+        .get("claudeAiOauth")
+        .and_then(|v| v.get("accessToken"))
+        .and_then(serde_json::Value::as_str)
         .map(str::to_owned)
         .ok_or_else(|| std::io::Error::other("no accessToken in credentials"))
 }
