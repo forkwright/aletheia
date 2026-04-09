@@ -58,6 +58,10 @@ impl MessageRouter {
     }
 
     /// Resolve which nous should handle this message.
+    ///
+    /// # Complexity
+    ///
+    /// O(b) where b is the number of channel bindings.
     pub fn resolve(&self, msg: &InboundMessage) -> Option<RouteDecision<'_>> {
         let decision = self.match_route(msg);
         if let Some(ref d) = decision {

@@ -260,6 +260,11 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
     /// Loads all workspace files (identity + operational). Use
     /// [`assemble_conditional`](Self::assemble_conditional) for task-aware loading.
     ///
+    /// # Complexity
+    ///
+    /// O(f) where f is the number of workspace files. Each file requires
+    /// a cascade resolution and potentially a disk read.
+    ///
     /// # Errors
     ///
     /// Returns [`error::Error::ContextAssembly`] if a Required file (SOUL.md) is
@@ -303,6 +308,11 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
     /// Identity-tier files (SOUL, USER, IDENTITY, PROSOCHE) always load.
     /// Operational files (AGENTS, GOALS, TOOLS, CHECKLIST, MEMORY, CONTEXT)
     /// load only when relevant to the task hint.
+    ///
+    /// # Complexity
+    ///
+    /// O(f + s log s) where f is the number of workspace files and s is the
+    /// number of sections after filtering. Sorting sections by priority dominates.
     ///
     /// # Errors
     ///
@@ -399,6 +409,11 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
     ///
     /// Returns `(sections, filtered_names)` where `filtered_names` lists
     /// workspace files that were skipped by the task hint filter.
+    ///
+    /// # Complexity
+    ///
+    /// O(f) where f is the number of workspace files. Each file requires
+    /// a cascade resolution and potentially a disk read.
     async fn resolve_workspace_files(
         &self,
         nous_id: &str,
@@ -491,6 +506,10 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
     /// subsections that fit within the budget, dropping the oldest. A truncation
     /// marker is prepended so the reader knows content was removed. Falls back to
     /// line-by-line truncation if no headers are found or no single section fits.
+    ///
+    /// # Complexity
+    ///
+    /// O(p) where p is the number of markdown sections in the content.
     fn truncate_section(&self, section: &BootstrapSection, max_tokens: u64) -> BootstrapSection {
         let parts: Vec<&str> = section.content.split("\n## ").collect();
 

@@ -102,6 +102,10 @@ impl RecallStage {
     ///
     /// Used as a fallback when the embedding provider is in mock mode.
     /// Scores, ranks, and formats results the same way as [`run`](Self::run).
+    ///
+    /// # Complexity
+    ///
+    /// O(n log n) where n is the number of candidates retrieved from the search.
     pub(crate) fn run_bm25(
         &self,
         query: &str,
@@ -134,6 +138,11 @@ impl RecallStage {
     /// When `iterative` is enabled, runs a second cycle with terminology-refined queries.
     ///
     /// Non-fatal errors are returned as `Err`: the caller should catch and continue.
+    ///
+    /// # Complexity
+    ///
+    /// O(n log n) where n is the number of candidates retrieved from the search.
+    /// In iterative mode, complexity doubles as two searches are performed.
     #[instrument(skip_all, fields(nous_id = %nous_id))]
     pub fn run(
         &self,
@@ -299,6 +308,11 @@ impl RecallStage {
         }
     }
 
+    /// Build candidate scores from raw search results.
+    ///
+    /// # Complexity
+    ///
+    /// O(n) where n is the number of raw search results.
     fn build_candidates(
         &self,
         raw: Vec<KnowledgeRecallResult>,
@@ -324,6 +338,11 @@ impl RecallStage {
             .collect()
     }
 
+    /// Filter candidates by minimum score and take top results.
+    ///
+    /// # Complexity
+    ///
+    /// O(n) where n is the number of ranked candidates.
     fn filter(&self, ranked: Vec<ScoredResult>) -> Vec<ScoredResult> {
         ranked
             .into_iter()
@@ -332,6 +351,12 @@ impl RecallStage {
             .collect()
     }
 
+    /// Format results within the token budget.
+    ///
+    /// # Complexity
+    ///
+    /// O(n²) where n is the number of results, due to repeated token estimation
+    /// for each incremental addition to the output.
     fn format_within_budget(&self, results: &[ScoredResult], budget: u64) -> (usize, String, u64) {
         let cpt = self.config.chars_per_token;
         let mut included = Vec::with_capacity(results.len());

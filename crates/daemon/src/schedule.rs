@@ -138,6 +138,11 @@ impl Schedule {
     /// Calculate the next run time FROM now.
     ///
     /// Returns `None` for `Startup` (already ran) or `Once` with a past timestamp.
+    ///
+    /// # Complexity
+    ///
+    /// O(1) for interval and once schedules. O(c) for cron schedules where c
+    /// is the complexity of parsing the cron expression.
     pub(crate) fn next_run(&self) -> Result<Option<jiff::Timestamp>> {
         match self {
             Self::Cron(expr) => {
@@ -168,6 +173,10 @@ impl Schedule {
     ///
     /// Returns `true` if there was at least one scheduled run between `last_run`
     /// and `now` that was missed, and it's within the last 24 hours.
+    ///
+    /// # Complexity
+    ///
+    /// O(c) where c is the complexity of parsing the cron expression.
     pub(crate) fn missed_since(&self, last_run: jiff::Timestamp) -> Result<bool> {
         let Self::Cron(expr) = self else {
             return Ok(false);

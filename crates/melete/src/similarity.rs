@@ -70,6 +70,10 @@ pub(crate) fn extract_text(message: &Message) -> String {
 ///
 /// Splits on whitespace and ASCII punctuation, discards tokens shorter than
 /// [`MIN_TOKEN_LEN`] to reduce noise from articles and prepositions.
+///
+/// # Complexity
+///
+/// O(n) where n is the length of the input text.
 pub(crate) fn tokenize(text: &str) -> HashSet<String> {
     text.split(|c: char| c.is_whitespace() || c.is_ascii_punctuation())
         .filter(|w| w.len() >= MIN_TOKEN_LEN)
@@ -82,6 +86,10 @@ pub(crate) fn tokenize(text: &str) -> HashSet<String> {
 /// Returns 1.0 when both sets are empty (trivially identical),
 /// 0.0 when either set is empty (no overlap possible),
 /// otherwise |A intersection B| / |A union B|.
+///
+/// # Complexity
+///
+/// O(min(a, b)) where a and b are the sizes of the two sets.
 #[must_use]
 pub(crate) fn jaccard_similarity(a: &HashSet<String>, b: &HashSet<String>) -> f64 {
     if a.is_empty() && b.is_empty() {
@@ -110,6 +118,11 @@ pub(crate) fn jaccard_similarity(a: &HashSet<String>, b: &HashSet<String>) -> f6
 ///
 /// Compares each message pair and removes the earlier (older) message when
 /// similarity exceeds `threshold`, keeping the more recent version.
+///
+/// # Complexity
+///
+/// O(n² × t) where n is the number of messages and t is the average tokenization
+/// cost per message. This performs pairwise comparison of all messages.
 ///
 /// Returns the filtered messages and pruning statistics.
 pub(crate) fn prune_similar_messages(

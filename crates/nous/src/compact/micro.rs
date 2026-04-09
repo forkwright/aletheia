@@ -25,6 +25,11 @@ const CLEARED_MARKER_PREFIX: &str = "[Cleared: ";
 /// tool results pass through unchanged. The last `config.keep_last_n` results
 /// per tool type are preserved regardless of age.
 ///
+/// # Complexity
+///
+/// O(m × t) where m is the number of messages and t is the number of unique
+/// tool types. Groups messages by tool type and processes each group separately.
+///
 /// # Arguments
 ///
 /// - `messages`: pipeline messages (history + current). Modified in place.

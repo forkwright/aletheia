@@ -244,6 +244,10 @@ impl AuthStore {
     }
 
     /// List all API keys (metadata only).
+    ///
+    /// # Complexity
+    ///
+    /// O(k) where k is the number of API keys in the store.
     pub(crate) fn list_api_keys(&self) -> Result<Vec<ApiKeyRecord>> {
         let mut stmt = self
             .conn
@@ -291,6 +295,10 @@ impl AuthStore {
     }
 
     /// Remove revocation entries for tokens that have already expired.
+    ///
+    /// # Complexity
+    ///
+    /// O(r) where r is the number of revoked tokens in the store.
     pub(crate) fn cleanup_expired_revocations(&self) -> Result<usize> {
         let rows = self
             .conn

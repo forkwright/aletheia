@@ -28,6 +28,12 @@ fn domain_sort_key(domain: ResearchDomain) -> u8 {
 /// researchers run concurrently. Partial results are accepted if some researchers
 /// fail or timeout.
 ///
+/// # Complexity
+///
+/// O(d) where d is the number of research domains. Each domain spawns a
+/// concurrent task, so wall-clock time is O(1) (bounded by the slowest domain),
+/// but total work scales linearly with domains.
+///
 /// # Errors
 ///
 /// Returns `String` only if the spawn service itself is unavailable. Individual

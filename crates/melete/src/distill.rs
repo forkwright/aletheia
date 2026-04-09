@@ -302,6 +302,10 @@ impl DistillEngine {
     }
 
     /// Build the distillation prompt for the given messages.
+    ///
+    /// # Complexity
+    ///
+    /// O(m) where m is the number of messages to distill.
     pub(crate) fn build_prompt(&self, messages: &[Message], nous_id: &str) -> CompletionRequest {
         let formatted = prompt::format_messages(messages, self.config.include_tool_calls);
         let system_prompt = prompt::build_system_prompt(&self.config.sections);
@@ -344,6 +348,11 @@ impl DistillEngine {
     ///
     /// Records success or failure into the backoff state so that
     /// `tick_turn` gates subsequent retry attempts.
+    ///
+    /// # Complexity
+    ///
+    /// O(m² × t) where m is the number of messages and t is the tokenization cost.
+    /// This includes the similarity pruning phase which performs pairwise comparisons.
     #[instrument(skip(self, messages, provider), fields(nous_id, distillation_number))]
     #[expect(
         clippy::too_many_lines,

@@ -40,6 +40,10 @@ const BRIEF_TAIL_LINES: usize = 3;
 ///
 /// Keeps the first `BRIEF_HEAD_LINES` and last `BRIEF_TAIL_LINES`, inserting
 /// a `... (N lines omitted)` marker in between.
+///
+/// # Complexity
+///
+/// O(n) where n is the number of lines in the output.
 #[expect(
     clippy::indexing_slicing,
     reason = "bounds checked: total > HEAD + TAIL before slicing"
@@ -563,6 +567,10 @@ impl TaskRunner {
     }
 
     /// Get status of all registered tasks.
+    ///
+    /// # Complexity
+    ///
+    /// O(t) where t is the number of registered tasks.
     pub fn status(&self) -> Vec<TaskStatus> {
         self.tasks
             .iter()
@@ -581,6 +589,10 @@ impl TaskRunner {
     }
 
     /// Check in-flight tasks for completion, timeout warnings, and hung task cancellation.
+    ///
+    /// # Complexity
+    ///
+    /// O(i) where i is the number of in-flight tasks.
     #[expect(
         clippy::expect_used,
         reason = "key existence verified by is_finished() check immediately before"

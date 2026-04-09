@@ -112,6 +112,10 @@ const TIMESTAMP_TOLERANCE_SECS: i64 = 5;
 /// Both database and filesystem snapshots are optional: a project may exist
 /// in only one source. When both exist, the newest-wins strategy applies
 /// and conflicts are logged.
+///
+/// # Complexity
+///
+/// O(1) - constant time comparison of two project snapshots.
 #[must_use]
 pub(crate) fn reconcile(
     db_snapshot: Option<&ProjectSnapshot>,
@@ -190,6 +194,10 @@ fn reconcile_both(db: &ProjectSnapshot, fs: &ProjectSnapshot) -> ReconciliationR
 }
 
 /// Compare two projects and log field-level conflicts.
+///
+/// # Complexity
+///
+/// O(1) - constant time comparison of a fixed set of project fields.
 fn detect_conflicts(db: &Project, fs: &Project, conflicts: &mut Vec<ConflictEntry>) {
     if db.name != fs.name {
         conflicts.push(ConflictEntry {
@@ -231,6 +239,11 @@ fn detect_conflicts(db: &Project, fs: &Project, conflicts: &mut Vec<ConflictEntr
 /// Reconcile multiple projects from two source sets.
 ///
 /// Matches projects by ID across both sets and produces a summary.
+///
+/// # Complexity
+///
+/// O(d + f) where d is the number of database snapshots and f is the
+/// number of filesystem snapshots.
 #[must_use]
 #[expect(dead_code, reason = "WIP: database-filesystem state reconciliation")]
 pub(crate) fn reconcile_all(
