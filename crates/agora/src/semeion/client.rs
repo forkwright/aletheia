@@ -5,7 +5,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
 use tracing::instrument;
-use uuid::Uuid;
+
 
 use aletheia_koina::http::CONTENT_TYPE_JSON;
 
@@ -79,7 +79,7 @@ impl SignalClient {
         method: &str,
         params: &serde_json::Value,
     ) -> Result<Option<serde_json::Value>> {
-        let id = Uuid::new_v4().to_string();
+        let id = aletheia_koina::uuid::uuid_v4();
         let request = RpcRequest {
             jsonrpc: "2.0",
             method,
@@ -167,7 +167,7 @@ impl SignalClient {
             );
         }
 
-        let id = Uuid::new_v4().to_string();
+        let id = aletheia_koina::uuid::uuid_v4();
         let params_value = serde_json::Value::Object(params);
         let request = RpcRequest {
             jsonrpc: "2.0",

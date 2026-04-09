@@ -41,6 +41,8 @@ pub mod system;
 pub mod tracing_init;
 /// Internal ULID generation (Crockford base32, 48-bit timestamp + 80-bit random).
 pub mod ulid;
+/// Internal UUID v4 generation (dependency-free).
+pub mod uuid;
 
 #[cfg(test)]
 mod assertions {
