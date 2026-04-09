@@ -11,7 +11,7 @@ use crate::error::{self, Result};
 /// Database operating mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum StoreMode {
+pub(crate) enum StoreMode {
     /// Normal read-write operation.
     Normal,
     /// Degraded: corruption detected, writes are rejected.
@@ -24,7 +24,7 @@ pub enum StoreMode {
     clippy::struct_excessive_bools,
     reason = "config struct: each bool is an independent toggle"
 )]
-pub struct RecoveryConfig {
+pub(crate) struct RecoveryConfig {
     /// Whether corruption recovery is active.
     pub enabled: bool,
     /// Run `PRAGMA integrity_check` when opening a database.

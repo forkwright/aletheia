@@ -648,7 +648,7 @@ CREATE INDEX IF NOT EXISTS idx_blackboard_key ON blackboard(key);",
 
 /// Outcome of a migration run.
 #[derive(Debug)]
-pub struct MigrationResult {
+pub(crate) struct MigrationResult {
     /// Versions applied during this run.
     pub applied: Vec<u32>,
     /// Schema version after migration.
@@ -659,7 +659,7 @@ pub struct MigrationResult {
 
 /// Pending migration info for dry-run reporting.
 #[derive(Debug)]
-pub struct PendingMigration {
+pub(crate) struct PendingMigration {
     /// Version number that would be applied.
     pub version: u32,
     /// Human-readable summary of the migration.
