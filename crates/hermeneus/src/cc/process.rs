@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
 
+use aletheia_koina::system::{Environment, RealSystem};
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 use tracing::{debug, warn};
@@ -21,7 +22,9 @@ use super::parse::{self, CcEvent};
 /// the token via `CLAUDE_CODE_OAUTH_TOKEN` env var, which CC accepts as an
 /// override even without bare mode.
 fn read_oauth_token() -> std::io::Result<String> {
-    let home = std::env::var("HOME").map_err(|e| std::io::Error::other(e.to_string()))?;
+    let home = RealSystem
+        .var("HOME")
+        .ok_or_else(|| std::io::Error::other("HOME is not set"))?;
     let path = std::path::Path::new(&home).join(".claude/.credentials.json");
     let content = std::fs::read_to_string(&path)?;
     let parsed: serde_json::Value = serde_json::from_str(&content)
