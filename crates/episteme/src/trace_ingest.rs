@@ -20,9 +20,9 @@
 //!
 //! # Feature gate
 //!
-//! The [`TraceIngestLayer`] type is always available so it can be composed into
+//! The `TraceIngestLayer` type is always available so it can be composed into
 //! the subscriber stack without a feature check at the call site.  The
-//! [`TraceIngestLayer::flush`] method (which writes to the Datalog engine) is
+//! `TraceIngestLayer::flush` method (which writes to the Datalog engine) is
 //! gated on the `mneme-engine` feature; without it the buffer still fills but
 //! flushes are no-ops.
 
@@ -85,12 +85,13 @@ pub enum TraceEvent {
 
 /// DDL that creates the three `ops.*` relations in a Datalog database.
 ///
-/// Apply this before the first [`TraceIngestLayer::flush`] call.  In production
+/// Apply this before the first `TraceIngestLayer::flush` call.  In production
 /// the knowledge-store init path runs all DDL; this constant is exposed so
-/// tests and the init migration can reference the canonical schema.
+/// feature-gated tests and the init migration can reference the canonical
+/// schema. Only the `mneme-engine`-gated `engine_tests` mod reads it.
 #[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "schema referenced from tests; production init path is in knowledge_store::init")
+    not(all(test, feature = "mneme-engine")),
+    expect(dead_code, reason = "schema referenced from mneme-engine tests only; production init path lives in knowledge_store::init")
 )]
 pub(crate) const OPS_DDL: &[&str] = &[
     r":create ops_turns {
@@ -351,6 +352,10 @@ impl TraceIngestLayer {
     ///
     /// Prevents unbounded buffer growth when no knowledge store is wired in.
     #[cfg(not(feature = "mneme-engine"))]
+    #[expect(
+        dead_code,
+        reason = "fallback for feature-off builds; kept as a stable name so callers can switch between flush and flush_noop via cfg without renaming"
+    )]
     pub(crate) fn flush_noop(&self) {
         self.drain();
     }

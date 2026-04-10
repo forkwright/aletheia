@@ -125,8 +125,8 @@ pub struct RefinedExtraction {
     ///
     /// `Some((relation_type, confidence))` when the combined message text
     /// contains causal language ("because", "therefore", "caused by", etc.).
-    /// Callers can use this to trigger [`crate::causal::extract_causal_edges`]
-    /// with the relevant fact IDs.
+    /// Consumers can use this to drive the crate-private `extract_causal_edges`
+    /// helper with the relevant fact IDs.
     pub causal_signal: Option<(CausalRelationType, f64)>,
 }
 

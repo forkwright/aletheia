@@ -154,7 +154,7 @@ pub struct ProjectScores {
     pub grade_distribution: HashMap<Grade, usize>,
 }
 
-/// Inputs to [`compute_grade`].
+/// Inputs to the crate-private `compute_grade` scoring helper.
 ///
 /// Bundles the boolean and counter flags into a single named record so the
 /// call sites are self-documenting and so the function signature stays

@@ -12,7 +12,8 @@
 //! is the product of individual edge confidences along the chain.
 //!
 //! Causal edges are heuristically extracted during session finalization.
-//! See [`extract_causal_edges`] for the extraction logic.
+//! See the crate-private `extract_causal_edges` helper for the extraction
+//! logic.
 
 use std::collections::{HashMap, HashSet};
 
@@ -291,11 +292,12 @@ pub(crate) fn detect_causal_cue(text: &str) -> Option<(CausalRelationType, f64)>
 /// # Errors
 /// Never fails — returns `Vec` rather than `Result` because extraction is
 /// best-effort; failure to detect causality is not an error condition.
-// PUBLIC: documented hook for RefinedExtraction.causal_signal consumers
-// (see extract/types.rs). Kept `pub` so external callers can drive the
-// pipeline until the first in-tree consumer lands.
 #[must_use]
-pub fn extract_causal_edges(
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "documented hook for RefinedExtraction.causal_signal consumers; exercised from tests until first in-tree caller lands")
+)]
+pub(crate) fn extract_causal_edges(
     session_text: &str,
     source_id: FactId,
     target_id: FactId,

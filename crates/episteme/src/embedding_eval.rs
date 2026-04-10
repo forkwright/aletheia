@@ -416,7 +416,7 @@ fn score_one_query(
 ///
 /// # Errors
 ///
-/// Propagates errors from [`evaluate_model`].
+/// Propagates errors from the crate-private `evaluate_model` helper.
 #[instrument(skip(baseline, candidate, dataset, corpus), fields(k = k))]
 pub fn compare_models(
     baseline: &dyn EmbeddingProvider,
