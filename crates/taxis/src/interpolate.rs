@@ -38,9 +38,8 @@ use crate::error::{EnvVarRequiredSnafu, EnvVarUnterminatedSnafu, Result};
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// // WHY: interpolate_env_vars is pub(crate) — example shows intended usage.
 /// let out = aletheia_taxis::interpolate::interpolate_env_vars(
 ///     "[gateway]\nport = ${_TAXIS_UNSET_EXAMPLE:-18789}"
 /// )?;
@@ -57,7 +56,7 @@ use crate::error::{EnvVarRequiredSnafu, EnvVarUnterminatedSnafu, Result};
     clippy::double_must_use,
     reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
 )]
-pub(crate) fn interpolate_env_vars(content: &str) -> Result<String> {
+pub fn interpolate_env_vars(content: &str) -> Result<String> {
     let mut result = String::with_capacity(content.len());
     let mut rest = content;
 
