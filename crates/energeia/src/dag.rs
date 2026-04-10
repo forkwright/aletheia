@@ -128,7 +128,7 @@ impl PromptDag {
     /// # Errors
     ///
     /// Returns [`DagError::DuplicateNode`] if `number` is already present.
-    pub fn add_node(&mut self, number: u32, depends_on: Vec<u32>) -> Result<(), DagError> {
+    pub(crate) fn add_node(&mut self, number: u32, depends_on: Vec<u32>) -> Result<(), DagError> {
         if self.nodes.contains_key(&number) {
             return Err(DagError::DuplicateNode { number });
         }
@@ -148,7 +148,7 @@ impl PromptDag {
     /// # Errors
     ///
     /// Returns [`DagError::InvalidPrompt`] if `number` is not in the graph.
-    pub fn set_status(&mut self, number: u32, status: PromptStatus) -> Result<(), DagError> {
+    pub(crate) fn set_status(&mut self, number: u32, status: PromptStatus) -> Result<(), DagError> {
         self.nodes
             .get_mut(&number)
             .ok_or(DagError::InvalidPrompt { number })?
@@ -157,6 +157,8 @@ impl PromptDag {
     }
 
     /// Return prompt numbers currently in [`PromptStatus::Ready`] state.
+    // PUBLIC: external readiness query; production paths use compute_frontier
+    // and dispatch dags directly, but the accessor is exposed.
     #[must_use]
     pub fn get_ready(&self) -> Vec<u32> {
         let mut ready: Vec<u32> = self
@@ -179,7 +181,7 @@ impl PromptDag {
     ///
     /// Returns [`DagError::MissingDependencies`] if dependencies are missing,
     /// or [`DagError::Cycle`] if a cycle is detected.
-    pub fn validate(&self) -> Result<(), DagError> {
+    pub(crate) fn validate(&self) -> Result<(), DagError> {
         // WHY: Check missing deps first — simpler to diagnose, collect all at once.
         let all_numbers: HashSet<u32> = self.nodes.keys().copied().collect();
         let mut broken: Vec<(u32, u32)> = Vec::new();
