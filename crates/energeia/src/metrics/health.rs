@@ -250,15 +250,11 @@ fn corrective_rate(dispatches: &[&DispatchRecord], sessions: &[&SessionRecord]) 
     #[expect(
         clippy::cast_precision_loss,
         clippy::as_conversions,
-        reason = "dispatch counts are bounded; precision loss unreachable at practical scale"
+        reason = "dispatch counts bounded by SCAN_LIMIT_DISPATCHES (10_000), well below f64 mantissa 2^53"
     )]
     let rate = corrective_dispatch_ids.len() as f64 / total as f64;
 
-    #[expect(
-        clippy::as_conversions,
-        reason = "dispatch count is bounded by SCAN_LIMIT_DISPATCHES, fits u64"
-    )]
-    let sample_size = total as u64;
+    let sample_size = u64::try_from(total).unwrap_or(u64::MAX);
 
     HealthMetric {
         name: NAME,
@@ -293,15 +289,11 @@ fn stuck_rate(sessions: &[&SessionRecord]) -> HealthMetric {
     #[expect(
         clippy::cast_precision_loss,
         clippy::as_conversions,
-        reason = "session counts are bounded; precision loss unreachable at practical scale"
+        reason = "session counts bounded by SCAN_LIMIT_SESSIONS (100_000), well below f64 mantissa 2^53"
     )]
     let rate = stuck as f64 / total as f64;
 
-    #[expect(
-        clippy::as_conversions,
-        reason = "session count fits u64 within SCAN_LIMIT_SESSIONS"
-    )]
-    let sample_size = total as u64;
+    let sample_size = u64::try_from(total).unwrap_or(u64::MAX);
 
     HealthMetric {
         name: NAME,
@@ -354,15 +346,11 @@ fn qa_false_positive_rate(
     #[expect(
         clippy::cast_precision_loss,
         clippy::as_conversions,
-        reason = "session counts are bounded; precision loss unreachable at practical scale"
+        reason = "session counts bounded by SCAN_LIMIT_SESSIONS (100_000), well below f64 mantissa 2^53"
     )]
     let rate = ci_fail_count as f64 / total as f64;
 
-    #[expect(
-        clippy::as_conversions,
-        reason = "session count fits u64 within SCAN_LIMIT_SESSIONS"
-    )]
-    let sample_size = total as u64;
+    let sample_size = u64::try_from(total).unwrap_or(u64::MAX);
 
     HealthMetric {
         name: NAME,
@@ -410,15 +398,11 @@ fn fix_agent_success_rate(
     #[expect(
         clippy::cast_precision_loss,
         clippy::as_conversions,
-        reason = "session counts are bounded; precision loss unreachable at practical scale"
+        reason = "session counts bounded by SCAN_LIMIT_SESSIONS (100_000), well below f64 mantissa 2^53"
     )]
     let rate = successes as f64 / total as f64;
 
-    #[expect(
-        clippy::as_conversions,
-        reason = "session count fits u64 within SCAN_LIMIT_SESSIONS"
-    )]
-    let sample_size = total as u64;
+    let sample_size = u64::try_from(total).unwrap_or(u64::MAX);
 
     HealthMetric {
         name: NAME,
@@ -462,15 +446,11 @@ fn cycle_time(dispatches: &[&DispatchRecord]) -> HealthMetric {
     #[expect(
         clippy::cast_precision_loss,
         clippy::as_conversions,
-        reason = "total_ms as f64: bounded by dispatch count × max session duration; precision loss unreachable"
+        reason = "total_ms sums i64 millisecond deltas across at most SCAN_LIMIT_DISPATCHES (10_000) completed dispatches; precision loss well below f64 mantissa 2^53 at practical scale"
     )]
     let avg_hours = (total_ms as f64 / total as f64) / 3_600_000.0;
 
-    #[expect(
-        clippy::as_conversions,
-        reason = "dispatch count fits u64 within SCAN_LIMIT_DISPATCHES"
-    )]
-    let sample_size = total as u64;
+    let sample_size = u64::try_from(total).unwrap_or(u64::MAX);
 
     HealthMetric {
         name: NAME,
@@ -540,15 +520,11 @@ fn batch_parallelism(dispatches: &[&DispatchRecord], sessions: &[&SessionRecord]
     #[expect(
         clippy::cast_precision_loss,
         clippy::as_conversions,
-        reason = "total_sessions and n are bounded; precision loss unreachable at practical scale"
+        reason = "total_sessions bounded by SCAN_LIMIT_SESSIONS (100_000) and n bounded by SCAN_LIMIT_DISPATCHES (10_000); both well below f64 mantissa 2^53"
     )]
     let avg = total_sessions as f64 / n as f64;
 
-    #[expect(
-        clippy::as_conversions,
-        reason = "n fits u64 within SCAN_LIMIT_DISPATCHES"
-    )]
-    let sample_size = n as u64;
+    let sample_size = u64::try_from(n).unwrap_or(u64::MAX);
 
     HealthMetric {
         name: NAME,
