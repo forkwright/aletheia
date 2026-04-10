@@ -1,5 +1,5 @@
 /// Command registry and fuzzy matching for the `:` command palette.
-use crate::fuzzy::FuzzyMatcher;
+use crate::fuzzy::fuzzy_match;
 use crate::state::AgentState;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -218,7 +218,6 @@ pub fn build_suggestions(input: &str, agents: &[AgentState]) -> Vec<Suggestion> 
         None => input,
     };
 
-    let matcher = FuzzyMatcher::new();
     let mut suggestions: Vec<Suggestion> = Vec::new();
 
     if query.is_empty() {
@@ -238,7 +237,7 @@ pub fn build_suggestions(input: &str, agents: &[AgentState]) -> Vec<Suggestion> 
         }
     } else {
         for cmd in COMMANDS {
-            if let Some(score) = best_match(&matcher, cmd, query) {
+            if let Some(score) = best_match(cmd, query) {
                 suggestions.push(Suggestion {
                     label: cmd.name.to_string(),
                     description: cmd.description.to_string(),
@@ -253,15 +252,15 @@ pub fn build_suggestions(input: &str, agents: &[AgentState]) -> Vec<Suggestion> 
 
         for agent in agents {
             let mut best: Option<i64> = None;
-            if let Some(result) = matcher.fuzzy_match(&agent.name, query) {
+            if let Some(result) = fuzzy_match(&agent.name, query) {
                 best = Some(result.score);
             }
-            if let Some(result) = matcher.fuzzy_match(&agent.id, query) {
+            if let Some(result) = fuzzy_match(&agent.id, query) {
                 best = best.map_or(Some(result.score), |prev| Some(prev.max(result.score)));
             }
             // NOTE: Also match "agent <name>" as a compound so typing "agent syn" surfaces the agent.
             let compound = format!("agent {}", agent.name);
-            if let Some(result) = matcher.fuzzy_match(&compound, query) {
+            if let Some(result) = fuzzy_match(&compound, query) {
                 best = best.map_or(Some(result.score), |prev| Some(prev.max(result.score)));
             }
             if let Some(score) = best {
@@ -297,18 +296,18 @@ fn agent_suggestion(agent: &AgentState, score: i64) -> Suggestion {
     }
 }
 
-fn best_match(matcher: &FuzzyMatcher, cmd: &Command, query: &str) -> Option<i64> {
+fn best_match(cmd: &Command, query: &str) -> Option<i64> {
     let mut best: Option<i64> = None;
 
-    if let Some(result) = matcher.fuzzy_match(cmd.name, query) {
+    if let Some(result) = fuzzy_match(cmd.name, query) {
         best = Some(result.score);
     }
     for alias in cmd.aliases {
-        if let Some(result) = matcher.fuzzy_match(alias, query) {
+        if let Some(result) = fuzzy_match(alias, query) {
             best = best.map_or(Some(result.score), |prev| Some(prev.max(result.score)));
         }
     }
-    if let Some(result) = matcher.fuzzy_match(cmd.description, query) {
+    if let Some(result) = fuzzy_match(cmd.description, query) {
         best = best.map_or(Some(result.score), |prev| Some(prev.max(result.score)));
     }
 
