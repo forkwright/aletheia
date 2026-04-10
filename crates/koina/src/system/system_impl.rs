@@ -72,6 +72,18 @@ impl Environment for RealSystem {
     fn current_dir(&self) -> io::Result<PathBuf> {
         std::env::current_dir()
     }
+
+    fn temp_dir(&self) -> PathBuf {
+        std::env::temp_dir()
+    }
+
+    fn current_exe(&self) -> io::Result<PathBuf> {
+        std::env::current_exe()
+    }
+
+    fn args(&self) -> Vec<String> {
+        std::env::args().collect()
+    }
 }
 
 // ── TestSystem implementations ───────────────────────────────────────────────
@@ -197,5 +209,17 @@ impl Environment for TestSystem {
 
     fn current_dir(&self) -> io::Result<PathBuf> {
         Ok(PathBuf::from("/test"))
+    }
+
+    fn temp_dir(&self) -> PathBuf {
+        self.temp_dir.clone()
+    }
+
+    fn current_exe(&self) -> io::Result<PathBuf> {
+        Ok(self.current_exe.clone())
+    }
+
+    fn args(&self) -> Vec<String> {
+        self.args.clone()
     }
 }

@@ -158,6 +158,27 @@ pub trait Environment: Send + Sync {
     /// Returns an OS error if the working directory cannot be determined (e.g.
     /// because it has been deleted).
     fn current_dir(&self) -> io::Result<PathBuf>;
+
+    /// Return the platform temporary directory.
+    ///
+    /// Mirrors [`std::env::temp_dir`]: honours `TMPDIR` on Unix and the
+    /// platform's default fallback (`/tmp`) otherwise.
+    #[must_use]
+    fn temp_dir(&self) -> PathBuf;
+
+    /// Return the full path to the current executable.
+    ///
+    /// # Errors
+    ///
+    /// Returns an OS error if the executable path cannot be determined.
+    fn current_exe(&self) -> io::Result<PathBuf>;
+
+    /// Return the arguments that this process was started with.
+    ///
+    /// The first element is typically the executable path, matching
+    /// [`std::env::args`].
+    #[must_use]
+    fn args(&self) -> Vec<String>;
 }
 
 // ── RealSystem ────────────────────────────────────────────────────────────────
@@ -203,6 +224,12 @@ pub struct TestSystem {
     pub(crate) clock: Timestamp,
     /// Fake environment variables.
     pub(crate) env: HashMap<String, String>,
+    /// Fake temporary directory returned by [`Environment::temp_dir`].
+    pub(crate) temp_dir: PathBuf,
+    /// Fake executable path returned by [`Environment::current_exe`].
+    pub(crate) current_exe: PathBuf,
+    /// Fake process arguments returned by [`Environment::args`].
+    pub(crate) args: Vec<String>,
 }
 
 #[cfg(any(test, feature = "test-support"))]
@@ -215,6 +242,9 @@ impl TestSystem {
             dirs: Arc::new(Mutex::new(HashSet::new())),
             clock: Timestamp::UNIX_EPOCH,
             env: HashMap::new(),
+            temp_dir: PathBuf::from("/tmp"),
+            current_exe: PathBuf::from("/test/bin/aletheia"),
+            args: vec!["aletheia".to_owned()],
         }
     }
 
@@ -229,6 +259,27 @@ impl TestSystem {
     #[must_use]
     pub fn with_env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.env.insert(key.into(), value.into());
+        self
+    }
+
+    /// Set the fake temporary directory (builder pattern).
+    #[must_use]
+    pub fn with_temp_dir(mut self, path: impl Into<PathBuf>) -> Self {
+        self.temp_dir = path.into();
+        self
+    }
+
+    /// Set the fake executable path (builder pattern).
+    #[must_use]
+    pub fn with_current_exe(mut self, path: impl Into<PathBuf>) -> Self {
+        self.current_exe = path.into();
+        self
+    }
+
+    /// Set the fake process arguments (builder pattern).
+    #[must_use]
+    pub fn with_args(mut self, args: Vec<String>) -> Self {
+        self.args = args;
         self
     }
 
