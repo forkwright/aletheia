@@ -89,8 +89,35 @@ enum StorageInner {
     Heap(Vec<u8>),
 }
 
-// WHY: the mmap pointer is process-wide and we control all access through
-// &self / &mut self, so Send + Sync is safe.
+// SAFETY: `StorageInner` contains a raw `*mut u8` (the mmap pointer) which makes
+// it `!Send + !Sync` by default. We assert both manually under the following
+// invariants, all of which are structurally enforced by the public API on the
+// owning `MmapVectorStorage`:
+//
+// 1. The pointer is set exactly twice: once in `create_inner` (during `open`,
+//    which returns an owned value before any sharing is possible) and once in
+//    `remap` (which takes `&mut self` on the owning storage). Both mutation
+//    points require unique access, so no thread can observe a torn pointer.
+//
+// 2. Read access goes through `as_bytes()`, which takes `&self` on the owning
+//    storage. Rust's aliasing rules guarantee that no `&mut self` call (i.e.
+//    `push` / `remap`) can overlap with any `&self` read, so the pointer is
+//    always either being uniquely updated or being shared for read.
+//
+// 3. The mmap region is backed by `MAP_SHARED` with `PROT_READ | PROT_WRITE`.
+//    Concurrent reads from multiple threads through `&self` are sound because
+//    (a) the kernel provides cache coherence for the mapped pages and (b) the
+//    only writer path is `push`, which goes through `write_at` on the backing
+//    `File` and then calls `remap` under `&mut self` — so the readable window
+//    grows monotonically and no reader ever observes a partially-written
+//    vector.
+//
+// 4. On `Drop`, `munmap` is called while the value is uniquely owned, so no
+//    other thread holds a reference to the pointer.
+//
+// `Send` is sound for the same reason: the owning `MmapVectorStorage` enforces
+// exclusive access during mutation, so transferring ownership between threads
+// never races with an active borrower.
 unsafe impl Send for StorageInner {}
 unsafe impl Sync for StorageInner {}
 
@@ -542,5 +569,59 @@ mod tests {
         let storage = MmapVectorStorage::open(&path, 4).unwrap_or_else(|_| unreachable!());
         assert!(storage.is_empty(), "empty file yields empty storage");
         assert!(storage.get(0).is_none(), "no vectors in empty storage");
+    }
+
+    /// Stress test: 16 threads × 1000 reads against a shared `MmapVectorStorage`.
+    ///
+    /// WHY: `StorageInner` carries a manual `unsafe impl Sync`. This test is a
+    /// runtime sanity check that concurrent `&self` reads through the Sync
+    /// boundary produce consistent results and do not crash the process.
+    /// Each thread reads every vector in the storage and asserts the payload
+    /// matches the deterministic pattern written during setup.
+    #[test]
+    fn concurrent_reads_are_consistent() {
+        const DIM: usize = 8;
+        const NUM_VECTORS: usize = 64;
+        const NUM_THREADS: usize = 16;
+        const READS_PER_THREAD: usize = 1000;
+
+        let dir = tempfile::tempdir().unwrap_or_else(|_| unreachable!());
+        let path = dir.path().join("stress.bin");
+        let mut storage = MmapVectorStorage::open(&path, DIM).unwrap_or_else(|_| unreachable!());
+
+        // Deterministic pattern: vector[i][j] = (i * DIM + j) as f32
+        for i in 0..NUM_VECTORS {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "test fixture uses small integers well within f32 mantissa range"
+            )]
+            let vec: Vec<f32> = (0..DIM).map(|j| (i * DIM + j) as f32).collect();
+            storage.push(&vec).unwrap_or_else(|_| unreachable!());
+        }
+
+        let storage_ref = &storage;
+        std::thread::scope(|s| {
+            for _ in 0..NUM_THREADS {
+                s.spawn(move || {
+                    for _ in 0..READS_PER_THREAD {
+                        for i in 0..NUM_VECTORS {
+                            let v = storage_ref.get(i).unwrap_or_else(|| unreachable!());
+                            assert_eq!(v.len(), DIM, "vector length stable under concurrent read");
+                            for (j, &val) in v.iter().enumerate() {
+                                #[expect(
+                                    clippy::cast_precision_loss,
+                                    reason = "test fixture uses small integers well within f32 mantissa range"
+                                )]
+                                let expected = (i * DIM + j) as f32;
+                                assert!(
+                                    (val - expected).abs() < f32::EPSILON,
+                                    "vector[{i}][{j}] = {val}, expected {expected}"
+                                );
+                            }
+                        }
+                    }
+                });
+            }
+        });
     }
 }
