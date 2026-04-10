@@ -20,9 +20,8 @@ embed-candle = ["aletheia-episteme/embed-candle"]
 # mneme-engine coexists with sqlite (no link conflict verified).
 mneme-engine = ["dep:aletheia-krites", "aletheia-graphe/mneme-engine", "aletheia-episteme/mneme-engine"]
 storage-fjall = ["mneme-engine", "aletheia-episteme/storage-fjall"]
-hnsw_rs = ["aletheia-episteme/hnsw_rs"]
 # Test tiers (see docs/test-tiers.md)
-test-core = ["mneme-engine", "hnsw_rs", "storage-fjall"]
+test-core = ["mneme-engine", "storage-fjall"]
 test-full = ["test-core", "embed-candle"]
 
 [dependencies]

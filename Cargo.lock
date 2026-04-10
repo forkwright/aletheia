@@ -68,7 +68,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "aletheia-agora",
  "aletheia-dianoia",
@@ -119,7 +119,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-agora"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "aletheia-koina",
  "aletheia-organon",
@@ -138,7 +138,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-dianoia"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "aletheia-koina",
  "jiff",
@@ -151,7 +151,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-diaporeia"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "aletheia-hermeneus",
  "aletheia-koina",
@@ -177,7 +177,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-dokimion"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "aletheia-koina",
  "aletheia-organon",
@@ -195,7 +195,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-eidos"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "jiff",
  "serde",
@@ -205,7 +205,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-energeia"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "aletheia-eidos",
  "aletheia-koina",
@@ -228,7 +228,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-episteme"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "aletheia-eidos",
  "aletheia-graphe",
@@ -238,7 +238,6 @@ dependencies = [
  "candle-nn",
  "candle-transformers",
  "hf-hub",
- "hnsw_rs",
  "jiff",
  "parking_lot",
  "prometheus",
@@ -259,7 +258,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-graphe"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "aletheia-eidos",
  "aletheia-koina",
@@ -279,7 +278,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-hermeneus"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "aletheia-koina",
  "criterion",
@@ -302,7 +301,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-integration-tests"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "aletheia-dokimion",
  "aletheia-hermeneus",
@@ -327,7 +326,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-koina"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "compact_str",
  "criterion",
@@ -346,7 +345,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-krites"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "aho-corasick",
  "aletheia-eidos",
@@ -389,7 +388,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-melete"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "aletheia-hermeneus",
  "aletheia-koina",
@@ -407,7 +406,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-mneme"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "aletheia-eidos",
  "aletheia-episteme",
@@ -426,7 +425,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-nous"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "aletheia-dianoia",
  "aletheia-hermeneus",
@@ -453,7 +452,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-oikonomos"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "aletheia-episteme",
  "aletheia-koina",
@@ -476,7 +475,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-organon"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "aletheia-energeia",
  "aletheia-hermeneus",
@@ -504,7 +503,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-pylon"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "aletheia-hermeneus",
  "aletheia-koina",
@@ -536,7 +535,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-symbolon"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "aes-gcm",
  "aletheia-koina",
@@ -563,7 +562,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-taxis"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "aletheia-eidos",
  "aletheia-koina",
@@ -582,14 +581,14 @@ dependencies = [
 
 [[package]]
 name = "aletheia-theatron"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "theatron-core",
 ]
 
 [[package]]
 name = "aletheia-thesauros"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "aletheia-koina",
  "aletheia-organon",
@@ -624,23 +623,6 @@ name = "anes"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4b46cbb362ab8752921c97e041f5e366ee6297bd428a31275b9fcf1e380f7299"
-
-[[package]]
-name = "anndists"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a8396b473aa0bceed68fb32462505387ea39fa47c7029417e0a49f10592b036"
-dependencies = [
- "anyhow",
- "cfg-if",
- "cpu-time",
- "env_logger",
- "lazy_static",
- "log",
- "num-traits",
- "num_cpus",
- "rayon",
-]
 
 [[package]]
 name = "anstream"
@@ -1607,16 +1589,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
-name = "cpu-time"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e9e393a7668fe1fad3075085b86c781883000b4ede868f43627b34a87c8b7ded"
-dependencies = [
- "libc",
- "winapi",
-]
-
-[[package]]
 name = "cpufeatures"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2172,29 +2144,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
-]
-
-[[package]]
-name = "env_filter"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32e90c2accc4b07a8456ea0debdc2e7587bdd890680d71173a15d4ae604f6eef"
-dependencies = [
- "log",
- "regex",
-]
-
-[[package]]
-name = "env_logger"
-version = "0.11.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0621c04f2196ac3f488dd583365b9c09be011a4ab8b9f37248ffcc8f6198b56a"
-dependencies = [
- "anstream",
- "anstyle",
- "env_filter",
- "jiff",
- "log",
 ]
 
 [[package]]
@@ -2838,8 +2787,6 @@ version = "0.15.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9229cfe53dfd69f0609a49f65461bd93001ea1ef889cd5529dd176593f5338a1"
 dependencies = [
- "allocator-api2",
- "equivalent",
  "foldhash 0.1.5",
 ]
 
@@ -2909,31 +2856,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6c49c37c09c17a53d937dfbb742eb3a961d65a994e6bcdcf37e7399d0cc8ab5e"
 dependencies = [
  "digest 0.10.7",
-]
-
-[[package]]
-name = "hnsw_rs"
-version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43a5258f079b97bf2e8311ff9579e903c899dcbac0d9a138d62e9a066778bd07"
-dependencies = [
- "anndists",
- "anyhow",
- "bincode",
- "cfg-if",
- "cpu-time",
- "env_logger",
- "hashbrown 0.15.5",
- "indexmap 2.13.1",
- "lazy_static",
- "log",
- "mmap-rs",
- "num-traits",
- "num_cpus",
- "parking_lot",
- "rand 0.9.2",
- "rayon",
- "serde",
 ]
 
 [[package]]
@@ -3726,17 +3648,8 @@ version = "1.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c0aeb26bf5e836cc1c341c8106051b573f1766dfa05aa87f0b98be5e51b02303"
 dependencies = [
- "nix 0.29.0",
+ "nix",
  "winapi",
-]
-
-[[package]]
-name = "mach2"
-version = "0.4.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d640282b302c0bb0a2a8e0233ead9035e3bed871f0b7e81fe4a1ec829765db44"
-dependencies = [
- "libc",
 ]
 
 [[package]]
@@ -3862,23 +3775,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mmap-rs"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ecce9d566cb9234ae3db9e249c8b55665feaaf32b0859ff1e27e310d2beb3d8"
-dependencies = [
- "bitflags 2.11.0",
- "combine",
- "libc",
- "mach2",
- "nix 0.30.1",
- "sysctl",
- "thiserror 2.0.18",
- "widestring",
- "windows",
-]
-
-[[package]]
 name = "monostate"
 version = "0.1.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3937,18 +3833,6 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "memoffset",
-]
-
-[[package]]
-name = "nix"
-version = "0.30.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "74523f3a35e05aba87a1d978330aef40f67b0304ac79c1c00b294c9830543db6"
-dependencies = [
- "bitflags 2.11.0",
- "cfg-if",
- "cfg_aliases",
- "libc",
 ]
 
 [[package]]
@@ -6253,7 +6137,7 @@ dependencies = [
  "libc",
  "log",
  "memmem",
- "nix 0.29.0",
+ "nix",
  "num-derive",
  "num-traits",
  "ordered-float 4.6.0",
@@ -6290,7 +6174,7 @@ dependencies = [
 
 [[package]]
 name = "theatron-core"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "aletheia-koina",
  "bytes",
@@ -6309,7 +6193,7 @@ dependencies = [
 
 [[package]]
 name = "theatron-tui"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "aletheia-koina",
  "arboard",
@@ -7424,12 +7308,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "widestring"
-version = "1.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72069c3113ab32ab29e5584db3c6ec55d416895e60715417b5b883a357c3e471"
-
-[[package]]
 name = "winapi"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7459,15 +7337,6 @@ name = "winapi-x86_64-pc-windows-gnu"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
-
-[[package]]
-name = "windows"
-version = "0.48.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e686886bc078bc1b0b600cac0147aadb815089b6e4da64016cbd754b6342700f"
-dependencies = [
- "windows-targets 0.48.5",
-]
 
 [[package]]
 name = "windows-core"
@@ -7590,21 +7459,6 @@ dependencies = [
 
 [[package]]
 name = "windows-targets"
-version = "0.48.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a2fa6e2155d7247be68c096456083145c183cbbbc2764150dda45a87197940c"
-dependencies = [
- "windows_aarch64_gnullvm 0.48.5",
- "windows_aarch64_msvc 0.48.5",
- "windows_i686_gnu 0.48.5",
- "windows_i686_msvc 0.48.5",
- "windows_x86_64_gnu 0.48.5",
- "windows_x86_64_gnullvm 0.48.5",
- "windows_x86_64_msvc 0.48.5",
-]
-
-[[package]]
-name = "windows-targets"
 version = "0.52.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b724f72796e036ab90c1021d4780d4d3d648aca59e491e6b98e725b84e99973"
@@ -7644,12 +7498,6 @@ checksum = "597a5118570b68bc08d8d59125332c54f1ba9d9adeedeef5b99b02ba2b0698f8"
 
 [[package]]
 name = "windows_aarch64_gnullvm"
-version = "0.48.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b38e32f0abccf9987a4e3079dfb67dcd799fb61361e53e2882c3cbaf0d905d8"
-
-[[package]]
-name = "windows_aarch64_gnullvm"
 version = "0.52.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32a4622180e7a0ec044bb555404c800bc9fd9ec262ec147edd5989ccd0c02cd3"
@@ -7668,12 +7516,6 @@ checksum = "e08e8864a60f06ef0d0ff4ba04124db8b0fb3be5776a5cd47641e942e58c4d43"
 
 [[package]]
 name = "windows_aarch64_msvc"
-version = "0.48.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc35310971f3b2dbbf3f0690a219f40e2d9afcf64f9ab7cc1be722937c26b4bc"
-
-[[package]]
-name = "windows_aarch64_msvc"
 version = "0.52.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09ec2a7bb152e2252b53fa7803150007879548bc709c039df7627cabbd05d469"
@@ -7689,12 +7531,6 @@ name = "windows_i686_gnu"
 version = "0.42.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c61d927d8da41da96a81f029489353e68739737d3beca43145c8afec9a31a84f"
-
-[[package]]
-name = "windows_i686_gnu"
-version = "0.48.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a75915e7def60c94dcef72200b9a8e58e5091744960da64ec734a6c6e9b3743e"
 
 [[package]]
 name = "windows_i686_gnu"
@@ -7728,12 +7564,6 @@ checksum = "44d840b6ec649f480a41c8d80f9c65108b92d89345dd94027bfe06ac444d1060"
 
 [[package]]
 name = "windows_i686_msvc"
-version = "0.48.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f55c233f70c4b27f66c523580f78f1004e8b5a8b659e05a4eb49d4166cca406"
-
-[[package]]
-name = "windows_i686_msvc"
 version = "0.52.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "240948bc05c5e7c6dabba28bf89d89ffce3e303022809e73deaefe4f6ec56c66"
@@ -7749,12 +7579,6 @@ name = "windows_x86_64_gnu"
 version = "0.42.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8de912b8b8feb55c064867cf047dda097f92d51efad5b491dfb98f6bbb70cb36"
-
-[[package]]
-name = "windows_x86_64_gnu"
-version = "0.48.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "53d40abd2583d23e4718fddf1ebec84dbff8381c07cae67ff7768bbf19c6718e"
 
 [[package]]
 name = "windows_x86_64_gnu"
@@ -7776,12 +7600,6 @@ checksum = "26d41b46a36d453748aedef1486d5c7a85db22e56aff34643984ea85514e94a3"
 
 [[package]]
 name = "windows_x86_64_gnullvm"
-version = "0.48.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b7b52767868a23d5bab768e390dc5f5c55825b6d30b86c844ff2dc7414044cc"
-
-[[package]]
-name = "windows_x86_64_gnullvm"
 version = "0.52.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "24d5b23dc417412679681396f2b49f3de8c1473deb516bd34410872eff51ed0d"
@@ -7797,12 +7615,6 @@ name = "windows_x86_64_msvc"
 version = "0.42.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9aec5da331524158c6d1a4ac0ab1541149c0b9505fde06423b02f5ef0106b9f0"
-
-[[package]]
-name = "windows_x86_64_msvc"
-version = "0.48.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed94fce61571a4006852b7389a063ab983c02eb1bb37b47f8272ce92d06d9538"
 
 [[package]]
 name = "windows_x86_64_msvc"
