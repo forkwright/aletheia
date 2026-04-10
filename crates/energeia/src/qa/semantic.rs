@@ -51,7 +51,7 @@ const SEMANTIC_KEYWORDS: &[&str] = &[
 /// - Contains semantic keyword → `CriterionType::Semantic`
 /// - If both match, mechanical takes precedence (cheaper to verify)
 /// - Default (no keyword match) → `CriterionType::Semantic`
-pub fn classify_criteria(criteria: &[String]) -> Vec<(String, CriterionType)> {
+pub(crate) fn classify_criteria(criteria: &[String]) -> Vec<(String, CriterionType)> {
     criteria
         .iter()
         .map(|criterion| {
@@ -138,7 +138,7 @@ const OUTPUT_SCHEMA: &str = r#"{
 /// The prompt includes the task description, numbered criteria, the PR diff
 /// (truncated at 100K chars to stay within context limits), few-shot examples,
 /// and the expected output schema.
-pub fn build_qa_prompt(
+pub(crate) fn build_qa_prompt(
     description: &str,
     criteria: &[(String, CriterionType)],
     diff: &str,
