@@ -86,7 +86,7 @@ pub(crate) fn sanitize_for_display(s: &str) -> Cow<'_, str> {
         if b < 0x20 {
             match b {
                 b'\n' | b'\r' | b'\t' => {
-                    out.push(b as char);
+                    out.push(char::from(b));
                 }
                 _ => {
                     out.push(control_picture(b));
