@@ -38,16 +38,17 @@ pub(crate) fn read_from_clipboard() -> ClipboardContent {
             // WHY: try image first -- if the clipboard holds an image and we ask for text,
             // some platforms return the file path instead of the actual image data.
             if let Ok(img) = clipboard.get_image() {
-                #[expect(
-                    clippy::cast_possible_truncation,
-                    reason = "clipboard image dimensions fit in u32"
-                )]
-                if let Some(png_data) = rgba_to_png(&img.bytes, img.width as u32, img.height as u32)
+                // WHY: arboard returns dimensions as usize; clipboard images are
+                // bounded by screen size and always fit in u32. Skip the image
+                // on impossible overflow rather than truncate silently.
+                if let (Ok(width), Ok(height)) =
+                    (u32::try_from(img.width), u32::try_from(img.height))
+                    && let Some(png_data) = rgba_to_png(&img.bytes, width, height)
                 {
                     return ClipboardContent::Image {
                         png_data,
-                        width: img.width as u32,
-                        height: img.height as u32,
+                        width,
+                        height,
                     };
                 }
             }
