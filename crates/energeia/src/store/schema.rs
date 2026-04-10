@@ -48,7 +48,6 @@ pub(crate) fn dispatch_key(id: &DispatchId) -> String {
 
 /// Prefix for scanning all dispatches (time-sorted by ULID).
 #[must_use]
-#[expect(dead_code, reason = "scan prefix infrastructure for future store queries")]
 pub(crate) fn dispatch_prefix() -> &'static str {
     PREFIX_DISPATCH
 }
@@ -84,7 +83,6 @@ pub(crate) fn session_prefix_for_dispatch(dispatch_id: &DispatchId) -> String {
 
 /// Prefix for scanning all sessions across all dispatches.
 #[must_use]
-#[expect(dead_code, reason = "scan prefix infrastructure for future store queries")]
 pub(crate) fn session_prefix() -> &'static str {
     PREFIX_SESSION
 }
@@ -120,7 +118,6 @@ pub(crate) fn lesson_prefix_for_source(source: &str) -> String {
 
 /// Prefix for scanning all lessons.
 #[must_use]
-#[expect(dead_code, reason = "scan prefix infrastructure for future store queries")]
 pub(crate) fn lesson_prefix() -> &'static str {
     PREFIX_LESSON
 }
@@ -137,7 +134,6 @@ pub(crate) fn observation_key(timestamp_ms: i64, ulid: &str) -> String {
 
 /// Prefix for scanning all observations.
 #[must_use]
-#[expect(dead_code, reason = "scan prefix infrastructure for future store queries")]
 pub(crate) fn observation_prefix() -> &'static str {
     PREFIX_OBSERVATION
 }
@@ -154,7 +150,6 @@ pub(crate) fn ci_validation_key(session_id: &SessionId, check_name: &str) -> Str
 
 /// Prefix for scanning all CI validation records.
 #[must_use]
-#[expect(dead_code, reason = "scan prefix infrastructure for future store queries")]
 pub(crate) fn ci_validation_prefix() -> &'static str {
     PREFIX_CI_VALIDATION
 }
