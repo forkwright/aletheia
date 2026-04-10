@@ -395,11 +395,8 @@ fn compute_calibration_curve(points: &[(f64, bool)]) -> Vec<CalibrationBin> {
     for i in 0..NUM_BINS {
         #[expect(
             clippy::cast_precision_loss,
-            reason = "NUM_BINS is 10; usize-to-f64 cast is exact"
-        )]
-        #[expect(
             clippy::as_conversions,
-            reason = "usize-to-f64 for bin index; value is bounded by NUM_BINS=10"
+            reason = "usize→f64: bin index bounded by NUM_BINS (10); cast is exact, far below f64 mantissa 2^53"
         )]
         let low = i as f64 * BIN_WIDTH;
         let high = low + BIN_WIDTH;
@@ -449,11 +446,8 @@ fn compute_brier_score(points: &[(f64, bool)]) -> f64 {
 
     #[expect(
         clippy::cast_precision_loss,
-        reason = "calibration point count is bounded by MAX_CALIBRATION_POINTS=1000; precision loss is not a concern"
-    )]
-    #[expect(
         clippy::as_conversions,
-        reason = "usize-to-f64 for averaging; value is bounded and safe"
+        reason = "usize→f64: calibration point count bounded by MAX_CALIBRATION_POINTS (1000); far below f64 mantissa 2^53"
     )]
     let count = points.len() as f64;
     sum / count
@@ -556,19 +550,10 @@ mod tests {
     #[test]
     #[expect(
         clippy::cast_precision_loss,
-        reason = "test data generation; NUM_BINS=10 and midpoint values are small, precision loss is acceptable"
-    )]
-    #[expect(
-        clippy::as_conversions,
-        reason = "test data: usize-to-f64 and f64-to-usize for bin midpoint arithmetic; values are bounded"
-    )]
-    #[expect(
         clippy::cast_possible_truncation,
-        reason = "test data: midpoint*10.0 is always a whole number by construction"
-    )]
-    #[expect(
         clippy::cast_sign_loss,
-        reason = "test data: midpoint is always non-negative"
+        clippy::as_conversions,
+        reason = "test data: NUM_BINS=10 bin index to f64 is exact, and midpoint*10.0 is a whole number 0..10 by construction (non-negative, fits usize)"
     )]
     fn ece_zero_for_perfectly_calibrated() {
         let points: Vec<(f64, bool)> = (0..NUM_BINS)
