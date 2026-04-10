@@ -93,7 +93,14 @@ impl FtsCache {
                     0.0
                 } else {
                     let sum: u32 = doc_lengths.values().sum();
-                    f64::from(sum) / doc_lengths.len() as f64
+                    // INVARIANT: doc count is a usize representing indexed documents;
+                    // precision loss at >2^53 documents is irrelevant for avg_dl.
+                    #[expect(
+                        clippy::cast_precision_loss,
+                        reason = "doc count fits f64 in any realistic corpus"
+                    )]
+                    let count_f = doc_lengths.len() as f64;
+                    f64::from(sum) / count_f
                 };
                 v.insert(avg);
                 avg
@@ -509,9 +516,15 @@ impl<'a> SessionTx<'a> {
         while let Some(token) = token_stream.next() {
             let text = CompactString::from(&token.text);
             let (fr, to, position) = collector.entry(text).or_default();
-            fr.push(DataValue::from(token.offset_from as i64));
-            to.push(DataValue::from(token.offset_to as i64));
-            position.push(DataValue::from(token.position as i64));
+            fr.push(DataValue::from(
+                i64::try_from(token.offset_from).unwrap_or(i64::MAX),
+            ));
+            to.push(DataValue::from(
+                i64::try_from(token.offset_to).unwrap_or(i64::MAX),
+            ));
+            position.push(DataValue::from(
+                i64::try_from(token.position).unwrap_or(i64::MAX),
+            ));
             count += 1;
         }
         let mut key = Vec::with_capacity(1 + rel_handle.metadata.keys.len());
