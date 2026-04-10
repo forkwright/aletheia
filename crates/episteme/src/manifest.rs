@@ -55,10 +55,14 @@ impl From<MemoryHeaderRaw> for MemoryHeader {
     }
 }
 
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "test-only constructors; MemoryHeader is built via serde in lib builds")
+)]
 impl MemoryHeader {
     /// Create a new header with the required fields.
     #[must_use]
-    pub fn new(source_id: impl Into<String>, name: impl Into<String>, mtime_ms: i64) -> Self {
+    pub(crate) fn new(source_id: impl Into<String>, name: impl Into<String>, mtime_ms: i64) -> Self {
         Self {
             source_id: source_id.into(),
             name: name.into(),
@@ -69,7 +73,7 @@ impl MemoryHeader {
 
     /// Set the description (builder pattern).
     #[must_use]
-    pub fn with_description(mut self, description: impl Into<String>) -> Self {
+    pub(crate) fn with_description(mut self, description: impl Into<String>) -> Self {
         self.description = Some(description.into());
         self
     }
