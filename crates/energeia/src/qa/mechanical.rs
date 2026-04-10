@@ -40,7 +40,7 @@ const ANTI_PATTERNS: &[(&str, &str)] = &[
 ///
 /// Checks blast radius compliance and scans for anti-patterns. These checks
 /// incur no LLM cost and run on the diff text alone.
-pub(crate) fn mechanical_check(diff: &str, prompt: &PromptSpec) -> Vec<MechanicalIssue> {
+pub fn mechanical_check(diff: &str, prompt: &PromptSpec) -> Vec<MechanicalIssue> {
     let mut issues = Vec::new();
 
     let changed_files = parse_changed_files(diff);
@@ -173,7 +173,7 @@ pub async fn lint_check(working_dir: &Path) -> Vec<MechanicalIssue> {
 ///
 /// Parses `+++ b/path` lines which give the destination path and handle
 /// renames correctly.
-pub(crate) fn parse_changed_files(diff: &str) -> Vec<String> {
+pub fn parse_changed_files(diff: &str) -> Vec<String> {
     let mut files = Vec::new();
 
     for line in diff.lines() {

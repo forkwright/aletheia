@@ -28,7 +28,7 @@ pub struct EngineConfig {
 impl EngineConfig {
     /// Start building an `EngineConfig` from base options.
     #[must_use]
-    pub(crate) fn new(options: AgentOptions) -> Self {
+    pub fn new(options: AgentOptions) -> Self {
         Self {
             options,
             additional_dirs: Vec::new(),
@@ -96,13 +96,13 @@ impl EngineConfig {
 
     /// Extract the inner [`AgentOptions`] for passing to the engine.
     #[must_use]
-    pub(crate) fn to_agent_options(&self) -> AgentOptions {
+    pub fn to_agent_options(&self) -> AgentOptions {
         self.options.clone()
     }
 
     /// Create a copy of the inner options with a different `max_turns` value.
     #[must_use]
-    pub(crate) fn options_with_turns(&self, turns: u32) -> AgentOptions {
+    pub fn options_with_turns(&self, turns: u32) -> AgentOptions {
         let mut opts = self.options.clone();
         opts.max_turns = Some(turns);
         opts

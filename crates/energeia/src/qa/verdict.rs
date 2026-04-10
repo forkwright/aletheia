@@ -13,7 +13,7 @@ use crate::types::{CriterionResult, MechanicalIssue, QaVerdict};
 /// - All fail → [`QaVerdict::Fail`]
 /// - No results and no issues → [`QaVerdict::Pass`] (vacuously true)
 #[must_use]
-pub(crate) fn determine_verdict(
+pub fn determine_verdict(
     criteria: &[CriterionResult],
     mechanical_issues: &[MechanicalIssue],
 ) -> QaVerdict {
@@ -43,7 +43,7 @@ pub(crate) fn determine_verdict(
 ///
 /// When this returns `true`, LLM evaluation should be skipped to save cost.
 #[must_use]
-pub(crate) fn has_critical_mechanical_issues(issues: &[MechanicalIssue]) -> bool {
+pub fn has_critical_mechanical_issues(issues: &[MechanicalIssue]) -> bool {
     !issues.is_empty()
 }
 
