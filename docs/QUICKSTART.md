@@ -322,7 +322,7 @@ enabled = false
 
 ### Build fails: missing system libraries
 
-The default workspace build has no system library dependencies. If you're building the desktop target (`theatron-desktop`), you need GTK3 and webkit2gtk development libraries. The desktop crate is excluded from the default workspace build for this reason.
+The default workspace build has no system library dependencies. If you're building the desktop target (`proskenion`), you need GTK3 and webkit2gtk development libraries. The desktop crate is excluded from the default workspace build for this reason.
 
 ---
 

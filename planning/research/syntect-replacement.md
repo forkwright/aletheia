@@ -8,7 +8,7 @@ Syntect pulls in a large dependency tree including C FFI bindings (Oniguruma), u
 
 ### Current usage audit
 
-Syntect is used in exactly one location: `crates/theatron/tui/src/highlight.rs` (78 lines of production code).
+Syntect is used in exactly one location: `crates/theatron/koilon/src/highlight.rs` (78 lines of production code).
 
 **Features actually used:**
 - `SyntaxSet::load_defaults_newlines()` for bundled syntax definitions
@@ -59,7 +59,7 @@ Switch from the default Oniguruma engine to the pure-Rust `fancy-regex` engine.
 - All other deps remain: yaml-rust, bincode, plist, walkdir still pulled by default-fancy.
 
 **Trade-offs:**
-- (+) Eliminates syntect's C FFI path, simplifying the theatron-tui build
+- (+) Eliminates syntect's C FFI path, simplifying the koilon build
 - (+) No code changes needed
 - (-) ~50% slower highlighting (fancy-regex vs onig). Negligible for code blocks in a TUI.
 - (-) Extremely slow in debug builds (Rust regex in debug mode). Mitigated by `[profile.dev.package."*"] opt-level = 2` which we already set.
@@ -220,7 +220,7 @@ Precise measurement requires benchmarking, but directional estimates:
 ### Secondary: Option 3 (tree-sitter-highlight) as a future migration
 
 tree-sitter is the direction the ecosystem is moving (Helix, Zed, Neovim all use it). Consider migrating when:
-- theatron-tui needs language-aware features beyond highlighting (folding, indentation, bracket matching)
+- koilon needs language-aware features beyond highlighting (folding, indentation, bracket matching)
 - tree-sitter-highlight reaches 1.0
 - The tokenizers crate drops onig (eliminating the shared C FFI dependency)
 
@@ -252,5 +252,5 @@ tree-sitter is the direction the ecosystem is moving (Helix, Zed, Neovim all use
 - tree-sitter-highlight docs: docs.rs/tree-sitter-highlight
 - inkjet (archived): github.com/Colonial-Dev/inkjet
 - fancy-regex: github.com/fancy-regex/fancy-regex
-- Current implementation: `crates/theatron/tui/src/highlight.rs`
+- Current implementation: `crates/theatron/koilon/src/highlight.rs`
 - deny.toml advisory overrides: `deny.toml` lines for RUSTSEC-2024-0320, RUSTSEC-2025-0141

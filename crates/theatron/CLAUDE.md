@@ -6,20 +6,20 @@ Presentation umbrella grouping the three UI crates: core (shared infrastructure)
 
 | Crate | Path | Lines | Budget | Purpose |
 |-------|------|-------|--------|---------|
-| `theatron-core` | `core/` | 3K | ✓ | Shared API client, types, SSE parser, streaming infrastructure |
-| `theatron-tui` | `tui/` | 37K | ✓ | Ratatui terminal dashboard (Elm architecture, feature-gated in workspace) |
-| `theatron-desktop` | `desktop/` | 45K | ✓ | Dioxus desktop app (excluded from workspace, GTK deps) |
+| `skene` | `core/` | 3K | ✓ | Shared API client, types, SSE parser, streaming infrastructure |
+| `koilon` | `tui/` | 37K | ✓ | Ratatui terminal dashboard (Elm architecture, feature-gated in workspace) |
+| `proskenion` | `desktop/` | 45K | ✓ | Dioxus desktop app (excluded from workspace, GTK deps) |
 
 ## Dependency graph
 
 ```
-theatron-core          (leaf: koina, reqwest, tokio)
+skene          (leaf: koina, reqwest, tokio)
     ^           ^
     |           |
-theatron-tui    theatron-desktop
+koilon    proskenion
 ```
 
-Both UI crates depend on `theatron-core` for API client, domain types, and SSE infrastructure. They never depend on each other.
+Both UI crates depend on `skene` for API client, domain types, and SSE infrastructure. They never depend on each other.
 
 ## Shared infrastructure (core)
 
@@ -32,9 +32,9 @@ Both UI crates depend on `theatron-core` for API client, domain types, and SSE i
 
 | Crate | In workspace | Reason |
 |-------|-------------|--------|
-| `theatron-core` | yes | Pure Rust deps |
-| `theatron-tui` | yes | Feature-gated (`tui` feature on aletheia binary) |
-| `theatron-desktop` | no | GTK/webkit2gtk system deps break CI |
+| `skene` | yes | Pure Rust deps |
+| `koilon` | yes | Feature-gated (`tui` feature on aletheia binary) |
+| `proskenion` | no | GTK/webkit2gtk system deps break CI |
 
 ## Where to make changes
 
@@ -52,4 +52,4 @@ Both UI crates depend on `theatron-core` for API client, domain types, and SSE i
 ## Dependencies
 
 Uses: koina, reqwest, tokio, snafu, ratatui, crossterm, dioxus
-Used by: aletheia (binary, tui feature-gated), theatron-desktop (standalone binary)
+Used by: aletheia (binary, tui feature-gated), proskenion (standalone binary)

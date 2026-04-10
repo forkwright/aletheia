@@ -38,8 +38,8 @@ aletheia
 ├── melete         -  context distillation, compression, token budget management
 ├── thesauros      -  domain pack loader (knowledge, tools, config overlays)
 └── theatron       -  presentation umbrella (crates/theatron/)
-    ├── core       -  shared API client, types, SSE infrastructure  (crates/theatron/core/)
-    └── tui        -  terminal dashboard                            (crates/theatron/tui/)
+    ├── core       -  shared API client, types, SSE infrastructure  (crates/theatron/skene/)
+    └── tui        -  terminal dashboard                            (crates/theatron/koilon/)
 ```
 
 ---
@@ -105,7 +105,7 @@ The oikos hierarchy is described in [CONFIGURATION.md](CONFIGURATION.md).
 
 ## Rust crate workspace
 
-24 crates (23 in default workspace build, theatron-desktop excluded) in `crates/`.
+24 crates (23 in default workspace build, proskenion excluded) in `crates/`.
 
 ### Crates
 
@@ -129,10 +129,10 @@ The oikos hierarchy is described in [CONFIGURATION.md](CONFIGURATION.md).
 | `nous` | `crates/nous` | Agent pipeline, NousActor (tokio), bootstrap, recall, execute, finalize | koina, taxis, mneme, hermeneus, organon, melete, thesauros |
 | `pylon` | `crates/pylon` | Axum HTTP gateway, SSE streaming, auth middleware | koina, taxis, hermeneus, organon, mneme, nous, symbolon |
 | `diaporeia` | `crates/diaporeia` | MCP server interface for external AI agents | koina, taxis, nous, organon, mneme, symbolon |
-| `theatron-core` | `crates/theatron/core` | Shared API client, types, SSE infrastructure for UIs | koina |
-| `theatron-tui` | `crates/theatron/tui` | Terminal dashboard | koina, theatron-core |
-| `theatron-desktop` | `crates/theatron/desktop` | Dioxus desktop UI (excluded from workspace, requires GTK3) | theatron-core |
-| `aletheia` | `crates/aletheia` | Binary entrypoint (Clap CLI), wires all crates together | koina, taxis, hermeneus, organon, mneme, nous, symbolon, pylon, agora, thesauros, daemon, dianoia, dokimion, diaporeia (opt), theatron-tui (opt) |
+| `skene` | `crates/theatron/skene` | Shared API client, types, SSE infrastructure for UIs | koina |
+| `koilon` | `crates/theatron/koilon` | Terminal dashboard | koina, skene |
+| `proskenion` | `crates/theatron/proskenion` | Dioxus desktop UI (excluded from workspace, requires GTK3) | skene |
+| `aletheia` | `crates/aletheia` | Binary entrypoint (Clap CLI), wires all crates together | koina, taxis, hermeneus, organon, mneme, nous, symbolon, pylon, agora, thesauros, daemon, dianoia, dokimion, diaporeia (opt), koilon (opt) |
 
 **Support crates** (not part of the application dependency graph):
 
@@ -172,10 +172,10 @@ Downstream crates depend on `mneme` and get the full API surface without knowing
 
 **Layer rules:**
 - **Leaf** (no workspace deps): `koina`, `eidos`, `dianoia`
-- **Low** (one workspace dep): `taxis`, `hermeneus`, `symbolon`, `krites` (eidos only), `daemon` (koina), `melete` (hermeneus), `theatron-core` (koina), `dokimion` (koina)
+- **Low** (one workspace dep): `taxis`, `hermeneus`, `symbolon`, `krites` (eidos only), `daemon` (koina), `melete` (hermeneus), `skene` (koina), `dokimion` (koina)
 - **Mid**: `graphe` (eidos + koina), `episteme` (eidos + koina + graphe + krites), `mneme` (facade), `organon` (koina + hermeneus), `agora` (koina + taxis), `thesauros` (koina + organon)
 - **High**: `nous` (multiple mid+low deps), `pylon` (multiple deps including nous), `diaporeia` (MCP server, multiple deps including nous)
-- **Top**: `aletheia` binary, `theatron-tui` (koina + theatron-core), `theatron-desktop` (Dioxus desktop, excluded from workspace)
+- **Top**: `aletheia` binary, `koilon` (koina + skene), `proskenion` (Dioxus desktop, excluded from workspace)
 - **Support**: `integration-tests`
 
 Imports flow downward only. Lower-layer crates must not depend on higher layers.

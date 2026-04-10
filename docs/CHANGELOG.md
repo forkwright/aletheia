@@ -153,7 +153,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Confidence update, hard session delete, and credential encryption (#1753)
 - Eight deploy and operations script issues (#1746)
 - Invalid OAuth beta header causing 400 errors from Anthropic API (#1744)
-- Unsafe indexing replaced with `.get()` and justified expects in theatron-tui (#1693)
+- Unsafe indexing replaced with `.get()` and justified expects in koilon (#1693)
 - `as_conversions`, `indexing_slicing`, and `string_slice` lint violations (#1682)
 - Three runtime behavior bugs (#1679)
 

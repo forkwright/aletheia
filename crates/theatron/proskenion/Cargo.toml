@@ -1,0 +1,116 @@
+# WHY: Explicit [workspace] prevents cargo from walking up to the root
+# workspace and failing with "not in workspace" when building standalone.
+[workspace]
+
+[package]
+name = "proskenion"
+# WHY: explicit values instead of workspace inheritance because this crate
+# is excluded from the workspace (GTK/webkit2gtk deps break CI).
+version = "0.13.1"
+edition = "2024"
+license = "AGPL-3.0-or-later"
+rust-version = "1.94"
+description = "Dioxus desktop UI for the Aletheia distributed cognition system"
+publish = false
+
+[dependencies]
+skene = { path = "../skene" }
+
+# UI framework
+dioxus = { version = "0.7", features = ["desktop", "router"] }
+
+# Async runtime
+tokio = { version = "1", features = [
+    "rt-multi-thread",
+    "macros",
+    "net",
+    "signal",
+    "sync",
+    "time",
+    "fs",
+] }
+
+# HTTP + SSE
+reqwest = { version = "0.13", default-features = false, features = [
+    "rustls-no-provider",
+    "json",
+    "http2",
+    "query",
+    "stream",
+    "cookies",
+] }
+rustls = { version = "0.23", default-features = false, features = [
+    "ring",
+    "std",
+    "logging",
+    "tls12",
+] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Logging
+tracing = "0.1"
+
+# Error handling
+snafu = "0.8"
+
+# URL encoding
+form_urlencoded = "1"
+
+# Futures
+futures-util = "0.3"
+
+# Cancel-safe shutdown
+tokio-util = { version = "0.7", features = ["rt"] }
+
+# Markdown rendering
+pulldown-cmark = { version = "0.13", features = ["simd"] }
+
+# Syntax highlighting
+syntect = { version = "5", default-features = false, features = [
+    "default-syntaxes",
+    "default-themes",
+    "regex-onig",
+] }
+
+# Config persistence
+dirs = "6"
+toml = "1.0"
+
+# Desktop notifications (freedesktop.org D-Bus on Linux)
+notify-rust = "4"
+
+[dev-dependencies]
+tempfile = "3"
+
+# WHY: proskenion is excluded from the workspace (GTK3/webkit2gtk
+# system library requirement). Inline lints replace workspace inheritance.
+[lints.rust]
+future_incompatible = { level = "warn", priority = -1 }
+nonstandard_style = { level = "warn", priority = -1 }
+unsafe_code = "deny"
+
+[lints.clippy]
+# Deny-level — must stay in sync with [workspace.lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+exit = "deny"
+await_holding_lock = "deny"
+# Warn-level extras from workspace
+explicit_into_iter_loop = "warn"
+fallible_impl_from = "warn"
+fn_params_excessive_bools = "warn"
+implicit_clone = "warn"
+map_err_ignore = "warn"
+match_wildcard_for_single_variants = "warn"
+needless_for_each = "warn"
+rc_mutex = "warn"
+string_add = "warn"
+trait_duplication_in_bounds = "warn"
+unused_self = "warn"
+# Architectural boundary enforcement — must stay in sync with [workspace.lints.clippy]
+disallowed_methods = "deny"
+disallowed_types = "deny"

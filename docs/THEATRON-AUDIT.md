@@ -6,9 +6,9 @@
 
 | Crate | LOC | Files | Tests |
 |-------|-----|-------|-------|
-| theatron-core | 3,227 | - | 68 |
-| theatron-tui | 37,368 | - | 439 |
-| theatron-desktop | 45,643 | 162 | 297 |
+| skene | 3,227 | - | 68 |
+| koilon | 37,368 | - | 439 |
+| proskenion | 45,643 | 162 | 297 |
 | **Total** | **86,238** | - | **804** |
 
 theatron accounts for roughly 25% of the aletheia workspace LOC (86K of 348K).
@@ -33,11 +33,11 @@ No file exceeds 900 lines. Largest files are view/state modules - expected for U
 ## Architecture
 
 ```
-theatron-core  (3K LOC)
+skene  (3K LOC)
     Shared API client, domain types, SSE event stream
     ^
     |
-theatron-tui  (37K LOC)              theatron-desktop  (46K LOC)
+koilon  (37K LOC)              proskenion  (46K LOC)
     Terminal dashboard                    Dioxus WebView app
     ratatui rendering                     447 component functions
     12 view modules                       162 source files

@@ -73,7 +73,7 @@ This is the single highest-value section. ETH Zurich research shows agents use m
 ## Rules
 - Use `#[expect(lint, reason = "...")]` not `#[allow]` -- because #[expect] warns when the suppression becomes stale
 - All PRs need `Gate-Passed: kanon 0.1.0` in the commit body -- the CI verify-gate check requires this
-- Desktop crate is excluded from workspace -- build standalone with `cargo check -p theatron-desktop`
+- Desktop crate is excluded from workspace -- build standalone with `cargo check -p proskenion`
 ```
 
 Every rule explains WHY. Without the explanation, the agent follows the rule rigidly but cannot generalize to novel situations.

@@ -194,9 +194,9 @@ fn run_inner(args: RunArgs, env_root: Option<PathBuf>) -> Result<(), InitError> 
         let root = root.unwrap_or_else(|| PathBuf::from("./instance"));
 
         #[cfg(feature = "tui")]
-        if theatron_tui::wizard::is_tty() {
+        if koilon::wizard::is_tty() {
             let preset_key = api_key.as_ref().map(|k| k.expose_secret().to_owned());
-            let wa = theatron_tui::run_wizard(Some(root.clone()), preset_key).map_err(|e| {
+            let wa = koilon::run_wizard(Some(root.clone()), preset_key).map_err(|e| {
                 TuiWizardSnafu {
                     message: e.to_string(),
                 }
@@ -377,7 +377,7 @@ use helpers::{capitalize, detect_timezone, set_permissions};
 use scaffold::scaffold;
 
 #[cfg(feature = "tui")]
-fn wizard_answers_to_answers(wa: &theatron_tui::wizard::WizardAnswers) -> Answers {
+fn wizard_answers_to_answers(wa: &koilon::wizard::WizardAnswers) -> Answers {
     Answers {
         root: wa.root.clone(),
         api_key: wa.api_key.clone(),
@@ -403,7 +403,7 @@ fn wizard_answers_to_answers(wa: &theatron_tui::wizard::WizardAnswers) -> Answer
     reason = "sync init wizard; no async runtime"
 )]
 fn write_user_profile_from_wizard(
-    wa: &theatron_tui::wizard::WizardAnswers,
+    wa: &koilon::wizard::WizardAnswers,
 ) -> Result<(), InitError> {
     if wa.user_name.is_empty() && wa.user_role.is_empty() {
         return Ok(());

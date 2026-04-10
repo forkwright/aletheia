@@ -1,6 +1,6 @@
 # Desktop application
 
-`theatron-desktop` is a Dioxus desktop UI for Aletheia providing chat, planning, memory browsing, metrics, and ops views.
+`proskenion` is a Dioxus desktop UI for Aletheia providing chat, planning, memory browsing, metrics, and ops views.
 
 ## System dependencies
 
@@ -27,8 +27,8 @@ The desktop crate is excluded from the workspace because its GTK/webkit2gtk depe
 Build it standalone using the manifest path:
 
 ```bash
-cargo build -p theatron-desktop --manifest-path crates/theatron/desktop/Cargo.toml
-cargo build -p theatron-desktop --manifest-path crates/theatron/desktop/Cargo.toml --release
+cargo build -p proskenion --manifest-path crates/theatron/proskenion/Cargo.toml
+cargo build -p proskenion --manifest-path crates/theatron/proskenion/Cargo.toml --release
 ```
 
 ## Why excluded from workspace
@@ -39,13 +39,13 @@ cargo build -p theatron-desktop --manifest-path crates/theatron/desktop/Cargo.to
 
 ## Architecture
 
-The desktop crate depends on `theatron-core` for the shared API client, domain types, and SSE infrastructure. It connects to a running Aletheia server over HTTP, the same as the TUI.
+The desktop crate depends on `skene` for the shared API client, domain types, and SSE infrastructure. It connects to a running Aletheia server over HTTP, the same as the TUI.
 
 ```
-theatron-core  (shared: API client, types, SSE)
+skene  (shared: API client, types, SSE)
     ^
     |
-theatron-desktop  (Dioxus desktop app)
+proskenion  (Dioxus desktop app)
 ```
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the full crate dependency graph.

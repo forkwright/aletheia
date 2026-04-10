@@ -10,7 +10,7 @@ The 3D force-directed graph is a Dioxus desktop app feature, not a TUI feature. 
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  Dioxus Desktop App (theatron/desktop)                   │
+│  Dioxus Desktop App (theatron/proskenion)                   │
 │                                                          │
 │  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐ │
 │  │ Graph3DView  │   │ ForceEngine  │   │ WgpuRenderer │ │
@@ -111,7 +111,7 @@ For faster iteration, the graph could use `bevy` with `bevy_egui` for UI overlay
 
 Trade-off: larger binary and dependency surface, but faster time-to-interactive.
 
-## Integration with theatron/desktop
+## Integration with theatron/proskenion
 
 The desktop app (Dioxus) embeds the graph as a custom element:
 

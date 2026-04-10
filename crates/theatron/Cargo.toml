@@ -1,7 +1,7 @@
 [package]
 name = "theatron"
 version.workspace = true
-description = "Thin facade re-exporting theatron-core types for external consumers"
+description = "Thin facade re-exporting skene types for external consumers"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -12,4 +12,4 @@ publish = false
 workspace = true
 
 [dependencies]
-theatron-core = { path = "core" }
+skene = { path = "skene" }

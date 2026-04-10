@@ -34,7 +34,7 @@ Two initialization paths exist:
 - Used by CLI commands and tests
 - Default filter: `aletheia=info,warn`
 
-**TUI mode** (`crates/theatron/tui/src/lib.rs:57-79`):
+**TUI mode** (`crates/theatron/koilon/src/lib.rs:57-79`):
 - File-only output to `~/.local/share/aletheia/tui.log`
 - Daily rolling, no console output (TUI owns the terminal)
 
@@ -270,7 +270,7 @@ These spans carry no identifying fields, making them hard to correlate in multi-
 |------|----------|
 | Server tracing init | `crates/aletheia/src/commands/server.rs:863-920` |
 | Simple tracing init | `crates/koina/src/tracing_init.rs` |
-| TUI tracing init | `crates/theatron/tui/src/lib.rs:57-79` |
+| TUI tracing init | `crates/theatron/koilon/src/lib.rs:57-79` |
 | LoggingSettings struct | `crates/taxis/src/config.rs:782-809` |
 | TraceRotationConfig | `crates/daemon/src/maintenance/trace_rotation.rs:12-43` |
 | HTTP trace layer | `crates/pylon/src/router.rs:125-152` |

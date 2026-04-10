@@ -15,7 +15,7 @@
 {"type":"lint","schema_version":2,"ts":"2026-03-25T22:36:41.101078016Z","repo":"/home/ckickertz/summus/dev/aletheia","total_violations":1706,"rules_triggered":32,"duration_ms":7908}
 {"type":"lint","schema_version":2,"ts":"2026-03-25T22:36:49.114639696Z","repo":"/home/ckickertz/summus/dev/aletheia","total_violations":1706,"rules_triggered":32,"duration_ms":7939}
 {"type":"lint","schema_version":2,"ts":"2026-03-25T22:38:06.61560569Z","repo":"/home/ckickertz/summus/dev/aletheia/crates/aletheia/src/commands/memory/mod.rs","total_violations":20,"rules_triggered":3,"duration_ms":40}
-{"type":"lint","schema_version":2,"ts":"2026-03-25T22:38:07.400838033Z","repo":"/home/ckickertz/summus/dev/aletheia/crates/theatron/desktop/src/services/notification_dispatch.rs","total_violations":2,"rules_triggered":2,"duration_ms":36}
+{"type":"lint","schema_version":2,"ts":"2026-03-25T22:38:07.400838033Z","repo":"/home/ckickertz/summus/dev/aletheia/crates/theatron/proskenion/src/services/notification_dispatch.rs","total_violations":2,"rules_triggered":2,"duration_ms":36}
 {"type":"lint","schema_version":2,"ts":"2026-03-25T22:38:32.614454598Z","repo":"/home/ckickertz/summus/dev/aletheia","total_violations":1705,"rules_triggered":32,"duration_ms":6922}
 {"type":"lint","schema_version":2,"ts":"2026-03-25T22:39:25.859143483Z","repo":"/home/ckickertz/summus/dev/aletheia","total_violations":1697,"rules_triggered":30,"duration_ms":7020}
 {"type":"lint","schema_version":2,"ts":"2026-03-25T22:40:13.656725483Z","repo":"/home/ckickertz/summus/dev/aletheia","total_violations":1697,"rules_triggered":30,"duration_ms":7013}
