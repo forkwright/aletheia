@@ -81,12 +81,9 @@ impl SelfPromptLimiter {
         // Prune entries older than 1 hour.
         timestamps.retain(|ts| *ts > cutoff);
 
-        #[expect(
-            clippy::cast_possible_truncation,
-            clippy::as_conversions,
-            reason = "vec len is bounded by max_per_hour which is u32"
-        )]
-        let count = timestamps.len() as u32;
+        // WHY: saturate to u32::MAX so an absurdly full window trips the rate
+        // limit; the realistic bound is max_per_hour << u32::MAX.
+        let count = u32::try_from(timestamps.len()).unwrap_or(u32::MAX);
         count < self.max_per_hour
     }
 
